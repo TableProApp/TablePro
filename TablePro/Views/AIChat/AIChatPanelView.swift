@@ -474,8 +474,10 @@ struct AIChatPanelView: View {
         let fallback = provider.model.isEmpty ? [] : [provider.model]
         let cached = viewModel.availableModels[provider.id] ?? []
         let models = cached.isEmpty ? fallback : cached
+        let supportsModelList = AIProviderRegistry.shared
+            .descriptor(for: provider.type.rawValue)?.capabilities.contains(.models) ?? true
 
-        if models.count > 1 {
+        if supportsModelList, models.count > 1 {
             Section(provider.displayName) {
                 ForEach(models, id: \.self) { model in
                     modelButton(
@@ -490,7 +492,7 @@ struct AIChatPanelView: View {
                 provider: provider,
                 model: single,
                 isSelected: provider.id == selectedProviderId && single == selectedModel,
-                showProviderPrefix: true
+                prefixLabel: supportsModelList ? "\(provider.displayName) · \(single)" : provider.displayName
             )
         }
     }
@@ -499,14 +501,14 @@ struct AIChatPanelView: View {
         provider: AIProviderConfig,
         model: String,
         isSelected: Bool,
-        showProviderPrefix: Bool = false
+        prefixLabel: String? = nil
     ) -> some View {
         Button {
             viewModel.selectedProviderId = provider.id
             viewModel.selectedModel = model
         } label: {
             HStack {
-                Text(showProviderPrefix ? "\(provider.displayName) · \(model)" : model)
+                Text(prefixLabel ?? model)
                 if isSelected {
                     Image(systemName: "checkmark")
                 }

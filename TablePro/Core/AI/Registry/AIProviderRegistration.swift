@@ -10,6 +10,16 @@ enum AIProviderRegistration {
         let registry = AIProviderRegistry.shared
 
         registry.register(AIProviderDescriptor(
+            typeID: AIProviderType.appleIntelligence.rawValue,
+            displayName: AIProviderType.appleIntelligence.displayName,
+            defaultEndpoint: "",
+            requiresAPIKey: false,
+            capabilities: [.chat],
+            symbolName: AIProviderType.appleIntelligence.symbolName,
+            makeProvider: { _, _ in AIProviderFactory.makeAppleIntelligenceProvider() }
+        ))
+
+        registry.register(AIProviderDescriptor(
             typeID: AIProviderType.claude.rawValue,
             displayName: "Claude",
             defaultEndpoint: "https://api.anthropic.com",

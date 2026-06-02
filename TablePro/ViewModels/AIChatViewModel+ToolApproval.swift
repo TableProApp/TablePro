@@ -153,7 +153,7 @@ extension AIChatViewModel {
         services.connectionStorage.updateConnection(current)
     }
 
-    func dispatchCopilotInvocation(
+    func dispatchToolInvocation(
         block: ToolUseBlock,
         replyToken: ToolReplyToken,
         assistantID: UUID,
@@ -164,13 +164,13 @@ extension AIChatViewModel {
             bridge: ChatToolBootstrap.bridge,
             authPolicy: ChatToolBootstrap.authPolicy
         )
-        await handleCopilotToolInvocation(
+        await handleToolInvocation(
             block: block, replyToken: replyToken,
             assistantID: assistantID, context: context, mode: mode
         )
     }
 
-    func handleCopilotToolInvocation(
+    func handleToolInvocation(
         block: ToolUseBlock,
         replyToken: ToolReplyToken,
         assistantID: UUID,

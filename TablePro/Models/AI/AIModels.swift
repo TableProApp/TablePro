@@ -8,6 +8,7 @@ import Foundation
 // MARK: - AI Provider Type
 
 enum AIProviderType: String, Codable, CaseIterable, Identifiable, Sendable {
+    case appleIntelligence
     case copilot
     case claude
     case openAI
@@ -17,10 +18,14 @@ enum AIProviderType: String, Codable, CaseIterable, Identifiable, Sendable {
     case openCode
     case custom
 
+    static let appleIntelligenceSeededID = UUID(uuidString: "00000000-FEED-FEED-FEED-000000000001") ?? UUID()
+    static let appleIntelligenceModelID = "apple-on-device"
+
     var id: String { rawValue }
 
     var displayName: String {
         switch self {
+        case .appleIntelligence: return "Apple Intelligence"
         case .copilot:    return "GitHub Copilot"
         case .claude:     return "Claude"
         case .openAI:     return "OpenAI"
@@ -34,6 +39,7 @@ enum AIProviderType: String, Codable, CaseIterable, Identifiable, Sendable {
 
     var defaultEndpoint: String {
         switch self {
+        case .appleIntelligence: return ""
         case .copilot:    return ""
         case .claude:     return "https://api.anthropic.com"
         case .openAI:     return "https://api.openai.com"
@@ -46,13 +52,14 @@ enum AIProviderType: String, Codable, CaseIterable, Identifiable, Sendable {
     }
 
     enum AuthStyle: Sendable {
-        case apiKey, optionalApiKey, oauth, none
+        case apiKey, optionalApiKey, oauth, none, device
 
         var usesAPIKey: Bool { self == .apiKey || self == .optionalApiKey }
     }
 
     var authStyle: AuthStyle {
         switch self {
+        case .appleIntelligence: return .device
         case .copilot:  return .oauth
         case .ollama:   return .none
         case .openCode: return .optionalApiKey
@@ -62,6 +69,7 @@ enum AIProviderType: String, Codable, CaseIterable, Identifiable, Sendable {
 
     var symbolName: String {
         switch self {
+        case .appleIntelligence: return "apple.logo"
         case .copilot:    return "chevron.left.forwardslash.chevron.right"
         case .claude:     return "brain"
         case .openAI:     return "cpu"

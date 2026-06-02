@@ -281,7 +281,7 @@ extension AIChatViewModel {
             case .toolUseEnd:
                 break
             case .toolInvocationRequest(let block, let replyToken):
-                await self.dispatchCopilotInvocation(
+                await self.dispatchToolInvocation(
                     block: block, replyToken: replyToken,
                     assistantID: assistantID, mode: chatMode
                 )

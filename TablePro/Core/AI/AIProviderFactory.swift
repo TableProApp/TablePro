@@ -39,6 +39,14 @@ enum AIProviderFactory {
         }
     }
 
+    static func makeAppleIntelligenceProvider() -> ChatTransport {
+        let status = AppleIntelligenceAvailability.currentStatus()
+        if #available(macOS 26, *), status == .available {
+            return AppleIntelligenceTransport()
+        }
+        return UnavailableTransport(reason: status.statusText)
+    }
+
     static func invalidateCache() {
         cacheLock.withLock { $0.removeAll() }
     }
@@ -85,7 +93,7 @@ enum AIProviderFactory {
         switch config.type.authStyle {
         case .apiKey, .optionalApiKey:
             apiKey = AIKeyStorage.shared.loadAPIKey(for: config.id)
-        case .oauth, .none:
+        case .oauth, .none, .device:
             apiKey = nil
         }
         let provider = createProvider(for: config, apiKey: apiKey)

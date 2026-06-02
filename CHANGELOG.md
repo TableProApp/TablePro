@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Apple Intelligence as an AI provider on macOS 26 and later: on-device, no API key, no network. It is the default for new users when available, and shows the reason when it is not. (#1048)
 - Import a JSON file into a table: an array of objects, newline-delimited JSON, or TablePro's JSON export, mapped to a new or existing table. Pick SQL or JSON from the Import menu.
 - The title bar shows the open table's name, with its database and schema below. (#1475)
 - iOS: open DuckDB database files and in-memory DuckDB databases. (#1526)

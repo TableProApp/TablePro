@@ -216,7 +216,7 @@ final class AppSettingsManager {
         self.history = storage.loadHistory()
         self.tabs = storage.loadTabs()
         self.keyboard = storage.loadKeyboard()
-        self.ai = Self.migrateAI(storage.loadAI())
+        self.ai = Self.seedAppleIntelligenceIfEligible(Self.migrateAI(storage.loadAI()))
         self.sync = storage.loadSync()
         self.mcp = storage.loadMCP()
 
@@ -255,6 +255,21 @@ final class AppSettingsManager {
         var migrated = settings
         migrated.activeProviderID = first.id
         return migrated
+    }
+
+    internal static func seedAppleIntelligenceIfEligible(_ settings: AISettings) -> AISettings {
+        guard settings.providers.isEmpty else { return settings }
+        guard AppleIntelligenceAvailability.currentStatus() == .available else { return settings }
+        let config = AIProviderConfig(
+            id: AIProviderType.appleIntelligenceSeededID,
+            type: .appleIntelligence,
+            model: AIProviderType.appleIntelligenceModelID,
+            endpoint: ""
+        )
+        var seeded = settings
+        seeded.providers = [config]
+        seeded.activeProviderID = config.id
+        return seeded
     }
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "AppSettingsManager")

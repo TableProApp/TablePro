@@ -277,7 +277,7 @@ final class AIChatViewModel {
                 switch config.type.authStyle {
                 case .apiKey, .optionalApiKey:
                     apiKey = services.aiKeyStorage.loadAPIKey(for: config.id)
-                case .oauth, .none:
+                case .oauth, .none, .device:
                     apiKey = nil
                 }
                 group.addTask {

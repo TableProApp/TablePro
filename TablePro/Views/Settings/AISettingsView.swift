@@ -16,6 +16,7 @@ struct AISettingsView: View {
     @State private var pendingDeleteID: UUID?
     @State private var copilotService = CopilotService.shared
     @State private var providersWithKey: Set<UUID> = []
+    @State private var appleIntelligenceStatus = AppleIntelligenceAvailability.currentStatus()
 
     var body: some View {
         Form {
@@ -31,6 +32,14 @@ struct AISettingsView: View {
         }
         .formStyle(.grouped)
         .task { refreshKeyAvailability() }
+        .task {
+            appleIntelligenceStatus = AppleIntelligenceAvailability.currentStatus()
+            while appleIntelligenceStatus == .modelNotReady {
+                try? await Task.sleep(for: .seconds(15))
+                if Task.isCancelled { break }
+                appleIntelligenceStatus = AppleIntelligenceAvailability.currentStatus()
+            }
+        }
         .onChange(of: settings.providers.map(\.id)) {
             refreshKeyAvailability()
         }
@@ -115,29 +124,27 @@ struct AISettingsView: View {
 
     private var providersSection: some View {
         Section {
-            if settings.providers.isEmpty {
-                emptyProvidersRow
-            } else {
-                ForEach(settings.providers) { provider in
-                    Button {
+            appleIntelligenceRow
+            let otherProviders = settings.providers.filter { $0.type != .appleIntelligence }
+            ForEach(otherProviders) { provider in
+                Button {
+                    editingProviderID = provider.id
+                } label: {
+                    providerRow(provider)
+                }
+                .buttonStyle(.plain)
+                .contentShape(Rectangle())
+                .contextMenu {
+                    Button(String(localized: "Edit")) {
                         editingProviderID = provider.id
-                    } label: {
-                        providerRow(provider)
                     }
-                    .buttonStyle(.plain)
-                    .contentShape(Rectangle())
-                    .contextMenu {
-                        Button(String(localized: "Edit")) {
-                            editingProviderID = provider.id
-                        }
-                        Button(String(localized: "Set as Active")) {
-                            settings.activeProviderID = provider.id
-                        }
-                        .disabled(settings.activeProviderID == provider.id)
-                        Divider()
-                        Button(String(localized: "Remove"), role: .destructive) {
-                            pendingDeleteID = provider.id
-                        }
+                    Button(String(localized: "Set as Active")) {
+                        settings.activeProviderID = provider.id
+                    }
+                    .disabled(settings.activeProviderID == provider.id)
+                    Divider()
+                    Button(String(localized: "Remove"), role: .destructive) {
+                        pendingDeleteID = provider.id
                     }
                 }
             }
@@ -147,15 +154,100 @@ struct AISettingsView: View {
         }
     }
 
-    private var emptyProvidersRow: some View {
-        HStack {
-            Spacer()
-            Text("No providers configured")
-                .foregroundStyle(.secondary)
-                .font(.callout)
-            Spacer()
+    @ViewBuilder
+    private var appleIntelligenceRow: some View {
+        let provider = settings.providers.first(where: { $0.type == .appleIntelligence })
+        let isActive = provider != nil && provider?.id == settings.activeProviderID
+        let isInteractive = provider != nil
+            || appleIntelligenceStatus.isAvailable
+            || appleIntelligenceStatus.canOpenSystemSettings
+        Button {
+            handleAppleIntelligenceTap(provider: provider)
+        } label: {
+            HStack(spacing: 10) {
+                ZStack {
+                    if isActive {
+                        Image(systemName: "checkmark")
+                            .font(.caption.bold())
+                            .foregroundStyle(Color.accentColor)
+                    }
+                }
+                .frame(width: 14)
+
+                Image(systemName: AIProviderType.appleIntelligence.symbolName)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 20)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Apple Intelligence")
+                        .fontWeight(.regular)
+                    Text(appleIntelligenceStatus.statusText)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                if isInteractive {
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            .padding(.vertical, 2)
+            .opacity(appleIntelligenceStatus.isAvailable || provider != nil ? 1 : 0.55)
         }
-        .padding(.vertical, 6)
+        .buttonStyle(.plain)
+        .contentShape(Rectangle())
+        .disabled(!isInteractive)
+        .contextMenu {
+            if let provider {
+                Button(String(localized: "Set as Active")) {
+                    settings.activeProviderID = provider.id
+                }
+                .disabled(settings.activeProviderID == provider.id)
+                Divider()
+                Button(String(localized: "Remove"), role: .destructive) {
+                    pendingDeleteID = provider.id
+                }
+            }
+        }
+    }
+
+    private func handleAppleIntelligenceTap(provider: AIProviderConfig?) {
+        if let provider {
+            editingProviderID = provider.id
+            return
+        }
+        if appleIntelligenceStatus.isAvailable {
+            let config = AIProviderConfig(
+                id: AIProviderType.appleIntelligenceSeededID,
+                type: .appleIntelligence,
+                model: AIProviderType.appleIntelligenceModelID,
+                endpoint: ""
+            )
+            settings.providers.insert(config, at: 0)
+            if settings.activeProviderID == nil {
+                settings.activeProviderID = config.id
+            }
+            AIProviderFactory.invalidateCache(for: config.id)
+            return
+        }
+        if appleIntelligenceStatus.canOpenSystemSettings {
+            openAppleIntelligenceSystemSettings()
+        }
+    }
+
+    private func openAppleIntelligenceSystemSettings() {
+        let identifiers = [
+            "x-apple.systempreferences:com.apple.Siri-Settings.extension",
+            "x-apple.systempreferences:"
+        ]
+        for identifier in identifiers {
+            if let url = URL(string: identifier), NSWorkspace.shared.open(url) {
+                return
+            }
+        }
     }
 
     private func providerRow(_ provider: AIProviderConfig) -> some View {
@@ -310,6 +402,8 @@ struct AISettingsView: View {
 
     private func statusText(for provider: AIProviderConfig) -> String {
         switch provider.type.authStyle {
+        case .device:
+            return appleIntelligenceStatus.statusText
         case .oauth:
             return copilotStatusText()
         case .apiKey, .optionalApiKey:

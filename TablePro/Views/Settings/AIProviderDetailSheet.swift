@@ -106,6 +106,9 @@ struct AIProviderDetailSheet: View {
     }
 
     private var navigationTitle: String {
+        if draft.type == .appleIntelligence {
+            return draft.type.displayName
+        }
         if isNew {
             return String(format: String(localized: "Add %@"), draft.type.displayName)
         }
@@ -116,9 +119,13 @@ struct AIProviderDetailSheet: View {
         switch draft.type.authStyle {
         case .apiKey:
             return !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        case .optionalApiKey, .oauth, .none:
+        case .optionalApiKey, .oauth, .none, .device:
             return true
         }
+    }
+
+    private var appleIntelligenceStatus: AppleIntelligenceStatus {
+        AppleIntelligenceAvailability.currentStatus()
     }
 
     private var normalizedDraft: AIProviderConfig {
@@ -136,8 +143,45 @@ struct AIProviderDetailSheet: View {
             apiKeyAuthSection
         case .oauth:
             copilotAuthSection
+        case .device:
+            appleIntelligenceStatusSection
         case .none:
             EmptyView()
+        }
+    }
+
+    private var appleIntelligenceStatusSection: some View {
+        Section {
+            HStack(spacing: 8) {
+                Image(systemName: appleIntelligenceStatus.isAvailable ? "checkmark.circle.fill" : "exclamationmark.circle")
+                    .foregroundStyle(appleIntelligenceStatus.isAvailable ? .green : .secondary)
+                Text(appleIntelligenceStatus.statusText)
+                    .font(.callout)
+                Spacer()
+            }
+            if appleIntelligenceStatus.canOpenSystemSettings {
+                Button(String(localized: "Open System Settings")) {
+                    openAppleIntelligenceSystemSettings()
+                }
+            }
+        } header: {
+            Text("On-Device Model")
+        } footer: {
+            Text("Apple Intelligence runs on this Mac. No API key, and your schema and queries do not leave the device.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func openAppleIntelligenceSystemSettings() {
+        let identifiers = [
+            "x-apple.systempreferences:com.apple.Siri-Settings.extension",
+            "x-apple.systempreferences:"
+        ]
+        for identifier in identifiers {
+            if let url = URL(string: identifier), NSWorkspace.shared.open(url) {
+                return
+            }
         }
     }
 
@@ -291,7 +335,7 @@ struct AIProviderDetailSheet: View {
     }
 
     private var shouldShowConnectionSection: Bool {
-        draft.type != .copilot
+        draft.type != .copilot && draft.type != .appleIntelligence
     }
 
     // MARK: - Model
@@ -317,19 +361,22 @@ struct AIProviderDetailSheet: View {
         !curatedModels.contains(where: { $0.id == draft.model })
     }
 
+    @ViewBuilder
     private var modelSection: some View {
-        Section {
-            modelPicker
-            if isCustomModel {
-                TextField(String(localized: "Model ID"), text: $draft.model)
-                    .textFieldStyle(.roundedBorder)
+        if draft.type != .appleIntelligence {
+            Section {
+                modelPicker
+                if isCustomModel {
+                    TextField(String(localized: "Model ID"), text: $draft.model)
+                        .textFieldStyle(.roundedBorder)
+                }
+                if showsReasoningPicker {
+                    reasoningPicker
+                }
+                modelFetchStatus
+            } header: {
+                Text("Model")
             }
-            if showsReasoningPicker {
-                reasoningPicker
-            }
-            modelFetchStatus
-        } header: {
-            Text("Model")
         }
     }
 
@@ -436,20 +483,23 @@ struct AIProviderDetailSheet: View {
 
     // MARK: - Advanced
 
+    @ViewBuilder
     private var advancedSection: some View {
-        Section {
-            HStack {
-                Text("Max output tokens")
-                Spacer()
-                TextField("", text: maxOutputTokensBinding)
-                    .frame(width: 100)
-                    .multilineTextAlignment(.trailing)
+        if draft.type != .appleIntelligence {
+            Section {
+                HStack {
+                    Text("Max output tokens")
+                    Spacer()
+                    TextField("", text: maxOutputTokensBinding)
+                        .frame(width: 100)
+                        .multilineTextAlignment(.trailing)
+                }
+                if draft.type == .copilot {
+                    Toggle("Send telemetry to GitHub", isOn: $draft.telemetryEnabled)
+                }
+            } header: {
+                Text("Advanced")
             }
-            if draft.type == .copilot {
-                Toggle("Send telemetry to GitHub", isOn: $draft.telemetryEnabled)
-            }
-        } header: {
-            Text("Advanced")
         }
     }
 
@@ -526,6 +576,9 @@ struct AIProviderDetailSheet: View {
     }
 
     private func fetchModels() {
+        if draft.type == .appleIntelligence {
+            return
+        }
         if draft.type.authStyle == .apiKey,
            apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             fetchedModels = []

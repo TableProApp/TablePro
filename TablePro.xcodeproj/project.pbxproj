@@ -2553,6 +2553,8 @@
 					"-lssl.3",
 					"-lcrypto.3",
 					"-lz",
+					"-weak_framework",
+					FoundationModels,
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.TablePro;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -2631,6 +2633,8 @@
 					"-lssl.3",
 					"-lcrypto.3",
 					"-lz",
+					"-weak_framework",
+					FoundationModels,
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.TablePro;
 				PRODUCT_NAME = "$(TARGET_NAME)";

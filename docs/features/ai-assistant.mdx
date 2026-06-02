@@ -1,6 +1,6 @@
 ---
 title: AI Assistant
-description: "Built-in AI for SQL: chat with tool calling, inline suggestions, explain, optimize, fix-error. 8 providers."
+description: "Built-in AI for SQL: chat with tool calling, inline suggestions, explain, optimize, fix-error. 9 providers, including on-device Apple Intelligence."
 ---
 
 # AI Assistant
@@ -44,6 +44,14 @@ The active provider handles every AI request. Override it per turn from the [mod
 Add Copilot like any other provider. The detail sheet runs GitHub's device-flow sign-in: enter the displayed code on github.com to authorize. The Copilot language server starts when you add a Copilot provider and stops when you remove it.
 
 Copilot supports tool calling through GitHub's `conversation/registerTools` bridge. Tool calls go through the same approval flow as the other providers.
+
+### Apple Intelligence
+
+On macOS 26 and later, Apple Intelligence runs on this Mac through the Foundation Models framework. It needs no API key and no network: your schema and queries stay on the device. It supports tool calling like the other providers.
+
+Apple Intelligence sits at the top of the provider list. On a fresh install it is the default provider when the on-device model is available. When it is not, the row explains why: the Mac is not eligible, Apple Intelligence is off in System Settings (with a button to open them), the model is still downloading, or the OS is older than macOS 26.
+
+It has one on-device model, so there is no model list and no reasoning or image options.
 
 ## Chat
 
@@ -177,7 +185,7 @@ The cap is 10 tool round trips per turn. If you hit it, send a follow-up to cont
 | `execute_query` | Run `SELECT` / `INSERT` / `UPDATE` / `DELETE`. Multi-statement input rejected. Destructive DDL blocked. | Edit, Agent |
 | `confirm_destructive_operation` | Run destructive DDL after the model passes the verbatim phrase `I understand this is irreversible` | Agent |
 
-Provider support: Claude, OpenAI, OpenRouter, OpenCode Zen, Gemini, Ollama (model-dependent), GitHub Copilot, and custom OpenAI-compatible endpoints.
+Provider support: Apple Intelligence (macOS 26+, on-device), Claude, OpenAI, OpenRouter, OpenCode Zen, Gemini, Ollama (model-dependent), GitHub Copilot, and custom OpenAI-compatible endpoints.
 
 ### Attach Context with `@`
 
