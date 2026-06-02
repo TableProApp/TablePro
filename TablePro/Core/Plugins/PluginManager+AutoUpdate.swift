@@ -224,15 +224,27 @@ extension PluginManager {
     }
 
     func rejectedAction(for rejected: RejectedPlugin) -> RejectedPluginAction {
-        guard RegistryClient.shared.manifest != nil else { return .awaitingCompatibleBuild }
-        guard let registryPlugin = registryPlugin(for: rejected) else { return .notInRegistry }
+        Self.rejectedAction(
+            registryPlugin: registryPlugin(for: rejected),
+            manifestLoaded: RegistryClient.shared.manifest != nil,
+            currentKitVersion: Self.currentPluginKitVersion
+        )
+    }
+
+    static func rejectedAction(
+        registryPlugin: RegistryPlugin?,
+        manifestLoaded: Bool,
+        currentKitVersion: Int
+    ) -> RejectedPluginAction {
+        guard manifestLoaded else { return .awaitingCompatibleBuild }
+        guard let registryPlugin else { return .notInRegistry }
         let availableKits = registryPlugin.binaries
             .filter { $0.architecture == .current }
             .compactMap(\.pluginKitVersion)
-        if availableKits.contains(Self.currentPluginKitVersion) {
+        if availableKits.contains(currentKitVersion) {
             return .updateAvailable(registryPlugin)
         }
-        if availableKits.contains(where: { $0 > Self.currentPluginKitVersion }) {
+        if availableKits.contains(where: { $0 > currentKitVersion }) {
             return .requiresAppUpdate
         }
         return .awaitingCompatibleBuild
