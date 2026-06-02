@@ -118,6 +118,7 @@ final class PluginManager {
     @ObservationIgnored internal var reconciliationManifestAttempts = 0
     @ObservationIgnored private var connectionStatusSubscription: AnyCancellable?
     @ObservationIgnored internal var pluginNetworkMonitor: NWPathMonitor?
+    @ObservationIgnored internal var lastNetworkSatisfied = false
     @ObservationIgnored internal var installsInFlight: Set<String> = []
 
     var queryBuildingDriverCache: [String: (any PluginDatabaseDriver)?] = [:]

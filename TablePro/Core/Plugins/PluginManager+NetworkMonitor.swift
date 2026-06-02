@@ -11,11 +11,17 @@ extension PluginManager {
         let monitor = NWPathMonitor()
         pluginNetworkMonitor = monitor
         monitor.pathUpdateHandler = { [weak self] path in
-            guard path.status == .satisfied else { return }
+            let satisfied = path.status == .satisfied
             Task { @MainActor [weak self] in
-                self?.retriggerReconciliation()
+                self?.handleNetworkPathChange(satisfied: satisfied)
             }
         }
         monitor.start(queue: DispatchQueue(label: "com.TablePro.pluginNetworkMonitor"))
+    }
+
+    private func handleNetworkPathChange(satisfied: Bool) {
+        defer { lastNetworkSatisfied = satisfied }
+        guard satisfied, !lastNetworkSatisfied else { return }
+        retriggerReconciliation()
     }
 }

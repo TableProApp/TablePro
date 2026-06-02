@@ -279,15 +279,24 @@ extension PluginManager {
     func ensurePluginReady(forTypeId typeId: String) async {
         if reconciliationActive, let task = reconciliationTask {
             await task.value
-            return
         }
         guard hasOutdatedRejectedPlugin(forTypeId: typeId) else { return }
-        reconciliationAttempts.removeAll()
-        reconciliationManifestAttempts = 0
-        scheduleReconciliation()
-        if let task = reconciliationTask {
-            await task.value
+        await reconcileOutdated(matchingTypeId: typeId)
+    }
+
+    private func reconcileOutdated(matchingTypeId typeId: String) async {
+        let targets = rejectedPlugins.filter { $0.isOutdated && $0.providedDatabaseTypeIds.contains(typeId) }
+        guard !targets.isEmpty else { return }
+        await RegistryClient.shared.fetchManifest(forceRefresh: true)
+        guard let manifest = RegistryClient.shared.manifest else { return }
+        for target in targets {
+            if let lookupId = resolveRegistryId(for: target, manifest: manifest) {
+                reconciliationAttempts.removeValue(forKey: lookupId)
+            }
+            _ = await reconcile(target, manifest: manifest)
         }
+        refreshRegistryUpdateSet()
+        emitReconciliationOutcome()
     }
 
     func retriggerReconciliation() {

@@ -130,6 +130,36 @@ struct PluginManagerReconciliationTests {
         #expect(kind(action) == "awaitingCompatibleBuild")
     }
 
+    @Test("retriggerReconciliation does nothing when no plugin is outdated")
+    func retriggerReconciliationNoopWhenNoneOutdated() {
+        let pm = PluginManager.shared
+        let savedRejected = pm.rejectedPlugins
+        let savedActive = pm.reconciliationActive
+        pm.rejectedPlugins = []
+        pm.reconciliationActive = false
+        defer {
+            pm.rejectedPlugins = savedRejected
+            pm.reconciliationActive = savedActive
+        }
+        pm.retriggerReconciliation()
+        #expect(pm.reconciliationActive == false)
+    }
+
+    @Test("ensurePluginReady returns without reconciling when the type has no outdated rejection")
+    func ensurePluginReadyNoopForUnknownType() async {
+        let pm = PluginManager.shared
+        let savedRejected = pm.rejectedPlugins
+        let savedActive = pm.reconciliationActive
+        pm.rejectedPlugins = []
+        pm.reconciliationActive = false
+        defer {
+            pm.rejectedPlugins = savedRejected
+            pm.reconciliationActive = savedActive
+        }
+        await pm.ensurePluginReady(forTypeId: "com.example.absent")
+        #expect(pm.reconciliationActive == false)
+    }
+
     @Test("resolveRegistryId prefers explicit registryId from sidecar")
     func resolveRegistryIdUsesRegistryId() {
         let pm = PluginManager.shared
