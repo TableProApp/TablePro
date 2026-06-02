@@ -94,12 +94,12 @@ enum FilterOperator: String, CaseIterable, Identifiable, Codable {
 /// Represents a single table filter condition
 struct TableFilter: Identifiable, Equatable, Hashable, Codable {
     let id: UUID
-    var columnName: String          // Column to filter on, or "__RAW__" for raw SQL
+    var columnName: String
     var filterOperator: FilterOperator
     var value: String
-    var secondValue: String?        // For BETWEEN operator
-    var isEnabled: Bool             // Whether filter is active
-    var rawSQL: String?             // For raw SQL mode
+    var secondValue: String?
+    var isEnabled: Bool
+    var rawSQL: String?
 
     /// Special column name for raw SQL mode
     static let rawSQLColumn = "__RAW__"

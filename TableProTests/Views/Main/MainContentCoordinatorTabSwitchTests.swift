@@ -474,6 +474,44 @@ struct MainContentCoordinatorTabSwitchTests {
         #expect(coordinator.selectedTabFilterState.appliedFilters == [active])
     }
 
+    @Test("Removing the soloed filter clears the applied set")
+    func removingSoloedFilterClearsCommit() {
+        let (coordinator, tabManager) = makeCoordinator()
+        let tabId = addTableTab(to: tabManager, tableName: "users")
+        seedRows(coordinator, for: tabId)
+
+        let first = TestFixtures.makeTableFilter(column: "id", op: .equal, value: "1")
+        let second = TestFixtures.makeTableFilter(column: "name", op: .contains, value: "a")
+        guard let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else {
+            Issue.record("Expected tab to exist")
+            return
+        }
+        tabManager.tabs[index].filterState.filters = [first, second]
+
+        coordinator.applySoloFilter(second)
+        #expect(coordinator.selectedTabFilterState.appliedFilters.map(\.id) == [second.id])
+
+        coordinator.removeFilter(second)
+        #expect(coordinator.selectedTabFilterState.appliedFilters.isEmpty)
+    }
+
+    @Test("Soloing an invalid filter does nothing")
+    func soloingInvalidFilterIsNoOp() {
+        let (coordinator, tabManager) = makeCoordinator()
+        let tabId = addTableTab(to: tabManager, tableName: "users")
+        seedRows(coordinator, for: tabId)
+
+        let invalid = TestFixtures.makeTableFilter(column: "", value: "")
+        guard let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else {
+            Issue.record("Expected tab to exist")
+            return
+        }
+        tabManager.tabs[index].filterState.filters = [invalid]
+
+        coordinator.applySoloFilter(invalid)
+        #expect(coordinator.selectedTabFilterState.appliedFilters.isEmpty)
+    }
+
     @Test("Apply on a single row queries by only that row without changing checkbox state")
     func applySoloFilterRunsOnlyThatRowAndKeepsState() {
         let (coordinator, tabManager) = makeCoordinator()

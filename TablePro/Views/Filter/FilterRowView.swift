@@ -177,6 +177,7 @@ struct FilterRowView: View {
                 .controlSize(.small)
                 .disabled(!filter.isValid)
                 .accessibilityLabel(String(localized: "Apply only this filter"))
+                .accessibilityValue(isApplied ? String(localized: "Applied") : "")
                 .help(isApplied
                     ? String(localized: "Filtering by only this row")
                     : String(localized: "Filter by only this row"))
