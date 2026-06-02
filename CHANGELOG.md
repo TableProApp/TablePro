@@ -30,6 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Favorite keyword suggestions now appear in editor autocomplete. They were dropped before reaching the popup.
 - Editor autocomplete refreshes when you switch schema, suggesting the new schema's tables and columns.
 - Plugins settings: the unloaded-plugins banner now scrolls instead of pushing the plugin list off screen, shows each plugin's real icon, and only offers an Update button when a compatible build exists. Plugins waiting on a build that publishes automatically no longer show a button that fails.
+- Opening a connection right after an app update no longer fails when its driver plugin needs updating. The driver updates in the background and the connection proceeds, instead of showing an error until you quit and reopen. (#1552)
 
 ## [0.47.0] - 2026-06-01
 

@@ -102,7 +102,7 @@ struct PluginInstallerHelpersTests {
         try emptyPlist.write(to: contents.appendingPathComponent("Info.plist"), atomically: true, encoding: .utf8)
 
         #expect(throws: PluginError.self) {
-            try PluginInstaller.validateStagedABI(bundleURL: bundle, currentKit: 13, currentInspector: 1)
+            try PluginInstaller.validateStagedABI(bundleURL: bundle, currentKit: 13, minimumKit: 13, currentInspector: 1)
         }
     }
 
@@ -112,7 +112,7 @@ struct PluginInstallerHelpersTests {
         defer { try? FileManager.default.removeItem(at: dir) }
 
         let bundle = try makeFakeBundle(at: dir, name: "Driver")
-        try PluginInstaller.validateStagedABI(bundleURL: bundle, currentKit: 13, currentInspector: 1)
+        try PluginInstaller.validateStagedABI(bundleURL: bundle, currentKit: 13, minimumKit: 13, currentInspector: 1)
     }
 
     @Test("findBundle returns the single .tableplugin in a directory")

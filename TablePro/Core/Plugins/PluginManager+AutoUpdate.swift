@@ -8,9 +8,10 @@ import Foundation
 import os
 
 private enum ReconciliationConfig {
-    static let maxAttempts = 3
+    static let maxAttempts = 5
     static let firstRetryDelay: Duration = .seconds(30)
     static let secondRetryDelay: Duration = .seconds(300)
+    static let thirdRetryDelay: Duration = .seconds(600)
 }
 
 enum RejectedPluginAction: Sendable {
@@ -115,9 +116,19 @@ extension PluginManager {
             reconciliationAttempts.removeValue(forKey: lookupId)
             return .resolved
         } catch let error as PluginError where error.isPermanentReconciliationFailure {
-            reconciliationAttempts[lookupId] = ReconciliationConfig.maxAttempts
+            let action = Self.rejectedAction(
+                registryPlugin: registryPlugin,
+                manifestLoaded: true,
+                currentKitVersion: Self.currentPluginKitVersion,
+                minimumKitVersion: Self.minimumCompatiblePluginKitVersion
+            )
             updateRejectedReason(url: rejected.url, reason: incompatibleBuildReason(for: registryPlugin))
-            Self.logger.error("Reconciliation: no compatible build for '\(rejected.name)'")
+            if case .noCompatibleBinary = error, case .awaitingCompatibleBuild = action {
+                Self.logger.warning("Reconciliation: no compatible build published yet for '\(rejected.name)', will retry")
+                return .transient(id: lookupId)
+            }
+            reconciliationAttempts[lookupId] = ReconciliationConfig.maxAttempts
+            Self.logger.error("Reconciliation: '\(rejected.name)' needs a newer app or has no compatible build")
             return .permanent
         } catch {
             Self.logger.error("Reconciliation: transient failure for '\(rejected.name)': \(error.localizedDescription)")
@@ -130,7 +141,12 @@ extension PluginManager {
 
     private func scheduleReconciliationRetry() {
         let round = max(reconciliationAttempts.values.max() ?? 0, reconciliationManifestAttempts)
-        let delay = round <= 1 ? ReconciliationConfig.firstRetryDelay : ReconciliationConfig.secondRetryDelay
+        let delay: Duration
+        switch round {
+        case ..<2: delay = ReconciliationConfig.firstRetryDelay
+        case 2: delay = ReconciliationConfig.secondRetryDelay
+        default: delay = ReconciliationConfig.thirdRetryDelay
+        }
         reconciliationTask = Task { [weak self] in
             try? await Task.sleep(for: delay)
             guard !Task.isCancelled else { return }
@@ -227,21 +243,23 @@ extension PluginManager {
         Self.rejectedAction(
             registryPlugin: registryPlugin(for: rejected),
             manifestLoaded: RegistryClient.shared.manifest != nil,
-            currentKitVersion: Self.currentPluginKitVersion
+            currentKitVersion: Self.currentPluginKitVersion,
+            minimumKitVersion: Self.minimumCompatiblePluginKitVersion
         )
     }
 
     static func rejectedAction(
         registryPlugin: RegistryPlugin?,
         manifestLoaded: Bool,
-        currentKitVersion: Int
+        currentKitVersion: Int,
+        minimumKitVersion: Int
     ) -> RejectedPluginAction {
         guard manifestLoaded else { return .awaitingCompatibleBuild }
         guard let registryPlugin else { return .notInRegistry }
         let availableKits = registryPlugin.binaries
             .filter { $0.architecture == .current }
             .compactMap(\.pluginKitVersion)
-        if availableKits.contains(currentKitVersion) {
+        if availableKits.contains(where: { $0 >= minimumKitVersion && $0 <= currentKitVersion }) {
             return .updateAvailable(registryPlugin)
         }
         if availableKits.contains(where: { $0 > currentKitVersion }) {
@@ -258,8 +276,25 @@ extension PluginManager {
         rejectedPlugins.first { $0.isOutdated && $0.providedDatabaseTypeIds.contains(typeId) }?.reason
     }
 
-    func awaitReconciliation() async {
-        guard reconciliationActive, let task = reconciliationTask else { return }
-        await task.value
+    func ensurePluginReady(forTypeId typeId: String) async {
+        if reconciliationActive, let task = reconciliationTask {
+            await task.value
+            return
+        }
+        guard hasOutdatedRejectedPlugin(forTypeId: typeId) else { return }
+        reconciliationAttempts.removeAll()
+        reconciliationManifestAttempts = 0
+        scheduleReconciliation()
+        if let task = reconciliationTask {
+            await task.value
+        }
+    }
+
+    func retriggerReconciliation() {
+        guard !reconciliationActive else { return }
+        guard rejectedPlugins.contains(where: \.isOutdated) else { return }
+        reconciliationAttempts.removeAll()
+        reconciliationManifestAttempts = 0
+        scheduleReconciliation()
     }
 }

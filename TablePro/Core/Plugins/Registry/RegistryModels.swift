@@ -105,12 +105,19 @@ struct RegistryPlugin: Codable, Sendable, Identifiable {
 extension RegistryPlugin {
     func resolvedBinary(
         for arch: PluginArchitecture = .current,
-        pluginKitVersion: Int
+        currentKitVersion: Int,
+        minimumKitVersion: Int
     ) throws -> RegistryBinary {
-        let archMatches = binaries.filter { $0.architecture == arch }
+        let compatible = binaries
+            .filter { $0.architecture == arch }
+            .filter { binary in
+                guard let kit = binary.pluginKitVersion else { return false }
+                return kit >= minimumKitVersion && kit <= currentKitVersion
+            }
+            .max { ($0.pluginKitVersion ?? 0) < ($1.pluginKitVersion ?? 0) }
 
-        if let exact = archMatches.first(where: { $0.pluginKitVersion == pluginKitVersion }) {
-            return exact
+        if let compatible {
+            return compatible
         }
 
         throw PluginError.noCompatibleBinary

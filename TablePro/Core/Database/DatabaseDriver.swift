@@ -408,8 +408,18 @@ enum DatabaseDriverFactory {
         }
         if PluginManager.shared.driverPlugin(for: connection.type) == nil,
            PluginManager.shared.hasOutdatedRejectedPlugin(forTypeId: pluginId) {
-            logger.info("Plugin '\(pluginId)' is installed but outdated, waiting for reconciliation to update it")
-            await PluginManager.shared.awaitReconciliation()
+            logger.info("Plugin '\(pluginId)' is installed but outdated, updating it before connect")
+            await PluginManager.shared.ensurePluginReady(forTypeId: pluginId)
+        }
+        if PluginManager.shared.driverPlugin(for: connection.type) == nil,
+           connection.type.isDownloadablePlugin,
+           !PluginManager.shared.hasOutdatedRejectedPlugin(forTypeId: pluginId) {
+            logger.info("Plugin '\(pluginId)' not installed, installing on demand before connect")
+            do {
+                try await PluginManager.shared.installMissingPlugin(for: connection.type) { _ in }
+            } catch {
+                logger.warning("On-demand install for '\(pluginId)' did not complete: \(error.localizedDescription)")
+            }
         }
         return try await createDriverFromPlugin(for: connection, passwordOverride: passwordOverride)
     }

@@ -175,6 +175,7 @@ actor PluginInstaller {
         let context = await MainActor.run {
             (
                 kit: PluginManager.currentPluginKitVersion,
+                minimumKit: PluginManager.minimumCompatiblePluginKitVersion,
                 inspector: PluginManager.currentInspectorKitVersion,
                 session: RegistryClient.shared.session
             )
@@ -218,6 +219,7 @@ actor PluginInstaller {
         try Self.validateStagedABI(
             bundleURL: bundleURL,
             currentKit: context.kit,
+            minimumKit: context.minimumKit,
             currentInspector: context.inspector
         )
         Self.stripQuarantine(at: bundleURL)
@@ -272,6 +274,7 @@ actor PluginInstaller {
     nonisolated static func validateStagedABI(
         bundleURL: URL,
         currentKit: Int,
+        minimumKit: Int,
         currentInspector: Int
     ) throws {
         guard let bundle = Bundle(url: bundleURL),
@@ -288,7 +291,7 @@ actor PluginInstaller {
             if version > currentKit {
                 throw PluginError.incompatibleVersion(required: version, current: currentKit)
             }
-            if version < currentKit {
+            if version < minimumKit {
                 throw PluginError.pluginOutdated(pluginVersion: version, requiredVersion: currentKit)
             }
         }

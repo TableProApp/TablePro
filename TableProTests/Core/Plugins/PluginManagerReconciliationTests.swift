@@ -80,34 +80,53 @@ struct PluginManagerReconciliationTests {
     @Test("rejectedAction awaits while the manifest is still loading")
     func rejectedActionAwaitsWithoutManifest() {
         let plugin = makeRegistryPlugin(kitVersions: [18])
-        let action = PluginManager.rejectedAction(registryPlugin: plugin, manifestLoaded: false, currentKitVersion: 18)
+        let action = PluginManager.rejectedAction(
+            registryPlugin: plugin, manifestLoaded: false, currentKitVersion: 18, minimumKitVersion: 18
+        )
         #expect(kind(action) == "awaitingCompatibleBuild")
     }
 
     @Test("rejectedAction reports notInRegistry when no manifest entry matches")
     func rejectedActionNotInRegistry() {
-        let action = PluginManager.rejectedAction(registryPlugin: nil, manifestLoaded: true, currentKitVersion: 18)
+        let action = PluginManager.rejectedAction(
+            registryPlugin: nil, manifestLoaded: true, currentKitVersion: 18, minimumKitVersion: 18
+        )
         #expect(kind(action) == "notInRegistry")
     }
 
     @Test("rejectedAction offers an update when a current-kit binary exists")
     func rejectedActionUpdateAvailable() {
         let plugin = makeRegistryPlugin(kitVersions: [17, 18])
-        let action = PluginManager.rejectedAction(registryPlugin: plugin, manifestLoaded: true, currentKitVersion: 18)
+        let action = PluginManager.rejectedAction(
+            registryPlugin: plugin, manifestLoaded: true, currentKitVersion: 18, minimumKitVersion: 18
+        )
+        #expect(kind(action) == "updateAvailable")
+    }
+
+    @Test("rejectedAction offers an update for a resilient older-kit binary under a newer app")
+    func rejectedActionUpdateAvailableForwardCompat() {
+        let plugin = makeRegistryPlugin(kitVersions: [18])
+        let action = PluginManager.rejectedAction(
+            registryPlugin: plugin, manifestLoaded: true, currentKitVersion: 19, minimumKitVersion: 18
+        )
         #expect(kind(action) == "updateAvailable")
     }
 
     @Test("rejectedAction asks for an app update when only a newer-kit binary exists")
     func rejectedActionRequiresAppUpdate() {
         let plugin = makeRegistryPlugin(kitVersions: [18, 19])
-        let action = PluginManager.rejectedAction(registryPlugin: plugin, manifestLoaded: true, currentKitVersion: 17)
+        let action = PluginManager.rejectedAction(
+            registryPlugin: plugin, manifestLoaded: true, currentKitVersion: 17, minimumKitVersion: 17
+        )
         #expect(kind(action) == "requiresAppUpdate")
     }
 
-    @Test("rejectedAction awaits when only older-kit binaries are published")
+    @Test("rejectedAction awaits when only pre-floor binaries are published")
     func rejectedActionAwaitsForOlderKits() {
         let plugin = makeRegistryPlugin(kitVersions: [16, 17])
-        let action = PluginManager.rejectedAction(registryPlugin: plugin, manifestLoaded: true, currentKitVersion: 18)
+        let action = PluginManager.rejectedAction(
+            registryPlugin: plugin, manifestLoaded: true, currentKitVersion: 18, minimumKitVersion: 18
+        )
         #expect(kind(action) == "awaitingCompatibleBuild")
     }
 
