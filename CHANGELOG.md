@@ -9,26 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Import a JSON file into a table. The Import menu now lets you pick the source, SQL or JSON, instead of going straight to SQL. The JSON flow accepts an array of objects, newline-delimited JSON, or TablePro's own JSON export, and lets you map each field to a column in an existing table or in a new table with inferred, editable columns. Rows insert in batched multi-row statements, so large imports over a remote connection finish in seconds instead of minutes.
-- The window title bar shows the open table's name, with its database and schema below, so you can tell which table you're viewing without checking the sidebar. (#1475)
-- iOS: open DuckDB database files and in-memory DuckDB databases, matching the Mac app. (#1526)
-- Save the current query as a favorite from a star button in the SQL editor toolbar.
-- Field names and types in the row Details panel can now be selected and copied.
+- Import a JSON file into a table: an array of objects, newline-delimited JSON, or TablePro's JSON export, mapped to a new or existing table. Pick SQL or JSON from the Import menu.
+- The title bar shows the open table's name, with its database and schema below. (#1475)
+- iOS: open DuckDB database files and in-memory DuckDB databases. (#1526)
+- Save the current query as a favorite from the SQL editor toolbar.
+- Select and copy field names and types in the row Details panel.
 
 ### Changed
 
-- The database plugin interface is now binary-stable. Adding plugin capabilities in a later release no longer forces installed plugins to be rebuilt; only a breaking interface change does.
-- Connection list rows show the database name after the host, so connections that share a name and host are easier to tell apart. (#1535)
-- Save as Favorite uses Cmd+D again. The Cmd+Control+D set in 0.47.0 is reserved by macOS for Look Up, so it never fired.
-- Editor toolbar buttons show their keyboard shortcut in the tooltip, and it updates if you rebind the shortcut.
-- Window toolbar layout: the connection and database selectors are now navigation items pinned to the left, and the Refresh and Save buttons move to the right next to the tab and query controls. Toolbars customized before this change reset once to the new layout.
+- The plugin interface is now binary-stable, so app updates that add plugin capabilities no longer force installed plugins to be rebuilt.
+- Connection list rows show the database name after the host, so look-alike connections are easier to tell apart. (#1535)
+- Save as Favorite uses Cmd+D again. The 0.47.0 Cmd+Control+D was reserved by macOS for Look Up.
+- Editor toolbar buttons show their keyboard shortcut in the tooltip, updated when you rebind it.
+- Window toolbar: connection and database selectors move left as navigation items, Refresh and Save move right. Customized toolbars reset once.
 
 ### Fixed
 
-- PostgreSQL: the selected schema now stays applied to editor queries after an automatic reconnect, so unqualified table names keep resolving against it instead of falling back to the default schema. (#1540)
-- Import now detects the Setapp edition of TablePlus and reads connections from its data folder. It was reported as not installed before. (#1528)
-- Favorite keyword suggestions now show in the editor autocomplete when you type the keyword. They were being dropped before reaching the popup.
-- Editor autocomplete now refreshes when you switch schema, so it suggests the new schema's tables and columns instead of the previous one's.
+- PostgreSQL: the selected schema stays applied after an automatic reconnect, so unqualified table names keep resolving against it. (#1540)
+- Import now finds the Setapp edition of TablePlus and reads its connections. (#1528)
+- Favorite keyword suggestions now appear in editor autocomplete. They were dropped before reaching the popup.
+- Editor autocomplete refreshes when you switch schema, suggesting the new schema's tables and columns.
 
 ## [0.47.0] - 2026-06-01
 
