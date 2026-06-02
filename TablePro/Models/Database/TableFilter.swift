@@ -94,13 +94,12 @@ enum FilterOperator: String, CaseIterable, Identifiable, Codable {
 /// Represents a single table filter condition
 struct TableFilter: Identifiable, Equatable, Hashable, Codable {
     let id: UUID
-    var columnName: String          // Column to filter on, or "__RAW__" for raw SQL
+    var columnName: String
     var filterOperator: FilterOperator
     var value: String
-    var secondValue: String?        // For BETWEEN operator
-    var isSelected: Bool            // For multi-select apply
-    var isEnabled: Bool             // Whether filter is active
-    var rawSQL: String?             // For raw SQL mode
+    var secondValue: String?
+    var isEnabled: Bool
+    var rawSQL: String?
 
     /// Special column name for raw SQL mode
     static let rawSQLColumn = "__RAW__"
@@ -111,7 +110,6 @@ struct TableFilter: Identifiable, Equatable, Hashable, Codable {
         filterOperator: FilterOperator = .equal,
         value: String = "",
         secondValue: String? = nil,
-        isSelected: Bool = false,
         isEnabled: Bool = true,
         rawSQL: String? = nil
     ) {
@@ -120,7 +118,6 @@ struct TableFilter: Identifiable, Equatable, Hashable, Codable {
         self.filterOperator = filterOperator
         self.value = value
         self.secondValue = secondValue
-        self.isSelected = isSelected
         self.isEnabled = isEnabled
         self.rawSQL = rawSQL
     }
@@ -187,19 +184,31 @@ extension TableFilter {
 /// Stores per-tab filter state (preserves filters when switching tabs)
 struct TabFilterState: Equatable, Hashable, Codable {
     var filters: [TableFilter]
-    var appliedFilters: [TableFilter]
+    var commit: FilterCommit?
     var isVisible: Bool
     var filterLogicMode: FilterLogicMode
 
     init(isVisible: Bool = false) {
         self.filters = []
-        self.appliedFilters = []
+        self.commit = nil
         self.isVisible = isVisible
         self.filterLogicMode = .and
     }
 
-    var hasChanges: Bool {
-        !filters.isEmpty || !appliedFilters.isEmpty
+    var appliedFilters: [TableFilter] {
+        guard let commit else { return [] }
+        return Self.resolve(commit, in: filters)
+    }
+
+    static func resolve(_ commit: FilterCommit, in filters: [TableFilter]) -> [TableFilter] {
+        switch commit {
+        case .all:
+            return filters.filter { $0.isEnabled && $0.isValid }
+        case .solo(let id):
+            guard var match = filters.first(where: { $0.id == id }), match.isValid else { return [] }
+            match.isEnabled = true
+            return [match]
+        }
     }
 
     var hasAppliedFilters: Bool {

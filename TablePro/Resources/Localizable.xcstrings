@@ -93,6 +93,7 @@
 
     },
     "—" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -995,6 +996,7 @@
       }
     },
     "%@ is already assigned to \"%@\". Reassigning will remove it from that action." : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1018,6 +1020,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%@ 已分配给 \"%@\"。重新分配将从该操作中移除它。"
+          }
+        }
+      }
+    },
+    "%@ is already used by \"%@\" in %@. Reassigning removes it from that action." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ is already used by \"%2$@\" in %3$@. Reassigning removes it from that action."
           }
         }
       }
@@ -1681,6 +1693,9 @@
       }
     },
     "%d plugins could not be loaded." : {
+
+    },
+    "%d plugins need an update to load." : {
 
     },
     "%d rows" : {
@@ -2886,6 +2901,9 @@
     "1 plugin could not be loaded." : {
 
     },
+    "1 plugin needs an update to load." : {
+
+    },
     "1 year" : {
       "localizations" : {
         "tr" : {
@@ -3606,6 +3624,9 @@
           }
         }
       }
+    },
+    "A newer TablePro is required to load this plugin." : {
+
     },
     "A newer version of TablePro is required for this plugin. Update TablePro to keep using it." : {
 
@@ -6029,6 +6050,7 @@
       }
     },
     "AND" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -6236,6 +6258,9 @@
         }
       }
     },
+    "App" : {
+
+    },
     "Appearance" : {
       "localizations" : {
         "tr" : {
@@ -6281,6 +6306,9 @@
         }
       }
     },
+    "Applied" : {
+
+    },
     "Applied when opening a table. Click a column header to override." : {
 
     },
@@ -6305,6 +6333,9 @@
           }
         }
       }
+    },
+    "Apply active filters (Cmd+Return)" : {
+
     },
     "Apply All" : {
       "extractionState" : "stale",
@@ -6396,6 +6427,7 @@
       }
     },
     "Apply filters" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -6416,6 +6448,9 @@
           }
         }
       }
+    },
+    "Apply only this filter" : {
+
     },
     "Apply Schema Changes" : {
 
@@ -8166,6 +8201,9 @@
     "CA certificate is required for verification modes" : {
 
     },
+    "CA certificate not found: %@" : {
+
+    },
     "Cache Hit Ratio" : {
       "localizations" : {
         "tr" : {
@@ -9845,6 +9883,9 @@
         }
       }
     },
+    "Client certificate not found: %@" : {
+
+    },
     "Client Certificates" : {
 
     },
@@ -9897,6 +9938,9 @@
       }
     },
     "Client key is required when client certificate is set" : {
+
+    },
+    "Client key not found: %@" : {
 
     },
     "Client Secret" : {
@@ -14559,6 +14603,9 @@
         }
       }
     },
+    "Database type \"%@\" is not installed" : {
+
+    },
     "Database Type:" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -15619,6 +15666,9 @@
           }
         }
       }
+    },
+    "Delete Line" : {
+
     },
     "Delete Preset" : {
       "localizations" : {
@@ -17195,6 +17245,9 @@
         }
       }
     },
+    "Duplicate Line" : {
+
+    },
     "Duplicate Row" : {
       "localizations" : {
         "tr" : {
@@ -17777,6 +17830,9 @@
         }
       }
     },
+    "Editor & Query" : {
+
+    },
     "Editor Font" : {
       "localizations" : {
         "tr" : {
@@ -17920,6 +17976,9 @@
       }
     },
     "Enable Cloudflare Tunnel" : {
+
+    },
+    "Enable filter" : {
 
     },
     "Enable inline suggestions" : {
@@ -21606,6 +21665,7 @@
       }
     },
     "File" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -21826,6 +21886,9 @@
       }
     },
     "Filter activity" : {
+
+    },
+    "Filter by only this row" : {
 
     },
     "Filter column" : {
@@ -22163,6 +22226,9 @@
         }
       }
     },
+    "Filtering by only this row" : {
+
+    },
     "Filters" : {
       "localizations" : {
         "tr" : {
@@ -22184,6 +22250,15 @@
           }
         }
       }
+    },
+    "Find" : {
+
+    },
+    "Find Next" : {
+
+    },
+    "Find Previous" : {
+
     },
     "Find..." : {
       "localizations" : {
@@ -24560,6 +24635,9 @@
     "In-memory data store and cache" : {
 
     },
+    "Inactive" : {
+
+    },
     "Include approximate row counts (default false)" : {
 
     },
@@ -24764,6 +24842,9 @@
         }
       }
     },
+    "Include this filter when applying" : {
+
+    },
     "Incompatible plugin version" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -24852,6 +24933,9 @@
           }
         }
       }
+    },
+    "Indent" : {
+
     },
     "INDEX" : {
       "extractionState" : "stale",
@@ -26258,6 +26342,9 @@
 
     },
     "Jump host configuration is invalid" : {
+
+    },
+    "Jump host key not found: %@" : {
 
     },
     "Jump Hosts" : {
@@ -28357,7 +28444,11 @@
         }
       }
     },
+    "Match all" : {
+
+    },
     "Match ALL filters (AND) or ANY filter (OR)" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -28378,6 +28469,12 @@
           }
         }
       }
+    },
+    "Match all filters or any filter" : {
+
+    },
+    "Match any" : {
+
     },
     "matches regex" : {
       "localizations" : {
@@ -29381,6 +29478,12 @@
         }
       }
     },
+    "Move Line Down" : {
+
+    },
+    "Move Line Up" : {
+
+    },
     "Move to" : {
       "localizations" : {
         "tr" : {
@@ -29713,6 +29816,9 @@
           }
         }
       }
+    },
+    "Navigation" : {
+
     },
     "Nearest" : {
       "extractionState" : "stale",
@@ -33724,6 +33830,7 @@
       }
     },
     "OR" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -33844,6 +33951,9 @@
 
     },
     "Outcome: %@" : {
+
+    },
+    "Outdent" : {
 
     },
     "Output truncated for display" : {
@@ -39139,6 +39249,9 @@
         }
       }
     },
+    "Reserved Shortcut" : {
+
+    },
     "Reset" : {
       "localizations" : {
         "tr" : {
@@ -39234,6 +39347,9 @@
 
     },
     "Reset Sample Database..." : {
+
+    },
+    "Reset to default" : {
 
     },
     "Reset to Defaults" : {
@@ -42048,6 +42164,9 @@
         }
       }
     },
+    "Select Tab %d" : {
+
+    },
     "Select Tab %lld" : {
       "localizations" : {
         "tr" : {
@@ -43039,6 +43158,9 @@
           }
         }
       }
+    },
+    "Show Completions" : {
+
     },
     "Show DDL" : {
 
@@ -44738,6 +44860,9 @@
       }
     },
     "SSH port must be between 1 and 65535" : {
+
+    },
+    "SSH private key not found: %@" : {
 
     },
     "SSH private key rejected. Check the key file or passphrase." : {
@@ -48693,6 +48818,9 @@
         }
       }
     },
+    "This shortcut is reserved for \"%@\" and cannot be assigned." : {
+
+    },
     "This SQL query failed with an error. Please fix it.\n\nQuery:\n```sql\n%@\n```\n\nError: %@" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -49347,6 +49475,9 @@
           }
         }
       }
+    },
+    "Toggle Comment" : {
+
     },
     "Toggle filters" : {
       "extractionState" : "stale",
@@ -51220,6 +51351,9 @@
           }
         }
       }
+    },
+    "Update TablePro" : {
+
     },
     "Update to v%@" : {
       "localizations" : {
