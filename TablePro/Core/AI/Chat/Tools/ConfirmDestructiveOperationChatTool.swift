@@ -36,14 +36,15 @@ struct ConfirmDestructiveOperationChatTool: ChatTool {
                 isError: true
             )
         }
-        guard !QueryClassifier.isMultiStatement(query) else {
+        let meta = try await ToolConnectionMetadata.resolve(connectionId: connectionId)
+
+        guard !QueryClassifier.isMultiStatement(query, databaseType: meta.databaseType) else {
             return ChatToolResult(
                 content: "Multi-statement queries are not supported. Send one statement at a time.",
                 isError: true
             )
         }
 
-        let meta = try await ToolConnectionMetadata.resolve(connectionId: connectionId)
         let tier = QueryClassifier.classifyTier(query, databaseType: meta.databaseType)
         guard tier == .destructive else {
             return ChatToolResult(

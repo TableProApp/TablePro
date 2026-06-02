@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The Delete shortcut in the data grid now follows a custom binding.
 - Find Next (Cmd+G) and Find Previous (Cmd+Shift+G) now work in the editor.
 - Pagination buttons no longer fire their page shortcut twice.
+- Running a PostgreSQL script with a `DO $$ ... $$` block or a dollar-quoted function body no longer fails with an unterminated dollar-quoted string error. (#1559)
 
 ## [0.48.0] - 2026-06-02
 

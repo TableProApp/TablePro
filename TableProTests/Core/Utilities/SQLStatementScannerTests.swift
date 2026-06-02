@@ -3,8 +3,8 @@
 //  TableProTests
 //
 
-import TableProPluginKit
 @testable import TablePro
+import TableProPluginKit
 import XCTest
 
 final class SQLStatementScannerTests: XCTestCase {
@@ -106,6 +106,67 @@ final class SQLStatementScannerTests: XCTestCase {
         XCTAssertEqual(
             SQLStatementScanner.allStatements(in: sql),
             ["SELECT 1 /* outer /* inner */", "SELECT 2"]
+        )
+    }
+
+    // MARK: - Dollar Quoting (PostgreSQL)
+
+    func testDollarQuotedDoBlockKeepsInternalSemicolons() {
+        let sql = "DO $$ BEGIN PERFORM 1; PERFORM 2; END $$; SELECT 1;"
+        XCTAssertEqual(
+            SQLStatementScanner.allStatements(in: sql, dialect: .postgres),
+            ["DO $$ BEGIN PERFORM 1; PERFORM 2; END $$", "SELECT 1"]
+        )
+    }
+
+    func testTaggedDollarQuoteKeepsInternalSemicolons() {
+        let sql = "CREATE FUNCTION f() RETURNS int AS $body$ BEGIN RETURN 1; END $body$ LANGUAGE plpgsql; SELECT f();"
+        XCTAssertEqual(
+            SQLStatementScanner.allStatements(in: sql, dialect: .postgres),
+            [
+                "CREATE FUNCTION f() RETURNS int AS $body$ BEGIN RETURN 1; END $body$ LANGUAGE plpgsql",
+                "SELECT f()"
+            ]
+        )
+    }
+
+    func testNestedDifferentDollarTags() {
+        let sql = "DO $outer$ SELECT $inner$ a;b $inner$; END $outer$; SELECT 1;"
+        XCTAssertEqual(
+            SQLStatementScanner.allStatements(in: sql, dialect: .postgres),
+            ["DO $outer$ SELECT $inner$ a;b $inner$; END $outer$", "SELECT 1"]
+        )
+    }
+
+    func testPositionalParameterIsNotDollarQuote() {
+        let sql = "SELECT $1; SELECT $2;"
+        XCTAssertEqual(
+            SQLStatementScanner.allStatements(in: sql, dialect: .postgres),
+            ["SELECT $1", "SELECT $2"]
+        )
+    }
+
+    func testDollarPairInsideIdentifierIsNotOpener() {
+        let sql = "SELECT 1 AS a$$; SELECT 2;"
+        XCTAssertEqual(
+            SQLStatementScanner.allStatements(in: sql, dialect: .postgres),
+            ["SELECT 1 AS a$$", "SELECT 2"]
+        )
+    }
+
+    func testGenericDialectIgnoresDollarQuotes() {
+        let sql = "DO $$ SELECT 1; SELECT 2 $$;"
+        XCTAssertEqual(
+            SQLStatementScanner.allStatements(in: sql, dialect: .generic),
+            ["DO $$ SELECT 1", "SELECT 2 $$"]
+        )
+    }
+
+    func testCursorInsideDollarBodyReturnsWholeStatement() {
+        let sql = "DO $$ BEGIN PERFORM 1; END $$; SELECT 1;"
+        XCTAssertEqual(
+            SQLStatementScanner.statementAtCursor(in: sql, cursorPosition: 20, dialect: .postgres),
+            "DO $$ BEGIN PERFORM 1; END $$"
         )
     }
 
