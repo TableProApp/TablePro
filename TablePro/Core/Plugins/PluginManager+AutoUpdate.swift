@@ -276,6 +276,26 @@ extension PluginManager {
         rejectedPlugins.first { $0.isOutdated && $0.providedDatabaseTypeIds.contains(typeId) }?.reason
     }
 
+    func prepareForConnecting(to type: DatabaseType) async {
+        let typeId = type.pluginTypeId
+        if driverPlugin(for: type) == nil, !hasFinishedInitialLoad {
+            Self.logger.info("Plugin '\(typeId)' not loaded yet, waiting for background load")
+            await waitForInitialLoad()
+        }
+        if driverPlugin(for: type) == nil, hasOutdatedRejectedPlugin(forTypeId: typeId) {
+            Self.logger.info("Plugin '\(typeId)' is installed but outdated, updating it before connect")
+            await ensurePluginReady(forTypeId: typeId)
+        }
+        if driverPlugin(for: type) == nil, type.isDownloadablePlugin, !hasOutdatedRejectedPlugin(forTypeId: typeId) {
+            Self.logger.info("Plugin '\(typeId)' not installed, installing on demand before connect")
+            do {
+                try await installMissingPlugin(for: type) { _ in }
+            } catch {
+                Self.logger.warning("On-demand install for '\(typeId)' did not complete: \(error.localizedDescription)")
+            }
+        }
+    }
+
     func ensurePluginReady(forTypeId typeId: String) async {
         if reconciliationActive, let task = reconciliationTask {
             await task.value
@@ -287,6 +307,8 @@ extension PluginManager {
     private func reconcileOutdated(matchingTypeId typeId: String) async {
         let targets = rejectedPlugins.filter { $0.isOutdated && $0.providedDatabaseTypeIds.contains(typeId) }
         guard !targets.isEmpty else { return }
+        reconciliationActive = true
+        defer { reconciliationActive = false }
         await RegistryClient.shared.fetchManifest(forceRefresh: true)
         guard let manifest = RegistryClient.shared.manifest else { return }
         for target in targets {

@@ -108,16 +108,18 @@ extension RegistryPlugin {
         currentKitVersion: Int,
         minimumKitVersion: Int
     ) throws -> RegistryBinary {
-        let compatible = binaries
+        let highestInRange = binaries
             .filter { $0.architecture == arch }
-            .filter { binary in
-                guard let kit = binary.pluginKitVersion else { return false }
-                return kit >= minimumKitVersion && kit <= currentKitVersion
+            .compactMap { binary -> (binary: RegistryBinary, kit: Int)? in
+                guard let kit = binary.pluginKitVersion, kit >= minimumKitVersion, kit <= currentKitVersion else {
+                    return nil
+                }
+                return (binary, kit)
             }
-            .max { ($0.pluginKitVersion ?? 0) < ($1.pluginKitVersion ?? 0) }
+            .max { $0.kit < $1.kit }
 
-        if let compatible {
-            return compatible
+        if let highestInRange {
+            return highestInRange.binary
         }
 
         throw PluginError.noCompatibleBinary

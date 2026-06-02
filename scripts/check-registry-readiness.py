@@ -6,6 +6,10 @@ Run this before tagging an app release so the app can never ship ahead of its
 plugin binaries. With range-aware binary selection an additive PluginKit bump
 needs no re-publish (an older resilient binary still serves), so this only fails
 after a breaking bump that raised the floor and left the registry behind.
+
+The gate reads the raw GitHub origin, not the jsDelivr CDN that clients use, so
+it sees the manifest the moment the registry push lands rather than waiting out
+(or racing) the CDN edge cache.
 """
 
 import argparse
@@ -13,7 +17,7 @@ import json
 import sys
 import urllib.request
 
-DEFAULT_MANIFEST_URL = "https://cdn.jsdelivr.net/gh/TableProApp/plugins@main/plugins.json"
+DEFAULT_MANIFEST_URL = "https://raw.githubusercontent.com/TableProApp/plugins/main/plugins.json"
 
 
 def fetch_manifest(url, retries=4):
