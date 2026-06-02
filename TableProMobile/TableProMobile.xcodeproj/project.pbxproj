@@ -28,6 +28,7 @@
 		5AD1F1B82FB4456900296783 /* FreeTDS.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5AD1F1B72FB4456900296783 /* FreeTDS.xcframework */; };
 		5AD0CCDB2F0000000000F002 /* DuckDB.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5AD0CCDB2F0000000000F001 /* DuckDB.xcframework */; };
 		5AD1F2002FB5500000000002 /* FreeTDSConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AD1F2002FB5500000000001 /* FreeTDSConnection.swift */; };
+		5AD1F2012FB5500000000002 /* MSSQLLoginParameters.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AD1F2012FB5500000000001 /* MSSQLLoginParameters.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -532,6 +533,7 @@
 		5AD1F1B72FB4456900296783 /* FreeTDS.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = FreeTDS.xcframework; path = ../Libs/ios/FreeTDS.xcframework; sourceTree = "<group>"; };
 		5AD0CCDB2F0000000000F001 /* DuckDB.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = DuckDB.xcframework; path = ../Libs/ios/DuckDB.xcframework; sourceTree = "<group>"; };
 		5AD1F2002FB5500000000001 /* FreeTDSConnection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FreeTDSConnection.swift; path = ../Plugins/MSSQLDriverPlugin/FreeTDSConnection.swift; sourceTree = "<group>"; };
+		5AD1F2012FB5500000000001 /* MSSQLLoginParameters.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MSSQLLoginParameters.swift; path = ../Plugins/MSSQLDriverPlugin/MSSQLLoginParameters.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -1681,6 +1683,7 @@
 			isa = PBXGroup;
 			children = (
 				5AD1F2002FB5500000000001 /* FreeTDSConnection.swift */,
+				5AD1F2012FB5500000000001 /* MSSQLLoginParameters.swift */,
 			);
 			name = "Recovered References";
 			sourceTree = "<group>";
@@ -1848,6 +1851,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				5AD1F2002FB5500000000002 /* FreeTDSConnection.swift in Sources */,
+				5AD1F2012FB5500000000002 /* MSSQLLoginParameters.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
