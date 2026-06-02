@@ -3,12 +3,25 @@
 //  TablePro
 //
 
+import AppKit
 import Foundation
 #if canImport(FoundationModels)
 import FoundationModels
 #endif
 
 enum AppleIntelligenceAvailability {
+    static func openSystemSettings() {
+        let identifiers = [
+            "x-apple.systempreferences:com.apple.Siri-Settings.extension",
+            "x-apple.systempreferences:"
+        ]
+        for identifier in identifiers {
+            if let url = URL(string: identifier), NSWorkspace.shared.open(url) {
+                return
+            }
+        }
+    }
+
     static func currentStatus() -> AppleIntelligenceStatus {
         #if canImport(FoundationModels)
         guard #available(macOS 26, *) else { return .osNotSupported }

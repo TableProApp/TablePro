@@ -23,6 +23,14 @@ struct AIChatMessageView: View {
         }
     }
 
+    private var modelLabel: String? {
+        guard let modelId = message.modelId, !modelId.isEmpty else { return nil }
+        if modelId == AIProviderType.appleIntelligenceModelID {
+            return AIProviderType.appleIntelligence.displayName
+        }
+        return modelId
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             if message.role == .user {
@@ -77,8 +85,8 @@ struct AIChatMessageView: View {
                         .buttonStyle(.plain)
                         .foregroundStyle(.secondary)
                     }
-                    if let modelId = message.modelId, !modelId.isEmpty {
-                        Text(modelId)
+                    if let modelLabel {
+                        Text(modelLabel)
                             .font(.caption2)
                             .foregroundStyle(.tertiary)
                             .lineLimit(1)

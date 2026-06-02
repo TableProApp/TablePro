@@ -234,19 +234,7 @@ struct AISettingsView: View {
             return
         }
         if appleIntelligenceStatus.canOpenSystemSettings {
-            openAppleIntelligenceSystemSettings()
-        }
-    }
-
-    private func openAppleIntelligenceSystemSettings() {
-        let identifiers = [
-            "x-apple.systempreferences:com.apple.Siri-Settings.extension",
-            "x-apple.systempreferences:"
-        ]
-        for identifier in identifiers {
-            if let url = URL(string: identifier), NSWorkspace.shared.open(url) {
-                return
-            }
+            AppleIntelligenceAvailability.openSystemSettings()
         }
     }
 

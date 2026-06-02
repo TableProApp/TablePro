@@ -161,7 +161,7 @@ struct AIProviderDetailSheet: View {
             }
             if appleIntelligenceStatus.canOpenSystemSettings {
                 Button(String(localized: "Open System Settings")) {
-                    openAppleIntelligenceSystemSettings()
+                    AppleIntelligenceAvailability.openSystemSettings()
                 }
             }
         } header: {
@@ -170,18 +170,6 @@ struct AIProviderDetailSheet: View {
             Text("Apple Intelligence runs on this Mac. No API key, and your schema and queries do not leave the device.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-        }
-    }
-
-    private func openAppleIntelligenceSystemSettings() {
-        let identifiers = [
-            "x-apple.systempreferences:com.apple.Siri-Settings.extension",
-            "x-apple.systempreferences:"
-        ]
-        for identifier in identifiers {
-            if let url = URL(string: identifier), NSWorkspace.shared.open(url) {
-                return
-            }
         }
     }
 
