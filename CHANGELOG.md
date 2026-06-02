@@ -29,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Import now finds the Setapp edition of TablePlus and reads its connections. (#1528)
 - Favorite keyword suggestions now appear in editor autocomplete. They were dropped before reaching the popup.
 - Editor autocomplete refreshes when you switch schema, suggesting the new schema's tables and columns.
+- Plugins settings: the unloaded-plugins banner now scrolls instead of pushing the plugin list off screen, shows each plugin's real icon, and only offers an Update button when a compatible build exists. Plugins waiting on a build that publishes automatically no longer show a button that fails.
 
 ## [0.47.0] - 2026-06-01
 

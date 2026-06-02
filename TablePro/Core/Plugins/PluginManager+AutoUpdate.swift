@@ -13,6 +13,13 @@ private enum ReconciliationConfig {
     static let secondRetryDelay: Duration = .seconds(300)
 }
 
+enum RejectedPluginAction: Sendable {
+    case updateAvailable(RegistryPlugin)
+    case awaitingCompatibleBuild
+    case requiresAppUpdate
+    case notInRegistry
+}
+
 extension PluginManager {
     func scheduleReconciliation() {
         reconciliationTask?.cancel()
@@ -214,6 +221,21 @@ extension PluginManager {
         guard let manifest = RegistryClient.shared.manifest else { return nil }
         guard let id = resolveRegistryId(for: rejected, manifest: manifest) else { return nil }
         return manifest.plugins.first(where: { $0.id == id })
+    }
+
+    func rejectedAction(for rejected: RejectedPlugin) -> RejectedPluginAction {
+        guard RegistryClient.shared.manifest != nil else { return .awaitingCompatibleBuild }
+        guard let registryPlugin = registryPlugin(for: rejected) else { return .notInRegistry }
+        let availableKits = registryPlugin.binaries
+            .filter { $0.architecture == .current }
+            .compactMap(\.pluginKitVersion)
+        if availableKits.contains(Self.currentPluginKitVersion) {
+            return .updateAvailable(registryPlugin)
+        }
+        if availableKits.contains(where: { $0 > Self.currentPluginKitVersion }) {
+            return .requiresAppUpdate
+        }
+        return .awaitingCompatibleBuild
     }
 
     func hasOutdatedRejectedPlugin(forTypeId typeId: String) -> Bool {
