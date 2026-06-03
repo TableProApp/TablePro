@@ -248,13 +248,7 @@ final class OracleConnectionWrapper: @unchecked Sendable {
 
     private static func connectFailureDetail(_ error: OracleSQLError) -> String {
         if let refused = error.underlying as? OracleListenerRefusedError {
-            if let code = refused.code {
-                return String(
-                    format: String(localized: "The Oracle listener refused the connection (ORA-%d)."),
-                    code
-                )
-            }
-            return String(localized: "The Oracle listener refused the connection.")
+            return OracleListenerRefusal.detail(code: refused.code)
         }
         return error.serverInfo?.message ?? error.description
     }
