@@ -16,6 +16,14 @@ public struct AWSSSOProfileSettings: Equatable, Sendable {
     public let startUrl: String
     public let region: String
     public let ssoSession: String?
+
+    public init(accountId: String, roleName: String, startUrl: String, region: String, ssoSession: String?) {
+        self.accountId = accountId
+        self.roleName = roleName
+        self.startUrl = startUrl
+        self.region = region
+        self.ssoSession = ssoSession
+    }
 }
 
 public struct AWSSSORoleCredentials: Equatable, Sendable {

@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- DynamoDB AWS Profile auth now reads `~/.aws/config` as well as `~/.aws/credentials` and supports `credential_process`, matching the AWS CLI. Profiles defined only in `~/.aws/config`, including SSO and credential-process profiles, no longer fail with "profile not found". (#1567)
 - Query result columns now follow the order in the SELECT. Adding or removing a column no longer leaves new columns stuck at the end of the grid. (#1565)
 - JSON file import works again. It failed to load in 0.48.0.
 - SQL export quotes empty or malformed values in numeric columns instead of writing them unquoted, which could produce invalid INSERT statements.
