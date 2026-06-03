@@ -10,21 +10,22 @@
 import CommonCrypto
 import Foundation
 
-struct AWSSSOProfileSettings: Equatable, Sendable {
-    let accountId: String
-    let roleName: String
-    let startUrl: String
-    let region: String
-    let ssoSession: String?
+public struct AWSSSOProfileSettings: Equatable, Sendable {
+    public let accountId: String
+    public let roleName: String
+    public let startUrl: String
+    public let region: String
+    public let ssoSession: String?
 }
 
-struct AWSSSORoleCredentials: Equatable, Sendable {
-    let accessKeyId: String
-    let secretAccessKey: String
-    let sessionToken: String
+public struct AWSSSORoleCredentials: Equatable, Sendable {
+    public let accessKeyId: String
+    public let secretAccessKey: String
+    public let sessionToken: String
+    public let expiration: Date
 }
 
-enum AWSSSOError: Error, LocalizedError, Equatable {
+public enum AWSSSOError: Error, LocalizedError, Equatable {
     case configReadFailed
     case profileNotFound(String)
     case profileMissingFields(profile: String)
@@ -43,7 +44,7 @@ enum AWSSSOError: Error, LocalizedError, Equatable {
     case responseDecodeFailed(profile: String)
     case credentialsAlreadyExpired(profile: String)
 
-    var errorDescription: String? {
+    public var errorDescription: String? {
         switch self {
         case .configReadFailed:
             return String(localized: "Cannot read ~/.aws/config.")
@@ -114,8 +115,8 @@ enum AWSSSOError: Error, LocalizedError, Equatable {
     }
 }
 
-enum AWSSSO {
-    static func parseIniSections(_ content: String) -> [String: [String: String]] {
+public enum AWSSSO {
+    public static func parseIniSections(_ content: String) -> [String: [String: String]] {
         var sections: [String: [String: String]] = [:]
         var current = ""
 
@@ -144,7 +145,7 @@ enum AWSSSO {
         return sections
     }
 
-    static func parseProfileSettings(configContent: String, profileName: String) throws -> AWSSSOProfileSettings {
+    public static func parseProfileSettings(configContent: String, profileName: String) throws -> AWSSSOProfileSettings {
         let sections = parseIniSections(configContent)
         let profileSection = profileName == "default" ? "default" : "profile \(profileName)"
 
@@ -186,7 +187,7 @@ enum AWSSSO {
         )
     }
 
-    static func readAccessToken(
+    public static func readAccessToken(
         cacheDirectory: String,
         settings: AWSSSOProfileSettings,
         profileName: String,
@@ -222,7 +223,7 @@ enum AWSSSO {
         return token.accessToken
     }
 
-    static func fetchRoleCredentials(
+    public static func fetchRoleCredentials(
         accessToken: String,
         settings: AWSSSOProfileSettings,
         profileName: String,
@@ -291,15 +292,16 @@ enum AWSSSO {
         return AWSSSORoleCredentials(
             accessKeyId: envelope.roleCredentials.accessKeyId,
             secretAccessKey: envelope.roleCredentials.secretAccessKey,
-            sessionToken: envelope.roleCredentials.sessionToken
+            sessionToken: envelope.roleCredentials.sessionToken,
+            expiration: expiry
         )
     }
 
-    static func sha1Hex(_ data: Data) -> String {
+    public static func sha1Hex(_ data: Data) -> String {
         var hash = [UInt8](repeating: 0, count: Int(CC_SHA1_DIGEST_LENGTH))
         data.withUnsafeBytes { ptr in
             _ = CC_SHA1(ptr.baseAddress, CC_LONG(data.count), &hash)
         }
-        return hash.hexEncoded
+        return hash.map { String(format: "%02x", $0) }.joined()
     }
 }

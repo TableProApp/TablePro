@@ -8,6 +8,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 
 enum RDSAuthTokenGenerator {
     private static let service = "rds-db"
