@@ -51,8 +51,14 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     }
 
     func savedColumnLayout(binding: ColumnLayoutState) -> ColumnLayoutState? {
-        if tabType == .table,
-           let connectionId,
+        guard tabType == .table else {
+            guard !binding.columnWidths.isEmpty else { return nil }
+            var layout = binding
+            layout.columnOrder = nil
+            return layout
+        }
+
+        if let connectionId,
            let tableName,
            !tableName.isEmpty,
            let stored = layoutPersister.load(for: tableName, connectionId: connectionId) {
