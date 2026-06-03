@@ -25,7 +25,7 @@ internal final class CassandraPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let databaseDisplayName = "Cassandra / ScyllaDB"
     static let iconName = "cassandra-icon"
     static let defaultPort = 9042
-    static let additionalConnectionFields: [ConnectionField] = []
+    static let additionalConnectionFields: [ConnectionField] = AWSAuthFields.standard()
     static let additionalDatabaseTypeIds: [String] = ["ScyllaDB"]
 
     // MARK: - UI/Capability Metadata
@@ -155,6 +155,17 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
         let clientKeyPath = config.ssl.clientKeyPath.isEmpty ? nil : config.ssl.clientKeyPath
         let clientKeyPassphrase = config.additionalFields["sslClientKeyPassphrase"]
 
+        var awsCredentials: AWSCredentials?
+        var awsRegion: String?
+        let awsAuth = config.additionalFields["awsAuth"] ?? "off"
+        if awsAuth != "off", !awsAuth.isEmpty {
+            guard let region = config.additionalFields["awsRegion"].flatMap({ $0.isEmpty ? nil : $0 }) else {
+                throw AWSAuthError.regionUnknown(host: config.host)
+            }
+            awsRegion = region
+            awsCredentials = try await AWSCredentialResolver.resolve(source: awsAuth, fields: config.additionalFields)
+        }
+
         try await connectionActor.connect(
             host: config.host,
             port: Int(config.port) ?? 9_042,
@@ -165,7 +176,9 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
             sslCaCertPath: resolvedCaPath,
             sslClientCertPath: clientCertPath,
             sslClientKeyPath: clientKeyPath,
-            sslClientKeyPassphrase: clientKeyPassphrase
+            sslClientKeyPassphrase: clientKeyPassphrase,
+            awsCredentials: awsCredentials,
+            awsRegion: awsRegion
         )
 
         if let keyspace {

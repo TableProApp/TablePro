@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - AWS connections can assume an IAM role: profiles with `role_arn` plus `source_profile` (or `credential_source = Environment`) are resolved through STS AssumeRole, including chained source profiles, `external_id`, and `duration_seconds`. (#1567)
 - Redis connects to Amazon ElastiCache with IAM auth (access key, profile, or SSO). TablePro generates the IAM token and uses it as the password; set the AWS region and cache name and enable TLS. (#1567)
 - AWS SSO connections can sign in from TablePro: when the SSO session has expired, a prompt opens the AWS sign-in page in your browser and refreshes the cached token. (#1567)
+- Cassandra connects to Amazon Keyspaces with AWS IAM (SigV4) auth, using access keys, a profile, or SSO. Set Authentication to an AWS IAM mode and the region, and enable TLS. (#1567)
 
 ### Changed
 

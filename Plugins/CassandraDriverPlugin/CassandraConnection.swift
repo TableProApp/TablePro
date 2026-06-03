@@ -44,7 +44,9 @@ actor CassandraConnectionActor {
         sslCaCertPath: String?,
         sslClientCertPath: String?,
         sslClientKeyPath: String?,
-        sslClientKeyPassphrase: String?
+        sslClientKeyPassphrase: String?,
+        awsCredentials: AWSCredentials? = nil,
+        awsRegion: String? = nil
     ) throws {
         cluster = cass_cluster_new()
         guard let cluster else {
@@ -54,7 +56,9 @@ actor CassandraConnectionActor {
         cass_cluster_set_contact_points(cluster, host)
         cass_cluster_set_port(cluster, Int32(port))
 
-        if let username, !username.isEmpty, let password {
+        if let awsCredentials, let awsRegion, !awsRegion.isEmpty {
+            CassandraSigV4Authenticator.apply(to: cluster, credentials: awsCredentials, region: awsRegion)
+        } else if let username, !username.isEmpty, let password {
             cass_cluster_set_credentials(cluster, username, password)
         }
 
