@@ -50,9 +50,12 @@ Cross-plugin duplication (investigated 2026-06-03; the original audit overstated
 
 ## Tier 3: consistency / hygiene
 
-- [ ] 19 plugin `String(localized: "...\(x)")` dynamic-key bugs (DynamoDB, Etcd, Mongo, CloudflareD1, Redis). Plugins ship no `.xcstrings`, so every plugin `String(localized:)` is a no-op. Pick a policy: add catalogs or drop the calls.
-- [ ] Dead `DialectQuoteHelper.swift` (zero refs). Delete; consolidate identifier quoting into PluginKit's `SQLDialectDescriptor`.
-- [ ] `Data.hexEncoded` reinvented 11x; `DatabaseType.brandColor` duplicates the registry and silently `.accentColor`s unknown plugins; dead `allCases` compatibility shim; `SidebarViewModel` static registry holds strong refs (leak), use `NSMapTable` weak values like `ConnectionDataCache`.
+- [x] `Data.hexEncoded` reinvented 11x: extracted `Sequence where Element == UInt8 { hexEncoded }`, routed all 11 call sites. (2026-06-03)
+- [x] Dead `DatabaseType.allCases` compatibility shim: removed (verified no callers). (2026-06-03)
+- [~] DialectQuoteHelper: VERIFIED FALSE POSITIVE. `quoteIdentifierFromDialect`/`resolveSQLDialect` are used by FilterSQLGenerator, SQLStatementGenerator, ExportDataTool, SQLRowToStatementConverter, QueryTab, MainContentCoordinator. NOT dead. Left as-is.
+- [ ] `DatabaseType.brandColor` (hardcoded 19-case switch, one caller) duplicates the registry-driven `PluginManager.brandColor(for:)`. Fix = route through the registry. NEEDS SIGN-OFF: shifts some chooser-sheet colors to match the registry (e.g. ClickHouse FFCC01 -> FFD100), a visible change.
+- [ ] `SidebarViewModel` static `[UUID: SidebarViewModel]` registry holds strong refs (leak if `removeConnection` is missed). NOT a mechanical swap: the registry is the strong owner, so converting to weak needs the window/view ownership graph checked first or the cache breaks.
+- [ ] 19 plugin `String(localized: "...\(x)")` dynamic-key calls (DynamoDB, Etcd, Mongo, CloudflareD1, Redis). Plugins ship no `.xcstrings`, so these are passthroughs today (not user-visible bugs), but they break if a catalog is ever added. POLICY: add per-plugin catalogs or drop `String(localized:)` in plugin code.
 - [ ] Driver error types (`MariaDBPluginError`, `LibPQPluginError`, `OracleError`, ...) don't conform to `PluginDriverError`, bypassing the kit's error formatting inconsistently.
 - [ ] `PluginStreamElement` is `@frozen` but will grow (`.progress`/`.warning`); that makes a future additive case a breaking ABI bump. Drop `@frozen`, add `@unknown default` at the 5 consumers.
 - [ ] Suffix vocabulary overload (Manager 22 / Service 15 / Coordinator 12 / Provider 22). 14 top-level free functions (mostly `ConnectionGroupTree.swift`) violate explicit access control.
