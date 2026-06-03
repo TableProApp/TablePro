@@ -1711,7 +1711,11 @@
         }
       }
     },
+    "Enter a name for the new database file." : {
+
+    },
     "Enter a name for the new SQLite database." : {
+      "extractionState" : "stale",
       "localizations" : {
         "vi" : {
           "stringUnit" : {
@@ -2259,6 +2263,9 @@
         }
       }
     },
+    "In-Memory Database" : {
+
+    },
     "Indexes" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -2302,6 +2309,9 @@
         }
       }
     },
+    "Insert" : {
+
+    },
     "Insert Row" : {
       "localizations" : {
         "vi" : {
@@ -2317,6 +2327,9 @@
           }
         }
       }
+    },
+    "Insert Row?" : {
+
     },
     "Keychain Warning" : {
       "localizations" : {
@@ -2511,6 +2524,9 @@
           }
         }
       }
+    },
+    "Mode" : {
+
     },
     "Name" : {
       "localizations" : {
@@ -3608,6 +3624,9 @@
         }
       }
     },
+    "Save Changes?" : {
+
+    },
     "Schema" : {
       "localizations" : {
         "vi" : {
@@ -4538,6 +4557,12 @@
           }
         }
       }
+    },
+    "This will insert a row into %@. Continue?" : {
+
+    },
+    "This will update a row in %@. Continue?" : {
+
     },
     "Truncate" : {
       "localizations" : {

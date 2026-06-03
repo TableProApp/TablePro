@@ -40,6 +40,27 @@ struct SSLHandshakeErrorTests {
         #expect(error.recoverySuggestion?.contains("client certificate") == true)
     }
 
+    @Test("clientKeyPassphraseRequired explains the key is encrypted")
+    func testClientKeyPassphraseRequired() {
+        let error = SSLHandshakeError.clientKeyPassphraseRequired(serverMessage: "bad decrypt")
+        #expect(error.errorDescription?.contains("encrypted") == true)
+        #expect(error.recoverySuggestion?.contains("Key Passphrase") == true)
+    }
+
+    @Test("clientKeyPassphraseIncorrect points at the wrong passphrase")
+    func testClientKeyPassphraseIncorrect() {
+        let error = SSLHandshakeError.clientKeyPassphraseIncorrect(serverMessage: "bad decrypt")
+        #expect(error.errorDescription?.contains("incorrect") == true)
+        #expect(error.recoverySuggestion?.contains("Key Passphrase") == true)
+    }
+
+    @Test("clientKeyInvalid describes a malformed key and points at the path")
+    func testClientKeyInvalid() {
+        let error = SSLHandshakeError.clientKeyInvalid(serverMessage: "not a PEM")
+        #expect(error.errorDescription?.contains("malformed") == true)
+        #expect(error.recoverySuggestion?.contains("Client Key") == true)
+    }
+
     @Test("cipherMismatch suggests server update")
     func testCipherMismatch() {
         let error = SSLHandshakeError.cipherMismatch(serverMessage: "no shared cipher")
@@ -77,8 +98,11 @@ struct SSLHandshakeErrorTests {
             .untrustedCertificate(serverMessage: "msg-3"),
             .hostnameMismatch(serverMessage: "msg-4"),
             .clientCertRequired(serverMessage: "msg-5"),
-            .cipherMismatch(serverMessage: "msg-6"),
-            .unknown(serverMessage: "msg-7")
+            .clientKeyPassphraseRequired(serverMessage: "msg-6"),
+            .clientKeyPassphraseIncorrect(serverMessage: "msg-7"),
+            .clientKeyInvalid(serverMessage: "msg-8"),
+            .cipherMismatch(serverMessage: "msg-9"),
+            .unknown(serverMessage: "msg-10")
         ]
         for error in cases {
             #expect(!error.serverMessage.isEmpty)

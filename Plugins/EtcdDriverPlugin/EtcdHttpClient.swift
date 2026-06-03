@@ -1066,7 +1066,8 @@ internal final class EtcdHttpClient: @unchecked Sendable {
             guard status == errSecSuccess,
                   let itemArray = items as? [[String: Any]],
                   let firstItem = itemArray.first,
-                  let identityRef = firstItem[kSecImportItemIdentity as String] else {
+                  let identityRef = firstItem[kSecImportItemIdentity as String],
+                  CFGetTypeID(identityRef as CFTypeRef) == SecIdentityGetTypeID() else {
                 completionHandler(.cancelAuthenticationChallenge, nil)
                 return
             }

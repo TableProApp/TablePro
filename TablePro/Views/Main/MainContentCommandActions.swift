@@ -259,6 +259,18 @@ final class MainContentCommandActions {
         PluginManager.shared.supportsDatabaseSwitching(for: connection.type)
     }
 
+    var canSwitchSidebarLayout: Bool {
+        PluginManager.shared.supportsDatabaseTree(for: connection.type)
+    }
+
+    var sidebarLayout: SidebarLayout {
+        SharedSidebarState.forConnection(connection.id).sidebarLayout
+    }
+
+    func setSidebarLayout(_ layout: SidebarLayout) {
+        SharedSidebarState.forConnection(connection.id).sidebarLayout = layout
+    }
+
     var isCurrentTabEditable: Bool {
         coordinator?.tabManager.selectedTab?.tableContext.isEditable == true
     }
@@ -665,8 +677,12 @@ final class MainContentCommandActions {
         coordinator?.openExportQueryResultsDialog()
     }
 
-    func importTables() {
-        coordinator?.openImportDialog()
+    func importTables(formatId: String) {
+        coordinator?.openImportDialog(formatId: formatId)
+    }
+
+    var availableImportFormats: [ImportFormatOption] {
+        PluginManager.shared.importFormatOptions(for: currentDatabaseType)
     }
 
     func backupDatabase() {
@@ -769,6 +785,30 @@ final class MainContentCommandActions {
 
     func toggleRightSidebar() {
         coordinator?.inspectorProxy?.toggleInspector()
+    }
+
+    func goToPreviousPage() {
+        coordinator?.goToPreviousPage()
+    }
+
+    func goToNextPage() {
+        coordinator?.goToNextPage()
+    }
+
+    func goToFirstPage() {
+        coordinator?.goToFirstPage()
+    }
+
+    func goToLastPage() {
+        coordinator?.goToLastPage()
+    }
+
+    func focusSidebarSearch() {
+        coordinator?.splitViewController?.focusSidebarSearch()
+    }
+
+    func showSidebarTab(_ tab: SidebarTab) {
+        coordinator?.splitViewController?.setSidebarTab(tab)
     }
 
     func toggleResults() {

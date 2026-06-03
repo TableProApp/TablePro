@@ -18,7 +18,7 @@ struct AnyChangeManagerTests {
     @Test("DataChangeManager wrapper: hasChanges forwards correctly")
     func dataManagerHasChangesForwards() {
         let dataManager = DataChangeManager()
-        dataManager.configureForTable(tableName: "users", columns: ["id", "name"], primaryKeyColumns: ["id"])
+        dataManager.configureForTable(tableName: "users", columns: ["id", "name"], primaryKeyColumns: ["id"], databaseType: .mysql)
         let wrapper = AnyChangeManager(dataManager)
 
         #expect(wrapper.hasChanges == false)
@@ -32,7 +32,7 @@ struct AnyChangeManagerTests {
     @Test("DataChangeManager wrapper: reloadVersion forwards correctly")
     func dataManagerReloadVersionForwards() {
         let dataManager = DataChangeManager()
-        dataManager.configureForTable(tableName: "users", columns: ["id", "name"], primaryKeyColumns: ["id"])
+        dataManager.configureForTable(tableName: "users", columns: ["id", "name"], primaryKeyColumns: ["id"], databaseType: .mysql)
         let wrapper = AnyChangeManager(dataManager)
 
         let initialVersion = wrapper.reloadVersion
@@ -44,7 +44,7 @@ struct AnyChangeManagerTests {
     @Test("isRowDeleted delegates correctly for DataChangeManager")
     func isRowDeletedDelegatesCorrectly() {
         let dataManager = DataChangeManager()
-        dataManager.configureForTable(tableName: "users", columns: ["id", "name"], primaryKeyColumns: ["id"])
+        dataManager.configureForTable(tableName: "users", columns: ["id", "name"], primaryKeyColumns: ["id"], databaseType: .mysql)
         let wrapper = AnyChangeManager(dataManager)
 
         #expect(wrapper.isRowDeleted(0) == false)
@@ -57,7 +57,7 @@ struct AnyChangeManagerTests {
     @Test("recordCellChange forwards to DataChangeManager")
     func recordCellChangeForwards() {
         let dataManager = DataChangeManager()
-        dataManager.configureForTable(tableName: "users", columns: ["id", "name"], primaryKeyColumns: ["id"])
+        dataManager.configureForTable(tableName: "users", columns: ["id", "name"], primaryKeyColumns: ["id"], databaseType: .mysql)
         let wrapper = AnyChangeManager(dataManager)
 
         wrapper.recordCellChange(rowIndex: 0, columnIndex: 1, columnName: "name", oldValue: "Alice", newValue: "Bob", originalRow: ["1", "Alice"])
@@ -69,7 +69,7 @@ struct AnyChangeManagerTests {
     @Test("No retain cycle — wrapper can be deallocated")
     func noRetainCycleOnWrapper() {
         let dataManager = DataChangeManager()
-        dataManager.configureForTable(tableName: "users", columns: ["id", "name"], primaryKeyColumns: ["id"])
+        dataManager.configureForTable(tableName: "users", columns: ["id", "name"], primaryKeyColumns: ["id"], databaseType: .mysql)
 
         weak var weakWrapper: AnyChangeManager?
 

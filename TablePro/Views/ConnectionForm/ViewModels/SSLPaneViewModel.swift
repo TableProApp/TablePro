@@ -13,6 +13,7 @@ final class SSLPaneViewModel {
     var caCertPath: String = ""
     var clientCertPath: String = ""
     var clientKeyPath: String = ""
+    var clientKeyPassphrase: String = ""
 
     var coordinator: WeakCoordinatorRef?
 
@@ -36,6 +37,7 @@ final class SSLPaneViewModel {
         caCertPath = connection.sslConfig.caCertificatePath
         clientCertPath = connection.sslConfig.clientCertificatePath
         clientKeyPath = connection.sslConfig.clientKeyPath
+        clientKeyPassphrase = ConnectionStorage.shared.loadSSLClientKeyPassphrase(for: connection.id) ?? ""
     }
 
     func resetForType(_ type: DatabaseType) {
@@ -43,6 +45,7 @@ final class SSLPaneViewModel {
         caCertPath = ""
         clientCertPath = ""
         clientKeyPath = ""
+        clientKeyPassphrase = ""
     }
 
     func buildConfig() -> SSLConfiguration {

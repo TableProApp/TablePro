@@ -104,35 +104,37 @@ internal final class QuickSwitcherViewModel {
             ))
         }
 
-        if let driver = services.databaseManager.driver(for: connectionId) {
+        do {
+            let databases = try await services.databaseManager.withMetadataDriver(connectionId: connectionId) { driver in
+                try await driver.fetchDatabases()
+            }
+            for db in databases {
+                items.append(QuickSwitcherItem(
+                    id: "db_\(db)",
+                    name: db,
+                    kind: .database,
+                    subtitle: String(localized: "Database")
+                ))
+            }
+        } catch {
+            Self.logger.warning("Failed to fetch databases: \(error.localizedDescription, privacy: .public)")
+        }
+
+        if services.pluginManager.supportsSchemaSwitching(for: databaseType) {
             do {
-                let databases = try await driver.fetchDatabases()
-                for db in databases {
+                let schemas = try await services.databaseManager.withMetadataDriver(connectionId: connectionId) { driver in
+                    try await driver.fetchSchemas()
+                }
+                for schema in schemas {
                     items.append(QuickSwitcherItem(
-                        id: "db_\(db)",
-                        name: db,
-                        kind: .database,
-                        subtitle: String(localized: "Database")
+                        id: "schema_\(schema)",
+                        name: schema,
+                        kind: .schema,
+                        subtitle: String(localized: "Schema")
                     ))
                 }
             } catch {
-                Self.logger.warning("Failed to fetch databases: \(error.localizedDescription, privacy: .public)")
-            }
-
-            if services.pluginManager.supportsSchemaSwitching(for: databaseType) {
-                do {
-                    let schemas = try await driver.fetchSchemas()
-                    for schema in schemas {
-                        items.append(QuickSwitcherItem(
-                            id: "schema_\(schema)",
-                            name: schema,
-                            kind: .schema,
-                            subtitle: String(localized: "Schema")
-                        ))
-                    }
-                } catch {
-                    Self.logger.warning("Failed to fetch schemas: \(error.localizedDescription, privacy: .public)")
-                }
+                Self.logger.warning("Failed to fetch schemas: \(error.localizedDescription, privacy: .public)")
             }
         }
 

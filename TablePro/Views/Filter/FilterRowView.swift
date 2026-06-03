@@ -11,11 +11,16 @@ struct FilterRowView: View {
     let completions: [String]
     var enumValuesByColumn: [String: [String]] = [:]
     var rawSQLCompletionProvider: RawSQLFilterCompletionProvider?
+    let isApplied: Bool
     let onAdd: () -> Void
     let onDuplicate: () -> Void
     let onRemove: () -> Void
+    let onApply: () -> Void
     let onSubmit: () -> Void
+    let onCancel: () -> Void
     @Binding var focusedFilterId: UUID?
+
+    private let rowButtonGlyphSize: CGFloat = 14
 
     private var pickerEligibleOperators: Set<FilterOperator> {
         [.equal, .notEqual]
@@ -37,19 +42,33 @@ struct FilterRowView: View {
 
     var body: some View {
         HStack(spacing: 4) {
-            columnPicker
+            enabledToggle
 
-            if !filter.isRawSQL {
-                operatorPicker
+            Group {
+                columnPicker
+
+                if !filter.isRawSQL {
+                    operatorPicker
+                }
+
+                valueFields
             }
-
-            valueFields
+            .opacity(filter.isEnabled ? 1 : 0.5)
 
             rowButtons
         }
         .padding(.vertical, 4)
         .padding(.horizontal, 8)
         .contextMenu { rowContextMenu }
+    }
+
+    private var enabledToggle: some View {
+        Toggle("", isOn: $filter.isEnabled)
+            .toggleStyle(.checkbox)
+            .labelsHidden()
+            .accessibilityLabel(String(localized: "Enable filter"))
+            .accessibilityValue(filter.isEnabled ? String(localized: "Active") : String(localized: "Inactive"))
+            .help(String(localized: "Include this filter when applying"))
     }
 
     private var columnPicker: some View {
@@ -65,6 +84,7 @@ struct FilterRowView: View {
         .fixedSize()
         .labelsHidden()
         .accessibilityLabel(String(localized: "Filter column"))
+        .accessibilityValue(filter.isRawSQL ? String(localized: "Raw SQL") : filter.columnName)
         .help(String(localized: "Select filter column"))
     }
 
@@ -79,6 +99,7 @@ struct FilterRowView: View {
         .fixedSize()
         .labelsHidden()
         .accessibilityLabel(String(localized: "Filter operator"))
+        .accessibilityValue(filter.filterOperator.displayName)
         .help(String(localized: "Select filter operator"))
     }
 
@@ -95,7 +116,8 @@ struct FilterRowView: View {
                 placeholder: "e.g. id = 1",
                 completionSource: rawSQLCompletionSource,
                 allowsMultiLine: true,
-                onSubmit: onSubmit
+                onSubmit: onSubmit,
+                onCancel: onCancel
             )
             .accessibilityLabel(String(localized: "WHERE clause"))
         } else if filter.filterOperator.requiresValue {
@@ -109,7 +131,8 @@ struct FilterRowView: View {
                     identity: filter.id,
                     placeholder: String(localized: "Value"),
                     completionSource: .staticValues(completions),
-                    onSubmit: onSubmit
+                    onSubmit: onSubmit,
+                    onCancel: onCancel
                 )
                 .frame(minWidth: 80)
                 .accessibilityLabel(String(localized: "Filter value"))
@@ -133,29 +156,46 @@ struct FilterRowView: View {
                 .onSubmit { onSubmit() }
             }
         } else {
-            Text("—")
-                .font(.callout)
-                .foregroundStyle(.tertiary)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            Spacer(minLength: 0)
+        }
+    }
+
+    @ViewBuilder
+    private var soloApplyButton: some View {
+        if isApplied {
+            Button(String(localized: "Applied"), action: onApply)
+                .buttonStyle(.borderedProminent)
+        } else {
+            Button(String(localized: "Apply"), action: onApply)
+                .buttonStyle(.bordered)
         }
     }
 
     private var rowButtons: some View {
         HStack(spacing: 4) {
+            soloApplyButton
+                .controlSize(.small)
+                .disabled(!filter.isValid)
+                .accessibilityLabel(String(localized: "Apply only this filter"))
+                .accessibilityValue(isApplied ? String(localized: "Applied") : "")
+                .help(isApplied
+                    ? String(localized: "Filtering by only this row")
+                    : String(localized: "Filter by only this row"))
+
             Button(action: onAdd) {
                 Image(systemName: "plus")
-                    .frame(width: 24, height: 24)
+                    .frame(width: rowButtonGlyphSize, height: rowButtonGlyphSize)
             }
-            .buttonStyle(.borderless)
+            .buttonStyle(.bordered)
             .controlSize(.small)
             .accessibilityLabel(String(localized: "Add filter"))
             .help(String(localized: "Add filter row"))
 
             Button(action: onRemove) {
                 Image(systemName: "minus")
-                    .frame(width: 24, height: 24)
+                    .frame(width: rowButtonGlyphSize, height: rowButtonGlyphSize)
             }
-            .buttonStyle(.borderless)
+            .buttonStyle(.bordered)
             .controlSize(.small)
             .accessibilityLabel(String(localized: "Remove filter"))
             .help(String(localized: "Remove filter row"))
@@ -202,7 +242,6 @@ struct FilterRowView: View {
         .frame(minWidth: 100)
         .labelsHidden()
         .accessibilityLabel(String(localized: "Filter value"))
-        .onChange(of: filter.value) { _, _ in onSubmit() }
     }
 
     private struct OperatorMenuLabel: View {

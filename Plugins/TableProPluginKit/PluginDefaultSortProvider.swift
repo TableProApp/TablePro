@@ -1,5 +1,6 @@
 import Foundation
 
+@frozen
 public enum DefaultSortHint: Sendable, Equatable {
     case useAppDefault
     case suppress

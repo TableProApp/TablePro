@@ -246,13 +246,11 @@ final class CockroachPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     }
 
     func createDatabase(_ request: PluginCreateDatabaseRequest) async throws {
-        let quotedName = request.name.replacingOccurrences(of: "\"", with: "\"\"")
-        _ = try await execute(query: "CREATE DATABASE \"\(quotedName)\"")
+        _ = try await execute(query: "CREATE DATABASE \(quoteIdentifier(request.name))")
     }
 
     func dropDatabase(name: String) async throws {
-        let quotedName = name.replacingOccurrences(of: "\"", with: "\"\"")
-        _ = try await execute(query: "DROP DATABASE \"\(quotedName)\"")
+        _ = try await execute(query: "DROP DATABASE \(quoteIdentifier(name))")
     }
 
     // MARK: - Query Helpers

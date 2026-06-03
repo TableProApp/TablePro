@@ -10,6 +10,14 @@ final class KeyHandlingTableView: NSTableView {
         true
     }
 
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        guard coordinator?.tabType == .table, let window,
+              let mainCoordinator = (coordinator?.delegate as? DataTabGridDelegate)?.coordinator,
+              mainCoordinator.consumePendingGridFocus() else { return }
+        window.makeFirstResponder(self)
+    }
+
     override func didAddSubview(_ subview: NSView) {
         super.didAddSubview(subview)
         guard !isRaisingOverlay else { return }
@@ -84,12 +92,12 @@ final class KeyHandlingTableView: NSTableView {
 
     private var gridSelection: GridSelectionController? { coordinator?.selectionController }
 
-    private func withSelectionSync(_ work: () -> Void) {
+    private func withProgrammaticRowSelection(_ work: () -> Void) {
         let coordinator = coordinator
-        let wasSyncing = coordinator?.isSyncingSelection ?? false
-        coordinator?.isSyncingSelection = true
+        let wasApplying = coordinator?.isApplyingProgrammaticRowSelection ?? false
+        coordinator?.isApplyingProgrammaticRowSelection = true
         work()
-        coordinator?.isSyncingSelection = wasSyncing
+        coordinator?.isApplyingProgrammaticRowSelection = wasApplying
     }
 
     private func totalRows() -> Int { numberOfRows }
@@ -150,7 +158,7 @@ final class KeyHandlingTableView: NSTableView {
         let disposition = controller.beginDrag(at: coord, modifiers: modifiers)
         switch disposition {
         case .replaceFocus(let activeCoord):
-            withSelectionSync {
+            withProgrammaticRowSelection {
                 selectRowIndexes(IndexSet(integer: activeCoord.row), byExtendingSelection: false)
             }
             focusedRow = activeCoord.row
@@ -326,7 +334,7 @@ final class KeyHandlingTableView: NSTableView {
             super.keyDown(with: event)
             return
         case .delete, .forwardDelete:
-            if modifiers.isEmpty || modifiers == .command {
+            if modifiers.isEmpty || matchesDeleteShortcut(event) {
                 deleteSelectedRowsIfPossible()
                 return
             }
@@ -351,6 +359,13 @@ final class KeyHandlingTableView: NSTableView {
         }
 
         interpretKeyEvents([event])
+    }
+
+    private func matchesDeleteShortcut(_ event: NSEvent) -> Bool {
+        guard let combo = AppSettingsManager.shared.keyboard.shortcut(for: .delete), !combo.isCleared else {
+            return false
+        }
+        return combo.matches(event)
     }
 
     private func handleHorizontalArrow(direction: GridSelectionController.Direction, modifiers: NSEvent.ModifierFlags, currentRow: Int) {

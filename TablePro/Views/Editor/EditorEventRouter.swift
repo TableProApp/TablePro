@@ -22,7 +22,6 @@ internal final class EditorEventRouter {
 
     private var editors: [ObjectIdentifier: EditorRef] = [:]
     private var rightClickMonitor: Any?
-    private var clipboardMonitor: Any?
 
     private init() {}
 
@@ -95,6 +94,16 @@ internal final class EditorEventRouter {
         coordinator.showFindPanel()
     }
 
+    internal func findNext() {
+        guard let (coordinator, _) = editor(for: NSApp.keyWindow) else { return }
+        coordinator.findNext()
+    }
+
+    internal func findPrevious() {
+        guard let (coordinator, _) = editor(for: NSApp.keyWindow) else { return }
+        coordinator.findPrevious()
+    }
+
     /// Called by the SwiftUI "Clear Selection" menu when its Esc key equivalent fires.
     /// Routes the keystroke to the active editor's Vim engine if it is in a non-normal
     /// mode. Returns true when Vim consumed the escape — caller should suppress its
@@ -131,24 +140,12 @@ internal final class EditorEventRouter {
                 self.handleRightClick(event)
             }
         }
-
-        clipboardMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] nsEvent in
-            guard let self else { return nsEvent }
-            nonisolated(unsafe) let event = nsEvent
-            return MainActor.assumeIsolated {
-                self.handleKeyDown(event)
-            }
-        }
     }
 
     private func removeMonitors() {
         if let monitor = rightClickMonitor {
             NSEvent.removeMonitor(monitor)
             rightClickMonitor = nil
-        }
-        if let monitor = clipboardMonitor {
-            NSEvent.removeMonitor(monitor)
-            clipboardMonitor = nil
         }
     }
 
@@ -162,43 +159,5 @@ internal final class EditorEventRouter {
 
         coordinator.showContextMenu(for: event, in: textView)
         return nil
-    }
-
-    private func handleKeyDown(_ event: NSEvent) -> NSEvent? {
-        guard let (_, textView) = editor(for: event.window),
-              textView.window?.firstResponder === textView else {
-            return event
-        }
-
-        let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-        guard mods.contains(.command),
-              !mods.contains(.shift), !mods.contains(.option), !mods.contains(.control) else {
-            return event
-        }
-
-        let selection = textView.selectedRange()
-
-        switch event.keyCode {
-        case 8: // Cmd+C
-            guard selection.length > 0 else { return event }
-            let text = (textView.string as NSString).substring(with: selection)
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(text, forType: .string)
-            return nil
-        case 7: // Cmd+X
-            guard let result = LineCutCalculator.calculate(
-                text: textView.string, selection: selection
-            ) else {
-                return event
-            }
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(result.clipboardText, forType: .string)
-            textView.replaceCharacters(in: result.rangeToDelete, with: "")
-            return nil
-        default:
-            break
-        }
-
-        return event
     }
 }

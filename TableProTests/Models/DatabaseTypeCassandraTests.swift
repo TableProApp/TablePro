@@ -86,11 +86,11 @@ struct DatabaseTypeCassandraTests {
 
     @Test("Cassandra included in allCases")
     func cassandraIncludedInAllCases() {
-        #expect(DatabaseType.allCases.contains(.cassandra))
+        #expect(DatabaseType.allKnownTypes.contains(.cassandra))
     }
 
     @Test("ScyllaDB included in allCases")
     func scylladbIncludedInAllCases() {
-        #expect(DatabaseType.allCases.contains(.scylladb))
+        #expect(DatabaseType.allKnownTypes.contains(.scylladb))
     }
 }

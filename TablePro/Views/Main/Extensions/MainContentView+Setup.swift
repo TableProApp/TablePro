@@ -52,6 +52,7 @@ extension MainContentView {
                 }
             }
             if payload.skipAutoExecute {
+                await coordinator.rebuildSelectedTableQueryForHiddenColumnsIfNeeded()
                 _ = await schemaLoad
                 return
             }
@@ -66,6 +67,8 @@ extension MainContentView {
                         selectedTab.tableContext.databaseName != session.activeDatabase
                     {
                         await coordinator.switchDatabase(to: selectedTab.tableContext.databaseName)
+                    } else if coordinator.selectedTabHiddenColumns.isEmpty {
+                        coordinator.runQuery()
                     } else {
                         coordinator.lazyLoadCurrentTabIfNeeded()
                     }
@@ -197,6 +200,10 @@ extension MainContentView {
                 ?? selectedTab?.title
                 ?? (tabManager.tabs.isEmpty ? connection.name : queryLabel)
         }
+        windowSubtitle = MainSplitViewController.resolveDefaultSubtitle(
+            tab: selectedTab,
+            connection: connection
+        )
         viewWindow?.representedURL = selectedTab?.content.sourceFileURL
         viewWindow?.isDocumentEdited = selectedTab?.content.isFileDirty ?? false
     }
@@ -208,11 +215,6 @@ extension MainContentView {
             "[open] configureWindow start windowId=\(windowId, privacy: .public) connId=\(connection.id, privacy: .public)"
         )
         let isPreview = tabManager.selectedTab?.isPreview ?? payload?.isPreview ?? false
-        if isPreview {
-            window.subtitle = String(format: String(localized: "%@ - Preview"), connection.name)
-        } else {
-            window.subtitle = connection.name
-        }
 
         let resolvedId = WindowManager.tabbingIdentifier(for: connection.id)
         window.tabbingIdentifier = resolvedId

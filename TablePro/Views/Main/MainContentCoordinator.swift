@@ -45,7 +45,8 @@ enum ActiveSheet: Identifiable {
     case quickSwitcher
     case sqlPreview
     case exportDialog
-    case importDialog
+    case importDialog(formatId: String)
+    case rowImport(formatId: String)
     case exportQueryResults
     case backupDatabase
     case restoreDatabase(fileURL: URL)
@@ -57,7 +58,8 @@ enum ActiveSheet: Identifiable {
         case .quickSwitcher: "quickSwitcher"
         case .sqlPreview: "sqlPreview"
         case .exportDialog: "exportDialog"
-        case .importDialog: "importDialog"
+        case .importDialog(let formatId): "importDialog-\(formatId)"
+        case .rowImport(let formatId): "rowImport-\(formatId)"
         case .exportQueryResults: "exportQueryResults"
         case .backupDatabase: "backupDatabase"
         case .restoreDatabase(let fileURL): "restoreDatabase-\(fileURL.path)"
@@ -139,6 +141,10 @@ final class MainContentCoordinator {
     /// dispatch insertRows/removeRows directly to the NSTableView via DataGridViewDelegate.
     @ObservationIgnored weak var dataTabDelegate: DataTabGridDelegate?
 
+    /// One-shot intent set when the user explicitly opens a table (Return/double-click),
+    /// consumed by the grid as it appears to move focus into it. Never set on mere selection.
+    @ObservationIgnored var pendingGridFocusOnOpen = false
+
     /// Proxy for toggling the inspector NSSplitViewItem from coordinator code
     @ObservationIgnored weak var inspectorProxy: InspectorVisibilityProxy?
 
@@ -186,6 +192,7 @@ final class MainContentCoordinator {
     @ObservationIgnored private var terminationObserver: NSObjectProtocol?
     @ObservationIgnored private var postConnectCancellable: AnyCancellable?
     @ObservationIgnored private var externalFileModCancellable: AnyCancellable?
+    @ObservationIgnored private var schemaSwitchCancellable: AnyCancellable?
 
     var fileConflictRequest: FileConflictRequest?
 
@@ -417,6 +424,15 @@ final class MainContentCoordinator {
                 self.checkOpenTabsForExternalModification()
             }
 
+        schemaSwitchCancellable = services.appEvents.currentSchemaChanged
+            .receive(on: RunLoop.main)
+            .sink { [weak self] changedConnectionId in
+                guard let self, changedConnectionId == self.connectionId else { return }
+                Task { @MainActor in
+                    await self.refreshTables()
+                }
+            }
+
         self.filterCoordinator = FilterCoordinator(parent: self)
         self.queryExecutionCoordinator = QueryExecutionCoordinator(parent: self)
         self.paginationCoordinator = PaginationCoordinator(parent: self)
@@ -613,6 +629,7 @@ final class MainContentCoordinator {
         }
         postConnectCancellable = nil
         externalFileModCancellable = nil
+        schemaSwitchCancellable = nil
         fileWatcher?.stopWatching(connectionId: connectionId)
         fileWatcher = nil
         currentQueryTask?.cancel()
@@ -731,14 +748,18 @@ final class MainContentCoordinator {
             driver: driver,
             connection: connection
         )
+        await DatabaseTreeMetadataService.shared.loadDatabases(
+            connectionId: connectionId,
+            databaseType: connection.type
+        )
         await reconcilePostSchemaLoad()
     }
 
     func loadTableMetadata(tableName: String) async {
-        guard let driver = services.databaseManager.driver(for: connectionId) else { return }
-
         do {
-            let metadata = try await driver.fetchTableMetadata(tableName: tableName)
+            let metadata = try await services.databaseManager.withMetadataDriver(connectionId: connectionId) { driver in
+                try await driver.fetchTableMetadata(tableName: tableName)
+            }
             self.tableMetadata = metadata
         } catch {
             Self.logger.error("Failed to load table metadata: \(error.localizedDescription, privacy: .public)")
@@ -835,19 +856,21 @@ final class MainContentCoordinator {
             isShowingSafeModePrompt = true
             Task {
                 defer { isShowingSafeModePrompt = false }
-                let window = NSApp.keyWindow
-                let permission = await SafeModeGuard.checkPermission(
-                    level: level,
-                    isWriteOperation: false,
-                    sql: sql,
-                    operationDescription: String(localized: "Execute Query"),
-                    window: window,
-                    databaseType: connection.type
+                let decision = await ExecutionGateProvider.shared.authorize(
+                    OperationRequest(
+                        connectionId: connectionId,
+                        databaseType: connection.type,
+                        sql: sql,
+                        kind: .readQuery,
+                        caller: .userInterface,
+                        capabilities: .interactiveUser,
+                        operationDescription: String(localized: "Execute Query")
+                    )
                 )
-                switch permission {
-                case .allowed:
+                switch decision {
+                case .authorized:
                     executeQueryInternal(sql)
-                case .blocked(let reason):
+                case .denied(let reason):
                     tabManager.mutate(at: index) { $0.execution.errorMessage = reason }
                 }
             }
@@ -940,16 +963,18 @@ final class MainContentCoordinator {
         if !explainVariants.isEmpty {
             if needsConfirmation {
                 Task {
-                    let window = NSApp.keyWindow
-                    let permission = await SafeModeGuard.checkPermission(
-                        level: level,
-                        isWriteOperation: false,
-                        sql: "EXPLAIN",
-                        operationDescription: String(localized: "Execute Query"),
-                        window: window,
-                        databaseType: connection.type
+                    let decision = await ExecutionGateProvider.shared.authorize(
+                        OperationRequest(
+                            connectionId: connectionId,
+                            databaseType: connection.type,
+                            sql: "EXPLAIN",
+                            kind: .readQuery,
+                            caller: .userInterface,
+                            capabilities: .interactiveUser,
+                            operationDescription: String(localized: "Execute Query")
+                        )
                     )
-                    if case .allowed = permission {
+                    if case .authorized = decision {
                         runVariantExplain(explainVariants[0])
                     }
                 }
@@ -971,16 +996,18 @@ final class MainContentCoordinator {
 
         if needsConfirmation {
             Task {
-                let window = NSApp.keyWindow
-                let permission = await SafeModeGuard.checkPermission(
-                    level: level,
-                    isWriteOperation: false,
-                    sql: explainSQL,
-                    operationDescription: String(localized: "Execute Query"),
-                    window: window,
-                    databaseType: connection.type
+                let decision = await ExecutionGateProvider.shared.authorize(
+                    OperationRequest(
+                        connectionId: connectionId,
+                        databaseType: connection.type,
+                        sql: explainSQL,
+                        kind: .readQuery,
+                        caller: .userInterface,
+                        capabilities: .interactiveUser,
+                        operationDescription: String(localized: "Execute Query")
+                    )
                 )
-                if case .allowed = permission {
+                if case .authorized = decision {
                     executeQueryInternal(explainSQL)
                 }
             }
@@ -1140,6 +1167,9 @@ final class MainContentCoordinator {
     }
 
     internal func resolveTableEditability(tab: QueryTab, sql: String) -> (tableName: String?, isEditable: Bool) {
+        if tab.tabType != .table, QueryClassifier.isExplainStatement(sql) {
+            return (nil, false)
+        }
         let usesNoSQLBrowsing = services.pluginManager.editorLanguage(for: connection.type) != .sql
             || (services.databaseManager.driver(for: connectionId) as? PluginDriverAdapter)?
                 .queryBuildingPluginDriver != nil
@@ -1157,7 +1187,6 @@ final class MainContentCoordinator {
     func fetchEnumValues(
         columnInfo: [ColumnInfo],
         tableName: String,
-        driver: DatabaseDriver,
         connectionType: DatabaseType
     ) async -> [String: [String]] {
         var result: [String: [String]] = [:]
@@ -1168,7 +1197,10 @@ final class MainContentCoordinator {
             }
         }
 
-        if result.isEmpty, let createSQL = try? await driver.fetchTableDDL(table: tableName) {
+        if result.isEmpty,
+           let createSQL = try? await DatabaseManager.shared.withMetadataDriver(connectionId: connectionId, { driver in
+               try await driver.fetchTableDDL(table: tableName)
+           }) {
             for col in columnInfo {
                 if let values = QuerySqlParser.parseSQLiteCheckConstraintValues(
                     createSQL: createSQL, columnName: col.name

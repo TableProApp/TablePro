@@ -113,19 +113,12 @@ struct InsertRowView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    CancelButton { dismiss() }
                         .disabled(isSaving)
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button {
+                    ConfirmButton(title: "Save", isInProgress: isSaving) {
                         Task { await insertRow() }
-                    } label: {
-                        if isSaving {
-                            ProgressView()
-                                .controlSize(.small)
-                        } else {
-                            Text("Save")
-                        }
                     }
                     .disabled(isSaving)
                 }

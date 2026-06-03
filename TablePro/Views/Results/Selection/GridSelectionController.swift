@@ -39,7 +39,7 @@ final class GridSelectionController {
     }
 
     private func postAccessibilityAnnouncement(for newSelection: GridSelection) {
-        guard NSWorkspace.shared.isVoiceOverEnabled, let tableView else { return }
+        guard let tableView else { return }
         let announcement: String
         if newSelection.isEmpty {
             announcement = String(localized: "Cell selection cleared")

@@ -15,6 +15,7 @@ public struct PluginCreateDatabaseFormSpec: Sendable {
         }
     }
 
+    @frozen
     public enum FieldKind: Sendable {
         case picker(options: [Option], defaultValue: String?)
         case searchable(options: [Option], defaultValue: String?)

@@ -109,6 +109,129 @@ struct MainSplitViewControllerTitleTests {
     }
 }
 
+@Suite("MainSplitViewController.resolveDefaultSubtitle")
+@MainActor
+struct MainSplitViewControllerSubtitleTests {
+    private let connection = DatabaseConnection(name: "MyConnection")
+
+    private func tableTab(database: String, schema: String?) -> QueryTab {
+        var tab = QueryTab(id: UUID(), title: "users", query: "SELECT 1", tabType: .table, tableName: "users")
+        tab.tableContext.databaseName = database
+        tab.tableContext.schemaName = schema
+        return tab
+    }
+
+    @Test("Table tab with database and schema joins them with a middle dot")
+    func tableTabWithSchemaAndDatabase() {
+        let subtitle = MainSplitViewController.resolveDefaultSubtitle(
+            tab: tableTab(database: "myapp", schema: "public"),
+            connection: connection
+        )
+        #expect(subtitle == "myapp · public")
+    }
+
+    @Test("Table tab without schema shows the database alone")
+    func tableTabWithDatabaseNoSchema() {
+        let subtitle = MainSplitViewController.resolveDefaultSubtitle(
+            tab: tableTab(database: "myapp", schema: nil),
+            connection: connection
+        )
+        #expect(subtitle == "myapp")
+    }
+
+    @Test("Table tab with an empty schema shows the database alone")
+    func tableTabWithEmptySchema() {
+        let subtitle = MainSplitViewController.resolveDefaultSubtitle(
+            tab: tableTab(database: "myapp", schema: ""),
+            connection: connection
+        )
+        #expect(subtitle == "myapp")
+    }
+
+    @Test("Table tab with no database falls back to the connection name")
+    func tableTabWithEmptyDatabaseName() {
+        let subtitle = MainSplitViewController.resolveDefaultSubtitle(
+            tab: tableTab(database: "", schema: nil),
+            connection: connection
+        )
+        #expect(subtitle == connection.name)
+    }
+
+    @Test("Table tab with no table name falls back to the connection name")
+    func tableTabWithNilTableName() {
+        var tab = QueryTab(id: UUID(), title: "x", query: "SELECT 1", tabType: .table)
+        tab.tableContext.databaseName = "myapp"
+        let subtitle = MainSplitViewController.resolveDefaultSubtitle(tab: tab, connection: connection)
+        #expect(subtitle == connection.name)
+    }
+
+    @Test("Query tab never shows a table subtitle even with a resolved table name")
+    func queryTabReturnsConnectionName() {
+        let tab = QueryTab(id: UUID(), title: "q", query: "SELECT 1", tabType: .query, tableName: "users")
+        let subtitle = MainSplitViewController.resolveDefaultSubtitle(tab: tab, connection: connection)
+        #expect(subtitle == connection.name)
+    }
+
+    @Test("Nil tab falls back to the connection name")
+    func nilTabReturnsConnectionName() {
+        let subtitle = MainSplitViewController.resolveDefaultSubtitle(tab: nil, connection: connection)
+        #expect(subtitle == connection.name)
+    }
+
+    @Test("Server dashboard tab falls back to the connection name")
+    func serverDashboardTabReturnsConnectionName() {
+        let tab = QueryTab(id: UUID(), title: "d", query: "", tabType: .serverDashboard)
+        let subtitle = MainSplitViewController.resolveDefaultSubtitle(tab: tab, connection: connection)
+        #expect(subtitle == connection.name)
+    }
+
+    @Test("ER diagram tab falls back to the connection name")
+    func erDiagramTabReturnsConnectionName() {
+        let tab = QueryTab(id: UUID(), title: "e", query: "", tabType: .erDiagram)
+        let subtitle = MainSplitViewController.resolveDefaultSubtitle(tab: tab, connection: connection)
+        #expect(subtitle == connection.name)
+    }
+
+    @Test("Table payload with database and schema joins them with a middle dot")
+    func tablePayloadWithSchemaAndDatabase() {
+        let payload = EditorTabPayload(
+            connectionId: UUID(),
+            tabType: .table,
+            tableName: "users",
+            databaseName: "myapp",
+            schemaName: "public"
+        )
+        let subtitle = MainSplitViewController.resolveDefaultSubtitle(payload: payload, connection: connection)
+        #expect(subtitle == "myapp · public")
+    }
+
+    @Test("Table payload without schema shows the database alone")
+    func tablePayloadWithDatabaseNoSchema() {
+        let payload = EditorTabPayload(
+            connectionId: UUID(),
+            tabType: .table,
+            tableName: "users",
+            databaseName: "myapp"
+        )
+        let subtitle = MainSplitViewController.resolveDefaultSubtitle(payload: payload, connection: connection)
+        #expect(subtitle == "myapp")
+    }
+
+    @Test("Table payload with no database falls back to the connection name")
+    func tablePayloadWithNilDatabase() {
+        let payload = EditorTabPayload(connectionId: UUID(), tabType: .table, tableName: "users")
+        let subtitle = MainSplitViewController.resolveDefaultSubtitle(payload: payload, connection: connection)
+        #expect(subtitle == connection.name)
+    }
+
+    @Test("Query payload falls back to the connection name")
+    func queryPayloadReturnsConnectionName() {
+        let payload = EditorTabPayload(connectionId: UUID(), tabType: .query, tableName: "users")
+        let subtitle = MainSplitViewController.resolveDefaultSubtitle(payload: payload, connection: connection)
+        #expect(subtitle == connection.name)
+    }
+}
+
 @Suite("QueryTab.fileDisplayTitle")
 struct QueryTabFileDisplayTitleTests {
     @Test("Returns FileManager display name for the URL")

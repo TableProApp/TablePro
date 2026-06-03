@@ -14,6 +14,9 @@ final class LibPQDriverCore: @unchecked Sendable {
     private var libpqConnection: LibPQPluginConnection?
 
     var currentSchema: String = "public"
+    private var selectedSchema: String?
+
+    var onPostConnect: (@Sendable () async -> Void)?
 
     var serverVersion: String? { libpqConnection?.serverVersion() }
     var serverVersionNumber: Int32 { libpqConnection?.serverVersionNumber() ?? 0 }
@@ -42,6 +45,19 @@ final class LibPQDriverCore: @unchecked Sendable {
            let schema = schemaResult.rows.first?.first?.asText {
             currentSchema = schema
         }
+
+        if let selectedSchema,
+           (try? await pqConn.executeQuery(PostgreSQLSchemaQueries.setSearchPath(toSchema: selectedSchema))) != nil {
+            currentSchema = selectedSchema
+        }
+
+        await onPostConnect?()
+    }
+
+    func applySchema(_ schema: String) async throws {
+        _ = try await execute(query: PostgreSQLSchemaQueries.setSearchPath(toSchema: schema))
+        selectedSchema = schema
+        currentSchema = schema
     }
 
     func disconnect() {
@@ -84,6 +100,10 @@ final class LibPQDriverCore: @unchecked Sendable {
 
     func cancelQuery() {
         libpqConnection?.cancelCurrentQuery()
+    }
+
+    func setPostgisOidMap(_ map: [UInt32: String]) {
+        libpqConnection?.setPostgisOidMap(map)
     }
 
     func applyQueryTimeout(_ seconds: Int) async throws {
@@ -172,9 +192,7 @@ extension LibPQBackedDriver {
     }
 
     func switchSchema(to schema: String) async throws {
-        let escapedName = schema.replacingOccurrences(of: "\"", with: "\"\"")
-        _ = try await core.execute(query: "SET search_path TO \"\(escapedName)\", public")
-        core.currentSchema = schema
+        try await core.applySchema(schema)
     }
 
     var currentSchema: String? { core.currentSchema }

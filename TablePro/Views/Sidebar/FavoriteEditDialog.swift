@@ -81,6 +81,7 @@ internal struct FavoriteEditDialog: View {
                 LabeledContent("Query") {
                     TextEditor(text: $query)
                         .font(.system(.body, design: .monospaced))
+                        .accessibilityLabel(String(localized: "Query"))
                         .frame(height: 160)
                         .scrollContentBackground(.hidden)
                         .padding(4)

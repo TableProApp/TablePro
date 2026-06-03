@@ -136,6 +136,7 @@ struct ExportableCredentials: Codable {
     let password: String?
     let sshPassword: String?
     let keyPassphrase: String?
+    let sslClientKeyPassphrase: String?
     let totpSecret: String?
     let pluginSecureFields: [String: String]?
 }

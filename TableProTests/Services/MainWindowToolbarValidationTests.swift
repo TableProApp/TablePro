@@ -145,7 +145,7 @@ struct MainWindowToolbarValidationTests {
 
     @Test("Toolbar identifier is stable across instances so AppKit autosave can persist customizations")
     func toolbarIdentifierIsStable() {
-        #expect(MainWindowToolbar.toolbarIdentifier == "com.TablePro.main.toolbar")
+        #expect(MainWindowToolbar.toolbarIdentifier == "com.TablePro.main.toolbar.v2")
     }
 
     @Test("Toolbar is configured for user customization and autosave")

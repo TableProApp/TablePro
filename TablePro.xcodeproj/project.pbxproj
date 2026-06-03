@@ -38,6 +38,8 @@
 		5A86E000D00000000 /* MQLExport.tableplugin in Copy Plug-Ins (12 items) */ = {isa = PBXBuildFile; fileRef = 5A86E000100000000 /* MQLExport.tableplugin */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		5A86F000A00000000 /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
 		5A86F000D00000000 /* SQLImport.tableplugin in Copy Plug-Ins (12 items) */ = {isa = PBXBuildFile; fileRef = 5A86F000100000000 /* SQLImport.tableplugin */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		5A86F001A00000000 /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
+		5A86F001D00000000 /* JSONImport.tableplugin in Copy Plug-Ins (12 items) */ = {isa = PBXBuildFile; fileRef = 5A86F001100000000 /* JSONImport.tableplugin */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		5A87A000A00000000 /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
 		5ABBED742FB55E1400A78382 /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
 		5ABBED802FB55E1400A78382 /* CSVInspectorPlugin.tableplugin in Copy Plug-Ins (12 items) */ = {isa = PBXBuildFile; fileRef = 5ABBED792FB55E1400A78382 /* CSVInspectorPlugin.tableplugin */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
@@ -188,6 +190,13 @@
 			remoteGlobalIDString = 5A86F000000000000;
 			remoteInfo = SQLImport;
 		};
+		5A86F001B00000000 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 5A1091BF2EF17EDC0055EA7C /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 5A86F001000000000;
+			remoteInfo = JSONImport;
+		};
 		5ABBED7E2FB55E1400A78382 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 5A1091BF2EF17EDC0055EA7C /* Project object */;
@@ -215,6 +224,13 @@
 			proxyType = 1;
 			remoteGlobalIDString = 5ADDB00600000000000000B0;
 			remoteInfo = DynamoDBDriverPlugin;
+		};
+		5AF00A112FB9000000000001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 5A1091BF2EF17EDC0055EA7C /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 5A1091C62EF17EDC0055EA7C;
+			remoteInfo = TablePro;
 		};
 /* End PBXContainerItemProxy section */
 
@@ -256,6 +272,7 @@
 				5A86D000D00000000 /* XLSXExport.tableplugin in Copy Plug-Ins (12 items) */,
 				5A86E000D00000000 /* MQLExport.tableplugin in Copy Plug-Ins (12 items) */,
 				5A86F000D00000000 /* SQLImport.tableplugin in Copy Plug-Ins (12 items) */,
+				5A86F001D00000000 /* JSONImport.tableplugin in Copy Plug-Ins (12 items) */,
 				5ABBED802FB55E1400A78382 /* CSVInspectorPlugin.tableplugin in Copy Plug-Ins (12 items) */,
 			);
 			name = "Copy Plug-Ins (12 items)";
@@ -294,6 +311,7 @@
 		5A86D000100000000 /* XLSXExport.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = XLSXExport.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
 		5A86E000100000000 /* MQLExport.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MQLExport.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
 		5A86F000100000000 /* SQLImport.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SQLImport.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
+		5A86F001100000000 /* JSONImport.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = JSONImport.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
 		5A87A000100000000 /* CassandraDriver.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CassandraDriver.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
 		5ABBED792FB55E1400A78382 /* CSVInspectorPlugin.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CSVInspectorPlugin.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
 		5ABCC5A72F43856700EAF3FC /* TableProTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TableProTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -323,6 +341,7 @@
 		5AEA8B3E2F6808CA0040461A /* EtcdPluginDriver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EtcdPluginDriver.swift; sourceTree = "<group>"; };
 		5AEA8B3F2F6808CA0040461A /* EtcdQueryBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EtcdQueryBuilder.swift; sourceTree = "<group>"; };
 		5AEA8B402F6808CA0040461A /* EtcdStatementGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EtcdStatementGenerator.swift; sourceTree = "<group>"; };
+		5AF00A102FB9000000000001 /* TableProUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TableProUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		5ASECRETS000000000000001 /* Secrets.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.xcconfig; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
@@ -471,6 +490,20 @@
 				Info.plist,
 			);
 			target = 5A86F000000000000 /* SQLImport */;
+		};
+		5A86F001900000000 /* Exceptions for "Plugins/JSONImportPlugin" folder in "JSONImport" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 5A86F001000000000 /* JSONImport */;
+		};
+		5A86F002900000000 /* Exceptions for "Plugins/JSONImportPlugin" folder in "TableProTests" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				JSONImportParsing.swift,
+			);
+			target = 5ABCC5A62F43856700EAF3FC /* TableProTests */;
 		};
 		5A87A000900000000 /* Exceptions for "Plugins/CassandraDriverPlugin" folder in "CassandraDriver" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
@@ -656,6 +689,15 @@
 			path = Plugins/SQLImportPlugin;
 			sourceTree = "<group>";
 		};
+		5A86F001500000000 /* Plugins/JSONImportPlugin */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				5A86F001900000000 /* Exceptions for "Plugins/JSONImportPlugin" folder in "JSONImport" target */,
+				5A86F002900000000 /* Exceptions for "Plugins/JSONImportPlugin" folder in "TableProTests" target */,
+			);
+			path = Plugins/JSONImportPlugin;
+			sourceTree = "<group>";
+		};
 		5A87A000500000000 /* Plugins/CassandraDriverPlugin */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
@@ -683,6 +725,11 @@
 				5AE4F4802F6BC0640097AC5B /* Exceptions for "Plugins/CloudflareD1DriverPlugin" folder in "CloudflareD1DriverPlugin" target */,
 			);
 			path = Plugins/CloudflareD1DriverPlugin;
+			sourceTree = "<group>";
+		};
+		5AF00A122FB9000000000001 /* TableProUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = TableProUITests;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -845,6 +892,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		5A86F001300000000 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5A86F001A00000000 /* TableProPluginKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		5A87A000300000000 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -900,6 +955,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		5AF00A132FB9000000000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -938,7 +1000,9 @@
 				5A86D000500000000 /* Plugins/XLSXExportPlugin */,
 				5A86E000500000000 /* Plugins/MQLExportPlugin */,
 				5A86F000500000000 /* Plugins/SQLImportPlugin */,
+				5A86F001500000000 /* Plugins/JSONImportPlugin */,
 				5ABCC5A82F43856700EAF3FC /* TableProTests */,
+				5AF00A122FB9000000000001 /* TableProUITests */,
 				5A32BC012F9D5F1300BAEB5F /* mcp-server */,
 				5A1091C82EF17EDC0055EA7C /* Products */,
 				5A05FBC72F3EDF7500819CD7 /* Recovered References */,
@@ -967,7 +1031,9 @@
 				5A86D000100000000 /* XLSXExport.tableplugin */,
 				5A86E000100000000 /* MQLExport.tableplugin */,
 				5A86F000100000000 /* SQLImport.tableplugin */,
+				5A86F001100000000 /* JSONImport.tableplugin */,
 				5ABCC5A72F43856700EAF3FC /* TableProTests.xctest */,
+				5AF00A102FB9000000000001 /* TableProUITests.xctest */,
 				5AEA8B2A2F6808270040461A /* EtcdDriverPlugin.tableplugin */,
 				5ADDB00300000000000000A0 /* DynamoDBDriverPlugin.tableplugin */,
 				5ABQR00300000000000000A0 /* BigQueryDriverPlugin.tableplugin */,
@@ -1072,6 +1138,7 @@
 				5A86D000C00000000 /* PBXTargetDependency */,
 				5A86E000C00000000 /* PBXTargetDependency */,
 				5A86F000C00000000 /* PBXTargetDependency */,
+				5A86F001C00000000 /* PBXTargetDependency */,
 				5ABBED7F2FB55E1400A78382 /* PBXTargetDependency */,
 				5ADDB00000000000000000C1 /* PBXTargetDependency */,
 				5ABQR00000000000000000C1 /* PBXTargetDependency */,
@@ -1463,6 +1530,26 @@
 			productReference = 5A86F000100000000 /* SQLImport.tableplugin */;
 			productType = "com.apple.product-type.bundle";
 		};
+		5A86F001000000000 /* JSONImport */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 5A86F001800000000 /* Build configuration list for PBXNativeTarget "JSONImport" */;
+			buildPhases = (
+				5A86F001200000000 /* Sources */,
+				5A86F001300000000 /* Frameworks */,
+				5A86F001400000000 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				5A86F001500000000 /* Plugins/JSONImportPlugin */,
+			);
+			name = JSONImport;
+			productName = JSONImport;
+			productReference = 5A86F001100000000 /* JSONImport.tableplugin */;
+			productType = "com.apple.product-type.bundle";
+		};
 		5A87A000000000000 /* CassandraDriver */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 5A87A000800000000 /* Build configuration list for PBXNativeTarget "CassandraDriver" */;
@@ -1603,6 +1690,27 @@
 			productReference = 5AEA8B2A2F6808270040461A /* EtcdDriverPlugin.tableplugin */;
 			productType = "com.apple.product-type.bundle";
 		};
+		5AF00A142FB9000000000001 /* TableProUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 5AF00A192FB9000000000001 /* Build configuration list for PBXNativeTarget "TableProUITests" */;
+			buildPhases = (
+				5AF00A152FB9000000000001 /* Sources */,
+				5AF00A132FB9000000000001 /* Frameworks */,
+				5AF00A162FB9000000000001 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				5AF00A172FB9000000000001 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				5AF00A122FB9000000000001 /* TableProUITests */,
+			);
+			name = TableProUITests;
+			productName = TableProUITests;
+			productReference = 5AF00A102FB9000000000001 /* TableProUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -1679,6 +1787,10 @@
 						CreatedOnToolsVersion = 26.3;
 						LastSwiftMigration = 2630;
 					};
+					5AF00A142FB9000000000001 = {
+						CreatedOnToolsVersion = 26.5;
+						TestTargetID = 5A1091C62EF17EDC0055EA7C;
+					};
 				};
 			};
 			buildConfigurationList = 5A1091C22EF17EDC0055EA7C /* Build configuration list for PBXProject "TablePro" */;
@@ -1724,7 +1836,9 @@
 				5A86D000000000000 /* XLSXExport */,
 				5A86E000000000000 /* MQLExport */,
 				5A86F000000000000 /* SQLImport */,
+				5A86F001000000000 /* JSONImport */,
 				5ABCC5A62F43856700EAF3FC /* TableProTests */,
+				5AF00A142FB9000000000001 /* TableProUITests */,
 				5AEA8B292F6808270040461A /* EtcdDriverPlugin */,
 				5AE4F4732F6BC0640097AC5B /* CloudflareD1DriverPlugin */,
 				5ADDB00600000000000000B0 /* DynamoDBDriverPlugin */,
@@ -1863,6 +1977,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		5A86F001400000000 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		5A87A000400000000 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -1906,6 +2027,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		5AEA8B282F6808270040461A /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5AF00A162FB9000000000001 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -2048,6 +2176,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		5A86F001200000000 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		5A87A000200000000 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -2116,6 +2251,13 @@
 				5AEA8B452F6808CA0040461A /* EtcdPluginDriver.swift in Sources */,
 				5AEA8B462F6808CA0040461A /* EtcdQueryBuilder.swift in Sources */,
 				5AEA8B472F6808CA0040461A /* EtcdHttpClient.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5AF00A152FB9000000000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -2202,6 +2344,11 @@
 			target = 5A86F000000000000 /* SQLImport */;
 			targetProxy = 5A86F000B00000000 /* PBXContainerItemProxy */;
 		};
+		5A86F001C00000000 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 5A86F001000000000 /* JSONImport */;
+			targetProxy = 5A86F001B00000000 /* PBXContainerItemProxy */;
+		};
 		5ABBED7F2FB55E1400A78382 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = 5ABBED712FB55E1400A78382 /* CSVInspectorPlugin */;
@@ -2221,6 +2368,11 @@
 			isa = PBXTargetDependency;
 			target = 5ADDB00600000000000000B0 /* DynamoDBDriverPlugin */;
 			targetProxy = 5ADDB00000000000000000C0 /* PBXContainerItemProxy */;
+		};
+		5AF00A172FB9000000000001 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 5A1091C62EF17EDC0055EA7C /* TablePro */;
+			targetProxy = 5AF00A112FB9000000000001 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -2361,7 +2513,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 92;
+				CURRENT_PROJECT_VERSION = 94;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = D7HJ5TFYCU;
 				ENABLE_APP_SANDBOX = NO;
@@ -2393,7 +2545,7 @@
 				);
 				LIBRARY_SEARCH_PATHS = "$(PROJECT_DIR)/Libs/dylibs";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.46.0;
+				MARKETING_VERSION = 0.48.0;
 				OTHER_LDFLAGS = (
 					"-Wl,-w",
 					"-force_load",
@@ -2438,7 +2590,7 @@
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = YES;
-				CURRENT_PROJECT_VERSION = 92;
+				CURRENT_PROJECT_VERSION = 94;
 				DEAD_CODE_STRIPPING = YES;
 				DEPLOYMENT_POSTPROCESSING = YES;
 				DEVELOPMENT_TEAM = D7HJ5TFYCU;
@@ -2471,7 +2623,7 @@
 				);
 				LIBRARY_SEARCH_PATHS = "$(PROJECT_DIR)/Libs/dylibs";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.46.0;
+				MARKETING_VERSION = 0.48.0;
 				OTHER_LDFLAGS = (
 					"-Wl,-w",
 					"-force_load",
@@ -2590,6 +2742,7 @@
 		5A860000600000000 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				BUILD_LIBRARY_FOR_DISTRIBUTION = YES;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEFINES_MODULE = YES;
@@ -2616,6 +2769,7 @@
 		5A860000700000000 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				BUILD_LIBRARY_FOR_DISTRIBUTION = YES;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEFINES_MODULE = YES;
@@ -3529,6 +3683,52 @@
 			};
 			name = Release;
 		};
+		5A86F001600000000 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Plugins/JSONImportPlugin/Info.plist;
+				INFOPLIST_KEY_NSPrincipalClass = "$(PRODUCT_MODULE_NAME).JSONImportPlugin";
+				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.TablePro.JSONImportPlugin;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = macosx;
+				SWIFT_VERSION = 5.9;
+				WRAPPER_EXTENSION = tableplugin;
+			};
+			name = Debug;
+		};
+		5A86F001700000000 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Plugins/JSONImportPlugin/Info.plist;
+				INFOPLIST_KEY_NSPrincipalClass = "$(PRODUCT_MODULE_NAME).JSONImportPlugin";
+				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.TablePro.JSONImportPlugin;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = macosx;
+				SWIFT_VERSION = 5.9;
+				WRAPPER_EXTENSION = tableplugin;
+			};
+			name = Release;
+		};
 		5A87A000600000000 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -3906,6 +4106,48 @@
 			};
 			name = Release;
 		};
+		5AF00A182FB9000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.TablePro.TableProUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.9;
+				TEST_TARGET_NAME = TablePro;
+			};
+			name = Debug;
+		};
+		5AF00A1A2FB9000000000001 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.TablePro.TableProUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.9;
+				TEST_TARGET_NAME = TablePro;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -4089,6 +4331,15 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
+		5A86F001800000000 /* Build configuration list for PBXNativeTarget "JSONImport" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5A86F001600000000 /* Debug */,
+				5A86F001700000000 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		5A87A000800000000 /* Build configuration list for PBXNativeTarget "CassandraDriver" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
@@ -4148,6 +4399,15 @@
 			buildConfigurations = (
 				5AEA8B2B2F6808270040461A /* Debug */,
 				5AEA8B2C2F6808270040461A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		5AF00A192FB9000000000001 /* Build configuration list for PBXNativeTarget "TableProUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5AF00A182FB9000000000001 /* Debug */,
+				5AF00A1A2FB9000000000001 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

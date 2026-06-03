@@ -20,9 +20,9 @@ internal final class ConnectionSidebarState {
 
     let connectionId: UUID
 
-    var selectedFavoriteNodeId: String? {
+    var selectedFavorite: FavoriteSelection? {
         didSet {
-            guard oldValue != selectedFavoriteNodeId else { return }
+            guard oldValue != selectedFavorite else { return }
             persistFavoriteSelection()
         }
     }
@@ -33,14 +33,14 @@ internal final class ConnectionSidebarState {
 
     private init(connectionId: UUID) {
         self.connectionId = connectionId
-        self.selectedFavoriteNodeId = UserDefaults.standard.string(
+        self.selectedFavorite = UserDefaults.standard.string(
             forKey: "sidebar.selectedFavoriteNodeId.\(connectionId.uuidString)"
-        )
+        ).flatMap(FavoriteSelection.init(rawValue:))
     }
 
     private func persistFavoriteSelection() {
-        if let selectedFavoriteNodeId {
-            UserDefaults.standard.set(selectedFavoriteNodeId, forKey: favoriteSelectionKey)
+        if let rawValue = selectedFavorite?.rawValue {
+            UserDefaults.standard.set(rawValue, forKey: favoriteSelectionKey)
         } else {
             UserDefaults.standard.removeObject(forKey: favoriteSelectionKey)
         }

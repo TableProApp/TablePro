@@ -400,17 +400,7 @@ enum DatabaseDriverFactory {
         passwordOverride: String? = nil,
         awaitPlugins: Bool
     ) async throws -> DatabaseDriver {
-        let pluginId = connection.type.pluginTypeId
-        if PluginManager.shared.driverPlugin(for: connection.type) == nil,
-           !PluginManager.shared.hasFinishedInitialLoad {
-            logger.info("Plugin '\(pluginId)' not loaded yet, waiting for background load")
-            await PluginManager.shared.waitForInitialLoad()
-        }
-        if PluginManager.shared.driverPlugin(for: connection.type) == nil,
-           PluginManager.shared.hasOutdatedRejectedPlugin(forTypeId: pluginId) {
-            logger.info("Plugin '\(pluginId)' is installed but outdated, waiting for reconciliation to update it")
-            await PluginManager.shared.awaitReconciliation()
-        }
+        await PluginManager.shared.prepareForConnecting(to: connection.type)
         return try await createDriverFromPlugin(for: connection, passwordOverride: passwordOverride)
     }
 
@@ -432,6 +422,10 @@ enum DatabaseDriverFactory {
         }
         var ssl = connection.sslConfig
         var additionalFields = buildAdditionalFields(for: connection, plugin: plugin)
+        if let sslClientKeyPassphrase = ConnectionStorage.shared.loadSSLClientKeyPassphrase(for: connection.id),
+           !sslClientKeyPassphrase.isEmpty {
+            additionalFields["sslClientKeyPassphrase"] = sslClientKeyPassphrase
+        }
         if connection.usesAWSIAM {
             if ssl.mode == .disabled || ssl.mode == .preferred {
                 ssl.mode = .required
@@ -479,6 +473,9 @@ enum DatabaseDriverFactory {
             return try await resolveIAMPassword(for: connection, fields: fields)
         }
         if let override { return override }
+        if let passwordSource = connection.passwordSource {
+            return try await PasswordSourceResolver.resolve(passwordSource)
+        }
         if connection.usePgpass {
             let pgpassHost = connection.additionalFields["pgpassOriginalHost"] ?? connection.host
             let pgpassPort = connection.additionalFields["pgpassOriginalPort"]

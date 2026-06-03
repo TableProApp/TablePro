@@ -129,9 +129,15 @@ struct PaginationControlsView: View {
         }
         .buttonStyle(.borderless)
         .disabled(!enabled || pagination.isLoading)
-        .help(label)
+        .help(helpText(label, for: shortcut))
         .accessibilityLabel(label)
-        .optionalKeyboardShortcut(AppSettingsManager.shared.keyboard.keyboardShortcut(for: shortcut))
+    }
+
+    private func helpText(_ label: String, for shortcut: ShortcutAction) -> String {
+        guard let combo = AppSettingsManager.shared.keyboard.shortcut(for: shortcut), !combo.isCleared else {
+            return label
+        }
+        return "\(label) (\(combo.displayString))"
     }
 
     private var pageIndicator: some View {

@@ -1,5 +1,6 @@
 import Foundation
 
+@frozen
 public enum PluginCellValue: Sendable, Hashable {
     case null
     case text(String)

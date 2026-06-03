@@ -25,12 +25,28 @@ struct FilterRestoreTests {
         #expect(result.isVisible)
     }
 
+    @Test("Restore keeps disabled filters in the panel but out of the applied set")
+    func restoreKeepsDisabledFilterInactive() {
+        let active = TestFixtures.makeTableFilter(column: "email", value: "a@b.com")
+        let inactive = TestFixtures.makeTableFilter(column: "name", value: "bob", isEnabled: false)
+
+        let result = FilterCoordinator.resolvedRestoredState(
+            panelState: .restoreLast,
+            saved: [active, inactive],
+            current: TabFilterState()
+        )
+
+        #expect(result.filters == [active, inactive])
+        #expect(result.appliedFilters == [active])
+        #expect(result.isVisible)
+    }
+
     @Test("Restore Last with no saved filters keeps the bar hidden")
     func restoreLastWithNoFiltersKeepsBarHidden() {
         let result = FilterCoordinator.resolvedRestoredState(
             panelState: .restoreLast,
             saved: [],
-            current: TabFilterState()
+            current: TabFilterState(isVisible: true)
         )
 
         #expect(result.appliedFilters.isEmpty)
@@ -57,6 +73,19 @@ struct FilterRestoreTests {
             panelState: .alwaysHide,
             saved: saved,
             current: TabFilterState()
+        )
+
+        #expect(result.filters.isEmpty)
+        #expect(result.appliedFilters.isEmpty)
+        #expect(!result.isVisible)
+    }
+
+    @Test("Always Hide overrides a visible current bar")
+    func alwaysHideOverridesVisibleBar() {
+        let result = FilterCoordinator.resolvedRestoredState(
+            panelState: .alwaysHide,
+            saved: [],
+            current: TabFilterState(isVisible: true)
         )
 
         #expect(result.filters.isEmpty)

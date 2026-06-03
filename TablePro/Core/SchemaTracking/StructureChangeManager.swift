@@ -32,7 +32,6 @@ final class StructureChangeManager: ChangeManaging {
     var workingPrimaryKey: [String] = []
 
     var tableName: String?
-    var databaseType: DatabaseType = .mysql
 
     // MARK: - Undo/Redo Support
 
@@ -61,11 +60,9 @@ final class StructureChangeManager: ChangeManaging {
         columns: [ColumnInfo],
         indexes: [IndexInfo],
         foreignKeys: [ForeignKeyInfo],
-        primaryKey: [String],
-        databaseType: DatabaseType
+        primaryKey: [String]
     ) {
         self.tableName = tableName
-        self.databaseType = databaseType
 
         // Convert to definitions
         self.currentColumns = columns.map { EditableColumnDefinition.from($0) }

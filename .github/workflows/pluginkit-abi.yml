@@ -1,0 +1,33 @@
+name: PluginKit ABI Gate
+
+on:
+  pull_request:
+    paths:
+      - "Plugins/TableProPluginKit/**"
+      - "scripts/check-pluginkit-abi.sh"
+      - ".github/workflows/pluginkit-abi.yml"
+
+jobs:
+  abi-gate:
+    name: PluginKit ABI Gate
+    runs-on: macos-26
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: "26.4.1"
+
+      - name: Create Secrets.xcconfig
+        run: touch Secrets.xcconfig
+
+      - name: Check PluginKit ABI vs base
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: scripts/check-pluginkit-abi.sh "$BASE_SHA"

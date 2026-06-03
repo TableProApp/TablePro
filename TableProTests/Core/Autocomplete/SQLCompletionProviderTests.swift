@@ -1049,4 +1049,44 @@ struct SQLCompletionProviderTests {
         let hasStar = items.contains { $0.label == "*" }
         #expect(hasStar, "COUNT( should suggest *")
     }
+
+    // MARK: - Favorite keyword expansion
+
+    @Test("Favorite keyword expands at statement start")
+    func testFavoriteKeywordExpandsAtStatementStart() async {
+        provider.updateFavoriteKeywords(["report": (name: "Daily Report", query: "SELECT * FROM reports")])
+        let text = "rep"
+        let (items, _) = await provider.getCompletions(text: text, cursorPosition: text.count)
+        let favorite = items.first { $0.kind == .favorite }
+        #expect(favorite?.label == "report", "Typing the keyword prefix should surface the favorite")
+        #expect(favorite?.insertText == "SELECT * FROM reports", "Selecting it inserts the full query")
+        #expect(favorite?.detail == "Daily Report", "The favorite name is shown as detail")
+    }
+
+    @Test("Favorite keyword survives clause branches that rebuild candidates")
+    func testFavoriteKeywordSurvivesClauseRebuild() async {
+        provider.updateFavoriteKeywords(["usr": (name: "Users", query: "SELECT * FROM users")])
+        let text = "usr"
+        let (items, _) = await provider.getCompletions(text: text, cursorPosition: text.count)
+        let hasFavorite = items.contains { $0.kind == .favorite && $0.label == "usr" }
+        #expect(hasFavorite, "Favorite must not be discarded by the candidate switch")
+    }
+
+    @Test("Favorite keyword not offered after a dot prefix")
+    func testFavoriteKeywordNotOfferedAfterDot() async {
+        provider.updateFavoriteKeywords(["col": (name: "Columns", query: "SELECT 1")])
+        let text = "users.col"
+        let (items, _) = await provider.getCompletions(text: text, cursorPosition: text.count)
+        let hasFavorite = items.contains { $0.kind == .favorite }
+        #expect(!hasFavorite, "Column completion after a dot must not expand favorites")
+    }
+
+    @Test("Non-matching prefix does not surface favorites")
+    func testFavoriteKeywordRequiresPrefixMatch() async {
+        provider.updateFavoriteKeywords(["report": (name: "Daily Report", query: "SELECT 1")])
+        let text = "SEL"
+        let (items, _) = await provider.getCompletions(text: text, cursorPosition: text.count)
+        let hasFavorite = items.contains { $0.kind == .favorite }
+        #expect(!hasFavorite, "Favorites appear only when the typed token matches their keyword")
+    }
 }

@@ -585,9 +585,9 @@ final class InspectorViewController: NSViewController, NSUserInterfaceValidation
         DispatchQueue.main.async { [weak self] in
             guard let coordinator = self?.gridDelegate.coordinator,
                   let tableView = coordinator.tableView else { return }
-            coordinator.isSyncingSelection = true
+            coordinator.isApplyingProgrammaticRowSelection = true
             tableView.selectRowIndexes(IndexSet(integer: targetIndex), byExtendingSelection: false)
-            coordinator.isSyncingSelection = false
+            coordinator.isApplyingProgrammaticRowSelection = false
             tableView.scrollRowToVisible(targetIndex)
             tableView.window?.makeFirstResponder(tableView)
         }

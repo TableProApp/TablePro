@@ -213,7 +213,7 @@ internal final class ThemeRegistryInstaller {
 
         let downloadedData = try Data(contentsOf: tempDownloadURL)
         let digest = SHA256.hash(data: downloadedData)
-        let hexChecksum = digest.map { String(format: "%02x", $0) }.joined()
+        let hexChecksum = digest.hexEncoded
 
         if hexChecksum != resolved.sha256.lowercased() {
             throw PluginError.checksumMismatch

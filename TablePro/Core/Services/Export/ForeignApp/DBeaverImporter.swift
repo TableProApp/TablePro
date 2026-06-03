@@ -371,6 +371,7 @@ struct DBeaverImporter: ForeignAppImporter {
             password: password,
             sshPassword: sshPassword,
             keyPassphrase: nil,
+            sslClientKeyPassphrase: nil,
             totpSecret: nil,
             pluginSecureFields: nil
         )

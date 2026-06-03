@@ -207,7 +207,7 @@ public actor MCPBearerTokenAuthenticator: MCPAuthenticator {
     internal static func fingerprint(of token: String) -> String {
         guard let data = token.data(using: .utf8) else { return "" }
         let digest = SHA256.hash(data: data)
-        let hex = digest.map { String(format: "%02x", $0) }.joined()
+        let hex = digest.hexEncoded
         return String(hex.prefix(16))
     }
 }
