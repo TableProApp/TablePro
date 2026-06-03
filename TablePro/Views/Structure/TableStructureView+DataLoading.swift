@@ -98,8 +98,7 @@ extension TableStructureView {
             columns: columns,
             indexes: indexes,
             foreignKeys: foreignKeys,
-            primaryKey: primaryKey,
-            databaseType: connection.type
+            primaryKey: primaryKey
         )
     }
 
