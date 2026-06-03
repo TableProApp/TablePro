@@ -240,7 +240,10 @@ extension DatabaseManager {
 
             // Resolve password for prompt-for-password connections
             var passwordOverride = activeSessions[sessionId]?.cachedPassword
-            if session.connection.promptForPassword, !session.connection.usesAWSIAM, passwordOverride == nil {
+            if session.connection.promptForPassword,
+               !pluginManager.hidesPassword(for: session.connection),
+               passwordOverride == nil
+            {
                 let isApiOnly = pluginManager.connectionMode(for: session.connection.type) == .apiOnly
                 guard let prompted = await PasswordPromptHelper.prompt(
                     connectionName: session.connection.name,
