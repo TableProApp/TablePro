@@ -1,0 +1,69 @@
+---
+title: "Refactor audit"
+description: "Internal engineering audit and refactor checklist. Not part of the published navigation."
+---
+
+Internal tracking doc. Not linked in `docs.json` on purpose. Candid file:line findings for an ongoing, tiered refactor. Source: full-codebase audit on 2026-06-03.
+
+Headline: the codebase is well built and well maintained. Zero real `print()` in production code, near-zero force unwraps, one coherent modern concurrency model (async/await + actors), disciplined error types, a native color/material system. This is not a rewrite. It is a sequence of surgical, root-cause refactors. Work top-down by tier; keep each commit reviewable and atomic.
+
+## Tier 0: confirmed bugs (done)
+
+- [x] JSON import plugin failed to load: `JSONImportPlugin/Info.plist` declared `TableProPluginKitVersion` 17 while the app is at 18, so the gate at `PluginManager.swift:471` rejected it. Bumped to 18.
+- [x] Change managers defaulted to MySQL dialect. `DataChangeManager.databaseType` is now optional and `generateSQL` throws if unconfigured instead of silently emitting MySQL; `configureForTable` requires an explicit dialect. `StructureChangeManager.databaseType` was dead write-only state (DDL comes from `SchemaStatementGenerator(pluginDriver:)`) and was removed.
+- [x] `SQLExportPlugin.isNumericLiteral` accepted garbage (`+-e..`, `1.2.3`, empty) and emitted it unquoted into INSERT. Replaced with the kit's validated check, now exposed as `PluginNumericLiteral.isValid` in TableProPluginKit (additive, ABI-safe).
+- [x] `CloudflareTunnelManager.persistPidRecords` swallowed the encode failure with `try?`, so leaked `cloudflared` PIDs were never cleaned up. Now logs via OSLog.
+
+## Tier 1: high-value architecture
+
+- [ ] `MainContentCoordinator` god object: 1,392-line core + 34 extension files (~4,278 lines) in one `@Observable` type, ~30 responsibilities. Push state and logic into the existing sub-coordinators (`filterCoordinator`, `paginationCoordinator`, `rowEditingCoordinator`, `queryExecutionCoordinator`) and have the main type delegate.
+- [ ] DI is theatre: 75 `static let shared` in `Core/`; `AppServices.live` wires 26 of them. Route through the `AppServices` composition root, drop `.shared` from types that flow through it.
+- [ ] Triplicated reconnect logic in `DatabaseManager+Health.swift:111-308` (x2) and `+Sessions.swift:108-155`. Extract one `establishDriver(for:)` (connect + timeout + startup commands + restore schema/db).
+- [ ] `ConnectionStorage` god object (988L): CRUD + file persistence + UserDefaults migration + Keychain for 8 secret kinds + the `StoredConnection` model. Split into `ConnectionStore` / `ConnectionSecretsStore` / model file.
+- [ ] `Core/Services/Infrastructure/` (38 files) mixes AppKit view controllers (`MainSplitViewController`, `TabWindowController`, toolbars) into Core. Move view controllers to `Views/`; split the rest into Launch / Windowing / Tabs.
+Cross-plugin duplication (investigated 2026-06-03; the original audit overstated this, 3 of 5 were false positives):
+
+- [x] `isNumericColumnType` (SQLExport/JSONExport): byte-identical. Extracted to `PluginExportUtilities.isNumericColumnType`.
+- [x] SQL filter/where/order-by builder (Oracle + MSSQL): real. Extracted to `PluginSQLFilter` (parameterized by quote/escape/regex closures), which also makes the injection-defense escaping a single canonical copy. ClickHouse's `buildWhereClause` is unrelated (it is DML, not browse filtering).
+- [x] JSON scalar decoder (`D1Value`/`HranaValue`/`BQCellValue`): FALSE POSITIVE. Three different wire formats (bare scalar vs keyed `{type,value,base64}` vs recursive `record`/`array`). A shared type would be a leaky union. Skipped.
+- [x] Schemaless flattener (Mongo/DynamoDB): FALSE POSITIVE. Different priority-key source, ordering, value types, return types. Skipped.
+- [x] DML INSERT/UPDATE/DELETE generator (Oracle/MSSQL/ClickHouse): FALSE POSITIVE. Differ in quoting, default/identity handling, WHERE strategy, row-limit, statement form (standard vs ClickHouse ALTER TABLE), and dispatch. Correctness-critical, no headless test net. Skipped.
+
+- [x] Oversized plugin files split (2026-06-03), all build green:
+  - Redis 1695 -> 632 + `+Operations` (510) / `+Scan` (85) / `+ResultBuilding` (486)
+  - DuckDB 1491 -> 879 + `DuckDBConnection` (600) / `DuckDBPluginError` (25)
+  - Cassandra 1449 -> 588 + `CassandraConnection` (851) / `CassandraPluginError` (25)
+  - ClickHouse 1426 -> 799 + `+Schema` (340) / `+Http` (309)
+  - MSSQL 1403 -> 710 + `+Schema` (533) / `+DDL` (184)
+  - Mongo 1351 -> 903 + `+SyncHelpers` (458)
+  - Oracle (1152) and the rest already under the limit after de-dup.
+  - The 6 split plugins use Xcode synchronized file-system groups, so new files auto-included with NO pbxproj edits. Splitting across files required broadening the `private` members the moved code touches to `internal` (the established `MainContentCoordinator+*` pattern).
+- [ ] DynamoDB (1238, 38 over) left intact. It is the one plugin still on a legacy explicit `PBXGroup` (not a synchronized group), so a new file needs manual pbxproj target-membership wiring, which the build system did not honor (xcodebuild never compiled the added file). Not worth the risk for 38 lines on a limit that is not CI-enforced for plugins. To do it properly: convert `Plugins/DynamoDBDriverPlugin` to a `PBXFileSystemSynchronizedRootGroup` (matching the other plugins), then split like the rest.
+
+## Tier 2: macOS HIG / native
+
+- [ ] No design-token layer. 5 competing corner radii (`6`x34, `4`x17, `8`x8), ad-hoc paddings, hardcoded control sizes. Add `Theme/Metrics.swift` (the existing `ThemeLayout.swift` only holds fonts; misnamed). Route literals through it.
+- [ ] `runModal()` blocking panels instead of sheets: `IntegrationsActivityLogPane.swift:236,242`, `ERDiagramView.swift:270`. Use `beginSheetModal(for:)`.
+- [ ] Thin accessibility: 61/343 view files set accessibility labels. Backfill `.accessibilityLabel` on icon-only controls.
+- [ ] Business logic in views: `ExportDialog.swift:674` builds and runs raw `information_schema`/Oracle SQL inside a SwiftUI View. Move to an export service.
+- [ ] Raw RGB colors in `ChatComposerView.swift:204`, hardcoded editor font in `HighlightedSQLTextView.swift:14`. Route through the theme.
+
+## Tier 3: consistency / hygiene
+
+- [ ] 19 plugin `String(localized: "...\(x)")` dynamic-key bugs (DynamoDB, Etcd, Mongo, CloudflareD1, Redis). Plugins ship no `.xcstrings`, so every plugin `String(localized:)` is a no-op. Pick a policy: add catalogs or drop the calls.
+- [ ] Dead `DialectQuoteHelper.swift` (zero refs). Delete; consolidate identifier quoting into PluginKit's `SQLDialectDescriptor`.
+- [ ] `Data.hexEncoded` reinvented 11x; `DatabaseType.brandColor` duplicates the registry and silently `.accentColor`s unknown plugins; dead `allCases` compatibility shim; `SidebarViewModel` static registry holds strong refs (leak), use `NSMapTable` weak values like `ConnectionDataCache`.
+- [ ] Driver error types (`MariaDBPluginError`, `LibPQPluginError`, `OracleError`, ...) don't conform to `PluginDriverError`, bypassing the kit's error formatting inconsistently.
+- [ ] `PluginStreamElement` is `@frozen` but will grow (`.progress`/`.warning`); that makes a future additive case a breaking ABI bump. Drop `@frozen`, add `@unknown default` at the 5 consumers.
+- [ ] Suffix vocabulary overload (Manager 22 / Service 15 / Coordinator 12 / Provider 22). 14 top-level free functions (mostly `ConnectionGroupTree.swift`) violate explicit access control.
+- [ ] Five `@Observable @MainActor` state classes live under `Models/` (view state). Move to `ViewModels/`.
+
+## Tier 4: test coverage gaps
+
+- [ ] Sync has zero tests: `ConflictResolver`, `SyncCoordinator`, `SyncChangeTracker`. Holds last-write-wins/merge logic and the documented "markDeleted after saveConnections" delete-ordering invariant. Highest-value gap.
+- [ ] Untested storage: `AppSettingsStorage`, `SSHProfileStorage`, `TabStateStorage` (the 500KB truncation guard).
+
+## Policy decisions (owner's call)
+
+- [ ] The "no comments" rule. About 1,700 inline + 2,200 `///` doc comments exist; SwiftLint ignores comments, so the rule is unenforced. Mass deletion is high-churn and low-value. Recommendation: relax CLAUDE.md to "no what-comments; `///` API docs and load-bearing why-notes allowed" rather than stripping thousands of lines.
+- [ ] Suffix vocabulary convention (Manager vs Service vs Coordinator). One line in CLAUDE.md before any rename pass.
