@@ -65,9 +65,9 @@ Cross-plugin duplication (investigated 2026-06-03; the original audit overstated
 
 - [~] "Sync has zero tests" was FALSE: `CloudKitSyncEngineTests` + `SyncRecordMapperFavoriteTableTests` exist, and `ConnectionStorageSyncDeleteTests` already covers the delete-ordering invariant ("records a tombstone after it is persisted" / "persist before notify"). The real gap was direct unit tests for the dirty/tombstone machinery.
 - [x] Added `SyncChangeTrackerTests` (dirty/tombstone/suppression/clear + per-type scoping), isolated via an injected `SyncMetadataStorage(userDefaults:)`. (2026-06-03) Compiles (verified via `build-for-testing`); runs in CI (the test target can't run locally here, SwiftLint SPM plugin).
-- [ ] `ConflictResolver`: still untested. Harder, it is a private-init `@MainActor` singleton over `CKRecord`; needs a serialized suite driving `.shared`.
+- [x] Added `ConflictResolverTests` (queue/FIFO, keep-server returns nil, keep-local copies local fields onto the server record), via a `.serialized` suite that drains `.shared` in `init`. (2026-06-03) Compiles via `build-for-testing`; runs in CI.
 - [ ] `SyncCoordinator`: untested. Large `@MainActor` coordinator with many dependencies; not cleanly unit-testable in isolation.
-- [ ] Untested storage: `AppSettingsStorage`, `SSHProfileStorage`, `TabStateStorage` (the 500KB truncation guard).
+- [~] "Untested storage" was mostly false: the 500KB truncation guard is already covered by `TabPersistenceCoordinatorTests` ("Large query over 500KB is truncated", 600KB query). `SSHProfileStorage` is Keychain-backed (Keychain tests are flaky/quarantined here, skip). `AppSettingsStorage` is a thin Codable-through-`UserDefaults` wrapper (low bug-risk boilerplate); injectable via `init(userDefaults:)` if a round-trip test is wanted.
 
 ## Policy decisions (owner's call)
 
