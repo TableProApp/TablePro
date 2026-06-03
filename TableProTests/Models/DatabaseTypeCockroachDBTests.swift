@@ -68,6 +68,6 @@ struct DatabaseTypeCockroachDBTests {
 
     @Test("allCases shim contains cockroachdb")
     func allCasesContainsCockroachDB() {
-        #expect(DatabaseType.allCases.contains(.cockroachdb))
+        #expect(DatabaseType.allKnownTypes.contains(.cockroachdb))
     }
 }
