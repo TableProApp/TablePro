@@ -82,7 +82,7 @@ struct MainContentCoordinatorTabSwitchTests {
         }
         var state = TabFilterState()
         state.filters = [TestFixtures.makeTableFilter(column: "id", op: .equal, value: "42")]
-        state.appliedFilters = state.filters
+        state.commit = .all
         state.isVisible = true
         tabManager.tabs[oldIndex].filterState = state
 
@@ -169,7 +169,7 @@ struct MainContentCoordinatorTabSwitchTests {
         }
         var savedFilter = TabFilterState()
         savedFilter.filters = [TestFixtures.makeTableFilter(column: "name", op: .equal, value: "Bob")]
-        savedFilter.appliedFilters = savedFilter.filters
+        savedFilter.commit = .all
         savedFilter.isVisible = true
         tabManager.tabs[newIndex].filterState = savedFilter
 
@@ -444,7 +444,7 @@ struct MainContentCoordinatorTabSwitchTests {
         tabManager.tabs[index].filterState.filterLogicMode = .or
         tabManager.tabs[index].filterState.isVisible = true
 
-        coordinator.applySelectedFilters()
+        coordinator.applyAllFilters()
         #expect(coordinator.selectedTabFilterState.appliedFilters.count == 2)
         #expect(coordinator.selectedTabFilterState.filterLogicMode == .or)
 
@@ -452,6 +452,87 @@ struct MainContentCoordinatorTabSwitchTests {
         #expect(coordinator.selectedTabFilterState.filters.isEmpty)
         #expect(coordinator.selectedTabFilterState.appliedFilters.isEmpty)
         #expect(coordinator.selectedTabFilterState.isVisible == true)
+    }
+
+    @Test("Apply All runs only enabled filters but keeps disabled ones in the panel")
+    func applyAllExcludesDisabledFilters() {
+        let (coordinator, tabManager) = makeCoordinator()
+        let tabId = addTableTab(to: tabManager, tableName: "users")
+        seedRows(coordinator, for: tabId)
+
+        let active = TestFixtures.makeTableFilter(column: "id", op: .equal, value: "1")
+        let inactive = TestFixtures.makeTableFilter(column: "name", op: .contains, value: "a", isEnabled: false)
+        guard let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else {
+            Issue.record("Expected tab to exist")
+            return
+        }
+        tabManager.tabs[index].filterState.filters = [active, inactive]
+
+        coordinator.applyAllFilters()
+
+        #expect(coordinator.selectedTabFilterState.filters.count == 2)
+        #expect(coordinator.selectedTabFilterState.appliedFilters == [active])
+    }
+
+    @Test("Removing the soloed filter clears the applied set")
+    func removingSoloedFilterClearsCommit() {
+        let (coordinator, tabManager) = makeCoordinator()
+        let tabId = addTableTab(to: tabManager, tableName: "users")
+        seedRows(coordinator, for: tabId)
+
+        let first = TestFixtures.makeTableFilter(column: "id", op: .equal, value: "1")
+        let second = TestFixtures.makeTableFilter(column: "name", op: .contains, value: "a")
+        guard let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else {
+            Issue.record("Expected tab to exist")
+            return
+        }
+        tabManager.tabs[index].filterState.filters = [first, second]
+
+        coordinator.applySoloFilter(second)
+        #expect(coordinator.selectedTabFilterState.appliedFilters.map(\.id) == [second.id])
+
+        coordinator.removeFilter(second)
+        #expect(coordinator.selectedTabFilterState.appliedFilters.isEmpty)
+    }
+
+    @Test("Soloing an invalid filter does nothing")
+    func soloingInvalidFilterIsNoOp() {
+        let (coordinator, tabManager) = makeCoordinator()
+        let tabId = addTableTab(to: tabManager, tableName: "users")
+        seedRows(coordinator, for: tabId)
+
+        let invalid = TestFixtures.makeTableFilter(column: "", value: "")
+        guard let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else {
+            Issue.record("Expected tab to exist")
+            return
+        }
+        tabManager.tabs[index].filterState.filters = [invalid]
+
+        coordinator.applySoloFilter(invalid)
+        #expect(coordinator.selectedTabFilterState.appliedFilters.isEmpty)
+    }
+
+    @Test("Apply on a single row queries by only that row without changing checkbox state")
+    func applySoloFilterRunsOnlyThatRowAndKeepsState() {
+        let (coordinator, tabManager) = makeCoordinator()
+        let tabId = addTableTab(to: tabManager, tableName: "users")
+        seedRows(coordinator, for: tabId)
+
+        let first = TestFixtures.makeTableFilter(column: "id", op: .equal, value: "1")
+        let second = TestFixtures.makeTableFilter(column: "name", op: .contains, value: "a", isEnabled: false)
+        let third = TestFixtures.makeTableFilter(column: "email", op: .contains, value: "b")
+        guard let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else {
+            Issue.record("Expected tab to exist")
+            return
+        }
+        tabManager.tabs[index].filterState.filters = [first, second, third]
+
+        coordinator.applySoloFilter(second)
+
+        let state = coordinator.selectedTabFilterState
+        #expect(state.filters.map(\.isEnabled) == [true, false, true])
+        #expect(state.appliedFilters.map(\.id) == [second.id])
+        #expect(state.appliedFilters.first?.isEnabled == true)
     }
 
     @Test("Applying filters persists them immediately so a reopened table restores them")
@@ -486,6 +567,41 @@ struct MainContentCoordinatorTabSwitchTests {
         )
         #expect(persisted.count == 1)
         #expect(persisted.first?.columnName == "id")
+    }
+
+    @Test("Disabled filters persist so they are available again after reopening a table")
+    func disabledFiltersPersistForReopen() {
+        let (coordinator, tabManager) = makeCoordinator()
+        let tabId = addTableTab(to: tabManager, tableName: "users")
+        seedRows(coordinator, for: tabId)
+        defer {
+            FilterSettingsStorage.shared.clearLastFilters(
+                for: "users",
+                connectionId: coordinator.connectionId,
+                databaseName: "",
+                schemaName: nil
+            )
+        }
+
+        guard let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else {
+            Issue.record("Expected tab to exist")
+            return
+        }
+        tabManager.tabs[index].filterState.filters = [
+            TestFixtures.makeTableFilter(column: "id", op: .equal, value: "1"),
+            TestFixtures.makeTableFilter(column: "name", op: .contains, value: "a", isEnabled: false)
+        ]
+
+        coordinator.applyAllFilters()
+
+        let persisted = FilterSettingsStorage.shared.loadLastFilters(
+            for: "users",
+            connectionId: coordinator.connectionId,
+            databaseName: "",
+            schemaName: nil
+        )
+        #expect(persisted.count == 2)
+        #expect(persisted.contains { $0.columnName == "name" && !$0.isEnabled })
     }
 
     @Test("DataChangeManager restoreState rehydrates table context and changes")

@@ -11,6 +11,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - JSON file import works again. It failed to load in 0.48.0.
 - SQL export quotes empty or malformed values in numeric columns instead of writing them unquoted, which could produce invalid INSERT statements.
+### Added
+
+- Each filter row has a checkbox to turn it on or off and an Apply button to filter by just that row. The main Apply runs every active filter, and disabled filters stay in the panel for later. (#1561)
+- Importing connections from other apps now detects duplicates by host, port, database, and username, and lets you replace, add a copy, or skip each one before import.
+
+### Changed
+
+- Custom keyboard shortcuts now work on non-US keyboard layouts, and shifted symbols like Cmd+[ record correctly.
+- The Keyboard settings list is grouped by where shortcuts act (Editor, Data Grid, Navigation, Connections), and each changed shortcut has its own reset button.
+- Conflict detection now checks live macOS system shortcuts and the editor's built-in commands, and lets the same key serve the editor and the data grid because focus decides which one runs.
+- Show Tables and Show Favorites sidebars moved off Control+1 and Control+2, which switch macOS Spaces, to Cmd+Option+1 and Cmd+Option+2.
+- Cmd+N now opens a new connection; Manage Connections keeps its File menu item.
+- First Page and Last Page now default to Cmd+Option+Up and Cmd+Option+Down.
+- Shortcuts can be bound to function keys (F1 through F12), with or without a modifier.
+
+### Fixed
+
+- SQL Server: connections work when the login can only reach its own database, such as an Azure SQL contained user. The database is now sent during login. Previously it was switched afterward, which the server rejected with a "Login failed" error.
+- Custom Copy and Cut shortcuts now take effect in the SQL editor.
+- The Delete shortcut in the data grid now follows a custom binding.
+- Find Next (Cmd+G) and Find Previous (Cmd+Shift+G) now work in the editor.
+- Pagination buttons no longer fire their page shortcut twice.
 
 ## [0.48.0] - 2026-06-02
 
@@ -36,6 +58,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Import now finds the Setapp edition of TablePlus and reads its connections. (#1528)
 - Favorite keyword suggestions now appear in editor autocomplete. They were dropped before reaching the popup.
 - Editor autocomplete refreshes when you switch schema, suggesting the new schema's tables and columns.
+- Plugins settings: the unloaded-plugins banner now scrolls instead of pushing the plugin list off screen, shows each plugin's real icon, and only offers an Update button when a compatible build exists. Plugins waiting on a build that publishes automatically no longer show a button that fails.
+- Opening a connection right after an app update no longer fails when its driver plugin needs updating. The driver updates in the background and the connection proceeds, instead of showing an error until you quit and reopen. (#1552)
 
 ## [0.47.0] - 2026-06-01
 

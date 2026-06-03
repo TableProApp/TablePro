@@ -93,14 +93,13 @@ struct InstalledPluginsView: View {
     // MARK: - Rejected Plugins Banner
 
     private var rejectedPluginsBanner: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        let actions = rejectedActionsByURL
+        let recoverable = !actions.values.contains { if case .notInRegistry = $0 { return true } else { return false } }
+        return VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 8) {
-                Image(systemName: "exclamationmark.circle.fill")
-                    .foregroundStyle(.red)
-                Text(pluginManager.rejectedPlugins.count == 1
-                    ? String(localized: "1 plugin could not be loaded.")
-                    : String(format: String(localized: "%d plugins could not be loaded."),
-                             pluginManager.rejectedPlugins.count))
+                Image(systemName: recoverable ? "arrow.triangle.2.circlepath" : "exclamationmark.circle.fill")
+                    .foregroundStyle(recoverable ? .orange : .red)
+                Text(rejectedBannerTitle(recoverable: recoverable))
                     .font(.callout.weight(.medium))
                 Spacer()
                 Button(String(localized: "Dismiss")) { dismissedRejectedBanner = true }
@@ -110,17 +109,49 @@ struct InstalledPluginsView: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
 
-            ForEach(pluginManager.rejectedPlugins, id: \.url) { plugin in
-                rejectedPluginRow(plugin)
-                Divider().padding(.leading, 12)
+            Divider()
+
+            ScrollView {
+                LazyVStack(spacing: 0) {
+                    ForEach(pluginManager.rejectedPlugins, id: \.url) { plugin in
+                        rejectedPluginRow(plugin, action: actions[plugin.url] ?? .awaitingCompatibleBuild)
+                        Divider().padding(.leading, 12)
+                    }
+                }
             }
+            .frame(maxHeight: Self.rejectedBannerMaxHeight)
+
+            Divider()
         }
     }
 
+    private static let rejectedBannerMaxHeight: CGFloat = 168
+
+    private var rejectedActionsByURL: [URL: RejectedPluginAction] {
+        var result: [URL: RejectedPluginAction] = [:]
+        for plugin in pluginManager.rejectedPlugins {
+            result[plugin.url] = pluginManager.rejectedAction(for: plugin)
+        }
+        return result
+    }
+
+    private func rejectedBannerTitle(recoverable: Bool) -> String {
+        let count = pluginManager.rejectedPlugins.count
+        if recoverable {
+            return count == 1
+                ? String(localized: "1 plugin needs an update to load.")
+                : String(format: String(localized: "%d plugins need an update to load."), count)
+        }
+        return count == 1
+            ? String(localized: "1 plugin could not be loaded.")
+            : String(format: String(localized: "%d plugins could not be loaded."), count)
+    }
+
     @ViewBuilder
-    private func rejectedPluginRow(_ plugin: RejectedPlugin) -> some View {
+    private func rejectedPluginRow(_ plugin: RejectedPlugin, action: RejectedPluginAction) -> some View {
         HStack(spacing: 8) {
-            Image(systemName: "puzzlepiece")
+            PluginIconView(name: rejectedIconName(for: plugin))
+                .font(.title3)
                 .frame(width: 24, height: 24)
                 .foregroundStyle(.tertiary)
             VStack(alignment: .leading, spacing: 2) {
@@ -133,14 +164,7 @@ struct InstalledPluginsView: View {
                     .lineLimit(2)
             }
             Spacer()
-            if let registryPlugin = registryEntry(for: plugin) {
-                Button(String(localized: "Update Now")) {
-                    updatePlugin(registryPlugin)
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.small)
-                .accessibilityLabel(String(format: String(localized: "Update %@"), plugin.name))
-            }
+            rejectedActionControl(for: plugin, action: action)
             Button(String(localized: "Remove")) {
                 removeRejectedPlugin(plugin)
             }
@@ -150,6 +174,32 @@ struct InstalledPluginsView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
+    }
+
+    @ViewBuilder
+    private func rejectedActionControl(for plugin: RejectedPlugin, action: RejectedPluginAction) -> some View {
+        switch action {
+        case .updateAvailable(let registryPlugin):
+            Button(String(localized: "Update Now")) {
+                updatePlugin(registryPlugin)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
+            .accessibilityLabel(String(format: String(localized: "Update %@"), plugin.name))
+        case .requiresAppUpdate:
+            Button(String(localized: "Update TablePro")) {
+                UpdaterBridge.shared.checkForUpdates()
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .help(String(localized: "A newer TablePro is required to load this plugin."))
+        case .awaitingCompatibleBuild, .notInRegistry:
+            EmptyView()
+        }
+    }
+
+    private func rejectedIconName(for plugin: RejectedPlugin) -> String {
+        registryEntry(for: plugin)?.iconName ?? "puzzlepiece"
     }
 
     private func registryEntry(for plugin: RejectedPlugin) -> RegistryPlugin? {

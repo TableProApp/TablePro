@@ -13,13 +13,13 @@ import SwiftUI
 /// AppKit NSView that captures keyboard shortcuts via press-to-record interaction
 final class ShortcutRecorderNSView: NSView {
     /// Callback when a valid shortcut is recorded
-    var onRecord: ((KeyCombo) -> Void)?
+    var onRecord: ((BoundKey) -> Void)?
 
     /// Callback when the shortcut is cleared (Delete key while recording)
     var onClear: (() -> Void)?
 
     /// The currently displayed key combo
-    var currentCombo: KeyCombo? {
+    var currentCombo: BoundKey? {
         didSet { needsDisplay = true }
     }
 
@@ -79,27 +79,20 @@ final class ShortcutRecorderNSView: NSView {
     override func keyDown(with event: NSEvent) {
         guard isRecording else { return }
 
-        // Escape cancels recording
-        if event.keyCode == 53
-            && !event.modifierFlags.contains(.command)
-            && !event.modifierFlags.contains(.control)
-        {
+        let isBareKey = !event.modifierFlags.contains(.command) && !event.modifierFlags.contains(.control)
+
+        if event.keyCode == KeyCode.escape.rawValue, isBareKey {
             window?.makeFirstResponder(nil)
             return
         }
 
-        // Delete/Backspace clears the shortcut
-        if event.keyCode == 51
-            && !event.modifierFlags.contains(.command)
-            && !event.modifierFlags.contains(.control)
-        {
+        if event.keyCode == KeyCode.delete.rawValue, isBareKey {
             onClear?()
             window?.makeFirstResponder(nil)
             return
         }
 
-        // Try to create a KeyCombo from the event
-        if let combo = KeyCombo(from: event) {
+        if let combo = BoundKey(from: event) {
             onRecord?(combo)
             window?.makeFirstResponder(nil)
         } else {
@@ -224,10 +217,10 @@ final class ShortcutRecorderNSView: NSView {
 
 /// SwiftUI wrapper for the AppKit shortcut recorder
 struct ShortcutRecorderView: NSViewRepresentable {
-    @Binding var combo: KeyCombo?
+    @Binding var combo: BoundKey?
 
     /// Called when a new combo is recorded (before setting binding)
-    var onRecord: ((KeyCombo) -> Void)?
+    var onRecord: ((BoundKey) -> Void)?
 
     /// Called when the shortcut is cleared
     var onClear: (() -> Void)?

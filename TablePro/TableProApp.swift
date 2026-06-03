@@ -235,6 +235,11 @@ struct AppMenuCommands: Commands {
 
         // File menu
         CommandGroup(replacing: .newItem) {
+            Button(String(localized: "New Connection...")) {
+                WindowOpener.shared.openConnectionForm()
+            }
+            .optionalKeyboardShortcut(shortcut(for: .newConnection))
+
             Button("Manage Connections") {
                 WindowOpener.shared.openWelcome()
             }
@@ -530,6 +535,18 @@ struct AppMenuCommands: Commands {
             }
             .optionalKeyboardShortcut(commandFRoute == .tableFilter ? nil : KeyboardShortcut("f", modifiers: .command))
             .disabled(commandFRoute == .tableFilter)
+
+            Button(String(localized: "Find Next")) {
+                EditorEventRouter.shared.findNext()
+            }
+            .optionalKeyboardShortcut(shortcut(for: .findNext))
+            .disabled(!(actions?.isConnected ?? false))
+
+            Button(String(localized: "Find Previous")) {
+                EditorEventRouter.shared.findPrevious()
+            }
+            .optionalKeyboardShortcut(shortcut(for: .findPrevious))
+            .disabled(!(actions?.isConnected ?? false))
 
             Divider()
 

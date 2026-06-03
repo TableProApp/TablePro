@@ -316,10 +316,28 @@ jobs:
             build/Release/TablePro-*.dmg
             build/Release/TablePro-*.zip
 
+  registry-readiness:
+    name: Registry Readiness
+    runs-on: macos-26
+    if: startsWith(github.ref, 'refs/tags/v')
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Verify registry has compatible plugin binaries
+        run: |
+          MANAGER="TablePro/Core/Plugins/PluginManager.swift"
+          CURRENT=$(grep -E 'static let currentPluginKitVersion = ' "$MANAGER" | grep -oE '[0-9]+' | head -1)
+          FLOOR=$(grep -E 'static let minimumCompatiblePluginKitVersion = ' "$MANAGER" | grep -oE '[0-9]+' | head -1)
+          echo "PluginKit floor=$FLOOR current=$CURRENT"
+          python3 scripts/check-registry-readiness.py --floor "$FLOOR" --current "$CURRENT"
+
   release:
     name: Create GitHub Release
     runs-on: macos-26
-    needs: [lint, test, build-arm64, build-x86_64]
+    needs: [lint, test, build-arm64, build-x86_64, registry-readiness]
     if: startsWith(github.ref, 'refs/tags/v')
     timeout-minutes: 10
     permissions:
