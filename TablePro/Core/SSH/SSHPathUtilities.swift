@@ -85,7 +85,7 @@ struct SSHTokenContext: Sendable {
         if result.contains("%C") {
             let basis = "\(localHostnameFQDN())\(hostname ?? "")\(port.map(String.init) ?? "")\(remoteUser ?? "")"
             let digest = Insecure.SHA1.hash(data: Data(basis.utf8))
-            let hex = digest.map { String(format: "%02x", $0) }.joined()
+            let hex = digest.hexEncoded
             result = result.replacingOccurrences(of: "%C", with: hex)
         }
 

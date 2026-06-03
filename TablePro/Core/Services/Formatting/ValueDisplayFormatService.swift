@@ -116,7 +116,7 @@ final class ValueDisplayFormatService {
         // Try raw binary bytes (isoLatin1 encoding from MySQL)
         if let data = rawValue.data(using: .isoLatin1), data.count == 16 {
             let bytes = [UInt8](data)
-            let hex = bytes.map { String(format: "%02x", $0) }.joined()
+            let hex = bytes.hexEncoded
             return insertUuidHyphens(hex)
         }
 
