@@ -27,7 +27,7 @@ enum AWSSigV4 {
     }
 
     static func hmacHex(key: Data, data: Data) -> String {
-        hmac(key: key, data: data).map { String(format: "%02x", $0) }.joined()
+        hmac(key: key, data: data).hexEncoded
     }
 
     static func sha256Hex(_ data: Data) -> String {
@@ -35,7 +35,7 @@ enum AWSSigV4 {
         data.withUnsafeBytes { ptr in
             _ = CC_SHA256(ptr.baseAddress, CC_LONG(data.count), &hash)
         }
-        return hash.map { String(format: "%02x", $0) }.joined()
+        return hash.hexEncoded
     }
 
     static func deriveSigningKey(secretKey: String, dateStamp: String, region: String, service: String) -> Data {

@@ -2,6 +2,15 @@
   "originHash" : "475d5c8ee85aa1d1e11facad23a0ba0c8149e7ea855d30de709ab6e3dd78d3be",
   "pins" : [
     {
+      "identity" : "bigint",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/attaswift/BigInt.git",
+      "state" : {
+        "revision" : "e07e00fa1fd435143a2dcf8b7eec9a7710b2fdfe",
+        "version" : "5.7.0"
+      }
+    },
+    {
       "identity" : "codeeditsymbols",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/CodeEditApp/CodeEditSymbols.git",
@@ -15,7 +24,7 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/TableProApp/oracle-nio",
       "state" : {
-        "revision" : "254b72adfb6b527ac45895b42a38e60ba6c77a1f"
+        "revision" : "04a4e5967bf4d96cadf66081ea5a22133fe403ea"
       }
     },
     {

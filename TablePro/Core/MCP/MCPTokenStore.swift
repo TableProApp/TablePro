@@ -341,7 +341,7 @@ actor MCPTokenStore {
         let input = salt + plaintext
         guard let data = input.data(using: .utf8) else { return "" }
         let digest = SHA256.hash(data: data)
-        return digest.map { String(format: "%02x", $0) }.joined()
+        return digest.hexEncoded
     }
 
     private func base64UrlEncode(_ data: Data) -> String {

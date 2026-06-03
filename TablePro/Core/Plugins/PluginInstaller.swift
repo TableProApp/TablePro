@@ -197,7 +197,7 @@ actor PluginInstaller {
 
         let payload = try Data(contentsOf: tempDownloadURL)
         let digest = SHA256.hash(data: payload)
-        let hex = digest.map { String(format: "%02x", $0) }.joined()
+        let hex = digest.hexEncoded
         guard hex == binary.sha256.lowercased() else {
             throw PluginError.checksumMismatch
         }

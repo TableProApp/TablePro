@@ -41,18 +41,11 @@ final class AuthPaneViewModel {
     }
 
     var hidesPassword: Bool {
-        authFields.contains { field in
-            guard field.hidesPassword else { return false }
-            switch field.fieldType {
-            case .toggle:
-                return additionalFieldValues[field.id] == "true"
-            case .dropdown:
-                let value = additionalFieldValues[field.id] ?? field.defaultValue
-                return value != field.defaultValue
-            default:
-                return true
-            }
-        }
+        authFields.hidesPassword(forValues: additionalFieldValues)
+    }
+
+    var effectivePromptForPassword: Bool {
+        promptForPassword && !hidesPassword
     }
 
     var usePgpass: Bool {

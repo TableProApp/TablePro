@@ -64,9 +64,6 @@ extension DatabaseType {
     static var allKnownTypes: [DatabaseType] {
         PluginMetadataRegistry.shared.allRegisteredTypeIds().map { DatabaseType(rawValue: $0) }
     }
-
-    /// Compatibility shim for CaseIterable call sites.
-    static var allCases: [DatabaseType] { allKnownTypes }
 }
 
 extension DatabaseType {

@@ -249,7 +249,7 @@ final class ConnectionFormCoordinator {
             finalAdditionalFields.removeValue(forKey: "preConnectScript")
         }
 
-        finalAdditionalFields["promptForPassword"] = auth.promptForPassword ? "true" : nil
+        finalAdditionalFields["promptForPassword"] = auth.effectivePromptForPassword ? "true" : nil
 
         let secureFields = services.pluginManager.additionalConnectionFields(for: network.type)
             .filter(\.isSecure)
@@ -292,7 +292,7 @@ final class ConnectionFormCoordinator {
             additionalFields: finalAdditionalFields.isEmpty ? nil : finalAdditionalFields
         )
 
-        if auth.promptForPassword {
+        if auth.effectivePromptForPassword {
             storage.deletePassword(for: connectionToSave.id)
         } else if !auth.password.isEmpty {
             storage.savePassword(auth.password, for: connectionToSave.id)
@@ -472,7 +472,7 @@ final class ConnectionFormCoordinator {
         temporaryTestIds.insert(testConn.id)
 
         let password = auth.password
-        let promptForPassword = auth.promptForPassword
+        let promptForPassword = auth.effectivePromptForPassword
         let connectionType = network.type
         let displayName = network.name.isEmpty ? network.host : network.name
         let sshState = ssh.state

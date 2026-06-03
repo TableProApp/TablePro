@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Each filter row has a checkbox to turn it on or off and an Apply button to filter by just that row. The main Apply runs every active filter, and disabled filters stay in the panel for later. (#1561)
 - Importing connections from other apps now detects duplicates by host, port, database, and username, and lets you replace, add a copy, or skip each one before import.
+- Oracle connections negotiate Native Network Encryption when the server asks for it, so servers with `SQLNET.ENCRYPTION_SERVER` or `SQLNET.CRYPTO_CHECKSUM_SERVER` set to REQUIRED now connect (AES with a SHA crypto-checksum), matching what SQL Developer and DBeaver do. (#483)
+- Oracle connections follow listener redirects, so RAC SCAN listeners, shared server, and load-balanced setups now connect instead of failing during the handshake. (#483)
 
 ### Changed
 
@@ -24,12 +26,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Query result columns now follow the order in the SELECT. Adding or removing a column no longer leaves new columns stuck at the end of the grid. (#1565)
+- JSON file import works again. It failed to load in 0.48.0.
+- SQL export quotes empty or malformed values in numeric columns instead of writing them unquoted, which could produce invalid INSERT statements.
 - SQL Server: connections work when the login can only reach its own database, such as an Azure SQL contained user. The database is now sent during login. Previously it was switched afterward, which the server rejected with a "Login failed" error.
 - Custom Copy and Cut shortcuts now take effect in the SQL editor.
 - The Delete shortcut in the data grid now follows a custom binding.
 - Find Next (Cmd+G) and Find Previous (Cmd+Shift+G) now work in the editor.
 - Pagination buttons no longer fire their page shortcut twice.
 - Running a PostgreSQL script with a `DO $$ ... $$` block or a dollar-quoted function body no longer fails with an unterminated dollar-quoted string error. (#1559)
+- AWS IAM connections no longer ask for a password on connect or reconnect. IAM supplies the credentials, so the prompt was never needed. The same now holds for any auth mode that replaces the password, such as a Postgres password file.
+- Oracle connection failures show the listener's actual reason (such as an unknown service name) instead of a generic "server closed the connection" message. (#483)
 
 ## [0.48.0] - 2026-06-02
 

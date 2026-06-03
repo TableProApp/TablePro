@@ -12,7 +12,7 @@ These govern every decision — code, architecture, tooling, and process:
 4. **Clean code** — self-explanatory naming, early returns over nested conditionals, small focused functions. No comments in the codebase — code must be self-documenting through clear naming and structure.
 5. **Root cause fixes** — don't patch symptoms. Diagnose the underlying issue, add logging to debug if needed, then fix the actual cause.
 6. **No hacky solutions** — no backward-compatibility shims, no temporary workarounds left in place, no duct tape. If the right fix is harder, do the right fix.
-7. **Testability** — if a feature is testable, write tests. When tests fail, fix the source code — never adjust tests to match incorrect output.
+7. **Testability** — every testable code change needs unit/function tests, and UI/user-flow changes should add UI automation where they run deterministically. When tests fail, fix the source code — never adjust tests to match incorrect output.
 8. **Maintainability** — follow existing patterns but offer refactors when they improve quality. Extract into extensions when approaching size limits. Group by domain logic.
 9. **Scalability** — design for the plugin system's open-ended nature. `DatabaseType` is a struct, not an enum. All switches need `default:`.
 
@@ -52,6 +52,7 @@ swiftformat .                     # Format code
 xcodebuild -project TablePro.xcodeproj -scheme TablePro test -skipPackagePluginValidation
 xcodebuild -project TablePro.xcodeproj -scheme TablePro test -skipPackagePluginValidation -only-testing:TableProTests/TestClassName
 xcodebuild -project TablePro.xcodeproj -scheme TablePro test -skipPackagePluginValidation -only-testing:TableProTests/TestClassName/testMethodName
+xcodebuild -project TablePro.xcodeproj -scheme TablePro test -skipPackagePluginValidation -only-testing:TableProUITests
 
 # DMG
 scripts/create-dmg.sh
@@ -230,7 +231,7 @@ These are **non-negotiable** — never skip them:
     - Settings changes → `docs/customization/settings.mdx`
     - Database driver changes → `docs/databases/*.mdx`
 
-4. **Tests**: Write tests for testable features. When tests fail, fix the source code — never adjust tests to match incorrect output. Tests define expected behavior.
+4. **Tests**: Every change with testable behavior must include or update unit/function tests. UI and user-flow changes should add or update `TableProUITests` UI automation where the flow runs deterministically; if it can't, note why in the PR description. When tests fail, fix the source code — never adjust tests to match incorrect output. Tests define expected behavior.
 
 5. **Lint after changes**: Run `swiftlint lint --strict` to verify compliance.
 
