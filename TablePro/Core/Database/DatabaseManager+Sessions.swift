@@ -58,7 +58,7 @@ extension DatabaseManager {
         }
 
         var passwordOverride: String?
-        if connection.promptForPassword {
+        if connection.promptForPassword, !connection.usesAWSIAM {
             if let cached = activeSessions[connection.id]?.cachedPassword {
                 passwordOverride = cached
             } else {

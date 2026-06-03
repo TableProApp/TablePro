@@ -472,7 +472,7 @@ final class ConnectionFormCoordinator {
         temporaryTestIds.insert(testConn.id)
 
         let password = auth.password
-        let promptForPassword = auth.promptForPassword
+        let promptForPassword = auth.promptForPassword && !auth.hidesPassword
         let connectionType = network.type
         let displayName = network.name.isEmpty ? network.host : network.name
         let sshState = ssh.state
