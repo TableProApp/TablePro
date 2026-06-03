@@ -51,7 +51,7 @@ Cross-plugin duplication (investigated 2026-06-03; the original audit overstated
 ## Tier 3: consistency / hygiene
 
 - [x] `Data.hexEncoded` reinvented 11x: extracted `Sequence where Element == UInt8 { hexEncoded }`, routed all 11 call sites. (2026-06-03)
-- [x] Dead `DatabaseType.allCases` compatibility shim: removed (verified no callers). (2026-06-03)
+- [x] `DatabaseType.allCases` compatibility shim: removed, callers migrated to `allKnownTypes`. (2026-06-03) NOTE: my first "no callers" grep checked only `TablePro`/`Plugins`, missing 6 usages in `TableProTests` (DatabaseType*Tests). The app-only build passed but the TEST build failed; caught by `build-for-testing` and fixed (callers -> `allKnownTypes`, deleted the shim-equivalence test). Lesson: grep `TableProTests` too for any public-API removal.
 - [~] DialectQuoteHelper: VERIFIED FALSE POSITIVE. `quoteIdentifierFromDialect`/`resolveSQLDialect` are used by FilterSQLGenerator, SQLStatementGenerator, ExportDataTool, SQLRowToStatementConverter, QueryTab, MainContentCoordinator. NOT dead. Left as-is.
 - [ ] `DatabaseType.brandColor` (hardcoded 19-case switch, one caller). Attempted routing through `PluginManager.brandColor(for:)`, then REVERTED: that helper resolves via `pluginTypeId`, which maps variants to their driver (MariaDB->MySQL), and the variant registry snapshots carry no `brandColorHex`, so variants would lose their color (color/icon mismatch). PROPER FIX (deliberate, not hygiene): add `brandColorHex` to the variant registry snapshots, then delegate to `snapshot(forTypeId: rawValue)?.brandColorHex` like `iconName` already does.
 - [~] `SidebarViewModel` static registry: VERIFIED the audit's fix is WRONG. `MainContentCoordinator.sidebarViewModel` is `weak` and `SidebarView` only holds a local; the registry is the SOLE strong owner, so `NSMapTable` weak values would deallocate the VM immediately and break the sidebar. Lifecycle is managed by `removeConnection` on session teardown (`DatabaseManager+Sessions.swift:365`). Design is sound; left as-is.
@@ -63,7 +63,10 @@ Cross-plugin duplication (investigated 2026-06-03; the original audit overstated
 
 ## Tier 4: test coverage gaps
 
-- [ ] Sync has zero tests: `ConflictResolver`, `SyncCoordinator`, `SyncChangeTracker`. Holds last-write-wins/merge logic and the documented "markDeleted after saveConnections" delete-ordering invariant. Highest-value gap.
+- [~] "Sync has zero tests" was FALSE: `CloudKitSyncEngineTests` + `SyncRecordMapperFavoriteTableTests` exist, and `ConnectionStorageSyncDeleteTests` already covers the delete-ordering invariant ("records a tombstone after it is persisted" / "persist before notify"). The real gap was direct unit tests for the dirty/tombstone machinery.
+- [x] Added `SyncChangeTrackerTests` (dirty/tombstone/suppression/clear + per-type scoping), isolated via an injected `SyncMetadataStorage(userDefaults:)`. (2026-06-03) Compiles (verified via `build-for-testing`); runs in CI (the test target can't run locally here, SwiftLint SPM plugin).
+- [ ] `ConflictResolver`: still untested. Harder, it is a private-init `@MainActor` singleton over `CKRecord`; needs a serialized suite driving `.shared`.
+- [ ] `SyncCoordinator`: untested. Large `@MainActor` coordinator with many dependencies; not cleanly unit-testable in isolation.
 - [ ] Untested storage: `AppSettingsStorage`, `SSHProfileStorage`, `TabStateStorage` (the 500KB truncation guard).
 
 ## Policy decisions (owner's call)
