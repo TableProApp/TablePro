@@ -536,6 +536,12 @@ final class ConnectionFormCoordinator {
                     }
                 }
             } catch {
+                let usesSSO = self?.auth.additionalFieldValues["awsAuth"] == "sso"
+                    || self?.auth.additionalFieldValues["awsAuthMethod"] == "sso"
+                if usesSSO, AWSSSOLoginService.isSSOExpired(error) {
+                    await self?.offerAWSSSOSignIn(testId: testConn.id, window: window)
+                    return
+                }
                 await MainActor.run {
                     self?.cleanupTestSecrets(for: testConn.id)
                     self?.isTesting = false
@@ -556,6 +562,38 @@ final class ConnectionFormCoordinator {
                     }
                 }
             }
+        }
+    }
+
+    private func offerAWSSSOSignIn(testId: UUID, window: NSWindow?) async {
+        cleanupTestSecrets(for: testId)
+        isTesting = false
+        testTask = nil
+        let profileName = auth.additionalFieldValues["awsProfileName"]
+            .flatMap { $0.isEmpty ? nil : $0 } ?? "default"
+        let confirmed = await AlertHelper.confirmCritical(
+            title: String(localized: "AWS SSO Sign-In Required"),
+            message: String(
+                format: String(localized: "The SSO session for profile \"%@\" has expired. Sign in with your browser?"),
+                profileName
+            ),
+            confirmButton: String(localized: "Sign In"),
+            window: window
+        )
+        guard confirmed else { return }
+        do {
+            try await AWSSSOLoginService.signIn(profileName: profileName)
+            AlertHelper.showInfoSheet(
+                title: String(localized: "Signed In"),
+                message: String(localized: "AWS SSO sign-in finished. Test the connection again."),
+                window: window
+            )
+        } catch {
+            AlertHelper.showErrorSheet(
+                title: String(localized: "AWS SSO Sign-In Failed"),
+                message: error.localizedDescription,
+                window: window
+            )
         }
     }
 
