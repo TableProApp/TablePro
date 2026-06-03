@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Cmd+N now opens a new connection; Manage Connections keeps its File menu item.
 - First Page and Last Page now default to Cmd+Option+Up and Cmd+Option+Down.
 - Shortcuts can be bound to function keys (F1 through F12), with or without a modifier.
+- AWS connections show a dropdown of the profiles found in `~/.aws/config` and `~/.aws/credentials`, and still accept a typed profile name. (#1567)
 
 ### Fixed
 

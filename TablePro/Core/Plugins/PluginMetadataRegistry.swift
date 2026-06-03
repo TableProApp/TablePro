@@ -470,7 +470,8 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                 label: String(localized: "Profile Name"),
                 placeholder: "default",
                 section: .authentication,
-                visibleWhen: FieldVisibilityRule(fieldId: "awsAuth", values: ["profile", "sso"])
+                visibleWhen: FieldVisibilityRule(fieldId: "awsAuth", values: ["profile", "sso"]),
+                dynamicOptions: .awsProfiles
             )
         ]
 

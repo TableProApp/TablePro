@@ -7,6 +7,10 @@ public enum FieldSection: String, Codable, Sendable {
     case connection
 }
 
+public enum DynamicFieldOptions: String, Codable, Sendable {
+    case awsProfiles
+}
+
 public struct FieldVisibilityRule: Codable, Sendable, Equatable {
     public let fieldId: String
     public let values: [String]
@@ -92,6 +96,7 @@ public struct ConnectionField: Codable, Sendable {
     public let section: FieldSection
     public let hidesPassword: Bool
     public let visibleWhen: FieldVisibilityRule?
+    public let dynamicOptions: DynamicFieldOptions?
 
     /// Backward-compatible convenience: true when fieldType is .secure
     public var isSecure: Bool {
@@ -109,7 +114,8 @@ public struct ConnectionField: Codable, Sendable {
         fieldType: FieldType? = nil,
         section: FieldSection = .advanced,
         hidesPassword: Bool = false,
-        visibleWhen: FieldVisibilityRule? = nil
+        visibleWhen: FieldVisibilityRule? = nil,
+        dynamicOptions: DynamicFieldOptions? = nil
     ) {
         self.id = id
         self.label = label
@@ -120,6 +126,7 @@ public struct ConnectionField: Codable, Sendable {
         self.section = section
         self.hidesPassword = hidesPassword
         self.visibleWhen = visibleWhen
+        self.dynamicOptions = dynamicOptions
     }
 
     public init(from decoder: Decoder) throws {
@@ -133,9 +140,11 @@ public struct ConnectionField: Codable, Sendable {
         section = try container.decodeIfPresent(FieldSection.self, forKey: .section) ?? .advanced
         hidesPassword = try container.decodeIfPresent(Bool.self, forKey: .hidesPassword) ?? false
         visibleWhen = try container.decodeIfPresent(FieldVisibilityRule.self, forKey: .visibleWhen)
+        dynamicOptions = try container.decodeIfPresent(DynamicFieldOptions.self, forKey: .dynamicOptions)
     }
 
     private enum CodingKeys: String, CodingKey {
         case id, label, placeholder, isRequired, defaultValue, fieldType, section, hidesPassword, visibleWhen
+        case dynamicOptions
     }
 }

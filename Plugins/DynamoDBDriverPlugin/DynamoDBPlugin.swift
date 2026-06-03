@@ -112,7 +112,8 @@ final class DynamoDBPlugin: NSObject, TableProPlugin, DriverPlugin {
             label: String(localized: "Profile Name"),
             placeholder: "default",
             section: .authentication,
-            visibleWhen: FieldVisibilityRule(fieldId: "awsAuthMethod", values: ["profile", "sso"])
+            visibleWhen: FieldVisibilityRule(fieldId: "awsAuthMethod", values: ["profile", "sso"]),
+            dynamicOptions: .awsProfiles
         ),
         ConnectionField(
             id: "awsRegion",
