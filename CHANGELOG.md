@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Importing connections from other apps now detects duplicates by host, port, database, and username, and lets you replace, add a copy, or skip each one before import.
 - Oracle connections negotiate Native Network Encryption when the server asks for it, so servers with `SQLNET.ENCRYPTION_SERVER` or `SQLNET.CRYPTO_CHECKSUM_SERVER` set to REQUIRED now connect (AES with a SHA crypto-checksum), matching what SQL Developer and DBeaver do. (#483)
 - Oracle connections follow listener redirects, so RAC SCAN listeners, shared server, and load-balanced setups now connect instead of failing during the handshake. (#483)
+- AWS connections can assume an IAM role: profiles with `role_arn` plus `source_profile` (or `credential_source = Environment`) are resolved through STS AssumeRole, including chained source profiles, `external_id`, and `duration_seconds`. (#1567)
 
 ### Changed
 

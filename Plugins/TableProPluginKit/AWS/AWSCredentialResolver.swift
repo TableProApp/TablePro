@@ -30,6 +30,14 @@ public enum AWSCredentialResolver {
 
     private static func resolveProfile(fields: [String: String]) async throws -> AWSCredentials {
         let profileName = fields["awsProfileName"].flatMap { $0.isEmpty ? nil : $0 } ?? "default"
+        return try await resolveProfileChain(profileName: profileName, depth: 0)
+    }
+
+    private static func resolveProfileChain(profileName: String, depth: Int) async throws -> AWSCredentials {
+        guard depth < 5 else {
+            throw AWSAuthError.assumeRoleChainTooDeep(profileName)
+        }
+
         let settings = AWSConfigFile.mergedProfileSettings(
             profileName: profileName,
             configContents: AWSConfigFile.readFile(AWSConfigFile.defaultConfigPath),
@@ -39,15 +47,24 @@ public enum AWSCredentialResolver {
             throw AWSAuthError.profileIncomplete(profileName)
         }
 
-        let accessKeyId = settings["aws_access_key_id"] ?? ""
-        let secretAccessKey = settings["aws_secret_access_key"] ?? ""
-        if !accessKeyId.isEmpty, !secretAccessKey.isEmpty {
-            let sessionToken = settings["aws_session_token"]
-            return AWSCredentials(
-                accessKeyId: accessKeyId,
-                secretAccessKey: secretAccessKey,
-                sessionToken: sessionToken?.isEmpty == true ? nil : sessionToken
+        if let roleArn = settings["role_arn"], !roleArn.isEmpty {
+            if let mfaSerial = settings["mfa_serial"], !mfaSerial.isEmpty {
+                throw AWSAuthError.mfaUnsupported(profileName)
+            }
+            let base = try await baseCredentials(for: settings, profileName: profileName, depth: depth)
+            return try await AWSSTS.assumeRole(
+                roleArn: roleArn,
+                roleSessionName: settings["role_session_name"] ?? "tablepro-\(profileName)",
+                externalId: settings["external_id"],
+                durationSeconds: settings["duration_seconds"].flatMap(Int.init),
+                region: settings["region"] ?? "us-east-1",
+                baseCredentials: base,
+                session: URLSession.shared
             )
+        }
+
+        if let credentials = staticCredentials(from: settings) {
+            return credentials
         }
 
         if let command = settings["credential_process"], !command.isEmpty {
@@ -55,6 +72,50 @@ public enum AWSCredentialResolver {
         }
 
         throw AWSAuthError.profileIncomplete(profileName)
+    }
+
+    private static func baseCredentials(
+        for settings: [String: String],
+        profileName: String,
+        depth: Int
+    ) async throws -> AWSCredentials {
+        if let sourceProfile = settings["source_profile"], !sourceProfile.isEmpty {
+            return try await resolveProfileChain(profileName: sourceProfile, depth: depth + 1)
+        }
+        if let credentialSource = settings["credential_source"], !credentialSource.isEmpty {
+            guard credentialSource == "Environment" else {
+                throw AWSAuthError.credentialSourceUnsupported(profile: profileName, source: credentialSource)
+            }
+            return try environmentCredentials(profileName: profileName)
+        }
+        throw AWSAuthError.assumeRoleMissingSource(profileName)
+    }
+
+    private static func staticCredentials(from settings: [String: String]) -> AWSCredentials? {
+        let accessKeyId = settings["aws_access_key_id"] ?? ""
+        let secretAccessKey = settings["aws_secret_access_key"] ?? ""
+        guard !accessKeyId.isEmpty, !secretAccessKey.isEmpty else { return nil }
+        let sessionToken = settings["aws_session_token"]
+        return AWSCredentials(
+            accessKeyId: accessKeyId,
+            secretAccessKey: secretAccessKey,
+            sessionToken: sessionToken?.isEmpty == true ? nil : sessionToken
+        )
+    }
+
+    private static func environmentCredentials(profileName: String) throws -> AWSCredentials {
+        let environment = ProcessInfo.processInfo.environment
+        let accessKeyId = environment["AWS_ACCESS_KEY_ID"] ?? ""
+        let secretAccessKey = environment["AWS_SECRET_ACCESS_KEY"] ?? ""
+        guard !accessKeyId.isEmpty, !secretAccessKey.isEmpty else {
+            throw AWSAuthError.profileIncomplete(profileName)
+        }
+        let sessionToken = environment["AWS_SESSION_TOKEN"]
+        return AWSCredentials(
+            accessKeyId: accessKeyId,
+            secretAccessKey: secretAccessKey,
+            sessionToken: sessionToken?.isEmpty == true ? nil : sessionToken
+        )
     }
 
     private static func runCredentialProcess(_ command: String, profileName: String) async throws -> AWSCredentials {
