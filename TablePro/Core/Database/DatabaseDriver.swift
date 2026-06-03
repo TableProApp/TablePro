@@ -492,7 +492,7 @@ enum DatabaseDriverFactory {
         fields: [String: String],
         override: String? = nil
     ) async throws -> String {
-        if connection.usesAWSIAM {
+        if connection.usesAWSIAM, !connection.resolvesAWSIAMInDriver {
             return try await resolveIAMPassword(for: connection, fields: fields)
         }
         if let override { return override }

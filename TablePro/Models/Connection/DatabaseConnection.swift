@@ -396,6 +396,10 @@ struct DatabaseConnection: Identifiable, Hashable {
         return value != "off" && !value.isEmpty
     }
 
+    var resolvesAWSIAMInDriver: Bool {
+        type == .cassandra || type == .scylladb
+    }
+
     var preConnectScript: String? {
         get { additionalFields["preConnectScript"]?.nilIfEmpty }
         set { additionalFields["preConnectScript"] = newValue ?? "" }
