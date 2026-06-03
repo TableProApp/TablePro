@@ -56,12 +56,12 @@ extension MainContentCoordinator {
         filterCoordinator.applySingleFilter(filter)
     }
 
-    func applySelectedFilters() {
-        filterCoordinator.applySelectedFilters()
-    }
-
     func applyAllFilters() {
         filterCoordinator.applyAllFilters()
+    }
+
+    func applySoloFilter(_ filter: TableFilter) {
+        filterCoordinator.applySoloFilter(filter)
     }
 
     func clearAppliedFilters() {
@@ -78,14 +78,6 @@ extension MainContentCoordinator {
 
     func closeFilterPanel() {
         filterCoordinator.closeFilterPanel()
-    }
-
-    func selectAllFilters(_ selected: Bool) {
-        filterCoordinator.selectAllFilters(selected)
-    }
-
-    func toggleFilterSelection(_ filter: TableFilter) {
-        filterCoordinator.toggleFilterSelection(filter)
     }
 
     func saveLastFiltersForActiveTable() {

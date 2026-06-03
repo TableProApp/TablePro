@@ -526,7 +526,7 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin {
         let insertPrefix = "INSERT INTO \(tableRef) (\(quotedColumns))\(overriding) VALUES\n"
 
         let numericIndices: Set<Int> = Set(includedColumnIndices.filter { idx in
-            idx < columnTypeNames.count && isNumericColumnType(columnTypeNames[idx])
+            idx < columnTypeNames.count && PluginExportUtilities.isNumericColumnType(columnTypeNames[idx])
         })
 
         let effectiveBatchSize = batchSize <= 1 ? 1 : batchSize
@@ -546,7 +546,7 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin {
                     let hex = data.map { String(format: "%02X", $0) }.joined()
                     return "X'\(hex)'"
                 case .text(let val):
-                    if numericIndices.contains(colIndex) && isNumericLiteral(val) {
+                    if numericIndices.contains(colIndex) && PluginNumericLiteral.isValid(val) {
                         return val
                     }
                     let escaped = dataSource.escapeStringLiteral(val)
@@ -569,19 +569,6 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin {
             let statement = insertPrefix + valuesBatch.joined(separator: ",\n") + ";\n\n"
             try fileHandle.write(contentsOf: statement.toUTF8Data())
         }
-    }
-
-    private func isNumericColumnType(_ typeName: String) -> Bool {
-        let numericPrefixes = [
-            "int", "bigint", "decimal", "float", "double", "numeric",
-            "real", "smallint", "tinyint", "mediumint", "integer", "number"
-        ]
-        let lower = typeName.lowercased()
-        return numericPrefixes.contains { lower.hasPrefix($0) }
-    }
-
-    private func isNumericLiteral(_ val: String) -> Bool {
-        val.allSatisfy { $0.isNumber || $0 == "." || $0 == "-" || $0 == "+" || $0 == "e" || $0 == "E" }
     }
 
     private func compressFile(source: URL, destination: URL) async throws {

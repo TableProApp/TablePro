@@ -57,13 +57,13 @@ public struct ConfirmDestructiveOperationTool: MCPToolImplementation {
             )
         }
 
-        guard !QueryClassifier.isMultiStatement(query) else {
+        let meta = try await ToolConnectionMetadata.resolve(connectionId: connectionId)
+
+        guard !QueryClassifier.isMultiStatement(query, databaseType: meta.databaseType) else {
             throw MCPProtocolError.invalidParams(
                 detail: "Multi-statement queries are not supported. Send one statement at a time."
             )
         }
-
-        let meta = try await ToolConnectionMetadata.resolve(connectionId: connectionId)
 
         let tier = QueryClassifier.classifyTier(query, databaseType: meta.databaseType)
         guard tier == .destructive else {

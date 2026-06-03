@@ -12,7 +12,8 @@ import Testing
 struct RowCountPlanTests {
     private func filtered() -> TabFilterState {
         var state = TabFilterState()
-        state.appliedFilters = [TestFixtures.makeTableFilter()]
+        state.filters = [TestFixtures.makeTableFilter()]
+        state.commit = .all
         return state
     }
 

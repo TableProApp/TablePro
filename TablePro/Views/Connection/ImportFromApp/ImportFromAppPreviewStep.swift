@@ -127,7 +127,7 @@ struct ImportFromAppPreviewStep: View {
         if preview.envelope.credentials != nil {
             ConnectionExportService.restoreCredentials(
                 from: preview.envelope,
-                connectionIdMap: result.connectionIdMap
+                connectionIdMap: result.newConnectionIdMap
             )
         }
 

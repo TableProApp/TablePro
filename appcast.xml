@@ -3,6 +3,71 @@
     <channel>
         <title>TablePro</title>
         <item>
+            <title>0.48.0</title>
+            <pubDate>Tue, 02 Jun 2026 01:48:05 +0000</pubDate>
+            <sparkle:version>94</sparkle:version>
+            <sparkle:shortVersionString>0.48.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <description><![CDATA[<h3>Added</h3>
+<ul>
+<li>Import a JSON file into a table: an array of objects, newline-delimited JSON, or TablePro's JSON export, mapped to a new or existing table. Pick SQL or JSON from the Import menu.</li>
+<li>The title bar shows the open table's name, with its database and schema below. (#1475)</li>
+<li>iOS: open DuckDB database files and in-memory DuckDB databases. (#1526)</li>
+<li>Save the current query as a favorite from the SQL editor toolbar.</li>
+<li>Select and copy field names and types in the row Details panel.</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>The plugin interface is now binary-stable, so app updates that add plugin capabilities no longer force installed plugins to be rebuilt.</li>
+<li>Connection list rows show the database name after the host, so look-alike connections are easier to tell apart. (#1535)</li>
+<li>Save as Favorite uses Cmd+D again. The 0.47.0 Cmd+Control+D was reserved by macOS for Look Up.</li>
+<li>Editor toolbar buttons show their keyboard shortcut in the tooltip, updated when you rebind it.</li>
+<li>Window toolbar: connection and database selectors move left as navigation items, Refresh and Save move right. Customized toolbars reset once.</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>PostgreSQL: the selected schema stays applied after an automatic reconnect, so unqualified table names keep resolving against it. (#1540)</li>
+<li>Import now finds the Setapp edition of TablePlus and reads its connections. (#1528)</li>
+<li>Favorite keyword suggestions now appear in editor autocomplete. They were dropped before reaching the popup.</li>
+<li>Editor autocomplete refreshes when you switch schema, suggesting the new schema's tables and columns.</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.48.0/TablePro-0.48.0-arm64.zip" length="18888782" type="application/octet-stream" sparkle:edSignature="C7V7OS/oMXPP22+PCXE3Q5wHjqi27Of5zME6xnqrGWoLmjchH2ySi0lyqIog4KwK/Vo5kJB6qjyJRbc6CMXBCA=="/>
+        </item>
+        <item>
+            <title>0.48.0</title>
+            <pubDate>Tue, 02 Jun 2026 01:48:05 +0000</pubDate>
+            <sparkle:version>94</sparkle:version>
+            <sparkle:shortVersionString>0.48.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[<h3>Added</h3>
+<ul>
+<li>Import a JSON file into a table: an array of objects, newline-delimited JSON, or TablePro's JSON export, mapped to a new or existing table. Pick SQL or JSON from the Import menu.</li>
+<li>The title bar shows the open table's name, with its database and schema below. (#1475)</li>
+<li>iOS: open DuckDB database files and in-memory DuckDB databases. (#1526)</li>
+<li>Save the current query as a favorite from the SQL editor toolbar.</li>
+<li>Select and copy field names and types in the row Details panel.</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>The plugin interface is now binary-stable, so app updates that add plugin capabilities no longer force installed plugins to be rebuilt.</li>
+<li>Connection list rows show the database name after the host, so look-alike connections are easier to tell apart. (#1535)</li>
+<li>Save as Favorite uses Cmd+D again. The 0.47.0 Cmd+Control+D was reserved by macOS for Look Up.</li>
+<li>Editor toolbar buttons show their keyboard shortcut in the tooltip, updated when you rebind it.</li>
+<li>Window toolbar: connection and database selectors move left as navigation items, Refresh and Save move right. Customized toolbars reset once.</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>PostgreSQL: the selected schema stays applied after an automatic reconnect, so unqualified table names keep resolving against it. (#1540)</li>
+<li>Import now finds the Setapp edition of TablePlus and reads its connections. (#1528)</li>
+<li>Favorite keyword suggestions now appear in editor autocomplete. They were dropped before reaching the popup.</li>
+<li>Editor autocomplete refreshes when you switch schema, suggesting the new schema's tables and columns.</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.48.0/TablePro-0.48.0-x86_64.zip" length="19939827" type="application/octet-stream" sparkle:edSignature="EANStMlhNvzbz/JuC35ngk3KH/GXcNq+4q21VL9fl88LlTawa5+VRHUGznXIkrlYQgCxRwv6BF9yrmd5EKR0Dg=="/>
+        </item>
+        <item>
             <title>0.47.0</title>
             <pubDate>Mon, 01 Jun 2026 01:06:48 +0000</pubDate>
             <sparkle:version>93</sparkle:version>

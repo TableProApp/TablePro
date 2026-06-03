@@ -36,6 +36,10 @@ See [Connection URL Reference](/databases/connection-urls#cassandra--scylladb) f
 **DataStax Astra DB**: Port 29042, use Client ID/Secret, needs Secure Connect Bundle (SSL/TLS)
 **Remote**: Use [SSH tunneling](/databases/ssh-tunneling) for production
 
+## Amazon Keyspaces (IAM)
+
+Set **Authentication** to an AWS IAM mode (Access Key, Profile, or SSO) to connect to Amazon Keyspaces with SigV4 signing instead of a password. Enter the AWS region and enable TLS, which Keyspaces requires (use the `cassandra.{region}.amazonaws.com` endpoint on port 9142). Profiles resolve from `~/.aws/config` and `~/.aws/credentials`, including `credential_process`, SSO, and assumed roles.
+
 **SSL/TLS**: The Cassandra driver has no TLS fallback. **Preferred** behaves the same as **Required** (the SSL pane shows a warning). Use **Required** for AstraDB, **Verify CA** with a CA certificate path for private PKI. For mutual TLS, set the client certificate and key paths; if the key is encrypted, enter its passphrase in the **Key Passphrase** field (stored in the Keychain). See [SSL/TLS](/features/ssl) for details.
 
 ## Features

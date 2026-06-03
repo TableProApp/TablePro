@@ -77,7 +77,9 @@ public struct ExecuteQueryTool: MCPToolImplementation {
             throw MCPProtocolError.invalidParams(detail: "Query exceeds 100KB limit")
         }
 
-        guard !QueryClassifier.isMultiStatement(query) else {
+        let meta = try await ToolConnectionMetadata.resolve(connectionId: connectionId)
+
+        guard !QueryClassifier.isMultiStatement(query, databaseType: meta.databaseType) else {
             throw MCPProtocolError.invalidParams(
                 detail: "Multi-statement queries are not supported. Send one statement at a time."
             )
@@ -85,8 +87,6 @@ public struct ExecuteQueryTool: MCPToolImplementation {
 
         try await throwIfCancelled(context)
         await context.progress.emit(progress: 0.0, total: 1.0, message: "Connecting")
-
-        let meta = try await ToolConnectionMetadata.resolve(connectionId: connectionId)
 
         if let database {
             _ = try await services.connectionBridge.switchDatabase(

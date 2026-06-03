@@ -104,8 +104,10 @@ TablePro is keyboard-driven. Most actions have shortcuts, and most menu shortcut
 |--------|----------|
 | Previous page | `Cmd+[` |
 | Next page | `Cmd+]` |
-| First page | Unbound (set in **Settings** > **Keyboard**) |
-| Last page | Unbound (set in **Settings** > **Keyboard**) |
+| First page | `Cmd+Option+Up` |
+| Last page | `Cmd+Option+Down` |
+
+`Cmd+[` and `Cmd+]` page the data grid. In the SQL editor the same keys indent and outdent the selection, so the binding follows whichever has focus.
 
 ### Editing
 
@@ -202,8 +204,8 @@ Inherits the standard `NSDocument` shortcuts.
 |--------|----------|
 | Toggle sidebar | `Cmd+0` |
 | Focus sidebar filter | `Cmd+Option+F` |
-| Show Tables sidebar | `Control+1` |
-| Show Favorites sidebar | `Control+2` |
+| Show Tables sidebar | `Cmd+Option+1` |
+| Show Favorites sidebar | `Cmd+Option+2` |
 | Toggle full screen | `Cmd+Control+F` |
 | Zoom in | `Cmd+=` |
 | Zoom out | `Cmd+-` |
@@ -341,7 +343,7 @@ Most menu shortcuts are rebindable in **Settings** > **Keyboard**.
 5. The shortcut updates immediately in the menu bar
 
 <Note>
-Menu actions need a modifier key (`Cmd`, `Option`, `Control`, or `Shift`). A plain key like `Space` won't reach the menu, so TablePro asks you to add a modifier. Data grid actions that read the key directly, like Preview FK Reference (`Space`) and Cancel edit (`Escape`), are the exception.
+Menu actions need a modifier key (`Cmd`, `Option`, `Control`, or `Shift`). A plain key like `Space` won't reach the menu, so TablePro asks you to add a modifier. The exceptions are function keys (`F1` through `F12`), which work on their own, and data grid actions that read the key directly, like Preview FK Reference (`Space`) and Cancel edit (`Escape`).
 </Note>
 
 ### Clearing a Shortcut
@@ -352,18 +354,20 @@ Menu actions need a modifier key (`Cmd`, `Option`, `Control`, or `Shift`). A pla
 
 ### Conflict Detection
 
-If you assign a shortcut already in use, TablePro shows a confirmation dialog:
+If you assign a shortcut already used by another action in the same context, TablePro shows a confirmation dialog naming that action and its group:
 
 - **Cancel**: keep the existing assignment
 - **Reassign**: move the shortcut to the new action (clears the previous action's shortcut)
 
+The same key can mean different things in the editor and the data grid because focus decides which one fires, so a grid shortcut and an editor shortcut can share a key without conflicting.
+
 <Warning>
-System-reserved shortcuts (`Cmd+Q`, `Cmd+H`, `Cmd+M`, `Cmd+,`) cannot be reassigned. TablePro warns if you try.
+Shortcuts the editor uses internally (like `Cmd+/` to comment or `Cmd+Shift+K` to delete a line) and macOS system shortcuts (read live from System Settings, so `Cmd+Q`, Spotlight, and Mission Control are covered) cannot be assigned. TablePro warns if you try.
 </Warning>
 
 ### Resetting to Defaults
 
-Click **Reset to Defaults** to restore all shortcuts to their original values.
+A reset button (the curved arrow) appears next to any shortcut you have changed; click it to restore that one action. Click **Reset to Defaults** to restore every shortcut at once.
 
 <Note>
 Tab switching shortcuts (`Cmd+1` through `Cmd+9`) follow standard macOS convention and cannot be customized.

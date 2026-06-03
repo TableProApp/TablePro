@@ -4,6 +4,31 @@ description: "Product updates and announcements for TablePro"
 rss: true
 ---
 
+<Update label="June 2, 2026" description="v0.48.0">
+  ### New Features
+
+  - **JSON Import**: Import a JSON file into a table. Pick SQL or JSON from the Import menu; the JSON flow accepts an array of objects, newline-delimited JSON, or TablePro's own JSON export, and maps each field to a new or existing table (#1536)
+  - **Table Name in the Title Bar**: The window title bar shows the open table's name, with its database and schema below (#1475)
+  - **iOS DuckDB**: Open DuckDB database files and in-memory DuckDB databases on iOS, matching the Mac app (#1526)
+  - **Save Query as Favorite**: Save the current query as a favorite from a star button in the SQL editor toolbar
+
+  ### Improvements
+
+  - Field names and types in the row Details panel can now be selected and copied
+  - Plugins stay binary-compatible across app updates that add plugin capabilities, so installed plugins no longer need a rebuild for additive changes
+  - Connection list rows show the database name after the host, so look-alike connections are easier to tell apart (#1535)
+  - Editor toolbar buttons show their keyboard shortcut in the tooltip, updated when you rebind it
+  - The window toolbar groups the connection and database selectors on the left and moves Refresh and Save to the right
+
+  ### Bug Fixes
+
+  - Save as Favorite uses Cmd+D again; the Cmd+Control+D set in 0.47.0 was reserved by macOS for Look Up, so it never fired
+  - PostgreSQL keeps the selected schema applied after an automatic reconnect, so unqualified table names keep resolving against it (#1540)
+  - Import now finds the Setapp edition of TablePlus and reads its connections (#1528)
+  - Favorite keyword suggestions now appear in editor autocomplete instead of being dropped before the popup
+  - Editor autocomplete refreshes when you switch schema, suggesting the new schema's tables and columns
+</Update>
+
 <Update label="June 1, 2026" description="v0.47.0">
   ### New Features
 

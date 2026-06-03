@@ -157,7 +157,7 @@ final class JSONExportPlugin: ExportFormatPlugin, SettablePlugin {
             return val.lowercased()
         }
 
-        let isNumericCol = isNumericColumnType(columnTypeName)
+        let isNumericCol = PluginExportUtilities.isNumericColumnType(columnTypeName)
 
         if isNumericCol && isValidIntegerLiteral(val) {
             if let intVal = Int(val) {
@@ -181,15 +181,6 @@ final class JSONExportPlugin: ExportFormatPlugin, SettablePlugin {
         }
 
         return "\"\(PluginExportUtilities.escapeJSONString(val))\""
-    }
-
-    private func isNumericColumnType(_ typeName: String) -> Bool {
-        let numericPrefixes = [
-            "int", "bigint", "decimal", "float", "double", "numeric",
-            "real", "smallint", "tinyint", "mediumint", "integer", "number"
-        ]
-        let lower = typeName.lowercased()
-        return numericPrefixes.contains { lower.hasPrefix($0) }
     }
 
     private func isValidIntegerLiteral(_ val: String) -> Bool {

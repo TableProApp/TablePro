@@ -1,0 +1,111 @@
+//
+//  PasswordHidingTests.swift
+//  TableProTests
+//
+//  The single source of truth for "does this connection's auth mode replace the
+//  password" feeds both the connection form (whether to show the prompt toggle)
+//  and the runtime connect/reconnect paths (whether to prompt at all).
+//
+
+import Foundation
+import TableProPluginKit
+import Testing
+
+@testable import TablePro
+
+@Suite("Password hiding from connection fields")
+struct PasswordHidingTests {
+    private func dropdown(default defaultValue: String, _ values: [String]) -> ConnectionField {
+        ConnectionField(
+            id: "awsAuth",
+            label: "Authentication",
+            defaultValue: defaultValue,
+            fieldType: .dropdown(options: values.map { .init(value: $0, label: $0) }),
+            section: .authentication,
+            hidesPassword: true
+        )
+    }
+
+    private let pgpassToggle = ConnectionField(
+        id: "usePgpass",
+        label: "Use Password File",
+        defaultValue: "false",
+        fieldType: .toggle,
+        section: .authentication,
+        hidesPassword: true
+    )
+
+    private let secretField = ConnectionField(
+        id: "serviceAccountJson",
+        label: "Service Account",
+        fieldType: .secure,
+        section: .authentication,
+        hidesPassword: true
+    )
+
+    @Test("A dropdown hides the password only when set off its default")
+    func dropdownAwayFromDefault() {
+        let fields = [dropdown(default: "off", ["off", "accessKey", "profile"])]
+        #expect(fields.hidesPassword(forValues: [:]) == false)
+        #expect(fields.hidesPassword(forValues: ["awsAuth": "off"]) == false)
+        #expect(fields.hidesPassword(forValues: ["awsAuth": "accessKey"]) == true)
+        #expect(fields.hidesPassword(forValues: ["awsAuth": "profile"]) == true)
+    }
+
+    @Test("A toggle hides the password only when on")
+    func toggleOn() {
+        let fields = [pgpassToggle]
+        #expect(fields.hidesPassword(forValues: [:]) == false)
+        #expect(fields.hidesPassword(forValues: ["usePgpass": "false"]) == false)
+        #expect(fields.hidesPassword(forValues: ["usePgpass": "true"]) == true)
+    }
+
+    @Test("A secure field that always replaces the password hides it unconditionally")
+    func secureFieldAlwaysHides() {
+        #expect([secretField].hidesPassword(forValues: [:]) == true)
+    }
+
+    @Test("Fields without the hidesPassword flag never hide the password")
+    func plainFieldsDoNotHide() {
+        let plain = ConnectionField(id: "region", label: "Region", section: .authentication)
+        #expect([plain].hidesPassword(forValues: ["region": "us-east-1"]) == false)
+        #expect([ConnectionField]().hidesPassword(forValues: [:]) == false)
+    }
+
+    @Test("Only authentication-section fields are considered")
+    func ignoresNonAuthenticationFields() {
+        let advanced = ConnectionField(
+            id: "advancedToggle",
+            label: "Advanced",
+            defaultValue: "false",
+            fieldType: .toggle,
+            section: .advanced,
+            hidesPassword: true
+        )
+        #expect([advanced].hidesPassword(forValues: ["advancedToggle": "true"]) == false)
+    }
+}
+
+@Suite("Password hiding resolved from plugin metadata")
+@MainActor
+struct PluginManagerPasswordHidingTests {
+    private func connection(type: DatabaseType, fields: [String: String]) -> DatabaseConnection {
+        var connection = DatabaseConnection(name: "test", type: type)
+        connection.additionalFields = fields
+        return connection
+    }
+
+    @Test("AWS IAM modes hide the password for relational types")
+    func iamHidesPassword() {
+        let manager = PluginManager.shared
+        #expect(manager.hidesPassword(for: connection(type: .mysql, fields: ["awsAuth": "accessKey"])))
+        #expect(manager.hidesPassword(for: connection(type: .postgresql, fields: ["awsAuth": "profile"])))
+    }
+
+    @Test("Password auth does not hide the password")
+    func passwordModeDoesNotHide() {
+        let manager = PluginManager.shared
+        #expect(!manager.hidesPassword(for: connection(type: .mysql, fields: ["awsAuth": "off"])))
+        #expect(!manager.hidesPassword(for: connection(type: .mysql, fields: [:])))
+    }
+}

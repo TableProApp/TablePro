@@ -84,6 +84,15 @@ public enum PluginExportUtilities {
         result = result.replacingOccurrences(of: "--", with: "")
         return result
     }
+
+    public static func isNumericColumnType(_ typeName: String) -> Bool {
+        let numericPrefixes = [
+            "int", "bigint", "decimal", "float", "double", "numeric",
+            "real", "smallint", "tinyint", "mediumint", "integer", "number"
+        ]
+        let lower = typeName.lowercased()
+        return numericPrefixes.contains { lower.hasPrefix($0) }
+    }
 }
 
 public extension String {

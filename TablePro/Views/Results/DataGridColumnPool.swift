@@ -46,7 +46,7 @@ final class DataGridColumnPool {
             if slot < visibleCount {
                 let columnName = schema.columnNames[slot]
                 let resolvedWidth = willRestoreWidths
-                    ? (savedLayout?.columnWidths[columnName] ?? 100)
+                    ? (savedLayout?.columnWidths[columnName] ?? widthCalculator(columnName, slot))
                     : widthCalculator(columnName, slot)
                 configureColumn(
                     column,

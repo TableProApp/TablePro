@@ -167,7 +167,8 @@ extension PluginManager {
         }
         return try registryPlugin.resolvedBinary(
             for: .current,
-            pluginKitVersion: Self.currentPluginKitVersion
+            currentKitVersion: Self.currentPluginKitVersion,
+            minimumKitVersion: Self.minimumCompatiblePluginKitVersion
         )
     }
 
@@ -226,6 +227,7 @@ extension PluginManager {
         try PluginInstaller.validateStagedABI(
             bundleURL: bundleURL,
             currentKit: Self.currentPluginKitVersion,
+            minimumKit: Self.minimumCompatiblePluginKitVersion,
             currentInspector: Self.currentInspectorKitVersion
         )
         PluginInstaller.stripQuarantine(at: bundleURL)

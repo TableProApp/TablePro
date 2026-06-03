@@ -23,7 +23,7 @@ final class QueryExecutionCoordinator {
         let fullQuery = tab.content.query
         guard !fullQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
 
-        let statements = SQLStatementScanner.allStatements(in: fullQuery)
+        let statements = SQLStatementScanner.allStatements(in: fullQuery, dialect: parent.sqlDialect)
         guard !statements.isEmpty else { return }
 
         if AppSettingsManager.shared.editor.queryParametersEnabled {

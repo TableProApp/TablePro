@@ -87,6 +87,7 @@ final class MainContentCoordinator {
     @ObservationIgnored let services: AppServices
     let connection: DatabaseConnection
     var connectionId: UUID { connection.id }
+    var sqlDialect: SqlDialect { SqlDialect.from(databaseTypeId: connection.type.rawValue) }
     var activeDatabaseName: String {
         services.databaseManager.activeDatabaseName(for: connection)
     }
@@ -795,7 +796,8 @@ final class MainContentCoordinator {
         } else {
             sql = SQLStatementScanner.statementAtCursor(
                 in: fullQuery,
-                cursorPosition: cursorPositions.first?.range.location ?? 0
+                cursorPosition: cursorPositions.first?.range.location ?? 0,
+                dialect: sqlDialect
             )
         }
 
@@ -804,7 +806,7 @@ final class MainContentCoordinator {
         }
 
         if services.appSettings.editor.queryParametersEnabled {
-            let paramStatements = SQLStatementScanner.allStatements(in: sql)
+            let paramStatements = SQLStatementScanner.allStatements(in: sql, dialect: sqlDialect)
             guard !paramStatements.isEmpty else { return }
             let combinedSQL = paramStatements.joined(separator: "; ")
             let detectedNames = SQLParameterExtractor.extractParameters(from: combinedSQL)
@@ -831,7 +833,7 @@ final class MainContentCoordinator {
             }
         }
 
-        let statements = SQLStatementScanner.allStatements(in: sql)
+        let statements = SQLStatementScanner.allStatements(in: sql, dialect: sqlDialect)
         guard !statements.isEmpty else { return }
 
         tabManager.tabStructureVersion += 1
@@ -943,7 +945,8 @@ final class MainContentCoordinator {
         } else {
             sql = SQLStatementScanner.statementAtCursor(
                 in: fullQuery,
-                cursorPosition: cursorPositions.first?.range.location ?? 0
+                cursorPosition: cursorPositions.first?.range.location ?? 0,
+                dialect: sqlDialect
             )
         }
 
@@ -951,7 +954,7 @@ final class MainContentCoordinator {
         guard !trimmed.isEmpty else { return }
 
         // Use first statement only (EXPLAIN on a single statement)
-        let statements = SQLStatementScanner.allStatements(in: trimmed)
+        let statements = SQLStatementScanner.allStatements(in: trimmed, dialect: sqlDialect)
         guard let stmt = statements.first else { return }
 
         let level = safeModeLevel

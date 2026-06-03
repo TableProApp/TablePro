@@ -5,7 +5,7 @@
 
 import Foundation
 
-enum AWSAuthError: Error, LocalizedError, Equatable {
+public enum AWSAuthError: Error, LocalizedError, Equatable {
     case missingAccessKey
     case credentialsFileUnreadable
     case profileIncomplete(String)
@@ -15,8 +15,15 @@ enum AWSAuthError: Error, LocalizedError, Equatable {
     case credentialProcessFailed(profile: String, status: Int, message: String)
     case credentialProcessBadOutput(String)
     case credentialProcessUnsupportedVersion(profile: String, version: Int)
+    case credentialProcessUnsupportedOnPlatform(String)
+    case assumeRoleMissingSource(String)
+    case assumeRoleChainTooDeep(String)
+    case assumeRoleFailed(role: String, message: String)
+    case mfaUnsupported(String)
+    case credentialSourceUnsupported(profile: String, source: String)
+    case missingConfiguration(String)
 
-    var errorDescription: String? {
+    public var errorDescription: String? {
         switch self {
         case .missingAccessKey:
             return String(localized: "Access Key ID and Secret Access Key are required for AWS IAM authentication.")
@@ -58,6 +65,38 @@ enum AWSAuthError: Error, LocalizedError, Equatable {
                 format: String(localized: "The credential_process command for profile \"%@\" returned unsupported Version %lld (expected 1)."),
                 profile, version
             )
+        case .credentialProcessUnsupportedOnPlatform(let profile):
+            return String(
+                format: String(localized: "The credential_process command for profile \"%@\" is only supported on macOS."),
+                profile
+            )
+        case .assumeRoleMissingSource(let profile):
+            return String(
+                format: String(localized: "Profile \"%@\" sets role_arn but has no source_profile or credential_source to provide base credentials."),
+                profile
+            )
+        case .assumeRoleChainTooDeep(let profile):
+            return String(
+                format: String(localized: "Profile \"%@\" has a source_profile chain that is too long to resolve."),
+                profile
+            )
+        case .assumeRoleFailed(let role, let message):
+            return String(
+                format: String(localized: "Could not assume role \"%@\": %@"),
+                role, message
+            )
+        case .mfaUnsupported(let profile):
+            return String(
+                format: String(localized: "Profile \"%@\" requires an MFA token code, which is not supported yet. Use a profile without mfa_serial."),
+                profile
+            )
+        case .credentialSourceUnsupported(let profile, let source):
+            return String(
+                format: String(localized: "Profile \"%@\" uses credential_source \"%@\", which is not supported on the desktop app."),
+                profile, source
+            )
+        case .missingConfiguration(let message):
+            return message
         }
     }
 }

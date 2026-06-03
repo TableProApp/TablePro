@@ -124,6 +124,20 @@ public enum KeyCode: UInt16 {
     case eight = 28
     case nine = 25
 
+    // MARK: - Symbol Keys (US ANSI positions)
+
+    case minus = 27
+    case equal = 24
+    case leftBracket = 33
+    case rightBracket = 30
+    case semicolon = 41
+    case quote = 39
+    case comma = 43
+    case period = 47
+    case slash = 44
+    case backslash = 42
+    case grave = 50
+
     // MARK: - Function Keys
 
     case f1 = 122
@@ -169,6 +183,82 @@ public enum KeyCode: UInt16 {
             return true
         default:
             return false
+        }
+    }
+
+    /// The 1-based function key number (F1 = 1 ... F12 = 12), or nil for non-function keys.
+    public var functionKeyIndex: Int? {
+        switch self {
+        case .f1: return 1
+        case .f2: return 2
+        case .f3: return 3
+        case .f4: return 4
+        case .f5: return 5
+        case .f6: return 6
+        case .f7: return 7
+        case .f8: return 8
+        case .f9: return 9
+        case .f10: return 10
+        case .f11: return 11
+        case .f12: return 12
+        default: return nil
+        }
+    }
+
+    /// The character this key produces with no modifiers on a US ANSI layout.
+    /// Used as a fallback when the live keyboard layout cannot be resolved, and
+    /// to anchor default shortcuts to a semantic character. Returns nil for
+    /// non-printable keys (arrows, delete, function keys, etc.).
+    public var usBaseCharacter: Character? {
+        switch self {
+        case .a: return "a"
+        case .b: return "b"
+        case .c: return "c"
+        case .d: return "d"
+        case .e: return "e"
+        case .f: return "f"
+        case .g: return "g"
+        case .h: return "h"
+        case .i: return "i"
+        case .j: return "j"
+        case .k: return "k"
+        case .l: return "l"
+        case .m: return "m"
+        case .n: return "n"
+        case .o: return "o"
+        case .p: return "p"
+        case .q: return "q"
+        case .r: return "r"
+        case .s: return "s"
+        case .t: return "t"
+        case .u: return "u"
+        case .v: return "v"
+        case .w: return "w"
+        case .x: return "x"
+        case .y: return "y"
+        case .z: return "z"
+        case .zero: return "0"
+        case .one: return "1"
+        case .two: return "2"
+        case .three: return "3"
+        case .four: return "4"
+        case .five: return "5"
+        case .six: return "6"
+        case .seven: return "7"
+        case .eight: return "8"
+        case .nine: return "9"
+        case .minus: return "-"
+        case .equal: return "="
+        case .leftBracket: return "["
+        case .rightBracket: return "]"
+        case .semicolon: return ";"
+        case .quote: return "'"
+        case .comma: return ","
+        case .period: return "."
+        case .slash: return "/"
+        case .backslash: return "\\"
+        case .grave: return "`"
+        default: return nil
         }
     }
 

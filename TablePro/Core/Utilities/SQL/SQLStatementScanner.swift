@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 
 enum SQLStatementScanner {
     struct LocatedStatement {
@@ -11,10 +12,10 @@ enum SQLStatementScanner {
         let offset: Int
     }
 
-    /// Returns statements with trailing semicolons stripped — for driver execution.
-    static func allStatements(in sql: String) -> [String] {
+    /// Returns statements with trailing semicolons stripped, for driver execution.
+    static func allStatements(in sql: String, dialect: SqlDialect = .generic) -> [String] {
         var results: [String] = []
-        scan(sql: sql, cursorPosition: nil) { rawSQL, _ in
+        scan(sql: sql, cursorPosition: nil, dialect: dialect) { rawSQL, _ in
             var trimmed = rawSQL.trimmingCharacters(in: .whitespacesAndNewlines)
             if trimmed.hasSuffix(";") {
                 trimmed = String(trimmed.dropLast())
@@ -28,7 +29,7 @@ enum SQLStatementScanner {
         return results
     }
 
-    /// Returns statements preserving trailing semicolons — for display/history/favorites.
+    /// Returns statements preserving trailing semicolons, for display/history/favorites.
     static func allStatementsPreservingSemicolons(in sql: String) -> [String] {
         var results: [String] = []
         scan(sql: sql, cursorPosition: nil) { rawSQL, _ in
@@ -44,8 +45,8 @@ enum SQLStatementScanner {
         return results
     }
 
-    static func statementAtCursor(in sql: String, cursorPosition: Int) -> String {
-        var result = locatedStatementAtCursor(in: sql, cursorPosition: cursorPosition)
+    static func statementAtCursor(in sql: String, cursorPosition: Int, dialect: SqlDialect = .generic) -> String {
+        var result = locatedStatementAtCursor(in: sql, cursorPosition: cursorPosition, dialect: dialect)
             .sql
             .trimmingCharacters(in: .whitespacesAndNewlines)
         if result.hasSuffix(";") {
@@ -55,9 +56,9 @@ enum SQLStatementScanner {
         return result
     }
 
-    static func locatedStatementAtCursor(in sql: String, cursorPosition: Int) -> LocatedStatement {
+    static func locatedStatementAtCursor(in sql: String, cursorPosition: Int, dialect: SqlDialect = .generic) -> LocatedStatement {
         var result = LocatedStatement(sql: "", offset: 0)
-        scan(sql: sql, cursorPosition: cursorPosition) { rawSQL, offset in
+        scan(sql: sql, cursorPosition: cursorPosition, dialect: dialect) { rawSQL, offset in
             result = LocatedStatement(sql: rawSQL, offset: offset)
             return false
         }
@@ -75,10 +76,12 @@ enum SQLStatementScanner {
     private static let star = UInt16(UnicodeScalar("*").value)
     private static let newline = UInt16(UnicodeScalar("\n").value)
     private static let backslash = UInt16(UnicodeScalar("\\").value)
+    private static let dollar = UInt16(UnicodeScalar("$").value)
 
     private static func scan(
         sql: String,
         cursorPosition: Int?,
+        dialect: SqlDialect = .generic,
         onStatement: (_ rawSQL: String, _ offset: Int) -> Bool
     ) {
         let nsQuery = sql as NSString
@@ -97,6 +100,9 @@ enum SQLStatementScanner {
         var stringCharVal: UInt16 = 0
         var inLineComment = false
         var inBlockComment = false
+        var inDollarQuote = false
+        var dollarTag = ""
+        let dollarQuotesEnabled = dialect.supportsDollarQuotes
         var i = 0
 
         while i < length {
@@ -112,6 +118,18 @@ enum SQLStatementScanner {
                 if ch == star && i + 1 < length && nsQuery.character(at: i + 1) == slash {
                     inBlockComment = false
                     i += 2
+                    continue
+                }
+                i += 1
+                continue
+            }
+
+            if inDollarQuote {
+                if ch == dollar,
+                   SqlDollarQuote.matchesClose(at: i, tag: dollarTag, in: nsQuery, bufLen: length) {
+                    inDollarQuote = false
+                    i += (dollarTag as NSString).length + 2
+                    dollarTag = ""
                     continue
                 }
                 i += 1
@@ -146,6 +164,14 @@ enum SQLStatementScanner {
                         inString = false
                     }
                 }
+            }
+
+            if dollarQuotesEnabled, !inString, ch == dollar,
+               case .opener(let openerLength, let tag) = SqlDollarQuote.scanOpener(at: i, in: nsQuery, bufLen: length) {
+                inDollarQuote = true
+                dollarTag = tag
+                i += openerLength
+                continue
             }
 
             if ch == semicolonChar && !inString {

@@ -1,12 +1,7 @@
-//
-//  AWSCredentialResolver.swift
-//  TablePro
-//
-
 import Foundation
 
-enum AWSCredentialResolver {
-    static func resolve(source: String, fields: [String: String]) async throws -> AWSCredentials {
+public enum AWSCredentialResolver {
+    public static func resolve(source: String, fields: [String: String]) async throws -> AWSCredentials {
         switch source {
         case "profile":
             return try await resolveProfile(fields: fields)
@@ -35,20 +30,41 @@ enum AWSCredentialResolver {
 
     private static func resolveProfile(fields: [String: String]) async throws -> AWSCredentials {
         let profileName = fields["awsProfileName"].flatMap { $0.isEmpty ? nil : $0 } ?? "default"
-        let settings = profileSettings(profileName: profileName)
+        return try await resolveProfileChain(profileName: profileName, depth: 0)
+    }
+
+    private static func resolveProfileChain(profileName: String, depth: Int) async throws -> AWSCredentials {
+        guard depth < 5 else {
+            throw AWSAuthError.assumeRoleChainTooDeep(profileName)
+        }
+
+        let settings = AWSConfigFile.mergedProfileSettings(
+            profileName: profileName,
+            configContents: AWSConfigFile.readFile(AWSConfigFile.defaultConfigPath),
+            credentialsContents: AWSConfigFile.readFile(AWSConfigFile.defaultCredentialsPath)
+        )
         guard !settings.isEmpty else {
             throw AWSAuthError.profileIncomplete(profileName)
         }
 
-        let accessKeyId = settings["aws_access_key_id"] ?? ""
-        let secretAccessKey = settings["aws_secret_access_key"] ?? ""
-        if !accessKeyId.isEmpty, !secretAccessKey.isEmpty {
-            let sessionToken = settings["aws_session_token"]
-            return AWSCredentials(
-                accessKeyId: accessKeyId,
-                secretAccessKey: secretAccessKey,
-                sessionToken: sessionToken?.isEmpty == true ? nil : sessionToken
+        if let roleArn = settings["role_arn"], !roleArn.isEmpty {
+            if let mfaSerial = settings["mfa_serial"], !mfaSerial.isEmpty {
+                throw AWSAuthError.mfaUnsupported(profileName)
+            }
+            let base = try await baseCredentials(for: settings, profileName: profileName, depth: depth)
+            return try await AWSSTS.assumeRole(
+                roleArn: roleArn,
+                roleSessionName: settings["role_session_name"] ?? defaultSessionName(for: profileName),
+                externalId: settings["external_id"],
+                durationSeconds: settings["duration_seconds"].flatMap(Int.init),
+                region: settings["region"] ?? "us-east-1",
+                baseCredentials: base,
+                session: URLSession.shared
             )
+        }
+
+        if let credentials = staticCredentials(from: settings) {
+            return credentials
         }
 
         if let command = settings["credential_process"], !command.isEmpty {
@@ -58,30 +74,61 @@ enum AWSCredentialResolver {
         throw AWSAuthError.profileIncomplete(profileName)
     }
 
-    private static func profileSettings(profileName: String) -> [String: String] {
-        var settings: [String: String] = [:]
-
-        let configPath = NSString("~/.aws/config").expandingTildeInPath
-        if let content = try? String(contentsOfFile: configPath, encoding: .utf8) {
-            let sections = AWSSSO.parseIniSections(content)
-            let sectionKey = profileName == "default" ? "default" : "profile \(profileName)"
-            if let section = sections[sectionKey] {
-                settings.merge(section) { _, new in new }
-            }
+    private static func baseCredentials(
+        for settings: [String: String],
+        profileName: String,
+        depth: Int
+    ) async throws -> AWSCredentials {
+        if let sourceProfile = settings["source_profile"], !sourceProfile.isEmpty {
+            return try await resolveProfileChain(profileName: sourceProfile, depth: depth + 1)
         }
-
-        let credentialsPath = NSString("~/.aws/credentials").expandingTildeInPath
-        if let content = try? String(contentsOfFile: credentialsPath, encoding: .utf8) {
-            let sections = AWSSSO.parseIniSections(content)
-            if let section = sections[profileName] {
-                settings.merge(section) { _, new in new }
+        if let credentialSource = settings["credential_source"], !credentialSource.isEmpty {
+            guard credentialSource == "Environment" else {
+                throw AWSAuthError.credentialSourceUnsupported(profile: profileName, source: credentialSource)
             }
+            return try environmentCredentials(profileName: profileName)
         }
+        throw AWSAuthError.assumeRoleMissingSource(profileName)
+    }
 
-        return settings
+    private static func defaultSessionName(for profileName: String) -> String {
+        let allowed = CharacterSet(
+            charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+=,.@-"
+        )
+        let cleaned = String(profileName.unicodeScalars.map { allowed.contains($0) ? Character($0) : "-" })
+        let trimmed = String(cleaned.prefix(50))
+        return "tablepro-\(trimmed.isEmpty ? "session" : trimmed)"
+    }
+
+    private static func staticCredentials(from settings: [String: String]) -> AWSCredentials? {
+        let accessKeyId = settings["aws_access_key_id"] ?? ""
+        let secretAccessKey = settings["aws_secret_access_key"] ?? ""
+        guard !accessKeyId.isEmpty, !secretAccessKey.isEmpty else { return nil }
+        let sessionToken = settings["aws_session_token"]
+        return AWSCredentials(
+            accessKeyId: accessKeyId,
+            secretAccessKey: secretAccessKey,
+            sessionToken: sessionToken?.isEmpty == true ? nil : sessionToken
+        )
+    }
+
+    private static func environmentCredentials(profileName: String) throws -> AWSCredentials {
+        let environment = ProcessInfo.processInfo.environment
+        let accessKeyId = environment["AWS_ACCESS_KEY_ID"] ?? ""
+        let secretAccessKey = environment["AWS_SECRET_ACCESS_KEY"] ?? ""
+        guard !accessKeyId.isEmpty, !secretAccessKey.isEmpty else {
+            throw AWSAuthError.profileIncomplete(profileName)
+        }
+        let sessionToken = environment["AWS_SESSION_TOKEN"]
+        return AWSCredentials(
+            accessKeyId: accessKeyId,
+            secretAccessKey: secretAccessKey,
+            sessionToken: sessionToken?.isEmpty == true ? nil : sessionToken
+        )
     }
 
     private static func runCredentialProcess(_ command: String, profileName: String) async throws -> AWSCredentials {
+        #if os(macOS)
         let arguments = tokenizeCommand(command)
         guard !arguments.isEmpty else {
             throw AWSAuthError.credentialProcessInvalid(profileName)
@@ -98,8 +145,12 @@ enum AWSCredentialResolver {
         }
 
         return try parseCredentialProcessOutput(output, profileName: profileName)
+        #else
+        throw AWSAuthError.credentialProcessUnsupportedOnPlatform(profileName)
+        #endif
     }
 
+    #if os(macOS)
     private static func executeCredentialProcess(_ arguments: [String], profileName: String) throws -> Data {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
@@ -144,8 +195,9 @@ enum AWSCredentialResolver {
         environment["PATH"] = (searchPaths + inherited).joined(separator: ":")
         return environment
     }
+    #endif
 
-    static func tokenizeCommand(_ command: String) -> [String] {
+    public static func tokenizeCommand(_ command: String) -> [String] {
         var tokens: [String] = []
         var current = ""
         var inQuotes = false
@@ -180,16 +232,18 @@ enum AWSCredentialResolver {
         let accessKeyId: String
         let secretAccessKey: String
         let sessionToken: String?
+        let expiration: String?
 
         enum CodingKeys: String, CodingKey {
             case version = "Version"
             case accessKeyId = "AccessKeyId"
             case secretAccessKey = "SecretAccessKey"
             case sessionToken = "SessionToken"
+            case expiration = "Expiration"
         }
     }
 
-    static func parseCredentialProcessOutput(_ data: Data, profileName: String) throws -> AWSCredentials {
+    public static func parseCredentialProcessOutput(_ data: Data, profileName: String) throws -> AWSCredentials {
         guard let output = try? JSONDecoder().decode(CredentialProcessOutput.self, from: data) else {
             throw AWSAuthError.credentialProcessBadOutput(profileName)
         }
@@ -202,16 +256,22 @@ enum AWSCredentialResolver {
         return AWSCredentials(
             accessKeyId: output.accessKeyId,
             secretAccessKey: output.secretAccessKey,
-            sessionToken: output.sessionToken?.isEmpty == true ? nil : output.sessionToken
+            sessionToken: output.sessionToken?.isEmpty == true ? nil : output.sessionToken,
+            expiration: output.expiration.flatMap(parseISO8601)
         )
+    }
+
+    static func parseISO8601(_ value: String) -> Date? {
+        let withFractional = ISO8601DateFormatter()
+        withFractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return withFractional.date(from: value) ?? ISO8601DateFormatter().date(from: value)
     }
 
     private static func resolveSSO(fields: [String: String]) async throws -> AWSCredentials {
         let profileName = fields["awsProfileName"].flatMap { $0.isEmpty ? nil : $0 } ?? "default"
-        let configPath = NSString("~/.aws/config").expandingTildeInPath
         let cacheDir = NSString("~/.aws/sso/cache").expandingTildeInPath
 
-        guard let configContent = try? String(contentsOfFile: configPath, encoding: .utf8) else {
+        guard let configContent = AWSConfigFile.readFile(AWSConfigFile.defaultConfigPath) else {
             throw AWSSSOError.configReadFailed
         }
 
@@ -230,7 +290,8 @@ enum AWSCredentialResolver {
         return AWSCredentials(
             accessKeyId: credentials.accessKeyId,
             secretAccessKey: credentials.secretAccessKey,
-            sessionToken: credentials.sessionToken
+            sessionToken: credentials.sessionToken,
+            expiration: credentials.expiration
         )
     }
 }

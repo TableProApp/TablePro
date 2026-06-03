@@ -30,7 +30,9 @@ internal actor DefaultExecutionGate: ExecutionGate {
         let tier = request.sql.map { QueryClassifier.classifyTier($0, databaseType: request.databaseType) }
         let isDangerous = request.sql.map { QueryClassifier.isDangerousQuery($0, databaseType: request.databaseType) } ?? false
         let isDestructive = request.kind.declaresDestructive || tier == .destructive || isDangerous
-        let isMultiStatement = request.sql.map { QueryClassifier.isMultiStatement($0) } ?? false
+        let isMultiStatement = request.sql.map {
+            QueryClassifier.isMultiStatement($0, databaseType: request.databaseType)
+        } ?? false
         let effectiveWrite = await resolveEffectiveWrite(request, tier: tier)
 
         if let denial = capabilityDenial(

@@ -14,10 +14,15 @@ enum FilterLogicMode: String, Codable {
     }
 }
 
+enum FilterCommit: Codable, Equatable, Hashable {
+    case all
+    case solo(UUID)
+}
+
 extension TabFilterState {
-    init(filters: [TableFilter], appliedFilters: [TableFilter], isVisible: Bool, filterLogicMode: FilterLogicMode) {
+    init(filters: [TableFilter], commit: FilterCommit?, isVisible: Bool, filterLogicMode: FilterLogicMode) {
         self.filters = filters
-        self.appliedFilters = appliedFilters
+        self.commit = commit
         self.isVisible = isVisible
         self.filterLogicMode = filterLogicMode
     }
