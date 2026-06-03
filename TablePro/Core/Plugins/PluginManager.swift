@@ -5,6 +5,7 @@
 
 import Combine
 import Foundation
+import Network
 import os
 import Security
 import SwiftUI
@@ -14,6 +15,7 @@ import TableProPluginKit
 final class PluginManager {
     static let shared = PluginManager()
     static let currentPluginKitVersion = 18
+    static let minimumCompatiblePluginKitVersion = 18
     static let currentInspectorKitVersion = 1
     private static let disabledPluginsKey = "com.TablePro.disabledPlugins"
     private static let legacyDisabledPluginsKey = "disabledPlugins"
@@ -115,6 +117,8 @@ final class PluginManager {
     @ObservationIgnored internal var reconciliationAttempts: [String: Int] = [:]
     @ObservationIgnored internal var reconciliationManifestAttempts = 0
     @ObservationIgnored private var connectionStatusSubscription: AnyCancellable?
+    @ObservationIgnored internal var pluginNetworkMonitor: NWPathMonitor?
+    @ObservationIgnored internal var lastNetworkSatisfied = false
     @ObservationIgnored internal var installsInFlight: Set<String> = []
 
     var queryBuildingDriverCache: [String: (any PluginDatabaseDriver)?] = [:]
@@ -235,6 +239,7 @@ final class PluginManager {
 
             self.refreshRegistryUpdateSet()
             self.subscribeToConnectionStatusChanges()
+            self.startNetworkReachabilityMonitor()
             self.scheduleReconciliation()
         }
     }
@@ -468,7 +473,7 @@ final class PluginManager {
                     current: currentPluginKitVersion
                 )
             }
-            if version < currentPluginKitVersion {
+            if version < minimumCompatiblePluginKitVersion {
                 throw PluginError.pluginOutdated(
                     pluginVersion: version,
                     requiredVersion: currentPluginKitVersion

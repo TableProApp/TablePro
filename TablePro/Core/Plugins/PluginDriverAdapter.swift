@@ -85,7 +85,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
         case let d as Date:
             return Self.iso8601Formatter.string(from: d)
         case let data as Data:
-            return data.map { String(format: "%02x", $0) }.joined()
+            return data.hexEncoded
         case let uuid as UUID:
             return uuid.uuidString
         default:

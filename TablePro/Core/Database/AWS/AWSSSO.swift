@@ -300,6 +300,6 @@ enum AWSSSO {
         data.withUnsafeBytes { ptr in
             _ = CC_SHA1(ptr.baseAddress, CC_LONG(data.count), &hash)
         }
-        return hash.map { String(format: "%02x", $0) }.joined()
+        return hash.hexEncoded
     }
 }

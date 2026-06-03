@@ -25,6 +25,22 @@ struct FilterRestoreTests {
         #expect(result.isVisible)
     }
 
+    @Test("Restore keeps disabled filters in the panel but out of the applied set")
+    func restoreKeepsDisabledFilterInactive() {
+        let active = TestFixtures.makeTableFilter(column: "email", value: "a@b.com")
+        let inactive = TestFixtures.makeTableFilter(column: "name", value: "bob", isEnabled: false)
+
+        let result = FilterCoordinator.resolvedRestoredState(
+            panelState: .restoreLast,
+            saved: [active, inactive],
+            current: TabFilterState()
+        )
+
+        #expect(result.filters == [active, inactive])
+        #expect(result.appliedFilters == [active])
+        #expect(result.isVisible)
+    }
+
     @Test("Restore Last with no saved filters keeps the bar hidden")
     func restoreLastWithNoFiltersKeepsBarHidden() {
         let result = FilterCoordinator.resolvedRestoredState(

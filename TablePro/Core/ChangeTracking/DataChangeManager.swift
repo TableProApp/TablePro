@@ -53,7 +53,7 @@ final class DataChangeManager: ChangeManaging {
     var primaryKeyColumns: [String] = []
     /// First PK column, for contexts that need a single column (paste, filters)
     var primaryKeyColumn: String? { primaryKeyColumns.first }
-    var databaseType: DatabaseType = .mysql
+    var databaseType: DatabaseType?
     var pluginDriver: (any PluginDatabaseDriver)?
 
     var columns: [String] = []
@@ -94,7 +94,7 @@ final class DataChangeManager: ChangeManaging {
         tableName: String,
         columns: [String],
         primaryKeyColumns: [String],
-        databaseType: DatabaseType = .mysql,
+        databaseType: DatabaseType,
         triggerReload: Bool = true
     ) {
         self.tableName = tableName
@@ -407,9 +407,15 @@ final class DataChangeManager: ChangeManaging {
             }
         }
 
+        guard let databaseType else {
+            throw DatabaseError.queryFailed(
+                "Cannot generate statements: table dialect not configured"
+            )
+        }
+
         if PluginManager.shared.editorLanguage(for: databaseType) != .sql {
             throw DatabaseError.queryFailed(
-                "Cannot generate statements for \(databaseType.rawValue) — plugin driver not initialized"
+                "Cannot generate statements for \(databaseType.rawValue): plugin driver not initialized"
             )
         }
 

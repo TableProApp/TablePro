@@ -7,9 +7,13 @@ description: Filter table data with 18 operators, raw SQL, and saved presets
 
 Press `Cmd+F` while viewing a table to open the filter panel. Type a raw SQL WHERE clause and press `Enter` to filter. Raw SQL is the default mode.
 
-Each row has a column picker, operator, value field, and **+**/**−** buttons. Multiple rows combine with **AND** or **OR** (toggle in the header). Click **Apply** or press `Enter` to activate. Click **Unset** to clear all.
+Each row has a checkbox, a column picker, operator, value field, and **+**/**−** buttons. Multiple rows combine with **AND** or **OR** (toggle in the header). Click **Apply**, press `Enter` in a value field, or press `Cmd+Return` to run all active filters. Click **Unset** to clear all.
 
-When you reopen a table, TablePro restores the filter you last applied to it, including after you quit and relaunch. If you clear the filter with **Unset** or remove its conditions with **−**, reopening the table shows it unfiltered. Filters are remembered per connection. Tables with active filters open in a new tab when you click another table.
+Uncheck a row to turn that filter off without deleting it. The header **Apply** runs only the checked filters; unchecked ones stay dimmed in the panel so you can switch them back on later. Toggling a checkbox does not re-run the query on its own, press **Apply** when you are ready.
+
+Each row also has its own **Apply** button. It filters the table by just that row, without changing any checkbox. The checkboxes stay as they are, so you can test one condition on its own and then go back to the checked set with the header **Apply**.
+
+When you reopen a table, TablePro restores the filters you last applied to it, including the ones you left unchecked, after you quit and relaunch. If you clear the filter with **Unset** or remove its conditions with **−**, reopening the table shows it unfiltered. Filters are remembered per connection. Tables with active filters open in a new tab when you click another table.
 
 ## Operators
 

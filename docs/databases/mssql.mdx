@@ -22,7 +22,7 @@ Run `scripts/build-freetds.sh` first. Click **New Connection**, select **SQL Ser
 | **Host** | `localhost` | |
 | **Port** | `1433` | |
 | **Username** | `sa` | SQL Server Authentication only (no Windows Auth) |
-| **Database** | - | Optional. Leave empty to browse all databases. Switch with **Cmd+K** |
+| **Database** | - | Optional. Leave empty to browse all databases. Switch with **Cmd+K**. Required for logins scoped to a single database, such as Azure SQL contained users |
 
 ## Example Configurations
 
@@ -96,7 +96,7 @@ For Azure SQL Database, pick **Required** or stricter. For SQL Server 2017+ on a
 
 **Connection refused**: Enable TCP/IP in SQL Server Configuration Manager, verify SQL Server service running, check firewall port 1433, ensure Docker started.
 
-**Login failed**: Verify credentials, check mixed-mode authentication enabled: `SELECT SERVERPROPERTY('IsIntegratedSecurityOnly');` Set to 2 for mixed mode.
+**Login failed**: Verify credentials, check mixed-mode authentication enabled: `SELECT SERVERPROPERTY('IsIntegratedSecurityOnly');` Set to 2 for mixed mode. If the login only has access to one database (an Azure SQL contained user), set the **Database** field. TablePro sends it during login; without it the server authenticates against `master` and rejects the login.
 
 **FreeTDS not found**: Run `scripts/build-freetds.sh` to compile and place library.
 

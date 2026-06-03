@@ -2,31 +2,55 @@
 //  KeyboardShortcutModels.swift
 //  TablePro
 //
-//  Data models for keyboard shortcut customization.
+//  Data models for keyboard shortcut customization. The binding type itself
+//  lives in BoundKey.swift.
 //
 
 import AppKit
 import SwiftUI
 
+// MARK: - Shortcut Context
+
+/// Where an action can fire. The same physical combo can mean different things
+/// in different contexts because the focused responder resolves it (e.g. Cmd+[
+/// is pagination in the grid and indent in the editor). Two actions only
+/// conflict when their contexts can be active at the same time.
+enum ShortcutContext: String {
+    case global
+    case editor
+    case dataGrid
+
+    /// Two contexts overlap when they can be the active responder at the same
+    /// time. Non-overlapping contexts (editor vs data grid) may share a combo:
+    /// the editor's local key monitor consumes the keystroke while it is focused,
+    /// so the grid's menu key-equivalent only fires when the grid has focus. The
+    /// conflict resolver guards uniqueness within an overlapping context; it does
+    /// not stop a user from binding a grid combo that also reaches a global menu
+    /// item, which focus alone cannot disambiguate.
+    func overlaps(_ other: ShortcutContext) -> Bool {
+        self == .global || other == .global || self == other
+    }
+}
+
 // MARK: - Shortcut Category
 
-/// Categories for organizing keyboard shortcuts in settings
+/// Groups shortcuts in the settings list by the surface they act on.
 enum ShortcutCategory: String, Codable, CaseIterable, Identifiable {
-    case file
-    case edit
-    case view
-    case tabs
-    case ai
+    case editor
+    case dataGrid
+    case navigation
+    case connections
+    case app
 
     var id: String { rawValue }
 
     var displayName: String {
         switch self {
-        case .file: return String(localized: "File")
-        case .edit: return String(localized: "Edit")
-        case .view: return String(localized: "View")
-        case .tabs: return String(localized: "Tabs")
-        case .ai: return String(localized: "AI")
+        case .editor: return String(localized: "Editor & Query")
+        case .dataGrid: return String(localized: "Data Grid")
+        case .navigation: return String(localized: "Navigation")
+        case .connections: return String(localized: "Connections")
+        case .app: return String(localized: "App")
         }
     }
 }
@@ -35,33 +59,28 @@ enum ShortcutCategory: String, Codable, CaseIterable, Identifiable {
 
 /// All customizable keyboard shortcut actions
 enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
-    // File
+    // Connections
     case manageConnections
-    case newTab
+    case newConnection
     case openDatabase
-    case openFile
     case switchConnection
+
+    // Editor & Query
+    case openFile
     case saveChanges
     case saveAs
-    case previewSQL
-    case closeTab
-    case refresh
     case executeQuery
     case executeAllStatements
     case cancelQuery
     case explainQuery
     case formatQuery
-    case export
-    case importData
-    case quickSwitcher
+    case previewSQL
+    case findNext
+    case findPrevious
+    case aiExplainQuery
+    case aiOptimizeQuery
 
-    // Navigation
-    case previousPage
-    case nextPage
-    case firstPage
-    case lastPage
-
-    // Edit
+    // Data Grid
     case undo
     case redo
     case cut
@@ -78,8 +97,18 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
     case truncateTable
     case previewFKReference
     case saveAsFavorite
+    case previousPage
+    case nextPage
+    case firstPage
+    case lastPage
+    case refresh
+    case export
+    case importData
 
-    // View
+    // Navigation
+    case newTab
+    case closeTab
+    case quickSwitcher
     case toggleTableBrowser
     case toggleInspector
     case toggleFilters
@@ -91,37 +120,44 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
     case focusSidebarSearch
     case showSidebarTables
     case showSidebarFavorites
-
-    // Tabs
     case showPreviousTab
     case showNextTab
-
-    // AI
-    case aiExplainQuery
-    case aiOptimizeQuery
 
     var id: String { rawValue }
 
     var category: ShortcutCategory {
         switch self {
-        case .manageConnections, .newTab, .openDatabase, .openFile, .switchConnection,
-             .saveChanges, .saveAs, .previewSQL, .closeTab, .refresh,
-             .executeQuery, .executeAllStatements, .cancelQuery, .explainQuery, .formatQuery,
-             .export, .importData, .quickSwitcher,
-             .previousPage, .nextPage, .firstPage, .lastPage, .saveAsFavorite:
-            return .file
-        case .undo, .redo, .cut, .copy, .copyRowsExplicit, .copyWithHeaders, .copyAsJson, .paste,
-             .delete, .selectAll, .clearSelection, .addRow,
-             .duplicateRow, .truncateTable, .previewFKReference:
-            return .edit
-        case .toggleTableBrowser, .toggleInspector, .toggleFilters, .toggleHistory,
-             .toggleResults, .previousResultTab, .nextResultTab, .closeResultTab,
-             .focusSidebarSearch, .showSidebarTables, .showSidebarFavorites:
-            return .view
-        case .showPreviousTab, .showNextTab:
-            return .tabs
-        case .aiExplainQuery, .aiOptimizeQuery:
-            return .ai
+        case .manageConnections, .newConnection, .openDatabase, .switchConnection:
+            return .connections
+        case .openFile, .saveChanges, .saveAs, .executeQuery, .executeAllStatements,
+             .cancelQuery, .explainQuery, .formatQuery, .previewSQL, .findNext,
+             .findPrevious, .aiExplainQuery, .aiOptimizeQuery:
+            return .editor
+        case .undo, .redo, .cut, .copy, .copyRowsExplicit, .copyWithHeaders, .copyAsJson,
+             .paste, .delete, .selectAll, .clearSelection, .addRow, .duplicateRow,
+             .truncateTable, .previewFKReference, .saveAsFavorite, .previousPage,
+             .nextPage, .firstPage, .lastPage, .refresh, .export, .importData:
+            return .dataGrid
+        case .newTab, .closeTab, .quickSwitcher, .toggleTableBrowser, .toggleInspector,
+             .toggleFilters, .toggleHistory, .toggleResults, .previousResultTab,
+             .nextResultTab, .closeResultTab, .focusSidebarSearch, .showSidebarTables,
+             .showSidebarFavorites, .showPreviousTab, .showNextTab:
+            return .navigation
+        }
+    }
+
+    var context: ShortcutContext {
+        switch self {
+        case .executeQuery, .executeAllStatements, .cancelQuery, .explainQuery,
+             .formatQuery, .previewSQL, .findNext, .findPrevious, .aiExplainQuery,
+             .aiOptimizeQuery:
+            return .editor
+        case .previousPage, .nextPage, .firstPage, .lastPage, .addRow, .duplicateRow,
+             .delete, .truncateTable, .previewFKReference, .saveAsFavorite,
+             .copyRowsExplicit, .copyWithHeaders, .copyAsJson, .toggleFilters:
+            return .dataGrid
+        default:
+            return .global
         }
     }
 
@@ -137,6 +173,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
     var displayName: String {
         switch self {
         case .manageConnections: return String(localized: "Manage Connections")
+        case .newConnection: return String(localized: "New Connection")
         case .executeQuery: return String(localized: "Execute Query")
         case .executeAllStatements: return String(localized: "Execute All Statements")
         case .cancelQuery: return String(localized: "Cancel Query")
@@ -151,6 +188,8 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
         case .refresh: return String(localized: "Refresh")
         case .explainQuery: return String(localized: "Explain Query")
         case .formatQuery: return String(localized: "Format Query")
+        case .findNext: return String(localized: "Find Next")
+        case .findPrevious: return String(localized: "Find Previous")
         case .export: return String(localized: "Export")
         case .importData: return String(localized: "Import")
         case .quickSwitcher: return String(localized: "Quick Switcher")
@@ -193,281 +232,120 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
     }
 }
 
-// MARK: - Key Combo
+// MARK: - Built-in Editor Shortcuts
 
-/// A recorded keyboard shortcut combination
-struct KeyCombo: Codable, Equatable, Hashable {
-    /// The key character (lowercase letter, or special key name like "delete", "escape", "leftArrow", etc.)
-    let key: String
-
-    /// Whether Command modifier is held
-    let command: Bool
-
-    /// Whether Shift modifier is held
-    let shift: Bool
-
-    /// Whether Option modifier is held
-    let option: Bool
-
-    /// Whether Control modifier is held
-    let control: Bool
-
-    /// Whether this is a special key (arrow, delete, escape, etc.) rather than a character key
-    let isSpecialKey: Bool
-
-    init(
-        key: String,
-        command: Bool = false,
-        shift: Bool = false,
-        option: Bool = false,
-        control: Bool = false,
-        isSpecialKey: Bool = false
-    ) {
-        self.key = key
-        self.command = command
-        self.shift = shift
-        self.option = option
-        self.control = control
-        self.isSpecialKey = isSpecialKey
-    }
-
-    /// Create a KeyCombo from an NSEvent
-    init?(from event: NSEvent) {
-        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-        let hasCommand = flags.contains(.command)
-        let hasShift = flags.contains(.shift)
-        let hasOption = flags.contains(.option)
-        let hasControl = flags.contains(.control)
-
-        // Require at least Cmd or Control (or special bare keys: escape, delete, space)
-        let specialKeyCode = Self.specialKeyName(for: event.keyCode)
-        let isAllowedBareKey = event.keyCode == 53 || event.keyCode == 51
-            || event.keyCode == 117 || event.keyCode == 49
-
-        if !hasCommand && !hasControl && !isAllowedBareKey {
-            return nil
-        }
-
-        if let specialName = specialKeyCode {
-            self.key = specialName
-            self.isSpecialKey = true
-        } else if let chars = event.charactersIgnoringModifiers?.lowercased(), !chars.isEmpty {
-            self.key = chars
-            self.isSpecialKey = false
-        } else {
-            return nil
-        }
-
-        self.command = hasCommand
-        self.shift = hasShift
-        self.option = hasOption
-        self.control = hasControl
-    }
-
-    // MARK: - SwiftUI Integration
-
-    /// Convert to SwiftUI KeyEquivalent
-    var keyEquivalent: KeyEquivalent {
-        if isSpecialKey {
-            switch key {
-            case "delete": return .delete
-            case "escape": return .escape
-            case "return": return .return
-            case "tab": return .tab
-            case "space": return .space
-            case "upArrow": return .upArrow
-            case "downArrow": return .downArrow
-            case "leftArrow": return .leftArrow
-            case "rightArrow": return .rightArrow
-            case "home": return .home
-            case "end": return .end
-            case "pageUp": return .pageUp
-            case "pageDown": return .pageDown
-            // NSDeleteFunctionKey (0xF728) is always a valid Unicode scalar
-            // swiftlint:disable:next force_unwrapping
-            case "forwardDelete": return KeyEquivalent(Character(UnicodeScalar(NSDeleteFunctionKey)!))
-            default:
-                guard key.count == 1 else { return .escape }
-                return KeyEquivalent(Character(key))
-            }
-        }
-        return KeyEquivalent(Character(key))
-    }
-
-    /// Convert to SwiftUI EventModifiers
-    var eventModifiers: EventModifiers {
-        var modifiers: EventModifiers = []
-        if command { modifiers.insert(.command) }
-        if shift { modifiers.insert(.shift) }
-        if option { modifiers.insert(.option) }
-        if control { modifiers.insert(.control) }
-        return modifiers
-    }
-
-    var hasModifier: Bool {
-        command || shift || option || control
-    }
-
-    /// Human-readable display string (e.g. "⌘S", "⇧⌘P")
-    var displayString: String {
-        var parts: [String] = []
-        if control { parts.append("⌃") }
-        if option { parts.append("⌥") }
-        if shift { parts.append("⇧") }
-        if command { parts.append("⌘") }
-        parts.append(displayKey)
-        return parts.joined()
-    }
-
-    /// The display representation of the key
-    private var displayKey: String {
-        if isSpecialKey {
-            switch key {
-            case "delete": return "⌫"
-            case "forwardDelete": return "⌦"
-            case "escape": return "⎋"
-            case "return": return "↩"
-            case "tab": return "⇥"
-            case "space": return "␣"
-            case "upArrow": return "↑"
-            case "downArrow": return "↓"
-            case "leftArrow": return "←"
-            case "rightArrow": return "→"
-            case "home": return "↖"
-            case "end": return "↘"
-            case "pageUp": return "⇞"
-            case "pageDown": return "⇟"
-            default: return key.count == 1 ? key.uppercased() : "?"
-            }
-        }
-        return key.uppercased()
-    }
-
-    // MARK: - Special Key Mapping
-
-    /// Map macOS key codes to special key names
-    private static func specialKeyName(for keyCode: UInt16) -> String? {
-        switch keyCode {
-        case 51: return "delete"
-        case 117: return "forwardDelete"
-        case 53: return "escape"
-        case 36: return "return"
-        case 48: return "tab"
-        case 49: return "space"
-        case 126: return "upArrow"
-        case 125: return "downArrow"
-        case 123: return "leftArrow"
-        case 124: return "rightArrow"
-        case 115: return "home"
-        case 119: return "end"
-        case 116: return "pageUp"
-        case 121: return "pageDown"
-        default: return nil
-        }
-    }
-
-    // MARK: - Event Matching
-
-    /// Check if this combo matches a given NSEvent (for runtime key dispatch)
-    func matches(_ event: NSEvent) -> Bool {
-        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-        guard command == flags.contains(.command),
-              shift == flags.contains(.shift),
-              option == flags.contains(.option),
-              control == flags.contains(.control)
-        else { return false }
-        if isSpecialKey {
-            return Self.specialKeyName(for: event.keyCode) == key
-        }
-        return event.charactersIgnoringModifiers?.lowercased() == key
-    }
-
-    // MARK: - System Reserved Check
-
-    /// Shortcuts that are reserved by macOS and should not be overridden
-    static let systemReserved: [KeyCombo] = [
-        KeyCombo(key: "q", command: true),           // Quit
-        KeyCombo(key: "h", command: true),            // Hide
-        KeyCombo(key: "m", command: true),            // Minimize
-        KeyCombo(key: ",", command: true),             // Settings
-        KeyCombo(key: "tab", command: true, isSpecialKey: true),  // App switcher
-        KeyCombo(key: "space", command: true, isSpecialKey: true), // Spotlight
-        KeyCombo(key: "`", command: true),             // Window cycling
-        KeyCombo(key: "escape", command: true, option: true, isSpecialKey: true), // Force Quit
-        KeyCombo(key: "q", command: true, shift: true), // Logout
-        KeyCombo(key: "3", command: true, shift: true), // Screenshot full
-        KeyCombo(key: "4", command: true, shift: true), // Screenshot area
-        KeyCombo(key: "5", command: true, shift: true), // Screenshot options
-        KeyCombo(key: "q", command: true, control: true), // Lock Screen
-        KeyCombo(key: "f", command: true, control: true), // Full Screen
-        KeyCombo(key: "d", command: true, option: true), // Toggle Dock
-        KeyCombo(key: "d", command: true, control: true), // Look Up / Define
+extension ShortcutAction {
+    /// Shortcuts owned by the embedded SQL editor. They are not customizable, but
+    /// the recorder surfaces them so a user does not silently shadow one with an
+    /// editor-context binding.
+    static let editorBuiltIns: [(key: BoundKey, name: String)] = [
+        (.character("/", command: true), String(localized: "Toggle Comment")),
+        (.character("[", command: true), String(localized: "Indent")),
+        (.character("]", command: true), String(localized: "Outdent")),
+        (.character("f", command: true), String(localized: "Find")),
+        (.character("d", command: true, shift: true), String(localized: "Duplicate Line")),
+        (.character("k", command: true, shift: true), String(localized: "Delete Line")),
+        (.special(.space, control: true), String(localized: "Show Completions")),
+        (.special(.upArrow, option: true), String(localized: "Move Line Up")),
+        (.special(.downArrow, option: true), String(localized: "Move Line Down"))
     ]
 
-    /// Check if this combo is reserved by the system
-    var isSystemReserved: Bool {
-        Self.systemReserved.contains(self)
+    /// App-level shortcuts that are wired directly in the menu and are not
+    /// customizable: tab selection (Cmd+1 through Cmd+9) and editor zoom. These
+    /// fire regardless of focus, so a user binding would silently collide.
+    static let reservedAppShortcuts: [(key: BoundKey, name: String)] = {
+        var shortcuts: [(key: BoundKey, name: String)] = [
+            (.character("=", command: true), String(localized: "Zoom In")),
+            (.character("-", command: true), String(localized: "Zoom Out"))
+        ]
+        for number in 1...9 {
+            shortcuts.append((
+                .character(Character(String(number)), command: true),
+                String(format: String(localized: "Select Tab %d"), number)
+            ))
+        }
+        return shortcuts
+    }()
+
+    /// The name of a reserved command this combo would shadow: an app-level menu
+    /// shortcut (always), or a built-in editor command when the action can fire
+    /// while the editor is focused.
+    static func reservedConflict(for key: BoundKey, context: ShortcutContext) -> String? {
+        if let appName = reservedAppShortcuts.first(where: { $0.key == key })?.name {
+            return appName
+        }
+        guard context == .editor || context == .global else { return nil }
+        return editorBuiltIns.first(where: { $0.key == key })?.name
     }
 }
 
 // MARK: - Keyboard Settings
 
-/// User's keyboard shortcut customization settings
-/// Only stores overrides — empty dictionary means all defaults
+/// User's keyboard shortcut customization settings.
+/// Only stores overrides; an empty dictionary means all defaults.
 struct KeyboardSettings: Codable, Equatable {
-    /// User-customized shortcuts (action rawValue → KeyCombo)
-    /// Only contains overrides; missing entries use defaults.
-    /// Keys are ShortcutAction raw values — if a raw value is renamed in a future version,
-    /// the old stored key becomes a harmless no-op (never matched by any action).
-    var shortcuts: [String: KeyCombo]
+    /// User-customized shortcuts (action rawValue -> BoundKey).
+    /// Only contains overrides; missing entries use defaults. A renamed action's
+    /// stale key becomes a harmless no-op (never matched by any action).
+    var shortcuts: [String: BoundKey]
 
     static let `default` = KeyboardSettings(shortcuts: [:])
 
-    init(shortcuts: [String: KeyCombo] = [:]) {
+    init(shortcuts: [String: BoundKey] = [:]) {
         self.shortcuts = shortcuts
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        shortcuts = try container.decodeIfPresent([String: KeyCombo].self, forKey: .shortcuts) ?? [:]
+        // BoundKey requires `keyCode` and LegacyKeyCombo requires `key`, and
+        // neither field exists in the other shape, so the two never decode each
+        // other's payload. Modern data is tried first; a legacy file fails that
+        // decode and falls through to migration.
+        if let modern = try? container.decodeIfPresent([String: BoundKey].self, forKey: .shortcuts) {
+            shortcuts = modern ?? [:]
+        } else if let legacy = try container.decodeIfPresent([String: LegacyKeyCombo].self, forKey: .shortcuts) {
+            shortcuts = legacy.compactMapValues { $0.migrated() }
+        } else {
+            shortcuts = [:]
+        }
     }
 
-    /// Get the effective shortcut for an action (user override or default)
-    /// Returns nil if user explicitly cleared the shortcut
-    func shortcut(for action: ShortcutAction) -> KeyCombo? {
+    /// Get the effective shortcut for an action (user override or default).
+    /// Returns nil if the user explicitly cleared the shortcut.
+    func shortcut(for action: ShortcutAction) -> BoundKey? {
         if let override = shortcuts[action.rawValue] {
             return override
         }
         return Self.defaultShortcuts[action]
     }
 
-    /// Check if user has customized the shortcut for an action
     func isCustomized(_ action: ShortcutAction) -> Bool {
         shortcuts[action.rawValue] != nil
     }
 
-    /// Find a conflicting action for the given combo, excluding the specified action
-    func findConflict(for combo: KeyCombo, excluding action: ShortcutAction) -> ShortcutAction? {
-        for otherAction in ShortcutAction.allCases where otherAction != action {
-            if shortcut(for: otherAction) == combo {
-                return otherAction
-            }
+    /// Find a conflicting action for the given combo within an overlapping
+    /// context, excluding the specified action.
+    func findConflict(for key: BoundKey, excluding action: ShortcutAction) -> ShortcutAction? {
+        guard !key.isCleared else { return nil }
+        for other in ShortcutAction.allCases where other != action {
+            guard action.context.overlaps(other.context),
+                  let otherKey = shortcut(for: other), !otherKey.isCleared,
+                  otherKey == key else { continue }
+            return other
         }
         return nil
     }
 
-    /// Set a shortcut override for an action
-    mutating func setShortcut(_ combo: KeyCombo, for action: ShortcutAction) {
-        shortcuts[action.rawValue] = combo
+    mutating func setShortcut(_ key: BoundKey, for action: ShortcutAction) {
+        shortcuts[action.rawValue] = key
     }
 
-    /// Clear a shortcut (remove it, action will have no shortcut)
+    /// Clear a shortcut so the action has no binding.
     mutating func clearShortcut(for action: ShortcutAction) {
-        // Store a special "empty" combo to indicate explicitly unassigned
-        shortcuts[action.rawValue] = KeyCombo.cleared
+        shortcuts[action.rawValue] = BoundKey.cleared
     }
 
-    /// Reset a specific action to its default shortcut
+    /// Reset a specific action to its default shortcut.
     mutating func resetToDefault(for action: ShortcutAction) {
         shortcuts.removeValue(forKey: action.rawValue)
     }
@@ -476,99 +354,117 @@ struct KeyboardSettings: Codable, Equatable {
     /// reverting them to their default. Cleared and unknown overrides are kept.
     func sanitized() -> KeyboardSettings {
         var cleaned = shortcuts
-        for (rawValue, combo) in shortcuts {
-            guard let action = ShortcutAction(rawValue: rawValue), !combo.isCleared else { continue }
-            if !combo.hasModifier, !action.allowsBareKey {
+        for (rawValue, key) in shortcuts {
+            guard let action = ShortcutAction(rawValue: rawValue), !key.isCleared else { continue }
+            if !key.hasModifier, !action.allowsBareKey, !key.isFunctionKey {
                 cleaned.removeValue(forKey: rawValue)
             }
         }
         return KeyboardSettings(shortcuts: cleaned)
     }
 
-    /// Build a SwiftUI KeyboardShortcut for the given action.
-    /// Returns nil if the user has cleared (unassigned) the shortcut.
+    /// Build a SwiftUI KeyboardShortcut for the given action's menu item.
+    /// Returns nil when the shortcut is cleared, has no representable key, or is a
+    /// bare (modifier-less) key. Bare keys dispatch through the responder chain in
+    /// the focused view, not through a global menu key-equivalent.
     func keyboardShortcut(for action: ShortcutAction) -> KeyboardShortcut? {
-        guard let combo = shortcut(for: action), !combo.isCleared else {
+        guard let key = shortcut(for: action), !key.isCleared, key.hasModifier || key.isFunctionKey,
+              let equivalent = key.swiftUIKeyEquivalent else {
             return nil
         }
-        return KeyboardShortcut(combo.keyEquivalent, modifiers: combo.eventModifiers)
+        return KeyboardShortcut(equivalent, modifiers: key.eventModifiers)
     }
 
     // MARK: - Default Shortcuts
 
-    /// Default shortcuts — applied when user has no overrides
-    static let defaultShortcuts: [ShortcutAction: KeyCombo] = [
-        // File
-        .manageConnections: KeyCombo(key: "n", command: true),
-        .executeQuery: KeyCombo(key: "return", command: true, isSpecialKey: true),
-        .executeAllStatements: KeyCombo(key: "return", command: true, shift: true, isSpecialKey: true),
-        .cancelQuery: KeyCombo(key: ".", command: true),
-        .newTab: KeyCombo(key: "t", command: true),
-        .openDatabase: KeyCombo(key: "k", command: true),
-        .openFile: KeyCombo(key: "o", command: true),
-        .switchConnection: KeyCombo(key: "c", command: true, control: true),
-        .saveChanges: KeyCombo(key: "s", command: true),
-        .saveAs: KeyCombo(key: "s", command: true, shift: true),
-        .previewSQL: KeyCombo(key: "p", command: true, shift: true),
-        .closeTab: KeyCombo(key: "w", command: true),
-        .refresh: KeyCombo(key: "r", command: true),
-        .explainQuery: KeyCombo(key: "e", command: true, option: true),
-        .formatQuery: KeyCombo(key: "l", command: true, shift: true),
-        .export: KeyCombo(key: "e", command: true, shift: true),
-        .importData: KeyCombo(key: "i", command: true, shift: true),
-        .quickSwitcher: KeyCombo(key: "o", command: true, shift: true),
-        .previousPage: KeyCombo(key: "[", command: true),
-        .nextPage: KeyCombo(key: "]", command: true),
+    /// Default shortcuts, applied when the user has no override. An action absent
+    /// from this map has no default and shows as unassigned until the user binds it.
+    static let defaultShortcuts: [ShortcutAction: BoundKey] = [
+        // Connections
+        .newConnection: .character("n", command: true),
+        .openDatabase: .character("k", command: true),
+        .switchConnection: .character("c", command: true, control: true),
 
-        // Edit
-        .undo: KeyCombo(key: "z", command: true),
-        .redo: KeyCombo(key: "z", command: true, shift: true),
-        .cut: KeyCombo(key: "x", command: true),
-        .copy: KeyCombo(key: "c", command: true),
-        .copyRowsExplicit: KeyCombo(key: "c", command: true, shift: true),
-        .copyWithHeaders: KeyCombo(key: "c", command: true, option: true),
-        .copyAsJson: KeyCombo(key: "j", command: true, option: true),
-        .paste: KeyCombo(key: "v", command: true),
-        .delete: KeyCombo(key: "delete", command: true, isSpecialKey: true),
-        .selectAll: KeyCombo(key: "a", command: true),
-        .clearSelection: KeyCombo(key: "escape", isSpecialKey: true),
-        .addRow: KeyCombo(key: "n", command: true, shift: true),
-        .duplicateRow: KeyCombo(key: "d", command: true, shift: true),
-        .truncateTable: KeyCombo(key: "delete", option: true, isSpecialKey: true),
-        .previewFKReference: KeyCombo(key: "space", isSpecialKey: true),
-        .saveAsFavorite: KeyCombo(key: "d", command: true),
+        // Editor & Query
+        .openFile: .character("o", command: true),
+        .saveChanges: .character("s", command: true),
+        .saveAs: .character("s", command: true, shift: true),
+        .executeQuery: .special(.return, command: true),
+        .executeAllStatements: .special(.return, command: true, shift: true),
+        .cancelQuery: .character(".", command: true),
+        .explainQuery: .character("e", command: true, option: true),
+        .formatQuery: .character("l", command: true, shift: true),
+        .previewSQL: .character("p", command: true, shift: true),
+        .findNext: .character("g", command: true),
+        .findPrevious: .character("g", command: true, shift: true),
+        .aiExplainQuery: .character("l", command: true),
+        .aiOptimizeQuery: .character("l", command: true, option: true),
+        .export: .character("e", command: true, shift: true),
+        .importData: .character("i", command: true, shift: true),
 
-        // View
-        .toggleTableBrowser: KeyCombo(key: "0", command: true),
-        .toggleInspector: KeyCombo(key: "i", command: true, option: true),
-        .toggleFilters: KeyCombo(key: "f", command: true),
-        .toggleHistory: KeyCombo(key: "y", command: true),
-        .toggleResults: KeyCombo(key: "r", command: true, option: true),
-        .previousResultTab: KeyCombo(key: "[", command: true, option: true),
-        .nextResultTab: KeyCombo(key: "]", command: true, option: true),
-        .closeResultTab: KeyCombo(key: "w", command: true, shift: true),
-        .focusSidebarSearch: KeyCombo(key: "f", command: true, option: true),
-        .showSidebarTables: KeyCombo(key: "1", control: true),
-        .showSidebarFavorites: KeyCombo(key: "2", control: true),
+        // Data Grid
+        .undo: .character("z", command: true),
+        .redo: .character("z", command: true, shift: true),
+        .cut: .character("x", command: true),
+        .copy: .character("c", command: true),
+        .copyRowsExplicit: .character("c", command: true, shift: true),
+        .copyWithHeaders: .character("c", command: true, option: true),
+        .copyAsJson: .character("j", command: true, option: true),
+        .paste: .character("v", command: true),
+        .delete: .special(.delete, command: true),
+        .selectAll: .character("a", command: true),
+        .clearSelection: .special(.escape),
+        .addRow: .character("n", command: true, shift: true),
+        .duplicateRow: .character("d", command: true, shift: true),
+        .truncateTable: .special(.delete, option: true),
+        .previewFKReference: .special(.space),
+        .saveAsFavorite: .character("d", command: true),
+        .previousPage: .character("[", command: true),
+        .nextPage: .character("]", command: true),
+        .firstPage: .special(.upArrow, command: true, option: true),
+        .lastPage: .special(.downArrow, command: true, option: true),
+        .refresh: .character("r", command: true),
 
-        // Tabs
-        .showPreviousTab: KeyCombo(key: "[", command: true, shift: true),
-        .showNextTab: KeyCombo(key: "]", command: true, shift: true),
-
-        // AI
-        .aiExplainQuery: KeyCombo(key: "l", command: true),
-        .aiOptimizeQuery: KeyCombo(key: "l", command: true, option: true),
+        // Navigation
+        .newTab: .character("t", command: true),
+        .closeTab: .character("w", command: true),
+        .quickSwitcher: .character("o", command: true, shift: true),
+        .toggleTableBrowser: .character("0", command: true),
+        .toggleInspector: .character("i", command: true, option: true),
+        .toggleFilters: .character("f", command: true),
+        .toggleHistory: .character("y", command: true),
+        .toggleResults: .character("r", command: true, option: true),
+        .previousResultTab: .character("[", command: true, option: true),
+        .nextResultTab: .character("]", command: true, option: true),
+        .closeResultTab: .character("w", command: true, shift: true),
+        .focusSidebarSearch: .character("f", command: true, option: true),
+        .showSidebarTables: .character("1", command: true, option: true),
+        .showSidebarFavorites: .character("2", command: true, option: true),
+        .showPreviousTab: .character("[", command: true, shift: true),
+        .showNextTab: .character("]", command: true, shift: true)
     ]
 }
 
-// MARK: - KeyCombo Cleared Sentinel
+// MARK: - Legacy Migration
 
-extension KeyCombo {
-    /// Sentinel value representing an explicitly cleared (unassigned) shortcut
-    static let cleared = KeyCombo(key: "", command: false, shift: false, option: false, control: false, isSpecialKey: false)
+/// The pre-keyCode stored shape of a shortcut. Used only to migrate persisted
+/// settings to BoundKey.
+private struct LegacyKeyCombo: Codable {
+    let key: String
+    var command = false
+    var shift = false
+    var option = false
+    var control = false
+    var isSpecialKey = false
 
-    /// Whether this combo represents an explicitly cleared shortcut
-    var isCleared: Bool {
-        key.isEmpty && !command && !shift && !option && !control
+    func migrated() -> BoundKey? {
+        BoundKey(
+            legacyKey: key,
+            isSpecialKey: isSpecialKey,
+            command: command,
+            shift: shift,
+            option: option,
+            control: control
+        )
     }
 }

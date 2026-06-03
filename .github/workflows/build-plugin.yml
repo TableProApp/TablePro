@@ -425,6 +425,9 @@ jobs:
 
             if git push; then
               echo "Registry updated on attempt $attempt"
+              curl -sf "https://purge.jsdelivr.net/gh/TableProApp/plugins@main/plugins.json" >/dev/null \
+                && echo "Purged jsDelivr cache for plugins.json" \
+                || echo "::warning::jsDelivr purge request failed; the cache will refresh on its own shortly"
               break
             fi
 

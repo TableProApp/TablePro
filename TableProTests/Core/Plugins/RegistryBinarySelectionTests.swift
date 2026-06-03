@@ -38,7 +38,7 @@ struct RegistryBinarySelectionTests {
             RegistryBinary(architecture: .arm64, downloadURL: "https://a/13", sha256: "aaa", pluginKitVersion: 13),
             RegistryBinary(architecture: .arm64, downloadURL: "https://a/12", sha256: "bbb", pluginKitVersion: 12)
         ])
-        let resolved = try plugin.resolvedBinary(for: .arm64, pluginKitVersion: 13)
+        let resolved = try plugin.resolvedBinary(for: .arm64, currentKitVersion: 13, minimumKitVersion: 13)
         #expect(resolved.downloadURL == "https://a/13")
     }
 
@@ -48,7 +48,7 @@ struct RegistryBinarySelectionTests {
             RegistryBinary(architecture: .arm64, downloadURL: "https://legacy", sha256: "abc", pluginKitVersion: nil)
         ])
         #expect(throws: PluginError.self) {
-            _ = try plugin.resolvedBinary(for: .arm64, pluginKitVersion: 13)
+            _ = try plugin.resolvedBinary(for: .arm64, currentKitVersion: 13, minimumKitVersion: 13)
         }
     }
 
@@ -58,8 +58,48 @@ struct RegistryBinarySelectionTests {
             RegistryBinary(architecture: .arm64, downloadURL: "https://legacy", sha256: "abc", pluginKitVersion: nil),
             RegistryBinary(architecture: .arm64, downloadURL: "https://a/14", sha256: "def", pluginKitVersion: 14)
         ])
-        let resolved = try plugin.resolvedBinary(for: .arm64, pluginKitVersion: 14)
+        let resolved = try plugin.resolvedBinary(for: .arm64, currentKitVersion: 14, minimumKitVersion: 14)
         #expect(resolved.downloadURL == "https://a/14")
+    }
+
+    @Test("resilient older-kit binary is served to a newer app without re-publish")
+    func forwardCompatibleBinarySelected() throws {
+        let plugin = makePlugin(binaries: [
+            RegistryBinary(architecture: .arm64, downloadURL: "https://a/18", sha256: "aaa", pluginKitVersion: 18)
+        ])
+        let resolved = try plugin.resolvedBinary(for: .arm64, currentKitVersion: 19, minimumKitVersion: 18)
+        #expect(resolved.downloadURL == "https://a/18")
+    }
+
+    @Test("highest binary within the compatible range wins")
+    func highestInRangeSelected() throws {
+        let plugin = makePlugin(binaries: [
+            RegistryBinary(architecture: .arm64, downloadURL: "https://a/18", sha256: "aaa", pluginKitVersion: 18),
+            RegistryBinary(architecture: .arm64, downloadURL: "https://a/19", sha256: "bbb", pluginKitVersion: 19),
+            RegistryBinary(architecture: .arm64, downloadURL: "https://a/20", sha256: "ccc", pluginKitVersion: 20)
+        ])
+        let resolved = try plugin.resolvedBinary(for: .arm64, currentKitVersion: 20, minimumKitVersion: 18)
+        #expect(resolved.downloadURL == "https://a/20")
+    }
+
+    @Test("binary below the floor is rejected")
+    func belowFloorRejected() {
+        let plugin = makePlugin(binaries: [
+            RegistryBinary(architecture: .arm64, downloadURL: "https://a/17", sha256: "aaa", pluginKitVersion: 17)
+        ])
+        #expect(throws: PluginError.self) {
+            _ = try plugin.resolvedBinary(for: .arm64, currentKitVersion: 18, minimumKitVersion: 18)
+        }
+    }
+
+    @Test("binary built for a newer app is rejected")
+    func aboveCurrentRejected() {
+        let plugin = makePlugin(binaries: [
+            RegistryBinary(architecture: .arm64, downloadURL: "https://a/19", sha256: "aaa", pluginKitVersion: 19)
+        ])
+        #expect(throws: PluginError.self) {
+            _ = try plugin.resolvedBinary(for: .arm64, currentKitVersion: 18, minimumKitVersion: 18)
+        }
     }
 
     @Test("throws noCompatibleBinary when no arch match")
@@ -68,7 +108,7 @@ struct RegistryBinarySelectionTests {
             RegistryBinary(architecture: .x86_64, downloadURL: "https://intel", sha256: "x", pluginKitVersion: 13)
         ])
         #expect(throws: PluginError.self) {
-            _ = try plugin.resolvedBinary(for: .arm64, pluginKitVersion: 13)
+            _ = try plugin.resolvedBinary(for: .arm64, currentKitVersion: 13, minimumKitVersion: 13)
         }
     }
 
@@ -78,7 +118,7 @@ struct RegistryBinarySelectionTests {
             RegistryBinary(architecture: .arm64, downloadURL: "https://a/12", sha256: "bbb", pluginKitVersion: 12)
         ])
         #expect(throws: PluginError.self) {
-            _ = try plugin.resolvedBinary(for: .arm64, pluginKitVersion: 13)
+            _ = try plugin.resolvedBinary(for: .arm64, currentKitVersion: 13, minimumKitVersion: 13)
         }
     }
 
