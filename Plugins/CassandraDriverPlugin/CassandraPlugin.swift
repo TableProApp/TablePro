@@ -162,6 +162,11 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
             guard let region = config.additionalFields["awsRegion"].flatMap({ $0.isEmpty ? nil : $0 }) else {
                 throw AWSAuthError.regionUnknown(host: config.host)
             }
+            guard config.ssl.mode != .disabled else {
+                throw AWSAuthError.missingConfiguration(
+                    String(localized: "Amazon Keyspaces IAM authentication requires TLS. Enable SSL in the connection's SSL settings.")
+                )
+            }
             awsRegion = region
             awsCredentials = try await AWSCredentialResolver.resolve(source: awsAuth, fields: config.additionalFields)
         }

@@ -21,6 +21,7 @@ public enum AWSAuthError: Error, LocalizedError, Equatable {
     case assumeRoleFailed(role: String, message: String)
     case mfaUnsupported(String)
     case credentialSourceUnsupported(profile: String, source: String)
+    case missingConfiguration(String)
 
     public var errorDescription: String? {
         switch self {
@@ -94,6 +95,8 @@ public enum AWSAuthError: Error, LocalizedError, Equatable {
                 format: String(localized: "Profile \"%@\" uses credential_source \"%@\", which is not supported on the desktop app."),
                 profile, source
             )
+        case .missingConfiguration(let message):
+            return message
         }
     }
 }

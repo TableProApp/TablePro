@@ -54,7 +54,7 @@ public enum AWSCredentialResolver {
             let base = try await baseCredentials(for: settings, profileName: profileName, depth: depth)
             return try await AWSSTS.assumeRole(
                 roleArn: roleArn,
-                roleSessionName: settings["role_session_name"] ?? "tablepro-\(profileName)",
+                roleSessionName: settings["role_session_name"] ?? defaultSessionName(for: profileName),
                 externalId: settings["external_id"],
                 durationSeconds: settings["duration_seconds"].flatMap(Int.init),
                 region: settings["region"] ?? "us-east-1",
@@ -89,6 +89,15 @@ public enum AWSCredentialResolver {
             return try environmentCredentials(profileName: profileName)
         }
         throw AWSAuthError.assumeRoleMissingSource(profileName)
+    }
+
+    private static func defaultSessionName(for profileName: String) -> String {
+        let allowed = CharacterSet(
+            charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+=,.@-"
+        )
+        let cleaned = String(profileName.unicodeScalars.map { allowed.contains($0) ? Character($0) : "-" })
+        let trimmed = String(cleaned.prefix(50))
+        return "tablepro-\(trimmed.isEmpty ? "session" : trimmed)"
     }
 
     private static func staticCredentials(from settings: [String: String]) -> AWSCredentials? {

@@ -96,7 +96,7 @@ public struct ConnectionField: Codable, Sendable {
     public let section: FieldSection
     public let hidesPassword: Bool
     public let visibleWhen: FieldVisibilityRule?
-    public let dynamicOptions: DynamicFieldOptions?
+    public var dynamicOptions: DynamicFieldOptions?
 
     /// Backward-compatible convenience: true when fieldType is .secure
     public var isSecure: Bool {
@@ -114,8 +114,7 @@ public struct ConnectionField: Codable, Sendable {
         fieldType: FieldType? = nil,
         section: FieldSection = .advanced,
         hidesPassword: Bool = false,
-        visibleWhen: FieldVisibilityRule? = nil,
-        dynamicOptions: DynamicFieldOptions? = nil
+        visibleWhen: FieldVisibilityRule? = nil
     ) {
         self.id = id
         self.label = label
@@ -126,7 +125,12 @@ public struct ConnectionField: Codable, Sendable {
         self.section = section
         self.hidesPassword = hidesPassword
         self.visibleWhen = visibleWhen
-        self.dynamicOptions = dynamicOptions
+    }
+
+    public func withDynamicOptions(_ options: DynamicFieldOptions?) -> ConnectionField {
+        var copy = self
+        copy.dynamicOptions = options
+        return copy
     }
 
     public init(from decoder: Decoder) throws {

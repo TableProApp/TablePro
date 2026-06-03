@@ -276,9 +276,8 @@ struct ConnectionFieldTests {
         let field = ConnectionField(
             id: "awsProfileName",
             label: "Profile Name",
-            section: .authentication,
-            dynamicOptions: .awsProfiles
-        )
+            section: .authentication
+        ).withDynamicOptions(.awsProfiles)
         let decoded = try JSONDecoder().decode(
             ConnectionField.self,
             from: try JSONEncoder().encode(field)

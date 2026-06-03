@@ -51,9 +51,8 @@ public enum AWSAuthFields {
                 label: String(localized: "Profile Name"),
                 placeholder: "default",
                 section: .authentication,
-                visibleWhen: FieldVisibilityRule(fieldId: "awsAuth", values: ["profile", "sso"]),
-                dynamicOptions: .awsProfiles
-            )
+                visibleWhen: FieldVisibilityRule(fieldId: "awsAuth", values: ["profile", "sso"])
+            ).withDynamicOptions(.awsProfiles)
         ]
     }
 
@@ -62,6 +61,7 @@ public enum AWSAuthFields {
             id: "awsReplicationGroupId",
             label: String(localized: "Cache Name / Replication Group ID"),
             placeholder: String(localized: "my-cache"),
+            required: true,
             section: .authentication,
             visibleWhen: FieldVisibilityRule(fieldId: "awsAuth", values: ["accessKey", "profile", "sso"])
         )

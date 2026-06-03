@@ -456,8 +456,16 @@ enum DatabaseDriverFactory {
             guard let region = fields["awsRegion"].flatMap({ $0.isEmpty ? nil : $0 }) else {
                 throw AWSAuthError.regionUnknown(host: connection.host)
             }
-            let replicationGroupId = fields["awsReplicationGroupId"]
-                .flatMap { $0.isEmpty ? nil : $0 } ?? connection.host
+            guard connection.sslConfig.mode != .disabled else {
+                throw AWSAuthError.missingConfiguration(
+                    String(localized: "ElastiCache IAM authentication requires TLS. Enable SSL in the connection's SSL settings.")
+                )
+            }
+            guard let replicationGroupId = fields["awsReplicationGroupId"].flatMap({ $0.isEmpty ? nil : $0 }) else {
+                throw AWSAuthError.missingConfiguration(
+                    String(localized: "Enter the ElastiCache cache name (replication group ID) to use IAM authentication.")
+                )
+            }
             return ElastiCacheAuthTokenGenerator.generateToken(
                 replicationGroupId: replicationGroupId,
                 region: region,
