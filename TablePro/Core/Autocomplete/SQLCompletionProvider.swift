@@ -16,6 +16,7 @@ final class SQLCompletionProvider {
     private let schemaProvider: SQLSchemaProvider
     private var databaseType: DatabaseType?
     private var cachedDialect: SQLDialectDescriptor?
+    private var cachedFunctionItems: [SQLCompletionItem]?
     private var cachedStatementCompletions: [CompletionEntry] = []
     private var favoriteKeywords: [String: (name: String, query: String)] = [:]
 
@@ -51,6 +52,7 @@ final class SQLCompletionProvider {
     func setDatabaseType(_ type: DatabaseType, dialect: SQLDialectDescriptor? = nil, statementCompletions: [CompletionEntry] = []) {
         self.databaseType = type
         self.cachedDialect = dialect
+        self.cachedFunctionItems = nil
         self.cachedStatementCompletions = statementCompletions
     }
 
@@ -104,13 +106,17 @@ final class SQLCompletionProvider {
     }
 
     /// Generic SQL functions plus the active dialect's own functions (deduplicated).
+    /// Cached per dialect; invalidated in `setDatabaseType`.
     private func functionItems() -> [SQLCompletionItem] {
+        if let cachedFunctionItems { return cachedFunctionItems }
         var items = SQLKeywords.functionItems()
-        guard let dialect = cachedDialect, !dialect.functions.isEmpty else { return items }
-        var seen = Set(items.map { $0.label.uppercased() })
-        for name in dialect.functions.sorted() where seen.insert(name.uppercased()).inserted {
-            items.append(SQLCompletionItem.function(name, signature: "\(name)(…)"))
+        if let dialect = cachedDialect, !dialect.functions.isEmpty {
+            var seen = Set(items.map { $0.label.uppercased() })
+            for name in dialect.functions.sorted() where seen.insert(name.uppercased()).inserted {
+                items.append(SQLCompletionItem.function(name, signature: "\(name)(…)"))
+            }
         }
+        cachedFunctionItems = items
         return items
     }
 

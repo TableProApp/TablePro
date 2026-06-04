@@ -346,7 +346,7 @@ actor SQLSchemaProvider {
         var matching = tables.filter { $0.schema?.caseInsensitiveCompare(schema) == .orderedSame }
         if matching.isEmpty, let fetchSchemaTables = metadataSource?.fetchSchemaTables {
             if let fetched = try? await fetchSchemaTables(schema), !fetched.isEmpty {
-                matching = fetched
+                matching = fetched.filter { belongsToSchema($0, schema) }
                 mergeTables(fetched)
             }
         }
@@ -354,6 +354,11 @@ actor SQLSchemaProvider {
         return await MainActor.run {
             tableData.map { SQLCompletionItem.table($0.name, isView: $0.isView) }
         }
+    }
+
+    private func belongsToSchema(_ table: TableInfo, _ schema: String) -> Bool {
+        guard let tableSchema = table.schema, !tableSchema.isEmpty else { return true }
+        return tableSchema.caseInsensitiveCompare(schema) == .orderedSame
     }
 
     private func mergeTables(_ newTables: [TableInfo]) {
