@@ -8,6 +8,7 @@ public struct PluginQueryResult: Codable, Sendable {
     public let executionTime: TimeInterval
     public let isTruncated: Bool
     public let statusMessage: String?
+    public let columnMeta: [PluginColumnInfo]?
 
     public init(
         columns: [String],
@@ -16,7 +17,8 @@ public struct PluginQueryResult: Codable, Sendable {
         rowsAffected: Int,
         executionTime: TimeInterval,
         isTruncated: Bool = false,
-        statusMessage: String? = nil
+        statusMessage: String? = nil,
+        columnMeta: [PluginColumnInfo]? = nil
     ) {
         self.columns = columns
         self.columnTypeNames = columnTypeNames
@@ -25,6 +27,7 @@ public struct PluginQueryResult: Codable, Sendable {
         self.executionTime = executionTime
         self.isTruncated = isTruncated
         self.statusMessage = statusMessage
+        self.columnMeta = columnMeta
     }
 
     public static let empty = PluginQueryResult(

@@ -22,6 +22,8 @@ struct QueryResult {
     /// Optional status message from the plugin (e.g. server notices, warnings)
     var statusMessage: String?
 
+    var columnMeta: [ResultColumnMeta]?
+
     var isEmpty: Bool {
         rows.isEmpty
     }
@@ -42,6 +44,12 @@ struct QueryResult {
         executionTime: 0,
         error: nil
     )
+}
+
+struct ResultColumnMeta: Sendable {
+    let isPrimaryKey: Bool
+    let isNullable: Bool
+    let isAutoIncrement: Bool
 }
 
 /// Database error types

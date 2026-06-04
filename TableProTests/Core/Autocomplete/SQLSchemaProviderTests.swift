@@ -12,15 +12,17 @@ import Testing
 
 // MARK: - Mock Driver
 
-private final class MockDatabaseDriver: DatabaseDriver, @unchecked Sendable {
+final class MockDatabaseDriver: DatabaseDriver, @unchecked Sendable {
     let connection: DatabaseConnection
     var status: ConnectionStatus = .connected
     var serverVersion: String? { nil }
 
     var tablesToReturn: [TableInfo] = []
+    var schemaTablesToReturn: [String: [TableInfo]] = [:]
     var columnsToReturn: [String: [ColumnInfo]] = [:]
     var fetchColumnsCallCount = 0
     var fetchColumnsCalls: [String] = []
+    var fetchSchemaTablesCalls: [String] = []
 
     init(connection: DatabaseConnection = TestFixtures.makeConnection()) {
         self.connection = connection
@@ -47,6 +49,12 @@ private final class MockDatabaseDriver: DatabaseDriver, @unchecked Sendable {
 
     func fetchTables() async throws -> [TableInfo] {
         tablesToReturn
+    }
+
+    func fetchTables(schema: String?) async throws -> [TableInfo] {
+        guard let schema else { return tablesToReturn }
+        fetchSchemaTablesCalls.append(schema)
+        return schemaTablesToReturn[schema] ?? tablesToReturn
     }
 
     func fetchColumns(table: String) async throws -> [ColumnInfo] {
@@ -339,7 +347,7 @@ struct SQLSchemaProviderTests {
         let driver = MockDatabaseDriver()
         driver.columnsToReturn = ["users": [TestFixtures.makeColumnInfo(name: "from_driver")]]
         let source = SQLSchemaProvider.ColumnMetadataSource(
-            fetchColumns: { _ in [TestFixtures.makeColumnInfo(name: "from_source")] },
+            fetchColumns: { _, _ in [TestFixtures.makeColumnInfo(name: "from_source")] },
             fetchAllColumns: { [:] }
         )
         let provider = SQLSchemaProvider(metadataSource: source)
@@ -355,7 +363,7 @@ struct SQLSchemaProviderTests {
         let driver = MockDatabaseDriver()
         driver.columnsToReturn = ["users": [TestFixtures.makeColumnInfo(name: "from_driver")]]
         let source = SQLSchemaProvider.ColumnMetadataSource(
-            fetchColumns: { _ in [TestFixtures.makeColumnInfo(name: "lazy_source")] },
+            fetchColumns: { _, _ in [TestFixtures.makeColumnInfo(name: "lazy_source")] },
             fetchAllColumns: { ["users": [TestFixtures.makeColumnInfo(name: "eager_source")]] }
         )
         let provider = SQLSchemaProvider(metadataSource: source)
@@ -366,5 +374,128 @@ struct SQLSchemaProviderTests {
         let columns = await provider.getColumns(for: "users")
         #expect(columns.first?.name == "eager_source")
         #expect(driver.fetchColumnsCallCount == 0)
+    }
+
+    // MARK: - Namespaces (database/schema segments)
+
+    @Test("isKnownSchema and isKnownDatabase match case-insensitively")
+    func knownNamespaceLookupIsCaseInsensitive() async {
+        let provider = SQLSchemaProvider()
+        await provider.setNamespaces(schemas: ["DBT_MARTS"], databases: ["ANALYTICS_PROD"])
+
+        #expect(await provider.isKnownSchema("dbt_marts"))
+        #expect(await provider.isKnownSchema("DBT_MARTS"))
+        #expect(!(await provider.isKnownSchema("unknown")))
+        #expect(await provider.isKnownDatabase("analytics_prod"))
+        #expect(!(await provider.isKnownDatabase("dbt_marts")))
+    }
+
+    @Test("namespaceCompletionItems lists databases and schemas")
+    func namespaceCompletionItemsListsBoth() async {
+        let provider = SQLSchemaProvider()
+        await provider.setNamespaces(schemas: ["sales", "hr"], databases: ["prod"])
+
+        let labels = await provider.namespaceCompletionItems().map(\.label)
+        #expect(Set(labels) == ["prod", "sales", "hr"])
+        #expect(await provider.namespaceCompletionItems().allSatisfy { $0.kind == .schema })
+    }
+
+    @Test("schemaCompletionItems lists schemas only")
+    func schemaCompletionItemsListsSchemasOnly() async {
+        let provider = SQLSchemaProvider()
+        await provider.setNamespaces(schemas: ["sales", "hr"], databases: ["prod"])
+
+        let labels = await provider.schemaCompletionItems().map(\.label)
+        #expect(Set(labels) == ["sales", "hr"])
+    }
+
+    @Test("tableCompletionItems filters already-loaded tables by schema")
+    func tableCompletionItemsFiltersLoadedBySchema() async {
+        let driver = MockDatabaseDriver()
+        let provider = SQLSchemaProvider()
+        await provider.resetForDatabase(
+            "db",
+            tables: [
+                TableInfo(name: "orders", type: .table, rowCount: 0, schema: "sales"),
+                TableInfo(name: "leads", type: .table, rowCount: 0, schema: "sales"),
+                TableInfo(name: "employees", type: .table, rowCount: 0, schema: "hr")
+            ],
+            driver: driver
+        )
+
+        let labels = await provider.tableCompletionItems(inSchema: "sales").map(\.label)
+        #expect(Set(labels) == ["orders", "leads"])
+    }
+
+    @Test("tableCompletionItems fetches a schema's tables on demand when not loaded")
+    func tableCompletionItemsFetchesOnDemand() async {
+        let source = SQLSchemaProvider.ColumnMetadataSource(
+            fetchColumns: { _, _ in [] },
+            fetchAllColumns: { [:] },
+            fetchSchemaTables: { schema in
+                [TableInfo(name: "fact_orders", type: .table, rowCount: 0, schema: schema)]
+            }
+        )
+        let provider = SQLSchemaProvider(metadataSource: source)
+
+        let labels = await provider.tableCompletionItems(inSchema: "marts").map(\.label)
+        #expect(labels == ["fact_orders"])
+    }
+
+    @Test("tableCompletionItems drops fetched tables that belong to a different schema")
+    func tableCompletionItemsDefensivelyFiltersFetched() async {
+        let source = SQLSchemaProvider.ColumnMetadataSource(
+            fetchColumns: { _, _ in [] },
+            fetchAllColumns: { [:] },
+            fetchSchemaTables: { _ in
+                [
+                    TableInfo(name: "in_schema", type: .table, rowCount: 0, schema: "marts"),
+                    TableInfo(name: "other_schema", type: .table, rowCount: 0, schema: "staging"),
+                    TableInfo(name: "untagged", type: .table, rowCount: 0, schema: nil)
+                ]
+            }
+        )
+        let provider = SQLSchemaProvider(metadataSource: source)
+
+        let labels = await provider.tableCompletionItems(inSchema: "marts").map(\.label)
+        #expect(Set(labels) == ["in_schema", "untagged"])
+    }
+
+    @Test("getColumns threads the schema through to the metadata source and caches per schema")
+    func getColumnsThreadsSchemaAndCachesPerSchema() async {
+        let recorder = CallRecorder()
+        let source = SQLSchemaProvider.ColumnMetadataSource(
+            fetchColumns: { table, schema in
+                recorder.record("\(schema ?? "nil").\(table)")
+                return [TestFixtures.makeColumnInfo(name: "\(schema ?? "nil")_col")]
+            },
+            fetchAllColumns: { [:] }
+        )
+        let provider = SQLSchemaProvider(metadataSource: source)
+
+        let sales = await provider.getColumns(for: "orders", schema: "sales")
+        let hr = await provider.getColumns(for: "orders", schema: "hr")
+        _ = await provider.getColumns(for: "orders", schema: "sales")
+
+        #expect(sales.first?.name == "sales_col")
+        #expect(hr.first?.name == "hr_col")
+        #expect(recorder.calls == ["sales.orders", "hr.orders"])
+    }
+}
+
+private final class CallRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: [String] = []
+
+    func record(_ value: String) {
+        lock.lock()
+        storage.append(value)
+        lock.unlock()
+    }
+
+    var calls: [String] {
+        lock.lock()
+        defer { lock.unlock() }
+        return storage
     }
 }

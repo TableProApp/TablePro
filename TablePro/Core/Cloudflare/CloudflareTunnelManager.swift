@@ -310,8 +310,12 @@ actor CloudflareTunnelManager {
             UserDefaults.standard.removeObject(forKey: Self.stalePidsDefaultsKey)
             return
         }
-        guard let data = try? JSONEncoder().encode(records) else { return }
-        UserDefaults.standard.set(data, forKey: Self.stalePidsDefaultsKey)
+        do {
+            let data = try JSONEncoder().encode(records)
+            UserDefaults.standard.set(data, forKey: Self.stalePidsDefaultsKey)
+        } catch {
+            Self.logger.error("Failed to persist cloudflared PID records, leaked processes may survive to next launch: \(error.localizedDescription, privacy: .public)")
+        }
     }
 
     private static func isLiveCloudflared(_ record: CloudflaredPidRecord) -> Bool {

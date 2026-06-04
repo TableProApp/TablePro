@@ -210,6 +210,26 @@ extension SQLCompletionItem {
         )
     }
 
+    /// Create a schema-name completion item
+    static func schemaName(_ name: String) -> SQLCompletionItem {
+        SQLCompletionItem(
+            label: name,
+            kind: .schema,
+            insertText: name,
+            detail: String(localized: "Schema")
+        )
+    }
+
+    /// Create a database-name completion item
+    static func databaseName(_ name: String) -> SQLCompletionItem {
+        SQLCompletionItem(
+            label: name,
+            kind: .schema,
+            insertText: name,
+            detail: String(localized: "Database")
+        )
+    }
+
     /// Create a column completion item
     static func column(
         _ name: String,

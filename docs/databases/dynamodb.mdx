@@ -15,9 +15,9 @@ Click **New Connection**, select **DynamoDB**, choose auth method (Access Key, A
 
 **Access Key + Secret Key**: IAM credentials. Optional session token for temporary creds from STS.
 
-**AWS Profile**: Read from `~/.aws/credentials`. Format: `[profile_name]` with `aws_access_key_id`, `aws_secret_access_key`, optional `aws_session_token`.
+**AWS Profile**: Reads the named profile from both `~/.aws/config` and `~/.aws/credentials`, the same way the AWS CLI does. A profile can supply static keys (`aws_access_key_id`, `aws_secret_access_key`, optional `aws_session_token`) or a `credential_process` command. Profiles defined only in `~/.aws/config` (as `[profile name]`) now resolve.
 
-**AWS SSO**: Use cached credentials from `~/.aws/cli/cache/`. Run `aws sso login --profile my-sso-profile` before connecting. Credentials expire (re-login if auth fails).
+**AWS SSO**: Reads the cached SSO token from `~/.aws/sso/cache/`. Run `aws sso login --profile my-sso-profile` before connecting. Tokens expire; the connection re-resolves credentials automatically and tells you to re-run `aws sso login` when the session has ended.
 
 ## Connection Settings
 
@@ -43,7 +43,7 @@ Config: Auth Method = Access Key, Access Key/Secret = any non-empty, Custom Endp
 ## Example Configurations
 
 **AWS Production**: Standard Access Key method with credentials from IAM
-**AWS Profile**: Select profile from `~/.aws/credentials`
+**AWS Profile**: Select a profile from `~/.aws/config` or `~/.aws/credentials`
 **DynamoDB Local**: Fake credentials (non-empty required), Custom Endpoint = `http://localhost:8000`
 
 ## Features

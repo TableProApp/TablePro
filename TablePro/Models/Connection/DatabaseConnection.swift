@@ -64,9 +64,6 @@ extension DatabaseType {
     static var allKnownTypes: [DatabaseType] {
         PluginMetadataRegistry.shared.allRegisteredTypeIds().map { DatabaseType(rawValue: $0) }
     }
-
-    /// Compatibility shim for CaseIterable call sites.
-    static var allCases: [DatabaseType] { allKnownTypes }
 }
 
 extension DatabaseType {
@@ -397,6 +394,10 @@ struct DatabaseConnection: Identifiable, Hashable {
     var usesAWSIAM: Bool {
         let value = additionalFields["awsAuth"] ?? "off"
         return value != "off" && !value.isEmpty
+    }
+
+    var resolvesAWSIAMInDriver: Bool {
+        type == .cassandra || type == .scylladb
     }
 
     var preConnectScript: String? {

@@ -131,7 +131,7 @@ extension PluginMetadataRegistry {
                             placeholder: "default",
                             section: .authentication,
                             visibleWhen: FieldVisibilityRule(fieldId: "awsAuthMethod", values: ["profile", "sso"])
-                        ),
+                        ).withDynamicOptions(.awsProfiles),
                         ConnectionField(
                             id: "awsRegion",
                             label: String(localized: "AWS Region"),

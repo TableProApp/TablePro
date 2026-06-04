@@ -18,24 +18,31 @@ struct MainStatusBarLayoutTests {
         let view = MainStatusBarView(
             snapshot: StatusBarSnapshot(tab: nil, tableRows: nil),
             filterState: TabFilterState(),
-            hiddenColumns: [],
-            allColumns: [],
             selectedRowIndices: [],
             viewMode: .constant(.data),
-            onFirstPage: {},
-            onPreviousPage: {},
-            onNextPage: {},
-            onLastPage: {},
-            onPageSizeChange: { _ in },
-            onShowAll: {},
-            onGoToPage: { _ in },
-            onToggleColumn: { _ in },
-            onShowAllColumns: {},
-            onHideAllColumns: { _ in },
+            paginationCallbacks: PaginationCallbacks(
+                onFirst: {},
+                onPrevious: {},
+                onNext: {},
+                onLast: {},
+                onPageSizeChange: { _ in },
+                onShowAll: {},
+                onGoToPage: { _ in }
+            ),
+            columnState: StatusBarColumnState(
+                hidden: [],
+                all: [],
+                onToggle: { _ in },
+                onShowAll: {},
+                onHideAll: { _ in }
+            ),
+            structureState: StatusBarStructureState(
+                footer: StructureFooterState(),
+                onAdd: {},
+                onRemove: {}
+            ),
             onToggleFilters: {},
-            structureFooterState: nil,
-            onStructureAdd: nil,
-            onStructureRemove: nil
+            onFetchAll: nil
         )
         #expect(type(of: view.body) != Never.self)
     }

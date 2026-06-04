@@ -47,11 +47,6 @@ struct DatabaseTypeTests {
         #expect(knownTypes.count >= 5)
     }
 
-    @Test("allCases shim matches allKnownTypes")
-    func testAllCasesShim() {
-        #expect(DatabaseType.allCases == DatabaseType.allKnownTypes)
-    }
-
     @Test("Raw value matches display name", arguments: [
         (DatabaseType.mysql, "MySQL"),
         (DatabaseType.mariadb, "MariaDB"),

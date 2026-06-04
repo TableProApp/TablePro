@@ -10,11 +10,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Snowflake support: connect with username & password (including MFA TOTP passcodes and cached MFA tokens), key-pair (.p8), browser SSO, or a programmatic access token; browse databases, schemas, and tables; run Snowflake SQL with full result sets, query cancellation, and automatic session renewal. Connections defined in the Snowflake CLI's config files can be reused by name. (#1420)
+- SQL autocomplete completes database, schema, and table names at each segment of qualified names for schema-organized connections (Snowflake, BigQuery), fetches tables of unopened schemas on demand, resolves alias columns for schema-qualified tables, and suggests the active connection's full dialect function list.
 - Each filter row has a checkbox to turn it on or off and an Apply button to filter by just that row. The main Apply runs every active filter, and disabled filters stay in the panel for later. (#1561)
 - Importing connections from other apps now detects duplicates by host, port, database, and username, and lets you replace, add a copy, or skip each one before import.
+- Oracle connections negotiate Native Network Encryption when the server asks for it, so servers with `SQLNET.ENCRYPTION_SERVER` or `SQLNET.CRYPTO_CHECKSUM_SERVER` set to REQUIRED now connect (AES with a SHA crypto-checksum), matching what SQL Developer and DBeaver do. (#483)
+- Oracle connections follow listener redirects, so RAC SCAN listeners, shared server, and load-balanced setups now connect instead of failing during the handshake. (#483)
+- AWS connections can assume an IAM role: profiles with `role_arn` plus `source_profile` (or `credential_source = Environment`) are resolved through STS AssumeRole, including chained source profiles, `external_id`, and `duration_seconds`. (#1567)
+- Redis connects to Amazon ElastiCache with IAM auth (access key, profile, or SSO). TablePro generates the IAM token and uses it as the password; set the AWS region and cache name and enable TLS. (#1567)
+- AWS SSO connections can sign in from TablePro: when the SSO session has expired, a prompt opens the AWS sign-in page in your browser and refreshes the cached token. (#1567)
+- Cassandra connects to Amazon Keyspaces with AWS IAM (SigV4) auth, using access keys, a profile, or SSO. Set Authentication to an AWS IAM mode and the region, and enable TLS. (#1567)
 
 ### Changed
 
+- The results status bar has a divider above it and balanced left and right margins, and its loading spinner matches the size of the other controls. (#1569)
 - Custom keyboard shortcuts now work on non-US keyboard layouts, and shifted symbols like Cmd+[ record correctly.
 - The Keyboard settings list is grouped by where shortcuts act (Editor, Data Grid, Navigation, Connections), and each changed shortcut has its own reset button.
 - Conflict detection now checks live macOS system shortcuts and the editor's built-in commands, and lets the same key serve the editor and the data grid because focus decides which one runs.
@@ -22,14 +30,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Cmd+N now opens a new connection; Manage Connections keeps its File menu item.
 - First Page and Last Page now default to Cmd+Option+Up and Cmd+Option+Down.
 - Shortcuts can be bound to function keys (F1 through F12), with or without a modifier.
+- AWS connections show a dropdown of the profiles found in `~/.aws/config` and `~/.aws/credentials`, and still accept a typed profile name. (#1567)
 
 ### Fixed
 
+- Query results appear as soon as the database returns rows. Column defaults, foreign keys, and row counts now load in the background instead of holding up the grid, which removes a multi-second wait on remote databases whose system tables are slow to query. (#1574)
+- MySQL and MariaDB queries are ready to edit right away. Primary key and nullability come back with the rows, so an editable query no longer waits on a separate metadata query. (#1574)
+- Pagination and other status bar buttons no longer get blocked by the window resize zone in the bottom-right corner. (#1569)
+- VoiceOver now reads clear labels for the Columns button, Filters toggle, and loading indicators in the results status bar. (#1569)
+- The custom rows-per-page popover now points at the page-size menu instead of the center of the pagination controls. (#1569)
+- DynamoDB AWS Profile auth now reads `~/.aws/config` as well as `~/.aws/credentials` and supports `credential_process`, matching the AWS CLI. Profiles defined only in `~/.aws/config`, including SSO and credential-process profiles, no longer fail with "profile not found". (#1567)
+- Query result columns now follow the order in the SELECT. Adding or removing a column no longer leaves new columns stuck at the end of the grid. (#1565)
+- JSON file import works again. It failed to load in 0.48.0.
+- SQL export quotes empty or malformed values in numeric columns instead of writing them unquoted, which could produce invalid INSERT statements.
 - SQL Server: connections work when the login can only reach its own database, such as an Azure SQL contained user. The database is now sent during login. Previously it was switched afterward, which the server rejected with a "Login failed" error.
 - Custom Copy and Cut shortcuts now take effect in the SQL editor.
 - The Delete shortcut in the data grid now follows a custom binding.
 - Find Next (Cmd+G) and Find Previous (Cmd+Shift+G) now work in the editor.
 - Pagination buttons no longer fire their page shortcut twice.
+- Running a PostgreSQL script with a `DO $$ ... $$` block or a dollar-quoted function body no longer fails with an unterminated dollar-quoted string error. (#1559)
+- AWS IAM connections no longer ask for a password on connect or reconnect. IAM supplies the credentials, so the prompt was never needed. The same now holds for any auth mode that replaces the password, such as a Postgres password file.
+- Oracle connection failures show the listener's actual reason (such as an unknown service name) instead of a generic "server closed the connection" message. (#483)
 
 ## [0.48.0] - 2026-06-02
 

@@ -45,7 +45,10 @@ struct ExecuteQueryChatTool: ChatTool {
         guard (query as NSString).length <= 102_400 else {
             return ChatToolResult(content: "Query exceeds 100KB limit", isError: true)
         }
-        guard !QueryClassifier.isMultiStatement(query) else {
+
+        let meta = try await ToolConnectionMetadata.resolve(connectionId: connectionId)
+
+        guard !QueryClassifier.isMultiStatement(query, databaseType: meta.databaseType) else {
             return ChatToolResult(
                 content: "Multi-statement queries are not supported. Send one statement at a time.",
                 isError: true
@@ -65,8 +68,6 @@ struct ExecuteQueryChatTool: ChatTool {
             default: mcpSettings.queryTimeoutSeconds,
             clamp: 1...300
         ) ?? mcpSettings.queryTimeoutSeconds
-
-        let meta = try await ToolConnectionMetadata.resolve(connectionId: connectionId)
 
         let tier = QueryClassifier.classifyTier(query, databaseType: meta.databaseType)
         if tier == .destructive {

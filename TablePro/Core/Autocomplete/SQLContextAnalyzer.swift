@@ -55,6 +55,13 @@ enum SQLClauseType {
 internal struct TableReference: Hashable, Sendable {
     let tableName: String
     let alias: String?
+    let schema: String?
+
+    init(tableName: String, alias: String?, schema: String? = nil) {
+        self.tableName = tableName
+        self.alias = alias
+        self.schema = schema
+    }
 
     /// Returns the identifier that should be used to reference this table
     var identifier: String {
@@ -788,6 +795,12 @@ final class SQLContextAnalyzer {
                 let tableName = Self.stripSchemaPrefix(rawName)
                 guard !Self.tableRefKeywords.contains(tableName.uppercased()) else { return }
 
+                let segments = rawName.split(separator: ".")
+                let schema = segments.count >= 2
+                    ? String(segments[segments.count - 2])
+                        .trimmingCharacters(in: CharacterSet(charactersIn: "`\""))
+                    : nil
+
                 var alias: String?
                 if match.numberOfRanges > 2 {
                     let aliasNSRange = match.range(at: 2)
@@ -801,7 +814,7 @@ final class SQLContextAnalyzer {
                     }
                 }
 
-                let ref = TableReference(tableName: tableName, alias: alias)
+                let ref = TableReference(tableName: tableName, alias: alias, schema: schema)
                 if seen.insert(ref).inserted {
                     references.append(ref)
                 }

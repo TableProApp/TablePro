@@ -12,12 +12,25 @@ import OSLog
 import TableProPluginKit
 
 // MySQL/MariaDB field flag and charset constants
+internal let mysqlNotNullFlag: UInt = 0x0001
+internal let mysqlPriKeyFlag: UInt = 0x0002
 internal let mysqlBinaryFlag: UInt = 0x0080
 internal let mysqlEnumFlag: UInt = 0x0100
+internal let mysqlAutoIncrementFlag: UInt = 0x0200
 internal let mysqlSetFlag: UInt = 0x0800
 internal let mysqlBinaryCharset: UInt32 = 63
 
 private let logger = Logger(subsystem: "com.TablePro", category: "MariaDBPluginConnection")
+
+internal func makeColumnMeta(name: String, typeName: String, flags: UInt) -> PluginColumnInfo {
+    PluginColumnInfo(
+        name: name,
+        dataType: typeName,
+        isNullable: (flags & mysqlNotNullFlag) == 0,
+        isPrimaryKey: (flags & mysqlPriKeyFlag) != 0,
+        identityKind: (flags & mysqlAutoIncrementFlag) != 0 ? .byDefault : nil
+    )
+}
 
 // MARK: - Error Types
 
@@ -44,6 +57,7 @@ struct MariaDBPluginQueryResult {
     let affectedRows: UInt64
     let insertId: UInt64
     let isTruncated: Bool
+    let columnMeta: [PluginColumnInfo]
 }
 
 // MARK: - SSL Configuration
@@ -461,7 +475,8 @@ final class MariaDBPluginConnection: @unchecked Sendable {
                 let insertId = mysql_insert_id(mysql)
                 return MariaDBPluginQueryResult(
                     columns: [], columnTypes: [], columnTypeNames: [],
-                    rows: [], affectedRows: affected, insertId: insertId, isTruncated: false
+                    rows: [], affectedRows: affected, insertId: insertId, isTruncated: false,
+                    columnMeta: []
                 )
             } else {
                 throw self.getError()
@@ -473,31 +488,32 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         var columnTypes: [UInt32] = []
         var columnTypeNames: [String] = []
         var columnIsBinary: [Bool] = []
+        var columnMeta: [PluginColumnInfo] = []
         columns.reserveCapacity(numFields)
         columnTypes.reserveCapacity(numFields)
         columnTypeNames.reserveCapacity(numFields)
         columnIsBinary.reserveCapacity(numFields)
+        columnMeta.reserveCapacity(numFields)
 
         if let fields = mysql_fetch_fields(resultPtr) {
             for i in 0..<numFields {
                 let field = fields[i]
-                if let namePtr = field.name {
-                    columns.append(String(cString: namePtr))
-                } else {
-                    columns.append("column_\(i)")
-                }
+                let columnName = field.name.map { String(cString: $0) } ?? "column_\(i)"
+                columns.append(columnName)
                 let fieldFlags = UInt(field.flags)
                 var fieldType = field.type.rawValue
                 if (fieldFlags & mysqlEnumFlag) != 0 { fieldType = 247 }
                 if (fieldFlags & mysqlSetFlag) != 0 { fieldType = 248 }
                 columnTypes.append(fieldType)
-                columnTypeNames.append(mysqlTypeToString(fields + i))
+                let typeName = mysqlTypeToString(fields + i)
+                columnTypeNames.append(typeName)
                 columnIsBinary.append(
                     MariaDBFieldClassifier.isBinary(
                         typeRaw: field.type.rawValue,
                         charset: field.charsetnr
                     )
                 )
+                columnMeta.append(makeColumnMeta(name: columnName, typeName: typeName, flags: fieldFlags))
             }
         }
 
@@ -576,7 +592,8 @@ final class MariaDBPluginConnection: @unchecked Sendable {
 
         return MariaDBPluginQueryResult(
             columns: columns, columnTypes: columnTypes, columnTypeNames: columnTypeNames,
-            rows: rows, affectedRows: UInt64(rows.count), insertId: 0, isTruncated: truncated
+            rows: rows, affectedRows: UInt64(rows.count), insertId: 0, isTruncated: truncated,
+            columnMeta: columnMeta
         )
     }
 
@@ -815,7 +832,8 @@ final class MariaDBPluginConnection: @unchecked Sendable {
             let insertId = mysql_stmt_insert_id(stmt)
             return MariaDBPluginQueryResult(
                 columns: [], columnTypes: [], columnTypeNames: [],
-                rows: [], affectedRows: UInt64(affected), insertId: UInt64(insertId), isTruncated: false
+                rows: [], affectedRows: UInt64(affected), insertId: UInt64(insertId), isTruncated: false,
+                columnMeta: []
             )
         }
 
@@ -831,28 +849,28 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         var columnTypes: [UInt32] = []
         var columnTypeNames: [String] = []
         var columnIsBinary: [Bool] = []
+        var columnMeta: [PluginColumnInfo] = []
         let numFields = Int(mysql_num_fields(metadata))
 
         if let fields = mysql_fetch_fields(metadata) {
             for i in 0..<numFields {
                 let field = fields[i]
-                if let namePtr = field.name {
-                    columns.append(String(cString: namePtr))
-                } else {
-                    columns.append("column_\(i)")
-                }
+                let columnName = field.name.map { String(cString: $0) } ?? "column_\(i)"
+                columns.append(columnName)
                 let fieldFlags = UInt(field.flags)
                 var fieldType = field.type.rawValue
                 if (fieldFlags & mysqlEnumFlag) != 0 { fieldType = 247 }
                 if (fieldFlags & mysqlSetFlag) != 0 { fieldType = 248 }
                 columnTypes.append(fieldType)
-                columnTypeNames.append(mysqlTypeToString(fields + i))
+                let typeName = mysqlTypeToString(fields + i)
+                columnTypeNames.append(typeName)
                 columnIsBinary.append(
                     MariaDBFieldClassifier.isBinary(
                         typeRaw: field.type.rawValue,
                         charset: field.charsetnr
                     )
                 )
+                columnMeta.append(makeColumnMeta(name: columnName, typeName: typeName, flags: fieldFlags))
             }
         }
 
@@ -865,7 +883,8 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         return MariaDBPluginQueryResult(
             columns: columns, columnTypes: columnTypes, columnTypeNames: columnTypeNames,
             rows: fetchResult.rows, affectedRows: UInt64(fetchResult.rows.count),
-            insertId: 0, isTruncated: fetchResult.isTruncated
+            insertId: 0, isTruncated: fetchResult.isTruncated,
+            columnMeta: columnMeta
         )
     }
 

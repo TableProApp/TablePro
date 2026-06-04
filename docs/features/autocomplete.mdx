@@ -152,6 +152,17 @@ SELECT * FROM public.|  -- Tables in public schema
 
 Schema-qualified names like `public.users` resolve correctly in FROM, JOIN, UPDATE, INSERT INTO, and CREATE INDEX.
 
+For databases organized as database → schema → table (Snowflake, BigQuery), every segment completes — including tables of schemas you haven't opened in the sidebar, which are fetched on demand:
+
+```sql
+SELECT * FROM ANALYTICS_|                      -- databases
+SELECT * FROM ANALYTICS_PROD.|                 -- schemas
+SELECT * FROM ANALYTICS_PROD.DBT_MARTS.|       -- tables in that schema
+SELECT * FROM ANALYTICS_PROD.DBT_MARTS.ORDERS o WHERE o.|  -- columns
+```
+
+Functions from the connection's SQL dialect (e.g. `CONVERT_TIMEZONE` on Snowflake, `SAFE_CAST` on BigQuery) appear in the popup alongside the common SQL functions.
+
 ## Context-Aware Suggestions
 
 What appears depends on where your cursor is:

@@ -58,7 +58,7 @@ extension DatabaseManager {
         }
 
         var passwordOverride: String?
-        if connection.promptForPassword {
+        if connection.promptForPassword, !pluginManager.hidesPassword(for: connection) {
             if let cached = activeSessions[connection.id]?.cachedPassword {
                 passwordOverride = cached
             } else {
@@ -109,17 +109,10 @@ extension DatabaseManager {
             try await driver.connect()
             try Task.checkCancellation()
 
-            let timeoutSeconds = AppSettingsManager.shared.general.queryTimeoutSeconds
-            do {
-                try await driver.applyQueryTimeout(timeoutSeconds)
-            } catch {
-                Self.logger.warning(
-                    "Query timeout not supported for \(connection.name): \(error.localizedDescription)"
-                )
-            }
-
-            await executeStartupCommands(
-                resolvedConnection.startupCommands, on: driver, connectionName: connection.name
+            await applyTimeoutAndStartupCommands(
+                on: driver,
+                startupCommands: resolvedConnection.startupCommands,
+                connectionName: connection.name
             )
 
             if let schemaDriver = driver as? SchemaSwitchable {

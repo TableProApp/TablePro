@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 
 enum QueryTier {
     case safe
@@ -129,8 +130,11 @@ enum QueryClassifier {
         return .safe
     }
 
-    static func isMultiStatement(_ sql: String) -> Bool {
-        SQLStatementScanner.allStatements(in: sql).count > 1
+    static func isMultiStatement(_ sql: String, databaseType: DatabaseType) -> Bool {
+        SQLStatementScanner.allStatements(
+            in: sql,
+            dialect: SqlDialect.from(databaseTypeId: databaseType.rawValue)
+        ).count > 1
     }
 
     static func isExplainStatement(_ sql: String) -> Bool {

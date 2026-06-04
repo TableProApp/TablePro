@@ -7,65 +7,42 @@
 
 import SwiftUI
 
-struct StatusBarSnapshot: Equatable {
-    let tabId: UUID?
-    let tabType: TabType?
-    let hasRows: Bool
-    let hasColumns: Bool
-    let rowCount: Int
-    let hasTableName: Bool
-    let pagination: PaginationState
-    let statusMessage: String?
+struct PaginationCallbacks {
+    let onFirst: () -> Void
+    let onPrevious: () -> Void
+    let onNext: () -> Void
+    let onLast: () -> Void
+    let onPageSizeChange: (Int) -> Void
+    let onShowAll: () -> Void
+    let onGoToPage: (Int) -> Void
+}
 
-    init(tab: QueryTab?, tableRows: TableRows?) {
-        self.tabId = tab?.id
-        self.tabType = tab?.tabType
-        self.hasRows = !(tableRows?.rows.isEmpty ?? true)
-        self.hasColumns = !(tableRows?.columns.isEmpty ?? true)
-        self.rowCount = tableRows?.rows.count ?? 0
-        self.hasTableName = tab?.tableContext.tableName != nil
-        self.pagination = tab?.pagination ?? PaginationState()
-        self.statusMessage = tab?.execution.statusMessage
-    }
+struct StatusBarColumnState {
+    let hidden: Set<String>
+    let all: [String]
+    let onToggle: (String) -> Void
+    let onShowAll: () -> Void
+    let onHideAll: ([String]) -> Void
+}
+
+struct StatusBarStructureState {
+    let footer: StructureFooterState
+    let onAdd: () -> Void
+    let onRemove: () -> Void
 }
 
 struct MainStatusBarView: View {
     let snapshot: StatusBarSnapshot
     let filterState: TabFilterState
-    let hiddenColumns: Set<String>
-    let allColumns: [String]
     let selectedRowIndices: Set<Int>
     @Binding var viewMode: ResultsViewMode
+    let paginationCallbacks: PaginationCallbacks
+    let columnState: StatusBarColumnState
+    let structureState: StatusBarStructureState
+    let onToggleFilters: () -> Void
+    let onFetchAll: (() -> Void)?
 
     @State private var showColumnPopover = false
-
-    // Pagination callbacks
-    let onFirstPage: () -> Void
-    let onPreviousPage: () -> Void
-    let onNextPage: () -> Void
-    let onLastPage: () -> Void
-    let onPageSizeChange: (Int) -> Void
-    let onShowAll: () -> Void
-    let onGoToPage: (Int) -> Void
-
-    // Column visibility callbacks
-    let onToggleColumn: (String) -> Void
-    let onShowAllColumns: () -> Void
-    let onHideAllColumns: ([String]) -> Void
-
-    // Filter visibility callback
-    let onToggleFilters: () -> Void
-
-    // Truncated result callback
-    var onFetchAll: (() -> Void)?
-
-    // Structure-mode footer accessory (Add/Remove buttons)
-    let structureFooterState: StructureFooterState?
-    let onStructureAdd: (() -> Void)?
-    let onStructureRemove: (() -> Void)?
-
-    private var hasHiddenColumns: Bool { !hiddenColumns.isEmpty }
-    private var hiddenCount: Int { hiddenColumns.count }
 
     private var isStructureMode: Bool { viewMode == .structure }
     private var showsDataChrome: Bool { !isStructureMode }
@@ -77,6 +54,14 @@ struct MainStatusBarView: View {
             return label
         }
         return "\(label) (\(combo.displayString))"
+    }
+
+    private var columnsAccessibilityLabel: String {
+        guard !columnState.hidden.isEmpty else {
+            return String(localized: "Columns")
+        }
+        let visible = columnState.all.count - columnState.hidden.count
+        return String(format: String(localized: "%d of %d columns visible"), visible, columnState.all.count)
     }
 
     var body: some View {
@@ -110,12 +95,14 @@ struct MainStatusBarView: View {
                 HStack(spacing: 4) {
                     if snapshot.pagination.isLoadingMore {
                         ProgressView()
-                            .controlSize(.mini)
+                            .controlSize(.small)
+                            .accessibilityHidden(true)
                         Text("Loading…")
                             .font(.caption)
                             .foregroundStyle(.secondary)
+                            .accessibilityLabel(String(localized: "Loading more rows"))
                     } else {
-                        Text(rowInfoText)
+                        Text(snapshot.rowInfoText(selectedCount: selectedRowIndices.count))
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -149,8 +136,8 @@ struct MainStatusBarView: View {
             Spacer()
 
             HStack(spacing: 8) {
-                if isStructureMode, let state = structureFooterState, state.isActive {
-                    structureFooterControls(state: state)
+                if isStructureMode, structureState.footer.isActive {
+                    structureFooterControls(state: structureState.footer)
                 }
 
                 if showsDataChrome {
@@ -159,25 +146,26 @@ struct MainStatusBarView: View {
                             showColumnPopover.toggle()
                         } label: {
                             HStack(spacing: 4) {
-                                Image(systemName: hasHiddenColumns
+                                Image(systemName: !columnState.hidden.isEmpty
                                         ? "eye.slash.circle.fill"
                                         : "eye.circle")
                                 Text("Columns")
-                                if hasHiddenColumns {
-                                    let visible = allColumns.count - hiddenCount
-                                    Text("(\(visible)/\(allColumns.count))")
+                                if !columnState.hidden.isEmpty {
+                                    let visible = columnState.all.count - columnState.hidden.count
+                                    Text("(\(visible)/\(columnState.all.count))")
                                         .foregroundStyle(.secondary)
                                 }
                             }
                         }
                         .controlSize(.small)
-                        .popover(isPresented: $showColumnPopover) {
+                        .accessibilityLabel(columnsAccessibilityLabel)
+                        .popover(isPresented: $showColumnPopover, arrowEdge: .top) {
                             ColumnVisibilityPopover(
-                                columns: allColumns,
-                                hiddenColumns: hiddenColumns,
-                                onToggleColumn: onToggleColumn,
-                                onShowAll: onShowAllColumns,
-                                onHideAll: onHideAllColumns
+                                columns: columnState.all,
+                                hiddenColumns: columnState.hidden,
+                                onToggleColumn: columnState.onToggle,
+                                onShowAll: columnState.onShowAll,
+                                onHideAll: columnState.onHideAll
                             )
                         }
                     }
@@ -201,25 +189,28 @@ struct MainStatusBarView: View {
                         .toggleStyle(.button)
                         .controlSize(.small)
                         .help(filterToggleHelp)
+                        .accessibilityLabel(String(localized: "Filters"))
+                        .accessibilityAddTraits(filterState.isVisible ? .isSelected : [])
                     }
 
-                    if snapshot.tabType == .table, snapshot.hasTableName, showsPaginationControls {
+                    if snapshot.tabType == .table, snapshot.hasTableName, snapshot.showsPaginationControls {
                         PaginationControlsView(
                             pagination: snapshot.pagination,
                             loadedRowCount: snapshot.rowCount,
-                            onFirst: onFirstPage,
-                            onPrevious: onPreviousPage,
-                            onNext: onNextPage,
-                            onLast: onLastPage,
-                            onPageSizeChange: onPageSizeChange,
-                            onShowAll: onShowAll,
-                            onGoToPage: onGoToPage
+                            onFirst: paginationCallbacks.onFirst,
+                            onPrevious: paginationCallbacks.onPrevious,
+                            onNext: paginationCallbacks.onNext,
+                            onLast: paginationCallbacks.onLast,
+                            onPageSizeChange: paginationCallbacks.onPageSizeChange,
+                            onShowAll: paginationCallbacks.onShowAll,
+                            onGoToPage: paginationCallbacks.onGoToPage
                         )
                     }
                 }
             }
         }
-        .padding(.horizontal, 0)
+        .padding(.leading, 8)
+        .padding(.trailing, 20)
         .padding(.vertical, 4)
         .background(Color(nsColor: .controlBackgroundColor))
         .onChange(of: snapshot.tabId) { _, _ in
@@ -231,7 +222,7 @@ struct MainStatusBarView: View {
     private func structureFooterControls(state: StructureFooterState) -> some View {
         ControlGroup {
             Button {
-                onStructureAdd?()
+                structureState.onAdd()
             } label: {
                 Label(state.addLabel, systemImage: "plus")
                     .labelStyle(.iconOnly)
@@ -241,7 +232,7 @@ struct MainStatusBarView: View {
             .disabled(!state.canAdd)
 
             Button {
-                onStructureRemove?()
+                structureState.onRemove()
             } label: {
                 Label(state.removeLabel, systemImage: "minus")
                     .labelStyle(.iconOnly)
@@ -253,46 +244,5 @@ struct MainStatusBarView: View {
         .controlGroupStyle(.navigation)
         .controlSize(.small)
         .fixedSize()
-    }
-
-    private var showsPaginationControls: Bool {
-        if let total = snapshot.pagination.totalRowCount, total > 0 { return true }
-        return isPagedWithUnknownTotal
-    }
-
-    private var isPagedWithUnknownTotal: Bool {
-        let pagination = snapshot.pagination
-        return pagination.currentPage > 1 || snapshot.rowCount >= pagination.pageSize
-    }
-
-    private var rowInfoText: String {
-        let loadedCount = snapshot.rowCount
-        let selectedCount = selectedRowIndices.count
-        let pagination = snapshot.pagination
-        let total = pagination.totalRowCount
-
-        if selectedCount > 0 {
-            if selectedCount == loadedCount {
-                return String(format: String(localized: "All %d rows selected"), loadedCount)
-            } else {
-                return String(format: String(localized: "%d of %d rows selected"), selectedCount, loadedCount)
-            }
-        } else if snapshot.tabType == .query && pagination.hasMoreRows {
-            let formattedCount = loadedCount.formatted(.number.grouping(.automatic))
-            return String(format: String(localized: "Showing %@ rows"), formattedCount)
-        } else if snapshot.tabType == .table, let total = total, total > 0 {
-            let formattedTotal = total.formatted(.number.grouping(.automatic))
-            let prefix = pagination.isApproximateRowCount ? "~" : ""
-
-            return String(format: String(localized: "%d-%d of %@%@ rows"), pagination.rangeStart, pagination.rangeEnd, prefix, formattedTotal)
-        } else if snapshot.tabType == .table, isPagedWithUnknownTotal {
-            let rangeEnd = pagination.currentOffset + loadedCount
-            return String(format: String(localized: "%d-%d of ? rows"), pagination.rangeStart, rangeEnd)
-        } else if loadedCount > 0 {
-            let formattedCount = loadedCount.formatted(.number.grouping(.automatic))
-            return String(format: String(localized: "%@ rows"), formattedCount)
-        } else {
-            return String(localized: "No rows")
-        }
     }
 }

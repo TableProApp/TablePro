@@ -189,7 +189,7 @@ final class OracleConnectionWrapper: @unchecked Sendable {
             let target = useSID ? "\(self.host):\(self.port):\(identifier)" : "\(self.host):\(self.port)/\(identifier)"
             osLogger.debug("Connected to Oracle \(target)")
         } catch let sqlError as OracleSQLError {
-            let detail = sqlError.serverInfo?.message ?? sqlError.description
+            let detail = Self.connectFailureDetail(sqlError)
             osLogger.error("Oracle connection failed: \(detail)")
             if let sslError = Self.classifySSLError(detail) {
                 throw sslError
@@ -244,6 +244,13 @@ final class OracleConnectionWrapper: @unchecked Sendable {
         default:
             return .connectionFailed
         }
+    }
+
+    private static func connectFailureDetail(_ error: OracleSQLError) -> String {
+        if let refused = error.underlying as? OracleListenerRefusedError {
+            return OracleListenerRefusal.detail(code: refused.code)
+        }
+        return error.serverInfo?.message ?? error.description
     }
 
     private static func connectErrorMessage(
