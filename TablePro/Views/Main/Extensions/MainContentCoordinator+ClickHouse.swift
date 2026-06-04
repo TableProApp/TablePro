@@ -67,7 +67,14 @@ extension MainContentCoordinator {
 
             do {
                 let startTime = Date()
-                let result = try await driver.execute(query: explainSQL)
+                let request = OperationRequest.interactiveUser(
+                    connectionId: connectionId,
+                    databaseType: connection.type,
+                    sql: explainSQL,
+                    kind: .readQuery,
+                    operationDescription: String(localized: "Explain Query")
+                )
+                let result = try await driver.executeAuthorizing(query: explainSQL, request: request)
                 let duration = Date().timeIntervalSince(startTime)
 
                 let text = result.rows.map { row in

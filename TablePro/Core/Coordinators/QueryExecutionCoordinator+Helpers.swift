@@ -12,7 +12,12 @@ private let helpersLogger = Logger(subsystem: "com.TablePro", category: "QueryEx
 
 extension QueryExecutionCoordinator {
     func resolveRowCap(sql: String, tabType: TabType) -> Int? {
-        QueryExecutor.resolveRowCap(sql: sql, tabType: tabType, databaseType: parent.connection.type)
+        QueryExecutor.resolveRowCap(
+            sql: sql,
+            tabType: tabType,
+            databaseType: parent.connection.type,
+            dataGridSettings: parent.services.appSettings.dataGrid
+        )
     }
 
     func parseSchemaMetadata(_ schema: SchemaResult) -> ParsedSchemaMetadata {
@@ -273,7 +278,7 @@ extension QueryExecutionCoordinator {
             return
         }
 
-        let behavior = AppSettingsManager.shared.dataGrid.defaultSortBehavior
+        let behavior = parent.services.appSettings.dataGrid.defaultSortBehavior
         let hint = PluginManager.shared.defaultSortHint(for: connectionType, table: tableName)
         let resolved = DefaultSortResolver.resolveSortState(
             behavior: behavior,
@@ -335,7 +340,7 @@ extension QueryExecutionCoordinator {
                 return
             }
             await MainActor.run { [weak self] in
-                guard let self else { return }
+                guard self != nil else { return }
                 guard capturedGeneration == parent.queryGeneration else { return }
                 guard !Task.isCancelled else { return }
                 guard parent.tabManager.tabs.contains(where: { $0.id == tabId }) else { return }
@@ -384,7 +389,7 @@ extension QueryExecutionCoordinator {
         let isNonSQL = PluginManager.shared.editorLanguage(for: connectionType) != .sql
 
         Task(priority: .utility) { [weak self, parent] in
-            guard let self else { return }
+            guard self != nil else { return }
             guard !parent.isTearingDown else { return }
 
             let prepared: (plan: RowCountPlan, sql: String?) = await MainActor.run {
@@ -393,7 +398,7 @@ extension QueryExecutionCoordinator {
                     isNonSQL: isNonSQL,
                     filterState: tab.filterState,
                     approximateRowCount: tab.pagination.totalRowCount,
-                    threshold: AppSettingsManager.shared.dataGrid.countRowsIfEstimateLessThan
+                    threshold: parent.services.appSettings.dataGrid.countRowsIfEstimateLessThan
                 )
                 guard case let .exactCount(filtered) = plan else { return (plan, nil) }
                 let sql = parent.queryBuilder.buildFilteredCountQuery(
@@ -426,10 +431,18 @@ extension QueryExecutionCoordinator {
                 }
             case .exactCount:
                 guard let sql = prepared.sql else { return }
+                let connectionId = parent.connectionId
+                let connectionType = parent.connection.type
                 let count: Int?
                 do {
-                    count = try await DatabaseManager.shared.withMetadataDriver(connectionId: parent.connectionId, workload: .bulk) { driver in
-                        let result = try await driver.execute(query: sql)
+                    count = try await DatabaseManager.shared.withMetadataDriver(connectionId: connectionId, workload: .bulk) { driver in
+                        let request = OperationRequest.metadataRead(
+                            connectionId: connectionId,
+                            databaseType: connectionType,
+                            sql: sql,
+                            operationDescription: String(localized: "Read Row Count")
+                        )
+                        let result = try await driver.executeAuthorizing(query: sql, request: request)
                         guard let countStr = result.rows.first?.first?.asText else { return Int?.none }
                         return Int(countStr)
                     }
@@ -502,8 +515,8 @@ extension QueryExecutionCoordinator {
         let errorMessage = error.localizedDescription
         let queryCopy = sql
         Task { [weak self, parent] in
-            guard let self else { return }
-            if AppSettingsManager.shared.ai.enabled {
+            guard self != nil else { return }
+            if parent.services.appSettings.ai.enabled {
                 let wantsAIFix = await AlertHelper.showQueryErrorWithAIOption(
                     title: String(localized: "Query Execution Failed"),
                     message: errorMessage,

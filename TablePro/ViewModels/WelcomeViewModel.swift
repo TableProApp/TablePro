@@ -34,6 +34,7 @@ final class WelcomeViewModel {
     private static let logger = Logger(subsystem: "com.TablePro", category: "WelcomeViewModel")
 
     @ObservationIgnored let services: AppServices
+    @ObservationIgnored private let userDefaults: UserDefaults
     private var storage: ConnectionStorage { services.connectionStorage }
     private var groupStorage: GroupStorage { services.groupStorage }
 
@@ -68,17 +69,11 @@ final class WelcomeViewModel {
     /// alert appears after the sheet animation completes, no sleep needed.
     var pendingImportResultCount: Int?
 
-    var expandedGroupIds: Set<UUID> = {
-        let strings = UserDefaults.standard.stringArray(forKey: "com.TablePro.expandedGroupIds") ?? []
-        if strings.isEmpty {
-            UserDefaults.standard.removeObject(forKey: "com.TablePro.collapsedGroupIds")
-        }
-        return Set(strings.compactMap { UUID(uuidString: $0) })
-    }() {
+    var expandedGroupIds: Set<UUID> {
         didSet {
-            UserDefaults.standard.set(
+            userDefaults.set(
                 Array(expandedGroupIds.map(\.uuidString)),
-                forKey: "com.TablePro.expandedGroupIds"
+                forKey: Self.expandedGroupIdsKey
             )
         }
     }
@@ -92,6 +87,8 @@ final class WelcomeViewModel {
     @ObservationIgnored private var importFromAppCancellable: AnyCancellable?
     @ObservationIgnored private var welcomeRouterTask: Task<Void, Never>?
     @ObservationIgnored private var searchDebounceTask: Task<Void, Never>?
+    private static let expandedGroupIdsKey = "com.TablePro.expandedGroupIds"
+    private static let collapsedGroupIdsKey = "com.TablePro.collapsedGroupIds"
     private static let searchDebounceNanoseconds: UInt64 = 150_000_000
 
     // MARK: - Computed Properties
@@ -159,9 +156,23 @@ final class WelcomeViewModel {
 
     // MARK: - Initialization
 
-    init(services: AppServices = .live) {
+    convenience init() {
+        self.init(services: .live)
+    }
+
+    init(services: AppServices, userDefaults: UserDefaults = .standard) {
         self.services = services
+        self.userDefaults = userDefaults
         self.showOnboarding = !services.appSettingsStorage.hasCompletedOnboarding()
+        self.expandedGroupIds = Self.loadExpandedGroupIds(userDefaults: userDefaults)
+    }
+
+    private static func loadExpandedGroupIds(userDefaults: UserDefaults) -> Set<UUID> {
+        let strings = userDefaults.stringArray(forKey: expandedGroupIdsKey) ?? []
+        if strings.isEmpty {
+            userDefaults.removeObject(forKey: collapsedGroupIdsKey)
+        }
+        return Set(strings.compactMap { UUID(uuidString: $0) })
     }
 
     // MARK: - Setup & Teardown
@@ -513,7 +524,7 @@ final class WelcomeViewModel {
               let groupId = connection.groupId,
               expandedGroupIds.contains(groupId) else { return }
         withAnimation(.easeInOut(duration: 0.2)) {
-            expandedGroupIds.remove(groupId)
+            _ = expandedGroupIds.remove(groupId)
         }
     }
 
@@ -523,7 +534,7 @@ final class WelcomeViewModel {
               let groupId = connection.groupId,
               !expandedGroupIds.contains(groupId) else { return }
         withAnimation(.easeInOut(duration: 0.2)) {
-            expandedGroupIds.insert(groupId)
+            _ = expandedGroupIds.insert(groupId)
         }
     }
 

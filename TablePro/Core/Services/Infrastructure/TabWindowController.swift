@@ -85,7 +85,7 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
 
     @available(*, unavailable)
     required init?(coder: NSCoder) {
-        fatalError("TabWindowController does not support NSCoder init")
+        return nil
     }
 
     override func encodeRestorableState(with coder: NSCoder) {

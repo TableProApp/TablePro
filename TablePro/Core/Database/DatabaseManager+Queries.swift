@@ -38,9 +38,18 @@ extension DatabaseManager {
         guard let sessionId = currentSessionId, let driver = activeDriver else {
             throw DatabaseError.notConnected
         }
+        guard let databaseType = activeSessions[sessionId]?.connection.type else {
+            throw DatabaseError.notConnected
+        }
 
         let result = try await trackOperation(sessionId: sessionId) {
-            try await driver.execute(query: query)
+            let request = OperationRequest.interactiveUser(
+                connectionId: sessionId,
+                databaseType: databaseType,
+                sql: query,
+                operationDescription: String(localized: "Execute Query")
+            )
+            return try await driver.executeAuthorizing(query: query, request: request)
         }
         MacAnalyticsProvider.shared.markFirstQueryExecuted()
         return result

@@ -8,6 +8,7 @@
 import Foundation
 @testable import TablePro
 import TableProPluginKit
+import TableProSync
 import Testing
 
 @Suite("SafeModeMigration")
@@ -15,7 +16,7 @@ import Testing
 struct SafeModeMigrationTests {
     private let storage: ConnectionStorage
     private let defaults: UserDefaults
-    private let tracker: SyncChangeTracker
+    private let tracker: DesktopSyncChangeTracker
 
     init() {
         let unique = UUID().uuidString
@@ -33,13 +34,22 @@ struct SafeModeMigrationTests {
             fatalError("Failed to create isolated test user defaults")
         }
         self.defaults = defaults
-        let metadata = SyncMetadataStorage(userDefaults: syncDefaults)
-        self.tracker = SyncChangeTracker(metadataStorage: metadata)
+        let metadata = DesktopSyncMetadataStorage(userDefaults: syncDefaults)
+        self.tracker = DesktopSyncChangeTracker(metadataStorage: metadata)
         self.storage = ConnectionStorage(
             fileURL: fileURL,
             userDefaults: defaults,
             syncTracker: tracker,
+            appSettings: AppSettingsStorage(userDefaults: defaults),
             keychain: InMemoryKeychain()
+        )
+    }
+
+    private func makeDatabaseManager() -> DatabaseManager {
+        DatabaseManager(
+            connectionStorage: storage,
+            appSettingsStorage: AppSettingsStorage(userDefaults: defaults),
+            pluginManager: .shared
         )
     }
 
@@ -152,7 +162,7 @@ struct SafeModeMigrationTests {
         storage.addConnection(connection)
         tracker.clearDirty(.connection, id: id.uuidString)
 
-        let manager = DatabaseManager(connectionStorage: storage)
+        let manager = makeDatabaseManager()
         manager.injectSession(ConnectionSession(connection: connection), for: id)
         defer { manager.removeSession(for: id) }
 
@@ -183,7 +193,7 @@ struct SafeModeMigrationTests {
 
         storage.addConnection(staleConnection)
 
-        let manager = DatabaseManager(connectionStorage: storage)
+        let manager = makeDatabaseManager()
         manager.injectSession(ConnectionSession(connection: staleConnection), for: id)
         manager.setSafeModeLevel(.alertFull, for: id)
         manager.removeSession(for: id)
@@ -210,7 +220,7 @@ struct SafeModeMigrationTests {
 
         storage.addConnection(stored)
 
-        let manager = DatabaseManager(connectionStorage: storage)
+        let manager = makeDatabaseManager()
         manager.injectSession(ConnectionSession(connection: stored), for: id)
         manager.setSafeModeLevel(.alertFull, for: id)
         manager.removeSession(for: id)
@@ -240,7 +250,7 @@ struct SafeModeMigrationTests {
 
         storage.addConnection(connection)
 
-        let manager = DatabaseManager(connectionStorage: storage)
+        let manager = makeDatabaseManager()
         manager.injectSession(ConnectionSession(connection: connection), for: id)
         manager.setSafeModeLevel(.alertFull, for: id)
         manager.removeSession(for: id)

@@ -1,5 +1,5 @@
 //
-//  SyncChangeTracker.swift
+//  DesktopSyncChangeTracker.swift
 //  TablePro
 //
 //  Tracks local changes that need to be synced to CloudKit
@@ -8,13 +8,14 @@
 import Combine
 import Foundation
 import os
+import TableProSync
 
 /// Tracks dirty entities and deletions for sync
-final class SyncChangeTracker {
-    static let shared = SyncChangeTracker()
-    private static let logger = Logger(subsystem: "com.TablePro", category: "SyncChangeTracker")
+final class DesktopSyncChangeTracker {
+    static let shared = DesktopSyncChangeTracker()
+    private static let logger = Logger(subsystem: "com.TablePro", category: "DesktopSyncChangeTracker")
 
-    private let metadataStorage: SyncMetadataStorage
+    private let metadataStorage: DesktopSyncMetadataStorage
 
     /// When true, changes are not tracked (used during remote apply to avoid sync loops)
     private let suppressionLock = OSAllocatedUnfairLock(initialState: false)
@@ -24,7 +25,11 @@ final class SyncChangeTracker {
         set { suppressionLock.withLock { $0 = newValue } }
     }
 
-    init(metadataStorage: SyncMetadataStorage = .shared) {
+    convenience init() {
+        self.init(metadataStorage: .shared)
+    }
+
+    init(metadataStorage: DesktopSyncMetadataStorage) {
         self.metadataStorage = metadataStorage
     }
 

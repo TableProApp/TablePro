@@ -3,6 +3,7 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
+@MainActor
 @Suite("ToolsCallHandler")
 struct ToolsCallHandlerTests {
     @Test("Unknown tool returns method not found")

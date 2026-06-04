@@ -27,6 +27,7 @@ actor CloudflareTunnelManager {
     private var tunnels: [UUID: TunnelState] = [:]
     private var pidRecords: [UUID: CloudflaredPidRecord] = [:]
     private let runnerFactory: () -> any CloudflaredRunner
+    private let userDefaults: UserDefaults
 
     /// Static registry for synchronous termination during app shutdown.
     private static let runnerRegistry = OSAllocatedUnfairLock(initialState: [UUID: any CloudflaredRunner]())
@@ -34,8 +35,12 @@ actor CloudflareTunnelManager {
     /// Prevents App Nap from throttling the supervised process while tunnels are active.
     private var appNapActivity: NSObjectProtocol?
 
-    init(runnerFactory: @escaping () -> any CloudflaredRunner = { ProcessCloudflaredRunner() }) {
+    init(
+        runnerFactory: @escaping () -> any CloudflaredRunner = { ProcessCloudflaredRunner() },
+        userDefaults: UserDefaults = .standard
+    ) {
         self.runnerFactory = runnerFactory
+        self.userDefaults = userDefaults
     }
 
     /// Create a Cloudflare Access TCP tunnel for a database connection.
@@ -137,8 +142,8 @@ actor CloudflareTunnelManager {
     /// or was force-quit. Verifies each recorded PID still points at cloudflared
     /// before signalling it, so a recycled PID is never killed.
     func sweepStalePidsIfNeeded() {
-        defer { UserDefaults.standard.removeObject(forKey: Self.stalePidsDefaultsKey) }
-        guard let data = UserDefaults.standard.data(forKey: Self.stalePidsDefaultsKey),
+        defer { userDefaults.removeObject(forKey: Self.stalePidsDefaultsKey) }
+        guard let data = userDefaults.data(forKey: Self.stalePidsDefaultsKey),
               let records = try? JSONDecoder().decode([CloudflaredPidRecord].self, from: data) else {
             return
         }
@@ -307,12 +312,12 @@ actor CloudflareTunnelManager {
     private func persistPidRecords() {
         let records = Array(pidRecords.values)
         guard !records.isEmpty else {
-            UserDefaults.standard.removeObject(forKey: Self.stalePidsDefaultsKey)
+            userDefaults.removeObject(forKey: Self.stalePidsDefaultsKey)
             return
         }
         do {
             let data = try JSONEncoder().encode(records)
-            UserDefaults.standard.set(data, forKey: Self.stalePidsDefaultsKey)
+            userDefaults.set(data, forKey: Self.stalePidsDefaultsKey)
         } catch {
             Self.logger.error("Failed to persist cloudflared PID records, leaked processes may survive to next launch: \(error.localizedDescription, privacy: .public)")
         }

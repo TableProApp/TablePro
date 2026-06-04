@@ -4,11 +4,12 @@
 //
 
 import SwiftUI
+import TableProSync
 
 struct SyncStatusIndicator: View {
     let onActivateLicense: () -> Void
 
-    private let syncCoordinator = SyncCoordinator.shared
+    private let syncCoordinator = DesktopSyncCoordinator.shared
 
     var body: some View {
         if shouldShow {

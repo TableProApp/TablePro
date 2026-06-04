@@ -58,4 +58,26 @@ struct QueryTabManagerSelectedTabAndIndexTests {
         #expect(result?.index == 0)
         #expect(result?.tab.tableContext.tableName == "users")
     }
+
+    @Test("uses injected default page size for new table tabs")
+    func usesInjectedDefaultPageSizeForTableTabs() throws {
+        let manager = QueryTabManager(defaultPageSizeProvider: { 42 })
+
+        try manager.addTableTab(tableName: "users")
+
+        #expect(manager.tabs[0].pagination.pageSize == 42)
+        #expect(manager.tabs[0].content.query.contains("42"))
+    }
+
+    @Test("uses injected default page size when replacing tab content")
+    func usesInjectedDefaultPageSizeWhenReplacingTabContent() throws {
+        let manager = QueryTabManager(defaultPageSizeProvider: { 75 })
+        manager.addTab()
+
+        let replaced = try manager.replaceTabContent(tableName: "users")
+
+        #expect(replaced)
+        #expect(manager.tabs[0].pagination.pageSize == 75)
+        #expect(manager.tabs[0].content.query.contains("75"))
+    }
 }

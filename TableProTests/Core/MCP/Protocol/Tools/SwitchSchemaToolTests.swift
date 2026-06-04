@@ -3,6 +3,7 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
+@MainActor
 @Suite("SwitchSchemaTool")
 struct SwitchSchemaToolTests {
     @Test("Tool exposes expected metadata")

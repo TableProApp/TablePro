@@ -21,7 +21,8 @@ private func makeSUT(
     pendingTruncates: Set<String> = [],
     pendingDeletes: Set<String> = [],
     tableOperationOptions: [String: TableOperationOptions] = [:],
-    databaseType: DatabaseType = .mysql
+    databaseType: DatabaseType = .mysql,
+    userDefaults: UserDefaults = .standard
 ) -> (
     vm: SidebarViewModel,
     tables: Binding<[TableInfo]>,
@@ -48,7 +49,8 @@ private func makeSUT(
         pendingDeletes: deletesBinding,
         tableOperationOptions: optionsBinding,
         databaseType: databaseType,
-        connectionId: UUID()
+        connectionId: UUID(),
+        userDefaults: userDefaults
     )
 
     return (vm, tablesBinding, selectedBinding, truncatesBinding, deletesBinding, optionsBinding)
@@ -253,7 +255,8 @@ struct SidebarViewModelTests {
 @MainActor
 private func makeViewModel(
     connectionId: UUID = UUID(),
-    databaseType: DatabaseType = .postgresql
+    databaseType: DatabaseType = .postgresql,
+    userDefaults: UserDefaults = .standard
 ) -> SidebarViewModel {
     var selectedState: Set<TableInfo> = []
     var truncates: Set<String> = []
@@ -269,8 +272,16 @@ private func makeViewModel(
         pendingDeletes: deletesBinding,
         tableOperationOptions: optionsBinding,
         databaseType: databaseType,
-        connectionId: connectionId
+        connectionId: connectionId,
+        userDefaults: userDefaults
     )
+}
+
+private func makeSidebarUserDefaults() -> (UserDefaults, String) {
+    let suiteName = "com.TablePro.tests.SidebarViewModel.\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: suiteName)!
+    defaults.removePersistentDomain(forName: suiteName)
+    return (defaults, suiteName)
 }
 
 @Suite("SidebarViewModel multi-section")
@@ -443,7 +454,9 @@ struct SidebarViewModelMultiSectionTests {
     @Test("default expansion is true for tables only")
     @MainActor
     func defaultExpansionTablesOnly() {
-        let vm = makeViewModel()
+        let (defaults, suiteName) = makeSidebarUserDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let vm = makeViewModel(userDefaults: defaults)
 
         #expect(vm.expanded[.table] == true)
         #expect(vm.expanded[.view] == false)
@@ -456,47 +469,53 @@ struct SidebarViewModelMultiSectionTests {
     @Test("expansion writes persist to per-kind UserDefaults keys")
     @MainActor
     func expansionWritesPersist() {
+        let (defaults, suiteName) = makeSidebarUserDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
         let connectionId = UUID()
-        let vm = makeViewModel(connectionId: connectionId)
+        let vm = makeViewModel(connectionId: connectionId, userDefaults: defaults)
         let key = SidebarPersistenceKey.expanded(connectionId: connectionId, kind: .procedure)
-        UserDefaults.standard.removeObject(forKey: key)
+        defaults.removeObject(forKey: key)
 
         vm.expanded[.procedure] = true
 
-        #expect(UserDefaults.standard.bool(forKey: key) == true)
-        UserDefaults.standard.removeObject(forKey: key)
+        #expect(defaults.bool(forKey: key) == true)
+        defaults.removeObject(forKey: key)
     }
 
     @Test("expansion seeds .table from legacy per-connection key on first init")
     @MainActor
     func legacyMigrationFromPerConnectionKey() {
+        let (defaults, suiteName) = makeSidebarUserDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
         let connectionId = UUID()
         let perKindKey = SidebarPersistenceKey.expanded(connectionId: connectionId, kind: .table)
         let legacyKey = SidebarPersistenceKey.tablesExpanded(connectionId: connectionId)
-        UserDefaults.standard.removeObject(forKey: perKindKey)
-        UserDefaults.standard.set(false, forKey: legacyKey)
+        defaults.removeObject(forKey: perKindKey)
+        defaults.set(false, forKey: legacyKey)
 
-        let vm = makeViewModel(connectionId: connectionId)
+        let vm = makeViewModel(connectionId: connectionId, userDefaults: defaults)
 
         #expect(vm.expanded[.table] == false)
-        UserDefaults.standard.removeObject(forKey: perKindKey)
-        UserDefaults.standard.removeObject(forKey: legacyKey)
+        defaults.removeObject(forKey: perKindKey)
+        defaults.removeObject(forKey: legacyKey)
     }
 
     @Test("expansion seeds .table from global legacy key when no per-connection key set")
     @MainActor
     func legacyMigrationFromGlobalKey() {
+        let (defaults, suiteName) = makeSidebarUserDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
         let connectionId = UUID()
         let perKindKey = SidebarPersistenceKey.expanded(connectionId: connectionId, kind: .table)
         let perConnLegacy = SidebarPersistenceKey.tablesExpanded(connectionId: connectionId)
-        UserDefaults.standard.removeObject(forKey: perKindKey)
-        UserDefaults.standard.removeObject(forKey: perConnLegacy)
-        UserDefaults.standard.set(false, forKey: SidebarPersistenceKey.legacyTablesExpanded)
+        defaults.removeObject(forKey: perKindKey)
+        defaults.removeObject(forKey: perConnLegacy)
+        defaults.set(false, forKey: SidebarPersistenceKey.legacyTablesExpanded)
 
-        let vm = makeViewModel(connectionId: connectionId)
+        let vm = makeViewModel(connectionId: connectionId, userDefaults: defaults)
 
         #expect(vm.expanded[.table] == false)
-        UserDefaults.standard.removeObject(forKey: perKindKey)
-        UserDefaults.standard.removeObject(forKey: SidebarPersistenceKey.legacyTablesExpanded)
+        defaults.removeObject(forKey: perKindKey)
+        defaults.removeObject(forKey: SidebarPersistenceKey.legacyTablesExpanded)
     }
 }

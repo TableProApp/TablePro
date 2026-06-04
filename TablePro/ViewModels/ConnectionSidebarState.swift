@@ -30,19 +30,21 @@ internal final class ConnectionSidebarState {
     @ObservationIgnored private var favoriteSelectionKey: String {
         "sidebar.selectedFavoriteNodeId.\(connectionId.uuidString)"
     }
+    @ObservationIgnored private let userDefaults: UserDefaults
 
-    private init(connectionId: UUID) {
+    init(connectionId: UUID, userDefaults: UserDefaults = .standard) {
         self.connectionId = connectionId
-        self.selectedFavorite = UserDefaults.standard.string(
+        self.userDefaults = userDefaults
+        self.selectedFavorite = userDefaults.string(
             forKey: "sidebar.selectedFavoriteNodeId.\(connectionId.uuidString)"
         ).flatMap(FavoriteSelection.init(rawValue:))
     }
 
     private func persistFavoriteSelection() {
         if let rawValue = selectedFavorite?.rawValue {
-            UserDefaults.standard.set(rawValue, forKey: favoriteSelectionKey)
+            userDefaults.set(rawValue, forKey: favoriteSelectionKey)
         } else {
-            UserDefaults.standard.removeObject(forKey: favoriteSelectionKey)
+            userDefaults.removeObject(forKey: favoriteSelectionKey)
         }
     }
 }

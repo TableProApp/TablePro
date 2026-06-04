@@ -113,7 +113,8 @@ extension MainContentView {
                         restoredTabs[i].content.query = try QueryTab.buildBaseTableQuery(
                             tableName: tableName,
                             databaseType: connection.type,
-                            schemaName: restoredTabs[i].tableContext.schemaName
+                            schemaName: restoredTabs[i].tableContext.schemaName,
+                            pageSize: restoredTabs[i].pagination.pageSize
                         )
                     } catch {
                         MainContentView.lifecycleLogger.error(

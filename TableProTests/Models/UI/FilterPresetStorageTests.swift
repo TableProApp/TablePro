@@ -11,16 +11,18 @@ import Testing
 @MainActor
 @Suite("FilterPresetStorage - savePreset", .serialized)
 struct FilterPresetStorageTests {
-    private let storage = FilterPresetStorage.shared
-
-    private func cleanup() {
-        storage.deleteAllPresets()
+    private func makeStorage() throws -> (storage: FilterPresetStorage, defaults: UserDefaults, suiteName: String) {
+        let suiteName = "com.TablePro.tests.FilterPresetStorage.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defaults.removePersistentDomain(forName: suiteName)
+        return (FilterPresetStorage(userDefaults: defaults), defaults, suiteName)
     }
 
     @Test("Saving a uniquely named preset stores it as typed")
-    func savePresetUniqueNameStoresAsTyped() {
-        cleanup()
-        defer { cleanup() }
+    func savePresetUniqueNameStoresAsTyped() throws {
+        let fixture = try makeStorage()
+        defer { fixture.defaults.removePersistentDomain(forName: fixture.suiteName) }
+        let storage = fixture.storage
 
         let preset = FilterPreset(name: "Alpha", filters: [])
         storage.savePreset(preset)
@@ -31,9 +33,10 @@ struct FilterPresetStorageTests {
     }
 
     @Test("Saving a duplicate name with a different id appends suffix (2)")
-    func savePresetDuplicateNameDifferentIdAppendsSuffix2() {
-        cleanup()
-        defer { cleanup() }
+    func savePresetDuplicateNameDifferentIdAppendsSuffix2() throws {
+        let fixture = try makeStorage()
+        defer { fixture.defaults.removePersistentDomain(forName: fixture.suiteName) }
+        let storage = fixture.storage
 
         storage.savePreset(FilterPreset(name: "Alpha", filters: []))
         storage.savePreset(FilterPreset(id: UUID(), name: "Alpha", filters: []))
@@ -44,9 +47,10 @@ struct FilterPresetStorageTests {
     }
 
     @Test("Repeated duplicates increment the counter")
-    func savePresetRepeatedDuplicatesIncrementsCounter() {
-        cleanup()
-        defer { cleanup() }
+    func savePresetRepeatedDuplicatesIncrementsCounter() throws {
+        let fixture = try makeStorage()
+        defer { fixture.defaults.removePersistentDomain(forName: fixture.suiteName) }
+        let storage = fixture.storage
 
         storage.savePreset(FilterPreset(name: "Alpha", filters: []))
         storage.savePreset(FilterPreset(id: UUID(), name: "Alpha", filters: []))
@@ -58,9 +62,10 @@ struct FilterPresetStorageTests {
     }
 
     @Test("Saving with the same id replaces the preset in place")
-    func savePresetSameIdReplacesInPlace() {
-        cleanup()
-        defer { cleanup() }
+    func savePresetSameIdReplacesInPlace() throws {
+        let fixture = try makeStorage()
+        defer { fixture.defaults.removePersistentDomain(forName: fixture.suiteName) }
+        let storage = fixture.storage
 
         let id = UUID()
         storage.savePreset(FilterPreset(id: id, name: "Alpha", filters: []))
@@ -73,9 +78,10 @@ struct FilterPresetStorageTests {
     }
 
     @Test("Same-id upsert wins over name dedup")
-    func savePresetSameIdKeepsPlaceEvenIfNameMatchesAnother() {
-        cleanup()
-        defer { cleanup() }
+    func savePresetSameIdKeepsPlaceEvenIfNameMatchesAnother() throws {
+        let fixture = try makeStorage()
+        defer { fixture.defaults.removePersistentDomain(forName: fixture.suiteName) }
+        let storage = fixture.storage
 
         let idA = UUID()
         let idB = UUID()

@@ -73,6 +73,7 @@ final class ImportService {
 
         let sink = ImportDataSinkAdapter(
             driver: driver,
+            connectionId: connection.id,
             databaseType: connection.type,
             targetTable: targetTable,
             columnMapping: columnMapping
@@ -127,11 +128,20 @@ final class ImportService {
 
         let result: PluginImportResult
         do {
-            result = try await plugin.performImport(
-                source: source,
-                sink: sink,
-                progress: progress
+            let request = OperationRequest.importPipeline(
+                connectionId: connection.id,
+                databaseType: connection.type,
+                sql: nil,
+                kind: .importData,
+                operationDescription: String(localized: "Import Data")
             )
+            result = try await ExecutionGateProvider.shared.authorizing(request) {
+                try await plugin.performImport(
+                    source: source,
+                    sink: sink,
+                    progress: progress
+                )
+            }
         } catch {
             state.errorMessage = error.localizedDescription
 

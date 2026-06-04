@@ -17,15 +17,17 @@ struct FilterPreset: Identifiable, Codable, Equatable {
 
 /// Storage manager for filter presets
 @MainActor final class FilterPresetStorage {
-    static let shared = FilterPresetStorage()
+    static let shared = FilterPresetStorage(userDefaults: .standard)
 
     private let presetsKey = "com.TablePro.filter.presets"
-    private let defaults = UserDefaults.standard
+    private let defaults: UserDefaults
 
     /// Cached presets to avoid repeated UserDefaults read + JSON decode
     private var cachedPresets: [FilterPreset]?
 
-    private init() {}
+    init(userDefaults: UserDefaults) {
+        defaults = userDefaults
+    }
 
     /// Save a new preset
     func savePreset(_ preset: FilterPreset) {

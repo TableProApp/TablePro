@@ -3,6 +3,7 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
+@MainActor
 @Suite("DescribeTableTool")
 struct DescribeTableToolTests {
     @Test("Tool exposes expected metadata")

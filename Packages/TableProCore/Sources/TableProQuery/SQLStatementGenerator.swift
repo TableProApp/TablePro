@@ -1,10 +1,9 @@
 import Foundation
-import TableProPluginKit
 
 public struct SQLStatementGenerator: Sendable {
-    private let dialect: SQLDialectDescriptor
+    private let dialect: QueryDialectDescriptor
 
-    public init(dialect: SQLDialectDescriptor) {
+    public init(dialect: QueryDialectDescriptor) {
         self.dialect = dialect
     }
 
@@ -44,20 +43,16 @@ public struct SQLStatementGenerator: Sendable {
     }
 
     private func quoteIdentifier(_ name: String) -> String {
-        let q = dialect.identifierQuote
-        let escaped = name.replacingOccurrences(of: q, with: "\(q)\(q)")
-        return "\(q)\(escaped)\(q)"
+        dialect.quoteIdentifier(name)
     }
 
     private func formatValue(_ value: String?) -> String {
         guard let value else { return "NULL" }
-        if Int64(value) != nil || Double(value) != nil {
-            return value
-        }
-        let escaped = value
-            .replacingOccurrences(of: "'", with: "''")
-            .replacingOccurrences(of: "\0", with: "")
-        return "'\(escaped)'"
+        return dialect.sqlLiteral(
+            for: value,
+            trimWhitespace: false,
+            interpretSpecialLiterals: false
+        )
     }
 
     private func formatWhereValue(_ value: String) -> String {

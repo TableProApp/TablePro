@@ -12,6 +12,9 @@ import Testing
 @Suite("FileColumnLayoutPersister")
 @MainActor
 struct FileColumnLayoutPersisterTests {
+    private let legacyKeyPrefix = "com.TablePro.columns.layout."
+    private let migrationCompleteKey = "com.TablePro.columnLayoutMigrationComplete"
+
     private func makeIsolatedPersister() -> (FileColumnLayoutPersister, URL) {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("TableProTests-\(UUID().uuidString)", isDirectory: true)
@@ -21,6 +24,13 @@ struct FileColumnLayoutPersisterTests {
 
     private func cleanup(_ directory: URL) {
         try? FileManager.default.removeItem(at: directory)
+    }
+
+    private func makeDefaults() -> (UserDefaults, String) {
+        let suiteName = "com.TablePro.tests.FileColumnLayoutPersister.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        return (defaults, suiteName)
     }
 
     @Test("Save then load returns the same widths and order")
@@ -276,5 +286,30 @@ struct FileColumnLayoutPersisterTests {
 
         let persister = FileColumnLayoutPersister(storageDirectory: directory)
         #expect(persister.load(for: "anything", connectionId: connectionId) == nil)
+    }
+
+    @Test("Legacy UserDefaults migration uses the injected defaults suite")
+    func legacyMigrationUsesInjectedDefaults() {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("TableProTests-\(UUID().uuidString)", isDirectory: true)
+        let (defaults, suiteName) = makeDefaults()
+        defer {
+            cleanup(directory)
+            defaults.removePersistentDomain(forName: suiteName)
+        }
+
+        let connectionId = UUID()
+        let tableName = "users"
+        let legacyKey = "\(legacyKeyPrefix)\(connectionId.uuidString).\(tableName)"
+        let legacyJSON = #"{"columnWidths":{"id":88},"columnOrder":["id"]}"#
+        defaults.set(Data(legacyJSON.utf8), forKey: legacyKey)
+
+        let persister = FileColumnLayoutPersister(storageDirectory: directory, userDefaults: defaults)
+        let loaded = persister.load(for: tableName, connectionId: connectionId)
+
+        #expect(loaded?.columnWidths == ["id": 88])
+        #expect(loaded?.columnOrder == ["id"])
+        #expect(defaults.object(forKey: legacyKey) == nil)
+        #expect(defaults.bool(forKey: migrationCompleteKey))
     }
 }

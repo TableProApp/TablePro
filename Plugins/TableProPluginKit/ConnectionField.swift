@@ -32,9 +32,8 @@ public struct ConnectionField: Codable, Sendable {
         }
 
         public init(lowerBound: Int, upperBound: Int) {
-            precondition(lowerBound <= upperBound, "IntRange: lowerBound must be <= upperBound")
-            self.lowerBound = lowerBound
-            self.upperBound = upperBound
+            self.lowerBound = min(lowerBound, upperBound)
+            self.upperBound = max(lowerBound, upperBound)
         }
 
         public var closedRange: ClosedRange<Int> { lowerBound...upperBound }

@@ -8,6 +8,7 @@
 import Foundation
 import os
 import TableProPluginKit
+import TableProSync
 
 /// Service for persisting database connections
 @MainActor
@@ -18,7 +19,7 @@ final class ConnectionStorage {
     private let connectionsKey = "com.TablePro.connections"
     private let migratedToFileKey = "com.TablePro.connectionsMigratedToFile"
     private let defaults: UserDefaults
-    private let syncTracker: SyncChangeTracker
+    private let syncTracker: DesktopSyncChangeTracker
     private let appSettingsProvider: () -> AppSettingsStorage
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
@@ -30,11 +31,21 @@ final class ConnectionStorage {
 
     private let keychain: any KeychainStoring
 
+    convenience init() {
+        self.init(
+            fileURL: ConnectionStorage.defaultFileURL(),
+            userDefaults: .standard,
+            syncTracker: .shared,
+            appSettings: .shared,
+            keychain: KeychainHelper.shared
+        )
+    }
+
     init(
         fileURL: URL = ConnectionStorage.defaultFileURL(),
         userDefaults: UserDefaults = .standard,
-        syncTracker: SyncChangeTracker = .shared,
-        appSettings: @escaping @autoclosure () -> AppSettingsStorage = .shared,
+        syncTracker: DesktopSyncChangeTracker,
+        appSettings: @escaping @autoclosure () -> AppSettingsStorage,
         keychain: any KeychainStoring = KeychainHelper.shared
     ) {
         self.fileURL = fileURL
@@ -562,4 +573,3 @@ final class ConnectionStorage {
         }
     }
 }
-

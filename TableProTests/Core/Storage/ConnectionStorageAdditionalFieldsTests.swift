@@ -24,15 +24,18 @@ struct ConnectionStorageAdditionalFieldsTests {
             at: fileURL.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
-        self.suiteName = "com.TablePro.tests.ConnectionStorage.\(unique)"
-        self.defaults = UserDefaults(suiteName: suiteName)!
+        let suiteName = "com.TablePro.tests.ConnectionStorage.\(unique)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        self.suiteName = suiteName
+        self.defaults = defaults
         let syncDefaults = UserDefaults(suiteName: "com.TablePro.tests.Sync.\(unique)")!
-        let metadata = SyncMetadataStorage(userDefaults: syncDefaults)
-        let tracker = SyncChangeTracker(metadataStorage: metadata)
+        let metadata = DesktopSyncMetadataStorage(userDefaults: syncDefaults)
+        let tracker = DesktopSyncChangeTracker(metadataStorage: metadata)
         self.storage = ConnectionStorage(
             fileURL: fileURL,
             userDefaults: defaults,
-            syncTracker: tracker
+            syncTracker: tracker,
+            appSettings: AppSettingsStorage(userDefaults: defaults)
         )
     }
 

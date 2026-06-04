@@ -85,7 +85,7 @@ final class SidebarViewModel {
     }
     var isRedisKeysExpanded: Bool {
         didSet {
-            UserDefaults.standard.set(
+            userDefaults.set(
                 isRedisKeysExpanded,
                 forKey: SidebarPersistenceKey.redisKeysExpanded(connectionId: connectionId)
             )
@@ -107,6 +107,7 @@ final class SidebarViewModel {
     // MARK: - Dependencies
 
     private let connectionId: UUID
+    private let userDefaults: UserDefaults
 
     // MARK: - Convenience Accessors
 
@@ -143,7 +144,8 @@ final class SidebarViewModel {
         pendingDeletes: Binding<Set<String>>,
         tableOperationOptions: Binding<[String: TableOperationOptions]>,
         databaseType: DatabaseType,
-        connectionId: UUID
+        connectionId: UUID,
+        userDefaults: UserDefaults = .standard
     ) {
         self.selectedTablesBinding = selectedTables
         self.pendingTruncatesBinding = pendingTruncates
@@ -151,38 +153,43 @@ final class SidebarViewModel {
         self.tableOperationOptionsBinding = tableOperationOptions
         self.databaseType = databaseType
         self.connectionId = connectionId
-        self.expanded = Self.loadInitialExpansion(connectionId: connectionId)
+        self.userDefaults = userDefaults
+        self.expanded = Self.loadInitialExpansion(connectionId: connectionId, userDefaults: userDefaults)
         self.isRedisKeysExpanded = Self.loadExpansion(
             perConnectionKey: SidebarPersistenceKey.redisKeysExpanded(connectionId: connectionId),
             legacyKey: SidebarPersistenceKey.legacyRedisKeysExpanded,
-            defaultValue: true
+            defaultValue: true,
+            userDefaults: userDefaults
         )
     }
 
-    private static func loadInitialExpansion(connectionId: UUID) -> ExpansionState {
+    private static func loadInitialExpansion(connectionId: UUID, userDefaults: UserDefaults) -> ExpansionState {
         var values: [SidebarObjectKind: Bool] = [:]
         for kind in SidebarObjectKind.allCases {
-            values[kind] = loadKindExpansion(connectionId: connectionId, kind: kind)
+            values[kind] = loadKindExpansion(connectionId: connectionId, kind: kind, userDefaults: userDefaults)
         }
         return ExpansionState(values: values)
     }
 
-    private static func loadKindExpansion(connectionId: UUID, kind: SidebarObjectKind) -> Bool {
-        let defaults = UserDefaults.standard
+    private static func loadKindExpansion(
+        connectionId: UUID,
+        kind: SidebarObjectKind,
+        userDefaults: UserDefaults
+    ) -> Bool {
         let perKindKey = SidebarPersistenceKey.expanded(connectionId: connectionId, kind: kind)
-        if defaults.object(forKey: perKindKey) != nil {
-            return defaults.bool(forKey: perKindKey)
+        if userDefaults.object(forKey: perKindKey) != nil {
+            return userDefaults.bool(forKey: perKindKey)
         }
         if kind == .table {
             let legacyPerConnection = SidebarPersistenceKey.tablesExpanded(connectionId: connectionId)
-            if defaults.object(forKey: legacyPerConnection) != nil {
-                let seeded = defaults.bool(forKey: legacyPerConnection)
-                defaults.set(seeded, forKey: perKindKey)
+            if userDefaults.object(forKey: legacyPerConnection) != nil {
+                let seeded = userDefaults.bool(forKey: legacyPerConnection)
+                userDefaults.set(seeded, forKey: perKindKey)
                 return seeded
             }
-            if defaults.object(forKey: SidebarPersistenceKey.legacyTablesExpanded) != nil {
-                let seeded = defaults.bool(forKey: SidebarPersistenceKey.legacyTablesExpanded)
-                defaults.set(seeded, forKey: perKindKey)
+            if userDefaults.object(forKey: SidebarPersistenceKey.legacyTablesExpanded) != nil {
+                let seeded = userDefaults.bool(forKey: SidebarPersistenceKey.legacyTablesExpanded)
+                userDefaults.set(seeded, forKey: perKindKey)
                 return seeded
             }
         }
@@ -192,24 +199,23 @@ final class SidebarViewModel {
     private static func loadExpansion(
         perConnectionKey: String,
         legacyKey: String,
-        defaultValue: Bool
+        defaultValue: Bool,
+        userDefaults: UserDefaults
     ) -> Bool {
-        let defaults = UserDefaults.standard
-        if defaults.object(forKey: perConnectionKey) != nil {
-            return defaults.bool(forKey: perConnectionKey)
+        if userDefaults.object(forKey: perConnectionKey) != nil {
+            return userDefaults.bool(forKey: perConnectionKey)
         }
-        if defaults.object(forKey: legacyKey) != nil {
-            let seeded = defaults.bool(forKey: legacyKey)
-            defaults.set(seeded, forKey: perConnectionKey)
+        if userDefaults.object(forKey: legacyKey) != nil {
+            let seeded = userDefaults.bool(forKey: legacyKey)
+            userDefaults.set(seeded, forKey: perConnectionKey)
             return seeded
         }
         return defaultValue
     }
 
     private func persistExpansion(oldValue: ExpansionState) {
-        let defaults = UserDefaults.standard
         for kind in SidebarObjectKind.allCases where oldValue[kind] != expanded[kind] {
-            defaults.set(
+            userDefaults.set(
                 expanded[kind],
                 forKey: SidebarPersistenceKey.expanded(connectionId: connectionId, kind: kind)
             )

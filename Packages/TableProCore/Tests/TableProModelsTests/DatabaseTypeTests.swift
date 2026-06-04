@@ -17,21 +17,6 @@ struct DatabaseTypeTests {
         #expect(DatabaseType.bigquery.rawValue == "BigQuery")
     }
 
-    @Test("pluginTypeId maps multi-type databases")
-    func pluginTypeIdMapping() {
-        #expect(DatabaseType.mysql.pluginTypeId == "MySQL")
-        #expect(DatabaseType.mariadb.pluginTypeId == "MySQL")
-        #expect(DatabaseType.postgresql.pluginTypeId == "PostgreSQL")
-        #expect(DatabaseType.redshift.pluginTypeId == "PostgreSQL")
-        #expect(DatabaseType.sqlite.pluginTypeId == "SQLite")
-    }
-
-    @Test("Unknown types pass through pluginTypeId")
-    func unknownTypePassthrough() {
-        let custom = DatabaseType(rawValue: "custom_db")
-        #expect(custom.pluginTypeId == "custom_db")
-    }
-
     @Test("Codable round-trip preserves value")
     func codableRoundTrip() throws {
         let original = DatabaseType.postgresql
@@ -51,10 +36,14 @@ struct DatabaseTypeTests {
 
     @Test("allKnownTypes contains all expected types")
     func allKnownTypesComplete() {
-        #expect(DatabaseType.allKnownTypes.count == 17)
+        #expect(DatabaseType.allKnownTypes.count == 20)
         #expect(DatabaseType.allKnownTypes.contains(.mysql))
+        #expect(DatabaseType.allKnownTypes.contains(.bigQuery))
         #expect(DatabaseType.allKnownTypes.contains(.bigquery))
         #expect(DatabaseType.allKnownTypes.contains(.libsql))
+        #expect(DatabaseType.allKnownTypes.contains(.cockroachdb))
+        #expect(DatabaseType.allKnownTypes.contains(.scylladb))
+        #expect(DatabaseType.allKnownTypes.contains(.turso))
     }
 
     @Test("Hashable conformance")
@@ -70,13 +59,6 @@ struct DatabaseTypeTests {
         #expect(DatabaseType.cockroachdb.rawValue == "CockroachDB")
         #expect(DatabaseType.scylladb.rawValue == "ScyllaDB")
         #expect(DatabaseType.turso.rawValue == "Turso")
-    }
-
-    @Test("Desktop-recognized constants stay out of the built-in allKnownTypes list")
-    func desktopConstantsNotInAllKnownTypes() {
-        #expect(!DatabaseType.allKnownTypes.contains(.cockroachdb))
-        #expect(!DatabaseType.allKnownTypes.contains(.scylladb))
-        #expect(!DatabaseType.allKnownTypes.contains(.turso))
     }
 
     @Test("Decodes a persisted connection type string")

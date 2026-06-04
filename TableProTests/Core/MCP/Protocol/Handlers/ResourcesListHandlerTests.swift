@@ -3,6 +3,9 @@ import TableProPluginKit
 @testable import TablePro
 import XCTest
 
+
+
+@MainActor
 final class ResourcesListHandlerTests: XCTestCase {
     func testMethodIsResourcesList() {
         XCTAssertEqual(ResourcesListHandler.method, "resources/list")

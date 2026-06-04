@@ -20,10 +20,19 @@ internal enum SampleDatabaseLauncher {
         String(localized: "Chinook (Sample)")
     }
 
+    internal static func open(onError: @MainActor @escaping (Error) -> Void = defaultErrorHandler) {
+        open(
+            sampleService: .shared,
+            connectionStorage: .shared,
+            onError: onError
+        )
+    }
+
     internal static func open(
-        sampleService: SampleDatabaseService = .shared,
-        connectionStorage: ConnectionStorage = .shared,
-        onError: @MainActor @escaping (Error) -> Void = defaultErrorHandler
+        sampleService: SampleDatabaseService,
+        connectionStorage: ConnectionStorage,
+        userDefaults: UserDefaults = .standard,
+        onError: @MainActor @escaping (Error) -> Void
     ) {
         let installedURL: URL
         do {
@@ -42,14 +51,22 @@ internal enum SampleDatabaseLauncher {
             connectionStorage: connectionStorage
         )
         AppEvents.shared.connectionUpdated.send(connection.id)
-        bumpSampleOpenedCounter()
+        bumpSampleOpenedCounter(userDefaults: userDefaults)
         launchSampleConnection(connection, onError: onError)
     }
 
+    internal static func reset() {
+        reset(
+            sampleService: .shared,
+            connectionStorage: .shared,
+            databaseManager: .shared
+        )
+    }
+
     internal static func reset(
-        sampleService: SampleDatabaseService = .shared,
-        connectionStorage: ConnectionStorage = .shared,
-        databaseManager: DatabaseManager = .shared
+        sampleService: SampleDatabaseService,
+        connectionStorage: ConnectionStorage,
+        databaseManager: DatabaseManager
     ) {
         Task { @MainActor in
             await performReset(
@@ -134,9 +151,9 @@ internal enum SampleDatabaseLauncher {
         WindowOpener.shared.openWelcome()
     }
 
-    private static func bumpSampleOpenedCounter() {
-        let next = UserDefaults.standard.integer(forKey: sampleOpenedCountKey) + 1
-        UserDefaults.standard.set(next, forKey: sampleOpenedCountKey)
+    private static func bumpSampleOpenedCounter(userDefaults: UserDefaults) {
+        let next = userDefaults.integer(forKey: sampleOpenedCountKey) + 1
+        userDefaults.set(next, forKey: sampleOpenedCountKey)
     }
 
     private static func performReset(

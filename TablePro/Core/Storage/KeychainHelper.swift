@@ -33,11 +33,11 @@ protocol KeychainStoring: Sendable {
 }
 
 final class KeychainHelper: KeychainStoring {
-    static let shared = KeychainHelper()
-    static let passwordSyncEnabledKey = "com.TablePro.keychainPasswordSyncEnabled"
+    static let shared = KeychainHelper(passwordSyncStateStore: .shared)
 
     private let service = "com.TablePro"
     private let accessGroup: String? = KeychainHelper.resolveAccessGroup()
+    private let passwordSyncStateStore: PasswordSyncStateStore
     private static let logger = Logger(subsystem: "com.TablePro", category: "KeychainHelper")
 
     private static let accessGroupSuffix = ".com.TablePro.shared"
@@ -55,10 +55,12 @@ final class KeychainHelper: KeychainStoring {
     }
 
     private var isPasswordSyncEnabled: Bool {
-        UserDefaults.standard.bool(forKey: Self.passwordSyncEnabledKey)
+        passwordSyncStateStore.isEnabled
     }
 
-    private init() {}
+    init(passwordSyncStateStore: PasswordSyncStateStore = .shared) {
+        self.passwordSyncStateStore = passwordSyncStateStore
+    }
 
     // MARK: - Data API
 

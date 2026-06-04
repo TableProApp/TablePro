@@ -54,6 +54,26 @@ struct SessionStateFactoryTests {
         #expect(state.tabManager.tabs.first?.tabType == .table)
     }
 
+    @Test("Injected default page size is used for table tabs")
+    @MainActor
+    func injectedDefaultPageSize_isUsedForTableTabs() {
+        let conn = TestFixtures.makeConnection()
+        let payload = makePayload(
+            connectionId: conn.id,
+            tabType: .table,
+            tableName: "users"
+        )
+
+        let state = SessionStateFactory.create(
+            connection: conn,
+            payload: payload,
+            defaultPageSizeProvider: { 37 }
+        )
+
+        #expect(state.tabManager.tabs.first?.pagination.pageSize == 37)
+        #expect(state.tabManager.tabs.first?.content.query.contains("37") == true)
+    }
+
     @Test("Payload with initialQuery creates a query tab with that text")
     @MainActor
     func payloadWithQuery_createsQueryTab() {

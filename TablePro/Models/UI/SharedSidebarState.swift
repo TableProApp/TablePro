@@ -22,11 +22,13 @@ internal enum SidebarLayout: String, CaseIterable, Sendable {
 
 @MainActor @Observable
 final class SharedSidebarState {
+    @ObservationIgnored private let userDefaults: UserDefaults
+
     var redisKeyTreeViewModel: RedisKeyTreeViewModel?
 
     var selectedSidebarTab: SidebarTab {
         didSet {
-            UserDefaults.standard.set(
+            userDefaults.set(
                 selectedSidebarTab.rawValue,
                 forKey: SidebarPersistenceKey.selectedTab(connectionId: connectionId)
             )
@@ -35,7 +37,7 @@ final class SharedSidebarState {
 
     var sidebarLayout: SidebarLayout {
         didSet {
-            UserDefaults.standard.set(
+            userDefaults.set(
                 sidebarLayout.rawValue,
                 forKey: SidebarPersistenceKey.layout(connectionId: connectionId)
             )
@@ -44,39 +46,37 @@ final class SharedSidebarState {
 
     static var defaultLayout: SidebarLayout {
         get {
-            guard let raw = UserDefaults.standard.string(forKey: SidebarPersistenceKey.defaultLayout),
-                  let layout = SidebarLayout(rawValue: raw) else {
-                return .flat
-            }
-            return layout
+            defaultLayout(userDefaults: .standard)
         }
         set {
-            UserDefaults.standard.set(newValue.rawValue, forKey: SidebarPersistenceKey.defaultLayout)
+            setDefaultLayout(newValue, userDefaults: .standard)
         }
     }
 
     let connectionId: UUID
 
-    private init(connectionId: UUID) {
+    init(connectionId: UUID, userDefaults: UserDefaults = .standard) {
         self.connectionId = connectionId
+        self.userDefaults = userDefaults
         let key = SidebarPersistenceKey.selectedTab(connectionId: connectionId)
-        if let raw = UserDefaults.standard.string(forKey: key),
+        if let raw = userDefaults.string(forKey: key),
            let tab = SidebarTab(rawValue: raw) {
             self.selectedSidebarTab = tab
         } else {
             self.selectedSidebarTab = .tables
         }
         let layoutKey = SidebarPersistenceKey.layout(connectionId: connectionId)
-        if let raw = UserDefaults.standard.string(forKey: layoutKey),
+        if let raw = userDefaults.string(forKey: layoutKey),
            let layout = SidebarLayout(rawValue: raw) {
             self.sidebarLayout = layout
         } else {
-            self.sidebarLayout = SharedSidebarState.defaultLayout
+            self.sidebarLayout = SharedSidebarState.defaultLayout(userDefaults: userDefaults)
         }
     }
 
     /// Default init for previews and tests
-    init() {
+    init(userDefaults: UserDefaults = .standard) {
+        self.userDefaults = userDefaults
         self.connectionId = UUID()
         self.selectedSidebarTab = .tables
         self.sidebarLayout = .flat
@@ -93,5 +93,17 @@ final class SharedSidebarState {
 
     static func removeConnection(_ id: UUID) {
         registry.removeValue(forKey: id)
+    }
+
+    static func defaultLayout(userDefaults: UserDefaults) -> SidebarLayout {
+        guard let raw = userDefaults.string(forKey: SidebarPersistenceKey.defaultLayout),
+              let layout = SidebarLayout(rawValue: raw) else {
+            return .flat
+        }
+        return layout
+    }
+
+    static func setDefaultLayout(_ layout: SidebarLayout, userDefaults: UserDefaults) {
+        userDefaults.set(layout.rawValue, forKey: SidebarPersistenceKey.defaultLayout)
     }
 }

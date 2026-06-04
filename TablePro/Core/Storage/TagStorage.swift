@@ -7,20 +7,25 @@
 
 import Foundation
 import os
+import TableProSync
 
 /// Service for persisting the global tag library
 @MainActor
 final class TagStorage {
-    static let shared = TagStorage()
+    static let shared = TagStorage(userDefaults: .standard, syncTracker: .shared)
     private static let logger = Logger(subsystem: "com.TablePro", category: "TagStorage")
 
     private let tagsKey = "com.TablePro.tags"
-    private let defaults = UserDefaults.standard
+    private let defaults: UserDefaults
+    private let syncTracker: DesktopSyncChangeTracker
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
     private var cachedTags: [ConnectionTag]?
 
-    private init() {
+    init(userDefaults: UserDefaults, syncTracker: DesktopSyncChangeTracker) {
+        defaults = userDefaults
+        self.syncTracker = syncTracker
+
         // Initialize with presets on first launch
         if loadTags().isEmpty {
             saveTags(ConnectionTag.presets)
@@ -57,7 +62,7 @@ final class TagStorage {
             let data = try encoder.encode(tags)
             defaults.set(data, forKey: tagsKey)
             cachedTags = nil
-            SyncChangeTracker.shared.markDirty(.tag, ids: tags.map { $0.id.uuidString })
+            syncTracker.markDirty(.tag, ids: tags.map { $0.id.uuidString })
         } catch {
             Self.logger.error("Failed to save tags: \(error)")
         }
@@ -80,7 +85,7 @@ final class TagStorage {
         var tags = loadTags()
         tags.removeAll { $0.id == tag.id }
         saveTags(tags)
-        SyncChangeTracker.shared.markDeleted(.tag, id: tag.id.uuidString)
+        syncTracker.markDeleted(.tag, id: tag.id.uuidString)
     }
 
     /// Get tag by ID

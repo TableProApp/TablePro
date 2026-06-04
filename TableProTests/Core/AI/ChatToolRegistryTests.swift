@@ -66,6 +66,28 @@ struct ChatToolRegistryTests {
         #expect(result.isError == false)
     }
 
+    @Test("Chat tool context exposes injected runtime settings")
+    func contextExposesInjectedRuntimeSettings() async {
+        let context = ChatToolContext(
+            connectionId: nil,
+            bridge: MCPConnectionBridge(),
+            authPolicy: MCPAuthPolicy(),
+            runtimeSettingsProvider: {
+                MCPToolRuntimeSettings(
+                    defaultRowLimit: 11,
+                    maxRowLimit: 17,
+                    queryTimeoutSeconds: 23
+                )
+            }
+        )
+
+        let settings = await context.runtimeSettings()
+
+        #expect(settings.defaultRowLimit == 11)
+        #expect(settings.maxRowLimit == 17)
+        #expect(settings.queryTimeoutSeconds == 23)
+    }
+
     @Test("allTools is sorted alphabetically by name")
     func allToolsSorted() {
         let registry = ChatToolRegistry()

@@ -102,25 +102,20 @@ enum StructureColumnReorderHandler {
             throw ReorderError.sqlGenerationFailed
         }
 
-        let decision = await ExecutionGateProvider.shared.authorize(
-            OperationRequest(
-                connectionId: connectionId,
-                databaseType: adapter.connection.type,
-                sql: sql,
-                kind: .schemaMutation,
-                caller: .userInterface,
-                capabilities: .interactiveUser,
-                operationDescription: String(localized: "Reorder Column")
-            )
+        let request = OperationRequest.interactiveUser(
+            connectionId: connectionId,
+            databaseType: adapter.connection.type,
+            sql: sql,
+            kind: .schemaMutation,
+            operationDescription: String(localized: "Reorder Column")
         )
-        guard case .authorized = decision else {
-            throw DatabaseError.queryFailed(decision.deniedReason ?? String(localized: "Operation not permitted"))
-        }
 
         logger.info("Reordering column '\(movingColumn.name)' — \(sql)")
 
         do {
-            _ = try await driver.execute(query: sql)
+            try await ExecutionGateProvider.shared.authorizing(request) {
+                _ = try await driver.executeAuthorizing(query: sql, request: request)
+            }
         } catch {
             logger.error("Column reorder failed: \(error.localizedDescription, privacy: .public)")
             throw ReorderError.executionFailed(error.localizedDescription)

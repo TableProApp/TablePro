@@ -62,16 +62,19 @@ final class ExportService {
     var state = ExportState()
 
     private let driver: DatabaseDriver?
+    private let connectionId: UUID?
     private let databaseType: DatabaseType
 
-    init(driver: DatabaseDriver, databaseType: DatabaseType) {
+    init(driver: DatabaseDriver, connectionId: UUID, databaseType: DatabaseType) {
         self.driver = driver
+        self.connectionId = connectionId
         self.databaseType = databaseType
     }
 
     /// Convenience initializer for query results export (no driver needed).
     init(databaseType: DatabaseType) {
         self.driver = nil
+        self.connectionId = nil
         self.databaseType = databaseType
     }
 
@@ -115,12 +118,19 @@ final class ExportService {
         guard let driver else {
             throw ExportError.notConnected
         }
+        guard let connectionId else {
+            throw ExportError.notConnected
+        }
 
         // Fetch total row counts
         state.totalRows = await fetchTotalRowCount(for: tables, driver: driver)
 
         // Create data source adapter
-        let dataSource = ExportDataSourceAdapter(driver: driver, databaseType: databaseType)
+        let dataSource = ExportDataSourceAdapter(
+            driver: driver,
+            connectionId: connectionId,
+            databaseType: databaseType
+        )
 
         // Create progress tracker
         let nsProgress = Progress(totalUnitCount: Int64(state.totalRows))
@@ -267,6 +277,9 @@ final class ExportService {
         guard let driver else {
             throw ExportError.exportFailed("No database connection")
         }
+        guard let connectionId else {
+            throw ExportError.exportFailed("No database connection")
+        }
 
         let estimatedRows = 0
         state = ExportState(isExporting: true, totalTables: 1, totalRows: estimatedRows)
@@ -282,6 +295,7 @@ final class ExportService {
         let dataSource = StreamingQueryExportDataSource(
             query: query,
             driver: driver,
+            connectionId: connectionId,
             databaseType: databaseType
         )
 
@@ -337,6 +351,7 @@ final class ExportService {
 
     private func fetchTotalRowCount(for tables: [ExportTableItem], driver: DatabaseDriver) async -> Int {
         guard !tables.isEmpty else { return 0 }
+        guard let connectionId else { return 0 }
 
         var total = 0
         var failedCount = 0
@@ -372,7 +387,12 @@ final class ExportService {
             let batchQuery = unionParts.joined(separator: " UNION ALL ")
 
             do {
-                let result = try await driver.execute(query: batchQuery)
+                let request = makeExportRequest(
+                    connectionId: connectionId,
+                    sql: batchQuery,
+                    operationDescription: String(localized: "Count Export Rows")
+                )
+                let result = try await driver.executeAuthorizing(query: batchQuery, request: request)
                 for row in result.rows {
                     if let cell = row.first, let count = Int(cell.asText ?? "0") {
                         total += count
@@ -382,7 +402,13 @@ final class ExportService {
                 for table in batch {
                     do {
                         let tableRef = qualifiedTableRef(for: table, driver: driver)
-                        let result = try await driver.execute(query: "SELECT COUNT(*) FROM \(tableRef)")
+                        let sql = "SELECT COUNT(*) FROM \(tableRef)"
+                        let request = makeExportRequest(
+                            connectionId: connectionId,
+                            sql: sql,
+                            operationDescription: String(localized: "Count Export Rows")
+                        )
+                        let result = try await driver.executeAuthorizing(query: sql, request: request)
                         if let cell = result.rows.first?.first, let count = Int(cell.asText ?? "0") {
                             total += count
                         }
@@ -399,5 +425,18 @@ final class ExportService {
             state.statusMessage = String(format: String(localized: "Progress estimated (%d table(s) could not be counted)"), failedCount)
         }
         return total
+    }
+
+    private func makeExportRequest(
+        connectionId: UUID,
+        sql: String,
+        operationDescription: String
+    ) -> OperationRequest {
+        OperationRequest.metadataRead(
+            connectionId: connectionId,
+            databaseType: databaseType,
+            sql: sql,
+            operationDescription: operationDescription
+        )
     }
 }

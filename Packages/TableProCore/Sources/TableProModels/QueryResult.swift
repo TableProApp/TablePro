@@ -1,5 +1,4 @@
 import Foundation
-import TableProPluginKit
 
 // MARK: - App-Side Result Types
 
@@ -159,101 +158,5 @@ public struct DatabaseError: Error, LocalizedError, Sendable {
         self.code = code
         self.message = message
         self.sqlState = sqlState
-    }
-}
-
-// MARK: - Mapping from Plugin Types
-
-public extension QueryResult {
-    init(from plugin: PluginQueryResult) {
-        let columnInfos = zip(plugin.columns, plugin.columnTypeNames).enumerated().map { index, pair in
-            ColumnInfo(
-                name: pair.0,
-                typeName: pair.1,
-                ordinalPosition: index
-            )
-        }
-        let legacyRows: [[String?]] = plugin.rows.map { row in
-            row.map { cell -> String? in
-                switch cell {
-                case .null: return nil
-                case .text(let value): return value
-                case .bytes(let data): return data.map { String(format: "%02X", $0) }.joined()
-                }
-            }
-        }
-        self.init(
-            columns: columnInfos,
-            rows: legacyRows,
-            rowsAffected: plugin.rowsAffected,
-            executionTime: plugin.executionTime,
-            isTruncated: plugin.isTruncated,
-            statusMessage: plugin.statusMessage
-        )
-    }
-}
-
-public extension TableInfo {
-    init(from plugin: PluginTableInfo) {
-        let kind: TableKind
-        switch plugin.type.uppercased() {
-        case "TABLE", "BASE TABLE":
-            kind = .table
-        case "VIEW":
-            kind = .view
-        case "MATERIALIZED VIEW":
-            kind = .materializedView
-        case "SYSTEM TABLE":
-            kind = .systemTable
-        case "SEQUENCE":
-            kind = .sequence
-        default:
-            kind = .table
-        }
-        self.init(
-            name: plugin.name,
-            type: kind,
-            rowCount: plugin.rowCount
-        )
-    }
-}
-
-public extension ColumnInfo {
-    init(from plugin: PluginColumnInfo, ordinalPosition: Int = 0) {
-        self.init(
-            name: plugin.name,
-            typeName: plugin.dataType,
-            isPrimaryKey: plugin.isPrimaryKey,
-            isNullable: plugin.isNullable,
-            defaultValue: plugin.defaultValue,
-            comment: plugin.comment,
-            ordinalPosition: ordinalPosition
-        )
-    }
-}
-
-public extension IndexInfo {
-    init(from plugin: PluginIndexInfo) {
-        self.init(
-            name: plugin.name,
-            columns: plugin.columns,
-            isUnique: plugin.isUnique,
-            isPrimary: plugin.isPrimary,
-            type: plugin.type
-        )
-    }
-}
-
-public extension ForeignKeyInfo {
-    init(from plugin: PluginForeignKeyInfo) {
-        self.init(
-            name: plugin.name,
-            column: plugin.column,
-            referencedTable: plugin.referencedTable,
-            referencedColumn: plugin.referencedColumn,
-            referencedSchema: plugin.referencedSchema,
-            onDelete: plugin.onDelete,
-            onUpdate: plugin.onUpdate
-        )
     }
 }

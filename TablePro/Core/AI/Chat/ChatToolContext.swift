@@ -14,4 +14,23 @@ struct ChatToolContext: Sendable {
     let connectionId: UUID?
     let bridge: MCPConnectionBridge
     let authPolicy: MCPAuthPolicy
+    private let runtimeSettingsProvider: @Sendable () async -> MCPToolRuntimeSettings
+
+    init(
+        connectionId: UUID?,
+        bridge: MCPConnectionBridge,
+        authPolicy: MCPAuthPolicy,
+        runtimeSettingsProvider: @escaping @Sendable () async -> MCPToolRuntimeSettings = {
+            await MCPToolRuntimeSettings.live()
+        }
+    ) {
+        self.connectionId = connectionId
+        self.bridge = bridge
+        self.authPolicy = authPolicy
+        self.runtimeSettingsProvider = runtimeSettingsProvider
+    }
+
+    func runtimeSettings() async -> MCPToolRuntimeSettings {
+        await runtimeSettingsProvider()
+    }
 }

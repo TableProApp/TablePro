@@ -1,5 +1,5 @@
 //
-//  SyncCoordinator.swift
+//  DesktopSyncCoordinator.swift
 //  TablePro
 //
 //  Orchestrates sync: license gating, scheduling, push/pull coordination
@@ -10,29 +10,30 @@ import Combine
 import Foundation
 import Observation
 import os
+import TableProSync
 
 /// Central coordinator for iCloud sync
 @MainActor @Observable
-final class SyncCoordinator {
-    static let shared = SyncCoordinator()
-    private static let logger = Logger(subsystem: "com.TablePro", category: "SyncCoordinator")
+final class DesktopSyncCoordinator {
+    static let shared = DesktopSyncCoordinator(services: .live)
+    private static let logger = Logger(subsystem: "com.TablePro", category: "DesktopSyncCoordinator")
 
     private(set) var syncStatus: SyncStatus = .disabled(.userDisabled)
     private(set) var lastSyncDate: Date?
     private(set) var iCloudAccountAvailable: Bool = false
 
     @ObservationIgnored private let services: AppServices
-    @ObservationIgnored private let engine = CloudKitSyncEngine()
-    @ObservationIgnored private let changeTracker: SyncChangeTracker
-    @ObservationIgnored private let metadataStorage: SyncMetadataStorage
-    @ObservationIgnored private let conflictResolver: ConflictResolver
+    @ObservationIgnored private let engine = DesktopCloudKitSyncEngine()
+    @ObservationIgnored private let changeTracker: DesktopSyncChangeTracker
+    @ObservationIgnored private let metadataStorage: DesktopSyncMetadataStorage
+    @ObservationIgnored private let conflictResolver: DesktopSyncConflictResolver
     @ObservationIgnored private var accountObserver: NSObjectProtocol?
     @ObservationIgnored private var changeCancellable: AnyCancellable?
     @ObservationIgnored private var licenseCancellable: AnyCancellable?
     @ObservationIgnored private var syncTask: Task<Void, Never>?
     @ObservationIgnored private var hasStarted = false
 
-    init(services: AppServices = .live) {
+    init(services: AppServices) {
         self.services = services
         self.changeTracker = services.syncTracker
         self.metadataStorage = services.syncMetadataStorage
@@ -256,7 +257,7 @@ final class SyncCoordinator {
         let settings = services.appSettingsStorage.loadSync()
         var recordsToSave: [CKRecord] = []
         var recordIDsToDelete: [CKRecord.ID] = []
-        let zoneID = await engine.zoneID
+        let zoneID = engine.zoneID
 
         // Collect dirty connections
         if settings.syncConnections {
@@ -267,7 +268,7 @@ final class SyncCoordinator {
                     if let connection = connections.first(where: { $0.id.uuidString == id }),
                        !connection.localOnly {
                         recordsToSave.append(
-                            SyncRecordMapper.toCKRecord(connection, in: zoneID)
+                            DesktopSyncRecordMapper.toCKRecord(connection, in: zoneID)
                         )
                     }
                 }
@@ -276,7 +277,7 @@ final class SyncCoordinator {
             let connectionTombstones = metadataStorage.tombstones(for: .connection)
             for tombstone in connectionTombstones {
                 recordIDsToDelete.append(
-                    SyncRecordMapper.recordID(type: .connection, id: tombstone.id, in: zoneID)
+                    DesktopSyncRecordMapper.recordID(type: .connection, id: tombstone.id, in: zoneID)
                 )
             }
         }
@@ -298,7 +299,7 @@ final class SyncCoordinator {
             for category in dirtySettingsIds {
                 if let data = settingsData(for: category) {
                     recordsToSave.append(
-                        SyncRecordMapper.toCKRecord(category: category, settingsData: data, in: zoneID)
+                        DesktopSyncRecordMapper.toCKRecord(category: category, settingsData: data, in: zoneID)
                     )
                 }
             }
@@ -396,7 +397,7 @@ final class SyncCoordinator {
         }
     }
 
-    private func applyPullResult(_ result: PullResult) {
+    private func applyPullResult(_ result: DesktopPullResult) {
         if let newToken = result.newToken {
             metadataStorage.saveSyncToken(newToken)
         }
@@ -411,7 +412,7 @@ final class SyncCoordinator {
     // Performance: storage reads here (loadSync, loadConnections, loadGroups, etc.) run on
     // @MainActor and can block the UI on large sync batches. Consider moving to Task.detached
     // for large payloads.
-    private func applyRemoteChanges(_ result: PullResult) {
+    private func applyRemoteChanges(_ result: DesktopPullResult) {
         let settings = services.appSettingsStorage.loadSync()
 
         services.connectionStorage.invalidateCache()
@@ -518,7 +519,7 @@ final class SyncCoordinator {
     private func applyRemoteConnection(_ record: CKRecord, tombstoneIds: Set<String>) -> Bool {
         let remoteConnection: DatabaseConnection
         do {
-            remoteConnection = try SyncRecordMapper.toConnection(record)
+            remoteConnection = try DesktopSyncRecordMapper.toConnection(record)
         } catch {
             Self.logger.error("Skipping remote connection \(record.recordID.recordName, privacy: .public): \(error.localizedDescription, privacy: .public)")
             return false
@@ -531,7 +532,7 @@ final class SyncCoordinator {
         var connections = services.connectionStorage.loadConnections()
         if let index = connections.firstIndex(where: { $0.id == remoteConnection.id }) {
             if changeTracker.dirtyRecords(for: .connection).contains(remoteConnection.id.uuidString) {
-                let localRecord = SyncRecordMapper.toCKRecord(
+                let localRecord = DesktopSyncRecordMapper.toCKRecord(
                     connections[index],
                     in: CKRecordZone.ID(
                         zoneName: "TableProSync",
@@ -565,7 +566,7 @@ final class SyncCoordinator {
 
     @discardableResult
     private func applyRemoteGroup(_ record: CKRecord, tombstoneIds: Set<String>) -> Bool {
-        guard let remoteGroup = SyncRecordMapper.toGroup(record) else { return false }
+        guard let remoteGroup = DesktopSyncRecordMapper.toGroup(record) else { return false }
         if tombstoneIds.contains(remoteGroup.id.uuidString) { return false }
 
         var groups = services.groupStorage.loadGroups()
@@ -580,7 +581,7 @@ final class SyncCoordinator {
 
     @discardableResult
     private func applyRemoteTag(_ record: CKRecord, tombstoneIds: Set<String>) -> Bool {
-        guard let remoteTag = SyncRecordMapper.toTag(record) else { return false }
+        guard let remoteTag = DesktopSyncRecordMapper.toTag(record) else { return false }
         if tombstoneIds.contains(remoteTag.id.uuidString) { return false }
 
         var tags = services.tagStorage.loadTags()
@@ -596,7 +597,7 @@ final class SyncCoordinator {
     private func applyRemoteSSHProfile(_ record: CKRecord, tombstoneIds: Set<String>) {
         let remoteProfile: SSHProfile
         do {
-            remoteProfile = try SyncRecordMapper.toSSHProfile(record)
+            remoteProfile = try DesktopSyncRecordMapper.toSSHProfile(record)
         } catch {
             Self.logger.error("Skipping remote SSH profile \(record.recordID.recordName, privacy: .public): \(error.localizedDescription, privacy: .public)")
             return
@@ -613,8 +614,8 @@ final class SyncCoordinator {
     }
 
     private func applyRemoteSettings(_ record: CKRecord) {
-        guard let category = SyncRecordMapper.settingsCategory(from: record),
-              let data = SyncRecordMapper.settingsData(from: record)
+        guard let category = DesktopSyncRecordMapper.settingsCategory(from: record),
+              let data = DesktopSyncRecordMapper.settingsData(from: record)
         else { return }
         do {
             try applySettingsData(data, for: category)
@@ -631,7 +632,7 @@ final class SyncCoordinator {
     private func applyRemoteTableFavorite(_ record: CKRecord, tombstoneIds: Set<String>) -> Bool {
         let entry: FavoriteTablesStorage.FavoriteEntry
         do {
-            entry = try SyncRecordMapper.favoriteEntry(from: record)
+            entry = try DesktopSyncRecordMapper.favoriteEntry(from: record)
         } catch {
             let recordName = record.recordID.recordName
             let message = error.localizedDescription
@@ -828,14 +829,14 @@ final class SyncCoordinator {
             let groups = services.groupStorage.loadGroups()
             for id in dirtyGroupIds {
                 if let group = groups.first(where: { $0.id.uuidString == id }) {
-                    records.append(SyncRecordMapper.toCKRecord(group, in: zoneID))
+                    records.append(DesktopSyncRecordMapper.toCKRecord(group, in: zoneID))
                 }
             }
         }
 
         for tombstone in metadataStorage.tombstones(for: .group) {
             deletions.append(
-                SyncRecordMapper.recordID(type: .group, id: tombstone.id, in: zoneID)
+                DesktopSyncRecordMapper.recordID(type: .group, id: tombstone.id, in: zoneID)
             )
         }
     }
@@ -850,14 +851,14 @@ final class SyncCoordinator {
             let tags = services.tagStorage.loadTags()
             for id in dirtyTagIds {
                 if let tag = tags.first(where: { $0.id.uuidString == id }) {
-                    records.append(SyncRecordMapper.toCKRecord(tag, in: zoneID))
+                    records.append(DesktopSyncRecordMapper.toCKRecord(tag, in: zoneID))
                 }
             }
         }
 
         for tombstone in metadataStorage.tombstones(for: .tag) {
             deletions.append(
-                SyncRecordMapper.recordID(type: .tag, id: tombstone.id, in: zoneID)
+                DesktopSyncRecordMapper.recordID(type: .tag, id: tombstone.id, in: zoneID)
             )
         }
     }
@@ -872,14 +873,14 @@ final class SyncCoordinator {
             let profiles = services.sshProfileStorage.loadProfiles()
             for id in dirtyProfileIds {
                 if let profile = profiles.first(where: { $0.id.uuidString == id }) {
-                    records.append(SyncRecordMapper.toCKRecord(profile, in: zoneID))
+                    records.append(DesktopSyncRecordMapper.toCKRecord(profile, in: zoneID))
                 }
             }
         }
 
         for tombstone in metadataStorage.tombstones(for: .sshProfile) {
             deletions.append(
-                SyncRecordMapper.recordID(type: .sshProfile, id: tombstone.id, in: zoneID)
+                DesktopSyncRecordMapper.recordID(type: .sshProfile, id: tombstone.id, in: zoneID)
             )
         }
     }
@@ -893,13 +894,13 @@ final class SyncCoordinator {
         if !dirtyIds.isEmpty {
             let favorites = services.favoriteTablesStorage.loadFavorites()
             for entry in favorites where dirtyIds.contains(FavoriteTablesStorage.syncId(for: entry)) {
-                records.append(SyncRecordMapper.toCKRecord(favoriteEntry: entry, in: zoneID))
+                records.append(DesktopSyncRecordMapper.toCKRecord(favoriteEntry: entry, in: zoneID))
             }
         }
 
         for tombstone in metadataStorage.tombstones(for: .tableFavorite) {
             deletions.append(
-                SyncRecordMapper.recordID(type: .tableFavorite, id: tombstone.id, in: zoneID)
+                DesktopSyncRecordMapper.recordID(type: .tableFavorite, id: tombstone.id, in: zoneID)
             )
         }
     }

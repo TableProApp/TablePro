@@ -4,9 +4,10 @@
 //
 
 import SwiftUI
+import TableProSync
 
 struct AccountSettingsView: View {
-    @Bindable private var syncCoordinator = SyncCoordinator.shared
+    @Bindable private var syncCoordinator = DesktopSyncCoordinator.shared
 
     var body: some View {
         Form {

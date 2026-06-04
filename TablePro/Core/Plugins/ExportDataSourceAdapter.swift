@@ -10,12 +10,14 @@ import TableProPluginKit
 final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable {
     let databaseTypeId: String
     private let driver: DatabaseDriver
+    private let connectionId: UUID
     private let dbType: DatabaseType
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "ExportDataSourceAdapter")
 
-    init(driver: DatabaseDriver, databaseType: DatabaseType) {
+    init(driver: DatabaseDriver, connectionId: UUID, databaseType: DatabaseType) {
         self.driver = driver
+        self.connectionId = connectionId
         self.dbType = databaseType
         self.databaseTypeId = databaseType.rawValue
     }
@@ -40,8 +42,22 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
     }
 
     func execute(query: String) async throws -> PluginQueryResult {
-        let result = try await driver.execute(query: query)
+        let result = try await driver.executeAuthorizing(
+            query: query,
+            request: request(sql: query, operationDescription: String(localized: "Export Query"))
+        )
         return mapToPluginResult(result)
+    }
+
+    private func request(sql: String, operationDescription: String) -> OperationRequest {
+        OperationRequest.interactiveUser(
+            connectionId: connectionId,
+            databaseType: dbType,
+            sql: sql,
+            kind: .readQuery,
+            capabilities: [.mayWrite, .mayRunDestructive, .mayRunMultiStatement, .cannotPrompt],
+            operationDescription: operationDescription
+        )
     }
 
     func quoteIdentifier(_ identifier: String) -> String {

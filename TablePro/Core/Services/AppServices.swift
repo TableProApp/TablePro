@@ -23,15 +23,15 @@ struct AppServices {
     let tagStorage: TagStorage
     let sshProfileStorage: SSHProfileStorage
     let licenseManager: LicenseManager
-    let conflictResolver: ConflictResolver
-    let syncMetadataStorage: SyncMetadataStorage
+    let conflictResolver: DesktopSyncConflictResolver
+    let syncMetadataStorage: DesktopSyncMetadataStorage
     let favoritesExpansionState: FavoritesExpansionState
     let linkedFolderWatcher: LinkedFolderWatcher
     let queryHistoryManager: QueryHistoryManager
     let dateFormattingService: DateFormattingService
     let copilotService: CopilotService
     let mcpServerManager: MCPServerManager
-    let syncTracker: SyncChangeTracker
+    let syncTracker: DesktopSyncChangeTracker
     let themeEngine: ThemeEngine
 
     static let live = AppServices(

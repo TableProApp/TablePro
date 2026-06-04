@@ -1,5 +1,5 @@
 //
-//  ConflictResolver.swift
+//  DesktopSyncConflictResolver.swift
 //  TablePro
 //
 //  Queues and resolves sync conflicts one at a time
@@ -9,40 +9,13 @@ import CloudKit
 import Foundation
 import Observation
 import os
-
-/// Represents a sync conflict between local and remote versions
-struct SyncConflict: Identifiable {
-    let id: UUID
-    let recordType: SyncRecordType
-    let entityName: String
-    let localRecord: CKRecord
-    let serverRecord: CKRecord
-    let localModifiedAt: Date
-    let serverModifiedAt: Date
-
-    init(
-        recordType: SyncRecordType,
-        entityName: String,
-        localRecord: CKRecord,
-        serverRecord: CKRecord,
-        localModifiedAt: Date,
-        serverModifiedAt: Date
-    ) {
-        self.id = UUID()
-        self.recordType = recordType
-        self.entityName = entityName
-        self.localRecord = localRecord
-        self.serverRecord = serverRecord
-        self.localModifiedAt = localModifiedAt
-        self.serverModifiedAt = serverModifiedAt
-    }
-}
+import TableProSync
 
 /// Manages a queue of sync conflicts for user resolution
 @MainActor @Observable
-final class ConflictResolver {
-    static let shared = ConflictResolver()
-    private static let logger = Logger(subsystem: "com.TablePro", category: "ConflictResolver")
+final class DesktopSyncConflictResolver {
+    static let shared = DesktopSyncConflictResolver()
+    private static let logger = Logger(subsystem: "com.TablePro", category: "DesktopSyncConflictResolver")
 
     private(set) var pendingConflicts: [SyncConflict] = []
 

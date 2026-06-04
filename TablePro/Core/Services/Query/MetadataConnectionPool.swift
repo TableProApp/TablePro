@@ -7,7 +7,9 @@ import Foundation
 
 @MainActor
 final class MetadataConnectionPool {
-    static let shared = MetadataConnectionPool()
+    static let shared = MetadataConnectionPool(queryTimeoutSecondsProvider: {
+        AppSettingsManager.shared.general.queryTimeoutSeconds
+    })
 
     enum Workload: Hashable, Sendable {
         case interactive
@@ -54,8 +56,13 @@ final class MetadataConnectionPool {
     private var pending: [Key: Task<Void, Error>] = [:]
     private let maxPerConnection = 6
     private let connectTimeoutSeconds: UInt64 = 15
+    private let queryTimeoutSecondsProvider: @MainActor () -> Int
 
-    private init() {}
+    init(queryTimeoutSecondsProvider: @escaping @MainActor () -> Int = {
+        GeneralSettings.default.queryTimeoutSeconds
+    }) {
+        self.queryTimeoutSecondsProvider = queryTimeoutSecondsProvider
+    }
 
     func withDriver<T: Sendable>(
         connectionId: UUID,
@@ -152,9 +159,13 @@ final class MetadataConnectionPool {
         )
         do {
             try await connectWithTimeout(driver: driver, database: key.database)
-            try? await driver.applyQueryTimeout(AppSettingsManager.shared.general.queryTimeoutSeconds)
+            try? await driver.applyQueryTimeout(queryTimeoutSecondsProvider())
             await DatabaseManager.shared.executeStartupCommands(
-                session.connection.startupCommands, on: driver, connectionName: session.connection.name
+                session.connection.startupCommands,
+                on: driver,
+                connectionId: session.connection.id,
+                databaseType: session.connection.type,
+                connectionName: session.connection.name
             )
             if let schema = key.schema, let switchable = driver as? SchemaSwitchable {
                 try await switchable.switchSchema(to: schema)

@@ -4,10 +4,11 @@
 //
 
 import SwiftUI
+import TableProSync
 
 struct SyncSection: View {
     @Bindable private var settingsManager = AppSettingsManager.shared
-    @Bindable private var syncCoordinator = SyncCoordinator.shared
+    @Bindable private var syncCoordinator = DesktopSyncCoordinator.shared
 
     private var isProAvailable: Bool {
         LicenseManager.shared.isFeatureAvailable(.iCloudSync)
@@ -17,7 +18,6 @@ struct SyncSection: View {
         Section {
             Toggle("iCloud Sync:", isOn: $settingsManager.sync.enabled)
                 .onChange(of: settingsManager.sync.enabled) { _, newValue in
-                    updatePasswordSyncFlag()
                     if newValue {
                         syncCoordinator.enableSync()
                     } else {
@@ -98,15 +98,11 @@ struct SyncSection: View {
                 .onChange(of: settingsManager.sync.syncConnections) { _, newValue in
                     if !newValue, settingsManager.sync.syncPasswords {
                         settingsManager.sync.syncPasswords = false
-                        onPasswordSyncChanged(false)
                     }
                 }
 
             if settingsManager.sync.syncConnections {
                 Toggle("Passwords:", isOn: $settingsManager.sync.syncPasswords)
-                    .onChange(of: settingsManager.sync.syncPasswords) { _, newValue in
-                        onPasswordSyncChanged(newValue)
-                    }
                     .help("Syncs passwords via iCloud Keychain (end-to-end encrypted).")
                     .padding(.leading, 20)
 
@@ -122,18 +118,5 @@ struct SyncSection: View {
             Toggle("Settings:", isOn: $settingsManager.sync.syncSettings)
             Toggle("Table Favorites:", isOn: $settingsManager.sync.syncTableFavorites)
         }
-    }
-
-    // MARK: - Helpers
-
-    private func onPasswordSyncChanged(_ enabled: Bool) {
-        let effective = settingsManager.sync.enabled && settingsManager.sync.syncConnections && enabled
-        UserDefaults.standard.set(effective, forKey: KeychainHelper.passwordSyncEnabledKey)
-    }
-
-    private func updatePasswordSyncFlag() {
-        let sync = settingsManager.sync
-        let effective = sync.enabled && sync.syncConnections && sync.syncPasswords
-        UserDefaults.standard.set(effective, forKey: KeychainHelper.passwordSyncEnabledKey)
     }
 }

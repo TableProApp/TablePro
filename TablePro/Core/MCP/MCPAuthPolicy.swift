@@ -23,10 +23,37 @@ enum AuthDecision: Sendable {
 public actor MCPAuthPolicy {
     private static let logger = Logger(subsystem: "com.TablePro", category: "MCPAuthPolicy")
 
-    public init() {}
-
     private var sessionApprovals: [String: Set<UUID>] = [:]
     private let approvalDedup = OnceTask<ApprovalKey, Bool>()
+    private let defaultConnectionPolicyProvider: @MainActor () -> AIConnectionPolicy
+    private let logQueriesInHistoryProvider: @MainActor () -> Bool
+    private let queryHistoryRecorder: @MainActor (QueryHistoryEntry) async -> Void
+
+    public init() {
+        self.init(
+            defaultConnectionPolicyProvider: {
+                AppSettingsManager.shared.ai.defaultConnectionPolicy
+            },
+            logQueriesInHistoryProvider: {
+                AppSettingsManager.shared.mcp.logQueriesInHistory
+            },
+            queryHistoryRecorder: { entry in
+                _ = await QueryHistoryManager.shared.addHistory(entry)
+            }
+        )
+    }
+
+    init(
+        defaultConnectionPolicyProvider: @escaping @MainActor () -> AIConnectionPolicy,
+        logQueriesInHistoryProvider: @escaping @MainActor () -> Bool,
+        queryHistoryRecorder: @escaping @MainActor (QueryHistoryEntry) async -> Void = { entry in
+            _ = await QueryHistoryManager.shared.addHistory(entry)
+        }
+    ) {
+        self.defaultConnectionPolicyProvider = defaultConnectionPolicyProvider
+        self.logQueriesInHistoryProvider = logQueriesInHistoryProvider
+        self.queryHistoryRecorder = queryHistoryRecorder
+    }
 
     private struct ApprovalKey: Hashable, Sendable {
         let sessionId: String
@@ -152,12 +179,11 @@ public actor MCPAuthPolicy {
         capabilities: CallerCapabilities = [.mayWrite, .mayRunDestructive, .mayRunMultiStatement]
     ) async throws {
         let decision = await ExecutionGateProvider.shared.authorize(
-            OperationRequest(
+            OperationRequest.mcpClient(
                 connectionId: connectionId,
                 databaseType: databaseType,
                 sql: sql,
                 kind: OperationKind.from(QueryClassifier.classifyTier(sql, databaseType: databaseType)),
-                caller: .mcpClient(label: nil),
                 capabilities: capabilities,
                 operationDescription: String(localized: "MCP query execution")
             )
@@ -176,9 +202,7 @@ public actor MCPAuthPolicy {
         wasSuccessful: Bool,
         errorMessage: String?
     ) async {
-        let shouldLog = await MainActor.run {
-            AppSettingsManager.shared.mcp.logQueriesInHistory
-        }
+        let shouldLog = await logQueriesInHistoryProvider()
         guard shouldLog else { return }
 
         let entry = QueryHistoryEntry(
@@ -191,7 +215,7 @@ public actor MCPAuthPolicy {
             errorMessage: errorMessage
         )
 
-        _ = await QueryHistoryManager.shared.addHistory(entry)
+        await queryHistoryRecorder(entry)
     }
 
     private func runApprovalDedup(
@@ -278,13 +302,14 @@ public actor MCPAuthPolicy {
     }
 
     private func loadConnection(_ connectionId: UUID) async -> ConnectionSnapshot? {
-        await MainActor.run {
+        let defaultConnectionPolicy = await defaultConnectionPolicyProvider()
+        return await MainActor.run { () -> ConnectionSnapshot? in
             let state = DatabaseManager.shared.connectionState(connectionId)
             switch state {
             case .live(_, let session):
                 let conn = session.connection
                 return ConnectionSnapshot(
-                    policy: conn.aiPolicy ?? AppSettingsManager.shared.ai.defaultConnectionPolicy,
+                    policy: conn.aiPolicy ?? defaultConnectionPolicy,
                     externalAccess: conn.externalAccess,
                     name: conn.name,
                     databaseType: conn.type.rawValue,
@@ -292,7 +317,7 @@ public actor MCPAuthPolicy {
                 )
             case .stored(let conn):
                 return ConnectionSnapshot(
-                    policy: conn.aiPolicy ?? AppSettingsManager.shared.ai.defaultConnectionPolicy,
+                    policy: conn.aiPolicy ?? defaultConnectionPolicy,
                     externalAccess: conn.externalAccess,
                     name: conn.name,
                     databaseType: conn.type.rawValue,

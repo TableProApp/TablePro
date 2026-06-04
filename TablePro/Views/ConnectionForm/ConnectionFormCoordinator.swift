@@ -8,6 +8,7 @@ import Combine
 import os
 import SwiftUI
 import TableProPluginKit
+import TableProSync
 
 @MainActor
 final class WeakCoordinatorRef {
@@ -91,11 +92,24 @@ final class ConnectionFormCoordinator {
     private let pendingInitialType: DatabaseType?
     private let pendingInitialParsedURL: ParsedConnectionURL?
 
+    convenience init(
+        connectionId: UUID?,
+        initialType: DatabaseType? = nil,
+        initialParsedURL: ParsedConnectionURL? = nil
+    ) {
+        self.init(
+            connectionId: connectionId,
+            initialType: initialType,
+            initialParsedURL: initialParsedURL,
+            services: .live
+        )
+    }
+
     init(
         connectionId: UUID?,
         initialType: DatabaseType? = nil,
         initialParsedURL: ParsedConnectionURL? = nil,
-        services: AppServices = .live
+        services: AppServices
     ) {
         self.connectionId = connectionId
         self.pendingInitialType = initialType
@@ -496,7 +510,7 @@ final class ConnectionFormCoordinator {
         testTask = Task { [weak self] in
             do {
                 let sshPasswordForTest = sshState.profileId == nil ? sshState.password : nil
-                let isApiOnly = services.pluginManager.connectionMode(for: connectionType) == .apiOnly
+                let isApiOnly = self?.services.pluginManager.connectionMode(for: connectionType) == .apiOnly
                 let testPwOverride: String? = promptForPassword
                     ? (password.isEmpty
                         ? await PasswordPromptHelper.prompt(
@@ -516,7 +530,8 @@ final class ConnectionFormCoordinator {
                     return
                 }
 
-                let success = try await services.databaseManager.testConnection(
+                guard let databaseManager = self?.services.databaseManager else { return }
+                let success = try await databaseManager.testConnection(
                     testConn,
                     sshPassword: sshPasswordForTest,
                     passwordOverride: testPwOverride
@@ -665,11 +680,11 @@ final class ConnectionFormCoordinator {
         isInstallingPlugin = true
         Task { [weak self] in
             do {
-                try await services.pluginManager.installMissingPlugin(for: databaseType) { _ in }
+                try await self?.services.pluginManager.installMissingPlugin(for: databaseType) { _ in }
                 await MainActor.run {
                     guard let self else { return }
                     if self.network.type == databaseType {
-                        for field in services.pluginManager.additionalConnectionFields(for: databaseType) {
+                        for field in self.services.pluginManager.additionalConnectionFields(for: databaseType) {
                             if self.targetValues(for: field.section)[field.id] == nil,
                                let defaultValue = field.defaultValue
                             {
@@ -832,7 +847,16 @@ final class ConnectionFormCoordinator {
     // MARK: - Clipboard
 
     func detectClipboardConnectionStringIfNeeded(
-        connectionStorage: ConnectionStorage = .shared,
+        pasteboard: NSPasteboard = .general
+    ) {
+        detectClipboardConnectionStringIfNeeded(
+            connectionStorage: .shared,
+            pasteboard: pasteboard
+        )
+    }
+
+    func detectClipboardConnectionStringIfNeeded(
+        connectionStorage: ConnectionStorage,
         pasteboard: NSPasteboard = .general
     ) {
         guard isNew, !clipboardBannerDismissed, clipboardCandidate == nil else { return }

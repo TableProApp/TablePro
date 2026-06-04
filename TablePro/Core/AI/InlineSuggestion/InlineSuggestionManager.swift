@@ -21,9 +21,18 @@ final class InlineSuggestionManager {
     private var suggestionOffset: Int = 0
     private var debounceTask: Task<Void, Never>?
     private var requestTask: Task<Void, Never>?
+    private let debounceDelayProvider: @MainActor () -> Duration
     private let _keyEventMonitor = OSAllocatedUnfairLock<Any?>(initialState: nil)
     private(set) var isEditorFocused = false
     private var isUninstalled = false
+
+    init(
+        debounceDelayProvider: @escaping @MainActor () -> Duration = {
+            Duration.milliseconds(AppSettingsManager.shared.ai.clampedInlineSuggestionDebounceMs)
+        }
+    ) {
+        self.debounceDelayProvider = debounceDelayProvider
+    }
 
     deinit {
         if let monitor = _keyEventMonitor.withLock({ $0 }) { NSEvent.removeMonitor(monitor) }
@@ -93,7 +102,7 @@ final class InlineSuggestionManager {
         debounceTask?.cancel()
         guard isEnabled() else { return }
 
-        let delay = Duration.milliseconds(AppSettingsManager.shared.ai.clampedInlineSuggestionDebounceMs)
+        let delay = debounceDelayProvider()
         debounceTask = Task { @MainActor [weak self] in
             do {
                 try await Task.sleep(for: delay)

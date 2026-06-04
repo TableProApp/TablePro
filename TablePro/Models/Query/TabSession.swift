@@ -8,6 +8,7 @@
 
 import Foundation
 import Observation
+import os
 
 /// Per-tab state container for the editor tab/window subsystem.
 ///
@@ -31,6 +32,8 @@ import Observation
 /// of the `QueryTab` ↔ `TabSession` mirror because they aren't persisted.
 @Observable @MainActor
 final class TabSession: Identifiable {
+    private static let logger = Logger(subsystem: "com.TablePro", category: "TabSession")
+
     // MARK: - Identity
 
     let id: UUID
@@ -185,7 +188,15 @@ final class TabSession: Identifiable {
     /// should set `tabSessionRegistry.session(for: id)?.tableRows = .init()`
     /// (or call `removeTableRows`) explicitly before `absorb`.
     func absorb(_ queryTab: QueryTab) {
-        precondition(queryTab.id == id, "TabSession.absorb requires matching ids")
+        guard queryTab.id == id else {
+            Self.logger.error(
+                """
+                Skipped absorbing QueryTab \(queryTab.id, privacy: .public) \
+                into mismatched TabSession \(self.id, privacy: .public)
+                """
+            )
+            return
+        }
         self.title = queryTab.title
         self.tabType = queryTab.tabType
         self.isPreview = queryTab.isPreview

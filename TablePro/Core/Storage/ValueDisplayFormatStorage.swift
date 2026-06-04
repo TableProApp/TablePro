@@ -7,9 +7,13 @@ import Foundation
 
 @MainActor
 internal final class ValueDisplayFormatStorage {
-    static let shared = ValueDisplayFormatStorage()
+    static let shared = ValueDisplayFormatStorage(userDefaults: .standard)
 
-    private init() {}
+    private let defaults: UserDefaults
+
+    init(userDefaults: UserDefaults) {
+        defaults = userDefaults
+    }
 
     // MARK: - Public API
 
@@ -21,13 +25,13 @@ internal final class ValueDisplayFormatStorage {
 
         let key = Self.userDefaultsKey(tableName: tableName, connectionId: connectionId)
         if let data = try? JSONEncoder().encode(formats) {
-            UserDefaults.standard.set(data, forKey: key)
+            defaults.set(data, forKey: key)
         }
     }
 
     func load(for tableName: String, connectionId: UUID) -> [String: ValueDisplayFormat]? {
         let key = Self.userDefaultsKey(tableName: tableName, connectionId: connectionId)
-        guard let data = UserDefaults.standard.data(forKey: key),
+        guard let data = defaults.data(forKey: key),
               let formats = try? JSONDecoder().decode([String: ValueDisplayFormat].self, from: data)
         else {
             return nil
@@ -37,7 +41,7 @@ internal final class ValueDisplayFormatStorage {
 
     func clear(for tableName: String, connectionId: UUID) {
         let key = Self.userDefaultsKey(tableName: tableName, connectionId: connectionId)
-        UserDefaults.standard.removeObject(forKey: key)
+        defaults.removeObject(forKey: key)
     }
 
     // MARK: - Private

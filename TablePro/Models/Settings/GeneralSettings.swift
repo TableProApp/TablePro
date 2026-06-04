@@ -40,11 +40,11 @@ enum AppLanguage: String, Codable, CaseIterable, Identifiable {
         }
     }
 
-    func apply() {
+    func apply(userDefaults: UserDefaults) {
         if self == .system {
-            UserDefaults.standard.removeObject(forKey: "AppleLanguages")
+            userDefaults.removeObject(forKey: "AppleLanguages")
         } else {
-            UserDefaults.standard.set([rawValue], forKey: "AppleLanguages")
+            userDefaults.set([rawValue], forKey: "AppleLanguages")
         }
     }
 }

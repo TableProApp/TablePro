@@ -472,12 +472,17 @@ struct ConnectionImportServiceTests {
         guard let syncDefaults = UserDefaults(suiteName: "com.TablePro.tests.ConnectionImport.Sync.\(unique)") else {
             fatalError("Expected sync defaults suite")
         }
-        let metadata = SyncMetadataStorage(userDefaults: syncDefaults)
-        let tracker = SyncChangeTracker(metadataStorage: metadata)
+        let metadata = DesktopSyncMetadataStorage(userDefaults: syncDefaults)
+        let tracker = DesktopSyncChangeTracker(metadataStorage: metadata)
         guard let defaults = UserDefaults(suiteName: "com.TablePro.tests.ConnectionImport.\(unique)") else {
             fatalError("Expected defaults suite")
         }
-        return ConnectionStorage(fileURL: fileURL, userDefaults: defaults, syncTracker: tracker)
+        return ConnectionStorage(
+            fileURL: fileURL,
+            userDefaults: defaults,
+            syncTracker: tracker,
+            appSettings: AppSettingsStorage(userDefaults: defaults)
+        )
     }
 
     private func makeDuplicatePreview(

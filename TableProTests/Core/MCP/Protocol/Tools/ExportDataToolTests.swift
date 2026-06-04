@@ -3,6 +3,7 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
+@MainActor
 @Suite("ExportDataTool")
 struct ExportDataToolTests {
     @Test("Tool exposes expected metadata")

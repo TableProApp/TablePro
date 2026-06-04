@@ -3,6 +3,7 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
+@MainActor
 @Suite("SwitchDatabaseTool")
 struct SwitchDatabaseToolTests {
     @Test("Tool requires write scope")

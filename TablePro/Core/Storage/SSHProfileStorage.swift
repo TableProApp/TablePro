@@ -5,20 +5,24 @@
 
 import Foundation
 import os
+import TableProSync
 
 final class SSHProfileStorage {
-    static let shared = SSHProfileStorage()
+    static let shared = SSHProfileStorage(userDefaults: .standard, keychain: .shared, syncTracker: .shared)
     private static let logger = Logger(subsystem: "com.TablePro", category: "SSHProfileStorage")
 
     private let profilesKey = "com.TablePro.sshProfiles"
-    private let defaults = UserDefaults.standard
+    private let defaults: UserDefaults
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
     private let keychain: KeychainHelper
+    private let syncTracker: DesktopSyncChangeTracker
     private(set) var lastLoadFailed = false
 
-    init(keychain: KeychainHelper = .shared) {
+    init(userDefaults: UserDefaults, keychain: KeychainHelper, syncTracker: DesktopSyncChangeTracker) {
+        defaults = userDefaults
         self.keychain = keychain
+        self.syncTracker = syncTracker
     }
 
     // MARK: - Profile CRUD
@@ -48,7 +52,7 @@ final class SSHProfileStorage {
         do {
             let data = try encoder.encode(profiles)
             defaults.set(data, forKey: profilesKey)
-            SyncChangeTracker.shared.markDirty(.sshProfile, ids: profiles.map { $0.id.uuidString })
+            syncTracker.markDirty(.sshProfile, ids: profiles.map { $0.id.uuidString })
         } catch {
             Self.logger.error("Failed to save SSH profiles: \(error)")
         }
@@ -85,7 +89,7 @@ final class SSHProfileStorage {
         guard !lastLoadFailed else { return }
         profiles.removeAll { $0.id == profile.id }
         saveProfiles(profiles)
-        SyncChangeTracker.shared.markDeleted(.sshProfile, id: profile.id.uuidString)
+        syncTracker.markDeleted(.sshProfile, id: profile.id.uuidString)
 
         deleteSSHPassword(for: profile.id)
         deleteKeyPassphrase(for: profile.id)

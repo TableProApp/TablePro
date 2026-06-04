@@ -12,7 +12,7 @@ enum SettingsTab: String {
 struct SettingsView: View {
     @Bindable private var settingsManager = AppSettingsManager.shared
     @Environment(UpdaterBridge.self) var updaterBridge
-    @AppStorage("selectedSettingsTab") private var selectedTab: String = SettingsTab.general.rawValue
+    @AppStorage(SettingsTabSelectionStore.selectedTabKey) private var selectedTab: String = SettingsTab.general.rawValue
     private let pluginManager = PluginManager.shared
 
     private var pluginAttentionCount: Int {

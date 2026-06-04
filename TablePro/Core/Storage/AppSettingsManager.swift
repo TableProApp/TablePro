@@ -3,6 +3,34 @@ import Combine
 import Foundation
 import Observation
 import os
+import TableProSync
+
+@MainActor
+enum AppRuntimeDependencyProviders {
+    static func mcpServerManager() -> MCPServerManager {
+        MCPServerManager.shared
+    }
+
+    static func copilotService() -> CopilotService {
+        CopilotService.shared
+    }
+
+    static func queryHistoryManager() -> QueryHistoryManager {
+        QueryHistoryManager.shared
+    }
+
+    static func historySettings() -> HistorySettings {
+        AppSettingsManager.shared.history
+    }
+
+    static func mcpSettings() -> MCPSettings {
+        AppSettingsManager.shared.mcp
+    }
+
+    static func aiSettings() -> AISettings {
+        AppSettingsManager.shared.ai
+    }
+}
 
 @Observable
 @MainActor
@@ -17,7 +45,7 @@ final class AppSettingsManager {
 
     var general: GeneralSettings {
         didSet {
-            general.language.apply()
+            general.language.apply(userDefaults: userDefaults)
             storage.saveGeneral(general)
             syncTracker.markDirty(.settings, id: "general")
         }
@@ -111,6 +139,7 @@ final class AppSettingsManager {
             let hadCopilot = oldValue.providers.contains(where: { $0.type == .copilot })
             let hasCopilot = ai.providers.contains(where: { $0.type == .copilot })
             if hasCopilot != hadCopilot {
+                let copilotService = copilotServiceProvider()
                 Task { [copilotService] in
                     if hasCopilot {
                         await copilotService.start()
@@ -124,6 +153,7 @@ final class AppSettingsManager {
 
     var sync: SyncSettings {
         didSet {
+            passwordSyncStateStore.apply(sync)
             storage.saveSync(sync)
             syncTracker.markDirty(.settings, id: "sync")
         }
@@ -146,6 +176,7 @@ final class AppSettingsManager {
             let remoteChanged = mcp.allowRemoteConnections != oldValue.allowRemoteConnections
             let authChanged = mcp.requireAuthentication != oldValue.requireAuthentication
             if enabledChanged || portChanged || remoteChanged || authChanged {
+                let mcpServerManager = mcpServerManagerProvider()
                 if mcp.enabled {
                     mcpServerManager.scheduleRestart(port: UInt16(clamping: mcp.port))
                 } else {
@@ -162,6 +193,7 @@ final class AppSettingsManager {
             return nil
         }
 
+        let mcpServerManager = mcpServerManagerProvider()
         let tokenStore = mcpServerManager.tokenStore ?? MCPTokenStore()
         if mcpServerManager.tokenStore == nil {
             await tokenStore.loadFromDisk()
@@ -180,34 +212,55 @@ final class AppSettingsManager {
 
     @ObservationIgnored private let storage: AppSettingsStorage
     @ObservationIgnored private let themeEngine: ThemeEngine
-    @ObservationIgnored private let syncTracker: SyncChangeTracker
+    @ObservationIgnored private let syncTracker: DesktopSyncChangeTracker
     @ObservationIgnored private let appEvents: AppEvents
     @ObservationIgnored private let dateFormattingService: DateFormattingService
-    @ObservationIgnored private let queryHistoryManager: QueryHistoryManager
-    @ObservationIgnored private let mcpServerManager: MCPServerManager
-    @ObservationIgnored private let copilotService: CopilotService
+    @ObservationIgnored private let queryHistoryManagerProvider: @MainActor () -> QueryHistoryManager
+    @ObservationIgnored private let mcpServerManagerProvider: @MainActor () -> MCPServerManager
+    @ObservationIgnored private let copilotServiceProvider: @MainActor () -> CopilotService
+    @ObservationIgnored private let userDefaults: UserDefaults
+    @ObservationIgnored private let passwordSyncStateStore: PasswordSyncStateStore
     @ObservationIgnored private var isValidating = false
     @ObservationIgnored private var accessibilityTextSizeObserver: NSObjectProtocol?
     @ObservationIgnored private var lastAccessibilityScale: CGFloat = 1.0
 
+    convenience init() {
+        self.init(
+            storage: .shared,
+            themeEngine: .shared,
+            syncTracker: .shared,
+            appEvents: .shared,
+            dateFormattingService: .shared,
+            queryHistoryManagerProvider: AppRuntimeDependencyProviders.queryHistoryManager,
+            mcpServerManagerProvider: AppRuntimeDependencyProviders.mcpServerManager,
+            copilotServiceProvider: AppRuntimeDependencyProviders.copilotService,
+            userDefaults: .standard,
+            passwordSyncStateStore: .shared
+        )
+    }
+
     init(
-        storage: AppSettingsStorage = .shared,
-        themeEngine: ThemeEngine = .shared,
-        syncTracker: SyncChangeTracker = .shared,
-        appEvents: AppEvents = .shared,
-        dateFormattingService: DateFormattingService = .shared,
-        queryHistoryManager: QueryHistoryManager = .shared,
-        mcpServerManager: MCPServerManager = .shared,
-        copilotService: CopilotService = .shared
+        storage: AppSettingsStorage,
+        themeEngine: ThemeEngine,
+        syncTracker: DesktopSyncChangeTracker,
+        appEvents: AppEvents,
+        dateFormattingService: DateFormattingService,
+        queryHistoryManagerProvider: @escaping @MainActor () -> QueryHistoryManager,
+        mcpServerManagerProvider: @escaping @MainActor () -> MCPServerManager,
+        copilotServiceProvider: @escaping @MainActor () -> CopilotService,
+        userDefaults: UserDefaults,
+        passwordSyncStateStore: PasswordSyncStateStore
     ) {
         self.storage = storage
         self.themeEngine = themeEngine
         self.syncTracker = syncTracker
         self.appEvents = appEvents
         self.dateFormattingService = dateFormattingService
-        self.queryHistoryManager = queryHistoryManager
-        self.mcpServerManager = mcpServerManager
-        self.copilotService = copilotService
+        self.queryHistoryManagerProvider = queryHistoryManagerProvider
+        self.mcpServerManagerProvider = mcpServerManagerProvider
+        self.copilotServiceProvider = copilotServiceProvider
+        self.userDefaults = userDefaults
+        self.passwordSyncStateStore = passwordSyncStateStore
 
         self.general = storage.loadGeneral()
         self.appearance = storage.loadAppearance()
@@ -220,7 +273,8 @@ final class AppSettingsManager {
         self.sync = storage.loadSync()
         self.mcp = storage.loadMCP()
 
-        general.language.apply()
+        general.language.apply(userDefaults: userDefaults)
+        passwordSyncStateStore.apply(sync)
 
         themeEngine.updateAppearanceAndTheme(
             mode: appearance.appearanceMode,
@@ -240,7 +294,8 @@ final class AppSettingsManager {
         observeAccessibilityTextSizeChanges()
 
         if ai.enabled, ai.providers.contains(where: { $0.type == .copilot }) {
-            Task { [copilotService] in await copilotService.start() }
+            let copilotServiceProvider = self.copilotServiceProvider
+            Task { @MainActor in await copilotServiceProvider().start() }
         }
     }
 
@@ -279,7 +334,7 @@ final class AppSettingsManager {
     }
 
     private func applyHistorySettingsImmediately() async {
-        await queryHistoryManager.applySettingsChange()
+        await queryHistoryManagerProvider().applySettingsChange()
     }
 
     func resetToDefaults() {

@@ -2,12 +2,11 @@ import Testing
 import Foundation
 @testable import TableProQuery
 @testable import TableProModels
-@testable import TableProPluginKit
 
 @Suite("TableQueryBuilder Tests")
 struct TableQueryBuilderTests {
-    private var dialect: SQLDialectDescriptor {
-        SQLDialectDescriptor(
+    private var dialect: QueryDialectDescriptor {
+        QueryDialectDescriptor(
             identifierQuote: "\"",
             keywords: [],
             functions: [],
@@ -42,7 +41,7 @@ struct TableQueryBuilderTests {
 
     @Test("Offset-fetch pagination style")
     func offsetFetchPagination() {
-        let offsetDialect = SQLDialectDescriptor(
+        let offsetDialect = QueryDialectDescriptor(
             identifierQuote: "\"",
             keywords: [],
             functions: [],
@@ -81,5 +80,12 @@ struct TableQueryBuilderTests {
         let builder = TableQueryBuilder(dialect: dialect)
         let query = builder.buildBrowseQuery(tableName: "my table", limit: 10, offset: 0)
         #expect(query.contains("\"my table\""))
+    }
+
+    @Test("MSSQL dialect uses brackets and offset fetch")
+    func mssqlDialectBrowseQuery() {
+        let builder = TableQueryBuilder(dialect: SQLDialectFactory.dialect(for: .mssql))
+        let query = builder.buildBrowseQuery(tableName: "users]archive", limit: 10, offset: 5)
+        #expect(query == "SELECT * FROM [users]]archive] ORDER BY (SELECT NULL) OFFSET 5 ROWS FETCH NEXT 10 ROWS ONLY")
     }
 }

@@ -28,13 +28,16 @@ final class QueryTabManager {
     @ObservationIgnored private var _tabIndexMapDirty = true
 
     @ObservationIgnored private let globalTabsProvider: () -> [QueryTab]
+    @ObservationIgnored private let defaultPageSizeProvider: () -> Int
     @ObservationIgnored private weak var tabSessionRegistry: TabSessionRegistry?
 
     init(
         globalTabsProvider: @escaping () -> [QueryTab] = { [] },
+        defaultPageSizeProvider: @escaping () -> Int = { PaginationState.defaultPageSize },
         tabSessionRegistry: TabSessionRegistry? = nil
     ) {
         self.globalTabsProvider = globalTabsProvider
+        self.defaultPageSizeProvider = defaultPageSizeProvider
         self.tabSessionRegistry = tabSessionRegistry
     }
 
@@ -155,11 +158,12 @@ final class QueryTabManager {
             return
         }
 
-        let pageSize = AppSettingsManager.shared.dataGrid.defaultPageSize
+        let pageSize = defaultPageSizeProvider()
         let query = try QueryTab.buildBaseTableQuery(
             tableName: tableName,
             databaseType: databaseType,
             schemaName: schemaName,
+            pageSize: pageSize,
             quoteIdentifier: quoteIdentifier
         )
         var newTab = QueryTab(
@@ -234,11 +238,12 @@ final class QueryTabManager {
             return
         }
 
-        let pageSize = AppSettingsManager.shared.dataGrid.defaultPageSize
+        let pageSize = defaultPageSizeProvider()
         let query = try QueryTab.buildBaseTableQuery(
             tableName: tableName,
             databaseType: databaseType,
             schemaName: schemaName,
+            pageSize: pageSize,
             quoteIdentifier: quoteIdentifier
         )
         var newTab = QueryTab(
@@ -271,13 +276,14 @@ final class QueryTabManager {
             return false
         }
 
+        let pageSize = defaultPageSizeProvider()
         let query = try QueryTab.buildBaseTableQuery(
             tableName: tableName,
             databaseType: databaseType,
             schemaName: schemaName,
+            pageSize: pageSize,
             quoteIdentifier: quoteIdentifier
         )
-        let pageSize = AppSettingsManager.shared.dataGrid.defaultPageSize
 
         var tab = tabs[selectedIndex]
         tab.tabType = .table

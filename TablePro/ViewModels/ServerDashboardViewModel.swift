@@ -73,7 +73,11 @@ final class ServerDashboardViewModel {
 
     // MARK: - Initialization
 
-    init(connectionId: UUID, databaseType: DatabaseType, services: AppServices = .live) {
+    convenience init(connectionId: UUID, databaseType: DatabaseType) {
+        self.init(connectionId: connectionId, databaseType: databaseType, services: .live)
+    }
+
+    init(connectionId: UUID, databaseType: DatabaseType, services: AppServices) {
         self.connectionId = connectionId
         self.databaseType = databaseType
         self.provider = ServerDashboardQueryProviderFactory.provider(for: databaseType)
@@ -127,13 +131,20 @@ final class ServerDashboardViewModel {
         isRefreshing = true
         defer { isRefreshing = false }
 
-        let execute: (String) async throws -> QueryResult = { [connectionId, services] query in
+        let execute: (String) async throws -> QueryResult = { [connectionId, databaseType, services] query in
             guard let driver = services.databaseManager.driver(for: connectionId) else {
                 throw DatabaseError.connectionFailed(
                     String(localized: "No active connection")
                 )
             }
-            return try await driver.execute(query: query)
+            let request = OperationRequest.metadataRead(
+                connectionId: connectionId,
+                databaseType: databaseType,
+                sql: query,
+                caller: .backgroundMaintenance,
+                operationDescription: String(localized: "Refresh Server Dashboard")
+            )
+            return try await driver.executeAuthorizing(query: query, request: request)
         }
 
         var newPanelErrors: [DashboardPanel: String] = [:]
@@ -190,7 +201,14 @@ final class ServerDashboardViewModel {
                     String(localized: "No active connection")
                 )
             }
-            _ = try await driver.execute(query: sql)
+            let request = OperationRequest.interactiveUser(
+                connectionId: connectionId,
+                databaseType: databaseType,
+                sql: sql,
+                kind: .maintenance,
+                operationDescription: String(localized: "Kill Session")
+            )
+            _ = try await driver.executeAuthorizing(query: sql, request: request)
             Self.logger.info("Killed session \(processId)")
             await refreshNow()
         } catch {
@@ -219,7 +237,14 @@ final class ServerDashboardViewModel {
                     String(localized: "No active connection")
                 )
             }
-            _ = try await driver.execute(query: sql)
+            let request = OperationRequest.interactiveUser(
+                connectionId: connectionId,
+                databaseType: databaseType,
+                sql: sql,
+                kind: .maintenance,
+                operationDescription: String(localized: "Cancel Query")
+            )
+            _ = try await driver.executeAuthorizing(query: sql, request: request)
             Self.logger.info("Cancelled query for process \(processId)")
             await refreshNow()
         } catch {

@@ -1,6 +1,5 @@
 import Foundation
 import TableProModels
-import TableProPluginKit
 
 /// Allows NoSQL drivers to provide custom query building.
 public protocol CustomQueryBuilder: Sendable {
@@ -24,11 +23,11 @@ public protocol CustomQueryBuilder: Sendable {
 }
 
 public struct TableQueryBuilder: Sendable {
-    private let dialect: SQLDialectDescriptor?
+    private let dialect: QueryDialectDescriptor?
     private let customQueryBuilder: (any CustomQueryBuilder)?
 
     public init(
-        dialect: SQLDialectDescriptor? = nil,
+        dialect: QueryDialectDescriptor? = nil,
         customQueryBuilder: (any CustomQueryBuilder)? = nil
     ) {
         self.dialect = dialect
@@ -133,8 +132,6 @@ public struct TableQueryBuilder: Sendable {
     }
 
     private func quoteIdentifier(_ name: String) -> String {
-        let q = dialect?.identifierQuote ?? "\""
-        let escaped = name.replacingOccurrences(of: q, with: "\(q)\(q)")
-        return "\(q)\(escaped)\(q)"
+        (dialect ?? SQLDialectFactory.defaultDialect()).quoteIdentifier(name)
     }
 }

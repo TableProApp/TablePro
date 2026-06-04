@@ -112,6 +112,8 @@ extension DatabaseManager {
             await applyTimeoutAndStartupCommands(
                 on: driver,
                 startupCommands: resolvedConnection.startupCommands,
+                connectionId: resolvedConnection.id,
+                databaseType: resolvedConnection.type,
                 connectionName: connection.name
             )
 

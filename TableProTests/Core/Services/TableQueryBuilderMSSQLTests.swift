@@ -104,10 +104,21 @@ struct TableQueryBuilderMSSQLTests {
         let fallback = TableQueryBuilder(
             databaseType: .mssql,
             pluginDriver: nil,
-            dialect: dialect,
-            dialectQuote: dialect.map(quoteIdentifierFromDialect)
+            dialect: dialect
         )
         let query = fallback.buildBaseQuery(tableName: "users")
         #expect(query == "SELECT * FROM [users] ORDER BY (SELECT NULL) OFFSET 0 ROWS FETCH NEXT 200 ROWS ONLY")
+    }
+
+    @Test("Fallback quote uses dialect descriptor when closure is omitted")
+    func fallbackQuoteUsesDialectDescriptor() {
+        let dialect = PluginManager.shared.sqlDialect(for: .mssql)
+        let fallback = TableQueryBuilder(
+            databaseType: .mssql,
+            pluginDriver: nil,
+            dialect: dialect
+        )
+        let query = fallback.buildBaseQuery(tableName: "user]s")
+        #expect(query.contains("[user]]s]"))
     }
 }

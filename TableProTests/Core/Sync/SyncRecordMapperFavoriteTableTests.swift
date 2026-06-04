@@ -1,5 +1,6 @@
 import CloudKit
 import Foundation
+import TableProSync
 @testable import TablePro
 import Testing
 
@@ -13,7 +14,7 @@ struct SyncRecordMapperFavoriteTableTests {
         let entry = FavoriteTablesStorage.FavoriteEntry(
             connectionId: connId, database: "shop", schema: "public", name: "users"
         )
-        let record = SyncRecordMapper.toCKRecord(favoriteEntry: entry, in: zoneID)
+        let record = DesktopSyncRecordMapper.toCKRecord(favoriteEntry: entry, in: zoneID)
 
         let id = FavoriteTablesStorage.syncId(for: entry)
         #expect(record.recordType == SyncRecordType.tableFavorite.rawValue)
@@ -23,7 +24,7 @@ struct SyncRecordMapperFavoriteTableTests {
         #expect(record["database"] as? String == "shop")
         #expect(record["schema"] as? String == "public")
 
-        let decoded = try SyncRecordMapper.favoriteEntry(from: record)
+        let decoded = try DesktopSyncRecordMapper.favoriteEntry(from: record)
         #expect(decoded == entry)
     }
 
@@ -33,11 +34,11 @@ struct SyncRecordMapperFavoriteTableTests {
         let entry = FavoriteTablesStorage.FavoriteEntry(
             connectionId: connId, database: nil, schema: nil, name: "orders"
         )
-        let record = SyncRecordMapper.toCKRecord(favoriteEntry: entry, in: zoneID)
+        let record = DesktopSyncRecordMapper.toCKRecord(favoriteEntry: entry, in: zoneID)
 
         #expect(record["database"] == nil)
         #expect(record["schema"] == nil)
-        let decoded = try SyncRecordMapper.favoriteEntry(from: record)
+        let decoded = try DesktopSyncRecordMapper.favoriteEntry(from: record)
         #expect(decoded == entry)
     }
 

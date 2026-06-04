@@ -3,6 +3,7 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
+@MainActor
 @Suite("ConfirmDestructiveOperationTool")
 struct ConfirmDestructiveOperationToolTests {
     @Test("Tool requires write scope")

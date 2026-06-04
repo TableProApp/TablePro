@@ -5,13 +5,38 @@ import TableProPluginKit
 public actor MCPConnectionBridge {
     private static let logger = Logger(subsystem: "com.TablePro", category: "MCPConnectionBridge")
 
-    public init() {}
+    private let connectionStorage: ConnectionStorage
+    private let databaseManager: DatabaseManager
+    private let schemaService: SchemaService
+    private let queryHistoryManager: QueryHistoryManager
+
+    @MainActor
+    public init() {
+        self.init(
+            connectionStorage: .shared,
+            databaseManager: .shared,
+            schemaService: .shared,
+            queryHistoryManager: .shared
+        )
+    }
+
+    init(
+        connectionStorage: ConnectionStorage,
+        databaseManager: DatabaseManager,
+        schemaService: SchemaService,
+        queryHistoryManager: QueryHistoryManager
+    ) {
+        self.connectionStorage = connectionStorage
+        self.databaseManager = databaseManager
+        self.schemaService = schemaService
+        self.queryHistoryManager = queryHistoryManager
+    }
 
     func listConnections() async -> JsonValue {
         let (connections, activeSessions) = await MainActor.run {
-            let conns = ConnectionStorage.shared.loadConnections()
+            let conns = connectionStorage.loadConnections()
                 .filter { $0.externalAccess != .blocked }
-            let sessions = DatabaseManager.shared.activeSessions
+            let sessions = databaseManager.activeSessions
             return (conns, sessions)
         }
 
@@ -41,7 +66,7 @@ public actor MCPConnectionBridge {
         let connection = try await resolveConnection(connectionId)
 
         let existingSession = await MainActor.run {
-            DatabaseManager.shared.activeSessions[connectionId]
+            databaseManager.activeSessions[connectionId]
         }
 
         if let existing = existingSession, existing.driver != nil {
@@ -62,10 +87,10 @@ public actor MCPConnectionBridge {
             return .object(result)
         }
 
-        try await DatabaseManager.shared.ensureConnected(connection)
+        try await databaseManager.ensureConnected(connection)
 
         let (serverVersion, currentDatabase, currentSchema) = await MainActor.run {
-            let session = DatabaseManager.shared.activeSessions[connectionId]
+            let session = databaseManager.activeSessions[connectionId]
             return (
                 session?.driver?.serverVersion,
                 session?.activeDatabase,
@@ -89,18 +114,18 @@ public actor MCPConnectionBridge {
 
     func disconnect(connectionId: UUID) async throws {
         let sessionExists = await MainActor.run {
-            DatabaseManager.shared.activeSessions[connectionId] != nil
+            databaseManager.activeSessions[connectionId] != nil
         }
         guard sessionExists else {
             throw MCPDataLayerError.notConnected(connectionId)
         }
-        await DatabaseManager.shared.disconnectSession(connectionId)
+        await databaseManager.disconnectSession(connectionId)
     }
 
     func getConnectionStatus(connectionId: UUID) async throws -> JsonValue {
         let core = await MainActor.run {
             () -> (status: ConnectionStatus, database: String, schema: String?)? in
-            guard let session = DatabaseManager.shared.activeSessions[connectionId] else {
+            guard let session = databaseManager.activeSessions[connectionId] else {
                 return nil
             }
             return (session.status, session.activeDatabase, session.currentSchema)
@@ -112,7 +137,7 @@ public actor MCPConnectionBridge {
 
         let meta = await MainActor.run {
             () -> (version: String?, connectedAt: Date, lastActiveAt: Date) in
-            let session = DatabaseManager.shared.activeSessions[connectionId]
+            let session = databaseManager.activeSessions[connectionId]
             return (
                 session?.driver?.serverVersion,
                 session?.connectedAt ?? Date(),
@@ -163,22 +188,32 @@ public actor MCPConnectionBridge {
         let isWrite = QueryClassifier.isWriteQuery(normalizedQuery, databaseType: databaseType)
         let hasReturning = normalizedQuery.range(of: #"\bRETURNING\b"#, options: [.regularExpression, .caseInsensitive]) != nil
         let shouldCap = !isWrite || hasReturning
+        let kind = OperationKind.worst(of: [normalizedQuery], databaseType: databaseType)
+        let request = OperationRequest.mcpClient(
+            connectionId: connectionId,
+            databaseType: databaseType,
+            sql: normalizedQuery,
+            kind: kind,
+            capabilities: capabilities(for: kind),
+            operationDescription: String(localized: "MCP query execution")
+        )
 
         let startTime = CFAbsoluteTimeGetCurrent()
 
-        let result: QueryResult = try await DatabaseManager.shared.trackOperation(
+        let result: QueryResult = try await databaseManager.trackOperation(
             sessionId: connectionId
         ) {
             try await withThrowingTaskGroup(of: QueryResult.self) { group in
                 group.addTask {
                     if shouldCap {
-                        return try await driver.executeUserQuery(
+                        return try await driver.executeUserQueryAuthorizing(
                             query: normalizedQuery,
                             rowCap: maxRows,
-                            parameters: nil
+                            parameters: nil,
+                            request: request
                         )
                     }
-                    return try await driver.execute(query: normalizedQuery)
+                    return try await driver.executeAuthorizing(query: normalizedQuery, request: request)
                 }
                 group.addTask {
                     try await Task.sleep(for: .seconds(timeoutSeconds))
@@ -224,7 +259,7 @@ public actor MCPConnectionBridge {
 
     func listTables(connectionId: UUID, includeRowCounts: Bool) async throws -> JsonValue {
         let cachedTables = await MainActor.run {
-            SchemaService.shared.tables(for: connectionId)
+            schemaService.tables(for: connectionId)
         }
 
         let tables: [TableInfo]
@@ -232,7 +267,7 @@ public actor MCPConnectionBridge {
             tables = cachedTables
         } else {
             let (driver, _) = try await resolveDriver(connectionId)
-            tables = try await DatabaseManager.shared.trackOperation(sessionId: connectionId) {
+            tables = try await databaseManager.trackOperation(sessionId: connectionId) {
                 try await driver.fetchTables()
             }
         }
@@ -254,7 +289,7 @@ public actor MCPConnectionBridge {
     func describeTable(connectionId: UUID, table: String, schema: String?) async throws -> JsonValue {
         let (driver, _) = try await resolveDriver(connectionId)
 
-        return try await DatabaseManager.shared.trackOperation(sessionId: connectionId) {
+        return try await databaseManager.trackOperation(sessionId: connectionId) {
             let columns = try await driver.fetchColumns(table: table, schema: schema)
             let indexes = try await driver.fetchIndexes(table: table)
             let foreignKeys = try await driver.fetchForeignKeys(table: table)
@@ -317,7 +352,7 @@ public actor MCPConnectionBridge {
 
     func listDatabases(connectionId: UUID) async throws -> JsonValue {
         let (driver, _) = try await resolveDriver(connectionId)
-        let databases = try await DatabaseManager.shared.trackOperation(sessionId: connectionId) {
+        let databases = try await databaseManager.trackOperation(sessionId: connectionId) {
             try await driver.fetchDatabases()
         }
         return .object(["databases": .array(databases.map { .string($0) })])
@@ -325,7 +360,7 @@ public actor MCPConnectionBridge {
 
     func listSchemas(connectionId: UUID) async throws -> JsonValue {
         let (driver, _) = try await resolveDriver(connectionId)
-        let schemas = try await DatabaseManager.shared.trackOperation(sessionId: connectionId) {
+        let schemas = try await databaseManager.trackOperation(sessionId: connectionId) {
             try await driver.fetchSchemas()
         }
         return .object(["schemas": .array(schemas.map { .string($0) })])
@@ -333,14 +368,14 @@ public actor MCPConnectionBridge {
 
     func getTableDDL(connectionId: UUID, table: String, schema: String?) async throws -> JsonValue {
         let (driver, _) = try await resolveDriver(connectionId)
-        let ddl = try await DatabaseManager.shared.trackOperation(sessionId: connectionId) {
+        let ddl = try await databaseManager.trackOperation(sessionId: connectionId) {
             try await driver.fetchTableDDL(table: table)
         }
         return .object(["ddl": .string(ddl)])
     }
 
     func switchDatabase(connectionId: UUID, database: String) async throws -> JsonValue {
-        try await DatabaseManager.shared.switchDatabase(to: database, for: connectionId)
+        try await databaseManager.switchDatabase(to: database, for: connectionId)
         return .object([
             "status": "switched",
             "current_database": .string(database)
@@ -348,7 +383,7 @@ public actor MCPConnectionBridge {
     }
 
     func switchSchema(connectionId: UUID, schema: String) async throws -> JsonValue {
-        try await DatabaseManager.shared.switchSchema(to: schema, for: connectionId)
+        try await databaseManager.switchSchema(to: schema, for: connectionId)
         return .object([
             "status": "switched",
             "current_schema": .string(schema)
@@ -357,7 +392,7 @@ public actor MCPConnectionBridge {
 
     func fetchSchemaResource(connectionId: UUID) async throws -> JsonValue {
         let cachedTables = await MainActor.run {
-            SchemaService.shared.tables(for: connectionId)
+            schemaService.tables(for: connectionId)
         }
 
         let (driver, _) = try await resolveDriver(connectionId)
@@ -366,7 +401,7 @@ public actor MCPConnectionBridge {
         if !cachedTables.isEmpty {
             tables = cachedTables
         } else {
-            tables = try await DatabaseManager.shared.trackOperation(sessionId: connectionId) {
+            tables = try await databaseManager.trackOperation(sessionId: connectionId) {
                 try await driver.fetchTables()
             }
         }
@@ -375,7 +410,7 @@ public actor MCPConnectionBridge {
 
         var tableSchemas: [JsonValue] = []
         for table in limitedTables {
-            let columns = try await DatabaseManager.shared.trackOperation(sessionId: connectionId) {
+            let columns = try await databaseManager.trackOperation(sessionId: connectionId) {
                 try await driver.fetchColumns(table: table.name)
             }
 
@@ -418,7 +453,7 @@ public actor MCPConnectionBridge {
         default: filter = .all
         }
 
-        let entries = await QueryHistoryManager.shared.fetchHistory(
+        let entries = await queryHistoryManager.fetchHistory(
             limit: limit,
             connectionId: connectionId,
             searchText: search,
@@ -446,7 +481,7 @@ public actor MCPConnectionBridge {
 
     private func resolveDriver(_ connectionId: UUID) async throws -> (DatabaseDriver, DatabaseType) {
         let pending: DatabaseConnection? = await MainActor.run {
-            switch DatabaseManager.shared.connectionState(connectionId) {
+            switch databaseManager.connectionState(connectionId) {
             case .live: return nil
             case .stored(let connection): return connection
             case .unknown: return nil
@@ -456,7 +491,7 @@ public actor MCPConnectionBridge {
             try await connectIfNeeded(pending)
         }
         return try await MainActor.run {
-            switch DatabaseManager.shared.connectionState(connectionId) {
+            switch databaseManager.connectionState(connectionId) {
             case .live(let driver, let session):
                 return (driver, session.connection.type)
             case .stored, .unknown:
@@ -466,12 +501,12 @@ public actor MCPConnectionBridge {
     }
 
     private func connectIfNeeded(_ connection: DatabaseConnection) async throws {
-        try await DatabaseManager.shared.ensureConnected(connection)
+        try await databaseManager.ensureConnected(connection)
     }
 
     private func resolveSession(_ connectionId: UUID) async throws -> ConnectionSession {
         try await MainActor.run {
-            guard let session = DatabaseManager.shared.activeSessions[connectionId] else {
+            guard let session = databaseManager.activeSessions[connectionId] else {
                 throw MCPDataLayerError.notConnected(connectionId)
             }
             return session
@@ -480,12 +515,23 @@ public actor MCPConnectionBridge {
 
     private func resolveConnection(_ connectionId: UUID) async throws -> DatabaseConnection {
         try await MainActor.run {
-            let connections = ConnectionStorage.shared.loadConnections()
+            let connections = connectionStorage.loadConnections()
             guard let connection = connections.first(where: { $0.id == connectionId }) else {
                 throw MCPDataLayerError.invalidArgument("Connection not found: \(connectionId)")
             }
             return connection
         }
+    }
+
+    private func capabilities(for kind: OperationKind) -> CallerCapabilities {
+        var capabilities: CallerCapabilities = [.confirmationPreCleared, .cannotPrompt]
+        if kind.declaresWrite {
+            capabilities.insert(.mayWrite)
+        }
+        if kind.declaresDestructive {
+            capabilities.insert(.mayRunDestructive)
+        }
+        return capabilities
     }
 
     static func stripTrailingSemicolons(_ query: String) -> String {

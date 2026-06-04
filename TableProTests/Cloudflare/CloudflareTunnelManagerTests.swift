@@ -127,14 +127,23 @@ final class FakeCloudflaredRunner: CloudflaredRunner, @unchecked Sendable {
 
 @Suite("Cloudflare tunnel manager", .serialized)
 struct CloudflareTunnelManagerTests {
+    private func makeDefaults() -> (UserDefaults, String) {
+        let suiteName = "com.TablePro.tests.CloudflareTunnelManager.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        return (defaults, suiteName)
+    }
+
     private func config(hostname: String = "db.example.com", localPort: Int? = nil) -> CloudflareConfiguration {
         CloudflareConfiguration(accessHostname: hostname, localPort: localPort, binaryPath: "/bin/echo")
     }
 
     @Test("createTunnel returns the allocated port once cloudflared is listening")
     func readinessSucceeds() async throws {
+        let (defaults, suiteName) = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
         let fake = FakeCloudflaredRunner(behavior: .ready)
-        let manager = CloudflareTunnelManager(runnerFactory: { fake })
+        let manager = CloudflareTunnelManager(runnerFactory: { fake }, userDefaults: defaults)
         let id = UUID()
 
         let port = try await manager.createTunnel(connectionId: id, config: config())
@@ -150,8 +159,10 @@ struct CloudflareTunnelManagerTests {
 
     @Test("createTunnel surfaces a browser sign-in prompt")
     func browserAuthDetected() async {
+        let (defaults, suiteName) = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
         let fake = FakeCloudflaredRunner(behavior: .browserAuth)
-        let manager = CloudflareTunnelManager(runnerFactory: { fake })
+        let manager = CloudflareTunnelManager(runnerFactory: { fake }, userDefaults: defaults)
 
         await #expect(throws: CloudflareTunnelError.self) {
             _ = try await manager.createTunnel(connectionId: UUID(), config: self.config())
@@ -160,8 +171,10 @@ struct CloudflareTunnelManagerTests {
 
     @Test("createTunnel fails when cloudflared exits during startup")
     func startupFailure() async {
+        let (defaults, suiteName) = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
         let fake = FakeCloudflaredRunner(behavior: .startupFailure)
-        let manager = CloudflareTunnelManager(runnerFactory: { fake })
+        let manager = CloudflareTunnelManager(runnerFactory: { fake }, userDefaults: defaults)
 
         await #expect(throws: CloudflareTunnelError.self) {
             _ = try await manager.createTunnel(connectionId: UUID(), config: self.config(localPort: 59_998))
@@ -170,7 +183,12 @@ struct CloudflareTunnelManagerTests {
 
     @Test("missing binary throws binaryNotFound")
     func missingBinary() async {
-        let manager = CloudflareTunnelManager(runnerFactory: { FakeCloudflaredRunner(behavior: .ready) })
+        let (defaults, suiteName) = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let manager = CloudflareTunnelManager(
+            runnerFactory: { FakeCloudflaredRunner(behavior: .ready) },
+            userDefaults: defaults
+        )
         let badConfig = CloudflareConfiguration(accessHostname: "db.example.com", binaryPath: "/nonexistent/cloudflared")
 
         await #expect(throws: CloudflareTunnelError.binaryNotFound) {
@@ -180,25 +198,32 @@ struct CloudflareTunnelManagerTests {
 
     @Test("terminateAllProcessesSync stops the running tunnel")
     func terminateAllStops() async throws {
+        let (defaults, suiteName) = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
         let fake = FakeCloudflaredRunner(behavior: .ready)
-        let manager = CloudflareTunnelManager(runnerFactory: { fake })
+        let manager = CloudflareTunnelManager(runnerFactory: { fake }, userDefaults: defaults)
         _ = try await manager.createTunnel(connectionId: UUID(), config: config())
 
         manager.terminateAllProcessesSync()
         #expect(fake.stopCallCount >= 1)
 
         await manager.closeAllTunnels()
-        #expect(UserDefaults.standard.data(forKey: "cloudflaredStalePids") == nil)
+        #expect(defaults.data(forKey: "cloudflaredStalePids") == nil)
     }
 
     @Test("sweepStalePidsIfNeeded clears the persisted records")
     func sweepClearsRecords() async {
+        let (defaults, suiteName) = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
         let records = [CloudflaredPidRecord(pid: -1, binaryPath: "/nonexistent")]
-        UserDefaults.standard.set(try? JSONEncoder().encode(records), forKey: "cloudflaredStalePids")
+        defaults.set(try? JSONEncoder().encode(records), forKey: "cloudflaredStalePids")
 
-        let manager = CloudflareTunnelManager(runnerFactory: { FakeCloudflaredRunner(behavior: .ready) })
+        let manager = CloudflareTunnelManager(
+            runnerFactory: { FakeCloudflaredRunner(behavior: .ready) },
+            userDefaults: defaults
+        )
         await manager.sweepStalePidsIfNeeded()
 
-        #expect(UserDefaults.standard.data(forKey: "cloudflaredStalePids") == nil)
+        #expect(defaults.data(forKey: "cloudflaredStalePids") == nil)
     }
 }

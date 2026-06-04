@@ -44,6 +44,7 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
     private var detailHosting: NSHostingController<AnyView>!
     private var inspectorHosting: NSHostingController<AnyView>!
     private var hasMaterializedInspector = false
+    private let inspectorPresentationStore: InspectorPresentationStore
 
     // MARK: - Toolbar
 
@@ -117,8 +118,13 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
 
     // MARK: - Init
 
-    init(payload: EditorTabPayload?, sessionState: SessionStateFactory.SessionState?) {
+    init(
+        payload: EditorTabPayload?,
+        sessionState: SessionStateFactory.SessionState?,
+        inspectorPresentationStore: InspectorPresentationStore = .shared
+    ) {
         self.payload = payload
+        self.inspectorPresentationStore = inspectorPresentationStore
         if let connectionId = payload?.connectionId {
             self.payloadConnection = DatabaseManager.shared.activeSessions[connectionId]?.connection
                 ?? ConnectionStorage.shared.loadConnections().first { $0.id == connectionId }
@@ -174,7 +180,7 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
 
     @available(*, unavailable)
     required init?(coder: NSCoder) {
-        fatalError("MainSplitViewController does not support NSCoder init")
+        return nil
     }
 
     // MARK: - Lifecycle
@@ -199,7 +205,7 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         detailSplitItem.holdingPriority = .defaultLow
         addSplitViewItem(detailSplitItem)
 
-        let inspectorPresented = UserDefaults.standard.bool(forKey: Self.inspectorPresentedKey)
+        let inspectorPresented = inspectorPresentationStore.isPresented
         let initialInspectorContent: AnyView
         if inspectorPresented {
             initialInspectorContent = AnyView(buildInspectorView())
@@ -527,13 +533,13 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
     func showInspector() {
         materializeInspectorIfNeeded()
         inspectorSplitItem?.animator().isCollapsed = false
-        UserDefaults.standard.set(true, forKey: Self.inspectorPresentedKey)
+        inspectorPresentationStore.setPresented(true)
         recomputeWindowMinSize()
     }
 
     func hideInspector() {
         inspectorSplitItem?.animator().isCollapsed = true
-        UserDefaults.standard.set(false, forKey: Self.inspectorPresentedKey)
+        inspectorPresentationStore.setPresented(false)
         recomputeWindowMinSize()
     }
 
@@ -611,8 +617,4 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
             window.setFrame(frame, display: true, animate: false)
         }
     }
-
-    // MARK: - Constants
-
-    private static let inspectorPresentedKey = "com.TablePro.rightPanel.isPresented"
 }

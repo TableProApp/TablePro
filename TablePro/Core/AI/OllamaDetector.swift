@@ -14,8 +14,18 @@ enum OllamaDetector {
 
     /// Check for Ollama on app launch and register if found
     @MainActor
-    static func detectAndRegister() async {
-        let settings = AppSettingsManager.shared.ai
+    static func detectAndRegister(
+        settingsProvider: @escaping @MainActor () -> AISettings = {
+            AppSettingsManager.shared.ai
+        },
+        registerProvider: @escaping @MainActor (AIProviderConfig) -> Void = {
+            AppSettingsManager.shared.ai.providers.append($0)
+        },
+        modelFetcher: @escaping @MainActor () async -> [String]? = {
+            await fetchOllamaModels()
+        }
+    ) async {
+        let settings = settingsProvider()
         guard settings.enabled else { return }
 
         // Skip if an Ollama provider already exists
@@ -24,7 +34,13 @@ enum OllamaDetector {
         }
 
         // Try to fetch models from local Ollama
-        guard let models = await fetchOllamaModels(), !models.isEmpty else {
+        guard let models = await modelFetcher(), !models.isEmpty else {
+            return
+        }
+
+        let currentSettings = settingsProvider()
+        guard currentSettings.enabled,
+              !currentSettings.providers.contains(where: { $0.type == .ollama }) else {
             return
         }
 
@@ -36,7 +52,7 @@ enum OllamaDetector {
             endpoint: AIProviderType.ollama.defaultEndpoint
         )
 
-        AppSettingsManager.shared.ai.providers.append(ollamaProvider)
+        registerProvider(ollamaProvider)
         logger.info("Auto-detected Ollama with \(models.count) models, registered with model: \(firstModel)")
     }
 

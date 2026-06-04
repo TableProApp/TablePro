@@ -112,7 +112,7 @@ struct PaginationState: Equatable {
     var baseQueryParameterValues: [String?]?
 
     /// Default page size constant (used when no explicit value is provided)
-    /// Note: For new tabs, callers should pass AppSettingsManager.shared.dataGrid.defaultPageSize
+    /// Note: For new tabs, callers should pass the configured data grid default page size.
     static let defaultPageSize = 1_000
 
     init(

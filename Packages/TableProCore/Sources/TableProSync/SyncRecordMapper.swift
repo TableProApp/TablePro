@@ -19,6 +19,11 @@ public enum SyncRecordMapper {
         case .connection: recordName = "Connection_\(id)"
         case .group: recordName = "Group_\(id)"
         case .tag: recordName = "Tag_\(id)"
+        case .settings: recordName = "Settings_\(id)"
+        case .favorite: recordName = "Favorite_\(id)"
+        case .favoriteFolder: recordName = "FavoriteFolder_\(id)"
+        case .tableFavorite: recordName = "FavoriteTable_\(id)"
+        case .sshProfile: recordName = "SSHProfile_\(id)"
         }
         return CKRecord.ID(recordName: recordName, zoneID: zone)
     }

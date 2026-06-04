@@ -29,7 +29,7 @@ struct TableQueryBuilder {
         self.databaseType = databaseType
         self.pluginDriver = pluginDriver
         self.dialect = dialect
-        self.dialectQuote = dialectQuote ?? { name in
+        self.dialectQuote = dialectQuote ?? dialect.map(quoteIdentifierFromDialect) ?? { name in
             let escaped = name.replacingOccurrences(of: "\"", with: "\"\"")
             return "\"\(escaped)\""
         }

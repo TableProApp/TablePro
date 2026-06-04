@@ -12,6 +12,7 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
     let targetTable: String?
 
     private let driver: DatabaseDriver
+    private let connectionId: UUID
     private let databaseType: DatabaseType
     private let columnMapping: [String: String]
     private let rowGenerator: SQLStatementGenerator?
@@ -20,11 +21,13 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
 
     init(
         driver: DatabaseDriver,
+        connectionId: UUID,
         databaseType: DatabaseType,
         targetTable: String? = nil,
         columnMapping: [String: String] = [:]
     ) {
         self.driver = driver
+        self.connectionId = connectionId
         self.databaseType = databaseType
         self.databaseTypeId = databaseType.rawValue
         self.targetTable = targetTable
@@ -45,7 +48,10 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
     }
 
     func execute(statement: String) async throws {
-        _ = try await driver.execute(query: statement)
+        _ = try await driver.executeAuthorizing(
+            query: statement,
+            request: request(sql: statement, operationDescription: String(localized: "Import Statement"))
+        )
     }
 
     func insertRow(_ values: [String: PluginCellValue]) async throws {
@@ -69,7 +75,11 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
             return
         }
 
-        _ = try await driver.executeParameterized(query: statement.sql, parameters: statement.parameters)
+        _ = try await driver.executeParameterizedAuthorizing(
+            query: statement.sql,
+            parameters: statement.parameters,
+            request: request(sql: statement.sql, operationDescription: String(localized: "Import Row"))
+        )
     }
 
     func insertRows(_ rows: [[String: PluginCellValue]]) async throws {
@@ -104,7 +114,11 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
                 let end = min(offset + chunkSize, groupValues.count)
                 let chunk = Array(groupValues[offset..<end])
                 if let statement = rowGenerator.insertStatement(columns: columns, rows: chunk) {
-                    _ = try await driver.executeParameterized(query: statement.sql, parameters: statement.parameters)
+                    _ = try await driver.executeParameterizedAuthorizing(
+                        query: statement.sql,
+                        parameters: statement.parameters,
+                        request: request(sql: statement.sql, operationDescription: String(localized: "Import Rows"))
+                    )
                 }
                 offset = end
             }
@@ -125,7 +139,11 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
         guard targetTable != nil, let rowGenerator else {
             throw PluginImportError.importFailed("No target table configured for row import")
         }
-        _ = try await driver.execute(query: rowGenerator.deleteAllRowsStatement())
+        let statement = rowGenerator.deleteAllRowsStatement()
+        _ = try await driver.executeAuthorizing(
+            query: statement,
+            request: request(sql: statement, operationDescription: String(localized: "Clear Target Table"))
+        )
     }
 
     func beginTransaction() async throws {
@@ -143,14 +161,34 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
     func disableForeignKeyChecks() async throws {
         guard let statements = driver.foreignKeyDisableStatements() else { return }
         for stmt in statements {
-            _ = try await driver.execute(query: stmt)
+            _ = try await driver.executeAuthorizing(
+                query: stmt,
+                request: request(sql: stmt, kind: .maintenance, operationDescription: String(localized: "Disable Foreign Key Checks"))
+            )
         }
     }
 
     func enableForeignKeyChecks() async throws {
         guard let statements = driver.foreignKeyEnableStatements() else { return }
         for stmt in statements {
-            _ = try await driver.execute(query: stmt)
+            _ = try await driver.executeAuthorizing(
+                query: stmt,
+                request: request(sql: stmt, kind: .maintenance, operationDescription: String(localized: "Enable Foreign Key Checks"))
+            )
         }
+    }
+
+    private func request(
+        sql: String,
+        kind: OperationKind? = nil,
+        operationDescription: String
+    ) -> OperationRequest {
+        OperationRequest.importPipeline(
+            connectionId: connectionId,
+            databaseType: databaseType,
+            sql: sql,
+            kind: kind ?? OperationKind.worst(of: [sql], databaseType: databaseType),
+            operationDescription: operationDescription
+        )
     }
 }

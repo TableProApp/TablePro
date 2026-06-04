@@ -87,11 +87,44 @@ struct PreparedConnectionImport {
 @MainActor
 enum ConnectionExportService {
     private static let logger = Logger(subsystem: "com.TablePro", category: "ConnectionExportService")
-    private static let currentFormatVersion = 1
+    nonisolated private static let currentFormatVersion = 1
+
+    struct Dependencies {
+        let sshProfileStorage: SSHProfileStorage
+        let groupStorage: GroupStorage
+        let tagStorage: TagStorage
+        let connectionStorage: ConnectionStorage
+        let pluginMetadataRegistry: PluginMetadataRegistry
+        let fileExists: (String) -> Bool
+        let notifyConnectionsChanged: () -> Void
+        let appVersion: () -> String
+    }
+
+    private static var liveDependencies: Dependencies {
+        Dependencies(
+            sshProfileStorage: .shared,
+            groupStorage: .shared,
+            tagStorage: .shared,
+            connectionStorage: .shared,
+            pluginMetadataRegistry: .shared,
+            fileExists: { FileManager.default.fileExists(atPath: $0) },
+            notifyConnectionsChanged: { AppEvents.shared.connectionUpdated.send(nil) },
+            appVersion: {
+                Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
+            }
+        )
+    }
 
     // MARK: - Export
 
     static func buildEnvelope(for connections: [DatabaseConnection]) -> ConnectionExportEnvelope {
+        buildEnvelope(for: connections, dependencies: liveDependencies)
+    }
+
+    static func buildEnvelope(
+        for connections: [DatabaseConnection],
+        dependencies: Dependencies
+    ) -> ConnectionExportEnvelope {
         var groupNames: Set<String> = []
         var tagNames: Set<String> = []
         var exportableConnections: [ExportableConnection] = []
@@ -100,7 +133,7 @@ enum ConnectionExportService {
             // Resolve SSH config: prefer SSH profile if linked, otherwise use inline config
             let sshConfig: SSHConfiguration
             if let profileId = connection.sshProfileId,
-               let profile = SSHProfileStorage.shared.profile(for: profileId) {
+               let profile = dependencies.sshProfileStorage.profile(for: profileId) {
                 sshConfig = profile.toSSHConfiguration()
             } else {
                 sshConfig = connection.sshConfig
@@ -109,7 +142,7 @@ enum ConnectionExportService {
             // Resolve tag name
             let tagName: String?
             if let tagId = connection.tagId {
-                tagName = TagStorage.shared.tag(for: tagId)?.name
+                tagName = dependencies.tagStorage.tag(for: tagId)?.name
             } else {
                 tagName = nil
             }
@@ -117,7 +150,7 @@ enum ConnectionExportService {
             // Resolve group name
             let groupName: String?
             if let groupId = connection.groupId {
-                groupName = GroupStorage.shared.group(for: groupId)?.name
+                groupName = dependencies.groupStorage.group(for: groupId)?.name
             } else {
                 groupName = nil
             }
@@ -177,7 +210,7 @@ enum ConnectionExportService {
             // Filter secure fields from additionalFields
             // If plugin metadata is unavailable, omit all fields to avoid leaking secrets
             let additionalFields: [String: String]?
-            if let snapshot = PluginMetadataRegistry.shared.snapshot(forTypeId: connection.type.pluginTypeId) {
+            if let snapshot = dependencies.pluginMetadataRegistry.snapshot(forTypeId: connection.type.pluginTypeId) {
                 var filteredFields = connection.additionalFields
                 let secureFieldIds = snapshot.connection.additionalConnectionFields
                     .filter(\.isSecure)
@@ -219,19 +252,19 @@ enum ConnectionExportService {
         }
 
         // Build group and tag arrays with their colors
-        let allGroups = GroupStorage.shared.loadGroups()
+        let allGroups = dependencies.groupStorage.loadGroups()
         let exportableGroups: [ExportableGroup]? = groupNames.isEmpty ? nil : groupNames.map { name in
             let existing = allGroups.first { $0.name == name }
-            return ExportableGroup(name: name, color: existing?.color == .none ? nil : existing?.color.rawValue)
+            return ExportableGroup(name: name, color: existing?.color == ConnectionColor.none ? nil : existing?.color.rawValue)
         }
 
-        let allTags = TagStorage.shared.loadTags()
+        let allTags = dependencies.tagStorage.loadTags()
         let exportableTags: [ExportableTag]? = tagNames.isEmpty ? nil : tagNames.map { name in
             let existing = allTags.first { $0.name == name }
-            return ExportableTag(name: name, color: existing?.color == .none ? nil : existing?.color.rawValue)
+            return ExportableTag(name: name, color: existing?.color == ConnectionColor.none ? nil : existing?.color.rawValue)
         }
 
-        let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
+        let appVersion = dependencies.appVersion()
 
         return ConnectionExportEnvelope(
             formatVersion: currentFormatVersion,
@@ -258,7 +291,15 @@ enum ConnectionExportService {
     }
 
     static func exportConnections(_ connections: [DatabaseConnection], to url: URL) throws {
-        let envelope = buildEnvelope(for: connections)
+        try exportConnections(connections, to: url, dependencies: liveDependencies)
+    }
+
+    static func exportConnections(
+        _ connections: [DatabaseConnection],
+        to url: URL,
+        dependencies: Dependencies
+    ) throws {
+        let envelope = buildEnvelope(for: connections, dependencies: dependencies)
         let data = try encode(envelope)
 
         do {
@@ -272,26 +313,33 @@ enum ConnectionExportService {
     // MARK: - Encrypted Export
 
     static func buildEnvelopeWithCredentials(for connections: [DatabaseConnection]) -> ConnectionExportEnvelope {
-        let baseEnvelope = buildEnvelope(for: connections)
+        buildEnvelopeWithCredentials(for: connections, dependencies: liveDependencies)
+    }
+
+    static func buildEnvelopeWithCredentials(
+        for connections: [DatabaseConnection],
+        dependencies: Dependencies
+    ) -> ConnectionExportEnvelope {
+        let baseEnvelope = buildEnvelope(for: connections, dependencies: dependencies)
 
         var credentialsMap: [String: ExportableCredentials] = [:]
         for (index, connection) in connections.enumerated() {
-            let password = ConnectionStorage.shared.loadPassword(for: connection.id)
-            let sshPassword = ConnectionStorage.shared.loadSSHPassword(for: connection.id)
-            let keyPassphrase = ConnectionStorage.shared.loadKeyPassphrase(for: connection.id)
-            let sslClientKeyPassphrase = ConnectionStorage.shared.loadSSLClientKeyPassphrase(for: connection.id)
-            let totpSecret = ConnectionStorage.shared.loadTOTPSecret(for: connection.id)
+            let password = dependencies.connectionStorage.loadPassword(for: connection.id)
+            let sshPassword = dependencies.connectionStorage.loadSSHPassword(for: connection.id)
+            let keyPassphrase = dependencies.connectionStorage.loadKeyPassphrase(for: connection.id)
+            let sslClientKeyPassphrase = dependencies.connectionStorage.loadSSLClientKeyPassphrase(for: connection.id)
+            let totpSecret = dependencies.connectionStorage.loadTOTPSecret(for: connection.id)
 
             // Collect plugin-specific secure fields
             var pluginSecureFields: [String: String]?
-            if let snapshot = PluginMetadataRegistry.shared.snapshot(forTypeId: connection.type.pluginTypeId) {
+            if let snapshot = dependencies.pluginMetadataRegistry.snapshot(forTypeId: connection.type.pluginTypeId) {
                 let secureFieldIds = snapshot.connection.additionalConnectionFields
                     .filter(\.isSecure)
                     .map(\.id)
                 if !secureFieldIds.isEmpty {
                     var fields: [String: String] = [:]
                     for fieldId in secureFieldIds {
-                        if let value = ConnectionStorage.shared.loadPluginSecureField(
+                        if let value = dependencies.connectionStorage.loadPluginSecureField(
                             fieldId: fieldId,
                             for: connection.id
                         ) {
@@ -336,7 +384,21 @@ enum ConnectionExportService {
         to url: URL,
         passphrase: String
     ) throws {
-        let envelope = buildEnvelopeWithCredentials(for: connections)
+        try exportConnectionsEncrypted(
+            connections,
+            to: url,
+            passphrase: passphrase,
+            dependencies: liveDependencies
+        )
+    }
+
+    static func exportConnectionsEncrypted(
+        _ connections: [DatabaseConnection],
+        to url: URL,
+        passphrase: String,
+        dependencies: Dependencies
+    ) throws {
+        let envelope = buildEnvelopeWithCredentials(for: connections, dependencies: dependencies)
         let jsonData = try encode(envelope)
         let encryptedData = try ConnectionExportCrypto.encrypt(data: jsonData, passphrase: passphrase)
 
@@ -376,6 +438,18 @@ enum ConnectionExportService {
     }
 
     static func restoreCredentials(from envelope: ConnectionExportEnvelope, connectionIdMap: [Int: UUID]) {
+        restoreCredentials(
+            from: envelope,
+            connectionIdMap: connectionIdMap,
+            dependencies: liveDependencies
+        )
+    }
+
+    static func restoreCredentials(
+        from envelope: ConnectionExportEnvelope,
+        connectionIdMap: [Int: UUID],
+        dependencies: Dependencies
+    ) {
         guard let credentials = envelope.credentials else { return }
 
         var restoredCount = 0
@@ -384,23 +458,23 @@ enum ConnectionExportService {
                   let connectionId = connectionIdMap[index] else { continue }
 
             if let password = creds.password {
-                ConnectionStorage.shared.savePassword(password, for: connectionId)
+                dependencies.connectionStorage.savePassword(password, for: connectionId)
             }
             if let sshPassword = creds.sshPassword {
-                ConnectionStorage.shared.saveSSHPassword(sshPassword, for: connectionId)
+                dependencies.connectionStorage.saveSSHPassword(sshPassword, for: connectionId)
             }
             if let keyPassphrase = creds.keyPassphrase {
-                ConnectionStorage.shared.saveKeyPassphrase(keyPassphrase, for: connectionId)
+                dependencies.connectionStorage.saveKeyPassphrase(keyPassphrase, for: connectionId)
             }
             if let sslClientKeyPassphrase = creds.sslClientKeyPassphrase {
-                ConnectionStorage.shared.saveSSLClientKeyPassphrase(sslClientKeyPassphrase, for: connectionId)
+                dependencies.connectionStorage.saveSSLClientKeyPassphrase(sslClientKeyPassphrase, for: connectionId)
             }
             if let totpSecret = creds.totpSecret {
-                ConnectionStorage.shared.saveTOTPSecret(totpSecret, for: connectionId)
+                dependencies.connectionStorage.saveTOTPSecret(totpSecret, for: connectionId)
             }
             if let secureFields = creds.pluginSecureFields {
                 for (fieldId, value) in secureFields {
-                    ConnectionStorage.shared.savePluginSecureField(value, fieldId: fieldId, for: connectionId)
+                    dependencies.connectionStorage.savePluginSecureField(value, fieldId: fieldId, for: connectionId)
                 }
             }
             restoredCount += 1
@@ -431,9 +505,19 @@ enum ConnectionExportService {
     static func analyzeImport(_ envelope: ConnectionExportEnvelope) -> ConnectionImportPreview {
         analyzeImport(
             envelope,
-            existingConnections: ConnectionStorage.shared.loadConnections(),
-            registeredTypeIds: Set(PluginMetadataRegistry.shared.allRegisteredTypeIds()),
-            fileExists: { FileManager.default.fileExists(atPath: $0) }
+            dependencies: liveDependencies
+        )
+    }
+
+    static func analyzeImport(
+        _ envelope: ConnectionExportEnvelope,
+        dependencies: Dependencies
+    ) -> ConnectionImportPreview {
+        analyzeImport(
+            envelope,
+            existingConnections: dependencies.connectionStorage.loadConnections(),
+            registeredTypeIds: Set(dependencies.pluginMetadataRegistry.allRegisteredTypeIds()),
+            fileExists: dependencies.fileExists
         )
     }
 
@@ -525,8 +609,17 @@ enum ConnectionExportService {
         _ preview: ConnectionImportPreview,
         resolutions: [UUID: ImportResolution]
     ) -> ImportResult {
+        performImport(preview, resolutions: resolutions, dependencies: liveDependencies)
+    }
+
+    @discardableResult
+    static func performImport(
+        _ preview: ConnectionImportPreview,
+        resolutions: [UUID: ImportResolution],
+        dependencies: Dependencies
+    ) -> ImportResult {
         if let envelopeGroups = preview.envelope.groups {
-            let existingGroups = GroupStorage.shared.loadGroups()
+            let existingGroups = dependencies.groupStorage.loadGroups()
             for exportGroup in envelopeGroups {
                 let alreadyExists = existingGroups.contains {
                     $0.name.lowercased() == exportGroup.name.lowercased()
@@ -534,13 +627,13 @@ enum ConnectionExportService {
                 if !alreadyExists {
                     let color = exportGroup.color.flatMap { ConnectionColor(rawValue: $0) } ?? .none
                     let group = ConnectionGroup(name: exportGroup.name, color: color)
-                    GroupStorage.shared.addGroup(group)
+                    dependencies.groupStorage.addGroup(group)
                 }
             }
         }
 
         if let envelopeTags = preview.envelope.tags {
-            let existingTags = TagStorage.shared.loadTags()
+            let existingTags = dependencies.tagStorage.loadTags()
             for exportTag in envelopeTags {
                 let alreadyExists = existingTags.contains {
                     $0.name.lowercased() == exportTag.name.lowercased()
@@ -551,11 +644,11 @@ enum ConnectionExportService {
                         $0.name.lowercased() == exportTag.name.lowercased()
                     }
                     if let preset {
-                        TagStorage.shared.addTag(preset)
+                        dependencies.tagStorage.addTag(preset)
                     } else {
                         let color = exportTag.color.flatMap { ConnectionColor(rawValue: $0) } ?? .gray
                         let tag = ConnectionTag(name: exportTag.name, color: color)
-                        TagStorage.shared.addTag(tag)
+                        dependencies.tagStorage.addTag(tag)
                     }
                 }
             }
@@ -564,12 +657,16 @@ enum ConnectionExportService {
         let prepared = prepareImport(
             preview,
             resolutions: resolutions,
-            existingNames: ConnectionStorage.shared.loadConnections().map(\.name),
-            tagIdsByName: tagIdsByName(),
-            groupIdsByName: groupIdsByName()
+            existingNames: dependencies.connectionStorage.loadConnections().map(\.name),
+            tagIdsByName: tagIdsByName(storage: dependencies.tagStorage),
+            groupIdsByName: groupIdsByName(storage: dependencies.groupStorage)
         )
 
-        return performPreparedImport(prepared)
+        return performPreparedImport(
+            prepared,
+            connectionStorage: dependencies.connectionStorage,
+            notifyConnectionsChanged: dependencies.notifyConnectionsChanged
+        )
     }
 
     static func prepareImport(
@@ -636,11 +733,23 @@ enum ConnectionExportService {
         )
     }
 
+    @MainActor
+    @discardableResult
+    static func performPreparedImport(_ prepared: PreparedConnectionImport) -> ImportResult {
+        let dependencies = liveDependencies
+        return performPreparedImport(
+            prepared,
+            connectionStorage: dependencies.connectionStorage,
+            notifyConnectionsChanged: dependencies.notifyConnectionsChanged
+        )
+    }
+
+    @MainActor
     @discardableResult
     static func performPreparedImport(
         _ prepared: PreparedConnectionImport,
-        connectionStorage: ConnectionStorage = .shared,
-        notifyConnectionsChanged: () -> Void = { AppEvents.shared.connectionUpdated.send(nil) }
+        connectionStorage: ConnectionStorage,
+        notifyConnectionsChanged: () -> Void
     ) -> ImportResult {
         for operation in prepared.operations {
             switch operation {
@@ -666,7 +775,14 @@ enum ConnectionExportService {
     // MARK: - Deeplink Builder
 
     static func buildImportDeeplink(for connection: DatabaseConnection) -> String? {
-        let envelope = buildEnvelope(for: [connection])
+        buildImportDeeplink(for: connection, dependencies: liveDependencies)
+    }
+
+    static func buildImportDeeplink(
+        for connection: DatabaseConnection,
+        dependencies: Dependencies
+    ) -> String? {
+        let envelope = buildEnvelope(for: [connection], dependencies: dependencies)
         guard let exportable = envelope.connections.first else { return nil }
 
         var components = URLComponents()
@@ -778,7 +894,14 @@ enum ConnectionExportService {
     }
 
     static func buildCompactJSON(for connection: DatabaseConnection) -> String {
-        let envelope = buildEnvelope(for: [connection])
+        buildCompactJSON(for: connection, dependencies: liveDependencies)
+    }
+
+    static func buildCompactJSON(
+        for connection: DatabaseConnection,
+        dependencies: Dependencies
+    ) -> String {
+        let envelope = buildEnvelope(for: [connection], dependencies: dependencies)
         guard let exportable = envelope.connections.first else { return "{}" }
         let encoder = JSONEncoder()
         encoder.outputFormatting = .sortedKeys
@@ -926,9 +1049,9 @@ enum ConnectionExportService {
         return ""
     }
 
-    private static func tagIdsByName() -> [String: UUID] {
+    private static func tagIdsByName(storage: TagStorage) -> [String: UUID] {
         var idsByName: [String: UUID] = [:]
-        for tag in TagStorage.shared.loadTags() {
+        for tag in storage.loadTags() {
             let key = normalizedLookupKey(tag.name)
             if idsByName[key] == nil {
                 idsByName[key] = tag.id
@@ -937,9 +1060,9 @@ enum ConnectionExportService {
         return idsByName
     }
 
-    private static func groupIdsByName() -> [String: UUID] {
+    private static func groupIdsByName(storage: GroupStorage) -> [String: UUID] {
         var idsByName: [String: UUID] = [:]
-        for group in GroupStorage.shared.loadGroups() {
+        for group in storage.loadGroups() {
             let key = normalizedLookupKey(group.name)
             if idsByName[key] == nil {
                 idsByName[key] = group.id

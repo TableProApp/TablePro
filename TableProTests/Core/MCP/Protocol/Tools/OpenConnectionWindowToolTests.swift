@@ -3,6 +3,7 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
+@MainActor
 @Suite("OpenConnectionWindowTool")
 struct OpenConnectionWindowToolTests {
     @Test("Tool exposes expected metadata")

@@ -1072,8 +1072,10 @@ internal final class EtcdHttpClient: @unchecked Sendable {
                 return
             }
 
-            // swiftlint:disable:next force_cast
-            let identity = identityRef as! SecIdentity
+            guard let identity = identityRef as? SecIdentity else {
+                completionHandler(.cancelAuthenticationChallenge, nil)
+                return
+            }
             let credential = URLCredential(
                 identity: identity,
                 certificates: nil,

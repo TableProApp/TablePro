@@ -28,12 +28,13 @@ struct ConnectionStorageAIFieldsTests {
               let syncDefaults = UserDefaults(suiteName: syncName) else {
             fatalError("UserDefaults suite creation failed in test setup")
         }
-        let metadata = SyncMetadataStorage(userDefaults: syncDefaults)
-        let tracker = SyncChangeTracker(metadataStorage: metadata)
+        let metadata = DesktopSyncMetadataStorage(userDefaults: syncDefaults)
+        let tracker = DesktopSyncChangeTracker(metadataStorage: metadata)
         self.storage = ConnectionStorage(
             fileURL: fileURL,
             userDefaults: defaults,
-            syncTracker: tracker
+            syncTracker: tracker,
+            appSettings: AppSettingsStorage(userDefaults: defaults)
         )
     }
 

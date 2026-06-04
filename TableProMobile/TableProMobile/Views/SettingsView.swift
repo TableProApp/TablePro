@@ -139,11 +139,14 @@ struct SettingsView: View {
                 Text(String(localized: "Syncing\u{2026}"))
                     .foregroundStyle(.secondary)
             }
-        case .error(let message):
-            Text(message)
+        case .error(let error):
+            Text(error.localizedDescription)
                 .foregroundStyle(.red)
                 .multilineTextAlignment(.trailing)
                 .lineLimit(2)
+        case .disabled:
+            Text(String(localized: "Off"))
+                .foregroundStyle(.secondary)
         case .idle:
             if let date = appState.syncCoordinator.lastSyncDate {
                 Text(date, style: .relative)

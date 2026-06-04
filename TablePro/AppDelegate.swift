@@ -60,9 +60,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         )
 
         NSWindow.allowsAutomaticWindowTabbing = true
-        let syncSettings = AppSettingsStorage.shared.loadSync()
-        let passwordSyncExpected = syncSettings.enabled && syncSettings.syncConnections && syncSettings.syncPasswords
-        UserDefaults.standard.set(passwordSyncExpected, forKey: KeychainHelper.passwordSyncEnabledKey)
         DatabaseManager.shared.startObservingSystemEvents()
 
         Task { await CloudflareTunnelManager.shared.sweepStalePidsIfNeeded() }
@@ -98,7 +95,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidBecomeActive(_ notification: Notification) {
         runPostLaunchActivationIfNeeded()
         guard !Self.isUITesting else { return }
-        SyncCoordinator.shared.syncIfNeeded()
+        DesktopSyncCoordinator.shared.syncIfNeeded()
     }
 
     private func runPostLaunchActivationIfNeeded() {
@@ -108,7 +105,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         ConnectionStorage.shared.migratePluginSecureFieldsIfNeeded()
         AnalyticsService.shared.startPeriodicHeartbeat()
-        SyncCoordinator.shared.start()
+        DesktopSyncCoordinator.shared.start()
         LinkedFolderWatcher.shared.start()
 
         Task {

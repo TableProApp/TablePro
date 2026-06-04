@@ -1,11 +1,14 @@
 import Foundation
 
-public struct DatabaseType: Hashable, Codable, Sendable, RawRepresentable {
+public struct DatabaseType: Hashable, Codable, Identifiable, Sendable, RawRepresentable {
     public let rawValue: String
 
     public init(rawValue: String) {
         self.rawValue = rawValue
     }
+
+    public var id: String { rawValue }
+    public var displayName: String { rawValue }
 
     // MARK: - Known Constants (raw values match macOS for CloudKit compatibility)
 
@@ -25,6 +28,7 @@ public struct DatabaseType: Hashable, Codable, Sendable, RawRepresentable {
     public static let cloudflareD1 = DatabaseType(rawValue: "Cloudflare D1")
     public static let dynamodb = DatabaseType(rawValue: "DynamoDB")
     public static let bigquery = DatabaseType(rawValue: "BigQuery")
+    public static let bigQuery = DatabaseType(rawValue: "BigQuery")
     public static let libsql = DatabaseType(rawValue: "libSQL")
     public static let cockroachdb = DatabaseType(rawValue: "CockroachDB")
     public static let scylladb = DatabaseType(rawValue: "ScyllaDB")
@@ -33,38 +37,7 @@ public struct DatabaseType: Hashable, Codable, Sendable, RawRepresentable {
     public static let allKnownTypes: [DatabaseType] = [
         .mysql, .mariadb, .postgresql, .sqlite, .redis, .mongodb,
         .clickhouse, .mssql, .oracle, .duckdb, .cassandra, .redshift,
-        .etcd, .cloudflareD1, .dynamodb, .bigquery, .libsql
+        .cockroachdb, .scylladb, .etcd, .cloudflareD1, .dynamodb,
+        .bigQuery, .libsql, .turso
     ]
-
-    /// Icon name for this database type — asset catalog name (e.g. "mysql-icon") or SF Symbol fallback
-    public var iconName: String {
-        switch self {
-        case .mysql: return "mysql-icon"
-        case .mariadb: return "mariadb-icon"
-        case .postgresql: return "postgresql-icon"
-        case .redshift: return "redshift-icon"
-        case .sqlite: return "sqlite-icon"
-        case .redis: return "redis-icon"
-        case .mongodb: return "mongodb-icon"
-        case .clickhouse: return "clickhouse-icon"
-        case .mssql: return "mssql-icon"
-        case .oracle: return "oracle-icon"
-        case .duckdb: return "duckdb-icon"
-        case .cassandra: return "cassandra-icon"
-        case .etcd: return "etcd-icon"
-        case .cloudflareD1: return "cloudflare-d1-icon"
-        case .dynamodb: return "dynamodb-icon"
-        case .bigquery: return "bigquery-icon"
-        case .libsql: return "libsql-icon"
-        default: return "externaldrive"
-        }
-    }
-
-    public var pluginTypeId: String {
-        switch self {
-        case .mariadb: return DatabaseType.mysql.rawValue
-        case .redshift: return DatabaseType.postgresql.rawValue
-        default: return rawValue
-        }
-    }
 }

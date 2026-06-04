@@ -108,6 +108,55 @@ struct QueryExecutorTests {
         #expect(!QueryExecutor.isDDLStatement("DELETE FROM foo"))
     }
 
+    // MARK: - Row-cap policy
+
+    @Test("resolveRowCap uses injected data grid settings for query SELECTs")
+    func resolveRowCapUsesInjectedSettings() {
+        let settings = DataGridSettings(queryResultRowCap: 1_234, truncateQueryResults: true)
+        let cap = QueryExecutor.resolveRowCap(
+            sql: "SELECT * FROM users",
+            tabType: .query,
+            databaseType: .postgresql,
+            dataGridSettings: settings
+        )
+        #expect(cap == 1_234)
+    }
+
+    @Test("resolveRowCap returns nil when truncation is disabled")
+    func resolveRowCapNilWhenTruncationDisabled() {
+        let settings = DataGridSettings(queryResultRowCap: 1_234, truncateQueryResults: false)
+        let cap = QueryExecutor.resolveRowCap(
+            sql: "SELECT * FROM users",
+            tabType: .query,
+            databaseType: .postgresql,
+            dataGridSettings: settings
+        )
+        #expect(cap == nil)
+    }
+
+    @Test("resolveRowCap returns nil for non-query SELECT and mutating statements")
+    func resolveRowCapNilForNonQueryAndMutatingStatements() {
+        let settings = DataGridSettings(queryResultRowCap: 1_234, truncateQueryResults: true)
+        #expect(QueryExecutor.resolveRowCap(
+            sql: "SELECT * FROM users",
+            tabType: .table,
+            databaseType: .postgresql,
+            dataGridSettings: settings
+        ) == nil)
+        #expect(QueryExecutor.resolveRowCap(
+            sql: "UPDATE users SET name = 'Ada'",
+            tabType: .query,
+            databaseType: .postgresql,
+            dataGridSettings: settings
+        ) == nil)
+        #expect(QueryExecutor.resolveRowCap(
+            sql: "CREATE TABLE users (id INT)",
+            tabType: .query,
+            databaseType: .postgresql,
+            dataGridSettings: settings
+        ) == nil)
+    }
+
     // MARK: - Parameter detection
 
     @Test("detectAndReconcileParameters returns empty when SQL has no placeholders")
@@ -198,7 +247,8 @@ struct QueryExecutorTests {
                 name: "status",
                 dataType: "ENUM('open','closed','archived')",
                 isNullable: false, isPrimaryKey: false,
-                defaultValue: nil, extra: nil, charset: nil, collation: nil, comment: nil
+                defaultValue: nil, extra: nil, charset: nil, collation: nil, comment: nil,
+                allowedValues: ["open", "closed", "archived"]
             )
         ]
         let schema: SchemaResult = (columnInfo: columns, fkInfo: [], approximateRowCount: nil)

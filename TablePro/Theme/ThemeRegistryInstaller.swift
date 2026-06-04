@@ -87,8 +87,6 @@ internal final class ThemeRegistryInstaller {
         _ plugin: RegistryPlugin,
         progress: @escaping @MainActor @Sendable (Double) -> Void
     ) async throws {
-        let activeId = ThemeEngine.shared.activeTheme.id
-
         // Download, verify, and decode new themes first (no side effects yet)
         let stagedThemes = try await downloadAndDecode(plugin, progress: progress)
 

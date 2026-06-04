@@ -3,6 +3,7 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
+@MainActor
 @Suite("DisconnectTool")
 struct DisconnectToolTests {
     @Test("Tool exposes expected metadata")

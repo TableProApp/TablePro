@@ -39,7 +39,13 @@ internal final class RedisKeyTreeViewModel {
 
         do {
             // Use KEYS command for simplicity — returns all keys matching pattern
-            let result = try await driver.execute(query: "KEYS *")
+            let request = OperationRequest.metadataRead(
+                connectionId: connectionId,
+                databaseType: .redis,
+                sql: "KEYS *",
+                operationDescription: String(localized: "Load Redis Keys")
+            )
+            let result = try await driver.executeAuthorizing(query: "KEYS *", request: request)
 
             let keyColumnIndex = result.columns.firstIndex(of: "Key") ?? 0
             let typeColumnIndex = result.columns.firstIndex(of: "Type") ?? 1

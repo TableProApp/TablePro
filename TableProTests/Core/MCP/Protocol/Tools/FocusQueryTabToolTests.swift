@@ -3,6 +3,7 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
+@MainActor
 @Suite("FocusQueryTabTool")
 struct FocusQueryTabToolTests {
     @Test("Tool exposes expected metadata")

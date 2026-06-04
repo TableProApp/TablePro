@@ -12,7 +12,7 @@ struct QueryTabBaseQueryTests {
 
     @Test("Editor query for opening a table equals the executed browse query")
     func editorQueryMatchesExecutedQuery() throws {
-        let pageSize = AppSettingsManager.shared.dataGrid.defaultPageSize
+        let pageSize = 250
         let dialect = PluginManager.shared.sqlDialect(for: .mssql)
         let quote = dialect.map(quoteIdentifierFromDialect)
 
@@ -20,6 +20,7 @@ struct QueryTabBaseQueryTests {
             tableName: "users",
             databaseType: .mssql,
             schemaName: nil,
+            pageSize: pageSize,
             quoteIdentifier: quote
         )
 
@@ -40,6 +41,7 @@ struct QueryTabBaseQueryTests {
             tableName: "users",
             databaseType: .mssql,
             schemaName: nil,
+            pageSize: 250,
             quoteIdentifier: dialect.map(quoteIdentifierFromDialect)
         )
 

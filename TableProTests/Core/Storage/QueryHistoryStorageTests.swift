@@ -284,3 +284,110 @@ struct QueryHistoryStorageTests {
         #expect(entries.count == 20)
     }
 }
+
+@Suite("QueryHistoryManager")
+@MainActor
+struct QueryHistoryManagerTests {
+    private func makeEntry(
+        query: String,
+        connectionId: UUID,
+        executedAt: Date
+    ) -> QueryHistoryEntry {
+        QueryHistoryEntry(
+            query: query,
+            connectionId: connectionId,
+            databaseName: "testdb",
+            executedAt: executedAt,
+            executionTime: 0.01,
+            rowCount: 1,
+            wasSuccessful: true
+        )
+    }
+
+    @Test("applySettingsChange uses injected history settings for cleanup")
+    func applySettingsChangeUsesInjectedSettingsForCleanup() async {
+        let storage = QueryHistoryStorageTests.makeIsolatedStorage()
+        let manager = QueryHistoryManager(
+            storage: storage,
+            historySettingsProvider: {
+                HistorySettings(maxEntries: 1, maxDays: 0, autoCleanup: true)
+            }
+        )
+        let connectionId = UUID()
+        let now = Date()
+
+        _ = await manager.addHistory(makeEntry(
+            query: "SELECT older",
+            connectionId: connectionId,
+            executedAt: now.addingTimeInterval(-60)
+        ))
+        _ = await manager.addHistory(makeEntry(
+            query: "SELECT newer",
+            connectionId: connectionId,
+            executedAt: now
+        ))
+
+        await manager.applySettingsChange()
+
+        let entries = await manager.fetchHistory(limit: 10, connectionId: connectionId)
+        #expect(entries.map(\.query) == ["SELECT newer"])
+    }
+
+    @Test("applySettingsChange does not cleanup when injected auto cleanup is disabled")
+    func applySettingsChangeSkipsCleanupWhenAutoCleanupDisabled() async {
+        let storage = QueryHistoryStorageTests.makeIsolatedStorage()
+        let manager = QueryHistoryManager(
+            storage: storage,
+            historySettingsProvider: {
+                HistorySettings(maxEntries: 1, maxDays: 0, autoCleanup: false)
+            }
+        )
+        let connectionId = UUID()
+        let now = Date()
+
+        _ = await manager.addHistory(makeEntry(
+            query: "SELECT older",
+            connectionId: connectionId,
+            executedAt: now.addingTimeInterval(-60)
+        ))
+        _ = await manager.addHistory(makeEntry(
+            query: "SELECT newer",
+            connectionId: connectionId,
+            executedAt: now
+        ))
+
+        await manager.applySettingsChange()
+
+        let entries = await manager.fetchHistory(limit: 10, connectionId: connectionId)
+        #expect(entries.map(\.query) == ["SELECT newer", "SELECT older"])
+    }
+
+    @Test("explicit cleanup applies injected settings regardless of auto cleanup")
+    func explicitCleanupAppliesInjectedSettings() async {
+        let storage = QueryHistoryStorageTests.makeIsolatedStorage()
+        let manager = QueryHistoryManager(
+            storage: storage,
+            historySettingsProvider: {
+                HistorySettings(maxEntries: 1, maxDays: 0, autoCleanup: false)
+            }
+        )
+        let connectionId = UUID()
+        let now = Date()
+
+        _ = await manager.addHistory(makeEntry(
+            query: "SELECT older",
+            connectionId: connectionId,
+            executedAt: now.addingTimeInterval(-60)
+        ))
+        _ = await manager.addHistory(makeEntry(
+            query: "SELECT newer",
+            connectionId: connectionId,
+            executedAt: now
+        ))
+
+        await manager.cleanup()
+
+        let entries = await manager.fetchHistory(limit: 10, connectionId: connectionId)
+        #expect(entries.map(\.query) == ["SELECT newer"])
+    }
+}

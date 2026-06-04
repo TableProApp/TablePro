@@ -17,8 +17,7 @@ final class CSVExportPlugin: ExportFormatPlugin, SettablePlugin {
     static let defaultFileExtension = "csv"
     static let iconName = "doc.text"
 
-    // swiftlint:disable:next force_try
-    static let decimalFormatRegex = try! NSRegularExpression(pattern: #"^[+-]?\d+\.\d+$"#)
+    static let decimalFormatRegex = try? NSRegularExpression(pattern: #"^[+-]?\d+\.\d+$"#)
 
     typealias Settings = CSVExportOptions
     static let settingsStorageId = "csv"
@@ -130,7 +129,7 @@ final class CSVExportPlugin: ExportFormatPlugin, SettablePlugin {
 
             if options.decimalFormat == .comma {
                 let range = NSRange(processed.startIndex..., in: processed)
-                if Self.decimalFormatRegex.firstMatch(in: processed, range: range) != nil {
+                if Self.decimalFormatRegex?.firstMatch(in: processed, range: range) != nil {
                     processed = processed.replacingOccurrences(of: ".", with: ",")
                 }
             }

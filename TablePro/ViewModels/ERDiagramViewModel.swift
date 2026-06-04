@@ -74,7 +74,11 @@ final class ERDiagramViewModel {
 
     // MARK: - Initialization
 
-    init(connectionId: UUID, schemaKey: String, services: AppServices = .live) {
+    convenience init(connectionId: UUID, schemaKey: String) {
+        self.init(connectionId: connectionId, schemaKey: schemaKey, services: .live)
+    }
+
+    init(connectionId: UUID, schemaKey: String, services: AppServices) {
         self.connectionId = connectionId
         self.schemaKey = schemaKey
         self.services = services

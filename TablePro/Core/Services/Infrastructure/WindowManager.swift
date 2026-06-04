@@ -11,12 +11,19 @@ import SwiftUI
 internal final class WindowManager {
     private static let lifecycleLogger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
 
-    internal static let shared = WindowManager()
+    internal static let shared = WindowManager(tabSettingsProvider: {
+        AppSettingsManager.shared.tabs
+    })
 
     private var controllers: [ObjectIdentifier: TabWindowController] = [:]
     private var closeObservers: [ObjectIdentifier: NSObjectProtocol] = [:]
+    private let tabSettingsProvider: @MainActor () -> TabSettings
 
-    private init() {}
+    internal init(tabSettingsProvider: @escaping @MainActor () -> TabSettings = {
+        TabSettings()
+    }) {
+        self.tabSettingsProvider = tabSettingsProvider
+    }
 
     // MARK: - Open
 
@@ -50,7 +57,7 @@ internal final class WindowManager {
         // orderFront before addTabbedWindow avoids a synchronous full-tree
         // SwiftUI layout pass that adds 700-900ms per open.
         let tabbingId = window.tabbingIdentifier ?? ""
-        let groupAll = AppSettingsManager.shared.tabs.groupAllConnectionTabs
+        let groupAll = tabSettingsProvider().groupAllConnectionTabs
         let sibling = findSibling(
             tabbingIdentifier: tabbingId, groupAll: groupAll, excluding: window
         )
@@ -126,7 +133,21 @@ internal final class WindowManager {
     }
 
     internal static func tabbingIdentifier(for connectionId: UUID) -> String {
-        if AppSettingsManager.shared.tabs.groupAllConnectionTabs {
+        shared.tabbingIdentifier(for: connectionId)
+    }
+
+    internal func tabbingIdentifier(for connectionId: UUID) -> String {
+        Self.tabbingIdentifier(
+            for: connectionId,
+            groupAllConnectionTabs: tabSettingsProvider().groupAllConnectionTabs
+        )
+    }
+
+    internal static func tabbingIdentifier(
+        for connectionId: UUID,
+        groupAllConnectionTabs: Bool
+    ) -> String {
+        if groupAllConnectionTabs {
             return "com.TablePro.main"
         }
         return "com.TablePro.main.\(connectionId.uuidString)"

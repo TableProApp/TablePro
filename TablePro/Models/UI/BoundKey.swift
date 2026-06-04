@@ -9,9 +9,12 @@
 //
 
 import AppKit
+import os
 import SwiftUI
 
 struct BoundKey: Codable, Equatable, Hashable {
+    private static let logger = Logger(subsystem: "com.TablePro", category: "BoundKey")
+
     let keyCode: UInt16
     let command: Bool
     let shift: Bool
@@ -61,7 +64,9 @@ struct BoundKey: Codable, Equatable, Hashable {
         control: Bool = false
     ) -> BoundKey {
         guard let keyCode = KeyboardLayout.keyCode(for: character) else {
-            assertionFailure("No key code for '\(character)' on the active keyboard layout")
+            Self.logger.error(
+                "No key code for '\(String(character), privacy: .public)' on the active keyboard layout"
+            )
             return .cleared
         }
         return BoundKey(keyCode: keyCode, command: command, shift: shift, option: option, control: control)

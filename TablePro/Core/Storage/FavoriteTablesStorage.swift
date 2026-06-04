@@ -1,5 +1,6 @@
 import Foundation
 import os
+import TableProSync
 
 extension Notification.Name {
     static let favoriteTablesDidChange = Notification.Name("FavoriteTablesDidChange")
@@ -17,12 +18,16 @@ final class FavoriteTablesStorage {
     }
 
     private let defaults: UserDefaults
-    private let syncTracker: SyncChangeTracker
+    private let syncTracker: DesktopSyncChangeTracker
     private let key = "com.TablePro.favoriteTables"
     private var cache: Set<FavoriteEntry>?
     private let lock = NSLock()
 
-    init(userDefaults: UserDefaults = .standard, syncTracker: SyncChangeTracker = .shared) {
+    convenience init(userDefaults: UserDefaults = .standard) {
+        self.init(userDefaults: userDefaults, syncTracker: .shared)
+    }
+
+    init(userDefaults: UserDefaults, syncTracker: DesktopSyncChangeTracker) {
         self.defaults = userDefaults
         self.syncTracker = syncTracker
     }

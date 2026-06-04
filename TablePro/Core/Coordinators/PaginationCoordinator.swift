@@ -201,10 +201,17 @@ final class PaginationCoordinator {
                 let start = CFAbsoluteTimeGetCurrent()
                 progressLog.info("[fetchAll] executing full query: \(baseQuery.prefix(100), privacy: .public)")
                 let anyParams: [Any?]? = storedParamValues.map { $0.map { $0 as Any? } }
-                let result = try await driver.executeUserQuery(
+                let request = OperationRequest.interactiveUser(
+                    connectionId: parent.connectionId,
+                    databaseType: parent.connection.type,
+                    sql: baseQuery,
+                    operationDescription: String(localized: "Fetch All Rows")
+                )
+                let result = try await driver.executeUserQueryAuthorizing(
                     query: baseQuery,
                     rowCap: nil,
-                    parameters: anyParams
+                    parameters: anyParams,
+                    request: request
                 )
                 let fetchTime = CFAbsoluteTimeGetCurrent() - start
                 progressLog.info("[fetchAll] rows=\(result.rows.count) fetchTime=\(String(format: "%.3f", fetchTime))s")

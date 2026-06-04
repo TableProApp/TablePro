@@ -28,7 +28,7 @@ extension DatabaseManager {
                 // on the same non-thread-safe driver connection.
                 // Allow ping if the query appears stuck (exceeds timeout + grace period).
                 if await self.queriesInFlight[connectionId] != nil {
-                    let queryTimeout = await TimeInterval(AppSettingsManager.shared.general.queryTimeoutSeconds)
+                    let queryTimeout = await TimeInterval(self.queryTimeoutSecondsProvider())
                     let maxStale = max(queryTimeout, 300) // At least 5 minutes
                     if let startTime = await self.queryStartTimes[connectionId],
                        Date().timeIntervalSince(startTime) < maxStale {
@@ -150,6 +150,8 @@ extension DatabaseManager {
         await applyTimeoutAndStartupCommands(
             on: driver,
             startupCommands: session.connection.startupCommands,
+            connectionId: session.connection.id,
+            databaseType: session.connection.type,
             connectionName: session.connection.name
         )
         await restoreSchemaAndDatabase(
@@ -164,9 +166,11 @@ extension DatabaseManager {
     func applyTimeoutAndStartupCommands(
         on driver: DatabaseDriver,
         startupCommands: String?,
+        connectionId: UUID,
+        databaseType: DatabaseType,
         connectionName: String
     ) async {
-        let timeoutSeconds = AppSettingsManager.shared.general.queryTimeoutSeconds
+        let timeoutSeconds = queryTimeoutSecondsProvider()
         do {
             try await driver.applyQueryTimeout(timeoutSeconds)
         } catch {
@@ -175,7 +179,13 @@ extension DatabaseManager {
             )
         }
 
-        await executeStartupCommands(startupCommands, on: driver, connectionName: connectionName)
+        await executeStartupCommands(
+            startupCommands,
+            on: driver,
+            connectionId: connectionId,
+            databaseType: databaseType,
+            connectionName: connectionName
+        )
     }
 
     func restoreSchemaAndDatabase(
@@ -267,6 +277,8 @@ extension DatabaseManager {
             await applyTimeoutAndStartupCommands(
                 on: driver,
                 startupCommands: session.connection.startupCommands,
+                connectionId: session.connection.id,
+                databaseType: session.connection.type,
                 connectionName: session.connection.name
             )
             await restoreSchemaAndDatabase(

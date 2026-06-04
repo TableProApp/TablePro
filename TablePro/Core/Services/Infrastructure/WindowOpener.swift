@@ -10,10 +10,11 @@ import os
 @MainActor
 @Observable
 internal final class WindowOpener {
-    internal static let shared = WindowOpener()
+    internal static let shared = WindowOpener(settingsTabSelectionStore: .shared)
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "WindowOpener")
 
+    @ObservationIgnored private let settingsTabSelectionStore: SettingsTabSelectionStore
     @ObservationIgnored private var openWelcomeAction: (() -> Void)?
     @ObservationIgnored private var openConnectionFormAction: ((UUID?) -> Void)?
     @ObservationIgnored private var openIntegrationsActivityAction: (() -> Void)?
@@ -23,7 +24,9 @@ internal final class WindowOpener {
     @ObservationIgnored private var pendingCalls: [() -> Void] = []
     @ObservationIgnored private var isWired = false
 
-    private init() {}
+    init(settingsTabSelectionStore: SettingsTabSelectionStore = .shared) {
+        self.settingsTabSelectionStore = settingsTabSelectionStore
+    }
 
     internal func openWelcome() {
         run { $0.openWelcomeAction?() }
@@ -31,7 +34,7 @@ internal final class WindowOpener {
 
     internal func openSettings(tab: SettingsTab? = nil) {
         if let tab {
-            UserDefaults.standard.set(tab.rawValue, forKey: "selectedSettingsTab")
+            settingsTabSelectionStore.select(tab)
         }
         run { $0.openSettingsAction?() }
     }

@@ -79,8 +79,8 @@ public struct ConfirmDestructiveOperationTool: MCPToolImplementation {
             capabilities: [.mayWrite, .mayRunDestructive, .confirmationPreCleared]
         )
 
-        let mcpSettings = await MainActor.run { AppSettingsManager.shared.mcp }
-        let timeoutSeconds = mcpSettings.queryTimeoutSeconds
+        let runtimeSettings = await services.runtimeSettings()
+        let timeoutSeconds = runtimeSettings.queryTimeoutSeconds
 
         Self.logger.debug("confirm_destructive_operation invoked for connection \(connectionId.uuidString, privacy: .public)")
 

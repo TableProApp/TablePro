@@ -47,7 +47,8 @@ extension DatabaseManager {
                 tableName: tableName,
                 databaseType: databaseType,
                 changes: changes,
-                driver: driver
+                driver: driver,
+                connectionId: connectionId
             )
 
             guard let resolvedPluginDriver = (driver as? PluginDriverAdapter)?.schemaPluginDriver else {
@@ -65,64 +66,57 @@ extension DatabaseManager {
             let schemaKind: OperationKind =
                 QueryClassifier.classifyTier(combinedSQL, databaseType: databaseType) == .destructive
                 ? .destructiveQuery : .schemaMutation
-            let authorization = await ExecutionGateProvider.shared.authorize(
-                OperationRequest(
-                    connectionId: connectionId,
-                    databaseType: databaseType,
-                    sql: combinedSQL,
-                    kind: schemaKind,
-                    caller: .userInterface,
-                    capabilities: .interactiveUser,
-                    operationDescription: String(localized: "Apply Schema Changes")
-                )
+            let request = OperationRequest.interactiveUser(
+                connectionId: connectionId,
+                databaseType: databaseType,
+                sql: combinedSQL,
+                kind: schemaKind,
+                operationDescription: String(localized: "Apply Schema Changes")
             )
-            guard case .authorized = authorization else {
-                throw DatabaseError.queryFailed(
-                    authorization.deniedReason ?? String(localized: "Schema change was not authorized")
-                )
-            }
 
-            let useTransaction = driver.supportsTransactions
-
-            if useTransaction {
-                try await driver.beginTransaction()
-            }
-
-            do {
-                for stmt in statements {
-                    _ = try await driver.execute(query: stmt.sql)
-                }
+            try await ExecutionGateProvider.shared.authorizing(request) {
+                let useTransaction = driver.supportsTransactions
 
                 if useTransaction {
-                    try await driver.commitTransaction()
+                    try await driver.beginTransaction()
                 }
 
-                // Record each statement in query history
-                let connId = connectionId
-                let dbName = self.activeSessions[connectionId]?.activeDatabase ?? ""
-                for stmt in statements {
-                    QueryHistoryManager.shared.recordQuery(
-                        query: stmt.sql.hasSuffix(";") ? stmt.sql : stmt.sql + ";",
-                        connectionId: connId,
-                        databaseName: dbName,
-                        executionTime: 0,
-                        rowCount: 0,
-                        wasSuccessful: true
-                    )
-                }
-
-                await MainActor.run {
-                    AppCommands.shared.refreshData.send(nil)
-                }
-            } catch {
-                if useTransaction {
-                    do {
-                        try await driver.rollbackTransaction()
-                    } catch {
-                        Self.logger.error("Rollback failed after schema change error: \(error.localizedDescription)")
+                do {
+                    for stmt in statements {
+                        _ = try await driver.executeAuthorizing(query: stmt.sql, request: request)
                     }
+
+                    if useTransaction {
+                        try await driver.commitTransaction()
+                    }
+
+                    // Record each statement in query history
+                    let connId = connectionId
+                    let dbName = self.activeSessions[connectionId]?.activeDatabase ?? ""
+                    for stmt in statements {
+                        QueryHistoryManager.shared.recordQuery(
+                            query: stmt.sql.hasSuffix(";") ? stmt.sql : stmt.sql + ";",
+                            connectionId: connId,
+                            databaseName: dbName,
+                            executionTime: 0,
+                            rowCount: 0,
+                            wasSuccessful: true
+                        )
+                    }
+
+                    await MainActor.run {
+                        AppCommands.shared.refreshData.send(nil)
+                    }
+                } catch {
+                    if useTransaction {
+                        do {
+                            try await driver.rollbackTransaction()
+                        } catch {
+                            Self.logger.error("Rollback failed after schema change error: \(error.localizedDescription)")
+                        }
+                    }
+                    throw DatabaseError.queryFailed("Schema change failed: \(error.localizedDescription)")
                 }
-                throw DatabaseError.queryFailed("Schema change failed: \(error.localizedDescription)")
             }
         }
     }
@@ -134,7 +128,8 @@ extension DatabaseManager {
         tableName: String,
         databaseType: DatabaseType,
         changes: [SchemaChange],
-        driver: DatabaseDriver
+        driver: DatabaseDriver,
+        connectionId: UUID
     ) async -> String? {
         // Only needed for PostgreSQL PK modifications
         guard databaseType == .postgresql || databaseType == .redshift
@@ -169,7 +164,13 @@ extension DatabaseManager {
             """
 
         do {
-            let result = try await driver.execute(query: query)
+            let request = OperationRequest.metadataRead(
+                connectionId: connectionId,
+                databaseType: databaseType,
+                sql: query,
+                operationDescription: String(localized: "Read Schema Metadata")
+            )
+            let result = try await driver.executeAuthorizing(query: query, request: request)
             if let row = result.rows.first, let name = row[0].asText, !name.isEmpty {
                 return name
             }

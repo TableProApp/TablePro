@@ -5,6 +5,7 @@
 
 import Foundation
 import os
+import TableProSync
 
 /// Service for persisting connection groups
 @MainActor
@@ -14,16 +15,24 @@ final class GroupStorage {
 
     private let groupsKey = "com.TablePro.groups"
     private let defaults: UserDefaults
-    private let syncTracker: SyncChangeTracker
+    private let syncTracker: DesktopSyncChangeTracker
     private let connectionStorageProvider: () -> ConnectionStorage
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
     private var cachedGroups: [ConnectionGroup]?
 
+    convenience init(userDefaults: UserDefaults = .standard) {
+        self.init(
+            userDefaults: userDefaults,
+            syncTracker: .shared,
+            connectionStorage: .shared
+        )
+    }
+
     init(
-        userDefaults: UserDefaults = .standard,
-        syncTracker: SyncChangeTracker = .shared,
-        connectionStorage: @escaping @autoclosure () -> ConnectionStorage = .shared
+        userDefaults: UserDefaults,
+        syncTracker: DesktopSyncChangeTracker,
+        connectionStorage: @escaping @autoclosure () -> ConnectionStorage
     ) {
         self.defaults = userDefaults
         self.syncTracker = syncTracker

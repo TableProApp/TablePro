@@ -23,11 +23,12 @@ final class MCPServerManager {
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "MCPServerManager")
 
-    static let shared = MCPServerManager()
+    static let shared = MCPServerManager(mcpSettingsProvider: AppRuntimeDependencyProviders.mcpSettings)
 
     private(set) var state: MCPServerState = .stopped
     private(set) var connectedClients: [SessionSnapshot] = []
     private(set) var tokenStore: MCPTokenStore?
+    private let mcpSettingsProvider: @MainActor () -> MCPSettings
 
     private var transport: MCPHttpServerTransport?
     private var dispatcher: MCPProtocolDispatcher?
@@ -55,7 +56,17 @@ final class MCPServerManager {
         }
     }
 
-    private init() {}
+    init(appSettings: AppSettingsManager) {
+        self.mcpSettingsProvider = { appSettings.mcp }
+    }
+
+    init(mcpSettingsProvider: @escaping @MainActor () -> MCPSettings) {
+        self.mcpSettingsProvider = mcpSettingsProvider
+    }
+
+    private var mcpSettings: MCPSettings {
+        mcpSettingsProvider()
+    }
 
     func start(port: UInt16) async {
         if transport != nil {
@@ -79,7 +90,7 @@ final class MCPServerManager {
         bridgeTokenId = bridgeResult.token.id
         internalBridgeToken = bridgeResult.plaintext
 
-        let settings = AppSettingsManager.shared.mcp
+        let settings = mcpSettings
         let configuration: MCPHttpServerConfiguration
         do {
             configuration = try await makeConfiguration(port: port, settings: settings)
@@ -209,7 +220,7 @@ final class MCPServerManager {
         if case .running = state { return }
         if case .starting = state { return }
 
-        let settings = AppSettingsManager.shared.mcp
+        let settings = mcpSettings
         let preferredPort = UInt16(clamping: settings.port)
 
         let chosenPort: UInt16
@@ -257,7 +268,7 @@ final class MCPServerManager {
         dispatchTask = Task { [weak self] in
             for await exchange in transport.exchanges {
                 guard let self else { return }
-                guard await self.isCurrentGeneration(generation) else { return }
+                guard self.isCurrentGeneration(generation) else { return }
                 Task { await dispatcher.dispatch(exchange) }
             }
         }
@@ -268,7 +279,7 @@ final class MCPServerManager {
         stateTask = Task { [weak self] in
             for await transportState in transport.listenerState {
                 guard let self else { return }
-                await self.applyTransportState(transportState, generation: generation)
+                self.applyTransportState(transportState, generation: generation)
             }
         }
     }
@@ -279,7 +290,7 @@ final class MCPServerManager {
             let stream = await sessionStore.events
             for await event in stream {
                 guard let self else { return }
-                guard await self.isCurrentGeneration(generation) else { return }
+                guard self.isCurrentGeneration(generation) else { return }
                 Self.logger.debug("Session event: \(String(describing: event), privacy: .public)")
                 await self.refreshClients()
             }
@@ -438,7 +449,7 @@ final class MCPServerManager {
     private func writeHandshakeFile(port: UInt16, tlsCertFingerprint: String? = nil) {
         guard let bridgeToken = internalBridgeToken else { return }
 
-        let settings = AppSettingsManager.shared.mcp
+        let settings = mcpSettings
         let payload = HandshakeFilePayload(
             port: Int(port),
             token: bridgeToken,

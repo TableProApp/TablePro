@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProSync
 import Testing
 
 @testable import TablePro
@@ -13,7 +14,7 @@ import Testing
 @MainActor
 struct ConnectionStorageSyncDeleteTests {
     private let storage: ConnectionStorage
-    private let metadata: SyncMetadataStorage
+    private let metadata: DesktopSyncMetadataStorage
     private let storageDirectory: URL
 
     init() {
@@ -26,11 +27,12 @@ struct ConnectionStorageSyncDeleteTests {
 
         let defaults = UserDefaults(suiteName: "com.TablePro.tests.ConnectionStorage.\(unique)")!
         let syncDefaults = UserDefaults(suiteName: "com.TablePro.tests.Sync.\(unique)")!
-        metadata = SyncMetadataStorage(userDefaults: syncDefaults)
+        metadata = DesktopSyncMetadataStorage(userDefaults: syncDefaults)
         storage = ConnectionStorage(
             fileURL: fileURL,
             userDefaults: defaults,
-            syncTracker: SyncChangeTracker(metadataStorage: metadata)
+            syncTracker: DesktopSyncChangeTracker(metadataStorage: metadata),
+            appSettings: AppSettingsStorage(userDefaults: defaults)
         )
     }
 

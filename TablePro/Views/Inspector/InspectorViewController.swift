@@ -62,7 +62,7 @@ final class InspectorViewController: NSViewController, NSUserInterfaceValidation
 
     @available(*, unavailable)
     required init?(coder: NSCoder) {
-        fatalError("init(coder:) not supported")
+        return nil
     }
 
     override func loadView() {

@@ -1,5 +1,5 @@
 //
-//  SyncMetadataStorage.swift
+//  DesktopSyncMetadataStorage.swift
 //  TablePro
 //
 //  Persists sync metadata (tokens, dirty sets, tombstones) in UserDefaults
@@ -8,11 +8,12 @@
 import CloudKit
 import Foundation
 import os
+import TableProSync
 
 /// Persistent storage for sync metadata using UserDefaults
-final class SyncMetadataStorage {
-    static let shared = SyncMetadataStorage()
-    private static let logger = Logger(subsystem: "com.TablePro", category: "SyncMetadataStorage")
+final class DesktopSyncMetadataStorage {
+    static let shared = DesktopSyncMetadataStorage()
+    private static let logger = Logger(subsystem: "com.TablePro", category: "DesktopSyncMetadataStorage")
 
     private let defaults: UserDefaults
 

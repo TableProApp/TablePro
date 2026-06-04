@@ -3,6 +3,7 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
+@MainActor
 @Suite("ExecuteQueryTool")
 struct ExecuteQueryToolTests {
     @Test("Tool exposes correct metadata")
@@ -13,6 +14,27 @@ struct ExecuteQueryToolTests {
         let required = schema["required"]?.arrayValue?.compactMap(\.stringValue) ?? []
         #expect(required.contains("connection_id"))
         #expect(required.contains("query"))
+    }
+
+    @Test("Tool services expose injected runtime settings")
+    func toolServicesExposeInjectedRuntimeSettings() async {
+        let services = MCPToolServices(
+            connectionBridge: MCPConnectionBridge(),
+            authPolicy: MCPAuthPolicy(),
+            runtimeSettingsProvider: {
+                MCPToolRuntimeSettings(
+                    defaultRowLimit: 7,
+                    maxRowLimit: 13,
+                    queryTimeoutSeconds: 19
+                )
+            }
+        )
+
+        let settings = await services.runtimeSettings()
+
+        #expect(settings.defaultRowLimit == 7)
+        #expect(settings.maxRowLimit == 13)
+        #expect(settings.queryTimeoutSeconds == 19)
     }
 
     @Test("Multi-statement query is rejected before connection lookup")

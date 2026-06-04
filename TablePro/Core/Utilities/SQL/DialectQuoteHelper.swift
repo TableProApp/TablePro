@@ -21,17 +21,7 @@ enum SQLDialectError: Error, LocalizedError {
 }
 
 func quoteIdentifierFromDialect(_ dialect: SQLDialectDescriptor) -> (String) -> String {
-    let q = dialect.identifierQuote
-    if q == "[" {
-        return { name in
-            let escaped = name.replacingOccurrences(of: "]", with: "]]")
-            return "[\(escaped)]"
-        }
-    }
-    return { name in
-        let escaped = name.replacingOccurrences(of: q, with: q + q)
-        return "\(q)\(escaped)\(q)"
-    }
+    { dialect.quoteIdentifier($0) }
 }
 
 func resolveSQLDialect(

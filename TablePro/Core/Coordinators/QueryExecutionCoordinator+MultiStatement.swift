@@ -11,7 +11,7 @@ import TableProPluginKit
 private let multiStatementLogger = Logger(subsystem: "com.TablePro", category: "MultiStatement")
 
 extension QueryExecutionCoordinator {
-    func executeMultipleStatements(_ statements: [String]) {
+    func executeMultipleStatements(_ statements: [String], authorizationRequest: OperationRequest? = nil) {
         guard let index = parent.tabManager.selectedTabIndex else { return }
         guard !parent.tabManager.tabs[index].execution.isExecuting else { return }
 
@@ -29,6 +29,7 @@ extension QueryExecutionCoordinator {
         let conn = parent.connection
         let tabId = parent.tabManager.tabs[index].id
         let totalCount = statements.count
+        let executionRequest = authorizationRequest ?? makeExecuteRequest(statements: statements)
 
         parent.currentQueryTask = Task { [weak self, parent] in
             guard let self else { return }
@@ -75,7 +76,7 @@ extension QueryExecutionCoordinator {
                     }
 
                     failedSQL = sql
-                    let result = try await driver.execute(query: sql)
+                    let result = try await driver.executeAuthorizing(query: sql, request: executionRequest)
                     failedSQL = nil
                     executedCount = stmtIndex + 1
                     cumulativeTime += result.executionTime

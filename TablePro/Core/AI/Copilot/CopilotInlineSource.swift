@@ -11,21 +11,38 @@ final class CopilotInlineSource: InlineSuggestionSource {
     private static let logger = Logger(subsystem: "com.TablePro", category: "CopilotInlineSource")
 
     private let documentSync: CopilotDocumentSync
+    private let isCopilotAvailableProvider: @MainActor () -> Bool
+    private let clientProvider: @MainActor () -> LSPClient?
+    private let editorSettingsProvider: @MainActor () -> EditorSettings
     private var pendingCommands: [UUID: LSPCommand] = [:]
 
-    init(documentSync: CopilotDocumentSync) {
+    init(
+        documentSync: CopilotDocumentSync,
+        isCopilotAvailableProvider: @escaping @MainActor () -> Bool = {
+            CopilotService.shared.status == .running && CopilotService.shared.isAuthenticated
+        },
+        clientProvider: @escaping @MainActor () -> LSPClient? = {
+            CopilotService.shared.client
+        },
+        editorSettingsProvider: @escaping @MainActor () -> EditorSettings = {
+            AppSettingsManager.shared.editor
+        }
+    ) {
         self.documentSync = documentSync
+        self.isCopilotAvailableProvider = isCopilotAvailableProvider
+        self.clientProvider = clientProvider
+        self.editorSettingsProvider = editorSettingsProvider
     }
 
     var isAvailable: Bool {
-        CopilotService.shared.status == .running && CopilotService.shared.isAuthenticated
+        isCopilotAvailableProvider()
     }
 
     func requestSuggestion(context: SuggestionContext) async throws -> InlineSuggestion? {
-        guard let client = CopilotService.shared.client else { return nil }
+        guard let client = clientProvider() else { return nil }
         guard let docInfo = documentSync.currentDocumentInfo() else { return nil }
 
-        let editorSettings = AppSettingsManager.shared.editor
+        let editorSettings = editorSettingsProvider()
         let preambleOffset = documentSync.preambleBuilder.preambleLineCount
         let params = LSPInlineCompletionParams(
             textDocument: LSPVersionedTextDocumentIdentifier(uri: docInfo.uri, version: docInfo.version),
@@ -83,8 +100,8 @@ final class CopilotInlineSource: InlineSuggestionSource {
 
     func didAcceptSuggestion(_ suggestion: InlineSuggestion) {
         guard let command = pendingCommands.removeValue(forKey: suggestion.id) else { return }
-        Task {
-            guard let client = CopilotService.shared.client else { return }
+        Task { @MainActor [clientProvider] in
+            guard let client = clientProvider() else { return }
             try? await client.executeCommand(command: command.command, arguments: command.arguments)
         }
     }

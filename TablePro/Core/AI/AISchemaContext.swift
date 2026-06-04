@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import TableProCoreTypes
 import TableProPluginKit
 
 /// Builds schema context for AI system prompts

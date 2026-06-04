@@ -8,17 +8,18 @@ import os
 
 @MainActor @Observable
 final class RegistryClient {
-    static let shared = RegistryClient()
+    static let shared = RegistryClient(userDefaults: .standard)
 
     private(set) var manifest: RegistryManifest?
     private(set) var fetchState: RegistryFetchState = .idle
     private(set) var lastFetchDate: Date?
 
     private var cachedETag: String? {
-        get { UserDefaults.standard.string(forKey: Self.etagKey) }
-        set { UserDefaults.standard.set(newValue, forKey: Self.etagKey) }
+        get { defaults.string(forKey: Self.etagKey) }
+        set { defaults.set(newValue, forKey: Self.etagKey) }
     }
 
+    private let defaults: UserDefaults
     let session: URLSession
     static let supportedSchemaVersion = 2
     private static let logger = Logger(subsystem: "com.TablePro", category: "RegistryClient")
@@ -39,7 +40,7 @@ final class RegistryClient {
     }
 
     private var registryURL: URL {
-        if let raw = UserDefaults.standard.string(forKey: Self.customRegistryURLKey),
+        if let raw = defaults.string(forKey: Self.customRegistryURLKey),
            let custom = URL(string: raw) {
             Self.logger.warning("Using custom plugin registry URL: \(raw)")
             return custom
@@ -57,27 +58,27 @@ final class RegistryClient {
             .appendingPathComponent(manifestCacheFileName)
     }
 
-    private init() {
+    init(userDefaults: UserDefaults) {
+        self.defaults = userDefaults
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 15
         config.timeoutIntervalForResource = 30
         config.waitsForConnectivity = true
         self.session = URLSession(configuration: config)
 
-        Self.migrateLegacyKeys()
+        migrateLegacyKeys()
         loadCachedManifest()
     }
 
-    private static func migrateLegacyKeys() {
-        let defaults = UserDefaults.standard
-        if defaults.object(forKey: legacyETagKey) != nil {
-            defaults.removeObject(forKey: legacyETagKey)
+    private func migrateLegacyKeys() {
+        if defaults.object(forKey: Self.legacyETagKey) != nil {
+            defaults.removeObject(forKey: Self.legacyETagKey)
         }
-        if defaults.object(forKey: legacyLastFetchKey) != nil {
-            defaults.removeObject(forKey: legacyLastFetchKey)
+        if defaults.object(forKey: Self.legacyLastFetchKey) != nil {
+            defaults.removeObject(forKey: Self.legacyLastFetchKey)
         }
-        if defaults.object(forKey: legacyManifestCacheKey) != nil {
-            defaults.removeObject(forKey: legacyManifestCacheKey)
+        if defaults.object(forKey: Self.legacyManifestCacheKey) != nil {
+            defaults.removeObject(forKey: Self.legacyManifestCacheKey)
         }
     }
 
@@ -87,7 +88,7 @@ final class RegistryClient {
               let cached = try? JSONDecoder().decode(RegistryManifest.self, from: data)
         else { return }
         manifest = cached
-        lastFetchDate = UserDefaults.standard.object(forKey: Self.lastFetchKey) as? Date
+        lastFetchDate = defaults.object(forKey: Self.lastFetchKey) as? Date
     }
 
     private static func writeCachedManifest(_ data: Data) {
@@ -108,10 +109,10 @@ final class RegistryClient {
 
         // Invalidate ETag cache when registry URL changes
         let currentURL = registryURL.absoluteString
-        let lastURL = UserDefaults.standard.string(forKey: Self.lastRegistryURLKey)
+        let lastURL = defaults.string(forKey: Self.lastRegistryURLKey)
         if currentURL != lastURL {
             cachedETag = nil
-            UserDefaults.standard.set(currentURL, forKey: Self.lastRegistryURLKey)
+            defaults.set(currentURL, forKey: Self.lastRegistryURLKey)
         }
 
         let request = makeManifestRequest(forceRefresh: forceRefresh)
@@ -152,7 +153,7 @@ final class RegistryClient {
                 Self.writeCachedManifest(data)
                 cachedETag = httpResponse.value(forHTTPHeaderField: "ETag")
                 lastFetchDate = Date()
-                UserDefaults.standard.set(lastFetchDate, forKey: Self.lastFetchKey)
+                defaults.set(lastFetchDate, forKey: Self.lastFetchKey)
 
                 fetchState = .loaded
                 Self.logger.info("Fetched registry manifest with \(decoded.plugins.count) plugin(s)")

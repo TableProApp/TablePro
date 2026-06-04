@@ -50,7 +50,7 @@ final class IOSSyncCoordinator {
         do {
             let accountStatus = try await getEngine().accountStatus()
             guard accountStatus == .available else {
-                status = .error("iCloud account not available")
+                status = .error(.accountUnavailable)
                 return
             }
 
@@ -80,7 +80,7 @@ final class IOSSyncCoordinator {
             status = .idle
         } catch let error as SyncError where error == .tokenExpired {
             guard !isRetry else {
-                status = .error("Sync failed after token refresh")
+                status = .error(.pullFailed("Sync failed after token refresh"))
                 return
             }
             metadata.saveToken(nil)
@@ -91,7 +91,7 @@ final class IOSSyncCoordinator {
                 isRetry: true
             )
         } catch {
-            status = .error(error.localizedDescription)
+            status = .error(SyncError.from(error))
         }
     }
 

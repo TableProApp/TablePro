@@ -16,7 +16,11 @@ final class AIKeyStorage {
 
     private let keychain: KeychainHelper
 
-    init(keychain: KeychainHelper = .shared) {
+    convenience init() {
+        self.init(keychain: .shared)
+    }
+
+    init(keychain: KeychainHelper) {
         self.keychain = keychain
     }
 

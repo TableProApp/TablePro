@@ -108,11 +108,11 @@ struct FilterSQLGenerator {
         case .regex:
             let syntax = dialect.regexSyntax
             if syntax == .unsupported {
-                let escaped = escapeSQLQuote(filter.value)
+                let escaped = dialect.escapeSQLQuote(filter.value)
                 return "\(quotedColumn) LIKE '%\(escaped)%'"
             }
             if syntax == .match {
-                let escapedPattern = escapeStringValue(filter.value)
+                let escapedPattern = dialect.escapeStringLiteralContent(filter.value)
                 return "match(\(quotedColumn), '\(escapedPattern)')"
             }
             return generateRegexCondition(column: quotedColumn, pattern: filter.value)
@@ -167,24 +167,23 @@ struct FilterSQLGenerator {
     /// Implicit style (MySQL/MariaDB): backslash is the default LIKE escape, no clause needed.
     /// Explicit style: requires an ESCAPE declaration.
     private var likeEscapeClause: String {
-        if dialect.likeEscapeStyle == .implicit { return "" }
-        return " ESCAPE '!'"
+        dialect.likeEscapeClause
     }
 
     private func generateLikeCondition(column: String, pattern: String) -> String {
-        let quotedPattern = escapeSQLQuote(pattern)
+        let quotedPattern = dialect.escapeSQLQuote(pattern)
         return "\(column) LIKE '\(quotedPattern)'\(likeEscapeClause)"
     }
 
     private func generateNotLikeCondition(column: String, pattern: String) -> String {
-        let quotedPattern = escapeSQLQuote(pattern)
+        let quotedPattern = dialect.escapeSQLQuote(pattern)
         return "\(column) NOT LIKE '\(quotedPattern)'\(likeEscapeClause)"
     }
 
     // MARK: - REGEX Conditions
 
     private func generateRegexCondition(column: String, pattern: String) -> String {
-        let escapedPattern = escapeStringValue(pattern)
+        let escapedPattern = dialect.escapeStringLiteralContent(pattern)
 
         switch dialect.regexSyntax {
         case .regexp:
@@ -206,70 +205,11 @@ struct FilterSQLGenerator {
 
     /// Escape a value for SQL, auto-detecting type
     private func escapeValue(_ value: String) -> String {
-        let trimmed = value.trimmingCharacters(in: .whitespaces)
-
-        // Check for NULL literal (case-insensitive without allocating uppercased copy)
-        if trimmed.caseInsensitiveCompare("NULL") == .orderedSame {
-            return "NULL"
-        }
-
-        // Check for boolean literals
-        if trimmed.caseInsensitiveCompare("TRUE") == .orderedSame {
-            return dialect.booleanLiteralStyle == .truefalse ? "TRUE" : "1"
-        }
-        if trimmed.caseInsensitiveCompare("FALSE") == .orderedSame {
-            return dialect.booleanLiteralStyle == .truefalse ? "FALSE" : "0"
-        }
-
-        // Try to detect numeric values
-        if Int(trimmed) != nil || Double(trimmed) != nil {
-            return trimmed
-        }
-
-        // String value - escape and quote
-        return "'\(escapeStringValue(trimmed))'"
-    }
-
-    /// Escape only single quotes for SQL string literal context.
-    /// Used for LIKE patterns where wildcards are already escaped
-    /// by escapeLikeWildcards for the ESCAPE clause.
-    private func escapeSQLQuote(_ value: String) -> String {
-        guard value.contains("'") else { return value }
-        return value.replacingOccurrences(of: "'", with: "''")
-    }
-
-    /// Escape special characters in string values
-    private func escapeStringValue(_ value: String) -> String {
-        // Fast path: most values have no special chars
-        if dialect.likeEscapeStyle == .implicit {
-            // MySQL/MariaDB/ClickHouse: backslash is significant in string literals
-            guard value.contains("\\") || value.contains("'") else { return value }
-            return value
-                .replacingOccurrences(of: "\\", with: "\\\\")
-                .replacingOccurrences(of: "'", with: "''")
-        } else {
-            // ANSI SQL: only single-quote needs escaping
-            guard value.contains("'") else { return value }
-            return value.replacingOccurrences(of: "'", with: "''")
-        }
+        dialect.sqlLiteral(for: value)
     }
 
     private func escapeLikeWildcards(_ value: String) -> String {
-        if dialect.likeEscapeStyle == .implicit {
-            guard value.contains("\\") || value.contains("%") || value.contains("_") else { return value }
-            // MySQL uses \ as both string escape and default LIKE escape.
-            // Need double backslash in SQL string so string layer yields single \
-            // which LIKE then uses as escape char.
-            return value
-                .replacingOccurrences(of: "\\", with: "\\\\\\\\")
-                .replacingOccurrences(of: "%", with: "\\\\%")
-                .replacingOccurrences(of: "_", with: "\\\\_")
-        }
-        guard value.contains("!") || value.contains("%") || value.contains("_") else { return value }
-        return value
-            .replacingOccurrences(of: "!", with: "!!")
-            .replacingOccurrences(of: "%", with: "!%")
-            .replacingOccurrences(of: "_", with: "!_")
+        dialect.escapeLikeWildcards(value)
     }
 
     // MARK: - Raw SQL Validation

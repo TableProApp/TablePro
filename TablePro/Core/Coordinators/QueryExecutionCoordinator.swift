@@ -26,7 +26,7 @@ final class QueryExecutionCoordinator {
         let statements = SQLStatementScanner.allStatements(in: fullQuery, dialect: parent.sqlDialect)
         guard !statements.isEmpty else { return }
 
-        if AppSettingsManager.shared.editor.queryParametersEnabled {
+        if parent.services.appSettings.editor.queryParametersEnabled {
             let combinedSQL = statements.joined(separator: "; ")
             let detectedNames = SQLParameterExtractor.extractParameters(from: combinedSQL)
 
@@ -54,29 +54,29 @@ final class QueryExecutionCoordinator {
         guard !parent.isShowingSafeModePrompt else { return }
         parent.isShowingSafeModePrompt = true
         let request = makeExecuteRequest(statements: statements)
-        Task { [parent] in
+        Task { [weak self, parent] in
+            guard let self else { return }
             defer { parent.isShowingSafeModePrompt = false }
-            switch await ExecutionGateProvider.shared.authorize(request) {
-            case .authorized:
-                if statements.count == 1 {
-                    parent.executeQueryInternal(statements[0])
-                } else {
-                    executeMultipleStatements(statements)
+            do {
+                try await ExecutionGateProvider.shared.authorizing(request) {
+                    if statements.count == 1 {
+                        parent.executeQueryInternal(statements[0])
+                    } else {
+                        self.executeMultipleStatements(statements, authorizationRequest: request)
+                    }
                 }
-            case .denied(let reason):
-                parent.tabManager.mutate(at: index) { $0.execution.errorMessage = reason }
+            } catch {
+                parent.tabManager.mutate(at: index) { $0.execution.errorMessage = error.localizedDescription }
             }
         }
     }
 
-    private func makeExecuteRequest(statements: [String]) -> OperationRequest {
-        OperationRequest(
+    func makeExecuteRequest(statements: [String]) -> OperationRequest {
+        OperationRequest.interactiveUser(
             connectionId: parent.connectionId,
             databaseType: parent.connection.type,
             sql: statements.joined(separator: "\n"),
             kind: OperationKind.worst(of: statements, databaseType: parent.connection.type),
-            caller: .userInterface,
-            capabilities: .interactiveUser,
             operationDescription: String(localized: "Execute Query")
         )
     }
@@ -90,25 +90,36 @@ final class QueryExecutionCoordinator {
         parent.isShowingSafeModePrompt = true
         let tabId = parent.tabManager.tabs[index].id
         let request = makeExecuteRequest(statements: statements)
-        Task { [parent] in
+        Task { [weak self, parent] in
+            guard let self else { return }
             defer { parent.isShowingSafeModePrompt = false }
-            switch await ExecutionGateProvider.shared.authorize(request) {
-            case .authorized:
-                executeParameterizedAfterSafeMode(statements, parameters: parameters)
-            case .denied(let reason):
-                parent.tabManager.mutate(tabId: tabId) { $0.execution.errorMessage = reason }
+            do {
+                try await ExecutionGateProvider.shared.authorizing(request) {
+                    self.executeParameterizedAfterSafeMode(
+                        statements,
+                        parameters: parameters,
+                        authorizationRequest: request
+                    )
+                }
+            } catch {
+                parent.tabManager.mutate(tabId: tabId) { $0.execution.errorMessage = error.localizedDescription }
             }
         }
     }
 
     private func executeParameterizedAfterSafeMode(
         _ statements: [String],
-        parameters: [QueryParameter]
+        parameters: [QueryParameter],
+        authorizationRequest: OperationRequest
     ) {
         if statements.count == 1 {
             executeQueryWithParameters(statements[0], parameters: parameters)
         } else {
-            executeMultipleStatementsWithParameters(statements, parameters: parameters)
+            executeMultipleStatementsWithParameters(
+                statements,
+                parameters: parameters,
+                authorizationRequest: authorizationRequest
+            )
         }
     }
 }

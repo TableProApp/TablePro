@@ -14,51 +14,50 @@ extension RowEditingCoordinator {
 
     func executeSidebarChanges(statements: [ParameterizedStatement]) async throws {
         let sqlPreview = statements.map(\.sql).joined(separator: "\n")
-        let decision = await ExecutionGateProvider.shared.authorize(
-            OperationRequest(
-                connectionId: parent.connectionId,
-                databaseType: parent.connection.type,
-                sql: sqlPreview,
-                kind: OperationKind.from(QueryClassifier.classifyTier(sqlPreview, databaseType: parent.connection.type)),
-                caller: .userInterface,
-                capabilities: .interactiveUser,
-                operationDescription: String(localized: "Save Sidebar Changes")
-            )
+        let request = OperationRequest.interactiveUser(
+            connectionId: parent.connectionId,
+            databaseType: parent.connection.type,
+            sql: sqlPreview,
+            kind: OperationKind.from(QueryClassifier.classifyTier(sqlPreview, databaseType: parent.connection.type)),
+            operationDescription: String(localized: "Save Sidebar Changes")
         )
-        guard case .authorized = decision else {
-            throw DatabaseError.queryFailed(decision.deniedReason ?? String(localized: "Operation not permitted"))
-        }
 
         guard let driver = DatabaseManager.shared.driver(for: parent.connectionId) else {
             throw DatabaseError.notConnected
         }
 
-        let useTransaction = driver.supportsTransactions
+        try await ExecutionGateProvider.shared.authorizing(request) {
+            let useTransaction = driver.supportsTransactions
 
-        if useTransaction {
-            try await driver.beginTransaction()
-        }
+            if useTransaction {
+                try await driver.beginTransaction()
+            }
 
-        do {
-            for stmt in statements {
-                if stmt.parameters.isEmpty {
-                    _ = try await driver.execute(query: stmt.sql)
-                } else {
-                    _ = try await driver.executeParameterized(query: stmt.sql, parameters: stmt.parameters)
+            do {
+                for stmt in statements {
+                    if stmt.parameters.isEmpty {
+                        _ = try await driver.executeAuthorizing(query: stmt.sql, request: request)
+                    } else {
+                        _ = try await driver.executeParameterizedAuthorizing(
+                            query: stmt.sql,
+                            parameters: stmt.parameters,
+                            request: request
+                        )
+                    }
                 }
-            }
-            if useTransaction {
-                try await driver.commitTransaction()
-            }
-        } catch {
-            if useTransaction {
-                do {
-                    try await driver.rollbackTransaction()
-                } catch {
-                    discardLogger.error("Rollback failed: \(error.localizedDescription, privacy: .public)")
+                if useTransaction {
+                    try await driver.commitTransaction()
                 }
+            } catch {
+                if useTransaction {
+                    do {
+                        try await driver.rollbackTransaction()
+                    } catch {
+                        discardLogger.error("Rollback failed: \(error.localizedDescription, privacy: .public)")
+                    }
+                }
+                throw error
             }
-            throw error
         }
     }
 

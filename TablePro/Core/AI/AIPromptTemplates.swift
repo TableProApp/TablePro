@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import TableProCoreTypes
 import TableProPluginKit
 
 /// Centralized prompt templates for AI-powered editor features

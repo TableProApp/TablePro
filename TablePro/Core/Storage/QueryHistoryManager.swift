@@ -2,12 +2,21 @@ import Combine
 import Foundation
 
 final class QueryHistoryManager {
-    static let shared = QueryHistoryManager()
+    static let shared = QueryHistoryManager(
+        historySettingsProvider: AppRuntimeDependencyProviders.historySettings
+    )
 
     private let storage: QueryHistoryStorage
+    private let historySettingsProvider: @MainActor () -> HistorySettings
 
-    init(storage: QueryHistoryStorage = QueryHistoryStorage()) {
+    init(
+        storage: QueryHistoryStorage = QueryHistoryStorage(),
+        historySettingsProvider: @escaping @MainActor () -> HistorySettings = {
+            .default
+        }
+    ) {
         self.storage = storage
+        self.historySettingsProvider = historySettingsProvider
     }
 
     /// Append a pre-built `QueryHistoryEntry` and post the change notification.
@@ -27,18 +36,18 @@ final class QueryHistoryManager {
 
     @MainActor
     func performStartupCleanup() async {
-        guard AppSettingsManager.shared.history.autoCleanup else { return }
+        let settings = historySettingsProvider()
+        guard settings.autoCleanup else { return }
 
-        let settings = AppSettingsManager.shared.history
-        await storage.updateSettingsCache(maxEntries: settings.maxEntries, maxDays: settings.maxDays)
+        await applyStorageSettings(settings)
         await storage.cleanup()
     }
 
     @MainActor
     func applySettingsChange() async {
-        let settings = AppSettingsManager.shared.history
-        await storage.updateSettingsCache(maxEntries: settings.maxEntries, maxDays: settings.maxDays)
-        if AppSettingsManager.shared.history.autoCleanup {
+        let settings = historySettingsProvider()
+        await applyStorageSettings(settings)
+        if settings.autoCleanup {
             await storage.cleanup()
         }
     }
@@ -135,8 +144,16 @@ final class QueryHistoryManager {
 
     @MainActor
     func cleanup() async {
-        let settings = AppSettingsManager.shared.history
-        await storage.updateSettingsCache(maxEntries: settings.maxEntries, maxDays: settings.maxDays)
+        let settings = historySettingsProvider()
+        await applyStorageSettings(settings)
         await storage.cleanup()
+    }
+
+    @MainActor
+    private func applyStorageSettings(_ settings: HistorySettings) async {
+        await storage.updateSettingsCache(
+            maxEntries: settings.maxEntries,
+            maxDays: settings.maxDays
+        )
     }
 }

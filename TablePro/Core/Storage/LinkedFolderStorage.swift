@@ -24,14 +24,17 @@ struct LinkedFolder: Codable, Identifiable, Hashable {
 }
 
 final class LinkedFolderStorage {
-    static let shared = LinkedFolderStorage()
+    static let shared = LinkedFolderStorage(userDefaults: .standard)
     private static let logger = Logger(subsystem: "com.TablePro", category: "LinkedFolderStorage")
     private let key = "com.TablePro.linkedFolders"
+    private let defaults: UserDefaults
 
-    private init() {}
+    init(userDefaults: UserDefaults) {
+        defaults = userDefaults
+    }
 
     func loadFolders() -> [LinkedFolder] {
-        guard let data = UserDefaults.standard.data(forKey: key) else { return [] }
+        guard let data = defaults.data(forKey: key) else { return [] }
         do {
             return try JSONDecoder().decode([LinkedFolder].self, from: data)
         } catch {
@@ -43,7 +46,7 @@ final class LinkedFolderStorage {
     func saveFolders(_ folders: [LinkedFolder]) {
         do {
             let data = try JSONEncoder().encode(folders)
-            UserDefaults.standard.set(data, forKey: key)
+            defaults.set(data, forKey: key)
         } catch {
             Self.logger.error("Failed to encode linked folders: \(error.localizedDescription, privacy: .public)")
         }

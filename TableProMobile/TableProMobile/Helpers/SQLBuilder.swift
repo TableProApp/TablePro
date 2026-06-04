@@ -1,28 +1,18 @@
 import Foundation
 import TableProModels
-import TableProPluginKit
 import TableProQuery
 
 enum SQLBuilder {
     static func quoteIdentifier(_ name: String, for type: DatabaseType) -> String {
-        switch type {
-        case .mysql, .mariadb:
-            return "`\(name.replacingOccurrences(of: "`", with: "``"))`"
-        case .postgresql, .redshift:
-            return "\"\(name.replacingOccurrences(of: "\"", with: "\"\""))\""
-        case .mssql:
-            return "[\(name.replacingOccurrences(of: "]", with: "]]"))]"
-        default:
-            return "\"\(name.replacingOccurrences(of: "\"", with: "\"\""))\""
-        }
+        SQLDialectFactory.quoteIdentifier(name, for: type)
     }
 
     static func paginationClause(orderBy: String, limit: Int, offset: Int, for type: DatabaseType) -> String {
-        switch type {
-        case .mssql:
+        switch SQLDialectFactory.dialect(for: type).paginationStyle {
+        case .offsetFetch:
             let order = orderBy.isEmpty ? "ORDER BY (SELECT NULL)" : orderBy
             return "\(order) OFFSET \(offset) ROWS FETCH NEXT \(limit) ROWS ONLY"
-        default:
+        case .limit:
             let trailing = "LIMIT \(limit) OFFSET \(offset)"
             return orderBy.isEmpty ? trailing : "\(orderBy) \(trailing)"
         }
@@ -110,7 +100,7 @@ enum SQLBuilder {
         filters: [TableFilter], logicMode: FilterLogicMode,
         limit: Int, offset: Int
     ) -> String {
-        let dialect = dialectDescriptor(for: type)
+        let dialect = SQLDialectFactory.dialect(for: type)
         let generator = FilterSQLGenerator(dialect: dialect)
         let whereClause = generator.generateWhereClause(from: filters, logicMode: logicMode)
         let quoted = quoteIdentifier(table, for: type)
@@ -127,7 +117,7 @@ enum SQLBuilder {
         sortState: SortState,
         limit: Int, offset: Int
     ) -> String {
-        let dialect = dialectDescriptor(for: type)
+        let dialect = SQLDialectFactory.dialect(for: type)
         let generator = FilterSQLGenerator(dialect: dialect)
         let whereClause = generator.generateWhereClause(from: filters, logicMode: logicMode)
         let orderBy = buildOrderByClause(sortState, for: type)
@@ -143,7 +133,7 @@ enum SQLBuilder {
         table: String, type: DatabaseType,
         filters: [TableFilter], logicMode: FilterLogicMode
     ) -> String {
-        let dialect = dialectDescriptor(for: type)
+        let dialect = SQLDialectFactory.dialect(for: type)
         let generator = FilterSQLGenerator(dialect: dialect)
         let whereClause = generator.generateWhereClause(from: filters, logicMode: logicMode)
         let quoted = quoteIdentifier(table, for: type)
@@ -213,7 +203,7 @@ enum SQLBuilder {
     private static func filterConditions(
         filters: [TableFilter], logicMode: FilterLogicMode, type: DatabaseType
     ) -> String? {
-        let dialect = dialectDescriptor(for: type)
+        let dialect = SQLDialectFactory.dialect(for: type)
         let generator = FilterSQLGenerator(dialect: dialect)
         let clause = generator.generateWhereClause(from: filters, logicMode: logicMode)
         guard !clause.isEmpty else { return nil }
@@ -229,7 +219,7 @@ enum SQLBuilder {
         let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, !columns.isEmpty else { return "" }
 
-        let dialect = dialectDescriptor(for: type)
+        let dialect = SQLDialectFactory.dialect(for: type)
         let pattern = escapeLikePattern(trimmed, dialect: dialect)
         let likeEscape: String = dialect.likeEscapeStyle == .explicit ? " ESCAPE '!'" : ""
 
@@ -255,7 +245,7 @@ enum SQLBuilder {
         return "(\(conditions.joined(separator: " OR ")))"
     }
 
-    private static func escapeLikePattern(_ value: String, dialect: SQLDialectDescriptor) -> String {
+    private static func escapeLikePattern(_ value: String, dialect: QueryDialectDescriptor) -> String {
         var result = value
             .replacingOccurrences(of: "'", with: "''")
             .replacingOccurrences(of: "\0", with: "")
@@ -282,40 +272,4 @@ enum SQLBuilder {
         return "ORDER BY " + clauses.joined(separator: ", ")
     }
 
-    private static func dialectDescriptor(for type: DatabaseType) -> SQLDialectDescriptor {
-        switch type {
-        case .mysql, .mariadb:
-            return SQLDialectDescriptor(
-                identifierQuote: "`",
-                keywords: [],
-                functions: [],
-                dataTypes: [],
-                likeEscapeStyle: .implicit,
-                requiresBackslashEscaping: true
-            )
-        case .postgresql, .redshift:
-            return SQLDialectDescriptor(
-                identifierQuote: "\"",
-                keywords: [],
-                functions: [],
-                dataTypes: [],
-                likeEscapeStyle: .explicit
-            )
-        case .mssql:
-            return SQLDialectDescriptor(
-                identifierQuote: "[",
-                keywords: [],
-                functions: [],
-                dataTypes: [],
-                likeEscapeStyle: .explicit
-            )
-        default:
-            return SQLDialectDescriptor(
-                identifierQuote: "\"",
-                keywords: [],
-                functions: [],
-                dataTypes: []
-            )
-        }
-    }
 }

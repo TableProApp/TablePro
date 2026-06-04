@@ -1,5 +1,5 @@
 //
-//  SyncRecordMapper.swift
+//  DesktopSyncRecordMapper.swift
 //  TablePro
 //
 //  Maps between local models and CKRecord for CloudKit sync
@@ -9,18 +9,7 @@ import CloudKit
 import Foundation
 import os
 import TableProPluginKit
-
-/// CloudKit record types for sync
-enum SyncRecordType: String, CaseIterable {
-    case connection = "Connection"
-    case group = "ConnectionGroup"
-    case tag = "ConnectionTag"
-    case settings = "AppSettings"
-    case favorite = "SQLFavorite"
-    case favoriteFolder = "SQLFavoriteFolder"
-    case tableFavorite = "FavoriteTable"
-    case sshProfile = "SSHProfile"
-}
+import TableProSync
 
 enum SyncDecodeError: Error, LocalizedError {
     case missingRequiredField(String)
@@ -37,8 +26,8 @@ enum SyncDecodeError: Error, LocalizedError {
 }
 
 /// Pure-function mapper between local models and CKRecord
-struct SyncRecordMapper {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "SyncRecordMapper")
+struct DesktopSyncRecordMapper {
+    private static let logger = Logger(subsystem: "com.TablePro", category: "DesktopSyncRecordMapper")
     private static let encoder = JSONEncoder()
     private static let decoder = JSONDecoder()
 

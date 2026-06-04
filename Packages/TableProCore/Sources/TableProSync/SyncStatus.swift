@@ -1,24 +1,14 @@
-//
-//  SyncStatus.swift
-//  TablePro
-//
-//  Sync state representation
-//
-
-import Foundation
-
-/// Current state of the sync system
-enum SyncStatus: Equatable {
+public enum SyncStatus: Equatable, Sendable {
     case idle
     case syncing
     case error(SyncError)
-    case disabled(DisableReason)
+    case disabled(SyncDisableReason)
 
-    var isSyncing: Bool {
+    public var isSyncing: Bool {
         self == .syncing
     }
 
-    var isEnabled: Bool {
+    public var isEnabled: Bool {
         switch self {
         case .disabled:
             return false
@@ -28,8 +18,7 @@ enum SyncStatus: Equatable {
     }
 }
 
-/// Reason why sync is disabled
-enum DisableReason: Equatable {
+public enum SyncDisableReason: Equatable, Sendable {
     case noAccount
     case licenseRequired
     case licenseExpired

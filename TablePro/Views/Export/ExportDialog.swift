@@ -673,7 +673,9 @@ struct ExportDialog: View {
 
     private func fetchTablesForSchema(_ schema: String) async throws -> [TableInfo] {
         let isOracle = connection.type.pluginTypeId == "Oracle"
-        return try await DatabaseManager.shared.withMetadataDriver(connectionId: connection.id, workload: .bulk) { driver in
+        let connectionId = connection.id
+        let databaseType = connection.type
+        return try await DatabaseManager.shared.withMetadataDriver(connectionId: connectionId, workload: .bulk) { driver in
             if isOracle {
                 let escapedSchema = schema.replacingOccurrences(of: "'", with: "''")
                 let query = """
@@ -682,7 +684,13 @@ struct ExportDialog: View {
                     SELECT VIEW_NAME, 'VIEW' FROM ALL_VIEWS WHERE OWNER = '\(escapedSchema)'
                     ORDER BY 1
                     """
-                let result = try await driver.execute(query: query)
+                let request = Self.metadataReadRequest(
+                    connectionId: connectionId,
+                    databaseType: databaseType,
+                    sql: query,
+                    operationDescription: String(localized: "Fetch Export Tables")
+                )
+                let result = try await driver.executeAuthorizing(query: query, request: request)
                 return result.rows.compactMap { row -> TableInfo? in
                     guard let name = row[safe: 0]?.asText else { return nil }
                     let typeStr = row[safe: 1]?.asText ?? "BASE TABLE"
@@ -696,7 +704,13 @@ struct ExportDialog: View {
                 FROM information_schema.tables
                 ORDER BY table_name
                 """
-            let result = try await driver.execute(query: query)
+            let request = Self.metadataReadRequest(
+                connectionId: connectionId,
+                databaseType: databaseType,
+                sql: query,
+                operationDescription: String(localized: "Fetch Export Tables")
+            )
+            let result = try await driver.executeAuthorizing(query: query, request: request)
             return result.rows.compactMap { row -> TableInfo? in
                 guard row.count >= 2,
                       let rowSchema = row[0].asText,
@@ -712,13 +726,21 @@ struct ExportDialog: View {
     }
 
     private func fetchTablesForDatabase(_ database: String) async throws -> [TableInfo] {
-        try await DatabaseManager.shared.withMetadataDriver(connectionId: connection.id, workload: .bulk) { driver in
+        let connectionId = connection.id
+        let databaseType = connection.type
+        return try await DatabaseManager.shared.withMetadataDriver(connectionId: connectionId, workload: .bulk) { driver in
             let query = """
                 SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE
                 FROM information_schema.TABLES
                 ORDER BY TABLE_NAME
                 """
-            let result = try await driver.execute(query: query)
+            let request = Self.metadataReadRequest(
+                connectionId: connectionId,
+                databaseType: databaseType,
+                sql: query,
+                operationDescription: String(localized: "Fetch Export Tables")
+            )
+            let result = try await driver.executeAuthorizing(query: query, request: request)
 
             return result.rows.compactMap { row -> TableInfo? in
                 guard row.count >= 2,
@@ -732,6 +754,20 @@ struct ExportDialog: View {
                 return TableInfo(name: name, type: type, rowCount: nil)
             }
         }
+    }
+
+    nonisolated private static func metadataReadRequest(
+        connectionId: UUID,
+        databaseType: DatabaseType,
+        sql: String,
+        operationDescription: String
+    ) -> OperationRequest {
+        OperationRequest.metadataRead(
+            connectionId: connectionId,
+            databaseType: databaseType,
+            sql: sql,
+            operationDescription: operationDescription
+        )
     }
 
     @MainActor
@@ -788,6 +824,7 @@ struct ExportDialog: View {
 
         let service = ExportService(
             driver: driver,
+            connectionId: connection.id,
             databaseType: connection.type
         )
         exportService = service
@@ -834,7 +871,7 @@ struct ExportDialog: View {
             switch mode {
             case .streamingQuery(_, let query, _):
                 guard let driver = DatabaseManager.shared.driver(for: connection.id) else { return }
-                service = ExportService(driver: driver, databaseType: connection.type)
+                service = ExportService(driver: driver, connectionId: connection.id, databaseType: connection.type)
                 exportService = service
                 try await service.exportStreamingQuery(query: query, config: config, to: url)
             case .queryResults(_, let tableRows, _):

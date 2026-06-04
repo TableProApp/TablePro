@@ -4,10 +4,12 @@ import Foundation
 /// Keyed by connection + schema so positions survive across sessions.
 @MainActor
 final class ERDiagramPositionStorage {
-    static let shared = ERDiagramPositionStorage()
-    private let defaults = UserDefaults.standard
+    static let shared = ERDiagramPositionStorage(userDefaults: .standard)
+    private let defaults: UserDefaults
 
-    private init() {}
+    init(userDefaults: UserDefaults) {
+        defaults = userDefaults
+    }
 
     private func key(connectionId: UUID, schemaKey: String) -> String {
         "com.TablePro.erDiagram.positions.\(connectionId.uuidString).\(schemaKey)"

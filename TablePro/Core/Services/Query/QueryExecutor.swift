@@ -68,6 +68,7 @@ final class QueryExecutor {
         }
 
         let driver = try resolveDriver()
+        let executionRequest = makeExecutionRequest(sql: sql)
 
         let fetchResult: QueryFetchResult
         do {
@@ -76,13 +77,15 @@ final class QueryExecutor {
                     driver: driver,
                     sql: sql,
                     parameters: parameters,
-                    rowCap: rowCap
+                    rowCap: rowCap,
+                    request: executionRequest
                 )
             } else {
                 fetchResult = try await Self.fetchQueryData(
                     driver: driver,
                     sql: sql,
-                    rowCap: rowCap
+                    rowCap: rowCap,
+                    request: executionRequest
                 )
             }
         } catch {
@@ -108,16 +111,31 @@ final class QueryExecutor {
         )
     }
 
+    private func makeExecutionRequest(sql: String) -> OperationRequest {
+        OperationRequest.interactiveUser(
+            connectionId: connection.id,
+            databaseType: connection.type,
+            sql: sql,
+            operationDescription: String(localized: "Execute Query")
+        )
+    }
+
     // MARK: - Driver fetch (nonisolated, runs on background)
 
     nonisolated static func fetchQueryData(
         driver: DatabaseDriver,
         sql: String,
-        rowCap: Int?
+        rowCap: Int?,
+        request: OperationRequest
     ) async throws -> QueryFetchResult {
         let start = CFAbsoluteTimeGetCurrent()
         queryExecutorLog.info("[executeUserQuery] sql=\(sql.prefix(100), privacy: .public) rowCap=\(rowCap?.description ?? "nil")")
-        let result = try await driver.executeUserQuery(query: sql, rowCap: rowCap, parameters: nil)
+        let result = try await driver.executeUserQueryAuthorizing(
+            query: sql,
+            rowCap: rowCap,
+            parameters: nil,
+            request: request
+        )
         let elapsed = CFAbsoluteTimeGetCurrent() - start
         queryExecutorLog.info("[executeUserQuery] rows=\(result.rows.count) truncated=\(result.isTruncated) driverTime=\(String(format: "%.3f", result.executionTime))s totalTime=\(String(format: "%.3f", elapsed))s")
         return QueryFetchResult(
@@ -135,11 +153,17 @@ final class QueryExecutor {
         driver: DatabaseDriver,
         sql: String,
         parameters: [Any?],
-        rowCap: Int?
+        rowCap: Int?,
+        request: OperationRequest
     ) async throws -> QueryFetchResult {
         let start = CFAbsoluteTimeGetCurrent()
         queryExecutorLog.info("[executeUserQueryParameterized] sql=\(sql.prefix(100), privacy: .public) rowCap=\(rowCap?.description ?? "nil") params=\(parameters.count)")
-        let result = try await driver.executeUserQuery(query: sql, rowCap: rowCap, parameters: parameters)
+        let result = try await driver.executeUserQueryAuthorizing(
+            query: sql,
+            rowCap: rowCap,
+            parameters: parameters,
+            request: request
+        )
         let elapsed = CFAbsoluteTimeGetCurrent() - start
         queryExecutorLog.info("[executeUserQueryParameterized] rows=\(result.rows.count) truncated=\(result.isTruncated) driverTime=\(String(format: "%.3f", result.executionTime))s totalTime=\(String(format: "%.3f", elapsed))s")
         return QueryFetchResult(
@@ -209,8 +233,12 @@ final class QueryExecutor {
 
     // MARK: - Row cap policy
 
-    static func resolveRowCap(sql: String, tabType: TabType, databaseType: DatabaseType) -> Int? {
-        let dataGridSettings = AppSettingsManager.shared.dataGrid
+    static func resolveRowCap(
+        sql: String,
+        tabType: TabType,
+        databaseType: DatabaseType,
+        dataGridSettings: DataGridSettings
+    ) -> Int? {
         let trimmedUpper = sql.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
         let isSelectQuery = trimmedUpper.hasPrefix("SELECT ") || trimmedUpper.hasPrefix("WITH ")
         let isWrite = QueryClassifier.isWriteQuery(sql, databaseType: databaseType)

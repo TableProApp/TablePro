@@ -14,15 +14,23 @@ import TableProPluginKit
 /// Manages database connections and active drivers
 @MainActor @Observable
 final class DatabaseManager {
-    static let shared = DatabaseManager()
+    static let shared = DatabaseManager(
+        connectionStorage: .shared,
+        appSettingsStorage: .shared,
+        pluginManager: .shared,
+        queryTimeoutSecondsProvider: {
+            AppSettingsManager.shared.general.queryTimeoutSeconds
+        }
+    )
     internal static let logger = Logger(subsystem: "com.TablePro", category: "DatabaseManager")
 
     @ObservationIgnored internal let connectionStorage: ConnectionStorage
     @ObservationIgnored internal let appSettingsStorage: AppSettingsStorage
     @ObservationIgnored internal let pluginManager: PluginManager
+    @ObservationIgnored internal let queryTimeoutSecondsProvider: @MainActor () -> Int
 
     /// All active connection sessions
-    internal(set) var activeSessions: [UUID: ConnectionSession] = [:] {
+    var activeSessions: [UUID: ConnectionSession] = [:] {
         didSet {
             if Set(oldValue.keys) != Set(activeSessions.keys) {
                 connectionListVersion &+= 1
@@ -32,14 +40,14 @@ final class DatabaseManager {
     }
 
     /// Incremented only when sessions are added or removed (keys change).
-    internal(set) var connectionListVersion: Int = 0
+    var connectionListVersion: Int = 0
 
     /// Incremented when any session state changes (status, driver, metadata, etc.).
-    internal(set) var connectionStatusVersion: Int = 0
+    var connectionStatusVersion: Int = 0
 
     /// Per-connection version counters. Views observe their specific connection's
     /// counter to avoid cross-connection re-renders.
-    internal(set) var connectionStatusVersions: [UUID: Int] = [:]
+    var connectionStatusVersions: [UUID: Int] = [:]
 
     /// Currently selected session ID (displayed in UI)
     internal var currentSessionId: UUID?
@@ -94,13 +102,25 @@ final class DatabaseManager {
         currentSession?.status ?? .disconnected
     }
 
+    internal convenience init() {
+        self.init(
+            connectionStorage: .shared,
+            appSettingsStorage: .shared,
+            pluginManager: .shared
+        )
+    }
+
     internal init(
-        connectionStorage: ConnectionStorage = .shared,
-        appSettingsStorage: AppSettingsStorage = .shared,
-        pluginManager: PluginManager = .shared
+        connectionStorage: ConnectionStorage,
+        appSettingsStorage: AppSettingsStorage,
+        pluginManager: PluginManager,
+        queryTimeoutSecondsProvider: @escaping @MainActor () -> Int = {
+            GeneralSettings.default.queryTimeoutSeconds
+        }
     ) {
         self.connectionStorage = connectionStorage
         self.appSettingsStorage = appSettingsStorage
         self.pluginManager = pluginManager
+        self.queryTimeoutSecondsProvider = queryTimeoutSecondsProvider
     }
 }

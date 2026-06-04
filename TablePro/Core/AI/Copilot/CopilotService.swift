@@ -9,7 +9,9 @@ import os
 @MainActor @Observable
 final class CopilotService {
     private static let logger = Logger(subsystem: "com.TablePro", category: "CopilotService")
-    static let shared = CopilotService()
+    static let shared = CopilotService(
+        aiSettingsProvider: AppRuntimeDependencyProviders.aiSettings
+    )
 
     enum Status: Sendable, Equatable {
         case stopped
@@ -38,6 +40,7 @@ final class CopilotService {
     @ObservationIgnored private var serverGeneration: Int = 0
     @ObservationIgnored private var restartTask: Task<Void, Never>?
     @ObservationIgnored private var restartAttempt: Int = 0
+    @ObservationIgnored private let aiSettingsProvider: @MainActor () -> AISettings
     @ObservationIgnored private let authManager = CopilotAuthManager()
     @ObservationIgnored private lazy var unauthenticatedStop = CopilotIdleStopController(
         timeout: Self.unauthenticatedTimeout,
@@ -53,12 +56,17 @@ final class CopilotService {
     /// Avoids leaving a Node process idle for users who add a Copilot config but never authorise.
     private static let unauthenticatedTimeout: Duration = .seconds(5 * 60)
 
-    private init() {}
+    init(
+        aiSettingsProvider: @escaping @MainActor () -> AISettings = AppRuntimeDependencyProviders.aiSettings
+    ) {
+        self.aiSettingsProvider = aiSettingsProvider
+    }
 
     var client: LSPClient? { lspClient }
     var lspTransport: LSPTransport? { transport }
     var isAuthenticated: Bool { authState.isSignedIn }
     var generation: Int { serverGeneration }
+    var configuredTelemetryLevel: String { Self.telemetryLevel(from: aiSettingsProvider()) }
 
     // MARK: - Lifecycle
 
@@ -83,8 +91,7 @@ final class CopilotService {
             )
             await client.initialized()
 
-            let copilotConfig = AppSettingsManager.shared.ai.providers.first(where: { $0.type == .copilot })
-            let telemetryLevel: String = (copilotConfig?.telemetryEnabled ?? false) ? "all" : "off"
+            let telemetryLevel = configuredTelemetryLevel
             await client.didChangeConfiguration(settings: [
                 "telemetry": AnyCodable(["telemetryLevel": telemetryLevel])
             ])
@@ -216,6 +223,11 @@ final class CopilotService {
 
     private func scheduleUnauthenticatedStopIfNeeded() {
         unauthenticatedStop.schedule()
+    }
+
+    private static func telemetryLevel(from settings: AISettings) -> String {
+        let copilotConfig = settings.providers.first(where: { $0.type == .copilot })
+        return (copilotConfig?.telemetryEnabled ?? false) ? "all" : "off"
     }
 
     private func handleStatusNotification(_ data: Data) {

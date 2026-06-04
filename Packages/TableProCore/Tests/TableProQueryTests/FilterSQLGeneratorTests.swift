@@ -2,12 +2,11 @@ import Testing
 import Foundation
 @testable import TableProQuery
 @testable import TableProModels
-@testable import TableProPluginKit
 
 @Suite("FilterSQLGenerator Tests")
 struct FilterSQLGeneratorTests {
-    private var dialect: SQLDialectDescriptor {
-        SQLDialectDescriptor(
+    private var dialect: QueryDialectDescriptor {
+        QueryDialectDescriptor(
             identifierQuote: "\"",
             keywords: [],
             functions: [],
@@ -38,6 +37,30 @@ struct FilterSQLGeneratorTests {
         let filter = TableFilter(columnName: "email", filterOperator: .isNull)
         let result = generator.generateWhereClause(from: [filter], logicMode: .and)
         #expect(result == "WHERE \"email\" IS NULL")
+    }
+
+    @Test("Equal NULL value generates IS NULL")
+    func equalNullValueGeneratesIsNull() {
+        let generator = FilterSQLGenerator(dialect: dialect)
+        let filter = TableFilter(columnName: "email", filterOperator: .equal, value: "NULL")
+        let result = generator.generateWhereClause(from: [filter], logicMode: .and)
+        #expect(result == "WHERE \"email\" IS NULL")
+    }
+
+    @Test("PostgreSQL-style boolean literals are unquoted")
+    func trueFalseLiteralStyle() {
+        let postgresDialect = QueryDialectDescriptor(
+            identifierQuote: "\"",
+            keywords: [],
+            functions: [],
+            dataTypes: [],
+            booleanLiteralStyle: .truefalse,
+            likeEscapeStyle: .explicit
+        )
+        let generator = FilterSQLGenerator(dialect: postgresDialect)
+        let filter = TableFilter(columnName: "active", filterOperator: .equal, value: "TRUE")
+        let result = generator.generateWhereClause(from: [filter], logicMode: .and)
+        #expect(result == "WHERE \"active\" = TRUE")
     }
 
     @Test("Multiple filters with AND")
@@ -122,7 +145,7 @@ struct FilterSQLGeneratorTests {
 
     @Test("Implicit dialect LIKE keeps backslash escaping and no ESCAPE clause")
     func implicitLikeUsesBackslash() {
-        let implicit = SQLDialectDescriptor(
+        let implicit = QueryDialectDescriptor(
             identifierQuote: "`",
             keywords: [],
             functions: [],
@@ -155,5 +178,13 @@ struct FilterSQLGeneratorTests {
         #expect(result.contains("IN"))
         #expect(result.contains("'active'"))
         #expect(result.contains("'pending'"))
+    }
+
+    @Test("MSSQL dialect uses bracket closing quote")
+    func mssqlClosingQuote() {
+        let generator = FilterSQLGenerator(dialect: SQLDialectFactory.dialect(for: .mssql))
+        let filter = TableFilter(columnName: "name]part", filterOperator: .equal, value: "Alice")
+        let result = generator.generateWhereClause(from: [filter], logicMode: .and)
+        #expect(result == "WHERE [name]]part] = 'Alice'")
     }
 }

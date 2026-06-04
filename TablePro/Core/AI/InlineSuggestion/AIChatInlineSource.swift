@@ -11,24 +11,37 @@ final class AIChatInlineSource: InlineSuggestionSource {
     private static let logger = Logger(subsystem: "com.TablePro", category: "AIChatInlineSource")
 
     private weak var schemaProvider: SQLSchemaProvider?
+    private let settingsProvider: @MainActor () -> AISettings
+    private let providerResolver: @MainActor (AISettings) -> AIProviderFactory.ResolvedProvider?
     var connectionPolicy: AIConnectionPolicy?
 
-    init(schemaProvider: SQLSchemaProvider?, connectionPolicy: AIConnectionPolicy?) {
+    init(
+        schemaProvider: SQLSchemaProvider?,
+        connectionPolicy: AIConnectionPolicy?,
+        settingsProvider: @escaping @MainActor () -> AISettings = {
+            AppSettingsManager.shared.ai
+        },
+        providerResolver: @escaping @MainActor (AISettings) -> AIProviderFactory.ResolvedProvider? = {
+            AIProviderFactory.resolve(settings: $0)
+        }
+    ) {
         self.schemaProvider = schemaProvider
         self.connectionPolicy = connectionPolicy
+        self.settingsProvider = settingsProvider
+        self.providerResolver = providerResolver
     }
 
     var isAvailable: Bool {
-        let settings = AppSettingsManager.shared.ai
+        let settings = settingsProvider()
         guard settings.enabled, settings.hasActiveProvider else { return false }
         if connectionPolicy == .never { return false }
         return true
     }
 
     func requestSuggestion(context: SuggestionContext) async throws -> InlineSuggestion? {
-        let settings = AppSettingsManager.shared.ai
+        let settings = settingsProvider()
 
-        guard let resolved = AIProviderFactory.resolve(settings: settings) else {
+        guard let resolved = providerResolver(settings) else {
             return nil
         }
 
@@ -64,7 +77,7 @@ final class AIChatInlineSource: InlineSuggestionSource {
     // MARK: - Private
 
     private func buildSystemPrompt() async -> String {
-        let settings = AppSettingsManager.shared.ai
+        let settings = settingsProvider()
 
         guard settings.includeSchema,
               let provider = schemaProvider else {

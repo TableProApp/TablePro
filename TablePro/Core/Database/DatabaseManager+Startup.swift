@@ -16,7 +16,11 @@ extension DatabaseManager {
 
     @discardableResult
     nonisolated internal func executeStartupCommands(
-        _ commands: String?, on driver: DatabaseDriver, connectionName: String
+        _ commands: String?,
+        on driver: DatabaseDriver,
+        connectionId: UUID,
+        databaseType: DatabaseType,
+        connectionName: String
     ) async -> [(statement: String, error: String)] {
         guard let commands, !commands.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return []
@@ -30,7 +34,13 @@ extension DatabaseManager {
         var failures: [(statement: String, error: String)] = []
         for statement in statements {
             do {
-                _ = try await driver.execute(query: statement)
+                let request = OperationRequest.backgroundMaintenance(
+                    connectionId: connectionId,
+                    databaseType: databaseType,
+                    sql: statement,
+                    operationDescription: String(localized: "Run Startup Command")
+                )
+                _ = try await driver.executeAuthorizing(query: statement, request: request)
                 Self.startupLogger.info(
                     "Startup command succeeded for '\(connectionName)': \(statement)"
                 )

@@ -10,6 +10,7 @@
 import Foundation
 import Observation
 import os
+import TableProCoreTypes
 import TableProPluginKit
 
 // MARK: - Public Types
@@ -452,9 +453,17 @@ extension PostgresDumpService {
     ) async -> Int64? {
         guard let driver = DatabaseManager.shared.driver(for: connection.id) else { return nil }
         do {
-            let result = try await driver.executeParameterized(
+            let request = OperationRequest.metadataRead(
+                connectionId: connection.id,
+                databaseType: connection.type,
+                sql: "SELECT pg_database_size($1)",
+                caller: .backgroundMaintenance,
+                operationDescription: String(localized: "Estimate Database Size")
+            )
+            let result = try await driver.executeParameterizedAuthorizing(
                 query: "SELECT pg_database_size($1)",
-                parameters: [database]
+                parameters: [database],
+                request: request
             )
             guard let text = result.rows.first?.first?.asText else { return nil }
             return Int64(text)

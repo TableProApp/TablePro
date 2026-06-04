@@ -82,7 +82,11 @@ final class AIChatViewModel {
 
     static let maxMessageCount = 200
 
-    init(services: AppServices = .live) {
+    convenience init() {
+        self.init(services: .live)
+    }
+
+    init(services: AppServices) {
         self.services = services
         loadConversations()
     }

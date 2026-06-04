@@ -357,6 +357,25 @@ final class MainContentCoordinator {
 
     // MARK: - Initialization
 
+    convenience init(
+        connection: DatabaseConnection,
+        tabManager: QueryTabManager,
+        changeManager: DataChangeManager,
+        toolbarState: ConnectionToolbarState,
+        tabSessionRegistry: TabSessionRegistry? = nil,
+        queryExecutor: QueryExecutor? = nil
+    ) {
+        self.init(
+            connection: connection,
+            tabManager: tabManager,
+            changeManager: changeManager,
+            toolbarState: toolbarState,
+            tabSessionRegistry: tabSessionRegistry,
+            queryExecutor: queryExecutor,
+            services: .live
+        )
+    }
+
     init(
         connection: DatabaseConnection,
         tabManager: QueryTabManager,
@@ -364,7 +383,7 @@ final class MainContentCoordinator {
         toolbarState: ConnectionToolbarState,
         tabSessionRegistry: TabSessionRegistry? = nil,
         queryExecutor: QueryExecutor? = nil,
-        services: AppServices = .live
+        services: AppServices
     ) {
         let initStart = Date()
         self.services = services
@@ -391,7 +410,7 @@ final class MainContentCoordinator {
 
         // Synchronous save at quit time. NotificationCenter with queue: .main
         // delivers the closure on the main thread, satisfying assumeIsolated's
-        // precondition. The write completes before the process exits — unlike
+        // main-thread requirement. The write completes before the process exits — unlike
         // Task-based saves that need a run loop.
         terminationObserver = NotificationCenter.default.addObserver(
             forName: NSApplication.willTerminateNotification,
@@ -858,22 +877,19 @@ final class MainContentCoordinator {
             isShowingSafeModePrompt = true
             Task {
                 defer { isShowingSafeModePrompt = false }
-                let decision = await ExecutionGateProvider.shared.authorize(
-                    OperationRequest(
-                        connectionId: connectionId,
-                        databaseType: connection.type,
-                        sql: sql,
-                        kind: .readQuery,
-                        caller: .userInterface,
-                        capabilities: .interactiveUser,
-                        operationDescription: String(localized: "Execute Query")
-                    )
+                let request = OperationRequest.interactiveUser(
+                    connectionId: connectionId,
+                    databaseType: connection.type,
+                    sql: sql,
+                    kind: .readQuery,
+                    operationDescription: String(localized: "Execute Query")
                 )
-                switch decision {
-                case .authorized:
-                    executeQueryInternal(sql)
-                case .denied(let reason):
-                    tabManager.mutate(at: index) { $0.execution.errorMessage = reason }
+                do {
+                    try await ExecutionGateProvider.shared.authorizing(request) {
+                        executeQueryInternal(sql)
+                    }
+                } catch {
+                    tabManager.mutate(at: index) { $0.execution.errorMessage = error.localizedDescription }
                 }
             }
         } else {
@@ -966,18 +982,14 @@ final class MainContentCoordinator {
         if !explainVariants.isEmpty {
             if needsConfirmation {
                 Task {
-                    let decision = await ExecutionGateProvider.shared.authorize(
-                        OperationRequest(
-                            connectionId: connectionId,
-                            databaseType: connection.type,
-                            sql: "EXPLAIN",
-                            kind: .readQuery,
-                            caller: .userInterface,
-                            capabilities: .interactiveUser,
-                            operationDescription: String(localized: "Execute Query")
-                        )
+                    let request = OperationRequest.interactiveUser(
+                        connectionId: connectionId,
+                        databaseType: connection.type,
+                        sql: "EXPLAIN",
+                        kind: .readQuery,
+                        operationDescription: String(localized: "Execute Query")
                     )
-                    if case .authorized = decision {
+                    try? await ExecutionGateProvider.shared.authorizing(request) {
                         runVariantExplain(explainVariants[0])
                     }
                 }
@@ -999,18 +1011,14 @@ final class MainContentCoordinator {
 
         if needsConfirmation {
             Task {
-                let decision = await ExecutionGateProvider.shared.authorize(
-                    OperationRequest(
-                        connectionId: connectionId,
-                        databaseType: connection.type,
-                        sql: explainSQL,
-                        kind: .readQuery,
-                        caller: .userInterface,
-                        capabilities: .interactiveUser,
-                        operationDescription: String(localized: "Execute Query")
-                    )
+                let request = OperationRequest.interactiveUser(
+                    connectionId: connectionId,
+                    databaseType: connection.type,
+                    sql: explainSQL,
+                    kind: .readQuery,
+                    operationDescription: String(localized: "Execute Query")
                 )
-                if case .authorized = decision {
+                try? await ExecutionGateProvider.shared.authorizing(request) {
                     executeQueryInternal(explainSQL)
                 }
             }

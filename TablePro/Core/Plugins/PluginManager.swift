@@ -13,22 +13,30 @@ import TableProPluginKit
 
 @MainActor @Observable
 final class PluginManager {
-    static let shared = PluginManager()
-    static let currentPluginKitVersion = 18
-    static let minimumCompatiblePluginKitVersion = 18
-    static let currentInspectorKitVersion = 1
+    static let shared = PluginManager(
+        userDefaults: .standard,
+        builtInPluginsURL: Bundle.main.builtInPlugInsURL,
+        userPluginsDir: PluginManager.defaultUserPluginsDir(),
+        metadataRegistry: .shared,
+        registryClient: .shared
+    )
+    nonisolated static let currentPluginKitVersion = 18
+    nonisolated static let minimumCompatiblePluginKitVersion = 18
+    nonisolated static let currentInspectorKitVersion = 1
     private static let disabledPluginsKey = "com.TablePro.disabledPlugins"
     private static let legacyDisabledPluginsKey = "disabledPlugins"
 
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private let builtInPluginsURL: URL?
     @ObservationIgnored internal let userPluginsDir: URL
+    @ObservationIgnored internal let metadataRegistry: PluginMetadataRegistry
+    @ObservationIgnored internal let registryClient: RegistryClient
 
-    internal(set) var plugins: [PluginEntry] = []
+    var plugins: [PluginEntry] = []
 
-    internal(set) var stagedUpdates: [String: StagedPluginUpdate] = [:]
+    var stagedUpdates: [String: StagedPluginUpdate] = [:]
 
-    internal(set) var pluginsWithRegistryUpdate: Set<String> = []
+    var pluginsWithRegistryUpdate: Set<String> = []
 
     var isInstalling: Bool {
         PluginInstallTracker.shared.activeInstalls.values.contains { progress in
@@ -39,7 +47,7 @@ final class PluginManager {
         }
     }
 
-    internal(set) var hasFinishedInitialLoad = false {
+    var hasFinishedInitialLoad = false {
         didSet {
             if hasFinishedInitialLoad {
                 let pending = initialLoadWaiters
@@ -81,26 +89,26 @@ final class PluginManager {
         waiter.continuation.resume()
     }
 
-    internal(set) var rejectedPlugins: [RejectedPlugin] = []
+    var rejectedPlugins: [RejectedPlugin] = []
 
     var needsRestart: Bool = false
 
-    internal(set) var driverPlugins: [String: any DriverPlugin] = [:]
+    var driverPlugins: [String: any DriverPlugin] = [:]
 
-    internal(set) var exportPlugins: [String: any ExportFormatPlugin] = [:]
+    var exportPlugins: [String: any ExportFormatPlugin] = [:]
 
-    internal(set) var importPlugins: [String: any ImportFormatPlugin] = [:]
+    var importPlugins: [String: any ImportFormatPlugin] = [:]
 
-    internal(set) var inspectorPlugins: [String: any DocumentInspectorPlugin] = [:]
+    var inspectorPlugins: [String: any DocumentInspectorPlugin] = [:]
 
-    internal(set) var pluginInstances: [String: any TableProPlugin] = [:]
+    var pluginInstances: [String: any TableProPlugin] = [:]
 
     var disabledPluginIds: Set<String> {
         get { Set(defaults.stringArray(forKey: Self.disabledPluginsKey) ?? []) }
         set { defaults.set(Array(newValue), forKey: Self.disabledPluginsKey) }
     }
 
-    static let logger = Logger(subsystem: "com.TablePro", category: "PluginManager")
+    nonisolated static let logger = Logger(subsystem: "com.TablePro", category: "PluginManager")
 
     private var pendingPluginURLs: [(url: URL, source: PluginSource)] = []
 
@@ -124,13 +132,17 @@ final class PluginManager {
     var queryBuildingDriverCache: [String: (any PluginDatabaseDriver)?] = [:]
 
     init(
-        userDefaults: UserDefaults = .standard,
-        builtInPluginsURL: URL? = Bundle.main.builtInPlugInsURL,
-        userPluginsDir: URL = PluginManager.defaultUserPluginsDir()
+        userDefaults: UserDefaults,
+        builtInPluginsURL: URL?,
+        userPluginsDir: URL,
+        metadataRegistry: PluginMetadataRegistry,
+        registryClient: RegistryClient
     ) {
         self.defaults = userDefaults
         self.builtInPluginsURL = builtInPluginsURL
         self.userPluginsDir = userPluginsDir
+        self.metadataRegistry = metadataRegistry
+        self.registryClient = registryClient
         Self.clearLegacyNeedsRestartKey(in: userDefaults)
     }
 
@@ -325,7 +337,7 @@ final class PluginManager {
         let primaryTypeId = manifest.providedDatabaseTypeIds.first
         let additionalTypeIds = Array(manifest.providedDatabaseTypeIds.dropFirst())
         let registrySnapshot = primaryTypeId.flatMap {
-            PluginMetadataRegistry.shared.snapshot(forTypeId: $0)
+            metadataRegistry.snapshot(forTypeId: $0)
         }
 
         var capabilities: [PluginCapability] = []
@@ -804,9 +816,9 @@ final class PluginManager {
         guard let entry = plugins.first(where: { $0.id == pluginId }) else { return }
 
         if let typeId = entry.databaseTypeId {
-            PluginMetadataRegistry.shared.unregister(typeId: typeId)
+            metadataRegistry.unregister(typeId: typeId)
             for additionalId in entry.additionalTypeIds {
-                PluginMetadataRegistry.shared.unregister(typeId: additionalId)
+                metadataRegistry.unregister(typeId: additionalId)
             }
 
             let allTypeIds = Set([typeId] + entry.additionalTypeIds)

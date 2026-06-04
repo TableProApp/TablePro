@@ -3,6 +3,7 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
+@MainActor
 @Suite("SearchQueryHistoryTool")
 struct SearchQueryHistoryToolTests {
     @Test("Tool exposes expected metadata")

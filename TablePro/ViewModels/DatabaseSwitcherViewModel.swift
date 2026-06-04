@@ -35,11 +35,24 @@ final class DatabaseSwitcherViewModel {
         }
     }
 
+    convenience init(
+        connectionId: UUID,
+        currentDatabase: String?,
+        databaseType: DatabaseType
+    ) {
+        self.init(
+            connectionId: connectionId,
+            currentDatabase: currentDatabase,
+            databaseType: databaseType,
+            services: .live
+        )
+    }
+
     init(
         connectionId: UUID,
         currentDatabase: String?,
         databaseType: DatabaseType,
-        services: AppServices = .live
+        services: AppServices
     ) {
         self.connectionId = connectionId
         self.currentDatabase = currentDatabase

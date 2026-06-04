@@ -1,11 +1,10 @@
 import Foundation
 import TableProModels
-import TableProPluginKit
 
 public struct FilterSQLGenerator: Sendable {
-    private let dialect: SQLDialectDescriptor
+    private let dialect: QueryDialectDescriptor
 
-    public init(dialect: SQLDialectDescriptor) {
+    public init(dialect: QueryDialectDescriptor) {
         self.dialect = dialect
     }
 
@@ -34,8 +33,10 @@ public struct FilterSQLGenerator: Sendable {
 
         switch filter.filterOperator {
         case .equal:
+            if escapedValue == "NULL" { return "\(quotedColumn) IS NULL" }
             return "\(quotedColumn) = \(escapedValue)"
         case .notEqual:
+            if escapedValue == "NULL" { return "\(quotedColumn) IS NOT NULL" }
             return "\(quotedColumn) != \(escapedValue)"
         case .greaterThan:
             return "\(quotedColumn) > \(escapedValue)"
@@ -46,9 +47,9 @@ public struct FilterSQLGenerator: Sendable {
         case .lessThanOrEqual:
             return "\(quotedColumn) <= \(escapedValue)"
         case .like:
-            return "\(quotedColumn) LIKE \(escapedValue)\(likeEscape)"
+            return "\(quotedColumn) LIKE \(dialect.sqlLiteral(for: filter.value, interpretSpecialLiterals: false))\(likeEscape)"
         case .notLike:
-            return "\(quotedColumn) NOT LIKE \(escapedValue)\(likeEscape)"
+            return "\(quotedColumn) NOT LIKE \(dialect.sqlLiteral(for: filter.value, interpretSpecialLiterals: false))\(likeEscape)"
         case .isNull:
             return "\(quotedColumn) IS NULL"
         case .isNotNull:
@@ -75,49 +76,19 @@ public struct FilterSQLGenerator: Sendable {
     }
 
     private var likeEscape: String {
-        switch dialect.likeEscapeStyle {
-        case .explicit:
-            return " ESCAPE '!'"
-        case .implicit:
-            return ""
-        }
+        dialect.likeEscapeClause
     }
 
     private func quoteIdentifier(_ name: String) -> String {
-        let q = dialect.identifierQuote
-        let escaped = name.replacingOccurrences(of: q, with: "\(q)\(q)")
-        return "\(q)\(escaped)\(q)"
+        dialect.quoteIdentifier(name)
     }
 
     private func escapeValue(_ value: String) -> String {
-        if Int64(value) != nil || Double(value) != nil {
-            return value
-        }
-        let escaped = value
-            .replacingOccurrences(of: "'", with: "''")
-            .replacingOccurrences(of: "\0", with: "")
-        return "'\(escaped)'"
+        dialect.sqlLiteral(for: value)
     }
 
     private func escapeLikePattern(_ value: String) -> String {
-        var result = value
-            .replacingOccurrences(of: "'", with: "''")
-            .replacingOccurrences(of: "\0", with: "")
-        switch dialect.likeEscapeStyle {
-        case .explicit:
-            result = result
-                .replacingOccurrences(of: "!", with: "!!")
-                .replacingOccurrences(of: "%", with: "!%")
-                .replacingOccurrences(of: "_", with: "!_")
-        case .implicit:
-            if dialect.requiresBackslashEscaping {
-                result = result.replacingOccurrences(of: "\\", with: "\\\\")
-            }
-            result = result
-                .replacingOccurrences(of: "%", with: "\\%")
-                .replacingOccurrences(of: "_", with: "\\_")
-        }
-        return result
+        dialect.escapeLikeWildcards(value)
     }
 
     private func parseInValues(_ value: String) -> String {

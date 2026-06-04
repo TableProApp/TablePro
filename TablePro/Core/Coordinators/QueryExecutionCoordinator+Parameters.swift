@@ -170,7 +170,11 @@ extension QueryExecutionCoordinator {
         }
     }
 
-    func executeMultipleStatementsWithParameters(_ statements: [String], parameters: [QueryParameter]) {
+    func executeMultipleStatementsWithParameters(
+        _ statements: [String],
+        parameters: [QueryParameter],
+        authorizationRequest: OperationRequest? = nil
+    ) {
         guard let (selectedTab, index) = parent.tabManager.selectedTabAndIndex,
               !selectedTab.execution.isExecuting else { return }
 
@@ -205,6 +209,7 @@ extension QueryExecutionCoordinator {
         let conn = parent.connection
         let tabId = parent.tabManager.tabs[index].id
         let totalCount = statements.count
+        let executionRequest = authorizationRequest ?? makeExecuteRequest(statements: statements)
 
         parent.currentQueryTask = Task { [weak self, parent] in
             guard let self else { return }
@@ -255,16 +260,17 @@ extension QueryExecutionCoordinator {
 
                     let result: QueryResult
                     if stmtParamNames.isEmpty {
-                        result = try await driver.execute(query: stmtSQL)
+                        result = try await driver.executeAuthorizing(query: stmtSQL, request: executionRequest)
                     } else {
                         let conversion = SQLParameterExtractor.convertToNativeStyle(
                             sql: stmtSQL,
                             parameters: parameters,
                             style: style
                         )
-                        result = try await driver.executeParameterized(
+                        result = try await driver.executeParameterizedAuthorizing(
                             query: conversion.sql,
-                            parameters: conversion.values
+                            parameters: conversion.values,
+                            request: executionRequest
                         )
                     }
 

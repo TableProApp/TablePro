@@ -11,19 +11,20 @@ import os
 
 /// Persists license data using Keychain (secrets) and UserDefaults (metadata)
 final class LicenseStorage {
-    static let shared = LicenseStorage()
+    static let shared = LicenseStorage(userDefaults: .standard, keychain: KeychainHelper.shared)
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "LicenseStorage")
 
-    private let defaults = UserDefaults.standard
-    private let keychain: KeychainHelper
+    private let defaults: UserDefaults
+    private let keychain: KeychainStoring
 
     private enum Keys {
         static let keychainLicenseKey = "com.TablePro.license.key"
         static let licensePayload = "com.TablePro.license.payload"
     }
 
-    init(keychain: KeychainHelper = .shared) {
+    init(userDefaults: UserDefaults, keychain: KeychainStoring) {
+        defaults = userDefaults
         self.keychain = keychain
     }
 
@@ -135,7 +136,11 @@ final class LicenseStorage {
 
     /// Hardware UUID from IOKit, SHA256-hashed for privacy (uncached, for migration).
     static func currentMachineId() -> String {
-        computeMachineId(defaults: UserDefaults.standard)
+        currentMachineId(userDefaults: .standard)
+    }
+
+    static func currentMachineId(userDefaults: UserDefaults) -> String {
+        computeMachineId(defaults: userDefaults)
     }
 
     /// Human-readable machine name (e.g., "John's MacBook Pro")

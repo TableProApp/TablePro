@@ -13,6 +13,23 @@ import Combine
 import Observation
 import os
 
+enum EditorInlineSourceKind: Equatable {
+    case off
+    case copilot
+    case ai
+}
+
+enum EditorInlineSourcePolicy {
+    static func resolve(aiSettings: AISettings) -> EditorInlineSourceKind {
+        guard aiSettings.enabled,
+              aiSettings.inlineSuggestionsEnabled,
+              let active = aiSettings.activeProvider else {
+            return .off
+        }
+        return active.type == .copilot ? .copilot : .ai
+    }
+}
+
 /// Coordinator for the SQL editor — manages find panel, horizontal scrolling, and scroll-to-match
 @Observable
 @MainActor
@@ -34,7 +51,9 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
     @ObservationIgnored private var editorSettingsCancellable: AnyCancellable?
     @ObservationIgnored private var aiSettingsCancellable: AnyCancellable?
     @ObservationIgnored private var windowKeyObserver: NSObjectProtocol?
-    @ObservationIgnored private var lastInlineSourceKind: InlineSourceKind = .off
+    @ObservationIgnored private var lastInlineSourceKind: EditorInlineSourceKind = .off
+    @ObservationIgnored private let aiSettingsProvider: @MainActor () -> AISettings
+    @ObservationIgnored private let editorSettingsProvider: @MainActor () -> EditorSettings
     /// Debounce work item for frame-change notification to avoid
     /// triggering syntax highlight viewport recalculation on every keystroke.
     @ObservationIgnored private var frameChangeTask: Task<Void, Never>?
@@ -60,6 +79,18 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
     @ObservationIgnored var databaseType: DatabaseType?
     @ObservationIgnored var tabID: UUID?
     @ObservationIgnored var connectionId: UUID?
+
+    init(
+        aiSettingsProvider: @escaping @MainActor () -> AISettings = {
+            AppSettingsManager.shared.ai
+        },
+        editorSettingsProvider: @escaping @MainActor () -> EditorSettings = {
+            AppSettingsManager.shared.editor
+        }
+    ) {
+        self.aiSettingsProvider = aiSettingsProvider
+        self.editorSettingsProvider = editorSettingsProvider
+    }
 
     /// Whether the editor text view is currently the first responder.
     /// Used to guard cursor propagation — when the find panel highlights
@@ -254,25 +285,18 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
     // MARK: - Inline Suggestion Manager
 
     private func installInlineSuggestionManager(controller: TextViewController) {
-        let manager = InlineSuggestionManager()
+        let aiSettingsProvider = self.aiSettingsProvider
+        let manager = InlineSuggestionManager(debounceDelayProvider: {
+            Duration.milliseconds(aiSettingsProvider().clampedInlineSuggestionDebounceMs)
+        })
         manager.install(controller: controller, sourceResolver: { [weak self] in
             self?.resolveInlineSource()
         })
         inlineSuggestionManager = manager
     }
 
-    private enum InlineSourceKind {
-        case off
-        case copilot
-        case ai
-    }
-
-    private var resolvedInlineSourceKind: InlineSourceKind {
-        let ai = AppSettingsManager.shared.ai
-        guard ai.enabled, ai.inlineSuggestionsEnabled, let active = ai.activeProvider else {
-            return .off
-        }
-        return active.type == .copilot ? .copilot : .ai
+    private var resolvedInlineSourceKind: EditorInlineSourceKind {
+        EditorInlineSourcePolicy.resolve(aiSettings: aiSettingsProvider())
     }
 
     private func resolveInlineSource() -> InlineSuggestionSource? {
@@ -293,7 +317,8 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
             if aiChatInlineSource == nil {
                 aiChatInlineSource = AIChatInlineSource(
                     schemaProvider: schemaProvider,
-                    connectionPolicy: connectionAIPolicy
+                    connectionPolicy: connectionAIPolicy,
+                    settingsProvider: aiSettingsProvider
                 )
             }
             return aiChatInlineSource
@@ -303,7 +328,10 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
     private func installCopilotInlineSource() {
         let sync = CopilotDocumentSync()
         copilotDocumentSync = sync
-        copilotInlineSource = CopilotInlineSource(documentSync: sync)
+        copilotInlineSource = CopilotInlineSource(
+            documentSync: sync,
+            editorSettingsProvider: editorSettingsProvider
+        )
 
         let capturedTabID = tabID
         let capturedText = controller?.textView?.string ?? ""
@@ -328,7 +356,7 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
         }
     }
 
-    private func teardownInlineSources(except kind: InlineSourceKind) {
+    private func teardownInlineSources(except kind: EditorInlineSourceKind) {
         if kind != .copilot {
             if let tabID, let sync = copilotDocumentSync {
                 let id = tabID
@@ -345,7 +373,7 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
     // MARK: - Vim Mode
 
     private func installVimModeIfEnabled(controller: TextViewController) {
-        guard AppSettingsManager.shared.editor.vimModeEnabled else { return }
+        guard editorSettingsProvider().vimModeEnabled else { return }
         installVimKeyInterceptor(controller: controller)
     }
 
@@ -393,7 +421,7 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
     }
 
     private func handleVimSettingsChange(controller: TextViewController) {
-        let enabled = AppSettingsManager.shared.editor.vimModeEnabled
+        let enabled = editorSettingsProvider().vimModeEnabled
         if enabled && vimKeyInterceptor == nil {
             installVimKeyInterceptor(controller: controller)
         } else if !enabled && vimKeyInterceptor != nil {
@@ -475,7 +503,7 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
 
     private func uppercaseKeywordIfNeeded(textView: TextView, range: NSRange, string: String) {
         guard !isUppercasing,
-              AppSettingsManager.shared.editor.uppercaseKeywords,
+              editorSettingsProvider().uppercaseKeywords,
               KeywordUppercaseHelper.isWordBoundary(string),
               (textView.textStorage.string as NSString).length < 500_000 else { return }
 

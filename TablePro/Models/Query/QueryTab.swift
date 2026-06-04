@@ -96,10 +96,9 @@ struct QueryTab: Identifiable, Equatable {
         tableName: String,
         databaseType: DatabaseType,
         schemaName: String? = nil,
+        pageSize: Int = PaginationState.defaultPageSize,
         quoteIdentifier: ((String) -> String)? = nil
     ) throws -> String {
-        let pageSize = AppSettingsManager.shared.dataGrid.defaultPageSize
-
         if let pluginDriver = PluginManager.shared.queryBuildingDriver(for: databaseType),
            let pluginQuery = pluginDriver.buildBrowseQuery(
                table: tableName, schema: schemaName, sortColumns: [], columns: [], limit: pageSize, offset: 0

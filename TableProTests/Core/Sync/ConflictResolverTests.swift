@@ -5,6 +5,7 @@
 
 import CloudKit
 import Foundation
+import TableProSync
 import Testing
 
 @testable import TablePro
@@ -12,7 +13,7 @@ import Testing
 @Suite("ConflictResolver", .serialized)
 @MainActor
 struct ConflictResolverTests {
-    private let resolver = ConflictResolver.shared
+    private let resolver = DesktopSyncConflictResolver.shared
 
     init() {
         while resolver.hasConflicts {

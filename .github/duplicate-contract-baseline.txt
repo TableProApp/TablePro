@@ -6,5 +6,3 @@
 # Format: <kind>:<key>
 #   pluginkit:<path under the PluginKit tree that differs or exists in only one tree>
 #   databasetype:<file defining a production DatabaseType other than the TableProCore source>
-
-databasetype:TablePro/Models/Connection/DatabaseConnection.swift

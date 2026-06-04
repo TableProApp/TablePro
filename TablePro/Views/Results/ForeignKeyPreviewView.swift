@@ -203,7 +203,13 @@ struct ForeignKeyPreviewView: View {
         let query = "SELECT * FROM \(quotedTable) WHERE \(quotedColumn) = '\(escapedValue)' \(limitClause)"
 
         do {
-            let result = try await driver.execute(query: query)
+            let request = OperationRequest.metadataRead(
+                connectionId: connectionId,
+                databaseType: databaseType,
+                sql: query,
+                operationDescription: String(localized: "Preview Foreign Key Row")
+            )
+            let result = try await driver.executeAuthorizing(query: query, request: request)
             if let firstRow = result.rows.first {
                 columns = result.columns
                 values = firstRow.map { $0.asText }

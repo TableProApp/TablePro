@@ -40,7 +40,10 @@ private struct LossyTab: Decodable {
 }
 
 internal actor TabDiskActor {
-    internal static let shared = TabDiskActor()
+    internal static let shared = TabDiskActor(
+        tabStateDirectory: TabDiskActor.resolvedTabStateDirectory(),
+        userDefaults: .standard
+    )
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "TabDiskActor")
 
@@ -55,8 +58,10 @@ internal actor TabDiskActor {
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
 
-    private init() {
-        let directory = Self.resolvedTabStateDirectory()
+    internal init(
+        tabStateDirectory directory: URL,
+        userDefaults: UserDefaults
+    ) {
         tabStateDirectory = directory
         encoder = JSONEncoder()
         decoder = JSONDecoder()
@@ -66,7 +71,7 @@ internal actor TabDiskActor {
         } catch {
             Self.logger.error("Failed to create directory \(directory.path): \(error.localizedDescription)")
         }
-        Self.performMigrationIfNeeded(tabStateDirectory: directory)
+        Self.performMigrationIfNeeded(tabStateDirectory: directory, userDefaults: userDefaults)
     }
 
     // MARK: - Public API
@@ -160,34 +165,32 @@ internal actor TabDiskActor {
 
     // MARK: - Migration from UserDefaults
 
-    private static func performMigrationIfNeeded(tabStateDirectory: URL) {
-        let defaults = UserDefaults.standard
-
-        guard !defaults.bool(forKey: migrationCompleteKey) else { return }
+    private static func performMigrationIfNeeded(tabStateDirectory: URL, userDefaults: UserDefaults) {
+        guard !userDefaults.bool(forKey: migrationCompleteKey) else { return }
 
         logger.trace("Starting one-time migration of tab state from UserDefaults to file storage")
 
         var migratedTabStates = 0
 
-        let allKeys = defaults.dictionaryRepresentation().keys
+        let allKeys = userDefaults.dictionaryRepresentation().keys
         let tabStateKeys = allKeys.filter { $0.hasPrefix(legacyTabStateKeyPrefix) }
 
         for key in tabStateKeys {
             let uuidString = String(key.dropFirst(legacyTabStateKeyPrefix.count))
             guard let connectionId = UUID(uuidString: uuidString),
-                  let data = defaults.data(forKey: key) else { continue }
+                  let data = userDefaults.data(forKey: key) else { continue }
 
             let fileURL = tabStateDirectory.appendingPathComponent("\(connectionId.uuidString).json")
             do {
                 try data.write(to: fileURL, options: .atomic)
-                defaults.removeObject(forKey: key)
+                userDefaults.removeObject(forKey: key)
                 migratedTabStates += 1
             } catch {
                 logger.error("Failed to migrate tab state for \(uuidString): \(error.localizedDescription)")
             }
         }
 
-        defaults.set(true, forKey: migrationCompleteKey)
+        userDefaults.set(true, forKey: migrationCompleteKey)
 
         if migratedTabStates > 0 {
             logger.trace("Migration complete: \(migratedTabStates) tab states")

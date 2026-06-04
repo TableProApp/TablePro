@@ -10,7 +10,6 @@ let package = Package(
     ],
     products: [
         .library(name: "TableProCoreTypes", targets: ["TableProCoreTypes"]),
-        .library(name: "TableProPluginKit", targets: ["TableProPluginKit"]),
         .library(name: "TableProModels", targets: ["TableProModels"]),
         .library(name: "TableProDatabase", targets: ["TableProDatabase"]),
         .library(name: "TableProQuery", targets: ["TableProQuery"]),
@@ -25,14 +24,8 @@ let package = Package(
             path: "Sources/TableProCoreTypes"
         ),
         .target(
-            name: "TableProPluginKit",
-            dependencies: [],
-            path: "Sources/TableProPluginKit",
-            exclude: ["Info.plist"]
-        ),
-        .target(
             name: "TableProModels",
-            dependencies: ["TableProPluginKit", "TableProCoreTypes"],
+            dependencies: ["TableProCoreTypes"],
             path: "Sources/TableProModels"
         ),
         .target(
@@ -42,7 +35,7 @@ let package = Package(
         ),
         .target(
             name: "TableProQuery",
-            dependencies: ["TableProModels", "TableProPluginKit", "TableProCoreTypes"],
+            dependencies: ["TableProModels", "TableProCoreTypes"],
             path: "Sources/TableProQuery"
         ),
         .target(
@@ -62,7 +55,7 @@ let package = Package(
         ),
         .testTarget(
             name: "TableProModelsTests",
-            dependencies: ["TableProModels", "TableProPluginKit"],
+            dependencies: ["TableProModels"],
             path: "Tests/TableProModelsTests"
         ),
         .testTarget(
@@ -72,7 +65,7 @@ let package = Package(
         ),
         .testTarget(
             name: "TableProQueryTests",
-            dependencies: ["TableProQuery", "TableProModels", "TableProPluginKit"],
+            dependencies: ["TableProQuery", "TableProModels"],
             path: "Tests/TableProQueryTests"
         ),
         .testTarget(

@@ -66,30 +66,25 @@ extension RowEditingCoordinator {
         let kind: OperationKind = hasPendingTableOps ? .destructiveQuery : .writeQuery
         Task { [weak self, parent] in
             guard let self else { return }
-            let decision = await ExecutionGateProvider.shared.authorize(
-                OperationRequest(
-                    connectionId: connId,
-                    databaseType: parent.connection.type,
-                    sql: sqlPreview,
-                    kind: kind,
-                    caller: .userInterface,
-                    capabilities: .interactiveUser,
-                    operationDescription: String(localized: "Save Changes")
-                )
+            let request = OperationRequest.interactiveUser(
+                connectionId: connId,
+                databaseType: parent.connection.type,
+                sql: sqlPreview,
+                kind: kind,
+                operationDescription: String(localized: "Save Changes")
             )
-            switch decision {
-            case .authorized:
-                var truncs = snapshotTruncates
-                var dels = snapshotDeletes
-                var opts = snapshotOptions
-                executeCommitStatements(
-                    allStatements,
-                    clearTableOps: hasPendingTableOps,
-                    pendingTruncates: &truncs,
-                    pendingDeletes: &dels,
-                    tableOperationOptions: &opts
-                )
-            case .denied(let reason):
+            do {
+                try await ExecutionGateProvider.shared.authorizing(request) {
+                    await executeCommitStatements(
+                        allStatements,
+                        authorizationRequest: request,
+                        clearTableOps: hasPendingTableOps,
+                        pendingTruncates: snapshotTruncates,
+                        pendingDeletes: snapshotDeletes,
+                        tableOperationOptions: snapshotOptions
+                    )
+                }
+            } catch {
                 if hasPendingTableOps {
                     DatabaseManager.shared.updateSession(connId) { session in
                         session.pendingTruncates = snapshotTruncates
@@ -100,7 +95,7 @@ extension RowEditingCoordinator {
                     }
                 }
                 if let index = parent.tabManager.selectedTabIndex {
-                    parent.tabManager.mutate(at: index) { $0.execution.errorMessage = reason }
+                    parent.tabManager.mutate(at: index) { $0.execution.errorMessage = error.localizedDescription }
                 }
                 parent.saveCompletionContinuation?.resume(returning: false)
                 parent.saveCompletionContinuation = nil
@@ -110,11 +105,12 @@ extension RowEditingCoordinator {
 
     private func executeCommitStatements(
         _ statements: [ParameterizedStatement],
+        authorizationRequest: OperationRequest,
         clearTableOps: Bool,
-        pendingTruncates: inout Set<String>,
-        pendingDeletes: inout Set<String>,
-        tableOperationOptions: inout [String: TableOperationOptions]
-    ) {
+        pendingTruncates: Set<String>,
+        pendingDeletes: Set<String>,
+        tableOperationOptions: [String: TableOperationOptions]
+    ) async {
         let validStatements = statements.filter { !$0.sql.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
         guard !validStatements.isEmpty else {
             parent.saveCompletionContinuation?.resume(returning: true)
@@ -126,6 +122,9 @@ extension RowEditingCoordinator {
         let truncatedTables = Set(pendingTruncates)
         let conn = parent.connection
         let dbType = parent.connection.type
+        var pendingTruncates = pendingTruncates
+        var pendingDeletes = pendingDeletes
+        var tableOperationOptions = tableOperationOptions
 
         let fkWasDisabled = PluginManager.shared.supportsForeignKeyDisable(for: dbType)
             && deletedTables.union(truncatedTables).contains { tableName in
@@ -145,153 +144,160 @@ extension RowEditingCoordinator {
             }
         }
 
-        Task { [weak self, parent] in
-            guard let self else { return }
-            let overallStartTime = Date()
+        let overallStartTime = Date()
+
+        do {
+            guard let driver = DatabaseManager.shared.driver(for: parent.connectionId) else {
+                if let index = parent.tabManager.selectedTabIndex {
+                    parent.tabManager.mutate(at: index) {
+                        $0.execution.errorMessage = String(localized: "Not connected to database")
+                    }
+                }
+                throw DatabaseError.notConnected
+            }
+
+            let useTransaction = driver.supportsTransactions
+
+            if useTransaction {
+                try await driver.beginTransaction()
+            }
 
             do {
-                guard let driver = DatabaseManager.shared.driver(for: parent.connectionId) else {
-                    if let index = parent.tabManager.selectedTabIndex {
-                        parent.tabManager.mutate(at: index) {
-                            $0.execution.errorMessage = String(localized: "Not connected to database")
-                        }
+                for statement in validStatements {
+                    let statementStartTime = Date()
+                    if statement.parameters.isEmpty {
+                        _ = try await driver.executeAuthorizing(
+                            query: statement.sql,
+                            request: authorizationRequest
+                        )
+                    } else {
+                        _ = try await driver.executeParameterizedAuthorizing(
+                            query: statement.sql,
+                            parameters: statement.parameters,
+                            request: authorizationRequest
+                        )
                     }
-                    throw DatabaseError.notConnected
-                }
 
-                let useTransaction = driver.supportsTransactions
+                    let executionTime = Date().timeIntervalSince(statementStartTime)
+
+                    let historySQL = statement.sql.trimmingCharacters(in: .whitespacesAndNewlines)
+                    QueryHistoryManager.shared.recordQuery(
+                        query: historySQL.hasSuffix(";") ? historySQL : historySQL + ";",
+                        connectionId: conn.id,
+                        databaseName: parent.activeDatabaseName,
+                        executionTime: executionTime,
+                        rowCount: 0,
+                        wasSuccessful: true,
+                        errorMessage: nil
+                    )
+                }
 
                 if useTransaction {
-                    try await driver.beginTransaction()
+                    try await driver.commitTransaction()
                 }
-
-                do {
-                    for statement in validStatements {
-                        let statementStartTime = Date()
-                        if statement.parameters.isEmpty {
-                            _ = try await driver.execute(query: statement.sql)
-                        } else {
-                            _ = try await driver.executeParameterized(query: statement.sql, parameters: statement.parameters)
-                        }
-
-                        let executionTime = Date().timeIntervalSince(statementStartTime)
-
-                        let historySQL = statement.sql.trimmingCharacters(in: .whitespacesAndNewlines)
-                        QueryHistoryManager.shared.recordQuery(
-                            query: historySQL.hasSuffix(";") ? historySQL : historySQL + ";",
-                            connectionId: conn.id,
-                            databaseName: parent.activeDatabaseName,
-                            executionTime: executionTime,
-                            rowCount: 0,
-                            wasSuccessful: true,
-                            errorMessage: nil
-                        )
-                    }
-
-                    if useTransaction {
-                        try await driver.commitTransaction()
-                    }
-                } catch {
-                    if useTransaction {
-                        do {
-                            try await driver.rollbackTransaction()
-                        } catch {
-                            saveChangesLogger.error("Rollback failed: \(error.localizedDescription, privacy: .public)")
-                        }
-                    }
-                    throw error
-                }
-
-                parent.changeManager.clearChangesAndUndoHistory()
-                if let index = parent.tabManager.selectedTabIndex {
-                    parent.tabManager.mutate(at: index) {
-                        $0.pendingChanges = TabChangeSnapshot()
-                        $0.execution.errorMessage = nil
-                    }
-                }
-
-                if clearTableOps {
-                    if !deletedTables.isEmpty {
-                        let tabIdsToRemove = Set(
-                            parent.tabManager.tabs
-                                .filter { $0.tabType == .table && deletedTables.contains($0.tableContext.tableName ?? "") }
-                                .map(\.id)
-                        )
-
-                        if !tabIdsToRemove.isEmpty {
-                            let firstRemovedIndex = parent.tabManager.tabs
-                                .firstIndex { tabIdsToRemove.contains($0.id) } ?? 0
-                            for tabId in tabIdsToRemove {
-                                parent.tabSessionRegistry.removeTableRows(for: tabId)
-                            }
-                            parent.tabManager.tabs.removeAll { tabIdsToRemove.contains($0.id) }
-                            if !parent.tabManager.tabs.isEmpty {
-                                let neighborIndex = min(firstRemovedIndex, parent.tabManager.tabs.count - 1)
-                                parent.tabManager.selectedTabId = parent.tabManager.tabs[neighborIndex].id
-                            } else {
-                                parent.tabManager.selectedTabId = nil
-                            }
-                        }
-                    }
-
-                    Task { [parent] in await parent.refreshTables() }
-                }
-
-                if parent.tabManager.selectedTabIndex != nil && !parent.tabManager.tabs.isEmpty {
-                    parent.runQuery()
-                }
-
-                parent.saveCompletionContinuation?.resume(returning: true)
-                parent.saveCompletionContinuation = nil
             } catch {
-                let executionTime = Date().timeIntervalSince(overallStartTime)
-
-                if fkWasDisabled, let driver = DatabaseManager.shared.driver(for: parent.connectionId) {
-                    for statement in parent.fkEnableStatements(for: dbType) {
-                        do {
-                            _ = try await driver.execute(query: statement)
-                        } catch {
-                            saveChangesLogger.warning("Failed to re-enable foreign key checks with statement '\(statement, privacy: .public)': \(error.localizedDescription, privacy: .public)")
-                        }
+                if useTransaction {
+                    do {
+                        try await driver.rollbackTransaction()
+                    } catch {
+                        saveChangesLogger.error("Rollback failed: \(error.localizedDescription, privacy: .public)")
                     }
                 }
-
-                let allSQL = validStatements.map { $0.sql }.joined(separator: "; ")
-                QueryHistoryManager.shared.recordQuery(
-                    query: allSQL,
-                    connectionId: conn.id,
-                    databaseName: parent.activeDatabaseName,
-                    executionTime: executionTime,
-                    rowCount: 0,
-                    wasSuccessful: false,
-                    errorMessage: error.localizedDescription
-                )
-
-                if let index = parent.tabManager.selectedTabIndex {
-                    parent.tabManager.mutate(at: index) {
-                        $0.execution.errorMessage = String(format: String(localized: "Save failed: %@"), error.localizedDescription)
-                    }
-                }
-
-                AlertHelper.showErrorSheet(
-                    title: String(localized: "Save Failed"),
-                    message: error.localizedDescription,
-                    window: parent.contentWindow
-                )
-
-                if clearTableOps {
-                    DatabaseManager.shared.updateSession(conn.id) { session in
-                        session.pendingTruncates = truncatedTables
-                        session.pendingDeletes = deletedTables
-                        for (table, opts) in capturedOptions {
-                            session.tableOperationOptions[table] = opts
-                        }
-                    }
-                }
-
-                parent.saveCompletionContinuation?.resume(returning: false)
-                parent.saveCompletionContinuation = nil
+                throw error
             }
+
+            parent.changeManager.clearChangesAndUndoHistory()
+            if let index = parent.tabManager.selectedTabIndex {
+                parent.tabManager.mutate(at: index) {
+                    $0.pendingChanges = TabChangeSnapshot()
+                    $0.execution.errorMessage = nil
+                }
+            }
+
+            if clearTableOps {
+                if !deletedTables.isEmpty {
+                    let tabIdsToRemove = Set(
+                        parent.tabManager.tabs
+                            .filter { $0.tabType == .table && deletedTables.contains($0.tableContext.tableName ?? "") }
+                            .map(\.id)
+                    )
+
+                    if !tabIdsToRemove.isEmpty {
+                        let firstRemovedIndex = parent.tabManager.tabs
+                            .firstIndex { tabIdsToRemove.contains($0.id) } ?? 0
+                        for tabId in tabIdsToRemove {
+                            parent.tabSessionRegistry.removeTableRows(for: tabId)
+                        }
+                        parent.tabManager.tabs.removeAll { tabIdsToRemove.contains($0.id) }
+                        if !parent.tabManager.tabs.isEmpty {
+                            let neighborIndex = min(firstRemovedIndex, parent.tabManager.tabs.count - 1)
+                            parent.tabManager.selectedTabId = parent.tabManager.tabs[neighborIndex].id
+                        } else {
+                            parent.tabManager.selectedTabId = nil
+                        }
+                    }
+                }
+
+                Task { [parent] in await parent.refreshTables() }
+            }
+
+            if parent.tabManager.selectedTabIndex != nil && !parent.tabManager.tabs.isEmpty {
+                parent.runQuery()
+            }
+
+            parent.saveCompletionContinuation?.resume(returning: true)
+            parent.saveCompletionContinuation = nil
+        } catch {
+            let executionTime = Date().timeIntervalSince(overallStartTime)
+
+            if fkWasDisabled, let driver = DatabaseManager.shared.driver(for: parent.connectionId) {
+                for statement in parent.fkEnableStatements(for: dbType) {
+                    do {
+                        _ = try await driver.executeAuthorizing(
+                            query: statement,
+                            request: authorizationRequest
+                        )
+                    } catch {
+                        saveChangesLogger.warning("Failed to re-enable foreign key checks with statement '\(statement, privacy: .public)': \(error.localizedDescription, privacy: .public)")
+                    }
+                }
+            }
+
+            let allSQL = validStatements.map { $0.sql }.joined(separator: "; ")
+            QueryHistoryManager.shared.recordQuery(
+                query: allSQL,
+                connectionId: conn.id,
+                databaseName: parent.activeDatabaseName,
+                executionTime: executionTime,
+                rowCount: 0,
+                wasSuccessful: false,
+                errorMessage: error.localizedDescription
+            )
+
+            if let index = parent.tabManager.selectedTabIndex {
+                parent.tabManager.mutate(at: index) {
+                    $0.execution.errorMessage = String(format: String(localized: "Save failed: %@"), error.localizedDescription)
+                }
+            }
+
+            AlertHelper.showErrorSheet(
+                title: String(localized: "Save Failed"),
+                message: error.localizedDescription,
+                window: parent.contentWindow
+            )
+
+            if clearTableOps {
+                DatabaseManager.shared.updateSession(conn.id) { session in
+                    session.pendingTruncates = truncatedTables
+                    session.pendingDeletes = deletedTables
+                    for (table, opts) in capturedOptions {
+                        session.tableOperationOptions[table] = opts
+                    }
+                }
+            }
+
+            parent.saveCompletionContinuation?.resume(returning: false)
+            parent.saveCompletionContinuation = nil
         }
     }
 }

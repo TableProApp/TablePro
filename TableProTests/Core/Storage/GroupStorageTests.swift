@@ -4,6 +4,7 @@
 //
 
 import TableProPluginKit
+import TableProSync
 @testable import TablePro
 import XCTest
 
@@ -14,7 +15,7 @@ final class GroupStorageTests: XCTestCase {
     private var syncDefaults: UserDefaults!
     private var syncSuiteName: String!
     private var storage: GroupStorage!
-    private var tracker: SyncChangeTracker!
+    private var tracker: DesktopSyncChangeTracker!
     private var connectionStorage: ConnectionStorage!
     private var connectionFileURL: URL!
 
@@ -25,8 +26,8 @@ final class GroupStorageTests: XCTestCase {
         defaults = UserDefaults(suiteName: suiteName)!
         syncSuiteName = "com.TablePro.tests.Sync.\(unique)"
         syncDefaults = UserDefaults(suiteName: syncSuiteName)!
-        let metadata = SyncMetadataStorage(userDefaults: syncDefaults)
-        tracker = SyncChangeTracker(metadataStorage: metadata)
+        let metadata = DesktopSyncMetadataStorage(userDefaults: syncDefaults)
+        tracker = DesktopSyncChangeTracker(metadataStorage: metadata)
         connectionFileURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("tablepro-tests")
             .appendingPathComponent("group-connections_\(unique).json")
@@ -37,7 +38,8 @@ final class GroupStorageTests: XCTestCase {
         connectionStorage = ConnectionStorage(
             fileURL: connectionFileURL,
             userDefaults: defaults,
-            syncTracker: tracker
+            syncTracker: tracker,
+            appSettings: AppSettingsStorage(userDefaults: self.defaults)
         )
         storage = GroupStorage(
             userDefaults: defaults,

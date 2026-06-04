@@ -11,8 +11,6 @@ import SwiftUI
 
 /// Query history panel with master-detail layout
 struct HistoryPanelView: View {
-    private static let dateFilterKey = "HistoryPanel.dateFilter"
-
     let connectionId: UUID
     // MARK: - State
 
@@ -28,6 +26,15 @@ struct HistoryPanelView: View {
     @FocusedValue(\.commandActions) private var actions
 
     private let dataProvider = HistoryDataProvider()
+    private let filterStateStore: HistoryPanelFilterStateStore
+
+    init(
+        connectionId: UUID,
+        filterStateStore: HistoryPanelFilterStateStore = HistoryPanelFilterStateStore()
+    ) {
+        self.connectionId = connectionId
+        self.filterStateStore = filterStateStore
+    }
 
     // MARK: - Computed
 
@@ -387,14 +394,11 @@ private extension HistoryPanelView {
     // MARK: - Filter State Persistence
 
     func restoreFilterState() {
-        let savedFilter = UserDefaults.standard.integer(forKey: Self.dateFilterKey)
-        if let filter = UIDateFilter(rawValue: savedFilter) {
-            dateFilter = filter
-        }
+        dateFilter = filterStateStore.load()
     }
 
     func saveFilterState() {
-        UserDefaults.standard.set(dateFilter.rawValue, forKey: Self.dateFilterKey)
+        filterStateStore.save(dateFilter)
     }
 }
 

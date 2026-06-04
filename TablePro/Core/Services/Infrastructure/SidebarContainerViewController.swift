@@ -26,7 +26,7 @@ internal final class SidebarContainerViewController: NSViewController {
 
     @available(*, unavailable)
     required init?(coder: NSCoder) {
-        fatalError("SidebarContainerViewController does not support NSCoder init")
+        return nil
     }
 
     override func loadView() {

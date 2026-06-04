@@ -1,24 +1,25 @@
 //
-//  SyncChangeTrackerTests.swift
+//  DesktopSyncChangeTrackerTests.swift
 //  TableProTests
 //
 
 import Foundation
+import TableProSync
 import Testing
 
 @testable import TablePro
 
-@Suite("SyncChangeTracker")
+@Suite("DesktopSyncChangeTracker")
 @MainActor
-struct SyncChangeTrackerTests {
-    private let metadata: SyncMetadataStorage
-    private let tracker: SyncChangeTracker
+struct DesktopSyncChangeTrackerTests {
+    private let metadata: DesktopSyncMetadataStorage
+    private let tracker: DesktopSyncChangeTracker
 
     init() {
         let unique = UUID().uuidString
-        let syncDefaults = UserDefaults(suiteName: "com.TablePro.tests.SyncChangeTracker.\(unique)")!
-        metadata = SyncMetadataStorage(userDefaults: syncDefaults)
-        tracker = SyncChangeTracker(metadataStorage: metadata)
+        let syncDefaults = UserDefaults(suiteName: "com.TablePro.tests.DesktopSyncChangeTracker.\(unique)")!
+        metadata = DesktopSyncMetadataStorage(userDefaults: syncDefaults)
+        tracker = DesktopSyncChangeTracker(metadataStorage: metadata)
     }
 
     @Test("markDirty records the id as dirty")

@@ -16,13 +16,15 @@ final class StreamingQueryExportDataSource: PluginExportDataSource, @unchecked S
 
     private let query: String
     private let driver: DatabaseDriver
+    private let connectionId: UUID
     private let dbType: DatabaseType
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "StreamingQueryExport")
 
-    init(query: String, driver: DatabaseDriver, databaseType: DatabaseType) {
+    init(query: String, driver: DatabaseDriver, connectionId: UUID, databaseType: DatabaseType) {
         self.query = query
         self.driver = driver
+        self.connectionId = connectionId
         self.dbType = databaseType
         self.databaseTypeId = databaseType.rawValue
     }
@@ -51,7 +53,15 @@ final class StreamingQueryExportDataSource: PluginExportDataSource, @unchecked S
     }
 
     func execute(query: String) async throws -> PluginQueryResult {
-        let result = try await driver.execute(query: query)
+        let request = OperationRequest.interactiveUser(
+            connectionId: connectionId,
+            databaseType: dbType,
+            sql: query,
+            kind: .readQuery,
+            capabilities: [.mayWrite, .mayRunDestructive, .mayRunMultiStatement, .cannotPrompt],
+            operationDescription: String(localized: "Export Query")
+        )
+        let result = try await driver.executeAuthorizing(query: query, request: request)
         return PluginQueryResult(
             columns: result.columns,
             columnTypeNames: result.columnTypes.map { $0.rawType ?? "" },

@@ -12,6 +12,13 @@ import TableProPluginKit
 import Testing
 @testable import TablePro
 
+private func makeSharedSidebarUserDefaults() -> (UserDefaults, String) {
+    let suiteName = "com.TablePro.tests.SharedSidebarState.\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: suiteName)!
+    defaults.removePersistentDomain(forName: suiteName)
+    return (defaults, suiteName)
+}
+
 @Suite("SharedSidebarState")
 struct SharedSidebarStateTests {
 
@@ -58,14 +65,31 @@ struct SharedSidebarStateTests {
 
     // MARK: - Sidebar Tab Persistence
 
-    @Test("selectedSidebarTab persists across registry lookups for same connection")
+    @Test("selectedSidebarTab persists across instances for same connection")
     @MainActor
     func selectedSidebarTabPersists() {
+        let (defaults, suiteName) = makeSharedSidebarUserDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
         let id = UUID()
-        let a = SharedSidebarState.forConnection(id)
+        let a = SharedSidebarState(connectionId: id, userDefaults: defaults)
         a.selectedSidebarTab = .favorites
-        let b = SharedSidebarState.forConnection(id)
+        let b = SharedSidebarState(connectionId: id, userDefaults: defaults)
         #expect(b.selectedSidebarTab == .favorites)
-        SharedSidebarState.removeConnection(id)
+    }
+
+    @Test("sidebarLayout falls back to injected default and then persists per connection")
+    @MainActor
+    func sidebarLayoutUsesDefaultAndPersists() {
+        let (defaults, suiteName) = makeSharedSidebarUserDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        SharedSidebarState.setDefaultLayout(.tree, userDefaults: defaults)
+
+        let id = UUID()
+        let initial = SharedSidebarState(connectionId: id, userDefaults: defaults)
+        #expect(initial.sidebarLayout == .tree)
+
+        initial.sidebarLayout = .flat
+        let reloaded = SharedSidebarState(connectionId: id, userDefaults: defaults)
+        #expect(reloaded.sidebarLayout == .flat)
     }
 }

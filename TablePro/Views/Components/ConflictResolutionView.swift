@@ -7,9 +7,10 @@
 
 import CloudKit
 import SwiftUI
+import TableProSync
 
 struct ConflictResolutionView: View {
-    @Bindable private var conflictResolver = ConflictResolver.shared
+    @Bindable private var conflictResolver = DesktopSyncConflictResolver.shared
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -191,7 +192,7 @@ struct ConflictResolutionView: View {
         let resolvedRecord = conflictResolver.resolveCurrentConflict(keepLocal: keepLocal)
 
         if let record = resolvedRecord {
-            SyncCoordinator.shared.pushResolvedConflict(record)
+            DesktopSyncCoordinator.shared.pushResolvedConflict(record)
         }
 
         if !conflictResolver.hasConflicts {

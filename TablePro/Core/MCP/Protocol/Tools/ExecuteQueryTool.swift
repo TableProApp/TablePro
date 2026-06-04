@@ -56,26 +56,15 @@ public struct ExecuteQueryTool: MCPToolImplementation {
     ) async throws -> MCPToolCallResult {
         let connectionId = try MCPArgumentDecoder.requireUuid(arguments, key: "connection_id")
         let query = try MCPArgumentDecoder.requireString(arguments, key: "query")
-
-        let mcpSettings = await MainActor.run { AppSettingsManager.shared.mcp }
-        let maxRows = MCPArgumentDecoder.optionalInt(
-            arguments,
-            key: "max_rows",
-            default: mcpSettings.defaultRowLimit,
-            clamp: 1...mcpSettings.maxRowLimit
-        ) ?? mcpSettings.defaultRowLimit
-        let timeoutSeconds = MCPArgumentDecoder.optionalInt(
-            arguments,
-            key: "timeout_seconds",
-            default: mcpSettings.queryTimeoutSeconds,
-            clamp: 1...300
-        ) ?? mcpSettings.queryTimeoutSeconds
         let database = MCPArgumentDecoder.optionalString(arguments, key: "database")
         let schema = MCPArgumentDecoder.optionalString(arguments, key: "schema")
 
         guard (query as NSString).length <= 102_400 else {
             throw MCPProtocolError.invalidParams(detail: "Query exceeds 100KB limit")
         }
+
+        try await throwIfCancelled(context)
+        await context.progress.emit(progress: 0.0, total: 1.0, message: "Connecting")
 
         let meta = try await ToolConnectionMetadata.resolve(connectionId: connectionId)
 
@@ -84,9 +73,6 @@ public struct ExecuteQueryTool: MCPToolImplementation {
                 detail: "Multi-statement queries are not supported. Send one statement at a time."
             )
         }
-
-        try await throwIfCancelled(context)
-        await context.progress.emit(progress: 0.0, total: 1.0, message: "Connecting")
 
         if let database {
             _ = try await services.connectionBridge.switchDatabase(
@@ -122,6 +108,20 @@ public struct ExecuteQueryTool: MCPToolImplementation {
         )
 
         Self.logger.debug("execute_query invoked for connection \(connectionId.uuidString, privacy: .public)")
+
+        let runtimeSettings = await services.runtimeSettings()
+        let maxRows = MCPArgumentDecoder.optionalInt(
+            arguments,
+            key: "max_rows",
+            default: runtimeSettings.defaultRowLimit,
+            clamp: 1...runtimeSettings.maxRowLimit
+        ) ?? runtimeSettings.defaultRowLimit
+        let timeoutSeconds = MCPArgumentDecoder.optionalInt(
+            arguments,
+            key: "timeout_seconds",
+            default: runtimeSettings.queryTimeoutSeconds,
+            clamp: 1...300
+        ) ?? runtimeSettings.queryTimeoutSeconds
 
         let result = try await ToolQueryExecutor.executeAndLog(
             services: services,

@@ -7,14 +7,17 @@ import Foundation
 import os
 
 internal final class LinkedSQLFolderStorage: @unchecked Sendable {
-    static let shared = LinkedSQLFolderStorage()
+    static let shared = LinkedSQLFolderStorage(userDefaults: .standard)
     private static let logger = Logger(subsystem: "com.TablePro", category: "LinkedSQLFolderStorage")
     private let key = "com.TablePro.linkedSQLFolders"
+    private let defaults: UserDefaults
 
-    private init() {}
+    init(userDefaults: UserDefaults) {
+        defaults = userDefaults
+    }
 
     func loadFolders() -> [LinkedSQLFolder] {
-        guard let data = UserDefaults.standard.data(forKey: key) else { return [] }
+        guard let data = defaults.data(forKey: key) else { return [] }
         do {
             return try JSONDecoder().decode([LinkedSQLFolder].self, from: data)
         } catch {
@@ -26,7 +29,7 @@ internal final class LinkedSQLFolderStorage: @unchecked Sendable {
     func saveFolders(_ folders: [LinkedSQLFolder]) {
         do {
             let data = try JSONEncoder().encode(folders)
-            UserDefaults.standard.set(data, forKey: key)
+            defaults.set(data, forKey: key)
         } catch {
             Self.logger.error("Failed to encode linked SQL folders: \(error.localizedDescription, privacy: .public)")
         }

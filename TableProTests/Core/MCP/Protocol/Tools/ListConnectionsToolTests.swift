@@ -3,6 +3,7 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
+@MainActor
 @Suite("ListConnectionsTool")
 struct ListConnectionsToolTests {
     @Test("Tool exposes expected metadata")

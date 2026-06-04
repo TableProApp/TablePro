@@ -23,7 +23,11 @@ final class FileColumnLayoutPersister: ColumnLayoutPersisting {
 
     private var cache: [UUID: [String: PersistedColumnLayout]] = [:]
 
-    init(storageDirectory: URL? = nil) {
+    convenience init(storageDirectory: URL? = nil) {
+        self.init(storageDirectory: storageDirectory, userDefaults: .standard)
+    }
+
+    init(storageDirectory: URL? = nil, userDefaults: UserDefaults) {
         self.storageDirectory = storageDirectory ?? Self.resolvedStorageDirectory()
 
         do {
@@ -35,7 +39,7 @@ final class FileColumnLayoutPersister: ColumnLayoutPersisting {
             Self.logger.error("Failed to create storage directory: \(error.localizedDescription)")
         }
 
-        Self.performMigrationIfNeeded(storageDirectory: self.storageDirectory)
+        Self.performMigrationIfNeeded(storageDirectory: self.storageDirectory, userDefaults: userDefaults)
     }
 
     func save(_ layout: ColumnLayoutState, for tableName: String, connectionId: UUID) {
@@ -136,11 +140,10 @@ final class FileColumnLayoutPersister: ColumnLayoutPersisting {
             .appendingPathComponent("ColumnLayout", isDirectory: true)
     }
 
-    private static func performMigrationIfNeeded(storageDirectory: URL) {
-        let defaults = UserDefaults.standard
-        guard !defaults.bool(forKey: migrationCompleteKey) else { return }
+    private static func performMigrationIfNeeded(storageDirectory: URL, userDefaults: UserDefaults) {
+        guard !userDefaults.bool(forKey: migrationCompleteKey) else { return }
 
-        let allKeys = defaults.dictionaryRepresentation().keys
+        let allKeys = userDefaults.dictionaryRepresentation().keys
         let legacyKeys = allKeys.filter { $0.hasPrefix(legacyKeyPrefix) }
 
         var grouped: [UUID: [String: PersistedColumnLayout]] = [:]
@@ -154,9 +157,9 @@ final class FileColumnLayoutPersister: ColumnLayoutPersisting {
             let tableName = String(suffix[suffix.index(after: dotIndex)...])
 
             guard let connectionId = UUID(uuidString: uuidString),
-                  let data = defaults.data(forKey: key),
+                  let data = userDefaults.data(forKey: key),
                   let persisted = try? decoder.decode(PersistedColumnLayout.self, from: data) else {
-                defaults.removeObject(forKey: key)
+                userDefaults.removeObject(forKey: key)
                 continue
             }
 
@@ -177,9 +180,9 @@ final class FileColumnLayoutPersister: ColumnLayoutPersisting {
         }
 
         for key in legacyKeys {
-            defaults.removeObject(forKey: key)
+            userDefaults.removeObject(forKey: key)
         }
-        defaults.set(true, forKey: migrationCompleteKey)
+        userDefaults.set(true, forKey: migrationCompleteKey)
 
         if !grouped.isEmpty {
             logger.trace("Migrated \(grouped.count) connection(s) of column layouts to file storage")

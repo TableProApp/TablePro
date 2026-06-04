@@ -6,13 +6,14 @@
 import Foundation
 @testable import TablePro
 import TableProPluginKit
+import TableProSync
 import Testing
 
 @Suite("ConnectionStorage Persistence")
 @MainActor
 struct ConnectionStoragePersistenceTests {
     private let storage: ConnectionStorage
-    private let syncTracker: SyncChangeTracker
+    private let syncTracker: DesktopSyncChangeTracker
     private let fileURL: URL
     private let defaults: UserDefaults
 
@@ -32,12 +33,13 @@ struct ConnectionStoragePersistenceTests {
             fatalError("Failed to create isolated test user defaults")
         }
         self.defaults = defaults
-        let metadata = SyncMetadataStorage(userDefaults: syncDefaults)
-        self.syncTracker = SyncChangeTracker(metadataStorage: metadata)
+        let metadata = DesktopSyncMetadataStorage(userDefaults: syncDefaults)
+        self.syncTracker = DesktopSyncChangeTracker(metadataStorage: metadata)
         self.storage = ConnectionStorage(
             fileURL: fileURL,
             userDefaults: defaults,
             syncTracker: syncTracker,
+            appSettings: AppSettingsStorage(userDefaults: defaults),
             keychain: InMemoryKeychain()
         )
     }

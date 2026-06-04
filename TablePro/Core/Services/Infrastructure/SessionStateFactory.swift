@@ -54,12 +54,27 @@ enum SessionStateFactory {
         connection: DatabaseConnection,
         payload: EditorTabPayload?
     ) -> SessionState {
+        create(
+            connection: connection,
+            payload: payload,
+            defaultPageSizeProvider: {
+                AppSettingsManager.shared.dataGrid.defaultPageSize
+            }
+        )
+    }
+
+    static func create(
+        connection: DatabaseConnection,
+        payload: EditorTabPayload?,
+        defaultPageSizeProvider: @escaping () -> Int
+    ) -> SessionState {
         let connectionId = connection.id
         let tabSessionRegistry = TabSessionRegistry()
         let tabMgr = QueryTabManager(
             globalTabsProvider: {
                 MainActor.assumeIsolated { MainContentCoordinator.allTabs(for: connectionId) }
             },
+            defaultPageSizeProvider: defaultPageSizeProvider,
             tabSessionRegistry: tabSessionRegistry
         )
         let changeMgr = DataChangeManager()

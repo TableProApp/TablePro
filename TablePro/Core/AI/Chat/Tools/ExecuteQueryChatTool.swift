@@ -55,19 +55,19 @@ struct ExecuteQueryChatTool: ChatTool {
             )
         }
 
-        let mcpSettings = await MainActor.run { AppSettingsManager.shared.mcp }
+        let runtimeSettings = await context.runtimeSettings()
         let maxRows = ChatToolArgumentDecoder.optionalInt(
             input,
             key: "max_rows",
-            default: mcpSettings.defaultRowLimit,
-            clamp: 1...mcpSettings.maxRowLimit
-        ) ?? mcpSettings.defaultRowLimit
+            default: runtimeSettings.defaultRowLimit,
+            clamp: 1...runtimeSettings.maxRowLimit
+        ) ?? runtimeSettings.defaultRowLimit
         let timeoutSeconds = ChatToolArgumentDecoder.optionalInt(
             input,
             key: "timeout_seconds",
-            default: mcpSettings.queryTimeoutSeconds,
+            default: runtimeSettings.queryTimeoutSeconds,
             clamp: 1...300
-        ) ?? mcpSettings.queryTimeoutSeconds
+        ) ?? runtimeSettings.queryTimeoutSeconds
 
         let tier = QueryClassifier.classifyTier(query, databaseType: meta.databaseType)
         if tier == .destructive {

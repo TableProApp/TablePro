@@ -2,6 +2,8 @@
 //  SQLFunctionProvider.swift
 //  TablePro
 
+import TableProCoreTypes
+
 internal enum SQLFunctionProvider {
     internal struct SQLFunction {
         let label: String

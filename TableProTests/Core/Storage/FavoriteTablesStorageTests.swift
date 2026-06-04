@@ -1,10 +1,11 @@
 import Foundation
+import TableProSync
 @testable import TablePro
 import Testing
 
 @Suite("FavoriteTablesStorage")
 struct FavoriteTablesStorageTests {
-    private func makeStorage() throws -> (FavoriteTablesStorage, SyncMetadataStorage) {
+    private func makeStorage() throws -> (FavoriteTablesStorage, DesktopSyncMetadataStorage) {
         let favoritesSuite = "FavoriteTablesStorageTests.favorites.\(UUID().uuidString)"
         let syncSuite = "FavoriteTablesStorageTests.sync.\(UUID().uuidString)"
         let favoritesDefaults = try #require(UserDefaults(suiteName: favoritesSuite))
@@ -12,8 +13,8 @@ struct FavoriteTablesStorageTests {
         favoritesDefaults.removePersistentDomain(forName: favoritesSuite)
         syncDefaults.removePersistentDomain(forName: syncSuite)
 
-        let metadata = SyncMetadataStorage(userDefaults: syncDefaults)
-        let tracker = SyncChangeTracker(metadataStorage: metadata)
+        let metadata = DesktopSyncMetadataStorage(userDefaults: syncDefaults)
+        let tracker = DesktopSyncChangeTracker(metadataStorage: metadata)
         let storage = FavoriteTablesStorage(userDefaults: favoritesDefaults, syncTracker: tracker)
         return (storage, metadata)
     }

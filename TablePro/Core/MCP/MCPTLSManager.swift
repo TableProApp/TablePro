@@ -50,7 +50,10 @@ actor MCPTLSManager {
             throw MCPTLSError.identityNotFound
         }
 
-        let identity = (ref as! SecIdentity) // swiftlint:disable:this force_cast
+        guard CFGetTypeID(ref) == SecIdentityGetTypeID() else {
+            throw MCPTLSError.identityNotFound
+        }
+        let identity = unsafeDowncast(ref, to: SecIdentity.self)
 
         var secCert: SecCertificate?
         let certStatus = SecIdentityCopyCertificate(identity, &secCert)
@@ -179,7 +182,12 @@ actor MCPTLSManager {
             throw MCPTLSError.identityNotFound
         }
 
-        return (ref as! SecIdentity) // swiftlint:disable:this force_cast
+        guard CFGetTypeID(ref) == SecIdentityGetTypeID() else {
+            throw MCPTLSError.identityNotFound
+        }
+        let identity = unsafeDowncast(ref, to: SecIdentity.self)
+
+        return identity
     }
 
     private func deleteKeychainKey() {

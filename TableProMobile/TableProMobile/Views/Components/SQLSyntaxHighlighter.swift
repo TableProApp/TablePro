@@ -5,7 +5,7 @@ enum SQLSyntaxHighlighter {
 
     private static let defaultFont = UIFont.monospacedSystemFont(ofSize: 15, weight: .regular)
 
-    private static let keywordRegex: Regex<Substring> = {
+    private static let keywordRegex: Regex<Substring>? = {
         let keywords = [
             "SELECT", "FROM", "WHERE", "INSERT", "UPDATE", "DELETE", "CREATE", "DROP", "ALTER",
             "TABLE", "INDEX", "VIEW", "JOIN", "LEFT", "RIGHT", "INNER", "OUTER", "CROSS", "FULL",
@@ -18,11 +18,10 @@ enum SQLSyntaxHighlighter {
             "GRANT", "REVOKE", "WITH", "RECURSIVE", "FETCH", "NEXT", "ROWS", "ONLY"
         ]
         let pattern = #"\b(?:"# + keywords.joined(separator: "|") + #")\b"#
-        // swiftlint:disable:next force_try
-        return try! Regex(pattern, as: Substring.self).ignoresCase()
+        return try? Regex(pattern, as: Substring.self).ignoresCase()
     }()
 
-    private static let functionRegex: Regex<Substring> = {
+    private static let functionRegex: Regex<Substring>? = {
         let functions = [
             "COUNT", "SUM", "AVG", "MIN", "MAX", "COALESCE", "IFNULL", "NULLIF",
             "UPPER", "LOWER", "TRIM", "LTRIM", "RTRIM", "LENGTH", "SUBSTRING", "SUBSTR",
@@ -32,8 +31,7 @@ enum SQLSyntaxHighlighter {
             "GROUP_CONCAT", "STRING_AGG", "ARRAY_AGG", "JSON_EXTRACT", "JSON_VALUE"
         ]
         let pattern = #"\b(?:"# + functions.joined(separator: "|") + #")\s*(?=\()"#
-        // swiftlint:disable:next force_try
-        return try! Regex(pattern, as: Substring.self).ignoresCase()
+        return try? Regex(pattern, as: Substring.self).ignoresCase()
     }()
 
     private static let numberRegex = #/\b\d+\.?\d*\b/#
@@ -80,8 +78,28 @@ enum SQLSyntaxHighlighter {
         apply(blockCommentRegex, color: .systemGray, scanText: scanText, in: fullText, on: textStorage, protected: &protected)
         apply(lineCommentRegex, color: .systemGray, scanText: scanText, in: fullText, on: textStorage, protected: &protected)
         apply(stringRegex, color: .systemRed, scanText: scanText, in: fullText, on: textStorage, protected: &protected)
-        apply(keywordRegex, color: .systemBlue, scanText: scanText, in: fullText, on: textStorage, protected: &protected, recordsProtection: false)
-        apply(functionRegex, color: .systemPurple, scanText: scanText, in: fullText, on: textStorage, protected: &protected, recordsProtection: false)
+        if let keywordRegex {
+            apply(
+                keywordRegex,
+                color: .systemBlue,
+                scanText: scanText,
+                in: fullText,
+                on: textStorage,
+                protected: &protected,
+                recordsProtection: false
+            )
+        }
+        if let functionRegex {
+            apply(
+                functionRegex,
+                color: .systemPurple,
+                scanText: scanText,
+                in: fullText,
+                on: textStorage,
+                protected: &protected,
+                recordsProtection: false
+            )
+        }
         apply(numberRegex, color: .systemOrange, scanText: scanText, in: fullText, on: textStorage, protected: &protected, recordsProtection: false)
 
         textStorage.endEditing()

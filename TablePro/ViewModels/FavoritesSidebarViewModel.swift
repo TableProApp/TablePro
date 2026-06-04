@@ -172,7 +172,11 @@ internal final class FavoritesSidebarViewModel {
         return roots
     }
 
-    init(connectionId: UUID, services: AppServices = .live) {
+    convenience init(connectionId: UUID) {
+        self.init(connectionId: connectionId, services: .live)
+    }
+
+    init(connectionId: UUID, services: AppServices) {
         self.connectionId = connectionId
         self.services = services
         self.cache = ConnectionDataCache.shared(for: connectionId)

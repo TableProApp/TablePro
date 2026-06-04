@@ -69,7 +69,7 @@ final class InspectorWindowController: NSWindowController, NSWindowDelegate, NST
 
     @available(*, unavailable)
     required init?(coder: NSCoder) {
-        fatalError("init(coder:) not supported")
+        return nil
     }
 
     func windowWillReturnUndoManager(_ window: NSWindow) -> UndoManager? {

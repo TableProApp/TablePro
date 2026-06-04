@@ -3,6 +3,7 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
+@MainActor
 @Suite("ConnectTool")
 struct ConnectToolTests {
     @Test("Missing connection_id returns invalidParams")

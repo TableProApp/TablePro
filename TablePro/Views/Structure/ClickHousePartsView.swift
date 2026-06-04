@@ -114,7 +114,10 @@ struct ClickHousePartsView: View {
             guard let driver = DatabaseManager.shared.driver(for: connectionId) else { return }
             let sql = "OPTIMIZE TABLE \(driver.quoteIdentifier(tableName)) FINAL"
             do {
-                _ = try await driver.execute(query: sql)
+                _ = try await driver.executeAuthorizing(
+                    query: sql,
+                    request: request(sql: sql, kind: .maintenance, operationDescription: String(localized: "Optimize Table"))
+                )
                 await loadParts()
             } catch {
                 Self.logger.error("Optimize failed: \(error.localizedDescription, privacy: .public)")
@@ -139,7 +142,10 @@ struct ClickHousePartsView: View {
             guard let driver = DatabaseManager.shared.driver(for: connectionId) else { return }
             let sql = "ALTER TABLE \(driver.quoteIdentifier(tableName)) DROP PARTITION '\(driver.escapeStringLiteral(partitionValue))'"
             do {
-                _ = try await driver.execute(query: sql)
+                _ = try await driver.executeAuthorizing(
+                    query: sql,
+                    request: request(sql: sql, kind: .destructiveQuery, operationDescription: String(localized: "Drop Partition"))
+                )
                 selection.removeAll()
                 await loadParts()
             } catch {
@@ -165,7 +171,10 @@ struct ClickHousePartsView: View {
             guard let driver = DatabaseManager.shared.driver(for: connectionId) else { return }
             let sql = "ALTER TABLE \(driver.quoteIdentifier(tableName)) DETACH PARTITION '\(driver.escapeStringLiteral(partitionValue))'"
             do {
-                _ = try await driver.execute(query: sql)
+                _ = try await driver.executeAuthorizing(
+                    query: sql,
+                    request: request(sql: sql, kind: .schemaMutation, operationDescription: String(localized: "Detach Partition"))
+                )
                 selection.removeAll()
                 await loadParts()
             } catch {
@@ -201,7 +210,10 @@ struct ClickHousePartsView: View {
                 WHERE database = currentDatabase() AND table = '\(driver.escapeStringLiteral(tableName))'
                 ORDER BY partition, name
                 """
-            let result = try await driver.execute(query: sql)
+            let result = try await driver.executeAuthorizing(
+                query: sql,
+                request: request(sql: sql, kind: .metadataRead, operationDescription: String(localized: "Load Table Parts"))
+            )
             parts = result.rows.compactMap { row -> ClickHousePartInfo? in
                 guard let name = row[safe: 1]?.asText else { return nil }
                 let partition = row[safe: 0]?.asText ?? ""
@@ -243,5 +255,23 @@ struct ClickHousePartsView: View {
         default:
             return String(format: "%.2f GB", Double(bytes) / 1_073_741_824)
         }
+    }
+
+    private func request(sql: String, kind: OperationKind, operationDescription: String) -> OperationRequest {
+        if kind == .metadataRead {
+            return OperationRequest.metadataRead(
+                connectionId: connectionId,
+                databaseType: .clickhouse,
+                sql: sql,
+                operationDescription: operationDescription
+            )
+        }
+        return OperationRequest.interactiveUser(
+            connectionId: connectionId,
+            databaseType: .clickhouse,
+            sql: sql,
+            kind: kind,
+            operationDescription: operationDescription
+        )
     }
 }

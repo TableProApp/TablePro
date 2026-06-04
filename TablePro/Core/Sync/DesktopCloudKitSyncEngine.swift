@@ -1,5 +1,5 @@
 //
-//  CloudKitSyncEngine.swift
+//  DesktopCloudKitSyncEngine.swift
 //  TablePro
 //
 //  Actor wrapping all CloudKit operations: zone setup, push, pull
@@ -9,17 +9,18 @@ import CloudKit
 import Foundation
 import os
 import Security
+import TableProSync
 
 /// Result of a pull operation
-struct PullResult: Sendable {
+struct DesktopPullResult: Sendable {
     let changedRecords: [CKRecord]
     let deletedRecordIDs: [CKRecord.ID]
     let newToken: CKServerChangeToken?
 }
 
 /// Actor that serializes all CloudKit I/O
-actor CloudKitSyncEngine {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "CloudKitSyncEngine")
+actor DesktopCloudKitSyncEngine {
+    private static let logger = Logger(subsystem: "com.TablePro", category: "DesktopCloudKitSyncEngine")
 
     private let container: CKContainer?
     private let database: CKDatabase?
@@ -134,13 +135,13 @@ actor CloudKitSyncEngine {
 
     // MARK: - Pull
 
-    func pull(since token: CKServerChangeToken?) async throws -> PullResult {
+    func pull(since token: CKServerChangeToken?) async throws -> DesktopPullResult {
         try await withRetry {
             try await performPull(since: token)
         }
     }
 
-    private func performPull(since token: CKServerChangeToken?) async throws -> PullResult {
+    private func performPull(since token: CKServerChangeToken?) async throws -> DesktopPullResult {
         guard let database else { throw SyncError.accountUnavailable }
         let configuration = CKFetchRecordZoneChangesOperation.ZoneConfiguration()
         configuration.previousServerChangeToken = token
@@ -181,7 +182,7 @@ actor CloudKitSyncEngine {
             operation.fetchRecordZoneChangesResultBlock = { result in
                 switch result {
                 case .success:
-                    let pullResult = PullResult(
+                    let pullResult = DesktopPullResult(
                         changedRecords: changedRecords,
                         deletedRecordIDs: deletedRecordIDs,
                         newToken: newToken

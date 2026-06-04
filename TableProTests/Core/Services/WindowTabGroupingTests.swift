@@ -2,7 +2,7 @@
 //  WindowTabGroupingTests.swift
 //  TableProTests
 //
-//  Tests for `WindowManager.tabbingIdentifier(for:)` — the static helper that
+//  Tests for `WindowManager.tabbingIdentifier(for:groupAllConnectionTabs:)` — the pure helper that
 //  drives macOS native window tab grouping for main editor windows.
 //
 //  The earlier `WindowOpener.pendingPayloads` / `acknowledgePayload` /
@@ -20,17 +20,15 @@ import Testing
 @Suite("WindowTabGrouping")
 @MainActor
 struct WindowTabGroupingTests {
-    init() {
-        // Tests assume per-connection grouping; reset in case a prior suite changed it.
-        AppSettingsManager.shared.tabs.groupAllConnectionTabs = false
-    }
-
     @Test("tabbingIdentifier produces a connection-specific identifier")
     func tabbingIdentifierUsesConnectionId() {
         let connectionId = UUID()
         let expected = "com.TablePro.main.\(connectionId.uuidString)"
 
-        let result = WindowManager.tabbingIdentifier(for: connectionId)
+        let result = WindowManager.tabbingIdentifier(
+            for: connectionId,
+            groupAllConnectionTabs: false
+        )
 
         #expect(result == expected)
     }
@@ -40,8 +38,8 @@ struct WindowTabGroupingTests {
         let connectionA = UUID()
         let connectionB = UUID()
 
-        let idA = WindowManager.tabbingIdentifier(for: connectionA)
-        let idB = WindowManager.tabbingIdentifier(for: connectionB)
+        let idA = WindowManager.tabbingIdentifier(for: connectionA, groupAllConnectionTabs: false)
+        let idB = WindowManager.tabbingIdentifier(for: connectionB, groupAllConnectionTabs: false)
 
         #expect(idA != idB)
         #expect(idA.contains(connectionA.uuidString))
@@ -52,9 +50,21 @@ struct WindowTabGroupingTests {
     func sameConnectionProducesSameIdentifier() {
         let connectionId = UUID()
 
-        let id1 = WindowManager.tabbingIdentifier(for: connectionId)
-        let id2 = WindowManager.tabbingIdentifier(for: connectionId)
+        let id1 = WindowManager.tabbingIdentifier(for: connectionId, groupAllConnectionTabs: false)
+        let id2 = WindowManager.tabbingIdentifier(for: connectionId, groupAllConnectionTabs: false)
 
         #expect(id1 == id2)
+    }
+
+    @Test("group all connections uses the shared main identifier")
+    func groupAllConnectionsUsesSharedIdentifier() {
+        let connectionA = UUID()
+        let connectionB = UUID()
+
+        let idA = WindowManager.tabbingIdentifier(for: connectionA, groupAllConnectionTabs: true)
+        let idB = WindowManager.tabbingIdentifier(for: connectionB, groupAllConnectionTabs: true)
+
+        #expect(idA == "com.TablePro.main")
+        #expect(idB == "com.TablePro.main")
     }
 }

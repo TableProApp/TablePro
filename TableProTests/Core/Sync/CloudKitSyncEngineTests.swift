@@ -1,5 +1,5 @@
 //
-//  CloudKitSyncEngineTests.swift
+//  DesktopCloudKitSyncEngineTests.swift
 //  TableProTests
 //
 //  Verifies the soft-dependency path: when the running process lacks the
@@ -12,19 +12,20 @@
 import CloudKit
 import Foundation
 import TableProPluginKit
+import TableProSync
 @testable import TablePro
 import Testing
 
-@Suite("CloudKitSyncEngine soft dependency", .disabled(if: CloudKitSyncEngine.hasICloudEntitlement(), "Test host has the iCloud entitlement"))
-struct CloudKitSyncEngineTests {
+@Suite("DesktopCloudKitSyncEngine soft dependency", .disabled(if: DesktopCloudKitSyncEngine.hasICloudEntitlement(), "Test host has the iCloud entitlement"))
+struct DesktopCloudKitSyncEngineTests {
     private func skipIfEntitled() throws {
-        try #require(!CloudKitSyncEngine.hasICloudEntitlement(), "Test host has the iCloud entitlement; skipping")
+        try #require(!DesktopCloudKitSyncEngine.hasICloudEntitlement(), "Test host has the iCloud entitlement; skipping")
     }
 
     @Test("checkAccountStatus throws accountUnavailable without iCloud entitlement")
     func checkAccountStatusThrows() async throws {
         try skipIfEntitled()
-        let engine = CloudKitSyncEngine()
+        let engine = DesktopCloudKitSyncEngine()
         await #expect(throws: SyncError.accountUnavailable) {
             _ = try await engine.checkAccountStatus()
         }
@@ -33,7 +34,7 @@ struct CloudKitSyncEngineTests {
     @Test("ensureZoneExists throws accountUnavailable without iCloud entitlement")
     func ensureZoneExistsThrows() async throws {
         try skipIfEntitled()
-        let engine = CloudKitSyncEngine()
+        let engine = DesktopCloudKitSyncEngine()
         await #expect(throws: SyncError.accountUnavailable) {
             try await engine.ensureZoneExists()
         }
@@ -42,7 +43,7 @@ struct CloudKitSyncEngineTests {
     @Test("push with non-empty input throws accountUnavailable without iCloud entitlement")
     func pushThrows() async throws {
         try skipIfEntitled()
-        let engine = CloudKitSyncEngine()
+        let engine = DesktopCloudKitSyncEngine()
         let zoneID = await engine.zoneID
         let record = CKRecord(recordType: "Test", recordID: CKRecord.ID(recordName: "test", zoneID: zoneID))
         await #expect(throws: SyncError.accountUnavailable) {
@@ -52,14 +53,14 @@ struct CloudKitSyncEngineTests {
 
     @Test("push short-circuits without throwing when both inputs are empty")
     func pushEmptyShortCircuits() async throws {
-        let engine = CloudKitSyncEngine()
+        let engine = DesktopCloudKitSyncEngine()
         try await engine.push(records: [], deletions: [])
     }
 
     @Test("pull throws accountUnavailable without iCloud entitlement")
     func pullThrows() async throws {
         try skipIfEntitled()
-        let engine = CloudKitSyncEngine()
+        let engine = DesktopCloudKitSyncEngine()
         await #expect(throws: SyncError.accountUnavailable) {
             _ = try await engine.pull(since: nil)
         }
@@ -68,7 +69,7 @@ struct CloudKitSyncEngineTests {
     @Test("currentAccountId throws accountUnavailable without iCloud entitlement")
     func currentAccountIdThrows() async throws {
         try skipIfEntitled()
-        let engine = CloudKitSyncEngine()
+        let engine = DesktopCloudKitSyncEngine()
         await #expect(throws: SyncError.accountUnavailable) {
             _ = try await engine.currentAccountId()
         }

@@ -579,20 +579,15 @@ struct JSONImportSheet: View {
         guard let driver = DatabaseManager.shared.driver(for: connection.id) else {
             throw DatabaseError.notConnected
         }
-        let decision = await ExecutionGateProvider.shared.authorize(
-            OperationRequest(
-                connectionId: connection.id,
-                databaseType: connection.type,
-                sql: sql,
-                kind: .schemaMutation,
-                caller: .userInterface,
-                capabilities: .interactiveUser,
-                operationDescription: String(localized: "Create Table")
-            )
+        let request = OperationRequest.interactiveUser(
+            connectionId: connection.id,
+            databaseType: connection.type,
+            sql: sql,
+            kind: .schemaMutation,
+            operationDescription: String(localized: "Create Table")
         )
-        guard case .authorized = decision else {
-            throw PluginImportError.importFailed(decision.deniedReason ?? String(localized: "Operation not permitted"))
+        try await ExecutionGateProvider.shared.authorizing(request) {
+            _ = try await driver.executeAuthorizing(query: sql, request: request)
         }
-        _ = try await driver.execute(query: sql)
     }
 }

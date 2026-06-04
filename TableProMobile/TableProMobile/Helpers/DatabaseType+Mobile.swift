@@ -2,6 +2,31 @@ import Foundation
 import TableProModels
 
 extension DatabaseType {
+    var iconName: String {
+        switch self {
+        case .mysql: return "mysql-icon"
+        case .mariadb: return "mariadb-icon"
+        case .postgresql: return "postgresql-icon"
+        case .redshift: return "redshift-icon"
+        case .sqlite: return "sqlite-icon"
+        case .redis: return "redis-icon"
+        case .mongodb: return "mongodb-icon"
+        case .clickhouse: return "clickhouse-icon"
+        case .mssql: return "mssql-icon"
+        case .oracle: return "oracle-icon"
+        case .duckdb: return "duckdb-icon"
+        case .cassandra: return "cassandra-icon"
+        case .scylladb: return "scylladb-icon"
+        case .etcd: return "etcd-icon"
+        case .cloudflareD1: return "cloudflare-d1-icon"
+        case .dynamodb: return "dynamodb-icon"
+        case .bigQuery: return "bigquery-icon"
+        case .libsql, .turso: return "libsql-icon"
+        case .cockroachdb: return "cockroachdb-icon"
+        default: return "externaldrive"
+        }
+    }
+
     var defaultPort: String {
         switch self {
         case .mysql, .mariadb: return "3306"

@@ -76,20 +76,4 @@ struct KeychainHelperTests {
         _ = helper.writeString("payload", forKey: key)
         #expect(helper.readStringResult(forKey: key) == .found("payload"))
     }
-
-    @Test("password sync flag defaults to false when unset")
-    func passwordSyncFlagDefaultsFalse() {
-        let defaultsKey = KeychainHelper.passwordSyncEnabledKey
-        let previous = UserDefaults.standard.object(forKey: defaultsKey)
-        defer {
-            if let previous {
-                UserDefaults.standard.set(previous, forKey: defaultsKey)
-            } else {
-                UserDefaults.standard.removeObject(forKey: defaultsKey)
-            }
-        }
-
-        UserDefaults.standard.removeObject(forKey: defaultsKey)
-        #expect(UserDefaults.standard.bool(forKey: defaultsKey) == false)
-    }
 }
