@@ -165,7 +165,7 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private var _serverVersion: String?
 
     /// IDENTITY columns observed during `fetchColumns`, keyed by table name.
-    /// `generateMssqlInsert` reads this to skip IDENTITY columns: SQL Server
+    /// DML statement generation reads this to skip IDENTITY columns: SQL Server
     /// rejects explicit values for IDENTITY columns unless IDENTITY_INSERT is ON,
     /// and the value the user typed is server-allocated anyway.
     var identityColumnsByTable: [String: Set<String>] = [:]
@@ -313,153 +313,23 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         deletedRowIndices: Set<Int>,
         insertedRowIndices: Set<Int>
     ) -> [(statement: String, parameters: [PluginCellValue])]? {
-        var statements: [(statement: String, parameters: [PluginCellValue])] = []
-
-        var deleteChanges: [PluginRowChange] = []
-
-        for change in changes {
-            switch change.type {
-            case .insert:
-                guard insertedRowIndices.contains(change.rowIndex) else { continue }
-                if let values = insertedRowData[change.rowIndex] {
-                    if let stmt = generateMssqlInsert(table: table, columns: columns, values: values) {
-                        statements.append(stmt)
-                    }
-                }
-            case .update:
-                if let stmt = generateMssqlUpdate(
-                    table: table, columns: columns,
-                    primaryKeyColumns: primaryKeyColumns, change: change
-                ) {
-                    statements.append(stmt)
-                }
-            case .delete:
-                guard deletedRowIndices.contains(change.rowIndex) else { continue }
-                deleteChanges.append(change)
-            }
-        }
-
-        if !deleteChanges.isEmpty {
-            for change in deleteChanges {
-                if let stmt = generateMssqlDelete(
-                    table: table, columns: columns,
-                    primaryKeyColumns: primaryKeyColumns, change: change
-                ) {
-                    statements.append(stmt)
-                }
-            }
-        }
-
-        return statements.isEmpty ? nil : statements
-    }
-
-    private func generateMssqlInsert(
-        table: String,
-        columns: [String],
-        values: [PluginCellValue]
-    ) -> (statement: String, parameters: [PluginCellValue])? {
-        var nonDefaultColumns: [String] = []
-        var parameters: [PluginCellValue] = []
         let identityColumns = cachedIdentityColumns(for: table)
-
-        for (index, value) in values.enumerated() {
-            if value.asText == "__DEFAULT__" { continue }
-            guard index < columns.count else { continue }
-            let columnName = columns[index]
-            // SQL Server IDENTITY columns are server-allocated. INSERTs that include
-            // an explicit value fail unless `SET IDENTITY_INSERT <table> ON` was issued,
-            // so always omit them and let the server assign the next value.
-            if identityColumns.contains(columnName) { continue }
-            nonDefaultColumns.append("[\(columnName.replacingOccurrences(of: "]", with: "]]"))]")
-            parameters.append(value)
-        }
-
-        guard !nonDefaultColumns.isEmpty else { return nil }
-
-        let columnList = nonDefaultColumns.joined(separator: ", ")
-        let placeholders = parameters.map { _ in "?" }.joined(separator: ", ")
-        let escapedTable = "[\(table.replacingOccurrences(of: "]", with: "]]"))]"
-        let sql = "INSERT INTO \(escapedTable) (\(columnList)) VALUES (\(placeholders))"
-        return (statement: sql, parameters: parameters)
-    }
-
-    private func generateMssqlUpdate(
-        table: String,
-        columns: [String],
-        primaryKeyColumns: [String],
-        change: PluginRowChange
-    ) -> (statement: String, parameters: [PluginCellValue])? {
-        guard !change.cellChanges.isEmpty else { return nil }
-        guard let originalRow = change.originalRow else { return nil }
-
-        let escapedTable = "[\(table.replacingOccurrences(of: "]", with: "]]"))]"
-        var parameters: [PluginCellValue] = []
-
-        let setClauses = change.cellChanges.map { cellChange -> String in
-            let col = "[\(cellChange.columnName.replacingOccurrences(of: "]", with: "]]"))]"
-            parameters.append(cellChange.newValue)
-            return "\(col) = ?"
-        }.joined(separator: ", ")
-
-        let whereColumns: [String] = primaryKeyColumns.isEmpty ? columns : primaryKeyColumns
-
-        var conditions: [String] = []
-        for whereColumn in whereColumns {
-            guard let columnIndex = columns.firstIndex(of: whereColumn),
-                  columnIndex < originalRow.count
-            else { continue }
-            let col = "[\(whereColumn.replacingOccurrences(of: "]", with: "]]"))]"
-            let value = originalRow[columnIndex]
-            if value.isNull {
-                conditions.append("\(col) IS NULL")
-            } else {
-                parameters.append(value)
-                conditions.append("\(col) = ?")
-            }
-        }
-
-        guard !conditions.isEmpty else { return nil }
-
-        let whereClause = conditions.joined(separator: " AND ")
-        let topClause = primaryKeyColumns.isEmpty ? "TOP (1) " : ""
-        let sql = "UPDATE \(topClause)\(escapedTable) SET \(setClauses) WHERE \(whereClause)"
-        return (statement: sql, parameters: parameters)
-    }
-
-    private func generateMssqlDelete(
-        table: String,
-        columns: [String],
-        primaryKeyColumns: [String],
-        change: PluginRowChange
-    ) -> (statement: String, parameters: [PluginCellValue])? {
-        guard let originalRow = change.originalRow else { return nil }
-
-        let escapedTable = "[\(table.replacingOccurrences(of: "]", with: "]]"))]"
-        var parameters: [PluginCellValue] = []
-        var conditions: [String] = []
-
-        let whereColumns: [String] = primaryKeyColumns.isEmpty ? columns : primaryKeyColumns
-
-        for whereColumn in whereColumns {
-            guard let columnIndex = columns.firstIndex(of: whereColumn),
-                  columnIndex < originalRow.count
-            else { continue }
-            let col = "[\(whereColumn.replacingOccurrences(of: "]", with: "]]"))]"
-            let value = originalRow[columnIndex]
-            if value.isNull {
-                conditions.append("\(col) IS NULL")
-            } else {
-                parameters.append(value)
-                conditions.append("\(col) = ?")
-            }
-        }
-
-        guard !conditions.isEmpty else { return nil }
-
-        let whereClause = conditions.joined(separator: " AND ")
-        let topClause = primaryKeyColumns.isEmpty ? "TOP (1) " : ""
-        let sql = "DELETE \(topClause)FROM \(escapedTable) WHERE \(whereClause)"
-        return (statement: sql, parameters: parameters)
+        return PluginSQLStatementBuilder.generateStatements(
+            table: table,
+            columns: columns,
+            primaryKeyColumns: primaryKeyColumns,
+            changes: changes,
+            insertedRowData: insertedRowData,
+            deletedRowIndices: deletedRowIndices,
+            insertedRowIndices: insertedRowIndices,
+            quoteIdentifier: quoteIdentifier,
+            insertDefaultStrategy: .omitColumn,
+            includeInsertedColumn: { !identityColumns.contains($0) },
+            whereColumnStrategy: .primaryKeyOrAll,
+            collectDeletesLast: true,
+            singleRowUpdatePrefixWhenNoPrimaryKey: "TOP (1) ",
+            singleRowDeletePrefixWhenNoPrimaryKey: "TOP (1) "
+        )
     }
 
     // MARK: - Streaming
@@ -563,13 +433,15 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         limit: Int,
         offset: Int
     ) -> String? {
-        let quotedTable = mssqlQuoteIdentifier(table)
-        var query = "SELECT * FROM \(quotedTable)"
-        let orderBy = PluginSQLFilter.buildOrderByClause(
-            sortColumns: sortColumns, columns: columns, quoteIdentifier: mssqlQuoteIdentifier
-        ) ?? "ORDER BY (SELECT NULL)"
-        query += " \(orderBy) OFFSET \(offset) ROWS FETCH NEXT \(limit) ROWS ONLY"
-        return query
+        guard let dialect = MSSQLPlugin.sqlDialect else { return nil }
+        return PluginSQLFilter.buildBrowseQuery(
+            table: table,
+            dialect: dialect,
+            sortColumns: sortColumns,
+            columns: columns,
+            limit: limit,
+            offset: offset
+        )
     }
 
     func buildFilteredQuery(
@@ -581,42 +453,21 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         limit: Int,
         offset: Int
     ) -> String? {
-        let quotedTable = mssqlQuoteIdentifier(table)
-        var query = "SELECT * FROM \(quotedTable)"
-        let whereClause = PluginSQLFilter.buildWhereClause(
+        guard let dialect = MSSQLPlugin.sqlDialect else { return nil }
+        return PluginSQLFilter.buildFilteredQuery(
+            table: table,
             filters: filters,
             logicMode: logicMode,
-            quoteIdentifier: mssqlQuoteIdentifier,
-            escapeValue: mssqlEscapeValue,
+            dialect: dialect,
+            sortColumns: sortColumns,
+            columns: columns,
+            limit: limit,
+            offset: offset,
             regexCondition: { quoted, value in
                 "\(quoted) LIKE '%\(value.replacingOccurrences(of: "'", with: "''"))%'"
             }
         )
-        if !whereClause.isEmpty {
-            query += " WHERE \(whereClause)"
-        }
-        let orderBy = PluginSQLFilter.buildOrderByClause(
-            sortColumns: sortColumns, columns: columns, quoteIdentifier: mssqlQuoteIdentifier
-        ) ?? "ORDER BY (SELECT NULL)"
-        query += " \(orderBy) OFFSET \(offset) ROWS FETCH NEXT \(limit) ROWS ONLY"
-        return query
     }
-
-    // MARK: - Query Building Helpers
-
-    private func mssqlQuoteIdentifier(_ identifier: String) -> String {
-        quoteIdentifier(identifier)
-    }
-
-    private func mssqlEscapeValue(_ value: String) -> String {
-        let trimmed = value.trimmingCharacters(in: .whitespaces)
-        if trimmed.caseInsensitiveCompare("NULL") == .orderedSame { return "NULL" }
-        if trimmed.caseInsensitiveCompare("TRUE") == .orderedSame { return "1" }
-        if trimmed.caseInsensitiveCompare("FALSE") == .orderedSame { return "0" }
-        if Int(trimmed) != nil || Double(trimmed) != nil { return trimmed }
-        return "'\(trimmed.replacingOccurrences(of: "'", with: "''"))'"
-    }
-
 
     // MARK: - Private Helpers
 

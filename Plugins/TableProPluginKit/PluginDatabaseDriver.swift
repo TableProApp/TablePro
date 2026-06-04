@@ -622,6 +622,77 @@ public enum PluginSQLFilter {
         return "ORDER BY " + parts.joined(separator: ", ")
     }
 
+    public static func buildBrowseQuery(
+        table: String,
+        dialect: SQLDialectDescriptor,
+        sortColumns: [(columnIndex: Int, ascending: Bool)],
+        columns: [String],
+        limit: Int,
+        offset: Int
+    ) -> String {
+        let quotedTable = dialect.quoteIdentifier(table)
+        return appendPagination(
+            to: "SELECT * FROM \(quotedTable)",
+            dialect: dialect,
+            sortColumns: sortColumns,
+            columns: columns,
+            limit: limit,
+            offset: offset
+        )
+    }
+
+    public static func buildFilteredQuery(
+        table: String,
+        filters: [(column: String, op: String, value: String)],
+        logicMode: String,
+        dialect: SQLDialectDescriptor,
+        sortColumns: [(columnIndex: Int, ascending: Bool)],
+        columns: [String],
+        limit: Int,
+        offset: Int,
+        regexCondition: (_ quotedColumn: String, _ value: String) -> String?
+    ) -> String {
+        let quotedTable = dialect.quoteIdentifier(table)
+        let whereClause = buildWhereClause(
+            filters: filters,
+            logicMode: logicMode,
+            dialect: dialect,
+            regexCondition: regexCondition
+        )
+        let baseQuery = whereClause.isEmpty
+            ? "SELECT * FROM \(quotedTable)"
+            : "SELECT * FROM \(quotedTable) WHERE \(whereClause)"
+
+        return appendPagination(
+            to: baseQuery,
+            dialect: dialect,
+            sortColumns: sortColumns,
+            columns: columns,
+            limit: limit,
+            offset: offset
+        )
+    }
+
+    public static func buildWhereClause(
+        filters: [(column: String, op: String, value: String)],
+        logicMode: String,
+        dialect: SQLDialectDescriptor,
+        regexCondition: (_ quotedColumn: String, _ value: String) -> String?
+    ) -> String {
+        let conditions = filters.compactMap { filter in
+            buildFilterCondition(
+                column: filter.column,
+                op: filter.op,
+                value: filter.value,
+                dialect: dialect,
+                regexCondition: regexCondition
+            )
+        }
+        guard !conditions.isEmpty else { return "" }
+        let separator = logicMode == "and" ? " AND " : " OR "
+        return conditions.joined(separator: separator)
+    }
+
     public static func buildWhereClause(
         filters: [(column: String, op: String, value: String)],
         logicMode: String,
@@ -636,6 +707,10 @@ public enum PluginSQLFilter {
                 value: filter.value,
                 quoteIdentifier: quoteIdentifier,
                 escapeValue: escapeValue,
+                escapeLikeWildcards: escapeForLike,
+                likeEscapeClause: " ESCAPE '\\'",
+                quoteLikePattern: false,
+                normalizeNullEquality: false,
                 regexCondition: regexCondition
             )
         }
@@ -648,14 +723,65 @@ public enum PluginSQLFilter {
         column: String,
         op: String,
         value: String,
+        dialect: SQLDialectDescriptor,
+        regexCondition: (_ quotedColumn: String, _ value: String) -> String?
+    ) -> String? {
+        buildFilterCondition(
+            column: column,
+            op: op,
+            value: value,
+            quoteIdentifier: dialect.quoteIdentifier,
+            escapeValue: { dialect.sqlLiteral(for: $0) },
+            escapeLikeWildcards: dialect.escapeLikeWildcards,
+            likeEscapeClause: dialect.likeEscapeClause,
+            quoteLikePattern: true,
+            normalizeNullEquality: true,
+            regexCondition: regexCondition
+        )
+    }
+
+    public static func buildFilterCondition(
+        column: String,
+        op: String,
+        value: String,
         quoteIdentifier: (String) -> String,
         escapeValue: (String) -> String,
         regexCondition: (_ quotedColumn: String, _ value: String) -> String?
     ) -> String? {
+        buildFilterCondition(
+            column: column,
+            op: op,
+            value: value,
+            quoteIdentifier: quoteIdentifier,
+            escapeValue: escapeValue,
+            escapeLikeWildcards: escapeForLike,
+            likeEscapeClause: " ESCAPE '\\'",
+            quoteLikePattern: false,
+            normalizeNullEquality: false,
+            regexCondition: regexCondition
+        )
+    }
+
+    private static func buildFilterCondition(
+        column: String,
+        op: String,
+        value: String,
+        quoteIdentifier: (String) -> String,
+        escapeValue: (String) -> String,
+        escapeLikeWildcards: (String) -> String,
+        likeEscapeClause: String,
+        quoteLikePattern: Bool,
+        normalizeNullEquality: Bool,
+        regexCondition: (_ quotedColumn: String, _ value: String) -> String?
+    ) -> String? {
         let quoted = quoteIdentifier(column)
         switch op {
-        case "=": return "\(quoted) = \(escapeValue(value))"
-        case "!=": return "\(quoted) != \(escapeValue(value))"
+        case "=":
+            if normalizeNullEquality, isNullLiteral(value) { return "\(quoted) IS NULL" }
+            return "\(quoted) = \(escapeValue(value))"
+        case "!=":
+            if normalizeNullEquality, isNullLiteral(value) { return "\(quoted) IS NOT NULL" }
+            return "\(quoted) != \(escapeValue(value))"
         case ">": return "\(quoted) > \(escapeValue(value))"
         case ">=": return "\(quoted) >= \(escapeValue(value))"
         case "<": return "\(quoted) < \(escapeValue(value))"
@@ -665,13 +791,37 @@ public enum PluginSQLFilter {
         case "IS EMPTY": return "(\(quoted) IS NULL OR \(quoted) = '')"
         case "IS NOT EMPTY": return "(\(quoted) IS NOT NULL AND \(quoted) != '')"
         case "CONTAINS":
-            return "\(quoted) LIKE '%\(escapeForLike(value))%' ESCAPE '\\'"
+            return likeCondition(
+                quoted,
+                pattern: "%\(escapeLikeWildcards(value))%",
+                negated: false,
+                likeEscapeClause: likeEscapeClause,
+                quotePattern: quoteLikePattern
+            )
         case "NOT CONTAINS":
-            return "\(quoted) NOT LIKE '%\(escapeForLike(value))%' ESCAPE '\\'"
+            return likeCondition(
+                quoted,
+                pattern: "%\(escapeLikeWildcards(value))%",
+                negated: true,
+                likeEscapeClause: likeEscapeClause,
+                quotePattern: quoteLikePattern
+            )
         case "STARTS WITH":
-            return "\(quoted) LIKE '\(escapeForLike(value))%' ESCAPE '\\'"
+            return likeCondition(
+                quoted,
+                pattern: "\(escapeLikeWildcards(value))%",
+                negated: false,
+                likeEscapeClause: likeEscapeClause,
+                quotePattern: quoteLikePattern
+            )
         case "ENDS WITH":
-            return "\(quoted) LIKE '%\(escapeForLike(value))' ESCAPE '\\'"
+            return likeCondition(
+                quoted,
+                pattern: "%\(escapeLikeWildcards(value))",
+                negated: false,
+                likeEscapeClause: likeEscapeClause,
+                quotePattern: quoteLikePattern
+            )
         case "IN":
             let values = value.split(separator: ",")
                 .map { escapeValue($0.trimmingCharacters(in: .whitespaces)) }
@@ -692,5 +842,288 @@ public enum PluginSQLFilter {
             return regexCondition(quoted, value)
         default: return nil
         }
+    }
+
+    private static func likeCondition(
+        _ column: String,
+        pattern: String,
+        negated: Bool,
+        likeEscapeClause: String,
+        quotePattern: Bool
+    ) -> String {
+        let escapedPattern = quotePattern ? pattern.replacingOccurrences(of: "'", with: "''") : pattern
+        let op = negated ? "NOT LIKE" : "LIKE"
+        return "\(column) \(op) '\(escapedPattern)'\(likeEscapeClause)"
+    }
+
+    private static func appendPagination(
+        to query: String,
+        dialect: SQLDialectDescriptor,
+        sortColumns: [(columnIndex: Int, ascending: Bool)],
+        columns: [String],
+        limit: Int,
+        offset: Int
+    ) -> String {
+        let orderBy = buildOrderByClause(
+            sortColumns: sortColumns,
+            columns: columns,
+            quoteIdentifier: dialect.quoteIdentifier
+        )
+
+        switch dialect.paginationStyle {
+        case .limit:
+            var result = query
+            if let orderBy {
+                result += " \(orderBy)"
+            }
+            result += " LIMIT \(limit)"
+            if offset > 0 {
+                result += " OFFSET \(offset)"
+            }
+            return result
+        case .offsetFetch:
+            let resolvedOrderBy = orderBy ?? dialect.offsetFetchOrderBy
+            return "\(query) \(resolvedOrderBy) OFFSET \(offset) ROWS FETCH NEXT \(limit) ROWS ONLY"
+        }
+    }
+
+    private static func isNullLiteral(_ value: String) -> Bool {
+        value.trimmingCharacters(in: .whitespaces).caseInsensitiveCompare("NULL") == .orderedSame
+    }
+}
+
+public enum PluginSQLStatementBuilder {
+    public enum InsertDefaultStrategy {
+        case omitColumn
+        case useDefaultKeyword
+    }
+
+    public enum WhereColumnStrategy {
+        case primaryKeyOrAll
+        case allColumns
+    }
+
+    public static func generateStatements(
+        table: String,
+        columns: [String],
+        primaryKeyColumns: [String],
+        changes: [PluginRowChange],
+        insertedRowData: [Int: [PluginCellValue]],
+        deletedRowIndices: Set<Int>,
+        insertedRowIndices: Set<Int>,
+        quoteIdentifier: (String) -> String,
+        insertDefaultStrategy: InsertDefaultStrategy,
+        includeInsertedColumn: (String) -> Bool = { _ in true },
+        whereColumnStrategy: WhereColumnStrategy,
+        collectDeletesLast: Bool = false,
+        singleRowUpdatePrefixWhenNoPrimaryKey: String = "",
+        singleRowDeletePrefixWhenNoPrimaryKey: String = "",
+        updateWhereSuffix: String = "",
+        deleteWhereSuffix: String = ""
+    ) -> [(statement: String, parameters: [PluginCellValue])]? {
+        var statements: [(statement: String, parameters: [PluginCellValue])] = []
+        var deferredDeletes: [PluginRowChange] = []
+
+        for change in changes {
+            switch change.type {
+            case .insert:
+                guard insertedRowIndices.contains(change.rowIndex),
+                      let values = insertedRowData[change.rowIndex],
+                      let statement = buildInsert(
+                        table: table,
+                        columns: columns,
+                        values: values,
+                        quoteIdentifier: quoteIdentifier,
+                        defaultStrategy: insertDefaultStrategy,
+                        includeColumn: includeInsertedColumn
+                      )
+                else { continue }
+                statements.append(statement)
+            case .update:
+                if let statement = buildUpdate(
+                    table: table,
+                    columns: columns,
+                    primaryKeyColumns: primaryKeyColumns,
+                    change: change,
+                    quoteIdentifier: quoteIdentifier,
+                    whereColumnStrategy: whereColumnStrategy,
+                    singleRowPrefixWhenNoPrimaryKey: singleRowUpdatePrefixWhenNoPrimaryKey,
+                    whereSuffix: updateWhereSuffix
+                ) {
+                    statements.append(statement)
+                }
+            case .delete:
+                guard deletedRowIndices.contains(change.rowIndex) else { continue }
+                if collectDeletesLast {
+                    deferredDeletes.append(change)
+                } else if let statement = buildDelete(
+                    table: table,
+                    columns: columns,
+                    primaryKeyColumns: primaryKeyColumns,
+                    change: change,
+                    quoteIdentifier: quoteIdentifier,
+                    whereColumnStrategy: whereColumnStrategy,
+                    singleRowPrefixWhenNoPrimaryKey: singleRowDeletePrefixWhenNoPrimaryKey,
+                    whereSuffix: deleteWhereSuffix
+                ) {
+                    statements.append(statement)
+                }
+            }
+        }
+
+        for change in deferredDeletes {
+            if let statement = buildDelete(
+                table: table,
+                columns: columns,
+                primaryKeyColumns: primaryKeyColumns,
+                change: change,
+                quoteIdentifier: quoteIdentifier,
+                whereColumnStrategy: whereColumnStrategy,
+                singleRowPrefixWhenNoPrimaryKey: singleRowDeletePrefixWhenNoPrimaryKey,
+                whereSuffix: deleteWhereSuffix
+            ) {
+                statements.append(statement)
+            }
+        }
+
+        return statements.isEmpty ? nil : statements
+    }
+
+    private static func buildInsert(
+        table: String,
+        columns: [String],
+        values: [PluginCellValue],
+        quoteIdentifier: (String) -> String,
+        defaultStrategy: InsertDefaultStrategy,
+        includeColumn: (String) -> Bool
+    ) -> (statement: String, parameters: [PluginCellValue])? {
+        var insertColumns: [String] = []
+        var valueFragments: [String] = []
+        var parameters: [PluginCellValue] = []
+
+        for (index, value) in values.enumerated() {
+            guard index < columns.count else { continue }
+            let column = columns[index]
+
+            if value.asText == "__DEFAULT__" {
+                switch defaultStrategy {
+                case .omitColumn:
+                    continue
+                case .useDefaultKeyword:
+                    insertColumns.append(quoteIdentifier(column))
+                    valueFragments.append("DEFAULT")
+                    continue
+                }
+            }
+
+            guard includeColumn(column) else { continue }
+            insertColumns.append(quoteIdentifier(column))
+            valueFragments.append("?")
+            parameters.append(value)
+        }
+
+        guard !insertColumns.isEmpty else { return nil }
+
+        let columnList = insertColumns.joined(separator: ", ")
+        let valueList = valueFragments.joined(separator: ", ")
+        let statement = "INSERT INTO \(quoteIdentifier(table)) (\(columnList)) VALUES (\(valueList))"
+        return (statement: statement, parameters: parameters)
+    }
+
+    private static func buildUpdate(
+        table: String,
+        columns: [String],
+        primaryKeyColumns: [String],
+        change: PluginRowChange,
+        quoteIdentifier: (String) -> String,
+        whereColumnStrategy: WhereColumnStrategy,
+        singleRowPrefixWhenNoPrimaryKey: String,
+        whereSuffix: String
+    ) -> (statement: String, parameters: [PluginCellValue])? {
+        guard !change.cellChanges.isEmpty,
+              let originalRow = change.originalRow
+        else { return nil }
+
+        var parameters: [PluginCellValue] = []
+        let setClauses = change.cellChanges.map { cellChange -> String in
+            parameters.append(cellChange.newValue)
+            return "\(quoteIdentifier(cellChange.columnName)) = ?"
+        }.joined(separator: ", ")
+
+        guard let whereClause = buildWhereClause(
+            columns: columns,
+            primaryKeyColumns: primaryKeyColumns,
+            originalRow: originalRow,
+            quoteIdentifier: quoteIdentifier,
+            strategy: whereColumnStrategy,
+            parameters: &parameters
+        ) else { return nil }
+
+        let prefix = primaryKeyColumns.isEmpty ? singleRowPrefixWhenNoPrimaryKey : ""
+        let statement = "UPDATE \(prefix)\(quoteIdentifier(table)) SET \(setClauses) WHERE \(whereClause)\(whereSuffix)"
+        return (statement: statement, parameters: parameters)
+    }
+
+    private static func buildDelete(
+        table: String,
+        columns: [String],
+        primaryKeyColumns: [String],
+        change: PluginRowChange,
+        quoteIdentifier: (String) -> String,
+        whereColumnStrategy: WhereColumnStrategy,
+        singleRowPrefixWhenNoPrimaryKey: String,
+        whereSuffix: String
+    ) -> (statement: String, parameters: [PluginCellValue])? {
+        guard let originalRow = change.originalRow else { return nil }
+
+        var parameters: [PluginCellValue] = []
+        guard let whereClause = buildWhereClause(
+            columns: columns,
+            primaryKeyColumns: primaryKeyColumns,
+            originalRow: originalRow,
+            quoteIdentifier: quoteIdentifier,
+            strategy: whereColumnStrategy,
+            parameters: &parameters
+        ) else { return nil }
+
+        let prefix = primaryKeyColumns.isEmpty ? singleRowPrefixWhenNoPrimaryKey : ""
+        let statement = "DELETE \(prefix)FROM \(quoteIdentifier(table)) WHERE \(whereClause)\(whereSuffix)"
+        return (statement: statement, parameters: parameters)
+    }
+
+    private static func buildWhereClause(
+        columns: [String],
+        primaryKeyColumns: [String],
+        originalRow: [PluginCellValue],
+        quoteIdentifier: (String) -> String,
+        strategy: WhereColumnStrategy,
+        parameters: inout [PluginCellValue]
+    ) -> String? {
+        let whereColumns: [String]
+        switch strategy {
+        case .primaryKeyOrAll:
+            whereColumns = primaryKeyColumns.isEmpty ? columns : primaryKeyColumns
+        case .allColumns:
+            whereColumns = columns
+        }
+
+        var conditions: [String] = []
+        for column in whereColumns {
+            guard let columnIndex = columns.firstIndex(of: column),
+                  columnIndex < originalRow.count
+            else { continue }
+
+            let quotedColumn = quoteIdentifier(column)
+            let value = originalRow[columnIndex]
+            if value.isNull {
+                conditions.append("\(quotedColumn) IS NULL")
+            } else {
+                parameters.append(value)
+                conditions.append("\(quotedColumn) = ?")
+            }
+        }
+
+        guard !conditions.isEmpty else { return nil }
+        return conditions.joined(separator: " AND ")
     }
 }

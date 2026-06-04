@@ -694,15 +694,11 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             def += " NOT NULL"
         }
         if let defaultValue = column.defaultValue {
-            let upper = defaultValue.uppercased()
-            if upper == "NULL" || upper == "CURRENT_TIMESTAMP" || upper == "CURRENT_TIMESTAMP()"
-                || defaultValue.hasPrefix("'") {
-                def += " DEFAULT \(defaultValue)"
-            } else if Int64(defaultValue) != nil || Double(defaultValue) != nil {
-                def += " DEFAULT \(defaultValue)"
-            } else {
-                def += " DEFAULT '\(escapeStringLiteral(defaultValue))'"
-            }
+            def += " DEFAULT " + PluginSQLDDLBuilder.defaultValue(
+                defaultValue,
+                rawUppercaseValues: ["NULL", "CURRENT_TIMESTAMP", "CURRENT_TIMESTAMP()"],
+                escapeStringLiteral: escapeStringLiteral
+            )
         }
         if column.autoIncrement {
             def += " AUTO_INCREMENT"
@@ -722,58 +718,47 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     private func buildIndexDefinitionSQL(_ index: PluginIndexDefinition) -> String {
-        let cols = index.columns.map { col -> String in
-            let quoted = quoteIdentifier(col)
-            if let prefixes = index.columnPrefixes, let prefix = prefixes[col] {
-                return "\(quoted)(\(prefix))"
-            }
-            return quoted
-        }.joined(separator: ", ")
-        var def = ""
-
-        let upperType = index.indexType?.uppercased() ?? ""
-        if upperType == "FULLTEXT" {
-            def += "FULLTEXT INDEX"
-        } else if upperType == "SPATIAL" {
-            def += "SPATIAL INDEX"
-        } else if index.isUnique {
-            def += "UNIQUE INDEX"
-        } else {
-            def += "INDEX"
-        }
-
-        def += " \(quoteIdentifier(index.name)) (\(cols))"
-
-        if upperType == "BTREE" || upperType == "HASH" {
-            def += " USING \(upperType)"
-        }
-
-        return def
+        PluginSQLDDLBuilder.indexDefinitionFragment(
+            index,
+            quoteIdentifier: quoteIdentifier,
+            indexKindSQL: { index in
+                let upperType = index.indexType?.uppercased() ?? ""
+                if upperType == "FULLTEXT" {
+                    return "FULLTEXT INDEX"
+                } else if upperType == "SPATIAL" {
+                    return "SPATIAL INDEX"
+                } else if index.isUnique {
+                    return "UNIQUE INDEX"
+                }
+                return "INDEX"
+            },
+            indexMethodSQL: { index in
+                let upperType = index.indexType?.uppercased() ?? ""
+                return upperType == "BTREE" || upperType == "HASH" ? "USING \(upperType)" : nil
+            },
+            formatColumnSQL: { col in
+                let quoted = self.quoteIdentifier(col)
+                if let prefixes = index.columnPrefixes, let prefix = prefixes[col] {
+                    return "\(quoted)(\(prefix))"
+                }
+                return quoted
+            },
+            includeWhereClause: false
+        )
     }
 
     private func buildForeignKeyDefinitionSQL(_ fk: PluginForeignKeyDefinition) -> String {
-        let cols = fk.columns.map { quoteIdentifier($0) }.joined(separator: ", ")
-        let refCols = fk.referencedColumns.map { quoteIdentifier($0) }.joined(separator: ", ")
-        let refTable: String
-        if let schema = fk.referencedSchema, !schema.isEmpty {
-            refTable = "\(quoteIdentifier(schema)).\(quoteIdentifier(fk.referencedTable))"
-        } else {
-            refTable = quoteIdentifier(fk.referencedTable)
-        }
-
-        var def = "CONSTRAINT \(quoteIdentifier(fk.name)) FOREIGN KEY (\(cols)) REFERENCES \(refTable) (\(refCols))"
-
-        let onDelete = fk.onDelete.uppercased()
-        if onDelete != "NO ACTION" {
-            def += " ON DELETE \(onDelete)"
-        }
-
-        let onUpdate = fk.onUpdate.uppercased()
-        if onUpdate != "NO ACTION" {
-            def += " ON UPDATE \(onUpdate)"
-        }
-
-        return def
+        PluginSQLDDLBuilder.foreignKeyDefinition(
+            fk,
+            quoteIdentifier: quoteIdentifier,
+            referencedTableSQL: { foreignKey in
+                if let schema = foreignKey.referencedSchema, !schema.isEmpty {
+                    return "\(self.quoteIdentifier(schema)).\(self.quoteIdentifier(foreignKey.referencedTable))"
+                }
+                return self.quoteIdentifier(foreignKey.referencedTable)
+            },
+            normalizeAction: { $0.uppercased() }
+        )
     }
 
     // MARK: - Definition SQL (clipboard copy)
@@ -793,7 +778,10 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - ALTER TABLE DDL
 
     func generateAddColumnSQL(table: String, column: PluginColumnDefinition) -> String? {
-        "ALTER TABLE \(quoteIdentifier(table)) ADD COLUMN \(buildColumnDefinitionSQL(column))"
+        PluginSQLDDLBuilder.alterTableAddColumnDefinition(
+            tableSQL: quoteIdentifier(table),
+            columnSQL: buildColumnDefinitionSQL(column)
+        )
     }
 
     func generateModifyColumnSQL(table: String, oldColumn: PluginColumnDefinition, newColumn: PluginColumnDefinition) -> String? {
@@ -805,7 +793,11 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func generateDropColumnSQL(table: String, columnName: String) -> String? {
-        "ALTER TABLE \(quoteIdentifier(table)) DROP COLUMN \(quoteIdentifier(columnName))"
+        PluginSQLDDLBuilder.alterTableDropColumnDefinition(
+            tableSQL: quoteIdentifier(table),
+            columnName: columnName,
+            quoteIdentifier: quoteIdentifier
+        )
     }
 
     func generateAddIndexSQL(table: String, index: PluginIndexDefinition) -> String? {
@@ -813,7 +805,12 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func generateDropIndexSQL(table: String, indexName: String) -> String? {
-        "ALTER TABLE \(quoteIdentifier(table)) DROP INDEX \(quoteIdentifier(indexName))"
+        PluginSQLDDLBuilder.alterTableDropObjectDefinition(
+            tableSQL: quoteIdentifier(table),
+            objectKind: "INDEX",
+            objectName: indexName,
+            quoteIdentifier: quoteIdentifier
+        )
     }
 
     func generateAddForeignKeySQL(table: String, fk: PluginForeignKeyDefinition) -> String? {
@@ -821,20 +818,23 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func generateDropForeignKeySQL(table: String, constraintName: String) -> String? {
-        "ALTER TABLE \(quoteIdentifier(table)) DROP FOREIGN KEY \(quoteIdentifier(constraintName))"
+        PluginSQLDDLBuilder.alterTableDropObjectDefinition(
+            tableSQL: quoteIdentifier(table),
+            objectKind: "FOREIGN KEY",
+            objectName: constraintName,
+            quoteIdentifier: quoteIdentifier
+        )
     }
 
     func generateModifyPrimaryKeySQL(table: String, oldColumns: [String], newColumns: [String], constraintName: String?) -> [String]? {
-        let tableName = quoteIdentifier(table)
-        var stmts: [String] = []
-        if !oldColumns.isEmpty {
-            stmts.append("ALTER TABLE \(tableName) DROP PRIMARY KEY")
-        }
-        if !newColumns.isEmpty {
-            let cols = newColumns.map { quoteIdentifier($0) }.joined(separator: ", ")
-            stmts.append("ALTER TABLE \(tableName) ADD PRIMARY KEY (\(cols))")
-        }
-        return stmts.isEmpty ? nil : stmts
+        PluginSQLDDLBuilder.modifyPrimaryKeyDefinitions(
+            tableSQL: quoteIdentifier(table),
+            oldColumns: oldColumns,
+            newColumns: newColumns,
+            constraintName: constraintName,
+            quoteIdentifier: quoteIdentifier,
+            dropPrimaryKeyClauseSQL: "DROP PRIMARY KEY"
+        )
     }
 
     // MARK: - Column Reorder DDL
@@ -859,15 +859,11 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             def += " NOT NULL"
         }
         if let defaultValue = column.defaultValue {
-            let upper = defaultValue.uppercased()
-            if upper == "NULL" || upper == "CURRENT_TIMESTAMP" || upper == "CURRENT_TIMESTAMP()"
-                || defaultValue.hasPrefix("'") {
-                def += " DEFAULT \(defaultValue)"
-            } else if Int64(defaultValue) != nil || Double(defaultValue) != nil {
-                def += " DEFAULT \(defaultValue)"
-            } else {
-                def += " DEFAULT '\(escapeStringLiteral(defaultValue))'"
-            }
+            def += " DEFAULT " + PluginSQLDDLBuilder.defaultValue(
+                defaultValue,
+                rawUppercaseValues: ["NULL", "CURRENT_TIMESTAMP", "CURRENT_TIMESTAMP()"],
+                escapeStringLiteral: escapeStringLiteral
+            )
         }
         if column.autoIncrement {
             def += " AUTO_INCREMENT"

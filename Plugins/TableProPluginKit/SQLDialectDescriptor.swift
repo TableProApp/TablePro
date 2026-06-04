@@ -18,6 +18,7 @@ public enum AutoLimitStyle: String, Sendable {
 
 public struct SQLDialectDescriptor: Sendable {
     public let identifierQuote: String
+    public let identifierClosingQuote: String
     public let keywords: Set<String>
     public let functions: Set<String>
     public let dataTypes: Set<String>
@@ -62,6 +63,7 @@ public struct SQLDialectDescriptor: Sendable {
 
     public init(
         identifierQuote: String,
+        identifierClosingQuote: String? = nil,
         keywords: Set<String>,
         functions: Set<String>,
         dataTypes: Set<String>,
@@ -75,6 +77,7 @@ public struct SQLDialectDescriptor: Sendable {
         autoLimitStyle: AutoLimitStyle = .limit
     ) {
         self.identifierQuote = identifierQuote
+        self.identifierClosingQuote = identifierClosingQuote ?? Self.defaultIdentifierClosingQuote(for: identifierQuote)
         self.keywords = keywords
         self.functions = functions
         self.dataTypes = dataTypes
@@ -86,5 +89,77 @@ public struct SQLDialectDescriptor: Sendable {
         self.offsetFetchOrderBy = offsetFetchOrderBy
         self.requiresBackslashEscaping = requiresBackslashEscaping
         self.autoLimitStyle = autoLimitStyle
+    }
+
+    public func quoteIdentifier(_ name: String) -> String {
+        let escaped = name.replacingOccurrences(
+            of: identifierClosingQuote,
+            with: "\(identifierClosingQuote)\(identifierClosingQuote)"
+        )
+        return "\(identifierQuote)\(escaped)\(identifierClosingQuote)"
+    }
+
+    public var likeEscapeClause: String {
+        likeEscapeStyle == .implicit ? "" : " ESCAPE '!'"
+    }
+
+    public func sqlLiteral(
+        for value: String,
+        trimWhitespace: Bool = true,
+        interpretSpecialLiterals: Bool = true
+    ) -> String {
+        let resolved = trimWhitespace ? value.trimmingCharacters(in: .whitespaces) : value
+
+        if interpretSpecialLiterals {
+            if resolved.caseInsensitiveCompare("NULL") == .orderedSame {
+                return "NULL"
+            }
+            if resolved.caseInsensitiveCompare("TRUE") == .orderedSame {
+                return booleanLiteralStyle == .truefalse ? "TRUE" : "1"
+            }
+            if resolved.caseInsensitiveCompare("FALSE") == .orderedSame {
+                return booleanLiteralStyle == .truefalse ? "FALSE" : "0"
+            }
+        }
+
+        if PluginNumericLiteral.isValid(resolved) {
+            return resolved
+        }
+
+        return "'\(escapeStringLiteralContent(resolved))'"
+    }
+
+    public func escapeSQLQuote(_ value: String) -> String {
+        guard value.contains("'") else { return value }
+        return value.replacingOccurrences(of: "'", with: "''")
+    }
+
+    public func escapeStringLiteralContent(_ value: String) -> String {
+        if likeEscapeStyle == .implicit || requiresBackslashEscaping {
+            guard value.contains("\\") || value.contains("'") else { return value }
+            return value
+                .replacingOccurrences(of: "\\", with: "\\\\")
+                .replacingOccurrences(of: "'", with: "''")
+        }
+        return escapeSQLQuote(value)
+    }
+
+    public func escapeLikeWildcards(_ value: String) -> String {
+        if likeEscapeStyle == .implicit {
+            guard value.contains("\\") || value.contains("%") || value.contains("_") else { return value }
+            return value
+                .replacingOccurrences(of: "\\", with: "\\\\\\\\")
+                .replacingOccurrences(of: "%", with: "\\\\%")
+                .replacingOccurrences(of: "_", with: "\\\\_")
+        }
+        guard value.contains("!") || value.contains("%") || value.contains("_") else { return value }
+        return value
+            .replacingOccurrences(of: "!", with: "!!")
+            .replacingOccurrences(of: "%", with: "!%")
+            .replacingOccurrences(of: "_", with: "!_")
+    }
+
+    private static func defaultIdentifierClosingQuote(for openingQuote: String) -> String {
+        openingQuote == "[" ? "]" : openingQuote
     }
 }

@@ -916,76 +916,56 @@ final class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     }
 
     private func pgColumnDefinition(_ col: PluginColumnDefinition, inlinePK: Bool) -> String {
-        var dataType = col.dataType
-        if col.autoIncrement {
-            let upper = dataType.uppercased()
-            if upper == "BIGINT" || upper == "INT8" {
-                dataType = "BIGSERIAL"
-            } else {
-                dataType = "SERIAL"
-            }
-        }
-
-        var def = "\(quoteIdentifier(col.name)) \(dataType)"
-        if !col.autoIncrement {
-            if col.isNullable {
-                def += " NULL"
-            } else {
-                def += " NOT NULL"
-            }
-        }
-        if let defaultValue = col.defaultValue {
-            def += " DEFAULT \(pgDefaultValue(defaultValue))"
-        }
-        if inlinePK && col.isPrimaryKey {
-            def += " PRIMARY KEY"
-        }
-        return def
+        PluginSQLDDLBuilder.columnDefinition(
+            col,
+            inlinePrimaryKey: inlinePK,
+            quoteIdentifier: quoteIdentifier,
+            formatDefaultValue: pgDefaultValue,
+            dataTypeSQL: { column in
+                guard column.autoIncrement else { return column.dataType }
+                let upper = column.dataType.uppercased()
+                return upper == "BIGINT" || upper == "INT8" ? "BIGSERIAL" : "SERIAL"
+            },
+            suppressNullability: { $0.autoIncrement }
+        )
     }
 
     private func pgDefaultValue(_ value: String) -> String {
-        let upper = value.uppercased()
-        if upper == "NULL" || upper == "TRUE" || upper == "FALSE"
-            || upper == "CURRENT_TIMESTAMP" || upper == "NOW()"
-            || value.hasPrefix("'") || Int64(value) != nil || Double(value) != nil
-            || upper.hasSuffix("::REGCLASS") {
-            return value
-        }
-        return "'\(escapeLiteral(value))'"
+        PluginSQLDDLBuilder.defaultValue(
+            value,
+            rawUppercaseValues: ["NULL", "TRUE", "FALSE", "CURRENT_TIMESTAMP", "NOW()"],
+            rawUppercaseSuffixes: ["::REGCLASS"],
+            escapeStringLiteral: escapeLiteral
+        )
     }
 
     private func pgIndexDefinition(_ index: PluginIndexDefinition, qualifiedTable: String) -> String {
-        let cols = index.columns.map { quoteIdentifier($0) }.joined(separator: ", ")
-        let unique = index.isUnique ? "UNIQUE " : ""
-        var def = "CREATE \(unique)INDEX \(quoteIdentifier(index.name)) ON \(qualifiedTable)"
-        if let type = index.indexType?.uppercased(),
-           ["BTREE", "HASH", "GIN", "GIST", "BRIN"].contains(type) {
-            def += " USING \(type.lowercased())"
-        }
-        def += " (\(cols))"
-        if let whereClause = index.whereClause, !whereClause.isEmpty {
-            def += " WHERE \(whereClause)"
-        }
-        return def
+        PluginSQLDDLBuilder.createIndexDefinition(
+            index,
+            quoteIdentifier: quoteIdentifier,
+            tableSQL: qualifiedTable,
+            indexMethodSQL: { index in
+                guard let type = index.indexType?.uppercased(),
+                      ["BTREE", "HASH", "GIN", "GIST", "BRIN"].contains(type) else {
+                    return nil
+                }
+                return "USING \(type.lowercased())"
+            },
+            includeWhereClause: true
+        )
     }
 
     private func pgForeignKeyDefinition(_ fk: PluginForeignKeyDefinition) -> String {
-        let cols = fk.columns.map { quoteIdentifier($0) }.joined(separator: ", ")
-        let refCols = fk.referencedColumns.map { quoteIdentifier($0) }.joined(separator: ", ")
-        let refTable: String
-        if let schema = fk.referencedSchema, !schema.isEmpty {
-            refTable = "\(quoteIdentifier(schema)).\(quoteIdentifier(fk.referencedTable))"
-        } else {
-            refTable = quoteIdentifier(fk.referencedTable)
-        }
-        var def = "CONSTRAINT \(quoteIdentifier(fk.name)) FOREIGN KEY (\(cols)) REFERENCES \(refTable) (\(refCols))"
-        if fk.onDelete != "NO ACTION" {
-            def += " ON DELETE \(fk.onDelete)"
-        }
-        if fk.onUpdate != "NO ACTION" {
-            def += " ON UPDATE \(fk.onUpdate)"
-        }
-        return def
+        PluginSQLDDLBuilder.foreignKeyDefinition(
+            fk,
+            quoteIdentifier: quoteIdentifier,
+            referencedTableSQL: { foreignKey in
+                if let schema = foreignKey.referencedSchema, !schema.isEmpty {
+                    return "\(self.quoteIdentifier(schema)).\(self.quoteIdentifier(foreignKey.referencedTable))"
+                }
+                return self.quoteIdentifier(foreignKey.referencedTable)
+            }
+        )
     }
 
     // MARK: - Definition SQL (clipboard copy)
@@ -1012,7 +992,7 @@ final class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     func generateAddColumnSQL(table: String, column: PluginColumnDefinition) -> String? {
         let qt = qualifiedTableName(table)
         let colDef = pgColumnDefinition(column, inlinePK: false)
-        return "ALTER TABLE \(qt) ADD COLUMN \(colDef)"
+        return PluginSQLDDLBuilder.alterTableAddColumnDefinition(tableSQL: qt, columnSQL: colDef)
     }
 
     func generateModifyColumnSQL(table: String, oldColumn: PluginColumnDefinition, newColumn: PluginColumnDefinition) -> String? {
@@ -1020,7 +1000,14 @@ final class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         var stmts: [String] = []
 
         if oldColumn.name != newColumn.name {
-            stmts.append("ALTER TABLE \(qt) RENAME COLUMN \(quoteIdentifier(oldColumn.name)) TO \(quoteIdentifier(newColumn.name))")
+            stmts.append(
+                PluginSQLDDLBuilder.alterTableRenameColumnDefinition(
+                    tableSQL: qt,
+                    oldColumnName: oldColumn.name,
+                    newColumnName: newColumn.name,
+                    quoteIdentifier: quoteIdentifier
+                )
+            )
         }
 
         let colName = quoteIdentifier(newColumn.name)
@@ -1052,7 +1039,11 @@ final class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     }
 
     func generateDropColumnSQL(table: String, columnName: String) -> String? {
-        "ALTER TABLE \(qualifiedTableName(table)) DROP COLUMN \(quoteIdentifier(columnName))"
+        PluginSQLDDLBuilder.alterTableDropColumnDefinition(
+            tableSQL: qualifiedTableName(table),
+            columnName: columnName,
+            quoteIdentifier: quoteIdentifier
+        )
     }
 
     func generateAddIndexSQL(table: String, index: PluginIndexDefinition) -> String? {
@@ -1060,7 +1051,11 @@ final class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     }
 
     func generateDropIndexSQL(table: String, indexName: String) -> String? {
-        "DROP INDEX \(quoteIdentifier(core.currentSchema)).\(quoteIdentifier(indexName))"
+        PluginSQLDDLBuilder.dropIndexDefinition(
+            indexName: indexName,
+            quoteIdentifier: quoteIdentifier,
+            qualifiedIndexSQL: "\(quoteIdentifier(core.currentSchema)).\(quoteIdentifier(indexName))"
+        )
     }
 
     func generateAddForeignKeySQL(table: String, fk: PluginForeignKeyDefinition) -> String? {
@@ -1068,20 +1063,21 @@ final class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     }
 
     func generateDropForeignKeySQL(table: String, constraintName: String) -> String? {
-        "ALTER TABLE \(qualifiedTableName(table)) DROP CONSTRAINT \(quoteIdentifier(constraintName))"
+        PluginSQLDDLBuilder.alterTableDropObjectDefinition(
+            tableSQL: qualifiedTableName(table),
+            objectKind: "CONSTRAINT",
+            objectName: constraintName,
+            quoteIdentifier: quoteIdentifier
+        )
     }
 
     func generateModifyPrimaryKeySQL(table: String, oldColumns: [String], newColumns: [String], constraintName: String?) -> [String]? {
-        let qt = qualifiedTableName(table)
-        var stmts: [String] = []
-        if !oldColumns.isEmpty {
-            let name = constraintName.map { quoteIdentifier($0) } ?? "/* unknown constraint */"
-            stmts.append("ALTER TABLE \(qt) DROP CONSTRAINT \(name)")
-        }
-        if !newColumns.isEmpty {
-            let cols = newColumns.map { quoteIdentifier($0) }.joined(separator: ", ")
-            stmts.append("ALTER TABLE \(qt) ADD PRIMARY KEY (\(cols))")
-        }
-        return stmts.isEmpty ? nil : stmts
+        PluginSQLDDLBuilder.modifyPrimaryKeyDefinitions(
+            tableSQL: qualifiedTableName(table),
+            oldColumns: oldColumns,
+            newColumns: newColumns,
+            constraintName: constraintName,
+            quoteIdentifier: quoteIdentifier
+        )
     }
 }

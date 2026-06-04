@@ -669,25 +669,34 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     private func clickhouseDefaultValue(_ value: String) -> String {
-        let upper = value.uppercased()
-        if upper == "NULL" || upper == "NOW()" || upper == "TODAY()"
-            || value.hasPrefix("'") || Int64(value) != nil || Double(value) != nil {
-            return value
-        }
-        return "'\(escapeStringLiteral(value))'"
+        PluginSQLDDLBuilder.defaultValue(
+            value,
+            rawUppercaseValues: ["NULL", "NOW()", "TODAY()"],
+            escapeStringLiteral: escapeStringLiteral
+        )
     }
 
     // MARK: - ALTER TABLE DDL
 
     func generateAddColumnSQL(table: String, column: PluginColumnDefinition) -> String? {
-        "ALTER TABLE \(quoteIdentifier(table)) ADD COLUMN \(clickhouseColumnDefinition(column))"
+        PluginSQLDDLBuilder.alterTableAddColumnDefinition(
+            tableSQL: quoteIdentifier(table),
+            columnSQL: clickhouseColumnDefinition(column)
+        )
     }
 
     func generateModifyColumnSQL(table: String, oldColumn: PluginColumnDefinition, newColumn: PluginColumnDefinition) -> String? {
         let tableName = quoteIdentifier(table)
         var stmts: [String] = []
         if oldColumn.name != newColumn.name {
-            stmts.append("ALTER TABLE \(tableName) RENAME COLUMN \(quoteIdentifier(oldColumn.name)) TO \(quoteIdentifier(newColumn.name))")
+            stmts.append(
+                PluginSQLDDLBuilder.alterTableRenameColumnDefinition(
+                    tableSQL: tableName,
+                    oldColumnName: oldColumn.name,
+                    newColumnName: newColumn.name,
+                    quoteIdentifier: quoteIdentifier
+                )
+            )
         }
         if oldColumn.dataType != newColumn.dataType || oldColumn.isNullable != newColumn.isNullable
             || oldColumn.defaultValue != newColumn.defaultValue || oldColumn.comment != newColumn.comment {
@@ -697,7 +706,11 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func generateDropColumnSQL(table: String, columnName: String) -> String? {
-        "ALTER TABLE \(quoteIdentifier(table)) DROP COLUMN \(quoteIdentifier(columnName))"
+        PluginSQLDDLBuilder.alterTableDropColumnDefinition(
+            tableSQL: quoteIdentifier(table),
+            columnName: columnName,
+            quoteIdentifier: quoteIdentifier
+        )
     }
 
     func generateAddIndexSQL(table: String, index: PluginIndexDefinition) -> String? {
@@ -707,7 +720,12 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func generateDropIndexSQL(table: String, indexName: String) -> String? {
-        "ALTER TABLE \(quoteIdentifier(table)) DROP INDEX \(quoteIdentifier(indexName))"
+        PluginSQLDDLBuilder.alterTableDropObjectDefinition(
+            tableSQL: quoteIdentifier(table),
+            objectKind: "INDEX",
+            objectName: indexName,
+            quoteIdentifier: quoteIdentifier
+        )
     }
 
     static func classifySSLError(_ error: Error) -> SSLHandshakeError? {

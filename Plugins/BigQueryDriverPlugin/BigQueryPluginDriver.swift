@@ -748,21 +748,25 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
         guard let conn = connection else { return nil }
         let dataset = lock.withLock { _currentDataset } ?? ""
         let fqTable = "`\(conn.projectId).\(dataset).\(table)`"
-        var sql = "ALTER TABLE \(fqTable) ADD COLUMN \(quoteIdentifier(column.name)) \(column.dataType)"
+        var columnSQL = "\(quoteIdentifier(column.name)) \(column.dataType)"
         if !column.isNullable {
-            sql += " NOT NULL"
+            columnSQL += " NOT NULL"
         }
         if let comment = column.comment, !comment.isEmpty {
-            sql += " OPTIONS(description='\(escapeStringLiteral(comment))')"
+            columnSQL += " OPTIONS(description='\(escapeStringLiteral(comment))')"
         }
-        return sql
+        return PluginSQLDDLBuilder.alterTableAddColumnDefinition(tableSQL: fqTable, columnSQL: columnSQL)
     }
 
     func generateDropColumnSQL(table: String, columnName: String) -> String? {
         guard let conn = connection else { return nil }
         let dataset = lock.withLock { _currentDataset } ?? ""
         let fqTable = "`\(conn.projectId).\(dataset).\(table)`"
-        return "ALTER TABLE \(fqTable) DROP COLUMN \(quoteIdentifier(columnName))"
+        return PluginSQLDDLBuilder.alterTableDropColumnDefinition(
+            tableSQL: fqTable,
+            columnName: columnName,
+            quoteIdentifier: quoteIdentifier
+        )
     }
 
     func allTablesMetadataSQL(schema: String?) -> String? {

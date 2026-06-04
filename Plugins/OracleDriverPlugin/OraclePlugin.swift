@@ -703,128 +703,20 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         deletedRowIndices: Set<Int>,
         insertedRowIndices: Set<Int>
     ) -> [(statement: String, parameters: [PluginCellValue])]? {
-        var statements: [(statement: String, parameters: [PluginCellValue])] = []
-
-        for change in changes {
-            switch change.type {
-            case .insert:
-                guard insertedRowIndices.contains(change.rowIndex) else { continue }
-                if let values = insertedRowData[change.rowIndex] {
-                    if let stmt = generateOracleInsert(table: table, columns: columns, values: values) {
-                        statements.append(stmt)
-                    }
-                }
-            case .update:
-                if let stmt = generateOracleUpdate(table: table, columns: columns, change: change) {
-                    statements.append(stmt)
-                }
-            case .delete:
-                guard deletedRowIndices.contains(change.rowIndex) else { continue }
-                if let stmt = generateOracleDelete(table: table, columns: columns, change: change) {
-                    statements.append(stmt)
-                }
-            }
-        }
-
-        return statements.isEmpty ? nil : statements
-    }
-
-    private func escapeOracleIdentifier(_ name: String) -> String {
-        "\"\(name.replacingOccurrences(of: "\"", with: "\"\""))\""
-    }
-
-    private func generateOracleInsert(
-        table: String,
-        columns: [String],
-        values: [PluginCellValue]
-    ) -> (statement: String, parameters: [PluginCellValue])? {
-        var insertColumns: [String] = []
-        var valuesSQL: [String] = []
-        var parameters: [PluginCellValue] = []
-
-        for (index, value) in values.enumerated() {
-            guard index < columns.count else { continue }
-            insertColumns.append(escapeOracleIdentifier(columns[index]))
-            if value.asText == "__DEFAULT__" {
-                valuesSQL.append("DEFAULT")
-            } else {
-                valuesSQL.append("?")
-                parameters.append(value)
-            }
-        }
-
-        guard !insertColumns.isEmpty else { return nil }
-
-        let columnList = insertColumns.joined(separator: ", ")
-        let valueList = valuesSQL.joined(separator: ", ")
-        let sql = "INSERT INTO \(escapeOracleIdentifier(table)) (\(columnList)) VALUES (\(valueList))"
-        return (statement: sql, parameters: parameters)
-    }
-
-    private func generateOracleUpdate(
-        table: String,
-        columns: [String],
-        change: PluginRowChange
-    ) -> (statement: String, parameters: [PluginCellValue])? {
-        guard !change.cellChanges.isEmpty, let originalRow = change.originalRow else { return nil }
-
-        let escapedTable = escapeOracleIdentifier(table)
-        var parameters: [PluginCellValue] = []
-
-        let setClauses = change.cellChanges.map { cellChange -> String in
-            let col = escapeOracleIdentifier(cellChange.columnName)
-            parameters.append(cellChange.newValue)
-            return "\(col) = ?"
-        }.joined(separator: ", ")
-
-        var conditions: [String] = []
-        for (index, columnName) in columns.enumerated() {
-            guard index < originalRow.count else { continue }
-            let col = escapeOracleIdentifier(columnName)
-            let value = originalRow[index]
-            if value.isNull {
-                conditions.append("\(col) IS NULL")
-            } else {
-                parameters.append(value)
-                conditions.append("\(col) = ?")
-            }
-        }
-
-        guard !conditions.isEmpty else { return nil }
-
-        let whereClause = conditions.joined(separator: " AND ")
-        let sql = "UPDATE \(escapedTable) SET \(setClauses) WHERE \(whereClause) AND ROWNUM = 1"
-        return (statement: sql, parameters: parameters)
-    }
-
-    private func generateOracleDelete(
-        table: String,
-        columns: [String],
-        change: PluginRowChange
-    ) -> (statement: String, parameters: [PluginCellValue])? {
-        guard let originalRow = change.originalRow else { return nil }
-
-        let escapedTable = escapeOracleIdentifier(table)
-        var parameters: [PluginCellValue] = []
-        var conditions: [String] = []
-
-        for (index, columnName) in columns.enumerated() {
-            guard index < originalRow.count else { continue }
-            let col = escapeOracleIdentifier(columnName)
-            let value = originalRow[index]
-            if value.isNull {
-                conditions.append("\(col) IS NULL")
-            } else {
-                parameters.append(value)
-                conditions.append("\(col) = ?")
-            }
-        }
-
-        guard !conditions.isEmpty else { return nil }
-
-        let whereClause = conditions.joined(separator: " AND ")
-        let sql = "DELETE FROM \(escapedTable) WHERE \(whereClause) AND ROWNUM = 1"
-        return (statement: sql, parameters: parameters)
+        PluginSQLStatementBuilder.generateStatements(
+            table: table,
+            columns: columns,
+            primaryKeyColumns: primaryKeyColumns,
+            changes: changes,
+            insertedRowData: insertedRowData,
+            deletedRowIndices: deletedRowIndices,
+            insertedRowIndices: insertedRowIndices,
+            quoteIdentifier: quoteIdentifier,
+            insertDefaultStrategy: .useDefaultKeyword,
+            whereColumnStrategy: .allColumns,
+            updateWhereSuffix: " AND ROWNUM = 1",
+            deleteWhereSuffix: " AND ROWNUM = 1"
+        )
     }
 
     // MARK: - Create Table DDL
@@ -881,7 +773,11 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     func generateAddColumnSQL(table: String, column: PluginColumnDefinition) -> String? {
         let qt = oracleQualifiedTable(table)
         let colDef = oracleColumnDefinition(column, inlinePK: false)
-        return "ALTER TABLE \(qt) ADD (\(colDef))"
+        return PluginSQLDDLBuilder.alterTableAddColumnDefinition(
+            tableSQL: qt,
+            columnSQL: "(\(colDef))",
+            addKeyword: "ADD"
+        )
     }
 
     func generateModifyColumnSQL(table: String, oldColumn: PluginColumnDefinition, newColumn: PluginColumnDefinition) -> String? {
@@ -889,7 +785,14 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         var stmts: [String] = []
 
         if oldColumn.name != newColumn.name {
-            stmts.append("ALTER TABLE \(qt) RENAME COLUMN \(quoteIdentifier(oldColumn.name)) TO \(quoteIdentifier(newColumn.name))")
+            stmts.append(
+                PluginSQLDDLBuilder.alterTableRenameColumnDefinition(
+                    tableSQL: qt,
+                    oldColumnName: oldColumn.name,
+                    newColumnName: newColumn.name,
+                    quoteIdentifier: quoteIdentifier
+                )
+            )
         }
 
         var modifyParts: [String] = []
@@ -922,7 +825,11 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func generateDropColumnSQL(table: String, columnName: String) -> String? {
-        "ALTER TABLE \(oracleQualifiedTable(table)) DROP COLUMN \(quoteIdentifier(columnName))"
+        PluginSQLDDLBuilder.alterTableDropColumnDefinition(
+            tableSQL: oracleQualifiedTable(table),
+            columnName: columnName,
+            quoteIdentifier: quoteIdentifier
+        )
     }
 
     func generateAddIndexSQL(table: String, index: PluginIndexDefinition) -> String? {
@@ -930,7 +837,7 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func generateDropIndexSQL(table: String, indexName: String) -> String? {
-        "DROP INDEX \(quoteIdentifier(indexName))"
+        PluginSQLDDLBuilder.dropIndexDefinition(indexName: indexName, quoteIdentifier: quoteIdentifier)
     }
 
     func generateAddForeignKeySQL(table: String, fk: PluginForeignKeyDefinition) -> String? {
@@ -938,7 +845,12 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func generateDropForeignKeySQL(table: String, constraintName: String) -> String? {
-        "ALTER TABLE \(oracleQualifiedTable(table)) DROP CONSTRAINT \(quoteIdentifier(constraintName))"
+        PluginSQLDDLBuilder.alterTableDropObjectDefinition(
+            tableSQL: oracleQualifiedTable(table),
+            objectKind: "CONSTRAINT",
+            objectName: constraintName,
+            quoteIdentifier: quoteIdentifier
+        )
     }
 
     // MARK: - DDL Helpers
@@ -949,49 +861,46 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     private func oracleColumnDefinition(_ col: PluginColumnDefinition, inlinePK: Bool) -> String {
-        var def = "\(quoteIdentifier(col.name)) \(col.dataType.uppercased())"
-        if let defaultValue = col.defaultValue {
-            def += " DEFAULT \(oracleDefaultValue(defaultValue))"
-        }
-        if !col.isNullable {
-            def += " NOT NULL"
-        }
-        if inlinePK && col.isPrimaryKey {
-            def += " PRIMARY KEY"
-        }
-        return def
+        PluginSQLDDLBuilder.columnDefinition(
+            col,
+            inlinePrimaryKey: inlinePK,
+            quoteIdentifier: quoteIdentifier,
+            formatDefaultValue: oracleDefaultValue,
+            dataTypeSQL: { $0.dataType.uppercased() },
+            emitsNullableKeyword: false,
+            defaultClausePosition: .beforeNullability
+        )
     }
 
     private func oracleDefaultValue(_ value: String) -> String {
-        let upper = value.uppercased()
-        if upper == "NULL" || upper == "SYSDATE" || upper == "SYSTIMESTAMP"
-            || upper == "SYS_GUID()" || upper == "USER"
-            || value.hasPrefix("'") || Int64(value) != nil || Double(value) != nil {
-            return value
-        }
-        return "'\(escapeStringLiteral(value))'"
+        PluginSQLDDLBuilder.defaultValue(
+            value,
+            rawUppercaseValues: ["NULL", "SYSDATE", "SYSTIMESTAMP", "SYS_GUID()", "USER"],
+            escapeStringLiteral: escapeStringLiteral
+        )
     }
 
     private func oracleIndexDefinition(_ index: PluginIndexDefinition, qualifiedTable: String) -> String {
-        let cols = index.columns.map { quoteIdentifier($0) }.joined(separator: ", ")
-        let unique = index.isUnique ? "UNIQUE " : ""
-        return "CREATE \(unique)INDEX \(quoteIdentifier(index.name)) ON \(qualifiedTable) (\(cols))"
+        PluginSQLDDLBuilder.createIndexDefinition(
+            index,
+            quoteIdentifier: quoteIdentifier,
+            tableSQL: qualifiedTable,
+            includeWhereClause: false
+        )
     }
 
     private func oracleForeignKeyConstraint(_ fk: PluginForeignKeyDefinition) -> String {
-        let cols = fk.columns.map { quoteIdentifier($0) }.joined(separator: ", ")
-        let refCols = fk.referencedColumns.map { quoteIdentifier($0) }.joined(separator: ", ")
-        let refTable: String
-        if let schema = fk.referencedSchema, !schema.isEmpty {
-            refTable = "\(quoteIdentifier(schema)).\(quoteIdentifier(fk.referencedTable))"
-        } else {
-            refTable = quoteIdentifier(fk.referencedTable)
-        }
-        var def = "CONSTRAINT \(quoteIdentifier(fk.name)) FOREIGN KEY (\(cols)) REFERENCES \(refTable) (\(refCols))"
-        if fk.onDelete != "NO ACTION" {
-            def += " ON DELETE \(fk.onDelete)"
-        }
-        return def
+        PluginSQLDDLBuilder.foreignKeyDefinition(
+            fk,
+            quoteIdentifier: quoteIdentifier,
+            referencedTableSQL: { foreignKey in
+                if let schema = foreignKey.referencedSchema, !schema.isEmpty {
+                    return "\(self.quoteIdentifier(schema)).\(self.quoteIdentifier(foreignKey.referencedTable))"
+                }
+                return self.quoteIdentifier(foreignKey.referencedTable)
+            },
+            includeOnUpdate: false
+        )
     }
 
     // MARK: - Schema Switching
@@ -1034,13 +943,15 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         limit: Int,
         offset: Int
     ) -> String? {
-        let quotedTable = oracleQuoteIdentifier(table)
-        var query = "SELECT * FROM \(quotedTable)"
-        let orderBy = PluginSQLFilter.buildOrderByClause(
-            sortColumns: sortColumns, columns: columns, quoteIdentifier: oracleQuoteIdentifier
-        ) ?? "ORDER BY 1"
-        query += " \(orderBy) OFFSET \(offset) ROWS FETCH NEXT \(limit) ROWS ONLY"
-        return query
+        guard let dialect = OraclePlugin.sqlDialect else { return nil }
+        return PluginSQLFilter.buildBrowseQuery(
+            table: table,
+            dialect: dialect,
+            sortColumns: sortColumns,
+            columns: columns,
+            limit: limit,
+            offset: offset
+        )
     }
 
     func buildFilteredQuery(
@@ -1052,40 +963,21 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         limit: Int,
         offset: Int
     ) -> String? {
-        let quotedTable = oracleQuoteIdentifier(table)
-        var query = "SELECT * FROM \(quotedTable)"
-        let whereClause = PluginSQLFilter.buildWhereClause(
+        guard let dialect = OraclePlugin.sqlDialect else { return nil }
+        return PluginSQLFilter.buildFilteredQuery(
+            table: table,
             filters: filters,
             logicMode: logicMode,
-            quoteIdentifier: oracleQuoteIdentifier,
-            escapeValue: oracleEscapeValue,
+            dialect: dialect,
+            sortColumns: sortColumns,
+            columns: columns,
+            limit: limit,
+            offset: offset,
             regexCondition: { quoted, value in
                 "REGEXP_LIKE(\(quoted), '\(value.replacingOccurrences(of: "'", with: "''"))')"
             }
         )
-        if !whereClause.isEmpty {
-            query += " WHERE \(whereClause)"
-        }
-        let orderBy = PluginSQLFilter.buildOrderByClause(
-            sortColumns: sortColumns, columns: columns, quoteIdentifier: oracleQuoteIdentifier
-        ) ?? "ORDER BY 1"
-        query += " \(orderBy) OFFSET \(offset) ROWS FETCH NEXT \(limit) ROWS ONLY"
-        return query
     }
-
-    // MARK: - Query Building Helpers
-
-    private func oracleQuoteIdentifier(_ identifier: String) -> String {
-        "\"\(identifier.replacingOccurrences(of: "\"", with: "\"\""))\""
-    }
-
-    private func oracleEscapeValue(_ value: String) -> String {
-        let trimmed = value.trimmingCharacters(in: .whitespaces)
-        if trimmed.caseInsensitiveCompare("NULL") == .orderedSame { return "NULL" }
-        if Int(trimmed) != nil || Double(trimmed) != nil { return trimmed }
-        return "'\(trimmed.replacingOccurrences(of: "'", with: "''"))'"
-    }
-
 
     // MARK: - Private Helpers
 

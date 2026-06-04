@@ -701,21 +701,35 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
         if let defaultValue = column.defaultValue, !defaultValue.isEmpty {
             def += " DEFAULT \(d1DefaultValue(defaultValue))"
         }
-        return "ALTER TABLE \(quoteIdentifier(table)) ADD COLUMN \(def)"
+        return PluginSQLDDLBuilder.alterTableAddColumnDefinition(
+            tableSQL: quoteIdentifier(table),
+            columnSQL: def
+        )
     }
 
     func generateDropColumnSQL(table: String, columnName: String) -> String? {
-        "ALTER TABLE \(quoteIdentifier(table)) DROP COLUMN \(quoteIdentifier(columnName))"
+        PluginSQLDDLBuilder.alterTableDropColumnDefinition(
+            tableSQL: quoteIdentifier(table),
+            columnName: columnName,
+            quoteIdentifier: quoteIdentifier
+        )
     }
 
     func generateAddIndexSQL(table: String, index: PluginIndexDefinition) -> String? {
-        let uniqueStr = index.isUnique ? "UNIQUE " : ""
-        let cols = index.columns.map { quoteIdentifier($0) }.joined(separator: ", ")
-        return "CREATE \(uniqueStr)INDEX \(quoteIdentifier(index.name)) ON \(quoteIdentifier(table)) (\(cols))"
+        PluginSQLDDLBuilder.createIndexDefinition(
+            index,
+            quoteIdentifier: quoteIdentifier,
+            tableSQL: quoteIdentifier(table),
+            includeWhereClause: false
+        )
     }
 
     func generateDropIndexSQL(table: String, indexName: String) -> String? {
-        "DROP INDEX IF EXISTS \(quoteIdentifier(indexName))"
+        PluginSQLDDLBuilder.dropIndexDefinition(
+            indexName: indexName,
+            quoteIdentifier: quoteIdentifier,
+            ifExists: true
+        )
     }
 
     func generateColumnDefinitionSQL(column: PluginColumnDefinition) -> String? {
@@ -723,10 +737,12 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
     }
 
     func generateIndexDefinitionSQL(index: PluginIndexDefinition, tableName: String?) -> String? {
-        let uniqueStr = index.isUnique ? "UNIQUE " : ""
-        let cols = index.columns.map { quoteIdentifier($0) }.joined(separator: ", ")
-        let onClause = tableName.map { " ON \(quoteIdentifier($0))" } ?? ""
-        return "CREATE \(uniqueStr)INDEX \(quoteIdentifier(index.name))\(onClause) (\(cols))"
+        PluginSQLDDLBuilder.createIndexDefinition(
+            index,
+            quoteIdentifier: quoteIdentifier,
+            tableSQL: tableName.map { quoteIdentifier($0) },
+            includeWhereClause: false
+        )
     }
 
     func generateForeignKeyDefinitionSQL(fk: PluginForeignKeyDefinition) -> String? {
@@ -736,42 +752,31 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
     // MARK: - Private Helpers
 
     private func d1ColumnDefinition(_ col: PluginColumnDefinition, inlinePK: Bool) -> String {
-        var def = "\(quoteIdentifier(col.name)) \(col.dataType)"
-        if inlinePK && col.isPrimaryKey {
-            def += " PRIMARY KEY"
-            if col.autoIncrement {
-                def += " AUTOINCREMENT"
-            }
-        }
-        if !col.isNullable {
-            def += " NOT NULL"
-        }
-        if let defaultValue = col.defaultValue {
-            def += " DEFAULT \(d1DefaultValue(defaultValue))"
-        }
-        return def
+        PluginSQLDDLBuilder.columnDefinition(
+            col,
+            inlinePrimaryKey: inlinePK,
+            quoteIdentifier: quoteIdentifier,
+            formatDefaultValue: d1DefaultValue,
+            emitsNullableKeyword: false,
+            primaryKeyClausePosition: .afterDataType,
+            postPrimaryKeySQL: { $0.autoIncrement ? "AUTOINCREMENT" : nil }
+        )
     }
 
     private func d1DefaultValue(_ value: String) -> String {
-        let upper = value.uppercased()
-        if upper == "NULL" || upper == "CURRENT_TIMESTAMP" || upper == "CURRENT_DATE" || upper == "CURRENT_TIME"
-            || value.hasPrefix("'") || Int64(value) != nil || Double(value) != nil {
-            return value
-        }
-        return "'\(escapeStringLiteral(value))'"
+        PluginSQLDDLBuilder.defaultValue(
+            value,
+            rawUppercaseValues: ["NULL", "CURRENT_TIMESTAMP", "CURRENT_DATE", "CURRENT_TIME"],
+            escapeStringLiteral: escapeStringLiteral
+        )
     }
 
     private func d1ForeignKeyDefinition(_ fk: PluginForeignKeyDefinition) -> String {
-        let cols = fk.columns.map { quoteIdentifier($0) }.joined(separator: ", ")
-        let refCols = fk.referencedColumns.map { quoteIdentifier($0) }.joined(separator: ", ")
-        var def = "FOREIGN KEY (\(cols)) REFERENCES \(quoteIdentifier(fk.referencedTable)) (\(refCols))"
-        if fk.onDelete != "NO ACTION" {
-            def += " ON DELETE \(fk.onDelete)"
-        }
-        if fk.onUpdate != "NO ACTION" {
-            def += " ON UPDATE \(fk.onUpdate)"
-        }
-        return def
+        PluginSQLDDLBuilder.foreignKeyDefinition(
+            fk,
+            quoteIdentifier: quoteIdentifier,
+            includeConstraintName: false
+        )
     }
 
     private func getClient() -> D1HttpClient? {

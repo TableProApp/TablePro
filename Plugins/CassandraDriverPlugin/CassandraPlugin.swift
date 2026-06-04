@@ -557,11 +557,20 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
     // MARK: - ALTER TABLE DDL
 
     func generateAddColumnSQL(table: String, column: PluginColumnDefinition) -> String? {
-        "ALTER TABLE \(qualifiedTableName(table)) ADD \(quoteIdentifier(column.name)) \(column.dataType)"
+        PluginSQLDDLBuilder.alterTableAddColumnDefinition(
+            tableSQL: qualifiedTableName(table),
+            columnSQL: "\(quoteIdentifier(column.name)) \(column.dataType)",
+            addKeyword: "ADD"
+        )
     }
 
     func generateDropColumnSQL(table: String, columnName: String) -> String? {
-        "ALTER TABLE \(qualifiedTableName(table)) DROP \(quoteIdentifier(columnName))"
+        PluginSQLDDLBuilder.alterTableDropColumnDefinition(
+            tableSQL: qualifiedTableName(table),
+            columnName: columnName,
+            quoteIdentifier: quoteIdentifier,
+            dropKeyword: "DROP"
+        )
     }
 
     private func qualifiedTableName(_ table: String) -> String {
@@ -603,4 +612,3 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
         }
     }
 }
-
