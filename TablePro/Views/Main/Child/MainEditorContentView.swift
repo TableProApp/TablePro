@@ -501,6 +501,7 @@ struct MainEditorContentView: View {
             }
 
             if tab.display.explainText == nil {
+                Divider()
                 statusBar(tab: tab)
             }
         }
@@ -744,25 +745,31 @@ struct MainEditorContentView: View {
         return MainStatusBarView(
             snapshot: StatusBarSnapshot(tab: tab, tableRows: resolvedRows),
             filterState: tab.filterState,
-            hiddenColumns: tab.columnLayout.hiddenColumns,
-            allColumns: coordinator.columnsForVisibilityPicker(for: tab, resultColumns: resolvedRows.columns),
             selectedRowIndices: selectionState.indices,
             viewMode: resultsViewModeBinding(for: tab),
-            onFirstPage: onFirstPage,
-            onPreviousPage: onPreviousPage,
-            onNextPage: onNextPage,
-            onLastPage: onLastPage,
-            onPageSizeChange: onPageSizeChange,
-            onShowAll: onShowAll,
-            onGoToPage: onGoToPage,
-            onToggleColumn: { coordinator.toggleColumnVisibility($0) },
-            onShowAllColumns: { coordinator.showAllColumns() },
-            onHideAllColumns: { coordinator.hideAllColumns($0) },
+            paginationCallbacks: PaginationCallbacks(
+                onFirst: onFirstPage,
+                onPrevious: onPreviousPage,
+                onNext: onNextPage,
+                onLast: onLastPage,
+                onPageSizeChange: onPageSizeChange,
+                onShowAll: onShowAll,
+                onGoToPage: onGoToPage
+            ),
+            columnState: StatusBarColumnState(
+                hidden: tab.columnLayout.hiddenColumns,
+                all: coordinator.columnsForVisibilityPicker(for: tab, resultColumns: resolvedRows.columns),
+                onToggle: { coordinator.toggleColumnVisibility($0) },
+                onShowAll: { coordinator.showAllColumns() },
+                onHideAll: { coordinator.hideAllColumns($0) }
+            ),
+            structureState: StatusBarStructureState(
+                footer: coordinator.structureFooterState,
+                onAdd: { coordinator.structureActions?.addRow?() },
+                onRemove: { coordinator.structureActions?.removeRow?() }
+            ),
             onToggleFilters: { coordinator.toggleFilterPanel() },
-            onFetchAll: { coordinator.fetchAllRows() },
-            structureFooterState: coordinator.structureFooterState,
-            onStructureAdd: { coordinator.structureActions?.addRow?() },
-            onStructureRemove: { coordinator.structureActions?.removeRow?() }
+            onFetchAll: { coordinator.fetchAllRows() }
         )
     }
 

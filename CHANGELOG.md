@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The results status bar has a divider above it and balanced left and right margins, and its loading spinner matches the size of the other controls. (#1569)
 - Custom keyboard shortcuts now work on non-US keyboard layouts, and shifted symbols like Cmd+[ record correctly.
 - The Keyboard settings list is grouped by where shortcuts act (Editor, Data Grid, Navigation, Connections), and each changed shortcut has its own reset button.
 - Conflict detection now checks live macOS system shortcuts and the editor's built-in commands, and lets the same key serve the editor and the data grid because focus decides which one runs.
@@ -33,6 +34,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Query results appear as soon as the database returns rows. Column defaults, foreign keys, and row counts now load in the background instead of holding up the grid, which removes a multi-second wait on remote databases whose system tables are slow to query. (#1574)
 - MySQL and MariaDB queries are ready to edit right away. Primary key and nullability come back with the rows, so an editable query no longer waits on a separate metadata query. (#1574)
+- Pagination and other status bar buttons no longer get blocked by the window resize zone in the bottom-right corner. (#1569)
+- VoiceOver now reads clear labels for the Columns button, Filters toggle, and loading indicators in the results status bar. (#1569)
+- The custom rows-per-page popover now points at the page-size menu instead of the center of the pagination controls. (#1569)
 - DynamoDB AWS Profile auth now reads `~/.aws/config` as well as `~/.aws/credentials` and supports `credential_process`, matching the AWS CLI. Profiles defined only in `~/.aws/config`, including SSO and credential-process profiles, no longer fail with "profile not found". (#1567)
 - Query result columns now follow the order in the SELECT. Adding or removing a column no longer leaves new columns stuck at the end of the grid. (#1565)
 - JSON file import works again. It failed to load in 0.48.0.

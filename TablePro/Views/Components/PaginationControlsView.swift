@@ -30,9 +30,6 @@ struct PaginationControlsView: View {
             pageSizeMenu
             navigationCluster
         }
-        .popover(isPresented: $showCustomPopover, arrowEdge: .top) {
-            customPageSizePopover
-        }
     }
 
     // MARK: - Page Size Menu
@@ -62,6 +59,13 @@ struct PaginationControlsView: View {
         .controlSize(.small)
         .help(String(localized: "Rows per page"))
         .accessibilityLabel(String(localized: "Rows per page"))
+        .overlay(alignment: .bottom) {
+            Color.clear
+                .frame(width: 0, height: 0)
+                .popover(isPresented: $showCustomPopover, arrowEdge: .top) {
+                    customPageSizePopover
+                }
+        }
     }
 
     private var pageSizeBinding: Binding<Int> {
@@ -96,6 +100,7 @@ struct PaginationControlsView: View {
             if pagination.isLoading {
                 ProgressView()
                     .controlSize(.small)
+                    .accessibilityLabel(String(localized: "Loading page"))
             }
 
             navButton(
