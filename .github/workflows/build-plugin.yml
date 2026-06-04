@@ -199,6 +199,11 @@ jobs:
               DISPLAY_NAME="BigQuery Driver"; SUMMARY="Google BigQuery analytics database driver via REST API"
               DB_TYPE_IDS='["BigQuery"]'; ICON="bigquery-icon"; BUNDLE_NAME="BigQueryDriverPlugin"
               CATEGORY="database-driver"; HOMEPAGE="https://docs.tablepro.app/databases/bigquery" ;;
+            snowflake)
+              TARGET="SnowflakeDriverPlugin"; BUNDLE_ID="com.TablePro.SnowflakeDriverPlugin"
+              DISPLAY_NAME="Snowflake Driver"; SUMMARY="Snowflake cloud data warehouse driver via the connector REST protocol"
+              DB_TYPE_IDS='["Snowflake"]'; ICON="snowflake-icon"; BUNDLE_NAME="SnowflakeDriverPlugin"
+              CATEGORY="database-driver"; HOMEPAGE="https://docs.tablepro.app/databases/snowflake" ;;
             xlsx)
               TARGET="XLSXExport"; BUNDLE_ID="com.TablePro.XLSXExportPlugin"
               DISPLAY_NAME="XLSX Export"; SUMMARY="Export data to Microsoft Excel XLSX format"

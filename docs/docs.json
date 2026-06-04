@@ -67,6 +67,7 @@
                 "pages": [
                   "databases/dynamodb",
                   "databases/bigquery",
+                  "databases/snowflake",
                   "databases/cloudflare-d1"
                 ]
               },

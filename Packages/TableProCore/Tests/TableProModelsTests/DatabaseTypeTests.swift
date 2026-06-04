@@ -15,6 +15,7 @@ struct DatabaseTypeTests {
         #expect(DatabaseType.mssql.rawValue == "SQL Server")
         #expect(DatabaseType.cloudflareD1.rawValue == "Cloudflare D1")
         #expect(DatabaseType.bigquery.rawValue == "BigQuery")
+        #expect(DatabaseType.snowflake.rawValue == "Snowflake")
     }
 
     @Test("pluginTypeId maps multi-type databases")
@@ -51,9 +52,10 @@ struct DatabaseTypeTests {
 
     @Test("allKnownTypes contains all expected types")
     func allKnownTypesComplete() {
-        #expect(DatabaseType.allKnownTypes.count == 17)
+        #expect(DatabaseType.allKnownTypes.count == 18)
         #expect(DatabaseType.allKnownTypes.contains(.mysql))
         #expect(DatabaseType.allKnownTypes.contains(.bigquery))
+        #expect(DatabaseType.allKnownTypes.contains(.snowflake))
         #expect(DatabaseType.allKnownTypes.contains(.libsql))
     }
 

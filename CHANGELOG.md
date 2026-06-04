@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Snowflake support: connect with username & password (including MFA TOTP passcodes and cached MFA tokens), key-pair (.p8), browser SSO, or a programmatic access token; browse databases, schemas, and tables; run Snowflake SQL with full result sets, query cancellation, and automatic session renewal. Connections defined in the Snowflake CLI's config files can be reused by name. (#1420)
 - Each filter row has a checkbox to turn it on or off and an Apply button to filter by just that row. The main Apply runs every active filter, and disabled filters stay in the panel for later. (#1561)
 - Importing connections from other apps now detects duplicates by host, port, database, and username, and lets you replace, add a copy, or skip each one before import.
 
