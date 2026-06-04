@@ -1,12 +1,12 @@
 //
-//  JSONImportTypeMapper.swift
+//  ImportTypeMapper.swift
 //  TablePro
 //
 
 import Foundation
 import TableProPluginKit
 
-enum JSONImportTypeMapper {
+enum ImportTypeMapper {
     static func sqlType(for type: PluginImportFieldType, databaseType: DatabaseType) -> String {
         switch databaseType {
         case .postgresql, .redshift, .cockroachdb:

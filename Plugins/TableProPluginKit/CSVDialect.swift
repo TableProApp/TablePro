@@ -1,12 +1,12 @@
 import Foundation
 
-struct CSVDialect: Equatable, Sendable {
-    enum LineEnding: Equatable, Sendable {
+public struct CSVDialect: Equatable, Sendable {
+    public enum LineEnding: Equatable, Sendable {
         case crlf
         case lf
         case cr
 
-        var bytes: [UInt8] {
+        public var bytes: [UInt8] {
             switch self {
             case .crlf: return [0x0D, 0x0A]
             case .lf:   return [0x0A]
@@ -15,13 +15,13 @@ struct CSVDialect: Equatable, Sendable {
         }
     }
 
-    var delimiter: UInt8
-    var quoteChar: UInt8
-    var encoding: String.Encoding
-    var lineEnding: LineEnding
-    var hasBom: Bool
+    public var delimiter: UInt8
+    public var quoteChar: UInt8
+    public var encoding: String.Encoding
+    public var lineEnding: LineEnding
+    public var hasBom: Bool
 
-    init(
+    public init(
         delimiter: UInt8,
         quoteChar: UInt8 = 0x22,
         encoding: String.Encoding = .utf8,
@@ -35,12 +35,12 @@ struct CSVDialect: Equatable, Sendable {
         self.hasBom = hasBom
     }
 
-    static let csv = CSVDialect(delimiter: 0x2C)
-    static let tsv = CSVDialect(delimiter: 0x09)
+    public static let csv = CSVDialect(delimiter: 0x2C)
+    public static let tsv = CSVDialect(delimiter: 0x09)
 
     private static let detectionScanLimit = 65_536
 
-    static func detect(from data: Data) -> CSVDialect {
+    public static func detect(from data: Data) -> CSVDialect {
         var hasBom = false
         var encoding: String.Encoding = .utf8
         var bomLength = 0
@@ -142,7 +142,7 @@ struct CSVDialect: Equatable, Sendable {
         return .lf
     }
 
-    var bomBytes: [UInt8] {
+    public var bomBytes: [UInt8] {
         guard hasBom else { return [] }
         switch encoding {
         case .utf8: return [0xEF, 0xBB, 0xBF]

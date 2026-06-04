@@ -1,4 +1,5 @@
 import Foundation
+import TableProPluginKit
 
 struct CSVWriter {
     enum WriteError: Error, LocalizedError {
@@ -34,7 +35,7 @@ struct CSVWriter {
             defer { try? handle.close() }
 
             var buffer = Data()
-            buffer.reserveCapacity(Self.flushThreshold + 4096)
+            buffer.reserveCapacity(Self.flushThreshold + 4_096)
             buffer.append(contentsOf: dialect.bomBytes)
 
             append(store.headerSource, from: store, into: &buffer)

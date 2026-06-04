@@ -241,7 +241,7 @@ struct MainContentView: View {
                 }
             )
             if let url = coordinator.importFileURL {
-                JSONImportSheet(
+                RowImportSheet(
                     isPresented: rowDismiss,
                     connection: connection,
                     fileURL: url,

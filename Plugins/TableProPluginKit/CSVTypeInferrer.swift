@@ -1,10 +1,9 @@
 import Foundation
-import TableProPluginKit
 
-struct CSVTypeInferrer {
-    typealias InferredType = InspectorColumnType
+public struct CSVTypeInferrer {
+    public typealias InferredType = InspectorColumnType
 
-    static let sampleSize = 200
+    public static let sampleSize = 200
 
     private static let booleanLiterals: Set<String> = [
         "true", "false", "yes", "no", "t", "f", "y", "n"
@@ -22,7 +21,7 @@ struct CSVTypeInferrer {
         return formatter
     }()
 
-    static func infer(column values: [String]) -> InferredType {
+    public static func infer(column values: [String]) -> InferredType {
         var sample: [String] = []
         sample.reserveCapacity(min(values.count, sampleSize))
         for value in values where !value.isEmpty {
@@ -38,7 +37,7 @@ struct CSVTypeInferrer {
         return .text
     }
 
-    static func inferColumns(rows: [[String]], columnCount: Int) -> [InferredType] {
+    public static func inferColumns(rows: [[String]], columnCount: Int) -> [InferredType] {
         var result: [InferredType] = []
         result.reserveCapacity(columnCount)
         for col in 0..<columnCount {

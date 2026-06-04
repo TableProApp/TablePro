@@ -1,10 +1,11 @@
 //
-//  JSONImportSheet.swift
+//  RowImportSheet.swift
 //  TablePro
 //
-//  Dedicated import sheet for row-based formats (JSON / NDJSON):
-//  map each source field to a column in an existing table, or create a new
-//  table with columns inferred from the data.
+//  Import sheet for row-based formats (JSON, NDJSON, CSV): map each source
+//  field to a column in an existing table, or create a new table with columns
+//  inferred from the data. The format plugin supplies the icon, name, and the
+//  field-detection options shown in this sheet.
 //
 
 import Combine
@@ -12,8 +13,8 @@ import os
 import SwiftUI
 import TableProPluginKit
 
-struct JSONImportSheet: View {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "JSONImportSheet")
+struct RowImportSheet: View {
+    private static let logger = Logger(subsystem: "com.TablePro", category: "RowImportSheet")
 
     @Binding var isPresented: Bool
     let connection: DatabaseConnection
@@ -96,6 +97,9 @@ struct JSONImportSheet: View {
             guard destination == .existingTable, let table = newValue else { return }
             Task { await loadExistingContext(table: table) }
         }
+        .onChange(of: currentPlugin?.fieldDetectionSignature) { _, _ in
+            Task { await redetectFields() }
+        }
         .onDisappear { importTask?.cancel() }
         .sheet(isPresented: $showProgressDialog) {
             if let service = importService {
@@ -118,13 +122,13 @@ struct JSONImportSheet: View {
 
     private var headerView: some View {
         HStack(alignment: .top, spacing: 12) {
-            Image(systemName: "curlybraces")
+            Image(systemName: currentPlugin.map { type(of: $0).iconName } ?? "tablecells")
                 .font(.title)
                 .foregroundStyle(.blue)
             VStack(alignment: .leading, spacing: 2) {
                 Text(fileURL.lastPathComponent)
                     .font(.headline)
-                Text("Import JSON rows into a table")
+                Text("Import rows into a table")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
@@ -243,7 +247,7 @@ struct JSONImportSheet: View {
                     Toggle("", isOn: allMappingsIncluded)
                         .labelsHidden()
                         .help(String(localized: "Import all fields"))
-                    Text("JSON field").font(.caption).foregroundStyle(.secondary)
+                    Text("Field").font(.caption).foregroundStyle(.secondary)
                     Text("Column").font(.caption).foregroundStyle(.secondary)
                 }
                 Divider().gridCellColumns(3)
@@ -436,7 +440,7 @@ struct JSONImportSheet: View {
                     field: field,
                     include: true,
                     name: field.name,
-                    type: JSONImportTypeMapper.sqlType(for: field.inferredType, databaseType: connection.type),
+                    type: ImportTypeMapper.sqlType(for: field.inferredType, databaseType: connection.type),
                     isPrimaryKey: false,
                     isNullable: true,
                     defaultValue: ""
@@ -470,6 +474,18 @@ struct JSONImportSheet: View {
         }
     }
 
+    @MainActor
+    private func redetectFields() async {
+        switch destination {
+        case .existingTable:
+            guard let table = selectedTargetTable else { return }
+            await loadExistingContext(table: table)
+        case .newTable:
+            newColumnsLoaded = false
+            await loadNewColumns()
+        }
+    }
+
     // MARK: - Import
 
     private func performImport() {
@@ -481,7 +497,7 @@ struct JSONImportSheet: View {
             let name = newTableName.trimmingCharacters(in: .whitespaces)
             guard !name.isEmpty, let sql = buildCreateTableSQL(tableName: name) else {
                 importError = NSError(
-                    domain: "JSONImport", code: -1,
+                    domain: "RowImport", code: -1,
                     userInfo: [NSLocalizedDescriptionKey: String(localized: "Could not build the CREATE TABLE statement")]
                 )
                 showErrorDialog = true
