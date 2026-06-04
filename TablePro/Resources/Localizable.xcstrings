@@ -1613,26 +1613,6 @@
         }
       }
     },
-    "%d of %d" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "%1$d of %2$d"
-          }
-        }
-      }
-    },
-    "%d of %d columns visible" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "%1$d of %2$d columns visible"
-          }
-        }
-      }
-    },
     "%d of %d rows" : {
       "localizations" : {
         "en" : {
@@ -3770,6 +3750,9 @@
           }
         }
       }
+    },
+    "Access Key ID and Secret Access Key are required for AWS IAM authentication." : {
+
     },
     "Account" : {
       "localizations" : {
@@ -7453,6 +7436,15 @@
         }
       }
     },
+    "AWS IAM (Access Key)" : {
+
+    },
+    "AWS IAM (Profile)" : {
+
+    },
+    "AWS IAM (SSO)" : {
+
+    },
     "AWS managed key-value/document store" : {
 
     },
@@ -7483,15 +7475,6 @@
           }
         }
       }
-    },
-    "AWS SSO Sign-In Failed" : {
-
-    },
-    "AWS SSO sign-in finished. Test the connection again." : {
-
-    },
-    "AWS SSO Sign-In Required" : {
-
     },
     "Back" : {
       "localizations" : {
@@ -8465,6 +8448,12 @@
           }
         }
       }
+    },
+    "Cannot read ~/.aws/config." : {
+
+    },
+    "Cannot read ~/.aws/credentials." : {
+
     },
     "Cannot save changes: connection is read-only" : {
       "extractionState" : "stale",
@@ -12929,6 +12918,9 @@
     "Could not decode image" : {
 
     },
+    "Could not determine an AWS region for \"%@\". Set the AWS Region field." : {
+
+    },
     "Could not encode image" : {
 
     },
@@ -13122,6 +13114,16 @@
     },
     "Could Not Reset Sample" : {
 
+    },
+    "Could not run the credential_process command for profile \"%@\": %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Could not run the credential_process command for profile \"%1$@\": %2$@"
+          }
+        }
+      }
     },
     "Could not save the connection. Check disk space and permissions, then try again." : {
 
@@ -17853,9 +17855,6 @@
         }
       }
     },
-    "ElastiCache IAM authentication requires TLS. Enable SSL in the connection's SSL settings." : {
-
-    },
     "Email:" : {
       "localizations" : {
         "tr" : {
@@ -18390,9 +18389,6 @@
           }
         }
       }
-    },
-    "Enter the ElastiCache cache name (replication group ID) to use IAM authentication." : {
-
     },
     "Enter the passphrase for SSH key \"%@\":" : {
       "localizations" : {
@@ -20417,6 +20413,9 @@
         }
       }
     },
+    "Failed to build the SSO portal URL for profile \"%@\"." : {
+
+    },
     "Failed to compress data" : {
       "localizations" : {
         "tr" : {
@@ -20461,6 +20460,9 @@
           }
         }
       }
+    },
+    "Failed to decode the SSO portal response for profile \"%@\"." : {
+
     },
     "Failed to decompress .gz file" : {
       "localizations" : {
@@ -21213,6 +21215,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "在第 %lld 行解析语句失败: %@"
+          }
+        }
+      }
+    },
+    "Failed to reach the SSO portal for profile \"%@\": %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Failed to reach the SSO portal for profile \"%1$@\": %2$@"
           }
         }
       }
@@ -27839,9 +27851,6 @@
         }
       }
     },
-    "Loading more rows" : {
-
-    },
     "Loading options..." : {
       "extractionState" : "stale",
       "localizations" : {
@@ -27866,9 +27875,6 @@
       }
     },
     "Loading options…" : {
-
-    },
-    "Loading page" : {
 
     },
     "Loading plugins..." : {
@@ -33798,6 +33804,9 @@
     "Optional one-line description" : {
 
     },
+    "Optional, for temporary credentials" : {
+
+    },
     "Options" : {
       "localizations" : {
         "tr" : {
@@ -36582,6 +36591,18 @@
           }
         }
       }
+    },
+    "Profile \"%@\" in ~/.aws/config is missing sso_account_id or sso_role_name." : {
+
+    },
+    "Profile \"%@\" in ~/.aws/config is missing sso_start_url or sso_region." : {
+
+    },
+    "Profile \"%@\" not found in ~/.aws/config." : {
+
+    },
+    "Profile \"%@\" was not found, or has no access keys or credential_process, in ~/.aws/config or ~/.aws/credentials." : {
+
     },
     "Profile Details" : {
 
@@ -39853,6 +39874,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "右键单击显示所有表"
+          }
+        }
+      }
+    },
+    "Role \"%@\" in account \"%@\" is not accessible via SSO. Check role permissions in IAM Identity Center." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Role \"%1$@\" in account \"%2$@\" is not accessible via SSO. Check role permissions in IAM Identity Center."
           }
         }
       }
@@ -43404,9 +43435,6 @@
         }
       }
     },
-    "Sign In" : {
-
-    },
     "Sign in to iCloud in System Settings to enable sync." : {
       "localizations" : {
         "tr" : {
@@ -43541,9 +43569,6 @@
           }
         }
       }
-    },
-    "Signed In" : {
-
     },
     "Signed in as %@" : {
       "localizations" : {
@@ -45142,6 +45167,69 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "SSL/TLS"
+          }
+        }
+      }
+    },
+    "SSO portal returned HTTP %lld for profile \"%@\"." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "SSO portal returned HTTP %1$lld for profile \"%2$@\"."
+          }
+        }
+      }
+    },
+    "SSO role credentials for profile \"%@\" were already expired. Run 'aws sso login --profile %@' to refresh." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "SSO role credentials for profile \"%1$@\" were already expired. Run 'aws sso login --profile %2$@' to refresh."
+          }
+        }
+      }
+    },
+    "SSO session \"%@\" in ~/.aws/config is missing sso_start_url or sso_region." : {
+
+    },
+    "SSO session \"%@\" referenced by profile \"%@\" was not found in ~/.aws/config." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "SSO session \"%1$@\" referenced by profile \"%2$@\" was not found in ~/.aws/config."
+          }
+        }
+      }
+    },
+    "SSO session for profile \"%@\" has expired. Run 'aws sso login --profile %@' to refresh." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "SSO session for profile \"%1$@\" has expired. Run 'aws sso login --profile %2$@' to refresh."
+          }
+        }
+      }
+    },
+    "SSO token cache for profile \"%@\" is malformed. Run 'aws sso login --profile %@' to refresh." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "SSO token cache for profile \"%1$@\" is malformed. Run 'aws sso login --profile %2$@' to refresh."
+          }
+        }
+      }
+    },
+    "SSO token cache not found for profile \"%@\". Run 'aws sso login --profile %@' first." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "SSO token cache not found for profile \"%1$@\". Run 'aws sso login --profile %2$@' first."
           }
         }
       }
@@ -47638,6 +47726,32 @@
         }
       }
     },
+    "The credential_process command for profile \"%@\" did not return valid credentials JSON." : {
+
+    },
+    "The credential_process command for profile \"%@\" exited with status %lld.%@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "The credential_process command for profile \"%1$@\" exited with status %2$lld.%3$@"
+          }
+        }
+      }
+    },
+    "The credential_process command for profile \"%@\" is empty or invalid." : {
+
+    },
+    "The credential_process command for profile \"%@\" returned unsupported Version %lld (expected 1)." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "The credential_process command for profile \"%1$@\" returned unsupported Version %2$lld (expected 1)."
+          }
+        }
+      }
+    },
     "The destructive query to execute" : {
 
     },
@@ -47914,9 +48028,6 @@
           }
         }
       }
-    },
-    "The SSO session for profile \"%@\" has expired. Sign in with your browser?" : {
-
     },
     "The target database may be in a partial state. Review the database and clean up as needed." : {
       "comment" : "A message that appears when restoring a database and the user is advised to review and clean up the database.",
@@ -50552,6 +50663,9 @@
           }
         }
       }
+    },
+    "Unexpected response from the SSO portal for profile \"%@\"." : {
+
     },
     "Uninstall" : {
       "localizations" : {

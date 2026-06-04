@@ -22,7 +22,7 @@ internal let mysqlBinaryCharset: UInt32 = 63
 
 private let logger = Logger(subsystem: "com.TablePro", category: "MariaDBPluginConnection")
 
-func makeColumnMeta(name: String, typeName: String, flags: UInt) -> PluginColumnInfo {
+internal func makeColumnMeta(name: String, typeName: String, flags: UInt) -> PluginColumnInfo {
     PluginColumnInfo(
         name: name,
         dataType: typeName,
