@@ -247,14 +247,14 @@ final class SQLContextAnalyzer {
 
     private static let tableRefRegexes: [NSRegularExpression] = {
         let patterns = [
-            "(?i)\\bFROM\\s+[`\"']?([\\w.]+)[`\"']?" +
+            "(?i)\\bFROM\\s+[`\"']?([\\w.`\"']+)[`\"']?" +
             "(?:\\s+(?:AS\\s+)?[`\"']?([\\w]+)[`\"']?)?",
             "(?i)(?:LEFT|RIGHT|INNER|OUTER|CROSS|FULL)?\\s*(?:OUTER)?\\s*JOIN\\s+" +
-            "[`\"']?([\\w.]+)[`\"']?(?:\\s+(?:AS\\s+)?[`\"']?([\\w]+)[`\"']?)?",
-            "(?i)\\bUPDATE\\s+[`\"']?([\\w.]+)[`\"']?" +
+            "[`\"']?([\\w.`\"']+)[`\"']?(?:\\s+(?:AS\\s+)?[`\"']?([\\w]+)[`\"']?)?",
+            "(?i)\\bUPDATE\\s+[`\"']?([\\w.`\"']+)[`\"']?" +
             "(?:\\s+(?:AS\\s+)?[`\"']?([\\w]+)[`\"']?)?",
-            "(?i)\\bINSERT\\s+INTO\\s+[`\"']?([\\w.]+)[`\"']?",
-            "(?i)\\bCREATE\\s+(?:UNIQUE\\s+)?INDEX\\s+\\w+\\s+ON\\s+[`\"']?([\\w.]+)[`\"']?"
+            "(?i)\\bINSERT\\s+INTO\\s+[`\"']?([\\w.`\"']+)[`\"']?",
+            "(?i)\\bCREATE\\s+(?:UNIQUE\\s+)?INDEX\\s+\\w+\\s+ON\\s+[`\"']?([\\w.`\"']+)[`\"']?"
         ]
         return patterns.map { compileRegex($0) }
     }()
@@ -793,12 +793,13 @@ final class SQLContextAnalyzer {
 
                 let rawName = (query as NSString).substring(with: tableNSRange)
                 let tableName = Self.stripSchemaPrefix(rawName)
+                    .trimmingCharacters(in: CharacterSet(charactersIn: "`\"'"))
                 guard !Self.tableRefKeywords.contains(tableName.uppercased()) else { return }
 
                 let segments = rawName.split(separator: ".")
                 let schema = segments.count >= 2
                     ? String(segments[segments.count - 2])
-                        .trimmingCharacters(in: CharacterSet(charactersIn: "`\""))
+                        .trimmingCharacters(in: CharacterSet(charactersIn: "`\"'"))
                     : nil
 
                 var alias: String?
