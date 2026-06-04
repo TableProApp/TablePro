@@ -124,6 +124,20 @@ final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         try await conn.switchSchema(to: schema)
     }
 
+    // MARK: - Database Management
+
+    func createDatabaseFormSpec() async throws -> PluginCreateDatabaseFormSpec? {
+        PluginCreateDatabaseFormSpec(fields: [], footnote: nil)
+    }
+
+    func createDatabase(_ request: PluginCreateDatabaseRequest) async throws {
+        _ = try await rawQuery("CREATE DATABASE \(quoteIdentifier(request.name))")
+    }
+
+    func dropDatabase(name: String) async throws {
+        _ = try await rawQuery("DROP DATABASE IF EXISTS \(quoteIdentifier(name))")
+    }
+
     // MARK: - Schema Introspection
 
     func fetchTables(schema: String?) async throws -> [PluginTableInfo] {
