@@ -31,6 +31,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Query results appear as soon as the database returns rows. Column defaults, foreign keys, and row counts now load in the background instead of holding up the grid, which removes a multi-second wait on remote databases whose system tables are slow to query. (#1574)
+- MySQL and MariaDB queries are ready to edit right away. Primary key and nullability come back with the rows, so an editable query no longer waits on a separate metadata query. (#1574)
 - DynamoDB AWS Profile auth now reads `~/.aws/config` as well as `~/.aws/credentials` and supports `credential_process`, matching the AWS CLI. Profiles defined only in `~/.aws/config`, including SSO and credential-process profiles, no longer fail with "profile not found". (#1567)
 - Query result columns now follow the order in the SELECT. Adding or removing a column no longer leaves new columns stuck at the end of the grid. (#1565)
 - JSON file import works again. It failed to load in 0.48.0.

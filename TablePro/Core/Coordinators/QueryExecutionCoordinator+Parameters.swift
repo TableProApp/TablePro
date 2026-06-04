@@ -94,31 +94,39 @@ extension QueryExecutionCoordinator {
         } else {
             needsMetadataFetch = false
         }
+        let connId = parent.connectionId
 
         parent.currentQueryTask = Task { [weak self, parent] in
             guard let self else { return }
 
+            let schemaTask: Task<SchemaResult, Error>?
+            if needsMetadataFetch, let tableName {
+                schemaTask = Task { try await QueryExecutor.fetchTableSchema(connectionId: connId, tableName: tableName) }
+            } else {
+                schemaTask = nil
+            }
+
             do {
-                let executionResult = try await parent.queryExecutor.executeQuery(
+                let fetchResult = try await parent.queryExecutor.executeQuery(
                     sql: sql,
                     parameters: parameters,
-                    rowCap: rowCap,
-                    tableName: tableName,
-                    fetchSchemaForTable: needsMetadataFetch
+                    rowCap: rowCap
                 )
 
                 guard !Task.isCancelled else {
-                    await parent.resetExecutionState(
-                        tabId: tabId,
-                        executionTime: executionResult.fetchResult.executionTime
-                    )
+                    schemaTask?.cancel()
+                    await parent.resetExecutionState(tabId: tabId, executionTime: fetchResult.executionTime)
                     return
                 }
 
+                let inlineMeta = needsMetadataFetch
+                    ? QueryExecutor.inlineMetadata(from: fetchResult.resultColumnMeta, columns: fetchResult.columns)
+                    : nil
+
                 await applyParameterizedResult(
                     tabId: tabId,
-                    fetchResult: executionResult.fetchResult,
-                    schemaResult: executionResult.schemaResult,
+                    fetchResult: fetchResult,
+                    inlineMetadata: inlineMeta,
                     tableName: tableName,
                     isEditable: isEditable,
                     sql: sql,
@@ -135,7 +143,7 @@ extension QueryExecutionCoordinator {
                             tabId: tabId,
                             capturedGeneration: capturedGeneration,
                             connectionType: conn.type,
-                            schemaResult: executionResult.schemaResult
+                            schemaTask: schemaTask
                         )
                     } else {
                         launchPhase2Count(
@@ -154,6 +162,7 @@ extension QueryExecutionCoordinator {
                     }
                 }
             } catch {
+                schemaTask?.cancel()
                 await MainActor.run { [weak self] in
                     guard let self else { return }
                     parent.tabManager.mutate(tabId: tabId) { tab in
@@ -341,7 +350,7 @@ extension QueryExecutionCoordinator {
     func applyParameterizedResult(
         tabId: UUID,
         fetchResult: QueryFetchResult,
-        schemaResult: SchemaResult?,
+        inlineMetadata: ParsedSchemaMetadata?,
         tableName: String?,
         isEditable: Bool,
         sql: String,
@@ -350,8 +359,6 @@ extension QueryExecutionCoordinator {
         originalParameters: [QueryParameter],
         nativeParameters: [Any?]
     ) async {
-        let metadata = schemaResult.map { QueryExecutor.parseSchemaMetadata($0) }
-
         await MainActor.run { [weak self] in
             guard let self else { return }
             parent.currentQueryTask = nil
@@ -376,8 +383,8 @@ extension QueryExecutionCoordinator {
                 statusMessage: fetchResult.statusMessage,
                 tableName: tableName,
                 isEditable: isEditable,
-                metadata: metadata,
-                hasSchema: schemaResult != nil,
+                metadata: inlineMetadata,
+                hasSchema: false,
                 sql: sql,
                 connection: connection,
                 isTruncated: fetchResult.isTruncated,
