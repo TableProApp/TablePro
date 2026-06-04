@@ -584,11 +584,16 @@ final class MainContentCoordinator {
     /// Push the SchemaService table list into the autocomplete provider and prune sidebar
     /// state for tables that no longer exist.
     private func reconcilePostSchemaLoad() async {
-        guard case .loaded(let tables) = services.schemaService.state(for: connectionId) else { return }
+        guard case .loaded = services.schemaService.state(for: connectionId) else { return }
+        let tables = services.schemaService.allLoadedTables(for: connectionId)
         if let driver = services.databaseManager.driver(for: connectionId),
            let provider = services.schemaProviderRegistry.provider(for: connectionId) {
             let currentDb = services.databaseManager.session(for: connectionId)?.activeDatabase
             await provider.resetForDatabase(currentDb, tables: tables, driver: driver)
+            await provider.setNamespaces(
+                schemas: services.schemaService.schemas(for: connectionId),
+                databases: currentDb.map { [$0] } ?? []
+            )
         }
 
         guard let vm = sidebarViewModel else { return }

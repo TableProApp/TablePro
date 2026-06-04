@@ -90,6 +90,21 @@ final class SchemaService {
         return []
     }
 
+    /// Flat tables plus the union of every loaded per-schema table list. For
+    /// hierarchicalSchema plugins the flat list is empty and this is the only
+    /// way to see tables across schemas (e.g. for autocomplete).
+    func allLoadedTables(for connectionId: UUID) -> [TableInfo] {
+        var result = tables(for: connectionId)
+        var seen = Set(result.map(\.id))
+        for state in (perSchemaStates[connectionId] ?? [:]).values {
+            guard case .loaded(let schemaTables) = state else { continue }
+            for table in schemaTables where seen.insert(table.id).inserted {
+                result.append(table)
+            }
+        }
+        return result
+    }
+
     func loadSchemaTables(connectionId: UUID, schema: String, driver: DatabaseDriver) async {
         if case .loaded = schemaState(for: connectionId, schema: schema) { return }
         setPerSchemaState(.loading, connectionId: connectionId, schema: schema)

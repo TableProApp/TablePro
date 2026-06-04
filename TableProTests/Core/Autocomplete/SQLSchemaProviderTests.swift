@@ -339,7 +339,7 @@ struct SQLSchemaProviderTests {
         let driver = MockDatabaseDriver()
         driver.columnsToReturn = ["users": [TestFixtures.makeColumnInfo(name: "from_driver")]]
         let source = SQLSchemaProvider.ColumnMetadataSource(
-            fetchColumns: { _ in [TestFixtures.makeColumnInfo(name: "from_source")] },
+            fetchColumns: { _, _ in [TestFixtures.makeColumnInfo(name: "from_source")] },
             fetchAllColumns: { [:] }
         )
         let provider = SQLSchemaProvider(metadataSource: source)
@@ -355,7 +355,7 @@ struct SQLSchemaProviderTests {
         let driver = MockDatabaseDriver()
         driver.columnsToReturn = ["users": [TestFixtures.makeColumnInfo(name: "from_driver")]]
         let source = SQLSchemaProvider.ColumnMetadataSource(
-            fetchColumns: { _ in [TestFixtures.makeColumnInfo(name: "lazy_source")] },
+            fetchColumns: { _, _ in [TestFixtures.makeColumnInfo(name: "lazy_source")] },
             fetchAllColumns: { ["users": [TestFixtures.makeColumnInfo(name: "eager_source")]] }
         )
         let provider = SQLSchemaProvider(metadataSource: source)
