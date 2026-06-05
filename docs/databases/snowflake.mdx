@@ -81,6 +81,8 @@ SELECT * FROM events AT(OFFSET => -60*5);
 
 **MFA with TOTP is required (394508)**: Your account enforces MFA on password logins. Enter a current code from your authenticator in **MFA Passcode (TOTP)**. It expires quickly, so refresh it right before connecting. Key-pair or SSO auth avoids the prompt entirely.
 
+**TOTP Invalid (394507) while browsing after a successful connect**: TablePro opens extra sessions for browsing, and each new login revalidates the saved passcode, which expires within a minute. Enable MFA token caching on the account so one fresh code covers all later sessions: run `ALTER ACCOUNT SET ALLOW_CLIENT_MFA_CACHING = TRUE;` (needs ACCOUNTADMIN), then reconnect with a current code. TablePro caches the returned MFA token in the Keychain and skips the passcode from then on.
+
 **JWT token is invalid**: The account name in the JWT issuer must match your account locator. Make sure your machine clock is accurate (JWTs are time-sensitive).
 
 **No databases listed**: Ensure the connecting role has `USAGE` on the databases and a warehouse is set so metadata queries can run.

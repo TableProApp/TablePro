@@ -568,11 +568,16 @@ final class SnowflakeConnection: @unchecked Sendable {
     private func applySessionInfo(_ info: [String: Any]?) {
         guard let info else { return }
         lock.withLock {
-            if let value = info["databaseName"] as? String, !value.isEmpty { _currentDatabase = value }
-            if let value = info["schemaName"] as? String, !value.isEmpty { _currentSchema = value }
-            if let value = info["warehouseName"] as? String, !value.isEmpty { _currentWarehouse = value }
-            if let value = info["roleName"] as? String, !value.isEmpty { _currentRole = value }
+            _currentDatabase = Self.nonEmptyString(info["databaseName"])
+            _currentSchema = Self.nonEmptyString(info["schemaName"])
+            _currentWarehouse = Self.nonEmptyString(info["warehouseName"])
+            _currentRole = Self.nonEmptyString(info["roleName"])
         }
+    }
+
+    private static func nonEmptyString(_ value: Any?) -> String? {
+        guard let string = value as? String, !string.isEmpty else { return nil }
+        return string
     }
 
     private func applyFinalSessionInfo(_ data: [String: Any]) {
