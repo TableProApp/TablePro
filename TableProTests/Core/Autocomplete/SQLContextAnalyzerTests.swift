@@ -6,9 +6,9 @@
 //
 
 import Foundation
+@testable import TablePro
 import TableProPluginKit
 import Testing
-@testable import TablePro
 
 @Suite("SQL Context Analyzer")
 struct SQLContextAnalyzerTests {
@@ -933,5 +933,35 @@ struct SQLContextAnalyzerTests {
         let context = analyzer.analyze(query: query, cursorPosition: 9)
         #expect(context.tableReferences.contains { $0.tableName == "users" })
         #expect(context.tableReferences.contains { $0.tableName == "orders" })
+    }
+
+    // MARK: - Schema Segment Tests
+
+    @Test("Captures schema from schema-qualified table reference")
+    func testSchemaQualifiedReference() {
+        let context = analyzer.analyze(query: "SELECT * FROM sales.orders o", cursorPosition: 28)
+        #expect(context.tableReferences.contains {
+            $0.tableName == "orders" && $0.schema == "sales" && $0.alias == "o"
+        })
+    }
+
+    @Test("Captures middle schema segment from database-qualified table reference")
+    func testDatabaseSchemaQualifiedReference() {
+        let context = analyzer.analyze(query: "SELECT * FROM analytics.sales.orders", cursorPosition: 36)
+        #expect(context.tableReferences.contains {
+            $0.tableName == "orders" && $0.schema == "sales"
+        })
+    }
+
+    @Test("Leaves schema nil for an unqualified table reference")
+    func testUnqualifiedReferenceHasNoSchema() {
+        let context = analyzer.analyze(query: "SELECT * FROM orders", cursorPosition: 20)
+        #expect(context.tableReferences.contains { $0.tableName == "orders" && $0.schema == nil })
+    }
+
+    @Test("Strips quoting from the captured schema segment")
+    func testSchemaSegmentQuotingStripped() {
+        let context = analyzer.analyze(query: "SELECT * FROM \"sales\".orders", cursorPosition: 28)
+        #expect(context.tableReferences.contains { $0.tableName == "orders" && $0.schema == "sales" })
     }
 }

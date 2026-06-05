@@ -7,15 +7,7 @@ import AppKit
 import SwiftUI
 
 extension TableViewCoordinator {
-    // MARK: - Click Handlers
-
-    @objc func handleDoubleClick(_ sender: NSTableView) {
-        let row = sender.clickedRow
-        let column = sender.clickedColumn
-        guard row >= 0, column > 0 else { return }
-        guard let columnIndex = DataGridView.dataColumnIndex(for: column, in: sender, schema: identitySchema) else { return }
-        handleCellInteraction(row: row, tableColumn: column, columnIndex: columnIndex, tableView: sender)
-    }
+    // MARK: - Cell Interaction
 
     func handleCellInteraction(row: Int, tableColumn: Int, columnIndex: Int, tableView: NSTableView) {
         guard let context = makeCellContext(row: row, columnIndex: columnIndex) else { return }
@@ -62,9 +54,6 @@ extension TableViewCoordinator {
             isTableEditable: isEditable,
             isRowDeleted: changeManager.isRowDeleted(row),
             isImmutableColumn: immutable.contains(columnName),
-            columnName: columnName,
-            connectionId: connectionId,
-            tableName: tableName,
             displayFormatOverride: override
         )
     }

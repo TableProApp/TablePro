@@ -585,11 +585,16 @@ final class MainContentCoordinator {
     /// Push the SchemaService table list into the autocomplete provider and prune sidebar
     /// state for tables that no longer exist.
     private func reconcilePostSchemaLoad() async {
-        guard case .loaded(let tables) = services.schemaService.state(for: connectionId) else { return }
+        guard case .loaded = services.schemaService.state(for: connectionId) else { return }
+        let tables = services.schemaService.allLoadedTables(for: connectionId)
         if let driver = services.databaseManager.driver(for: connectionId),
            let provider = services.schemaProviderRegistry.provider(for: connectionId) {
             let currentDb = services.databaseManager.session(for: connectionId)?.activeDatabase
             await provider.resetForDatabase(currentDb, tables: tables, driver: driver)
+            await provider.setNamespaces(
+                schemas: services.schemaService.schemas(for: connectionId),
+                databases: currentDb.map { [$0] } ?? []
+            )
         }
 
         guard let vm = sidebarViewModel else { return }
@@ -1065,26 +1070,34 @@ final class MainContentCoordinator {
         } else {
             needsMetadataFetch = false
         }
+        let connId = connectionId
 
         currentQueryTask = Task { [weak self] in
             guard let self else { return }
 
+            let schemaTask: Task<SchemaResult, Error>?
+            if needsMetadataFetch, let tableName {
+                schemaTask = Task { try await QueryExecutor.fetchTableSchema(connectionId: connId, tableName: tableName) }
+            } else {
+                schemaTask = nil
+            }
+
             do {
-                let executionResult = try await queryExecutor.executeQuery(
+                let fetchResult = try await queryExecutor.executeQuery(
                     sql: sql,
                     parameters: nil,
-                    rowCap: rowCap,
-                    tableName: tableName,
-                    fetchSchemaForTable: needsMetadataFetch
+                    rowCap: rowCap
                 )
 
                 guard !Task.isCancelled else {
-                    await resetExecutionState(
-                        tabId: tabId,
-                        executionTime: executionResult.fetchResult.executionTime
-                    )
+                    schemaTask?.cancel()
+                    await resetExecutionState(tabId: tabId, executionTime: fetchResult.executionTime)
                     return
                 }
+
+                let inlineMeta = needsMetadataFetch
+                    ? QueryExecutor.inlineMetadata(from: fetchResult.resultColumnMeta, columns: fetchResult.columns)
+                    : nil
 
                 await MainActor.run { [weak self] in
                     guard let self else { return }
@@ -1093,7 +1106,7 @@ final class MainContentCoordinator {
                         self.clearClickHouseProgress()
                     }
                     toolbarState.setExecuting(false)
-                    toolbarState.lastQueryDuration = executionResult.fetchResult.executionTime
+                    toolbarState.lastQueryDuration = fetchResult.executionTime
 
                     if capturedGeneration != queryGeneration || Task.isCancelled {
                         tabManager.mutate(tabId: tabId) { $0.execution.isExecuting = false }
@@ -1102,19 +1115,19 @@ final class MainContentCoordinator {
 
                     applyPhase1Result(
                         tabId: tabId,
-                        columns: executionResult.fetchResult.columns,
-                        columnTypes: executionResult.fetchResult.columnTypes,
-                        rows: executionResult.fetchResult.rows,
-                        executionTime: executionResult.fetchResult.executionTime,
-                        rowsAffected: executionResult.fetchResult.rowsAffected,
-                        statusMessage: executionResult.fetchResult.statusMessage,
+                        columns: fetchResult.columns,
+                        columnTypes: fetchResult.columnTypes,
+                        rows: fetchResult.rows,
+                        executionTime: fetchResult.executionTime,
+                        rowsAffected: fetchResult.rowsAffected,
+                        statusMessage: fetchResult.statusMessage,
                         tableName: tableName,
                         isEditable: isEditable,
-                        metadata: executionResult.parsedMetadata,
-                        hasSchema: executionResult.schemaResult != nil,
+                        metadata: inlineMeta,
+                        hasSchema: false,
                         sql: sql,
                         connection: conn,
-                        isTruncated: executionResult.fetchResult.isTruncated
+                        isTruncated: fetchResult.isTruncated
                     )
                 }
 
@@ -1125,7 +1138,7 @@ final class MainContentCoordinator {
                             tabId: tabId,
                             capturedGeneration: capturedGeneration,
                             connectionType: conn.type,
-                            schemaResult: executionResult.schemaResult
+                            schemaTask: schemaTask
                         )
                     } else {
                         launchPhase2Count(
@@ -1144,6 +1157,7 @@ final class MainContentCoordinator {
                     }
                 }
             } catch {
+                schemaTask?.cancel()
                 await MainActor.run { [weak self] in
                     guard let self else { return }
                     tabManager.mutate(tabId: tabId) { tab in

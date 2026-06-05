@@ -16,6 +16,7 @@ final class SQLCompletionProvider {
     private let schemaProvider: SQLSchemaProvider
     private var databaseType: DatabaseType?
     private var cachedDialect: SQLDialectDescriptor?
+    private var cachedFunctionItems: [SQLCompletionItem]?
     private var cachedStatementCompletions: [CompletionEntry] = []
     private var favoriteKeywords: [String: (name: String, query: String)] = [:]
 
@@ -51,6 +52,7 @@ final class SQLCompletionProvider {
     func setDatabaseType(_ type: DatabaseType, dialect: SQLDialectDescriptor? = nil, statementCompletions: [CompletionEntry] = []) {
         self.databaseType = type
         self.cachedDialect = dialect
+        self.cachedFunctionItems = nil
         self.cachedStatementCompletions = statementCompletions
     }
 
@@ -103,6 +105,21 @@ final class SQLCompletionProvider {
         return (limited, context)
     }
 
+    /// Generic SQL functions plus the active dialect's own functions (deduplicated).
+    /// Cached per dialect; invalidated in `setDatabaseType`.
+    private func functionItems() -> [SQLCompletionItem] {
+        if let cachedFunctionItems { return cachedFunctionItems }
+        var items = SQLKeywords.functionItems()
+        if let dialect = cachedDialect, !dialect.functions.isEmpty {
+            var seen = Set(items.map { $0.label.uppercased() })
+            for name in dialect.functions.sorted() where seen.insert(name.uppercased()).inserted {
+                items.append(SQLCompletionItem.function(name, signature: "\(name)(…)"))
+            }
+        }
+        cachedFunctionItems = items
+        return items
+    }
+
     // MARK: - Candidate Generation
 
     /// Get candidate completions based on context
@@ -111,11 +128,23 @@ final class SQLCompletionProvider {
     ) async -> [SQLCompletionItem] {
         var items: [SQLCompletionItem] = []
 
-        // If we have a dot prefix, we're looking for columns of a specific table
+        // If we have a dot prefix, resolve it as table/alias columns first, then as
+        // a schema (suggest its tables) or database (suggest its schemas). The
+        // namespace fallback also covers aliases that spuriously resolve to a
+        // schema name parsed out of the FROM clause itself.
         if let dotPrefix = context.dotPrefix {
-            // Resolve the table name from alias or direct reference
             if let tableName = await schemaProvider.resolveAlias(dotPrefix, in: context.tableReferences) {
-                items = await schemaProvider.columnCompletionItems(for: tableName)
+                let schema = context.tableReferences.first {
+                    $0.tableName.caseInsensitiveCompare(tableName) == .orderedSame
+                }?.schema
+                items = await schemaProvider.columnCompletionItems(for: tableName, schema: schema)
+            }
+            if items.isEmpty {
+                if await schemaProvider.isKnownSchema(dotPrefix) {
+                    items = await schemaProvider.tableCompletionItems(inSchema: dotPrefix)
+                } else if await schemaProvider.isKnownDatabase(dotPrefix) {
+                    items = await schemaProvider.schemaCompletionItems()
+                }
             }
             return items
         }
@@ -123,8 +152,9 @@ final class SQLCompletionProvider {
         // Add items based on clause type
         switch context.clauseType {
         case .from, .join:
-            // Tables + JOIN/clause transition keywords
+            // Tables + schema/database names + JOIN/clause transition keywords
             items = await schemaProvider.tableCompletionItems()
+            items += await schemaProvider.namespaceCompletionItems()
             items += filterKeywords([
                 "INNER JOIN", "LEFT JOIN", "RIGHT JOIN", "FULL JOIN",
                 "LEFT OUTER JOIN", "RIGHT OUTER JOIN", "FULL OUTER JOIN",
@@ -166,7 +196,7 @@ final class SQLCompletionProvider {
                 }
                 // Function-arg items: columns, functions, value keywords
                 items += await columnItems(for: context.tableReferences)
-                items += SQLKeywords.functionItems()
+                items += functionItems()
                 items += filterKeywords(["NULL", "TRUE", "FALSE"])
                 if funcName.uppercased() != "COUNT" {
                     items += filterKeywords(["DISTINCT"])
@@ -192,7 +222,7 @@ final class SQLCompletionProvider {
                     ))
                 }
                 items += await columnItems(for: context.tableReferences)
-                items += SQLKeywords.functionItems()
+                items += functionItems()
                 items += filterKeywords([
                     "DISTINCT", "ALL", "AS", "FROM", "CASE", "WHEN",
                     "INTO", "UNION", "INTERSECT", "EXCEPT"
@@ -205,7 +235,7 @@ final class SQLCompletionProvider {
             // Add qualified column suggestions (table.column) for join conditions
             for ref in context.tableReferences {
                 let qualifier = ref.alias ?? ref.tableName
-                let cols = await schemaProvider.columnCompletionItems(for: ref.tableName)
+                let cols = await schemaProvider.columnCompletionItems(for: ref.tableName, schema: ref.schema)
                 for col in cols {
                     items.append(SQLCompletionItem(
                         label: "\(qualifier).\(col.label)",
@@ -232,7 +262,7 @@ final class SQLCompletionProvider {
                 "ANY", "ALL", "SOME", "REGEXP", "RLIKE", "SIMILAR TO",
                 "IS NULL", "IS NOT NULL"
             ])
-            items += SQLKeywords.functionItems()
+            items += functionItems()
             // Clause transitions after WHERE conditions
             items += filterKeywords([
                 "ORDER BY", "GROUP BY", "HAVING", "LIMIT",
@@ -259,19 +289,19 @@ final class SQLCompletionProvider {
         case .set:
             // Columns for UPDATE SET clause + transition keywords
             if let firstTable = context.tableReferences.first {
-                items = await schemaProvider.columnCompletionItems(for: firstTable.tableName)
+                items = await schemaProvider.columnCompletionItems(for: firstTable.tableName, schema: firstTable.schema)
             }
             items += filterKeywords(["WHERE", "RETURNING"])
 
         case .insertColumns:
             // Columns for INSERT column list
             if let firstTable = context.tableReferences.first {
-                items = await schemaProvider.columnCompletionItems(for: firstTable.tableName)
+                items = await schemaProvider.columnCompletionItems(for: firstTable.tableName, schema: firstTable.schema)
             }
 
         case .values:
             // Functions and keywords for VALUES + post-values transitions
-            items = SQLKeywords.functionItems()
+            items = functionItems()
             items += filterKeywords([
                 "NULL", "DEFAULT", "TRUE", "FALSE",
                 "ON CONFLICT", "ON DUPLICATE KEY UPDATE", "RETURNING"
@@ -297,7 +327,7 @@ final class SQLCompletionProvider {
                 items.append(distinctItem)
             }
             items += await columnItems(for: context.tableReferences)
-            items += SQLKeywords.functionItems()
+            items += functionItems()
             if isCountFunction {
                 // DISTINCT already added above with boosted priority
                 items += filterKeywords(["NULL", "TRUE", "FALSE"])
@@ -310,13 +340,13 @@ final class SQLCompletionProvider {
             items += await columnItems(for: context.tableReferences)
             items += filterKeywords(["WHEN", "THEN", "ELSE", "END", "AND", "OR", "IS", "NULL", "TRUE", "FALSE"])
             items += SQLKeywords.operatorItems()
-            items += SQLKeywords.functionItems()
+            items += functionItems()
 
         case .inList:
             // Inside IN (...) list - suggest values, subqueries, columns
             items += await columnItems(for: context.tableReferences)
             items += filterKeywords(["SELECT", "NULL", "TRUE", "FALSE"])
-            items += SQLKeywords.functionItems()
+            items += functionItems()
 
         case .limit:
             // After LIMIT/OFFSET - typically just numbers, but could include variables
@@ -335,7 +365,7 @@ final class SQLCompletionProvider {
         case .alterTableColumn:
             // After ALTER TABLE tablename DROP/MODIFY/CHANGE/RENAME or AFTER/BEFORE - suggest column names
             if let firstTable = context.tableReferences.first {
-                items = await schemaProvider.columnCompletionItems(for: firstTable.tableName)
+                items = await schemaProvider.columnCompletionItems(for: firstTable.tableName, schema: firstTable.schema)
             }
 
         case .createTable:
