@@ -151,6 +151,50 @@ final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
     }
 
+    // MARK: - Session Contexts
+
+    func fetchSessionContexts() async throws -> [PluginSessionContext]? {
+        guard let conn = connection else { return nil }
+        var contexts: [PluginSessionContext] = []
+        if let warehouses = try? await rawQuery("SHOW WAREHOUSES"),
+           let nameIndex = columnIndex(of: "name", in: warehouses) {
+            contexts.append(PluginSessionContext(
+                id: "warehouse",
+                label: String(localized: "Warehouse"),
+                iconName: "building.columns",
+                currentValue: conn.currentWarehouse,
+                availableValues: warehouses.rows.compactMap { Self.text($0, nameIndex) }
+            ))
+        }
+        if let roles = try? await rawQuery("SHOW ROLES"),
+           let nameIndex = columnIndex(of: "name", in: roles) {
+            contexts.append(PluginSessionContext(
+                id: "role",
+                label: String(localized: "Role"),
+                iconName: "person.badge.key",
+                currentValue: conn.currentRole,
+                availableValues: roles.rows.compactMap { Self.text($0, nameIndex) }
+            ))
+        }
+        return contexts.isEmpty ? nil : contexts
+    }
+
+    func switchSessionContext(id: String, to value: String) async throws {
+        guard let conn = connection else { throw SnowflakeError.notConnected }
+        switch id {
+        case "warehouse":
+            _ = try await conn.query("USE WAREHOUSE \(quoteIdentifier(value))")
+        case "role":
+            _ = try await conn.query("USE ROLE \(quoteIdentifier(value))")
+            lock.withLock {
+                resolvedSchemaCache.removeAll()
+                columnTypeCache.removeAll()
+            }
+        default:
+            break
+        }
+    }
+
     // MARK: - Database Management
 
     func createDatabaseFormSpec() async throws -> PluginCreateDatabaseFormSpec? {

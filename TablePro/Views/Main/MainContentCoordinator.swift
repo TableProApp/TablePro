@@ -167,6 +167,7 @@ final class MainContentCoordinator {
     var activeSheet: ActiveSheet?
     var isDatabaseSwitcherShown = false
     var isConnectionSwitcherShown = false
+    var sessionContexts: [PluginSessionContext] = []
     var databaseToDrop: String?
     var importFileURL: URL?
     var exportPreselectedTableNames: Set<String>?

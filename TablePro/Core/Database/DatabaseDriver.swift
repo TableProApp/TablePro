@@ -143,6 +143,10 @@ protocol DatabaseDriver: AnyObject {
 
     func dropDatabase(name: String) async throws
 
+    func fetchSessionContexts() async throws -> [PluginSessionContext]?
+
+    func switchSessionContext(id: String, to value: String) async throws
+
     // MARK: - Maintenance
 
     /// Returns the list of supported maintenance operations (e.g. "VACUUM", "ANALYZE").
@@ -252,6 +256,10 @@ extension DatabaseDriver {
     }
 
     func createDatabaseFormSpec() async throws -> CreateDatabaseFormSpec? { nil }
+
+    func fetchSessionContexts() async throws -> [PluginSessionContext]? { nil }
+
+    func switchSessionContext(id: String, to value: String) async throws {}
 
     func createDatabase(_ request: CreateDatabaseRequest) async throws {
         throw NSError(

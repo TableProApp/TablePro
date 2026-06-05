@@ -107,6 +107,25 @@ struct SnowflakeReAuthTests {
     }
 }
 
+@Suite("Plugin Session Context")
+struct PluginSessionContextTests {
+    @Test("Round-trips through Codable")
+    func testCodableRoundTrip() throws {
+        let context = PluginSessionContext(
+            id: "warehouse",
+            label: "Warehouse",
+            iconName: "building.columns",
+            currentValue: "COMPUTE_WH",
+            availableValues: ["COMPUTE_WH", "LOAD_WH"]
+        )
+        let data = try JSONEncoder().encode(context)
+        let decoded = try JSONDecoder().decode(PluginSessionContext.self, from: data)
+        #expect(decoded.id == context.id)
+        #expect(decoded.currentValue == "COMPUTE_WH")
+        #expect(decoded.availableValues == ["COMPUTE_WH", "LOAD_WH"])
+    }
+}
+
 @Suite("Snowflake Heartbeat Interval")
 struct SnowflakeHeartbeatIntervalTests {
     @Test("Interval is a quarter of master validity, clamped to 15 to 60 minutes")

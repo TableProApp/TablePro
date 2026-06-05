@@ -284,7 +284,7 @@ final class SnowflakeConnection: @unchecked Sendable {
               let token = responseData["token"] as? String else {
             let message = response["message"] as? String ?? "Authentication failed"
             let code = Self.codeString(response["code"])
-            if code == "394507" || code == "394508" {
+            if ["394507", "394508", "394633"].contains(code) {
                 throw SnowflakeError.loginFailed(
                     code: code,
                     message: "\(message) Open the connection settings and refresh the MFA Passcode (TOTP) with a current code from your authenticator."
