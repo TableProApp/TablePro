@@ -185,4 +185,26 @@ struct CSVImportPluginTests {
         let result = CSVImportParsing.detectFields(in: data("a;b;c\n1;2;3\n"), options: CSVImportOptions())
         #expect(result.map(\.name) == ["a", "b", "c"])
     }
+
+    @Test("Trim option applies during detection, matching imported values")
+    func testDetectTrimAffectsInference() {
+        let csv = "n\n 1 \n 2 \n"
+        var options = CSVImportOptions()
+        options.trimWhitespace = true
+        let trimmed = CSVImportParsing.detectFields(in: data(csv), options: options)
+        #expect(fields("n", trimmed)?.inferredType == .integer)
+        #expect(fields("n", trimmed)?.sampleValue == "1")
+
+        let untrimmed = CSVImportParsing.detectFields(in: data(csv), options: CSVImportOptions())
+        #expect(fields("n", untrimmed)?.inferredType == .text)
+    }
+
+    @Test("NULL token values are excluded from detection samples")
+    func testDetectNullTokenExcluded() {
+        var options = CSVImportOptions()
+        options.nullString = "\\N"
+        let result = CSVImportParsing.detectFields(in: data("n\n\\N\n5\n"), options: options)
+        #expect(fields("n", result)?.inferredType == .integer)
+        #expect(fields("n", result)?.sampleValue == "5")
+    }
 }

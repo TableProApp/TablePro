@@ -165,9 +165,10 @@ public struct CSVStreamingParser: Sendable {
 
     private func decode(_ bytes: [UInt8]) -> String {
         if bytes.isEmpty { return "" }
-        return String(bytes: bytes, encoding: dialect.encoding)
-            ?? String(bytes: bytes, encoding: .isoLatin1)
-            ?? ""
+        if let decoded = String(bytes: bytes, encoding: dialect.encoding) {
+            return decoded
+        }
+        return String(bytes.map { Character(UnicodeScalar($0)) })
     }
 
     private func bomSkip(in bytes: UnsafeBufferPointer<UInt8>) -> Int {

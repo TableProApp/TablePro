@@ -4,14 +4,11 @@
 //
 
 import Foundation
-import os
 import SwiftUI
 import TableProPluginKit
 
 @Observable
 final class CSVImportPlugin: ImportFormatPlugin, SettablePlugin {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "CSVImportPlugin")
-
     static let pluginName = "CSV Import"
     static let pluginVersion = "1.0.0"
     static let pluginDescription = "Import data from CSV and TSV files"
@@ -38,7 +35,6 @@ final class CSVImportPlugin: ImportFormatPlugin, SettablePlugin {
 
     private static let detectionPrefixBytes = 1_048_576
     private static let batchSize = 500
-    private static let maxErrors = 1_000
 
     func performImport(
         source: any PluginImportSource,
@@ -47,7 +43,6 @@ final class CSVImportPlugin: ImportFormatPlugin, SettablePlugin {
     ) async throws -> PluginImportResult {
         let startTime = Date()
         let url = source.fileURL()
-        let useTransaction = settings.wrapInTransaction && settings.errorHandling != .skipAndContinue
 
         let data: Data
         do {
@@ -67,58 +62,40 @@ final class CSVImportPlugin: ImportFormatPlugin, SettablePlugin {
 
         progress.setEstimatedTotal(dataRanges.count)
 
-        var inserted = 0
-        var skipped = 0
-        var errors: [PluginImportResult.ImportStatementError] = []
-
-        do {
-            if settings.deleteExistingRows {
-                try await sink.deleteAllRowsFromTargetTable()
+        let lineOffset = hasHeader ? 2 : 1
+        var cursor = 0
+        let outcome = try await RowImportRunner.run(
+            configuration: RowImportRunner.Configuration(
+                errorHandling: settings.errorHandling,
+                wrapInTransaction: settings.wrapInTransaction,
+                deleteExistingRows: settings.deleteExistingRows
+            ),
+            sink: sink,
+            progress: progress
+        ) {
+            guard cursor < dataRanges.count else { return nil }
+            let end = min(cursor + Self.batchSize, dataRanges.count)
+            let batch = self.parseBatch(
+                in: data,
+                parser: parser,
+                ranges: dataRanges[cursor..<end],
+                startIndex: cursor,
+                lineOffset: lineOffset,
+                columnNames: columnNames
+            )
+            let blankRows = (end - cursor) - batch.count
+            if blankRows > 0 {
+                progress.incrementStatement(by: blankRows)
             }
-            if useTransaction {
-                try await sink.beginTransaction()
-            }
-
-            let lineOffset = hasHeader ? 2 : 1
-            var index = 0
-            while index < dataRanges.count {
-                try progress.checkCancellation()
-                let end = min(index + Self.batchSize, dataRanges.count)
-                let batch = parseBatch(
-                    in: data,
-                    parser: parser,
-                    ranges: dataRanges[index..<end],
-                    startIndex: index,
-                    lineOffset: lineOffset,
-                    columnNames: columnNames
-                )
-                index = end
-                try await flush(batch, into: sink, progress: progress,
-                                inserted: &inserted, skipped: &skipped, errors: &errors)
-            }
-
-            if useTransaction {
-                try await sink.commitTransaction()
-            }
-        } catch {
-            if useTransaction {
-                do {
-                    try await sink.rollbackTransaction()
-                } catch {
-                    Self.logger.warning("Rollback after failed import also failed: \(error.localizedDescription)")
-                }
-            }
-            if error is PluginImportCancellationError { throw error }
-            if error is PluginImportError { throw error }
-            throw PluginImportError.importFailed(error.localizedDescription)
+            cursor = end
+            return batch
         }
 
-        progress.finalize()
         return PluginImportResult(
-            executedStatements: inserted,
+            executedStatements: outcome.inserted,
             executionTime: Date().timeIntervalSince(startTime),
-            skippedStatements: skipped,
-            errors: errors
+            skippedStatements: outcome.skipped,
+            errors: outcome.errors
         )
     }
 
@@ -163,64 +140,6 @@ final class CSVImportPlugin: ImportFormatPlugin, SettablePlugin {
                 out.append((line, CSVImportParsing.row(fields: fields, columnNames: columnNames, options: settings)))
             }
             return out
-        }
-    }
-
-    private func flush(
-        _ batch: [(line: Int, row: [String: PluginCellValue])],
-        into sink: any PluginImportDataSink,
-        progress: PluginImportProgress,
-        inserted: inout Int,
-        skipped: inout Int,
-        errors: inout [PluginImportResult.ImportStatementError]
-    ) async throws {
-        guard !batch.isEmpty else { return }
-        do {
-            try await sink.insertRows(batch.map(\.row))
-            inserted += batch.count
-            progress.incrementStatement(by: batch.count)
-        } catch {
-            switch settings.errorHandling {
-            case .stopAndRollback, .stopAndCommit:
-                let firstLine = batch.first?.line ?? 0
-                throw PluginImportError.statementFailed(
-                    statement: "rows \(firstLine)-\(batch.last?.line ?? firstLine)",
-                    line: firstLine,
-                    underlyingError: error
-                )
-            case .skipAndContinue:
-                for entry in batch {
-                    try await insert(entry.row, into: sink, at: entry.line, progress: progress,
-                                     inserted: &inserted, skipped: &skipped, errors: &errors)
-                }
-            }
-        }
-    }
-
-    private func insert(
-        _ row: [String: PluginCellValue],
-        into sink: any PluginImportDataSink,
-        at line: Int,
-        progress: PluginImportProgress,
-        inserted: inout Int,
-        skipped: inout Int,
-        errors: inout [PluginImportResult.ImportStatementError]
-    ) async throws {
-        do {
-            try await sink.insertRow(row)
-            inserted += 1
-            progress.incrementStatement()
-        } catch {
-            switch settings.errorHandling {
-            case .stopAndRollback, .stopAndCommit:
-                throw PluginImportError.statementFailed(statement: "row \(line)", line: line, underlyingError: error)
-            case .skipAndContinue:
-                skipped += 1
-                if errors.count < Self.maxErrors {
-                    errors.append(.init(statement: "row \(line)", line: line, errorMessage: error.localizedDescription))
-                }
-                progress.incrementStatement()
-            }
         }
     }
 

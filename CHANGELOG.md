@@ -35,6 +35,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- JSON import: "Delete existing rows before import" now runs inside the import transaction, so a failed import restores the deleted rows instead of leaving the table emptied.
+- JSON import: skip-and-continue mode no longer inserts duplicate rows when part of a batch had already been written before an error.
+- JSON import: "Stop and Commit" now keeps the rows inserted before the error instead of rolling them back.
 - Opening the connection or database switcher now puts the cursor in its search field even while a filter input is being edited; the filter text is kept. (#1575)
 - TablePro no longer shows its icon for .sql, .sqlite, and .duckdb files in Finder when it is not the default app for those types. (#1594)
 - The JSON results view shows row data right away instead of staying blank until you switch between Tree and Text, and it updates when the row selection changes. A spinner shows while large results are being formatted. (#1576)

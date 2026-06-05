@@ -64,6 +64,11 @@ enum CSVImportParsing {
         return .text(value)
     }
 
+    static func sampleText(from raw: String, options: CSVImportOptions) -> String? {
+        guard case .text(let value) = cellValue(from: raw, options: options), !value.isEmpty else { return nil }
+        return value
+    }
+
     static func row(fields: [String], columnNames: [String], options: CSVImportOptions) -> [String: PluginCellValue] {
         var row: [String: PluginCellValue] = [:]
         row.reserveCapacity(columnNames.count)
@@ -125,8 +130,8 @@ enum CSVImportParsing {
                 let fields = parser.parseRow(buffer, range: range)
                 if isBlank(fields) { continue }
                 for column in 0..<columnCount {
-                    let value = column < fields.count ? fields[column] : ""
-                    guard !value.isEmpty else { continue }
+                    let raw = column < fields.count ? fields[column] : ""
+                    guard let value = sampleText(from: raw, options: options) else { continue }
                     samples[column].append(value)
                     if firstValues[column] == nil { firstValues[column] = value }
                 }
