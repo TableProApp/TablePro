@@ -1,11 +1,11 @@
 ---
 title: Import & Export
-description: Export to CSV, JSON, SQL, MQL, or XLSX. Import SQL files with transaction safety and progress tracking.
+description: Export to CSV, JSON, SQL, MQL, or XLSX. Import SQL, JSON, and CSV files with column mapping, transaction safety, and progress tracking.
 ---
 
 # Import & Export
 
-Export data in five formats (CSV, JSON, SQL, MQL, XLSX), import SQL files with gzip support, and paste tabular data from the clipboard into the grid.
+Export data in five formats (CSV, JSON, SQL, MQL, XLSX), import SQL, JSON, and CSV files (with gzip support for SQL), and paste tabular data from the clipboard into the grid.
 
 ## Export Data
 
@@ -200,7 +200,7 @@ Paste tabular data directly into the data grid. Press `Cmd+V` after selecting a 
 
 ## Import Data
 
-Import `.sql` and `.sql.gz` files (statements execute directly against your database: backups, migrations, seed data), or `.json` / `.jsonl` files into a table (see [Import JSON Data](#import-json-data)).
+Import `.sql` and `.sql.gz` files (statements execute directly against your database: backups, migrations, seed data), `.json` / `.jsonl` files into a table (see [Import JSON Data](#import-json-data)), or `.csv` / `.tsv` files into a table (see [Import CSV Data](#import-csv-data)).
 
 <Note>
 **MongoDB**: SQL import is not available. Use `mongoimport` or the MQL shell.
@@ -269,6 +269,29 @@ Choose a destination:
 - **New table**: name the table and review the columns TablePro infers from the data. Each column's name, type, primary key, nullable flag, and default are editable before the table is created.
 
 Rows insert through parameterized statements, so JSON values are never concatenated into SQL. Nested objects and arrays are stored as JSON text. The on-error, transaction, and "delete existing rows" options work the same as SQL import.
+
+### Import CSV Data
+
+Choose **File** > **Import** > **From CSV** and pick a `.csv` or `.tsv` file. TablePro opens the same row import sheet used for JSON, with CSV-specific parsing options. The delimiter, quote character, encoding, and line ending are auto-detected; change any of them and the field mapping re-reads the file.
+
+Choose a destination:
+
+- **Existing table**: pick the table, then map each CSV column to a table column. Columns are auto-matched by header name; toggle one off to skip it, or remap it.
+- **New table**: name the table and review the columns TablePro infers from the data. Each column's name, type, primary key, nullable flag, and default are editable before the table is created.
+
+CSV parsing options:
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| Delimiter | Comma, semicolon, tab, or pipe | Auto-detect |
+| Quote character | Double or single quote | Double quote (`"`) |
+| Encoding | UTF-8, ISO Latin 1, or Windows-1252 | Auto-detect |
+| First row is a header | Use row 1 as column names; off imports every row as data | Yes |
+| Trim leading and trailing spaces | Trim each field before import | No |
+| Treat empty values as NULL | Insert NULL for empty fields instead of empty text | Yes |
+| NULL text | An extra value imported as NULL, for example `\N` | None |
+
+Quoted fields keep embedded commas and newlines (RFC 4180), and doubled quotes (`""`) decode to a single quote. Rows insert through parameterized statements in batches. The on-error, transaction, and "delete existing rows" options work the same as SQL import.
 
 ## Progress and Errors
 

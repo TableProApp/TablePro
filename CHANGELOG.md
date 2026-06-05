@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Snowflake support: connect with username & password (including MFA TOTP passcodes and cached MFA tokens), key-pair (.p8), browser SSO, or a programmatic access token; browse databases, schemas, and tables; run Snowflake SQL with full result sets, query cancellation, and automatic session renewal. Connections defined in the Snowflake CLI's config files can be reused by name. (#1420)
+- Import data from CSV and TSV files into a table: map columns to an existing table or create a new one, with options for delimiter, quote character, encoding, header row, and empty/NULL handling. (#1568)
 - SQL autocomplete completes database, schema, and table names at each segment of qualified names for schema-organized connections (Snowflake, BigQuery), fetches tables of unopened schemas on demand, resolves alias columns for schema-qualified tables, and suggests the active connection's full dialect function list.
 - Each filter row has a checkbox to turn it on or off and an Apply button to filter by just that row. The main Apply runs every active filter, and disabled filters stay in the panel for later. (#1561)
 - Importing connections from other apps now detects duplicates by host, port, database, and username, and lets you replace, add a copy, or skip each one before import.
@@ -35,6 +36,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- JSON import: "Delete existing rows before import" now runs inside the import transaction, so a failed import restores the deleted rows instead of leaving the table emptied.
+- JSON import: skip-and-continue mode no longer inserts duplicate rows when part of a batch had already been written before an error.
+- JSON import: "Stop and Commit" now keeps the rows inserted before the error instead of rolling them back.
 - Opening the connection or database switcher now puts the cursor in its search field even while a filter input is being edited; the filter text is kept. (#1575)
 - TablePro no longer shows its icon for .sql, .sqlite, and .duckdb files in Finder when it is not the default app for those types. (#1594)
 - The JSON results view shows row data right away instead of staying blank until you switch between Tree and Text, and it updates when the row selection changes. A spinner shows while large results are being formatted. (#1576)

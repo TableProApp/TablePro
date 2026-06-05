@@ -1,9 +1,13 @@
 import Foundation
 
-struct CSVStreamingParser: Sendable {
-    let dialect: CSVDialect
+public struct CSVStreamingParser: Sendable {
+    public let dialect: CSVDialect
 
-    func indexRows(_ bytes: UnsafeBufferPointer<UInt8>) -> [Range<Int>] {
+    public init(dialect: CSVDialect) {
+        self.dialect = dialect
+    }
+
+    public func indexRows(_ bytes: UnsafeBufferPointer<UInt8>) -> [Range<Int>] {
         var ranges: [Range<Int>] = []
         let quote = dialect.quoteChar
         let delimiter = dialect.delimiter
@@ -61,7 +65,7 @@ struct CSVStreamingParser: Sendable {
         return ranges
     }
 
-    func parseRow(_ bytes: UnsafeBufferPointer<UInt8>, range: Range<Int>) -> [String] {
+    public func parseRow(_ bytes: UnsafeBufferPointer<UInt8>, range: Range<Int>) -> [String] {
         var fields: [String] = []
         var field: [UInt8] = []
         let quote = dialect.quoteChar
@@ -108,7 +112,7 @@ struct CSVStreamingParser: Sendable {
         return fields
     }
 
-    func field(_ bytes: UnsafeBufferPointer<UInt8>, range: Range<Int>, column: Int) -> String {
+    public func field(_ bytes: UnsafeBufferPointer<UInt8>, range: Range<Int>, column: Int) -> String {
         guard column >= 0 else { return "" }
         let quote = dialect.quoteChar
         let delimiter = dialect.delimiter
@@ -161,8 +165,10 @@ struct CSVStreamingParser: Sendable {
 
     private func decode(_ bytes: [UInt8]) -> String {
         if bytes.isEmpty { return "" }
-        return String(bytes: bytes, encoding: dialect.encoding)
-            ?? String(decoding: bytes, as: UTF8.self)
+        if let decoded = String(bytes: bytes, encoding: dialect.encoding) {
+            return decoded
+        }
+        return String(bytes.map { Character(UnicodeScalar($0)) })
     }
 
     private func bomSkip(in bytes: UnsafeBufferPointer<UInt8>) -> Int {
