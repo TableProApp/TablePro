@@ -82,7 +82,6 @@
 		5AEA8B462F6808CA0040461A /* EtcdQueryBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AEA8B3F2F6808CA0040461A /* EtcdQueryBuilder.swift */; };
 		5AEA8B472F6808CA0040461A /* EtcdHttpClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AEA8B3C2F6808CA0040461A /* EtcdHttpClient.swift */; };
 		5AEA8B492F6808E90040461A /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
-		5AEC4DB12FD36700002191A2 /* SnowflakeDriverPlugin.tableplugin in Copy Plug-Ins (12 items) */ = {isa = PBXBuildFile; fileRef = 48B9743D4BDA458C9C0502A8 /* SnowflakeDriverPlugin.tableplugin */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		5AEE5B362F5C9B7B00FA84D7 /* OracleNIO in Frameworks */ = {isa = PBXBuildFile; productRef = 5ACE00012F4F00000000000F /* OracleNIO */; };
 		690F1972044539AA3EC01FAD /* SnowflakePluginDriver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CAC14AE00C256911D2A9D2E /* SnowflakePluginDriver.swift */; };
 		69F80E23278BD01CA254E291 /* SnowflakeError.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE1C881DFE85C2D2DBCC5B87 /* SnowflakeError.swift */; };
@@ -288,7 +287,6 @@
 			dstPath = "";
 			dstSubfolderSpec = 13;
 			files = (
-				5AEC4DB12FD36700002191A2 /* SnowflakeDriverPlugin.tableplugin in Copy Plug-Ins (12 items) */,
 				5A865000D00000000 /* MySQLDriver.tableplugin in Copy Plug-Ins (12 items) */,
 				5A868000D00000000 /* PostgreSQLDriver.tableplugin in Copy Plug-Ins (12 items) */,
 				5A862000D00000000 /* SQLiteDriver.tableplugin in Copy Plug-Ins (12 items) */,
@@ -321,7 +319,6 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-		DE8D74A27EE24B89A7DC79F9 /* SnowflakeConnectionRegistry.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SnowflakeConnectionRegistry.swift; sourceTree = "<group>"; };
 		05C938D4946679DB526884C9 /* SnowflakeConnection.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SnowflakeConnection.swift; sourceTree = "<group>"; };
 		17CF18A0ED0B637448A808A4 /* SnowflakeMFATokenStore.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SnowflakeMFATokenStore.swift; sourceTree = "<group>"; };
 		31FF6EBB13774833BA087FEB /* SnowflakePluginDriver+DDL.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = "SnowflakePluginDriver+DDL.swift"; sourceTree = "<group>"; };
@@ -388,6 +385,7 @@
 		84A5EE73D62C4576A9B9DFF2 /* SnowflakeStatementGenerator.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SnowflakeStatementGenerator.swift; sourceTree = "<group>"; };
 		95E00BB6B3C84C9583510E67 /* SnowflakeHeartbeat.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SnowflakeHeartbeat.swift; sourceTree = "<group>"; };
 		C146F286FAB945E9B19E5B88 /* SnowflakeBindingEncoder.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SnowflakeBindingEncoder.swift; sourceTree = "<group>"; };
+		DE8D74A27EE24B89A7DC79F9 /* SnowflakeConnectionRegistry.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SnowflakeConnectionRegistry.swift; sourceTree = "<group>"; };
 		F9D129A56E1AB45F7D82AC58 /* SnowflakeAuth.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SnowflakeAuth.swift; sourceTree = "<group>"; };
 		FE1C881DFE85C2D2DBCC5B87 /* SnowflakeError.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SnowflakeError.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
