@@ -38,6 +38,16 @@ enum SnowflakeError: Error, LocalizedError {
     }
 }
 
+extension SnowflakeError {
+    static let reauthenticationCodes: Set<String> = [
+        "390110", "390112", "390113", "390114", "390115", "390195"
+    ]
+
+    static func isReauthenticationCode(_ code: String) -> Bool {
+        reauthenticationCodes.contains(code)
+    }
+}
+
 extension SnowflakeError: PluginDriverError {
     var pluginErrorMessage: String {
         errorDescription ?? String(localized: "Unknown Snowflake error")

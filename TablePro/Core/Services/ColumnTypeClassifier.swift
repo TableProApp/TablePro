@@ -24,6 +24,10 @@ struct ColumnTypeClassifier {
             return factory(rawTypeName)
         }
 
+        if params == nil, ["VARIANT", "OBJECT", "ARRAY"].contains(upper) {
+            return .json(rawType: rawTypeName)
+        }
+
         return classifyByPattern(upper: upper, rawTypeName: rawTypeName)
     }
 

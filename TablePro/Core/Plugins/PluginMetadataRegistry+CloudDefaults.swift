@@ -348,7 +348,7 @@ extension PluginMetadataRegistry {
                     ExplainVariant(id: "text", label: "Explain (Text)", sqlPrefix: "EXPLAIN USING TEXT")
                 ],
                 pathFieldRole: .database,
-                supportsHealthMonitor: true, urlSchemes: [],
+                supportsHealthMonitor: false, urlSchemes: [],
                 postConnectActions: [.selectSchemaFromLastSession],
                 brandColorHex: "#29B5E8",
                 queryLanguageName: "SQL", editorLanguage: .sql,
@@ -377,7 +377,7 @@ extension PluginMetadataRegistry {
                     systemSchemaNames: ["INFORMATION_SCHEMA"],
                     fileExtensions: [],
                     databaseGroupingStrategy: .hierarchicalSchema,
-                    structureColumnFields: [.name, .type, .nullable, .defaultValue, .comment]
+                    structureColumnFields: [.name, .type, .nullable, .defaultValue]
                 ),
                 editor: PluginMetadataSnapshot.EditorConfig(
                     sqlDialect: SQLDialectDescriptor(

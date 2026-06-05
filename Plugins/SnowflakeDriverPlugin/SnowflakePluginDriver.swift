@@ -31,7 +31,7 @@ final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func cancelQuery() throws {
-        connection?.cancelCurrentQuery()
+        connection?.cancelAllQueries()
     }
 
     var supportsSchemas: Bool { true }
@@ -39,6 +39,23 @@ final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     var serverVersion: String? { lock.withLock { _serverVersion } }
     var currentSchema: String? { connection?.currentSchema }
     var parameterStyle: ParameterStyle { .questionMark }
+    var requiresBackslashEscapingInLiterals: Bool { true }
+
+    func executeParameterized(query: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult {
+        guard !parameters.isEmpty else { return try await execute(query: query) }
+        guard let conn = connection else { throw SnowflakeError.notConnected }
+        let startTime = Date()
+        let result = try await conn.query(query, parameters: parameters)
+        return PluginQueryResult(
+            columns: result.columns.map(\.name),
+            columnTypeNames: result.columns.map(SnowflakeTypeMapper.displayType),
+            rows: result.rows.map { row in row.map(Self.cellValue) },
+            rowsAffected: result.affectedRows,
+            executionTime: Date().timeIntervalSince(startTime),
+            isTruncated: result.isTruncated,
+            statusMessage: result.statusMessage
+        )
+    }
 
     // MARK: - Lifecycle
 

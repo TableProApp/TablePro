@@ -48,9 +48,10 @@ final class SnowflakeConnection: @unchecked Sendable {
 
     private let session: URLSession
     private let lock = NSLock()
+    private let heartbeat = SnowflakeHeartbeat()
     private var sessionToken: String?
     private var renewalToken: String?
-    private var currentRequestID: String?
+    private var activeRequestIDs: Set<String> = []
     private var sequenceId = 0
 
     private var _currentDatabase: String?
@@ -135,9 +136,10 @@ final class SnowflakeConnection: @unchecked Sendable {
         lock.withLock {
             sessionToken = nil
             renewalToken = nil
-            currentRequestID = nil
+            activeRequestIDs.removeAll()
         }
         Task { [weak self] in
+            await self?.heartbeat.stop()
             try? await self?.postLogout(token: token)
         }
     }
@@ -186,6 +188,16 @@ final class SnowflakeConnection: @unchecked Sendable {
     }
 
     private func loginWithExternalBrowser() async throws {
+        if let idToken = SnowflakeIdTokenStore.token(account: params.account, user: params.user) {
+            do {
+                try await login(authenticator: "ID_TOKEN", extra: ["TOKEN": idToken])
+                return
+            } catch {
+                SnowflakeIdTokenStore.clear(account: params.account, user: params.user)
+                Self.logger.info("Cached SSO id token rejected; falling back to browser authentication")
+            }
+        }
+
         let server = SnowflakeBrowserAuthServer()
         let port = try await server.start()
 
@@ -289,9 +301,40 @@ final class SnowflakeConnection: @unchecked Sendable {
             SnowflakeMFATokenStore.store(mfaToken, account: params.account, user: params.user)
             Self.logger.info("Login succeeded (\(authenticator, privacy: .public)); MFA token cached for reuse")
         } else if authenticator == "SNOWFLAKE" || authenticator == "USERNAME_PASSWORD_MFA" {
-            Self.logger.info("Login succeeded (\(authenticator, privacy: .public)); no mfaToken returned — ALLOW_CLIENT_MFA_CACHING may be disabled on this account")
+            Self.logger.info("Login succeeded (\(authenticator, privacy: .public)); no mfaToken returned; ALLOW_CLIENT_MFA_CACHING may be disabled on this account")
+        }
+        if let idToken = responseData["idToken"] as? String, !idToken.isEmpty {
+            SnowflakeIdTokenStore.store(idToken, account: params.account, user: params.user)
+            Self.logger.info("SSO id token cached; subsequent connects skip the browser")
         }
         applySessionInfo(responseData["sessionInfo"] as? [String: Any])
+        startHeartbeat(masterValiditySeconds: responseData["masterValidityInSeconds"] as? Double ?? 14_400)
+    }
+
+    private func startHeartbeat(masterValiditySeconds: Double) {
+        let interval = SnowflakeHeartbeat.interval(masterValiditySeconds: masterValiditySeconds)
+        Task { [weak self] in
+            await self?.heartbeat.start(interval: interval) { [weak self] in
+                await self?.sendHeartbeat()
+            }
+        }
+    }
+
+    private func sendHeartbeat() async {
+        guard let token = lock.withLock({ sessionToken }) else { return }
+        do {
+            let response = try await postJSON(
+                path: "/session/heartbeat",
+                queryItems: Self.trackingQueryItems(),
+                body: [:],
+                token: token
+            )
+            if Self.codeString(response["code"]) == "390112" {
+                try await renewSession()
+            }
+        } catch {
+            Self.logger.warning("Session heartbeat failed: \(error.localizedDescription)")
+        }
     }
 
     private func renewSession() async throws {
@@ -321,7 +364,11 @@ final class SnowflakeConnection: @unchecked Sendable {
     }
 
     private func sessionParameters(for authenticator: String) -> [String: Any] {
-        var parameters: [String: Any] = ["CLIENT_STORE_TEMPORARY_CREDENTIAL": false]
+        var parameters: [String: Any] = [
+            "CLIENT_STORE_TEMPORARY_CREDENTIAL": true,
+            "CLIENT_SESSION_KEEP_ALIVE": true,
+            "QUERY_TAG": Self.appName
+        ]
         if authenticator == "SNOWFLAKE" || authenticator == "USERNAME_PASSWORD_MFA" {
             parameters["CLIENT_REQUEST_MFA_TOKEN"] = true
         }
@@ -340,29 +387,35 @@ final class SnowflakeConnection: @unchecked Sendable {
 
     // MARK: - Query Execution
 
-    func query(_ sql: String) async throws -> SnowflakeQueryResult {
+    func query(_ sql: String, parameters: [PluginCellValue] = []) async throws -> SnowflakeQueryResult {
         do {
-            return try await performQuery(sql)
-        } catch SnowflakeError.queryFailed(let code, _) where code == "390112" {
-            try await renewSession()
-            return try await performQuery(sql)
+            return try await performQuery(sql, parameters: parameters)
+        } catch SnowflakeError.queryFailed(let code, _) where SnowflakeError.isReauthenticationCode(code) {
+            do {
+                try await renewSession()
+            } catch {
+                try await connect()
+            }
+            return try await performQuery(sql, parameters: parameters)
         }
     }
 
-    func cancelCurrentQuery() {
-        let (requestID, token) = lock.withLock { (currentRequestID, sessionToken) }
-        guard let requestID, let token else { return }
+    func cancelAllQueries() {
+        let (requestIDs, token) = lock.withLock { (activeRequestIDs, sessionToken) }
+        guard !requestIDs.isEmpty, let token else { return }
         Task { [weak self] in
-            _ = try? await self?.postJSON(
-                path: "/queries/v1/abort-request",
-                queryItems: Self.trackingQueryItems(),
-                body: ["requestId": requestID],
-                token: token
-            )
+            for requestID in requestIDs {
+                _ = try? await self?.postJSON(
+                    path: "/queries/v1/abort-request",
+                    queryItems: Self.trackingQueryItems(),
+                    body: ["requestId": requestID],
+                    token: token
+                )
+            }
         }
     }
 
-    private func performQuery(_ sql: String) async throws -> SnowflakeQueryResult {
+    private func performQuery(_ sql: String, parameters: [PluginCellValue] = []) async throws -> SnowflakeQueryResult {
         guard let token = lock.withLock({ sessionToken }) else {
             throw SnowflakeError.notConnected
         }
@@ -370,17 +423,22 @@ final class SnowflakeConnection: @unchecked Sendable {
         let requestID = UUID().uuidString.lowercased()
         let sequence = lock.withLock { () -> Int in
             sequenceId += 1
-            currentRequestID = requestID
+            activeRequestIDs.insert(requestID)
             return sequenceId
         }
-        defer { lock.withLock { currentRequestID = nil } }
+        defer {
+            lock.withLock { _ = activeRequestIDs.remove(requestID) }
+        }
 
-        let body: [String: Any] = [
+        var body: [String: Any] = [
             "sqlText": sql,
             "asyncExec": false,
             "sequenceId": sequence,
             "querySubmissionTime": Int(Date().timeIntervalSince1970 * 1_000)
         ]
+        if !parameters.isEmpty {
+            body["bindings"] = SnowflakeBindingEncoder.encode(parameters)
+        }
 
         var response = try await postJSON(
             path: "/queries/v1/query-request",
@@ -413,12 +471,10 @@ final class SnowflakeConnection: @unchecked Sendable {
     }
 
     private static let queryPollTimeout: TimeInterval = 2_700
-    private static let queryPollMaxInterval: UInt64 = 5_000_000_000
 
     private func pollIfInProgress(_ initial: [String: Any], token: String) async throws -> [String: Any] {
         var response = initial
         let deadline = Date().addingTimeInterval(Self.queryPollTimeout)
-        var interval: UInt64 = 500_000_000
         while Self.isInProgress(response) {
             guard let data = response["data"] as? [String: Any],
                   let resultPath = data["getResultUrl"] as? String else {
@@ -427,8 +483,6 @@ final class SnowflakeConnection: @unchecked Sendable {
             guard Date() < deadline else {
                 throw SnowflakeError.timeout("Query did not finish within 45 minutes")
             }
-            try await Task.sleep(nanoseconds: interval)
-            interval = min(interval * 2, Self.queryPollMaxInterval)
             response = try await getJSON(path: resultPath, token: token)
         }
         if Self.isInProgress(response) {
@@ -465,23 +519,50 @@ final class SnowflakeConnection: @unchecked Sendable {
         )
     }
 
+    private static let chunkDownloadWorkers = 4
+
     private func downloadChunks(_ chunks: [[String: Any]], headers: [String: String]) async throws -> [[PluginCellValueBox]] {
-        var allRows: [[PluginCellValueBox]] = []
-        for chunk in chunks {
-            guard let urlString = chunk["url"] as? String, let url = URL(string: urlString) else { continue }
-            var request = URLRequest(url: url)
-            for (key, value) in headers {
-                request.setValue(value, forHTTPHeaderField: key)
+        let urls = chunks.compactMap { ($0["url"] as? String).flatMap(URL.init(string:)) }
+        guard !urls.isEmpty else { return [] }
+
+        var rowsByChunk = [[[PluginCellValueBox]]](repeating: [], count: urls.count)
+        try await withThrowingTaskGroup(of: (Int, [[PluginCellValueBox]]).self) { group in
+            var nextIndex = 0
+            while nextIndex < min(Self.chunkDownloadWorkers, urls.count) {
+                let index = nextIndex
+                group.addTask { [session] in
+                    (index, try await Self.downloadChunk(urls[index], headers: headers, session: session))
+                }
+                nextIndex += 1
             }
-            let (rawData, response) = try await session.data(for: request)
-            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-                throw SnowflakeError.invalidResponse("Failed to download result chunk")
+            while let (index, rows) = try await group.next() {
+                rowsByChunk[index] = rows
+                if nextIndex < urls.count {
+                    let next = nextIndex
+                    group.addTask { [session] in
+                        (next, try await Self.downloadChunk(urls[next], headers: headers, session: session))
+                    }
+                    nextIndex += 1
+                }
             }
-            let jsonData = Self.gunzipIfNeeded(rawData)
-            let rows = try Self.parseChunkRows(jsonData)
-            allRows.append(contentsOf: rows)
         }
-        return allRows
+        return rowsByChunk.flatMap { $0 }
+    }
+
+    private static func downloadChunk(
+        _ url: URL,
+        headers: [String: String],
+        session: URLSession
+    ) async throws -> [[PluginCellValueBox]] {
+        var request = URLRequest(url: url)
+        for (key, value) in headers {
+            request.setValue(value, forHTTPHeaderField: key)
+        }
+        let (rawData, http) = try await SnowflakeHTTPClient.send(request, session: session)
+        guard http.statusCode == 200 else {
+            throw SnowflakeError.invalidResponse("Failed to download result chunk")
+        }
+        return try parseChunkRows(gunzipIfNeeded(rawData))
     }
 
     // MARK: - USE / Session
@@ -546,10 +627,7 @@ final class SnowflakeConnection: @unchecked Sendable {
     }
 
     private func send(_ request: URLRequest) async throws -> [String: Any] {
-        let (data, response) = try await session.data(for: request)
-        guard let http = response as? HTTPURLResponse else {
-            throw SnowflakeError.invalidResponse("No HTTP response from Snowflake")
-        }
+        let (data, http) = try await SnowflakeHTTPClient.send(request, session: session)
         guard (200..<300).contains(http.statusCode) else {
             let bodyText = String(data: data, encoding: .utf8) ?? ""
             Self.logger.error(
