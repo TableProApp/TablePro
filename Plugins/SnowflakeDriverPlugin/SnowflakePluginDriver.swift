@@ -14,6 +14,7 @@ final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private let lock = NSLock()
     private var _connection: SnowflakeConnection?
     private var _serverVersion: String?
+    private var resolvedSchemaCache: [String: String] = [:]
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "SnowflakePluginDriver")
 
@@ -167,7 +168,13 @@ final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] {
         let database = connection?.currentDatabase
-        let targetSchema = schema ?? connection?.currentSchema
+        var targetSchema = schema ?? connection?.currentSchema
+        if targetSchema == nil, let database {
+            targetSchema = await resolveSchema(for: table, database: database)
+        }
+        Self.logger.debug(
+            "fetchColumns table=\(table, privacy: .public) schemaParam=\(schema ?? "nil", privacy: .public) currentSchema=\(self.connection?.currentSchema ?? "nil", privacy: .public) currentDatabase=\(database ?? "nil", privacy: .public)"
+        )
         guard let database, let targetSchema else { return [] }
 
         let primaryKeys = try await fetchPrimaryKeyColumns(table: table, schema: targetSchema, database: database)
@@ -181,6 +188,9 @@ final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             ORDER BY ORDINAL_POSITION
             """
         let result = try await rawQuery(sql)
+        Self.logger.debug(
+            "fetchColumns table=\(table, privacy: .public) schema=\(targetSchema, privacy: .public) database=\(database, privacy: .public) rows=\(result.rows.count, privacy: .public)"
+        )
         return result.rows.compactMap { row in
             guard let name = Self.text(row, 0) else { return nil }
             let dataType = Self.text(row, 1) ?? "TEXT"
@@ -208,7 +218,10 @@ final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func fetchApproximateRowCount(table: String, schema: String?) async throws -> Int? {
         let database = connection?.currentDatabase
-        let targetSchema = schema ?? connection?.currentSchema
+        var targetSchema = schema ?? connection?.currentSchema
+        if targetSchema == nil, let database, let resolved = await resolveSchema(for: table, database: database) {
+            targetSchema = resolved
+        }
         guard let database, let targetSchema else { return nil }
         let sql = """
             SELECT ROW_COUNT
@@ -330,7 +343,18 @@ final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Private Helpers
 
     private func qualifiedName(table: String, schema: String?) -> String {
-        let targetSchema = schema ?? connection?.currentSchema
+        qualifiedName(table: table, resolvedSchema: schema ?? connection?.currentSchema)
+    }
+
+    private func qualifiedNameResolvingSchema(table: String, schema: String?) async -> String {
+        var targetSchema = schema ?? connection?.currentSchema
+        if targetSchema == nil, let database = connection?.currentDatabase {
+            targetSchema = await resolveSchema(for: table, database: database)
+        }
+        return qualifiedName(table: table, resolvedSchema: targetSchema)
+    }
+
+    private func qualifiedName(table: String, resolvedSchema targetSchema: String?) -> String {
         if let database = connection?.currentDatabase, let targetSchema {
             return "\(quoteIdentifier(database)).\(quoteIdentifier(targetSchema)).\(quoteIdentifier(table))"
         }
@@ -341,24 +365,13 @@ final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     private func ddl(objectType: String, name: String, schema: String?) async throws -> String {
-        let fqn = qualifiedNameUnquoted(table: name, schema: schema)
+        let fqn = await qualifiedNameResolvingSchema(table: name, schema: schema)
         let sql = "SELECT GET_DDL('\(objectType)', '\(escapeStringLiteral(fqn))', true)"
         let result = try await rawQuery(sql)
         guard let ddl = Self.text(result.rows.first ?? [], 0) else {
             throw SnowflakeError.invalidResponse("No DDL returned for \(name)")
         }
         return ddl
-    }
-
-    private func qualifiedNameUnquoted(table: String, schema: String?) -> String {
-        let targetSchema = schema ?? connection?.currentSchema
-        if let database = connection?.currentDatabase, let targetSchema {
-            return "\(database).\(targetSchema).\(table)"
-        }
-        if let targetSchema {
-            return "\(targetSchema).\(table)"
-        }
-        return table
     }
 
     private func fetchPrimaryKeyColumns(table: String, schema: String, database: String) async throws -> Set<String> {
@@ -376,6 +389,31 @@ final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             }
         }
         return keys
+    }
+
+    /// Resolves the schema for a table when the caller didn't provide one and no
+    /// schema is active — common for hierarchical browsing where app-side calls
+    /// are schema-unaware. Prefers a unique INFORMATION_SCHEMA match, then PUBLIC.
+    private func resolveSchema(for table: String, database: String) async -> String? {
+        if let current = connection?.currentSchema { return current }
+        let cacheKey = "\(database).\(table)"
+        if let cached = lock.withLock({ resolvedSchemaCache[cacheKey] }) { return cached }
+
+        let sql = """
+            SELECT TABLE_SCHEMA
+            FROM \(quoteIdentifier(database)).INFORMATION_SCHEMA.TABLES
+            WHERE TABLE_NAME = '\(escapeStringLiteral(table))'
+            """
+        guard let result = try? await rawQuery(sql) else { return nil }
+        let schemas = result.rows.compactMap { Self.text($0, 0) }
+        let resolved = schemas.count == 1
+            ? schemas[0]
+            : (schemas.first { $0 == "PUBLIC" } ?? schemas.first)
+        if let resolved {
+            lock.withLock { resolvedSchemaCache[cacheKey] = resolved }
+            Self.logger.debug("resolveSchema table=\(table, privacy: .public) -> \(resolved, privacy: .public) (candidates=\(schemas.count, privacy: .public))")
+        }
+        return resolved
     }
 
     private func rawQuery(_ sql: String) async throws -> SnowflakeQueryResult {
