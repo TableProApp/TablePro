@@ -15,6 +15,7 @@ final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private var _connection: SnowflakeConnection?
     private var _serverVersion: String?
     private var resolvedSchemaCache: [String: String] = [:]
+    private var columnTypeCache: [String: [String: String]] = [:]
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "SnowflakePluginDriver")
 
@@ -27,7 +28,7 @@ final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     var capabilities: PluginCapabilities {
-        [.multiSchema, .transactions, .truncateTable, .cancelQuery]
+        [.multiSchema, .transactions, .truncateTable, .cancelQuery, .parameterizedQueries, .alterTableDDL]
     }
 
     func cancelQuery() throws {
@@ -135,23 +136,52 @@ final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     func switchDatabase(to database: String) async throws {
         guard let conn = connection else { throw SnowflakeError.notConnected }
         try await conn.switchDatabase(to: database)
-        lock.withLock { resolvedSchemaCache.removeAll() }
+        lock.withLock {
+            resolvedSchemaCache.removeAll()
+            columnTypeCache.removeAll()
+        }
     }
 
     func switchSchema(to schema: String) async throws {
         guard let conn = connection else { throw SnowflakeError.notConnected }
         try await conn.switchSchema(to: schema)
-        lock.withLock { resolvedSchemaCache.removeAll() }
+        lock.withLock {
+            resolvedSchemaCache.removeAll()
+            columnTypeCache.removeAll()
+        }
     }
 
     // MARK: - Database Management
 
     func createDatabaseFormSpec() async throws -> PluginCreateDatabaseFormSpec? {
-        PluginCreateDatabaseFormSpec(fields: [], footnote: nil)
+        PluginCreateDatabaseFormSpec(
+            fields: [
+                PluginCreateDatabaseFormSpec.Field(
+                    id: "retentionDays",
+                    label: String(localized: "Time Travel Retention"),
+                    kind: .picker(
+                        options: [
+                            .init(value: "1", label: String(localized: "1 day (default)")),
+                            .init(value: "0", label: String(localized: "Disabled")),
+                            .init(value: "7", label: String(localized: "7 days")),
+                            .init(value: "14", label: String(localized: "14 days")),
+                            .init(value: "30", label: String(localized: "30 days")),
+                            .init(value: "90", label: String(localized: "90 days"))
+                        ],
+                        defaultValue: "1"
+                    )
+                )
+            ],
+            footnote: String(localized: "Retention beyond 1 day requires Enterprise edition.")
+        )
     }
 
     func createDatabase(_ request: PluginCreateDatabaseRequest) async throws {
-        _ = try await rawQuery("CREATE DATABASE \(quoteIdentifier(request.name))")
+        var sql = "CREATE DATABASE \(quoteIdentifier(request.name))"
+        if let retention = request.values["retentionDays"], let days = Int(retention), days != 1 {
+            sql += " DATA_RETENTION_TIME_IN_DAYS = \(days)"
+        }
+        _ = try await rawQuery(sql)
     }
 
     func dropDatabase(name: String) async throws {
@@ -165,24 +195,65 @@ final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let targetSchema = schema ?? connection?.currentSchema
         guard let database, let targetSchema else { return [] }
 
-        let sql = """
-            SELECT TABLE_NAME, TABLE_TYPE
-            FROM \(quoteIdentifier(database)).INFORMATION_SCHEMA.TABLES
-            WHERE TABLE_SCHEMA = '\(escapeStringLiteral(targetSchema))'
-            ORDER BY TABLE_NAME
-            """
-        let result = try await rawQuery(sql)
+        let result = try await rawQuery(SnowflakeSchemaQueries.showObjects(database: database, schema: targetSchema))
+        guard let nameIndex = columnIndex(of: "name", in: result) else { return [] }
+        let kindIndex = columnIndex(of: "kind", in: result)
         return result.rows.compactMap { row in
-            guard let name = Self.text(row, 0) else { return nil }
-            let rawType = (Self.text(row, 1) ?? "BASE TABLE").uppercased()
-            let type: String
-            switch rawType {
-            case "VIEW": type = "VIEW"
-            case "MATERIALIZED VIEW": type = "MATERIALIZED_VIEW"
-            default: type = "TABLE"
-            }
-            return PluginTableInfo(name: name, type: type, schema: targetSchema)
+            guard let name = Self.text(row, nameIndex) else { return nil }
+            let kind = kindIndex.flatMap { Self.text(row, $0) } ?? "TABLE"
+            return PluginTableInfo(
+                name: name,
+                type: SnowflakeSchemaQueries.objectType(forKind: kind),
+                schema: targetSchema
+            )
+        }.sorted { $0.name < $1.name }
+    }
+
+    func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
+        let database = connection?.currentDatabase
+        let targetSchema = schema ?? connection?.currentSchema
+        guard let database, let targetSchema else { return [:] }
+
+        let primaryKeys = await primaryKeysBySchema(database: database, schema: targetSchema)
+        let result = try await rawQuery(SnowflakeSchemaQueries.bulkColumns(database: database, schema: targetSchema))
+
+        var columnsByTable: [String: [PluginColumnInfo]] = [:]
+        for row in result.rows {
+            guard let table = Self.text(row, 0), let name = Self.text(row, 1) else { continue }
+            let column = PluginColumnInfo(
+                name: name,
+                dataType: Self.text(row, 2) ?? "TEXT",
+                isNullable: (Self.text(row, 3) ?? "YES").uppercased() == "YES",
+                isPrimaryKey: primaryKeys[table]?.contains(name.uppercased()) == true,
+                defaultValue: Self.text(row, 4),
+                comment: Self.text(row, 5)
+            )
+            columnsByTable[table, default: []].append(column)
         }
+        for (table, columns) in columnsByTable {
+            cacheColumnTypes(table: table, columns: columns)
+        }
+        return columnsByTable
+    }
+
+    private func primaryKeysBySchema(database: String, schema: String) async -> [String: Set<String>] {
+        guard let result = try? await rawQuery(
+            SnowflakeSchemaQueries.showPrimaryKeysInSchema(database: database, schema: schema)
+        ) else { return [:] }
+        guard let tableIndex = columnIndex(of: "table_name", in: result),
+              let columnIndexInResult = columnIndex(of: "column_name", in: result) else { return [:] }
+
+        var keys: [String: Set<String>] = [:]
+        for row in result.rows {
+            guard let table = Self.text(row, tableIndex),
+                  let column = Self.text(row, columnIndexInResult) else { continue }
+            keys[table, default: []].insert(column.uppercased())
+        }
+        return keys
+    }
+
+    private func columnIndex(of name: String, in result: SnowflakeQueryResult) -> Int? {
+        result.columns.firstIndex { $0.name.lowercased() == name.lowercased() }
     }
 
     func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] {
@@ -210,7 +281,7 @@ final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         Self.logger.debug(
             "fetchColumns table=\(table, privacy: .public) schema=\(targetSchema, privacy: .public) database=\(database, privacy: .public) rows=\(result.rows.count, privacy: .public)"
         )
-        return result.rows.compactMap { row in
+        let columns = result.rows.compactMap { row -> PluginColumnInfo? in
             guard let name = Self.text(row, 0) else { return nil }
             let dataType = Self.text(row, 1) ?? "TEXT"
             let nullable = (Self.text(row, 2) ?? "YES").uppercased() == "YES"
@@ -225,14 +296,104 @@ final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 comment: comment
             )
         }
+        cacheColumnTypes(table: table, columns: columns)
+        return columns
+    }
+
+    func cacheColumnTypes(table: String, columns: [PluginColumnInfo]) {
+        let types = Dictionary(uniqueKeysWithValues: columns.map { ($0.name, $0.dataType) })
+        lock.withLock { columnTypeCache[table] = types }
+    }
+
+    func columnTypeNames(for table: String, columns: [String]) -> [String] {
+        let types = lock.withLock { columnTypeCache[table] } ?? [:]
+        return columns.map { types[$0] ?? "TEXT" }
     }
 
     func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] {
-        []
+        let database = connection?.currentDatabase
+        let targetSchema = schema ?? connection?.currentSchema
+        guard let database, let targetSchema else { return [] }
+
+        var indexes: [PluginIndexInfo] = []
+
+        let primaryKeys = try await fetchPrimaryKeyColumnsOrdered(table: table, schema: targetSchema, database: database)
+        if !primaryKeys.isEmpty {
+            indexes.append(PluginIndexInfo(
+                name: "PRIMARY KEY",
+                columns: primaryKeys,
+                isUnique: true,
+                isPrimary: true,
+                type: "CONSTRAINT"
+            ))
+        }
+
+        if let clusterColumns = await clusteringKeyColumns(table: table, schema: targetSchema, database: database),
+           !clusterColumns.isEmpty {
+            indexes.append(PluginIndexInfo(
+                name: "CLUSTERING KEY",
+                columns: clusterColumns,
+                isUnique: false,
+                isPrimary: false,
+                type: "CLUSTERING"
+            ))
+        }
+
+        return indexes
+    }
+
+    private func fetchPrimaryKeyColumnsOrdered(table: String, schema: String, database: String) async throws -> [String] {
+        guard let result = try? await rawQuery(
+            SnowflakeSchemaQueries.showPrimaryKeysInTable(database: database, schema: schema, table: table)
+        ) else { return [] }
+        guard let columnIdx = columnIndex(of: "column_name", in: result) else { return [] }
+        let sequenceIdx = columnIndex(of: "key_sequence", in: result)
+        let entries = result.rows.compactMap { row -> (column: String, sequence: Int)? in
+            guard let column = Self.text(row, columnIdx) else { return nil }
+            let sequence = sequenceIdx.flatMap { Self.text(row, $0) }.flatMap(Int.init) ?? 0
+            return (column, sequence)
+        }
+        return entries.sorted { $0.sequence < $1.sequence }.map(\.column)
+    }
+
+    private func clusteringKeyColumns(table: String, schema: String, database: String) async -> [String]? {
+        guard let result = try? await rawQuery(
+            SnowflakeSchemaQueries.showTablesLike(database: database, schema: schema, table: table)
+        ) else { return nil }
+        guard let clusterIdx = columnIndex(of: "cluster_by", in: result),
+              let row = result.rows.first,
+              let clusterBy = Self.text(row, clusterIdx),
+              !clusterBy.isEmpty else { return nil }
+        return SnowflakeSchemaQueries.parseClusterBy(clusterBy)
     }
 
     func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] {
-        []
+        let database = connection?.currentDatabase
+        let targetSchema = schema ?? connection?.currentSchema
+        guard let database, let targetSchema else { return [] }
+
+        guard let result = try? await rawQuery(
+            SnowflakeSchemaQueries.showImportedKeys(database: database, schema: targetSchema, table: table)
+        ) else { return [] }
+
+        guard let fkColumnIdx = columnIndex(of: "fk_column_name", in: result),
+              let pkTableIdx = columnIndex(of: "pk_table_name", in: result),
+              let pkColumnIdx = columnIndex(of: "pk_column_name", in: result) else { return [] }
+        let fkNameIdx = columnIndex(of: "fk_name", in: result)
+        let pkSchemaIdx = columnIndex(of: "pk_schema_name", in: result)
+
+        return result.rows.compactMap { row in
+            guard let column = Self.text(row, fkColumnIdx),
+                  let referencedTable = Self.text(row, pkTableIdx),
+                  let referencedColumn = Self.text(row, pkColumnIdx) else { return nil }
+            return PluginForeignKeyInfo(
+                name: fkNameIdx.flatMap { Self.text(row, $0) } ?? "FK_\(column)",
+                column: column,
+                referencedTable: referencedTable,
+                referencedColumn: referencedColumn,
+                referencedSchema: pkSchemaIdx.flatMap { Self.text(row, $0) }
+            )
+        }
     }
 
     func fetchApproximateRowCount(table: String, schema: String?) async throws -> Int? {
@@ -341,14 +502,17 @@ final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 do {
                     guard let conn = self.connection else { throw SnowflakeError.notConnected }
                     let trimmed = query.replacingOccurrences(of: ";\\s*\\z", with: "", options: .regularExpression)
-                    let result = try await conn.query(trimmed)
+                    let streamed = try await conn.queryStreamed(trimmed)
                     continuation.yield(.header(PluginStreamHeader(
-                        columns: result.columns.map(\.name),
-                        columnTypeNames: result.columns.map(SnowflakeTypeMapper.displayType),
-                        estimatedRowCount: result.rows.count
+                        columns: streamed.columns.map(\.name),
+                        columnTypeNames: streamed.columns.map(SnowflakeTypeMapper.displayType),
+                        estimatedRowCount: streamed.estimatedRowCount
                     )))
-                    if !result.rows.isEmpty {
-                        continuation.yield(.rows(result.rows.map { row in row.map(Self.cellValue) }))
+                    if !streamed.inlineRows.isEmpty {
+                        continuation.yield(.rows(streamed.inlineRows.map { row in row.map(Self.cellValue) }))
+                    }
+                    for try await batch in streamed.batches {
+                        continuation.yield(.rows(batch.map { row in row.map(Self.cellValue) }))
                     }
                     continuation.finish()
                 } catch {
@@ -361,7 +525,7 @@ final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     // MARK: - Private Helpers
 
-    private func qualifiedName(table: String, schema: String?) -> String {
+    func qualifiedName(table: String, schema: String?) -> String {
         qualifiedName(table: table, resolvedSchema: schema ?? connection?.currentSchema)
     }
 

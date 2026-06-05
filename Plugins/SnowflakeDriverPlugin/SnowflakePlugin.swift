@@ -34,19 +34,20 @@ final class SnowflakePlugin: NSObject, TableProPlugin, DriverPlugin {
     static let brandColorHex = "#29B5E8"
     static let queryLanguageName = "SQL"
     static let editorLanguage: EditorLanguage = .sql
-    static let supportsForeignKeys = false
-    static let supportsSchemaEditing = false
-    static let supportsAddColumn = false
-    static let supportsModifyColumn = false
-    static let supportsDropColumn = false
+    static let supportsForeignKeys = true
+    static let supportsSchemaEditing = true
+    static let supportsAddColumn = true
+    static let supportsModifyColumn = true
+    static let supportsDropColumn = true
+    static let supportsRenameColumn = true
     static let supportsAddIndex = false
     static let supportsDropIndex = false
-    static let supportsModifyPrimaryKey = false
+    static let supportsModifyPrimaryKey = true
     static let supportsHealthMonitor = false
     static let supportsDatabaseSwitching = true
     static let supportsSchemaSwitching = true
     static let postConnectActions: [PostConnectAction] = [.selectSchemaFromLastSession]
-    static let supportsImport = false
+    static let supportsImport = true
     static let supportsExport = true
     static let supportsSSH = false
     static let supportsSSL = false
@@ -56,7 +57,7 @@ final class SnowflakePlugin: NSObject, TableProPlugin, DriverPlugin {
     static let databaseGroupingStrategy: GroupingStrategy = .hierarchicalSchema
     static let defaultGroupName = "default"
     static let defaultPrimaryKeyColumn: String? = nil
-    static let structureColumnFields: [StructureColumnField] = [.name, .type, .nullable, .defaultValue]
+    static let structureColumnFields: [StructureColumnField] = [.name, .type, .nullable, .defaultValue, .comment]
     static let supportsCascadeDrop = true
     static let supportsDropDatabase = true
 

@@ -8,11 +8,10 @@
 
 /* Begin PBXBuildFile section */
 		16C74CC07CC30A38ADE1663E /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
-		4CA0E909166145AAB6B6CDD7 /* SnowflakeHTTPRetry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55F1B63541C24A10BF4AF873 /* SnowflakeHTTPRetry.swift */; };
-		5AC8FF6F28A24FFBBBFF008F /* SnowflakeBindingEncoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = C146F286FAB945E9B19E5B88 /* SnowflakeBindingEncoder.swift */; };
-		FF86DE29A70540C88D2624E5 /* SnowflakeHeartbeat.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95E00BB6B3C84C9583510E67 /* SnowflakeHeartbeat.swift */; };
-		8F6387B85F8B4AEE8210A6F1 /* SnowflakeIdTokenStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D67B38E07DF4F42A9C86639 /* SnowflakeIdTokenStore.swift */; };
+		267A5C6ECC62401598389396 /* SnowflakeDDLGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53DF2F4A15214F2AA1DE95CF /* SnowflakeDDLGenerator.swift */; };
 		3DD7311CA07CFCA8A996058F /* SnowflakeAuth.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9D129A56E1AB45F7D82AC58 /* SnowflakeAuth.swift */; };
+		4355C825A7554BBCB978E1E4 /* SnowflakeSchemaQueries.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C399209C2D14499870FBD49 /* SnowflakeSchemaQueries.swift */; };
+		4CA0E909166145AAB6B6CDD7 /* SnowflakeHTTPRetry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55F1B63541C24A10BF4AF873 /* SnowflakeHTTPRetry.swift */; };
 		5A32BBFB2F9D5EAB00BAEB5F /* X509 in Frameworks */ = {isa = PBXBuildFile; productRef = 5A32BBFA2F9D5EAB00BAEB5F /* X509 */; };
 		5A32BC0B2F9D659100BAEB5F /* tablepro-mcp in Copy Files */ = {isa = PBXBuildFile; fileRef = 5A32BC002F9D5F1300BAEB5F /* tablepro-mcp */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
 		5A3BE6FC2F97DB0000611C1F /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
@@ -60,6 +59,7 @@
 		5ABQR00100000000000000A7 /* BigQueryTypeMapper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5ABQR00200000000000000A7 /* BigQueryTypeMapper.swift */; };
 		5ABQR00100000000000000A8 /* BigQueryOAuthServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5ABQR00200000000000000A8 /* BigQueryOAuthServer.swift */; };
 		5ABQR00100000000000000A9 /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
+		5AC8FF6F28A24FFBBBFF008F /* SnowflakeBindingEncoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = C146F286FAB945E9B19E5B88 /* SnowflakeBindingEncoder.swift */; };
 		5ACE00012F4F000000000004 /* CodeEditSourceEditor in Frameworks */ = {isa = PBXBuildFile; productRef = 5ACE00012F4F000000000002 /* CodeEditSourceEditor */; };
 		5ACE00012F4F000000000005 /* CodeEditLanguages in Frameworks */ = {isa = PBXBuildFile; productRef = 5ACE00012F4F000000000003 /* CodeEditLanguages */; };
 		5ACE00012F4F000000000006 /* CodeEditTextView in Frameworks */ = {isa = PBXBuildFile; productRef = 5ACE00012F4F000000000007 /* CodeEditTextView */; };
@@ -86,10 +86,14 @@
 		690F1972044539AA3EC01FAD /* SnowflakePluginDriver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CAC14AE00C256911D2A9D2E /* SnowflakePluginDriver.swift */; };
 		69F80E23278BD01CA254E291 /* SnowflakeError.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE1C881DFE85C2D2DBCC5B87 /* SnowflakeError.swift */; };
 		703C8C18A7F43E262695F557 /* SnowflakePlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73CFCC6EA4288F34EBED5F37 /* SnowflakePlugin.swift */; };
+		734B1C02ED034214A7A6088C /* SnowflakeStatementGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84A5EE73D62C4576A9B9DFF2 /* SnowflakeStatementGenerator.swift */; };
+		79535441E5CF45039A08AF48 /* SnowflakePluginDriver+DDL.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31FF6EBB13774833BA087FEB /* SnowflakePluginDriver+DDL.swift */; };
 		8163B172478A511171523320 /* SnowflakeTypeMapper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37458E42D8D6876BD9FDC7BD /* SnowflakeTypeMapper.swift */; };
+		8F6387B85F8B4AEE8210A6F1 /* SnowflakeIdTokenStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D67B38E07DF4F42A9C86639 /* SnowflakeIdTokenStore.swift */; };
 		952FCF406F3DE2575166802B /* SnowflakeBrowserAuthServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E0809C2747F432C1F1C5A60 /* SnowflakeBrowserAuthServer.swift */; };
 		B014CCF0DCB575301513A62D /* SnowflakeConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05C938D4946679DB526884C9 /* SnowflakeConnection.swift */; };
 		EE6F98F0581A8B96C6FE45E9 /* SnowflakeMFATokenStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17CF18A0ED0B637448A808A4 /* SnowflakeMFATokenStore.swift */; };
+		FF86DE29A70540C88D2624E5 /* SnowflakeHeartbeat.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95E00BB6B3C84C9583510E67 /* SnowflakeHeartbeat.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -316,15 +320,15 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-		55F1B63541C24A10BF4AF873 /* SnowflakeHTTPRetry.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SnowflakeHTTPRetry.swift; sourceTree = "<group>"; };
-		C146F286FAB945E9B19E5B88 /* SnowflakeBindingEncoder.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SnowflakeBindingEncoder.swift; sourceTree = "<group>"; };
-		95E00BB6B3C84C9583510E67 /* SnowflakeHeartbeat.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SnowflakeHeartbeat.swift; sourceTree = "<group>"; };
-		7D67B38E07DF4F42A9C86639 /* SnowflakeIdTokenStore.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SnowflakeIdTokenStore.swift; sourceTree = "<group>"; };
 		05C938D4946679DB526884C9 /* SnowflakeConnection.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SnowflakeConnection.swift; sourceTree = "<group>"; };
 		17CF18A0ED0B637448A808A4 /* SnowflakeMFATokenStore.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SnowflakeMFATokenStore.swift; sourceTree = "<group>"; };
+		31FF6EBB13774833BA087FEB /* SnowflakePluginDriver+DDL.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = "SnowflakePluginDriver+DDL.swift"; sourceTree = "<group>"; };
 		37458E42D8D6876BD9FDC7BD /* SnowflakeTypeMapper.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SnowflakeTypeMapper.swift; sourceTree = "<group>"; };
+		3C399209C2D14499870FBD49 /* SnowflakeSchemaQueries.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SnowflakeSchemaQueries.swift; sourceTree = "<group>"; };
 		48B9743D4BDA458C9C0502A8 /* SnowflakeDriverPlugin.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SnowflakeDriverPlugin.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
 		4CAC14AE00C256911D2A9D2E /* SnowflakePluginDriver.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SnowflakePluginDriver.swift; sourceTree = "<group>"; };
+		53DF2F4A15214F2AA1DE95CF /* SnowflakeDDLGenerator.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SnowflakeDDLGenerator.swift; sourceTree = "<group>"; };
+		55F1B63541C24A10BF4AF873 /* SnowflakeHTTPRetry.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SnowflakeHTTPRetry.swift; sourceTree = "<group>"; };
 		5A1091C72EF17EDC0055EA7C /* TablePro.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TablePro.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		5A32BC002F9D5F1300BAEB5F /* tablepro-mcp */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = "tablepro-mcp"; sourceTree = BUILT_PRODUCTS_DIR; };
 		5A3BE6F82F97DA8100611C1F /* LibSQLDriverPlugin.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = LibSQLDriverPlugin.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -378,6 +382,10 @@
 		5ASECRETS000000000000001 /* Secrets.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.xcconfig; sourceTree = SOURCE_ROOT; };
 		5E0809C2747F432C1F1C5A60 /* SnowflakeBrowserAuthServer.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SnowflakeBrowserAuthServer.swift; sourceTree = "<group>"; };
 		73CFCC6EA4288F34EBED5F37 /* SnowflakePlugin.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SnowflakePlugin.swift; sourceTree = "<group>"; };
+		7D67B38E07DF4F42A9C86639 /* SnowflakeIdTokenStore.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SnowflakeIdTokenStore.swift; sourceTree = "<group>"; };
+		84A5EE73D62C4576A9B9DFF2 /* SnowflakeStatementGenerator.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SnowflakeStatementGenerator.swift; sourceTree = "<group>"; };
+		95E00BB6B3C84C9583510E67 /* SnowflakeHeartbeat.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SnowflakeHeartbeat.swift; sourceTree = "<group>"; };
+		C146F286FAB945E9B19E5B88 /* SnowflakeBindingEncoder.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SnowflakeBindingEncoder.swift; sourceTree = "<group>"; };
 		F9D129A56E1AB45F7D82AC58 /* SnowflakeAuth.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SnowflakeAuth.swift; sourceTree = "<group>"; };
 		FE1C881DFE85C2D2DBCC5B87 /* SnowflakeError.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SnowflakeError.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -1187,6 +1195,10 @@
 			isa = PBXGroup;
 			children = (
 				F9D129A56E1AB45F7D82AC58 /* SnowflakeAuth.swift */,
+				84A5EE73D62C4576A9B9DFF2 /* SnowflakeStatementGenerator.swift */,
+				53DF2F4A15214F2AA1DE95CF /* SnowflakeDDLGenerator.swift */,
+				3C399209C2D14499870FBD49 /* SnowflakeSchemaQueries.swift */,
+				31FF6EBB13774833BA087FEB /* SnowflakePluginDriver+DDL.swift */,
 				55F1B63541C24A10BF4AF873 /* SnowflakeHTTPRetry.swift */,
 				C146F286FAB945E9B19E5B88 /* SnowflakeBindingEncoder.swift */,
 				95E00BB6B3C84C9583510E67 /* SnowflakeHeartbeat.swift */,
@@ -2198,6 +2210,10 @@
 			buildActionMask = 2147483647;
 			files = (
 				3DD7311CA07CFCA8A996058F /* SnowflakeAuth.swift in Sources */,
+				734B1C02ED034214A7A6088C /* SnowflakeStatementGenerator.swift in Sources */,
+				267A5C6ECC62401598389396 /* SnowflakeDDLGenerator.swift in Sources */,
+				4355C825A7554BBCB978E1E4 /* SnowflakeSchemaQueries.swift in Sources */,
+				79535441E5CF45039A08AF48 /* SnowflakePluginDriver+DDL.swift in Sources */,
 				4CA0E909166145AAB6B6CDD7 /* SnowflakeHTTPRetry.swift in Sources */,
 				5AC8FF6F28A24FFBBBFF008F /* SnowflakeBindingEncoder.swift in Sources */,
 				FF86DE29A70540C88D2624E5 /* SnowflakeHeartbeat.swift in Sources */,

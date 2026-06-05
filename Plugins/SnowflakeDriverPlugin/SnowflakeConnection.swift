@@ -388,15 +388,21 @@ final class SnowflakeConnection: @unchecked Sendable {
     // MARK: - Query Execution
 
     func query(_ sql: String, parameters: [PluginCellValue] = []) async throws -> SnowflakeQueryResult {
+        try await withReauthentication {
+            try await performQuery(sql, parameters: parameters)
+        }
+    }
+
+    private func withReauthentication<T>(_ operation: () async throws -> T) async throws -> T {
         do {
-            return try await performQuery(sql, parameters: parameters)
+            return try await operation()
         } catch SnowflakeError.queryFailed(let code, _) where SnowflakeError.isReauthenticationCode(code) {
             do {
                 try await renewSession()
             } catch {
                 try await connect()
             }
-            return try await performQuery(sql, parameters: parameters)
+            return try await operation()
         }
     }
 
@@ -416,6 +422,18 @@ final class SnowflakeConnection: @unchecked Sendable {
     }
 
     private func performQuery(_ sql: String, parameters: [PluginCellValue] = []) async throws -> SnowflakeQueryResult {
+        let (data, token) = try await submitQuery(sql, parameters: parameters)
+        if let resultIds = data["resultIds"] as? String, !resultIds.isEmpty {
+            return try await collectMultiStatementResults(ids: resultIds, token: token)
+        }
+        applyFinalSessionInfo(data)
+        return try await buildResult(from: data, token: token)
+    }
+
+    private func submitQuery(
+        _ sql: String,
+        parameters: [PluginCellValue]
+    ) async throws -> (data: [String: Any], token: String) {
         guard let token = lock.withLock({ sessionToken }) else {
             throw SnowflakeError.notConnected
         }
@@ -438,6 +456,8 @@ final class SnowflakeConnection: @unchecked Sendable {
         ]
         if !parameters.isEmpty {
             body["bindings"] = SnowflakeBindingEncoder.encode(parameters)
+        } else if SnowflakeSchemaQueries.isLikelyMultiStatement(sql) {
+            body["parameters"] = ["MULTI_STATEMENT_COUNT": 0]
         }
 
         var response = try await postJSON(
@@ -458,9 +478,30 @@ final class SnowflakeConnection: @unchecked Sendable {
         guard let data = response["data"] as? [String: Any] else {
             throw SnowflakeError.invalidResponse("Query response had no data")
         }
+        return (data, token)
+    }
 
-        applyFinalSessionInfo(data)
-        return try await buildResult(from: data, token: token)
+    private func collectMultiStatementResults(ids: String, token: String) async throws -> SnowflakeQueryResult {
+        var combinedAffected = 0
+        var last: SnowflakeQueryResult?
+        for id in ids.components(separatedBy: ",") where !id.isEmpty {
+            var response = try await getJSON(path: "/queries/\(id)/result", token: token)
+            response = try await pollIfInProgress(response, token: token)
+            guard (response["success"] as? Bool) == true,
+                  let data = response["data"] as? [String: Any] else {
+                let message = response["message"] as? String ?? "Statement failed"
+                throw SnowflakeError.queryFailed(code: Self.codeString(response["code"]), message: message)
+            }
+            applyFinalSessionInfo(data)
+            let result = try await buildResult(from: data, token: token)
+            combinedAffected += result.affectedRows
+            last = result
+        }
+        guard var result = last else {
+            throw SnowflakeError.invalidResponse("Multi-statement response had no results")
+        }
+        result.affectedRows = combinedAffected
+        return result
     }
 
     private static func trackingQueryItems(requestID: String = UUID().uuidString.lowercased()) -> [URLQueryItem] {
@@ -491,6 +532,15 @@ final class SnowflakeConnection: @unchecked Sendable {
         return response
     }
 
+    private static func chunkRequestHeaders(from data: [String: Any]) -> [String: String] {
+        var headers = data["chunkHeaders"] as? [String: String] ?? [:]
+        if headers.isEmpty, let qrmk = data["qrmk"] as? String {
+            headers["x-amz-server-side-encryption-customer-algorithm"] = "AES256"
+            headers["x-amz-server-side-encryption-customer-key"] = qrmk
+        }
+        return headers
+    }
+
     private func buildResult(from data: [String: Any], token: String) async throws -> SnowflakeQueryResult {
         let columns = Self.parseColumns(data["rowtype"] as? [[String: Any]] ?? [])
 
@@ -502,12 +552,7 @@ final class SnowflakeConnection: @unchecked Sendable {
         let affectedRows = Self.extractAffectedRows(columns: columns, rows: rows)
 
         if let chunks = data["chunks"] as? [[String: Any]], !chunks.isEmpty {
-            var headers = data["chunkHeaders"] as? [String: String] ?? [:]
-            if headers.isEmpty, let qrmk = data["qrmk"] as? String {
-                headers["x-amz-server-side-encryption-customer-algorithm"] = "AES256"
-                headers["x-amz-server-side-encryption-customer-key"] = qrmk
-            }
-            rows.append(contentsOf: try await downloadChunks(chunks, headers: headers))
+            rows.append(contentsOf: try await downloadChunks(chunks, headers: Self.chunkRequestHeaders(from: data)))
         }
 
         return SnowflakeQueryResult(
@@ -516,6 +561,76 @@ final class SnowflakeConnection: @unchecked Sendable {
             affectedRows: affectedRows,
             isTruncated: false,
             statusMessage: nil
+        )
+    }
+
+    struct StreamedResult {
+        let columns: [SnowflakeColumnMeta]
+        let inlineRows: [[PluginCellValueBox]]
+        let estimatedRowCount: Int
+        let batches: AsyncThrowingStream<[[PluginCellValueBox]], Error>
+    }
+
+    func queryStreamed(_ sql: String) async throws -> StreamedResult {
+        let (data, _) = try await withReauthentication {
+            try await submitQuery(sql, parameters: [])
+        }
+        applyFinalSessionInfo(data)
+
+        let columns = Self.parseColumns(data["rowtype"] as? [[String: Any]] ?? [])
+        let inlineRows = (data["rowset"] as? [[Any]] ?? []).map { row in row.map(Self.box) }
+        let chunks = data["chunks"] as? [[String: Any]] ?? []
+        let chunkRowCount = chunks.reduce(0) { $0 + (($1["rowCount"] as? Int) ?? 0) }
+        let headers = Self.chunkRequestHeaders(from: data)
+        let urls = chunks.compactMap { ($0["url"] as? String).flatMap(URL.init(string:)) }
+
+        let stream = AsyncThrowingStream<[[PluginCellValueBox]], Error> { continuation in
+            guard !urls.isEmpty else {
+                continuation.finish()
+                return
+            }
+            let task = Task { [session] in
+                do {
+                    var buffer: [Int: [[PluginCellValueBox]]] = [:]
+                    var nextToYield = 0
+                    try await withThrowingTaskGroup(of: (Int, [[PluginCellValueBox]]).self) { group in
+                        var nextIndex = 0
+                        while nextIndex < min(Self.chunkDownloadWorkers, urls.count) {
+                            let index = nextIndex
+                            group.addTask {
+                                (index, try await Self.downloadChunk(urls[index], headers: headers, session: session))
+                            }
+                            nextIndex += 1
+                        }
+                        while let (index, rows) = try await group.next() {
+                            buffer[index] = rows
+                            while let ready = buffer[nextToYield] {
+                                buffer[nextToYield] = nil
+                                continuation.yield(ready)
+                                nextToYield += 1
+                            }
+                            if nextIndex < urls.count {
+                                let next = nextIndex
+                                group.addTask {
+                                    (next, try await Self.downloadChunk(urls[next], headers: headers, session: session))
+                                }
+                                nextIndex += 1
+                            }
+                        }
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { @Sendable _ in task.cancel() }
+        }
+
+        return StreamedResult(
+            columns: columns,
+            inlineRows: inlineRows,
+            estimatedRowCount: inlineRows.count + chunkRowCount,
+            batches: stream
         )
     }
 

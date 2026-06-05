@@ -342,7 +342,7 @@ extension PluginMetadataRegistry {
             )),
             ("Snowflake", PluginMetadataSnapshot(
                 displayName: "Snowflake", iconName: "snowflake-icon", defaultPort: 443,
-                requiresAuthentication: true, supportsForeignKeys: false, supportsSchemaEditing: false,
+                requiresAuthentication: true, supportsForeignKeys: true, supportsSchemaEditing: true,
                 isDownloadable: true, primaryUrlScheme: "", parameterStyle: .questionMark,
                 navigationModel: .standard, explainVariants: [
                     ExplainVariant(id: "text", label: "Explain (Text)", sqlPrefix: "EXPLAIN USING TEXT")
@@ -356,7 +356,7 @@ extension PluginMetadataRegistry {
                 supportsColumnReorder: false,
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
                     supportsSchemaSwitching: true,
-                    supportsImport: false,
+                    supportsImport: true,
                     supportsExport: true,
                     supportsSSH: false,
                     supportsSSL: false,
@@ -377,7 +377,7 @@ extension PluginMetadataRegistry {
                     systemSchemaNames: ["INFORMATION_SCHEMA"],
                     fileExtensions: [],
                     databaseGroupingStrategy: .hierarchicalSchema,
-                    structureColumnFields: [.name, .type, .nullable, .defaultValue]
+                    structureColumnFields: [.name, .type, .nullable, .defaultValue, .comment]
                 ),
                 editor: PluginMetadataSnapshot.EditorConfig(
                     sqlDialect: SQLDialectDescriptor(

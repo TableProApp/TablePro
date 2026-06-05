@@ -26,7 +26,7 @@ The account identifier is the part before `.snowflakecomputing.com`:
 ALTER USER jane_doe SET RSA_PUBLIC_KEY='MIIBIjANBgkq...';
 ```
 
-**Single Sign-On (Browser)**: Authenticate through your identity provider (Okta, Entra ID, etc.) in the browser. TablePro opens your IdP's login page and captures the response automatically (`authenticator=externalbrowser`).
+**Single Sign-On (Browser)**: Authenticate through your identity provider (Okta, Entra ID, etc.) in the browser. TablePro opens your IdP's login page and captures the response automatically (`authenticator=externalbrowser`). With `ALLOW_ID_TOKEN = TRUE` on the account, the sign-in token is cached in the Keychain so later connects skip the browser for about four hours.
 
 **OAuth Token**: Paste a valid OAuth access token issued for your Snowflake account.
 
@@ -71,7 +71,11 @@ SELECT * FROM events AT(OFFSET => -60*5);
 
 **Data Types**: NUMBER, FLOAT, VARCHAR, BINARY, BOOLEAN, DATE, TIME, TIMESTAMP_NTZ/LTZ/TZ, VARIANT, OBJECT, ARRAY, GEOGRAPHY, GEOMETRY. Semi-structured values display as JSON text.
 
+**Structure Editing**: Add, rename, and drop columns; widen VARCHAR lengths and adjust NUMBER precision (Snowflake does not allow shrinking or cross-type changes); toggle NOT NULL; edit column comments; change primary keys. Declared primary keys, foreign keys, and clustering keys show in the structure pane (Snowflake treats key constraints as informational).
+
 **DDL**: View object DDL via `GET_DDL`. Create or replace views, truncate and drop tables.
+
+**Import**: CSV, TSV, and JSON files import into new or existing tables through parameterized inserts.
 
 **Export**: CSV, JSON, SQL, XLSX formats.
 
@@ -92,4 +96,4 @@ SELECT * FROM events AT(OFFSET => -60*5);
 ## Limitations
 
 - No SSH tunneling (HTTPS only to the Snowflake endpoint)
-- Foreign keys are informational only and are not displayed
+- Foreign keys display as informational; Snowflake never enforces them
