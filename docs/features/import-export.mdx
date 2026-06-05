@@ -14,6 +14,8 @@ Export data in five formats (CSV, JSON, SQL, MQL, XLSX), import SQL files with g
 3. Choose a format, select tables, configure options
 4. Click **Export**
 
+TablePro remembers the last format and options you exported with, so the dialog opens ready for a repeat export. Option changes stick only after a successful export; cancelling the dialog discards them. **Reset to Defaults** under the options restores the stock settings for the current format.
+
 <Note>
 **MongoDB**: SQL export is not available. Use CSV, JSON, MQL, or XLSX. MQL generates `db.collection.insertMany([...])` scripts for `mongosh`.
 </Note>
@@ -211,7 +213,7 @@ Import `.sql` and `.sql.gz` files (statements execute directly against your data
     Click **File** > **Import** > **From SQL** (`Cmd+Shift+I`), or drag and drop a `.sql` / `.sql.gz` file onto the app.
   </Step>
   <Step title="Configure Options">
-    Set encoding, transaction wrapping, and foreign key check options.
+    Set encoding, transaction wrapping, and foreign key check options. TablePro remembers the encoding and options from your last successful import; **Reset to Defaults** next to the Options header restores them.
   </Step>
   <Step title="Preview and Import">
     Review the SQL preview, statement count, and file size. Click **Import** to execute.

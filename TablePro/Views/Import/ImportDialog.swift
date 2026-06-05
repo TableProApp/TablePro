@@ -23,6 +23,7 @@ struct ImportDialog: View {
         self.connection = connection
         self.initialFileURL = initialFileURL
         self._selectedFormatId = State(initialValue: initialFormatId)
+        self._selectedEncoding = State(initialValue: ExportDialogStorage.shared.loadLastImportEncoding())
     }
 
     // MARK: - State
@@ -32,8 +33,10 @@ struct ImportDialog: View {
     @State private var fileSize: Int64 = 0
     @State private var statementCount: Int = 0
     @State private var isCountingStatements = false
-    @State private var selectedEncoding: ImportEncoding = .utf8
+    @State private var selectedEncoding: ImportEncoding
     @State private var selectedFormatId: String = "sql"
+    @State private var settingsSnapshots: [String: Data] = [:]
+    @State private var importSucceeded = false
     @State private var showProgressDialog = false
     @State private var showSuccessDialog = false
     @State private var showErrorDialog = false
@@ -83,6 +86,7 @@ struct ImportDialog: View {
                     selectedFormatId = type(of: first).formatId
                 }
             }
+            captureSettingsSnapshots()
         }
         .onExitCommand {
             if !(importService?.state.isImporting ?? false) {
@@ -99,6 +103,9 @@ struct ImportDialog: View {
             countStatementsTask?.cancel()
             importTask?.cancel()
             cleanupTempFiles()
+            if !importSucceeded {
+                restoreSettingsSnapshots()
+            }
         }
         .sheet(isPresented: $showProgressDialog) {
             if let service = importService {
@@ -237,9 +244,19 @@ struct ImportDialog: View {
 
     private var optionsView: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Options")
-                .font(.callout.weight(.semibold))
-                .foregroundStyle(.primary)
+            HStack {
+                Text("Options")
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(.primary)
+
+                Spacer()
+
+                Button("Reset to Defaults") {
+                    resetOptionsToDefaults()
+                }
+                .buttonStyle(.link)
+                .font(.callout)
+            }
 
             VStack(alignment: .leading, spacing: 12) {
                 // Encoding picker (always shown, independent of plugin)
@@ -297,6 +314,37 @@ struct ImportDialog: View {
     }
 
     // MARK: - Actions
+
+    private func captureSettingsSnapshots() {
+        var snapshots: [String: Data] = [:]
+        for plugin in availableFormats {
+            guard let settable = plugin as? any SettablePluginDiscoverable,
+                  let data = settable.snapshotSettingsData() else { continue }
+            snapshots[type(of: plugin).formatId] = data
+        }
+        settingsSnapshots = snapshots
+    }
+
+    private func restoreSettingsSnapshots() {
+        for (formatId, data) in settingsSnapshots {
+            let plugin = PluginManager.shared.importPlugin(forFormat: formatId)
+            (plugin as? any SettablePluginDiscoverable)?.restoreSettingsData(data)
+        }
+        settingsSnapshots.removeAll()
+    }
+
+    private func resetOptionsToDefaults() {
+        selectedEncoding = .utf8
+        guard let settable = currentPlugin as? any SettablePluginDiscoverable else { return }
+        settable.resetSettingsToDefaults()
+        settingsSnapshots[selectedFormatId] = settable.snapshotSettingsData()
+    }
+
+    private func recordSuccessfulImport() {
+        importSucceeded = true
+        ExportDialogStorage.shared.saveLastImportEncoding(selectedEncoding)
+        settingsSnapshots.removeAll()
+    }
 
     @MainActor
     private func selectFile() async {
@@ -432,6 +480,7 @@ struct ImportDialog: View {
                 await MainActor.run {
                     showProgressDialog = false
                     importResult = result
+                    recordSuccessfulImport()
                     showSuccessDialog = true
                 }
             } catch is PluginImportCancellationError {

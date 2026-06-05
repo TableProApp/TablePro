@@ -55,6 +55,10 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin {
         AnyView(SQLExportOptionsView(plugin: self))
     }
 
+    func resetSettingsToDefaults() {
+        settings = SQLExportOptions()
+    }
+
     func export(
         tables: [PluginExportTable],
         dataSource: any PluginExportDataSource,

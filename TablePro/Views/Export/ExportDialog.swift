@@ -26,6 +26,8 @@ struct ExportDialog: View {
     @State private var showProgressDialog = false
     @State private var showSuccessDialog = false
     @State private var exportedFileURL: URL?
+    @State private var settingsSnapshots: [String: Data] = [:]
+    @State private var exportSucceeded = false
 
     // MARK: - User Preferences
 
@@ -95,10 +97,18 @@ struct ExportDialog: View {
         .background(Color(nsColor: .windowBackgroundColor))
         .onAppear {
             let available = availableFormats
-            if !available.contains(where: { type(of: $0).formatId == config.formatId }) {
-                if let first = available.first {
-                    config.formatId = type(of: first).formatId
-                }
+            if let lastFormatId = ExportDialogStorage.shared.loadLastExportFormatId(),
+               available.contains(where: { type(of: $0).formatId == lastFormatId }) {
+                config.formatId = lastFormatId
+            } else if !available.contains(where: { type(of: $0).formatId == config.formatId }),
+                      let first = available.first {
+                config.formatId = type(of: first).formatId
+            }
+            captureSettingsSnapshots()
+        }
+        .onDisappear {
+            if !exportSucceeded {
+                restoreSettingsSnapshots()
             }
         }
         .onChange(of: config.formatId) {
@@ -329,6 +339,16 @@ struct ExportDialog: View {
                     if let settable = currentPlugin as? any SettablePluginDiscoverable,
                        let optionsView = settable.settingsView() {
                         optionsView
+
+                        HStack {
+                            Spacer()
+                            Button("Reset to Defaults") {
+                                resetCurrentFormatSettings()
+                            }
+                            .buttonStyle(.link)
+                            .font(.callout)
+                        }
+                        .padding(.top, 8)
                     }
                 }
                 .padding(.horizontal, 16)
@@ -515,6 +535,36 @@ struct ExportDialog: View {
     }
 
     // MARK: - Actions
+
+    private func captureSettingsSnapshots() {
+        var snapshots: [String: Data] = [:]
+        for plugin in availableFormats {
+            guard let settable = plugin as? any SettablePluginDiscoverable,
+                  let data = settable.snapshotSettingsData() else { continue }
+            snapshots[type(of: plugin).formatId] = data
+        }
+        settingsSnapshots = snapshots
+    }
+
+    private func restoreSettingsSnapshots() {
+        for (formatId, data) in settingsSnapshots {
+            let plugin = PluginManager.shared.exportPlugin(forFormat: formatId)
+            (plugin as? any SettablePluginDiscoverable)?.restoreSettingsData(data)
+        }
+        settingsSnapshots.removeAll()
+    }
+
+    private func resetCurrentFormatSettings() {
+        guard let settable = currentPlugin as? any SettablePluginDiscoverable else { return }
+        settable.resetSettingsToDefaults()
+        settingsSnapshots[config.formatId] = settable.snapshotSettingsData()
+    }
+
+    private func recordSuccessfulExport() {
+        exportSucceeded = true
+        ExportDialogStorage.shared.saveLastExportFormatId(config.formatId)
+        settingsSnapshots.removeAll()
+    }
 
     /// Instantly populate the current database from sidebar tables (no network).
     private func populateFromSidebarTables() {
@@ -803,6 +853,7 @@ struct ExportDialog: View {
 
             showProgressDialog = false
             isExporting = false
+            recordSuccessfulExport()
 
             if hideSuccessDialog {
                 isPresented = false
@@ -847,6 +898,7 @@ struct ExportDialog: View {
 
             showProgressDialog = false
             isExporting = false
+            recordSuccessfulExport()
 
             if hideSuccessDialog {
                 isPresented = false
