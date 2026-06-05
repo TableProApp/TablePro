@@ -130,6 +130,11 @@ enum PasswordSourceResolver {
             stdoutPipe.fileHandleForReading.readabilityHandler = nil
             stderrPipe.fileHandleForReading.readabilityHandler = nil
 
+            let remainingStdout = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
+            if !remainingStdout.isEmpty { stdoutCollector.append(remainingStdout) }
+            let remainingStderr = stderrPipe.fileHandleForReading.readDataToEndOfFile()
+            if !remainingStderr.isEmpty { stderrCollector.append(remainingStderr) }
+
             if stdoutCollector.overflowed {
                 throw ResolutionError.outputTooLarge
             }
