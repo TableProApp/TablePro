@@ -437,7 +437,8 @@ final class SnowflakeConnection: @unchecked Sendable {
             do {
                 try await renewSession()
             } catch {
-                try await connect()
+                lock.withLock { sessionToken = nil }
+                try await connectIfNeeded()
             }
             return try await operation()
         }

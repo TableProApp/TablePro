@@ -295,7 +295,7 @@ final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             columnsByTable[table, default: []].append(column)
         }
         for (table, columns) in columnsByTable {
-            cacheColumnTypes(table: table, columns: columns)
+            cacheColumnTypes(table: table, schema: targetSchema, columns: columns)
         }
         return columnsByTable
     }
@@ -360,18 +360,24 @@ final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 comment: comment
             )
         }
-        cacheColumnTypes(table: table, columns: columns)
+        cacheColumnTypes(table: table, schema: targetSchema, columns: columns)
         return columns
     }
 
-    func cacheColumnTypes(table: String, columns: [PluginColumnInfo]) {
+    func cacheColumnTypes(table: String, schema: String?, columns: [PluginColumnInfo]) {
+        let key = columnTypeCacheKey(table: table, schema: schema)
         let types = Dictionary(uniqueKeysWithValues: columns.map { ($0.name, $0.dataType) })
-        lock.withLock { columnTypeCache[table] = types }
+        lock.withLock { columnTypeCache[key] = types }
     }
 
     func columnTypeNames(for table: String, columns: [String]) -> [String] {
-        let types = lock.withLock { columnTypeCache[table] } ?? [:]
+        let key = columnTypeCacheKey(table: table, schema: nil)
+        let types = lock.withLock { columnTypeCache[key] } ?? [:]
         return columns.map { types[$0] ?? "TEXT" }
+    }
+
+    private func columnTypeCacheKey(table: String, schema: String?) -> String {
+        "\((schema ?? connection?.currentSchema) ?? "").\(table)"
     }
 
     func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] {

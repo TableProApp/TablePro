@@ -39,19 +39,27 @@ enum SnowflakeMFATokenStore {
         deleteKeychain(key: key)
     }
 
+    static let rejectedPasscodeLifetime: TimeInterval = 300
+
     static func markPasscodeRejected(_ passcode: String, account: String, user: String) {
         guard !passcode.isEmpty else { return }
         let key = "\(cacheKey(account: account, user: user)):\(passcode)"
-        _ = lock.withLock { rejectedPasscodes.insert(key) }
+        lock.withLock {
+            rejectedPasscodes = rejectedPasscodes.filter { Date().timeIntervalSince($0.value) < rejectedPasscodeLifetime }
+            rejectedPasscodes[key] = Date()
+        }
     }
 
     static func isPasscodeRejected(_ passcode: String, account: String, user: String) -> Bool {
         guard !passcode.isEmpty else { return false }
         let key = "\(cacheKey(account: account, user: user)):\(passcode)"
-        return lock.withLock { rejectedPasscodes.contains(key) }
+        return lock.withLock {
+            guard let rejectedAt = rejectedPasscodes[key] else { return false }
+            return Date().timeIntervalSince(rejectedAt) < rejectedPasscodeLifetime
+        }
     }
 
-    private static var rejectedPasscodes: Set<String> = []
+    private static var rejectedPasscodes: [String: Date] = [:]
 
     private static func cacheKey(account: String, user: String) -> String {
         "\(SnowflakeAccount.issuerAccountName(forAccount: account)).\(user.uppercased())"
