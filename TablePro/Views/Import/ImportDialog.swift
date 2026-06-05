@@ -23,7 +23,7 @@ struct ImportDialog: View {
         self.connection = connection
         self.initialFileURL = initialFileURL
         self._selectedFormatId = State(initialValue: initialFormatId)
-        self._selectedEncoding = State(initialValue: ExportDialogStorage.shared.loadLastImportEncoding())
+        self._selectedEncoding = State(initialValue: TransferDialogStorage.shared.loadLastImportEncoding())
     }
 
     // MARK: - State
@@ -35,7 +35,7 @@ struct ImportDialog: View {
     @State private var isCountingStatements = false
     @State private var selectedEncoding: ImportEncoding
     @State private var selectedFormatId: String = "sql"
-    @State private var settingsSnapshots: [String: Data] = [:]
+    @State private var settingsSnapshot: PluginSettingsSnapshot?
     @State private var importSucceeded = false
     @State private var showProgressDialog = false
     @State private var showSuccessDialog = false
@@ -86,7 +86,7 @@ struct ImportDialog: View {
                     selectedFormatId = type(of: first).formatId
                 }
             }
-            captureSettingsSnapshots()
+            captureSettingsSnapshot()
         }
         .onExitCommand {
             if !(importService?.state.isImporting ?? false) {
@@ -104,7 +104,7 @@ struct ImportDialog: View {
             importTask?.cancel()
             cleanupTempFiles()
             if !importSucceeded {
-                restoreSettingsSnapshots()
+                restoreSettingsSnapshot()
             }
         }
         .sheet(isPresented: $showProgressDialog) {
@@ -315,35 +315,28 @@ struct ImportDialog: View {
 
     // MARK: - Actions
 
-    private func captureSettingsSnapshots() {
-        var snapshots: [String: Data] = [:]
-        for plugin in availableFormats {
-            guard let settable = plugin as? any SettablePluginDiscoverable,
-                  let data = settable.snapshotSettingsData() else { continue }
-            snapshots[type(of: plugin).formatId] = data
-        }
-        settingsSnapshots = snapshots
+    private func captureSettingsSnapshot() {
+        settingsSnapshot = PluginSettingsSnapshot(
+            plugins: availableFormats.compactMap { $0 as? any SettablePluginDiscoverable }
+        )
     }
 
-    private func restoreSettingsSnapshots() {
-        for (formatId, data) in settingsSnapshots {
-            let plugin = PluginManager.shared.importPlugin(forFormat: formatId)
-            (plugin as? any SettablePluginDiscoverable)?.restoreSettingsData(data)
-        }
-        settingsSnapshots.removeAll()
+    private func restoreSettingsSnapshot() {
+        settingsSnapshot?.restore()
+        settingsSnapshot = nil
     }
 
     private func resetOptionsToDefaults() {
         selectedEncoding = .utf8
         guard let settable = currentPlugin as? any SettablePluginDiscoverable else { return }
         settable.resetSettingsToDefaults()
-        settingsSnapshots[selectedFormatId] = settable.snapshotSettingsData()
+        settingsSnapshot?.recapture(settable)
     }
 
     private func recordSuccessfulImport() {
         importSucceeded = true
-        ExportDialogStorage.shared.saveLastImportEncoding(selectedEncoding)
-        settingsSnapshots.removeAll()
+        TransferDialogStorage.shared.saveLastImportEncoding(selectedEncoding)
+        settingsSnapshot = nil
     }
 
     @MainActor

@@ -1,12 +1,12 @@
 //
-//  ExportDialogStorage.swift
+//  TransferDialogStorage.swift
 //  TablePro
 //
 
 import Foundation
 
-final class ExportDialogStorage {
-    static let shared = ExportDialogStorage()
+final class TransferDialogStorage {
+    static let shared = TransferDialogStorage()
 
     private let defaults: UserDefaults
 

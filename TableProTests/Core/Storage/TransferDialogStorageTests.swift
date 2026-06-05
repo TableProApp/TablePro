@@ -1,5 +1,5 @@
 //
-//  ExportDialogStorageTests.swift
+//  TransferDialogStorageTests.swift
 //  TableProTests
 //
 
@@ -7,8 +7,8 @@ import Foundation
 import Testing
 @testable import TablePro
 
-@Suite("ExportDialogStorage")
-struct ExportDialogStorageTests {
+@Suite("TransferDialogStorage")
+struct TransferDialogStorageTests {
     private let suiteName = "com.TablePro.tests.exportDialog.\(UUID().uuidString)"
 
     private func makeDefaults() throws -> UserDefaults {
@@ -20,7 +20,7 @@ struct ExportDialogStorageTests {
         let defaults = try makeDefaults()
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
-        let storage = ExportDialogStorage(userDefaults: defaults)
+        let storage = TransferDialogStorage(userDefaults: defaults)
         #expect(storage.loadLastExportFormatId() == nil)
     }
 
@@ -29,7 +29,7 @@ struct ExportDialogStorageTests {
         let defaults = try makeDefaults()
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
-        let storage = ExportDialogStorage(userDefaults: defaults)
+        let storage = TransferDialogStorage(userDefaults: defaults)
         storage.saveLastExportFormatId("sql")
 
         #expect(storage.loadLastExportFormatId() == "sql")
@@ -40,7 +40,7 @@ struct ExportDialogStorageTests {
         let defaults = try makeDefaults()
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
-        let storage = ExportDialogStorage(userDefaults: defaults)
+        let storage = TransferDialogStorage(userDefaults: defaults)
         storage.saveLastExportFormatId("csv")
         storage.saveLastExportFormatId("xlsx")
 
@@ -52,7 +52,7 @@ struct ExportDialogStorageTests {
         let defaults = try makeDefaults()
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
-        let storage = ExportDialogStorage(userDefaults: defaults)
+        let storage = TransferDialogStorage(userDefaults: defaults)
         #expect(storage.loadLastImportEncoding() == .utf8)
     }
 
@@ -61,7 +61,7 @@ struct ExportDialogStorageTests {
         let defaults = try makeDefaults()
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
-        let storage = ExportDialogStorage(userDefaults: defaults)
+        let storage = TransferDialogStorage(userDefaults: defaults)
         storage.saveLastImportEncoding(encoding)
 
         #expect(storage.loadLastImportEncoding() == encoding)
@@ -73,7 +73,7 @@ struct ExportDialogStorageTests {
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         defaults.set("Shift-JIS", forKey: "com.TablePro.import.dialog.lastEncoding")
-        let storage = ExportDialogStorage(userDefaults: defaults)
+        let storage = TransferDialogStorage(userDefaults: defaults)
 
         #expect(storage.loadLastImportEncoding() == .utf8)
     }

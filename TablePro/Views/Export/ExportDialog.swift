@@ -26,7 +26,7 @@ struct ExportDialog: View {
     @State private var showProgressDialog = false
     @State private var showSuccessDialog = false
     @State private var exportedFileURL: URL?
-    @State private var settingsSnapshots: [String: Data] = [:]
+    @State private var settingsSnapshot: PluginSettingsSnapshot?
     @State private var exportSucceeded = false
 
     // MARK: - User Preferences
@@ -97,18 +97,18 @@ struct ExportDialog: View {
         .background(Color(nsColor: .windowBackgroundColor))
         .onAppear {
             let available = availableFormats
-            if let lastFormatId = ExportDialogStorage.shared.loadLastExportFormatId(),
+            if let lastFormatId = TransferDialogStorage.shared.loadLastExportFormatId(),
                available.contains(where: { type(of: $0).formatId == lastFormatId }) {
                 config.formatId = lastFormatId
             } else if !available.contains(where: { type(of: $0).formatId == config.formatId }),
                       let first = available.first {
                 config.formatId = type(of: first).formatId
             }
-            captureSettingsSnapshots()
+            captureSettingsSnapshot()
         }
         .onDisappear {
             if !exportSucceeded {
-                restoreSettingsSnapshots()
+                restoreSettingsSnapshot()
             }
         }
         .onChange(of: config.formatId) {
@@ -536,34 +536,27 @@ struct ExportDialog: View {
 
     // MARK: - Actions
 
-    private func captureSettingsSnapshots() {
-        var snapshots: [String: Data] = [:]
-        for plugin in availableFormats {
-            guard let settable = plugin as? any SettablePluginDiscoverable,
-                  let data = settable.snapshotSettingsData() else { continue }
-            snapshots[type(of: plugin).formatId] = data
-        }
-        settingsSnapshots = snapshots
+    private func captureSettingsSnapshot() {
+        settingsSnapshot = PluginSettingsSnapshot(
+            plugins: availableFormats.compactMap { $0 as? any SettablePluginDiscoverable }
+        )
     }
 
-    private func restoreSettingsSnapshots() {
-        for (formatId, data) in settingsSnapshots {
-            let plugin = PluginManager.shared.exportPlugin(forFormat: formatId)
-            (plugin as? any SettablePluginDiscoverable)?.restoreSettingsData(data)
-        }
-        settingsSnapshots.removeAll()
+    private func restoreSettingsSnapshot() {
+        settingsSnapshot?.restore()
+        settingsSnapshot = nil
     }
 
     private func resetCurrentFormatSettings() {
         guard let settable = currentPlugin as? any SettablePluginDiscoverable else { return }
         settable.resetSettingsToDefaults()
-        settingsSnapshots[config.formatId] = settable.snapshotSettingsData()
+        settingsSnapshot?.recapture(settable)
     }
 
     private func recordSuccessfulExport() {
         exportSucceeded = true
-        ExportDialogStorage.shared.saveLastExportFormatId(config.formatId)
-        settingsSnapshots.removeAll()
+        TransferDialogStorage.shared.saveLastExportFormatId(config.formatId)
+        settingsSnapshot = nil
     }
 
     /// Instantly populate the current database from sidebar tables (no network).
