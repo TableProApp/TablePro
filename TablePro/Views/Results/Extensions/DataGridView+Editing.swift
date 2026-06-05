@@ -40,6 +40,13 @@ extension TableViewCoordinator {
         return .editable(value: value)
     }
 
+    func canStartInlineEdit(row: Int, columnIndex: Int) -> Bool {
+        if case .editable = editEligibility(row: row, columnIndex: columnIndex) {
+            return true
+        }
+        return false
+    }
+
     func tableView(_ tableView: NSTableView, shouldEdit tableColumn: NSTableColumn?, row: Int) -> Bool {
         false
     }

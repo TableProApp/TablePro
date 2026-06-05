@@ -36,26 +36,21 @@ struct InlineEditEligibilityTests {
         return coordinator
     }
 
-    private func isEditable(_ eligibility: TableViewCoordinator.EditEligibility) -> Bool {
-        if case .editable = eligibility { return true }
-        return false
-    }
-
     @Test("JSON column is eligible for inline editing")
     func jsonColumnIsInlineEditable() {
         let coordinator = makeCoordinator(columnType: .json(rawType: "JSON"), value: #"{"k":1}"#)
-        #expect(isEditable(coordinator.editEligibility(row: 0, columnIndex: 0)))
+        #expect(coordinator.canStartInlineEdit(row: 0, columnIndex: 0))
     }
 
     @Test("BLOB column is not eligible for inline editing")
     func blobColumnIsNotInlineEditable() {
         let coordinator = makeCoordinator(columnType: .blob(rawType: "BLOB"), value: "x")
-        #expect(!isEditable(coordinator.editEligibility(row: 0, columnIndex: 0)))
+        #expect(!coordinator.canStartInlineEdit(row: 0, columnIndex: 0))
     }
 
     @Test("plain text column is eligible for inline editing")
     func textColumnIsInlineEditable() {
         let coordinator = makeCoordinator(columnType: .text(rawType: "TEXT"), value: "hello")
-        #expect(isEditable(coordinator.editEligibility(row: 0, columnIndex: 0)))
+        #expect(coordinator.canStartInlineEdit(row: 0, columnIndex: 0))
     }
 }
