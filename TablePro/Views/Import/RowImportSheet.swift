@@ -86,7 +86,7 @@ struct RowImportSheet: View {
             footerView
                 .padding()
         }
-        .frame(width: 720, height: 600)
+        .frame(width: 720, height: 640)
         .task {
             await loadTables()
             await loadNewColumns()
@@ -241,94 +241,144 @@ struct RowImportSheet: View {
     }
 
     private var mappingTable: some View {
-        ScrollView {
-            Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 6) {
-                GridRow {
-                    Toggle("", isOn: allMappingsIncluded)
-                        .labelsHidden()
-                        .help(String(localized: "Import all fields"))
-                    Text("Field").font(.caption).foregroundStyle(.secondary)
-                    Text("Column").font(.caption).foregroundStyle(.secondary)
-                }
-                Divider().gridCellColumns(3)
-
-                ForEach(mappings) { row in
-                    GridRow {
-                        Toggle("", isOn: mappingBinding(row).include).labelsHidden()
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(row.field.name).lineLimit(1)
-                            if let sample = row.field.sampleValue, !sample.isEmpty {
-                                Text(sample).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                            }
-                        }
-                        Picker("", selection: mappingBinding(row).targetColumn) {
-                            Text("Skip").tag(String?.none)
-                            ForEach(targetColumns, id: \.self) { column in
-                                Text(column).tag(String?.some(column))
-                            }
-                        }
-                        .labelsHidden()
-                        .frame(maxWidth: 240, alignment: .leading)
-                        .disabled(!row.include)
-                    }
-                }
+        VStack(spacing: 0) {
+            HStack(spacing: 12) {
+                Toggle("", isOn: allMappingsIncluded)
+                    .labelsHidden()
+                    .help(String(localized: "Import all fields"))
+                    .frame(width: 16)
+                Text("Field")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Text("Column")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 240, alignment: .leading)
             }
             .padding(.horizontal)
-            .padding(.vertical, 8)
+            .padding(.vertical, 6)
+            Divider()
+
+            ScrollView {
+                VStack(spacing: 6) {
+                    ForEach(mappings) { row in
+                        mappingRow(row)
+                    }
+                }
+                .padding(.horizontal)
+                .padding(.vertical, 8)
+            }
+        }
+    }
+
+    private func mappingRow(_ row: FieldMapping) -> some View {
+        HStack(spacing: 12) {
+            Toggle("", isOn: mappingBinding(row).include)
+                .labelsHidden()
+                .frame(width: 16)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(row.field.name).lineLimit(1)
+                if let sample = row.field.sampleValue, !sample.isEmpty {
+                    Text(sample).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            Picker("", selection: mappingBinding(row).targetColumn) {
+                Text("Skip").tag(String?.none)
+                ForEach(targetColumns, id: \.self) { column in
+                    Text(column).tag(String?.some(column))
+                }
+            }
+            .labelsHidden()
+            .frame(width: 240, alignment: .leading)
+            .disabled(!row.include)
         }
     }
 
     private var newColumnsTable: some View {
-        ScrollView {
-            Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 6) {
-                GridRow {
-                    Toggle("", isOn: allColumnsIncluded)
-                        .labelsHidden()
-                        .help(String(localized: "Create all columns"))
-                    Text("Column").font(.caption).foregroundStyle(.secondary)
-                    Text("Type").font(.caption).foregroundStyle(.secondary)
-                    Text("Key").font(.caption).foregroundStyle(.secondary)
-                    Text("Null").font(.caption).foregroundStyle(.secondary)
-                    Text("Default").font(.caption).foregroundStyle(.secondary)
-                }
-                Divider().gridCellColumns(6)
-
-                ForEach(newColumns) { row in
-                    GridRow {
-                        Toggle("", isOn: columnBinding(row).include).labelsHidden()
-                        TextField("name", text: columnBinding(row).name)
-                            .textFieldStyle(.roundedBorder)
-                            .frame(width: 150)
-                            .disabled(!row.include)
-                        Menu {
-                            ForEach(typeOptions(including: row.type), id: \.self) { type in
-                                Button {
-                                    columnBinding(row).type.wrappedValue = type
-                                } label: {
-                                    if type.caseInsensitiveCompare(row.type) == .orderedSame {
-                                        Label(type, systemImage: "checkmark")
-                                    } else {
-                                        Text(type)
-                                    }
-                                }
-                            }
-                        } label: {
-                            Text(row.type)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                        .frame(width: 150)
-                        .disabled(!row.include)
-                        Toggle("", isOn: columnBinding(row).isPrimaryKey).labelsHidden().disabled(!row.include)
-                        Toggle("", isOn: columnBinding(row).isNullable).labelsHidden().disabled(!row.include)
-                        TextField("", text: columnBinding(row).defaultValue)
-                            .textFieldStyle(.roundedBorder)
-                            .frame(minWidth: 120)
-                            .disabled(!row.include)
-                    }
-                }
+        VStack(spacing: 0) {
+            HStack(spacing: 10) {
+                Toggle("", isOn: allColumnsIncluded)
+                    .labelsHidden()
+                    .help(String(localized: "Create all columns"))
+                    .frame(width: 16)
+                Text("Column")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 150, alignment: .leading)
+                Text("Type")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 150, alignment: .leading)
+                Text("Key")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 30)
+                Text("Null")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 30)
+                Text("Default")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
             .padding(.horizontal)
-            .padding(.vertical, 8)
+            .padding(.vertical, 6)
+            Divider()
+
+            ScrollView {
+                VStack(spacing: 6) {
+                    ForEach(newColumns) { row in
+                        newColumnRow(row)
+                    }
+                }
+                .padding(.horizontal)
+                .padding(.vertical, 8)
+            }
+        }
+    }
+
+    private func newColumnRow(_ row: NewColumn) -> some View {
+        HStack(spacing: 10) {
+            Toggle("", isOn: columnBinding(row).include)
+                .labelsHidden()
+                .frame(width: 16)
+            TextField("name", text: columnBinding(row).name)
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 150)
+                .disabled(!row.include)
+            Menu {
+                ForEach(typeOptions(including: row.type), id: \.self) { type in
+                    Button {
+                        columnBinding(row).type.wrappedValue = type
+                    } label: {
+                        if type.caseInsensitiveCompare(row.type) == .orderedSame {
+                            Label(type, systemImage: "checkmark")
+                        } else {
+                            Text(type)
+                        }
+                    }
+                }
+            } label: {
+                Text(row.type)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .frame(width: 150)
+            .disabled(!row.include)
+            Toggle("", isOn: columnBinding(row).isPrimaryKey)
+                .labelsHidden()
+                .frame(width: 30)
+                .disabled(!row.include)
+            Toggle("", isOn: columnBinding(row).isNullable)
+                .labelsHidden()
+                .frame(width: 30)
+                .disabled(!row.include)
+            TextField("", text: columnBinding(row).defaultValue)
+                .textFieldStyle(.roundedBorder)
+                .frame(maxWidth: .infinity)
+                .disabled(!row.include)
         }
     }
 
