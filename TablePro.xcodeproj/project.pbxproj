@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		16C74CC07CC30A38ADE1663E /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
 		267A5C6ECC62401598389396 /* SnowflakeDDLGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53DF2F4A15214F2AA1DE95CF /* SnowflakeDDLGenerator.swift */; };
+		33E6FF2997594F41AA80EEC8 /* SnowflakeConnectionRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE8D74A27EE24B89A7DC79F9 /* SnowflakeConnectionRegistry.swift */; };
 		3DD7311CA07CFCA8A996058F /* SnowflakeAuth.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9D129A56E1AB45F7D82AC58 /* SnowflakeAuth.swift */; };
 		4355C825A7554BBCB978E1E4 /* SnowflakeSchemaQueries.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C399209C2D14499870FBD49 /* SnowflakeSchemaQueries.swift */; };
 		4CA0E909166145AAB6B6CDD7 /* SnowflakeHTTPRetry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55F1B63541C24A10BF4AF873 /* SnowflakeHTTPRetry.swift */; };
@@ -320,6 +321,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		DE8D74A27EE24B89A7DC79F9 /* SnowflakeConnectionRegistry.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SnowflakeConnectionRegistry.swift; sourceTree = "<group>"; };
 		05C938D4946679DB526884C9 /* SnowflakeConnection.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SnowflakeConnection.swift; sourceTree = "<group>"; };
 		17CF18A0ED0B637448A808A4 /* SnowflakeMFATokenStore.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SnowflakeMFATokenStore.swift; sourceTree = "<group>"; };
 		31FF6EBB13774833BA087FEB /* SnowflakePluginDriver+DDL.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = "SnowflakePluginDriver+DDL.swift"; sourceTree = "<group>"; };
@@ -1195,6 +1197,7 @@
 			isa = PBXGroup;
 			children = (
 				F9D129A56E1AB45F7D82AC58 /* SnowflakeAuth.swift */,
+				DE8D74A27EE24B89A7DC79F9 /* SnowflakeConnectionRegistry.swift */,
 				84A5EE73D62C4576A9B9DFF2 /* SnowflakeStatementGenerator.swift */,
 				53DF2F4A15214F2AA1DE95CF /* SnowflakeDDLGenerator.swift */,
 				3C399209C2D14499870FBD49 /* SnowflakeSchemaQueries.swift */,
@@ -2210,6 +2213,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				3DD7311CA07CFCA8A996058F /* SnowflakeAuth.swift in Sources */,
+				33E6FF2997594F41AA80EEC8 /* SnowflakeConnectionRegistry.swift in Sources */,
 				734B1C02ED034214A7A6088C /* SnowflakeStatementGenerator.swift in Sources */,
 				267A5C6ECC62401598389396 /* SnowflakeDDLGenerator.swift in Sources */,
 				4355C825A7554BBCB978E1E4 /* SnowflakeSchemaQueries.swift in Sources */,

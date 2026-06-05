@@ -46,6 +46,17 @@ extension SnowflakeError {
     static func isReauthenticationCode(_ code: String) -> Bool {
         reauthenticationCodes.contains(code)
     }
+
+    static func isInaccessibleObjectCode(_ code: String) -> Bool {
+        code == "002043" || code == "2043" || code == "003001" || code == "3001"
+    }
+
+    var indicatesInaccessibleObject: Bool {
+        if case .queryFailed(let code, _) = self {
+            return Self.isInaccessibleObjectCode(code)
+        }
+        return false
+    }
 }
 
 extension SnowflakeError: PluginDriverError {

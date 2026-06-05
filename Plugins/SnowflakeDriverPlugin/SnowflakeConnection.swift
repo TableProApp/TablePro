@@ -53,6 +53,11 @@ final class SnowflakeConnection: @unchecked Sendable {
     private var renewalToken: String?
     private var activeRequestIDs: Set<String> = []
     private var sequenceId = 0
+    private var connectTask: Task<Void, Error>?
+
+    var sessionFingerprint: String {
+        [host, params.user.uppercased(), params.authMethod, params.role.uppercased()].joined(separator: "|")
+    }
 
     private var _currentDatabase: String?
     private var _currentSchema: String?
@@ -117,6 +122,26 @@ final class SnowflakeConnection: @unchecked Sendable {
 
     // MARK: - Connection Lifecycle
 
+    func connectIfNeeded() async throws {
+        enum Pending {
+            case alreadyConnected
+            case task(Task<Void, Error>)
+        }
+        let pending: Pending = lock.withLock {
+            if sessionToken != nil { return .alreadyConnected }
+            if let connectTask { return .task(connectTask) }
+            let task = Task {
+                defer { self.lock.withLock { self.connectTask = nil } }
+                try await self.connect()
+            }
+            connectTask = task
+            return .task(task)
+        }
+        if case .task(let task) = pending {
+            try await task.value
+        }
+    }
+
     func connect() async throws {
         switch params.authMethod {
         case "keyPair":
@@ -165,11 +190,23 @@ final class SnowflakeConnection: @unchecked Sendable {
         }
 
         var extra: [String: Any] = ["PASSWORD": params.password]
-        if !params.mfaPasscode.isEmpty {
+        let usesPasscode = !params.mfaPasscode.isEmpty
+            && !SnowflakeMFATokenStore.isPasscodeRejected(params.mfaPasscode, account: params.account, user: params.user)
+        if usesPasscode {
             extra["PASSCODE"] = params.mfaPasscode
             extra["EXT_AUTHN_DUO_METHOD"] = "passcode"
         }
-        try await login(authenticator: "SNOWFLAKE", extra: extra)
+        do {
+            try await login(authenticator: "SNOWFLAKE", extra: extra)
+        } catch let error as SnowflakeError {
+            if usesPasscode, case .loginFailed(let code, _) = error,
+               ["394507", "394633"].contains(code) {
+                SnowflakeMFATokenStore.markPasscodeRejected(
+                    params.mfaPasscode, account: params.account, user: params.user
+                )
+            }
+            throw error
+        }
     }
 
     private func loginWithKeyPair() async throws {

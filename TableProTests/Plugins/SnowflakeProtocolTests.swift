@@ -105,6 +105,25 @@ struct SnowflakeReAuthTests {
             #expect(!SnowflakeError.isReauthenticationCode(code))
         }
     }
+
+    @Test("A rejected MFA passcode is never replayed")
+    func testRejectedPasscodeGuard() {
+        let account = "guardtest-\(UUID().uuidString)"
+        #expect(!SnowflakeMFATokenStore.isPasscodeRejected("123456", account: account, user: "U"))
+        SnowflakeMFATokenStore.markPasscodeRejected("123456", account: account, user: "U")
+        #expect(SnowflakeMFATokenStore.isPasscodeRejected("123456", account: account, user: "U"))
+        #expect(!SnowflakeMFATokenStore.isPasscodeRejected("654321", account: account, user: "U"))
+        #expect(!SnowflakeMFATokenStore.isPasscodeRejected("", account: account, user: "U"))
+    }
+
+    @Test("Inaccessible-object codes map to empty listings")
+    func testInaccessibleObjectCodes() {
+        #expect(SnowflakeError.isInaccessibleObjectCode("002043"))
+        #expect(SnowflakeError.isInaccessibleObjectCode("2043"))
+        #expect(SnowflakeError.queryFailed(code: "002043", message: "x").indicatesInaccessibleObject)
+        #expect(!SnowflakeError.queryFailed(code: "390112", message: "x").indicatesInaccessibleObject)
+        #expect(!SnowflakeError.authFailed("x").indicatesInaccessibleObject)
+    }
 }
 
 @Suite("Plugin Session Context")

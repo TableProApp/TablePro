@@ -61,8 +61,13 @@ final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Lifecycle
 
     func connect() async throws {
-        let conn = SnowflakeConnection(config: config)
-        try await conn.connect()
+        let conn = SnowflakeConnectionRegistry.shared.acquire(config: config)
+        do {
+            try await conn.connectIfNeeded()
+        } catch {
+            SnowflakeConnectionRegistry.shared.release(conn)
+            throw error
+        }
         lock.withLock { _connection = conn }
 
         if let result = try? await conn.query("SELECT CURRENT_VERSION()"),
@@ -74,9 +79,13 @@ final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func disconnect() {
-        lock.withLock {
-            _connection?.disconnect()
+        let conn: SnowflakeConnection? = lock.withLock {
+            let current = _connection
             _connection = nil
+            return current
+        }
+        if let conn {
+            SnowflakeConnectionRegistry.shared.release(conn)
         }
     }
 
@@ -239,7 +248,13 @@ final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let targetSchema = schema ?? connection?.currentSchema
         guard let database, let targetSchema else { return [] }
 
-        let result = try await rawQuery(SnowflakeSchemaQueries.showObjects(database: database, schema: targetSchema))
+        let result: SnowflakeQueryResult
+        do {
+            result = try await rawQuery(SnowflakeSchemaQueries.showObjects(database: database, schema: targetSchema))
+        } catch let error as SnowflakeError where error.indicatesInaccessibleObject {
+            Self.logger.debug("Schema \(targetSchema, privacy: .public) is visible but not enumerable; showing it empty")
+            return []
+        }
         guard let nameIndex = columnIndex(of: "name", in: result) else { return [] }
         let kindIndex = columnIndex(of: "kind", in: result)
         return result.rows.compactMap { row in
@@ -259,7 +274,12 @@ final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         guard let database, let targetSchema else { return [:] }
 
         let primaryKeys = await primaryKeysBySchema(database: database, schema: targetSchema)
-        let result = try await rawQuery(SnowflakeSchemaQueries.bulkColumns(database: database, schema: targetSchema))
+        let result: SnowflakeQueryResult
+        do {
+            result = try await rawQuery(SnowflakeSchemaQueries.bulkColumns(database: database, schema: targetSchema))
+        } catch let error as SnowflakeError where error.indicatesInaccessibleObject {
+            return [:]
+        }
 
         var columnsByTable: [String: [PluginColumnInfo]] = [:]
         for row in result.rows {

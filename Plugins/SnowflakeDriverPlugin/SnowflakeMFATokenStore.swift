@@ -39,6 +39,20 @@ enum SnowflakeMFATokenStore {
         deleteKeychain(key: key)
     }
 
+    static func markPasscodeRejected(_ passcode: String, account: String, user: String) {
+        guard !passcode.isEmpty else { return }
+        let key = "\(cacheKey(account: account, user: user)):\(passcode)"
+        _ = lock.withLock { rejectedPasscodes.insert(key) }
+    }
+
+    static func isPasscodeRejected(_ passcode: String, account: String, user: String) -> Bool {
+        guard !passcode.isEmpty else { return false }
+        let key = "\(cacheKey(account: account, user: user)):\(passcode)"
+        return lock.withLock { rejectedPasscodes.contains(key) }
+    }
+
+    private static var rejectedPasscodes: Set<String> = []
+
     private static func cacheKey(account: String, user: String) -> String {
         "\(SnowflakeAccount.issuerAccountName(forAccount: account)).\(user.uppercased())"
     }
