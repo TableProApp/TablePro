@@ -32,7 +32,6 @@ final class SourceEditorBindingSyncTests: XCTestCase {
         var bound = "initial"
         let coordinator = makeCoordinator(get: { bound }, set: { bound = $0 })
         controller.textView.setText("initial")
-        coordinator.lastSyncedText = "initial"
 
         bound = "updated"
         coordinator.syncBindingText(bound, controller: controller)
@@ -46,7 +45,6 @@ final class SourceEditorBindingSyncTests: XCTestCase {
         var bound = "before edit"
         let coordinator = makeCoordinator(get: { bound }, set: { bound = $0 })
         controller.textView.setText("in-flight user edit")
-        coordinator.lastSyncedText = "before edit"
 
         coordinator.syncBindingText(bound, controller: controller)
 
@@ -87,11 +85,48 @@ final class SourceEditorBindingSyncTests: XCTestCase {
     }
 
     @MainActor
+    func test_largeDocumentEditDebouncesWritebackWithoutClobbering() async throws {
+        var bound = ""
+        let coordinator = makeCoordinator(get: { bound }, set: { bound = $0 })
+        let largeText = String(repeating: "a", count: 500_001)
+        controller.textView.setText(largeText)
+
+        coordinator.textViewDidChangeText(
+            Notification(name: TextView.textDidChangeNotification, object: controller.textView)
+        )
+
+        XCTAssertEqual(bound, "")
+        XCTAssertTrue(coordinator.isUpdateFromTextView)
+
+        coordinator.syncBindingText(bound, controller: controller)
+        XCTAssertEqual(controller.textView.string, largeText)
+
+        try await Task.sleep(for: .milliseconds(300))
+        XCTAssertEqual(bound, largeText)
+        XCTAssertEqual(coordinator.lastSyncedText, largeText)
+    }
+
+    @MainActor
+    func test_syncShorterTextDropsOutOfBoundsSelection() {
+        var bound = "select * from table"
+        let coordinator = makeCoordinator(get: { bound }, set: { bound = $0 })
+        controller.textView.setText("select * from table")
+        controller.textView.selectionManager.setSelectedRange(NSRange(location: 19, length: 0))
+
+        bound = "ab"
+        coordinator.syncBindingText(bound, controller: controller)
+
+        XCTAssertEqual(controller.textView.string, "ab")
+        for selection in controller.textView.selectionManager.textSelections {
+            XCTAssertLessThanOrEqual(selection.range.max, 2)
+        }
+    }
+
+    @MainActor
     func test_repeatedSyncWithSameValueLeavesTextViewUntouched() {
         var bound = "stable"
         let coordinator = makeCoordinator(get: { bound }, set: { bound = $0 })
         controller.textView.setText("stable")
-        coordinator.lastSyncedText = "stable"
         let storageBefore = controller.textView.textStorage
 
         coordinator.syncBindingText(bound, controller: controller)

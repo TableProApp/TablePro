@@ -110,7 +110,6 @@ public struct SourceEditor: NSViewControllerRepresentable {
         switch text {
         case .binding(let binding):
             controller.textView.setText(binding.wrappedValue)
-            context.coordinator.lastSyncedText = binding.wrappedValue
         case .storage(let textStorage):
             controller.textView.setTextStorage(textStorage)
         }
@@ -135,6 +134,7 @@ public struct SourceEditor: NSViewControllerRepresentable {
 
         context.coordinator.updateHighlightProviders(highlightProviders)
 
+        context.coordinator.text = text
         if case .binding(let binding) = text {
             context.coordinator.syncBindingText(binding.wrappedValue, controller: controller)
         }

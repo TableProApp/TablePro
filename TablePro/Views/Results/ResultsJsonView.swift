@@ -93,6 +93,7 @@ internal struct ResultsJsonView: View {
             }
             .buttonStyle(.borderless)
             .controlSize(.small)
+            .disabled(isInitialComputePending)
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)

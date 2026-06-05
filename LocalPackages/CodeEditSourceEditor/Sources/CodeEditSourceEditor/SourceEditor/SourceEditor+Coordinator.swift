@@ -28,6 +28,9 @@ extension SourceEditor {
             self.text = text
             self._editorState = editorState
             self.highlightProviders = highlightProviders ?? [TreeSitterClient()]
+            if case .binding(let binding) = text {
+                self.lastSyncedText = binding.wrappedValue
+            }
             super.init()
         }
 
@@ -140,9 +143,10 @@ extension SourceEditor {
                 textBindingTask = Task { @MainActor [weak self, weak textView] in
                     try? await Task.sleep(for: .milliseconds(150))
                     guard !Task.isCancelled, let self, let textView else { return }
+                    guard case .binding(let currentBinding) = self.text else { return }
                     let newText = textView.string
                     self.lastSyncedText = newText
-                    binding.wrappedValue = newText
+                    currentBinding.wrappedValue = newText
                 }
             } else {
                 let newText = textView.string
@@ -155,6 +159,12 @@ extension SourceEditor {
         /// content wins while one of its own edits is still in flight (`lastSyncedText`
         /// only trails the binding during the debounce window, when both hold the same
         /// pre-edit value), so user typing is never clobbered by a stale binding.
+        ///
+        /// Uses `setText` rather than `replaceCharacters` on purpose: `replaceCharacters`
+        /// is the user-edit path. It is gated on `isEditable`, runs mutation filters, and
+        /// fires suggestion triggers, none of which should happen for a programmatic
+        /// whole-document replacement. `setText` clearing the undo stack matches the
+        /// new-document semantics of that replacement.
         func syncBindingText(_ newValue: String, controller: TextViewController) {
             guard newValue != lastSyncedText else { return }
             textBindingTask?.cancel()
