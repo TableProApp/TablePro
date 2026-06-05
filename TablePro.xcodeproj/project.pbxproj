@@ -1050,14 +1050,6 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		1DFD9D7F8FEC30E3858A6B5F /* Plugins */ = {
-			isa = PBXGroup;
-			children = (
-				8FE5E1F9D0550A0E0AACD3EB /* SnowflakeDriverPlugin */,
-			);
-			name = Plugins;
-			sourceTree = "<group>";
-		};
 		5A05FBC72F3EDF7500819CD7 /* Recovered References */ = {
 			isa = PBXGroup;
 			children = (
@@ -1101,7 +1093,7 @@
 				5A1091C82EF17EDC0055EA7C /* Products */,
 				5A05FBC72F3EDF7500819CD7 /* Recovered References */,
 				5AEA8B482F6808E90040461A /* Frameworks */,
-				1DFD9D7F8FEC30E3858A6B5F /* Plugins */,
+				8FE5E1F9D0550A0E0AACD3EB /* SnowflakeDriverPlugin */,
 			);
 			sourceTree = "<group>";
 		};
@@ -1297,6 +1289,8 @@
 				5A32BC012F9D5F1300BAEB5F /* mcp-server */,
 			);
 			name = "mcp-server";
+			packageProductDependencies = (
+			);
 			productName = "mcp-server";
 			productReference = 5A32BC002F9D5F1300BAEB5F /* tablepro-mcp */;
 			productType = "com.apple.product-type.tool";
@@ -1317,6 +1311,8 @@
 				5A3BE6FE2F97DB0100611C1F /* Plugins/LibSQLDriverPlugin */,
 			);
 			name = LibSQLDriverPlugin;
+			packageProductDependencies = (
+			);
 			productName = LibSQLDriverPlugin;
 			productReference = 5A3BE6F82F97DA8100611C1F /* LibSQLDriverPlugin.tableplugin */;
 			productType = "com.apple.product-type.bundle";
@@ -1762,6 +1758,8 @@
 			dependencies = (
 			);
 			name = BigQueryDriverPlugin;
+			packageProductDependencies = (
+			);
 			productName = BigQueryDriverPlugin;
 			productReference = 5ABQR00300000000000000A0 /* BigQueryDriverPlugin.tableplugin */;
 			productType = "com.apple.product-type.bundle";
@@ -1779,6 +1777,8 @@
 			dependencies = (
 			);
 			name = DynamoDBDriverPlugin;
+			packageProductDependencies = (
+			);
 			productName = DynamoDBDriverPlugin;
 			productReference = 5ADDB00300000000000000A0 /* DynamoDBDriverPlugin.tableplugin */;
 			productType = "com.apple.product-type.bundle";
@@ -1799,6 +1799,8 @@
 				5AE4F4812F6BC0640097AC5B /* Plugins/CloudflareD1DriverPlugin */,
 			);
 			name = CloudflareD1DriverPlugin;
+			packageProductDependencies = (
+			);
 			productName = CloudflareD1DriverPlugin;
 			productReference = 5AE4F4742F6BC0640097AC5B /* CloudflareD1DriverPlugin.tableplugin */;
 			productType = "com.apple.product-type.bundle";
@@ -1816,6 +1818,8 @@
 			dependencies = (
 			);
 			name = EtcdDriverPlugin;
+			packageProductDependencies = (
+			);
 			productName = EtcdDriverPlugin;
 			productReference = 5AEA8B2A2F6808270040461A /* EtcdDriverPlugin.tableplugin */;
 			productType = "com.apple.product-type.bundle";
