@@ -24,7 +24,7 @@ extension TableViewCoordinator {
 
         if columnIndex < tableRows.columnTypes.count {
             let ct = tableRows.columnTypes[columnIndex]
-            if ct.isJsonType || ct.isBlobType {
+            if ct.isBlobType {
                 return .blocked
             }
         }
@@ -38,13 +38,6 @@ extension TableViewCoordinator {
             value = ""
         }
         return .editable(value: value)
-    }
-
-    func canStartInlineEdit(row: Int, columnIndex: Int) -> Bool {
-        if case .editable = editEligibility(row: row, columnIndex: columnIndex) {
-            return true
-        }
-        return false
     }
 
     func tableView(_ tableView: NSTableView, shouldEdit tableColumn: NSTableColumn?, row: Int) -> Bool {
