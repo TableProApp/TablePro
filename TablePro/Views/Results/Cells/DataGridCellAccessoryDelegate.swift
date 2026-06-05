@@ -9,4 +9,5 @@ import Foundation
 protocol DataGridCellAccessoryDelegate: AnyObject {
     func dataGridCellDidClickFKArrow(row: Int, columnIndex: Int, openInNewTab: Bool)
     func dataGridCellDidClickChevron(row: Int, columnIndex: Int)
+    func dataGridCellDidDoubleClick(row: Int, columnIndex: Int)
 }

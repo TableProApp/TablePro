@@ -23,6 +23,7 @@ struct ImportDialog: View {
         self.connection = connection
         self.initialFileURL = initialFileURL
         self._selectedFormatId = State(initialValue: initialFormatId)
+        self._selectedEncoding = State(initialValue: TransferDialogStorage.shared.loadLastImportEncoding())
     }
 
     // MARK: - State
@@ -32,8 +33,10 @@ struct ImportDialog: View {
     @State private var fileSize: Int64 = 0
     @State private var statementCount: Int = 0
     @State private var isCountingStatements = false
-    @State private var selectedEncoding: ImportEncoding = .utf8
+    @State private var selectedEncoding: ImportEncoding
     @State private var selectedFormatId: String = "sql"
+    @State private var settingsSnapshot: PluginSettingsSnapshot?
+    @State private var importSucceeded = false
     @State private var showProgressDialog = false
     @State private var showSuccessDialog = false
     @State private var showErrorDialog = false
@@ -83,6 +86,7 @@ struct ImportDialog: View {
                     selectedFormatId = type(of: first).formatId
                 }
             }
+            captureSettingsSnapshot()
         }
         .onExitCommand {
             if !(importService?.state.isImporting ?? false) {
@@ -99,6 +103,9 @@ struct ImportDialog: View {
             countStatementsTask?.cancel()
             importTask?.cancel()
             cleanupTempFiles()
+            if !importSucceeded {
+                restoreSettingsSnapshot()
+            }
         }
         .sheet(isPresented: $showProgressDialog) {
             if let service = importService {
@@ -237,9 +244,19 @@ struct ImportDialog: View {
 
     private var optionsView: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Options")
-                .font(.callout.weight(.semibold))
-                .foregroundStyle(.primary)
+            HStack {
+                Text("Options")
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(.primary)
+
+                Spacer()
+
+                Button("Reset to Defaults") {
+                    resetOptionsToDefaults()
+                }
+                .buttonStyle(.link)
+                .font(.callout)
+            }
 
             VStack(alignment: .leading, spacing: 12) {
                 // Encoding picker (always shown, independent of plugin)
@@ -297,6 +314,30 @@ struct ImportDialog: View {
     }
 
     // MARK: - Actions
+
+    private func captureSettingsSnapshot() {
+        settingsSnapshot = PluginSettingsSnapshot(
+            plugins: availableFormats.compactMap { $0 as? any SettablePluginDiscoverable }
+        )
+    }
+
+    private func restoreSettingsSnapshot() {
+        settingsSnapshot?.restore()
+        settingsSnapshot = nil
+    }
+
+    private func resetOptionsToDefaults() {
+        selectedEncoding = .utf8
+        guard let settable = currentPlugin as? any SettablePluginDiscoverable else { return }
+        settable.resetSettingsToDefaults()
+        settingsSnapshot?.recapture(settable)
+    }
+
+    private func recordSuccessfulImport() {
+        importSucceeded = true
+        TransferDialogStorage.shared.saveLastImportEncoding(selectedEncoding)
+        settingsSnapshot = nil
+    }
 
     @MainActor
     private func selectFile() async {
@@ -432,6 +473,7 @@ struct ImportDialog: View {
                 await MainActor.run {
                     showProgressDialog = false
                     importResult = result
+                    recordSuccessfulImport()
                     showSuccessDialog = true
                 }
             } catch is PluginImportCancellationError {

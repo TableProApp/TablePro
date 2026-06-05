@@ -246,15 +246,15 @@ final class SQLContextAnalyzer {
     private static let cteCommaRegex = compileRegex("(?i),\\s*([\\w]+)\\s+AS\\s*\\(")
 
     private static let tableRefRegexes: [NSRegularExpression] = {
+        let segment = "[`\"']?\\w+[`\"']?"
+        let path = "(\(segment)(?:\\.\(segment))*)"
+        let alias = "(?:\\s+(?:AS\\s+)?[`\"']?(\\w+)[`\"']?)?"
         let patterns = [
-            "(?i)\\bFROM\\s+[`\"']?([\\w.]+)[`\"']?" +
-            "(?:\\s+(?:AS\\s+)?[`\"']?([\\w]+)[`\"']?)?",
-            "(?i)(?:LEFT|RIGHT|INNER|OUTER|CROSS|FULL)?\\s*(?:OUTER)?\\s*JOIN\\s+" +
-            "[`\"']?([\\w.]+)[`\"']?(?:\\s+(?:AS\\s+)?[`\"']?([\\w]+)[`\"']?)?",
-            "(?i)\\bUPDATE\\s+[`\"']?([\\w.]+)[`\"']?" +
-            "(?:\\s+(?:AS\\s+)?[`\"']?([\\w]+)[`\"']?)?",
-            "(?i)\\bINSERT\\s+INTO\\s+[`\"']?([\\w.]+)[`\"']?",
-            "(?i)\\bCREATE\\s+(?:UNIQUE\\s+)?INDEX\\s+\\w+\\s+ON\\s+[`\"']?([\\w.]+)[`\"']?"
+            "(?i)\\bFROM\\s+\(path)\(alias)",
+            "(?i)(?:LEFT|RIGHT|INNER|OUTER|CROSS|FULL)?\\s*(?:OUTER)?\\s*JOIN\\s+\(path)\(alias)",
+            "(?i)\\bUPDATE\\s+\(path)\(alias)",
+            "(?i)\\bINSERT\\s+INTO\\s+\(path)",
+            "(?i)\\bCREATE\\s+(?:UNIQUE\\s+)?INDEX\\s+\\w+\\s+ON\\s+\(path)"
         ]
         return patterns.map { compileRegex($0) }
     }()
@@ -767,15 +767,7 @@ final class SQLContextAnalyzer {
         "JOIN", "ON", "AND", "OR", "WHERE", "SELECT", "FROM", "AS"
     ]
 
-    /// Strip schema prefix from a potentially schema-qualified name
-    private static func stripSchemaPrefix(_ raw: String) -> String {
-        let ns = raw as NSString
-        let dotRange = ns.range(of: ".", options: .backwards)
-        guard dotRange.location != NSNotFound else { return raw }
-        let start = dotRange.location + 1
-        guard start < ns.length else { return raw }
-        return ns.substring(from: start)
-    }
+    private static let identifierQuoteChars = CharacterSet(charactersIn: "`\"'")
 
     /// Extract all table references (table names and aliases) from the query
     private func extractTableReferences(from query: String) -> [TableReference] {
@@ -792,14 +784,13 @@ final class SQLContextAnalyzer {
                 guard tableNSRange.location != NSNotFound else { return }
 
                 let rawName = (query as NSString).substring(with: tableNSRange)
-                let tableName = Self.stripSchemaPrefix(rawName)
+                let segments = rawName.split(separator: ".").map {
+                    String($0).trimmingCharacters(in: Self.identifierQuoteChars)
+                }
+                guard let tableName = segments.last, !tableName.isEmpty else { return }
                 guard !Self.tableRefKeywords.contains(tableName.uppercased()) else { return }
 
-                let segments = rawName.split(separator: ".")
-                let schema = segments.count >= 2
-                    ? String(segments[segments.count - 2])
-                        .trimmingCharacters(in: CharacterSet(charactersIn: "`\""))
-                    : nil
+                let schema = segments.count >= 2 ? segments[segments.count - 2] : nil
 
                 var alias: String?
                 if match.numberOfRanges > 2 {

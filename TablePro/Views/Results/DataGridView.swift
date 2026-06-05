@@ -74,8 +74,6 @@ struct DataGridView: NSViewRepresentable {
 
         tableView.delegate = context.coordinator
         tableView.dataSource = context.coordinator
-        tableView.target = context.coordinator
-        tableView.doubleAction = #selector(TableViewCoordinator.handleDoubleClick(_:))
 
         let rowNumberColumn = Self.makeRowNumberColumn()
         tableView.addTableColumn(rowNumberColumn)

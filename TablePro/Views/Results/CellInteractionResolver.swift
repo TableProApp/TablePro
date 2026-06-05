@@ -11,9 +11,6 @@ internal struct CellContext: Equatable {
     let isTableEditable: Bool
     let isRowDeleted: Bool
     let isImmutableColumn: Bool
-    let columnName: String?
-    let connectionId: UUID?
-    let tableName: String?
     let displayFormatOverride: ValueDisplayFormat?
 
     init(
@@ -22,9 +19,6 @@ internal struct CellContext: Equatable {
         isTableEditable: Bool,
         isRowDeleted: Bool,
         isImmutableColumn: Bool,
-        columnName: String? = nil,
-        connectionId: UUID? = nil,
-        tableName: String? = nil,
         displayFormatOverride: ValueDisplayFormat? = nil
     ) {
         self.columnType = columnType
@@ -32,9 +26,6 @@ internal struct CellContext: Equatable {
         self.isTableEditable = isTableEditable
         self.isRowDeleted = isRowDeleted
         self.isImmutableColumn = isImmutableColumn
-        self.columnName = columnName
-        self.connectionId = connectionId
-        self.tableName = tableName
         self.displayFormatOverride = displayFormatOverride
     }
 }
@@ -59,31 +50,16 @@ internal struct CellInteractionResolver {
 
         let isReadOnly = !context.isTableEditable || context.isImmutableColumn
 
-        if let override = context.displayFormatOverride {
-            switch override {
-            case .raw:
-                return plainText(for: context, isReadOnly: isReadOnly)
-            case .json:
-                return isReadOnly ? .viewJson : .editJson
-            case .phpSerialized:
-                return .viewPhpSerialized
-            case .uuid, .unixTimestamp, .unixTimestampMillis:
-                break
-            }
+        if context.columnType?.isBlobType == true {
+            return isReadOnly ? .viewBlob : .editBlob
         }
 
-        if let columnType = context.columnType {
-            if columnType.isBlobType { return isReadOnly ? .viewBlob : .editBlob }
-            if columnType.isJsonType { return isReadOnly ? .viewJson : .editJson }
-        }
-
-        let value = context.value ?? ""
-        switch CellValueContentDetector.detect(value) {
+        switch context.displayFormatOverride {
         case .json:
             return isReadOnly ? .viewJson : .editJson
         case .phpSerialized:
             return .viewPhpSerialized
-        case .plain:
+        case .raw, .uuid, .unixTimestamp, .unixTimestampMillis, .none:
             return plainText(for: context, isReadOnly: isReadOnly)
         }
     }

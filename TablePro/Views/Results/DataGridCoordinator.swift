@@ -718,4 +718,14 @@ extension TableViewCoordinator: DataGridCellAccessoryDelegate {
     func dataGridCellDidClickChevron(row: Int, columnIndex: Int) {
         handleChevronAction(row: row, columnIndex: columnIndex)
     }
+
+    func dataGridCellDidDoubleClick(row: Int, columnIndex: Int) {
+        guard row >= 0, columnIndex >= 0, let tableView else { return }
+        guard let tableColumn = DataGridView.tableColumnIndex(
+            for: columnIndex,
+            in: tableView,
+            schema: identitySchema
+        ) else { return }
+        handleCellInteraction(row: row, tableColumn: tableColumn, columnIndex: columnIndex, tableView: tableView)
+    }
 }

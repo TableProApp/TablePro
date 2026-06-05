@@ -30,6 +30,10 @@ final class JSONExportPlugin: ExportFormatPlugin, SettablePlugin {
         AnyView(JSONExportOptionsView(plugin: self))
     }
 
+    func resetSettingsToDefaults() {
+        settings = JSONExportOptions()
+    }
+
     func export(
         tables: [PluginExportTable],
         dataSource: any PluginExportDataSource,

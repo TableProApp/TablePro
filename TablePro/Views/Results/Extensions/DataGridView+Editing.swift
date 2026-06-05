@@ -24,7 +24,7 @@ extension TableViewCoordinator {
 
         if columnIndex < tableRows.columnTypes.count {
             let ct = tableRows.columnTypes[columnIndex]
-            if ct.isJsonType || ct.isBlobType {
+            if ct.isBlobType {
                 return .blocked
             }
         }

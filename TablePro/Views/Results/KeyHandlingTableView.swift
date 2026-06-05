@@ -177,7 +177,12 @@ final class KeyHandlingTableView: NSTableView {
            alreadyFocusedHere,
            selectedRowIndexes.count == 1,
            coordinator?.canStartInlineEdit(row: clickedRow, columnIndex: dataColumn) == true {
-            coordinator?.beginCellEdit(row: clickedRow, tableColumnIndex: clickedColumn)
+            coordinator?.handleCellInteraction(
+                row: clickedRow,
+                tableColumn: clickedColumn,
+                columnIndex: dataColumn,
+                tableView: self
+            )
         }
     }
 

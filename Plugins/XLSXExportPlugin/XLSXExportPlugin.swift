@@ -30,6 +30,10 @@ final class XLSXExportPlugin: ExportFormatPlugin, SettablePlugin {
         AnyView(XLSXExportOptionsView(plugin: self))
     }
 
+    func resetSettingsToDefaults() {
+        settings = XLSXExportOptions()
+    }
+
     private static let maxRowsPerSheet = 1_048_576
 
     func export(

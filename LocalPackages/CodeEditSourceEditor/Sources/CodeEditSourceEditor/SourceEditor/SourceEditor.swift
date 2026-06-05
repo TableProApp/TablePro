@@ -134,6 +134,11 @@ public struct SourceEditor: NSViewControllerRepresentable {
 
         context.coordinator.updateHighlightProviders(highlightProviders)
 
+        context.coordinator.text = text
+        if case .binding(let binding) = text {
+            context.coordinator.syncBindingText(binding.wrappedValue, controller: controller)
+        }
+
         // Prevent infinite loop of update notifications
         if context.coordinator.isUpdateFromTextView {
             context.coordinator.isUpdateFromTextView = false

@@ -247,7 +247,7 @@ final class HighlighterTests: XCTestCase {
             attributeProvider: attributeProvider
         )
         textView.addStorageDelegate(highlighter)
-        highlighter.setLanguage(language: .swift)
+        highlighter.setLanguage(language: .sql)
         highlighter.invalidate()
 
         // Delete Characters
