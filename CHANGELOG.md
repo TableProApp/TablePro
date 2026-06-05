@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Redis connects to Amazon ElastiCache with IAM auth (access key, profile, or SSO). TablePro generates the IAM token and uses it as the password; set the AWS region and cache name and enable TLS. (#1567)
 - AWS SSO connections can sign in from TablePro: when the SSO session has expired, a prompt opens the AWS sign-in page in your browser and refreshes the cached token. (#1567)
 - Cassandra connects to Amazon Keyspaces with AWS IAM (SigV4) auth, using access keys, a profile, or SSO. Set Authentication to an AWS IAM mode and the region, and enable TLS. (#1567)
+- Export and import dialogs reopen with the last-used format, options, and encoding. Option changes are kept only when the export or import completes, so cancelling no longer overwrites your saved settings, and a Reset to Defaults button restores the stock options. (#1591)
 
 ### Changed
 
@@ -34,6 +35,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Opening the connection or database switcher now puts the cursor in its search field even while a filter input is being edited; the filter text is kept. (#1575)
+- TablePro no longer shows its icon for .sql, .sqlite, and .duckdb files in Finder when it is not the default app for those types. (#1594)
+- The JSON results view shows row data right away instead of staying blank until you switch between Tree and Text, and it updates when the row selection changes. A spinner shows while large results are being formatted. (#1576)
 - Double-clicking or pressing Enter on a JSON cell now edits its value inline, like other cells; on a blob cell it opens the hex editor. The chevron still opens the tree or hex editor. Neither cell responded to double-click before. (#1588)
 - Query results appear as soon as the database returns rows. Column defaults, foreign keys, and row counts now load in the background instead of holding up the grid, which removes a multi-second wait on remote databases whose system tables are slow to query. (#1574)
 - MySQL and MariaDB queries are ready to edit right away. Primary key and nullability come back with the rows, so an editable query no longer waits on a separate metadata query. (#1574)

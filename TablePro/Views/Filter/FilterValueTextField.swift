@@ -12,6 +12,24 @@ enum FilterCompletionSource {
     case sqlTokens(RawSQLFilterCompletionProvider)
 }
 
+struct FilterFocusState: Equatable {
+    private(set) var claimedId: UUID?
+
+    mutating func claimFocus(requestedId: UUID?, identity: UUID) -> Bool {
+        guard requestedId == identity, claimedId != identity else { return false }
+        claimedId = identity
+        return true
+    }
+
+    mutating func markFocused(_ identity: UUID) {
+        claimedId = identity
+    }
+
+    mutating func releaseFocus() {
+        claimedId = nil
+    }
+}
+
 struct FilterValueTextField: NSViewRepresentable {
     @Binding var text: String
     @Binding var focusedId: UUID?
@@ -132,6 +150,8 @@ struct FilterValueTextField: NSViewRepresentable {
         private let suggestionState = SuggestionState()
         private var suggestionPopover: NSPopover?
         private var keyMonitor: Any?
+        private var focusState = FilterFocusState()
+        private var windowKeyObserver: NSObjectProtocol?
         private var latestReplacementRange: NSRange?
         private var completionGeneration = 0
         private static let completionDebounce: UInt64 = 50_000_000
@@ -158,29 +178,53 @@ struct FilterValueTextField: NSViewRepresentable {
         }
 
         func focusIfRequested() {
-            guard focusedId.wrappedValue == identity,
-                  let textField,
-                  let window = textField.window else { return }
+            guard let textField,
+                  let window = textField.window,
+                  focusState.claimFocus(requestedId: focusedId.wrappedValue, identity: identity) else { return }
             if window.firstResponder !== textField.currentEditor() {
                 window.makeFirstResponder(textField)
             }
         }
 
         func handleBecameFirstResponder() {
+            focusState.markFocused(identity)
             if focusedId.wrappedValue != identity {
                 focusedId.wrappedValue = identity
             }
         }
 
         func handleResignedFirstResponder() {
+            focusState.releaseFocus()
             if focusedId.wrappedValue == identity {
                 focusedId.wrappedValue = nil
             }
         }
 
+        func startObservingWindowKeyStatus(for window: NSWindow) {
+            stopObservingWindowKeyStatus()
+            windowKeyObserver = NotificationCenter.default.addObserver(
+                forName: NSWindow.didResignKeyNotification,
+                object: window,
+                queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    self?.handleResignedFirstResponder()
+                }
+            }
+        }
+
+        func stopObservingWindowKeyStatus() {
+            guard let token = windowKeyObserver else { return }
+            NotificationCenter.default.removeObserver(token)
+            windowKeyObserver = nil
+        }
+
         deinit {
             if let token = keyMonitor {
                 NSEvent.removeMonitor(token)
+            }
+            if let token = windowKeyObserver {
+                NotificationCenter.default.removeObserver(token)
             }
         }
 
@@ -417,6 +461,11 @@ struct FilterValueTextField: NSViewRepresentable {
 
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
+            if let window {
+                owner?.startObservingWindowKeyStatus(for: window)
+            } else {
+                owner?.stopObservingWindowKeyStatus()
+            }
             owner?.focusIfRequested()
         }
 

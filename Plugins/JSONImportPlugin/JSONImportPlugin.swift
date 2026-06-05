@@ -34,6 +34,10 @@ final class JSONImportPlugin: ImportFormatPlugin, SettablePlugin {
         AnyView(JSONImportOptionsView(plugin: self))
     }
 
+    func resetSettingsToDefaults() {
+        settings = JSONImportOptions()
+    }
+
     func performImport(
         source: any PluginImportSource,
         sink: any PluginImportDataSink,
