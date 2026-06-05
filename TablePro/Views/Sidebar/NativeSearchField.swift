@@ -10,6 +10,7 @@ import SwiftUI
 
 private final class IntrinsicHeightSearchField: NSSearchField {
     var focusOnAppear = false
+    private var windowKeyObserver: NSObjectProtocol?
 
     override var intrinsicContentSize: NSSize {
         let cellHeight = cell?.cellSize.height ?? super.intrinsicContentSize.height
@@ -18,10 +19,34 @@ private final class IntrinsicHeightSearchField: NSSearchField {
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
+        removeWindowKeyObserver()
         guard focusOnAppear, acceptsFirstResponder, let window else { return }
-        window.makeFirstResponder(self)
-        if !window.isKeyWindow {
-            window.makeKey()
+        if window.isKeyWindow {
+            window.makeFirstResponder(self)
+            return
+        }
+        windowKeyObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.didBecomeKeyNotification,
+            object: window,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.removeWindowKeyObserver()
+                self.window?.makeFirstResponder(self)
+            }
+        }
+    }
+
+    private func removeWindowKeyObserver() {
+        guard let token = windowKeyObserver else { return }
+        NotificationCenter.default.removeObserver(token)
+        windowKeyObserver = nil
+    }
+
+    deinit {
+        if let token = windowKeyObserver {
+            NotificationCenter.default.removeObserver(token)
         }
     }
 }
