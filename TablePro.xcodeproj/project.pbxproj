@@ -592,8 +592,6 @@
 		};
 		5A32BC012F9D5F1300BAEB5F /* mcp-server */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-			);
 			path = "mcp-server";
 			sourceTree = "<group>";
 		};
@@ -769,8 +767,6 @@
 		};
 		5ABCC5A82F43856700EAF3FC /* TableProTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-			);
 			path = TableProTests;
 			sourceTree = "<group>";
 		};
@@ -784,8 +780,6 @@
 		};
 		5AF00A122FB9000000000001 /* TableProUITests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-			);
 			path = TableProUITests;
 			sourceTree = "<group>";
 		};
@@ -1057,9 +1051,9 @@
 		5A1091BE2EF17EDC0055EA7C = {
 			isa = PBXGroup;
 			children = (
-				5ADDB00500000000000000B0 /* DynamoDBDriverPlugin */,
-				5ABQR00500000000000000B0 /* BigQueryDriverPlugin */,
-				5AEA8B412F6808CA0040461A /* EtcdDriverPlugin */,
+				5ADDB00500000000000000B0 /* Plugins/DynamoDBDriverPlugin */,
+				5ABQR00500000000000000B0 /* Plugins/BigQueryDriverPlugin */,
+				5AEA8B412F6808CA0040461A /* Plugins/EtcdDriverPlugin */,
 				5AE4F4812F6BC0640097AC5B /* Plugins/CloudflareD1DriverPlugin */,
 				5A3BE6FE2F97DB0100611C1F /* Plugins/LibSQLDriverPlugin */,
 				5A1091C92EF17EDC0055EA7C /* TablePro */,
@@ -1130,7 +1124,7 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
-		5ABQR00500000000000000B0 /* BigQueryDriverPlugin */ = {
+		5ABQR00500000000000000B0 /* Plugins/BigQueryDriverPlugin */ = {
 			isa = PBXGroup;
 			children = (
 				5ABQR00200000000000000A1 /* BigQueryAuth.swift */,
@@ -1145,7 +1139,7 @@
 			path = Plugins/BigQueryDriverPlugin;
 			sourceTree = "<group>";
 		};
-		5ADDB00500000000000000B0 /* DynamoDBDriverPlugin */ = {
+		5ADDB00500000000000000B0 /* Plugins/DynamoDBDriverPlugin */ = {
 			isa = PBXGroup;
 			children = (
 				5ADDB00200000000000000A1 /* DynamoDBConnection.swift */,
@@ -1159,7 +1153,7 @@
 			path = Plugins/DynamoDBDriverPlugin;
 			sourceTree = "<group>";
 		};
-		5AEA8B412F6808CA0040461A /* EtcdDriverPlugin */ = {
+		5AEA8B412F6808CA0040461A /* Plugins/EtcdDriverPlugin */ = {
 			isa = PBXGroup;
 			children = (
 				5AEA8B3B2F6808CA0040461A /* EtcdCommandParser.swift */,
@@ -1175,16 +1169,8 @@
 		5AEA8B482F6808E90040461A /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
-				665759805EBF5C4BF064ADAB /* OS X */,
 			);
 			name = Frameworks;
-			sourceTree = "<group>";
-		};
-		665759805EBF5C4BF064ADAB /* OS X */ = {
-			isa = PBXGroup;
-			children = (
-			);
-			name = "OS X";
 			sourceTree = "<group>";
 		};
 		8FE5E1F9D0550A0E0AACD3EB /* SnowflakeDriverPlugin */ = {
@@ -1940,11 +1926,11 @@
 			mainGroup = 5A1091BE2EF17EDC0055EA7C;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				5A0000012F4F000000000101 /* XCLocalSwiftPackageReference "CodeEditSourceEditor" */,
+				5A0000012F4F000000000101 /* XCLocalSwiftPackageReference "LocalPackages/CodeEditSourceEditor" */,
 				5ACE00012F4F000000000008 /* XCRemoteSwiftPackageReference "Sparkle" */,
-				5A0000012F4F000000000100 /* XCLocalSwiftPackageReference "CodeEditLanguages" */,
+				5A0000012F4F000000000100 /* XCLocalSwiftPackageReference "LocalPackages/CodeEditLanguages" */,
 				5ACE00012F4F00000000000E /* XCRemoteSwiftPackageReference "oracle-nio" */,
-				5A0000012F4F000000000102 /* XCLocalSwiftPackageReference "TableProCore" */,
+				5A0000012F4F000000000102 /* XCLocalSwiftPackageReference "Packages/TableProCore" */,
 				5A32BBF92F9D5EAB00BAEB5F /* XCRemoteSwiftPackageReference "swift-certificates" */,
 			);
 			preferredProjectObjectVersion = 77;
@@ -4704,15 +4690,15 @@
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
-		5A0000012F4F000000000100 /* XCLocalSwiftPackageReference "CodeEditLanguages" */ = {
+		5A0000012F4F000000000100 /* XCLocalSwiftPackageReference "LocalPackages/CodeEditLanguages" */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = LocalPackages/CodeEditLanguages;
 		};
-		5A0000012F4F000000000101 /* XCLocalSwiftPackageReference "CodeEditSourceEditor" */ = {
+		5A0000012F4F000000000101 /* XCLocalSwiftPackageReference "LocalPackages/CodeEditSourceEditor" */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = LocalPackages/CodeEditSourceEditor;
 		};
-		5A0000012F4F000000000102 /* XCLocalSwiftPackageReference "TableProCore" */ = {
+		5A0000012F4F000000000102 /* XCLocalSwiftPackageReference "Packages/TableProCore" */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = Packages/TableProCore;
 		};
@@ -4779,7 +4765,7 @@
 		};
 		5AD1D8C12FB5000000000002 /* TableProMSSQLCore */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 5A0000012F4F000000000102 /* XCLocalSwiftPackageReference "TableProCore" */;
+			package = 5A0000012F4F000000000102 /* XCLocalSwiftPackageReference "Packages/TableProCore" */;
 			productName = TableProMSSQLCore;
 		};
 /* End XCSwiftPackageProductDependency section */

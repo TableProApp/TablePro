@@ -118,11 +118,13 @@ final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     func switchDatabase(to database: String) async throws {
         guard let conn = connection else { throw SnowflakeError.notConnected }
         try await conn.switchDatabase(to: database)
+        lock.withLock { resolvedSchemaCache.removeAll() }
     }
 
     func switchSchema(to schema: String) async throws {
         guard let conn = connection else { throw SnowflakeError.notConnected }
         try await conn.switchSchema(to: schema)
+        lock.withLock { resolvedSchemaCache.removeAll() }
     }
 
     // MARK: - Database Management

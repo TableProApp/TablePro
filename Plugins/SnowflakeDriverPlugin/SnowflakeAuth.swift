@@ -216,11 +216,13 @@ enum SnowflakeConnectionsTOML {
     }
 
     private static func stripComment(_ line: String) -> String {
-        var inString = false
+        var inDoubleQuotes = false
+        var inSingleQuotes = false
         var result = ""
         for char in line {
-            if char == "\"" { inString.toggle() }
-            if char == "#" && !inString { break }
+            if char == "\"" && !inSingleQuotes { inDoubleQuotes.toggle() }
+            if char == "'" && !inDoubleQuotes { inSingleQuotes.toggle() }
+            if char == "#" && !inDoubleQuotes && !inSingleQuotes { break }
             result.append(char)
         }
         return result

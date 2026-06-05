@@ -2,12 +2,10 @@
 //  SnowflakeTypeMapper.swift
 //  SnowflakeDriverPlugin
 //
-//  Maps Snowflake's internal row metadata types to display type names and
-//  decodes JSON cell values into PluginCellValue.
+//  Maps Snowflake's internal row metadata types to display type names.
 //
 
 import Foundation
-import TableProPluginKit
 
 struct SnowflakeColumnMeta: Sendable {
     let name: String
@@ -61,30 +59,5 @@ enum SnowflakeTypeMapper {
         default:
             return column.internalType.uppercased()
         }
-    }
-
-    /// Snowflake's v1 query protocol returns every cell as a JSON string or null.
-    static func cellValue(from json: Any?) -> PluginCellValue {
-        switch json {
-        case nil, is NSNull:
-            return .null
-        case let string as String:
-            return .text(string)
-        case let number as NSNumber:
-            return .text(number.stringValue)
-        case let bool as Bool:
-            return .text(bool ? "true" : "false")
-        default:
-            return .text(String(describing: json ?? ""))
-        }
-    }
-
-    static func columnInfo(from column: SnowflakeColumnMeta, primaryKeys: Set<String>) -> PluginColumnInfo {
-        PluginColumnInfo(
-            name: column.name,
-            dataType: displayType(for: column),
-            isNullable: column.nullable,
-            isPrimaryKey: primaryKeys.contains(column.name.uppercased())
-        )
     }
 }

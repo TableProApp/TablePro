@@ -79,7 +79,7 @@ SELECT * FROM events AT(OFFSET => -60*5);
 
 **Auth failed**: Verify the account identifier and credentials. For key-pair auth, confirm the public key is registered on the user and the passphrase is correct.
 
-**MFA with TOTP is required (394508)**: Your account enforces MFA on password logins. Enter a current code from your authenticator in **MFA Passcode (TOTP)** — it expires quickly, so refresh it right before connecting. Key-pair or SSO auth avoids the prompt entirely.
+**MFA with TOTP is required (394508)**: Your account enforces MFA on password logins. Enter a current code from your authenticator in **MFA Passcode (TOTP)**. It expires quickly, so refresh it right before connecting. Key-pair or SSO auth avoids the prompt entirely.
 
 **JWT token is invalid**: The account name in the JWT issuer must match your account locator. Make sure your machine clock is accurate (JWTs are time-sensitive).
 

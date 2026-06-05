@@ -412,17 +412,27 @@ final class SnowflakeConnection: @unchecked Sendable {
         ]
     }
 
+    private static let queryPollTimeout: TimeInterval = 2_700
+    private static let queryPollMaxInterval: UInt64 = 5_000_000_000
+
     private func pollIfInProgress(_ initial: [String: Any], token: String) async throws -> [String: Any] {
         var response = initial
-        var attempts = 0
-        while Self.isInProgress(response), attempts < 600 {
-            attempts += 1
+        let deadline = Date().addingTimeInterval(Self.queryPollTimeout)
+        var interval: UInt64 = 500_000_000
+        while Self.isInProgress(response) {
             guard let data = response["data"] as? [String: Any],
                   let resultPath = data["getResultUrl"] as? String else {
                 break
             }
-            try await Task.sleep(nanoseconds: 500_000_000)
+            guard Date() < deadline else {
+                throw SnowflakeError.timeout("Query did not finish within 45 minutes")
+            }
+            try await Task.sleep(nanoseconds: interval)
+            interval = min(interval * 2, Self.queryPollMaxInterval)
             response = try await getJSON(path: resultPath, token: token)
+        }
+        if Self.isInProgress(response) {
+            throw SnowflakeError.invalidResponse("Query is still running but Snowflake returned no result URL")
         }
         return response
     }
