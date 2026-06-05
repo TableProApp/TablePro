@@ -51,6 +51,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - AWS IAM connections no longer ask for a password on connect or reconnect. IAM supplies the credentials, so the prompt was never needed. The same now holds for any auth mode that replaces the password, such as a Postgres password file.
 - Oracle connection failures show the listener's actual reason (such as an unknown service name) instead of a generic "server closed the connection" message. (#483)
 - A connection password read from a command no longer fails with an empty-password error when the command finishes quickly; its full output is now captured.
+- A cancelled MCP query request returns a cancelled error instead of an invalid-parameters error, and emits an initial progress notification when it starts.
 
 ## [0.48.0] - 2026-06-02
 
