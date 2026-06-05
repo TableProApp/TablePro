@@ -83,10 +83,21 @@ if diff -u "$work/base.txt" "$work/head.txt"; then
     exit 0
 fi
 
+if [ "${ABI_ACKNOWLEDGED_ADDITIVE:-}" = "1" ]; then
+    cat <<'EOF'
+
+::notice::TableProPluginKit public ABI changed vs base (diff above).
+The PR carries the abi-additive label: a maintainer reviewed the diff as additive (new defaulted
+requirements or non-frozen types), so no version bump is required and the gate passes.
+Remove the label if the diff gains a breaking change; the gate will fail again.
+EOF
+    exit 0
+fi
+
 cat <<'EOF'
 
 ::error::TableProPluginKit public ABI changed vs base (diff above). Decide additive vs breaking:
-  Additive: no version bump.
+  Additive: no version bump. After review, add the abi-additive label to the PR and re-run.
   Breaking: bump currentPluginKitVersion + every plugin Info.plist TableProPluginKitVersion,
             then run scripts/release-all-plugins.sh <newVersion>.
 EOF
