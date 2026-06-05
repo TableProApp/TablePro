@@ -17,6 +17,7 @@ extension SourceEditor {
         var isUpdatingFromRepresentable: Bool = false
         var isUpdateFromTextView: Bool = false
         var text: TextAPI
+        var lastSyncedText: String?
         @Binding var editorState: SourceEditorState
 
         private(set) var highlightProviders: [any HighlightProviding]
@@ -125,7 +126,7 @@ extension SourceEditor {
             guard let textView = notification.object as? TextView else {
                 return
             }
-            // A plain string binding is one-way (from this view, up the hierarchy) so it's not in the state binding
+            guard !isUpdatingFromRepresentable else { return }
             guard case .binding(let binding) = text else { return }
 
             // For large documents, debounce the binding writeback to avoid
@@ -139,11 +140,28 @@ extension SourceEditor {
                 textBindingTask = Task { @MainActor [weak self, weak textView] in
                     try? await Task.sleep(for: .milliseconds(150))
                     guard !Task.isCancelled, let self, let textView else { return }
-                    binding.wrappedValue = textView.string
+                    let newText = textView.string
+                    self.lastSyncedText = newText
+                    binding.wrappedValue = newText
                 }
             } else {
-                binding.wrappedValue = textView.string
+                let newText = textView.string
+                lastSyncedText = newText
+                binding.wrappedValue = newText
             }
+        }
+
+        /// Pushes an external binding change down into the text view. The text view's
+        /// content wins while one of its own edits is still in flight (`lastSyncedText`
+        /// only trails the binding during the debounce window, when both hold the same
+        /// pre-edit value), so user typing is never clobbered by a stale binding.
+        func syncBindingText(_ newValue: String, controller: TextViewController) {
+            guard newValue != lastSyncedText else { return }
+            textBindingTask?.cancel()
+            isUpdatingFromRepresentable = true
+            controller.textView.setText(newValue)
+            isUpdatingFromRepresentable = false
+            lastSyncedText = newValue
         }
 
         @objc func textControllerCursorsDidUpdate(_ notification: Notification) {

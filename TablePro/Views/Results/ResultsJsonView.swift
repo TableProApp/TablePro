@@ -100,6 +100,10 @@ internal struct ResultsJsonView: View {
 
     // MARK: - Content
 
+    private var isInitialComputePending: Bool {
+        prettyText.isEmpty
+    }
+
     @ViewBuilder
     private var content: some View {
         if tableRows.rows.isEmpty {
@@ -108,6 +112,10 @@ internal struct ResultsJsonView: View {
                 systemImage: "curlybraces",
                 description: Text(String(localized: "Execute a query to view results as JSON"))
             )
+        } else if isInitialComputePending {
+            ProgressView()
+                .controlSize(.small)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             switch viewMode {
             case .text:
