@@ -9,9 +9,20 @@ import AppKit
 import SwiftUI
 
 private final class IntrinsicHeightSearchField: NSSearchField {
+    var focusOnAppear = false
+
     override var intrinsicContentSize: NSSize {
         let cellHeight = cell?.cellSize.height ?? super.intrinsicContentSize.height
         return NSSize(width: NSView.noIntrinsicMetric, height: cellHeight)
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        guard focusOnAppear, acceptsFirstResponder, let window else { return }
+        window.makeFirstResponder(self)
+        if !window.isKeyWindow {
+            window.makeKey()
+        }
     }
 }
 
@@ -39,11 +50,7 @@ struct NativeSearchField: NSViewRepresentable {
             field.widthAnchor.constraint(lessThanOrEqualToConstant: maxWidth).isActive = true
         }
         context.coordinator.lastFocusTrigger = focusTrigger
-        if focusOnAppear {
-            DispatchQueue.main.async {
-                field.window?.makeFirstResponder(field)
-            }
-        }
+        field.focusOnAppear = focusOnAppear
         return field
     }
 

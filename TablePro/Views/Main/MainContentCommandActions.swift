@@ -852,6 +852,7 @@ final class MainContentCommandActions {
         let type = coordinator.connection.type
         guard PluginManager.shared.supportsDatabaseSwitching(for: type) else { return }
         guard PluginManager.shared.connectionMode(for: type) != .fileBased else { return }
+        coordinator.contentWindow?.makeFirstResponder(nil)
         coordinator.isDatabaseSwitcherShown = true
     }
 
@@ -860,6 +861,7 @@ final class MainContentCommandActions {
     }
 
     func openConnectionSwitcher() {
+        coordinator?.contentWindow?.makeFirstResponder(nil)
         coordinator?.isConnectionSwitcherShown = true
     }
 

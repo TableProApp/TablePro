@@ -34,6 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Opening the connection or database switcher now puts the cursor in its search field even while a filter input is being edited; the filter text is kept. (#1575)
 - TablePro no longer shows its icon for .sql, .sqlite, and .duckdb files in Finder when it is not the default app for those types. (#1594)
 - The JSON results view shows row data right away instead of staying blank until you switch between Tree and Text, and it updates when the row selection changes. A spinner shows while large results are being formatted. (#1576)
 - Double-clicking or pressing Enter on a JSON cell now edits its value inline, like other cells; on a blob cell it opens the hex editor. The chevron still opens the tree or hex editor. Neither cell responded to double-click before. (#1588)
