@@ -172,7 +172,7 @@ struct DefaultSortInitialQueryTests {
     func gateTrueForPrimaryKeyBehavior() async {
         let (coordinator, tabManager, index) = makeCoordinator(tableName: "users")
         await withDefaultSortBehavior(.primaryKey) {
-            #expect(coordinator.wantsDefaultSort(for: tabManager.tabs[index]))
+            #expect(coordinator.wantsDefaultSort(for: tabManager.tabs[index], hint: .useAppDefault))
         }
     }
 
@@ -183,7 +183,7 @@ struct DefaultSortInitialQueryTests {
             $0.sortState = SortState(columns: [SortColumn(columnIndex: 1, direction: .descending)], source: .user)
         }
         await withDefaultSortBehavior(.primaryKey) {
-            #expect(!coordinator.wantsDefaultSort(for: tabManager.tabs[index]))
+            #expect(!coordinator.wantsDefaultSort(for: tabManager.tabs[index], hint: .useAppDefault))
         }
     }
 
@@ -191,7 +191,7 @@ struct DefaultSortInitialQueryTests {
     func gateFalseForNoneBehavior() async {
         let (coordinator, tabManager, index) = makeCoordinator(tableName: "users")
         await withDefaultSortBehavior(DefaultSortBehavior.none) {
-            #expect(!coordinator.wantsDefaultSort(for: tabManager.tabs[index]))
+            #expect(!coordinator.wantsDefaultSort(for: tabManager.tabs[index], hint: .useAppDefault))
         }
     }
 
@@ -200,7 +200,41 @@ struct DefaultSortInitialQueryTests {
         let (coordinator, _, _) = makeCoordinator(tableName: "users")
         let queryTab = QueryTab(title: "Q", query: "SELECT 1", tabType: .query)
         await withDefaultSortBehavior(.primaryKey) {
-            #expect(!coordinator.wantsDefaultSort(for: queryTab))
+            #expect(!coordinator.wantsDefaultSort(for: queryTab, hint: .useAppDefault))
+        }
+    }
+
+    @Test("wantsDefaultSort is false when the plugin suppresses default sorting")
+    func gateFalseForSuppressHint() async {
+        let (coordinator, tabManager, index) = makeCoordinator(tableName: "users")
+        await withDefaultSortBehavior(.primaryKey) {
+            #expect(!coordinator.wantsDefaultSort(for: tabManager.tabs[index], hint: .suppress))
+        }
+    }
+
+    @Test("wantsDefaultSort is true when the plugin forces sort columns even with behavior none")
+    func gateTrueForForceColumnsHint() async {
+        let (coordinator, tabManager, index) = makeCoordinator(tableName: "users")
+        await withDefaultSortBehavior(DefaultSortBehavior.none) {
+            #expect(coordinator.wantsDefaultSort(for: tabManager.tabs[index], hint: .forceColumns(["id"])))
+        }
+    }
+
+    @Test("None behavior skips the schema wait unless columns are hidden")
+    func firstLoadSchemaWaitDecision() async {
+        let (coordinator, tabManager, index) = makeCoordinator(tableName: "users")
+
+        await withDefaultSortBehavior(DefaultSortBehavior.none) {
+            #expect(!coordinator.firstLoadNeedsSchemaColumns(for: tabManager.tabs[index], hint: .useAppDefault))
+        }
+
+        await withDefaultSortBehavior(.primaryKey) {
+            #expect(coordinator.firstLoadNeedsSchemaColumns(for: tabManager.tabs[index], hint: .useAppDefault))
+        }
+
+        tabManager.mutate(at: index) { $0.columnLayout.hiddenColumns = ["name"] }
+        await withDefaultSortBehavior(DefaultSortBehavior.none) {
+            #expect(coordinator.firstLoadNeedsSchemaColumns(for: tabManager.tabs[index], hint: .useAppDefault))
         }
     }
 }

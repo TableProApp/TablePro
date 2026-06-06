@@ -19,7 +19,8 @@ extension MainContentCoordinator {
               tab.tabType == .table,
               let tableName = tab.tableContext.tableName, !tableName.isEmpty else { return false }
 
-        guard wantsDefaultSort(for: tab) || !tab.columnLayout.hiddenColumns.isEmpty else { return true }
+        let hint = PluginManager.shared.defaultSortHint(for: connection.type, table: tableName)
+        guard firstLoadNeedsSchemaColumns(for: tab, hint: hint) else { return true }
 
         await loadSchemaColumns(for: tableName, schema: tab.tableContext.schemaName)
 
@@ -28,21 +29,25 @@ extension MainContentCoordinator {
               let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }),
               tabManager.tabs[index].tableContext.tableName == tableName else { return false }
 
-        let sortApplied = applyResolvedDefaultSort(at: index, tableName: tableName)
+        let sortApplied = applyResolvedDefaultSort(at: index, hint: hint)
         if sortApplied || !tabManager.tabs[index].columnLayout.hiddenColumns.isEmpty {
             filterCoordinator.rebuildTableQuery(at: index)
         }
         return true
     }
 
-    func wantsDefaultSort(for tab: QueryTab) -> Bool {
+    func firstLoadNeedsSchemaColumns(for tab: QueryTab, hint: DefaultSortHint) -> Bool {
+        wantsDefaultSort(for: tab, hint: hint) || !tab.columnLayout.hiddenColumns.isEmpty
+    }
+
+    func wantsDefaultSort(for tab: QueryTab, hint: DefaultSortHint) -> Bool {
         guard tab.tabType == .table,
               !tab.sortState.isSorting,
               let tableName = tab.tableContext.tableName, !tableName.isEmpty else {
             return false
         }
 
-        switch PluginManager.shared.defaultSortHint(for: connection.type, table: tableName) {
+        switch hint {
         case .suppress:
             return false
         case .forceColumns:
@@ -52,13 +57,13 @@ extension MainContentCoordinator {
         }
     }
 
-    private func applyResolvedDefaultSort(at index: Int, tableName: String) -> Bool {
+    private func applyResolvedDefaultSort(at index: Int, hint: DefaultSortHint) -> Bool {
         let tab = tabManager.tabs[index]
-        guard wantsDefaultSort(for: tab) else { return false }
+        guard wantsDefaultSort(for: tab, hint: hint) else { return false }
 
         let resolved = DefaultSortResolver.resolveSortState(
             behavior: AppSettingsManager.shared.dataGrid.defaultSortBehavior,
-            pluginHint: PluginManager.shared.defaultSortHint(for: connection.type, table: tableName),
+            pluginHint: hint,
             primaryKeyColumns: resolvedPrimaryKeyColumns(for: tab),
             allColumns: effectiveResultColumns(for: tab)
         )
