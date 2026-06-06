@@ -98,7 +98,7 @@ final class FilterCoordinator {
         let buffer = parent.tabSessionRegistry.tableRows(for: tab.id)
         let hasFilters = tab.filterState.hasAppliedFilters
         let columns = buffer.columns.isEmpty
-            ? (parent.cachedSchemaColumns(for: tab)?.columns ?? [])
+            ? parent.effectiveResultColumns(for: tab)
             : buffer.columns
 
         let newQuery: String

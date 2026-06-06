@@ -31,25 +31,15 @@ extension MainContentCoordinator {
 
         await loadSchemaColumns(for: tableName, schema: tab.tableContext.schemaName)
 
-        guard let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
+        guard !Task.isCancelled,
+              let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
         let currentTab = tabManager.tabs[index]
-
-        let cached = cachedSchemaColumns(for: currentTab)
-        let allColumns = cached?.columns ?? []
-        let primaryKeyColumns: [String]
-        if let pks = cached?.primaryKeys, !pks.isEmpty {
-            primaryKeyColumns = pks
-        } else if let defaultPK = PluginManager.shared.defaultPrimaryKeyColumn(for: connection.type) {
-            primaryKeyColumns = [defaultPK]
-        } else {
-            primaryKeyColumns = []
-        }
 
         let resolved = DefaultSortResolver.resolveSortState(
             behavior: AppSettingsManager.shared.dataGrid.defaultSortBehavior,
             pluginHint: PluginManager.shared.defaultSortHint(for: connection.type, table: tableName),
-            primaryKeyColumns: primaryKeyColumns,
-            allColumns: allColumns
+            primaryKeyColumns: resolvedPrimaryKeyColumns(for: currentTab),
+            allColumns: effectiveResultColumns(for: currentTab)
         )
 
         if resolved.isSorting {
@@ -61,5 +51,15 @@ extension MainContentCoordinator {
         }
 
         runQuery()
+    }
+
+    private func resolvedPrimaryKeyColumns(for tab: QueryTab) -> [String] {
+        if let pks = cachedSchemaColumns(for: tab)?.primaryKeys, !pks.isEmpty {
+            return pks
+        }
+        if let defaultPK = PluginManager.shared.defaultPrimaryKeyColumn(for: connection.type) {
+            return [defaultPK]
+        }
+        return []
     }
 }

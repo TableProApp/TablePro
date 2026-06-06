@@ -46,6 +46,32 @@ struct DefaultSortInitialQueryTests {
         #expect(query.contains("id"))
     }
 
+    @Test("Default sort resolves against scoped columns when leading columns are hidden")
+    func sortsAgainstScopedColumnsWithHiddenColumns() {
+        let (coordinator, tabManager, index) = makeCoordinator(tableName: "users")
+        coordinator.schemaColumnsCache[schemaCacheKey(coordinator, table: "users")] = (["a", "id", "name"], ["id"])
+        tabManager.mutate(at: index) { $0.columnLayout.hiddenColumns = ["a"] }
+
+        let resultColumns = coordinator.effectiveResultColumns(for: tabManager.tabs[index])
+        #expect(resultColumns == ["id", "name"])
+
+        let resolved = DefaultSortResolver.resolveSortState(
+            behavior: .primaryKey,
+            pluginHint: .useAppDefault,
+            primaryKeyColumns: ["id"],
+            allColumns: resultColumns
+        )
+        #expect(resolved.columns.first?.columnIndex == 0)
+
+        tabManager.mutate(at: index) { $0.sortState = resolved }
+        coordinator.filterCoordinator.rebuildTableQuery(at: index)
+
+        let query = tabManager.tabs[index].content.query
+        #expect(query.localizedCaseInsensitiveContains("ORDER BY"))
+        #expect(query.contains("id"))
+        #expect(!query.contains("`a`"))
+    }
+
     @Test("shouldResolveDefaultSort is true for a fresh table tab when the default sort is primary key")
     func gateTrueForPrimaryKeyBehavior() {
         let previous = AppSettingsManager.shared.dataGrid.defaultSortBehavior
