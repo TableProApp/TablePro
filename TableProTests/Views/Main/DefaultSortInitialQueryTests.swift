@@ -4,7 +4,7 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Default sort resolves before the first table result loads")
+@Suite("Default sort resolves before the first table query is dispatched")
 @MainActor
 struct DefaultSortInitialQueryTests {
     private func makeCoordinator(tableName: String) -> (MainContentCoordinator, QueryTabManager, Int) {
@@ -23,48 +23,132 @@ struct DefaultSortInitialQueryTests {
         return (coordinator, tabManager, tabManager.tabs.count - 1)
     }
 
-    private func schemaCacheKey(_ coordinator: MainContentCoordinator, table: String, schema: String? = nil) -> String {
-        "\(coordinator.connectionId):\(coordinator.activeDatabaseName):\(schema ?? ""):\(table)"
+    private func withDefaultSortBehavior(
+        _ behavior: DefaultSortBehavior,
+        body: () async -> Void
+    ) async {
+        let previous = AppSettingsManager.shared.dataGrid.defaultSortBehavior
+        AppSettingsManager.shared.dataGrid.defaultSortBehavior = behavior
+        defer { AppSettingsManager.shared.dataGrid.defaultSortBehavior = previous }
+        await body()
     }
 
-    @Test("rebuildTableQuery emits ORDER BY from schema columns before any rows load")
-    func sortsFromSchemaColumnsBeforeFirstResult() {
+    @Test("prepareTableTabFirstLoad bakes the primary key ORDER BY into the first query")
+    func firstQueryContainsPrimaryKeyOrderBy() async {
         let (coordinator, tabManager, index) = makeCoordinator(tableName: "users")
-        coordinator.schemaColumnsCache[schemaCacheKey(coordinator, table: "users")] = (["id", "name", "email"], ["id"])
+        coordinator.schemaColumns.store(
+            (columns: ["id", "name", "email"], primaryKeys: ["id"]),
+            for: coordinator.schemaColumnsKey("users", schema: nil)
+        )
 
-        tabManager.mutate(at: index) {
-            $0.sortState = SortState(
-                columns: [SortColumn(columnIndex: 0, direction: .ascending)],
-                source: .defaultSort
-            )
+        await withDefaultSortBehavior(.primaryKey) {
+            let ready = await coordinator.prepareTableTabFirstLoad(tabId: tabManager.tabs[index].id)
+            #expect(ready)
         }
-
-        coordinator.filterCoordinator.rebuildTableQuery(at: index)
 
         let query = tabManager.tabs[index].content.query
         #expect(query.localizedCaseInsensitiveContains("ORDER BY"))
         #expect(query.contains("id"))
+        #expect(tabManager.tabs[index].sortState.source == .defaultSort)
+    }
+
+    @Test("Composite primary key sorts by every key column in key order")
+    func compositePrimaryKeySortsAllKeyColumns() async {
+        let (coordinator, tabManager, index) = makeCoordinator(tableName: "invoices")
+        coordinator.schemaColumns.store(
+            (columns: ["customer_uid", "order_uid", "total"], primaryKeys: ["customer_uid", "order_uid"]),
+            for: coordinator.schemaColumnsKey("invoices", schema: nil)
+        )
+
+        await withDefaultSortBehavior(.primaryKey) {
+            await coordinator.prepareTableTabFirstLoad(tabId: tabManager.tabs[index].id)
+        }
+
+        let sortState = tabManager.tabs[index].sortState
+        #expect(sortState.columns.map(\.columnIndex) == [0, 1])
+        let query = tabManager.tabs[index].content.query
+        #expect(query.localizedCaseInsensitiveContains("ORDER BY"))
+        #expect(query.contains("customer_uid"))
+        #expect(query.contains("order_uid"))
+    }
+
+    @Test("Table without a primary key dispatches unsorted with no ORDER BY")
+    func noPrimaryKeyProducesNoOrderBy() async {
+        let (coordinator, tabManager, index) = makeCoordinator(tableName: "logs")
+        coordinator.schemaColumns.store(
+            (columns: ["message", "level"], primaryKeys: []),
+            for: coordinator.schemaColumnsKey("logs", schema: nil)
+        )
+        let originalQuery = tabManager.tabs[index].content.query
+
+        await withDefaultSortBehavior(.primaryKey) {
+            let ready = await coordinator.prepareTableTabFirstLoad(tabId: tabManager.tabs[index].id)
+            #expect(ready)
+        }
+
+        #expect(tabManager.tabs[index].content.query == originalQuery)
+        #expect(!tabManager.tabs[index].sortState.isSorting)
+    }
+
+    @Test("Schema fetch failure dispatches unsorted instead of blocking the first load")
+    func schemaFetchFailureStillDispatches() async {
+        let (coordinator, tabManager, index) = makeCoordinator(tableName: "users")
+        let originalQuery = tabManager.tabs[index].content.query
+
+        await withDefaultSortBehavior(.primaryKey) {
+            let ready = await coordinator.prepareTableTabFirstLoad(tabId: tabManager.tabs[index].id)
+            #expect(ready)
+        }
+
+        #expect(tabManager.tabs[index].content.query == originalQuery)
+    }
+
+    @Test("None behavior takes the fast path without touching the query")
+    func noneBehaviorSkipsSchemaWait() async {
+        let (coordinator, tabManager, index) = makeCoordinator(tableName: "users")
+        let originalQuery = tabManager.tabs[index].content.query
+
+        await withDefaultSortBehavior(DefaultSortBehavior.none) {
+            let ready = await coordinator.prepareTableTabFirstLoad(tabId: tabManager.tabs[index].id)
+            #expect(ready)
+        }
+
+        #expect(tabManager.tabs[index].content.query == originalQuery)
+        #expect(!tabManager.tabs[index].sortState.isSorting)
+    }
+
+    @Test("A restored user sort is never overwritten by the default sort")
+    func userSortSurvivesFirstLoad() async {
+        let (coordinator, tabManager, index) = makeCoordinator(tableName: "users")
+        coordinator.schemaColumns.store(
+            (columns: ["id", "name"], primaryKeys: ["id"]),
+            for: coordinator.schemaColumnsKey("users", schema: nil)
+        )
+        let userSort = SortState(columns: [SortColumn(columnIndex: 1, direction: .descending)], source: .user)
+        tabManager.mutate(at: index) { $0.sortState = userSort }
+
+        await withDefaultSortBehavior(.primaryKey) {
+            await coordinator.prepareTableTabFirstLoad(tabId: tabManager.tabs[index].id)
+        }
+
+        #expect(tabManager.tabs[index].sortState == userSort)
     }
 
     @Test("Default sort resolves against scoped columns when leading columns are hidden")
-    func sortsAgainstScopedColumnsWithHiddenColumns() {
+    func sortsAgainstScopedColumnsWithHiddenColumns() async {
         let (coordinator, tabManager, index) = makeCoordinator(tableName: "users")
-        coordinator.schemaColumnsCache[schemaCacheKey(coordinator, table: "users")] = (["a", "id", "name"], ["id"])
+        coordinator.schemaColumns.store(
+            (columns: ["a", "id", "name"], primaryKeys: ["id"]),
+            for: coordinator.schemaColumnsKey("users", schema: nil)
+        )
         tabManager.mutate(at: index) { $0.columnLayout.hiddenColumns = ["a"] }
 
         let resultColumns = coordinator.effectiveResultColumns(for: tabManager.tabs[index])
         #expect(resultColumns == ["id", "name"])
 
-        let resolved = DefaultSortResolver.resolveSortState(
-            behavior: .primaryKey,
-            pluginHint: .useAppDefault,
-            primaryKeyColumns: ["id"],
-            allColumns: resultColumns
-        )
-        #expect(resolved.columns.first?.columnIndex == 0)
-
-        tabManager.mutate(at: index) { $0.sortState = resolved }
-        coordinator.filterCoordinator.rebuildTableQuery(at: index)
+        await withDefaultSortBehavior(.primaryKey) {
+            await coordinator.prepareTableTabFirstLoad(tabId: tabManager.tabs[index].id)
+        }
 
         let query = tabManager.tabs[index].content.query
         #expect(query.localizedCaseInsensitiveContains("ORDER BY"))
@@ -72,58 +156,51 @@ struct DefaultSortInitialQueryTests {
         #expect(!query.contains("`a`"))
     }
 
-    @Test("shouldResolveDefaultSort is true for a fresh table tab when the default sort is primary key")
-    func gateTrueForPrimaryKeyBehavior() {
-        let previous = AppSettingsManager.shared.dataGrid.defaultSortBehavior
-        AppSettingsManager.shared.dataGrid.defaultSortBehavior = .primaryKey
-        defer { AppSettingsManager.shared.dataGrid.defaultSortBehavior = previous }
-
+    @Test("prepareTableTabFirstLoad bails when the tab is no longer selected")
+    func bailsWhenTabDeselected() async {
         let (coordinator, tabManager, index) = makeCoordinator(tableName: "users")
-        #expect(coordinator.shouldResolveDefaultSort(for: tabManager.tabs[index]))
+        let tabId = tabManager.tabs[index].id
+        tabManager.selectedTabId = nil
+
+        await withDefaultSortBehavior(.primaryKey) {
+            let ready = await coordinator.prepareTableTabFirstLoad(tabId: tabId)
+            #expect(!ready)
+        }
     }
 
-    @Test("shouldResolveDefaultSort is false once the gate has been evaluated")
-    func gateFalseAfterEvaluation() {
-        let previous = AppSettingsManager.shared.dataGrid.defaultSortBehavior
-        AppSettingsManager.shared.dataGrid.defaultSortBehavior = .primaryKey
-        defer { AppSettingsManager.shared.dataGrid.defaultSortBehavior = previous }
-
+    @Test("wantsDefaultSort is true for a fresh table tab when the default sort is primary key")
+    func gateTrueForPrimaryKeyBehavior() async {
         let (coordinator, tabManager, index) = makeCoordinator(tableName: "users")
-        tabManager.mutate(at: index) { $0.execution.didEvaluateDefaultSort = true }
-        #expect(!coordinator.shouldResolveDefaultSort(for: tabManager.tabs[index]))
+        await withDefaultSortBehavior(.primaryKey) {
+            #expect(coordinator.wantsDefaultSort(for: tabManager.tabs[index]))
+        }
     }
 
-    @Test("shouldResolveDefaultSort is false when the user already sorted")
-    func gateFalseWhenUserSorting() {
-        let previous = AppSettingsManager.shared.dataGrid.defaultSortBehavior
-        AppSettingsManager.shared.dataGrid.defaultSortBehavior = .primaryKey
-        defer { AppSettingsManager.shared.dataGrid.defaultSortBehavior = previous }
-
+    @Test("wantsDefaultSort is false when the user already sorted")
+    func gateFalseWhenUserSorting() async {
         let (coordinator, tabManager, index) = makeCoordinator(tableName: "users")
         tabManager.mutate(at: index) {
             $0.sortState = SortState(columns: [SortColumn(columnIndex: 1, direction: .descending)], source: .user)
         }
-        #expect(!coordinator.shouldResolveDefaultSort(for: tabManager.tabs[index]))
+        await withDefaultSortBehavior(.primaryKey) {
+            #expect(!coordinator.wantsDefaultSort(for: tabManager.tabs[index]))
+        }
     }
 
-    @Test("shouldResolveDefaultSort is false when the default sort behavior is none")
-    func gateFalseForNoneBehavior() {
-        let previous = AppSettingsManager.shared.dataGrid.defaultSortBehavior
-        AppSettingsManager.shared.dataGrid.defaultSortBehavior = .none
-        defer { AppSettingsManager.shared.dataGrid.defaultSortBehavior = previous }
-
+    @Test("wantsDefaultSort is false when the default sort behavior is none")
+    func gateFalseForNoneBehavior() async {
         let (coordinator, tabManager, index) = makeCoordinator(tableName: "users")
-        #expect(!coordinator.shouldResolveDefaultSort(for: tabManager.tabs[index]))
+        await withDefaultSortBehavior(DefaultSortBehavior.none) {
+            #expect(!coordinator.wantsDefaultSort(for: tabManager.tabs[index]))
+        }
     }
 
-    @Test("shouldResolveDefaultSort is false for non-table tabs")
-    func gateFalseForQueryTab() {
-        let previous = AppSettingsManager.shared.dataGrid.defaultSortBehavior
-        AppSettingsManager.shared.dataGrid.defaultSortBehavior = .primaryKey
-        defer { AppSettingsManager.shared.dataGrid.defaultSortBehavior = previous }
-
+    @Test("wantsDefaultSort is false for non-table tabs")
+    func gateFalseForQueryTab() async {
         let (coordinator, _, _) = makeCoordinator(tableName: "users")
         let queryTab = QueryTab(title: "Q", query: "SELECT 1", tabType: .query)
-        #expect(!coordinator.shouldResolveDefaultSort(for: queryTab))
+        await withDefaultSortBehavior(.primaryKey) {
+            #expect(!coordinator.wantsDefaultSort(for: queryTab))
+        }
     }
 }

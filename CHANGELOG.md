@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Default row sort now applies to the very first table opened after launch, not just tables opened after it. (#1603)
+
 ## [0.49.1] - 2026-06-06
 
 ### Fixed

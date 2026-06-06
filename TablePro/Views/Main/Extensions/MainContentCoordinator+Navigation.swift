@@ -232,10 +232,8 @@ extension MainContentCoordinator {
         restoreFiltersForTable(tableName)
         if isInPlace, let dbIndex = Int(currentDatabase) {
             selectRedisDatabaseAndQuery(dbIndex)
-        } else if !selectedTabHiddenColumns.isEmpty {
-            requeryWithColumnScope()
         } else {
-            runQuery()
+            lazyLoadCurrentTabIfNeeded()
         }
     }
 
@@ -274,7 +272,10 @@ extension MainContentCoordinator {
         }
         restoreLastHiddenColumnsForTable(tableName)
         restoreFiltersForTable(tableName)
-        executeSelectedTableTabQuery()
+        if let tabId = tabManager.selectedTab?.id {
+            cancelTableLoad(for: tabId)
+        }
+        lazyLoadCurrentTabIfNeeded()
     }
 
     // MARK: - Preview Tabs

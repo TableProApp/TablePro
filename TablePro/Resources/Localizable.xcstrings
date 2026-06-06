@@ -7558,6 +7558,7 @@
       }
     },
     "Applied when opening a table. Click a column header to override." : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -19180,6 +19181,9 @@
           }
         }
       }
+    },
+    "Default row sort is applied when a table first opens. Click a column header to override it." : {
+
     },
     "Default row sort:" : {
       "localizations" : {
