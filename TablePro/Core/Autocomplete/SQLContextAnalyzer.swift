@@ -261,15 +261,8 @@ final class SQLContextAnalyzer {
 
     // MARK: - UTF-16 Helpers
 
-    /// Check if a UTF-16 code unit is a letter or digit (ASCII fast path + fallback)
     private static func isIdentifierChar(_ ch: UInt16) -> Bool {
-        // ASCII letters
-        if (ch >= 0x41 && ch <= 0x5A) || (ch >= 0x61 && ch <= 0x7A) { return true }
-        // ASCII digits
-        if ch >= 0x30 && ch <= 0x39 { return true }
-        // underscore
-        if ch == underscore { return true }
-        return false
+        SQLTokenBoundary.isIdentifierChar(ch)
     }
 
     /// Check if a UTF-16 code unit is whitespace (space, tab, newline, CR)
@@ -728,7 +721,7 @@ final class SQLContextAnalyzer {
                 continue
             }
 
-            if Self.isIdentifierChar(ch) || ch == Self.backtick || ch == Self.doubleQuote {
+            if SQLTokenBoundary.isTokenChar(ch) {
                 prefixStart = i
             } else {
                 break

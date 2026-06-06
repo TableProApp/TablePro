@@ -38,6 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Accepting an autocomplete suggestion replaces the whole typed word; it could leave part of the word behind, turning `mess` plus Tab into `memessage`.
 - MongoDB: connecting to Atlas no longer fails with TLS internal error (-9838); the plugin ships the OpenSSL TLS stack again. (#1599)
 - DuckDB: the plugin runs DuckDB 1.5.2 again after a rollback to 1.5.0.
 - JSON import: a failed import with "Delete existing rows before import" restores the deleted rows.

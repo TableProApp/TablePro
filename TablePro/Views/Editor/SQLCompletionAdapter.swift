@@ -159,17 +159,15 @@ final class SQLCompletionAdapter: CodeSuggestionDelegate {
               let provider = completionEngine?.provider else { return nil }
 
         let offset = cursorPosition.range.location
-        let docLength = (textView.textView.textStorage?.string as NSString?)?.length ?? 0
+        guard let nsText = textView.textView.textStorage?.string as NSString?,
+              offset >= 0, offset <= nsText.length else { return nil }
 
-        let prefixStart = context.replacementRange.location
-        guard offset >= prefixStart, offset <= docLength else { return nil }
-
+        let prefixStart = SQLTokenBoundary.segmentStart(in: nsText, endingAt: offset)
         let prefixLength = offset - prefixStart
         guard prefixLength > 0, prefixLength <= 500 else { return nil }
 
         let prefixRange = NSRange(location: prefixStart, length: prefixLength)
-        let currentPrefix = (textView.textView.textStorage?.string as NSString?)?
-            .substring(with: prefixRange).lowercased() ?? ""
+        let currentPrefix = nsText.substring(with: prefixRange).lowercased()
 
         guard !currentPrefix.isEmpty else { return nil }
 
@@ -188,9 +186,11 @@ final class SQLCompletionAdapter: CodeSuggestionDelegate {
 
         suppressNextCompletion = true
 
-        let originalStart = context.replacementRange.location
-        let currentEnd = cursorPosition?.range.location ?? (originalStart + context.replacementRange.length)
-        let replaceRange = NSRange(location: originalStart, length: currentEnd - originalStart)
+        let replaceRange = SQLTokenBoundary.replacementRange(
+            in: textView.textView.textStorage?.string as NSString?,
+            cursor: cursorPosition?.range.location,
+            fallback: context.replacementRange
+        )
         let insertText = entry.item.insertText
 
         textView.textView.replaceCharacters(
