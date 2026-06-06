@@ -853,6 +853,15 @@ final class MainContentCoordinator {
         guard let (tab, index) = tabManager.selectedTabAndIndex,
               !tab.execution.isExecuting else { return }
 
+        if shouldResolveDefaultSort(for: tab) {
+            let tabId = tab.id
+            tabManager.mutate(at: index) { $0.execution.didEvaluateDefaultSort = true }
+            Task { @MainActor [weak self] in
+                await self?.resolveDefaultSortThenExecuteTableQuery(tabId: tabId)
+            }
+            return
+        }
+
         let sql = tab.content.query
         guard !sql.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
 

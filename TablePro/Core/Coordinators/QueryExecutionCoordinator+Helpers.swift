@@ -171,15 +171,6 @@ extension QueryExecutionCoordinator {
             parent.tabManager.mutate(at: idx) { $0.tableContext.primaryKeyColumns = resolvedPKs }
         }
 
-        applyDefaultSortIfPending(
-            tabId: tabId,
-            tabIndex: idx,
-            tableName: tableName,
-            columns: columns,
-            resolvedPKs: resolvedPKs,
-            connectionType: conn.type
-        )
-
         if parent.tabManager.selectedTabId == tabId {
             parent.changeManager.configureForTable(
                 tableName: tableName ?? "",
@@ -241,48 +232,6 @@ extension QueryExecutionCoordinator {
             errorMessage: nil,
             parameterValues: queryParameterValues
         )
-    }
-
-    private func applyDefaultSortIfPending(
-        tabId: UUID,
-        tabIndex: Int,
-        tableName: String?,
-        columns: [String],
-        resolvedPKs: [String],
-        connectionType: DatabaseType
-    ) {
-        guard tabIndex < parent.tabManager.tabs.count else { return }
-        let tab = parent.tabManager.tabs[tabIndex]
-        guard !tab.execution.didEvaluateDefaultSort,
-              tab.tabType == .table,
-              !tab.sortState.isSorting,
-              !columns.isEmpty,
-              let tableName, !tableName.isEmpty,
-              parent.tabManager.selectedTabId == tabId else {
-            return
-        }
-
-        let behavior = AppSettingsManager.shared.dataGrid.defaultSortBehavior
-        let hint = PluginManager.shared.defaultSortHint(for: connectionType, table: tableName)
-        let resolved = DefaultSortResolver.resolveSortState(
-            behavior: behavior,
-            pluginHint: hint,
-            primaryKeyColumns: resolvedPKs,
-            allColumns: columns
-        )
-
-        guard resolved.isSorting else {
-            parent.tabManager.mutate(at: tabIndex) { $0.execution.didEvaluateDefaultSort = true }
-            return
-        }
-
-        parent.tabManager.mutate(at: tabIndex) { tab in
-            tab.execution.didEvaluateDefaultSort = true
-            tab.sortState = resolved
-            tab.pagination.reset()
-        }
-        parent.filterCoordinator.rebuildTableQuery(at: tabIndex)
-        parent.runQuery()
     }
 
     func launchPhase2Work(
