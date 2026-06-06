@@ -67,14 +67,17 @@ scripts/download-libs.sh --force  # Re-download and overwrite
 Static libs (`Libs/*.a`) are hosted on the `libs-v1` GitHub Release (not in git). When adding or updating a library:
 
 ```bash
-# 1. Update the .a files in Libs/
-# 2. Regenerate checksums
-shasum -a 256 Libs/*.a > Libs/checksums.sha256
-# 3. Recreate and upload the archive
-tar czf /tmp/tablepro-libs-v1.tar.gz -C Libs .
-gh release upload libs-v1 /tmp/tablepro-libs-v1.tar.gz --clobber --repo TableProApp/TablePro
-# 4. Commit the updated checksums
+# 1. Update the .a files in Libs/ (build scripts write them there)
+# 2. Publish: verifies all OTHER local libs still match the checksums at HEAD,
+#    regenerates checksums.sha256, uploads the archive. Name every lib you rebuilt.
+scripts/publish-libs.sh libmongoc_arm64.a libmongoc_x86_64.a libmongoc_universal.a libmongoc.a
+# 3. Commit the updated checksums
 git add Libs/checksums.sha256 && git commit -m "build: update static library checksums"
+```
+
+Never run `shasum -a 256 Libs/*.a > Libs/checksums.sha256` by hand: regenerating from a stale `Libs/` reverts other libraries silently (this shipped a broken libmongoc and rolled back DuckDB once). `publish-libs.sh` exists to make that impossible.
+
+```bash
 
 # iOS xcframeworks (Libs/ios/*.xcframework)
 tar czf /tmp/tablepro-libs-ios-v1.tar.gz -C Libs/ios .

@@ -36,6 +36,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- MongoDB: connecting to Atlas no longer fails with TLS internal error (-9838). A plugin build from a stale library snapshot had brought back the old TLS stack; the plugin now ships the OpenSSL build again. (#1599)
+- DuckDB: the plugin runs DuckDB 1.5.2 again. The same stale snapshot had rolled it back to 1.5.0.
 - JSON import: "Delete existing rows before import" now runs inside the import transaction, so a failed import restores the deleted rows instead of leaving the table emptied.
 - JSON import: skip-and-continue mode no longer inserts duplicate rows when part of a batch had already been written before an error.
 - JSON import: "Stop and Commit" now keeps the rows inserted before the error instead of rolling them back.
