@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Registry plugins built before 0.49.0 install and load again instead of failing with an invalid plugin bundle error.
+
 ## [0.49.0] - 2026-06-06
 
 ### Added

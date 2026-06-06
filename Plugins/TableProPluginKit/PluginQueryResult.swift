@@ -30,6 +30,28 @@ public struct PluginQueryResult: Codable, Sendable {
         self.columnMeta = columnMeta
     }
 
+    @_disfavoredOverload
+    public init(
+        columns: [String],
+        columnTypeNames: [String],
+        rows: [[PluginCellValue]],
+        rowsAffected: Int,
+        executionTime: TimeInterval,
+        isTruncated: Bool,
+        statusMessage: String?
+    ) {
+        self.init(
+            columns: columns,
+            columnTypeNames: columnTypeNames,
+            rows: rows,
+            rowsAffected: rowsAffected,
+            executionTime: executionTime,
+            isTruncated: isTruncated,
+            statusMessage: statusMessage,
+            columnMeta: nil
+        )
+    }
+
     public static let empty = PluginQueryResult(
         columns: [],
         columnTypeNames: [],
