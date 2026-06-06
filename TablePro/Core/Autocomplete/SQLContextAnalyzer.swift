@@ -141,8 +141,6 @@ final class SQLContextAnalyzer {
     private static let openParen = UInt16(UnicodeScalar("(").value)
     private static let closeParen = UInt16(UnicodeScalar(")").value)
     private static let dot = UInt16(UnicodeScalar(".").value)
-    private static let backtick = UInt16(UnicodeScalar("`").value)
-    private static let underscore = UInt16(UnicodeScalar("_").value)
     private static let comma = UInt16(UnicodeScalar(",").value)
     private static let space = UInt16(UnicodeScalar(" ").value)
     private static let tab = UInt16(UnicodeScalar("\t").value)
@@ -260,10 +258,6 @@ final class SQLContextAnalyzer {
     }()
 
     // MARK: - UTF-16 Helpers
-
-    private static func isIdentifierChar(_ ch: UInt16) -> Bool {
-        SQLTokenBoundary.isIdentifierChar(ch)
-    }
 
     /// Check if a UTF-16 code unit is whitespace (space, tab, newline, CR)
     private static func isWhitespace(_ ch: UInt16) -> Bool {
@@ -524,7 +518,7 @@ final class SQLContextAnalyzer {
             }
 
             if !inString {
-                if Self.isIdentifierChar(ch) {
+                if SQLTokenBoundary.isIdentifierChar(ch) {
                     if wordStart < 0 {
                         wordStart = i
                     }
@@ -695,7 +689,6 @@ final class SQLContextAnalyzer {
     }
 
     /// Extract the current word prefix and any dot prefix (table.column).
-    /// Uses NSString character-at-index for O(1) access instead of Array(text).
     private func extractPrefix(
         from text: String
     ) -> (prefix: String, start: Int, dotPrefix: String?) {
@@ -705,54 +698,23 @@ final class SQLContextAnalyzer {
             return ("", 0, nil)
         }
 
-        // Scan backwards to find start of identifier
-        var prefixStart = length
-        var foundDot = false
-        var dotPosition = -1
+        let start = SQLTokenBoundary.segmentStart(in: ns, endingAt: length)
+        let prefix = ns.substring(from: start)
 
-        var i = length - 1
-        while i >= 0 {
-            let ch = ns.character(at: i)
-
-            if ch == Self.dot && !foundDot {
-                foundDot = true
-                dotPosition = i
-                i -= 1
-                continue
-            }
-
-            if SQLTokenBoundary.isTokenChar(ch) {
-                prefixStart = i
-            } else {
-                break
-            }
-
-            i -= 1
+        guard start > 0, ns.character(at: start - 1) == Self.dot else {
+            return (prefix, start, nil)
         }
 
-        if foundDot && dotPosition > prefixStart {
-            // Has dot prefix like "users.na" or "u.na"
-            let beforeDotRange = NSRange(
-                location: prefixStart, length: dotPosition - prefixStart
-            )
-            let beforeDot = ns.substring(with: beforeDotRange)
-            let afterDotRange = NSRange(
-                location: dotPosition + 1, length: length - dotPosition - 1
-            )
-            let afterDot = ns.substring(with: afterDotRange)
-
-            let cleanDotPrefix = beforeDot.trimmingCharacters(
-                in: CharacterSet(charactersIn: "`\"")
-            )
-            return (afterDot, dotPosition + 1, cleanDotPrefix)
-        } else {
-            // No dot, just a regular prefix
-            let prefixRange = NSRange(
-                location: prefixStart, length: length - prefixStart
-            )
-            let prefix = ns.substring(with: prefixRange)
-            return (prefix, prefixStart, nil)
+        let qualifierEnd = start - 1
+        let qualifierStart = SQLTokenBoundary.segmentStart(in: ns, endingAt: qualifierEnd)
+        guard qualifierStart < qualifierEnd else {
+            return (prefix, start, nil)
         }
+
+        let qualifierRange = NSRange(location: qualifierStart, length: qualifierEnd - qualifierStart)
+        let dotPrefix = ns.substring(with: qualifierRange)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "`\""))
+        return (prefix, start, dotPrefix)
     }
 
     private static let tableRefKeywords: Set<String> = [
