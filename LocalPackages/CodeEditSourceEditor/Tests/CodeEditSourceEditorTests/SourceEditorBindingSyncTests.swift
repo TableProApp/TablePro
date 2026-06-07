@@ -34,10 +34,10 @@ final class SourceEditorBindingSyncTests: XCTestCase {
         controller.textView.setText("initial")
 
         bound = "updated"
-        coordinator.syncBindingText(bound, controller: controller)
+        coordinator.textSync.applyRepresentableText(bound, controller: controller)
 
         XCTAssertEqual(controller.textView.string, "updated")
-        XCTAssertEqual(coordinator.lastSyncedText, "updated")
+        XCTAssertEqual(coordinator.textSync.lastSyncedText, "updated")
     }
 
     @MainActor
@@ -46,10 +46,10 @@ final class SourceEditorBindingSyncTests: XCTestCase {
         let coordinator = makeCoordinator(get: { bound }, set: { bound = $0 })
         controller.textView.setText("in-flight user edit")
 
-        coordinator.syncBindingText(bound, controller: controller)
+        coordinator.textSync.applyRepresentableText(bound, controller: controller)
 
         XCTAssertEqual(controller.textView.string, "in-flight user edit")
-        XCTAssertEqual(coordinator.lastSyncedText, "before edit")
+        XCTAssertEqual(coordinator.textSync.lastSyncedText, "before edit")
     }
 
     @MainActor
@@ -63,8 +63,8 @@ final class SourceEditorBindingSyncTests: XCTestCase {
         )
 
         XCTAssertEqual(bound, "typed text")
-        XCTAssertEqual(coordinator.lastSyncedText, "typed text")
-        XCTAssertTrue(coordinator.isUpdateFromTextView)
+        XCTAssertEqual(coordinator.textSync.lastSyncedText, "typed text")
+        XCTAssertTrue(coordinator.phase.isEditorChangePending)
     }
 
     @MainActor
@@ -73,14 +73,15 @@ final class SourceEditorBindingSyncTests: XCTestCase {
         var setterCallCount = 0
         let coordinator = makeCoordinator(get: { bound }, set: { bound = $0; setterCallCount += 1 })
         controller.textView.setText("stale")
-        coordinator.isUpdatingFromRepresentable = true
 
-        coordinator.textViewDidChangeText(
-            Notification(name: TextView.textDidChangeNotification, object: controller.textView)
-        )
+        coordinator.phase.applyRepresentableValue {
+            coordinator.textViewDidChangeText(
+                Notification(name: TextView.textDidChangeNotification, object: controller.textView)
+            )
+        }
 
         XCTAssertEqual(setterCallCount, 0)
-        XCTAssertFalse(coordinator.isUpdateFromTextView)
+        XCTAssertFalse(coordinator.phase.isEditorChangePending)
         XCTAssertEqual(bound, "external")
     }
 
@@ -96,30 +97,14 @@ final class SourceEditorBindingSyncTests: XCTestCase {
         )
 
         XCTAssertEqual(bound, "")
-        XCTAssertTrue(coordinator.isUpdateFromTextView)
+        XCTAssertTrue(coordinator.phase.isEditorChangePending)
 
-        coordinator.syncBindingText(bound, controller: controller)
+        coordinator.textSync.applyRepresentableText(bound, controller: controller)
         XCTAssertEqual(controller.textView.string, largeText)
 
         try await Task.sleep(for: .milliseconds(300))
         XCTAssertEqual(bound, largeText)
-        XCTAssertEqual(coordinator.lastSyncedText, largeText)
-    }
-
-    @MainActor
-    func test_syncShorterTextDropsOutOfBoundsSelection() {
-        var bound = "select * from table"
-        let coordinator = makeCoordinator(get: { bound }, set: { bound = $0 })
-        controller.textView.setText("select * from table")
-        controller.textView.selectionManager.setSelectedRange(NSRange(location: 19, length: 0))
-
-        bound = "ab"
-        coordinator.syncBindingText(bound, controller: controller)
-
-        XCTAssertEqual(controller.textView.string, "ab")
-        for selection in controller.textView.selectionManager.textSelections {
-            XCTAssertLessThanOrEqual(selection.range.max, 2)
-        }
+        XCTAssertEqual(coordinator.textSync.lastSyncedText, largeText)
     }
 
     @MainActor
@@ -132,12 +117,12 @@ final class SourceEditorBindingSyncTests: XCTestCase {
             Notification(name: TextView.textDidChangeNotification, object: controller.textView)
         )
         XCTAssertEqual(bound, "s")
-        XCTAssertTrue(coordinator.isUpdateFromTextView)
+        XCTAssertTrue(coordinator.phase.isEditorChangePending)
 
-        coordinator.syncBindingText("", controller: controller)
+        coordinator.textSync.applyRepresentableText("", controller: controller)
 
         XCTAssertEqual(controller.textView.string, "s")
-        XCTAssertEqual(coordinator.lastSyncedText, "s")
+        XCTAssertEqual(coordinator.textSync.lastSyncedText, "s")
     }
 
     @MainActor
@@ -149,13 +134,13 @@ final class SourceEditorBindingSyncTests: XCTestCase {
         coordinator.textViewDidChangeText(
             Notification(name: TextView.textDidChangeNotification, object: controller.textView)
         )
-        coordinator.isUpdateFromTextView = false
+        coordinator.phase.consumePendingEditorChange()
 
         bound = "SELECT 1"
-        coordinator.syncBindingText(bound, controller: controller)
+        coordinator.textSync.applyRepresentableText(bound, controller: controller)
 
         XCTAssertEqual(controller.textView.string, "SELECT 1")
-        XCTAssertEqual(coordinator.lastSyncedText, "SELECT 1")
+        XCTAssertEqual(coordinator.textSync.lastSyncedText, "SELECT 1")
     }
 
     @MainActor
@@ -168,7 +153,7 @@ final class SourceEditorBindingSyncTests: XCTestCase {
         XCTAssertNotNil(highlighterBefore)
 
         bound = "SELECT\n    *\nFROM\n    users"
-        coordinator.syncBindingText(bound, controller: controller)
+        coordinator.textSync.applyRepresentableText(bound, controller: controller)
 
         XCTAssertEqual(controller.textView.string, "SELECT\n    *\nFROM\n    users")
         XCTAssertNotNil(controller.highlighter)
@@ -195,10 +180,26 @@ final class SourceEditorBindingSyncTests: XCTestCase {
         var bound = "select * from users"
         let coordinator = makeCoordinator(get: { bound }, set: { bound = $0 })
         bound = "SELECT\n    *\nFROM\n    users"
-        coordinator.syncBindingText(bound, controller: providerController)
+        coordinator.textSync.applyRepresentableText(bound, controller: providerController)
 
         XCTAssertGreaterThan(provider.setUpCount, setUpsBefore)
         XCTAssertGreaterThan(provider.queryCount, queriesBefore)
+    }
+
+    @MainActor
+    func test_syncShorterTextDropsOutOfBoundsSelection() {
+        var bound = "select * from table"
+        let coordinator = makeCoordinator(get: { bound }, set: { bound = $0 })
+        controller.textView.setText("select * from table")
+        controller.textView.selectionManager.setSelectedRange(NSRange(location: 19, length: 0))
+
+        bound = "ab"
+        coordinator.textSync.applyRepresentableText(bound, controller: controller)
+
+        XCTAssertEqual(controller.textView.string, "ab")
+        for selection in controller.textView.selectionManager.textSelections {
+            XCTAssertLessThanOrEqual(selection.range.max, 2)
+        }
     }
 
     @MainActor
@@ -208,7 +209,7 @@ final class SourceEditorBindingSyncTests: XCTestCase {
         controller.textView.setText("stable")
         let storageBefore = controller.textView.textStorage
 
-        coordinator.syncBindingText(bound, controller: controller)
+        coordinator.textSync.applyRepresentableText(bound, controller: controller)
 
         XCTAssertIdentical(controller.textView.textStorage, storageBefore)
         XCTAssertEqual(controller.textView.string, "stable")

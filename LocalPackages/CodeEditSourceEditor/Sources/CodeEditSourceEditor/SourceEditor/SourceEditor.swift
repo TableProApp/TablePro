@@ -134,18 +134,15 @@ public struct SourceEditor: NSViewControllerRepresentable {
 
         context.coordinator.updateHighlightProviders(highlightProviders)
 
-        context.coordinator.text = text
+        context.coordinator.textSync.text = text
         if case .binding(let binding) = text {
-            context.coordinator.syncBindingText(binding.wrappedValue, controller: controller)
+            context.coordinator.textSync.applyRepresentableText(binding.wrappedValue, controller: controller)
         }
 
-        // Prevent infinite loop of update notifications
-        if context.coordinator.isUpdateFromTextView {
-            context.coordinator.isUpdateFromTextView = false
-        } else {
-            context.coordinator.isUpdatingFromRepresentable = true
-            updateControllerWithState(state, controller: controller)
-            context.coordinator.isUpdatingFromRepresentable = false
+        if !context.coordinator.phase.consumePendingEditorChange() {
+            context.coordinator.phase.applyRepresentableValue {
+                updateControllerWithState(state, controller: controller)
+            }
         }
 
         // Do manual diffing to reduce the amount of reloads.
