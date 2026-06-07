@@ -19,6 +19,7 @@ final class SuggestionViewModel: ObservableObject {
 
     var itemsRequestTask: Task<Void, Never>?
     weak var activeTextView: TextViewController?
+    private(set) var isApplyingCompletion = false
 
     weak var delegate: CodeSuggestionDelegate?
 
@@ -83,6 +84,8 @@ final class SuggestionViewModel: ObservableObject {
         isManualTrigger: Bool = false,
         showWindowOnParent: @escaping @MainActor (NSWindow, NSRect) -> Void
     ) {
+        guard !isApplyingCompletion else { return }
+
         self.activeTextView = nil
         self.delegate = nil
         itemsRequestTask?.cancel()
@@ -142,6 +145,8 @@ final class SuggestionViewModel: ObservableObject {
         position: CursorPosition,
         close: () -> Void
     ) {
+        guard !isApplyingCompletion else { return }
+
         if activeTextView !== textView {
             itemsRequestTask?.cancel()
             itemsRequestTask = nil
@@ -173,11 +178,13 @@ final class SuggestionViewModel: ObservableObject {
         guard let activeTextView else {
             return
         }
+        isApplyingCompletion = true
         self.delegate?.completionWindowApplyCompletion(
             item: item,
             textView: activeTextView,
             cursorPosition: activeTextView.cursorPositions.first
         )
+        isApplyingCompletion = false
         onApply?()
     }
 
@@ -187,6 +194,7 @@ final class SuggestionViewModel: ObservableObject {
         items.removeAll()
         selectedIndex = 0
         activeTextView = nil
+        delegate?.completionWindowDidClose()
         delegate = nil
     }
 
