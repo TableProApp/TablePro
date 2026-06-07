@@ -14498,6 +14498,9 @@
         }
       }
     },
+    "Connection Mode" : {
+
+    },
     "Connection name" : {
       "localizations" : {
         "tr" : {
@@ -35097,6 +35100,9 @@
         }
       }
     },
+    "Local File" : {
+
+    },
     "Local Listener" : {
       "localizations" : {
         "tr" : {
@@ -48334,6 +48340,9 @@
           }
         }
       }
+    },
+    "Remote (Turso)" : {
+
     },
     "Remove" : {
       "localizations" : {

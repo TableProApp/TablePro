@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- libSQL / Turso connections can open a local database file: pick Local File mode in the connection form, browse to the file, and work with it offline, transactions included. (#1607)
+
 ### Fixed
 
 - Default row sort now applies to the very first table opened after launch, not just tables opened after it. (#1603)

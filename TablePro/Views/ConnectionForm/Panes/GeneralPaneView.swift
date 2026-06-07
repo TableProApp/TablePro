@@ -172,10 +172,23 @@ struct GeneralPaneView: View {
                 }
                 ForEach(coordinator.auth.authFields, id: \.id) { field in
                     if coordinator.auth.isFieldVisible(field) {
-                        ConnectionFieldRow(
-                            field: field,
-                            value: authFieldBinding(for: field)
-                        )
+                        if isFilePathField(field) {
+                            HStack {
+                                ConnectionFieldRow(
+                                    field: field,
+                                    value: authFieldBinding(for: field)
+                                )
+                                Button(String(localized: "Browse...")) {
+                                    browseForAuthFile(field: field)
+                                }
+                                .controlSize(.small)
+                            }
+                        } else {
+                            ConnectionFieldRow(
+                                field: field,
+                                value: authFieldBinding(for: field)
+                            )
+                        }
                     }
                 }
                 if coordinator.auth.usePgpass {
@@ -226,6 +239,10 @@ struct GeneralPaneView: View {
         return false
     }
 
+    private func isFilePathField(_ field: ConnectionField) -> Bool {
+        field.fieldType == .text && field.id.hasSuffix("FilePath")
+    }
+
     private var firstHostListValue: String {
         let fieldId = coordinator.network.connectionFields
             .first(where: isHostListField)?.id
@@ -267,6 +284,18 @@ struct GeneralPaneView: View {
     }
 
     private func browseForFile() {
+        presentFilePanel { path in
+            coordinator.network.database = path
+        }
+    }
+
+    private func browseForAuthFile(field: ConnectionField) {
+        presentFilePanel { path in
+            coordinator.auth.additionalFieldValues[field.id] = path
+        }
+    }
+
+    private func presentFilePanel(onSelect: @escaping (String) -> Void) {
         guard let window = NSApp.keyWindow else { return }
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.database, .data]
@@ -275,7 +304,7 @@ struct GeneralPaneView: View {
 
         panel.beginSheetModal(for: window) { response in
             if response == .OK, let url = panel.url {
-                coordinator.network.database = url.path(percentEncoded: false)
+                onSelect(url.path(percentEncoded: false))
             }
         }
     }
