@@ -159,6 +159,49 @@ final class SourceEditorBindingSyncTests: XCTestCase {
     }
 
     @MainActor
+    func test_syncRebuildsHighlighterForReplacementStorage() {
+        var bound = "select * from users"
+        let coordinator = makeCoordinator(get: { bound }, set: { bound = $0 })
+        controller.textView.setText("select * from users")
+        controller.setUpHighlighter()
+        let highlighterBefore = controller.highlighter
+        XCTAssertNotNil(highlighterBefore)
+
+        bound = "SELECT\n    *\nFROM\n    users"
+        coordinator.syncBindingText(bound, controller: controller)
+
+        XCTAssertEqual(controller.textView.string, "SELECT\n    *\nFROM\n    users")
+        XCTAssertNotNil(controller.highlighter)
+        XCTAssertNotIdentical(controller.highlighter, highlighterBefore)
+    }
+
+    @MainActor
+    func test_syncQueriesHighlightsForReplacementStorage() {
+        let provider = HighlighterTests.MockHighlightProvider()
+        let providerController = TextViewController(
+            string: "select * from users",
+            language: .html,
+            configuration: Mock.config(),
+            cursorPositions: [],
+            highlightProviders: [provider]
+        )
+        providerController.loadView()
+        providerController.view.frame = NSRect(x: 0, y: 0, width: 1_000, height: 1_000)
+        providerController.view.layoutSubtreeIfNeeded()
+
+        let setUpsBefore = provider.setUpCount
+        let queriesBefore = provider.queryCount
+
+        var bound = "select * from users"
+        let coordinator = makeCoordinator(get: { bound }, set: { bound = $0 })
+        bound = "SELECT\n    *\nFROM\n    users"
+        coordinator.syncBindingText(bound, controller: providerController)
+
+        XCTAssertGreaterThan(provider.setUpCount, setUpsBefore)
+        XCTAssertGreaterThan(provider.queryCount, queriesBefore)
+    }
+
+    @MainActor
     func test_repeatedSyncWithSameValueLeavesTextViewUntouched() {
         var bound = "stable"
         let coordinator = makeCoordinator(get: { bound }, set: { bound = $0 })

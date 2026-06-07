@@ -166,12 +166,17 @@ extension SourceEditor {
         /// fires suggestion triggers, none of which should happen for a programmatic
         /// whole-document replacement. `setText` clearing the undo stack matches the
         /// new-document semantics of that replacement.
+        ///
+        /// Must go through `TextViewController.setText`, not `textView.setText`: the
+        /// controller-level call rebuilds the highlighter for the replacement storage.
+        /// Calling the text view directly leaves tree-sitter state for the old document
+        /// and highlighting never recovers.
         func syncBindingText(_ newValue: String, controller: TextViewController) {
             guard !isUpdateFromTextView else { return }
             guard newValue != lastSyncedText else { return }
             textBindingTask?.cancel()
             isUpdatingFromRepresentable = true
-            controller.textView.setText(newValue)
+            controller.setText(newValue)
             isUpdatingFromRepresentable = false
             lastSyncedText = newValue
         }
