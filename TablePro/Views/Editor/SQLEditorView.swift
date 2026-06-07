@@ -82,21 +82,6 @@ struct SQLEditorView: View {
                 }
                 cursorPositions = positions
             }
-            // SourceEditor doesn't re-read the text binding in updateNSViewController,
-            // so programmatic changes on the SAME tab (clear, format) won't appear
-            // without this. Tab switches don't need it — .id(tab.id) recreates the
-            // entire SourceEditor with the correct text.
-            .onChange(of: text) { _, newValue in
-                if let controller = coordinator.controller {
-                    let currentString = controller.textView.string as NSString
-                    let newString = newValue as NSString
-                    // Fast O(1) length check before expensive O(n) string equality
-                    if currentString.length != newString.length || currentString != newString {
-                        let fullRange = NSRange(location: 0, length: currentString.length)
-                        controller.textView.replaceCharacters(in: fullRange, with: newValue)
-                    }
-                }
-            }
             .onChange(of: connectionId) { _, _ in
                 if let schemaProvider, let completionAdapter {
                     completionAdapter.updateSchemaProvider(schemaProvider, databaseType: databaseType)

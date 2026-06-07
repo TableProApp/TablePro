@@ -363,8 +363,11 @@ struct MainEditorContentView: View {
 
     private func queryTextBinding(for tab: QueryTab) -> Binding<String> {
         let tabId = tab.id
+        let fallbackQuery = tab.content.query
         return Binding(
-            get: { tab.content.query },
+            get: {
+                tabManager.tabs.first(where: { $0.id == tabId })?.content.query ?? fallbackQuery
+            },
             set: { newValue in
                 // Find this tab by ID, not by selectedTabIndex. During tab switch,
                 // flushTextUpdate() fires on the OLD tab's EditorCoordinator when

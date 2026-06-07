@@ -123,6 +123,42 @@ final class SourceEditorBindingSyncTests: XCTestCase {
     }
 
     @MainActor
+    func test_syncSkipsStaleBindingSnapshotWhileEditIsInFlight() {
+        var bound = ""
+        let coordinator = makeCoordinator(get: { bound }, set: { bound = $0 })
+        controller.textView.setText("s")
+
+        coordinator.textViewDidChangeText(
+            Notification(name: TextView.textDidChangeNotification, object: controller.textView)
+        )
+        XCTAssertEqual(bound, "s")
+        XCTAssertTrue(coordinator.isUpdateFromTextView)
+
+        coordinator.syncBindingText("", controller: controller)
+
+        XCTAssertEqual(controller.textView.string, "s")
+        XCTAssertEqual(coordinator.lastSyncedText, "s")
+    }
+
+    @MainActor
+    func test_syncAppliesExternalChangeAfterEditFlagIsCleared() {
+        var bound = ""
+        let coordinator = makeCoordinator(get: { bound }, set: { bound = $0 })
+        controller.textView.setText("select 1")
+
+        coordinator.textViewDidChangeText(
+            Notification(name: TextView.textDidChangeNotification, object: controller.textView)
+        )
+        coordinator.isUpdateFromTextView = false
+
+        bound = "SELECT 1"
+        coordinator.syncBindingText(bound, controller: controller)
+
+        XCTAssertEqual(controller.textView.string, "SELECT 1")
+        XCTAssertEqual(coordinator.lastSyncedText, "SELECT 1")
+    }
+
+    @MainActor
     func test_repeatedSyncWithSameValueLeavesTextViewUntouched() {
         var bound = "stable"
         let coordinator = makeCoordinator(get: { bound }, set: { bound = $0 })

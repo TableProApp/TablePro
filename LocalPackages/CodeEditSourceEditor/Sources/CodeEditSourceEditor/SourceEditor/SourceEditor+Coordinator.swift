@@ -156,9 +156,10 @@ extension SourceEditor {
         }
 
         /// Pushes an external binding change down into the text view. The text view's
-        /// content wins while one of its own edits is still in flight (`lastSyncedText`
-        /// only trails the binding during the debounce window, when both hold the same
-        /// pre-edit value), so user typing is never clobbered by a stale binding.
+        /// content wins while one of its own edits is still in flight: `isUpdateFromTextView`
+        /// is set the moment the text view mutates, before SwiftUI re-renders, so a render
+        /// that still carries a stale binding snapshot is skipped entirely and user typing
+        /// is never clobbered by a stale binding.
         ///
         /// Uses `setText` rather than `replaceCharacters` on purpose: `replaceCharacters`
         /// is the user-edit path. It is gated on `isEditable`, runs mutation filters, and
@@ -166,6 +167,7 @@ extension SourceEditor {
         /// whole-document replacement. `setText` clearing the undo stack matches the
         /// new-document semantics of that replacement.
         func syncBindingText(_ newValue: String, controller: TextViewController) {
+            guard !isUpdateFromTextView else { return }
             guard newValue != lastSyncedText else { return }
             textBindingTask?.cancel()
             isUpdatingFromRepresentable = true
