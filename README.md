@@ -112,6 +112,33 @@ brew install --cask tablepro
 
 Or download from [GitHub Releases](https://github.com/TableProApp/TablePro/releases).
 
+## How to Build
+
+Building TablePro requires macOS 14 or later and Xcode 15 or later.
+
+Run the first-time setup from the repository root:
+
+```bash
+scripts/download-libs.sh
+touch Secrets.xcconfig
+```
+
+Build a Debug app without code signing:
+
+```bash
+xcodebuild \
+  -project TablePro.xcodeproj \
+  -scheme TablePro \
+  -configuration Debug \
+  -skipPackagePluginValidation \
+  CODE_SIGNING_ALLOWED=NO \
+  build
+```
+
+The app is written to `~/Library/Developer/Xcode/DerivedData/TablePro-*/Build/Products/Debug/TablePro.app`.
+
+To build and run a signed app, configure your personal Apple team, a unique bundle identifier, and the Debug entitlements in Xcode. See [Building with a personal Apple team](CONTRIBUTING.md#building-with-a-personal-apple-team) for the required settings.
+
 ## Documentation
 
 Full docs at [docs.tablepro.app](https://docs.tablepro.app).
