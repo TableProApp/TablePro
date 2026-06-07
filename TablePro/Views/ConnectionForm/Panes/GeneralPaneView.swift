@@ -172,17 +172,12 @@ struct GeneralPaneView: View {
                 }
                 ForEach(coordinator.auth.authFields, id: \.id) { field in
                     if coordinator.auth.isFieldVisible(field) {
-                        if isFilePathField(field) {
-                            HStack {
-                                ConnectionFieldRow(
-                                    field: field,
-                                    value: authFieldBinding(for: field)
-                                )
-                                Button(String(localized: "Browse...")) {
-                                    browseForAuthFile(field: field)
-                                }
-                                .controlSize(.small)
-                            }
+                        if FilePathConnectionFieldRow.isFilePathField(field) {
+                            FilePathConnectionFieldRow(
+                                field: field,
+                                value: authFieldBinding(for: field),
+                                onBrowse: { browseForAuthFile(field: field) }
+                            )
                         } else {
                             ConnectionFieldRow(
                                 field: field,
@@ -237,10 +232,6 @@ struct GeneralPaneView: View {
     private func isHostListField(_ field: ConnectionField) -> Bool {
         if case .hostList = field.fieldType { return true }
         return false
-    }
-
-    private func isFilePathField(_ field: ConnectionField) -> Bool {
-        field.fieldType == .text && field.id.hasSuffix("FilePath")
     }
 
     private var firstHostListValue: String {
