@@ -76,15 +76,18 @@ final class SQLCompletionAdapter: CodeSuggestionDelegate {
             return nil
         }
 
+        seedKeywordContextIfNeeded(textView: textView, cursorPosition: cursorPosition)
+
         // Debounce: wait briefly and check if a newer request arrived
         debounceGeneration &+= 1
         let myGeneration = debounceGeneration
         try? await Task.sleep(nanoseconds: debounceNanoseconds)
         guard myGeneration == debounceGeneration else { return nil }
 
+        let liveCursorPosition = textView.cursorPositions.first ?? cursorPosition
         let nsText = (textView.textView.textStorage?.string ?? "") as NSString
         let docLength = nsText.length
-        let offset = cursorPosition.range.location
+        let offset = liveCursorPosition.range.location
 
         // Don't show autocomplete right after semicolon or newline
         if offset > 0 {
@@ -148,7 +151,33 @@ final class SQLCompletionAdapter: CodeSuggestionDelegate {
             SQLSuggestionEntry(item: item)
         }
 
-        return (windowPosition: cursorPosition, items: entries)
+        return (windowPosition: liveCursorPosition, items: entries)
+    }
+
+    private func seedKeywordContextIfNeeded(textView: TextViewController, cursorPosition: CursorPosition) {
+        guard currentCompletionContext == nil, let completionEngine else { return }
+
+        let keywordItems = completionEngine.keywordCompletions()
+        guard !keywordItems.isEmpty else { return }
+
+        let offset = cursorPosition.range.location
+        guard let nsText = textView.textView.textStorage?.string as NSString?,
+              offset >= 0, offset <= nsText.length else { return }
+
+        let prefixStart = SQLTokenBoundary.segmentStart(in: nsText, endingAt: offset)
+        currentCompletionContext = CompletionContext(
+            items: keywordItems,
+            replacementRange: NSRange(location: prefixStart, length: offset - prefixStart),
+            sqlContext: SQLContext(
+                clauseType: .unknown,
+                prefix: "",
+                prefixRange: prefixStart..<offset,
+                dotPrefix: nil,
+                tableReferences: [],
+                isInsideString: false,
+                isInsideComment: false
+            )
+        )
     }
 
     func completionOnCursorMove(

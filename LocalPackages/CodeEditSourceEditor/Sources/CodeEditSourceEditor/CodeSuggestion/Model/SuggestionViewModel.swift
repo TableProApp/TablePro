@@ -142,29 +142,27 @@ final class SuggestionViewModel: ObservableObject {
         position: CursorPosition,
         close: () -> Void
     ) {
-        if itemsRequestTask != nil {
+        if activeTextView !== textView {
             itemsRequestTask?.cancel()
             itemsRequestTask = nil
-        }
-
-        if activeTextView !== textView {
             close()
             return
         }
 
-        guard let newItems = delegate.completionOnCursorMove(
+        if let newItems = delegate.completionOnCursorMove(
             textView: textView,
             cursorPosition: position
-        ),
-              !newItems.isEmpty else {
-            close()
+        ), !newItems.isEmpty {
+            items = newItems
+            selectedIndex = 0
+            syntaxHighlightedCache = [:]
+            notifySelection()
             return
         }
 
-        items = newItems
-        selectedIndex = 0
-        syntaxHighlightedCache = [:]
-        notifySelection()
+        guard itemsRequestTask == nil else { return }
+
+        close()
     }
 
     func didSelect(item: CodeSuggestionEntry) {

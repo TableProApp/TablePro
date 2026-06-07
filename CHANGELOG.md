@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Default row sort now applies to the very first table opened after launch, not just tables opened after it. (#1603)
 - Cancelling a SQLite query no longer races a disconnect happening at the same moment. (#1610)
+- Typing in the query editor no longer erases characters or drops focus on each keystroke, a timing-dependent bug most visible on macOS 15. (#1608)
+- The autocomplete popup now filters in place as you type instead of closing and reopening on every keystroke. (#1608)
 
 ## [0.49.1] - 2026-06-06
 

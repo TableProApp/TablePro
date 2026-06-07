@@ -449,32 +449,7 @@ final class SQLCompletionProvider {
             items += await schemaProvider.tableCompletionItems()
 
         case .unknown:
-            if !cachedStatementCompletions.isEmpty {
-                items = cachedStatementCompletions.map { entry in
-                    SQLCompletionItem(
-                        label: entry.label,
-                        kind: .keyword,
-                        insertText: entry.insertText
-                    )
-                }
-            } else {
-                items = filterKeywords([
-                    // DML
-                    "SELECT", "INSERT", "UPDATE", "DELETE", "REPLACE", "MERGE", "UPSERT",
-                    // DDL
-                    "CREATE", "ALTER", "DROP", "TRUNCATE", "RENAME",
-                    // Database operations
-                    "SHOW", "DESCRIBE", "DESC", "EXPLAIN", "ANALYZE",
-                    // Transaction control
-                    "BEGIN", "COMMIT", "ROLLBACK", "SAVEPOINT", "START TRANSACTION",
-                    // CTEs and advanced
-                    "WITH", "RECURSIVE",
-                    // Database/schema
-                    "USE", "SET", "GRANT", "REVOKE",
-                    // Utility
-                    "CALL", "EXECUTE", "PREPARE"
-                ])
-            }
+            items = statementStartCompletionItems()
             items += await schemaProvider.tableCompletionItems()
         }
 
@@ -530,6 +505,29 @@ final class SQLCompletionProvider {
     /// Filter to specific keywords
     private func filterKeywords(_ keywords: [String]) -> [SQLCompletionItem] {
         keywords.map { SQLCompletionItem.keyword($0) }
+    }
+
+    private static let statementStartKeywords = [
+        "SELECT", "INSERT", "UPDATE", "DELETE", "REPLACE", "MERGE", "UPSERT",
+        "CREATE", "ALTER", "DROP", "TRUNCATE", "RENAME",
+        "SHOW", "DESCRIBE", "DESC", "EXPLAIN", "ANALYZE",
+        "BEGIN", "COMMIT", "ROLLBACK", "SAVEPOINT", "START TRANSACTION",
+        "WITH", "RECURSIVE",
+        "USE", "SET", "GRANT", "REVOKE",
+        "CALL", "EXECUTE", "PREPARE"
+    ]
+
+    func statementStartCompletionItems() -> [SQLCompletionItem] {
+        guard cachedStatementCompletions.isEmpty else {
+            return cachedStatementCompletions.map { entry in
+                SQLCompletionItem(
+                    label: entry.label,
+                    kind: .keyword,
+                    insertText: entry.insertText
+                )
+            }
+        }
+        return filterKeywords(Self.statementStartKeywords)
     }
 
     /// Create keyword items with boosted (lower) sort priority
