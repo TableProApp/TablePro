@@ -91,10 +91,12 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let localBackend = SQLiteLocalBackend()
         try await localBackend.open(path: path)
         let rawHandle = await localBackend.dbHandleForInterrupt
+        let versionResult = try await localBackend.executeQuery("SELECT sqlite_version()")
+        let version = versionResult.rows.first?.first?.asText ?? "SQLite"
 
         lock.lock()
         _dbHandleForInterrupt = rawHandle != 0 ? OpaquePointer(bitPattern: rawHandle) : nil
-        _serverVersion = String(cString: sqlite3_libversion())
+        _serverVersion = version
         backend = .local(localBackend)
         lock.unlock()
 
@@ -234,17 +236,13 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     func cancelQuery() throws {
         lock.lock()
         let current = backend
-        let interruptHandle = _dbHandleForInterrupt
+        if let interruptHandle = _dbHandleForInterrupt {
+            sqlite3_interrupt(interruptHandle)
+        }
         lock.unlock()
 
-        switch current {
-        case .remote(let client):
+        if case .remote(let client) = current {
             client.cancelCurrentTask()
-        case .local:
-            guard let interruptHandle else { return }
-            sqlite3_interrupt(interruptHandle)
-        case nil:
-            break
         }
     }
 
