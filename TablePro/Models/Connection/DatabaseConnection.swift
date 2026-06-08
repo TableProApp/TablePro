@@ -361,6 +361,10 @@ struct DatabaseConnection: Identifiable, Hashable {
         set { additionalFields["mongoUseSrv"] = newValue ? "true" : "" }
     }
 
+    var usesMongoSrv: Bool {
+        mongoUseSrv || host.hasSuffix(".mongodb.net")
+    }
+
     var mongoAuthMechanism: String? {
         get { additionalFields["mongoAuthMechanism"]?.nilIfEmpty }
         set { additionalFields["mongoAuthMechanism"] = newValue ?? "" }
