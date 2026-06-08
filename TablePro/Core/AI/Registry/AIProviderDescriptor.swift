@@ -42,7 +42,6 @@ struct AIProviderDescriptor: Sendable {
     let typeID: String
     let displayName: String
     let defaultEndpoint: String
-    let requiresAPIKey: Bool
     let capabilities: AIProviderCapabilities
     let symbolName: String
     let curatedModels: [CuratedModel]
@@ -74,7 +73,6 @@ struct AIProviderDescriptor: Sendable {
         typeID: String,
         displayName: String,
         defaultEndpoint: String,
-        requiresAPIKey: Bool,
         capabilities: AIProviderCapabilities,
         symbolName: String,
         curatedModels: [CuratedModel] = [],
@@ -86,7 +84,6 @@ struct AIProviderDescriptor: Sendable {
         self.typeID = typeID
         self.displayName = displayName
         self.defaultEndpoint = defaultEndpoint
-        self.requiresAPIKey = requiresAPIKey
         self.capabilities = capabilities
         self.symbolName = symbolName
         self.curatedModels = curatedModels

@@ -30,6 +30,7 @@ final class ChatGPTCodexCallbackServer: @unchecked Sendable {
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "ChatGPTCodexCallbackServer")
     private static let timeout: TimeInterval = 300
+    private static let startTimeout: TimeInterval = 10
 
     private let expectedState: String
     private let lock = NSLock()
@@ -37,6 +38,7 @@ final class ChatGPTCodexCallbackServer: @unchecked Sendable {
     private var connection: NWConnection?
     private var readyContinuation: CheckedContinuation<Void, Error>?
     private var codeContinuation: CheckedContinuation<String, Error>?
+    private var readyTimeoutTask: Task<Void, Never>?
     private var timeoutTask: Task<Void, Never>?
 
     init(expectedState: String) {
@@ -45,12 +47,18 @@ final class ChatGPTCodexCallbackServer: @unchecked Sendable {
 
     func start() async throws {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            lock.withLock { readyContinuation = continuation }
+            let timeout = Task { [weak self] in
+                try? await Task.sleep(nanoseconds: UInt64(Self.startTimeout * 1_000_000_000))
+                self?.finishReady(.failure(ServerError.timedOut))
+            }
+            lock.withLock {
+                readyContinuation = continuation
+                readyTimeoutTask = timeout
+            }
             do {
                 try startListener()
             } catch {
-                lock.withLock { readyContinuation = nil }
-                continuation.resume(throwing: ServerError.portInUse)
+                finishReady(.failure(ServerError.portInUse))
             }
         }
     }
@@ -67,14 +75,18 @@ final class ChatGPTCodexCallbackServer: @unchecked Sendable {
     }
 
     func stop() {
-        let (task, conn, lst): (Task<Void, Never>?, NWConnection?, NWListener?) = lock.withLock {
-            let values = (timeoutTask, connection, listener)
+        let (task, readyTask, conn, lst): (
+            Task<Void, Never>?, Task<Void, Never>?, NWConnection?, NWListener?
+        ) = lock.withLock {
+            let values = (timeoutTask, readyTimeoutTask, connection, listener)
             timeoutTask = nil
+            readyTimeoutTask = nil
             connection = nil
             listener = nil
             return values
         }
         task?.cancel()
+        readyTask?.cancel()
         conn?.cancel()
         lst?.cancel()
     }
@@ -140,11 +152,14 @@ final class ChatGPTCodexCallbackServer: @unchecked Sendable {
     }
 
     private func finishReady(_ result: Result<Void, Error>) {
-        let continuation: CheckedContinuation<Void, Error>? = lock.withLock {
-            let pending = readyContinuation
+        let (continuation, timeout): (CheckedContinuation<Void, Error>?, Task<Void, Never>?) = lock.withLock {
+            let pendingContinuation = readyContinuation
+            let pendingTimeout = readyTimeoutTask
             readyContinuation = nil
-            return pending
+            readyTimeoutTask = nil
+            return (pendingContinuation, pendingTimeout)
         }
+        timeout?.cancel()
         continuation?.resume(with: result)
     }
 

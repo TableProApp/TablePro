@@ -11,7 +11,6 @@ final class ChatGPTCodexProvider: ChatTransport {
     private let model: String
     private let tokenStore: ChatGPTCodexTokenStore
     private let session: URLSession
-    private let sessionID = UUID().uuidString
 
     init(
         model: String,
@@ -27,10 +26,13 @@ final class ChatGPTCodexProvider: ChatTransport {
         turns: [ChatTurnWire],
         options: ChatTransportOptions
     ) -> AsyncThrowingStream<ChatStreamEvent, Error> {
-        ResponsesEventStream.make(
+        let sessionID = UUID().uuidString
+        return ResponsesEventStream.make(
             session: session,
             treatForbiddenAsAuthFailure: true,
-            buildRequest: { [self] in try await buildRequest(turns: turns, options: options, stream: true) },
+            buildRequest: { [self] in
+                try await buildRequest(turns: turns, options: options, stream: true, sessionID: sessionID)
+            },
             refreshOnUnauthorized: { [tokenStore] in _ = try await tokenStore.forceRefresh() }
         )
     }
@@ -43,7 +45,12 @@ final class ChatGPTCodexProvider: ChatTransport {
         let testModel = model.isEmpty ? ChatGPTCodex.curatedModelIDs[0] : model
         let testOptions = ChatTransportOptions(model: testModel)
         let testTurn = ChatTurnWire(role: .user, blocks: [.text("Hi")])
-        let request = try await buildRequest(turns: [testTurn], options: testOptions, stream: false)
+        let request = try await buildRequest(
+            turns: [testTurn],
+            options: testOptions,
+            stream: false,
+            sessionID: UUID().uuidString
+        )
         let (data, response) = try await session.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse else { return false }
         if httpResponse.statusCode == 200 || httpResponse.statusCode == 400 {
@@ -59,7 +66,8 @@ final class ChatGPTCodexProvider: ChatTransport {
     private func buildRequest(
         turns: [ChatTurnWire],
         options: ChatTransportOptions,
-        stream: Bool
+        stream: Bool,
+        sessionID: String
     ) async throws -> URLRequest {
         let accessToken = try await tokenStore.validAccessToken()
         let accountID = await tokenStore.accountID() ?? ""

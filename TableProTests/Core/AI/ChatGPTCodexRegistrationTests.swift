@@ -25,7 +25,7 @@ struct ChatGPTCodexRegistrationTests {
         AIProviderRegistration.registerAll()
         let descriptor = AIProviderRegistry.shared.descriptor(for: AIProviderType.chatgptCodex.rawValue)
         #expect(descriptor != nil)
-        #expect(descriptor?.requiresAPIKey == false)
+        #expect(AIProviderType.chatgptCodex.authStyle == .oauth)
 
         let config = AIProviderConfig(type: .chatgptCodex, model: "gpt-5.5")
         let provider = descriptor?.makeProvider(config, nil)
