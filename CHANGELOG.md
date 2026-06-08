@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Clicking a table that's already open switches to its existing tab instead of opening a duplicate. (#1613)
 - MongoDB now connects over an SSH or Cloudflare tunnel instead of bypassing it and failing with a connection refused error. (#1621)
 - A plugin updated in Settings now stays marked Installed instead of showing the Update button again a few seconds later.
+- DBeaver connections are now found for import from any edition, including Ultimate, based on your DBeaver data rather than which app edition is installed. (#1628)
 
 ## [0.49.1] - 2026-06-06
 

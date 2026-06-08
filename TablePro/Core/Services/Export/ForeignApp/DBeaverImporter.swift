@@ -18,14 +18,15 @@ struct DBeaverImporter: ForeignAppImporter {
     let appBundleIdentifier = "org.jkiss.dbeaver.core.product"
     let readsPasswordsFromKeychain = false
 
-    /// All known DBeaver Eclipse product identifiers. Community, Enterprise,
-    /// Ultimate, and Lite variants each register a different bundle ID, but
-    /// they all write to the same `~/Library/DBeaverData/workspace*`.
+    /// All known DBeaver product identifiers. Community, Enterprise, Ultimate,
+    /// and Lite variants each register a different bundle ID, but they all
+    /// write to the same `~/Library/DBeaverData/workspace*`.
     private static let knownBundleIdentifiers = [
         "org.jkiss.dbeaver.core.product",
         "org.jkiss.dbeaver.ee.core.product",
         "org.jkiss.dbeaver.ue.product",
-        "org.jkiss.dbeaver.lite.product"
+        "org.jkiss.dbeaver.lite.product",
+        "com.dbeaver.product.ultimate"
     ]
 
     /// Root directory containing DBeaver workspace folders. The actual
@@ -34,13 +35,21 @@ struct DBeaverImporter: ForeignAppImporter {
     var dbeaverDataRoot: URL = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Library/DBeaverData")
 
+    var resolveAppURL: (_ bundleIdentifier: String) -> URL? = {
+        NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0)
+    }
+
     func installedAppURL() -> URL? {
         for bundleId in Self.knownBundleIdentifiers {
-            if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleId) {
+            if let url = resolveAppURL(bundleId) {
                 return url
             }
         }
         return nil
+    }
+
+    func isAvailable() -> Bool {
+        installedAppURL() != nil || findDataSourcesFile() != nil
     }
 
     func connectionCount() -> Int {

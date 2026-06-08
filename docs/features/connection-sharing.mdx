@@ -87,6 +87,8 @@ Groups and folders carry over.
 | DataGrip | MySQL, PostgreSQL, SQLite, SQL Server, Oracle, and more | From Keychain or `c.kdbx` |
 | Navicat | MySQL, MariaDB, PostgreSQL, SQLite, SQL Server, Oracle, MongoDB | Decrypted from `.ncx` file |
 
+DBeaver is detected from its data folder, so every edition is picked up: Community, Lite, Enterprise, Ultimate, and Team. The app doesn't need to be installed for its saved connections to import.
+
 DataGrip stores connections per project. TablePro imports the connections from the projects DataGrip is tracking (its recent projects), along with their SSH tunnel and SSL settings, and the SSH tunnel password when DataGrip saved one. If a connection is missing, open its project in DataGrip once so it returns to the recent list. Connections protected by a DataGrip master password can't be read.
 
 Navicat keeps its connections in an encrypted store that can't be read directly, so TablePro imports from an export instead. In Navicat, choose **File** > **Export Connections**, and turn on **Export Password** if you want passwords to come across. Pick the resulting `.ncx` file in TablePro. SSH tunnel and SSL settings carry over. A connection exported without its password imports without one, so you enter it the first time you connect.

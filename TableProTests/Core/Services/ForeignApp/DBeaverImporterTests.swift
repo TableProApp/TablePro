@@ -25,6 +25,7 @@ struct DBeaverImporterTests {
 
         var imp = DBeaverImporter()
         imp.dbeaverDataRoot = tempDir
+        imp.resolveAppURL = { _ in nil }
         importer = imp
     }
 
@@ -167,17 +168,24 @@ struct DBeaverImporterTests {
 
     // MARK: - isAvailable
 
-    @Test("isAvailable returns true when data-sources.json exists")
+    @Test("isAvailable returns true when data-sources.json exists for any edition")
     func testIsAvailable_whenFileExists_returnsTrue() throws {
         try writeDataSources(makeDataSourcesJSON(connections: [:]))
         #expect(importer.isAvailable() == true)
     }
 
-    @Test("isAvailable returns false when file is missing")
+    @Test("isAvailable returns false when no app and no data exist")
     func testIsAvailable_whenFileMissing_returnsFalse() throws {
-        // Delete the file if it exists
         try? FileManager.default.removeItem(at: projectDir.appendingPathComponent("data-sources.json"))
         #expect(importer.isAvailable() == false)
+    }
+
+    @Test("isAvailable returns true when a DBeaver app is installed even without data")
+    func testIsAvailable_whenAppInstalledWithoutData_returnsTrue() throws {
+        try? FileManager.default.removeItem(at: projectDir.appendingPathComponent("data-sources.json"))
+        var imp = importer
+        imp.resolveAppURL = { _ in URL(fileURLWithPath: "/Applications/DBeaver.app") }
+        #expect(imp.isAvailable() == true)
     }
 
     // MARK: - connectionCount
