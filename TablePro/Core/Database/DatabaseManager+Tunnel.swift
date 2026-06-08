@@ -13,7 +13,10 @@ extension DatabaseManager {
     /// Rewrite a connection to point at the local tunnel endpoint. A 127.0.0.1
     /// certificate can't satisfy hostname verification, so verify modes drop to
     /// `.required` while keeping encryption; cert paths are cleared and pgpass keeps
-    /// the original host/port. Shared by the SSH and Cloudflare tunnel paths.
+    /// the original host/port. A tunnel forwards a single local port, so MongoDB's
+    /// seed list is collapsed to that endpoint and a direct connection is forced,
+    /// stopping replica set discovery from reaching members behind the tunnel.
+    /// Shared by the SSH and Cloudflare tunnel paths.
     func tunneledConnection(from connection: DatabaseConnection, localPort: Int) -> DatabaseConnection {
         var tunnelSSL = connection.sslConfig
         if tunnelSSL.isEnabled {
@@ -29,6 +32,10 @@ extension DatabaseManager {
         if connection.usePgpass {
             effectiveFields["pgpassOriginalHost"] = connection.host
             effectiveFields["pgpassOriginalPort"] = String(connection.port)
+        }
+        if connection.type.pluginTypeId == "MongoDB", !connection.usesMongoSrv {
+            effectiveFields["mongoHosts"] = nil
+            effectiveFields["mongoParam_directConnection"] = "true"
         }
 
         return DatabaseConnection(

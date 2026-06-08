@@ -21,6 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Syntax highlighting no longer disappears after formatting a query. (#1612)
 - The GitHub Copilot provider no longer shows a Max output tokens field it ignores, and picking a Copilot model no longer leaves a stray model ID field behind.
 - Oracle connections that use native network encryption no longer crash when a query hits a server error such as a missing table or a permission error; the real ORA error is shown and the connection keeps working. (#483)
+- Clicking a table that's already open switches to its existing tab instead of opening a duplicate. (#1613)
+- MongoDB now connects over an SSH or Cloudflare tunnel instead of bypassing it and failing with a connection refused error. (#1621)
 
 ## [0.49.1] - 2026-06-06
 
