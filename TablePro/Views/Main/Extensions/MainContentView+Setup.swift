@@ -67,8 +67,6 @@ extension MainContentView {
                         selectedTab.tableContext.databaseName != session.activeDatabase
                     {
                         await coordinator.switchDatabase(to: selectedTab.tableContext.databaseName)
-                    } else if coordinator.selectedTabHiddenColumns.isEmpty {
-                        coordinator.runQuery()
                     } else {
                         coordinator.lazyLoadCurrentTabIfNeeded()
                     }

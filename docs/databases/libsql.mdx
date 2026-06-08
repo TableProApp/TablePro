@@ -5,7 +5,7 @@ description: Connect to libSQL and Turso databases with TablePro
 
 # libSQL / Turso Connections
 
-TablePro supports libSQL and Turso databases via the Hrana HTTP protocol. Works with Turso cloud databases and self-hosted sqld instances.
+TablePro supports libSQL and Turso databases in two modes: remote connections via the Hrana HTTP protocol (Turso cloud databases and self-hosted sqld instances) and local libSQL database files opened directly from disk.
 
 ## Install Plugin
 
@@ -24,8 +24,11 @@ The libSQL / Turso driver is available as a downloadable plugin. When you select
   <Step title="Select libSQL / Turso">
     Choose **libSQL / Turso** from the database type selector
   </Step>
+  <Step title="Choose Connection Mode">
+    Pick **Remote (Turso)** for a Turso or sqld server, or **Local File** to open a database file on disk
+  </Step>
   <Step title="Enter Connection Details">
-    Fill in your Database URL and Auth Token
+    Remote: fill in your Database URL and Auth Token. Local: pick the database file with **Browse...**
   </Step>
   <Step title="Test and Connect">
     Click **Test Connection**, then **Create**
@@ -34,7 +37,14 @@ The libSQL / Turso driver is available as a downloadable plugin. When you select
 
 ## Connection Settings
 
-### Required Fields
+### Connection Mode
+
+| Mode | Description |
+|------|-------------|
+| **Remote (Turso)** | Connects over HTTP using the Hrana protocol. For Turso cloud and self-hosted sqld. |
+| **Local File** | Opens a libSQL database file directly from disk. Unencrypted libSQL files use the standard SQLite file format. |
+
+### Remote Fields
 
 | Field | Description |
 |-------|-------------|
@@ -45,6 +55,17 @@ The libSQL / Turso driver is available as a downloadable plugin. When you select
 <Tip>
 The Auth Token field is optional. Self-hosted sqld instances can run without authentication, in which case you can leave this field empty.
 </Tip>
+
+### Local File Fields
+
+| Field | Description |
+|-------|-------------|
+| **Name** | Connection identifier |
+| **Database File** | Path to the database file. Use **Browse...** to pick it, or type a path (`~` is expanded). |
+
+<Warning>
+Do not open a file that is being synced as a Turso embedded replica while the owning app is running. Concurrent access to a syncing replica can corrupt it.
+</Warning>
 
 ## Getting Your Credentials
 
@@ -92,6 +113,14 @@ Database URL:  http://localhost:8080
 Auth Token:    (leave empty if no auth configured)
 ```
 
+### Local File
+
+```
+Name:             My Local libSQL DB
+Connection Mode:  Local File
+Database File:    ~/Databases/app.db
+```
+
 ## Features
 
 ### Database Browsing
@@ -137,7 +166,7 @@ Analyze query execution plans using the Explain button in the query editor. Tabl
 
 ### Data Editing
 
-Edit cell values, insert rows, and delete rows directly in the data grid. Changes are submitted as standard INSERT, UPDATE, and DELETE statements via the Hrana HTTP API.
+Edit cell values, insert rows, and delete rows directly in the data grid. Changes are submitted as standard INSERT, UPDATE, and DELETE statements, via the Hrana HTTP API in remote mode or directly against the file in local mode.
 
 ### Export
 
@@ -192,11 +221,32 @@ libSQL uses SQLite syntax. See [SQLite](/databases/sqlite) for details.
 3. Use pagination for large result sets instead of fetching all rows
 4. Check your Turso plan limits at [Turso Pricing](https://turso.tech/pricing)
 
+### File Not Found
+
+**Symptoms**: Local file connection fails to open
+
+**Solutions**:
+
+1. Check the file path is correct and the file still exists at that location
+2. Use **Browse...** to re-pick the file if it was moved or renamed
+3. Make sure the file is not an encrypted libSQL database; encrypted files cannot be opened in local mode
+
 ## Known Limitations
+
+Remote mode:
 
 - No persistent connections: each query is an independent HTTP request via the Hrana protocol
 - No multi-statement transactions: each SQL statement auto-commits independently
+- No custom SSL/SSH tunnels: connections use HTTPS (Turso Cloud) or HTTP (local sqld)
+
+Local mode:
+
+- No embedded replica sync: local files open standalone, without syncing to a remote Turso database
+- No encrypted database files
+- libSQL-only SQL extensions (e.g., `ALTER TABLE ALTER COLUMN`) are unavailable; local mode uses the system SQLite engine
+
+Both modes:
+
 - No database creation or management via TablePro (use Turso CLI or sqld admin tools)
 - No bulk import through the plugin: use the Turso CLI or direct sqld import
-- No custom SSL/SSH tunnels: connections use HTTPS (Turso Cloud) or HTTP (local sqld)
 - No database switching: libSQL connections target a single database

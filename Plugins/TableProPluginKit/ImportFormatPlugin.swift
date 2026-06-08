@@ -15,6 +15,8 @@ public protocol ImportFormatPlugin: TableProPlugin {
     static var excludedDatabaseTypeIds: [String] { get }
     static var requiresTargetTable: Bool { get }
 
+    var fieldDetectionSignature: String { get }
+
     func performImport(
         source: any PluginImportSource,
         sink: any PluginImportDataSink,
@@ -29,6 +31,8 @@ public extension ImportFormatPlugin {
     static var supportedDatabaseTypeIds: [String] { [] }
     static var excludedDatabaseTypeIds: [String] { [] }
     static var requiresTargetTable: Bool { false }
+
+    var fieldDetectionSignature: String { "" }
 
     func detectSourceFields(at url: URL, targetTable: String?) throws -> [PluginImportField] { [] }
 }

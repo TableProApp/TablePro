@@ -4,6 +4,52 @@ description: "Product updates and announcements for TablePro"
 rss: true
 ---
 
+<Update label="June 6, 2026" description="v0.49.1">
+  ### Bug Fixes
+
+  - Plugins from the registry install and load again; 0.49.0 rejected plugins built before the update with an invalid plugin bundle error
+  - Default row sort by primary key works again for PostgreSQL and other databases, and rows arrive already sorted on the first load (#1603)
+</Update>
+
+<Update label="June 6, 2026" description="v0.49.0">
+  ### New Features
+
+  - **Snowflake**: Connect with username & password (MFA included), key-pair, browser SSO, or an access token. Browse and edit data, import CSV and JSON, edit table structure, run scripts, and switch warehouse and role from the toolbar. Snowflake CLI connections can be reused by name (#1420)
+  - **CSV and TSV Import**: Import CSV and TSV files into a table. Map columns to an existing table or create a new one, with delimiter, quote, encoding, header, and NULL options (#1568)
+  - **Per-Row Filters**: Each filter row can be switched on or off and applied on its own; disabled rows stay in the panel (#1561)
+  - **AWS Authentication**: Connections can assume an IAM role through STS, including chained source profiles. Redis connects to ElastiCache with IAM auth, Cassandra connects to Amazon Keyspaces with SigV4, and expired AWS SSO sessions prompt a browser sign-in (#1567)
+  - **Oracle Encryption and Redirects**: Oracle connections negotiate Native Network Encryption and follow listener redirects, so RAC SCAN, shared server, and load-balanced setups connect (#483)
+  - SQL autocomplete completes each segment of qualified names, loads tables of unopened schemas on demand, and suggests the connection's dialect functions
+  - Importing connections from other apps detects duplicates and lets you replace, add a copy, or skip each one
+  - Export and import dialogs remember the last-used format, options, and encoding, with a Reset to Defaults button (#1591)
+
+  ### Improvements
+
+  - Custom keyboard shortcuts work on non-US layouts, can use function keys, and shifted symbols like Cmd+[ record correctly
+  - The Keyboard settings list is grouped by where shortcuts act, with a reset button per changed shortcut, and conflict detection checks live macOS system shortcuts
+  - Show Tables and Show Favorites moved to Cmd+Option+1 and Cmd+Option+2; Cmd+N opens a new connection
+  - AWS connections list the profiles found in your AWS config files (#1567)
+  - The results status bar has a divider, balanced margins, and clear VoiceOver labels (#1569)
+
+  ### Bug Fixes
+
+  - Accepting an autocomplete suggestion replaces the whole typed word instead of leaving part of it behind (#1601)
+  - MongoDB: connecting to Atlas no longer fails with TLS internal error (-9838) (#1599)
+  - DuckDB: the plugin runs DuckDB 1.5.2 again after a rollback to 1.5.0
+  - Query results appear as soon as rows return; metadata loads in the background, removing a multi-second wait on slow remote databases (#1574)
+  - JSON import: failed imports restore deleted rows, skip-and-continue no longer duplicates rows, and "Stop and Commit" keeps rows inserted before the error
+  - JSON file import works again; it failed to load in 0.48.0
+  - The connection and database switcher focuses its search field even while a filter input is being edited (#1575)
+  - TablePro no longer shows its icon for .sql, .sqlite, and .duckdb files when it is not their default app (#1594)
+  - The JSON results view shows row data right away and follows the row selection (#1576)
+  - Query result columns follow the SELECT order (#1565)
+  - SQL Server: logins restricted to one database, such as Azure SQL contained users, now connect
+  - PostgreSQL scripts with dollar-quoted blocks no longer fail with an unterminated string error (#1559)
+  - AWS IAM connections no longer ask for a password on connect
+  - Oracle connection failures show the listener's actual reason instead of a generic message (#483)
+  - Custom Copy, Cut, Delete, and Find shortcuts take effect in the editor and data grid, and pagination buttons no longer fire twice
+</Update>
+
 <Update label="June 2, 2026" description="v0.48.0">
   ### New Features
 

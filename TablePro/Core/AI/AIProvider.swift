@@ -83,8 +83,8 @@ enum AIProviderError: Error, LocalizedError {
     }
 }
 
-extension ChatTransport {
-    func collectErrorBody(from bytes: URLSession.AsyncBytes) async throws -> String {
+extension AIProvider {
+    static func collectErrorBody(from bytes: URLSession.AsyncBytes) async throws -> String {
         var body = ""
         var truncated = false
         for try await line in bytes.lines {

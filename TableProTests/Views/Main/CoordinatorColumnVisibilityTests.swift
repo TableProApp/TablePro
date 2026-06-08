@@ -122,9 +122,9 @@ struct CoordinatorColumnVisibilityTests {
         let (coordinator, tabManager) = makeCoordinator()
         _ = addTableTab(to: tabManager, tableName: "users")
         coordinator.hideAllColumns(["a", "b", "c", "d"])
-        coordinator.schemaColumnsCache["\(coordinator.connectionId):\(coordinator.activeDatabaseName)::users"] = (
-            columns: ["b", "d", "e"],
-            primaryKeys: []
+        coordinator.schemaColumns.store(
+            (columns: ["b", "d", "e"], primaryKeys: []),
+            for: coordinator.schemaColumnsKey("users", schema: nil)
         )
 
         coordinator.pruneHiddenColumns(currentColumns: ["b", "d", "e"])
@@ -178,9 +178,9 @@ struct CoordinatorColumnVisibilityTests {
             for: "users",
             connectionId: connection.id
         )
-        coordinator.schemaColumnsCache["\(connection.id):db::users"] = (
-            columns: ["id", "name", "email"],
-            primaryKeys: ["id"]
+        coordinator.schemaColumns.store(
+            (columns: ["id", "name", "email"], primaryKeys: ["id"]),
+            for: coordinator.schemaColumnsKey("users", schema: nil)
         )
 
         coordinator.restoreLastHiddenColumnsForTable("users")

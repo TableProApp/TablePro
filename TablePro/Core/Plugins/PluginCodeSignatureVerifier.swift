@@ -20,6 +20,14 @@ enum PluginCodeSignatureVerifier {
     }()
 
     static func verify(bundle: Bundle) throws {
+        #if DEBUG
+        if ProcessInfo.processInfo.environment["TABLEPRO_ALLOW_UNSIGNED_PLUGINS"] == "1" {
+            logger.warning(
+                "Skipping code-signature verification for \(bundle.bundleURL.lastPathComponent): TABLEPRO_ALLOW_UNSIGNED_PLUGINS=1"
+            )
+            return
+        }
+        #endif
         var staticCode: SecStaticCode?
         let createStatus = SecStaticCodeCreateWithPath(
             bundle.bundleURL as CFURL,

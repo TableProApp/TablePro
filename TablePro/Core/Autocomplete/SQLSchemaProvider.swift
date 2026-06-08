@@ -26,9 +26,23 @@ actor SQLSchemaProvider {
     private var eagerColumnTask: Task<Void, Never>?
 
     struct ColumnMetadataSource: Sendable {
-        let fetchColumns: @Sendable (_ table: String) async throws -> [ColumnInfo]
+        let fetchColumns: @Sendable (_ table: String, _ schema: String?) async throws -> [ColumnInfo]
         let fetchAllColumns: @Sendable () async throws -> [String: [ColumnInfo]]
+        let fetchSchemaTables: (@Sendable (_ schema: String) async throws -> [TableInfo])?
+
+        init(
+            fetchColumns: @escaping @Sendable (_ table: String, _ schema: String?) async throws -> [ColumnInfo],
+            fetchAllColumns: @escaping @Sendable () async throws -> [String: [ColumnInfo]],
+            fetchSchemaTables: (@Sendable (_ schema: String) async throws -> [TableInfo])? = nil
+        ) {
+            self.fetchColumns = fetchColumns
+            self.fetchAllColumns = fetchAllColumns
+            self.fetchSchemaTables = fetchSchemaTables
+        }
     }
+
+    private var knownSchemas: [String] = []
+    private var knownDatabases: [String] = []
 
     private weak var cachedDriver: (any DatabaseDriver)?
     private let metadataSource: ColumnMetadataSource?
@@ -95,8 +109,8 @@ actor SQLSchemaProvider {
     }
 
     /// Get columns for a specific table (with LRU caching)
-    func getColumns(for tableName: String) async -> [ColumnInfo] {
-        let key = tableName.lowercased()
+    func getColumns(for tableName: String, schema: String? = nil) async -> [ColumnInfo] {
+        let key = [schema?.lowercased(), tableName.lowercased()].compactMap(\.self).joined(separator: ".")
 
         if let cached = columnCache[key] {
             columnAccessOrder.removeAll { $0 == key }
@@ -107,9 +121,11 @@ actor SQLSchemaProvider {
         do {
             let columns: [ColumnInfo]
             if let metadataSource {
-                columns = try await metadataSource.fetchColumns(tableName)
+                columns = try await metadataSource.fetchColumns(tableName, schema)
             } else if let driver = cachedDriver {
-                columns = try await driver.fetchColumns(table: tableName)
+                columns = schema != nil
+                    ? try await driver.fetchColumns(table: tableName, schema: schema)
+                    : try await driver.fetchColumns(table: tableName)
             } else {
                 return []
             }
@@ -293,9 +309,68 @@ actor SQLSchemaProvider {
         }
     }
 
+    func setNamespaces(schemas: [String], databases: [String]) {
+        knownSchemas = schemas
+        knownDatabases = databases
+    }
+
+    func isKnownSchema(_ name: String) -> Bool {
+        knownSchemas.contains { $0.caseInsensitiveCompare(name) == .orderedSame }
+    }
+
+    func isKnownDatabase(_ name: String) -> Bool {
+        knownDatabases.contains { $0.caseInsensitiveCompare(name) == .orderedSame }
+    }
+
+    /// Schema names only — suggested after a database-qualified dot (e.g. "ANALYTICS_PROD.").
+    func schemaCompletionItems() async -> [SQLCompletionItem] {
+        let schemas = knownSchemas
+        return await MainActor.run {
+            schemas.map { SQLCompletionItem.schemaName($0) }
+        }
+    }
+
+    /// Databases + schemas — suggested alongside tables in FROM/JOIN contexts.
+    func namespaceCompletionItems() async -> [SQLCompletionItem] {
+        let schemas = knownSchemas
+        let databases = knownDatabases
+        return await MainActor.run {
+            databases.map { SQLCompletionItem.databaseName($0) }
+                + schemas.map { SQLCompletionItem.schemaName($0) }
+        }
+    }
+
+    /// Tables of one schema — suggested after a schema-qualified dot (e.g. "DBT_MARTS.").
+    /// Falls back to fetching from the database when that schema's tables aren't loaded yet.
+    func tableCompletionItems(inSchema schema: String) async -> [SQLCompletionItem] {
+        var matching = tables.filter { $0.schema?.caseInsensitiveCompare(schema) == .orderedSame }
+        if matching.isEmpty, let fetchSchemaTables = metadataSource?.fetchSchemaTables {
+            if let fetched = try? await fetchSchemaTables(schema), !fetched.isEmpty {
+                matching = fetched.filter { belongsToSchema($0, schema) }
+                mergeTables(fetched)
+            }
+        }
+        let tableData = matching.map { (name: $0.name, isView: $0.type == .view) }
+        return await MainActor.run {
+            tableData.map { SQLCompletionItem.table($0.name, isView: $0.isView) }
+        }
+    }
+
+    private func belongsToSchema(_ table: TableInfo, _ schema: String) -> Bool {
+        guard let tableSchema = table.schema, !tableSchema.isEmpty else { return true }
+        return tableSchema.caseInsensitiveCompare(schema) == .orderedSame
+    }
+
+    private func mergeTables(_ newTables: [TableInfo]) {
+        var seen = Set(tables.map(\.id))
+        for table in newTables where seen.insert(table.id).inserted {
+            tables.append(table)
+        }
+    }
+
     /// Get completion items for columns of a specific table
-    func columnCompletionItems(for tableName: String) async -> [SQLCompletionItem] {
-        let columns = await getColumns(for: tableName)
+    func columnCompletionItems(for tableName: String, schema: String? = nil) async -> [SQLCompletionItem] {
+        let columns = await getColumns(for: tableName, schema: schema)
         let columnData = columns.map { col in
             (name: col.name, type: col.dataType, isPK: col.isPrimaryKey,
              isNullable: col.isNullable, defaultValue: col.defaultValue, comment: col.comment)
@@ -321,7 +396,7 @@ actor SQLSchemaProvider {
 
         let hasMultipleRefs = references.count > 1
         for ref in references {
-            let columns = await getColumns(for: ref.tableName)
+            let columns = await getColumns(for: ref.tableName, schema: ref.schema)
             let refId = ref.identifier
             for column in columns {
                 let label = hasMultipleRefs ? "\(refId).\(column.name)" : column.name

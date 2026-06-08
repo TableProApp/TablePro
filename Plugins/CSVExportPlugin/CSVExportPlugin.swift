@@ -33,6 +33,10 @@ final class CSVExportPlugin: ExportFormatPlugin, SettablePlugin {
         AnyView(CSVExportOptionsView(plugin: self))
     }
 
+    func resetSettingsToDefaults() {
+        settings = CSVExportOptions()
+    }
+
     func export(
         tables: [PluginExportTable],
         dataSource: any PluginExportDataSource,

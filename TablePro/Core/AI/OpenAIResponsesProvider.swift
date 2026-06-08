@@ -33,43 +33,10 @@ final class OpenAIResponsesProvider: ChatTransport {
         turns: [ChatTurnWire],
         options: ChatTransportOptions
     ) -> AsyncThrowingStream<ChatStreamEvent, Error> {
-        AsyncThrowingStream { continuation in
-            let task = Task {
-                do {
-                    let request = try buildRequest(turns: turns, options: options, stream: true)
-                    let (bytes, response) = try await session.bytes(for: request)
-
-                    guard let httpResponse = response as? HTTPURLResponse else {
-                        throw AIProviderError.networkError("Invalid response")
-                    }
-                    guard httpResponse.statusCode == 200 else {
-                        let errorBody = try await collectErrorBody(from: bytes)
-                        throw AIProviderError.mapHTTPError(
-                            statusCode: httpResponse.statusCode,
-                            body: errorBody
-                        )
-                    }
-
-                    var state = ResponsesStreamState()
-                    for try await line in bytes.lines {
-                        if Task.isCancelled { break }
-                        guard let json = Self.decodeStreamLine(line) else { continue }
-                        let events = try Self.parseEvent(json, state: &state)
-                        for event in events { continuation.yield(event) }
-                    }
-                    if let usage = state.finalUsageEvent() {
-                        continuation.yield(usage)
-                    }
-                    continuation.finish()
-                } catch {
-                    continuation.finish(throwing: error)
-                }
-            }
-
-            continuation.onTermination = { _ in
-                task.cancel()
-            }
-        }
+        ResponsesEventStream.make(
+            session: session,
+            buildRequest: { [self] in try buildRequest(turns: turns, options: options, stream: true) }
+        )
     }
 
     func fetchAvailableModels() async throws -> [String] {
@@ -189,6 +156,7 @@ final class OpenAIResponsesProvider: ChatTransport {
                     items.append([
                         "type": "reasoning",
                         "id": opaque.itemID,
+                        "summary": [Any](),
                         "encrypted_content": opaque.value
                     ])
                 case .text(let text):
@@ -347,6 +315,10 @@ final class OpenAIResponsesProvider: ChatTransport {
             case "function_call":
                 guard let callID = item["call_id"] as? String,
                       state.openFunctionCallIDs.remove(callID) != nil else { return [] }
+                if !state.functionCallArgDeltaIDs.contains(callID),
+                   let arguments = item["arguments"] as? String, !arguments.isEmpty {
+                    return [.toolUseDelta(id: callID, inputJSONDelta: arguments), .toolUseEnd(id: callID)]
+                }
                 return [.toolUseEnd(id: callID)]
             default:
                 return []
@@ -354,6 +326,7 @@ final class OpenAIResponsesProvider: ChatTransport {
         case "response.function_call_arguments.delta":
             guard let callID = json["call_id"] as? String ?? json["item_id"] as? String,
                   let delta = json["delta"] as? String, !delta.isEmpty else { return [] }
+            state.functionCallArgDeltaIDs.insert(callID)
             return [.toolUseDelta(id: callID, inputJSONDelta: delta)]
         case "response.refusal.delta":
             if let delta = json["delta"] as? String, !delta.isEmpty {
@@ -392,6 +365,7 @@ struct ResponsesStreamState {
     var outputTokens: Int = 0
     var openReasoningItemIDs: Set<String> = []
     var openFunctionCallIDs: Set<String> = []
+    var functionCallArgDeltaIDs: Set<String> = []
 
     func finalUsageEvent() -> ChatStreamEvent? {
         guard inputTokens > 0 || outputTokens > 0 else { return nil }

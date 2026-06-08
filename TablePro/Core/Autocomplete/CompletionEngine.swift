@@ -55,6 +55,12 @@ final class CompletionEngine {
         await provider.retrySchemaIfNeeded()
     }
 
+    /// Statement-start keyword items available synchronously, without schema access.
+    /// Used to seed a filterable completion context before the async fetch completes.
+    func keywordCompletions() -> [SQLCompletionItem] {
+        provider.statementStartCompletionItems()
+    }
+
     /// Completions for a single-table filter expression (a bare WHERE-clause
     /// fragment such as `id = 1 AND na`). The fragment is completed as the WHERE
     /// clause it denotes and columns are scoped to `tableName`, so suggestions

@@ -36,6 +36,7 @@ PLUGINS=(
     cloudflare-d1
     dynamodb
     bigquery
+    snowflake
     libsql
 )
 

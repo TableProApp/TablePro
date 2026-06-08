@@ -3,6 +3,172 @@
     <channel>
         <title>TablePro</title>
         <item>
+            <title>0.49.1</title>
+            <pubDate>Sat, 06 Jun 2026 12:45:55 +0000</pubDate>
+            <sparkle:version>96</sparkle:version>
+            <sparkle:shortVersionString>0.49.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <description><![CDATA[<h3>Fixed</h3>
+<ul>
+<li>Default row sort by primary key works again for PostgreSQL and other databases, and the rows arrive already sorted on the first load instead of re-sorting after they appear. (#1603)</li>
+<li>Registry plugins built before 0.49.0 install and load again instead of failing with an invalid plugin bundle error.</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.49.1/TablePro-0.49.1-arm64.zip" length="19184638" type="application/octet-stream" sparkle:edSignature="w29qs8hAIYcCGafV4bTR1wOh+yBsEnCHcWKDlmfDTAQadBM6m6vlMyWGwg35CtsMObfm3OXp9ZR4/g98bz8SAA=="/>
+        </item>
+        <item>
+            <title>0.49.1</title>
+            <pubDate>Sat, 06 Jun 2026 12:45:56 +0000</pubDate>
+            <sparkle:version>96</sparkle:version>
+            <sparkle:shortVersionString>0.49.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[<h3>Fixed</h3>
+<ul>
+<li>Default row sort by primary key works again for PostgreSQL and other databases, and the rows arrive already sorted on the first load instead of re-sorting after they appear. (#1603)</li>
+<li>Registry plugins built before 0.49.0 install and load again instead of failing with an invalid plugin bundle error.</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.49.1/TablePro-0.49.1-x86_64.zip" length="20263206" type="application/octet-stream" sparkle:edSignature="omQBCGIFfRcn6QypSj1xEzGYBtpdVG6t7frPVVkP3ZYuZ9w+1WE0aDPmNfDqWQjMyrvz2xD+mtP1eHOmYoqIAw=="/>
+        </item>
+        <item>
+            <title>0.49.0</title>
+            <pubDate>Sat, 06 Jun 2026 10:45:41 +0000</pubDate>
+            <sparkle:version>95</sparkle:version>
+            <sparkle:shortVersionString>0.49.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <description><![CDATA[<h3>Added</h3>
+<ul>
+<li>Snowflake support: sign in with username & password (MFA included), key-pair, browser SSO, or an access token; browse and edit data, import CSV and JSON, edit table structure, run scripts, and switch warehouse and role from the toolbar. Snowflake CLI connections can be reused by name. (#1420)</li>
+<li>Import CSV and TSV files into a table: map columns to an existing table or create a new one, with delimiter, quote, encoding, header, and NULL options. (#1568)</li>
+<li>SQL autocomplete completes each segment of qualified names (database, schema, table), loads tables of unopened schemas on demand, resolves alias columns, and suggests the connection's dialect functions.</li>
+<li>Each filter row can be switched on or off and applied on its own; disabled rows stay in the panel. (#1561)</li>
+<li>Importing connections from other apps detects duplicates and lets you replace, add a copy, or skip each one.</li>
+<li>Oracle connections negotiate Native Network Encryption, so servers that require it now connect. (#483)</li>
+<li>Oracle connections follow listener redirects, so RAC SCAN, shared server, and load-balanced setups connect. (#483)</li>
+<li>AWS connections can assume an IAM role through STS, including chained source profiles, external IDs, and custom durations. (#1567)</li>
+<li>Redis connects to Amazon ElastiCache with IAM auth via access key, profile, or SSO. (#1567)</li>
+<li>AWS SSO sign-in from TablePro: an expired session prompts a browser sign-in and refreshes the token. (#1567)</li>
+<li>Cassandra connects to Amazon Keyspaces with AWS IAM (SigV4) auth via access keys, profile, or SSO. (#1567)</li>
+<li>Export and import dialogs remember the last-used format, options, and encoding; cancelling keeps your saved settings, and Reset to Defaults restores the stock options. (#1591)</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>The results status bar has a divider, balanced margins, and a spinner sized to its controls. (#1569)</li>
+<li>Custom keyboard shortcuts work on non-US layouts, and shifted symbols like Cmd+[ record correctly.</li>
+<li>The Keyboard settings list is grouped by where shortcuts act (Editor, Data Grid, Navigation, Connections), with a reset button per changed shortcut.</li>
+<li>Shortcut conflict detection checks live macOS system shortcuts and editor commands, and allows the same key in the editor and the data grid since focus decides which runs.</li>
+<li>Show Tables and Show Favorites moved to Cmd+Option+1 and Cmd+Option+2; Control+1 and Control+2 belong to macOS Spaces.</li>
+<li>Cmd+N opens a new connection; Manage Connections stays in the File menu.</li>
+<li>First Page and Last Page default to Cmd+Option+Up and Cmd+Option+Down.</li>
+<li>Shortcuts can use function keys (F1 through F12), with or without a modifier.</li>
+<li>AWS connections list the profiles from `~/.aws/config` and `~/.aws/credentials`, and still accept a typed name. (#1567)</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Accepting an autocomplete suggestion replaces the whole typed word; it could leave part of the word behind, turning `mess` plus Tab into `memessage`.</li>
+<li>MongoDB: connecting to Atlas no longer fails with TLS internal error (-9838); the plugin ships the OpenSSL TLS stack again. (#1599)</li>
+<li>DuckDB: the plugin runs DuckDB 1.5.2 again after a rollback to 1.5.0.</li>
+<li>JSON import: a failed import with "Delete existing rows before import" restores the deleted rows.</li>
+<li>JSON import: skip-and-continue no longer inserts duplicate rows after a mid-batch error.</li>
+<li>JSON import: "Stop and Commit" keeps the rows inserted before the error.</li>
+<li>The connection and database switcher focuses its search field even while a filter input is being edited; the filter text is kept. (#1575)</li>
+<li>TablePro no longer shows its icon for .sql, .sqlite, and .duckdb files when it is not their default app. (#1594)</li>
+<li>The JSON results view shows row data right away, follows the row selection, and shows a spinner while large results format. (#1576)</li>
+<li>Double-click or Enter edits a JSON cell inline and opens the hex editor on a blob cell; the chevron still opens the tree or hex editor. (#1588)</li>
+<li>Query results appear as soon as rows return; metadata loads in the background, removing a multi-second wait on slow remote databases. (#1574)</li>
+<li>MySQL and MariaDB queries are editable right away instead of waiting on a separate metadata query. (#1574)</li>
+<li>Status bar buttons no longer get blocked by the bottom-right window resize zone. (#1569)</li>
+<li>VoiceOver reads clear labels for the results status bar controls. (#1569)</li>
+<li>The custom rows-per-page popover points at the page-size menu. (#1569)</li>
+<li>DynamoDB AWS Profile auth reads `~/.aws/config` too and supports `credential_process`, so config-only, SSO, and credential-process profiles work. (#1567)</li>
+<li>Query result columns follow the SELECT order; new columns no longer get stuck at the end of the grid. (#1565)</li>
+<li>JSON file import works again. It failed to load in 0.48.0.</li>
+<li>SQL export quotes empty or malformed numeric values instead of producing invalid INSERT statements.</li>
+<li>SQL Server: logins restricted to one database, such as Azure SQL contained users, now connect; the database is sent during login.</li>
+<li>Custom Copy and Cut shortcuts take effect in the SQL editor.</li>
+<li>The Delete shortcut in the data grid follows a custom binding.</li>
+<li>Find Next (Cmd+G) and Find Previous (Cmd+Shift+G) work in the editor.</li>
+<li>Pagination buttons no longer fire their page shortcut twice.</li>
+<li>PostgreSQL scripts with `DO $$ ... $$` blocks or dollar-quoted bodies no longer fail with an unterminated string error. (#1559)</li>
+<li>AWS IAM connections no longer ask for a password; the same holds for any auth mode that replaces the password, such as a Postgres password file.</li>
+<li>Oracle connection failures show the listener's actual reason instead of a generic message. (#483)</li>
+<li>A connection password read from a command no longer fails when the command finishes quickly.</li>
+<li>A cancelled MCP query returns a cancelled error instead of an invalid-parameters error, and emits an initial progress notification.</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.49.0/TablePro-0.49.0-arm64.zip" length="19185696" type="application/octet-stream" sparkle:edSignature="5gBABpZDh+ReriNOq0uocEnJUOr+oyqlUvlcPSu+t1hwCf40I6hPNHoy17iohIcm6C+5iWNfhSmDBkTwIRsnAQ=="/>
+        </item>
+        <item>
+            <title>0.49.0</title>
+            <pubDate>Sat, 06 Jun 2026 10:45:41 +0000</pubDate>
+            <sparkle:version>95</sparkle:version>
+            <sparkle:shortVersionString>0.49.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[<h3>Added</h3>
+<ul>
+<li>Snowflake support: sign in with username & password (MFA included), key-pair, browser SSO, or an access token; browse and edit data, import CSV and JSON, edit table structure, run scripts, and switch warehouse and role from the toolbar. Snowflake CLI connections can be reused by name. (#1420)</li>
+<li>Import CSV and TSV files into a table: map columns to an existing table or create a new one, with delimiter, quote, encoding, header, and NULL options. (#1568)</li>
+<li>SQL autocomplete completes each segment of qualified names (database, schema, table), loads tables of unopened schemas on demand, resolves alias columns, and suggests the connection's dialect functions.</li>
+<li>Each filter row can be switched on or off and applied on its own; disabled rows stay in the panel. (#1561)</li>
+<li>Importing connections from other apps detects duplicates and lets you replace, add a copy, or skip each one.</li>
+<li>Oracle connections negotiate Native Network Encryption, so servers that require it now connect. (#483)</li>
+<li>Oracle connections follow listener redirects, so RAC SCAN, shared server, and load-balanced setups connect. (#483)</li>
+<li>AWS connections can assume an IAM role through STS, including chained source profiles, external IDs, and custom durations. (#1567)</li>
+<li>Redis connects to Amazon ElastiCache with IAM auth via access key, profile, or SSO. (#1567)</li>
+<li>AWS SSO sign-in from TablePro: an expired session prompts a browser sign-in and refreshes the token. (#1567)</li>
+<li>Cassandra connects to Amazon Keyspaces with AWS IAM (SigV4) auth via access keys, profile, or SSO. (#1567)</li>
+<li>Export and import dialogs remember the last-used format, options, and encoding; cancelling keeps your saved settings, and Reset to Defaults restores the stock options. (#1591)</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>The results status bar has a divider, balanced margins, and a spinner sized to its controls. (#1569)</li>
+<li>Custom keyboard shortcuts work on non-US layouts, and shifted symbols like Cmd+[ record correctly.</li>
+<li>The Keyboard settings list is grouped by where shortcuts act (Editor, Data Grid, Navigation, Connections), with a reset button per changed shortcut.</li>
+<li>Shortcut conflict detection checks live macOS system shortcuts and editor commands, and allows the same key in the editor and the data grid since focus decides which runs.</li>
+<li>Show Tables and Show Favorites moved to Cmd+Option+1 and Cmd+Option+2; Control+1 and Control+2 belong to macOS Spaces.</li>
+<li>Cmd+N opens a new connection; Manage Connections stays in the File menu.</li>
+<li>First Page and Last Page default to Cmd+Option+Up and Cmd+Option+Down.</li>
+<li>Shortcuts can use function keys (F1 through F12), with or without a modifier.</li>
+<li>AWS connections list the profiles from `~/.aws/config` and `~/.aws/credentials`, and still accept a typed name. (#1567)</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Accepting an autocomplete suggestion replaces the whole typed word; it could leave part of the word behind, turning `mess` plus Tab into `memessage`.</li>
+<li>MongoDB: connecting to Atlas no longer fails with TLS internal error (-9838); the plugin ships the OpenSSL TLS stack again. (#1599)</li>
+<li>DuckDB: the plugin runs DuckDB 1.5.2 again after a rollback to 1.5.0.</li>
+<li>JSON import: a failed import with "Delete existing rows before import" restores the deleted rows.</li>
+<li>JSON import: skip-and-continue no longer inserts duplicate rows after a mid-batch error.</li>
+<li>JSON import: "Stop and Commit" keeps the rows inserted before the error.</li>
+<li>The connection and database switcher focuses its search field even while a filter input is being edited; the filter text is kept. (#1575)</li>
+<li>TablePro no longer shows its icon for .sql, .sqlite, and .duckdb files when it is not their default app. (#1594)</li>
+<li>The JSON results view shows row data right away, follows the row selection, and shows a spinner while large results format. (#1576)</li>
+<li>Double-click or Enter edits a JSON cell inline and opens the hex editor on a blob cell; the chevron still opens the tree or hex editor. (#1588)</li>
+<li>Query results appear as soon as rows return; metadata loads in the background, removing a multi-second wait on slow remote databases. (#1574)</li>
+<li>MySQL and MariaDB queries are editable right away instead of waiting on a separate metadata query. (#1574)</li>
+<li>Status bar buttons no longer get blocked by the bottom-right window resize zone. (#1569)</li>
+<li>VoiceOver reads clear labels for the results status bar controls. (#1569)</li>
+<li>The custom rows-per-page popover points at the page-size menu. (#1569)</li>
+<li>DynamoDB AWS Profile auth reads `~/.aws/config` too and supports `credential_process`, so config-only, SSO, and credential-process profiles work. (#1567)</li>
+<li>Query result columns follow the SELECT order; new columns no longer get stuck at the end of the grid. (#1565)</li>
+<li>JSON file import works again. It failed to load in 0.48.0.</li>
+<li>SQL export quotes empty or malformed numeric values instead of producing invalid INSERT statements.</li>
+<li>SQL Server: logins restricted to one database, such as Azure SQL contained users, now connect; the database is sent during login.</li>
+<li>Custom Copy and Cut shortcuts take effect in the SQL editor.</li>
+<li>The Delete shortcut in the data grid follows a custom binding.</li>
+<li>Find Next (Cmd+G) and Find Previous (Cmd+Shift+G) work in the editor.</li>
+<li>Pagination buttons no longer fire their page shortcut twice.</li>
+<li>PostgreSQL scripts with `DO $$ ... $$` blocks or dollar-quoted bodies no longer fail with an unterminated string error. (#1559)</li>
+<li>AWS IAM connections no longer ask for a password; the same holds for any auth mode that replaces the password, such as a Postgres password file.</li>
+<li>Oracle connection failures show the listener's actual reason instead of a generic message. (#483)</li>
+<li>A connection password read from a command no longer fails when the command finishes quickly.</li>
+<li>A cancelled MCP query returns a cancelled error instead of an invalid-parameters error, and emits an initial progress notification.</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.49.0/TablePro-0.49.0-x86_64.zip" length="20261777" type="application/octet-stream" sparkle:edSignature="ThwSpJbt+CETx+G4yrNbr4X+1MIJMu2okBxw91FDbBNI8+6MOCWPUL582jwl+vsWLbN1RFth91YDeieFoQ0ZAg=="/>
+        </item>
+        <item>
             <title>0.48.0</title>
             <pubDate>Tue, 02 Jun 2026 01:48:05 +0000</pubDate>
             <sparkle:version>94</sparkle:version>

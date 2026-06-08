@@ -9,7 +9,7 @@ struct DataGridSection: View {
     @Binding var settings: DataGridSettings
 
     var body: some View {
-        Section("Data Grid") {
+        Section {
             Picker("Row height:", selection: $settings.rowHeight) {
                 ForEach(DataGridRowHeight.allCases) { height in
                     Text(height.displayName).tag(height)
@@ -43,7 +43,10 @@ struct DataGridSection: View {
                     Text(behavior.displayName).tag(behavior)
                 }
             }
-            .help(String(localized: "Applied when opening a table. Click a column header to override."))
+        } header: {
+            Text("Data Grid")
+        } footer: {
+            Text("Default row sort is applied when a table first opens. Click a column header to override it.")
         }
 
         Section("Pagination") {

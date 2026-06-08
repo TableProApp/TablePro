@@ -2,6 +2,7 @@ name: PluginKit ABI Gate
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
     paths:
       - "Plugins/TableProPluginKit/**"
       - "scripts/check-pluginkit-abi.sh"
@@ -30,4 +31,5 @@ jobs:
       - name: Check PluginKit ABI vs base
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          ABI_ACKNOWLEDGED_ADDITIVE: ${{ contains(github.event.pull_request.labels.*.name, 'abi-additive') && '1' || '' }}
         run: scripts/check-pluginkit-abi.sh "$BASE_SHA"

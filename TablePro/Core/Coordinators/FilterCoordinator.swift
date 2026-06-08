@@ -97,6 +97,9 @@ final class FilterCoordinator {
         let tab = parent.tabManager.tabs[tabIndex]
         let buffer = parent.tabSessionRegistry.tableRows(for: tab.id)
         let hasFilters = tab.filterState.hasAppliedFilters
+        let columns = buffer.columns.isEmpty
+            ? parent.effectiveResultColumns(for: tab)
+            : buffer.columns
 
         let newQuery: String
         if hasFilters {
@@ -106,7 +109,7 @@ final class FilterCoordinator {
                 filters: tab.filterState.appliedFilters,
                 logicMode: tab.filterState.filterLogicMode,
                 sortState: tab.sortState,
-                columns: buffer.columns,
+                columns: columns,
                 selectColumns: parent.selectColumns(for: tab),
                 limit: tab.pagination.pageSize,
                 offset: tab.pagination.currentOffset
@@ -116,7 +119,7 @@ final class FilterCoordinator {
                 tableName: tableName,
                 schemaName: tab.tableContext.schemaName,
                 sortState: tab.sortState,
-                columns: buffer.columns,
+                columns: columns,
                 selectColumns: parent.selectColumns(for: tab),
                 limit: tab.pagination.pageSize,
                 offset: tab.pagination.currentOffset

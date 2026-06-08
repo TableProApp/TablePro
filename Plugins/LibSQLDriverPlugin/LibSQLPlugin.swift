@@ -95,11 +95,31 @@ final class LibSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
 
     static let additionalConnectionFields: [ConnectionField] = [
         ConnectionField(
+            id: "libsqlMode",
+            label: String(localized: "Connection Mode"),
+            defaultValue: "remote",
+            fieldType: .dropdown(options: [
+                ConnectionField.DropdownOption(value: "remote", label: String(localized: "Remote (Turso)")),
+                ConnectionField.DropdownOption(value: "local", label: String(localized: "Local File"))
+            ]),
+            section: .authentication,
+            hidesPassword: true
+        ),
+        ConnectionField(
             id: "databaseUrl",
             label: String(localized: "Database URL"),
             placeholder: "https://your-db.turso.io",
             required: true,
-            section: .authentication
+            section: .authentication,
+            visibleWhen: FieldVisibilityRule(fieldId: "libsqlMode", values: ["remote"])
+        ),
+        ConnectionField(
+            id: "libsqlFilePath",
+            label: String(localized: "Database File"),
+            placeholder: "/path/to/database.db",
+            required: true,
+            section: .authentication,
+            visibleWhen: FieldVisibilityRule(fieldId: "libsqlMode", values: ["local"])
         )
     ]
 

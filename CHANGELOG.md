@@ -10,40 +10,90 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Apple Intelligence as an AI provider on macOS 26 and later: on-device, no API key, no network. It is the default for new users when available, and shows the reason when it is not. (#1048)
-- Each filter row has a checkbox to turn it on or off and an Apply button to filter by just that row. The main Apply runs every active filter, and disabled filters stay in the panel for later. (#1561)
-- Importing connections from other apps now detects duplicates by host, port, database, and username, and lets you replace, add a copy, or skip each one before import.
-- Oracle connections negotiate Native Network Encryption when the server asks for it, so servers with `SQLNET.ENCRYPTION_SERVER` or `SQLNET.CRYPTO_CHECKSUM_SERVER` set to REQUIRED now connect (AES with a SHA crypto-checksum), matching what SQL Developer and DBeaver do. (#483)
-- Oracle connections follow listener redirects, so RAC SCAN listeners, shared server, and load-balanced setups now connect instead of failing during the handshake. (#483)
-- AWS connections can assume an IAM role: profiles with `role_arn` plus `source_profile` (or `credential_source = Environment`) are resolved through STS AssumeRole, including chained source profiles, `external_id`, and `duration_seconds`. (#1567)
-- Redis connects to Amazon ElastiCache with IAM auth (access key, profile, or SSO). TablePro generates the IAM token and uses it as the password; set the AWS region and cache name and enable TLS. (#1567)
-- AWS SSO connections can sign in from TablePro: when the SSO session has expired, a prompt opens the AWS sign-in page in your browser and refreshes the cached token. (#1567)
-- Cassandra connects to Amazon Keyspaces with AWS IAM (SigV4) auth, using access keys, a profile, or SSO. Set Authentication to an AWS IAM mode and the region, and enable TLS. (#1567)
-
-### Changed
-
-- Custom keyboard shortcuts now work on non-US keyboard layouts, and shifted symbols like Cmd+[ record correctly.
-- The Keyboard settings list is grouped by where shortcuts act (Editor, Data Grid, Navigation, Connections), and each changed shortcut has its own reset button.
-- Conflict detection now checks live macOS system shortcuts and the editor's built-in commands, and lets the same key serve the editor and the data grid because focus decides which one runs.
-- Show Tables and Show Favorites sidebars moved off Control+1 and Control+2, which switch macOS Spaces, to Cmd+Option+1 and Cmd+Option+2.
-- Cmd+N now opens a new connection; Manage Connections keeps its File menu item.
-- First Page and Last Page now default to Cmd+Option+Up and Cmd+Option+Down.
-- Shortcuts can be bound to function keys (F1 through F12), with or without a modifier.
-- AWS connections show a dropdown of the profiles found in `~/.aws/config` and `~/.aws/credentials`, and still accept a typed profile name. (#1567)
+- Cursor as an AI provider: paste a Cursor API key, or sign in with the Cursor CLI (no key), to run AI chat and inline suggestions on your Cursor subscription. (#1624)
+- Sign in with ChatGPT to power AI chat and inline suggestions from your ChatGPT subscription (Plus, Pro, Business, or Enterprise) without an API key. Existing Codex CLI logins can be imported. (#1617)
+- libSQL / Turso connections can open a local database file: pick Local File mode in the connection form, browse to the file, and work with it offline, transactions included. (#1607)
 
 ### Fixed
 
-- DynamoDB AWS Profile auth now reads `~/.aws/config` as well as `~/.aws/credentials` and supports `credential_process`, matching the AWS CLI. Profiles defined only in `~/.aws/config`, including SSO and credential-process profiles, no longer fail with "profile not found". (#1567)
-- Query result columns now follow the order in the SELECT. Adding or removing a column no longer leaves new columns stuck at the end of the grid. (#1565)
+- Default row sort now applies to the very first table opened after launch, not just tables opened after it. (#1603)
+- Cancelling a SQLite query no longer races a disconnect happening at the same moment. (#1610)
+- Typing in the query editor no longer erases characters or drops focus on each keystroke, a timing-dependent bug most visible on macOS 15. (#1608)
+- The autocomplete popup now filters in place as you type instead of closing and reopening on every keystroke. (#1608)
+- Syntax highlighting no longer disappears after formatting a query. (#1612)
+- The GitHub Copilot provider no longer shows a Max output tokens field it ignores, and picking a Copilot model no longer leaves a stray model ID field behind.
+- Oracle connections that use native network encryption no longer crash when a query hits a server error such as a missing table or a permission error; the real ORA error is shown and the connection keeps working. (#483)
+- Clicking a table that's already open switches to its existing tab instead of opening a duplicate. (#1613)
+- MongoDB now connects over an SSH or Cloudflare tunnel instead of bypassing it and failing with a connection refused error. (#1621)
+- A plugin updated in Settings now stays marked Installed instead of showing the Update button again a few seconds later.
+
+## [0.49.1] - 2026-06-06
+
+### Fixed
+
+- Default row sort by primary key works again for PostgreSQL and other databases, and the rows arrive already sorted on the first load instead of re-sorting after they appear. (#1603)
+- Registry plugins built before 0.49.0 install and load again instead of failing with an invalid plugin bundle error.
+
+## [0.49.0] - 2026-06-06
+
+### Added
+
+- Snowflake support: sign in with username & password (MFA included), key-pair, browser SSO, or an access token; browse and edit data, import CSV and JSON, edit table structure, run scripts, and switch warehouse and role from the toolbar. Snowflake CLI connections can be reused by name. (#1420)
+- Import CSV and TSV files into a table: map columns to an existing table or create a new one, with delimiter, quote, encoding, header, and NULL options. (#1568)
+- SQL autocomplete completes each segment of qualified names (database, schema, table), loads tables of unopened schemas on demand, resolves alias columns, and suggests the connection's dialect functions.
+- Each filter row can be switched on or off and applied on its own; disabled rows stay in the panel. (#1561)
+- Importing connections from other apps detects duplicates and lets you replace, add a copy, or skip each one.
+- Oracle connections negotiate Native Network Encryption, so servers that require it now connect. (#483)
+- Oracle connections follow listener redirects, so RAC SCAN, shared server, and load-balanced setups connect. (#483)
+- AWS connections can assume an IAM role through STS, including chained source profiles, external IDs, and custom durations. (#1567)
+- Redis connects to Amazon ElastiCache with IAM auth via access key, profile, or SSO. (#1567)
+- AWS SSO sign-in from TablePro: an expired session prompts a browser sign-in and refreshes the token. (#1567)
+- Cassandra connects to Amazon Keyspaces with AWS IAM (SigV4) auth via access keys, profile, or SSO. (#1567)
+- Export and import dialogs remember the last-used format, options, and encoding; cancelling keeps your saved settings, and Reset to Defaults restores the stock options. (#1591)
+
+### Changed
+
+- The results status bar has a divider, balanced margins, and a spinner sized to its controls. (#1569)
+- Custom keyboard shortcuts work on non-US layouts, and shifted symbols like Cmd+[ record correctly.
+- The Keyboard settings list is grouped by where shortcuts act (Editor, Data Grid, Navigation, Connections), with a reset button per changed shortcut.
+- Shortcut conflict detection checks live macOS system shortcuts and editor commands, and allows the same key in the editor and the data grid since focus decides which runs.
+- Show Tables and Show Favorites moved to Cmd+Option+1 and Cmd+Option+2; Control+1 and Control+2 belong to macOS Spaces.
+- Cmd+N opens a new connection; Manage Connections stays in the File menu.
+- First Page and Last Page default to Cmd+Option+Up and Cmd+Option+Down.
+- Shortcuts can use function keys (F1 through F12), with or without a modifier.
+- AWS connections list the profiles from `~/.aws/config` and `~/.aws/credentials`, and still accept a typed name. (#1567)
+
+### Fixed
+
+- Accepting an autocomplete suggestion replaces the whole typed word; it could leave part of the word behind, turning `mess` plus Tab into `memessage`.
+- MongoDB: connecting to Atlas no longer fails with TLS internal error (-9838); the plugin ships the OpenSSL TLS stack again. (#1599)
+- DuckDB: the plugin runs DuckDB 1.5.2 again after a rollback to 1.5.0.
+- JSON import: a failed import with "Delete existing rows before import" restores the deleted rows.
+- JSON import: skip-and-continue no longer inserts duplicate rows after a mid-batch error.
+- JSON import: "Stop and Commit" keeps the rows inserted before the error.
+- The connection and database switcher focuses its search field even while a filter input is being edited; the filter text is kept. (#1575)
+- TablePro no longer shows its icon for .sql, .sqlite, and .duckdb files when it is not their default app. (#1594)
+- The JSON results view shows row data right away, follows the row selection, and shows a spinner while large results format. (#1576)
+- Double-click or Enter edits a JSON cell inline and opens the hex editor on a blob cell; the chevron still opens the tree or hex editor. (#1588)
+- Query results appear as soon as rows return; metadata loads in the background, removing a multi-second wait on slow remote databases. (#1574)
+- MySQL and MariaDB queries are editable right away instead of waiting on a separate metadata query. (#1574)
+- Status bar buttons no longer get blocked by the bottom-right window resize zone. (#1569)
+- VoiceOver reads clear labels for the results status bar controls. (#1569)
+- The custom rows-per-page popover points at the page-size menu. (#1569)
+- DynamoDB AWS Profile auth reads `~/.aws/config` too and supports `credential_process`, so config-only, SSO, and credential-process profiles work. (#1567)
+- Query result columns follow the SELECT order; new columns no longer get stuck at the end of the grid. (#1565)
 - JSON file import works again. It failed to load in 0.48.0.
-- SQL export quotes empty or malformed values in numeric columns instead of writing them unquoted, which could produce invalid INSERT statements.
-- SQL Server: connections work when the login can only reach its own database, such as an Azure SQL contained user. The database is now sent during login. Previously it was switched afterward, which the server rejected with a "Login failed" error.
-- Custom Copy and Cut shortcuts now take effect in the SQL editor.
-- The Delete shortcut in the data grid now follows a custom binding.
-- Find Next (Cmd+G) and Find Previous (Cmd+Shift+G) now work in the editor.
+- SQL export quotes empty or malformed numeric values instead of producing invalid INSERT statements.
+- SQL Server: logins restricted to one database, such as Azure SQL contained users, now connect; the database is sent during login.
+- Custom Copy and Cut shortcuts take effect in the SQL editor.
+- The Delete shortcut in the data grid follows a custom binding.
+- Find Next (Cmd+G) and Find Previous (Cmd+Shift+G) work in the editor.
 - Pagination buttons no longer fire their page shortcut twice.
-- Running a PostgreSQL script with a `DO $$ ... $$` block or a dollar-quoted function body no longer fails with an unterminated dollar-quoted string error. (#1559)
-- AWS IAM connections no longer ask for a password on connect or reconnect. IAM supplies the credentials, so the prompt was never needed. The same now holds for any auth mode that replaces the password, such as a Postgres password file.
-- Oracle connection failures show the listener's actual reason (such as an unknown service name) instead of a generic "server closed the connection" message. (#483)
+- PostgreSQL scripts with `DO $$ ... $$` blocks or dollar-quoted bodies no longer fail with an unterminated string error. (#1559)
+- AWS IAM connections no longer ask for a password; the same holds for any auth mode that replaces the password, such as a Postgres password file.
+- Oracle connection failures show the listener's actual reason instead of a generic message. (#483)
+- A connection password read from a command no longer fails when the command finishes quickly.
+- A cancelled MCP query returns a cancelled error instead of an invalid-parameters error, and emits an initial progress notification.
 
 ## [0.48.0] - 2026-06-02
 
@@ -2154,7 +2204,9 @@ TablePro is a native macOS database client built with SwiftUI and AppKit, design
     - Custom SQL query templates
     - Performance optimized for large datasets
 
-[Unreleased]: https://github.com/TableProApp/TablePro/compare/v0.48.0...HEAD
+[Unreleased]: https://github.com/TableProApp/TablePro/compare/v0.49.1...HEAD
+[0.49.1]: https://github.com/TableProApp/TablePro/compare/v0.49.0...v0.49.1
+[0.49.0]: https://github.com/TableProApp/TablePro/compare/v0.48.0...v0.49.0
 [0.48.0]: https://github.com/TableProApp/TablePro/compare/v0.47.0...v0.48.0
 [0.47.0]: https://github.com/TableProApp/TablePro/compare/v0.46.0...v0.47.0
 [0.46.0]: https://github.com/TableProApp/TablePro/compare/v0.45.0...v0.46.0

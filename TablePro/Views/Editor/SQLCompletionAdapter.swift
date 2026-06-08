@@ -18,12 +18,20 @@ final class SQLCompletionAdapter: CodeSuggestionDelegate {
 
     // MARK: - Properties
 
+    private struct CompletionSession {
+        enum Phase {
+            case intermediate
+            case final
+        }
+
+        var phase: Phase
+        var context: CompletionContext
+    }
+
     private var completionEngine: CompletionEngine?
     private var favoriteKeywords: [String: (name: String, query: String)] = [:]
-    private var suppressNextCompletion = false
-    private var currentCompletionContext: CompletionContext?
-    private var debounceGeneration: UInt64 = 0
-    private let debounceNanoseconds: UInt64 = 50_000_000  // 50ms
+    private var session: CompletionSession?
+    private let debounceNanoseconds: UInt64 = 50_000_000
 
     // MARK: - Initialization
 
@@ -71,20 +79,18 @@ final class SQLCompletionAdapter: CodeSuggestionDelegate {
             return nil
         }
 
-        if suppressNextCompletion {
-            suppressNextCompletion = false
+        seedIntermediateSessionIfNeeded(textView: textView, cursorPosition: cursorPosition)
+
+        do {
+            try await Task.sleep(nanoseconds: debounceNanoseconds)
+        } catch {
             return nil
         }
 
-        // Debounce: wait briefly and check if a newer request arrived
-        debounceGeneration &+= 1
-        let myGeneration = debounceGeneration
-        try? await Task.sleep(nanoseconds: debounceNanoseconds)
-        guard myGeneration == debounceGeneration else { return nil }
-
+        let liveCursorPosition = textView.cursorPositions.first ?? cursorPosition
         let nsText = (textView.textView.textStorage?.string ?? "") as NSString
         let docLength = nsText.length
-        let offset = cursorPosition.range.location
+        let offset = liveCursorPosition.range.location
 
         // Don't show autocomplete right after semicolon or newline
         if offset > 0 {
@@ -115,7 +121,7 @@ final class SQLCompletionAdapter: CodeSuggestionDelegate {
         guard let context = await completionEngine.getCompletions(
             text: text,
             cursorPosition: adjustedOffset
-        ) else {
+        ), !Task.isCancelled else {
             return nil
         }
 
@@ -135,41 +141,71 @@ final class SQLCompletionAdapter: CodeSuggestionDelegate {
         }
 
         // Adjust replacement range from window-relative back to document coordinates
-        self.currentCompletionContext = CompletionContext(
-            items: context.items,
-            replacementRange: NSRange(
-                location: context.replacementRange.location + windowStart,
-                length: context.replacementRange.length
-            ),
-            sqlContext: context.sqlContext
+        session = CompletionSession(
+            phase: .final,
+            context: CompletionContext(
+                items: context.items,
+                replacementRange: NSRange(
+                    location: context.replacementRange.location + windowStart,
+                    length: context.replacementRange.length
+                ),
+                sqlContext: context.sqlContext
+            )
         )
 
         let entries: [CodeSuggestionEntry] = context.items.map { item in
             SQLSuggestionEntry(item: item)
         }
 
-        return (windowPosition: cursorPosition, items: entries)
+        return (windowPosition: liveCursorPosition, items: entries)
+    }
+
+    private func seedIntermediateSessionIfNeeded(textView: TextViewController, cursorPosition: CursorPosition) {
+        guard session == nil, let completionEngine else { return }
+
+        let keywordItems = completionEngine.keywordCompletions()
+        guard !keywordItems.isEmpty else { return }
+
+        let offset = cursorPosition.range.location
+        guard let nsText = textView.textView.textStorage?.string as NSString?,
+              offset >= 0, offset <= nsText.length else { return }
+
+        let prefixStart = SQLTokenBoundary.segmentStart(in: nsText, endingAt: offset)
+        session = CompletionSession(
+            phase: .intermediate,
+            context: CompletionContext(
+                items: keywordItems,
+                replacementRange: NSRange(location: prefixStart, length: offset - prefixStart),
+                sqlContext: SQLContext(
+                    clauseType: .unknown,
+                    prefix: "",
+                    prefixRange: prefixStart..<offset,
+                    dotPrefix: nil,
+                    tableReferences: [],
+                    isInsideString: false,
+                    isInsideComment: false
+                )
+            )
+        )
     }
 
     func completionOnCursorMove(
         textView: TextViewController,
         cursorPosition: CursorPosition
     ) -> [CodeSuggestionEntry]? {
-        guard let context = currentCompletionContext,
+        guard let context = session?.context,
               let provider = completionEngine?.provider else { return nil }
 
         let offset = cursorPosition.range.location
-        let docLength = (textView.textView.textStorage?.string as NSString?)?.length ?? 0
+        guard let nsText = textView.textView.textStorage?.string as NSString?,
+              offset >= 0, offset <= nsText.length else { return nil }
 
-        let prefixStart = context.replacementRange.location
-        guard offset >= prefixStart, offset <= docLength else { return nil }
-
+        let prefixStart = SQLTokenBoundary.segmentStart(in: nsText, endingAt: offset)
         let prefixLength = offset - prefixStart
         guard prefixLength > 0, prefixLength <= 500 else { return nil }
 
         let prefixRange = NSRange(location: prefixStart, length: prefixLength)
-        let currentPrefix = (textView.textView.textStorage?.string as NSString?)?
-            .substring(with: prefixRange).lowercased() ?? ""
+        let currentPrefix = nsText.substring(with: prefixRange).lowercased()
 
         guard !currentPrefix.isEmpty else { return nil }
 
@@ -178,19 +214,23 @@ final class SQLCompletionAdapter: CodeSuggestionDelegate {
         return ranked.isEmpty ? nil : ranked.map { SQLSuggestionEntry(item: $0) }
     }
 
+    func completionWindowDidClose() {
+        session = nil
+    }
+
     func completionWindowApplyCompletion(
         item: CodeSuggestionEntry,
         textView: TextViewController,
         cursorPosition: CursorPosition?
     ) {
         guard let entry = item as? SQLSuggestionEntry,
-              let context = currentCompletionContext else { return }
+              let context = session?.context else { return }
 
-        suppressNextCompletion = true
-
-        let originalStart = context.replacementRange.location
-        let currentEnd = cursorPosition?.range.location ?? (originalStart + context.replacementRange.length)
-        let replaceRange = NSRange(location: originalStart, length: currentEnd - originalStart)
+        let replaceRange = SQLTokenBoundary.replacementRange(
+            in: textView.textView.textStorage?.string as NSString?,
+            cursor: cursorPosition?.range.location,
+            fallback: context.replacementRange
+        )
         let insertText = entry.item.insertText
 
         textView.textView.replaceCharacters(

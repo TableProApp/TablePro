@@ -97,6 +97,13 @@ extension MainContentCoordinator {
         )
     }
 
+    func selectTabAndFocusWindow(_ tabId: UUID) {
+        tabManager.selectedTabId = tabId
+        guard let windowId,
+              let window = WindowLifecycleMonitor.shared.window(for: windowId) else { return }
+        window.makeKeyAndOrderFront(nil)
+    }
+
     // MARK: - Sidebar Sync
 
     /// Update the window-scoped sidebar selection so the active table tab
@@ -137,14 +144,25 @@ extension MainContentCoordinator {
         Self.lifecycleLogger.debug(
             "[switch] coordinator.lazyLoadCurrentTabIfNeeded executing tabId=\(tabId, privacy: .public)"
         )
-        tableLoadTasks[tabId] = Task { @MainActor [weak self] in
+        let token = UUID()
+        let task = Task { @MainActor [weak self] in
             guard let self else { return }
-            defer { self.tableLoadTasks[tabId] = nil }
-            self.executeSelectedTableTabQuery()
-            if let task = self.currentQueryTask {
-                await task.value
+            defer {
+                if self.tableLoadTasks[tabId]?.token == token {
+                    self.tableLoadTasks[tabId] = nil
+                }
+            }
+            await self.openTableTabQuery(tabId: tabId)
+            if let queryTask = self.currentQueryTask {
+                await queryTask.value
             }
         }
+        tableLoadTasks[tabId] = (token, task)
+    }
+
+    func cancelTableLoad(for tabId: UUID) {
+        tableLoadTasks[tabId]?.task.cancel()
+        tableLoadTasks[tabId] = nil
     }
 
     private func canAutoLoadTableTab(_ tab: QueryTab) -> Bool {

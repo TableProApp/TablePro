@@ -9,9 +9,9 @@ import Testing
 #if canImport(FoundationModels)
 import FoundationModels
 
-@available(macOS 26, *)
 @Suite("AppleIntelligenceSchemaBuilder")
 struct AppleIntelligenceSchemaBuilderTests {
+    @available(macOS 26, *)
     @Test("Builds a schema for an object with required and optional properties")
     func buildsObjectSchema() throws {
         let schema = ChatToolSchemaBuilder.object(
@@ -27,6 +27,7 @@ struct AppleIntelligenceSchemaBuilderTests {
         }
     }
 
+    @available(macOS 26, *)
     @Test("Builds a schema for an enum field")
     func buildsEnumSchema() throws {
         let schema = ChatToolSchemaBuilder.object(properties: [
@@ -38,6 +39,7 @@ struct AppleIntelligenceSchemaBuilderTests {
         }
     }
 
+    @available(macOS 26, *)
     @Test("Builds a schema for an array field")
     func buildsArraySchema() throws {
         let schema = ChatToolSchemaBuilder.object(properties: [
@@ -53,6 +55,7 @@ struct AppleIntelligenceSchemaBuilderTests {
         }
     }
 
+    @available(macOS 26, *)
     @Test("Decodes a JSON arguments object to JsonValue")
     func decodesArguments() throws {
         let json = "{\"connectionId\":\"abc\",\"limit\":10}"

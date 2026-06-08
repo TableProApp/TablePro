@@ -94,7 +94,6 @@ extension PluginManager {
                 replacingBundleId: registryPlugin.id
             )
             stagedUpdates.removeValue(forKey: registryPlugin.id)
-            PluginInstallTracker.shared.completeInstall(pluginId: registryPlugin.id)
             refreshRegistryUpdateSet()
             return .installed(entry)
         case .staged(let stagedURL):

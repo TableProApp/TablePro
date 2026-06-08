@@ -117,6 +117,7 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
                 content: HStack(spacing: 4) {
                     ConnectionToolbarButton(coordinator: coordinator)
                     DatabaseToolbarButton(coordinator: coordinator)
+                    SessionContextToolbarButton(coordinator: coordinator)
                 }
             )
             group.isNavigational = true

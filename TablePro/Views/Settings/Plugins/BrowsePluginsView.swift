@@ -152,40 +152,7 @@ struct BrowsePluginsView: View {
 
     @ViewBuilder
     private func rowStatusBadge(for plugin: RegistryPlugin) -> some View {
-        if isPluginInstalled(plugin.id) {
-            if hasUpdate(for: plugin) {
-                if let progress = installTracker.state(for: plugin.id) {
-                    switch progress.phase {
-                    case .downloading(let fraction):
-                        ProgressView(value: fraction)
-                            .frame(width: 40)
-                            .progressViewStyle(.linear)
-                    case .installing:
-                        ProgressView()
-                            .controlSize(.mini)
-                    case .stagedPendingActivation:
-                        Image(systemName: "clock.arrow.circlepath")
-                            .foregroundStyle(.orange)
-                            .font(.caption)
-                    case .completed:
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundStyle(.green)
-                            .font(.caption)
-                    case .failed:
-                        Button("Retry") { updatePlugin(plugin) }
-                            .controlSize(.mini)
-                    }
-                } else {
-                    Button(String(localized: "Update")) { updatePlugin(plugin) }
-                        .buttonStyle(.bordered)
-                        .controlSize(.mini)
-                }
-            } else {
-                Text("Installed")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
-        } else if let progress = installTracker.state(for: plugin.id) {
+        if let progress = installTracker.state(for: plugin.id) {
             switch progress.phase {
             case .downloading(let fraction):
                 ProgressView(value: fraction)
@@ -203,13 +170,31 @@ struct BrowsePluginsView: View {
                     .foregroundStyle(.green)
                     .font(.caption)
             case .failed:
-                Button("Retry") { installPlugin(plugin) }
+                Button("Retry") { retryOperation(for: plugin) }
                     .controlSize(.mini)
+            }
+        } else if isPluginInstalled(plugin.id) {
+            if hasUpdate(for: plugin) {
+                Button(String(localized: "Update")) { updatePlugin(plugin) }
+                    .buttonStyle(.bordered)
+                    .controlSize(.mini)
+            } else {
+                Text("Installed")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
             }
         } else {
             Button("Install") { installPlugin(plugin) }
                 .buttonStyle(.bordered)
                 .controlSize(.mini)
+        }
+    }
+
+    private func retryOperation(for plugin: RegistryPlugin) {
+        if isPluginInstalled(plugin.id) {
+            updatePlugin(plugin)
+        } else {
+            installPlugin(plugin)
         }
     }
 
@@ -255,8 +240,7 @@ struct BrowsePluginsView: View {
     }
 
     private func hasUpdate(for plugin: RegistryPlugin) -> Bool {
-        guard let installed = pluginManager.plugins.first(where: { $0.id == plugin.id }) else { return false }
-        return plugin.version.compare(installed.version, options: .numeric) == .orderedDescending
+        pluginManager.registryUpdate(for: plugin.id) != nil
     }
 
     private func installPlugin(_ plugin: RegistryPlugin) {

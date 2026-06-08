@@ -15,18 +15,17 @@
 			<array>
 				<string>sql</string>
 			</array>
-			<key>CFBundleTypeIconFile</key>
-			<string>SQLDocument</string>
+			<key>CFBundleTypeIconSystemGenerated</key>
+			<true/>
 			<key>CFBundleTypeName</key>
 			<string>SQL File</string>
 			<key>CFBundleTypeRole</key>
 			<string>Editor</string>
 			<key>LSHandlerRank</key>
-			<string>Owner</string>
+			<string>Default</string>
 			<key>LSItemContentTypes</key>
 			<array>
-				<string>com.tablepro.sql</string>
-				<string>public.sql</string>
+				<string>org.iso.sql</string>
 			</array>
 		</dict>
 		<dict>
@@ -58,6 +57,8 @@
 				<string>sqlite3</string>
 				<string>sqlitedb</string>
 			</array>
+			<key>CFBundleTypeIconSystemGenerated</key>
+			<true/>
 			<key>CFBundleTypeName</key>
 			<string>SQLite Database</string>
 			<key>CFBundleTypeRole</key>
@@ -66,8 +67,7 @@
 			<string>Alternate</string>
 			<key>LSItemContentTypes</key>
 			<array>
-				<string>com.apple.sqlite3</string>
-				<string>com.tablepro.sqlite-db</string>
+				<string>org.sqlite.sqlite</string>
 			</array>
 		</dict>
 		<dict>
@@ -87,12 +87,14 @@
 			</array>
 		</dict>
 		<dict>
+			<key>CFBundleTypeIconSystemGenerated</key>
+			<true/>
 			<key>CFBundleTypeName</key>
 			<string>DuckDB Database</string>
 			<key>CFBundleTypeRole</key>
 			<string>Editor</string>
 			<key>LSHandlerRank</key>
-			<string>Owner</string>
+			<string>Default</string>
 			<key>CFBundleTypeExtensions</key>
 			<array>
 				<string>duckdb</string>
@@ -100,7 +102,7 @@
 			</array>
 			<key>LSItemContentTypes</key>
 			<array>
-				<string>com.tablepro.duckdb</string>
+				<string>org.duckdb.duckdb-database</string>
 			</array>
 		</dict>
 		<dict>
@@ -136,19 +138,16 @@
 			</array>
 		</dict>
 	</array>
-	<key>UTExportedTypeDeclarations</key>
+	<key>UTImportedTypeDeclarations</key>
 	<array>
 		<dict>
 			<key>UTTypeIdentifier</key>
-			<string>com.tablepro.sql</string>
+			<string>org.iso.sql</string>
 			<key>UTTypeDescription</key>
 			<string>SQL File</string>
-			<key>UTTypeIconFile</key>
-			<string>SQLDocument</string>
 			<key>UTTypeConformsTo</key>
 			<array>
-				<string>public.sql</string>
-				<string>public.plain-text</string>
+				<string>public.source-code</string>
 			</array>
 			<key>UTTypeTagSpecification</key>
 			<dict>
@@ -160,12 +159,11 @@
 		</dict>
 		<dict>
 			<key>UTTypeIdentifier</key>
-			<string>com.tablepro.sqlite-db</string>
+			<string>org.sqlite.sqlite</string>
 			<key>UTTypeDescription</key>
 			<string>SQLite Database</string>
 			<key>UTTypeConformsTo</key>
 			<array>
-				<string>com.apple.sqlite3</string>
 				<string>public.database</string>
 				<string>public.data</string>
 			</array>
@@ -185,7 +183,7 @@
 		</dict>
 		<dict>
 			<key>UTTypeIdentifier</key>
-			<string>com.tablepro.duckdb</string>
+			<string>org.duckdb.duckdb-database</string>
 			<key>UTTypeDescription</key>
 			<string>DuckDB Database</string>
 			<key>UTTypeConformsTo</key>
@@ -202,6 +200,9 @@
 				</array>
 			</dict>
 		</dict>
+	</array>
+	<key>UTExportedTypeDeclarations</key>
+	<array>
 		<dict>
 			<key>UTTypeIdentifier</key>
 			<string>com.tablepro.connection-share</string>

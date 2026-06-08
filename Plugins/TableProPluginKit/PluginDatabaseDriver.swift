@@ -126,6 +126,10 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     func dropDatabase(name: String) async throws
     func executeParameterized(query: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult
 
+    // Session contexts (optional, switchable session dimensions such as a warehouse or role)
+    func fetchSessionContexts() async throws -> [PluginSessionContext]?
+    func switchSessionContext(id: String, to value: String) async throws
+
     // Query building (optional, for NoSQL plugins)
     func buildBrowseQuery(table: String, sortColumns: [(columnIndex: Int, ascending: Bool)], columns: [String], limit: Int, offset: Int) -> String?
     func buildFilteredQuery(table: String, filters: [(column: String, op: String, value: String)], logicMode: String, sortColumns: [(columnIndex: Int, ascending: Bool)], columns: [String], limit: Int, offset: Int) -> String?
@@ -368,6 +372,10 @@ public extension PluginDatabaseDriver {
         result = result.replacingOccurrences(of: "\0", with: "")
         return result
     }
+
+    func fetchSessionContexts() async throws -> [PluginSessionContext]? { nil }
+
+    func switchSessionContext(id: String, to value: String) async throws {}
 
     func executeParameterized(query: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult {
         guard !parameters.isEmpty else {

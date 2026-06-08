@@ -42,52 +42,18 @@ final class OpenAICompatibleProvider: ChatTransport {
         turns: [ChatTurnWire],
         options: ChatTransportOptions
     ) -> AsyncThrowingStream<ChatStreamEvent, Error> {
-        AsyncThrowingStream { continuation in
-            let task = Task {
-                do {
-                    let request = try buildChatCompletionRequest(turns: turns, options: options)
-                    let (bytes, response) = try await session.bytes(for: request)
-
-                    guard let httpResponse = response as? HTTPURLResponse else {
-                        throw AIProviderError.networkError("Invalid response")
-                    }
-
-                    guard httpResponse.statusCode == 200 else {
-                        let errorBody = try await collectErrorBody(from: bytes)
-                        throw AIProviderError.mapHTTPError(
-                            statusCode: httpResponse.statusCode,
-                            body: errorBody
-                        )
-                    }
-
-                    var state = OpenAIStreamState()
-                    for try await line in bytes.lines {
-                        if Task.isCancelled { break }
-                        guard let json = Self.decodeStreamLine(line, providerType: self.providerType) else {
-                            if line == "data: [DONE]" { break }
-                            continue
-                        }
-                        let result = Self.parseChunk(json, state: &state)
-                        for event in result.events { continuation.yield(event) }
-                        if result.shouldBreak { break }
-                    }
-                    if let reasoningEnd = state.flushReasoningEnd() {
-                        continuation.yield(reasoningEnd)
-                    }
-                    if let usage = state.finalUsageEvent() {
-                        continuation.yield(usage)
-                    }
-
-                    continuation.finish()
-                } catch {
-                    continuation.finish(throwing: error)
-                }
+        let providerType = self.providerType
+        return SSEEventStream.make(
+            session: session,
+            buildRequest: { [self] in try buildChatCompletionRequest(turns: turns, options: options) },
+            decodeLine: { Self.decodeStreamLine($0, providerType: providerType) },
+            makeState: { OpenAIStreamState() },
+            parse: { Self.parseChunk($0, state: &$1).events },
+            finalEvents: { state in
+                var state = state
+                return [state.flushReasoningEnd(), state.finalUsageEvent()].compactMap { $0 }
             }
-
-            continuation.onTermination = { _ in
-                task.cancel()
-            }
-        }
+        )
     }
 
     static func decodeStreamLine(_ line: String, providerType: AIProviderType) -> [String: Any]? {

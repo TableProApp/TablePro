@@ -143,7 +143,7 @@ struct MainContentCoordinatorLazyLoadTests {
         let tabId = addTableTab(to: tabManager)
         let inFlight = Task<Void, Never> { _ = try? await Task.sleep(for: .seconds(60)) }
         defer { inFlight.cancel() }
-        coordinator.tableLoadTasks[tabId] = inFlight
+        coordinator.tableLoadTasks[tabId] = (UUID(), inFlight)
 
         coordinator.lazyLoadCurrentTabIfNeeded()
 

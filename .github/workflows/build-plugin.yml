@@ -199,6 +199,11 @@ jobs:
               DISPLAY_NAME="BigQuery Driver"; SUMMARY="Google BigQuery analytics database driver via REST API"
               DB_TYPE_IDS='["BigQuery"]'; ICON="bigquery-icon"; BUNDLE_NAME="BigQueryDriverPlugin"
               CATEGORY="database-driver"; HOMEPAGE="https://docs.tablepro.app/databases/bigquery" ;;
+            snowflake)
+              TARGET="SnowflakeDriverPlugin"; BUNDLE_ID="com.TablePro.SnowflakeDriverPlugin"
+              DISPLAY_NAME="Snowflake Driver"; SUMMARY="Snowflake cloud data warehouse driver via the connector REST protocol"
+              DB_TYPE_IDS='["Snowflake"]'; ICON="snowflake-icon"; BUNDLE_NAME="SnowflakeDriverPlugin"
+              CATEGORY="database-driver"; HOMEPAGE="https://docs.tablepro.app/databases/snowflake" ;;
             xlsx)
               TARGET="XLSXExport"; BUNDLE_ID="com.TablePro.XLSXExportPlugin"
               DISPLAY_NAME="XLSX Export"; SUMMARY="Export data to Microsoft Excel XLSX format"
@@ -219,9 +224,25 @@ jobs:
               exit 1 ;;
           esac
 
+          # The app target is the only one with a real version; every plugin,
+          # test, and framework target is pinned to MARKETING_VERSION = 1.0,
+          # and target order in the pbxproj is not stable.
           MIN_APP_VERSION=$(grep -E 'MARKETING_VERSION\s*=\s*[0-9]' \
-            TablePro.xcodeproj/project.pbxproj | head -1 \
-            | sed 's/.*MARKETING_VERSION = \(.*\);/\1/' | tr -d ' ')
+            TablePro.xcodeproj/project.pbxproj \
+            | sed 's/.*MARKETING_VERSION = \(.*\);/\1/' | tr -d ' ' \
+            | grep -v '^1\.0$' | sort -u | head -1)
+          if [ -z "$MIN_APP_VERSION" ] || [ "$MIN_APP_VERSION" = "1.0" ]; then
+            echo "::error::Could not resolve the app MARKETING_VERSION (got '$MIN_APP_VERSION')"
+            exit 1
+          fi
+          DISTINCT_COUNT=$(grep -E 'MARKETING_VERSION\s*=\s*[0-9]' \
+            TablePro.xcodeproj/project.pbxproj \
+            | sed 's/.*MARKETING_VERSION = \(.*\);/\1/' | tr -d ' ' \
+            | grep -v '^1\.0$' | sort -u | wc -l | tr -d ' ')
+          if [ "$DISTINCT_COUNT" != "1" ]; then
+            echo "::error::Expected exactly one non-1.0 MARKETING_VERSION, found $DISTINCT_COUNT"
+            exit 1
+          fi
 
           {
             echo "target=$TARGET"

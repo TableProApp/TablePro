@@ -392,6 +392,14 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
         try await pluginDriver.dropDatabase(name: name)
     }
 
+    func fetchSessionContexts() async throws -> [PluginSessionContext]? {
+        try await pluginDriver.fetchSessionContexts()
+    }
+
+    func switchSessionContext(id: String, to value: String) async throws {
+        try await pluginDriver.switchSessionContext(id: id, to: value)
+    }
+
     // MARK: - Batch Operations
 
     func fetchAllColumns() async throws -> [String: [ColumnInfo]] {
@@ -623,6 +631,9 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
         )
         result.isTruncated = pluginResult.isTruncated
         result.statusMessage = pluginResult.statusMessage
+        result.columnMeta = pluginResult.columnMeta?.map {
+            ResultColumnMeta(isPrimaryKey: $0.isPrimaryKey, isNullable: $0.isNullable, isAutoIncrement: $0.isIdentity)
+        }
         return result
     }
 

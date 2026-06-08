@@ -64,14 +64,22 @@ final class SchemaProviderRegistry {
             return existing
         }
         let source = SQLSchemaProvider.ColumnMetadataSource(
-            fetchColumns: { table in
+            fetchColumns: { table, schema in
                 try await DatabaseManager.shared.withMetadataDriver(connectionId: connectionId) { driver in
-                    try await driver.fetchColumns(table: table)
+                    if let schema {
+                        return try await driver.fetchColumns(table: table, schema: schema)
+                    }
+                    return try await driver.fetchColumns(table: table)
                 }
             },
             fetchAllColumns: {
                 try await DatabaseManager.shared.withMetadataDriver(connectionId: connectionId, workload: .bulk) { driver in
                     try await driver.fetchAllColumns()
+                }
+            },
+            fetchSchemaTables: { schema in
+                try await DatabaseManager.shared.withMetadataDriver(connectionId: connectionId) { driver in
+                    try await driver.fetchTables(schema: schema)
                 }
             }
         )

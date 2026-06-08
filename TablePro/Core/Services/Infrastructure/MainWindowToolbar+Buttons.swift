@@ -48,6 +48,36 @@ struct DatabaseToolbarButton: View {
     }
 }
 
+struct SessionContextToolbarButton: View {
+    @Bindable var coordinator: MainContentCoordinator
+
+    var body: some View {
+        HStack(spacing: 4) {
+            ForEach(coordinator.sessionContexts) { context in
+                Menu {
+                    ForEach(context.availableValues, id: \.self) { value in
+                        Button {
+                            Task { await coordinator.switchSessionContext(id: context.id, to: value) }
+                        } label: {
+                            if value == context.currentValue {
+                                Label(value, systemImage: "checkmark")
+                            } else {
+                                Text(value)
+                            }
+                        }
+                    }
+                } label: {
+                    Label(context.currentValue ?? context.label, systemImage: context.iconName)
+                }
+                .help(context.label)
+            }
+        }
+        .task(id: coordinator.toolbarState.connectionState) {
+            await coordinator.loadSessionContexts()
+        }
+    }
+}
+
 struct RefreshToolbarButton: View {
     let coordinator: MainContentCoordinator
 

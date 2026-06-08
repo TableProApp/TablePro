@@ -111,6 +111,10 @@ final class DataChangeManager: ChangeManaging {
         }
     }
 
+    func setPrimaryKeyColumns(_ primaryKeyColumns: [String]) {
+        self.primaryKeyColumns = primaryKeyColumns
+    }
+
     // MARK: - Change Tracking
 
     func recordCellChange(

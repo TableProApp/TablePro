@@ -9,9 +9,45 @@ import AppKit
 import SwiftUI
 
 private final class IntrinsicHeightSearchField: NSSearchField {
+    var focusOnAppear = false
+    private var windowKeyObserver: NSObjectProtocol?
+
     override var intrinsicContentSize: NSSize {
         let cellHeight = cell?.cellSize.height ?? super.intrinsicContentSize.height
         return NSSize(width: NSView.noIntrinsicMetric, height: cellHeight)
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        removeWindowKeyObserver()
+        guard focusOnAppear, acceptsFirstResponder, let window else { return }
+        if window.isKeyWindow {
+            window.makeFirstResponder(self)
+            return
+        }
+        windowKeyObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.didBecomeKeyNotification,
+            object: window,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.removeWindowKeyObserver()
+                self.window?.makeFirstResponder(self)
+            }
+        }
+    }
+
+    private func removeWindowKeyObserver() {
+        guard let token = windowKeyObserver else { return }
+        NotificationCenter.default.removeObserver(token)
+        windowKeyObserver = nil
+    }
+
+    deinit {
+        if let token = windowKeyObserver {
+            NotificationCenter.default.removeObserver(token)
+        }
     }
 }
 
@@ -39,11 +75,7 @@ struct NativeSearchField: NSViewRepresentable {
             field.widthAnchor.constraint(lessThanOrEqualToConstant: maxWidth).isActive = true
         }
         context.coordinator.lastFocusTrigger = focusTrigger
-        if focusOnAppear {
-            DispatchQueue.main.async {
-                field.window?.makeFirstResponder(field)
-            }
-        }
+        field.focusOnAppear = focusOnAppear
         return field
     }
 

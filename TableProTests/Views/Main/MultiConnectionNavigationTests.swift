@@ -248,4 +248,58 @@ struct MultiConnectionNavigationTests {
         #expect(tabManagerB.tabs.count == tabCountBefore)
         #expect(tabManagerB.tabs.first?.tableContext.tableName == "orders")
     }
+
+    // MARK: - Cross-window deduplication (issue #1613)
+
+    @Test("openTableTab activates a sibling window's tab instead of duplicating when the table is already open")
+    @MainActor
+    func openTableTabActivatesSiblingInsteadOfDuplicating() throws {
+        let connectionId = UUID()
+        let (coordinatorA, tabManagerA) = makeCoordinator(id: connectionId, name: "Conn", database: "db_a")
+        let (coordinatorB, tabManagerB) = makeCoordinator(id: connectionId, name: "Conn", database: "db_a")
+        coordinatorA.registerEagerly()
+        coordinatorB.registerEagerly()
+        defer {
+            coordinatorA.teardown()
+            coordinatorB.teardown()
+        }
+
+        try tabManagerA.addTableTab(tableName: "users", databaseType: .mysql, databaseName: "db_a")
+        try tabManagerA.addTableTab(tableName: "accounts", databaseType: .mysql, databaseName: "db_a")
+        #expect(tabManagerA.selectedTab?.tableContext.tableName == "accounts")
+        try tabManagerB.addTableTab(tableName: "orders", databaseType: .mysql, databaseName: "db_a")
+
+        coordinatorB.openTableTab("users")
+
+        #expect(tabManagerB.tabs.count == 1)
+        #expect(tabManagerB.tabs.first?.tableContext.tableName == "orders")
+        #expect(tabManagerA.selectedTab?.tableContext.tableName == "users")
+    }
+
+    @Test("openTableTab does not dedupe against a sibling on a different connection")
+    @MainActor
+    func openTableTabIgnoresSiblingOnDifferentConnection() throws {
+        let (coordinatorA, tabManagerA) = makeCoordinator(name: "ConnA", database: "db_a")
+        let (coordinatorB, tabManagerB) = makeCoordinator(name: "ConnB", database: "db_b")
+        coordinatorA.registerEagerly()
+        coordinatorB.registerEagerly()
+        defer {
+            coordinatorA.teardown()
+            coordinatorB.teardown()
+        }
+
+        try tabManagerA.addTableTab(tableName: "users", databaseType: .mysql, databaseName: "db_a")
+
+        let activated = coordinatorB.activateIfAlreadyOpen(
+            tableName: "users",
+            databaseName: "db_b",
+            schemaName: nil,
+            showStructure: false,
+            activateGridFocus: false,
+            includeSiblings: true
+        )
+
+        #expect(activated == false)
+        #expect(tabManagerB.tabs.isEmpty)
+    }
 }
