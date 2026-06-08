@@ -7,8 +7,8 @@
 //
 
 import Foundation
-import TableProPluginKit
 @testable import TablePro
+import TableProPluginKit
 import Testing
 
 @Suite("AIProviderFactory.resolve")
@@ -118,6 +118,22 @@ struct AIProviderFactoryResolveTests {
         let resolved = AIProviderFactory.resolve(settings: settings)
         #expect(resolved?.config.id == target.id)
         #expect(resolved?.config.type == .gemini)
+    }
+
+    @Test("Returns a ChatGPTCodexProvider for an active ChatGPT oauth provider")
+    func resolvesChatGPTCodexProvider() {
+        AIProviderRegistration.registerAll()
+        let provider = makeProvider(type: .chatgptCodex, model: "gpt-5.5")
+        defer { AIProviderFactory.invalidateCache(for: provider.id) }
+        let settings = AISettings(
+            enabled: true,
+            providers: [provider],
+            activeProviderID: provider.id
+        )
+        let resolved = AIProviderFactory.resolve(settings: settings)
+        #expect(resolved != nil)
+        #expect(resolved?.config.type == .chatgptCodex)
+        #expect(resolved?.provider is ChatGPTCodexProvider)
     }
 
     @Test("Empty model string passes through to ResolvedProvider")

@@ -14,7 +14,7 @@ struct AISettingsView: View {
     @State private var editingProviderID: UUID?
     @State private var addingProviderType: AIProviderType?
     @State private var pendingDeleteID: UUID?
-    @State private var copilotService = CopilotService.shared
+    @State private var chatGPTCodexService = ChatGPTCodexService.shared
     @State private var providersWithKey: Set<UUID> = []
 
     var body: some View {
@@ -31,6 +31,7 @@ struct AISettingsView: View {
         }
         .formStyle(.grouped)
         .task { refreshKeyAvailability() }
+        .task { await chatGPTCodexService.refreshAuthState() }
         .onChange(of: settings.providers.map(\.id)) {
             refreshKeyAvailability()
         }
@@ -213,7 +214,9 @@ struct AISettingsView: View {
     }
 
     private var orderedAddableTypes: [AIProviderType] {
-        [.copilot, .claude, .openAI, .openRouter, .openCode, .gemini, .ollama]
+        AIProviderType.allCases.filter { type in
+            type != .custom && AIProviderRegistry.shared.descriptor(for: type.rawValue) != nil
+        }
     }
 
     // MARK: - Inline Suggestions
@@ -311,7 +314,7 @@ struct AISettingsView: View {
     private func statusText(for provider: AIProviderConfig) -> String {
         switch provider.type.authStyle {
         case .oauth:
-            return copilotStatusText()
+            return oauthStatusText(for: provider.type)
         case .apiKey, .optionalApiKey:
             if provider.type == .custom {
                 return customStatusText(for: provider)
@@ -333,10 +336,12 @@ struct AISettingsView: View {
         }
     }
 
-    private func copilotStatusText() -> String {
-        switch copilotService.authState {
-        case .signedIn(let username):
-            return String(format: String(localized: "Signed in as %@"), username)
+    private func oauthStatusText(for type: AIProviderType) -> String {
+        switch OAuthProviderRegistry.service(for: type)?.oauthState ?? .signedOut {
+        case .signedIn(let identity):
+            return identity.isEmpty
+                ? String(localized: "Signed in")
+                : String(format: String(localized: "Signed in as %@"), identity)
         case .signingIn:
             return String(localized: "Signing in…")
         case .signedOut:
@@ -367,14 +372,15 @@ struct AISettingsView: View {
     // MARK: - Mutations
 
     private func makeNewProvider(type: AIProviderType) -> AIProviderConfig {
-        AIProviderConfig(
+        let descriptor = AIProviderRegistry.shared.descriptor(for: type.rawValue)
+        return AIProviderConfig(
             id: UUID(),
             name: "",
             type: type,
             model: "",
             endpoint: type.defaultEndpoint,
             maxOutputTokens: nil,
-            telemetryEnabled: type == .copilot ? true : false
+            telemetryEnabled: descriptor?.defaultTelemetryEnabled ?? false
         )
     }
 

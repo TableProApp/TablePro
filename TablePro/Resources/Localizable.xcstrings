@@ -4466,6 +4466,9 @@
         }
       }
     },
+    "Access uses your ChatGPT subscription (Plus, Pro, Business, or Enterprise) and follows OpenAI's terms. This is an unofficial interface that may change." : {
+
+    },
     "Account" : {
       "localizations" : {
         "tr" : {
@@ -10965,6 +10968,9 @@
           }
         }
       }
+    },
+    "ChatGPT did not return an access token." : {
+
     },
     "Check for Updates..." : {
       "localizations" : {
@@ -30306,6 +30312,9 @@
         }
       }
     },
+    "Import from Codex CLI" : {
+
+    },
     "Import from DDL" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -38652,6 +38661,9 @@
         }
       }
     },
+    "No Codex CLI login found. Run codex login first, then try again." : {
+
+    },
     "No Columns Defined" : {
       "localizations" : {
         "tr" : {
@@ -40637,6 +40649,9 @@
         }
       }
     },
+    "Not signed in to ChatGPT." : {
+
+    },
     "Not signed in to GitHub Copilot" : {
       "localizations" : {
         "tr" : {
@@ -42103,6 +42118,9 @@
           }
         }
       }
+    },
+    "Opening your browser to sign in…" : {
+
     },
     "Operation cancelled by user" : {
       "localizations" : {
@@ -43877,6 +43895,9 @@
         }
       }
     },
+    "Plan: %@" : {
+
+    },
     "Planning: %.3fms" : {
       "localizations" : {
         "tr" : {
@@ -44478,6 +44499,9 @@
           }
         }
       }
+    },
+    "Port 1455 is in use. Quit the Codex CLI or another sign-in and try again." : {
+
     },
     "Port is already in use. Try a different port or close the other process." : {
       "localizations" : {
@@ -54816,6 +54840,9 @@
         }
       }
     },
+    "Sign in to use your ChatGPT subscription" : {
+
+    },
     "Sign In with Browser..." : {
       "localizations" : {
         "tr" : {
@@ -54837,6 +54864,9 @@
           }
         }
       }
+    },
+    "Sign in with ChatGPT" : {
+
     },
     "Sign in with GitHub" : {
       "localizations" : {
@@ -54904,6 +54934,9 @@
         }
       }
     },
+    "Sign-in could not be verified. Please try again." : {
+
+    },
     "Sign-in timed out" : {
       "localizations" : {
         "tr" : {
@@ -54925,6 +54958,12 @@
           }
         }
       }
+    },
+    "Sign-in timed out. Please try again." : {
+
+    },
+    "Signed in" : {
+
     },
     "Signed In" : {
       "localizations" : {
@@ -59774,6 +59813,12 @@
         }
       }
     },
+    "The ChatGPT account could not be identified." : {
+
+    },
+    "The ChatGPT sign-in token could not be read." : {
+
+    },
     "The Cloudflare tunnel did not become ready in time: %@" : {
       "localizations" : {
         "tr" : {
@@ -59861,6 +59906,9 @@
           }
         }
       }
+    },
+    "The Codex CLI login could not be read." : {
+
     },
     "The destructive query to execute" : {
       "localizations" : {

@@ -1,6 +1,6 @@
 ---
 title: AI Assistant
-description: "Built-in AI for SQL: chat with tool calling, inline suggestions, explain, optimize, fix-error. 8 providers."
+description: "Built-in AI for SQL: chat with tool calling, inline suggestions, explain, optimize, fix-error. 9 providers."
 ---
 
 # AI Assistant
@@ -28,8 +28,8 @@ Open **Settings** (`Cmd+,`) > **AI**. The tab is modeled on Xcode's Intelligence
 
 ### Add a Provider
 
-1. Click **Add Provider...** and pick a type: GitHub Copilot, Claude, OpenAI, OpenRouter, OpenCode Zen, Gemini, Ollama, or a custom OpenAI-compatible endpoint.
-2. Enter the API key, or run device-flow sign-in for Copilot.
+1. Click **Add Provider...** and pick a type: GitHub Copilot, ChatGPT, Claude, OpenAI, OpenRouter, OpenCode Zen, Gemini, Ollama, or a custom OpenAI-compatible endpoint.
+2. Enter the API key, or sign in for Copilot and ChatGPT.
 3. Enter a model name, or pick one from the fetched list. Click **Reload** if needed.
 4. Click **Test Connection**.
 
@@ -44,6 +44,12 @@ The active provider handles every AI request. Override it per turn from the [mod
 Add Copilot like any other provider. The detail sheet runs GitHub's device-flow sign-in: enter the displayed code on github.com to authorize. The Copilot language server starts when you add a Copilot provider and stops when you remove it.
 
 Copilot supports tool calling through GitHub's `conversation/registerTools` bridge. Tool calls go through the same approval flow as the other providers.
+
+### ChatGPT
+
+Sign in with your ChatGPT account to use the Codex quota included with Plus, Pro, Business, and Enterprise plans, with no API key. The detail sheet opens your browser to sign in, then captures the redirect on a local callback. Tokens are stored in the macOS Keychain and refreshed automatically. If you already use the Codex CLI, click **Import from Codex CLI** to reuse that login.
+
+The active provider then serves chat and inline suggestions from the subscription models (GPT-5.5, GPT-5.4, GPT-5.4 Mini). This uses an unofficial OpenAI interface that may change, and access follows OpenAI's terms.
 
 ## Chat
 

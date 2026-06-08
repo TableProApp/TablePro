@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Sign in with ChatGPT to power AI chat and inline suggestions from your ChatGPT subscription (Plus, Pro, Business, or Enterprise) without an API key. Existing Codex CLI logins can be imported. (#1617)
 - libSQL / Turso connections can open a local database file: pick Local File mode in the connection form, browse to the file, and work with it offline, transactions included. (#1607)
 
 ### Fixed
@@ -18,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Typing in the query editor no longer erases characters or drops focus on each keystroke, a timing-dependent bug most visible on macOS 15. (#1608)
 - The autocomplete popup now filters in place as you type instead of closing and reopening on every keystroke. (#1608)
 - Syntax highlighting no longer disappears after formatting a query. (#1612)
+- The GitHub Copilot provider no longer shows a Max output tokens field it ignores, and picking a Copilot model no longer leaves a stray model ID field behind.
 
 ## [0.49.1] - 2026-06-06
 
