@@ -1,6 +1,6 @@
 ---
 title: AI Assistant
-description: "Built-in AI for SQL: chat with tool calling, inline suggestions, explain, optimize, fix-error. 9 providers."
+description: "Built-in AI for SQL: chat with tool calling, inline suggestions, explain, optimize, fix-error. 10 providers."
 ---
 
 # AI Assistant
@@ -28,7 +28,7 @@ Open **Settings** (`Cmd+,`) > **AI**. The tab is modeled on Xcode's Intelligence
 
 ### Add a Provider
 
-1. Click **Add Provider...** and pick a type: GitHub Copilot, ChatGPT, Claude, OpenAI, OpenRouter, OpenCode Zen, Gemini, Ollama, or a custom OpenAI-compatible endpoint.
+1. Click **Add Provider...** and pick a type: GitHub Copilot, ChatGPT, Cursor, Claude, OpenAI, OpenRouter, OpenCode Zen, Gemini, Ollama, or a custom OpenAI-compatible endpoint.
 2. Enter the API key, or sign in for Copilot and ChatGPT.
 3. Enter a model name, or pick one from the fetched list. Click **Reload** if needed.
 4. Click **Test Connection**.
@@ -50,6 +50,17 @@ Copilot supports tool calling through GitHub's `conversation/registerTools` brid
 Sign in with your ChatGPT account to use the Codex quota included with Plus, Pro, Business, and Enterprise plans, with no API key. The detail sheet opens your browser to sign in, then captures the redirect on a local callback. Tokens are stored in the macOS Keychain and refreshed automatically. If you already use the Codex CLI, click **Import from Codex CLI** to reuse that login.
 
 The active provider then serves chat and inline suggestions from the subscription models (GPT-5.5, GPT-5.4, GPT-5.4 Mini). This uses an unofficial OpenAI interface that may change, and access follows OpenAI's terms.
+
+### Cursor
+
+Use your Cursor subscription for AI chat and inline suggestions, two ways:
+
+- **API key:** paste a key from the Cursor dashboard. Stored in the macOS Keychain like other provider keys. Calls Cursor's Cloud Agents API.
+- **Sign in with the Cursor CLI:** leave the key blank and click **Sign in with Cursor**. This needs the Cursor CLI installed (`curl https://cursor.com/install -fsS | bash`); the button runs `agent login` in your browser, and chat runs through the local `agent` command. No key to paste.
+
+Pick a model such as Composer 2, or one of the frontier models Cursor proxies.
+
+Cursor runs as an agent rather than a chat-completions endpoint. Two limits follow: the AI cannot call TablePro's database tools (chat answers from the schema context TablePro sends, but Edit and Agent modes do not run queries through Cursor), and responses can be slower than the other providers. Using the API or CLI in your own app is permitted by Cursor's terms.
 
 ## Chat
 

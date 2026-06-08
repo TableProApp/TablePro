@@ -110,6 +110,25 @@ enum AIProviderRegistration {
                 ChatGPTCodexProvider(model: config.model)
             }
         ))
+
+        registry.register(AIProviderDescriptor(
+            typeID: AIProviderType.cursor.rawValue,
+            displayName: AIProviderType.cursor.displayName,
+            defaultEndpoint: "",
+            capabilities: [.chat, .inline, .models, .modelListFetchable],
+            symbolName: AIProviderType.cursor.symbolName,
+            curatedModels: cursorCuratedModels,
+            makeProvider: { config, apiKey in
+                if let apiKey, !apiKey.isEmpty {
+                    return CursorProvider(apiKey: apiKey, model: config.model)
+                }
+                return CursorAgentProvider(model: config.model)
+            }
+        ))
+    }
+
+    private static let cursorCuratedModels: [CuratedModel] = CursorAI.curatedModels.map {
+        CuratedModel(id: $0.id, displayName: $0.name)
     }
 
     private static let chatGPTCodexCuratedModels: [CuratedModel] = [

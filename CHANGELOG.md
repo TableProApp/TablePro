@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Cursor as an AI provider: paste a Cursor API key, or sign in with the Cursor CLI (no key), to run AI chat and inline suggestions on your Cursor subscription.
 - Sign in with ChatGPT to power AI chat and inline suggestions from your ChatGPT subscription (Plus, Pro, Business, or Enterprise) without an API key. Existing Codex CLI logins can be imported. (#1617)
 - libSQL / Turso connections can open a local database file: pick Local File mode in the connection form, browse to the file, and work with it offline, transactions included. (#1607)
 

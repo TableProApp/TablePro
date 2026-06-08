@@ -319,6 +319,9 @@ struct AISettingsView: View {
             if provider.type == .custom {
                 return customStatusText(for: provider)
             }
+            if provider.type == .cursor {
+                return cursorStatusText(for: provider)
+            }
             return providersWithKey.contains(provider.id)
                 ? String(localized: "API key set")
                 : String(localized: "Not configured")
@@ -347,6 +350,16 @@ struct AISettingsView: View {
         case .signedOut:
             return String(localized: "Not signed in")
         }
+    }
+
+    private func cursorStatusText(for provider: AIProviderConfig) -> String {
+        if providersWithKey.contains(provider.id) {
+            return String(localized: "API key set")
+        }
+        if CursorAgentService.shared.authState.isSignedIn {
+            return String(localized: "Signed in with Cursor")
+        }
+        return String(localized: "Not configured")
     }
 
     private func customStatusText(for provider: AIProviderConfig) -> String {

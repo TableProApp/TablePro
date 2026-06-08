@@ -10,6 +10,7 @@ import Foundation
 enum AIProviderType: String, Codable, CaseIterable, Identifiable, Sendable {
     case copilot
     case chatgptCodex
+    case cursor
     case claude
     case openAI
     case openRouter
@@ -24,6 +25,7 @@ enum AIProviderType: String, Codable, CaseIterable, Identifiable, Sendable {
         switch self {
         case .copilot:      return "GitHub Copilot"
         case .chatgptCodex: return "ChatGPT"
+        case .cursor:       return "Cursor"
         case .claude:       return "Claude"
         case .openAI:       return "OpenAI"
         case .openRouter:   return "OpenRouter"
@@ -38,6 +40,7 @@ enum AIProviderType: String, Codable, CaseIterable, Identifiable, Sendable {
         switch self {
         case .copilot:      return ""
         case .chatgptCodex: return ""
+        case .cursor:       return ""
         case .claude:       return "https://api.anthropic.com"
         case .openAI:       return "https://api.openai.com"
         case .openRouter:   return "https://openrouter.ai/api"
@@ -58,6 +61,7 @@ enum AIProviderType: String, Codable, CaseIterable, Identifiable, Sendable {
         switch self {
         case .copilot:      return .oauth
         case .chatgptCodex: return .oauth
+        case .cursor:       return .optionalApiKey
         case .ollama:       return .none
         case .openCode:     return .optionalApiKey
         default:            return .apiKey
@@ -68,6 +72,7 @@ enum AIProviderType: String, Codable, CaseIterable, Identifiable, Sendable {
         switch self {
         case .copilot:      return "chevron.left.forwardslash.chevron.right"
         case .chatgptCodex: return "bubble.left.and.bubble.right"
+        case .cursor:       return "cursorarrow"
         case .claude:       return "brain"
         case .openAI:       return "cpu"
         case .openRouter:   return "globe"

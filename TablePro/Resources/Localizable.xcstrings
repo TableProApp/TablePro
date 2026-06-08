@@ -15755,6 +15755,9 @@
         }
       }
     },
+    "Copy install command" : {
+
+    },
     "Copy JSON" : {
       "localizations" : {
         "tr" : {
@@ -17553,6 +17556,9 @@
         }
       }
     },
+    "Cursor CLI failed: %@" : {
+
+    },
     "Cursor position %d exceeds SQL length (%d)" : {
       "localizations" : {
         "en" : {
@@ -17609,6 +17615,9 @@
           }
         }
       }
+    },
+    "Cursor sign-in failed." : {
+
     },
     "Cursor style:" : {
       "extractionState" : "stale",
@@ -40652,6 +40661,9 @@
     "Not signed in to ChatGPT." : {
 
     },
+    "Not signed in to Cursor. Sign in first." : {
+
+    },
     "Not signed in to GitHub Copilot" : {
       "localizations" : {
         "tr" : {
@@ -42411,6 +42423,9 @@
           }
         }
       }
+    },
+    "Optional. A key from the Cursor dashboard is used instead of signing in." : {
+
     },
     "Options" : {
       "localizations" : {
@@ -47735,6 +47750,9 @@
           }
         }
       }
+    },
+    "Recheck" : {
+
     },
     "Reconnect" : {
       "extractionState" : "stale",
@@ -54868,6 +54886,9 @@
     "Sign in with ChatGPT" : {
 
     },
+    "Sign in with Cursor" : {
+
+    },
     "Sign in with GitHub" : {
       "localizations" : {
         "tr" : {
@@ -55008,6 +55029,9 @@
           }
         }
       }
+    },
+    "Signed in with Cursor" : {
+
     },
     "Signing in…" : {
       "localizations" : {
@@ -59908,6 +59932,12 @@
       }
     },
     "The Codex CLI login could not be read." : {
+
+    },
+    "The Cursor CLI is not installed." : {
+
+    },
+    "The Cursor CLI is not installed. Install it, then sign in." : {
 
     },
     "The destructive query to execute" : {
@@ -64814,6 +64844,9 @@
           }
         }
       }
+    },
+    "Use your Cursor subscription with no API key. Requires the Cursor CLI." : {
+
     },
     "User" : {
       "localizations" : {
