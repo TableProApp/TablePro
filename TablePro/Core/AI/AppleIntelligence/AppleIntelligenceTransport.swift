@@ -139,7 +139,11 @@ final class AppleIntelligenceTransport: ChatTransport {
     }
 
     private static func mapError(_ error: Error) -> Error {
+        if error is CancellationError {
+            return error
+        }
         guard let generationError = error as? LanguageModelSession.GenerationError else {
+            logger.error("Apple Intelligence stream failed: \(diagnostic(for: error), privacy: .public)")
             return error
         }
         switch generationError {
@@ -154,8 +158,21 @@ final class AppleIntelligenceTransport: ChatTransport {
         case .rateLimited:
             return AIProviderError.rateLimited
         default:
-            return AIProviderError.streamingFailed(generationError.localizedDescription)
+            logger.error("Apple Intelligence generation failed: \(diagnostic(for: generationError), privacy: .public)")
+            let message = String(localized: "Apple Intelligence couldn't generate a response. Update macOS and turn on Apple Intelligence in System Settings, then try again.")
+            return AIProviderError.streamingFailed(message)
         }
+    }
+
+    static func diagnostic(for error: Error) -> String {
+        let nsError = error as NSError
+        var parts = ["\(nsError.domain) code=\(nsError.code)"]
+        var underlying = nsError.userInfo[NSUnderlyingErrorKey] as? NSError
+        while let current = underlying {
+            parts.append("← \(current.domain) code=\(current.code)")
+            underlying = current.userInfo[NSUnderlyingErrorKey] as? NSError
+        }
+        return parts.joined(separator: " ")
     }
 }
 #endif
