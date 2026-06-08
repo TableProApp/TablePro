@@ -104,7 +104,7 @@ struct GeneralPaneView: View {
                 if hostsValue.contains(",") {
                     Section {
                         Label(
-                            String(localized: "SSH tunneling only forwards the first host. Other replica set members must be directly reachable from the SSH server."),
+                            String(localized: "Over an SSH tunnel, TablePro connects directly to the first host. Replica set failover is not available."),
                             systemImage: "exclamationmark.triangle"
                         )
                         .font(.caption)
