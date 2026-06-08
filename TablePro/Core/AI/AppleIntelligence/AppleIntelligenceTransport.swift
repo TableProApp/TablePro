@@ -55,7 +55,7 @@ final class AppleIntelligenceTransport: ChatTransport {
 
         let history = Array(turns.dropLast())
         let promptText = turns.last?.plainText ?? ""
-        let transcript = Self.buildTranscript(systemPrompt: options.systemPrompt, history: history)
+        let transcript = Self.buildTranscript(systemPrompt: options.systemPrompt, history: history, tools: tools)
 
         let session = LanguageModelSession(model: .default, tools: tools, transcript: transcript)
         var generationOptions = GenerationOptions()
@@ -83,13 +83,22 @@ final class AppleIntelligenceTransport: ChatTransport {
         }
     }
 
-    private static func buildTranscript(systemPrompt: String?, history: [ChatTurnWire]) -> Transcript {
+    static func buildTranscript(
+        systemPrompt: String?,
+        history: [ChatTurnWire],
+        tools: [AppleIntelligenceTool]
+    ) -> Transcript {
         var entries: [Transcript.Entry] = []
-        if let systemPrompt, !systemPrompt.isEmpty {
+        let instructionText = (systemPrompt?.isEmpty == false) ? systemPrompt : nil
+        if instructionText != nil || !tools.isEmpty {
+            var segments: [Transcript.Segment] = []
+            if let instructionText {
+                segments.append(.text(Transcript.TextSegment(id: UUID().uuidString, content: instructionText)))
+            }
             entries.append(.instructions(Transcript.Instructions(
                 id: UUID().uuidString,
-                segments: [.text(Transcript.TextSegment(id: UUID().uuidString, content: systemPrompt))],
-                toolDefinitions: []
+                segments: segments,
+                toolDefinitions: tools.map { Transcript.ToolDefinition(tool: $0) }
             )))
         }
         for turn in history {
