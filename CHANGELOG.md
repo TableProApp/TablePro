@@ -9,23 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Cursor as an AI provider: paste a Cursor API key, or sign in with the Cursor CLI (no key), to run AI chat and inline suggestions on your Cursor subscription. (#1624)
-- Sign in with ChatGPT to power AI chat and inline suggestions from your ChatGPT subscription (Plus, Pro, Business, or Enterprise) without an API key. Existing Codex CLI logins can be imported. (#1617)
-- libSQL / Turso connections can open a local database file: pick Local File mode in the connection form, browse to the file, and work with it offline, transactions included. (#1607)
+- Cursor as an AI provider: use a Cursor API key or sign in with the Cursor CLI. (#1624)
+- Sign in with ChatGPT to run AI chat and inline suggestions without an API key. Existing Codex CLI logins can be imported. (#1617)
+- libSQL / Turso connections can open a local database file offline, transactions included. (#1607)
 
 ### Fixed
 
-- Default row sort now applies to the very first table opened after launch, not just tables opened after it. (#1603)
-- Cancelling a SQLite query no longer races a disconnect happening at the same moment. (#1610)
-- Typing in the query editor no longer erases characters or drops focus on each keystroke, a timing-dependent bug most visible on macOS 15. (#1608)
-- The autocomplete popup now filters in place as you type instead of closing and reopening on every keystroke. (#1608)
+- Default row sort now applies to the first table opened after launch. (#1603)
+- Cancelling a SQLite query no longer races a disconnect. (#1610)
+- Typing in the query editor no longer erases characters or drops focus, most visible on macOS 15. (#1608)
+- The autocomplete popup now filters in place instead of closing and reopening on each keystroke. (#1608)
 - Syntax highlighting no longer disappears after formatting a query. (#1612)
-- The GitHub Copilot provider no longer shows a Max output tokens field it ignores, and picking a Copilot model no longer leaves a stray model ID field behind.
-- Oracle connections that use native network encryption no longer crash when a query hits a server error such as a missing table or a permission error; the real ORA error is shown and the connection keeps working. (#483)
-- Clicking a table that's already open switches to its existing tab instead of opening a duplicate. (#1613)
-- MongoDB now connects over an SSH or Cloudflare tunnel instead of bypassing it and failing with a connection refused error. (#1621)
-- A plugin updated in Settings now stays marked Installed instead of showing the Update button again a few seconds later.
-- DBeaver connections are now found for import from any edition, including Ultimate, based on your DBeaver data rather than which app edition is installed. (#1628)
+- The GitHub Copilot provider no longer shows a Max output tokens field it ignores or leaves a stray model ID field behind.
+- Oracle connections with native network encryption no longer crash on a server error; the real ORA error is shown and the connection keeps working. (#483)
+- Clicking an already-open table switches to its tab instead of opening a duplicate. (#1613)
+- MongoDB now connects over an SSH or Cloudflare tunnel instead of failing with connection refused. (#1621)
+- A plugin updated in Settings stays marked Installed instead of showing the Update button again.
+- DBeaver connections import from any edition, based on your DBeaver data rather than which app is installed. (#1628)
 
 ## [0.49.1] - 2026-06-06
 
