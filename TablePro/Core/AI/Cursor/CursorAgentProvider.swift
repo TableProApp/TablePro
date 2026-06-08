@@ -31,9 +31,7 @@ final class CursorAgentProvider: ChatTransport {
                     for try await line in lines {
                         if Task.isCancelled { break }
                         guard let json = Self.decodeJSON(line),
-                              json["type"] as? String == "assistant",
-                              json["timestamp_ms"] != nil,
-                              let text = Self.assistantText(json), !text.isEmpty else { continue }
+                              let text = Self.incrementalText(json) else { continue }
                         continuation.yield(.textDelta(text))
                     }
                     continuation.finish()
@@ -69,6 +67,15 @@ final class CursorAgentProvider: ChatTransport {
         }
         arguments += ["--", prompt]
         return arguments
+    }
+
+    static func incrementalText(_ json: [String: Any]) -> String? {
+        guard json["type"] as? String == "assistant",
+              json["timestamp_ms"] != nil,
+              let text = assistantText(json), !text.isEmpty else {
+            return nil
+        }
+        return text
     }
 
     static func assistantText(_ json: [String: Any]) -> String? {

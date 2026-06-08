@@ -37,27 +37,15 @@ final class CursorProvider: ChatTransport {
                         throw AIProviderError.mapHTTPError(statusCode: httpResponse.statusCode, body: body)
                     }
 
-                    var event = ""
-                    var emittedText = false
+                    var parser = StreamParser()
                     events: for try await line in bytes.lines {
                         if Task.isCancelled { break }
-                        if line.isEmpty { event = ""; continue }
-                        if let name = Self.sseField(line, "event") { event = name; continue }
-                        guard let payload = Self.sseField(line, "data"),
-                              let json = Self.decodeJSON(payload) else { continue }
-                        switch event {
-                        case "assistant":
-                            if let text = json["text"] as? String, !text.isEmpty {
-                                emittedText = true
-                                continuation.yield(.textDelta(text))
-                            }
-                        case "result":
-                            if !emittedText, let text = json["text"] as? String, !text.isEmpty {
-                                continuation.yield(.textDelta(text))
-                            }
-                        case "done":
+                        switch parser.consume(line) {
+                        case .text(let text):
+                            continuation.yield(.textDelta(text))
+                        case .done:
                             break events
-                        default:
+                        case nil:
                             continue
                         }
                     }
@@ -92,7 +80,9 @@ final class CursorProvider: ChatTransport {
         else {
             throw AIProviderError.networkError("Failed to fetch models")
         }
-        return items.compactMap { $0["id"] as? String }.sorted()
+        let fetched = items.compactMap { $0["id"] as? String }
+        let curated = Set(CursorAI.curatedModelIDs)
+        return CursorAI.curatedModelIDs + fetched.filter { !curated.contains($0) }.sorted()
     }
 
     func testConnection() async throws -> Bool {
@@ -208,5 +198,43 @@ final class CursorProvider: ChatTransport {
     private static func decodeJSON(_ payload: String) -> [String: Any]? {
         guard let data = payload.data(using: .utf8) else { return nil }
         return try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+    }
+
+    struct StreamParser {
+        enum Output: Equatable {
+            case text(String)
+            case done
+        }
+
+        private var event = ""
+        private var emittedText = false
+
+        mutating func consume(_ line: String) -> Output? {
+            if line.isEmpty {
+                event = ""
+                return nil
+            }
+            if let name = CursorProvider.sseField(line, "event") {
+                event = name
+                return nil
+            }
+            guard let payload = CursorProvider.sseField(line, "data"),
+                  let json = CursorProvider.decodeJSON(payload) else {
+                return nil
+            }
+            switch event {
+            case "assistant":
+                guard let text = json["text"] as? String, !text.isEmpty else { return nil }
+                emittedText = true
+                return .text(text)
+            case "result":
+                guard !emittedText, let text = json["text"] as? String, !text.isEmpty else { return nil }
+                return .text(text)
+            case "done":
+                return .done
+            default:
+                return nil
+            }
+        }
     }
 }

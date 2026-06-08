@@ -45,17 +45,22 @@ struct CursorAgentCLI: Sendable {
         process.standardOutput = stdout
         process.standardError = stdout
         Self.logger.debug("Running agent \(arguments.first ?? "", privacy: .public)")
-        do {
-            try process.run()
-        } catch {
-            throw CursorAgentError.launchFailed(error.localizedDescription)
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                process.terminationHandler = { proc in
+                    let data = (try? stdout.fileHandleForReading.readToEnd() ?? Data()) ?? Data()
+                    continuation.resume(returning: (proc.terminationStatus, String(data: data, encoding: .utf8) ?? ""))
+                }
+                do {
+                    try process.run()
+                } catch {
+                    process.terminationHandler = nil
+                    continuation.resume(throwing: CursorAgentError.launchFailed(error.localizedDescription))
+                }
+            }
+        } onCancel: {
+            if process.isRunning { process.terminate() }
         }
-        let data = try await Task.detached {
-            try stdout.fileHandleForReading.readToEnd() ?? Data()
-        }.value
-        process.waitUntilExit()
-        let output = String(data: data, encoding: .utf8) ?? ""
-        return (process.terminationStatus, output)
     }
 
     func stream(_ arguments: [String]) -> AsyncThrowingStream<String, Error> {

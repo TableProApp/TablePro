@@ -298,7 +298,7 @@ struct AIProviderDetailSheet: View {
                     .foregroundStyle(.secondary)
                 Spacer()
                 Button(String(localized: "Sign in with Cursor")) {
-                    Task { await cursorAgentService.signIn() }
+                    cursorAgentService.signIn()
                 }
                 .buttonStyle(.borderedProminent)
             }
@@ -309,6 +309,11 @@ struct AIProviderDetailSheet: View {
                 Text("Opening your browser to sign in…")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                Spacer()
+                Button(String(localized: "Cancel")) {
+                    cursorAgentService.cancelSignIn()
+                }
+                .controlSize(.small)
             }
 
         case .signedIn(let account):

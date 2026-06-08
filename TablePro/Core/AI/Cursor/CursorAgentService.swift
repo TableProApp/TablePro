@@ -28,6 +28,7 @@ final class CursorAgentService {
     private(set) var errorMessage: String?
 
     @ObservationIgnored private let cli: CursorAgentCLI
+    @ObservationIgnored private var signInTask: Task<Void, Never>?
 
     init(cli: CursorAgentCLI = CursorAgentCLI()) {
         self.cli = cli
@@ -48,25 +49,36 @@ final class CursorAgentService {
         }
     }
 
-    func signIn() async {
+    func signIn() {
         guard cli.isInstalled else {
             authState = .notInstalled
             return
         }
+        guard signInTask == nil else { return }
         errorMessage = nil
         authState = .signingIn
-        do {
-            let result = try await cli.run(["login"])
-            if result.code != 0 {
-                errorMessage = result.output.isEmpty
-                    ? String(localized: "Cursor sign-in failed.")
-                    : result.output
+        signInTask = Task {
+            do {
+                let result = try await cli.run(["login"])
+                if !Task.isCancelled, result.code != 0 {
+                    errorMessage = result.output.isEmpty
+                        ? String(localized: "Cursor sign-in failed.")
+                        : result.output
+                }
+            } catch {
+                Self.logger.error("Cursor CLI sign-in failed: \(error.localizedDescription, privacy: .public)")
+                if !Task.isCancelled {
+                    errorMessage = error.localizedDescription
+                }
             }
-        } catch {
-            Self.logger.error("Cursor CLI sign-in failed: \(error.localizedDescription, privacy: .public)")
-            errorMessage = error.localizedDescription
+            signInTask = nil
+            await refreshStatus()
         }
-        await refreshStatus()
+    }
+
+    func cancelSignIn() {
+        signInTask?.cancel()
+        signInTask = nil
     }
 
     func signOut() async {

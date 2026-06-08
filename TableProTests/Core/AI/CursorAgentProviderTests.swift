@@ -57,4 +57,29 @@ struct CursorAgentProviderTests {
         let result: [String: Any] = ["type": "result", "duration_ms": 1_234]
         #expect(CursorAgentProvider.assistantText(result) == nil)
     }
+
+    @Test("An assistant event with a timestamp yields incremental text")
+    func incrementalTextFromTimestampedDelta() {
+        let event: [String: Any] = [
+            "type": "assistant",
+            "timestamp_ms": 1_234_567,
+            "message": ["content": [["text": "SELECT 1"]]]
+        ]
+        #expect(CursorAgentProvider.incrementalText(event) == "SELECT 1")
+    }
+
+    @Test("The consolidated final assistant message (no timestamp) is skipped to avoid duplication")
+    func incrementalTextSkipsConsolidatedFinalMessage() {
+        let finalMessage: [String: Any] = [
+            "type": "assistant",
+            "message": ["content": [["text": "SELECT 1"]]]
+        ]
+        #expect(CursorAgentProvider.incrementalText(finalMessage) == nil)
+    }
+
+    @Test("Non-assistant events yield no incremental text")
+    func incrementalTextSkipsNonAssistant() {
+        let result: [String: Any] = ["type": "result", "timestamp_ms": 1, "duration_ms": 1_234]
+        #expect(CursorAgentProvider.incrementalText(result) == nil)
+    }
 }
