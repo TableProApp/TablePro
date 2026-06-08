@@ -60,6 +60,25 @@ struct AppleIntelligenceTransportDiagnosticTests {
         let transcript = AppleIntelligenceTransport.buildTranscript(systemPrompt: nil, history: [], tools: [])
         #expect(transcript.first == nil)
     }
+
+    @available(macOS 26, *)
+    @Test("A cancellation passes through unchanged")
+    func mapErrorPassesThroughCancellation() {
+        #expect(AppleIntelligenceTransport.mapError(CancellationError()) is CancellationError)
+    }
+
+    @available(macOS 26, *)
+    @Test("An opaque tool-call failure becomes a readable streaming error")
+    func mapErrorUnwrapsToolCallError() throws {
+        let underlying = NSError(domain: "FoundationModels.LanguageModelSession.GenerationError", code: -1)
+        let toolCallError = LanguageModelSession.ToolCallError(tool: try makeTool(name: "run_sql"), underlyingError: underlying)
+        guard case AIProviderError.streamingFailed(let message) = AppleIntelligenceTransport.mapError(toolCallError) else {
+            Issue.record("Expected a streamingFailed error")
+            return
+        }
+        #expect(!message.contains("error -1"))
+        #expect(!message.isEmpty)
+    }
     @available(macOS 26, *)
     @Test("Diagnostic unwraps the underlying error chain")
     func diagnosticUnwrapsUnderlyingChain() {

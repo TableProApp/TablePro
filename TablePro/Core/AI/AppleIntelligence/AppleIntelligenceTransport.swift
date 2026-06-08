@@ -147,30 +147,32 @@ final class AppleIntelligenceTransport: ChatTransport {
         }
     }
 
-    private static func mapError(_ error: Error) -> Error {
+    static func mapError(_ error: Error) -> Error {
         if error is CancellationError {
             return error
         }
-        guard let generationError = error as? LanguageModelSession.GenerationError else {
-            logger.error("Apple Intelligence stream failed: \(diagnostic(for: error), privacy: .public)")
-            return error
+        if let toolCallError = error as? LanguageModelSession.ToolCallError {
+            return mapError(toolCallError.underlyingError)
         }
-        switch generationError {
-        case .exceededContextWindowSize:
-            return AIProviderError.streamingFailed(
-                String(localized: "This conversation is too long for the on-device model. Start a new chat.")
-            )
-        case .guardrailViolation:
-            return AIProviderError.streamingFailed(
-                String(localized: "The request was blocked by on-device safety.")
-            )
-        case .rateLimited:
-            return AIProviderError.rateLimited
-        default:
-            logger.error("Apple Intelligence generation failed: \(diagnostic(for: generationError), privacy: .public)")
-            let message = String(localized: "Apple Intelligence couldn't generate a response. Update macOS and turn on Apple Intelligence in System Settings, then try again.")
-            return AIProviderError.streamingFailed(message)
+        if let generationError = error as? LanguageModelSession.GenerationError {
+            switch generationError {
+            case .exceededContextWindowSize:
+                return AIProviderError.streamingFailed(
+                    String(localized: "This conversation is too long for the on-device model. Start a new chat.")
+                )
+            case .guardrailViolation:
+                return AIProviderError.streamingFailed(
+                    String(localized: "The request was blocked by on-device safety.")
+                )
+            case .rateLimited:
+                return AIProviderError.rateLimited
+            default:
+                break
+            }
         }
+        logger.error("Apple Intelligence failed: \(String(reflecting: type(of: error)), privacy: .public) \(diagnostic(for: error), privacy: .public)")
+        let message = String(localized: "Apple Intelligence couldn't finish this request. Try again or start a new chat for long tool conversations.")
+        return AIProviderError.streamingFailed(message)
     }
 
     static func diagnostic(for error: Error) -> String {
