@@ -97,6 +97,13 @@ extension MainContentCoordinator {
         )
     }
 
+    func selectTabAndFocusWindow(_ tabId: UUID) {
+        tabManager.selectedTabId = tabId
+        guard let windowId,
+              let window = WindowLifecycleMonitor.shared.window(for: windowId) else { return }
+        window.makeKeyAndOrderFront(nil)
+    }
+
     // MARK: - Sidebar Sync
 
     /// Update the window-scoped sidebar selection so the active table tab

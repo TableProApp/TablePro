@@ -18,7 +18,6 @@ extension MainContentCoordinator {
     func openTableTab(
         _ table: TableInfo,
         showStructure: Bool = false,
-        redirectToSibling: Bool = false,
         forceNonPreview: Bool = false,
         activateGridFocus: Bool = false
     ) {
@@ -27,7 +26,6 @@ extension MainContentCoordinator {
             schema: table.schema,
             showStructure: showStructure,
             isView: table.type == .view,
-            redirectToSibling: redirectToSibling,
             forceNonPreview: forceNonPreview,
             activateGridFocus: activateGridFocus
         )
@@ -38,7 +36,6 @@ extension MainContentCoordinator {
         schema: String? = nil,
         showStructure: Bool = false,
         isView: Bool = false,
-        redirectToSibling: Bool = false,
         forceNonPreview: Bool = false,
         activateGridFocus: Bool = false
     ) {
@@ -59,18 +56,14 @@ extension MainContentCoordinator {
         let resolvedSchema = schema
         let createAsPreview = !forceNonPreview && AppSettingsManager.shared.tabs.enablePreviewTabs
 
-        // Fast path: if this table is already the active tab in the same database, skip all work
-        if let current = tabManager.selectedTab,
-           current.tabType == .table,
-           current.tableContext.tableName == tableName,
-           current.tableContext.databaseName == currentDatabase,
-           current.tableContext.schemaName == resolvedSchema {
-            if showStructure, let (_, tabIndex) = tabManager.selectedTabAndIndex {
-                tabManager.mutate(at: tabIndex) { $0.display.resultsViewMode = .structure }
-            }
-            if activateGridFocus {
-                focusActiveGrid()
-            }
+        if activateIfAlreadyOpen(
+            tableName: tableName,
+            databaseName: currentDatabase,
+            schemaName: resolvedSchema,
+            showStructure: showStructure,
+            activateGridFocus: activateGridFocus,
+            includeSiblings: navigationModel != .inPlace
+        ) {
             return
         }
 
@@ -96,28 +89,6 @@ extension MainContentCoordinator {
                 pendingGridFocusOnOpen = false
             }
             return
-        }
-
-        // Opt-in cross-window navigation: if requested (e.g. quick switcher),
-        // and another window already shows this table, focus that window.
-        // Default-off so sidebar clicks and other window-local actions stay
-        // window-local instead of stealing focus to a sibling.
-        if redirectToSibling {
-            for sibling in MainContentCoordinator.allActiveCoordinators()
-                where sibling !== self && sibling.connectionId == connectionId {
-                let hasMatch = sibling.tabManager.tabs.contains { tab in
-                    tab.tabType == .table
-                        && tab.tableContext.tableName == tableName
-                        && tab.tableContext.databaseName == currentDatabase
-                        && tab.tableContext.schemaName == resolvedSchema
-                }
-                guard hasMatch,
-                      let windowId = sibling.windowId,
-                      let window = WindowLifecycleMonitor.shared.window(for: windowId) else { continue }
-                pendingGridFocusOnOpen = false
-                window.makeKeyAndOrderFront(nil)
-                return
-            }
         }
 
         // If no tabs exist (empty state), add a table tab directly.
@@ -189,6 +160,50 @@ extension MainContentCoordinator {
             isPreview: createAsPreview
         )
         WindowManager.shared.openTab(payload: payload)
+    }
+
+    func activateIfAlreadyOpen(
+        tableName: String,
+        databaseName: String,
+        schemaName: String?,
+        showStructure: Bool,
+        activateGridFocus: Bool,
+        includeSiblings: Bool
+    ) -> Bool {
+        func matches(_ tab: QueryTab) -> Bool {
+            tab.tabType == .table
+                && tab.tableContext.tableName == tableName
+                && tab.tableContext.databaseName == databaseName
+                && tab.tableContext.schemaName == schemaName
+        }
+
+        if let match = tabManager.tabs.first(where: matches) {
+            if tabManager.selectedTabId != match.id {
+                tabManager.selectedTabId = match.id
+            }
+            applyStructureMode(showStructure, toTab: match.id, in: tabManager)
+            if activateGridFocus {
+                requestGridFocus()
+            }
+            return true
+        }
+
+        guard includeSiblings else { return false }
+
+        for sibling in MainContentCoordinator.allActiveCoordinators()
+            where sibling !== self && sibling.connectionId == connectionId {
+            guard let match = sibling.tabManager.tabs.first(where: matches) else { continue }
+            sibling.pendingGridFocusOnOpen = activateGridFocus
+            applyStructureMode(showStructure, toTab: match.id, in: sibling.tabManager)
+            sibling.selectTabAndFocusWindow(match.id)
+            return true
+        }
+        return false
+    }
+
+    private func applyStructureMode(_ showStructure: Bool, toTab tabId: UUID, in tabManager: QueryTabManager) {
+        guard showStructure, let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
+        tabManager.mutate(at: index) { $0.display.resultsViewMode = .structure }
     }
 
     private func addFirstTableTab(
