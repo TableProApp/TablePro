@@ -235,6 +235,10 @@ final class ConnectionToolbarState {
             }
             return currentDatabase
         case .byDatabase, .flat, .hierarchicalSchema:
+            if PluginManager.shared.containerSwitchTarget(for: databaseType) == .schema,
+               let schema = currentSchema, !schema.isEmpty {
+                return schema
+            }
             return currentDatabase
         }
     }

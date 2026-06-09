@@ -24,7 +24,7 @@ internal final class CassandraPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let databaseTypeId = "Cassandra"
     static let databaseDisplayName = "Cassandra / ScyllaDB"
     static let iconName = "cassandra-icon"
-    static let defaultPort = 9042
+    static let defaultPort = 9_042
     static let additionalConnectionFields: [ConnectionField] = AWSAuthFields.standard()
     static let additionalDatabaseTypeIds: [String] = ["ScyllaDB"]
 
@@ -36,6 +36,7 @@ internal final class CassandraPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let brandColorHex = "#26A0D8"
     static let queryLanguageName = "CQL"
     static let supportsDatabaseSwitching = true
+    static let containerEntityName = "Keyspace"
     static let databaseGroupingStrategy: GroupingStrategy = .byDatabase
     static let defaultGroupName = "default"
     static let systemDatabaseNames: [String] = [
@@ -603,4 +604,3 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
         }
     }
 }
-

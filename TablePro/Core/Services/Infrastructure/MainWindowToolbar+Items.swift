@@ -21,9 +21,12 @@ extension MainWindowToolbar {
     }
 
     func subitemDatabase() -> NSToolbarItem {
-        menuOnlyItem(
+        let containerName = coordinator.map {
+            PluginManager.shared.containerEntityName(for: $0.toolbarState.databaseType)
+        } ?? String(localized: "Database")
+        return menuOnlyItem(
             id: Self.database,
-            label: String(localized: "Database"),
+            label: containerName,
             symbol: "cylinder",
             action: #selector(performOpenDatabaseSwitcher(_:)),
             keyEquivalent: "k",

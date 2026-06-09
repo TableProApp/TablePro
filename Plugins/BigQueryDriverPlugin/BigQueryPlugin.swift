@@ -41,6 +41,7 @@ final class BigQueryPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let supportsSSH = false
     static let supportsSSL = false
     static let tableEntityName = "Tables"
+    static let containerEntityName = "Dataset"
     static let supportsForeignKeyDisable = false
     static let supportsReadOnlyMode = true
     static let databaseGroupingStrategy: GroupingStrategy = .hierarchicalSchema

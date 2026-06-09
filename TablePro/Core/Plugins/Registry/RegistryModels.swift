@@ -198,6 +198,7 @@ struct RegistryPluginMetadata: Codable, Sendable {
     let defaultSchemaName: String?
     let defaultGroupName: String?
     let tableEntityName: String?
+    let containerEntityName: String?
     let defaultPrimaryKeyColumn: String?
     let immutableColumns: [String]?
 

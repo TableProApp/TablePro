@@ -29,14 +29,15 @@ struct DatabaseToolbarButton: View {
 
     var body: some View {
         let state = coordinator.toolbarState
-        let supportsSwitch = PluginManager.shared.supportsDatabaseSwitching(for: state.databaseType)
+        let supportsSwitch = PluginManager.shared.supportsContainerSwitching(for: state.databaseType)
+        let containerName = PluginManager.shared.containerEntityName(for: state.databaseType)
         if supportsSwitch {
             Button {
                 coordinator.commandActions?.openDatabaseSwitcher()
             } label: {
-                Label("Database", systemImage: "cylinder")
+                Label(containerName, systemImage: "cylinder")
             }
-            .help(String(localized: "Open Database (⌘K)"))
+            .help(String(format: String(localized: "Open %@ (⌘K)"), containerName))
             .disabled(
                 state.connectionState != .connected
                     || PluginManager.shared.connectionMode(for: state.databaseType) == .fileBased

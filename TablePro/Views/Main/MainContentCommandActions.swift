@@ -255,8 +255,8 @@ final class MainContentCommandActions {
 
     var currentDatabaseType: DatabaseType { connection.type }
 
-    var supportsDatabaseSwitching: Bool {
-        PluginManager.shared.supportsDatabaseSwitching(for: connection.type)
+    var supportsContainerSwitching: Bool {
+        PluginManager.shared.supportsContainerSwitching(for: connection.type)
     }
 
     var canSwitchSidebarLayout: Bool {
@@ -850,7 +850,7 @@ final class MainContentCommandActions {
     func openDatabaseSwitcher() {
         guard let coordinator else { return }
         let type = coordinator.connection.type
-        guard PluginManager.shared.supportsDatabaseSwitching(for: type) else { return }
+        guard PluginManager.shared.supportsContainerSwitching(for: type) else { return }
         guard PluginManager.shared.connectionMode(for: type) != .fileBased else { return }
         coordinator.contentWindow?.makeFirstResponder(nil)
         coordinator.isDatabaseSwitcherShown = true

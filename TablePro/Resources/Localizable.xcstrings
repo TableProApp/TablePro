@@ -1408,6 +1408,9 @@
         }
       }
     },
+    "%@ name" : {
+
+    },
     "%@ on %@ completed successfully." : {
       "localizations" : {
         "en" : {
@@ -1568,6 +1571,9 @@
           }
         }
       }
+    },
+    "%@ Switch Failed" : {
+
     },
     "%@ was not found on this system. Install it with `brew install libpq` and link it." : {
       "localizations" : {
@@ -18224,6 +18230,7 @@
       }
     },
     "Database name" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -18401,6 +18408,7 @@
       }
     },
     "Database Switch Failed" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -21178,6 +21186,15 @@
         }
       }
     },
+    "Drop %@" : {
+
+    },
+    "Drop %@…" : {
+
+    },
+    "Drop %1$@ “%2$@”?" : {
+
+    },
     "Drop %d tables" : {
       "localizations" : {
         "tr" : {
@@ -21246,6 +21263,7 @@
       }
     },
     "Drop Database" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -21291,6 +21309,7 @@
       }
     },
     "Drop database “%@”?" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -21336,6 +21355,7 @@
       }
     },
     "Drop Database…" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -25907,6 +25927,9 @@
           }
         }
       }
+    },
+    "Failed to load %@" : {
+
     },
     "Failed to load databases" : {
       "localizations" : {
@@ -34740,6 +34763,9 @@
         }
       }
     },
+    "Loading %@…" : {
+
+    },
     "Loading dashboard..." : {
       "localizations" : {
         "tr" : {
@@ -37667,6 +37693,12 @@
         }
       }
     },
+    "New %@" : {
+
+    },
+    "New %@ (⌘N)" : {
+
+    },
     "New %@ Connection" : {
       "localizations" : {
         "tr" : {
@@ -37688,6 +37720,9 @@
           }
         }
       }
+    },
+    "New %@…" : {
+
     },
     "New Chat" : {
       "extractionState" : "stale",
@@ -37801,6 +37836,7 @@
       }
     },
     "New Database" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -37823,6 +37859,7 @@
       }
     },
     "New Database (⌘N)" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -37845,6 +37882,7 @@
       }
     },
     "New Database…" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -38420,6 +38458,9 @@
           }
         }
       }
+    },
+    "No %1$@ match “%2$@”" : {
+
     },
     "No activations found" : {
       "localizations" : {
@@ -41351,6 +41392,9 @@
         }
       }
     },
+    "Open %@ (⌘K)" : {
+
+    },
     "Open %@ Editor" : {
       "localizations" : {
         "tr" : {
@@ -41394,6 +41438,9 @@
           }
         }
       }
+    },
+    "Open %@..." : {
+
     },
     "Open a connection to insert" : {
       "localizations" : {
@@ -41639,6 +41686,7 @@
       }
     },
     "Open Database (⌘K)" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -41661,6 +41709,7 @@
       }
     },
     "Open Database..." : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -42692,6 +42741,9 @@
           }
         }
       }
+    },
+    "Over an SSH tunnel, TablePro connects directly to the first host. Replica set failover is not available." : {
+
     },
     "Override auto-detected CLI paths per database type." : {
       "extractionState" : "stale",
@@ -51949,6 +52001,7 @@
       }
     },
     "Schema Switch Failed" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -52102,6 +52155,9 @@
           }
         }
       }
+    },
+    "Search %@" : {
+
     },
     "Search activity" : {
       "localizations" : {
@@ -56785,6 +56841,7 @@
       }
     },
     "SSH tunneling only forwards the first host. Other replica set members must be directly reachable from the SSH server." : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -57882,6 +57939,12 @@
         }
       }
     },
+    "switch %@" : {
+
+    },
+    "Switch %@" : {
+
+    },
     "Switch connection" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -57972,6 +58035,7 @@
       }
     },
     "switch database" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -60602,6 +60666,9 @@
         }
       }
     },
+    "This %1$@ has no %2$@ yet." : {
+
+    },
     "This action needs a modifier key like ⌘ or ⌥. A plain key won't reach the menu reliably." : {
       "localizations" : {
         "tr" : {
@@ -60669,6 +60736,7 @@
       }
     },
     "This database has no %@ yet." : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {

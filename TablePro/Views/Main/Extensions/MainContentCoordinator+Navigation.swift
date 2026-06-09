@@ -401,11 +401,21 @@ extension MainContentCoordinator {
 
             navigationLogger.error("Failed to switch database: \(error.localizedDescription, privacy: .public)")
             AlertHelper.showErrorSheet(
-                title: String(localized: "Database Switch Failed"),
+                title: String(
+                    format: String(localized: "%@ Switch Failed"),
+                    PluginManager.shared.containerEntityName(for: connection.type)
+                ),
                 message: error.localizedDescription,
                 window: contentWindow
             )
         }
+    }
+
+    private var schemaEntityName: String {
+        guard PluginManager.shared.containerSwitchTarget(for: connection.type) == .schema else {
+            return String(localized: "Schema")
+        }
+        return PluginManager.shared.containerEntityName(for: connection.type)
     }
 
     func switchSchema(to schema: String) async {
@@ -441,7 +451,7 @@ extension MainContentCoordinator {
 
             navigationLogger.error("Failed to switch schema: \(error.localizedDescription, privacy: .public)")
             AlertHelper.showErrorSheet(
-                title: String(localized: "Schema Switch Failed"),
+                title: String(format: String(localized: "%@ Switch Failed"), schemaEntityName),
                 message: error.localizedDescription,
                 window: contentWindow
             )

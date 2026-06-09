@@ -108,7 +108,7 @@ struct MainContentView: View {
                 titleVisibility: .visible,
                 presenting: coordinator.databaseToDrop
             ) { name in
-                Button(String(localized: "Drop Database"), role: .destructive) {
+                Button(String(format: String(localized: "Drop %@"), containerEntityName), role: .destructive) {
                     Task { await dropDatabase(name: name) }
                 }
                 Button(String(localized: "Cancel"), role: .cancel) {
@@ -131,9 +131,17 @@ struct MainContentView: View {
 
     private var dropConfirmationTitle: String {
         if let name = coordinator.databaseToDrop {
-            return String(format: String(localized: "Drop database “%@”?"), name)
+            return String(
+                format: String(localized: "Drop %1$@ “%2$@”?"),
+                containerEntityName.lowercased(),
+                name
+            )
         }
         return ""
+    }
+
+    private var containerEntityName: String {
+        PluginManager.shared.containerEntityName(for: coordinator.connection.type)
     }
 
     private func dropDatabase(name: String) async {

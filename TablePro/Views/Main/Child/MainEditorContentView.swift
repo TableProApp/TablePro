@@ -833,7 +833,7 @@ struct MainEditorContentView: View {
                         .foregroundStyle(.quaternary)
                 }
 
-                if PluginManager.shared.supportsDatabaseSwitching(for: connection.type) {
+                if PluginManager.shared.supportsContainerSwitching(for: connection.type) {
                     HStack(spacing: 6) {
                         Text("⌘K")
                             .font(.callout.monospaced())
@@ -844,9 +844,12 @@ struct MainEditorContentView: View {
                                 RoundedRectangle(cornerRadius: 4)
                                     .fill(Color(nsColor: .quaternaryLabelColor))
                             )
-                        Text("Switch Database")
-                            .font(.callout)
-                            .foregroundStyle(.tertiary)
+                        Text(String(
+                            format: String(localized: "Switch %@"),
+                            PluginManager.shared.containerEntityName(for: connection.type)
+                        ))
+                        .font(.callout)
+                        .foregroundStyle(.tertiary)
                     }
                 }
             }

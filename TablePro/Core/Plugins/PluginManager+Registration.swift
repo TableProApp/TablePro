@@ -341,6 +341,20 @@ extension PluginManager {
             .capabilities.supportsSchemaSwitching ?? false
     }
 
+    func containerSwitchTarget(for databaseType: DatabaseType) -> ContainerSwitchTarget? {
+        if supportsDatabaseSwitching(for: databaseType) {
+            return .database
+        }
+        if supportsSchemaSwitching(for: databaseType) {
+            return .schema
+        }
+        return nil
+    }
+
+    func supportsContainerSwitching(for databaseType: DatabaseType) -> Bool {
+        containerSwitchTarget(for: databaseType) != nil
+    }
+
     func supportsImport(for databaseType: DatabaseType) -> Bool {
         PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
             .capabilities.supportsImport ?? true
@@ -374,6 +388,15 @@ extension PluginManager {
     func tableEntityName(for databaseType: DatabaseType) -> String {
         PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
             .schema.tableEntityName ?? "Tables"
+    }
+
+    func containerEntityName(for databaseType: DatabaseType) -> String {
+        PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
+            .schema.containerEntityName ?? "Database"
+    }
+
+    func containerEntityNamePlural(for databaseType: DatabaseType) -> String {
+        containerEntityName(for: databaseType) + "s"
     }
 
     func supportsCascadeDrop(for databaseType: DatabaseType) -> Bool {

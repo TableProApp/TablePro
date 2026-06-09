@@ -276,8 +276,13 @@ struct SidebarView: View {
 
     private var emptyState: some View {
         let entityName = PluginManager.shared.tableEntityName(for: viewModel.databaseType)
+        let containerName = PluginManager.shared.containerEntityName(for: viewModel.databaseType)
         let noItemsLabel = String(format: String(localized: "No %@"), entityName)
-        let noItemsDetail = String(format: String(localized: "This database has no %@ yet."), entityName.lowercased())
+        let noItemsDetail = String(
+            format: String(localized: "This %1$@ has no %2$@ yet."),
+            containerName.lowercased(),
+            entityName.lowercased()
+        )
         return ContentUnavailableView(
             noItemsLabel,
             systemImage: "tablecells",

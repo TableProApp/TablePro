@@ -88,6 +88,7 @@ struct PluginMetadataSnapshot: Sendable {
         let defaultSchemaName: String
         let defaultGroupName: String
         let tableEntityName: String
+        let containerEntityName: String
         let defaultPrimaryKeyColumn: String?
         let immutableColumns: [String]
         let systemDatabaseNames: [String]
@@ -100,6 +101,7 @@ struct PluginMetadataSnapshot: Sendable {
             defaultSchemaName: "public",
             defaultGroupName: "main",
             tableEntityName: "Tables",
+            containerEntityName: "Database",
             defaultPrimaryKeyColumn: nil,
             immutableColumns: [],
             systemDatabaseNames: [],
@@ -453,6 +455,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     defaultSchemaName: "public",
                     defaultGroupName: "main",
                     tableEntityName: "Tables",
+                    containerEntityName: "Database",
                     defaultPrimaryKeyColumn: nil,
                     immutableColumns: [],
                     systemDatabaseNames: ["information_schema", "mysql", "performance_schema", "sys"],
@@ -501,6 +504,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     defaultSchemaName: "public",
                     defaultGroupName: "main",
                     tableEntityName: "Tables",
+                    containerEntityName: "Database",
                     defaultPrimaryKeyColumn: nil,
                     immutableColumns: [],
                     systemDatabaseNames: ["information_schema", "mysql", "performance_schema", "sys"],
@@ -550,6 +554,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     defaultSchemaName: "public",
                     defaultGroupName: "main",
                     tableEntityName: "Tables",
+                    containerEntityName: "Database",
                     defaultPrimaryKeyColumn: nil,
                     immutableColumns: [],
                     systemDatabaseNames: ["postgres", "template0", "template1"],
@@ -598,6 +603,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     defaultSchemaName: "public",
                     defaultGroupName: "main",
                     tableEntityName: "Tables",
+                    containerEntityName: "Database",
                     defaultPrimaryKeyColumn: nil,
                     immutableColumns: [],
                     systemDatabaseNames: ["postgres", "template0", "template1"],
@@ -658,6 +664,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     defaultSchemaName: "public",
                     defaultGroupName: "main",
                     tableEntityName: "Tables",
+                    containerEntityName: "Database",
                     defaultPrimaryKeyColumn: nil,
                     immutableColumns: [],
                     systemDatabaseNames: ["postgres", "system", "defaultdb"],
@@ -708,6 +715,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     defaultSchemaName: "public",
                     defaultGroupName: "main",
                     tableEntityName: "Tables",
+                    containerEntityName: "Database",
                     defaultPrimaryKeyColumn: nil,
                     immutableColumns: [],
                     systemDatabaseNames: [],
@@ -895,6 +903,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                 defaultSchemaName: driverType.defaultSchemaName,
                 defaultGroupName: driverType.defaultGroupName,
                 tableEntityName: driverType.tableEntityName,
+                containerEntityName: driverType.containerEntityName,
                 defaultPrimaryKeyColumn: driverType.defaultPrimaryKeyColumn,
                 immutableColumns: driverType.immutableColumns,
                 systemDatabaseNames: driverType.systemDatabaseNames,

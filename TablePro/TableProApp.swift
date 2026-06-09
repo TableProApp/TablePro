@@ -154,6 +154,13 @@ struct AppMenuCommands: Commands {
         settingsManager.keyboard.keyboardShortcut(for: action)
     }
 
+    private var openContainerMenuTitle: String {
+        let containerName = actions.map {
+            PluginManager.shared.containerEntityName(for: $0.currentDatabaseType)
+        } ?? "Database"
+        return String(format: String(localized: "Open %@..."), containerName)
+    }
+
     /// Prefers the focused scene value; falls back to the coordinator back-reference
     /// so Cmd+W still routes through `closeTab()` (with its unsaved-changes dialog)
     /// when focus is inside an AppKit subview and `@FocusedValue` has not resolved.
@@ -266,11 +273,11 @@ struct AppMenuCommands: Commands {
             }
             .disabled(!(actions?.isConnected ?? false) || actions?.isReadOnly ?? false)
 
-            Button("Open Database...") {
+            Button(openContainerMenuTitle) {
                 actions?.openDatabaseSwitcher()
             }
             .optionalKeyboardShortcut(shortcut(for: .openDatabase))
-            .disabled(!(actions?.isConnected ?? false) || !(actions?.supportsDatabaseSwitching ?? false))
+            .disabled(!(actions?.isConnected ?? false) || !(actions?.supportsContainerSwitching ?? false))
 
             Button(String(localized: "Open File...")) {
                 actions?.openSQLFile()

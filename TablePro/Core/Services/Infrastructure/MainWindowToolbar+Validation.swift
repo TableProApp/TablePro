@@ -14,7 +14,7 @@ extension MainWindowToolbar: NSToolbarItemValidation {
         let hasDataPendingChanges: Bool
         let blocksAllWrites: Bool
         let fileBased: Bool
-        let supportsDatabaseSwitching: Bool
+        let supportsContainerSwitching: Bool
         let supportsImport: Bool
         let supportsServerDashboard: Bool
     }
@@ -24,7 +24,7 @@ extension MainWindowToolbar: NSToolbarItemValidation {
         case Self.connection, Self.history:
             return true
         case Self.database:
-            return context.connected && !context.fileBased && context.supportsDatabaseSwitching
+            return context.connected && !context.fileBased && context.supportsContainerSwitching
         case Self.refresh, Self.quickSwitcher, Self.newTab, Self.exportTables:
             return context.connected
         case Self.saveChanges:
@@ -51,7 +51,7 @@ extension MainWindowToolbar: NSToolbarItemValidation {
             hasDataPendingChanges: state.hasDataPendingChanges,
             blocksAllWrites: state.safeModeLevel.blocksAllWrites,
             fileBased: PluginManager.shared.connectionMode(for: state.databaseType) == .fileBased,
-            supportsDatabaseSwitching: PluginManager.shared.supportsDatabaseSwitching(for: state.databaseType),
+            supportsContainerSwitching: PluginManager.shared.supportsContainerSwitching(for: state.databaseType),
             supportsImport: PluginManager.shared.supportsImport(for: state.databaseType),
             supportsServerDashboard: coordinator?.commandActions?.supportsServerDashboard ?? false
         )

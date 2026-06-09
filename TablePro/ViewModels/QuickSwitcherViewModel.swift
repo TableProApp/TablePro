@@ -104,16 +104,20 @@ internal final class QuickSwitcherViewModel {
             ))
         }
 
+        let switchTarget = services.pluginManager.containerSwitchTarget(for: databaseType)
         do {
             let databases = try await services.databaseManager.withMetadataDriver(connectionId: connectionId) { driver in
                 try await driver.fetchDatabases()
             }
+            let databaseSubtitle = switchTarget == .database
+                ? services.pluginManager.containerEntityName(for: databaseType)
+                : String(localized: "Database")
             for db in databases {
                 items.append(QuickSwitcherItem(
                     id: "db_\(db)",
                     name: db,
                     kind: .database,
-                    subtitle: String(localized: "Database")
+                    subtitle: databaseSubtitle
                 ))
             }
         } catch {
@@ -125,12 +129,15 @@ internal final class QuickSwitcherViewModel {
                 let schemas = try await services.databaseManager.withMetadataDriver(connectionId: connectionId) { driver in
                     try await driver.fetchSchemas()
                 }
+                let schemaSubtitle = switchTarget == .schema
+                    ? services.pluginManager.containerEntityName(for: databaseType)
+                    : String(localized: "Schema")
                 for schema in schemas {
                     items.append(QuickSwitcherItem(
                         id: "schema_\(schema)",
                         name: schema,
                         kind: .schema,
-                        subtitle: String(localized: "Schema")
+                        subtitle: schemaSubtitle
                     ))
                 }
             } catch {
