@@ -187,7 +187,7 @@ struct MainContentView: View {
                 databaseType: connection.type,
                 viewModel: viewModel,
                 onCreated: { newDatabaseName in
-                    Task { await coordinator.switchDatabase(to: newDatabaseName) }
+                    Task { await coordinator.switchContainer(to: newDatabaseName) }
                 }
             )
         case .exportDialog:

@@ -20,12 +20,7 @@ struct DatabaseSwitcherPopoverHost: View {
                 databaseType: connection.type,
                 connectionId: connection.id,
                 onSelect: { [weak coordinator] container in
-                    Task {
-                        switch switchTarget {
-                        case .database: await coordinator?.switchDatabase(to: container)
-                        case .schema: await coordinator?.switchSchema(to: container)
-                        }
-                    }
+                    Task { await coordinator?.switchContainer(to: container) }
                 },
                 onRequestCreate: { [weak coordinator] in
                     coordinator?.activeSheet = .createDatabase

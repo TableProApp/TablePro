@@ -411,6 +411,17 @@ extension MainContentCoordinator {
         }
     }
 
+    /// Switch the active container (database, or schema for schema-switching-only
+    /// engines like BigQuery), routing by the plugin's container switch target.
+    func switchContainer(to container: String) async {
+        switch PluginManager.shared.containerSwitchTarget(for: connection.type) {
+        case .schema:
+            await switchSchema(to: container)
+        case .database, nil:
+            await switchDatabase(to: container)
+        }
+    }
+
     private var schemaEntityName: String {
         guard PluginManager.shared.containerSwitchTarget(for: connection.type) == .schema else {
             return String(localized: "Schema")
