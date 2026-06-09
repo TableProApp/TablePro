@@ -466,6 +466,13 @@
 			);
 			target = 5A865000000000000 /* MySQLDriver */;
 		};
+		5A865000E00000000 /* Exceptions for "Plugins/MySQLDriverPlugin" folder in "TableProTests" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				MySQLQueryTimeoutStatement.swift,
+			);
+			target = 5ABCC5A62F43856700EAF3FC /* TableProTests */;
+		};
 		5A866000900000000 /* Exceptions for "Plugins/MongoDBDriverPlugin" folder in "MongoDBDriver" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
@@ -665,6 +672,7 @@
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
 				5A865000900000000 /* Exceptions for "Plugins/MySQLDriverPlugin" folder in "MySQLDriver" target */,
+				5A865000E00000000 /* Exceptions for "Plugins/MySQLDriverPlugin" folder in "TableProTests" target */,
 			);
 			path = Plugins/MySQLDriverPlugin;
 			sourceTree = "<group>";

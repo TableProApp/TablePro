@@ -158,6 +158,7 @@ final class ExportService {
             )
         }
 
+        await suppressStatementTimeout(on: driver)
         let result: ExportFormatResult
         do {
             result = try await plugin.export(
@@ -167,14 +168,35 @@ final class ExportService {
                 progress: progress
             )
         } catch {
+            await restoreStatementTimeout(on: driver)
             state.errorMessage = error.localizedDescription
             throw error
         }
+        await restoreStatementTimeout(on: driver)
 
         state.processedRows = progress.processedRows
 
         if !result.warnings.isEmpty {
             state.warningMessage = result.warnings.joined(separator: "\n")
+        }
+    }
+
+    // MARK: - Statement Timeout
+
+    func suppressStatementTimeout(on driver: DatabaseDriver) async {
+        do {
+            try await driver.applyQueryTimeout(0)
+        } catch {
+            Self.logger.warning("Failed to disable statement timeout for export: \(error.localizedDescription)")
+        }
+    }
+
+    func restoreStatementTimeout(on driver: DatabaseDriver) async {
+        let timeout = AppSettingsManager.shared.general.queryTimeoutSeconds
+        do {
+            try await driver.applyQueryTimeout(timeout)
+        } catch {
+            Self.logger.warning("Failed to restore statement timeout after export: \(error.localizedDescription)")
         }
     }
 
@@ -304,6 +326,7 @@ final class ExportService {
             optionValues: plugin.defaultTableOptionValues()
         )
 
+        await suppressStatementTimeout(on: driver)
         let result: ExportFormatResult
         do {
             result = try await plugin.export(
@@ -313,9 +336,11 @@ final class ExportService {
                 progress: progress
             )
         } catch {
+            await restoreStatementTimeout(on: driver)
             state.errorMessage = error.localizedDescription
             throw error
         }
+        await restoreStatementTimeout(on: driver)
 
         state.processedRows = progress.processedRows
 

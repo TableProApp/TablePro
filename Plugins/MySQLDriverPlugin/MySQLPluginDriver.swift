@@ -587,14 +587,8 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Query Timeout
 
     func applyQueryTimeout(_ seconds: Int) async throws {
-        guard seconds > 0 else { return }
         do {
-            if isMariaDB {
-                _ = try await execute(query: "SET SESSION max_statement_time = \(seconds)")
-            } else {
-                let ms = seconds * 1_000
-                _ = try await execute(query: "SET SESSION max_execution_time = \(ms)")
-            }
+            _ = try await execute(query: mysqlQueryTimeoutStatement(seconds: seconds, isMariaDB: isMariaDB))
         } catch {
             Self.logger.warning("Failed to set query timeout: \(error.localizedDescription)")
         }

@@ -23,6 +23,7 @@ final class MockDatabaseDriver: DatabaseDriver, @unchecked Sendable {
     var fetchColumnsCallCount = 0
     var fetchColumnsCalls: [String] = []
     var fetchSchemaTablesCalls: [String] = []
+    var applyQueryTimeoutValues: [Int] = []
 
     init(connection: DatabaseConnection = TestFixtures.makeConnection()) {
         self.connection = connection
@@ -33,7 +34,9 @@ final class MockDatabaseDriver: DatabaseDriver, @unchecked Sendable {
 
     func testConnection() async throws -> Bool { true }
 
-    func applyQueryTimeout(_ seconds: Int) async throws {}
+    func applyQueryTimeout(_ seconds: Int) async throws {
+        applyQueryTimeoutValues.append(seconds)
+    }
 
     func execute(query: String) async throws -> QueryResult {
         QueryResult(columns: [], columnTypes: [], rows: [], rowsAffected: 0, executionTime: 0, error: nil)
