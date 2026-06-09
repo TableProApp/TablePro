@@ -45,7 +45,10 @@ struct ExecuteQueryChatTool: ChatTool {
         guard (query as NSString).length <= 102_400 else {
             return ChatToolResult(content: "Query exceeds 100KB limit", isError: true)
         }
-        guard !QueryClassifier.isMultiStatement(query) else {
+
+        let meta = try await ToolConnectionMetadata.resolve(connectionId: connectionId)
+
+        guard !QueryClassifier.isMultiStatement(query, databaseType: meta.databaseType) else {
             return ChatToolResult(
                 content: "Multi-statement queries are not supported. Send one statement at a time.",
                 isError: true
@@ -66,8 +69,6 @@ struct ExecuteQueryChatTool: ChatTool {
             clamp: 1...300
         ) ?? mcpSettings.queryTimeoutSeconds
 
-        let meta = try await ToolConnectionMetadata.resolve(connectionId: connectionId)
-
         let tier = QueryClassifier.classifyTier(query, databaseType: meta.databaseType)
         if tier == .destructive {
             return ChatToolResult(
@@ -82,6 +83,13 @@ struct ExecuteQueryChatTool: ChatTool {
         if let schema {
             _ = try await context.bridge.switchSchema(connectionId: connectionId, schema: schema)
         }
+
+        try await context.authPolicy.checkSafeModeDialog(
+            sql: query,
+            connectionId: connectionId,
+            databaseType: meta.databaseType,
+            capabilities: [.mayWrite, .mayRunDestructive, .confirmationPreCleared]
+        )
 
         let services = MCPToolServices(connectionBridge: context.bridge, authPolicy: context.authPolicy)
         let payload = try await ToolQueryExecutor.executeAndLog(

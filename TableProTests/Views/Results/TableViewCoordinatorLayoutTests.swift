@@ -4,8 +4,8 @@
 //
 
 import Foundation
-import TableProPluginKit
 import SwiftUI
+import TableProPluginKit
 import Testing
 
 @testable import TablePro
@@ -97,20 +97,41 @@ struct TableViewCoordinatorLayoutTests {
         #expect(coordinator.savedColumnLayout(binding: ColumnLayoutState()) == nil)
     }
 
-    @Test("Non-table tab uses the binding directly")
-    func nonTableTabUsesBinding() {
+    @Test("Query tab drops a stale saved column order so new columns keep their query position")
+    func queryTabDropsStaleColumnOrder() {
         let coordinator = makeCoordinator(
             tabType: .query,
             connectionId: nil,
             tableName: nil,
             persister: FakeColumnLayoutPersister()
         )
-        let resolved = coordinator.savedColumnLayout(binding: nonEmptyLayout())
-        #expect(resolved?.columnWidths == ["id": 60])
+        var binding = ColumnLayoutState()
+        binding.columnWidths = ["id": 60, "business_model": 120]
+        binding.columnOrder = ["id", "business_model"]
+
+        var expected = ColumnLayoutState()
+        expected.columnWidths = ["id": 60, "business_model": 120]
+
+        #expect(coordinator.savedColumnLayout(binding: binding) == expected)
     }
 
-    @Test("Non-table tab returns nil when binding is empty")
-    func nonTableTabEmptyReturnsNil() {
+    @Test("Query tab keeps remembered widths when there is no saved order")
+    func queryTabKeepsWidths() {
+        let coordinator = makeCoordinator(
+            tabType: .query,
+            connectionId: nil,
+            tableName: nil,
+            persister: FakeColumnLayoutPersister()
+        )
+
+        var expected = ColumnLayoutState()
+        expected.columnWidths = ["id": 60]
+
+        #expect(coordinator.savedColumnLayout(binding: nonEmptyLayout()) == expected)
+    }
+
+    @Test("Query tab returns nil when binding is empty")
+    func queryTabEmptyReturnsNil() {
         let coordinator = makeCoordinator(
             tabType: .query,
             connectionId: nil,

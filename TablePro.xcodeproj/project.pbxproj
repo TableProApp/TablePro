@@ -7,6 +7,12 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		16C74CC07CC30A38ADE1663E /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
+		267A5C6ECC62401598389396 /* SnowflakeDDLGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53DF2F4A15214F2AA1DE95CF /* SnowflakeDDLGenerator.swift */; };
+		33E6FF2997594F41AA80EEC8 /* SnowflakeConnectionRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE8D74A27EE24B89A7DC79F9 /* SnowflakeConnectionRegistry.swift */; };
+		3DD7311CA07CFCA8A996058F /* SnowflakeAuth.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9D129A56E1AB45F7D82AC58 /* SnowflakeAuth.swift */; };
+		4355C825A7554BBCB978E1E4 /* SnowflakeSchemaQueries.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C399209C2D14499870FBD49 /* SnowflakeSchemaQueries.swift */; };
+		4CA0E909166145AAB6B6CDD7 /* SnowflakeHTTPRetry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55F1B63541C24A10BF4AF873 /* SnowflakeHTTPRetry.swift */; };
 		5A32BBFB2F9D5EAB00BAEB5F /* X509 in Frameworks */ = {isa = PBXBuildFile; productRef = 5A32BBFA2F9D5EAB00BAEB5F /* X509 */; };
 		5A32BC0B2F9D659100BAEB5F /* tablepro-mcp in Copy Files */ = {isa = PBXBuildFile; fileRef = 5A32BC002F9D5F1300BAEB5F /* tablepro-mcp */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
 		5A3BE6FC2F97DB0000611C1F /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
@@ -39,6 +45,10 @@
 		5A86E000D00000000 /* MQLExport.tableplugin in Copy Plug-Ins (12 items) */ = {isa = PBXBuildFile; fileRef = 5A86E000100000000 /* MQLExport.tableplugin */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		5A86F000A00000000 /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
 		5A86F000D00000000 /* SQLImport.tableplugin in Copy Plug-Ins (12 items) */ = {isa = PBXBuildFile; fileRef = 5A86F000100000000 /* SQLImport.tableplugin */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		5A86F001A00000000 /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
+		5A86F001D00000000 /* JSONImport.tableplugin in Copy Plug-Ins (12 items) */ = {isa = PBXBuildFile; fileRef = 5A86F001100000000 /* JSONImport.tableplugin */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		5A86F003A00000000 /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
+		5A86F003D00000000 /* CSVImport.tableplugin in Copy Plug-Ins (12 items) */ = {isa = PBXBuildFile; fileRef = 5A86F003100000000 /* CSVImport.tableplugin */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		5A87A000A00000000 /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
 		5ABBED742FB55E1400A78382 /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
 		5ABBED802FB55E1400A78382 /* CSVInspectorPlugin.tableplugin in Copy Plug-Ins (12 items) */ = {isa = PBXBuildFile; fileRef = 5ABBED792FB55E1400A78382 /* CSVInspectorPlugin.tableplugin */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
@@ -51,6 +61,7 @@
 		5ABQR00100000000000000A7 /* BigQueryTypeMapper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5ABQR00200000000000000A7 /* BigQueryTypeMapper.swift */; };
 		5ABQR00100000000000000A8 /* BigQueryOAuthServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5ABQR00200000000000000A8 /* BigQueryOAuthServer.swift */; };
 		5ABQR00100000000000000A9 /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
+		5AC8FF6F28A24FFBBBFF008F /* SnowflakeBindingEncoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = C146F286FAB945E9B19E5B88 /* SnowflakeBindingEncoder.swift */; };
 		5ACE00012F4F000000000004 /* CodeEditSourceEditor in Frameworks */ = {isa = PBXBuildFile; productRef = 5ACE00012F4F000000000002 /* CodeEditSourceEditor */; };
 		5ACE00012F4F000000000005 /* CodeEditLanguages in Frameworks */ = {isa = PBXBuildFile; productRef = 5ACE00012F4F000000000003 /* CodeEditLanguages */; };
 		5ACE00012F4F000000000006 /* CodeEditTextView in Frameworks */ = {isa = PBXBuildFile; productRef = 5ACE00012F4F000000000007 /* CodeEditTextView */; };
@@ -64,7 +75,6 @@
 		5ADDB00100000000000000A6 /* DynamoDBQueryBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5ADDB00200000000000000A6 /* DynamoDBQueryBuilder.swift */; };
 		5ADDB00100000000000000A7 /* DynamoDBStatementGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5ADDB00200000000000000A7 /* DynamoDBStatementGenerator.swift */; };
 		5ADDB00100000000000000A8 /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
-		5ADDB00100000000000000F0 /* DynamoDBSsoCredentials.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5ADDB00200000000000000F0 /* DynamoDBSsoCredentials.swift */; };
 		5AE4F4902F6BC0640097AC5B /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
 		5AEA8B422F6808CA0040461A /* EtcdStatementGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AEA8B402F6808CA0040461A /* EtcdStatementGenerator.swift */; };
 		5AEA8B432F6808CA0040461A /* EtcdPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AEA8B3D2F6808CA0040461A /* EtcdPlugin.swift */; };
@@ -74,6 +84,17 @@
 		5AEA8B472F6808CA0040461A /* EtcdHttpClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AEA8B3C2F6808CA0040461A /* EtcdHttpClient.swift */; };
 		5AEA8B492F6808E90040461A /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
 		5AEE5B362F5C9B7B00FA84D7 /* OracleNIO in Frameworks */ = {isa = PBXBuildFile; productRef = 5ACE00012F4F00000000000F /* OracleNIO */; };
+		690F1972044539AA3EC01FAD /* SnowflakePluginDriver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CAC14AE00C256911D2A9D2E /* SnowflakePluginDriver.swift */; };
+		69F80E23278BD01CA254E291 /* SnowflakeError.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE1C881DFE85C2D2DBCC5B87 /* SnowflakeError.swift */; };
+		703C8C18A7F43E262695F557 /* SnowflakePlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73CFCC6EA4288F34EBED5F37 /* SnowflakePlugin.swift */; };
+		734B1C02ED034214A7A6088C /* SnowflakeStatementGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84A5EE73D62C4576A9B9DFF2 /* SnowflakeStatementGenerator.swift */; };
+		79535441E5CF45039A08AF48 /* SnowflakePluginDriver+DDL.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31FF6EBB13774833BA087FEB /* SnowflakePluginDriver+DDL.swift */; };
+		8163B172478A511171523320 /* SnowflakeTypeMapper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37458E42D8D6876BD9FDC7BD /* SnowflakeTypeMapper.swift */; };
+		8F6387B85F8B4AEE8210A6F1 /* SnowflakeIdTokenStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D67B38E07DF4F42A9C86639 /* SnowflakeIdTokenStore.swift */; };
+		952FCF406F3DE2575166802B /* SnowflakeBrowserAuthServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E0809C2747F432C1F1C5A60 /* SnowflakeBrowserAuthServer.swift */; };
+		B014CCF0DCB575301513A62D /* SnowflakeConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05C938D4946679DB526884C9 /* SnowflakeConnection.swift */; };
+		EE6F98F0581A8B96C6FE45E9 /* SnowflakeMFATokenStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17CF18A0ED0B637448A808A4 /* SnowflakeMFATokenStore.swift */; };
+		FF86DE29A70540C88D2624E5 /* SnowflakeHeartbeat.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95E00BB6B3C84C9583510E67 /* SnowflakeHeartbeat.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -196,6 +217,20 @@
 			remoteGlobalIDString = 5A86F000000000000;
 			remoteInfo = SQLImport;
 		};
+		5A86F001B00000000 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 5A1091BF2EF17EDC0055EA7C /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 5A86F001000000000;
+			remoteInfo = JSONImport;
+		};
+		5A86F003B00000000 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 5A1091BF2EF17EDC0055EA7C /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 5A86F003000000000;
+			remoteInfo = CSVImport;
+		};
 		5ABBED7E2FB55E1400A78382 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 5A1091BF2EF17EDC0055EA7C /* Project object */;
@@ -223,6 +258,13 @@
 			proxyType = 1;
 			remoteGlobalIDString = 5ADDB00600000000000000B0;
 			remoteInfo = DynamoDBDriverPlugin;
+		};
+		5AF00A112FB9000000000001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 5A1091BF2EF17EDC0055EA7C /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 5A1091C62EF17EDC0055EA7C;
+			remoteInfo = TablePro;
 		};
 /* End PBXContainerItemProxy section */
 
@@ -264,6 +306,8 @@
 				5A86D000D00000000 /* XLSXExport.tableplugin in Copy Plug-Ins (12 items) */,
 				5A86E000D00000000 /* MQLExport.tableplugin in Copy Plug-Ins (12 items) */,
 				5A86F000D00000000 /* SQLImport.tableplugin in Copy Plug-Ins (12 items) */,
+				5A86F001D00000000 /* JSONImport.tableplugin in Copy Plug-Ins (12 items) */,
+				5A86F003D00000000 /* CSVImport.tableplugin in Copy Plug-Ins (12 items) */,
 				5ABBED802FB55E1400A78382 /* CSVInspectorPlugin.tableplugin in Copy Plug-Ins (12 items) */,
 			);
 			name = "Copy Plug-Ins (12 items)";
@@ -283,6 +327,15 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		05C938D4946679DB526884C9 /* SnowflakeConnection.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SnowflakeConnection.swift; sourceTree = "<group>"; };
+		17CF18A0ED0B637448A808A4 /* SnowflakeMFATokenStore.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SnowflakeMFATokenStore.swift; sourceTree = "<group>"; };
+		31FF6EBB13774833BA087FEB /* SnowflakePluginDriver+DDL.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = "SnowflakePluginDriver+DDL.swift"; sourceTree = "<group>"; };
+		37458E42D8D6876BD9FDC7BD /* SnowflakeTypeMapper.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SnowflakeTypeMapper.swift; sourceTree = "<group>"; };
+		3C399209C2D14499870FBD49 /* SnowflakeSchemaQueries.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SnowflakeSchemaQueries.swift; sourceTree = "<group>"; };
+		48B9743D4BDA458C9C0502A8 /* SnowflakeDriverPlugin.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SnowflakeDriverPlugin.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
+		4CAC14AE00C256911D2A9D2E /* SnowflakePluginDriver.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SnowflakePluginDriver.swift; sourceTree = "<group>"; };
+		53DF2F4A15214F2AA1DE95CF /* SnowflakeDDLGenerator.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SnowflakeDDLGenerator.swift; sourceTree = "<group>"; };
+		55F1B63541C24A10BF4AF873 /* SnowflakeHTTPRetry.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SnowflakeHTTPRetry.swift; sourceTree = "<group>"; };
 		5A1091C72EF17EDC0055EA7C /* TablePro.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TablePro.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		5A32BC002F9D5F1300BAEB5F /* tablepro-mcp */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = "tablepro-mcp"; sourceTree = BUILT_PRODUCTS_DIR; };
 		5A3BE6F82F97DA8100611C1F /* LibSQLDriverPlugin.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = LibSQLDriverPlugin.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -303,6 +356,8 @@
 		5A86D000100000000 /* XLSXExport.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = XLSXExport.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
 		5A86E000100000000 /* MQLExport.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MQLExport.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
 		5A86F000100000000 /* SQLImport.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SQLImport.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
+		5A86F001100000000 /* JSONImport.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = JSONImport.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
+		5A86F003100000000 /* CSVImport.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CSVImport.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
 		5A87A000100000000 /* CassandraDriver.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CassandraDriver.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
 		5ABBED792FB55E1400A78382 /* CSVInspectorPlugin.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CSVInspectorPlugin.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
 		5ABCC5A72F43856700EAF3FC /* TableProTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TableProTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -322,7 +377,6 @@
 		5ADDB00200000000000000A5 /* DynamoDBPluginDriver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DynamoDBPluginDriver.swift; sourceTree = "<group>"; };
 		5ADDB00200000000000000A6 /* DynamoDBQueryBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DynamoDBQueryBuilder.swift; sourceTree = "<group>"; };
 		5ADDB00200000000000000A7 /* DynamoDBStatementGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DynamoDBStatementGenerator.swift; sourceTree = "<group>"; };
-		5ADDB00200000000000000F0 /* DynamoDBSsoCredentials.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DynamoDBSsoCredentials.swift; sourceTree = "<group>"; };
 		5ADDB00300000000000000A0 /* DynamoDBDriverPlugin.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = DynamoDBDriverPlugin.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
 		5AE4F4742F6BC0640097AC5B /* CloudflareD1DriverPlugin.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CloudflareD1DriverPlugin.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
 		5AEA8B2A2F6808270040461A /* EtcdDriverPlugin.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = EtcdDriverPlugin.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -332,7 +386,17 @@
 		5AEA8B3E2F6808CA0040461A /* EtcdPluginDriver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EtcdPluginDriver.swift; sourceTree = "<group>"; };
 		5AEA8B3F2F6808CA0040461A /* EtcdQueryBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EtcdQueryBuilder.swift; sourceTree = "<group>"; };
 		5AEA8B402F6808CA0040461A /* EtcdStatementGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EtcdStatementGenerator.swift; sourceTree = "<group>"; };
+		5AF00A102FB9000000000001 /* TableProUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TableProUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		5ASECRETS000000000000001 /* Secrets.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.xcconfig; sourceTree = SOURCE_ROOT; };
+		5E0809C2747F432C1F1C5A60 /* SnowflakeBrowserAuthServer.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SnowflakeBrowserAuthServer.swift; sourceTree = "<group>"; };
+		73CFCC6EA4288F34EBED5F37 /* SnowflakePlugin.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SnowflakePlugin.swift; sourceTree = "<group>"; };
+		7D67B38E07DF4F42A9C86639 /* SnowflakeIdTokenStore.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SnowflakeIdTokenStore.swift; sourceTree = "<group>"; };
+		84A5EE73D62C4576A9B9DFF2 /* SnowflakeStatementGenerator.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SnowflakeStatementGenerator.swift; sourceTree = "<group>"; };
+		95E00BB6B3C84C9583510E67 /* SnowflakeHeartbeat.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SnowflakeHeartbeat.swift; sourceTree = "<group>"; };
+		C146F286FAB945E9B19E5B88 /* SnowflakeBindingEncoder.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SnowflakeBindingEncoder.swift; sourceTree = "<group>"; };
+		DE8D74A27EE24B89A7DC79F9 /* SnowflakeConnectionRegistry.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SnowflakeConnectionRegistry.swift; sourceTree = "<group>"; };
+		F9D129A56E1AB45F7D82AC58 /* SnowflakeAuth.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SnowflakeAuth.swift; sourceTree = "<group>"; };
+		FE1C881DFE85C2D2DBCC5B87 /* SnowflakeError.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SnowflakeError.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -487,6 +551,35 @@
 				Info.plist,
 			);
 			target = 5A86F000000000000 /* SQLImport */;
+		};
+		5A86F001900000000 /* Exceptions for "Plugins/JSONImportPlugin" folder in "JSONImport" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 5A86F001000000000 /* JSONImport */;
+		};
+		5A86F002900000000 /* Exceptions for "Plugins/JSONImportPlugin" folder in "TableProTests" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				JSONImportParsing.swift,
+			);
+			target = 5ABCC5A62F43856700EAF3FC /* TableProTests */;
+		};
+		5A86F003900000000 /* Exceptions for "Plugins/CSVImportPlugin" folder in "CSVImport" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 5A86F003000000000 /* CSVImport */;
+		};
+		5A86F004900000000 /* Exceptions for "Plugins/CSVImportPlugin" folder in "TableProTests" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				CSVImportOptions.swift,
+				CSVImportParsing.swift,
+			);
+			target = 5ABCC5A62F43856700EAF3FC /* TableProTests */;
 		};
 		5A87A000900000000 /* Exceptions for "Plugins/CassandraDriverPlugin" folder in "CassandraDriver" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
@@ -680,6 +773,24 @@
 			path = Plugins/SQLImportPlugin;
 			sourceTree = "<group>";
 		};
+		5A86F001500000000 /* Plugins/JSONImportPlugin */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				5A86F001900000000 /* Exceptions for "Plugins/JSONImportPlugin" folder in "JSONImport" target */,
+				5A86F002900000000 /* Exceptions for "Plugins/JSONImportPlugin" folder in "TableProTests" target */,
+			);
+			path = Plugins/JSONImportPlugin;
+			sourceTree = "<group>";
+		};
+		5A86F003500000000 /* Plugins/CSVImportPlugin */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				5A86F003900000000 /* Exceptions for "Plugins/CSVImportPlugin" folder in "CSVImport" target */,
+				5A86F004900000000 /* Exceptions for "Plugins/CSVImportPlugin" folder in "TableProTests" target */,
+			);
+			path = Plugins/CSVImportPlugin;
+			sourceTree = "<group>";
+		};
 		5A87A000500000000 /* Plugins/CassandraDriverPlugin */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
@@ -707,6 +818,11 @@
 				5AE4F4802F6BC0640097AC5B /* Exceptions for "Plugins/CloudflareD1DriverPlugin" folder in "CloudflareD1DriverPlugin" target */,
 			);
 			path = Plugins/CloudflareD1DriverPlugin;
+			sourceTree = "<group>";
+		};
+		5AF00A122FB9000000000001 /* TableProUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = TableProUITests;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -877,6 +993,22 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		5A86F001300000000 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5A86F001A00000000 /* TableProPluginKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5A86F003300000000 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5A86F003A00000000 /* TableProPluginKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		5A87A000300000000 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -932,6 +1064,21 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		5AF00A132FB9000000000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C49F7C0CBE979B96ACFB9ABC /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				16C74CC07CC30A38ADE1663E /* TableProPluginKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -971,11 +1118,15 @@
 				5A86D000500000000 /* Plugins/XLSXExportPlugin */,
 				5A86E000500000000 /* Plugins/MQLExportPlugin */,
 				5A86F000500000000 /* Plugins/SQLImportPlugin */,
+				5A86F001500000000 /* Plugins/JSONImportPlugin */,
+				5A86F003500000000 /* Plugins/CSVImportPlugin */,
 				5ABCC5A82F43856700EAF3FC /* TableProTests */,
+				5AF00A122FB9000000000001 /* TableProUITests */,
 				5A32BC012F9D5F1300BAEB5F /* mcp-server */,
 				5A1091C82EF17EDC0055EA7C /* Products */,
 				5A05FBC72F3EDF7500819CD7 /* Recovered References */,
 				5AEA8B482F6808E90040461A /* Frameworks */,
+				8FE5E1F9D0550A0E0AACD3EB /* SnowflakeDriverPlugin */,
 			);
 			sourceTree = "<group>";
 		};
@@ -1001,7 +1152,10 @@
 				5A86D000100000000 /* XLSXExport.tableplugin */,
 				5A86E000100000000 /* MQLExport.tableplugin */,
 				5A86F000100000000 /* SQLImport.tableplugin */,
+				5A86F001100000000 /* JSONImport.tableplugin */,
+				5A86F003100000000 /* CSVImport.tableplugin */,
 				5ABCC5A72F43856700EAF3FC /* TableProTests.xctest */,
+				5AF00A102FB9000000000001 /* TableProUITests.xctest */,
 				5AEA8B2A2F6808270040461A /* EtcdDriverPlugin.tableplugin */,
 				5ADDB00300000000000000A0 /* DynamoDBDriverPlugin.tableplugin */,
 				5ABQR00300000000000000A0 /* BigQueryDriverPlugin.tableplugin */,
@@ -1009,6 +1163,7 @@
 				5A3BE6F82F97DA8100611C1F /* LibSQLDriverPlugin.tableplugin */,
 				5A32BC002F9D5F1300BAEB5F /* tablepro-mcp */,
 				5ABBED792FB55E1400A78382 /* CSVInspectorPlugin.tableplugin */,
+				48B9743D4BDA458C9C0502A8 /* SnowflakeDriverPlugin.tableplugin */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -1038,7 +1193,6 @@
 				5ADDB00200000000000000A5 /* DynamoDBPluginDriver.swift */,
 				5ADDB00200000000000000A6 /* DynamoDBQueryBuilder.swift */,
 				5ADDB00200000000000000A7 /* DynamoDBStatementGenerator.swift */,
-				5ADDB00200000000000000F0 /* DynamoDBSsoCredentials.swift */,
 			);
 			path = Plugins/DynamoDBDriverPlugin;
 			sourceTree = "<group>";
@@ -1061,6 +1215,31 @@
 			children = (
 			);
 			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		8FE5E1F9D0550A0E0AACD3EB /* SnowflakeDriverPlugin */ = {
+			isa = PBXGroup;
+			children = (
+				F9D129A56E1AB45F7D82AC58 /* SnowflakeAuth.swift */,
+				DE8D74A27EE24B89A7DC79F9 /* SnowflakeConnectionRegistry.swift */,
+				84A5EE73D62C4576A9B9DFF2 /* SnowflakeStatementGenerator.swift */,
+				53DF2F4A15214F2AA1DE95CF /* SnowflakeDDLGenerator.swift */,
+				3C399209C2D14499870FBD49 /* SnowflakeSchemaQueries.swift */,
+				31FF6EBB13774833BA087FEB /* SnowflakePluginDriver+DDL.swift */,
+				55F1B63541C24A10BF4AF873 /* SnowflakeHTTPRetry.swift */,
+				C146F286FAB945E9B19E5B88 /* SnowflakeBindingEncoder.swift */,
+				95E00BB6B3C84C9583510E67 /* SnowflakeHeartbeat.swift */,
+				7D67B38E07DF4F42A9C86639 /* SnowflakeIdTokenStore.swift */,
+				5E0809C2747F432C1F1C5A60 /* SnowflakeBrowserAuthServer.swift */,
+				05C938D4946679DB526884C9 /* SnowflakeConnection.swift */,
+				FE1C881DFE85C2D2DBCC5B87 /* SnowflakeError.swift */,
+				73CFCC6EA4288F34EBED5F37 /* SnowflakePlugin.swift */,
+				4CAC14AE00C256911D2A9D2E /* SnowflakePluginDriver.swift */,
+				37458E42D8D6876BD9FDC7BD /* SnowflakeTypeMapper.swift */,
+				17CF18A0ED0B637448A808A4 /* SnowflakeMFATokenStore.swift */,
+			);
+			name = SnowflakeDriverPlugin;
+			path = Plugins/SnowflakeDriverPlugin;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -1106,6 +1285,8 @@
 				5A86D000C00000000 /* PBXTargetDependency */,
 				5A86E000C00000000 /* PBXTargetDependency */,
 				5A86F000C00000000 /* PBXTargetDependency */,
+				5A86F001C00000000 /* PBXTargetDependency */,
+				5A86F003C00000000 /* PBXTargetDependency */,
 				5ABBED7F2FB55E1400A78382 /* PBXTargetDependency */,
 				5ADDB00000000000000000C1 /* PBXTargetDependency */,
 				5ABQR00000000000000000C1 /* PBXTargetDependency */,
@@ -1519,6 +1700,46 @@
 			productReference = 5A86F000100000000 /* SQLImport.tableplugin */;
 			productType = "com.apple.product-type.bundle";
 		};
+		5A86F001000000000 /* JSONImport */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 5A86F001800000000 /* Build configuration list for PBXNativeTarget "JSONImport" */;
+			buildPhases = (
+				5A86F001200000000 /* Sources */,
+				5A86F001300000000 /* Frameworks */,
+				5A86F001400000000 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				5A86F001500000000 /* Plugins/JSONImportPlugin */,
+			);
+			name = JSONImport;
+			productName = JSONImport;
+			productReference = 5A86F001100000000 /* JSONImport.tableplugin */;
+			productType = "com.apple.product-type.bundle";
+		};
+		5A86F003000000000 /* CSVImport */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 5A86F003800000000 /* Build configuration list for PBXNativeTarget "CSVImport" */;
+			buildPhases = (
+				5A86F003200000000 /* Sources */,
+				5A86F003300000000 /* Frameworks */,
+				5A86F003400000000 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				5A86F003500000000 /* Plugins/CSVImportPlugin */,
+			);
+			name = CSVImport;
+			productName = CSVImport;
+			productReference = 5A86F003100000000 /* CSVImport.tableplugin */;
+			productType = "com.apple.product-type.bundle";
+		};
 		5A87A000000000000 /* CassandraDriver */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 5A87A000800000000 /* Build configuration list for PBXNativeTarget "CassandraDriver" */;
@@ -1659,6 +1880,44 @@
 			productReference = 5AEA8B2A2F6808270040461A /* EtcdDriverPlugin.tableplugin */;
 			productType = "com.apple.product-type.bundle";
 		};
+		5AF00A142FB9000000000001 /* TableProUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 5AF00A192FB9000000000001 /* Build configuration list for PBXNativeTarget "TableProUITests" */;
+			buildPhases = (
+				5AF00A152FB9000000000001 /* Sources */,
+				5AF00A132FB9000000000001 /* Frameworks */,
+				5AF00A162FB9000000000001 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				5AF00A172FB9000000000001 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				5AF00A122FB9000000000001 /* TableProUITests */,
+			);
+			name = TableProUITests;
+			productName = TableProUITests;
+			productReference = 5AF00A102FB9000000000001 /* TableProUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+		FABFFD08BCD1EEE7219EAE75 /* SnowflakeDriverPlugin */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 2919EAF57187D4EFE7E47F98 /* Build configuration list for PBXNativeTarget "SnowflakeDriverPlugin" */;
+			buildPhases = (
+				329606C9C47DD1FA4F8F5350 /* Sources */,
+				C49F7C0CBE979B96ACFB9ABC /* Frameworks */,
+				0C6BE79D05A236139BEB2632 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = SnowflakeDriverPlugin;
+			productName = SnowflakeDriverPlugin;
+			productReference = 48B9743D4BDA458C9C0502A8 /* SnowflakeDriverPlugin.tableplugin */;
+			productType = "com.apple.product-type.bundle";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -1738,6 +1997,10 @@
 						CreatedOnToolsVersion = 26.3;
 						LastSwiftMigration = 2630;
 					};
+					5AF00A142FB9000000000001 = {
+						CreatedOnToolsVersion = 26.5;
+						TestTargetID = 5A1091C62EF17EDC0055EA7C;
+					};
 				};
 			};
 			buildConfigurationList = 5A1091C22EF17EDC0055EA7C /* Build configuration list for PBXProject "TablePro" */;
@@ -1784,7 +2047,10 @@
 				5A86D000000000000 /* XLSXExport */,
 				5A86E000000000000 /* MQLExport */,
 				5A86F000000000000 /* SQLImport */,
+				5A86F001000000000 /* JSONImport */,
+				5A86F003000000000 /* CSVImport */,
 				5ABCC5A62F43856700EAF3FC /* TableProTests */,
+				5AF00A142FB9000000000001 /* TableProUITests */,
 				5AEA8B292F6808270040461A /* EtcdDriverPlugin */,
 				5AE4F4732F6BC0640097AC5B /* CloudflareD1DriverPlugin */,
 				5ADDB00600000000000000B0 /* DynamoDBDriverPlugin */,
@@ -1792,11 +2058,19 @@
 				5A3BE6F72F97DA8100611C1F /* LibSQLDriverPlugin */,
 				5A32BBFF2F9D5F1300BAEB5F /* mcp-server */,
 				5ABBED712FB55E1400A78382 /* CSVInspectorPlugin */,
+				FABFFD08BCD1EEE7219EAE75 /* SnowflakeDriverPlugin */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		0C6BE79D05A236139BEB2632 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		5A1091C52EF17EDC0055EA7C /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -1930,6 +2204,20 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		5A86F001400000000 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5A86F003400000000 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		5A87A000400000000 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -1979,6 +2267,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		5AF00A162FB9000000000001 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
@@ -2006,6 +2301,30 @@
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		329606C9C47DD1FA4F8F5350 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				3DD7311CA07CFCA8A996058F /* SnowflakeAuth.swift in Sources */,
+				33E6FF2997594F41AA80EEC8 /* SnowflakeConnectionRegistry.swift in Sources */,
+				734B1C02ED034214A7A6088C /* SnowflakeStatementGenerator.swift in Sources */,
+				267A5C6ECC62401598389396 /* SnowflakeDDLGenerator.swift in Sources */,
+				4355C825A7554BBCB978E1E4 /* SnowflakeSchemaQueries.swift in Sources */,
+				79535441E5CF45039A08AF48 /* SnowflakePluginDriver+DDL.swift in Sources */,
+				4CA0E909166145AAB6B6CDD7 /* SnowflakeHTTPRetry.swift in Sources */,
+				5AC8FF6F28A24FFBBBFF008F /* SnowflakeBindingEncoder.swift in Sources */,
+				FF86DE29A70540C88D2624E5 /* SnowflakeHeartbeat.swift in Sources */,
+				8F6387B85F8B4AEE8210A6F1 /* SnowflakeIdTokenStore.swift in Sources */,
+				952FCF406F3DE2575166802B /* SnowflakeBrowserAuthServer.swift in Sources */,
+				B014CCF0DCB575301513A62D /* SnowflakeConnection.swift in Sources */,
+				69F80E23278BD01CA254E291 /* SnowflakeError.swift in Sources */,
+				703C8C18A7F43E262695F557 /* SnowflakePlugin.swift in Sources */,
+				690F1972044539AA3EC01FAD /* SnowflakePluginDriver.swift in Sources */,
+				8163B172478A511171523320 /* SnowflakeTypeMapper.swift in Sources */,
+				EE6F98F0581A8B96C6FE45E9 /* SnowflakeMFATokenStore.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		5A1091C32EF17EDC0055EA7C /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -2146,6 +2465,20 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		5A86F001200000000 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5A86F003200000000 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		5A87A000200000000 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -2193,7 +2526,6 @@
 				5ADDB00100000000000000A5 /* DynamoDBPluginDriver.swift in Sources */,
 				5ADDB00100000000000000A6 /* DynamoDBQueryBuilder.swift in Sources */,
 				5ADDB00100000000000000A7 /* DynamoDBStatementGenerator.swift in Sources */,
-				5ADDB00100000000000000F0 /* DynamoDBSsoCredentials.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -2214,6 +2546,13 @@
 				5AEA8B452F6808CA0040461A /* EtcdPluginDriver.swift in Sources */,
 				5AEA8B462F6808CA0040461A /* EtcdQueryBuilder.swift in Sources */,
 				5AEA8B472F6808CA0040461A /* EtcdHttpClient.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5AF00A152FB9000000000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -2305,6 +2644,16 @@
 			target = 5A86F000000000000 /* SQLImport */;
 			targetProxy = 5A86F000B00000000 /* PBXContainerItemProxy */;
 		};
+		5A86F001C00000000 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 5A86F001000000000 /* JSONImport */;
+			targetProxy = 5A86F001B00000000 /* PBXContainerItemProxy */;
+		};
+		5A86F003C00000000 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 5A86F003000000000 /* CSVImport */;
+			targetProxy = 5A86F003B00000000 /* PBXContainerItemProxy */;
+		};
 		5ABBED7F2FB55E1400A78382 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = 5ABBED712FB55E1400A78382 /* CSVInspectorPlugin */;
@@ -2325,9 +2674,63 @@
 			target = 5ADDB00600000000000000B0 /* DynamoDBDriverPlugin */;
 			targetProxy = 5ADDB00000000000000000C0 /* PBXContainerItemProxy */;
 		};
+		5AF00A172FB9000000000001 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 5A1091C62EF17EDC0055EA7C /* TablePro */;
+			targetProxy = 5AF00A112FB9000000000001 /* PBXContainerItemProxy */;
+		};
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
+		2804EF6483DBBF8D2A3510F9 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Plugins/SnowflakeDriverPlugin/Info.plist;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_NSPrincipalClass = "$(PRODUCT_MODULE_NAME).SnowflakePlugin";
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Bundles";
+				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.TablePro.SnowflakeDriverPlugin;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.9;
+				WRAPPER_EXTENSION = tableplugin;
+			};
+			name = Debug;
+		};
+		3058898FDC3763CFD887A1E1 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Plugins/SnowflakeDriverPlugin/Info.plist;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_NSPrincipalClass = "$(PRODUCT_MODULE_NAME).SnowflakePlugin";
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Bundles";
+				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.TablePro.SnowflakeDriverPlugin;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.9;
+				WRAPPER_EXTENSION = tableplugin;
+			};
+			name = Release;
+		};
 		5A1091D02EF17EDC0055EA7C /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -2464,7 +2867,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 92;
+				CURRENT_PROJECT_VERSION = 97;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = D7HJ5TFYCU;
 				ENABLE_APP_SANDBOX = NO;
@@ -2496,7 +2899,7 @@
 				);
 				LIBRARY_SEARCH_PATHS = "$(PROJECT_DIR)/Libs/dylibs";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.46.0;
+				MARKETING_VERSION = 0.50.0;
 				OTHER_LDFLAGS = (
 					"-Wl,-w",
 					"-force_load",
@@ -2541,7 +2944,7 @@
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = YES;
-				CURRENT_PROJECT_VERSION = 92;
+				CURRENT_PROJECT_VERSION = 97;
 				DEAD_CODE_STRIPPING = YES;
 				DEPLOYMENT_POSTPROCESSING = YES;
 				DEVELOPMENT_TEAM = D7HJ5TFYCU;
@@ -2574,7 +2977,7 @@
 				);
 				LIBRARY_SEARCH_PATHS = "$(PROJECT_DIR)/Libs/dylibs";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.46.0;
+				MARKETING_VERSION = 0.50.0;
 				OTHER_LDFLAGS = (
 					"-Wl,-w",
 					"-force_load",
@@ -2653,6 +3056,7 @@
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = "-lsqlite3";
 				PRODUCT_BUNDLE_IDENTIFIER = com.TablePro.LibSQLDriverPlugin;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
@@ -2679,6 +3083,7 @@
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = "-lsqlite3";
 				PRODUCT_BUNDLE_IDENTIFIER = com.TablePro.LibSQLDriverPlugin;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
@@ -2693,6 +3098,7 @@
 		5A860000600000000 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				BUILD_LIBRARY_FOR_DISTRIBUTION = YES;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEFINES_MODULE = YES;
@@ -2719,6 +3125,7 @@
 		5A860000700000000 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				BUILD_LIBRARY_FOR_DISTRIBUTION = YES;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEFINES_MODULE = YES;
@@ -3682,6 +4089,98 @@
 			};
 			name = Release;
 		};
+		5A86F001600000000 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Plugins/JSONImportPlugin/Info.plist;
+				INFOPLIST_KEY_NSPrincipalClass = "$(PRODUCT_MODULE_NAME).JSONImportPlugin";
+				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.TablePro.JSONImportPlugin;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = macosx;
+				SWIFT_VERSION = 5.9;
+				WRAPPER_EXTENSION = tableplugin;
+			};
+			name = Debug;
+		};
+		5A86F001700000000 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Plugins/JSONImportPlugin/Info.plist;
+				INFOPLIST_KEY_NSPrincipalClass = "$(PRODUCT_MODULE_NAME).JSONImportPlugin";
+				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.TablePro.JSONImportPlugin;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = macosx;
+				SWIFT_VERSION = 5.9;
+				WRAPPER_EXTENSION = tableplugin;
+			};
+			name = Release;
+		};
+		5A86F003600000000 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Plugins/CSVImportPlugin/Info.plist;
+				INFOPLIST_KEY_NSPrincipalClass = "$(PRODUCT_MODULE_NAME).CSVImportPlugin";
+				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.TablePro.CSVImportPlugin;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = macosx;
+				SWIFT_VERSION = 5.9;
+				WRAPPER_EXTENSION = tableplugin;
+			};
+			name = Debug;
+		};
+		5A86F003700000000 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Plugins/CSVImportPlugin/Info.plist;
+				INFOPLIST_KEY_NSPrincipalClass = "$(PRODUCT_MODULE_NAME).CSVImportPlugin";
+				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.TablePro.CSVImportPlugin;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = macosx;
+				SWIFT_VERSION = 5.9;
+				WRAPPER_EXTENSION = tableplugin;
+			};
+			name = Release;
+		};
 		5A87A000600000000 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -4059,9 +4558,60 @@
 			};
 			name = Release;
 		};
+		5AF00A182FB9000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.TablePro.TableProUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.9;
+				TEST_TARGET_NAME = TablePro;
+			};
+			name = Debug;
+		};
+		5AF00A1A2FB9000000000001 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.TablePro.TableProUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.9;
+				TEST_TARGET_NAME = TablePro;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		2919EAF57187D4EFE7E47F98 /* Build configuration list for PBXNativeTarget "SnowflakeDriverPlugin" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				3058898FDC3763CFD887A1E1 /* Release */,
+				2804EF6483DBBF8D2A3510F9 /* Debug */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		5A1091C22EF17EDC0055EA7C /* Build configuration list for PBXProject "TablePro" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
@@ -4251,6 +4801,24 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
+		5A86F001800000000 /* Build configuration list for PBXNativeTarget "JSONImport" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5A86F001600000000 /* Debug */,
+				5A86F001700000000 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		5A86F003800000000 /* Build configuration list for PBXNativeTarget "CSVImport" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5A86F003600000000 /* Debug */,
+				5A86F003700000000 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		5A87A000800000000 /* Build configuration list for PBXNativeTarget "CassandraDriver" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
@@ -4314,6 +4882,15 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
+		5AF00A192FB9000000000001 /* Build configuration list for PBXNativeTarget "TableProUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5AF00A182FB9000000000001 /* Debug */,
+				5AF00A1A2FB9000000000001 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
@@ -4353,7 +4930,7 @@
 			repositoryURL = "https://github.com/TableProApp/oracle-nio";
 			requirement = {
 				kind = revision;
-				revision = 254b72adfb6b527ac45895b42a38e60ba6c77a1f;
+				revision = 18a4872b16f6fb6919833f7897e75b0ea4d19428;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */

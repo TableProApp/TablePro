@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 
 enum QueryTier {
     case safe
@@ -30,6 +31,8 @@ enum QueryClassifier {
     private static let redisDangerousCommands: Set<String> = [
         "FLUSHDB", "FLUSHALL", "DEBUG", "SHUTDOWN",
     ]
+
+    private static let explainPrefixes: [String] = ["EXPLAIN", "ANALYZE"]
 
     private static let whereClauseRegex = try? NSRegularExpression(pattern: "\\sWHERE\\s", options: [])
 
@@ -127,7 +130,36 @@ enum QueryClassifier {
         return .safe
     }
 
-    static func isMultiStatement(_ sql: String) -> Bool {
-        SQLStatementScanner.allStatements(in: sql).count > 1
+    static func isMultiStatement(_ sql: String, databaseType: DatabaseType) -> Bool {
+        SQLStatementScanner.allStatements(
+            in: sql,
+            dialect: SqlDialect.from(databaseTypeId: databaseType.rawValue)
+        ).count > 1
+    }
+
+    static func isExplainStatement(_ sql: String) -> Bool {
+        let upper = strippingLeadingComments(sql).uppercased()
+        return explainPrefixes.contains { prefix in
+            guard upper.hasPrefix(prefix), let boundary = upper.dropFirst(prefix.count).first else {
+                return false
+            }
+            return boundary == "(" || boundary.isWhitespace
+        }
+    }
+
+    private static func strippingLeadingComments(_ sql: String) -> String {
+        var remaining = sql[...]
+        while true {
+            let trimmed = remaining.drop { $0.isWhitespace }
+            if trimmed.hasPrefix("--") {
+                guard let newline = trimmed.firstIndex(of: "\n") else { return "" }
+                remaining = trimmed[trimmed.index(after: newline)...]
+            } else if trimmed.hasPrefix("/*") {
+                guard let close = trimmed.range(of: "*/") else { return "" }
+                remaining = trimmed[close.upperBound...]
+            } else {
+                return String(trimmed)
+            }
+        }
     }
 }

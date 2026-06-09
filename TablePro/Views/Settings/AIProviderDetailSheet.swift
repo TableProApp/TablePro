@@ -5,6 +5,7 @@
 //  Drill-down detail sheet for configuring a single AI provider.
 //
 
+import AppKit
 import SwiftUI
 
 struct AIProviderDetailSheet: View {
@@ -26,6 +27,10 @@ struct AIProviderDetailSheet: View {
 
     @State private var copilotService = CopilotService.shared
     @State private var copilotErrorMessage: String?
+
+    @State private var chatGPTCodexService = ChatGPTCodexService.shared
+
+    @State private var cursorAgentService = CursorAgentService.shared
 
     @State private var showRemoveConfirmation = false
 
@@ -82,9 +87,19 @@ struct AIProviderDetailSheet: View {
             }
             .onAppear {
                 if draft.type == .copilot {
-                    Task { await ensureCopilotRunning() }
+                    Task {
+                        await ensureCopilotRunning()
+                        fetchModels()
+                    }
+                } else {
+                    if draft.type == .chatgptCodex {
+                        Task { await chatGPTCodexService.refreshAuthState() }
+                    }
+                    if draft.type == .cursor {
+                        Task { await cursorAgentService.refreshStatus() }
+                    }
+                    fetchModels()
                 }
-                fetchModels()
             }
             .onDisappear {
                 cancelTasks()
@@ -133,9 +148,20 @@ struct AIProviderDetailSheet: View {
     private var authSection: some View {
         switch draft.type.authStyle {
         case .apiKey, .optionalApiKey:
-            apiKeyAuthSection
+            if draft.type == .cursor {
+                cursorAuthSection
+            } else {
+                apiKeyAuthSection
+            }
         case .oauth:
-            copilotAuthSection
+            switch descriptor?.oauthFlowKind {
+            case .deviceCode:
+                copilotAuthSection
+            case .browserRedirect:
+                chatGPTCodexAuthSection
+            case .none:
+                EmptyView()
+            }
         case .none:
             EmptyView()
         }
@@ -174,6 +200,142 @@ struct AIProviderDetailSheet: View {
         } header: {
             Text("Authentication")
         }
+    }
+
+    @ViewBuilder
+    private var cursorAuthSection: some View {
+        cursorAPIKeySection
+        cursorSignInSection
+    }
+
+    private var cursorAPIKeySection: some View {
+        Section {
+            SecureField(String(localized: "API Key"), text: $apiKey)
+                .onChange(of: apiKey) { testResult = nil }
+            HStack {
+                Spacer()
+                Button {
+                    testProvider()
+                } label: {
+                    HStack(spacing: 6) {
+                        if isTesting { ProgressView().controlSize(.small) }
+                        Text("Test Connection")
+                    }
+                }
+                .disabled(isTesting || apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+            if case .success = testResult {
+                Label(String(localized: "Connection successful"), systemImage: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+                    .font(.caption)
+            } else if case .failure(let message) = testResult {
+                Label(message, systemImage: "xmark.circle.fill")
+                    .foregroundStyle(.red)
+                    .font(.caption)
+                    .lineLimit(3)
+            }
+        } header: {
+            Text("API Key")
+        } footer: {
+            Text("Optional. A key from the Cursor dashboard is used instead of signing in.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder
+    private var cursorSignInSection: some View {
+        Section {
+            cursorSignInContent
+            if let message = cursorAgentService.errorMessage {
+                Label(message, systemImage: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
+                    .font(.caption)
+                    .lineLimit(3)
+            }
+        } header: {
+            Text("Sign in with Cursor")
+        } footer: {
+            Text("Use your Cursor subscription with no API key. Requires the Cursor CLI.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder
+    private var cursorSignInContent: some View {
+        switch cursorAgentService.authState {
+        case .notInstalled:
+            LabeledContent {
+                Button {
+                    copyToPasteboard(CursorAgentCLI.installCommand)
+                } label: {
+                    Image(systemName: "doc.on.doc")
+                }
+                .buttonStyle(.borderless)
+                .help(String(localized: "Copy install command"))
+            } label: {
+                Text(CursorAgentCLI.installCommand)
+                    .font(.system(.body, design: .monospaced))
+                    .textSelection(.enabled)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            HStack {
+                Text("The Cursor CLI is not installed.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button(String(localized: "Recheck")) {
+                    Task { await cursorAgentService.refreshStatus() }
+                }
+                .controlSize(.small)
+            }
+
+        case .signedOut:
+            HStack {
+                Text("Not signed in")
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button(String(localized: "Sign in with Cursor")) {
+                    cursorAgentService.signIn()
+                }
+                .buttonStyle(.borderedProminent)
+            }
+
+        case .signingIn:
+            HStack(spacing: 8) {
+                ProgressView().controlSize(.small)
+                Text("Opening your browser to sign in…")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button(String(localized: "Cancel")) {
+                    cursorAgentService.cancelSignIn()
+                }
+                .controlSize(.small)
+            }
+
+        case .signedIn(let account):
+            LabeledContent {
+                Button(String(localized: "Sign Out")) {
+                    Task { await cursorAgentService.signOut() }
+                }
+            } label: {
+                Label(
+                    account.isEmpty
+                        ? String(localized: "Signed in")
+                        : String(format: String(localized: "Signed in as %@"), account),
+                    systemImage: "checkmark.circle.fill"
+                )
+                .foregroundStyle(.green)
+            }
+        }
+    }
+
+    private func copyToPasteboard(_ string: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(string, forType: .string)
     }
 
     private var copilotAuthSection: some View {
@@ -244,6 +406,78 @@ struct AIProviderDetailSheet: View {
         }
     }
 
+    private var chatGPTCodexAuthSection: some View {
+        Section {
+            switch chatGPTCodexService.authState {
+            case .signedOut:
+                chatGPTCodexSignInRows
+
+            case .signingIn:
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.small)
+                    Text("Opening your browser to sign in…")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+            case .signedIn(let email, let planType):
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        Label(chatGPTCodexSignedInLabel(email: email), systemImage: "checkmark.circle.fill")
+                            .foregroundStyle(.green)
+                        Spacer()
+                        Button(String(localized: "Sign Out")) {
+                            Task { await chatGPTCodexService.signOut() }
+                        }
+                    }
+                    if let planType, !planType.isEmpty {
+                        Text(String(format: String(localized: "Plan: %@"), planType))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+
+            if let message = chatGPTCodexService.errorMessage {
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .lineLimit(3)
+            }
+        } header: {
+            Text("Account")
+        } footer: {
+            Text("Access uses your ChatGPT subscription (Plus, Pro, Business, or Enterprise) and follows OpenAI's terms. This is an unofficial interface that may change.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var chatGPTCodexSignInRows: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Sign in to use your ChatGPT subscription")
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button(String(localized: "Sign in with ChatGPT")) {
+                    Task { await chatGPTCodexService.signIn() }
+                }
+                .buttonStyle(.borderedProminent)
+            }
+            Button(String(localized: "Import from Codex CLI")) {
+                Task { await chatGPTCodexService.importFromCodexCLI() }
+            }
+            .buttonStyle(.borderless)
+            .controlSize(.small)
+        }
+    }
+
+    private func chatGPTCodexSignedInLabel(email: String) -> String {
+        email.isEmpty
+            ? String(localized: "Signed in")
+            : String(format: String(localized: "Signed in as %@"), email)
+    }
+
     @ViewBuilder
     private var statusRow: some View {
         switch copilotService.status {
@@ -274,10 +508,10 @@ struct AIProviderDetailSheet: View {
     private var connectionSection: some View {
         if shouldShowConnectionSection {
             Section {
-                if draft.type == .custom {
+                if allowsNameField {
                     TextField(String(localized: "Name"), text: $draft.name)
                 }
-                if draft.type != .copilot {
+                if allowsEndpointField {
                     TextField(String(localized: "Endpoint"), text: $draft.endpoint)
                         .onChange(of: draft.endpoint) {
                             scheduleFetchModels()
@@ -290,8 +524,16 @@ struct AIProviderDetailSheet: View {
         }
     }
 
+    private var allowsNameField: Bool {
+        descriptor?.allowsNameConfiguration == true
+    }
+
+    private var allowsEndpointField: Bool {
+        descriptor?.allowsEndpointConfiguration == true
+    }
+
     private var shouldShowConnectionSection: Bool {
-        draft.type != .copilot
+        allowsNameField || allowsEndpointField
     }
 
     // MARK: - Model
@@ -315,6 +557,7 @@ struct AIProviderDetailSheet: View {
 
     private var isCustomModel: Bool {
         !curatedModels.contains(where: { $0.id == draft.model })
+            && !fetchedModels.contains(draft.model)
     }
 
     private var modelSection: some View {
@@ -436,21 +679,34 @@ struct AIProviderDetailSheet: View {
 
     // MARK: - Advanced
 
+    @ViewBuilder
     private var advancedSection: some View {
-        Section {
-            HStack {
-                Text("Max output tokens")
-                Spacer()
-                TextField("", text: maxOutputTokensBinding)
-                    .frame(width: 100)
-                    .multilineTextAlignment(.trailing)
+        if showsMaxOutputTokens || showsTelemetryToggle {
+            Section {
+                if showsMaxOutputTokens {
+                    HStack {
+                        Text("Max output tokens")
+                        Spacer()
+                        TextField("", text: maxOutputTokensBinding)
+                            .frame(width: 100)
+                            .multilineTextAlignment(.trailing)
+                    }
+                }
+                if showsTelemetryToggle {
+                    Toggle("Send telemetry to GitHub", isOn: $draft.telemetryEnabled)
+                }
+            } header: {
+                Text("Advanced")
             }
-            if draft.type == .copilot {
-                Toggle("Send telemetry to GitHub", isOn: $draft.telemetryEnabled)
-            }
-        } header: {
-            Text("Advanced")
         }
+    }
+
+    private var showsMaxOutputTokens: Bool {
+        descriptor?.allowsMaxOutputTokens == true
+    }
+
+    private var showsTelemetryToggle: Bool {
+        descriptor?.showsTelemetryToggle == true
     }
 
     private var maxOutputTokensBinding: Binding<String> {
@@ -526,6 +782,14 @@ struct AIProviderDetailSheet: View {
     }
 
     private func fetchModels() {
+        guard descriptor?.fetchesModelList == true else {
+            fetchedModels = []
+            modelFetchError = nil
+            if draft.model.isEmpty, let first = curatedModels.first {
+                draft.model = first.id
+            }
+            return
+        }
         if draft.type.authStyle == .apiKey,
            apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             fetchedModels = []

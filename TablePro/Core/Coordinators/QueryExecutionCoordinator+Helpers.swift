@@ -19,17 +19,6 @@ extension QueryExecutionCoordinator {
         QueryExecutor.parseSchemaMetadata(schema)
     }
 
-    func awaitSchemaResult(
-        parallelTask: Task<SchemaResult, Error>?,
-        tableName: String
-    ) async -> SchemaResult? {
-        await QueryExecutor.awaitSchemaResult(
-            connectionId: parent.connectionId,
-            parallelTask: parallelTask,
-            tableName: tableName
-        )
-    }
-
     func isMetadataCached(tabId: UUID, tableName: String) -> Bool {
         guard let idx = parent.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else {
             return false
@@ -71,6 +60,19 @@ extension QueryExecutionCoordinator {
         queryParameterValues: [QueryParameter]? = nil
     ) {
         guard let idx = parent.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
+
+        if let planText = ExplainResultRouter.planText(sql: sql, columns: columns, rows: rows) {
+            applyExplainResult(
+                tabId: tabId,
+                planText: planText,
+                executionTime: executionTime,
+                rowCount: rows.count,
+                sql: sql,
+                connection: conn,
+                queryParameterValues: queryParameterValues
+            )
+            return
+        }
 
         let existingTabId = parent.tabManager.tabs[idx].id
         var columnEnumValues: [String: [String]] = [:]
@@ -169,15 +171,6 @@ extension QueryExecutionCoordinator {
             parent.tabManager.mutate(at: idx) { $0.tableContext.primaryKeyColumns = resolvedPKs }
         }
 
-        applyDefaultSortIfPending(
-            tabId: tabId,
-            tabIndex: idx,
-            tableName: tableName,
-            columns: columns,
-            resolvedPKs: resolvedPKs,
-            connectionType: conn.type
-        )
-
         if parent.tabManager.selectedTabId == tabId {
             parent.changeManager.configureForTable(
                 tableName: tableName ?? "",
@@ -203,46 +196,42 @@ extension QueryExecutionCoordinator {
         }
     }
 
-    private func applyDefaultSortIfPending(
+    private func applyExplainResult(
         tabId: UUID,
-        tabIndex: Int,
-        tableName: String?,
-        columns: [String],
-        resolvedPKs: [String],
-        connectionType: DatabaseType
+        planText: String,
+        executionTime: TimeInterval,
+        rowCount: Int,
+        sql: String,
+        connection conn: DatabaseConnection,
+        queryParameterValues: [QueryParameter]?
     ) {
-        guard tabIndex < parent.tabManager.tabs.count else { return }
-        let tab = parent.tabManager.tabs[tabIndex]
-        guard !tab.execution.didEvaluateDefaultSort,
-              tab.tabType == .table,
-              !tab.sortState.isSorting,
-              !columns.isEmpty,
-              let tableName, !tableName.isEmpty,
-              parent.tabManager.selectedTabId == tabId else {
-            return
-        }
+        let plan = QueryPlanParserFactory.parser(for: conn.type)?.parse(rawText: planText)
 
-        let behavior = AppSettingsManager.shared.dataGrid.defaultSortBehavior
-        let hint = PluginManager.shared.defaultSortHint(for: connectionType, table: tableName)
-        let resolved = DefaultSortResolver.resolveSortState(
-            behavior: behavior,
-            pluginHint: hint,
-            primaryKeyColumns: resolvedPKs,
-            allColumns: columns
+        parent.tabManager.mutate(tabId: tabId) { tab in
+            tab.execution.executionTime = executionTime
+            tab.execution.rowsAffected = 0
+            tab.execution.statusMessage = nil
+            tab.execution.isExecuting = false
+            tab.execution.lastExecutedAt = Date()
+            tab.display.explainText = planText
+            tab.display.explainPlan = plan
+            tab.display.explainExecutionTime = executionTime
+            if tab.display.isResultsCollapsed {
+                tab.display.isResultsCollapsed = false
+            }
+        }
+        parent.toolbarState.isResultsCollapsed = false
+
+        QueryHistoryManager.shared.recordQuery(
+            query: sql,
+            connectionId: conn.id,
+            databaseName: parent.activeDatabaseName,
+            executionTime: executionTime,
+            rowCount: rowCount,
+            wasSuccessful: true,
+            errorMessage: nil,
+            parameterValues: queryParameterValues
         )
-
-        guard resolved.isSorting else {
-            parent.tabManager.mutate(at: tabIndex) { $0.execution.didEvaluateDefaultSort = true }
-            return
-        }
-
-        parent.tabManager.mutate(at: tabIndex) { tab in
-            tab.execution.didEvaluateDefaultSort = true
-            tab.sortState = resolved
-            tab.pagination.reset()
-        }
-        parent.filterCoordinator.rebuildTableQuery(at: tabIndex)
-        parent.runQuery()
     }
 
     func launchPhase2Work(
@@ -250,37 +239,34 @@ extension QueryExecutionCoordinator {
         tabId: UUID,
         capturedGeneration: Int,
         connectionType: DatabaseType,
-        schemaResult: SchemaResult?
+        schemaTask: Task<SchemaResult, Error>?
     ) {
-        resolveRowCount(
-            tableName: tableName,
-            tabId: tabId,
-            capturedGeneration: capturedGeneration,
-            connectionType: connectionType
-        )
-
         let isNonSQL = PluginManager.shared.editorLanguage(for: connectionType) != .sql
-        guard !isNonSQL else { return }
-        guard let enumDriver = DatabaseManager.shared.driver(for: parent.connectionId) else { return }
-        Task(priority: .background) { [weak self, parent] in
+        Task(priority: .utility) { [weak self, parent] in
             guard let self else { return }
             guard !parent.isTearingDown else { return }
 
-            let columnInfo: [ColumnInfo]
-            if let schema = schemaResult {
-                columnInfo = schema.columnInfo
-            } else {
-                do {
-                    columnInfo = try await enumDriver.fetchColumns(table: tableName)
-                } catch {
-                    columnInfo = []
+            let schema = try? await schemaTask?.value
+
+            await MainActor.run { [weak self] in
+                guard let self else { return }
+                guard capturedGeneration == parent.queryGeneration else { return }
+                if let schema {
+                    applyPhase2Metadata(parsed: QueryExecutor.parseSchemaMetadata(schema), tabId: tabId)
                 }
+                resolveRowCount(
+                    tableName: tableName,
+                    tabId: tabId,
+                    capturedGeneration: capturedGeneration,
+                    connectionType: connectionType
+                )
             }
 
+            guard !isNonSQL, let schema else { return }
+
             let columnEnumValues = await parent.fetchEnumValues(
-                columnInfo: columnInfo,
+                columnInfo: schema.columnInfo,
                 tableName: tableName,
-                driver: enumDriver,
                 connectionType: connectionType
             )
 
@@ -314,6 +300,40 @@ extension QueryExecutionCoordinator {
         }
     }
 
+    private func applyPhase2Metadata(parsed: ParsedSchemaMetadata, tabId: UUID) {
+        guard parent.tabManager.tabs.contains(where: { $0.id == tabId }) else { return }
+
+        parent.mutateActiveTableRows(for: tabId) { rows in
+            rows.updateDisplayMetadata(
+                columnDefaults: parsed.columnDefaults,
+                columnForeignKeys: parsed.columnForeignKeys,
+                columnNullable: parsed.columnNullable
+            )
+        }
+
+        parent.tabManager.mutate(tabId: tabId) { tab in
+            if !parsed.primaryKeyColumns.isEmpty {
+                tab.tableContext.primaryKeyColumns = parsed.primaryKeyColumns
+            }
+            if let approxCount = parsed.approximateRowCount, approxCount > 0,
+               !tab.filterState.hasAppliedFilters {
+                tab.pagination.totalRowCount = approxCount
+                tab.pagination.isApproximateRowCount = true
+            }
+            tab.metadataVersion += 1
+        }
+
+        if parent.tabManager.selectedTabId == tabId, !parsed.primaryKeyColumns.isEmpty {
+            parent.changeManager.setPrimaryKeyColumns(parsed.primaryKeyColumns)
+        }
+
+        if let activeIdx = parent.tabManager.selectedTabIndex,
+           activeIdx < parent.tabManager.tabs.count,
+           parent.tabManager.tabs[activeIdx].id == tabId {
+            parent.dataTabDelegate?.tableViewCoordinator?.refreshForeignKeyColumns()
+        }
+    }
+
     func launchPhase2Count(
         tableName: String,
         tabId: UUID,
@@ -336,10 +356,9 @@ extension QueryExecutionCoordinator {
     ) {
         let isNonSQL = PluginManager.shared.editorLanguage(for: connectionType) != .sql
 
-        Task(priority: .background) { [weak self, parent] in
+        Task(priority: .utility) { [weak self, parent] in
             guard let self else { return }
             guard !parent.isTearingDown else { return }
-            guard let driver = DatabaseManager.shared.driver(for: parent.connectionId) else { return }
 
             let prepared: (plan: RowCountPlan, sql: String?) = await MainActor.run {
                 guard let tab = parent.tabManager.tabs.first(where: { $0.id == tabId }) else { return (.skip, nil) }
@@ -366,24 +385,33 @@ extension QueryExecutionCoordinator {
             case .clear:
                 outcome = .clear
             case .approximate:
-                guard let count = try? await driver.fetchApproximateRowCount(table: tableName) else { return }
+                guard let count = try? await DatabaseManager.shared.withMetadataDriver(connectionId: parent.connectionId, { driver in
+                    try await driver.fetchApproximateRowCount(table: tableName)
+                }) else { return }
                 outcome = .count(count, isApproximate: true)
             case let .filteredNonSQL(filters, logicMode):
-                if let count = try? await driver.fetchFilteredRowCount(table: tableName, filters: filters, logicMode: logicMode) {
+                if let count = try? await DatabaseManager.shared.withMetadataDriver(connectionId: parent.connectionId, workload: .bulk, { driver in
+                    try await driver.fetchFilteredRowCount(table: tableName, filters: filters, logicMode: logicMode)
+                }) {
                     outcome = .count(count, isApproximate: false)
                 } else {
                     outcome = .clear
                 }
             case .exactCount:
                 guard let sql = prepared.sql else { return }
+                let count: Int?
                 do {
-                    let result = try await driver.execute(query: sql)
-                    guard let countStr = result.rows.first?.first?.asText, let count = Int(countStr) else { return }
-                    outcome = .count(count, isApproximate: false)
+                    count = try await DatabaseManager.shared.withMetadataDriver(connectionId: parent.connectionId, workload: .bulk) { driver in
+                        let result = try await driver.execute(query: sql)
+                        guard let countStr = result.rows.first?.first?.asText else { return Int?.none }
+                        return Int(countStr)
+                    }
                 } catch {
                     helpersLogger.warning("COUNT query failed for \(tableName): \(error.localizedDescription)")
                     return
                 }
+                guard let count else { return }
+                outcome = .count(count, isApproximate: false)
             }
 
             await MainActor.run {

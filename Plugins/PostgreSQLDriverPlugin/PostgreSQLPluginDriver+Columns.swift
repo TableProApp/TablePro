@@ -8,8 +8,8 @@ import TableProPluginKit
 
 extension PostgreSQLPluginDriver {
     func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] {
-        let safeSchema = escapeLiteralForColumns(currentSchema ?? "public")
-        let safeTable = escapeLiteralForColumns(table)
+        let safeSchema = escapeStringLiteral(currentSchema ?? "public")
+        let safeTable = escapeStringLiteral(table)
         let enumMap = try await fetchEnumLabelMap(schema: safeSchema)
         let caps = versionedCapabilities
         let identityProjection = caps.hasIdentityColumns ? "a.attidentity" : "NULL::text"
@@ -60,7 +60,7 @@ extension PostgreSQLPluginDriver {
     }
 
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
-        let safeSchema = escapeLiteralForColumns(currentSchema ?? "public")
+        let safeSchema = escapeStringLiteral(currentSchema ?? "public")
         let enumMap = try await fetchEnumLabelMap(schema: safeSchema)
         let caps = versionedCapabilities
         let identityProjection = caps.hasIdentityColumns ? "a.attidentity" : "NULL::text"
@@ -132,10 +132,6 @@ extension PostgreSQLPluginDriver {
             map[typeName, default: []].append(label)
         }
         return map
-    }
-
-    fileprivate func escapeLiteralForColumns(_ str: String) -> String {
-        str.replacingOccurrences(of: "'", with: "''")
     }
 
     fileprivate func mapPgColumnRow(

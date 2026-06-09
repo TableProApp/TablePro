@@ -14,9 +14,6 @@ struct ColumnVisibilityPopover: View {
 
     @State private var searchText = ""
 
-    private var hasHiddenColumns: Bool { !hiddenColumns.isEmpty }
-    private var hiddenCount: Int { hiddenColumns.count }
-
     private var filteredColumns: [String] {
         if searchText.isEmpty {
             return columns
@@ -41,11 +38,11 @@ struct ColumnVisibilityPopover: View {
     }
 
     private var headerTitle: String {
-        let visible = columns.count - hiddenCount
-        if hasHiddenColumns {
-            return "\(visible) of \(columns.count)"
+        guard !hiddenColumns.isEmpty else {
+            return String(localized: "Columns")
         }
-        return String(localized: "Columns")
+        let visible = columns.count - hiddenColumns.count
+        return String(format: String(localized: "%d of %d"), visible, columns.count)
     }
 
     private var header: some View {
@@ -59,12 +56,12 @@ struct ColumnVisibilityPopover: View {
             Button("Show All") { onShowAll() }
                 .buttonStyle(.link)
                 .controlSize(.small)
-                .disabled(!hasHiddenColumns)
+                .disabled(hiddenColumns.isEmpty)
 
             Button("Hide All") { onHideAll(columns) }
                 .buttonStyle(.link)
                 .controlSize(.small)
-                .disabled(hiddenCount == columns.count)
+                .disabled(hiddenColumns.count == columns.count)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)

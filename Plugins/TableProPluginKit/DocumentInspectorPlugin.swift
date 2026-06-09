@@ -1,9 +1,12 @@
-import AppKit
 import Foundation
+
+#if canImport(AppKit)
+import AppKit
 
 public enum InspectorWindowFactory {
     @MainActor public static var make: ((NSDocument) -> NSWindowController?)?
 }
+#endif
 
 public protocol DocumentInspectorPlugin: TableProPlugin {
     static var inspectorId: String { get }
@@ -21,6 +24,7 @@ public extension DocumentInspectorPlugin {
     static var iconName: String { "doc.text" }
 }
 
+@frozen
 public enum InspectorColumnType: String, Sendable, Equatable, CaseIterable {
     case text
     case integer

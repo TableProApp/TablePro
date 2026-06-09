@@ -112,6 +112,7 @@ struct TableOperationDialog: View {
                     }
                     .toggleStyle(.checkbox)
                     .disabled(ignoreFKDisabled)
+                    .accessibilityHint(String(localized: "Skips foreign key constraint checks for this operation"))
 
                     if let description = ignoreFKDescription {
                         Text(description)
@@ -130,6 +131,7 @@ struct TableOperationDialog: View {
                     }
                     .toggleStyle(.checkbox)
                     .disabled(cascadeDisabled)
+                    .accessibilityHint(cascadeDescription)
 
                     Text(cascadeDescription)
                         .font(.subheadline)

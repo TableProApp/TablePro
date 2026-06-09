@@ -1,0 +1,1 @@
+../../Plugins/PostgreSQLDriverPlugin/PostGISSpatialRewrite.swift

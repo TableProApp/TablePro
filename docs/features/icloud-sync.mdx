@@ -1,11 +1,11 @@
 ---
 title: iCloud Sync
-description: Sync connections, settings, and SSH profiles across Macs via iCloud (Pro feature)
+description: Sync connections, table favorites, settings, and SSH profiles across Macs via iCloud (Pro feature)
 ---
 
 # iCloud Sync
 
-TablePro syncs your connections, groups, settings, and SSH profiles across all your Macs via CloudKit. iCloud Sync is a Pro feature that requires an active license.
+TablePro syncs your connections, groups, table favorites, settings, and SSH profiles across all your Macs via CloudKit. iCloud Sync is a Pro feature that requires an active license.
 
 ## What syncs (and what doesn't)
 
@@ -14,6 +14,7 @@ TablePro syncs your connections, groups, settings, and SSH profiles across all y
 | **Connections** | Yes | Host, port, username, database type, SSH/SSL config |
 | **Passwords** | Optional | Opt-in via iCloud Keychain (end-to-end encrypted) |
 | **Groups & Tags** | Yes | Full connection organization, including nested group hierarchy (parent-child relationships and sort order) |
+| **Table Favorites** | Yes | Favorited table names shown in the Favorites tab and pinned in table lists |
 | **App Settings** | Yes | All settings categories (General, Appearance, Editor, Keyboard, AI, Terminal) |
 | **Linked SQL Folders** | No | Folder paths are per-Mac. Link the same Git repo on each Mac after cloning. Cached file metadata (`linked_sql_index.db`) is also local. |
 
@@ -39,7 +40,7 @@ Open **Settings** (`Cmd+,`) > **Account**, toggle iCloud Sync on, choose which c
   />
 </Frame>
 
-Each data type has its own toggle: Connections, Groups & Tags, SSH Profiles, and App Settings.
+Connections, Groups & Tags, SSH Profiles, and App Settings each have their own toggle. Table favorites sync when iCloud Sync is enabled.
 
 ## Excluding individual connections
 
@@ -59,4 +60,3 @@ iCloud Sync requires a Pro license. When a license expires, sync stops but local
 ## Troubleshooting
 
 If no records sync, confirm iCloud is signed in and iCloud Drive is enabled, then click **Sync Now**. For "iCloud account unavailable," sign in via **System Settings** > **Apple Account**.
-

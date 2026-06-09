@@ -139,7 +139,7 @@ WHERE date_column > |  -- NOW(), CURRENT_DATE, etc.
 
 ### Favorite Keywords
 
-Favorites you've assigned a keyword to (DB-stored or linked-file `@keyword` frontmatter) appear in the popup as a top-priority match. Type the keyword, accept the suggestion, and the favorite's full SQL replaces the keyword inline. See [SQL Favorites](/features/sql-favorites) for how to assign keywords.
+Favorites you've assigned a keyword to (DB-stored or linked-file `@keyword` frontmatter) appear in the popup as a top-priority match. Type the keyword, accept the suggestion, and the favorite's full SQL replaces the keyword inline. See [Favorites](/features/favorites) for how to assign keywords.
 
 ### Schema Names
 
@@ -151,6 +151,17 @@ SELECT * FROM public.|  -- Tables in public schema
 ```
 
 Schema-qualified names like `public.users` resolve correctly in FROM, JOIN, UPDATE, INSERT INTO, and CREATE INDEX.
+
+For databases organized as database → schema → table (Snowflake, BigQuery), every segment completes — including tables of schemas you haven't opened in the sidebar, which are fetched on demand:
+
+```sql
+SELECT * FROM ANALYTICS_|                      -- databases
+SELECT * FROM ANALYTICS_PROD.|                 -- schemas
+SELECT * FROM ANALYTICS_PROD.DBT_MARTS.|       -- tables in that schema
+SELECT * FROM ANALYTICS_PROD.DBT_MARTS.ORDERS o WHERE o.|  -- columns
+```
+
+Functions from the connection's SQL dialect (e.g. `CONVERT_TIMEZONE` on Snowflake, `SAFE_CAST` on BigQuery) appear in the popup alongside the common SQL functions.
 
 ## Context-Aware Suggestions
 

@@ -9,6 +9,8 @@ import Foundation
 
 enum AIProviderType: String, Codable, CaseIterable, Identifiable, Sendable {
     case copilot
+    case chatgptCodex
+    case cursor
     case claude
     case openAI
     case openRouter
@@ -21,27 +23,31 @@ enum AIProviderType: String, Codable, CaseIterable, Identifiable, Sendable {
 
     var displayName: String {
         switch self {
-        case .copilot:    return "GitHub Copilot"
-        case .claude:     return "Claude"
-        case .openAI:     return "OpenAI"
-        case .openRouter: return "OpenRouter"
-        case .gemini:     return "Gemini"
-        case .ollama:     return "Ollama"
-        case .openCode:   return "OpenCode Zen"
-        case .custom:     return String(localized: "Custom")
+        case .copilot:      return "GitHub Copilot"
+        case .chatgptCodex: return "ChatGPT"
+        case .cursor:       return "Cursor"
+        case .claude:       return "Claude"
+        case .openAI:       return "OpenAI"
+        case .openRouter:   return "OpenRouter"
+        case .gemini:       return "Gemini"
+        case .ollama:       return "Ollama"
+        case .openCode:     return "OpenCode Zen"
+        case .custom:       return String(localized: "Custom")
         }
     }
 
     var defaultEndpoint: String {
         switch self {
-        case .copilot:    return ""
-        case .claude:     return "https://api.anthropic.com"
-        case .openAI:     return "https://api.openai.com"
-        case .openRouter: return "https://openrouter.ai/api"
-        case .gemini:     return "https://generativelanguage.googleapis.com"
-        case .ollama:     return "http://localhost:11434"
-        case .openCode:   return "https://opencode.ai/zen"
-        case .custom:     return ""
+        case .copilot:      return ""
+        case .chatgptCodex: return ""
+        case .cursor:       return ""
+        case .claude:       return "https://api.anthropic.com"
+        case .openAI:       return "https://api.openai.com"
+        case .openRouter:   return "https://openrouter.ai/api"
+        case .gemini:       return "https://generativelanguage.googleapis.com"
+        case .ollama:       return "http://localhost:11434"
+        case .openCode:     return "https://opencode.ai/zen"
+        case .custom:       return ""
         }
     }
 
@@ -53,23 +59,27 @@ enum AIProviderType: String, Codable, CaseIterable, Identifiable, Sendable {
 
     var authStyle: AuthStyle {
         switch self {
-        case .copilot:  return .oauth
-        case .ollama:   return .none
-        case .openCode: return .optionalApiKey
-        default:        return .apiKey
+        case .copilot:      return .oauth
+        case .chatgptCodex: return .oauth
+        case .cursor:       return .optionalApiKey
+        case .ollama:       return .none
+        case .openCode:     return .optionalApiKey
+        default:            return .apiKey
         }
     }
 
     var symbolName: String {
         switch self {
-        case .copilot:    return "chevron.left.forwardslash.chevron.right"
-        case .claude:     return "brain"
-        case .openAI:     return "cpu"
-        case .openRouter: return "globe"
-        case .gemini:     return "wand.and.stars"
-        case .ollama:     return "desktopcomputer"
-        case .openCode:   return "sparkles"
-        case .custom:     return "server.rack"
+        case .copilot:      return "chevron.left.forwardslash.chevron.right"
+        case .chatgptCodex: return "bubble.left.and.bubble.right"
+        case .cursor:       return "cursorarrow"
+        case .claude:       return "brain"
+        case .openAI:       return "cpu"
+        case .openRouter:   return "globe"
+        case .gemini:       return "wand.and.stars"
+        case .ollama:       return "desktopcomputer"
+        case .openCode:     return "sparkles"
+        case .custom:       return "server.rack"
         }
     }
 }

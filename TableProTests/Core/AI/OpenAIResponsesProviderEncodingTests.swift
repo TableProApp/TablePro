@@ -59,6 +59,7 @@ struct OpenAIResponsesProviderEncodingTests {
         #expect(items[0]["type"] as? String == "reasoning", "Reasoning item must come before its function_call")
         #expect(items[0]["id"] as? String == "rs_real_abc", "Reasoning item id must round-trip from server")
         #expect(items[0]["encrypted_content"] as? String == "BLOB=")
+        #expect((items[0]["summary"] as? [Any])?.isEmpty == true, "Reasoning item must carry a summary array for the Codex backend")
         #expect(items[1]["type"] as? String == "function_call")
         #expect(items[1]["call_id"] as? String == "call_1")
         #expect(items[1]["name"] as? String == "ping")

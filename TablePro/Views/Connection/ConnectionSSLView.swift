@@ -15,6 +15,7 @@ struct ConnectionSSLView: View {
     @Binding var sslCaCertPath: String
     @Binding var sslClientCertPath: String
     @Binding var sslClientKeyPath: String
+    @Binding var sslClientKeyPassphrase: String
 
     private var supportsPerConnectionCertPaths: Bool { databaseType != .mssql }
 
@@ -101,6 +102,14 @@ struct ConnectionSSLView: View {
                                     browseForCertificate(binding: $sslClientKeyPath)
                                 }
                                 .controlSize(.small)
+                            }
+                        }
+                        if databaseType.supportsClientKeyPassphrase,
+                           !sslClientKeyPath.trimmingCharacters(in: .whitespaces).isEmpty {
+                            LabeledContent(String(localized: "Key Passphrase")) {
+                                SecureField(
+                                    "", text: $sslClientKeyPassphrase,
+                                    prompt: Text(String(localized: "Required only for an encrypted key")))
                             }
                         }
                     } header: {

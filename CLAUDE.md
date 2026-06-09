@@ -12,7 +12,7 @@ These govern every decision — code, architecture, tooling, and process:
 4. **Clean code** — self-explanatory naming, early returns over nested conditionals, small focused functions. No comments in the codebase — code must be self-documenting through clear naming and structure.
 5. **Root cause fixes** — don't patch symptoms. Diagnose the underlying issue, add logging to debug if needed, then fix the actual cause.
 6. **No hacky solutions** — no backward-compatibility shims, no temporary workarounds left in place, no duct tape. If the right fix is harder, do the right fix.
-7. **Testability** — if a feature is testable, write tests. When tests fail, fix the source code — never adjust tests to match incorrect output.
+7. **Testability** — every testable code change needs unit/function tests, and UI/user-flow changes should add UI automation where they run deterministically. When tests fail, fix the source code — never adjust tests to match incorrect output.
 8. **Maintainability** — follow existing patterns but offer refactors when they improve quality. Extract into extensions when approaching size limits. Group by domain logic.
 9. **Scalability** — design for the plugin system's open-ended nature. `DatabaseType` is a struct, not an enum. All switches need `default:`.
 
@@ -52,6 +52,7 @@ swiftformat .                     # Format code
 xcodebuild -project TablePro.xcodeproj -scheme TablePro test -skipPackagePluginValidation
 xcodebuild -project TablePro.xcodeproj -scheme TablePro test -skipPackagePluginValidation -only-testing:TableProTests/TestClassName
 xcodebuild -project TablePro.xcodeproj -scheme TablePro test -skipPackagePluginValidation -only-testing:TableProTests/TestClassName/testMethodName
+xcodebuild -project TablePro.xcodeproj -scheme TablePro test -skipPackagePluginValidation -only-testing:TableProUITests
 
 # DMG
 scripts/create-dmg.sh
@@ -66,14 +67,17 @@ scripts/download-libs.sh --force  # Re-download and overwrite
 Static libs (`Libs/*.a`) are hosted on the `libs-v1` GitHub Release (not in git). When adding or updating a library:
 
 ```bash
-# 1. Update the .a files in Libs/
-# 2. Regenerate checksums
-shasum -a 256 Libs/*.a > Libs/checksums.sha256
-# 3. Recreate and upload the archive
-tar czf /tmp/tablepro-libs-v1.tar.gz -C Libs .
-gh release upload libs-v1 /tmp/tablepro-libs-v1.tar.gz --clobber --repo TableProApp/TablePro
-# 4. Commit the updated checksums
+# 1. Update the .a files in Libs/ (build scripts write them there)
+# 2. Publish: verifies all OTHER local libs still match the checksums at HEAD,
+#    regenerates checksums.sha256, uploads the archive. Name every lib you rebuilt.
+scripts/publish-libs.sh libmongoc_arm64.a libmongoc_x86_64.a libmongoc_universal.a libmongoc.a
+# 3. Commit the updated checksums
 git add Libs/checksums.sha256 && git commit -m "build: update static library checksums"
+```
+
+Never run `shasum -a 256 Libs/*.a > Libs/checksums.sha256` by hand: regenerating from a stale `Libs/` reverts other libraries silently (this shipped a broken libmongoc and rolled back DuckDB once). `publish-libs.sh` exists to make that impossible.
+
+```bash
 
 # iOS xcframeworks (Libs/ios/*.xcframework)
 tar czf /tmp/tablepro-libs-ios-v1.tar.gz -C Libs/ios .
@@ -86,7 +90,7 @@ gh release upload libs-v1 /tmp/tablepro-libs-ios-v1.tar.gz --clobber --repo Tabl
 
 All database drivers are `.tableplugin` bundles loaded at runtime by `PluginManager` (`Core/Plugins/`):
 
-- **TableProPluginKit** (`Plugins/TableProPluginKit/`) — shared framework with `PluginDatabaseDriver`, `DriverPlugin`, `TableProPlugin` protocols and transfer types (`PluginQueryResult`, `PluginColumnInfo`, etc.)
+- **TableProPluginKit** (`Plugins/TableProPluginKit/`) — shared framework with `PluginDatabaseDriver`, `DriverPlugin`, `TableProPlugin` protocols and transfer types (`PluginQueryResult`, `PluginColumnInfo`, etc.). This is the single source of truth; the SwiftPM target at `Packages/TableProCore/Sources/TableProPluginKit` is a symlink to it, so edit the files under `Plugins/TableProPluginKit/` only.
 - **PluginDriverAdapter** (`Core/Plugins/PluginDriverAdapter.swift`) — bridges `PluginDatabaseDriver` → `DatabaseDriver` protocol
 - **DatabaseDriverFactory** (`Core/Database/DatabaseDriver.swift`) — looks up plugins via `DatabaseType.pluginTypeId`
 - **DatabaseManager** (`Core/Database/DatabaseManager.swift`) — connection pool, lifecycle, primary interface for views/coordinators
@@ -94,11 +98,19 @@ All database drivers are `.tableplugin` bundles loaded at runtime by `PluginMana
 
 When adding a new driver: create a new plugin bundle under `Plugins/`, implement `DriverPlugin` + `PluginDatabaseDriver`, add target to pbxproj, add `DatabaseType` static constant, add case to `resolve_plugin_info()` in `.github/workflows/build-plugin.yml`, add row to `docs/index.mdx` supported databases table, and add CHANGELOG entry. See `docs/development/plugin-system/` for details.
 
-When adding a new method to the driver protocol: add to `PluginDatabaseDriver` (with default implementation), then update `PluginDriverAdapter` to bridge it to `DatabaseDriver`.
+When adding a new method to the driver protocol: add to `PluginDatabaseDriver` (with default implementation), then update `PluginDriverAdapter` to bridge it to `DatabaseDriver`. This is an additive, ABI-safe change (see below) and needs no version bump.
 
-**PluginKit ABI versioning**: When `DriverPlugin` or `PluginDatabaseDriver` protocol changes (new methods, changed signatures), bump `currentPluginKitVersion` in `PluginManager.swift` AND `TableProPluginKitVersion` in every plugin's `Info.plist`. Stale user-installed plugins with mismatched versions crash on load with `EXC_BAD_INSTRUCTION` (not catchable in Swift). Removing protocol methods that have default `nil` implementations does NOT require a version bump. Adding new `static var` or `func` requirements to `DriverPlugin` DOES require a version bump even with default implementations via protocol extension — Swift protocol witness tables are compiled statically.
+**PluginKit ABI (resilient)**: TableProPluginKit is built with `BUILD_LIBRARY_FOR_DISTRIBUTION = YES` (Swift Library Evolution), so its public ABI is resilient. The Swift runtime instantiates witness tables for already-built plugins and fills any requirement the plugin did not implement from the protocol's default, so a plugin built against an older PluginKit keeps loading under a newer app.
 
-**Post-ABI-bump checklist (mandatory)**: After bumping `currentPluginKitVersion`, every registry-published plugin must be rebuilt against the new ABI. App auto-update reconciliation handles the user-facing recovery, but the registry has to carry binaries for the new PluginKit version first.
+**Additive changes are binary-compatible and need NO version bump**: adding a requirement to `DriverPlugin` / `PluginDatabaseDriver` that has a default implementation, reordering requirements, adding a field to a non-`@frozen` transfer struct, or removing a requirement that defaulted to `nil`.
+
+**Adding a field to a transfer struct is additive ONLY if every existing public initializer keeps its exact signature.** Adding a parameter to an existing public init or function, even with a default value, replaces its mangled symbol and breaks every already-built plugin (this shipped in 0.49.0: `PluginQueryResult` gained `columnMeta:` on its init and every registry plugin failed to load with "Bundle failed to load executable"). Add a NEW overload for the new field and keep the old signature; mark the old overload `@_disfavoredOverload` so new code resolves to the full init while old binaries keep their symbol. A red PluginKit ABI Gate is a merge blocker, never something to merge over: either the diff is additive (verify no symbol disappeared, then add the `abi-additive` label) or it is breaking (bump and re-release).
+
+**Bump `currentPluginKitVersion` (in `PluginManager.swift`) and `TableProPluginKitVersion` in every plugin `Info.plist` ONLY for a breaking change**: changing or removing an existing requirement's signature, adding a requirement without a default, adding a case to a `@frozen` enum, or changing a frozen type's layout. Mark a public enum `@frozen` only when an exhaustive switch over it forces it (the compiler flags the switch) and its case set is genuinely closed; leave the rest non-frozen so they can gain cases. `PluginCapability` stays non-frozen with `@unknown default` because it is a growing capability set, not a closed vocabulary. The driver protocols and transfer structs stay non-frozen so they can grow. The strict version gate in `validateBundleVersions` still rejects a stale plugin cleanly after a breaking bump (no `EXC_BAD_INSTRUCTION`).
+
+**ABI gate**: `scripts/check-pluginkit-abi.sh [base-ref]` builds TableProPluginKit at the current tree and at the base ref with the same toolchain, then diffs their public interfaces. There is no committed baseline, so a Swift version difference between a dev machine and CI never produces a false diff. CI (`.github/workflows/pluginkit-abi.yml`) runs it on every PR that touches `Plugins/TableProPluginKit/**`, comparing against the PR base. A reported diff is a real ABI change: additive needs no bump; breaking needs the version bump above plus `release-all-plugins.sh`. After reviewing a diff as additive, add the `abi-additive` label to the PR; the gate then passes and records the decision. Remove the label if later commits add a breaking change. (Until Library Evolution is on the base too, the base emits no interface and the gate passes as a bootstrap.)
+
+**Post-ABI-bump checklist (mandatory, breaking bumps only)**: Bumps are now rare (only the breaking changes listed above). After one, every registry-published plugin must be rebuilt against the new ABI. Run `release-all-plugins.sh` for the new version BEFORE or WITH the app release, never after, or users on the new app hit `noCompatibleBinary` until the registry catches up. App auto-update reconciliation handles the user-facing recovery, but the registry has to carry binaries for the new PluginKit version first.
 
 1. Commit the bump (updates `PluginManager.swift` and every bundled plugin's `Info.plist`). Bundled plugins ship with the next app release. Do not tag them.
 2. Trigger the bulk re-release:
@@ -166,8 +178,10 @@ Missing a case produces a wrong "{Language} Query" title on the first frame.
 | User preferences     | UserDefaults     | `AppSettingsStorage` / `AppSettingsManager` |
 | Query history        | SQLite FTS5      | `QueryHistoryStorage`                       |
 | Tab state            | JSON persistence | `TabPersistenceService` / `TabStateStorage` |
-| Filter presets       | UserDefaults     | `FilterSettingsStorage`                     |
-| Per-table filters    | UserDefaults     | `FilterSettingsStorage` (saves `appliedFilters` only) |
+| Filter defaults      | UserDefaults     | `FilterSettingsStorage` (default column/operator, panel state) |
+| Filter presets       | UserDefaults     | `FilterPresetStorage`                       |
+| Per-table filters    | JSON files       | `FilterSettingsStorage` (one file per connection + database + schema + table; saves the valid working set, each row's enabled flag included) |
+| Favorite tables      | UserDefaults     | `FavoriteTablesStorage` (per connection + database + schema; iCloud-synced) |
 
 ### Logging & Debugging
 
@@ -222,7 +236,7 @@ These are **non-negotiable** — never skip them:
     - Settings changes → `docs/customization/settings.mdx`
     - Database driver changes → `docs/databases/*.mdx`
 
-4. **Tests**: Write tests for testable features. When tests fail, fix the source code — never adjust tests to match incorrect output. Tests define expected behavior.
+4. **Tests**: Every change with testable behavior must include or update unit/function tests. UI and user-flow changes should add or update `TableProUITests` UI automation where the flow runs deterministically; if it can't, note why in the PR description. When tests fail, fix the source code — never adjust tests to match incorrect output. Tests define expected behavior.
 
 5. **Lint after changes**: Run `swiftlint lint --strict` to verify compliance.
 

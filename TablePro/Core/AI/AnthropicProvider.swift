@@ -35,45 +35,14 @@ final class AnthropicProvider: ChatTransport {
         turns: [ChatTurnWire],
         options: ChatTransportOptions
     ) -> AsyncThrowingStream<ChatStreamEvent, Error> {
-        AsyncThrowingStream { continuation in
-            let task = Task {
-                do {
-                    let request = try buildMessagesRequest(turns: turns, options: options)
-                    let (bytes, response) = try await session.bytes(for: request)
-
-                    guard let httpResponse = response as? HTTPURLResponse else {
-                        throw AIProviderError.networkError("Invalid response")
-                    }
-
-                    guard httpResponse.statusCode == 200 else {
-                        let errorBody = try await collectErrorBody(from: bytes)
-                        throw AIProviderError.mapHTTPError(
-                            statusCode: httpResponse.statusCode,
-                            body: errorBody
-                        )
-                    }
-
-                    var state = AnthropicStreamState()
-                    for try await line in bytes.lines {
-                        if Task.isCancelled { break }
-                        guard let json = Self.decodeStreamLine(line) else { continue }
-                        let events = try Self.parseChunk(json, state: &state)
-                        for event in events { continuation.yield(event) }
-                    }
-                    if let usage = state.finalUsageEvent() {
-                        continuation.yield(usage)
-                    }
-
-                    continuation.finish()
-                } catch {
-                    continuation.finish(throwing: error)
-                }
-            }
-
-            continuation.onTermination = { _ in
-                task.cancel()
-            }
-        }
+        SSEEventStream.make(
+            session: session,
+            buildRequest: { [self] in try buildMessagesRequest(turns: turns, options: options) },
+            decodeLine: { Self.decodeStreamLine($0) },
+            makeState: { AnthropicStreamState() },
+            parse: { try Self.parseChunk($0, state: &$1) },
+            finalEvents: { state in state.finalUsageEvent().map { [$0] } ?? [] }
+        )
     }
 
     func fetchAvailableModels() async throws -> [String] {

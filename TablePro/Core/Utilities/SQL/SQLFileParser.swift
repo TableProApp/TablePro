@@ -38,20 +38,6 @@ final class SQLFileParser: Sendable {
     private static let kCapitalE: unichar = 0x45
     private static let kSmallE: unichar = 0x65
 
-    private static func isIdentifierStart(_ ch: unichar) -> Bool {
-        (ch >= 0x41 && ch <= 0x5A) || (ch >= 0x61 && ch <= 0x7A) || ch == 0x5F
-    }
-
-    private static func isIdentifierPart(_ ch: unichar) -> Bool {
-        isIdentifierStart(ch) || (ch >= 0x30 && ch <= 0x39)
-    }
-
-    private enum DollarQuoteScan {
-        case opener(length: Int, tag: String)
-        case notOpener
-        case needsMoreData
-    }
-
     nonisolated private static func needsLookahead(
         _ char: unichar,
         state: ParserState,
@@ -163,44 +149,6 @@ final class SQLFileParser: Sendable {
         }
     }
 
-    private static func scanDollarQuoteOpener(
-        at pos: Int, in buffer: NSString, bufLen: Int
-    ) -> DollarQuoteScan {
-        var p = pos + 1
-        while p < bufLen {
-            let ch = buffer.character(at: p)
-            if ch == kDollar {
-                let tagLen = p - pos - 1
-                if tagLen == 0 {
-                    return .opener(length: 2, tag: "")
-                }
-                let firstChar = buffer.character(at: pos + 1)
-                if !isIdentifierStart(firstChar) {
-                    return .notOpener
-                }
-                let tag = buffer.substring(with: NSRange(location: pos + 1, length: tagLen))
-                return .opener(length: tagLen + 2, tag: tag)
-            }
-            if !isIdentifierPart(ch) {
-                return .notOpener
-            }
-            p += 1
-        }
-        return .needsMoreData
-    }
-
-    private static func matchesDollarClose(
-        at pos: Int, tag: String, in buffer: NSString, bufLen: Int
-    ) -> Bool {
-        let closeLen = (tag as NSString).length + 2
-        guard pos + closeLen <= bufLen else { return false }
-        if buffer.character(at: pos) != kDollar { return false }
-        if buffer.character(at: pos + closeLen - 1) != kDollar { return false }
-        if tag.isEmpty { return true }
-        let tagRange = NSRange(location: pos + 1, length: (tag as NSString).length)
-        return buffer.substring(with: tagRange) == tag
-    }
-
     private struct StepResult {
         var advanced: Bool
         var deferred: Bool
@@ -255,7 +203,7 @@ final class SQLFileParser: Sendable {
         }
 
         if ctx.dialect.supportsDollarQuotes && char == kDollar {
-            switch scanDollarQuoteOpener(at: i, in: nsBuffer, bufLen: bufLen) {
+            switch SqlDollarQuote.scanOpener(at: i, in: nsBuffer, bufLen: bufLen) {
             case .opener(let length, let tag):
                 (ctx.hasStatementContent, ctx.statementStartLine) = markContent(
                     ctx.hasStatementContent, ctx.statementStartLine, ctx.currentLine)
@@ -452,7 +400,7 @@ final class SQLFileParser: Sendable {
                     i = pos
                     return StepResult(advanced: true, deferred: true)
                 }
-                if matchesDollarClose(at: pos, tag: ctx.dollarTag, in: nsBuffer, bufLen: bufLen) {
+                if SqlDollarQuote.matchesClose(at: pos, tag: ctx.dollarTag, in: nsBuffer, bufLen: bufLen) {
                     pos += closeLen
                     ctx.state = .normal
                     ctx.dollarTag = ""

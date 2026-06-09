@@ -25,50 +25,15 @@ final class GeminiProvider: ChatTransport {
         turns: [ChatTurnWire],
         options: ChatTransportOptions
     ) -> AsyncThrowingStream<ChatStreamEvent, Error> {
-        AsyncThrowingStream { continuation in
-            let task = Task {
-                do {
-                    let request = try buildStreamRequest(turns: turns, options: options)
-                    let (bytes, response) = try await session.bytes(for: request)
-
-                    guard let httpResponse = response as? HTTPURLResponse else {
-                        throw AIProviderError.networkError("Invalid response")
-                    }
-
-                    guard httpResponse.statusCode == 200 else {
-                        let errorBody = try await collectErrorBody(from: bytes)
-                        throw AIProviderError.mapHTTPError(
-                            statusCode: httpResponse.statusCode,
-                            body: errorBody,
-                            treatForbiddenAsAuthFailure: true
-                        )
-                    }
-
-                    var state = GeminiStreamState()
-                    for try await line in bytes.lines {
-                        if Task.isCancelled { break }
-                        guard let json = Self.decodeStreamLine(line) else { continue }
-                        let events = Self.parseChunk(
-                            json,
-                            state: &state,
-                            idGenerator: { UUID().uuidString }
-                        )
-                        for event in events { continuation.yield(event) }
-                    }
-                    if let usage = state.finalUsageEvent() {
-                        continuation.yield(usage)
-                    }
-
-                    continuation.finish()
-                } catch {
-                    continuation.finish(throwing: error)
-                }
-            }
-
-            continuation.onTermination = { _ in
-                task.cancel()
-            }
-        }
+        SSEEventStream.make(
+            session: session,
+            treatForbiddenAsAuthFailure: true,
+            buildRequest: { [self] in try buildStreamRequest(turns: turns, options: options) },
+            decodeLine: { Self.decodeStreamLine($0) },
+            makeState: { GeminiStreamState() },
+            parse: { Self.parseChunk($0, state: &$1, idGenerator: { UUID().uuidString }) },
+            finalEvents: { state in state.finalUsageEvent().map { [$0] } ?? [] }
+        )
     }
 
     private static let knownModels = [

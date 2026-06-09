@@ -4,6 +4,130 @@ description: "Product updates and announcements for TablePro"
 rss: true
 ---
 
+<Update label="June 9, 2026" description="v0.50.0">
+  ### New Features
+
+  - **Cursor as an AI provider**: Use a Cursor API key or sign in with the Cursor CLI to run AI chat and inline suggestions (#1624)
+  - **Sign in with ChatGPT**: Run AI chat and inline suggestions without an API key; existing Codex CLI logins can be imported (#1617)
+  - **libSQL / Turso local files**: Open a local libSQL database file and work with it offline, transactions included (#1607)
+
+  ### Bug Fixes
+
+  - Default row sort now applies to the first table opened after launch (#1603)
+  - The query editor no longer erases characters or drops focus while typing, most visible on macOS 15 (#1608)
+  - The autocomplete popup filters in place instead of closing and reopening on each keystroke (#1608)
+  - Syntax highlighting no longer disappears after formatting a query (#1612)
+  - Clicking an already-open table switches to its tab instead of opening a duplicate (#1613)
+  - MongoDB connects over an SSH or Cloudflare tunnel instead of failing with connection refused (#1621)
+  - Oracle connections with native network encryption no longer crash on a server error; the real ORA error is shown and the connection keeps working (#483)
+  - DBeaver connections import from any edition, based on your DBeaver data rather than which app is installed (#1628)
+  - Cancelling a SQLite query no longer races a disconnect (#1610)
+  - The GitHub Copilot provider no longer shows a Max output tokens field it ignores or leaves a stray model ID field behind
+  - A plugin updated in Settings stays marked Installed instead of showing the Update button again
+</Update>
+
+<Update label="June 6, 2026" description="v0.49.1">
+  ### Bug Fixes
+
+  - Plugins from the registry install and load again; 0.49.0 rejected plugins built before the update with an invalid plugin bundle error
+  - Default row sort by primary key works again for PostgreSQL and other databases, and rows arrive already sorted on the first load (#1603)
+</Update>
+
+<Update label="June 6, 2026" description="v0.49.0">
+  ### New Features
+
+  - **Snowflake**: Connect with username & password (MFA included), key-pair, browser SSO, or an access token. Browse and edit data, import CSV and JSON, edit table structure, run scripts, and switch warehouse and role from the toolbar. Snowflake CLI connections can be reused by name (#1420)
+  - **CSV and TSV Import**: Import CSV and TSV files into a table. Map columns to an existing table or create a new one, with delimiter, quote, encoding, header, and NULL options (#1568)
+  - **Per-Row Filters**: Each filter row can be switched on or off and applied on its own; disabled rows stay in the panel (#1561)
+  - **AWS Authentication**: Connections can assume an IAM role through STS, including chained source profiles. Redis connects to ElastiCache with IAM auth, Cassandra connects to Amazon Keyspaces with SigV4, and expired AWS SSO sessions prompt a browser sign-in (#1567)
+  - **Oracle Encryption and Redirects**: Oracle connections negotiate Native Network Encryption and follow listener redirects, so RAC SCAN, shared server, and load-balanced setups connect (#483)
+  - SQL autocomplete completes each segment of qualified names, loads tables of unopened schemas on demand, and suggests the connection's dialect functions
+  - Importing connections from other apps detects duplicates and lets you replace, add a copy, or skip each one
+  - Export and import dialogs remember the last-used format, options, and encoding, with a Reset to Defaults button (#1591)
+
+  ### Improvements
+
+  - Custom keyboard shortcuts work on non-US layouts, can use function keys, and shifted symbols like Cmd+[ record correctly
+  - The Keyboard settings list is grouped by where shortcuts act, with a reset button per changed shortcut, and conflict detection checks live macOS system shortcuts
+  - Show Tables and Show Favorites moved to Cmd+Option+1 and Cmd+Option+2; Cmd+N opens a new connection
+  - AWS connections list the profiles found in your AWS config files (#1567)
+  - The results status bar has a divider, balanced margins, and clear VoiceOver labels (#1569)
+
+  ### Bug Fixes
+
+  - Accepting an autocomplete suggestion replaces the whole typed word instead of leaving part of it behind (#1601)
+  - MongoDB: connecting to Atlas no longer fails with TLS internal error (-9838) (#1599)
+  - DuckDB: the plugin runs DuckDB 1.5.2 again after a rollback to 1.5.0
+  - Query results appear as soon as rows return; metadata loads in the background, removing a multi-second wait on slow remote databases (#1574)
+  - JSON import: failed imports restore deleted rows, skip-and-continue no longer duplicates rows, and "Stop and Commit" keeps rows inserted before the error
+  - JSON file import works again; it failed to load in 0.48.0
+  - The connection and database switcher focuses its search field even while a filter input is being edited (#1575)
+  - TablePro no longer shows its icon for .sql, .sqlite, and .duckdb files when it is not their default app (#1594)
+  - The JSON results view shows row data right away and follows the row selection (#1576)
+  - Query result columns follow the SELECT order (#1565)
+  - SQL Server: logins restricted to one database, such as Azure SQL contained users, now connect
+  - PostgreSQL scripts with dollar-quoted blocks no longer fail with an unterminated string error (#1559)
+  - AWS IAM connections no longer ask for a password on connect
+  - Oracle connection failures show the listener's actual reason instead of a generic message (#483)
+  - Custom Copy, Cut, Delete, and Find shortcuts take effect in the editor and data grid, and pagination buttons no longer fire twice
+</Update>
+
+<Update label="June 2, 2026" description="v0.48.0">
+  ### New Features
+
+  - **JSON Import**: Import a JSON file into a table. Pick SQL or JSON from the Import menu; the JSON flow accepts an array of objects, newline-delimited JSON, or TablePro's own JSON export, and maps each field to a new or existing table (#1536)
+  - **Table Name in the Title Bar**: The window title bar shows the open table's name, with its database and schema below (#1475)
+  - **iOS DuckDB**: Open DuckDB database files and in-memory DuckDB databases on iOS, matching the Mac app (#1526)
+  - **Save Query as Favorite**: Save the current query as a favorite from a star button in the SQL editor toolbar
+
+  ### Improvements
+
+  - Field names and types in the row Details panel can now be selected and copied
+  - Plugins stay binary-compatible across app updates that add plugin capabilities, so installed plugins no longer need a rebuild for additive changes
+  - Connection list rows show the database name after the host, so look-alike connections are easier to tell apart (#1535)
+  - Editor toolbar buttons show their keyboard shortcut in the tooltip, updated when you rebind it
+  - The window toolbar groups the connection and database selectors on the left and moves Refresh and Save to the right
+
+  ### Bug Fixes
+
+  - Save as Favorite uses Cmd+D again; the Cmd+Control+D set in 0.47.0 was reserved by macOS for Look Up, so it never fired
+  - PostgreSQL keeps the selected schema applied after an automatic reconnect, so unqualified table names keep resolving against it (#1540)
+  - Import now finds the Setapp edition of TablePlus and reads its connections (#1528)
+  - Favorite keyword suggestions now appear in editor autocomplete instead of being dropped before the popup
+  - Editor autocomplete refreshes when you switch schema, suggesting the new schema's tables and columns
+</Update>
+
+<Update label="June 1, 2026" description="v0.47.0">
+  ### New Features
+
+  - **Favorite Tables**: Star a table in the sidebar to pin it to the top of its section and the Favorites tab. Favorites are scoped to the connection, database, and schema, and sync through iCloud
+  - **Database Tree Sidebar**: Show every database on the server as an expandable tree. Switch a connection between the flat list and the tree from the View menu, and set the default for new connections in Settings (#139)
+  - **Import from Navicat**: Export a connections file from Navicat, then pick it under Import from Other App. SSH tunnel and SSL settings carry over, and saved passwords are decrypted during import (#1485)
+  - **PostGIS Rendering**: PostgreSQL `geometry` and `geography` columns render as WKT with SRID instead of raw hex (#1458)
+  - **External Password Sources**: A connection can read its password from a file, environment variable, or command at connect time instead of the Keychain (#1254)
+  - **Create Tables from the Sidebar**: A plus button in the Tables sidebar footer creates a new table or view without right-clicking
+  - **Sidebar Keyboard Control**: Focus the filter field (Cmd+Option+F) and switch between the Tables and Favorites sidebars (Ctrl+1 and Ctrl+2), all rebindable in Settings (#1490)
+  - **Result Pager in the Query Menu**: Previous, Next, First, and Last Page are now in the Query menu, with Previous and Next on Cmd+[ and Cmd+] (#1490)
+
+  ### Improvements
+
+  - **Safe Mode Everywhere**: Table structure changes, creation, maintenance, column reorder, and saved grid edits now follow the connection's Safe Mode and read-only setting, and AI assistant and MCP queries follow the same rules (#1481)
+  - **Always Confirm Destructive Queries**: DROP, TRUNCATE, and DELETE without WHERE always ask for confirmation, even with Safe Mode off (#1481)
+  - **Native Sidebar Footer**: The Tables sidebar footer uses native macOS styling, and switching schemas stays in sync with the toolbar
+  - **Window Sizing**: The window minimum width adjusts to the visible panes, so opening the inspector on a small window no longer pushes content off-screen
+  - **Save as Favorite Shortcut**: Moved to Cmd+Control+D, leaving Cmd+D free for the system "Don't Save" action (#1490)
+  - **iOS Button Roles**: Sheet close, cancel, and confirm buttons use the native iOS 26 button roles (#1524)
+
+  ### Bug Fixes
+
+  - **Keyboard and VoiceOver Accessibility**: Tab moves focus between panes and out of the AI rules field, opening a table or query tab focuses the right control, Escape dismisses search sheets, filtering keeps you on the keyboard, and VoiceOver labels and announcements were added across the grid, inspector, tabs, and sheets. Copy with Headers gains a default Cmd+Option+C shortcut (#1490)
+  - **Details Pane on Click**: The Details pane updates when you select a row by clicking, not only with the arrow keys (#1496)
+  - **EXPLAIN Plan Viewer**: Running EXPLAIN or EXPLAIN ANALYZE in the editor opens the plan viewer instead of one truncated grid cell (#1480)
+  - **Faster Table Open**: Opening a table on a connection with many tables no longer stalls while autocomplete and metadata load (#1483)
+  - **Connection Group Sync**: Moving a connection into or out of a group syncs across devices
+  - **Cassandra Encrypted Keys**: Cassandra SSL connections with a client certificate gain a Key Passphrase field and clearer error messages (#1487)
+</Update>
+
 <Update label="May 28, 2026" description="v0.46.0">
   ### New Features
 

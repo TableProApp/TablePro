@@ -12,6 +12,24 @@ enum FilterCompletionSource {
     case sqlTokens(RawSQLFilterCompletionProvider)
 }
 
+struct FilterFocusState: Equatable {
+    private(set) var claimedId: UUID?
+
+    mutating func claimFocus(requestedId: UUID?, identity: UUID) -> Bool {
+        guard requestedId == identity, claimedId != identity else { return false }
+        claimedId = identity
+        return true
+    }
+
+    mutating func markFocused(_ identity: UUID) {
+        claimedId = identity
+    }
+
+    mutating func releaseFocus() {
+        claimedId = nil
+    }
+}
+
 struct FilterValueTextField: NSViewRepresentable {
     @Binding var text: String
     @Binding var focusedId: UUID?
@@ -20,6 +38,7 @@ struct FilterValueTextField: NSViewRepresentable {
     var completionSource: FilterCompletionSource = .staticValues([])
     var allowsMultiLine: Bool = false
     var onSubmit: () -> Void = {}
+    var onCancel: () -> Void = {}
 
     static func suggestions(for input: String, in completions: [String]) -> [String] {
         guard !input.isEmpty else { return [] }
@@ -75,12 +94,14 @@ struct FilterValueTextField: NSViewRepresentable {
             textField.lineBreakMode = .byTruncatingTail
         }
 
+        textField.owner = context.coordinator
         context.coordinator.textField = textField
         context.coordinator.text = $text
         context.coordinator.focusedId = $focusedId
         context.coordinator.identity = identity
         context.coordinator.completionSource = completionSource
         context.coordinator.onSubmit = onSubmit
+        context.coordinator.onCancel = onCancel
 
         return textField
     }
@@ -91,6 +112,7 @@ struct FilterValueTextField: NSViewRepresentable {
         context.coordinator.identity = identity
         context.coordinator.completionSource = completionSource
         context.coordinator.onSubmit = onSubmit
+        context.coordinator.onCancel = onCancel
         context.coordinator.textField = textField
 
         textField.placeholderString = placeholder
@@ -101,18 +123,7 @@ struct FilterValueTextField: NSViewRepresentable {
             textField.stringValue = text
         }
 
-        if focusedId == identity {
-            let binding = $focusedId
-            let pendingId = identity
-            DispatchQueue.main.async {
-                guard let window = textField.window,
-                      binding.wrappedValue == pendingId else { return }
-                if window.firstResponder !== textField.currentEditor() {
-                    window.makeFirstResponder(textField)
-                }
-                binding.wrappedValue = nil
-            }
-        }
+        context.coordinator.focusIfRequested()
     }
 
     func makeCoordinator() -> Coordinator {
@@ -121,7 +132,8 @@ struct FilterValueTextField: NSViewRepresentable {
             focusedId: $focusedId,
             identity: identity,
             completionSource: completionSource,
-            onSubmit: onSubmit
+            onSubmit: onSubmit,
+            onCancel: onCancel
         )
     }
 
@@ -132,11 +144,14 @@ struct FilterValueTextField: NSViewRepresentable {
         var identity: UUID
         var completionSource: FilterCompletionSource
         var onSubmit: () -> Void
+        var onCancel: () -> Void
         weak var textField: NSTextField?
 
         private let suggestionState = SuggestionState()
         private var suggestionPopover: NSPopover?
         private var keyMonitor: Any?
+        private var focusState = FilterFocusState()
+        private var windowKeyObserver: NSObjectProtocol?
         private var latestReplacementRange: NSRange?
         private var completionGeneration = 0
         private static let completionDebounce: UInt64 = 50_000_000
@@ -151,18 +166,65 @@ struct FilterValueTextField: NSViewRepresentable {
             focusedId: Binding<UUID?>,
             identity: UUID,
             completionSource: FilterCompletionSource,
-            onSubmit: @escaping () -> Void
+            onSubmit: @escaping () -> Void,
+            onCancel: @escaping () -> Void
         ) {
             self.text = text
             self.focusedId = focusedId
             self.identity = identity
             self.completionSource = completionSource
             self.onSubmit = onSubmit
+            self.onCancel = onCancel
+        }
+
+        func focusIfRequested() {
+            guard let textField,
+                  let window = textField.window,
+                  focusState.claimFocus(requestedId: focusedId.wrappedValue, identity: identity) else { return }
+            if window.firstResponder !== textField.currentEditor() {
+                window.makeFirstResponder(textField)
+            }
+        }
+
+        func handleBecameFirstResponder() {
+            focusState.markFocused(identity)
+            if focusedId.wrappedValue != identity {
+                focusedId.wrappedValue = identity
+            }
+        }
+
+        func handleResignedFirstResponder() {
+            focusState.releaseFocus()
+            if focusedId.wrappedValue == identity {
+                focusedId.wrappedValue = nil
+            }
+        }
+
+        func startObservingWindowKeyStatus(for window: NSWindow) {
+            stopObservingWindowKeyStatus()
+            windowKeyObserver = NotificationCenter.default.addObserver(
+                forName: NSWindow.didResignKeyNotification,
+                object: window,
+                queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    self?.handleResignedFirstResponder()
+                }
+            }
+        }
+
+        func stopObservingWindowKeyStatus() {
+            guard let token = windowKeyObserver else { return }
+            NotificationCenter.default.removeObserver(token)
+            windowKeyObserver = nil
         }
 
         deinit {
             if let token = keyMonitor {
                 NSEvent.removeMonitor(token)
+            }
+            if let token = windowKeyObserver {
+                NotificationCenter.default.removeObserver(token)
             }
         }
 
@@ -195,7 +257,11 @@ struct FilterValueTextField: NSViewRepresentable {
                 return true
             }
             if commandSelector == #selector(NSResponder.cancelOperation(_:)) {
-                dismissSuggestions()
+                if suggestionPopover != nil {
+                    dismissSuggestions()
+                    return true
+                }
+                onCancel()
                 return true
             }
             return false
@@ -391,6 +457,18 @@ struct FilterValueTextField: NSViewRepresentable {
     }
 
     private final class SubstitutionDisabledTextField: NSTextField {
+        weak var owner: Coordinator?
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            if let window {
+                owner?.startObservingWindowKeyStatus(for: window)
+            } else {
+                owner?.stopObservingWindowKeyStatus()
+            }
+            owner?.focusIfRequested()
+        }
+
         override func becomeFirstResponder() -> Bool {
             let result = super.becomeFirstResponder()
             if result, let editor = currentEditor() as? NSTextView {
@@ -398,6 +476,17 @@ struct FilterValueTextField: NSViewRepresentable {
                 editor.isAutomaticDashSubstitutionEnabled = false
                 editor.isAutomaticTextReplacementEnabled = false
                 editor.isAutomaticSpellingCorrectionEnabled = false
+            }
+            if result {
+                owner?.handleBecameFirstResponder()
+            }
+            return result
+        }
+
+        override func resignFirstResponder() -> Bool {
+            let result = super.resignFirstResponder()
+            if result {
+                owner?.handleResignedFirstResponder()
             }
             return result
         }
@@ -438,6 +527,11 @@ struct FilterValueTextField: NSViewRepresentable {
                                 .contentShape(Rectangle())
                                 .onTapGesture { onSelect(item) }
                                 .id(index)
+                                .accessibilityElement(children: .ignore)
+                                .accessibilityLabel(item.label)
+                                .accessibilityAddTraits(
+                                    state.selectedIndex == index ? [.isButton, .isSelected] : .isButton
+                                )
                         }
                     }
                     .padding(4)

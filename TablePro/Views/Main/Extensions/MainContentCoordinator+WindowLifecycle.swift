@@ -30,6 +30,7 @@ extension MainContentCoordinator {
         evictionTask = nil
 
         syncSidebarToSelectedTab()
+        announceActiveTabToVoiceOver()
 
         Self.lifecycleLogger.debug(
             "[switch] coordinator.handleWindowDidBecomeKey done connId=\(self.connectionId, privacy: .public) totalMs=\(Int(Date().timeIntervalSince(t0) * 1_000))"
@@ -82,6 +83,27 @@ extension MainContentCoordinator {
         )
     }
 
+    /// Announce the active tab title to VoiceOver when the window becomes key,
+    /// so assistive-technology users get the same context the window title gives.
+    private func announceActiveTabToVoiceOver() {
+        guard let title = tabManager.selectedTab?.title, !title.isEmpty else { return }
+        NSAccessibility.post(
+            element: NSApp as Any,
+            notification: .announcementRequested,
+            userInfo: [
+                .announcement: title,
+                .priority: NSAccessibilityPriorityLevel.medium.rawValue,
+            ]
+        )
+    }
+
+    func selectTabAndFocusWindow(_ tabId: UUID) {
+        tabManager.selectedTabId = tabId
+        guard let windowId,
+              let window = WindowLifecycleMonitor.shared.window(for: windowId) else { return }
+        window.makeKeyAndOrderFront(nil)
+    }
+
     // MARK: - Sidebar Sync
 
     /// Update the window-scoped sidebar selection so the active table tab
@@ -122,14 +144,25 @@ extension MainContentCoordinator {
         Self.lifecycleLogger.debug(
             "[switch] coordinator.lazyLoadCurrentTabIfNeeded executing tabId=\(tabId, privacy: .public)"
         )
-        tableLoadTasks[tabId] = Task { @MainActor [weak self] in
+        let token = UUID()
+        let task = Task { @MainActor [weak self] in
             guard let self else { return }
-            defer { self.tableLoadTasks[tabId] = nil }
-            self.executeTableTabQueryDirectly()
-            if let task = self.currentQueryTask {
-                await task.value
+            defer {
+                if self.tableLoadTasks[tabId]?.token == token {
+                    self.tableLoadTasks[tabId] = nil
+                }
+            }
+            await self.openTableTabQuery(tabId: tabId)
+            if let queryTask = self.currentQueryTask {
+                await queryTask.value
             }
         }
+        tableLoadTasks[tabId] = (token, task)
+    }
+
+    func cancelTableLoad(for tabId: UUID) {
+        tableLoadTasks[tabId]?.task.cancel()
+        tableLoadTasks[tabId] = nil
     }
 
     private func canAutoLoadTableTab(_ tab: QueryTab) -> Bool {

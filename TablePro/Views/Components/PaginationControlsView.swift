@@ -30,9 +30,6 @@ struct PaginationControlsView: View {
             pageSizeMenu
             navigationCluster
         }
-        .popover(isPresented: $showCustomPopover, arrowEdge: .top) {
-            customPageSizePopover
-        }
     }
 
     // MARK: - Page Size Menu
@@ -62,6 +59,13 @@ struct PaginationControlsView: View {
         .controlSize(.small)
         .help(String(localized: "Rows per page"))
         .accessibilityLabel(String(localized: "Rows per page"))
+        .overlay(alignment: .bottom) {
+            Color.clear
+                .frame(width: 0, height: 0)
+                .popover(isPresented: $showCustomPopover, arrowEdge: .top) {
+                    customPageSizePopover
+                }
+        }
     }
 
     private var pageSizeBinding: Binding<Int> {
@@ -96,6 +100,7 @@ struct PaginationControlsView: View {
             if pagination.isLoading {
                 ProgressView()
                     .controlSize(.small)
+                    .accessibilityLabel(String(localized: "Loading page"))
             }
 
             navButton(
@@ -129,9 +134,15 @@ struct PaginationControlsView: View {
         }
         .buttonStyle(.borderless)
         .disabled(!enabled || pagination.isLoading)
-        .help(label)
+        .help(helpText(label, for: shortcut))
         .accessibilityLabel(label)
-        .optionalKeyboardShortcut(AppSettingsManager.shared.keyboard.keyboardShortcut(for: shortcut))
+    }
+
+    private func helpText(_ label: String, for shortcut: ShortcutAction) -> String {
+        guard let combo = AppSettingsManager.shared.keyboard.shortcut(for: shortcut), !combo.isCleared else {
+            return label
+        }
+        return "\(label) (\(combo.displayString))"
     }
 
     private var pageIndicator: some View {

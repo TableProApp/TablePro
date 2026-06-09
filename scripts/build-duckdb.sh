@@ -23,6 +23,10 @@ if [ ! -f "duckdb.cpp" ]; then
     unzip -o libduckdb-src.zip
 fi
 
+copy_unless_same_file() {
+    [ "$1" -ef "$2" ] || cp "$1" "$2"
+}
+
 build_arch() {
     local arch=$1
     echo "Building for $arch..."
@@ -35,18 +39,18 @@ build_arch() {
 case "$ARCH" in
     arm64)
         build_arch arm64
-        cp "$LIBS_DIR/libduckdb_arm64.a" "$LIBS_DIR/libduckdb.a"
+        copy_unless_same_file "$LIBS_DIR/libduckdb_arm64.a" "$LIBS_DIR/libduckdb.a"
         ;;
     x86_64)
         build_arch x86_64
-        cp "$LIBS_DIR/libduckdb_x86_64.a" "$LIBS_DIR/libduckdb.a"
+        copy_unless_same_file "$LIBS_DIR/libduckdb_x86_64.a" "$LIBS_DIR/libduckdb.a"
         ;;
     both|universal)
         build_arch arm64
         build_arch x86_64
         echo "Creating universal binary..."
         lipo -create "$LIBS_DIR/libduckdb_arm64.a" "$LIBS_DIR/libduckdb_x86_64.a" -output "$LIBS_DIR/libduckdb_universal.a"
-        cp "$LIBS_DIR/libduckdb_universal.a" "$LIBS_DIR/libduckdb.a"
+        copy_unless_same_file "$LIBS_DIR/libduckdb_universal.a" "$LIBS_DIR/libduckdb.a"
         echo "Created libduckdb_universal.a"
         ;;
     *)

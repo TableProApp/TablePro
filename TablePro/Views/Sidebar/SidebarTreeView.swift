@@ -12,7 +12,7 @@ struct SidebarTreeView: View {
     var onDoubleClick: ((TableInfo) -> Void)?
     weak var coordinator: MainContentCoordinator?
 
-    @State private var expandedSchemas: Set<String> = []
+    @State private var searchLoadTask: Task<Void, Never>?
 
     private var systemSchemas: Set<String> {
         Set(PluginManager.shared.systemSchemaNames(for: viewModel.databaseType))
@@ -49,10 +49,7 @@ struct SidebarTreeView: View {
             }
         }
         .onChange(of: searchText) { _, newValue in
-            guard !newValue.isEmpty else { return }
-            for schema in schemas {
-                loadTables(for: schema)
-            }
+            scheduleSearchLoad(searchText: newValue)
         }
     }
 
@@ -86,7 +83,7 @@ struct SidebarTreeView: View {
             HStack(spacing: 6) {
                 ProgressView()
                     .controlSize(.small)
-                Text("Loading tables\u{2026}")
+                Text(String(localized: "Loading tables\u{2026}"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -100,7 +97,7 @@ struct SidebarTreeView: View {
         case .loaded:
             let tables = tablesToShow(for: schema)
             if tables.isEmpty {
-                Text("No tables")
+                Text(String(localized: "No tables"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .padding(.vertical, 4)
@@ -144,7 +141,7 @@ struct SidebarTreeView: View {
         ContentUnavailableView(
             String(localized: "No Datasets"),
             systemImage: "tablecells",
-            description: Text("This project has no datasets yet.")
+            description: Text(String(localized: "This project has no datasets yet."))
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -156,13 +153,13 @@ struct SidebarTreeView: View {
 
     private func expansionBinding(for schema: String) -> Binding<Bool> {
         Binding(
-            get: { !searchText.isEmpty || expandedSchemas.contains(schema) },
+            get: { !searchText.isEmpty || windowState.expandedTreeSchemas.contains(schema) },
             set: { isExpanded in
                 if isExpanded {
-                    expandedSchemas.insert(schema)
+                    windowState.expandedTreeSchemas.insert(schema)
                     loadTables(for: schema)
                 } else {
-                    expandedSchemas.remove(schema)
+                    windowState.expandedTreeSchemas.remove(schema)
                 }
             }
         )
@@ -190,6 +187,22 @@ struct SidebarTreeView: View {
         guard let driver = DatabaseManager.shared.driver(for: connectionId) else { return }
         Task {
             await schemaService.loadSchemaTables(connectionId: connectionId, schema: schema, driver: driver)
+        }
+    }
+
+    private func scheduleSearchLoad(searchText: String) {
+        searchLoadTask?.cancel()
+        guard !searchText.isEmpty else { return }
+        let schemasSnapshot = schemas
+        searchLoadTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            guard !Task.isCancelled else { return }
+            for schema in schemasSnapshot {
+                if case .loaded = schemaService.schemaState(for: connectionId, schema: schema) {
+                    continue
+                }
+                loadTables(for: schema)
+            }
         }
     }
 

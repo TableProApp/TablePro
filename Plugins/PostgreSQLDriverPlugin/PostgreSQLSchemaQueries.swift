@@ -75,4 +75,12 @@ enum PostgreSQLSchemaQueries {
 
         return unions.joined(separator: "\nUNION ALL\n") + "\nORDER BY table_name"
     }
+
+    static func setSearchPath(toSchema schema: String) -> String {
+        let quotedIdentifier = "\"\(schema.replacingOccurrences(of: "\"", with: "\"\""))\""
+        guard schema != "public" else {
+            return "SET search_path TO \(quotedIdentifier)"
+        }
+        return "SET search_path TO \(quotedIdentifier), public"
+    }
 }

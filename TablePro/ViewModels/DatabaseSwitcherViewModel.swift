@@ -52,13 +52,9 @@ final class DatabaseSwitcherViewModel {
         errorMessage = nil
 
         do {
-            guard let driver = services.databaseManager.driver(for: connectionId) else {
-                errorMessage = String(localized: "No active connection")
-                isLoading = false
-                return
+            let dbNames = try await services.databaseManager.withMetadataDriver(connectionId: connectionId) { driver in
+                try await driver.fetchDatabases()
             }
-
-            let dbNames = try await driver.fetchDatabases()
             databases = dbNames.sorted().map { name in
                 DatabaseMetadata.minimal(name: name, isSystem: isSystemItem(name))
             }
@@ -67,7 +63,9 @@ final class DatabaseSwitcherViewModel {
 
             isLoading = false
             do {
-                let metadataList = try await driver.fetchAllDatabaseMetadata()
+                let metadataList = try await services.databaseManager.withMetadataDriver(connectionId: connectionId, workload: .bulk) { driver in
+                    try await driver.fetchAllDatabaseMetadata()
+                }
                 databases = metadataList.sorted { $0.name < $1.name }
                 preselectDatabase()
             } catch {

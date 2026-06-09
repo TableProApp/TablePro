@@ -8,8 +8,10 @@ description: Connect to Oracle Database with TablePro
 TablePro supports Oracle Database 11.1 and later. It speaks the Oracle TNS wire protocol directly in Swift, so no Oracle Instant Client or other external library is required. This covers Oracle Database instances running on-premises, in Docker, or Oracle Cloud.
 
 <Note>
-Oracle 10g and earlier are not supported: they use the older O3LOGON handshake that the pure-Swift driver does not implement. Servers that require Native Network Encryption also need Oracle's OCI client (use TLS instead).
+Oracle 10g and earlier are not supported: they use the older O3LOGON handshake that the pure-Swift driver does not implement.
 </Note>
+
+Servers behind a RAC SCAN listener, shared server, or a load balancer are supported: TablePro follows the listener's redirect to the instance that serves the session. Servers that require Native Network Encryption (`SQLNET.ENCRYPTION_SERVER` or `SQLNET.CRYPTO_CHECKSUM_SERVER` set to REQUIRED) are also supported; TablePro negotiates AES encryption with a SHA crypto-checksum, the same as SQL Developer and DBeaver.
 
 ## Install Plugin
 

@@ -74,8 +74,6 @@ struct DataGridView: NSViewRepresentable {
 
         tableView.delegate = context.coordinator
         tableView.dataSource = context.coordinator
-        tableView.target = context.coordinator
-        tableView.doubleAction = #selector(TableViewCoordinator.handleDoubleClick(_:))
 
         let rowNumberColumn = Self.makeRowNumberColumn()
         tableView.addTableColumn(rowNumberColumn)
@@ -291,9 +289,9 @@ struct DataGridView: NSViewRepresentable {
         let currentSelection = tableView.selectedRowIndexes
         let targetSelection = IndexSet(selectedRowIndices)
         guard currentSelection != targetSelection else { return }
-        coordinator.isSyncingSelection = true
+        coordinator.isApplyingProgrammaticRowSelection = true
         tableView.selectRowIndexes(targetSelection, byExtendingSelection: false)
-        coordinator.isSyncingSelection = false
+        coordinator.isApplyingProgrammaticRowSelection = false
     }
 
     private func reconcileColumnPool(

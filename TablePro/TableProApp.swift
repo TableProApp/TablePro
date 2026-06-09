@@ -143,6 +143,13 @@ struct AppMenuCommands: Commands {
         focusedActions ?? commandRegistry.current
     }
 
+    private var sidebarLayoutBinding: Binding<SidebarLayout> {
+        Binding(
+            get: { actions?.sidebarLayout ?? .flat },
+            set: { actions?.setSidebarLayout($0) }
+        )
+    }
+
     private func shortcut(for action: ShortcutAction) -> KeyboardShortcut? {
         settingsManager.keyboard.keyboardShortcut(for: action)
     }
@@ -228,6 +235,11 @@ struct AppMenuCommands: Commands {
 
         // File menu
         CommandGroup(replacing: .newItem) {
+            Button(String(localized: "New Connection...")) {
+                WindowOpener.shared.openConnectionForm()
+            }
+            .optionalKeyboardShortcut(shortcut(for: .newConnection))
+
             Button("Manage Connections") {
                 WindowOpener.shared.openWelcome()
             }
@@ -332,14 +344,11 @@ struct AppMenuCommands: Commands {
             }
             .disabled(!(actions?.isConnected ?? false))
 
-            Button("Import...") {
-                actions?.importTables()
-            }
-            .optionalKeyboardShortcut(shortcut(for: .importData))
-            .disabled(
-                !(actions?.isConnected ?? false)
-                    || actions?.isReadOnly ?? false
-                    || !(actions.map { PluginManager.shared.supportsImport(for: $0.currentDatabaseType) } ?? true)
+            ImportMenuItems(
+                formats: actions?.availableImportFormats ?? [],
+                isDisabled: !(actions?.isConnected ?? false) || (actions?.isReadOnly ?? false),
+                shortcut: shortcut(for: .importData),
+                action: { formatId in actions?.importTables(formatId: formatId) }
             )
 
             Button(String(localized: "Backup Dump\u{2026}")) {
@@ -416,6 +425,32 @@ struct AppMenuCommands: Commands {
                 actions?.openQuickSwitcher()
             }
             .optionalKeyboardShortcut(shortcut(for: .quickSwitcher))
+            .disabled(!(actions?.isConnected ?? false))
+
+            Divider()
+
+            Button(String(localized: "Previous Page")) {
+                actions?.goToPreviousPage()
+            }
+            .optionalKeyboardShortcut(shortcut(for: .previousPage))
+            .disabled(!(actions?.isConnected ?? false))
+
+            Button(String(localized: "Next Page")) {
+                actions?.goToNextPage()
+            }
+            .optionalKeyboardShortcut(shortcut(for: .nextPage))
+            .disabled(!(actions?.isConnected ?? false))
+
+            Button(String(localized: "First Page")) {
+                actions?.goToFirstPage()
+            }
+            .optionalKeyboardShortcut(shortcut(for: .firstPage))
+            .disabled(!(actions?.isConnected ?? false))
+
+            Button(String(localized: "Last Page")) {
+                actions?.goToLastPage()
+            }
+            .optionalKeyboardShortcut(shortcut(for: .lastPage))
             .disabled(!(actions?.isConnected ?? false))
 
             Divider()
@@ -501,6 +536,18 @@ struct AppMenuCommands: Commands {
             .optionalKeyboardShortcut(commandFRoute == .tableFilter ? nil : KeyboardShortcut("f", modifiers: .command))
             .disabled(commandFRoute == .tableFilter)
 
+            Button(String(localized: "Find Next")) {
+                EditorEventRouter.shared.findNext()
+            }
+            .optionalKeyboardShortcut(shortcut(for: .findNext))
+            .disabled(!(actions?.isConnected ?? false))
+
+            Button(String(localized: "Find Previous")) {
+                EditorEventRouter.shared.findPrevious()
+            }
+            .optionalKeyboardShortcut(shortcut(for: .findPrevious))
+            .disabled(!(actions?.isConnected ?? false))
+
             Divider()
 
             Button("Add Row") {
@@ -540,6 +587,17 @@ struct AppMenuCommands: Commands {
 
             Divider()
 
+            Picker(selection: sidebarLayoutBinding) {
+                Text("Sidebar as List").tag(SidebarLayout.flat)
+                Text("Sidebar as Tree").tag(SidebarLayout.tree)
+            } label: {
+                Text("Sidebar Layout")
+            }
+            .pickerStyle(.inline)
+            .disabled(!(actions?.canSwitchSidebarLayout ?? false))
+
+            Divider()
+
             Button("Toggle Filters") {
                 actions?.toggleFilterPanel()
             }
@@ -550,6 +608,26 @@ struct AppMenuCommands: Commands {
                 actions?.toggleHistoryPanel()
             }
             .optionalKeyboardShortcut(shortcut(for: .toggleHistory))
+            .disabled(!(actions?.isConnected ?? false))
+
+            Divider()
+
+            Button("Focus Sidebar Filter") {
+                actions?.focusSidebarSearch()
+            }
+            .optionalKeyboardShortcut(shortcut(for: .focusSidebarSearch))
+            .disabled(!(actions?.isConnected ?? false))
+
+            Button("Show Tables Sidebar") {
+                actions?.showSidebarTab(.tables)
+            }
+            .optionalKeyboardShortcut(shortcut(for: .showSidebarTables))
+            .disabled(!(actions?.isConnected ?? false))
+
+            Button("Show Favorites Sidebar") {
+                actions?.showSidebarTab(.favorites)
+            }
+            .optionalKeyboardShortcut(shortcut(for: .showSidebarFavorites))
             .disabled(!(actions?.isConnected ?? false))
 
             Divider()

@@ -5,12 +5,29 @@
 
 #if canImport(MySQLDriverPlugin)
 import Foundation
+import TableProPluginKit
 import Testing
 
 @testable import MySQLDriverPlugin
 
 @Suite("MariaDBFieldClassifier")
 struct MariaDBFieldClassifierTests {
+    @Test("makeColumnMeta reads PRIMARY KEY, NOT NULL, and AUTO_INCREMENT flags")
+    func makeColumnMetaReadsKeyFlags() {
+        let pk = makeColumnMeta(
+            name: "id", typeName: "int",
+            flags: mysqlPriKeyFlag | mysqlNotNullFlag | mysqlAutoIncrementFlag
+        )
+        #expect(pk.isPrimaryKey)
+        #expect(!pk.isNullable)
+        #expect(pk.isIdentity)
+
+        let plain = makeColumnMeta(name: "name", typeName: "varchar", flags: 0)
+        #expect(!plain.isPrimaryKey)
+        #expect(plain.isNullable)
+        #expect(!plain.isIdentity)
+    }
+
     @Test("BIT no longer routes to binary (it was rendering as raw control characters in the data grid)")
     func bitIsNotBinary() {
         #expect(!MariaDBFieldClassifier.isBinary(typeRaw: 16, charset: 63))

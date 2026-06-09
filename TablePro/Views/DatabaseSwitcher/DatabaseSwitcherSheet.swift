@@ -70,6 +70,7 @@ struct DatabaseSwitcherSheet: View {
             }
         }
         .frame(width: 480, height: 460)
+        .onExitCommand { dismiss() }
         .task { await viewModel.fetchDatabases() }
     }
 

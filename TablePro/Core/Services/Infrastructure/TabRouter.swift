@@ -152,11 +152,7 @@ internal final class TabRouter {
                 } ?? true
                 return databaseMatches && schemaMatches
             }) else { continue }
-            coordinator.tabManager.selectedTabId = match.id
-            if let windowId = coordinator.windowId,
-               let window = WindowLifecycleMonitor.shared.window(for: windowId) {
-                window.makeKeyAndOrderFront(nil)
-            }
+            coordinator.selectTabAndFocusWindow(match.id)
             return true
         }
         return false

@@ -20,7 +20,7 @@ final class RedisPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let databaseTypeId = "Redis"
     static let databaseDisplayName = "Redis"
     static let iconName = "redis-icon"
-    static let defaultPort = 6379
+    static let defaultPort = 6_379
     static let additionalConnectionFields: [ConnectionField] = [
         ConnectionField(
             id: "redisDatabase",
@@ -35,7 +35,7 @@ final class RedisPlugin: NSObject, TableProPlugin, DriverPlugin {
             fieldType: .text,
             section: .advanced
         ),
-    ]
+    ] + AWSAuthFields.standard() + [AWSAuthFields.elastiCacheReplicationGroupField()]
 
     // MARK: - UI/Capability Metadata
 

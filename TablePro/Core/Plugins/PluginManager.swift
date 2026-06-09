@@ -5,6 +5,7 @@
 
 import Combine
 import Foundation
+import Network
 import os
 import Security
 import SwiftUI
@@ -13,7 +14,8 @@ import TableProPluginKit
 @MainActor @Observable
 final class PluginManager {
     static let shared = PluginManager()
-    static let currentPluginKitVersion = 16
+    static let currentPluginKitVersion = 18
+    static let minimumCompatiblePluginKitVersion = 18
     static let currentInspectorKitVersion = 1
     private static let disabledPluginsKey = "com.TablePro.disabledPlugins"
     private static let legacyDisabledPluginsKey = "disabledPlugins"
@@ -115,6 +117,8 @@ final class PluginManager {
     @ObservationIgnored internal var reconciliationAttempts: [String: Int] = [:]
     @ObservationIgnored internal var reconciliationManifestAttempts = 0
     @ObservationIgnored private var connectionStatusSubscription: AnyCancellable?
+    @ObservationIgnored internal var pluginNetworkMonitor: NWPathMonitor?
+    @ObservationIgnored internal var lastNetworkSatisfied = false
     @ObservationIgnored internal var installsInFlight: Set<String> = []
 
     var queryBuildingDriverCache: [String: (any PluginDatabaseDriver)?] = [:]
@@ -235,6 +239,7 @@ final class PluginManager {
 
             self.refreshRegistryUpdateSet()
             self.subscribeToConnectionStatusChanges()
+            self.startNetworkReachabilityMonitor()
             self.scheduleReconciliation()
         }
     }
@@ -468,7 +473,7 @@ final class PluginManager {
                     current: currentPluginKitVersion
                 )
             }
-            if version < currentPluginKitVersion {
+            if version < minimumCompatiblePluginKitVersion {
                 throw PluginError.pluginOutdated(
                     pluginVersion: version,
                     requiredVersion: currentPluginKitVersion
@@ -516,6 +521,16 @@ final class PluginManager {
         return bundle
     }
 
+    nonisolated static func bundleShortVersion(at url: URL) -> String? {
+        let infoPlistURL = url.appendingPathComponent("Contents/Info.plist")
+        guard let data = try? Data(contentsOf: infoPlistURL),
+              let plist = try? PropertyListSerialization.propertyList(from: data, format: nil),
+              let dictionary = plist as? [String: Any] else {
+            return nil
+        }
+        return dictionary["CFBundleShortVersionString"] as? String
+    }
+
     nonisolated private static func validateAndLoadBundles(
         _ pending: [(url: URL, source: PluginSource)]
     ) async -> [ValidatedBundle] {
@@ -545,9 +560,8 @@ final class PluginManager {
         let inspectorType = principalClass as? any DocumentInspectorPlugin.Type
 
         let disabled = disabledPluginIds
-        let info = bundle.infoDictionary ?? [:]
         let version: String
-        if let declared = info["CFBundleShortVersionString"] as? String {
+        if let declared = Self.bundleShortVersion(at: url) {
             version = declared
         } else {
             Self.logger.warning("Plugin '\(bundleId)' missing CFBundleShortVersionString; defaulting to 0.0.0")

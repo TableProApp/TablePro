@@ -1,0 +1,101 @@
+---
+title: Snowflake
+description: Connect to Snowflake with password, key-pair, SSO, or OAuth auth
+---
+
+# Snowflake Connections
+
+TablePro connects to Snowflake over its connector REST protocol (the same API used by the official drivers). Browse databases, schemas, and tables, run Snowflake SQL, and edit rows in the data grid. The plugin auto-installs when you pick **Snowflake**, or grab it from **Settings** > **Plugins** > **Browse**.
+
+## Quick Setup
+
+Click **New Connection**, select **Snowflake**, enter your **Account Identifier**, pick an auth method, and connect.
+
+The account identifier is the part before `.snowflakecomputing.com`:
+
+- Org-account format: `myorg-myaccount`
+- Legacy locator format: `xy12345.us-east-1` (locator + region)
+
+## Authentication
+
+**Username & Password**: Standard Snowflake login with your username and password.
+
+**Key Pair (.p8)**: Point to an RSA private key file in PKCS#8 (`.p8`) format and, if the key is encrypted, supply its passphrase. Register the matching public key on your user first:
+
+```sql
+ALTER USER jane_doe SET RSA_PUBLIC_KEY='MIIBIjANBgkq...';
+```
+
+**Single Sign-On (Browser)**: Authenticate through your identity provider (Okta, Entra ID, etc.) in the browser. TablePro opens your IdP's login page and captures the response automatically (`authenticator=externalbrowser`). With `ALLOW_ID_TOKEN = TRUE` on the account, the sign-in token is cached in the Keychain so later connects skip the browser for about four hours.
+
+**OAuth Token**: Paste a valid OAuth access token issued for your Snowflake account.
+
+<Tip>
+Already use the Snowflake CLI? Set **CLI Connection Name** (Advanced) to a connection defined in `~/.snowflake/connections.toml` and TablePro fills in the account, user, auth method, warehouse, database, schema, and role for you.
+</Tip>
+
+## Connection Settings
+
+| Field | Required | Notes |
+|-------|----------|-------|
+| **Account Identifier** | Yes | e.g. `myorg-myaccount` or `xy12345.us-east-1` |
+| **Auth Method** | Yes | Password, Key Pair, SSO (Browser), or OAuth Token |
+| **Username** | Most | Required for password, key-pair, and SSO |
+| **Password** | Password only | Account password |
+| **MFA Passcode (TOTP)** | If MFA enforced | Current code from your authenticator app; refresh it before each connect |
+| **Private Key File** | Key Pair only | Path to an RSA `.p8` key (PKCS#8) |
+| **Private Key Passphrase** | Key Pair only | Only if the key is encrypted |
+| **OAuth Token** | OAuth only | A valid Snowflake OAuth access token |
+| **Warehouse** | No | Compute warehouse, e.g. `COMPUTE_WH` |
+| **Database** | No | Default database |
+| **Schema** | No | Default schema (defaults to `PUBLIC`) |
+| **Role** | No | Session role (Advanced), e.g. `SYSADMIN` |
+| **CLI Connection Name** | No | Name in `~/.snowflake/connections.toml` (Advanced) |
+
+## Features
+
+**Database & Schema Browsing**: The sidebar groups objects by database and schema. Switch the active database or schema with `USE DATABASE` / `USE SCHEMA`, or by selecting them in the UI.
+
+**Warehouse & Role Switchers**: Toolbar pickers show the active warehouse and role and switch them with `USE WAREHOUSE` / `USE ROLE`, no reconnect needed. A suspended warehouse resumes automatically on the next query.
+
+**Snowflake SQL** ([docs](https://docs.snowflake.com/en/sql-reference-commands)):
+
+```sql
+SELECT * FROM my_db.public.orders LIMIT 100;
+
+-- Semi-structured data
+SELECT value:id::int AS id, value:name::string AS name
+FROM raw, LATERAL FLATTEN(input => raw.payload);
+
+-- Time travel
+SELECT * FROM events AT(OFFSET => -60*5);
+```
+
+**Data Types**: NUMBER, FLOAT, VARCHAR, BINARY, BOOLEAN, DATE, TIME, TIMESTAMP_NTZ/LTZ/TZ, VARIANT, OBJECT, ARRAY, GEOGRAPHY, GEOMETRY. Semi-structured values display as JSON text.
+
+**Structure Editing**: Add, rename, and drop columns; widen VARCHAR lengths and adjust NUMBER precision (Snowflake does not allow shrinking or cross-type changes); toggle NOT NULL; edit column comments; change primary keys. Declared primary keys, foreign keys, and clustering keys show in the structure pane (Snowflake treats key constraints as informational).
+
+**DDL**: View object DDL via `GET_DDL`. Create or replace views, truncate and drop tables.
+
+**Import**: CSV, TSV, and JSON files import into new or existing tables through parameterized inserts.
+
+**Export**: CSV, JSON, SQL, XLSX formats.
+
+## Troubleshooting
+
+**Auth failed**: Verify the account identifier and credentials. For key-pair auth, confirm the public key is registered on the user and the passphrase is correct.
+
+**MFA with TOTP is required (394508)**: Your account enforces MFA on password logins. Enter a current code from your authenticator in **MFA Passcode (TOTP)**. It expires quickly, so refresh it right before connecting. Key-pair or SSO auth avoids the prompt entirely.
+
+**TOTP Invalid (394507) while browsing after a successful connect**: TablePro opens extra sessions for browsing, and each new login revalidates the saved passcode, which expires within a minute. Enable MFA token caching on the account so one fresh code covers all later sessions: run `ALTER ACCOUNT SET ALLOW_CLIENT_MFA_CACHING = TRUE;` (needs ACCOUNTADMIN), then reconnect with a current code. TablePro caches the returned MFA token in the Keychain and skips the passcode from then on.
+
+**JWT token is invalid**: The account name in the JWT issuer must match your account locator. Make sure your machine clock is accurate (JWTs are time-sensitive).
+
+**No databases listed**: Ensure the connecting role has `USAGE` on the databases and a warehouse is set so metadata queries can run.
+
+**Browser SSO didn't return**: The login must complete within 2 minutes; the local callback listens on `127.0.0.1`. Disable popup blockers and retry.
+
+## Limitations
+
+- No SSH tunneling (HTTPS only to the Snowflake endpoint)
+- Foreign keys display as informational; Snowflake never enforces them

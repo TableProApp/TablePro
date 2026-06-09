@@ -5,11 +5,12 @@
 
 import Foundation
 import os
+import SQLite3
 import TableProPluginKit
 
 // MARK: - Error
 
-private struct LibSQLError: Error, PluginDriverError {
+struct LibSQLError: Error, PluginDriverError {
     let message: String
 
     var pluginErrorMessage: String { message }
@@ -20,9 +21,15 @@ private struct LibSQLError: Error, PluginDriverError {
 // MARK: - Plugin Driver
 
 final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
+    private enum Backend {
+        case remote(HranaHttpClient)
+        case local(SQLiteLocalBackend)
+    }
+
     private let config: DriverConnectionConfig
-    private var httpClient: HranaHttpClient?
+    private var backend: Backend?
     private var _serverVersion: String?
+    nonisolated(unsafe) private var _dbHandleForInterrupt: OpaquePointer?
     private let lock = NSLock()
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "LibSQLPluginDriver")
@@ -33,27 +40,70 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return _serverVersion
     }
     var supportsSchemas: Bool { false }
-    var supportsTransactions: Bool { false }
+    var supportsTransactions: Bool { isLocalMode }
     var currentSchema: String? { nil }
     var parameterStyle: ParameterStyle { .questionMark }
 
     var capabilities: PluginCapabilities {
-        [
+        var base: PluginCapabilities = [
             .parameterizedQueries,
             .alterTableDDL,
             .foreignKeyToggle,
             .truncateTable,
             .cancelQuery,
         ]
+        if isLocalMode {
+            base.insert(.transactions)
+            base.insert(.batchExecute)
+        }
+        return base
     }
 
     init(config: DriverConnectionConfig) {
         self.config = config
     }
 
+    private var isLocalMode: Bool {
+        config.additionalFields["libsqlMode"] == "local"
+    }
+
     // MARK: - Connection
 
     func connect() async throws {
+        if isLocalMode {
+            try await connectLocal()
+        } else {
+            try await connectRemote()
+        }
+    }
+
+    private func connectLocal() async throws {
+        guard let rawPath = config.additionalFields["libsqlFilePath"], !rawPath.isEmpty else {
+            throw LibSQLError(message: String(localized: "Database file path is required"))
+        }
+
+        let path = expandPath(rawPath)
+        if !FileManager.default.fileExists(atPath: path) {
+            let directory = (path as NSString).deletingLastPathComponent
+            try? FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
+        }
+
+        let localBackend = SQLiteLocalBackend()
+        try await localBackend.open(path: path)
+        let rawHandle = await localBackend.dbHandleForInterrupt
+        let versionResult = try await localBackend.executeQuery("SELECT sqlite_version()")
+        let version = versionResult.rows.first?.first?.asText ?? "SQLite"
+
+        lock.lock()
+        _dbHandleForInterrupt = rawHandle != 0 ? OpaquePointer(bitPattern: rawHandle) : nil
+        _serverVersion = version
+        backend = .local(localBackend)
+        lock.unlock()
+
+        Self.logger.debug("Connected to local libSQL database file")
+    }
+
+    private func connectRemote() async throws {
         guard let rawUrl = config.additionalFields["databaseUrl"], !rawUrl.isEmpty else {
             throw LibSQLError(message: String(localized: "Database URL is required"))
         }
@@ -86,7 +136,7 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
 
         lock.lock()
-        httpClient = client
+        backend = .remote(client)
         lock.unlock()
 
         Self.logger.debug("Connected to libSQL database: \(normalized)")
@@ -94,9 +144,19 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func disconnect() {
         lock.lock()
-        httpClient?.invalidateSession()
-        httpClient = nil
+        let current = backend
+        backend = nil
+        _dbHandleForInterrupt = nil
         lock.unlock()
+
+        switch current {
+        case .remote(let client):
+            client.invalidateSession()
+        case .local(let localBackend):
+            Task { await localBackend.close() }
+        case nil:
+            break
+        }
     }
 
     func ping() async throws {
@@ -106,15 +166,20 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Query Execution
 
     func execute(query: String) async throws -> PluginQueryResult {
-        guard let client = getClient() else {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        switch getBackend() {
+        case .remote(let client):
+            let startTime = Date()
+            let result = try await client.execute(sql: trimmed)
+            let executionTime = Date().timeIntervalSince(startTime)
+            return mapExecuteResult(result, executionTime: executionTime)
+        case .local(let localBackend):
+            let raw = try await localBackend.executeQuery(trimmed)
+            return mapLocalResult(raw)
+        case nil:
             throw LibSQLError.notConnected
         }
-
-        let startTime = Date()
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        let result = try await client.execute(sql: trimmed)
-        let executionTime = Date().timeIntervalSince(startTime)
-        return mapExecuteResult(result, executionTime: executionTime)
     }
 
     func executeParameterized(query: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult {
@@ -122,50 +187,75 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             return try await execute(query: query)
         }
 
-        guard let client = getClient() else {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        switch getBackend() {
+        case .remote(let client):
+            let startTime = Date()
+            let stringArgs: [String?] = parameters.map { param -> String? in
+                switch param {
+                case .null: return nil
+                case .text(let s): return s
+                case .bytes(let d): return "X'" + d.map { String(format: "%02X", $0) }.joined() + "'"
+                }
+            }
+            let result = try await client.execute(sql: trimmed, args: stringArgs)
+            let executionTime = Date().timeIntervalSince(startTime)
+            return mapExecuteResult(result, executionTime: executionTime)
+        case .local(let localBackend):
+            let raw = try await localBackend.executeParameterizedQuery(trimmed, parameters: parameters)
+            return mapLocalResult(raw)
+        case nil:
             throw LibSQLError.notConnected
         }
-
-        let startTime = Date()
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        let stringArgs: [String?] = parameters.map { param -> String? in
-            switch param {
-            case .null: return nil
-            case .text(let s): return s
-            case .bytes(let d): return "X'" + d.map { String(format: "%02X", $0) }.joined() + "'"
-            }
-        }
-        let result = try await client.execute(sql: trimmed, args: stringArgs)
-        let executionTime = Date().timeIntervalSince(startTime)
-        return mapExecuteResult(result, executionTime: executionTime)
     }
 
     func executeBatch(queries: [String]) async throws -> [PluginQueryResult] {
-        guard let client = getClient() else {
+        switch getBackend() {
+        case .remote(let client):
+            let startTime = Date()
+            let statements = queries.map { (sql: $0, args: [] as [String?]) }
+            let results = try await client.executeBatch(statements: statements)
+            let elapsed = Date().timeIntervalSince(startTime)
+
+            return results.map { result in
+                mapExecuteResult(result, executionTime: elapsed / Double(results.count))
+            }
+        case .local(let localBackend):
+            var results: [PluginQueryResult] = []
+            for query in queries {
+                let raw = try await localBackend.executeQuery(query)
+                results.append(mapLocalResult(raw))
+            }
+            return results
+        case nil:
             throw LibSQLError.notConnected
-        }
-
-        let startTime = Date()
-        let statements = queries.map { (sql: $0, args: [] as [String?]) }
-        let results = try await client.executeBatch(statements: statements)
-        let elapsed = Date().timeIntervalSince(startTime)
-
-        return results.map { result in
-            mapExecuteResult(result, executionTime: elapsed / Double(results.count))
         }
     }
 
     func cancelQuery() throws {
         lock.lock()
-        httpClient?.cancelCurrentTask()
+        let current = backend
+        if let interruptHandle = _dbHandleForInterrupt {
+            sqlite3_interrupt(interruptHandle)
+        }
         lock.unlock()
+
+        if case .remote(let client) = current {
+            client.cancelCurrentTask()
+        }
     }
 
     func applyQueryTimeout(_ seconds: Int) async throws {
-        lock.lock()
-        let client = httpClient
-        lock.unlock()
-        client?.setQueryTimeout(seconds)
+        switch getBackend() {
+        case .remote(let client):
+            client.setQueryTimeout(seconds)
+        case .local(let localBackend):
+            guard seconds > 0 else { return }
+            await localBackend.applyBusyTimeout(Int32(seconds * 1_000))
+        case nil:
+            break
+        }
     }
 
     // MARK: - Streaming
@@ -190,28 +280,31 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         query: String,
         continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
     ) async throws {
-        guard let client = getClient() else {
+        switch getBackend() {
+        case .remote(let client):
+            let result = try await client.execute(sql: query)
+
+            let columns = result.cols.map(\.name)
+            let columnTypeNames = result.cols.map { $0.decltype ?? "" }
+            continuation.yield(.header(PluginStreamHeader(
+                columns: columns,
+                columnTypeNames: columnTypeNames,
+                estimatedRowCount: nil
+            )))
+
+            if !result.rows.isEmpty {
+                let rows = result.rows.map { rawRow in
+                    rawRow.map(\.stringValue).map(PluginCellValue.fromOptional)
+                }
+                continuation.yield(.rows(rows))
+            }
+
+            continuation.finish()
+        case .local(let localBackend):
+            try await localBackend.streamQuery(query, continuation: continuation)
+        case nil:
             throw LibSQLError.notConnected
         }
-
-        let result = try await client.execute(sql: query)
-
-        let columns = result.cols.map(\.name)
-        let columnTypeNames = result.cols.map { $0.decltype ?? "" }
-        continuation.yield(.header(PluginStreamHeader(
-            columns: columns,
-            columnTypeNames: columnTypeNames,
-            estimatedRowCount: nil
-        )))
-
-        if !result.rows.isEmpty {
-            let rows = result.rows.map { rawRow in
-                rawRow.map(\.stringValue).map(PluginCellValue.fromOptional)
-            }
-            continuation.yield(.rows(rows))
-        }
-
-        continuation.finish()
     }
 
     // MARK: - Schema Operations
@@ -560,15 +653,22 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Transactions
 
     func beginTransaction() async throws {
-        throw LibSQLError(message: String(localized: "Transactions are not supported in this mode"))
+        _ = try await executeTransactionStatement("BEGIN")
     }
 
     func commitTransaction() async throws {
-        throw LibSQLError(message: String(localized: "Transactions are not supported in this mode"))
+        _ = try await executeTransactionStatement("COMMIT")
     }
 
     func rollbackTransaction() async throws {
-        throw LibSQLError(message: String(localized: "Transactions are not supported in this mode"))
+        _ = try await executeTransactionStatement("ROLLBACK")
+    }
+
+    private func executeTransactionStatement(_ statement: String) async throws -> PluginQueryResult {
+        guard case .local = getBackend() else {
+            throw LibSQLError(message: String(localized: "Transactions are not supported in this mode"))
+        }
+        return try await execute(query: statement)
     }
 
     // MARK: - DDL Generation
@@ -676,10 +776,28 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return def
     }
 
-    private func getClient() -> HranaHttpClient? {
+    private func getBackend() -> Backend? {
         lock.lock()
         defer { lock.unlock() }
-        return httpClient
+        return backend
+    }
+
+    private func expandPath(_ path: String) -> String {
+        if path.hasPrefix("~") {
+            return NSString(string: path).expandingTildeInPath
+        }
+        return path
+    }
+
+    private func mapLocalResult(_ raw: LibSQLLocalRawResult) -> PluginQueryResult {
+        PluginQueryResult(
+            columns: raw.columns,
+            columnTypeNames: raw.columnTypeNames,
+            rows: raw.rows,
+            rowsAffected: raw.rowsAffected,
+            executionTime: raw.executionTime,
+            isTruncated: raw.isTruncated
+        )
     }
 
     private func mapExecuteResult(_ result: HranaExecuteResult, executionTime: TimeInterval) -> PluginQueryResult {

@@ -249,7 +249,6 @@ struct TabExecutionState: Equatable {
     var errorMessage: String?
     var rowsAffected: Int = 0
     var lastExecutedAt: Date?
-    var didEvaluateDefaultSort: Bool = false
 
     static func == (lhs: TabExecutionState, rhs: TabExecutionState) -> Bool {
         lhs.isExecuting == rhs.isExecuting

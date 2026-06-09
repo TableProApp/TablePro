@@ -48,6 +48,36 @@ struct DatabaseToolbarButton: View {
     }
 }
 
+struct SessionContextToolbarButton: View {
+    @Bindable var coordinator: MainContentCoordinator
+
+    var body: some View {
+        HStack(spacing: 4) {
+            ForEach(coordinator.sessionContexts) { context in
+                Menu {
+                    ForEach(context.availableValues, id: \.self) { value in
+                        Button {
+                            Task { await coordinator.switchSessionContext(id: context.id, to: value) }
+                        } label: {
+                            if value == context.currentValue {
+                                Label(value, systemImage: "checkmark")
+                            } else {
+                                Text(value)
+                            }
+                        }
+                    }
+                } label: {
+                    Label(context.currentValue ?? context.label, systemImage: context.iconName)
+                }
+                .help(context.label)
+            }
+        }
+        .task(id: coordinator.toolbarState.connectionState) {
+            await coordinator.loadSessionContexts()
+        }
+    }
+}
+
 struct RefreshToolbarButton: View {
     let coordinator: MainContentCoordinator
 
@@ -199,16 +229,29 @@ struct ImportToolbarButton: View {
     var body: some View {
         let state = coordinator.toolbarState
         if PluginManager.shared.supportsImport(for: state.databaseType) {
-            Button {
-                coordinator.commandActions?.importTables()
-            } label: {
-                Label("Import", systemImage: "square.and.arrow.down")
+            let formats = PluginManager.shared.importFormatOptions(for: state.databaseType)
+            let isDisabled = state.connectionState != .connected || state.safeModeLevel.blocksAllWrites
+            if formats.count <= 1 {
+                Button {
+                    coordinator.commandActions?.importTables(formatId: formats.first?.id ?? "")
+                } label: {
+                    Label("Import", systemImage: "square.and.arrow.down")
+                }
+                .help(String(localized: "Import Data (⌘⇧I)"))
+                .disabled(isDisabled || formats.isEmpty)
+            } else {
+                Menu {
+                    ForEach(formats) { format in
+                        Button(format.submenuLabel) {
+                            coordinator.commandActions?.importTables(formatId: format.id)
+                        }
+                    }
+                } label: {
+                    Label("Import", systemImage: "square.and.arrow.down")
+                }
+                .help(String(localized: "Import Data (⌘⇧I)"))
+                .disabled(isDisabled)
             }
-            .help(String(localized: "Import Data (⌘⇧I)"))
-            .disabled(
-                state.connectionState != .connected
-                    || state.safeModeLevel.blocksAllWrites
-            )
         }
     }
 }

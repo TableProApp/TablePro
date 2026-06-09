@@ -51,8 +51,14 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     }
 
     func savedColumnLayout(binding: ColumnLayoutState) -> ColumnLayoutState? {
-        if tabType == .table,
-           let connectionId,
+        guard tabType == .table else {
+            guard !binding.columnWidths.isEmpty else { return nil }
+            var layout = binding
+            layout.columnOrder = nil
+            return layout
+        }
+
+        if let connectionId,
            let tableName,
            !tableName.isEmpty,
            let stored = layoutPersister.load(for: tableName, connectionId: connectionId) {
@@ -115,7 +121,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     private(set) var cachedColumnCount: Int = 0
     private(set) var enumOrSetColumns: Set<Int> = []
     private(set) var fkColumns: Set<Int> = []
-    var isSyncingSelection = false
+    var isApplyingProgrammaticRowSelection = false
     var isRebuildingColumns: Bool = false
     var isEscapeCancelling = false
     var isCommittingCellEdit = false
@@ -604,6 +610,13 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         }
     }
 
+    @discardableResult
+    internal func focusGrid() -> Bool {
+        guard let tableView, let window = tableView.window else { return false }
+        window.makeFirstResponder(tableView)
+        return true
+    }
+
     func beginEditing(displayRow: Int, column: Int) {
         guard let tableView,
               let displayCol = DataGridView.tableColumnIndex(for: column, in: tableView, schema: identitySchema)
@@ -704,5 +717,15 @@ extension TableViewCoordinator: DataGridCellAccessoryDelegate {
 
     func dataGridCellDidClickChevron(row: Int, columnIndex: Int) {
         handleChevronAction(row: row, columnIndex: columnIndex)
+    }
+
+    func dataGridCellDidDoubleClick(row: Int, columnIndex: Int) {
+        guard row >= 0, columnIndex >= 0, let tableView else { return }
+        guard let tableColumn = DataGridView.tableColumnIndex(
+            for: columnIndex,
+            in: tableView,
+            schema: identitySchema
+        ) else { return }
+        handleCellInteraction(row: row, tableColumn: tableColumn, columnIndex: columnIndex, tableView: tableView)
     }
 }

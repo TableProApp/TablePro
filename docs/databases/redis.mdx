@@ -39,6 +39,10 @@ Open URLs like `redis://:password@host:6379/0` or `rediss://` (TLS) from your br
 **Redis Cloud**: Requires SSL/TLS, enable in connection form
 **Remote**: Use [SSH tunneling](/databases/ssh-tunneling) for production
 
+## Amazon ElastiCache (IAM)
+
+Set **Authentication** to an AWS IAM mode (Access Key, Profile, or SSO) to connect to an IAM-enabled ElastiCache cache. TablePro generates a short-lived IAM auth token and uses it as the Redis password; the username is your IAM-enabled Redis user. Enter the AWS region and the cache name (replication group ID), and enable TLS, which ElastiCache IAM requires. Profiles resolve from `~/.aws/config` and `~/.aws/credentials`, including `credential_process`, SSO, and assumed roles.
+
 ## SSL/TLS
 
 Configure in the **SSL/TLS** pane of the connection form. Managed services like Upstash and Redis Cloud require TLS. Use `rediss://` for URL imports.

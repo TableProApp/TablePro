@@ -347,6 +347,10 @@ final class DataGridCellView: NSView {
     override func mouseDown(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
         guard !accessoryHitRect.isEmpty, accessoryHitRect.contains(point) else {
+            if event.clickCount == 2 {
+                accessoryDelegate?.dataGridCellDidDoubleClick(row: cellRow, columnIndex: cellColumnIndex)
+                return
+            }
             super.mouseDown(with: event)
             return
         }

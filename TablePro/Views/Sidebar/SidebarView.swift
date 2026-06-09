@@ -10,7 +10,9 @@ import TableProPluginKit
 
 struct SidebarView: View {
     @State private var viewModel: SidebarViewModel
-    @Bindable private var schemaService = SchemaService.shared
+    @State private var favoriteTables: Set<FavoriteTablesStorage.FavoriteEntry> = []
+
+    private var schemaService: SchemaService { SchemaService.shared }
 
     var sidebarState: SharedSidebarState
     var windowState: WindowSidebarState
@@ -45,7 +47,7 @@ struct SidebarView: View {
 
     private var supportsSchemaFooter: Bool {
         guard PluginManager.shared.supportsSchemaSwitching(for: viewModel.databaseType) else { return false }
-        return groupingStrategy != .hierarchicalSchema
+        return groupingStrategy != .hierarchicalSchema && !usesDatabaseTree
     }
 
     private var selectedTablesBinding: Binding<Set<TableInfo>> {
@@ -75,13 +77,13 @@ struct SidebarView: View {
             get: { windowState.selectedTables },
             set: { windowState.selectedTables = $0 }
         )
-        let vm = SidebarViewModel(
+        let vm = SidebarViewModel.shared(
+            connectionId: connectionId,
+            databaseType: databaseType,
             selectedTables: selectedBinding,
             pendingTruncates: pendingTruncates,
             pendingDeletes: pendingDeletes,
-            tableOperationOptions: tableOperationOptions,
-            databaseType: databaseType,
-            connectionId: connectionId
+            tableOperationOptions: tableOperationOptions
         )
         vm.searchText = windowState.searchText
         if databaseType == .redis, let existingVM = sidebarState.redisKeyTreeViewModel {
@@ -100,16 +102,14 @@ struct SidebarView: View {
             case .tables:
                 VStack(spacing: 0) {
                     tablesContent
-                    if supportsSchemaFooter {
-                        Divider()
-                        SchemaPickerFooter(connectionId: connectionId, databaseType: viewModel.databaseType)
-                    }
+                    tablesBottomBar
                 }
             case .favorites:
                 if let coordinator {
                     FavoritesTabView(
                         connectionId: connectionId,
                         windowState: coordinator.windowSidebarState,
+                        tables: tables,
                         coordinator: coordinator
                     )
                 } else {
@@ -151,9 +151,65 @@ struct SidebarView: View {
     private var tablesContent: some View {
         if groupingStrategy == .hierarchicalSchema {
             hierarchicalContent
+        } else if usesDatabaseTree {
+            databaseTreeContent
         } else {
             flatContent
         }
+    }
+
+    // MARK: - Bottom Bar
+
+    private var tablesBottomBar: some View {
+        VStack(spacing: 0) {
+            Divider()
+            HStack(spacing: 8) {
+                createObjectMenu
+                Spacer()
+                if supportsSchemaFooter {
+                    SchemaPickerControl(
+                        connectionId: connectionId,
+                        databaseType: viewModel.databaseType,
+                        coordinator: coordinator
+                    )
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+        }
+    }
+
+    private var createObjectMenu: some View {
+        Menu {
+            Button(String(localized: "New Table")) { coordinator?.createNewTable() }
+            Button(String(localized: "New View")) { coordinator?.createView() }
+        } label: {
+            Image(systemName: "plus")
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help(String(localized: "Create a new table or view"))
+        .disabled(coordinator?.safeModeLevel.blocksAllWrites ?? true)
+        .accessibilityIdentifier("sidebar-create-table")
+    }
+
+    private var usesDatabaseTree: Bool {
+        PluginManager.shared.supportsDatabaseTree(for: viewModel.databaseType)
+            && sidebarState.sidebarLayout == .tree
+    }
+
+    @ViewBuilder
+    private var databaseTreeContent: some View {
+        DatabaseTreeView(
+            connectionId: connectionId,
+            databaseType: viewModel.databaseType,
+            viewModel: viewModel,
+            windowState: windowState,
+            pendingTruncates: $pendingTruncates,
+            pendingDeletes: $pendingDeletes,
+            coordinator: coordinator
+        )
     }
 
     @ViewBuilder
@@ -232,6 +288,29 @@ struct SidebarView: View {
 
     // MARK: - Table List
 
+    private var activeDatabase: String? {
+        let name = coordinator?.activeDatabaseName ?? ""
+        return name.isEmpty ? nil : name
+    }
+
+    private func isFavorite(_ table: TableInfo) -> Bool {
+        favoriteTables.contains(FavoriteTablesStorage.FavoriteEntry(
+            connectionId: connectionId,
+            database: activeDatabase,
+            schema: table.schema,
+            name: table.name
+        ))
+    }
+
+    private func toggleFavorite(_ table: TableInfo) {
+        FavoriteTablesStorage.shared.toggle(
+            name: table.name,
+            schema: table.schema,
+            database: activeDatabase,
+            connectionId: connectionId
+        )
+    }
+
     private var tableList: some View {
         List(selection: selectedTablesBinding) {
             ForEach(SidebarObjectKind.allCases, id: \.self) { kind in
@@ -252,20 +331,33 @@ struct SidebarView: View {
                         }
                     )
                 } header: {
-                    Text("Keys")
+                    Text(String(localized: "Keys"))
                 }
             }
         }
         .listStyle(.sidebar)
         .scrollContentBackground(.hidden)
-        .contextMenu(forSelectionType: TableInfo.self) { _ in
-            EmptyView()
+        .contextMenu(forSelectionType: TableInfo.self) { selection in
+            SidebarContextMenu(
+                clickedTable: selection.first,
+                selectedTables: selection,
+                isReadOnly: coordinator?.safeModeLevel.blocksAllWrites ?? false,
+                onBatchToggleTruncate: { viewModel.batchToggleTruncate(tableNames: $0) },
+                onBatchToggleDelete: { viewModel.batchToggleDelete(tableNames: $0) },
+                coordinator: coordinator
+            )
         } primaryAction: { selection in
             guard let table = selection.first else { return }
             onDoubleClick?(table)
         }
         .onExitCommand {
             windowState.selectedTables.removeAll()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .favoriteTablesDidChange)) { _ in
+            favoriteTables = FavoriteTablesStorage.shared.favorites(for: connectionId)
+        }
+        .onAppear {
+            favoriteTables = FavoriteTablesStorage.shared.favorites(for: connectionId)
         }
     }
 
@@ -308,19 +400,11 @@ struct SidebarView: View {
                 TableRow(
                     table: table,
                     isPendingTruncate: pendingTruncates.contains(table.name),
-                    isPendingDelete: pendingDeletes.contains(table.name)
+                    isPendingDelete: pendingDeletes.contains(table.name),
+                    isFavorite: isFavorite(table),
+                    onToggleFavorite: { toggleFavorite(table) }
                 )
                 .tag(table)
-                .contextMenu {
-                    SidebarContextMenu(
-                        clickedTable: table,
-                        selectedTables: windowState.selectedTables,
-                        isReadOnly: coordinator?.safeModeLevel.blocksAllWrites ?? false,
-                        onBatchToggleTruncate: { viewModel.batchToggleTruncate(tableNames: $0) },
-                        onBatchToggleDelete: { viewModel.batchToggleDelete(tableNames: $0) },
-                        coordinator: coordinator
-                    )
-                }
             }
         }
     }

@@ -11,6 +11,16 @@ struct ConnectionFieldRow: View {
     @Binding var value: String
 
     var body: some View {
+        if field.dynamicOptions == .awsProfiles {
+            LabeledContent(field.label) {
+                AWSProfileField(placeholder: field.placeholder, value: $value)
+            }
+        } else {
+            defaultControl
+        }
+    }
+
+    @ViewBuilder private var defaultControl: some View {
         switch field.fieldType {
         case .text:
             TextField(

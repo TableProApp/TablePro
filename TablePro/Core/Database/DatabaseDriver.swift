@@ -143,6 +143,10 @@ protocol DatabaseDriver: AnyObject {
 
     func dropDatabase(name: String) async throws
 
+    func fetchSessionContexts() async throws -> [PluginSessionContext]?
+
+    func switchSessionContext(id: String, to value: String) async throws
+
     // MARK: - Maintenance
 
     /// Returns the list of supported maintenance operations (e.g. "VACUUM", "ANALYZE").
@@ -252,6 +256,10 @@ extension DatabaseDriver {
     }
 
     func createDatabaseFormSpec() async throws -> CreateDatabaseFormSpec? { nil }
+
+    func fetchSessionContexts() async throws -> [PluginSessionContext]? { nil }
+
+    func switchSessionContext(id: String, to value: String) async throws {}
 
     func createDatabase(_ request: CreateDatabaseRequest) async throws {
         throw NSError(
@@ -400,17 +408,7 @@ enum DatabaseDriverFactory {
         passwordOverride: String? = nil,
         awaitPlugins: Bool
     ) async throws -> DatabaseDriver {
-        let pluginId = connection.type.pluginTypeId
-        if PluginManager.shared.driverPlugin(for: connection.type) == nil,
-           !PluginManager.shared.hasFinishedInitialLoad {
-            logger.info("Plugin '\(pluginId)' not loaded yet, waiting for background load")
-            await PluginManager.shared.waitForInitialLoad()
-        }
-        if PluginManager.shared.driverPlugin(for: connection.type) == nil,
-           PluginManager.shared.hasOutdatedRejectedPlugin(forTypeId: pluginId) {
-            logger.info("Plugin '\(pluginId)' is installed but outdated, waiting for reconciliation to update it")
-            await PluginManager.shared.awaitReconciliation()
-        }
+        await PluginManager.shared.prepareForConnecting(to: connection.type)
         return try await createDriverFromPlugin(for: connection, passwordOverride: passwordOverride)
     }
 
@@ -432,6 +430,10 @@ enum DatabaseDriverFactory {
         }
         var ssl = connection.sslConfig
         var additionalFields = buildAdditionalFields(for: connection, plugin: plugin)
+        if let sslClientKeyPassphrase = ConnectionStorage.shared.loadSSLClientKeyPassphrase(for: connection.id),
+           !sslClientKeyPassphrase.isEmpty {
+            additionalFields["sslClientKeyPassphrase"] = sslClientKeyPassphrase
+        }
         if connection.usesAWSIAM {
             if ssl.mode == .disabled || ssl.mode == .preferred {
                 ssl.mode = .required
@@ -456,11 +458,34 @@ enum DatabaseDriverFactory {
         fields: [String: String]
     ) async throws -> String {
         let source = fields["awsAuth"] ?? "accessKey"
+        let credentials = try await AWSCredentialResolver.resolve(source: source, fields: fields)
+
+        if connection.type == .redis {
+            guard let region = fields["awsRegion"].flatMap({ $0.isEmpty ? nil : $0 }) else {
+                throw AWSAuthError.regionUnknown(host: connection.host)
+            }
+            guard connection.sslConfig.mode != .disabled else {
+                throw AWSAuthError.missingConfiguration(
+                    String(localized: "ElastiCache IAM authentication requires TLS. Enable SSL in the connection's SSL settings.")
+                )
+            }
+            guard let replicationGroupId = fields["awsReplicationGroupId"].flatMap({ $0.isEmpty ? nil : $0 }) else {
+                throw AWSAuthError.missingConfiguration(
+                    String(localized: "Enter the ElastiCache cache name (replication group ID) to use IAM authentication.")
+                )
+            }
+            return ElastiCacheAuthTokenGenerator.generateToken(
+                replicationGroupId: replicationGroupId,
+                region: region,
+                userId: connection.username,
+                credentials: credentials
+            )
+        }
+
         let explicitRegion = fields["awsRegion"].flatMap { $0.isEmpty ? nil : $0 }
         guard let region = explicitRegion ?? RDSEndpoint.region(forHost: connection.host) else {
             throw AWSAuthError.regionUnknown(host: connection.host)
         }
-        let credentials = try await AWSCredentialResolver.resolve(source: source, fields: fields)
         return RDSAuthTokenGenerator.generateToken(
             host: connection.host,
             port: connection.port,
@@ -475,10 +500,13 @@ enum DatabaseDriverFactory {
         fields: [String: String],
         override: String? = nil
     ) async throws -> String {
-        if connection.usesAWSIAM {
+        if connection.usesAWSIAM, !connection.resolvesAWSIAMInDriver {
             return try await resolveIAMPassword(for: connection, fields: fields)
         }
         if let override { return override }
+        if let passwordSource = connection.passwordSource {
+            return try await PasswordSourceResolver.resolve(passwordSource)
+        }
         if connection.usePgpass {
             let pgpassHost = connection.additionalFields["pgpassOriginalHost"] ?? connection.host
             let pgpassPort = connection.additionalFields["pgpassOriginalPort"]

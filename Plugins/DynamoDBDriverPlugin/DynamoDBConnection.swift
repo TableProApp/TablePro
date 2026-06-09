@@ -112,14 +112,6 @@ private enum DynamoDBTypeCodingKey: String, CodingKey {
     case bs = "BS"
 }
 
-// MARK: - AWS Credentials
-
-internal struct AWSCredentials: Sendable {
-    let accessKeyId: String
-    let secretAccessKey: String
-    let sessionToken: String?
-}
-
 // MARK: - DynamoDB Error
 
 internal enum DynamoDBError: Error, LocalizedError {
@@ -414,11 +406,11 @@ internal final class DynamoDBConnection: @unchecked Sendable {
     // MARK: - Internal Request Handling
 
     private func request<T: Decodable>(target: String, body: [String: Any]) async throws -> T {
-        let (urlSession, credentials): (URLSession, AWSCredentials) = try lock.withLock {
+        let urlSession: URLSession = try lock.withLock {
             guard let s = _session else { throw DynamoDBError.notConnected }
-            guard let c = _credentials else { throw DynamoDBError.authFailed("No credentials available") }
-            return (s, c)
+            return s
         }
+        let credentials = try await validCredentials()
 
         let bodyData = try JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])
 
@@ -598,120 +590,42 @@ internal final class DynamoDBConnection: @unchecked Sendable {
     // MARK: - Credential Resolution
 
     private func resolveCredentials() async throws -> AWSCredentials {
-        let authMethod = config.additionalFields["awsAuthMethod"] ?? "credentials"
-
-        switch authMethod {
-        case "credentials":
-            return try resolveAccessKeyCredentials()
-        case "profile":
-            return try resolveProfileCredentials()
-        case "sso":
-            return try await resolveSsoCredentials()
-        default:
-            return try resolveAccessKeyCredentials()
+        let source = Self.credentialSource(forAuthMethod: config.additionalFields["awsAuthMethod"])
+        var fields = config.additionalFields
+        if (fields["awsAccessKeyId"] ?? "").isEmpty, !config.username.isEmpty {
+            fields["awsAccessKeyId"] = config.username
         }
-    }
-
-    private func resolveAccessKeyCredentials() throws -> AWSCredentials {
-        let accessKeyId = config.additionalFields["awsAccessKeyId"] ?? config.username
-        let secretAccessKey = config.additionalFields["awsSecretAccessKey"] ?? config.password
-        let sessionToken = config.additionalFields["awsSessionToken"]
-
-        Self.logger.debug("Resolved credentials — credentialSource: accessKey, region: \(self.region)")
-
-        guard !accessKeyId.isEmpty, !secretAccessKey.isEmpty else {
-            throw DynamoDBError.authFailed("Access Key ID and Secret Access Key are required")
-        }
-
-        return AWSCredentials(
-            accessKeyId: accessKeyId,
-            secretAccessKey: secretAccessKey,
-            sessionToken: sessionToken?.isEmpty == true ? nil : sessionToken
-        )
-    }
-
-    private func resolveProfileCredentials() throws -> AWSCredentials {
-        let profileName = config.additionalFields["awsProfileName"] ?? "default"
-        let credentialsPath = NSString("~/.aws/credentials").expandingTildeInPath
-
-        guard let content = try? String(contentsOfFile: credentialsPath, encoding: .utf8) else {
-            throw DynamoDBError.authFailed("Cannot read ~/.aws/credentials")
-        }
-
-        var currentProfile = ""
-        var accessKeyId = ""
-        var secretAccessKey = ""
-        var sessionToken: String?
-
-        for line in content.components(separatedBy: .newlines) {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            if trimmed.hasPrefix("[") && trimmed.hasSuffix("]") {
-                currentProfile = String(trimmed.dropFirst().dropLast())
-                continue
-            }
-            guard currentProfile == profileName else { continue }
-
-            let parts = trimmed.split(separator: "=", maxSplits: 1).map {
-                $0.trimmingCharacters(in: .whitespaces)
-            }
-            guard parts.count == 2 else { continue }
-
-            switch parts[0] {
-            case "aws_access_key_id":
-                accessKeyId = parts[1]
-            case "aws_secret_access_key":
-                secretAccessKey = parts[1]
-            case "aws_session_token":
-                sessionToken = parts[1]
-            default:
-                break
-            }
-        }
-
-        guard !accessKeyId.isEmpty, !secretAccessKey.isEmpty else {
-            throw DynamoDBError.authFailed("Profile '\(profileName)' not found or incomplete in ~/.aws/credentials")
-        }
-
-        return AWSCredentials(
-            accessKeyId: accessKeyId,
-            secretAccessKey: secretAccessKey,
-            sessionToken: sessionToken
-        )
-    }
-
-    private func resolveSsoCredentials() async throws -> AWSCredentials {
-        let profileName = config.additionalFields["awsProfileName"] ?? "default"
-        let configPath = NSString("~/.aws/config").expandingTildeInPath
-        let cacheDir = NSString("~/.aws/sso/cache").expandingTildeInPath
-
-        guard let configContent = try? String(contentsOfFile: configPath, encoding: .utf8) else {
-            throw DynamoDBError.authFailed(SsoCredentialError.configReadFailed.userMessage)
+        if (fields["awsSecretAccessKey"] ?? "").isEmpty, !config.password.isEmpty {
+            fields["awsSecretAccessKey"] = config.password
         }
 
         do {
-            let settings = try DynamoDBSso.parseProfileSettings(
-                configContent: configContent,
-                profileName: profileName
-            )
-            let accessToken = try DynamoDBSso.readAccessToken(
-                cacheDirectory: cacheDir,
-                settings: settings,
-                profileName: profileName
-            )
-            let credentials = try await DynamoDBSso.fetchRoleCredentials(
-                accessToken: accessToken,
-                settings: settings,
-                profileName: profileName,
-                session: URLSession.shared
-            )
-            return AWSCredentials(
-                accessKeyId: credentials.accessKeyId,
-                secretAccessKey: credentials.secretAccessKey,
-                sessionToken: credentials.sessionToken
-            )
-        } catch let error as SsoCredentialError {
-            throw DynamoDBError.authFailed(error.userMessage)
+            return try await AWSCredentialResolver.resolve(source: source, fields: fields)
+        } catch let error as AWSAuthError {
+            throw DynamoDBError.authFailed(error.localizedDescription)
+        } catch let error as AWSSSOError {
+            throw DynamoDBError.authFailed(error.localizedDescription)
         }
+    }
+
+    static func credentialSource(forAuthMethod authMethod: String?) -> String {
+        switch authMethod {
+        case "profile":
+            return "profile"
+        case "sso":
+            return "sso"
+        default:
+            return "accessKey"
+        }
+    }
+
+    private func validCredentials() async throws -> AWSCredentials {
+        if let current = lock.withLock({ _credentials }), !current.isExpired() {
+            return current
+        }
+        let refreshed = try await resolveCredentials()
+        lock.withLock { _credentials = refreshed }
+        return refreshed
     }
 
     // MARK: - Helpers

@@ -103,6 +103,28 @@ CI builds both architectures, signs the bundles, creates a GitHub release, and u
   <Step title="Extracts bundle, verifies code signature, loads plugin" />
 </Steps>
 
+## Plugin Compatibility
+
+Every plugin binary declares the PluginKit version it was built against (`pluginKitVersion`). The app declares two values in `PluginManager.swift`:
+
+- `currentPluginKitVersion`: the version the running app ships.
+- `minimumCompatiblePluginKitVersion`: the oldest version the app still loads.
+
+TableProPluginKit is built with Swift Library Evolution, so a plugin built against any version in `[minimum, current]` loads under the app and the runtime fills in any newer requirement from its default. The app accepts that whole range instead of an exact match.
+
+When you change PluginKit:
+
+- **Additive change** (a new requirement with a default, a new field on a non-frozen type): leave both versions alone. Installed plugins keep loading; the registry needs no re-publish.
+- **Breaking change** (a removed or changed requirement, a frozen-layout change, a requirement without a default): raise `currentPluginKitVersion` and `minimumCompatiblePluginKitVersion` together, then run `scripts/release-all-plugins.sh <newVersion>` so the registry carries binaries for the new version before the app ships.
+
+The registry serves the newest binary whose `pluginKitVersion` is in the app's range, so an additive bump is served by the existing binaries with no re-publish. After a breaking bump, `scripts/check-registry-readiness.py --floor <min> --current <current>` (run by the app release workflow) fails the release until every database driver has a compatible binary, so the app never ships ahead of its plugins.
+
+If a connection's driver is installed but its binary predates a breaking bump, opening the connection refreshes the registry and updates the driver in the background, then proceeds. The app does not block on this; if a compatible binary is not published yet, the connection reports that it is updating and retries on its own (on a timer and when the network returns), so no quit and reopen is needed.
+
+The manifest is served through jsDelivr (`cdn.jsdelivr.net/gh/TableProApp/plugins@main/plugins.json`) and purged on each publish, so a new binary is visible within seconds rather than waiting out a CDN cache.
+
+Drivers that most users reach for are bundled inside the app and ship in lockstep, so they never depend on the registry. Reserve registry-only distribution for the long tail, where a short, non-blocking update on first connect is acceptable.
+
 ## Theme Distribution
 
 Themes use the same manifest format with `category: "theme"`. Key differences from driver plugins:

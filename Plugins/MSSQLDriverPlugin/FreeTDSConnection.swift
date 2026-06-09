@@ -148,13 +148,16 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
         }
         defer { dbloginfree(login) }
 
-        _ = dbsetlname(login, options.user, Int32(DBSETUSER))
-        _ = dbsetlname(login, options.password, Int32(DBSETPWD))
-        _ = dbsetlname(login, options.applicationName, Int32(DBSETAPP))
-        _ = dbsetlname(login, "us_english", Int32(DBSETNATLANG))
-        _ = dbsetlname(login, "UTF-8", Int32(DBSETCHARSET))
+        for parameter in MSSQLLoginParameters.build(
+            user: options.user,
+            password: options.password,
+            applicationName: options.applicationName,
+            encryptionFlag: options.encryptionFlag,
+            database: options.database
+        ) {
+            _ = dbsetlname(login, parameter.value, parameter.field.dbsetName)
+        }
         _ = dbsetlversion(login, UInt8(DBVERSION_74))
-        _ = dbsetlname(login, options.encryptionFlag, Int32(DBSETENCRYPT))
 
         // dbsetlogintime is process-global; setting before dbopen bounds this call. Concurrent
         // connectSync from another FreeTDSConnection would race, but the serial connect queue and
@@ -170,13 +173,6 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
                 throw MSSQLCoreError.tlsHandshakeFailed(kind: kind, serverMessage: detail)
             }
             throw MSSQLCoreError.connectionFailed("Failed to connect to \(options.host):\(options.port): \(msg)")
-        }
-
-        if !options.database.isEmpty {
-            if dbuse(proc, options.database) == FAIL {
-                _ = dbclose(proc)
-                throw MSSQLCoreError.connectionFailed("Cannot open database '\(options.database)'")
-            }
         }
 
         self.dbproc = proc
@@ -549,5 +545,19 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
             return .cipherMismatch
         }
         return nil
+    }
+}
+
+private extension MSSQLLoginField {
+    var dbsetName: Int32 {
+        switch self {
+        case .user: return Int32(DBSETUSER)
+        case .password: return Int32(DBSETPWD)
+        case .application: return Int32(DBSETAPP)
+        case .nationalLanguage: return Int32(DBSETNATLANG)
+        case .charset: return Int32(DBSETCHARSET)
+        case .encryption: return Int32(DBSETENCRYPT)
+        case .database: return Int32(DBSETDBNAME)
+        }
     }
 }

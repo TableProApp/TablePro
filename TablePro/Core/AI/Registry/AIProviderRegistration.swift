@@ -13,8 +13,7 @@ enum AIProviderRegistration {
             typeID: AIProviderType.claude.rawValue,
             displayName: "Claude",
             defaultEndpoint: "https://api.anthropic.com",
-            requiresAPIKey: true,
-            capabilities: [.chat, .models, .reasoning, .images],
+            capabilities: [.chat, .models, .reasoning, .images, .endpointConfigurable, .maxOutputTokens, .modelListFetchable],
             symbolName: "brain",
             curatedModels: claudeCuratedModels,
             makeProvider: { config, apiKey in
@@ -34,8 +33,7 @@ enum AIProviderRegistration {
             typeID: AIProviderType.gemini.rawValue,
             displayName: "Gemini",
             defaultEndpoint: "https://generativelanguage.googleapis.com",
-            requiresAPIKey: true,
-            capabilities: [.chat, .models],
+            capabilities: [.chat, .models, .endpointConfigurable, .maxOutputTokens, .modelListFetchable],
             symbolName: "wand.and.stars",
             makeProvider: { config, apiKey in
                 GeminiProvider(
@@ -50,8 +48,7 @@ enum AIProviderRegistration {
             typeID: AIProviderType.openAI.rawValue,
             displayName: AIProviderType.openAI.displayName,
             defaultEndpoint: AIProviderType.openAI.defaultEndpoint,
-            requiresAPIKey: true,
-            capabilities: [.chat, .models, .reasoning, .images],
+            capabilities: [.chat, .models, .reasoning, .images, .endpointConfigurable, .maxOutputTokens, .modelListFetchable],
             symbolName: iconForType(.openAI),
             curatedModels: openAICuratedModels,
             makeProvider: { config, apiKey in
@@ -65,12 +62,17 @@ enum AIProviderRegistration {
         ))
 
         for type in [AIProviderType.openRouter, .openCode, .ollama, .custom] {
+            var capabilities: AIProviderCapabilities = [
+                .chat, .models, .endpointConfigurable, .maxOutputTokens, .modelListFetchable
+            ]
+            if type == .custom {
+                capabilities.insert(.nameConfigurable)
+            }
             registry.register(AIProviderDescriptor(
                 typeID: type.rawValue,
                 displayName: type.displayName,
                 defaultEndpoint: type.defaultEndpoint,
-                requiresAPIKey: type.authStyle == .apiKey,
-                capabilities: [.chat, .models],
+                capabilities: capabilities,
                 symbolName: iconForType(type),
                 makeProvider: { config, apiKey in
                     OpenAICompatibleProvider(
@@ -88,12 +90,67 @@ enum AIProviderRegistration {
             typeID: AIProviderType.copilot.rawValue,
             displayName: "GitHub Copilot",
             defaultEndpoint: "",
-            requiresAPIKey: false,
-            capabilities: [.chat, .models],
+            capabilities: [.chat, .models, .modelListFetchable],
             symbolName: AIProviderType.copilot.symbolName,
+            showsTelemetryToggle: true,
+            defaultTelemetryEnabled: true,
+            oauthFlowKind: .deviceCode,
             makeProvider: { _, _ in CopilotChatProvider() }
         ))
+
+        registry.register(AIProviderDescriptor(
+            typeID: AIProviderType.chatgptCodex.rawValue,
+            displayName: AIProviderType.chatgptCodex.displayName,
+            defaultEndpoint: "",
+            capabilities: [.chat, .inline, .models, .reasoning],
+            symbolName: AIProviderType.chatgptCodex.symbolName,
+            curatedModels: chatGPTCodexCuratedModels,
+            oauthFlowKind: .browserRedirect,
+            makeProvider: { config, _ in
+                ChatGPTCodexProvider(model: config.model)
+            }
+        ))
+
+        registry.register(AIProviderDescriptor(
+            typeID: AIProviderType.cursor.rawValue,
+            displayName: AIProviderType.cursor.displayName,
+            defaultEndpoint: "",
+            capabilities: [.chat, .inline, .models, .modelListFetchable],
+            symbolName: AIProviderType.cursor.symbolName,
+            curatedModels: cursorCuratedModels,
+            makeProvider: { config, apiKey in
+                if let apiKey, !apiKey.isEmpty {
+                    return CursorProvider(apiKey: apiKey, model: config.model)
+                }
+                return CursorAgentProvider(model: config.model)
+            }
+        ))
     }
+
+    private static let cursorCuratedModels: [CuratedModel] = CursorAI.curatedModels.map {
+        CuratedModel(id: $0.id, displayName: $0.name)
+    }
+
+    private static let chatGPTCodexCuratedModels: [CuratedModel] = [
+        CuratedModel(
+            id: "gpt-5.5",
+            displayName: "GPT-5.5",
+            supportedEffortLevels: ReasoningEffort.allCases,
+            defaultEffort: .medium
+        ),
+        CuratedModel(
+            id: "gpt-5.4",
+            displayName: "GPT-5.4",
+            supportedEffortLevels: [.low, .medium, .high],
+            defaultEffort: .medium
+        ),
+        CuratedModel(
+            id: "gpt-5.4-mini",
+            displayName: "GPT-5.4 Mini",
+            supportedEffortLevels: ReasoningEffort.allCases,
+            defaultEffort: .medium
+        )
+    ]
 
     private static let openAICuratedModels: [CuratedModel] = [
         CuratedModel(

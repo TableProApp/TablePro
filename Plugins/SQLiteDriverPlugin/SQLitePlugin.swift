@@ -517,9 +517,8 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func cancelQuery() throws {
         interruptLock.lock()
-        let db = _dbHandleForInterrupt
-        interruptLock.unlock()
-        guard let db else { return }
+        defer { interruptLock.unlock() }
+        guard let db = _dbHandleForInterrupt else { return }
         sqlite3_interrupt(db)
     }
 

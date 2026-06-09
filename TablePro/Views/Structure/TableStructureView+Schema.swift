@@ -102,14 +102,15 @@ extension TableStructureView {
             await loadColumns()
 
             // Load indexes and foreign keys (needed for complete schema state)
-            guard let driver = DatabaseManager.shared.driver(for: connection.id) else {
-                isReloadingAfterSave = false
-                return
-            }
             do {
-                indexes = try await driver.fetchIndexes(table: tableName)
+                let (reloadedIndexes, reloadedFKs) = try await DatabaseManager.shared.withMetadataDriver(connectionId: connection.id) { driver in
+                    let reloadedIndexes = try await driver.fetchIndexes(table: tableName)
+                    let reloadedFKs = try await driver.fetchForeignKeys(table: tableName)
+                    return (reloadedIndexes, reloadedFKs)
+                }
+                indexes = reloadedIndexes
                 loadedTabs.insert(.indexes)
-                foreignKeys = try await driver.fetchForeignKeys(table: tableName)
+                foreignKeys = reloadedFKs
                 loadedTabs.insert(.foreignKeys)
             } catch {
                 Self.logger.error("Failed to reload indexes/FKs: \(error.localizedDescription, privacy: .public)")

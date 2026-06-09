@@ -3,6 +3,7 @@
 //  TableProPluginKit
 //
 
+@frozen
 public enum GroupingStrategy: String, Codable, Sendable {
     case byDatabase
     case bySchema

@@ -44,7 +44,6 @@ extension MainContentCoordinator {
                     schemaName: tabManager.tabs[oldIndex].tableContext.schemaName
                 )
             }
-            persistOutgoingTabHiddenColumns(oldIndex: oldIndex)
         }
         let saveMs = Int(Date().timeIntervalSince(saveStart) * 1_000)
 

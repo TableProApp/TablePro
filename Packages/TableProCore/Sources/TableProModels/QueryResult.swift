@@ -173,9 +173,18 @@ public extension QueryResult {
                 ordinalPosition: index
             )
         }
+        let legacyRows: [[String?]] = plugin.rows.map { row in
+            row.map { cell -> String? in
+                switch cell {
+                case .null: return nil
+                case .text(let value): return value
+                case .bytes(let data): return data.map { String(format: "%02X", $0) }.joined()
+                }
+            }
+        }
         self.init(
             columns: columnInfos,
-            rows: plugin.rows,
+            rows: legacyRows,
             rowsAffected: plugin.rowsAffected,
             executionTime: plugin.executionTime,
             isTruncated: plugin.isTruncated,

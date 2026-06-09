@@ -361,6 +361,23 @@ struct CreateTableView: View {
                     )
                 }
 
+                let decision = await ExecutionGateProvider.shared.authorize(
+                    OperationRequest(
+                        connectionId: connection.id,
+                        databaseType: connection.type,
+                        sql: sql,
+                        kind: .schemaMutation,
+                        caller: .userInterface,
+                        capabilities: .interactiveUser,
+                        operationDescription: String(localized: "Create Table")
+                    )
+                )
+                guard case .authorized = decision else {
+                    errorMessage = decision.deniedReason ?? String(localized: "Operation not permitted")
+                    showError = true
+                    return
+                }
+
                 _ = try await driver.execute(query: sql)
 
                 QueryHistoryManager.shared.recordQuery(

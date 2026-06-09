@@ -1,1 +1,0 @@
-../../Plugins/DynamoDBDriverPlugin/DynamoDBSsoCredentials.swift

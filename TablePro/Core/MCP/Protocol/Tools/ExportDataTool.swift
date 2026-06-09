@@ -98,7 +98,7 @@ public struct ExportDataTool: MCPToolImplementation {
                 sql: query,
                 connectionId: connectionId,
                 databaseType: meta.databaseType,
-                safeModeLevel: meta.safeModeLevel
+                capabilities: [.confirmationPreCleared]
             )
             queries.append((label: "query", sql: query))
         } else if let tables {
@@ -110,7 +110,7 @@ public struct ExportDataTool: MCPToolImplementation {
                     sql: sql,
                     connectionId: connectionId,
                     databaseType: meta.databaseType,
-                    safeModeLevel: meta.safeModeLevel
+                    capabilities: [.confirmationPreCleared]
                 )
                 queries.append((label: table, sql: sql))
             }

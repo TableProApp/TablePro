@@ -15,6 +15,11 @@ internal enum SidebarTab: String, CaseIterable {
     case favorites
 }
 
+internal enum SidebarLayout: String, CaseIterable, Sendable {
+    case flat
+    case tree
+}
+
 @MainActor @Observable
 final class SharedSidebarState {
     var redisKeyTreeViewModel: RedisKeyTreeViewModel?
@@ -25,6 +30,28 @@ final class SharedSidebarState {
                 selectedSidebarTab.rawValue,
                 forKey: SidebarPersistenceKey.selectedTab(connectionId: connectionId)
             )
+        }
+    }
+
+    var sidebarLayout: SidebarLayout {
+        didSet {
+            UserDefaults.standard.set(
+                sidebarLayout.rawValue,
+                forKey: SidebarPersistenceKey.layout(connectionId: connectionId)
+            )
+        }
+    }
+
+    static var defaultLayout: SidebarLayout {
+        get {
+            guard let raw = UserDefaults.standard.string(forKey: SidebarPersistenceKey.defaultLayout),
+                  let layout = SidebarLayout(rawValue: raw) else {
+                return .flat
+            }
+            return layout
+        }
+        set {
+            UserDefaults.standard.set(newValue.rawValue, forKey: SidebarPersistenceKey.defaultLayout)
         }
     }
 
@@ -39,12 +66,20 @@ final class SharedSidebarState {
         } else {
             self.selectedSidebarTab = .tables
         }
+        let layoutKey = SidebarPersistenceKey.layout(connectionId: connectionId)
+        if let raw = UserDefaults.standard.string(forKey: layoutKey),
+           let layout = SidebarLayout(rawValue: raw) {
+            self.sidebarLayout = layout
+        } else {
+            self.sidebarLayout = SharedSidebarState.defaultLayout
+        }
     }
 
     /// Default init for previews and tests
     init() {
         self.connectionId = UUID()
         self.selectedSidebarTab = .tables
+        self.sidebarLayout = .flat
     }
 
     private static var registry: [UUID: SharedSidebarState] = [:]

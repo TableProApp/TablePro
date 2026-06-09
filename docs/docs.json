@@ -68,6 +68,7 @@
                 "pages": [
                   "databases/dynamodb",
                   "databases/bigquery",
+                  "databases/snowflake",
                   "databases/cloudflare-d1"
                 ]
               },
@@ -124,7 +125,7 @@
                 "pages": [
                   "features/tabs",
                   "features/query-history",
-                  "features/sql-favorites",
+                  "features/favorites",
                   "features/keyboard-shortcuts"
                 ]
               },
