@@ -37,12 +37,12 @@ final class BeancountPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let columnTypesByCategory: [String: [String]] = [
         "Integer": ["INTEGER"],
         "String": ["TEXT"],
-        "Date": ["DATE"],
-        "Decimal": ["DECIMAL"]
+        "Date": ["DATE"]
     ]
     static let immutableColumns: [String] = [
         "id", "transaction_id", "date", "flag", "payee", "narration",
-        "account", "amount", "commodity", "currency", "source_file", "line"
+        "account", "amount", "commodity", "cost_number", "cost_currency",
+        "currency", "currencies", "name", "open_date", "path"
     ]
 
     static let sqlDialect: SQLDialectDescriptor? = SQLDialectDescriptor(
@@ -60,7 +60,7 @@ final class BeancountPlugin: NSObject, TableProPlugin, DriverPlugin {
             "COALESCE", "NULLIF", "ROUND", "ABS",
             "DATE", "STRFTIME", "SUBSTR", "LOWER", "UPPER"
         ],
-        dataTypes: ["INTEGER", "TEXT", "DATE", "DECIMAL"],
+        dataTypes: ["INTEGER", "TEXT", "DATE"],
         regexSyntax: .unsupported,
         booleanLiteralStyle: .numeric,
         likeEscapeStyle: .explicit,

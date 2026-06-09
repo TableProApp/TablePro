@@ -7,197 +7,255 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Beancount plugin driver")
+private enum RustledgerLocator {
+    static let path: String? = resolve()
+
+    static func resolve() -> String? {
+        var candidates: [String] = []
+        if let env = ProcessInfo.processInfo.environment["TABLEPRO_RUSTLEDGER_BINARY"] {
+            candidates.append(env)
+        }
+        if let bundled = Bundle.main.builtInPlugInsURL?
+            .appendingPathComponent("BeancountDriver.tableplugin/Contents/Resources/rledger").path {
+            candidates.append(bundled)
+        }
+        candidates.append(cachedPath())
+        candidates.append(contentsOf: ["/opt/homebrew/bin/rledger", "/usr/local/bin/rledger"])
+        return candidates.first { FileManager.default.isExecutableFile(atPath: $0) }
+    }
+
+    static func cachedPath(file: StaticString = #filePath) -> String {
+        #if arch(arm64)
+        let triple = "aarch64-apple-darwin"
+        #else
+        let triple = "x86_64-apple-darwin"
+        #endif
+        var directory = URL(fileURLWithPath: "\(file)").deletingLastPathComponent()
+        while directory.path != "/" {
+            let marker = directory.appendingPathComponent("TablePro.xcodeproj")
+            if FileManager.default.fileExists(atPath: marker.path) {
+                return directory
+                    .appendingPathComponent("Libs/rustledger/v0.15.0/\(triple)/rledger")
+                    .path
+            }
+            directory = directory.deletingLastPathComponent()
+        }
+        return ""
+    }
+}
+
+@Suite(
+    "Beancount plugin driver",
+    .serialized,
+    .enabled(if: RustledgerLocator.path != nil, "rustledger helper unavailable")
+)
 struct BeancountPluginDriverTests {
     @Test("reloads the SQL projection when an included ledger file changes")
     func reloadsWhenIncludedFileChanges() async throws {
-        let tempDirectory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("beancount-driver-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: tempDirectory, withIntermediateDirectories: true)
-        defer {
-            try? FileManager.default.removeItem(at: tempDirectory)
+        try await Self.withRustledger {
+            let directory = try Self.makeTempDirectory()
+            defer { try? FileManager.default.removeItem(at: directory) }
+
+            let included = directory.appendingPathComponent("accounts.beancount")
+            try "2024-01-01 open Assets:Bank:Checking USD\n"
+                .write(to: included, atomically: true, encoding: .utf8)
+
+            let ledger = directory.appendingPathComponent("main.beancount")
+            try "include \"accounts.beancount\"\n".write(to: ledger, atomically: true, encoding: .utf8)
+
+            let driver = BeancountPluginDriver(config: Self.config(ledger))
+            try await driver.connect()
+            defer { driver.disconnect() }
+
+            var result = try await driver.execute(query: "SELECT name FROM accounts ORDER BY name")
+            #expect(result.rows.map { $0[0].asText } == ["Assets:Bank:Checking"])
+
+            try """
+            2024-01-01 open Assets:Bank:Checking USD
+            2024-01-02 open Expenses:Food USD
+            """.write(to: included, atomically: true, encoding: .utf8)
+
+            result = try await driver.execute(query: "SELECT name FROM accounts ORDER BY name")
+            #expect(result.rows.map { $0[0].asText } == ["Assets:Bank:Checking", "Expenses:Food"])
         }
-
-        let included = tempDirectory.appendingPathComponent("accounts.beancount")
-        try """
-        2024-01-01 open Assets:Bank:Checking USD
-        """.write(to: included, atomically: true, encoding: .utf8)
-
-        let ledger = tempDirectory.appendingPathComponent("main.beancount")
-        try """
-        include "accounts.beancount"
-        """.write(to: ledger, atomically: true, encoding: .utf8)
-
-        let driver = BeancountPluginDriver(config: DriverConnectionConfig(
-            host: "",
-            port: 0,
-            username: "",
-            password: "",
-            database: ledger.path
-        ))
-        try await driver.connect()
-        defer {
-            driver.disconnect()
-        }
-
-        var result = try await driver.execute(query: "SELECT name FROM accounts ORDER BY name")
-        #expect(result.rows.map { $0[0].asText } == ["Assets:Bank:Checking"])
-
-        try """
-        2024-01-01 open Assets:Bank:Checking USD
-        2024-01-02 open Expenses:Food USD
-        """.write(to: included, atomically: true, encoding: .utf8)
-
-        result = try await driver.execute(query: "SELECT name FROM accounts ORDER BY name")
-        #expect(result.rows.map { $0[0].asText } == ["Assets:Bank:Checking", "Expenses:Food"])
     }
 
     @Test("reloads the SQL projection when a glob include matches a new file")
     func reloadsWhenGlobIncludeMatchesNewFile() async throws {
-        let tempDirectory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("beancount-driver-glob-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: tempDirectory, withIntermediateDirectories: true)
-        defer {
-            try? FileManager.default.removeItem(at: tempDirectory)
+        try await Self.withRustledger {
+            let directory = try Self.makeTempDirectory()
+            defer { try? FileManager.default.removeItem(at: directory) }
+
+            let imports = directory.appendingPathComponent("imports", isDirectory: true)
+            try FileManager.default.createDirectory(at: imports, withIntermediateDirectories: true)
+            try "2024-01-01 open Assets:Bank:Checking USD\n"
+                .write(to: imports.appendingPathComponent("accounts.beancount"), atomically: true, encoding: .utf8)
+
+            let ledger = directory.appendingPathComponent("main.beancount")
+            try "include \"imports/*.beancount\"\n".write(to: ledger, atomically: true, encoding: .utf8)
+
+            let driver = BeancountPluginDriver(config: Self.config(ledger))
+            try await driver.connect()
+            defer { driver.disconnect() }
+
+            var result = try await driver.execute(query: "SELECT name FROM accounts ORDER BY name")
+            #expect(result.rows.map { $0[0].asText } == ["Assets:Bank:Checking"])
+
+            try "2024-01-02 open Expenses:Food USD\n"
+                .write(to: imports.appendingPathComponent("expenses.beancount"), atomically: true, encoding: .utf8)
+
+            result = try await driver.execute(query: "SELECT name FROM accounts ORDER BY name")
+            #expect(result.rows.map { $0[0].asText } == ["Assets:Bank:Checking", "Expenses:Food"])
         }
-
-        let imports = tempDirectory.appendingPathComponent("imports", isDirectory: true)
-        try FileManager.default.createDirectory(at: imports, withIntermediateDirectories: true)
-        try """
-        2024-01-01 open Assets:Bank:Checking USD
-        """.write(to: imports.appendingPathComponent("accounts.beancount"), atomically: true, encoding: .utf8)
-
-        let ledger = tempDirectory.appendingPathComponent("main.beancount")
-        try """
-        include "imports/*.beancount"
-        """.write(to: ledger, atomically: true, encoding: .utf8)
-
-        let driver = BeancountPluginDriver(config: DriverConnectionConfig(
-            host: "",
-            port: 0,
-            username: "",
-            password: "",
-            database: ledger.path
-        ))
-        try await driver.connect()
-        defer {
-            driver.disconnect()
-        }
-
-        var result = try await driver.execute(query: "SELECT name FROM accounts ORDER BY name")
-        #expect(result.rows.map { $0[0].asText } == ["Assets:Bank:Checking"])
-
-        try """
-        2024-01-02 open Expenses:Food USD
-        """.write(to: imports.appendingPathComponent("expenses.beancount"), atomically: true, encoding: .utf8)
-
-        result = try await driver.execute(query: "SELECT name FROM accounts ORDER BY name")
-        #expect(result.rows.map { $0[0].asText } == ["Assets:Bank:Checking", "Expenses:Food"])
     }
 
     @Test("rejects write queries")
     func rejectsWriteQueries() async throws {
-        let tempDirectory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("beancount-driver-read-only-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: tempDirectory, withIntermediateDirectories: true)
-        defer {
-            try? FileManager.default.removeItem(at: tempDirectory)
+        try await Self.withRustledger {
+            let directory = try Self.makeTempDirectory()
+            defer { try? FileManager.default.removeItem(at: directory) }
+
+            let ledger = directory.appendingPathComponent("main.beancount")
+            try "2024-01-01 open Assets:Bank:Checking USD\n".write(to: ledger, atomically: true, encoding: .utf8)
+
+            let driver = BeancountPluginDriver(config: Self.config(ledger))
+            try await driver.connect()
+            defer { driver.disconnect() }
+
+            await #expect(throws: BeancountDriverError.self) {
+                _ = try await driver.execute(query: "DELETE FROM accounts")
+            }
         }
+    }
 
-        let ledger = tempDirectory.appendingPathComponent("main.beancount")
-        try """
-        2024-01-01 open Assets:Bank:Checking USD
-        """.write(to: ledger, atomically: true, encoding: .utf8)
+    @Test("projects authoritative posting amounts and resolved cost basis")
+    func projectsAuthoritativeAmounts() async throws {
+        try await Self.withRustledger {
+            let directory = try Self.makeTempDirectory()
+            defer { try? FileManager.default.removeItem(at: directory) }
 
-        let driver = BeancountPluginDriver(config: DriverConnectionConfig(
-            host: "",
-            port: 0,
-            username: "",
-            password: "",
-            database: ledger.path
-        ))
-        try await driver.connect()
-        defer {
-            driver.disconnect()
+            let ledger = directory.appendingPathComponent("main.beancount")
+            try """
+            2024-01-01 open Assets:Cash USD
+            2024-01-01 open Assets:Stock HOOL
+
+            2024-01-05 * "Broker" "Buy stock"
+              Assets:Stock        10 HOOL {100.00 USD}
+              Assets:Cash    -1,000.00 USD
+            """.write(to: ledger, atomically: true, encoding: .utf8)
+
+            let driver = BeancountPluginDriver(config: Self.config(ledger))
+            try await driver.connect()
+            defer { driver.disconnect() }
+
+            let result = try await driver.execute(query: """
+                SELECT account, amount, commodity, cost_number, cost_currency
+                FROM postings ORDER BY account
+                """)
+            let byAccount = Dictionary(
+                uniqueKeysWithValues: result.rows.compactMap { row -> (String, [PluginCellValue])? in
+                    guard let account = row[0].asText else { return nil }
+                    return (account, row)
+                }
+            )
+
+            let cash = try #require(byAccount["Assets:Cash"])
+            #expect(cash[1].asText == "-1000.00")
+            #expect(cash[2].asText == "USD")
+
+            let stock = try #require(byAccount["Assets:Stock"])
+            #expect(stock[1].asText == "10")
+            #expect(stock[2].asText == "HOOL")
+            #expect(stock[3].asText == "100.00")
+            #expect(stock[4].asText == "USD")
         }
+    }
 
-        await #expect(throws: BeancountDriverError.self) {
-            _ = try await driver.execute(query: "DELETE FROM accounts")
+    @Test("links postings to a single transaction row")
+    func linksPostingsToTransaction() async throws {
+        try await Self.withRustledger {
+            let directory = try Self.makeTempDirectory()
+            defer { try? FileManager.default.removeItem(at: directory) }
+
+            let ledger = directory.appendingPathComponent("main.beancount")
+            try """
+            2024-01-01 open Assets:Cash USD
+            2024-01-01 open Expenses:Food USD
+
+            2024-01-05 * "Cafe" "Coffee"
+              Expenses:Food   4.00 USD
+              Assets:Cash    -4.00 USD
+            """.write(to: ledger, atomically: true, encoding: .utf8)
+
+            let driver = BeancountPluginDriver(config: Self.config(ledger))
+            try await driver.connect()
+            defer { driver.disconnect() }
+
+            let transactions = try await driver.execute(query: "SELECT id, payee, narration FROM transactions")
+            #expect(transactions.rows.count == 1)
+            #expect(transactions.rows.first?[1].asText == "Cafe")
+
+            let transactionId = try #require(transactions.rows.first?[0].asText)
+            let postings = try await driver.execute(query: "SELECT transaction_id FROM postings")
+            #expect(postings.rows.count == 2)
+            #expect(postings.rows.allSatisfy { $0[0].asText == transactionId })
         }
     }
 
     @Test("executes BQL queries through the rustledger helper")
     func executesBQLQueriesThroughRustledgerHelper() async throws {
-        let rustledger = try #require(Self.bundledRustledgerPath() ?? Self.installedRustledgerPath())
-        let tempDirectory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("beancount-driver-bql-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: tempDirectory, withIntermediateDirectories: true)
-        defer {
-            unsetenv("TABLEPRO_RUSTLEDGER_BINARY")
-            try? FileManager.default.removeItem(at: tempDirectory)
-        }
+        try await Self.withRustledger {
+            let directory = try Self.makeTempDirectory()
+            defer { try? FileManager.default.removeItem(at: directory) }
 
-        let ledger = tempDirectory.appendingPathComponent("main.beancount")
-        try """
-        2024-01-01 open Assets:Bank:Checking USD
-        2024-01-01 open Expenses:Food USD
-        2024-01-01 open Income:Salary USD
-        """.write(to: ledger, atomically: true, encoding: .utf8)
+            let ledger = directory.appendingPathComponent("main.beancount")
+            try """
+            2024-01-01 open Assets:Bank:Checking USD
+            2024-01-01 open Expenses:Food USD
+            2024-01-01 open Income:Salary USD
+            """.write(to: ledger, atomically: true, encoding: .utf8)
 
-        setenv("TABLEPRO_RUSTLEDGER_BINARY", rustledger, 1)
+            let driver = BeancountPluginDriver(config: Self.config(ledger))
+            try await driver.connect()
+            defer { driver.disconnect() }
 
-        let driver = BeancountPluginDriver(config: DriverConnectionConfig(
-            host: "",
-            port: 0,
-            username: "",
-            password: "",
-            database: ledger.path
-        ))
-        try await driver.connect()
-        defer {
-            driver.disconnect()
-        }
+            let result = try await driver.execute(query: "BQL: SELECT account FROM accounts ORDER BY account")
+            #expect(result.columns == ["account"])
+            #expect(result.rows.map { $0.first?.asText } == [
+                "Assets:Bank:Checking",
+                "Expenses:Food",
+                "Income:Salary"
+            ])
 
-        let result = try await driver.execute(query: "BQL: SELECT account FROM accounts ORDER BY account")
+            let count = try await driver.fetchRowCount(query: "BQL: SELECT account FROM accounts ORDER BY account")
+            #expect(count == 3)
 
-        #expect(result.columns == ["account"])
-        #expect(result.rows.map { $0.first?.asText } == [
-            "Assets:Bank:Checking",
-            "Expenses:Food",
-            "Income:Salary"
-        ])
-
-        let count = try await driver.fetchRowCount(query: "BQL: SELECT account FROM accounts ORDER BY account")
-        #expect(count == 3)
-
-        let page = try await driver.fetchRows(
-            query: "BQL: SELECT account FROM accounts ORDER BY account",
-            offset: 1,
-            limit: 1
-        )
-        #expect(page.rows.map { $0.first?.asText } == ["Expenses:Food"])
-    }
-
-    private static func installedRustledgerPath() -> String? {
-        let candidates = [
-            ProcessInfo.processInfo.environment["TABLEPRO_RUSTLEDGER_BINARY"],
-            "/opt/homebrew/bin/rledger",
-            "/usr/local/bin/rledger"
-        ].compactMap { $0 }
-
-        return candidates.first { path in
-            FileManager.default.isExecutableFile(atPath: path)
+            let page = try await driver.fetchRows(
+                query: "BQL: SELECT account FROM accounts ORDER BY account",
+                offset: 1,
+                limit: 1
+            )
+            #expect(page.rows.map { $0.first?.asText } == ["Expenses:Food"])
         }
     }
 
-    private static func bundledRustledgerPath() -> String? {
-        guard let path = Bundle.main.builtInPlugInsURL?
-            .appendingPathComponent("BeancountDriver.tableplugin")
-            .appendingPathComponent("Contents/Resources/rledger")
-            .path else {
-            return nil
-        }
+    // MARK: - Helpers
 
-        return FileManager.default.isExecutableFile(atPath: path) ? path : nil
+    private static func withRustledger(_ body: () async throws -> Void) async throws {
+        let rledger = try #require(RustledgerLocator.path)
+        setenv("TABLEPRO_RUSTLEDGER_BINARY", rledger, 1)
+        defer { unsetenv("TABLEPRO_RUSTLEDGER_BINARY") }
+        try await body()
+    }
+
+    private static func config(_ ledger: URL) -> DriverConnectionConfig {
+        DriverConnectionConfig(host: "", port: 0, username: "", password: "", database: ledger.path)
+    }
+
+    private static func makeTempDirectory() throws -> URL {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("beancount-driver-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        return directory
     }
 }

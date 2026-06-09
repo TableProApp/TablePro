@@ -38,12 +38,14 @@ See [Connection URL Reference](/databases/connection-urls) for all parameters.
 
 | Table | Contents |
 |-------|----------|
-| `transactions` | Transaction date, flag, payee, narration, source file, and line |
-| `postings` | Posting account, amount, commodity, source file, and line |
+| `transactions` | Transaction date, flag, payee, and narration |
+| `postings` | Posting account, amount, commodity, and resolved cost basis (`cost_number`, `cost_currency`) |
 | `accounts` | Opened accounts and declared currencies |
 | `prices` | Price directives |
 | `balances` | Balance directives |
 | `source_files` | Parsed ledger and include files |
+
+Amounts are read straight from `rustledger`, so thousands separators, arithmetic, cost (`{}`), and price (`@`/`@@`) annotations are resolved to their booked values.
 
 ## Includes
 

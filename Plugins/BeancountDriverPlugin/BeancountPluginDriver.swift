@@ -3,8 +3,8 @@
 //  BeancountDriverPlugin
 //
 
-import Foundation
 import Dispatch
+import Foundation
 import SQLite3
 import TableProPluginKit
 
@@ -18,15 +18,15 @@ enum BeancountDriverError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .notConnected:
-            return "Not connected to Beancount ledger"
+            return String(localized: "Not connected to Beancount ledger")
         case .connectionFailed(let message):
-            return "Failed to open Beancount ledger: \(message)"
+            return String(format: String(localized: "Failed to open Beancount ledger: %@"), message)
         case .queryFailed(let message):
             return message
         case .readOnly:
-            return "Beancount ledgers are exposed as a read-only SQL database"
+            return String(localized: "Beancount ledgers are exposed as a read-only SQL database")
         case .rustledgerUnavailable:
-            return "BQL requires the bundled rustledger helper"
+            return String(localized: "The Beancount driver requires its bundled rustledger helper")
         }
     }
 }
@@ -35,18 +35,15 @@ extension BeancountDriverError: PluginDriverError {
     var pluginErrorMessage: String { errorDescription ?? "Beancount driver error" }
 }
 
-private struct BeancountSQLiteResult {
-    let columns: [String]
-    let columnTypeNames: [String]
-    let rows: [[PluginCellValue]]
-    let rowsAffected: Int
-    let executionTime: TimeInterval
-    let isTruncated: Bool
-}
-
 private struct BeancountSourceSignature: Equatable {
     let modificationDate: Date?
     let fileSize: UInt64?
+}
+
+private struct BeancountProjection {
+    let handle: OpaquePointer
+    let watchedURLs: [URL]
+    let signatures: [String: BeancountSourceSignature]
 }
 
 final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
@@ -54,8 +51,15 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private let lock = NSLock()
     private var db: OpaquePointer?
     private var ledgerURL: URL?
-    private var ledger: BeancountLedger?
+    private var watchedURLs: [URL] = []
     private var sourceSignatures: [String: BeancountSourceSignature] = [:]
+
+    private static let postingsQuery =
+        "SELECT id, date, flag, payee, narration, account, number, currency, cost_number, cost_currency "
+        + "FROM #postings ORDER BY id"
+    private static let accountsQuery = "SELECT account, open, currencies FROM #accounts ORDER BY account"
+    private static let pricesQuery = "SELECT date, currency, amount FROM #prices ORDER BY date, currency"
+    private static let balancesQuery = "SELECT date, account, amount FROM #balances ORDER BY date, account"
 
     var currentSchema: String? { nil }
     var serverVersion: String? { "Beancount" }
@@ -71,28 +75,18 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let path = expandPath(config.database)
         let fileURL = URL(fileURLWithPath: path)
         guard FileManager.default.fileExists(atPath: path) else {
-            throw BeancountDriverError.connectionFailed("File does not exist at \(path)")
+            throw BeancountDriverError.connectionFailed(
+                String(format: String(localized: "File does not exist at %@"), path)
+            )
         }
 
-        let parsed = try BeancountLedgerParser().parse(fileURL: fileURL)
-        let signatures = try Self.signatures(for: Self.watchedURLs(for: parsed))
-        var handle: OpaquePointer?
-        guard sqlite3_open(":memory:", &handle) == SQLITE_OK, let handle else {
-            throw BeancountDriverError.connectionFailed("Could not initialize SQL projection")
-        }
-
-        do {
-            try Self.load(parsed, into: handle)
-        } catch {
-            sqlite3_close(handle)
-            throw error
-        }
+        let projection = try Self.buildProjection(ledgerURL: fileURL)
 
         lock.withLock {
-            db = handle
+            db = projection.handle
             ledgerURL = fileURL
-            ledger = parsed
-            sourceSignatures = signatures
+            watchedURLs = projection.watchedURLs
+            sourceSignatures = projection.signatures
         }
     }
 
@@ -103,7 +97,7 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 db = nil
             }
             ledgerURL = nil
-            ledger = nil
+            watchedURLs = []
             sourceSignatures.removeAll()
         }
     }
@@ -136,30 +130,16 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         if let bql = Self.extractBQLQuery(from: query) {
             return try executeBQL(query: bql)
         }
-        let raw = try executeSQLite(query: query, parameters: [])
-        return PluginQueryResult(
-            columns: raw.columns,
-            columnTypeNames: raw.columnTypeNames,
-            rows: raw.rows,
-            rowsAffected: raw.rowsAffected,
-            executionTime: raw.executionTime,
-            isTruncated: raw.isTruncated
-        )
+        return try executeSQLite(query: query, parameters: [])
     }
 
     func executeParameterized(query: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult {
         if Self.extractBQLQuery(from: query) != nil {
-            throw BeancountDriverError.queryFailed("BQL queries do not support SQL parameters")
+            throw BeancountDriverError.queryFailed(
+                String(localized: "BQL queries do not support SQL parameters")
+            )
         }
-        let raw = try executeSQLite(query: query, parameters: parameters)
-        return PluginQueryResult(
-            columns: raw.columns,
-            columnTypeNames: raw.columnTypeNames,
-            rows: raw.rows,
-            rowsAffected: raw.rowsAffected,
-            executionTime: raw.executionTime,
-            isTruncated: raw.isTruncated
-        )
+        return try executeSQLite(query: query, parameters: parameters)
     }
 
     func fetchRowCount(query: String) async throws -> Int {
@@ -220,7 +200,9 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             WHERE type = 'table' AND name = '\(escapeStringLiteral(table))'
             """)
         guard let ddl = result.rows.first?.first?.asText else {
-            throw BeancountDriverError.queryFailed("Failed to fetch DDL for table '\(table)'")
+            throw BeancountDriverError.queryFailed(
+                String(format: String(localized: "Failed to fetch DDL for table '%@'"), table)
+            )
         }
         return ddl.hasSuffix(";") ? ddl : ddl + ";"
     }
@@ -277,90 +259,49 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
         AsyncThrowingStream { continuation in
-            do {
-                let result: BeancountSQLiteResult
-                if let bql = Self.extractBQLQuery(from: query) {
-                    let bqlResult = try executeBQL(query: bql)
-                    result = BeancountSQLiteResult(
-                        columns: bqlResult.columns,
-                        columnTypeNames: bqlResult.columnTypeNames,
-                        rows: bqlResult.rows,
-                        rowsAffected: bqlResult.rowsAffected,
-                        executionTime: bqlResult.executionTime,
-                        isTruncated: bqlResult.isTruncated
-                    )
-                } else {
-                    result = try executeSQLite(query: query, parameters: [])
+            Task {
+                do {
+                    let result: PluginQueryResult
+                    if let bql = Self.extractBQLQuery(from: query) {
+                        result = try self.executeBQL(query: bql)
+                    } else {
+                        result = try self.executeSQLite(query: query, parameters: [])
+                    }
+                    continuation.yield(.header(PluginStreamHeader(
+                        columns: result.columns,
+                        columnTypeNames: result.columnTypeNames,
+                        estimatedRowCount: result.rows.count
+                    )))
+                    continuation.yield(.rows(result.rows))
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
                 }
-                continuation.yield(.header(PluginStreamHeader(
-                    columns: result.columns,
-                    columnTypeNames: result.columnTypeNames,
-                    estimatedRowCount: result.rows.count
-                )))
-                continuation.yield(.rows(result.rows))
-                continuation.finish()
-            } catch {
-                continuation.finish(throwing: error)
             }
         }
     }
+
+    // MARK: - BQL
 
     private func executeBQL(query: String) throws -> PluginQueryResult {
         let ledgerPath = try lock.withLock { () -> String in
             guard let ledgerURL else { throw BeancountDriverError.notConnected }
             return ledgerURL.path
         }
-        let rustledgerPath = try Self.rustledgerExecutablePath()
         let start = Date()
-
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: rustledgerPath)
-        process.arguments = ["query", "-f", "json", "--no-errors", ledgerPath, query]
-
-        let stdout = Pipe()
-        let stderr = Pipe()
-        process.standardOutput = stdout
-        process.standardError = stderr
-
-        let outputCollector = PipeDataCollector()
-        let errorCollector = PipeDataCollector()
-        let readers = DispatchGroup()
-        readers.enter()
-        DispatchQueue.global(qos: .userInitiated).async {
-            outputCollector.set(stdout.fileHandleForReading.readDataToEndOfFile())
-            readers.leave()
-        }
-        readers.enter()
-        DispatchQueue.global(qos: .userInitiated).async {
-            errorCollector.set(stderr.fileHandleForReading.readDataToEndOfFile())
-            readers.leave()
-        }
-
-        try process.run()
-        process.waitUntilExit()
-        readers.wait()
-
-        let output = outputCollector.data
-        let errorOutput = errorCollector.data
-        guard process.terminationStatus == 0 else {
-            let message = String(data: errorOutput, encoding: .utf8)?
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            throw BeancountDriverError.queryFailed(message?.isEmpty == false ? message! : "rustledger query failed")
-        }
-
-        return try Self.decodeRustledgerQueryOutput(
-            output,
-            executionTime: Date().timeIntervalSince(start)
-        )
+        let output = try Self.runRledger(arguments: ["query", "-f", "json", "--no-errors", ledgerPath, query])
+        return try Self.decodeRustledgerQueryOutput(output, executionTime: Date().timeIntervalSince(start))
     }
 
-    private func executeSQLite(query: String, parameters: [PluginCellValue]) throws -> BeancountSQLiteResult {
+    // MARK: - SQLite Projection
+
+    private func executeSQLite(query: String, parameters: [PluginCellValue]) throws -> PluginQueryResult {
         guard Self.isReadOnlyQuery(query) else {
             throw BeancountDriverError.readOnly
         }
+        try reloadProjectionIfNeeded()
 
         return try lock.withLock {
-            try reloadProjectionIfNeeded()
             guard let db = self.db else { throw BeancountDriverError.notConnected }
 
             let start = Date()
@@ -408,7 +349,7 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 rows.append((0..<columnCount).map { Self.cellValue(statement: statement, column: $0) })
             }
 
-            return BeancountSQLiteResult(
+            return PluginQueryResult(
                 columns: columns,
                 columnTypeNames: columnTypeNames,
                 rows: rows,
@@ -416,6 +357,32 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 executionTime: Date().timeIntervalSince(start),
                 isTruncated: truncated
             )
+        }
+    }
+
+    private func reloadProjectionIfNeeded() throws {
+        let snapshot: (url: URL, watched: [URL], signatures: [String: BeancountSourceSignature])? = lock.withLock {
+            guard let ledgerURL else { return nil }
+            return (ledgerURL, watchedURLs, sourceSignatures)
+        }
+        guard let snapshot else { return }
+
+        let currentSignatures = Self.signatures(for: snapshot.watched)
+        guard currentSignatures != snapshot.signatures else { return }
+
+        let projection = try Self.buildProjection(ledgerURL: snapshot.url)
+
+        lock.withLock {
+            guard ledgerURL == snapshot.url else {
+                sqlite3_close(projection.handle)
+                return
+            }
+            if let db {
+                sqlite3_close(db)
+            }
+            db = projection.handle
+            watchedURLs = projection.watchedURLs
+            sourceSignatures = projection.signatures
         }
     }
 
@@ -434,72 +401,223 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         )
     }
 
-    private func reloadProjectionIfNeeded() throws {
-        guard let ledgerURL, let ledger else { return }
-        let currentSignatures = try Self.signatures(for: Self.watchedURLs(for: ledger))
-        guard currentSignatures != sourceSignatures else { return }
+    private static func buildProjection(ledgerURL: URL) throws -> BeancountProjection {
+        let graph = try BeancountIncludeResolver().resolve(fileURL: ledgerURL)
+        let watched = Array(Set(graph.sourceFiles + graph.watchedDirectories)).sorted { $0.path < $1.path }
+        let fileSignatures = signatures(for: watched)
+        let ledgerPath = ledgerURL.path
 
-        let parsed = try BeancountLedgerParser().parse(fileURL: ledgerURL)
-        let newSignatures = try Self.signatures(for: Self.watchedURLs(for: parsed))
         var handle: OpaquePointer?
         guard sqlite3_open(":memory:", &handle) == SQLITE_OK, let handle else {
-            throw BeancountDriverError.connectionFailed("Could not initialize SQL projection")
+            throw BeancountDriverError.connectionFailed(
+                String(localized: "Could not initialize SQL projection")
+            )
         }
 
         do {
-            try Self.load(parsed, into: handle)
+            try createSchema(handle)
+            try loadTransactionsAndPostings(query(ledgerPath: ledgerPath, bql: postingsQuery), into: handle)
+            try loadAccounts(query(ledgerPath: ledgerPath, bql: accountsQuery), into: handle)
+            try loadPrices(query(ledgerPath: ledgerPath, bql: pricesQuery), into: handle)
+            try loadBalances(query(ledgerPath: ledgerPath, bql: balancesQuery), into: handle)
+            try loadSourceFiles(graph.sourceFiles, into: handle)
+            try exec(handle, "PRAGMA query_only = ON")
         } catch {
             sqlite3_close(handle)
             throw error
         }
 
-        if let db {
-            sqlite3_close(db)
-        }
-        db = handle
-        self.ledger = parsed
-        sourceSignatures = newSignatures
+        return BeancountProjection(handle: handle, watchedURLs: watched, signatures: fileSignatures)
     }
 
-    private static func cellValue(statement: OpaquePointer?, column: Int32) -> PluginCellValue {
-        let type = sqlite3_column_type(statement, column)
-        if type == SQLITE_NULL {
-            return .null
-        }
-        if type == SQLITE_BLOB {
-            let byteCount = Int(sqlite3_column_bytes(statement, column))
-            guard byteCount > 0, let blob = sqlite3_column_blob(statement, column) else {
-                return .bytes(Data())
+    private static func query(ledgerPath: String, bql: String) throws -> [[String: Any]] {
+        let data = try runRledger(arguments: ["query", "-f", "json", "--no-errors", ledgerPath, bql])
+        return try decodeRledgerRows(data)
+    }
+
+    private static func createSchema(_ db: OpaquePointer) throws {
+        try exec(db, """
+            CREATE TABLE transactions (
+                id INTEGER PRIMARY KEY,
+                date DATE NOT NULL,
+                flag TEXT NOT NULL,
+                payee TEXT,
+                narration TEXT
+            );
+            CREATE TABLE postings (
+                id INTEGER PRIMARY KEY,
+                transaction_id INTEGER NOT NULL,
+                date DATE NOT NULL,
+                account TEXT NOT NULL,
+                amount TEXT,
+                commodity TEXT,
+                cost_number TEXT,
+                cost_currency TEXT
+            );
+            CREATE TABLE accounts (
+                name TEXT PRIMARY KEY,
+                open_date DATE,
+                currencies TEXT
+            );
+            CREATE TABLE prices (
+                id INTEGER PRIMARY KEY,
+                date DATE NOT NULL,
+                commodity TEXT NOT NULL,
+                amount TEXT NOT NULL,
+                currency TEXT NOT NULL
+            );
+            CREATE TABLE balances (
+                id INTEGER PRIMARY KEY,
+                date DATE NOT NULL,
+                account TEXT NOT NULL,
+                amount TEXT NOT NULL,
+                commodity TEXT NOT NULL
+            );
+            CREATE TABLE source_files (
+                path TEXT PRIMARY KEY
+            );
+            """)
+    }
+
+    private static func loadTransactionsAndPostings(_ rows: [[String: Any]], into db: OpaquePointer) throws {
+        var seenTransactions: Set<Int> = []
+        var postingId = 0
+
+        for row in rows {
+            guard let transactionId = intValue(row["id"]),
+                  let date = stringValue(row["date"]) else {
+                continue
             }
-            return .bytes(Data(bytes: blob, count: byteCount))
+            let flag = stringValue(row["flag"]) ?? "*"
+
+            if seenTransactions.insert(transactionId).inserted {
+                try insert(db, sql: """
+                    INSERT INTO transactions (id, date, flag, payee, narration)
+                    VALUES (?, ?, ?, ?, ?)
+                    """, values: [
+                        String(transactionId),
+                        date,
+                        flag,
+                        stringValue(row["payee"]),
+                        stringValue(row["narration"])
+                    ])
+            }
+
+            guard let account = stringValue(row["account"]) else { continue }
+            postingId += 1
+            try insert(db, sql: """
+                INSERT INTO postings
+                (id, transaction_id, date, account, amount, commodity, cost_number, cost_currency)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """, values: [
+                    String(postingId),
+                    String(transactionId),
+                    date,
+                    account,
+                    stringValue(row["number"]),
+                    stringValue(row["currency"]),
+                    stringValue(row["cost_number"]),
+                    stringValue(row["cost_currency"])
+                ])
         }
-        guard let text = sqlite3_column_text(statement, column) else {
-            return .null
-        }
-        return .text(String(cString: text))
     }
 
-    private static func isReadOnlyQuery(_ query: String) -> Bool {
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return true }
-        let lower = trimmed.lowercased()
-        return lower.hasPrefix("select")
-            || lower.hasPrefix("with")
-            || lower.hasPrefix("pragma table_info")
-            || lower.hasPrefix("pragma database_list")
-            || lower.hasPrefix("explain")
+    private static func loadAccounts(_ rows: [[String: Any]], into db: OpaquePointer) throws {
+        for row in rows {
+            guard let name = stringValue(row["account"]) else { continue }
+            try insert(db, sql: """
+                INSERT OR REPLACE INTO accounts (name, open_date, currencies)
+                VALUES (?, ?, ?)
+                """, values: [
+                    name,
+                    stringValue(row["open"]),
+                    currencyList(row["currencies"])
+                ])
+        }
     }
 
-    private static func extractBQLQuery(from query: String) -> String? {
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        let lowercased = trimmed.lowercased()
-        if lowercased.hasPrefix("bql:") {
-            return String(trimmed.dropFirst(4)).trimmingCharacters(in: .whitespacesAndNewlines)
+    private static func loadPrices(_ rows: [[String: Any]], into db: OpaquePointer) throws {
+        var priceId = 0
+        for row in rows {
+            guard let commodity = stringValue(row["currency"]),
+                  let date = stringValue(row["date"]) else {
+                continue
+            }
+            let amount = amountFields(row["amount"])
+            guard let number = amount.number, let currency = amount.currency else { continue }
+            priceId += 1
+            try insert(db, sql: """
+                INSERT INTO prices (id, date, commodity, amount, currency)
+                VALUES (?, ?, ?, ?, ?)
+                """, values: [String(priceId), date, commodity, number, currency])
         }
-        if lowercased.hasPrefix("bql ") {
-            return String(trimmed.dropFirst(4)).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func loadBalances(_ rows: [[String: Any]], into db: OpaquePointer) throws {
+        var balanceId = 0
+        for row in rows {
+            guard let account = stringValue(row["account"]),
+                  let date = stringValue(row["date"]) else {
+                continue
+            }
+            let amount = amountFields(row["amount"])
+            guard let number = amount.number, let commodity = amount.currency else { continue }
+            balanceId += 1
+            try insert(db, sql: """
+                INSERT INTO balances (id, date, account, amount, commodity)
+                VALUES (?, ?, ?, ?, ?)
+                """, values: [String(balanceId), date, account, number, commodity])
         }
-        return nil
+    }
+
+    private static func loadSourceFiles(_ files: [URL], into db: OpaquePointer) throws {
+        for file in files {
+            try insert(db, sql: "INSERT OR IGNORE INTO source_files (path) VALUES (?)", values: [file.path])
+        }
+    }
+
+    // MARK: - rustledger Helpers
+
+    private static func runRledger(arguments: [String]) throws -> Data {
+        let rustledgerPath = try rustledgerExecutablePath()
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: rustledgerPath)
+        process.arguments = arguments
+
+        let stdout = Pipe()
+        let stderr = Pipe()
+        process.standardOutput = stdout
+        process.standardError = stderr
+
+        let outputCollector = PipeDataCollector()
+        let errorCollector = PipeDataCollector()
+        let readers = DispatchGroup()
+        readers.enter()
+        DispatchQueue.global(qos: .userInitiated).async {
+            outputCollector.set(stdout.fileHandleForReading.readDataToEndOfFile())
+            readers.leave()
+        }
+        readers.enter()
+        DispatchQueue.global(qos: .userInitiated).async {
+            errorCollector.set(stderr.fileHandleForReading.readDataToEndOfFile())
+            readers.leave()
+        }
+
+        try process.run()
+        readers.wait()
+        process.waitUntilExit()
+
+        guard process.terminationStatus == 0 else {
+            let message = String(data: errorCollector.data, encoding: .utf8)?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if let message, !message.isEmpty {
+                throw BeancountDriverError.queryFailed(message)
+            }
+            throw BeancountDriverError.queryFailed(String(localized: "rustledger command failed"))
+        }
+
+        return outputCollector.data
     }
 
     private static func rustledgerExecutablePath() throws -> String {
@@ -523,16 +641,27 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         throw BeancountDriverError.rustledgerUnavailable
     }
 
+    private static func parseRledgerJSON(_ data: Data) throws -> (columns: [String]?, rows: [[String: Any]]) {
+        let object = try JSONSerialization.jsonObject(with: data)
+        guard let dictionary = object as? [String: Any] else {
+            throw BeancountDriverError.queryFailed(String(localized: "Invalid rustledger JSON output"))
+        }
+        return (dictionary["columns"] as? [String], (dictionary["rows"] as? [[String: Any]]) ?? [])
+    }
+
+    private static func decodeRledgerRows(_ data: Data) throws -> [[String: Any]] {
+        try parseRledgerJSON(data).rows
+    }
+
     private static func decodeRustledgerQueryOutput(
         _ data: Data,
         executionTime: TimeInterval
     ) throws -> PluginQueryResult {
-        let object = try JSONSerialization.jsonObject(with: data)
-        guard let dictionary = object as? [String: Any],
-              let columns = dictionary["columns"] as? [String],
-              let rawRows = dictionary["rows"] as? [[String: Any]] else {
-            throw BeancountDriverError.queryFailed("Invalid rustledger JSON output")
+        let parsed = try parseRledgerJSON(data)
+        guard let columns = parsed.columns else {
+            throw BeancountDriverError.queryFailed(String(localized: "Invalid rustledger JSON output"))
         }
+        let rawRows = parsed.rows
 
         let rows = rawRows.prefix(PluginRowLimits.emergencyMax).map { rawRow in
             columns.map { column -> PluginCellValue in
@@ -581,131 +710,77 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return String(describing: value)
     }
 
-    private static func load(_ ledger: BeancountLedger, into db: OpaquePointer) throws {
-        try exec(db, """
-            CREATE TABLE transactions (
-                id INTEGER PRIMARY KEY,
-                date DATE NOT NULL,
-                flag TEXT NOT NULL,
-                payee TEXT,
-                narration TEXT,
-                source_file TEXT NOT NULL,
-                line INTEGER NOT NULL
-            );
-            CREATE TABLE postings (
-                id INTEGER PRIMARY KEY,
-                transaction_id INTEGER NOT NULL,
-                date DATE NOT NULL,
-                account TEXT NOT NULL,
-                amount DECIMAL,
-                commodity TEXT,
-                source_file TEXT NOT NULL,
-                line INTEGER NOT NULL
-            );
-            CREATE TABLE accounts (
-                name TEXT PRIMARY KEY,
-                open_date DATE NOT NULL,
-                currencies TEXT,
-                source_file TEXT NOT NULL,
-                line INTEGER NOT NULL
-            );
-            CREATE TABLE prices (
-                id INTEGER PRIMARY KEY,
-                date DATE NOT NULL,
-                commodity TEXT NOT NULL,
-                amount DECIMAL NOT NULL,
-                currency TEXT NOT NULL,
-                source_file TEXT NOT NULL,
-                line INTEGER NOT NULL
-            );
-            CREATE TABLE balances (
-                id INTEGER PRIMARY KEY,
-                date DATE NOT NULL,
-                account TEXT NOT NULL,
-                amount DECIMAL NOT NULL,
-                commodity TEXT NOT NULL,
-                source_file TEXT NOT NULL,
-                line INTEGER NOT NULL
-            );
-            CREATE TABLE source_files (
-                path TEXT PRIMARY KEY
-            );
-            """)
+    // MARK: - Value Decoding
 
-        for transaction in ledger.transactions {
-            try insert(db, sql: """
-                INSERT INTO transactions (id, date, flag, payee, narration, source_file, line)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-                """, values: [
-                    String(transaction.id),
-                    transaction.date,
-                    transaction.flag,
-                    transaction.payee,
-                    transaction.narration,
-                    transaction.sourceFile.path,
-                    String(transaction.line)
-                ])
+    private static func stringValue(_ value: Any?) -> String? {
+        switch value {
+        case let string as String:
+            return string
+        case let number as NSNumber:
+            return number.stringValue
+        default:
+            return nil
         }
-        for posting in ledger.postings {
-            try insert(db, sql: """
-                INSERT INTO postings (id, transaction_id, date, account, amount, commodity, source_file, line)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """, values: [
-                    String(posting.id),
-                    String(posting.transactionId),
-                    posting.date,
-                    posting.account,
-                    posting.amount,
-                    posting.commodity,
-                    posting.sourceFile.path,
-                    String(posting.line)
-                ])
-        }
-        for account in ledger.accounts {
-            try insert(db, sql: """
-                INSERT INTO accounts (name, open_date, currencies, source_file, line)
-                VALUES (?, ?, ?, ?, ?)
-                """, values: [
-                    account.name,
-                    account.openDate,
-                    account.currencies,
-                    account.sourceFile.path,
-                    String(account.line)
-                ])
-        }
-        for price in ledger.prices {
-            try insert(db, sql: """
-                INSERT INTO prices (id, date, commodity, amount, currency, source_file, line)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-                """, values: [
-                    String(price.id),
-                    price.date,
-                    price.commodity,
-                    price.amount,
-                    price.currency,
-                    price.sourceFile.path,
-                    String(price.line)
-                ])
-        }
-        for balance in ledger.balances {
-            try insert(db, sql: """
-                INSERT INTO balances (id, date, account, amount, commodity, source_file, line)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-                """, values: [
-                    String(balance.id),
-                    balance.date,
-                    balance.account,
-                    balance.amount,
-                    balance.commodity,
-                    balance.sourceFile.path,
-                    String(balance.line)
-                ])
-        }
-        for sourceFile in ledger.sourceFiles {
-            try insert(db, sql: "INSERT INTO source_files (path) VALUES (?)", values: [sourceFile.path])
-        }
+    }
 
-        try exec(db, "PRAGMA query_only = ON")
+    private static func intValue(_ value: Any?) -> Int? {
+        switch value {
+        case let number as NSNumber:
+            return number.intValue
+        case let string as String:
+            return Int(string)
+        default:
+            return nil
+        }
+    }
+
+    private static func amountFields(_ value: Any?) -> (number: String?, currency: String?) {
+        guard let dictionary = value as? [String: Any] else { return (nil, nil) }
+        return (stringValue(dictionary["number"]), stringValue(dictionary["currency"]))
+    }
+
+    private static func currencyList(_ value: Any?) -> String? {
+        guard let array = value as? [Any] else { return stringValue(value) }
+        let items = array.compactMap { $0 as? String }
+        return items.isEmpty ? nil : items.joined(separator: " ")
+    }
+
+    // MARK: - SQLite Helpers
+
+    private static func cellValue(statement: OpaquePointer?, column: Int32) -> PluginCellValue {
+        let type = sqlite3_column_type(statement, column)
+        if type == SQLITE_NULL {
+            return .null
+        }
+        if type == SQLITE_BLOB {
+            let byteCount = Int(sqlite3_column_bytes(statement, column))
+            guard byteCount > 0, let blob = sqlite3_column_blob(statement, column) else {
+                return .bytes(Data())
+            }
+            return .bytes(Data(bytes: blob, count: byteCount))
+        }
+        guard let text = sqlite3_column_text(statement, column) else {
+            return .null
+        }
+        return .text(String(cString: text))
+    }
+
+    private static func isReadOnlyQuery(_ query: String) -> Bool {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return true }
+        let lower = trimmed.lowercased()
+        return lower.hasPrefix("select")
+            || lower.hasPrefix("with")
+            || lower.hasPrefix("pragma table_info")
+            || lower.hasPrefix("pragma database_list")
+            || lower.hasPrefix("explain")
+    }
+
+    private static func extractBQLQuery(from query: String) -> String? {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let lowercased = trimmed.lowercased()
+        guard lowercased.hasPrefix("bql:") || lowercased.hasPrefix("bql ") else { return nil }
+        return String(trimmed.dropFirst(4)).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private static func exec(_ db: OpaquePointer, _ sql: String) throws {
@@ -740,19 +815,15 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
     }
 
-    private static func signatures(for sourceFiles: [URL]) throws -> [String: BeancountSourceSignature] {
-        try sourceFiles.reduce(into: [:]) { signatures, fileURL in
+    private static func signatures(for sourceFiles: [URL]) -> [String: BeancountSourceSignature] {
+        sourceFiles.reduce(into: [:]) { signatures, fileURL in
             let path = fileURL.path
-            let attributes = try FileManager.default.attributesOfItem(atPath: path)
+            let attributes = try? FileManager.default.attributesOfItem(atPath: path)
             signatures[path] = BeancountSourceSignature(
-                modificationDate: attributes[.modificationDate] as? Date,
-                fileSize: (attributes[.size] as? NSNumber)?.uint64Value
+                modificationDate: attributes?[.modificationDate] as? Date,
+                fileSize: (attributes?[.size] as? NSNumber)?.uint64Value
             )
         }
-    }
-
-    private static func watchedURLs(for ledger: BeancountLedger) -> [URL] {
-        Array(Set(ledger.sourceFiles + ledger.watchedDirectories)).sorted { $0.path < $1.path }
     }
 
     private func expandPath(_ path: String) -> String {

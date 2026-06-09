@@ -1,1 +1,0 @@
-../../Plugins/BeancountDriverPlugin/BeancountLedgerParser.swift
