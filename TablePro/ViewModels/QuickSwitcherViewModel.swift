@@ -79,6 +79,11 @@ internal final class QuickSwitcherViewModel {
 
         var items: [QuickSwitcherItem] = []
 
+        if await !schemaProvider.isSchemaLoaded(),
+           let driver = services.databaseManager.driver(for: connectionId) {
+            await schemaProvider.loadSchema(using: driver)
+        }
+
         let tables = await schemaProvider.getTables()
         for table in tables {
             let kind: QuickSwitcherItemKind
@@ -149,6 +154,17 @@ internal final class QuickSwitcherViewModel {
             }
         }
 
+        let favorites = await services.sqlFavoriteManager.fetchFavorites(connectionId: connectionId)
+        for favorite in favorites {
+            items.append(QuickSwitcherItem(
+                id: "favorite_\(favorite.id.uuidString)",
+                name: favorite.name,
+                kind: .savedQuery,
+                subtitle: favorite.keyword ?? "",
+                payload: favorite.query
+            ))
+        }
+
         let historyEntries = await services.queryHistoryManager.fetchHistory(
             limit: 50,
             connectionId: connectionId
@@ -158,7 +174,8 @@ internal final class QuickSwitcherViewModel {
                 id: "history_\(entry.id.uuidString)",
                 name: entry.queryPreview,
                 kind: .queryHistory,
-                subtitle: entry.databaseName
+                subtitle: entry.databaseName,
+                payload: entry.query
             ))
         }
 
@@ -293,7 +310,7 @@ internal final class QuickSwitcherViewModel {
 
 private extension QuickSwitcherItemKind {
     static let displayOrder: [QuickSwitcherItemKind] = [
-        .table, .view, .systemTable, .database, .schema, .queryHistory
+        .table, .view, .systemTable, .database, .schema, .savedQuery, .queryHistory
     ]
 
     var rankWeight: Double {
@@ -303,6 +320,7 @@ private extension QuickSwitcherItemKind {
         case .systemTable: return 0.85
         case .database: return 0.95
         case .schema: return 0.93
+        case .savedQuery: return 0.9
         case .queryHistory: return 0.7
         }
     }
@@ -314,6 +332,7 @@ private extension QuickSwitcherItemKind {
         case .systemTable: return String(localized: "System Tables")
         case .database: return String(localized: "Databases")
         case .schema: return String(localized: "Schemas")
+        case .savedQuery: return String(localized: "Saved Queries")
         case .queryHistory: return String(localized: "Recent Queries")
         }
     }

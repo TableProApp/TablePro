@@ -175,6 +175,36 @@ struct QuickSwitcherViewModelTests {
         #expect(vm2.flatItems.first?.id == "tb")
     }
 
+    @Test("Saved queries get their own section in the empty-query view")
+    func savedQueriesGetOwnSection() {
+        var items = sampleItems()
+        items.append(QuickSwitcherItem(
+            id: "f1",
+            name: "Monthly revenue",
+            kind: .savedQuery,
+            subtitle: "rev",
+            payload: "SELECT SUM(total) FROM orders GROUP BY month;"
+        ))
+        let vm = makeViewModel(items: items)
+        let headers = vm.groups.compactMap(\.header)
+        #expect(headers.contains(String(localized: "Saved Queries")))
+    }
+
+    @Test("Payload survives filtering")
+    func payloadSurvivesFiltering() async throws {
+        let items = [QuickSwitcherItem(
+            id: "f1",
+            name: "Monthly revenue",
+            kind: .savedQuery,
+            subtitle: "",
+            payload: "SELECT SUM(total) FROM orders GROUP BY month;"
+        )]
+        let vm = makeViewModel(items: items)
+        vm.searchText = "revenue"
+        try await Task.sleep(nanoseconds: 200_000_000)
+        #expect(vm.flatItems.first?.payload == "SELECT SUM(total) FROM orders GROUP BY month;")
+    }
+
     @Test("Query matching only the subtitle still surfaces the item")
     func subtitleMatchSurfacesItem() async throws {
         let vm = makeViewModel(items: sampleItems())

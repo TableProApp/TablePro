@@ -30,8 +30,11 @@ extension MainContentCoordinator {
                 await switchSchema(to: item.name)
             }
 
+        case .savedQuery:
+            loadQueryIntoEditor(item.payload ?? item.name)
+
         case .queryHistory:
-            loadQueryIntoEditor(item.name)
+            loadQueryIntoEditor(item.payload ?? item.name)
         }
     }
 }

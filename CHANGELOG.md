@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - BigQuery datasets can be switched from the toolbar, the Cmd+K switcher, and the File menu, including creating and dropping datasets. (#509)
+- Quick Switcher now searches saved queries alongside tables, views, databases, and history.
 
 ### Changed
 
@@ -20,6 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - iCloud Sync between the iPhone and Mac apps: the iOS app now uses the Production CloudKit environment, so a development build no longer syncs into a separate database the Mac never reads.
 - Exports no longer fail mid-table on servers that enforce a statement time limit; the export session disables the limit and restores it afterwards, the same way mysqldump does. (#1633)
+- Quick Switcher no longer shows an empty table list when opened before the schema has finished loading.
+- Opening a query from history in the Quick Switcher loads the full query instead of a 100-character preview.
 
 ### Security
 

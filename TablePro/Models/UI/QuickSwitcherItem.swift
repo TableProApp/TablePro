@@ -14,6 +14,7 @@ internal enum QuickSwitcherItemKind: String, Hashable, Sendable {
     case systemTable
     case database
     case schema
+    case savedQuery
     case queryHistory
 }
 
@@ -24,6 +25,7 @@ internal struct QuickSwitcherItem: Identifiable, Hashable, Sendable {
     let kind: QuickSwitcherItemKind
     let subtitle: String
     var matchedIndices: [Int] = []
+    var payload: String?
 
     /// SF Symbol name for this item's icon
     var iconName: String {
@@ -33,6 +35,7 @@ internal struct QuickSwitcherItem: Identifiable, Hashable, Sendable {
         case .systemTable: return "gearshape"
         case .database: return "cylinder"
         case .schema: return "folder"
+        case .savedQuery: return "star"
         case .queryHistory: return "clock.arrow.circlepath"
         }
     }
@@ -45,6 +48,7 @@ internal struct QuickSwitcherItem: Identifiable, Hashable, Sendable {
         case .systemTable: return String(localized: "System Table")
         case .database: return String(localized: "Database")
         case .schema: return String(localized: "Schema")
+        case .savedQuery: return String(localized: "Saved Query")
         case .queryHistory: return String(localized: "History")
         }
     }
