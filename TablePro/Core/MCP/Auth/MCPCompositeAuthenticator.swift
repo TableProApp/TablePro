@@ -8,6 +8,7 @@ public actor MCPCompositeAuthenticator: MCPAuthenticator {
         tokenFingerprint: "anonymous-loopback",
         tokenId: nil,
         scopes: [.toolsRead, .toolsWrite, .resourcesRead, .admin],
+        connectionAccess: .all,
         metadata: MCPPrincipalMetadata(
             label: "Anonymous (loopback)",
             issuedAt: .distantPast,
