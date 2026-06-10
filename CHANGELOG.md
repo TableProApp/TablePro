@@ -20,6 +20,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - iCloud Sync between the iPhone and Mac apps: the iOS app now uses the Production CloudKit environment, so a development build no longer syncs into a separate database the Mac never reads.
 - Exports no longer fail mid-table on servers that enforce a statement time limit; the export session disables the limit and restores it afterwards, the same way mysqldump does. (#1633)
 
+### Security
+
+- Imported connections from a deep link or shared file can no longer carry a pre-connect script that runs a shell command on connect.
+- External database links now ask for confirmation before connecting, and a password in the link is never saved to the Keychain.
+- MCP tools now enforce each connection's external access level, per-connection AI policy, and token connection scope on every request.
+- The MCP server now requires a paired token by default, even over loopback.
+- An installed plugin's code signature is re-checked right before it loads, so the binary cannot be swapped after the first check.
+- MongoDB filter values in the Contains, Not Contains, Starts With, Ends With, and Regex operators can no longer inject query operators.
+- iOS validates TLS certificates for MySQL, PostgreSQL, and Redis connections set to a verify SSL mode.
+- Database values copied on iOS stay on the device and clear from the clipboard after a minute.
+- The iOS home screen widget no longer stores database host and port on disk.
+
 ## [0.50.0] - 2026-06-09
 
 ### Added
