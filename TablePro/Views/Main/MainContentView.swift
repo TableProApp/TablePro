@@ -280,7 +280,6 @@ struct MainContentView: View {
             )
         case .quickSwitcher:
             QuickSwitcherSheet(
-                isPresented: dismissBinding,
                 schemaProvider: SchemaProviderRegistry.shared.getOrCreate(for: connection.id),
                 connectionId: connection.id,
                 databaseType: connection.type,

@@ -2,125 +2,157 @@
 //  FuzzyMatcherTests.swift
 //  TableProTests
 //
-//  Tests for FuzzyMatcher fuzzy string matching
-//
 
-import TableProPluginKit
 @testable import TablePro
 import Testing
 
 struct FuzzyMatcherTests {
+    private func score(_ query: String, _ candidate: String) -> Int {
+        FuzzyMatcher.match(query: query, candidate: candidate)?.score ?? 0
+    }
+
     // MARK: - Basic Matching
 
-    @Test("Empty query matches everything with score 1")
-    func emptyQueryMatchesAll() {
-        #expect(FuzzyMatcher.score(query: "", candidate: "users") == 1)
-        #expect(FuzzyMatcher.score(query: "", candidate: "") == 1)
+    @Test("Empty query returns nil")
+    func emptyQueryReturnsNil() {
+        #expect(FuzzyMatcher.match(query: "", candidate: "users") == nil)
+        #expect(FuzzyMatcher.match(query: "", candidate: "") == nil)
     }
 
-    @Test("Empty candidate returns 0")
-    func emptyCandidateReturnsZero() {
-        #expect(FuzzyMatcher.score(query: "abc", candidate: "") == 0)
+    @Test("Empty candidate returns nil")
+    func emptyCandidateReturnsNil() {
+        #expect(FuzzyMatcher.match(query: "abc", candidate: "") == nil)
     }
 
-    @Test("Non-matching query returns 0")
-    func nonMatchingQueryReturnsZero() {
-        #expect(FuzzyMatcher.score(query: "xyz", candidate: "users") == 0)
+    @Test("Non-matching query returns nil")
+    func nonMatchingQueryReturnsNil() {
+        #expect(FuzzyMatcher.match(query: "xyz", candidate: "users") == nil)
     }
 
-    @Test("Partial match where not all characters found returns 0")
-    func partialMatchReturnsZero() {
-        #expect(FuzzyMatcher.score(query: "uzx", candidate: "users") == 0)
+    @Test("Partial match where not all characters found returns nil")
+    func partialMatchReturnsNil() {
+        #expect(FuzzyMatcher.match(query: "uzx", candidate: "users") == nil)
+    }
+
+    @Test("Query longer than candidate returns nil")
+    func queryLongerThanCandidateReturnsNil() {
+        #expect(FuzzyMatcher.match(query: "userstable", candidate: "users") == nil)
     }
 
     // MARK: - Scoring Quality
 
     @Test("Exact match scores higher than substring match")
     func exactMatchScoresHigher() {
-        let exact = FuzzyMatcher.score(query: "users", candidate: "users")
-        let partial = FuzzyMatcher.score(query: "users", candidate: "all_users_table")
-        #expect(exact > partial)
+        #expect(score("users", "users") > score("users", "all_users_table"))
     }
 
     @Test("Consecutive matches score higher than scattered")
     func consecutiveMatchesScoreHigher() {
-        let consecutive = FuzzyMatcher.score(query: "use", candidate: "users")
-        let scattered = FuzzyMatcher.score(query: "use", candidate: "u_s_e")
-        #expect(consecutive > scattered)
+        #expect(score("use", "users") > score("use", "u_s_e"))
     }
 
     @Test("Word boundary match scores higher")
     func wordBoundaryMatchScoresHigher() {
-        let boundary = FuzzyMatcher.score(query: "ut", candidate: "user_table")
-        let middle = FuzzyMatcher.score(query: "ut", candidate: "butter")
-        #expect(boundary > middle)
+        #expect(score("ut", "user_table") > score("ut", "butter"))
     }
 
     @Test("Earlier match position scores higher")
     func earlierMatchScoresHigher() {
-        let early = FuzzyMatcher.score(query: "a", candidate: "abc")
-        let late = FuzzyMatcher.score(query: "a", candidate: "xxa")
-        #expect(early > late)
+        #expect(score("a", "abc") > score("a", "xxa"))
     }
 
-    // MARK: - Case Insensitivity
+    @Test("Prefix match beats infix match of the same length")
+    func prefixBeatsInfix() {
+        #expect(score("user", "user_roles") > score("user", "power_user"))
+    }
+
+    // MARK: - Case Sensitivity
 
     @Test("Matching is case insensitive")
     func caseInsensitiveMatching() {
-        let lower = FuzzyMatcher.score(query: "users", candidate: "USERS")
-        #expect(lower > 0)
-
-        let upper = FuzzyMatcher.score(query: "USERS", candidate: "users")
-        #expect(upper > 0)
+        #expect(score("users", "USERS") > 0)
+        #expect(score("USERS", "users") > 0)
     }
 
-    // MARK: - Special Characters
-
-    @Test("Handles underscores as word boundaries")
-    func handlesUnderscores() {
-        let score = FuzzyMatcher.score(query: "ut", candidate: "user_table")
-        #expect(score > 0)
+    @Test("Exact case match scores higher than cross-case match")
+    func exactCaseScoresHigher() {
+        #expect(score("Users", "Users") > score("users", "Users"))
     }
 
-    @Test("Handles camelCase as word boundaries")
-    func handlesCamelCase() {
-        let score = FuzzyMatcher.score(query: "uT", candidate: "userTable")
-        #expect(score > 0)
+    // MARK: - Boundaries
+
+    @Test("Underscore abbreviation matches with boundary-aligned indices")
+    func underscoreAbbreviationIndices() {
+        let match = FuzzyMatcher.match(query: "uid", candidate: "user_id")
+        #expect(match?.matchedIndices == [0, 5, 6])
+    }
+
+    @Test("Camel case abbreviation picks boundary alignment over greedy")
+    func camelCaseOptimalAlignment() {
+        let match = FuzzyMatcher.match(query: "lll", candidate: "SVisualLoggerLogsList")
+        #expect(match?.matchedIndices == [7, 13, 17])
+    }
+
+    @Test("Consecutive substring reports contiguous indices")
+    func consecutiveSubstringIndices() {
+        let match = FuzzyMatcher.match(query: "use", candidate: "users")
+        #expect(match?.matchedIndices == [0, 1, 2])
+    }
+
+    @Test("Dollar sign acts as a word boundary")
+    func dollarSignBoundary() {
+        #expect(score("bp", "v$buffer_pool") > score("bp", "albpx"))
     }
 
     @Test("Single character query matches")
     func singleCharacterQuery() {
-        #expect(FuzzyMatcher.score(query: "u", candidate: "users") > 0)
-        #expect(FuzzyMatcher.score(query: "z", candidate: "users") == 0)
+        #expect(score("u", "users") > 0)
+        #expect(FuzzyMatcher.match(query: "z", candidate: "users") == nil)
+    }
+
+    // MARK: - Determinism
+
+    @Test("Same input always produces the same result")
+    func deterministicResult() {
+        let first = FuzzyMatcher.match(query: "ust", candidate: "user_settings_table")
+        let second = FuzzyMatcher.match(query: "ust", candidate: "user_settings_table")
+        #expect(first == second)
     }
 
     // MARK: - Emoji / Surrogate Handling
 
     @Test("Emoji in query blocks matching when it cannot match any candidate character")
     func emojiInQueryBlocksWhenUnmatched() {
-        let result = FuzzyMatcher.score(query: "🎉u", candidate: "users")
-        #expect(result == 0, "Leading emoji that cannot match any candidate character blocks subsequent matches")
+        #expect(FuzzyMatcher.match(query: "🎉u", candidate: "users") == nil)
     }
 
     @Test("Emoji in candidate string handled correctly")
     func emojiInCandidateHandled() {
-        let result = FuzzyMatcher.score(query: "ab", candidate: "a🎉b")
-        #expect(result > 0, "Candidate with emoji between matches should still match")
+        let match = FuzzyMatcher.match(query: "ab", candidate: "a🎉b")
+        #expect(match?.matchedIndices == [0, 2])
     }
 
-    @Test("Pure emoji query against plain candidate returns 0")
-    func pureEmojiQueryReturnsZero() {
-        let result = FuzzyMatcher.score(query: "🎉🔥", candidate: "users")
-        #expect(result == 0)
+    @Test("Pure emoji query against plain candidate returns nil")
+    func pureEmojiQueryReturnsNil() {
+        #expect(FuzzyMatcher.match(query: "🎉🔥", candidate: "users") == nil)
     }
 
-    // MARK: - Performance
+    // MARK: - Long Input Fallback
 
-    @Test("Very long strings complete in reasonable time")
-    func veryLongStringsPerformance() {
+    @Test("Very long candidates fall back to greedy matching with indices")
+    func veryLongCandidateGreedyFallback() {
         let longCandidate = String(repeating: "abcdefghij", count: 1_000)
-        let query = "aej"
-        let result = FuzzyMatcher.score(query: query, candidate: longCandidate)
-        #expect(result > 0)
+        let match = FuzzyMatcher.match(query: "aej", candidate: longCandidate)
+        #expect(match != nil)
+        #expect(match?.matchedIndices == [0, 4, 9])
+    }
+
+    @Test("Very long queries fall back to greedy matching")
+    func veryLongQueryGreedyFallback() {
+        let query = String(repeating: "ab", count: 40)
+        let candidate = String(repeating: "ab", count: 50)
+        let match = FuzzyMatcher.match(query: query, candidate: candidate)
+        #expect(match != nil)
+        #expect(match?.matchedIndices.count == 80)
     }
 }

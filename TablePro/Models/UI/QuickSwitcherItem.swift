@@ -18,12 +18,12 @@ internal enum QuickSwitcherItemKind: String, Hashable, Sendable {
 }
 
 /// A single item in the quick switcher results list
-internal struct QuickSwitcherItem: Identifiable, Hashable {
+internal struct QuickSwitcherItem: Identifiable, Hashable, Sendable {
     let id: String
     let name: String
     let kind: QuickSwitcherItemKind
     let subtitle: String
-    var score: Int = 0
+    var matchedIndices: [Int] = []
 
     /// SF Symbol name for this item's icon
     var iconName: String {

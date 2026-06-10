@@ -6,7 +6,6 @@
 import SwiftUI
 
 struct QuickSwitcherSheet: View {
-    @Binding var isPresented: Bool
     @Environment(\.dismiss) private var dismiss
 
     let schemaProvider: SQLSchemaProvider
@@ -22,13 +21,11 @@ struct QuickSwitcherSheet: View {
     @State private var viewModel: QuickSwitcherViewModel
 
     init(
-        isPresented: Binding<Bool>,
         schemaProvider: SQLSchemaProvider,
         connectionId: UUID,
         databaseType: DatabaseType,
         onSelect: @escaping (QuickSwitcherItem) -> Void
     ) {
-        self._isPresented = isPresented
         self.schemaProvider = schemaProvider
         self.connectionId = connectionId
         self.databaseType = databaseType
@@ -140,7 +137,7 @@ struct QuickSwitcherSheet: View {
                 .foregroundStyle(.secondary)
                 .frame(width: 18)
 
-            Text(item.name)
+            Text(highlightedName(for: item))
                 .font(.body)
                 .lineLimit(1)
                 .truncationMode(.middle)
@@ -213,6 +210,19 @@ struct QuickSwitcherSheet: View {
             .keyboardShortcut(.defaultAction)
         }
         .padding(12)
+    }
+
+    private func highlightedName(for item: QuickSwitcherItem) -> AttributedString {
+        var attributed = AttributedString(item.name)
+        guard !item.matchedIndices.isEmpty else { return attributed }
+        let characterIndices = Array(attributed.characters.indices)
+        for index in item.matchedIndices where index < characterIndices.count {
+            let start = characterIndices[index]
+            let end = attributed.characters.index(after: start)
+            attributed[start..<end].font = .body.weight(.semibold)
+            attributed[start..<end].foregroundColor = .accentColor
+        }
+        return attributed
     }
 
     private func openSelectedItem() {

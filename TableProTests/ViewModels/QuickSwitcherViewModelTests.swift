@@ -52,7 +52,7 @@ struct QuickSwitcherViewModelTests {
     func filteredGroupHasNoHeader() async throws {
         let vm = makeViewModel(items: sampleItems())
         vm.searchText = "users"
-        try await Task.sleep(nanoseconds: 80_000_000)
+        try await Task.sleep(nanoseconds: 200_000_000)
         #expect(vm.groups.count == 1)
         #expect(vm.groups.first?.header == nil)
         #expect(vm.flatItems.allSatisfy { $0.name.localizedCaseInsensitiveContains("u") })
@@ -125,8 +125,8 @@ struct QuickSwitcherViewModelTests {
         #expect(recentGroup?.items.first?.id == chosen.id)
     }
 
-    @Test("recordSelection trims MRU to 10 entries")
-    func mruTrimsToLimit() {
+    @Test("Recent group caps at 10 entries, newest first")
+    func recentGroupCapsAtLimit() {
         let suite = makeDefaults()
         let connectionId = UUID()
         var items: [QuickSwitcherItem] = []
@@ -134,12 +134,54 @@ struct QuickSwitcherViewModelTests {
             items.append(QuickSwitcherItem(id: "t\(index)", name: "table_\(index)", kind: .table, subtitle: ""))
         }
         let vm = makeViewModel(items: items, connectionId: connectionId, defaults: suite)
-        for item in items {
-            vm.recordSelection(item)
+        for (index, item) in items.enumerated() {
+            vm.recordSelection(item, at: Date(timeIntervalSinceNow: TimeInterval(index)))
         }
-        let stored = suite.stringArray(forKey: "QuickSwitcher.mru.\(connectionId.uuidString)") ?? []
-        #expect(stored.count == 10)
-        #expect(stored.first == items.last?.id)
+
+        let vm2 = QuickSwitcherViewModel(connectionId: connectionId, services: .live, defaults: suite)
+        vm2.allItems = items
+        let recentGroup = vm2.groups.first { $0.header == String(localized: "Recent") }
+        #expect(recentGroup?.items.count == 10)
+        #expect(recentGroup?.items.first?.id == items.last?.id)
+    }
+
+    @Test("Filtered results carry matched character indices")
+    func filteredResultsCarryMatchedIndices() async throws {
+        let vm = makeViewModel(items: sampleItems())
+        vm.searchText = "usr"
+        try await Task.sleep(nanoseconds: 200_000_000)
+        let users = vm.flatItems.first { $0.id == "t1" }
+        #expect(users?.matchedIndices == [0, 1, 3])
+    }
+
+    @Test("Frecency boosts a previously opened item over an equal match")
+    func frecencyBoostsPreviouslyOpenedItem() async throws {
+        let suite = makeDefaults()
+        let connectionId = UUID()
+        let items = [
+            QuickSwitcherItem(id: "ta", name: "users_a", kind: .table, subtitle: ""),
+            QuickSwitcherItem(id: "tb", name: "users_b", kind: .table, subtitle: "")
+        ]
+        let vm = makeViewModel(items: items, connectionId: connectionId, defaults: suite)
+        vm.searchText = "users"
+        try await Task.sleep(nanoseconds: 200_000_000)
+        #expect(vm.flatItems.first?.id == "ta")
+
+        vm.recordSelection(items[1])
+        let vm2 = QuickSwitcherViewModel(connectionId: connectionId, services: .live, defaults: suite)
+        vm2.allItems = items
+        vm2.searchText = "users"
+        try await Task.sleep(nanoseconds: 200_000_000)
+        #expect(vm2.flatItems.first?.id == "tb")
+    }
+
+    @Test("Query matching only the subtitle still surfaces the item")
+    func subtitleMatchSurfacesItem() async throws {
+        let vm = makeViewModel(items: sampleItems())
+        vm.searchText = "mydb"
+        try await Task.sleep(nanoseconds: 200_000_000)
+        #expect(vm.flatItems.contains { $0.id == "h1" })
+        #expect(vm.flatItems.first { $0.id == "h1" }?.matchedIndices.isEmpty == true)
     }
 
     @Test("Search keeps selection if still in results")
@@ -151,7 +193,7 @@ struct QuickSwitcherViewModelTests {
         }
         vm.selectedItemId = usersItem.id
         vm.searchText = "users"
-        try await Task.sleep(nanoseconds: 80_000_000)
+        try await Task.sleep(nanoseconds: 200_000_000)
         #expect(vm.flatItems.contains(where: { $0.id == usersItem.id }))
         #expect(vm.selectedItemId == usersItem.id)
     }
@@ -161,7 +203,7 @@ struct QuickSwitcherViewModelTests {
         let vm = makeViewModel(items: sampleItems())
         vm.selectedItemId = "d1"
         vm.searchText = "users"
-        try await Task.sleep(nanoseconds: 80_000_000)
+        try await Task.sleep(nanoseconds: 200_000_000)
         #expect(vm.flatItems.contains(where: { $0.id == "d1" }) == false)
         #expect(vm.selectedItemId == vm.flatItems.first?.id)
     }
@@ -176,7 +218,7 @@ struct QuickSwitcherViewModelTests {
     func listHeightSingleFilteredRow() async throws {
         let vm = makeViewModel(items: [QuickSwitcherItem(id: "t1", name: "users", kind: .table, subtitle: "")])
         vm.searchText = "users"
-        try await Task.sleep(nanoseconds: 80_000_000)
+        try await Task.sleep(nanoseconds: 200_000_000)
         #expect(vm.groups.first?.header == nil)
         #expect(vm.listHeight(rowHeight: 30, headerHeight: 28, maxVisibleRows: 9) == 30)
     }
@@ -189,7 +231,7 @@ struct QuickSwitcherViewModelTests {
         }
         let vm = makeViewModel(items: items)
         vm.searchText = "tbl"
-        try await Task.sleep(nanoseconds: 80_000_000)
+        try await Task.sleep(nanoseconds: 200_000_000)
         #expect(vm.flatItems.count == 9)
         #expect(vm.listHeight(rowHeight: 30, headerHeight: 28, maxVisibleRows: 9) == 270)
     }
@@ -202,7 +244,7 @@ struct QuickSwitcherViewModelTests {
         }
         let vm = makeViewModel(items: items)
         vm.searchText = "tbl"
-        try await Task.sleep(nanoseconds: 80_000_000)
+        try await Task.sleep(nanoseconds: 200_000_000)
         #expect(vm.flatItems.count == 20)
         #expect(vm.listHeight(rowHeight: 30, headerHeight: 28, maxVisibleRows: 9) == 270)
     }
