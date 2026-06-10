@@ -1,22 +1,24 @@
 //
-//  QuickSwitcherSheet.swift
+//  QuickSwitcherPanelView.swift
 //  TablePro
 //
 
 import SwiftUI
 
-struct QuickSwitcherSheet: View {
-    @Environment(\.dismiss) private var dismiss
+struct QuickSwitcherPanelView: View {
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
 
     let schemaProvider: SQLSchemaProvider
     let connectionId: UUID
     let databaseType: DatabaseType
     let onSelect: (QuickSwitcherItem) -> Void
+    let onDismiss: () -> Void
 
-    private let sheetWidth: CGFloat = 460
+    private let panelWidth: CGFloat = 640
+    private let cornerRadius: CGFloat = 16
     private let rowHeight: CGFloat = 30
     private let sectionHeaderHeight: CGFloat = 28
-    private let maxVisibleRows = 9
+    private let maxVisibleRows = 12
 
     @State private var viewModel: QuickSwitcherViewModel
 
@@ -24,18 +26,20 @@ struct QuickSwitcherSheet: View {
         schemaProvider: SQLSchemaProvider,
         connectionId: UUID,
         databaseType: DatabaseType,
-        onSelect: @escaping (QuickSwitcherItem) -> Void
+        onSelect: @escaping (QuickSwitcherItem) -> Void,
+        onDismiss: @escaping () -> Void
     ) {
         self.schemaProvider = schemaProvider
         self.connectionId = connectionId
         self.databaseType = databaseType
         self.onSelect = onSelect
+        self.onDismiss = onDismiss
         self._viewModel = State(wrappedValue: QuickSwitcherViewModel(connectionId: connectionId))
     }
 
     var body: some View {
         VStack(spacing: 0) {
-            toolbar
+            searchField
 
             Divider()
 
@@ -56,16 +60,22 @@ struct QuickSwitcherSheet: View {
 
             footer
         }
-        .frame(width: sheetWidth)
-        .navigationTitle(String(localized: "Quick Switcher"))
-        .background(Color(nsColor: .windowBackgroundColor))
+        .frame(width: panelWidth)
+        .background(QuickSwitcherPanelBackground(cornerRadius: cornerRadius))
+        .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .strokeBorder(
+                    colorSchemeContrast == .increased ? Color(nsColor: .separatorColor) : .clear,
+                    lineWidth: 1
+                )
+        )
         .task {
             await viewModel.loadItems(
                 schemaProvider: schemaProvider,
                 databaseType: databaseType
             )
         }
-        .onExitCommand { dismiss() }
         .onKeyPress(characters: .init(charactersIn: "jn"), phases: [.down, .repeat]) { keyPress in
             guard keyPress.modifiers.contains(.control) else { return .ignored }
             viewModel.moveSelection(by: 1)
@@ -78,16 +88,18 @@ struct QuickSwitcherSheet: View {
         }
     }
 
-    private var toolbar: some View {
+    private var searchField: some View {
         NativeSearchField(
             text: $viewModel.searchText,
-            placeholder: String(localized: "Search tables, views, databases..."),
+            placeholder: String(localized: "Search tables, views, databases, queries..."),
+            controlSize: .large,
             onMoveUp: { viewModel.moveSelection(by: -1) },
             onMoveDown: { viewModel.moveSelection(by: 1) },
+            onSubmit: { openSelectedItem() },
             focusOnAppear: true
         )
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
     }
 
     private var itemList: some View {
@@ -194,22 +206,31 @@ struct QuickSwitcherSheet: View {
     }
 
     private var footer: some View {
-        HStack {
-            Button("Cancel") {
-                dismiss()
-            }
-            .keyboardShortcut(.cancelAction)
-
+        HStack(spacing: 16) {
+            shortcutHint(keys: "↑↓", label: String(localized: "Navigate"))
+            shortcutHint(keys: "↩", label: String(localized: "Open"))
             Spacer()
-
-            Button("Open") {
-                openSelectedItem()
-            }
-            .buttonStyle(.borderedProminent)
-            .disabled(viewModel.selectedItemId == nil)
-            .keyboardShortcut(.defaultAction)
+            shortcutHint(keys: "esc", label: String(localized: "Close"))
         }
-        .padding(12)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+    }
+
+    private func shortcutHint(keys: String, label: String) -> some View {
+        HStack(spacing: 5) {
+            Text(keys)
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 5)
+                .padding(.vertical, 1)
+                .background(
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .fill(Color(nsColor: .quaternarySystemFill))
+                )
+            Text(label)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
     }
 
     private func highlightedName(for item: QuickSwitcherItem) -> AttributedString {
@@ -233,6 +254,6 @@ struct QuickSwitcherSheet: View {
     private func commit(_ item: QuickSwitcherItem) {
         viewModel.recordSelection(item)
         onSelect(item)
-        dismiss()
+        onDismiss()
     }
 }

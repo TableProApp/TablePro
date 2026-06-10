@@ -5,11 +5,23 @@
 //  Quick switcher navigation handler for MainContentCoordinator
 //
 
+import AppKit
 import Foundation
 
 extension MainContentCoordinator {
     func showQuickSwitcher() {
-        activeSheet = .quickSwitcher
+        guard !quickSwitcherPanel.isPresented else {
+            quickSwitcherPanel.dismiss()
+            return
+        }
+        let panelView = QuickSwitcherPanelView(
+            schemaProvider: SchemaProviderRegistry.shared.getOrCreate(for: connectionId),
+            connectionId: connectionId,
+            databaseType: connection.type,
+            onSelect: { [weak self] item in self?.handleQuickSwitcherSelection(item) },
+            onDismiss: { [weak self] in self?.quickSwitcherPanel.dismiss() }
+        )
+        quickSwitcherPanel.present(panelView, over: contentWindow)
     }
 
     func handleQuickSwitcherSelection(_ item: QuickSwitcherItem) {
