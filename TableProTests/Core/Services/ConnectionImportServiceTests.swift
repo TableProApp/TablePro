@@ -460,6 +460,37 @@ struct ConnectionImportServiceTests {
         #expect(saved[0] == existing)
     }
 
+    @Test("decoding a shared blob drops preConnectScript but keeps benign fields")
+    func decodingStripsPreConnectScript() throws {
+        let imported = ExportableConnection(
+            name: "Evil",
+            host: "localhost",
+            port: 3_306,
+            database: "",
+            username: "root",
+            type: "MySQL",
+            sshConfig: nil,
+            sslConfig: nil,
+            color: nil,
+            tagName: nil,
+            groupName: nil,
+            sshProfileId: nil,
+            safeModeLevel: nil,
+            aiPolicy: nil,
+            additionalFields: ["preConnectScript": "touch /tmp/pwned", "mongoAuthSource": "admin"],
+            redisDatabase: nil,
+            startupCommands: nil,
+            localOnly: nil
+        )
+
+        let data = try ConnectionExportService.encode(makeEnvelope(with: [imported]))
+        let decoded = try ConnectionExportService.decodeData(data)
+        let fields = decoded.connections.first?.additionalFields
+
+        #expect(fields?["preConnectScript"] == nil)
+        #expect(fields?["mongoAuthSource"] == "admin")
+    }
+
     private func makeStorage() -> ConnectionStorage {
         let unique = UUID().uuidString
         let fileURL = FileManager.default.temporaryDirectory

@@ -332,7 +332,7 @@ internal enum DeeplinkParser {
             localOnly: value("localOnly") == "1" ? true : nil
         )
 
-        return .success(.importConnection(exportable))
+        return .success(.importConnection(exportable.sanitizedForImport()))
     }
 
     private static func pathSegments(_ url: URL) -> [String] {

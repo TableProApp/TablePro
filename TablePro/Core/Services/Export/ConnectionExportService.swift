@@ -425,7 +425,15 @@ enum ConnectionExportService {
             throw ConnectionExportError.unsupportedVersion(envelope.formatVersion)
         }
 
-        return envelope
+        return ConnectionExportEnvelope(
+            formatVersion: envelope.formatVersion,
+            exportedAt: envelope.exportedAt,
+            appVersion: envelope.appVersion,
+            connections: envelope.connections.map { $0.sanitizedForImport() },
+            groups: envelope.groups,
+            tags: envelope.tags,
+            credentials: envelope.credentials
+        )
     }
 
     static func analyzeImport(_ envelope: ConnectionExportEnvelope) -> ConnectionImportPreview {

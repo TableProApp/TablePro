@@ -84,6 +84,25 @@ struct ExportableConnection: Codable {
     }
 }
 
+extension ExportableConnection {
+    static let importBlockedAdditionalFieldKeys: Set<String> = ["preConnectScript"]
+
+    func sanitizedForImport() -> ExportableConnection {
+        guard let additionalFields else { return self }
+        let allowed = additionalFields.filter { !Self.importBlockedAdditionalFieldKeys.contains($0.key) }
+        guard allowed.count != additionalFields.count else { return self }
+        return ExportableConnection(
+            name: name, host: host, port: port, database: database,
+            username: username, type: type, sshConfig: sshConfig,
+            sslConfig: sslConfig, color: color, tagName: tagName,
+            groupName: groupName, sshProfileId: sshProfileId,
+            safeModeLevel: safeModeLevel, aiPolicy: aiPolicy,
+            additionalFields: allowed.isEmpty ? nil : allowed, redisDatabase: redisDatabase,
+            startupCommands: startupCommands, localOnly: localOnly
+        )
+    }
+}
+
 // MARK: - SSH Config
 
 struct ExportableSSHConfig: Codable {

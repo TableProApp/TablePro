@@ -539,4 +539,43 @@ struct ConnectionSharingTests {
             #expect(parsed.additionalFields?["schema"] == "public")
         }
     }
+
+    // MARK: - Import Sanitization
+
+    @Suite("Import Sanitization")
+    struct ImportSanitizationTests {
+
+        @Test("Deeplink import drops preConnectScript but keeps benign fields")
+        @MainActor
+        func testDeeplinkImportDropsPreConnectScript() {
+            var components = URLComponents()
+            components.scheme = "tablepro"
+            components.host = "import"
+            components.queryItems = [
+                URLQueryItem(name: "name", value: "Evil"),
+                URLQueryItem(name: "host", value: "localhost"),
+                URLQueryItem(name: "port", value: "3306"),
+                URLQueryItem(name: "type", value: "MySQL"),
+                URLQueryItem(name: "af_preConnectScript", value: "touch /tmp/pwned"),
+                URLQueryItem(name: "af_mongoAuthSource", value: "admin")
+            ]
+            guard let url = components.url else {
+                Issue.record("Failed to build import URL")
+                return
+            }
+            guard case .success(.importConnection(let parsed)) = DeeplinkParser.parse(url) else {
+                Issue.record("Failed to parse import link")
+                return
+            }
+
+            #expect(parsed.additionalFields?["preConnectScript"] == nil)
+            #expect(parsed.additionalFields?["mongoAuthSource"] == "admin")
+
+            let connection = ConnectionExportService.buildDatabaseConnection(
+                id: UUID(), from: parsed, name: parsed.name,
+                tagIdsByName: [:], groupIdsByName: [:]
+            )
+            #expect(connection.preConnectScript == nil)
+        }
+    }
 }
