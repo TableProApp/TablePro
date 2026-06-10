@@ -14,23 +14,40 @@ extension MainContentCoordinator {
             quickSwitcherPanel.dismiss()
             return
         }
+        let openTableNames = Set(
+            tabManager.tabs
+                .filter { $0.tabType == .table }
+                .compactMap(\.tableContext.tableName)
+        )
         let panelView = QuickSwitcherPanelView(
             schemaProvider: SchemaProviderRegistry.shared.getOrCreate(for: connectionId),
             connectionId: connectionId,
             databaseType: connection.type,
-            onSelect: { [weak self] item in self?.handleQuickSwitcherSelection(item) },
+            openTableNames: openTableNames,
+            onSelect: { [weak self] item, intent in self?.handleQuickSwitcherSelection(item, intent: intent) },
             onDismiss: { [weak self] in self?.quickSwitcherPanel.dismiss() }
         )
         quickSwitcherPanel.present(panelView, over: contentWindow)
     }
 
-    func handleQuickSwitcherSelection(_ item: QuickSwitcherItem) {
+    func handleQuickSwitcherSelection(_ item: QuickSwitcherItem, intent: QuickSwitcherCommitIntent = .open) {
         switch item.kind {
         case .table, .systemTable:
-            openTableTab(item.name, activateGridFocus: true)
+            openTableTab(
+                item.name,
+                showStructure: intent == .openStructure,
+                activateGridFocus: true,
+                forceNewWindowTab: intent == .openInNewWindowTab
+            )
 
         case .view:
-            openTableTab(item.name, isView: true, activateGridFocus: true)
+            openTableTab(
+                item.name,
+                showStructure: intent == .openStructure,
+                isView: true,
+                activateGridFocus: true,
+                forceNewWindowTab: intent == .openInNewWindowTab
+            )
 
         case .database:
             Task {

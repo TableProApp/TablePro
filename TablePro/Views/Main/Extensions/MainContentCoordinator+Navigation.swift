@@ -37,7 +37,8 @@ extension MainContentCoordinator {
         showStructure: Bool = false,
         isView: Bool = false,
         forceNonPreview: Bool = false,
-        activateGridFocus: Bool = false
+        activateGridFocus: Bool = false,
+        forceNewWindowTab: Bool = false
     ) {
         let navigationModel = PluginMetadataRegistry.shared.snapshot(
             forTypeId: connection.type.pluginTypeId
@@ -54,9 +55,10 @@ extension MainContentCoordinator {
         }
 
         let resolvedSchema = schema
-        let createAsPreview = !forceNonPreview && AppSettingsManager.shared.tabs.enablePreviewTabs
+        let createAsPreview = !forceNonPreview && !forceNewWindowTab
+            && AppSettingsManager.shared.tabs.enablePreviewTabs
 
-        if activateIfAlreadyOpen(
+        if !forceNewWindowTab, activateIfAlreadyOpen(
             tableName: tableName,
             databaseName: currentDatabase,
             schemaName: resolvedSchema,
@@ -136,7 +138,7 @@ extension MainContentCoordinator {
             return
         }
 
-        if isActiveTabReusable {
+        if isActiveTabReusable, !forceNewWindowTab {
             reuseActiveTab(
                 for: tableName,
                 currentDatabase: currentDatabase,

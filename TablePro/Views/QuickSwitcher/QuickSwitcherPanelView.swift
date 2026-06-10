@@ -3,6 +3,7 @@
 //  TablePro
 //
 
+import AppKit
 import SwiftUI
 
 struct QuickSwitcherPanelView: View {
@@ -11,7 +12,8 @@ struct QuickSwitcherPanelView: View {
     let schemaProvider: SQLSchemaProvider
     let connectionId: UUID
     let databaseType: DatabaseType
-    let onSelect: (QuickSwitcherItem) -> Void
+    let openTableNames: Set<String>
+    let onSelect: (QuickSwitcherItem, QuickSwitcherCommitIntent) -> Void
     let onDismiss: () -> Void
 
     private let panelWidth: CGFloat = 640
@@ -26,12 +28,14 @@ struct QuickSwitcherPanelView: View {
         schemaProvider: SQLSchemaProvider,
         connectionId: UUID,
         databaseType: DatabaseType,
-        onSelect: @escaping (QuickSwitcherItem) -> Void,
+        openTableNames: Set<String> = [],
+        onSelect: @escaping (QuickSwitcherItem, QuickSwitcherCommitIntent) -> Void,
         onDismiss: @escaping () -> Void
     ) {
         self.schemaProvider = schemaProvider
         self.connectionId = connectionId
         self.databaseType = databaseType
+        self.openTableNames = openTableNames
         self.onSelect = onSelect
         self.onDismiss = onDismiss
         self._viewModel = State(wrappedValue: QuickSwitcherViewModel(connectionId: connectionId))
@@ -40,6 +44,8 @@ struct QuickSwitcherPanelView: View {
     var body: some View {
         VStack(spacing: 0) {
             searchField
+
+            scopeBar
 
             Divider()
 
@@ -73,8 +79,18 @@ struct QuickSwitcherPanelView: View {
         .task {
             await viewModel.loadItems(
                 schemaProvider: schemaProvider,
-                databaseType: databaseType
+                databaseType: databaseType,
+                openTableNames: openTableNames
             )
+        }
+        .onKeyPress(characters: .init(charactersIn: "1234"), phases: [.down]) { keyPress in
+            guard keyPress.modifiers.contains(.command),
+                  let digit = keyPress.characters.first,
+                  let index = Int(String(digit)),
+                  index >= 1, index <= QuickSwitcherScope.allCases.count
+            else { return .ignored }
+            viewModel.scope = QuickSwitcherScope.allCases[index - 1]
+            return .handled
         }
         .onKeyPress(characters: .init(charactersIn: "jn"), phases: [.down, .repeat]) { keyPress in
             guard keyPress.modifiers.contains(.control) else { return .ignored }
@@ -99,7 +115,21 @@ struct QuickSwitcherPanelView: View {
             focusOnAppear: true
         )
         .padding(.horizontal, 14)
-        .padding(.vertical, 12)
+        .padding(.top, 12)
+        .padding(.bottom, 8)
+    }
+
+    private var scopeBar: some View {
+        Picker(String(localized: "Scope"), selection: $viewModel.scope) {
+            ForEach(QuickSwitcherScope.allCases) { scope in
+                Text(scope.title).tag(scope)
+            }
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .controlSize(.small)
+        .padding(.horizontal, 14)
+        .padding(.bottom, 10)
     }
 
     private var itemList: some View {
@@ -123,14 +153,17 @@ struct QuickSwitcherPanelView: View {
             }
             .listStyle(.inset)
             .scrollContentBackground(.hidden)
-            .contextMenu(forSelectionType: String.self) { _ in
-                EmptyView()
+            .contextMenu(forSelectionType: String.self) { selection in
+                if let id = selection.first,
+                   let item = viewModel.flatItems.first(where: { $0.id == id }) {
+                    contextMenuActions(for: item)
+                }
             } primaryAction: { selection in
                 guard let id = selection.first,
                       let item = viewModel.flatItems.first(where: { $0.id == id })
                 else { return }
                 viewModel.selectedItemId = id
-                commit(item)
+                commit(item, intent: .open)
             }
             .onChange(of: viewModel.selectedItemId) { _, newValue in
                 if let id = newValue {
@@ -155,6 +188,15 @@ struct QuickSwitcherPanelView: View {
                 .truncationMode(.middle)
 
             Spacer()
+
+            if item.isOpenInTab {
+                Text(String(localized: "Open"))
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 1)
+                    .background(Capsule().fill(Color(nsColor: .quaternarySystemFill)))
+            }
 
             if !item.subtitle.isEmpty {
                 Text(item.subtitle)
@@ -209,11 +251,44 @@ struct QuickSwitcherPanelView: View {
         HStack(spacing: 16) {
             shortcutHint(keys: "↑↓", label: String(localized: "Navigate"))
             shortcutHint(keys: "↩", label: String(localized: "Open"))
+            shortcutHint(keys: "⌥↩", label: String(localized: "New Tab"))
             Spacer()
             shortcutHint(keys: "esc", label: String(localized: "Close"))
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
+    }
+
+    @ViewBuilder
+    private func contextMenuActions(for item: QuickSwitcherItem) -> some View {
+        Button(String(localized: "Open")) {
+            viewModel.selectedItemId = item.id
+            commit(item, intent: .open)
+        }
+        if item.kind == .table || item.kind == .view || item.kind == .systemTable {
+            Button(String(localized: "Open in New Tab")) {
+                viewModel.selectedItemId = item.id
+                commit(item, intent: .openInNewWindowTab)
+            }
+            Button(String(localized: "Open Structure")) {
+                viewModel.selectedItemId = item.id
+                commit(item, intent: .openStructure)
+            }
+        }
+        Divider()
+        Button(String(localized: "Copy Name")) {
+            copyToPasteboard(item.name)
+        }
+        if item.kind == .savedQuery || item.kind == .queryHistory {
+            Button(String(localized: "Copy Query")) {
+                copyToPasteboard(item.payload ?? item.name)
+            }
+        }
+    }
+
+    private func copyToPasteboard(_ value: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(value, forType: .string)
     }
 
     private func shortcutHint(keys: String, label: String) -> some View {
@@ -248,12 +323,15 @@ struct QuickSwitcherPanelView: View {
 
     private func openSelectedItem() {
         guard let item = viewModel.selectedItem() else { return }
-        commit(item)
+        let intent: QuickSwitcherCommitIntent = NSEvent.modifierFlags.contains(.option)
+            ? .openInNewWindowTab
+            : .open
+        commit(item, intent: intent)
     }
 
-    private func commit(_ item: QuickSwitcherItem) {
+    private func commit(_ item: QuickSwitcherItem, intent: QuickSwitcherCommitIntent) {
         viewModel.recordSelection(item)
-        onSelect(item)
+        onSelect(item, intent)
         onDismiss()
     }
 }

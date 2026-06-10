@@ -11,6 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - BigQuery datasets can be switched from the toolbar, the Cmd+K switcher, and the File menu, including creating and dropping datasets. (#509)
 - Quick Switcher now searches saved queries alongside tables, views, databases, and history.
+- Quick Switcher scopes: Cmd+1 to Cmd+4 narrow results to All, Tables, Databases, or Queries.
+- Option+Return in the Quick Switcher opens the table in a new tab; right-click a result to open its structure, copy the name, or copy the query.
+- Tables already open in a tab show an Open badge in the Quick Switcher, rank higher, and Return switches to the existing tab.
 
 ### Changed
 

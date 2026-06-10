@@ -7060,6 +7060,16 @@
         }
       }
     },
+    "An external link wants to connect to a %@ database:\n\n%@\n\nConnect only if you trust the source of this link." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "An external link wants to connect to a %1$@ database:\n\n%2$@\n\nConnect only if you trust the source of this link."
+          }
+        }
+      }
+    },
     "An external link wants to open a query on \"%@\":\n\n%@" : {
       "localizations" : {
         "en" : {
@@ -29626,6 +29636,9 @@
         }
       }
     },
+    "Host: %@" : {
+
+    },
     "Hostname" : {
       "localizations" : {
         "tr" : {
@@ -41753,6 +41766,9 @@
           }
         }
       }
+    },
+    "Open External Database Connection?" : {
+
     },
     "Open File" : {
       "localizations" : {
@@ -62675,6 +62691,7 @@
       }
     },
     "Token '%@' with permission '%@' cannot access '%@'" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -65025,6 +65042,9 @@
           }
         }
       }
+    },
+    "User: %@" : {
+
     },
     "username" : {
       "localizations" : {

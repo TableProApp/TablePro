@@ -18,6 +18,41 @@ internal enum QuickSwitcherItemKind: String, Hashable, Sendable {
     case queryHistory
 }
 
+/// How a quick switcher selection should be opened
+internal enum QuickSwitcherCommitIntent: Sendable {
+    case open
+    case openInNewWindowTab
+    case openStructure
+}
+
+/// A search scope limiting which kinds of objects the quick switcher shows
+internal enum QuickSwitcherScope: String, CaseIterable, Identifiable, Sendable {
+    case all
+    case tables
+    case containers
+    case queries
+
+    var id: String { rawValue }
+
+    var includedKinds: Set<QuickSwitcherItemKind>? {
+        switch self {
+        case .all: return nil
+        case .tables: return [.table, .view, .systemTable]
+        case .containers: return [.database, .schema]
+        case .queries: return [.savedQuery, .queryHistory]
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .all: return String(localized: "All")
+        case .tables: return String(localized: "Tables")
+        case .containers: return String(localized: "Databases")
+        case .queries: return String(localized: "Queries")
+        }
+    }
+}
+
 /// A single item in the quick switcher results list
 internal struct QuickSwitcherItem: Identifiable, Hashable, Sendable {
     let id: String
@@ -26,6 +61,7 @@ internal struct QuickSwitcherItem: Identifiable, Hashable, Sendable {
     let subtitle: String
     var matchedIndices: [Int] = []
     var payload: String?
+    var isOpenInTab: Bool = false
 
     /// SF Symbol name for this item's icon
     var iconName: String {

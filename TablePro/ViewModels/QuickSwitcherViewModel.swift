@@ -11,6 +11,7 @@ private enum QuickSwitcherRanking {
     static let maxResults = 200
     static let subtitleMatchPenalty = 0.6
     static let frecencyBoost = 0.5
+    static let openTabBoost = 1.2
 }
 
 @MainActor
@@ -47,6 +48,13 @@ internal final class QuickSwitcherViewModel {
         }
     }
 
+    var scope: QuickSwitcherScope = .all {
+        didSet {
+            guard oldValue != scope else { return }
+            scheduleFilter(debounced: false)
+        }
+    }
+
     var flatItems: [QuickSwitcherItem] {
         groups.flatMap(\.items)
     }
@@ -70,7 +78,8 @@ internal final class QuickSwitcherViewModel {
 
     func loadItems(
         schemaProvider: SQLSchemaProvider,
-        databaseType: DatabaseType
+        databaseType: DatabaseType,
+        openTableNames: Set<String> = []
     ) async {
         isLoading = true
 
@@ -109,7 +118,8 @@ internal final class QuickSwitcherViewModel {
                 id: "table_\(table.name)_\(table.type.rawValue)",
                 name: table.name,
                 kind: kind,
-                subtitle: subtitle
+                subtitle: subtitle,
+                isOpenInTab: openTableNames.contains(table.name)
             ))
         }
 
@@ -217,7 +227,7 @@ internal final class QuickSwitcherViewModel {
             reconcileSelection()
             return
         }
-        let items = allItems
+        let items = scopedItems()
         let frecencyScores = frecencyStore.scores()
         filterTask = Task { @MainActor [weak self] in
             if debounced {
@@ -239,14 +249,20 @@ internal final class QuickSwitcherViewModel {
         selectedItemId = items.first?.id
     }
 
+    private func scopedItems() -> [QuickSwitcherItem] {
+        guard let includedKinds = scope.includedKinds else { return allItems }
+        return allItems.filter { includedKinds.contains($0.kind) }
+    }
+
     private func buildEmptyQueryGroups() -> [Group] {
+        let scoped = scopedItems()
         let recentIds = frecencyStore.recentItemIds(limit: Self.recentLimit)
         let recentIdSet = Set(recentIds)
         let recentOrder = Dictionary(uniqueKeysWithValues: recentIds.enumerated().map { ($1, $0) })
 
         var result: [Group] = []
 
-        let recent = allItems
+        let recent = scoped
             .filter { recentIdSet.contains($0.id) }
             .sorted { (recentOrder[$0.id] ?? 0) < (recentOrder[$1.id] ?? 0) }
         if !recent.isEmpty {
@@ -254,7 +270,7 @@ internal final class QuickSwitcherViewModel {
         }
 
         for kind in QuickSwitcherItemKind.displayOrder {
-            let items = allItems
+            let items = scoped
                 .filter { $0.kind == kind && !recentIdSet.contains($0.id) }
                 .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
             guard !items.isEmpty else { continue }
@@ -276,8 +292,9 @@ internal final class QuickSwitcherViewModel {
             guard let (matchScore, matchedIndices) = bestMatch(for: item, query: query) else { return nil }
             var matched = item
             matched.matchedIndices = matchedIndices
-            let boost = 1 + (frecencyScores[item.id] ?? 0) * QuickSwitcherRanking.frecencyBoost
-            return (matched, matchScore * item.kind.rankWeight * boost)
+            let frecency = 1 + (frecencyScores[item.id] ?? 0) * QuickSwitcherRanking.frecencyBoost
+            let openBoost = item.isOpenInTab ? QuickSwitcherRanking.openTabBoost : 1
+            return (matched, matchScore * item.kind.rankWeight * frecency * openBoost)
         }
         ranked.sort { lhs, rhs in
             if lhs.rank != rhs.rank { return lhs.rank > rhs.rank }

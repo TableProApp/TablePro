@@ -205,6 +205,37 @@ struct QuickSwitcherViewModelTests {
         #expect(vm.flatItems.first?.payload == "SELECT SUM(total) FROM orders GROUP BY month;")
     }
 
+    @Test("Scope limits the empty-query view to its kinds")
+    func scopeLimitsEmptyQueryView() {
+        let vm = makeViewModel(items: sampleItems())
+        vm.scope = .tables
+        #expect(vm.flatItems.allSatisfy { [.table, .view, .systemTable].contains($0.kind) })
+        vm.scope = .queries
+        #expect(vm.flatItems.allSatisfy { [.savedQuery, .queryHistory].contains($0.kind) })
+    }
+
+    @Test("Scope limits filtered results to its kinds")
+    func scopeLimitsFilteredResults() async throws {
+        let vm = makeViewModel(items: sampleItems())
+        vm.scope = .containers
+        vm.searchText = "r"
+        try await Task.sleep(nanoseconds: 200_000_000)
+        #expect(vm.flatItems.allSatisfy { [.database, .schema].contains($0.kind) })
+        #expect(vm.flatItems.contains { $0.id == "d1" })
+    }
+
+    @Test("A table already open in a tab outranks an equal match")
+    func openTabOutranksEqualMatch() async throws {
+        let items = [
+            QuickSwitcherItem(id: "ta", name: "users_a", kind: .table, subtitle: ""),
+            QuickSwitcherItem(id: "tb", name: "users_b", kind: .table, subtitle: "", isOpenInTab: true)
+        ]
+        let vm = makeViewModel(items: items)
+        vm.searchText = "users"
+        try await Task.sleep(nanoseconds: 200_000_000)
+        #expect(vm.flatItems.first?.id == "tb")
+    }
+
     @Test("Query matching only the subtitle still surfaces the item")
     func subtitleMatchSurfacesItem() async throws {
         let vm = makeViewModel(items: sampleItems())
