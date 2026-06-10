@@ -340,7 +340,7 @@ final class SidebarViewModel {
         if query.isEmpty {
             result = tables
         } else {
-            result = tables.filter { $0.name.localizedCaseInsensitiveContains(query) }
+            result = tables.filter { FuzzyMatcher.matches(query: query, candidate: $0.name) }
         }
         cachedFilteredTables = result
         cachedFilterInputs = fingerprint
@@ -399,12 +399,12 @@ final class SidebarViewModel {
 
     private func applyQuery(_ query: String, to tables: [TableInfo]) -> [TableInfo] {
         guard !query.isEmpty else { return tables }
-        return tables.filter { $0.name.localizedCaseInsensitiveContains(query) }
+        return tables.filter { FuzzyMatcher.matches(query: query, candidate: $0.name) }
     }
 
     private func applyRoutineQuery(_ query: String, to routines: [RoutineInfo]) -> [RoutineInfo] {
         guard !query.isEmpty else { return routines }
-        return routines.filter { $0.name.localizedCaseInsensitiveContains(query) }
+        return routines.filter { FuzzyMatcher.matches(query: query, candidate: $0.name) }
     }
 
     private func rebuildKindBuckets(from tables: [TableInfo]) {

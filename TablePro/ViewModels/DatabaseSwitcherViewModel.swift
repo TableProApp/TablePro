@@ -29,12 +29,18 @@ final class DatabaseSwitcherViewModel {
     @ObservationIgnored private let services: AppServices
 
     var filteredDatabases: [DatabaseMetadata] {
-        if searchText.isEmpty {
-            return databases
-        }
-        return databases.filter {
-            $0.name.localizedCaseInsensitiveContains(searchText)
-        }
+        let trimmed = searchText.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return databases }
+        return databases
+            .compactMap { database -> (DatabaseMetadata, Int)? in
+                guard let match = FuzzyMatcher.match(query: trimmed, candidate: database.name) else { return nil }
+                return (database, match.score)
+            }
+            .sorted { lhs, rhs in
+                if lhs.1 != rhs.1 { return lhs.1 > rhs.1 }
+                return lhs.0.name.localizedStandardCompare(rhs.0.name) == .orderedAscending
+            }
+            .map(\.0)
     }
 
     init(

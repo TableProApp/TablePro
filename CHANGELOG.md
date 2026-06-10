@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Switcher, menus, and alerts now use each database's own container name: Dataset for BigQuery, Keyspace for Cassandra and ScyllaDB. (#509)
 - Quick Switcher highlights the matched characters in each result, finds better alignments for camelCase and snake_case names, and ranks items you open often and recently higher.
 - Quick Switcher now opens as a floating panel over the window instead of a modal sheet, with shortcut hints in the footer. On macOS 26 the panel uses Liquid Glass.
+- The sidebar filter, database switcher, and connection switcher now use the same fuzzy matching as the Quick Switcher, so abbreviations like `upv` find `user_profile_view`.
 
 ### Fixed
 

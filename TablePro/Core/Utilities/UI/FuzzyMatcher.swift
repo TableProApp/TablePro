@@ -29,6 +29,12 @@ internal enum FuzzyMatcher {
     private static let maxScoredQueryLength = 64
     private static let invalid = Int.min / 4
 
+    static func matches(query: String, candidate: String) -> Bool {
+        let trimmed = query.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return true }
+        return match(query: trimmed, candidate: candidate) != nil
+    }
+
     static func match(query: String, candidate: String) -> FuzzyMatch? {
         let queryChars = Array(query)
         let candidateChars = Array(candidate)

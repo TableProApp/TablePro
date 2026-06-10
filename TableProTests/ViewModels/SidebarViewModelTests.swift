@@ -347,6 +347,19 @@ struct SidebarViewModelMultiSectionTests {
         #expect(funcs.map(\.name) == ["calculate_age"])
     }
 
+    @Test("Sidebar filter matches fuzzy abbreviations like Xcode's navigator")
+    @MainActor
+    func sidebarFilterMatchesAbbreviation() {
+        let vm = makeViewModel()
+        let userProfileView = TestFixtures.makeTableInfo(name: "user_profile_view", type: .view)
+        let orders = TestFixtures.makeTableInfo(name: "orders", type: .view)
+        vm.searchText = "upv"
+
+        let matches = vm.filteredTables(of: .view, from: [userProfileView, orders])
+
+        #expect(matches.map(\.name) == ["user_profile_view"])
+    }
+
     @Test("filteredRoutines search matches name case insensitively")
     @MainActor
     func filteredRoutinesSearch() {

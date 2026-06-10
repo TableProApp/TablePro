@@ -11,10 +11,9 @@ enum ConnectionSwitcherFilter {
     static func matches(_ connection: DatabaseConnection, query: String) -> Bool {
         let trimmed = query.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return true }
-        let needle = trimmed.lowercased()
-        return connection.name.lowercased().contains(needle)
-            || connection.host.lowercased().contains(needle)
-            || connection.database.lowercased().contains(needle)
+        return FuzzyMatcher.matches(query: trimmed, candidate: connection.name)
+            || FuzzyMatcher.matches(query: trimmed, candidate: connection.host)
+            || FuzzyMatcher.matches(query: trimmed, candidate: connection.database)
     }
 }
 

@@ -442,9 +442,9 @@ struct DatabaseTreeView: View {
     }
 
     private func databaseMatchesSearch(_ db: DatabaseMetadata) -> Bool {
-        if db.name.localizedCaseInsensitiveContains(searchText) { return true }
+        if FuzzyMatcher.matches(query: searchText, candidate: db.name) { return true }
         if case .loaded(let list) = treeService.schemaListState(connectionId: connectionId, database: db.name) {
-            if list.contains(where: { $0.localizedCaseInsensitiveContains(searchText) }) { return true }
+            if list.contains(where: { FuzzyMatcher.matches(query: searchText, candidate: $0) }) { return true }
             for schema in list where schemaContentMatchesSearch(database: db.name, schema: schema) {
                 return true
             }
@@ -453,11 +453,11 @@ struct DatabaseTreeView: View {
     }
 
     private func schemaContentMatchesSearch(database: String, schema: String?) -> Bool {
-        if let schema, schema.localizedCaseInsensitiveContains(searchText) { return true }
-        if tables(database: database, schema: schema).contains(where: { $0.name.localizedCaseInsensitiveContains(searchText) }) {
+        if let schema, FuzzyMatcher.matches(query: searchText, candidate: schema) { return true }
+        if tables(database: database, schema: schema).contains(where: { FuzzyMatcher.matches(query: searchText, candidate: $0.name) }) {
             return true
         }
-        return routines(database: database, schema: schema).contains { $0.name.localizedCaseInsensitiveContains(searchText) }
+        return routines(database: database, schema: schema).contains { FuzzyMatcher.matches(query: searchText, candidate: $0.name) }
     }
 
     private func visibleSchemas(database: String, all: [String]) -> [String] {
@@ -465,7 +465,7 @@ struct DatabaseTreeView: View {
         let matched = searchText.isEmpty
             ? nonSystem
             : nonSystem.filter { schema in
-                schema.localizedCaseInsensitiveContains(searchText)
+                FuzzyMatcher.matches(query: searchText, candidate: schema)
                     || schemaContentMatchesSearch(database: database, schema: schema)
             }
         var seen = Set<String>()
@@ -476,7 +476,7 @@ struct DatabaseTreeView: View {
         let all = tables(database: database, schema: schema)
         let matched = searchText.isEmpty
             ? all
-            : all.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
+            : all.filter { FuzzyMatcher.matches(query: searchText, candidate: $0.name) }
         var seen = Set<String>()
         return matched.filter { seen.insert($0.id).inserted }
     }
@@ -485,7 +485,7 @@ struct DatabaseTreeView: View {
         let all = routines(database: database, schema: schema)
         let matched = searchText.isEmpty
             ? all
-            : all.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
+            : all.filter { FuzzyMatcher.matches(query: searchText, candidate: $0.name) }
         var seen = Set<String>()
         return matched.filter { seen.insert($0.id).inserted }
     }
