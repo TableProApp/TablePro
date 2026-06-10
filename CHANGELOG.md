@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - BigQuery datasets can be switched from the toolbar, the Cmd+K switcher, and the File menu, including creating and dropping datasets. (#509)
-- `.psql` and `.pgsql` files are now associated with TablePro and open in the SQL editor, alongside `.sql`.
+- `.psql` and `.pgsql` files now open in the SQL editor like `.sql`: Finder double-click, the open and save panels, and linked SQL folders all accept them. (#1641)
 
 ### Changed
 
