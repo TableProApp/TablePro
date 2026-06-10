@@ -42,7 +42,7 @@ internal final class QuickSwitcherPanelController: NSObject, NSWindowDelegate {
         let top: CGFloat
     }
 
-    private static let topOffsetRatio: CGFloat = 0.18
+    private static let topOffsetRatio: CGFloat = 0.20
 
     private var panel: QuickSwitcherPanel?
     private var anchor: Anchor?
