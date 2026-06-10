@@ -33,7 +33,7 @@ extension MainContentCoordinator {
                     // Query tabs should not auto-execute on refresh (use Cmd+Enter to execute)
                     if let (tab, tabIndex) = tabManager.selectedTabAndIndex,
                        tab.tabType == .table {
-                        currentQueryTask?.cancel()
+                        cancelCurrentQuery()
                         rebuildTableQuery(at: tabIndex)
                         runQuery()
                     }
@@ -42,7 +42,7 @@ extension MainContentCoordinator {
         } else {
             if let (tab, tabIndex) = tabManager.selectedTabAndIndex,
                tab.tabType == .table {
-                currentQueryTask?.cancel()
+                cancelCurrentQuery()
                 rebuildTableQuery(at: tabIndex)
                 runQuery()
             }

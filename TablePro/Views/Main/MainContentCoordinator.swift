@@ -526,13 +526,24 @@ final class MainContentCoordinator {
     }
 
     func refreshTables() async {
-        guard let driver = services.databaseManager.driver(for: connectionId) else { return }
         schemaColumns.removeAll()
-        await services.schemaService.reload(
-            connectionId: connectionId,
-            driver: driver,
-            connection: connection
-        )
+        let schemaService = services.schemaService
+        let connectionId = connectionId
+        let connection = connection
+        do {
+            try await services.databaseManager.withMetadataDriver(
+                connectionId: connectionId,
+                workload: .bulk
+            ) { driver in
+                await schemaService.reload(
+                    connectionId: connectionId,
+                    driver: driver,
+                    connection: connection
+                )
+            }
+        } catch {
+            Self.logger.warning("Schema refresh failed: \(error.localizedDescription, privacy: .public)")
+        }
         await reconcilePostSchemaLoad()
     }
 

@@ -20,7 +20,6 @@ final class DataTabGridDelegate: DataGridViewDelegate {
     var onAddRow: (() -> Void)?
     var onUndoInsert: ((Int) -> Void)?
     var onFilterColumn: ((String) -> Void)?
-    var onRefresh: (() -> Void)?
 
     // MARK: - DataGridViewDelegate
 
@@ -42,10 +41,6 @@ final class DataTabGridDelegate: DataGridViewDelegate {
 
     func dataGridFilterColumn(_ columnName: String) {
         onFilterColumn?(columnName)
-    }
-
-    func dataGridRefresh() {
-        onRefresh?()
     }
 
     func dataGridDeleteRows(_ indices: Set<Int>) {

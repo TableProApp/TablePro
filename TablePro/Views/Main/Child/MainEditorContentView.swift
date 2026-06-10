@@ -44,7 +44,6 @@ struct MainEditorContentView: View {
     let onFilterColumn: (String) -> Void
     let onApplyFilters: ([TableFilter]) -> Void
     let onClearFilters: () -> Void
-    let onRefresh: () -> Void
 
     // Pagination callbacks
     let onFirstPage: () -> Void
@@ -182,7 +181,6 @@ struct MainEditorContentView: View {
         dataTabDelegate.onSortStateChanged = onSortStateChanged
         dataTabDelegate.onUndoInsert = onUndoInsert
         dataTabDelegate.onFilterColumn = onFilterColumn
-        dataTabDelegate.onRefresh = onRefresh
     }
 
     private func refreshDataTabDelegateMutableRefs() {
