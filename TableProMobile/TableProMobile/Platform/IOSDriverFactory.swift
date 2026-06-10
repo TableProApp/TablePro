@@ -25,7 +25,7 @@ final class IOSDriverFactory: DriverFactory {
                 user: connection.username,
                 password: password ?? "",
                 database: connection.database,
-                sslEnabled: connection.sslEnabled
+                ssl: DriverSSLConfiguration(sslEnabled: connection.sslEnabled, configuration: connection.sslConfiguration)
             )
         case .postgresql, .redshift:
             return PostgreSQLDriver(
@@ -34,7 +34,7 @@ final class IOSDriverFactory: DriverFactory {
                 user: connection.username,
                 password: password ?? "",
                 database: connection.database,
-                sslEnabled: connection.sslEnabled
+                ssl: DriverSSLConfiguration(sslEnabled: connection.sslEnabled, configuration: connection.sslConfiguration)
             )
         case .redis:
             let dbIndex = Int(connection.database) ?? 0
@@ -43,7 +43,7 @@ final class IOSDriverFactory: DriverFactory {
                 port: connection.port,
                 password: password,
                 database: dbIndex,
-                sslEnabled: connection.sslEnabled
+                ssl: DriverSSLConfiguration(sslEnabled: connection.sslEnabled, configuration: connection.sslConfiguration)
             )
         case .mssql:
             return MSSQLDriver(connection: connection, password: password)
