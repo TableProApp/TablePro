@@ -1,6 +1,7 @@
 import Foundation
 import TableProModels
 import UIKit
+import UniformTypeIdentifiers
 
 enum ExportFormat: String, CaseIterable, Identifiable {
     case json = "JSON"
@@ -40,8 +41,21 @@ enum ClipboardExporter {
         }
     }
 
+    static let pasteboardExpiry: TimeInterval = 60
+
+    static func pasteboardPayload(_ text: String, now: Date = Date()) -> (items: [[String: Any]], options: [UIPasteboard.OptionsKey: Any]) {
+        (
+            items: [[UTType.utf8PlainText.identifier: text]],
+            options: [
+                .localOnly: true,
+                .expirationDate: now.addingTimeInterval(pasteboardExpiry),
+            ]
+        )
+    }
+
     static func copyToClipboard(_ text: String) {
-        UIPasteboard.general.string = text
+        let payload = pasteboardPayload(text)
+        UIPasteboard.general.setItems(payload.items, options: payload.options)
     }
 
     // MARK: - Private

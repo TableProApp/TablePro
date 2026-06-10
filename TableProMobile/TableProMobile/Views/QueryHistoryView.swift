@@ -1,5 +1,4 @@
 import SwiftUI
-import UIKit
 
 struct QueryHistoryView: View {
     @Environment(ConnectionCoordinator.self) private var coordinator
@@ -24,7 +23,7 @@ struct QueryHistoryView: View {
                 }
                 .contextMenu {
                     Button {
-                        UIPasteboard.general.string = item.query
+                        ClipboardExporter.copyToClipboard(item.query)
                     } label: {
                         Label("Copy Query", systemImage: "doc.on.doc")
                     }
