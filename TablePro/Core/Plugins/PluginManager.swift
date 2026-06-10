@@ -425,6 +425,18 @@ final class PluginManager {
         let bundleId = bundle.bundleIdentifier ?? url.lastPathComponent
         guard !activatedBundleIds.contains(bundleId) else { return }
 
+        let entry = plugins.first(where: { $0.id == bundleId })
+
+        if entry?.source != .builtIn {
+            do {
+                try verifyCodeSignature(bundle: bundle)
+            } catch {
+                Self.logger.error("Refusing to activate lazy plugin '\(bundleId)': code-signature re-check failed before load: \(error.localizedDescription)")
+                recordLazyActivationRejection(url: url, bundleId: bundleId, entry: entry, error: error)
+                return
+            }
+        }
+
         guard bundle.load() else {
             Self.logger.error("Failed to load lazy bundle '\(bundleId)' at \(url.lastPathComponent)")
             return
@@ -437,7 +449,7 @@ final class PluginManager {
 
         validateCapabilityDeclarations(principalClass, pluginId: bundleId)
 
-        let isEnabled = plugins.first(where: { $0.id == bundleId })?.isEnabled ?? false
+        let isEnabled = entry?.isEnabled ?? false
         if isEnabled {
             let instance = principalClass.init()
             registerCapabilities(instance, pluginId: bundleId)
@@ -446,6 +458,26 @@ final class PluginManager {
         activatedBundleIds.insert(bundleId)
         queryBuildingDriverCache.removeAll()
         Self.logger.info("Activated plugin '\(bundleId)' on demand")
+    }
+
+    private func recordLazyActivationRejection(url: URL, bundleId: String, entry: PluginEntry?, error: Error) {
+        guard !rejectedPlugins.contains(where: { $0.url == url }) else { return }
+        var providedDatabaseTypeIds: [String] = []
+        if let entry {
+            if let primaryTypeId = entry.databaseTypeId {
+                providedDatabaseTypeIds.append(primaryTypeId)
+            }
+            providedDatabaseTypeIds.append(contentsOf: entry.additionalTypeIds)
+        }
+        rejectedPlugins.append(RejectedPlugin(
+            url: url,
+            bundleId: bundleId,
+            registryId: Self.readRegistryMetadata(for: url)?.pluginId,
+            name: entry?.name ?? bundleId,
+            reason: error.localizedDescription,
+            isOutdated: false,
+            providedDatabaseTypeIds: providedDatabaseTypeIds
+        ))
     }
 
     private struct ValidatedBundle: @unchecked Sendable {
