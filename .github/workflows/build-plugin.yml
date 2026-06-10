@@ -49,11 +49,13 @@ jobs:
         id: tags
         env:
           DEFAULT_PKV: ${{ steps.pkv.outputs.version }}
+          INPUT_TAGS: ${{ inputs.tags }}
+          REF_NAME: ${{ github.ref_name }}
         run: |
-          if [ -n "${{ inputs.tags }}" ]; then
-            IFS=',' read -ra RAW_TAGS <<< "${{ inputs.tags }}"
+          if [ -n "$INPUT_TAGS" ]; then
+            IFS=',' read -ra RAW_TAGS <<< "$INPUT_TAGS"
           else
-            RAW_TAGS=("${{ github.ref_name }}")
+            RAW_TAGS=("$REF_NAME")
           fi
 
           JSON='{"include":['
@@ -128,8 +130,10 @@ jobs:
 
       - name: Resolve plugin info
         id: plugin
+        env:
+          MATRIX_TAG: ${{ matrix.tag }}
         run: |
-          TAG="${{ matrix.tag }}"
+          TAG="$MATRIX_TAG"
           PLUGIN_NAME=$(echo "$TAG" | sed -E 's/^plugin-([a-z0-9-]+)-v([0-9].*)$/\1/')
           VERSION=$(echo "$TAG" | sed -E 's/^plugin-([a-z0-9-]+)-v([0-9].*)$/\2/')
 
@@ -270,9 +274,11 @@ jobs:
           ./scripts/build-plugin.sh "${{ steps.plugin.outputs.target }}" x86_64 "${{ steps.plugin.outputs.version }}"
 
       - name: Verify built PluginKit version matches the release label
+        env:
+          MATRIX_PKV: ${{ matrix.pluginKitVersion }}
         run: |
           BUNDLE_NAME="${{ steps.plugin.outputs.bundleName }}"
-          EXPECTED="${{ matrix.pluginKitVersion }}"
+          EXPECTED="$MATRIX_PKV"
           for ARCH in arm64 x86_64; do
             WORK=$(mktemp -d)
             unzip -oq "build/Plugins/${BUNDLE_NAME}-${ARCH}.zip" -d "$WORK"
@@ -311,14 +317,16 @@ jobs:
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
+          MATRIX_TAG: ${{ matrix.tag }}
+          MATRIX_PKV: ${{ matrix.pluginKitVersion }}
         run: |
-          TAG="${{ matrix.tag }}"
+          TAG="$MATRIX_TAG"
           DISPLAY_NAME="${{ steps.plugin.outputs.displayName }}"
           VERSION="${{ steps.plugin.outputs.version }}"
           BUNDLE_NAME="${{ steps.plugin.outputs.bundleName }}"
           ARM64_SHA="${{ steps.sha.outputs.arm64 }}"
           X86_SHA="${{ steps.sha.outputs.x86_64 }}"
-          PKV="${{ matrix.pluginKitVersion }}"
+          PKV="$MATRIX_PKV"
 
           RELEASE_BODY="## $DISPLAY_NAME v$VERSION
 
@@ -346,10 +354,13 @@ jobs:
             build/Plugins/${BUNDLE_NAME}-x86_64.zip
 
       - name: Verify published assets match the PluginKit label
+        env:
+          MATRIX_TAG: ${{ matrix.tag }}
+          MATRIX_PKV: ${{ matrix.pluginKitVersion }}
         run: |
           BUNDLE_NAME="${{ steps.plugin.outputs.bundleName }}"
-          TAG="${{ matrix.tag }}"
-          PKV="${{ matrix.pluginKitVersion }}"
+          TAG="$MATRIX_TAG"
+          PKV="$MATRIX_PKV"
           REPO="${{ github.repository }}"
           for ARCH in arm64 x86_64; do
             URL="https://github.com/${REPO}/releases/download/${TAG}/${BUNDLE_NAME}-${ARCH}.zip"
@@ -386,8 +397,10 @@ jobs:
         env:
           REGISTRY_DEPLOY_KEY: ${{ secrets.REGISTRY_DEPLOY_KEY }}
           GH_TOKEN: ${{ github.token }}
+          MATRIX_TAG: ${{ matrix.tag }}
+          MATRIX_PKV: ${{ matrix.pluginKitVersion }}
         run: |
-          TAG="${{ matrix.tag }}"
+          TAG="$MATRIX_TAG"
           BUNDLE_NAME="${{ steps.plugin.outputs.bundleName }}"
           BUNDLE_ID="${{ steps.plugin.outputs.bundleId }}"
           DISPLAY_NAME="${{ steps.plugin.outputs.displayName }}"
@@ -400,7 +413,7 @@ jobs:
           CATEGORY="${{ steps.plugin.outputs.category }}"
           ARM64_SHA="${{ steps.sha.outputs.arm64 }}"
           X86_SHA="${{ steps.sha.outputs.x86_64 }}"
-          PKV="${{ matrix.pluginKitVersion }}"
+          PKV="$MATRIX_PKV"
           REPO="${{ github.repository }}"
           ARM64_URL="https://github.com/${REPO}/releases/download/${TAG}/${BUNDLE_NAME}-arm64.zip"
           X86_64_URL="https://github.com/${REPO}/releases/download/${TAG}/${BUNDLE_NAME}-x86_64.zip"
