@@ -429,4 +429,110 @@ struct MongoDBQueryBuilderTests {
         #expect(query.hasPrefix("db[\"my.data\"]"))
         #expect(query.contains(".countDocuments({})"))
     }
+
+    // MARK: - Security (NoSQL injection)
+
+    private func parseFilter(_ json: String) -> [String: Any]? {
+        guard let data = json.data(using: .utf8) else { return nil }
+        return try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+    }
+
+    @Test("REGEX value cannot break out of the regex string to inject operators")
+    func regexInjectionContained() {
+        let payload = ".*\"}, \"$where\": \"function(){return true}\", \"_\":{\"a\":\""
+        let doc = parseFilter(
+            builder.buildFilterDocument(from: [(column: "name", op: "REGEX", value: payload)])
+        )
+        #expect(doc != nil)
+        #expect(doc.map { Array($0.keys) } == ["name"])
+        let inner = doc?["name"] as? [String: Any]
+        #expect(inner.map { Array($0.keys).sorted() } == ["$options", "$regex"])
+        #expect(inner?["$regex"] as? String == payload)
+        #expect(inner?["$options"] as? String == "i")
+    }
+
+    @Test("CONTAINS value cannot break out of the regex string to inject operators")
+    func containsInjectionContained() {
+        let payload = "\"}, \"$where\": \"return true"
+        let doc = parseFilter(
+            builder.buildFilterDocument(from: [(column: "name", op: "CONTAINS", value: payload)])
+        )
+        #expect(doc != nil)
+        #expect(doc.map { Array($0.keys) } == ["name"])
+        let regex = (doc?["name"] as? [String: Any])?["$regex"] as? String
+        #expect(regex?.contains("$where") == true)
+    }
+
+    @Test("NOT CONTAINS value cannot break out of the nested regex string")
+    func notContainsInjectionContained() {
+        let payload = "\"}}, \"$where\": \"1==1"
+        let doc = parseFilter(
+            builder.buildFilterDocument(from: [(column: "name", op: "NOT CONTAINS", value: payload)])
+        )
+        #expect(doc != nil)
+        #expect(doc.map { Array($0.keys) } == ["name"])
+        let not = (doc?["name"] as? [String: Any])?["$not"] as? [String: Any]
+        #expect((not?["$regex"] as? String)?.contains("$where") == true)
+    }
+
+    @Test("STARTS WITH escapes embedded double quotes as data")
+    func startsWithEscapesQuote() {
+        let doc = parseFilter(
+            builder.buildFilterDocument(from: [(column: "name", op: "STARTS WITH", value: "Al\"ce")])
+        )
+        #expect(doc != nil)
+        let inner = doc?["name"] as? [String: Any]
+        #expect(inner?["$regex"] as? String == "^Al\"ce")
+    }
+
+    @Test("ENDS WITH escapes embedded double quotes as data")
+    func endsWithEscapesQuote() {
+        let doc = parseFilter(
+            builder.buildFilterDocument(from: [(column: "name", op: "ENDS WITH", value: "ce\"Al")])
+        )
+        #expect(doc != nil)
+        let inner = doc?["name"] as? [String: Any]
+        #expect(inner?["$regex"] as? String == "ce\"Al$")
+    }
+
+    @Test("CONTAINS escapes a backslash to a literal-backslash regex")
+    func containsEscapesBackslash() {
+        let doc = parseFilter(
+            builder.buildFilterDocument(from: [(column: "path", op: "CONTAINS", value: "\\")])
+        )
+        #expect(doc != nil)
+        let inner = doc?["path"] as? [String: Any]
+        #expect(inner?["$regex"] as? String == "\\\\")
+    }
+
+    @Test("REGEX preserves regex metacharacters literally")
+    func regexPreservesMetacharacters() {
+        let value = "^[A-Z].*\\d$"
+        let doc = parseFilter(
+            builder.buildFilterDocument(from: [(column: "name", op: "REGEX", value: value)])
+        )
+        #expect(doc != nil)
+        let inner = doc?["name"] as? [String: Any]
+        #expect(inner?["$regex"] as? String == value)
+    }
+
+    @Test("REGEX keeps an embedded double quote as data")
+    func regexEscapesQuote() {
+        let doc = parseFilter(
+            builder.buildFilterDocument(from: [(column: "name", op: "REGEX", value: "a\"b")])
+        )
+        #expect(doc != nil)
+        let inner = doc?["name"] as? [String: Any]
+        #expect(inner?["$regex"] as? String == "a\"b")
+    }
+
+    @Test("CONTAINS treats regex metacharacters as literals")
+    func containsTreatsMetacharactersLiterally() {
+        let doc = parseFilter(
+            builder.buildFilterDocument(from: [(column: "name", op: "CONTAINS", value: "a.b")])
+        )
+        #expect(doc != nil)
+        let inner = doc?["name"] as? [String: Any]
+        #expect(inner?["$regex"] as? String == "a\\.b")
+    }
 }

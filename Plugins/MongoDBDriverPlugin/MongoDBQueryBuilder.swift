@@ -118,13 +118,13 @@ struct MongoDBQueryBuilder {
         case "<=":
             return "\"\(field)\": {\"$lte\": \(jsonValue(value))}"
         case "CONTAINS":
-            return "\"\(field)\": {\"$regex\": \"\(escapeRegexChars(value))\", \"$options\": \"i\"}"
+            return "\"\(field)\": \(Self.regexBody(pattern: escapeRegexChars(value)))"
         case "NOT CONTAINS":
-            return "\"\(field)\": {\"$not\": {\"$regex\": \"\(escapeRegexChars(value))\", \"$options\": \"i\"}}"
+            return "\"\(field)\": {\"$not\": \(Self.regexBody(pattern: escapeRegexChars(value)))}"
         case "STARTS WITH":
-            return "\"\(field)\": {\"$regex\": \"^\(escapeRegexChars(value))\", \"$options\": \"i\"}"
+            return "\"\(field)\": \(Self.regexBody(pattern: "^\(escapeRegexChars(value))"))"
         case "ENDS WITH":
-            return "\"\(field)\": {\"$regex\": \"\(escapeRegexChars(value))$\", \"$options\": \"i\"}"
+            return "\"\(field)\": \(Self.regexBody(pattern: "\(escapeRegexChars(value))$"))"
         case "IS NULL":
             return "\"\(field)\": null"
         case "IS NOT NULL":
@@ -134,7 +134,7 @@ struct MongoDBQueryBuilder {
         case "IS NOT EMPTY":
             return "\"\(field)\": {\"$ne\": \"\"}"
         case "REGEX":
-            return "\"\(field)\": {\"$regex\": \"\(value)\", \"$options\": \"i\"}"
+            return "\"\(field)\": \(Self.regexBody(pattern: value))"
         case "IN":
             let items = value.split(separator: ",")
                 .map { jsonValue(String($0).trimmingCharacters(in: .whitespaces)) }
@@ -176,6 +176,10 @@ struct MongoDBQueryBuilder {
         if Int64(value) != nil { return value }
         if Double(value) != nil, value.contains(".") { return value }
         return "\"\(Self.escapeJsonString(value))\""
+    }
+
+    private static func regexBody(pattern: String) -> String {
+        "{\"$regex\": \"\(escapeJsonString(pattern))\", \"$options\": \"i\"}"
     }
 
     static func escapeJsonString(_ value: String) -> String {
