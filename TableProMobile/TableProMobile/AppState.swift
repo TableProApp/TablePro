@@ -318,8 +318,6 @@ final class AppState {
                     id: conn.id,
                     name: conn.name.isEmpty ? conn.host : conn.name,
                     type: conn.type.rawValue,
-                    host: conn.host,
-                    port: conn.port,
                     sortOrder: conn.sortOrder
                 )
             }
