@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Exports no longer fail mid-table on servers that enforce a statement time limit; the export session disables the limit and restores it afterwards, the same way mysqldump does. (#1633)
 - Refreshing a table now reloads its data even when the previous load is still running; before, the refresh was silently dropped and the grid kept stale rows. (#1637)
 - SQL autocomplete now suggests tables after JOIN. It detects the clause at the cursor across multi-join and multi-clause queries, so columns no longer appear where a table is expected, and tables lead the list. (#1646)
+- Pasting a large SQL script no longer freezes the editor. The line index rebuild stops allocating per line, and a big paste parses off the main thread. (#1652)
 
 ### Security
 
