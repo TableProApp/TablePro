@@ -21,9 +21,9 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "SQLEditorCoordinator")
 
-    /// Above this document length inline AI features are suspended, matching the syntax-highlighting cutoff, so a large
-    /// document does not copy its whole contents to the assistant on every keystroke.
-    private static let languageServiceLengthLimit = 2_000_000
+    /// Above this document length inline AI features are suspended, at the same cutoff where syntax highlighting stops,
+    /// so a large document does not copy its whole contents to the assistant on every keystroke.
+    private static let languageServiceLengthLimit = EditorHighlighting.maxHighlightableCharacters
 
     @ObservationIgnored weak var controller: TextViewController?
     /// Shared schema provider for inline AI suggestions (avoids duplicate schema fetches)

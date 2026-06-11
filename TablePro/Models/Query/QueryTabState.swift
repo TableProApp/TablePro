@@ -322,22 +322,25 @@ struct TabQueryContent: Equatable {
     }
 
     static func == (lhs: TabQueryContent, rhs: TabQueryContent) -> Bool {
-        // The query can be multiple megabytes and is bridged from the editor's NSTextStorage. Same-box comparison is
-        // O(1); otherwise use NSString literal equality, which returns in O(1) when the lengths differ (every keystroke
-        // changes the length) and avoids Swift's canonical Unicode normalization.
-        guard lhs.queryStorage === rhs.queryStorage || (lhs.query as NSString).isEqual(to: rhs.query),
-              lhs.queryParameters == rhs.queryParameters,
-              lhs.isParameterPanelVisible == rhs.isParameterPanelVisible,
-              lhs.sourceFileURL == rhs.sourceFileURL,
-              lhs.loadMtime == rhs.loadMtime,
-              lhs.externalModificationDetected == rhs.externalModificationDetected else {
-            return false
-        }
-        switch (lhs.savedFileContent, rhs.savedFileContent) {
+        // Cheap scalar fields short-circuit first. The query and saved-file text can be multiple megabytes and are
+        // bridged from NSTextStorage, so they are compared last and with `sameText` to avoid Swift's canonical Unicode
+        // comparison (O(n) on the bridged text); the same-box identity check makes an unchanged query O(1).
+        lhs.isParameterPanelVisible == rhs.isParameterPanelVisible
+            && lhs.externalModificationDetected == rhs.externalModificationDetected
+            && lhs.sourceFileURL == rhs.sourceFileURL
+            && lhs.loadMtime == rhs.loadMtime
+            && lhs.queryParameters == rhs.queryParameters
+            && (lhs.queryStorage === rhs.queryStorage || sameText(lhs.query, rhs.query))
+            && sameText(lhs.savedFileContent, rhs.savedFileContent)
+    }
+
+    /// Literal text equality that skips Swift's canonical Unicode comparison, returning in O(1) when the lengths differ.
+    private static func sameText(_ lhs: String?, _ rhs: String?) -> Bool {
+        switch (lhs, rhs) {
         case (nil, nil):
             return true
-        case let (lhsSaved?, rhsSaved?):
-            return (lhsSaved as NSString).isEqual(to: rhsSaved)
+        case let (lhs?, rhs?):
+            return (lhs as NSString).isEqual(to: rhs)
         default:
             return false
         }
