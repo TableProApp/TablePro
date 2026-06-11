@@ -57,7 +57,10 @@ Tables appear after FROM, JOIN, INSERT INTO, and similar keywords:
 SELECT * FROM |  -- All tables
 SELECT * FROM us|  -- Tables starting with "us": users, user_roles
 SELECT * FROM users JOIN |  -- All tables
+SELECT * FROM a JOIN b ON a.id = b.id JOIN |  -- All tables, even after an ON condition
 ```
+
+The clause is detected at the cursor, so a second or third JOIN suggests tables even when an ON condition comes before it. In a table position, tables lead the list ahead of keywords.
 
 {/* Screenshot: Table name suggestions */}
 <Frame caption="Table name suggestions">

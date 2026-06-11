@@ -251,6 +251,16 @@ final class SQLCompletionProvider {
             items += filterKeywords([
                 "AND", "OR", "NOT", "IS", "NULL", "TRUE", "FALSE"
             ])
+            // Continuations once the join condition is written: another join or
+            // the next clause. Without these, typing the next keyword (e.g. a
+            // second INNER JOIN) only fuzzy-matches columns.
+            items += filterKeywords([
+                "INNER JOIN", "LEFT JOIN", "RIGHT JOIN", "FULL JOIN",
+                "LEFT OUTER JOIN", "RIGHT OUTER JOIN", "FULL OUTER JOIN",
+                "CROSS JOIN", "NATURAL JOIN", "JOIN",
+                "WHERE", "ORDER BY", "GROUP BY", "HAVING", "LIMIT",
+                "UNION", "INTERSECT", "EXCEPT"
+            ])
 
         case .where_, .and, .having:
             // HP-8: Columns, operators, logical keywords + clause transitions
@@ -739,11 +749,16 @@ final class SQLCompletionProvider {
             score -= 1_000
         }
 
-        // When prefix is empty and tables are in scope, user is at a clause
-        // transition point (e.g., "FROM users |" or "WHERE id > 1 |").
-        // Boost keywords so they appear alongside context-specific items.
+        // When prefix is empty and tables are in scope, the user is either in a
+        // table-operand slot (e.g. "... JOIN |") or at a clause transition point
+        // (e.g. "FROM users |" or "WHERE id > 1 |"). In the operand slot, tables
+        // lead; otherwise keywords lead so clause transitions surface.
         if prefix.isEmpty && !context.tableReferences.isEmpty && !context.isAfterComma {
-            if item.kind == .keyword {
+            if context.expectsObjectName {
+                if item.kind == .table || item.kind == .view || item.kind == .schema {
+                    score -= 300
+                }
+            } else if item.kind == .keyword {
                 score -= 300
             }
         } else {
