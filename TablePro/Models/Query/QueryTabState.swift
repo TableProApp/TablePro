@@ -288,6 +288,29 @@ struct TabQueryContent: Equatable {
         if queryNS.length != savedNS.length { return true }
         return queryNS != savedNS
     }
+
+    static func == (lhs: TabQueryContent, rhs: TabQueryContent) -> Bool {
+        // `query` can be multiple megabytes and is bridged from the editor's NSTextStorage. The synthesized `==`
+        // compared it with Swift's canonical Unicode equality, which walks the whole string through NFC normalization
+        // on every SwiftUI diff and pins the CPU while editing a large query. NSString equality returns in O(1) when
+        // the lengths differ (every keystroke changes the length) and uses literal comparison otherwise.
+        guard (lhs.query as NSString).isEqual(to: rhs.query),
+              lhs.queryParameters == rhs.queryParameters,
+              lhs.isParameterPanelVisible == rhs.isParameterPanelVisible,
+              lhs.sourceFileURL == rhs.sourceFileURL,
+              lhs.loadMtime == rhs.loadMtime,
+              lhs.externalModificationDetected == rhs.externalModificationDetected else {
+            return false
+        }
+        switch (lhs.savedFileContent, rhs.savedFileContent) {
+        case (nil, nil):
+            return true
+        case let (lhsSaved?, rhsSaved?):
+            return (lhsSaved as NSString).isEqual(to: rhsSaved)
+        default:
+            return false
+        }
+    }
 }
 
 struct TabDisplayState: Equatable {
