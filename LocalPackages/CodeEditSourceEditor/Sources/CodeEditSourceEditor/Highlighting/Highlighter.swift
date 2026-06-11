@@ -81,7 +81,10 @@ class Highlighter: NSObject {
     /// Counts upwards to provide unique IDs for new highlight providers.
     private var providerIdCounter: Int
 
-    public var maxHighlightableLength: Int = 5_000_000
+    /// Documents longer than this are not highlighted. Above this length the per-edit re-parse and re-highlight cost
+    /// dominates, so the editor stops syntax highlighting to keep typing, scrolling, and deleting responsive, the same
+    /// way DataGrip and VS Code degrade large files.
+    public var maxHighlightableLength: Int = 2_000_000
 
     // MARK: - Init
 
