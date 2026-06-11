@@ -717,6 +717,13 @@ final class SQLContextAnalyzer {
         "JOIN", "ON", "AND", "OR", "WHERE", "SELECT", "FROM", "AS"
     ]
 
+    private static let bareIdentifierRegex = compileRegex("^\\w+$")
+
+    private static func isBareIdentifier(_ value: String) -> Bool {
+        let range = NSRange(location: 0, length: (value as NSString).length)
+        return bareIdentifierRegex.firstMatch(in: value, range: range) != nil
+    }
+
     private static let identifierQuoteChars = CharacterSet(charactersIn: "`\"'")
 
     /// Extract all table references (table names and aliases) from the query
@@ -801,6 +808,9 @@ final class SQLContextAnalyzer {
             String($0).trimmingCharacters(in: Self.identifierQuoteChars)
         }
         guard let tableName = segments.last, !tableName.isEmpty else { return nil }
+        // Reject anything that is not a plain identifier path, so a derived-table
+        // subquery (`FROM (SELECT ...) x`) never yields a phantom table name.
+        guard segments.allSatisfy(Self.isBareIdentifier) else { return nil }
         guard !Self.tableRefKeywords.contains(tableName.uppercased()) else { return nil }
 
         let schema = segments.count >= 2 ? segments[segments.count - 2] : nil

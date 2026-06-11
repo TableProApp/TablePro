@@ -211,4 +211,20 @@ struct SQLClauseDetectionTests {
         #expect(ctx.clauseType == .where_)
         #expect(ctx.tableReferences.contains { $0.tableName == "users" })
     }
+
+    @Test("A derived-table subquery does not create a phantom table reference")
+    func derivedTableNoPhantom() {
+        let ctx = context("SELECT * FROM (SELECT id FROM inner_t) sub WHERE ")
+        #expect(ctx.clauseType == .where_)
+        #expect(ctx.tableReferences.allSatisfy {
+            !$0.tableName.contains("(") && $0.tableName.uppercased() != "SELECT"
+        })
+    }
+
+    // MARK: - RETURNING After VALUES
+
+    @Test("RETURNING after a VALUES list completes as RETURNING, not VALUES")
+    func returningAfterValues() {
+        #expect(clause("INSERT INTO t VALUES (1) RETURNING ") == .returning)
+    }
 }
