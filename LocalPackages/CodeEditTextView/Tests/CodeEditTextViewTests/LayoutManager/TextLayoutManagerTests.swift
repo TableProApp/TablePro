@@ -317,4 +317,22 @@ struct TextLayoutManagerTests {
         }
         #expect(pastedRanges == oracleRanges)
     }
+
+    /// A suspended layout manager (such as a hidden minimap) must ignore edits, and `reset()` must rebuild its line
+    /// storage to match the text storage once it is resumed.
+    @Test
+    func suspendedLayoutManagerSkipsEditsUntilReset() throws {
+        let view = makeLaidOutTextView(string: "A\nB\nC")
+        let manager = try #require(view.layoutManager)
+        let originalLength = manager.lineStorage.length
+
+        manager.processesEdits = false
+        view.textStorage.replaceCharacters(in: NSRange(location: 0, length: 0), with: "X\nY\n")
+        #expect(manager.lineStorage.length == originalLength, "A suspended layout manager must ignore edits")
+
+        manager.processesEdits = true
+        manager.reset()
+        manager.lineStorage.validateInternalState()
+        #expect(manager.lineStorage.length == view.textStorage.length)
+    }
 }

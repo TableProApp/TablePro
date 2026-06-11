@@ -35,6 +35,7 @@ extension TextLayoutManager: NSTextStorageDelegate {
         range editedRange: NSRange,
         changeInLength delta: Int
     ) {
+        guard processesEdits else { return }
         guard editedMask.contains(.editedCharacters) else {
             if editedMask.contains(.editedAttributes) && delta == 0 {
                 invalidateLayoutForRange(editedRange)
