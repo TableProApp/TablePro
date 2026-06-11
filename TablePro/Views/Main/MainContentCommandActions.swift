@@ -895,11 +895,10 @@ final class MainContentCommandActions {
 
     func refresh() {
         guard let coordinator else { return }
-        coordinator.handleRefresh(
+        coordinator.requestRefresh(
             hasPendingTableOps: hasPendingTableOps,
             onDiscard: { [weak self] in self?.clearPendingTableOps() }
         )
-        Task { await coordinator.refreshTables() }
     }
 
     private var hasPendingTableOps: Bool {

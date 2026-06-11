@@ -231,6 +231,9 @@ final class MainContentCoordinator {
     /// Eviction task scheduled in `handleWindowDidResignKey` (fires 5s later).
     @ObservationIgnored var evictionTask: Task<Void, Never>?
 
+    @ObservationIgnored var refreshCoalesceTask: Task<Void, Never>?
+    @ObservationIgnored var refreshPendingTrailing = false
+
     /// True once the coordinator's view has appeared (onAppear fired).
     /// Coordinators that SwiftUI creates during body re-evaluation but never
     /// adopts into @State are silently discarded — no teardown warning needed.
@@ -652,6 +655,8 @@ final class MainContentCoordinator {
         fileWatcher = nil
         currentQueryTask?.cancel()
         currentQueryTask = nil
+        refreshCoalesceTask?.cancel()
+        refreshCoalesceTask = nil
         for entry in tableLoadTasks.values { entry.task.cancel() }
         tableLoadTasks.removeAll()
         changeManagerUpdateTask?.cancel()

@@ -11,6 +11,31 @@ import Foundation
 extension MainContentCoordinator {
     // MARK: - Refresh Handling
 
+    private static let refreshCoalesceInterval: Duration = .milliseconds(250)
+
+    func requestRefresh(hasPendingTableOps: Bool, onDiscard: @escaping () -> Void) {
+        if refreshCoalesceTask == nil {
+            fireRefresh(hasPendingTableOps: hasPendingTableOps, onDiscard: onDiscard)
+        } else {
+            refreshPendingTrailing = true
+        }
+        refreshCoalesceTask?.cancel()
+        refreshCoalesceTask = Task { [weak self] in
+            try? await Task.sleep(for: Self.refreshCoalesceInterval)
+            guard let self, !Task.isCancelled else { return }
+            self.refreshCoalesceTask = nil
+            if self.refreshPendingTrailing {
+                self.refreshPendingTrailing = false
+                self.fireRefresh(hasPendingTableOps: hasPendingTableOps, onDiscard: onDiscard)
+            }
+        }
+    }
+
+    private func fireRefresh(hasPendingTableOps: Bool, onDiscard: @escaping () -> Void) {
+        handleRefresh(hasPendingTableOps: hasPendingTableOps, onDiscard: onDiscard)
+        Task { await refreshTables() }
+    }
+
     func handleRefresh(
         hasPendingTableOps: Bool,
         onDiscard: @escaping () -> Void
