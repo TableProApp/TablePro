@@ -152,7 +152,7 @@ internal final class SQLFolderWatcher {
         var indexed: [LinkedSQLIndex.IndexedFile] = []
 
         for case let url as URL in enumerator {
-            guard url.pathExtension.lowercased() == "sql" else { continue }
+            guard SQLFileService.supportedExtensions.contains(url.pathExtension.lowercased()) else { continue }
 
             let resourceValues = try? url.resourceValues(forKeys: [
                 .isRegularFileKey, .contentModificationDateKey, .fileSizeKey

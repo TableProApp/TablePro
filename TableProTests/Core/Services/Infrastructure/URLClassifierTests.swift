@@ -50,9 +50,9 @@ struct URLClassifierTests {
         #expect(intent == nil)
     }
 
-    @Test("SQL file routes to openSQLFile")
-    func routesSQLFile() {
-        let sqlURL = URL(fileURLWithPath: "/tmp/query.sql")
+    @Test("SQL file routes to openSQLFile", arguments: ["sql", "psql", "pgsql", "PSQL"])
+    func routesSQLFile(ext: String) {
+        let sqlURL = URL(fileURLWithPath: "/tmp/query.\(ext)")
         let intent = URLClassifier.classify(sqlURL)
         guard case .some(.success(.openSQLFile(let routed))) = intent else {
             Issue.record("Expected .openSQLFile, got \(String(describing: intent))")

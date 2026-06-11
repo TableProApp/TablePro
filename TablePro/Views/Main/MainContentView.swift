@@ -462,9 +462,6 @@ struct MainContentView: View {
             onClearFilters: {
                 coordinator.clearFiltersAndReload()
             },
-            onRefresh: {
-                coordinator.runQuery()
-            },
             onFirstPage: {
                 coordinator.goToFirstPage()
             },

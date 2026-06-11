@@ -27,7 +27,6 @@ protocol DataGridViewDelegate: AnyObject {
     func dataGridCanClearResults() -> Bool
     func dataGridHideColumn(_ columnName: String)
     func dataGridShowAllColumns()
-    func dataGridRefresh()
     func dataGridVisualState(forRow row: Int) -> RowVisualState?
     func dataGridRowView(for tableView: NSTableView, row: Int, coordinator: TableViewCoordinator) -> NSTableRowView?
     func dataGridEmptySpaceMenu() -> NSMenu?
@@ -56,7 +55,6 @@ extension DataGridViewDelegate {
     func dataGridCanClearResults() -> Bool { false }
     func dataGridHideColumn(_ columnName: String) {}
     func dataGridShowAllColumns() {}
-    func dataGridRefresh() {}
     func dataGridVisualState(forRow row: Int) -> RowVisualState? { nil }
     func dataGridRowView(for tableView: NSTableView, row: Int, coordinator: TableViewCoordinator) -> NSTableRowView? { nil }
     func dataGridEmptySpaceMenu() -> NSMenu? { nil }

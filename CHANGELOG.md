@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Quick Switcher scopes: Cmd+1 to Cmd+4 narrow results to All, Tables, Databases, or Queries.
 - Option+Return in the Quick Switcher opens the table in a new tab; right-click a result to open its structure, copy the name, or copy the query.
 - Tables already open in a tab show an Open badge in the Quick Switcher, rank higher, and Return switches to the existing tab.
+- `.psql` and `.pgsql` files now open in the SQL editor like `.sql`: Finder double-click, the open and save panels, and linked SQL folders all accept them. (#1641)
 
 ### Changed
 
@@ -28,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Exports no longer fail mid-table on servers that enforce a statement time limit; the export session disables the limit and restores it afterwards, the same way mysqldump does. (#1633)
 - Quick Switcher no longer shows an empty table list when opened before the schema has finished loading.
 - Opening a query from history in the Quick Switcher loads the full query instead of a 100-character preview.
+- Refreshing a table now reloads its data even when the previous load is still running; before, the refresh was silently dropped and the grid kept stale rows. (#1637)
 
 ### Security
 
