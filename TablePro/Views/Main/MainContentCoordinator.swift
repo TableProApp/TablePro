@@ -233,6 +233,7 @@ final class MainContentCoordinator {
 
     @ObservationIgnored var refreshCoalesceTask: Task<Void, Never>?
     @ObservationIgnored var refreshPendingTrailing = false
+    @ObservationIgnored private var schemaReloadTask: Task<Void, Never>?
 
     /// True once the coordinator's view has appeared (onAppear fired).
     /// Coordinators that SwiftUI creates during body re-evaluation but never
@@ -529,6 +530,19 @@ final class MainContentCoordinator {
     }
 
     func refreshTables() async {
+        if let existing = schemaReloadTask {
+            await existing.value
+            return
+        }
+        let task = Task { [weak self] in
+            await self?.reloadSchema()
+        }
+        schemaReloadTask = task
+        await task.value
+        schemaReloadTask = nil
+    }
+
+    private func reloadSchema() async {
         schemaColumns.removeAll()
         let schemaService = services.schemaService
         let connectionId = connectionId
@@ -657,6 +671,8 @@ final class MainContentCoordinator {
         currentQueryTask = nil
         refreshCoalesceTask?.cancel()
         refreshCoalesceTask = nil
+        schemaReloadTask?.cancel()
+        schemaReloadTask = nil
         for entry in tableLoadTasks.values { entry.task.cancel() }
         tableLoadTasks.removeAll()
         changeManagerUpdateTask?.cancel()
