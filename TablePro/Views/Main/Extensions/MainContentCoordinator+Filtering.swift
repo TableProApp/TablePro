@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 
 extension MainContentCoordinator {
     func applyFilters(_ filters: [TableFilter]) {
@@ -12,6 +13,18 @@ extension MainContentCoordinator {
 
     func clearFiltersAndReload() {
         filterCoordinator.clearFiltersAndReload()
+    }
+
+    var browseFilterDescriptor: BrowseFilterDescriptor? {
+        PluginManager.shared.browseFilterDescriptor(for: connection.type)
+    }
+
+    func applyBrowseSearch(_ search: BrowseSearchState) {
+        filterCoordinator.applyBrowseSearch(search)
+    }
+
+    func clearBrowseSearchAndReload() {
+        filterCoordinator.clearBrowseSearchAndReload()
     }
 
     func restoreFiltersForTable(_ tableName: String) {

@@ -477,15 +477,19 @@ struct MainEditorContentView: View {
                         }
                     } else {
                         if tab.filterState.isVisible && tab.tabType == .table {
-                            FilterPanelView(
-                                coordinator: coordinator,
-                                columns: resolvedRows.columns,
-                                primaryKeyColumn: changeManager.primaryKeyColumn,
-                                databaseType: connection.type,
-                                enumValuesByColumn: resolvedRows.columnEnumValues,
-                                onApply: onApplyFilters,
-                                onUnset: onClearFilters
-                            )
+                            if let descriptor = coordinator.browseFilterDescriptor {
+                                KeyPatternSearchBar(coordinator: coordinator, descriptor: descriptor)
+                            } else {
+                                FilterPanelView(
+                                    coordinator: coordinator,
+                                    columns: resolvedRows.columns,
+                                    primaryKeyColumn: changeManager.primaryKeyColumn,
+                                    databaseType: connection.type,
+                                    enumValuesByColumn: resolvedRows.columnEnumValues,
+                                    onApply: onApplyFilters,
+                                    onUnset: onClearFilters
+                                )
+                            }
                             Divider()
                         }
 

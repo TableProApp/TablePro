@@ -6,8 +6,8 @@
 //
 
 import Foundation
-import Testing
 import TableProPluginKit
+import Testing
 
 @Suite("Redis Query Builder")
 struct RedisQueryBuilderTests {
@@ -45,63 +45,60 @@ struct RedisQueryBuilderTests {
         #expect(query == "SCAN 0 MATCH \"test:*\" COUNT 100")
     }
 
-    // MARK: - Filtered Query
+    // MARK: - Key Browse Query
 
-    @Test("Contains filter on Key column")
-    func containsFilterOnKey() {
+    @Test("Raw glob pattern is passed verbatim to MATCH")
+    func rawGlobPatternVerbatim() {
+        let query = builder.buildFilteredQuery(
+            namespace: "",
+            filters: [(column: "Key", op: "MATCH", value: "user:*")]
+        )
+        #expect(query == "KEYBROWSE MATCH \"user:*\" LIMIT 10000")
+    }
+
+    @Test("Type scope maps to a server-side TYPE clause")
+    func typeScopeMapsToType() {
+        let query = builder.buildFilteredQuery(
+            namespace: "",
+            filters: [(column: "Type", op: "=", value: "STRING")]
+        )
+        #expect(query == "KEYBROWSE TYPE string LIMIT 10000")
+    }
+
+    @Test("Pattern and type scope combine into one KEYBROWSE command")
+    func patternAndTypeCombine() {
+        let query = builder.buildFilteredQuery(
+            namespace: "",
+            filters: [
+                (column: "Key", op: "MATCH", value: "session:*"),
+                (column: "Type", op: "=", value: "hash")
+            ]
+        )
+        #expect(query == "KEYBROWSE MATCH \"session:*\" TYPE hash LIMIT 10000")
+    }
+
+    @Test("Quotes and backslashes in a pattern are escaped for the command string")
+    func patternQuotingEscaped() {
+        let query = builder.buildKeyBrowseQuery(pattern: "a\"b\\c", typeScope: nil, limit: 10_000)
+        #expect(query == "KEYBROWSE MATCH \"a\\\"b\\\\c\" LIMIT 10000")
+    }
+
+    @Test("Empty pattern with no type scope produces a bare LIMIT browse")
+    func emptyPatternNoScope() {
+        let query = builder.buildKeyBrowseQuery(pattern: "", typeScope: nil, limit: 10_000)
+        #expect(query == "KEYBROWSE LIMIT 10000")
+    }
+
+    @Test("Legacy Contains operator resolves to an escaped glob KEYBROWSE")
+    func legacyContainsResolvesToKeyBrowse() {
         let query = builder.buildFilteredQuery(
             namespace: "",
             filters: [(column: "Key", op: "CONTAINS", value: "session")]
         )
-        #expect(query == "SCAN 0 MATCH \"*session*\" COUNT 200")
+        #expect(query == "KEYBROWSE MATCH \"*session*\" LIMIT 10000")
     }
 
-    @Test("Contains filter with namespace prefix")
-    func containsFilterWithNamespace() {
-        let query = builder.buildFilteredQuery(
-            namespace: "app:",
-            filters: [(column: "Key", op: "CONTAINS", value: "user")]
-        )
-        #expect(query == "SCAN 0 MATCH \"app:*user*\" COUNT 200")
-    }
-
-    @Test("StartsWith filter on Key column")
-    func startsWithFilterOnKey() {
-        let query = builder.buildFilteredQuery(
-            namespace: "",
-            filters: [(column: "Key", op: "STARTS WITH", value: "user")]
-        )
-        #expect(query == "SCAN 0 MATCH \"user*\" COUNT 200")
-    }
-
-    @Test("EndsWith filter on Key column")
-    func endsWithFilterOnKey() {
-        let query = builder.buildFilteredQuery(
-            namespace: "",
-            filters: [(column: "Key", op: "ENDS WITH", value: ":data")]
-        )
-        #expect(query == "SCAN 0 MATCH \"*:data\" COUNT 200")
-    }
-
-    @Test("Equals filter on Key column")
-    func equalsFilterOnKey() {
-        let query = builder.buildFilteredQuery(
-            namespace: "",
-            filters: [(column: "Key", op: "=", value: "mykey")]
-        )
-        #expect(query == "SCAN 0 MATCH \"mykey\" COUNT 200")
-    }
-
-    @Test("Equals filter with namespace")
-    func equalsFilterWithNamespace() {
-        let query = builder.buildFilteredQuery(
-            namespace: "ns:",
-            filters: [(column: "Key", op: "=", value: "mykey")]
-        )
-        #expect(query == "SCAN 0 MATCH \"ns:mykey\" COUNT 200")
-    }
-
-    @Test("Non-Key column filter falls back to base query")
+    @Test("Non-Key, non-Type filter falls back to base SCAN")
     func nonKeyColumnFallsBack() {
         let query = builder.buildFilteredQuery(
             namespace: "test:",
@@ -110,71 +107,16 @@ struct RedisQueryBuilderTests {
         #expect(query == "SCAN 0 MATCH \"test:*\" COUNT 200")
     }
 
-    @Test("Multiple filters fall back to base query (only single Key filter supported)")
-    func multipleFiltersFallBack() {
+    @Test("Multiple Key filters fall back to base SCAN")
+    func multipleKeyFiltersFallBack() {
         let query = builder.buildFilteredQuery(
             namespace: "",
             filters: [
-                (column: "Key", op: "CONTAINS", value: "a"),
-                (column: "Key", op: "CONTAINS", value: "b")
+                (column: "Key", op: "MATCH", value: "a*"),
+                (column: "Key", op: "MATCH", value: "b*")
             ]
         )
         #expect(query == "SCAN 0 MATCH \"*\" COUNT 200")
-    }
-
-    @Test("Unsupported operator on Key falls back to base query")
-    func unsupportedOperatorFallsBack() {
-        let query = builder.buildFilteredQuery(
-            namespace: "",
-            filters: [(column: "Key", op: "IS NULL", value: "")]
-        )
-        #expect(query == "SCAN 0 MATCH \"*\" COUNT 200")
-    }
-
-    @Test("Custom limit in filtered query")
-    func filteredQueryCustomLimit() {
-        let query = builder.buildFilteredQuery(
-            namespace: "data:",
-            filters: [(column: "Key", op: "CONTAINS", value: "test")],
-            limit: 1000
-        )
-        #expect(query == "SCAN 0 MATCH \"data:*test*\" COUNT 1000")
-    }
-
-    @Test("Glob special characters are escaped in filter value")
-    func globCharsEscaped() {
-        let query = builder.buildFilteredQuery(
-            namespace: "",
-            filters: [(column: "Key", op: "CONTAINS", value: "user*data")]
-        )
-        #expect(query == "SCAN 0 MATCH \"*user\\*data*\" COUNT 200")
-    }
-
-    @Test("Glob question mark is escaped")
-    func globQuestionMarkEscaped() {
-        let query = builder.buildFilteredQuery(
-            namespace: "",
-            filters: [(column: "Key", op: "CONTAINS", value: "item?")]
-        )
-        #expect(query == "SCAN 0 MATCH \"*item\\?*\" COUNT 200")
-    }
-
-    @Test("Glob bracket is escaped")
-    func globBracketEscaped() {
-        let query = builder.buildFilteredQuery(
-            namespace: "",
-            filters: [(column: "Key", op: "CONTAINS", value: "[test]")]
-        )
-        #expect(query == "SCAN 0 MATCH \"*\\[test\\]*\" COUNT 200")
-    }
-
-    @Test("Backslash is escaped")
-    func backslashEscaped() {
-        let query = builder.buildFilteredQuery(
-            namespace: "",
-            filters: [(column: "Key", op: "CONTAINS", value: "path\\to")]
-        )
-        #expect(query == "SCAN 0 MATCH \"*path\\\\to*\" COUNT 200")
     }
 
     // MARK: - Count Query

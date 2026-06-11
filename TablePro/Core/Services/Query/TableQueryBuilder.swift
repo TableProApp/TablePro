@@ -134,6 +134,42 @@ struct TableQueryBuilder {
         return query
     }
 
+    func buildKeyPatternBrowseQuery(
+        tableName: String,
+        schemaName: String? = nil,
+        pattern: String,
+        typeScope: String?,
+        sortState: SortState? = nil,
+        columns: [String] = [],
+        selectColumns: [String]? = nil,
+        limit: Int = 200,
+        offset: Int = 0
+    ) -> String {
+        if let pluginDriver {
+            let sortCols = sortColumnsAsTuples(sortState)
+            var tuples: [(column: String, op: String, value: String)] = []
+            let trimmedPattern = pattern.trimmingCharacters(in: .whitespaces)
+            if !trimmedPattern.isEmpty {
+                tuples.append((column: "Key", op: "MATCH", value: trimmedPattern))
+            }
+            if let typeScope, !typeScope.isEmpty {
+                tuples.append((column: "Type", op: "=", value: typeScope))
+            }
+            if let result = pluginDriver.buildFilteredQuery(
+                table: tableName, schema: schemaName, filters: tuples,
+                logicMode: "and", sortColumns: sortCols,
+                columns: selectColumns ?? columns, limit: limit, offset: offset
+            ) {
+                return result
+            }
+        }
+
+        return buildBaseQuery(
+            tableName: tableName, schemaName: schemaName, sortState: sortState,
+            columns: columns, selectColumns: selectColumns, limit: limit, offset: offset
+        )
+    }
+
     func buildFilteredCountQuery(
         tableName: String,
         schemaName: String? = nil,

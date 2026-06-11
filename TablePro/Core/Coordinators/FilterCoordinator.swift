@@ -84,9 +84,83 @@ final class FilterCoordinator {
 
     func restoreFiltersForTable(_ tableName: String) {
         restoreLastFilters(for: tableName)
+        restoreBrowseSearch(for: tableName)
         guard let (_, tabIndex) = parent.tabManager.selectedTabAndIndex else { return }
-        if parent.tabManager.tabs[tabIndex].filterState.hasAppliedFilters {
+        let state = parent.tabManager.tabs[tabIndex].filterState
+        if state.hasAppliedFilters || state.hasActiveBrowseSearch {
             rebuildTableQuery(at: tabIndex)
+        }
+    }
+
+    var usesBrowseSearch: Bool {
+        PluginManager.shared.browseFilterDescriptor(for: parent.connection.type) != nil
+    }
+
+    func applyBrowseSearch(_ search: BrowseSearchState) {
+        guard let (tab, tabIndex) = parent.tabManager.selectedTabAndIndex,
+              let tableName = tab.tableContext.tableName else { return }
+
+        let capturedTabIndex = tabIndex
+        let capturedTableName = tableName
+        parent.confirmDiscardChangesIfNeeded(action: .filter) { [weak self] confirmed in
+            guard let self, confirmed else { return }
+            guard capturedTabIndex < parent.tabManager.tabs.count else { return }
+
+            mutateSelectedTabFilterState { state in
+                state.browseSearch = search
+                state.isVisible = true
+            }
+            parent.tabManager.mutate(at: capturedTabIndex) { $0.pagination.reset() }
+            rebuildTableQuery(at: capturedTabIndex)
+            saveBrowseSearch(for: capturedTableName)
+            parent.runQuery()
+        }
+    }
+
+    func clearBrowseSearchAndReload() {
+        guard let (tab, tabIndex) = parent.tabManager.selectedTabAndIndex,
+              let tableName = tab.tableContext.tableName else { return }
+
+        let capturedTabIndex = tabIndex
+        let capturedTableName = tableName
+        parent.confirmDiscardChangesIfNeeded(action: .filter) { [weak self] confirmed in
+            guard let self, confirmed else { return }
+            guard capturedTabIndex < parent.tabManager.tabs.count else { return }
+
+            mutateSelectedTabFilterState { state in
+                state.browseSearch = BrowseSearchState()
+            }
+            parent.tabManager.mutate(at: capturedTabIndex) { $0.pagination.reset() }
+            rebuildTableQuery(at: capturedTabIndex)
+            saveBrowseSearch(for: capturedTableName)
+            parent.runQuery()
+        }
+    }
+
+    func saveBrowseSearch(for tableName: String) {
+        guard let tab = parent.tabManager.selectedTab else { return }
+        FilterSettingsStorage.shared.saveBrowseSearch(
+            tab.filterState.browseSearch,
+            for: tableName,
+            connectionId: parent.connectionId,
+            databaseName: tab.tableContext.databaseName,
+            schemaName: tab.tableContext.schemaName
+        )
+    }
+
+    private func restoreBrowseSearch(for tableName: String) {
+        guard usesBrowseSearch, let tab = parent.tabManager.selectedTab else { return }
+        let saved = FilterSettingsStorage.shared.loadBrowseSearch(
+            for: tableName,
+            connectionId: parent.connectionId,
+            databaseName: tab.tableContext.databaseName,
+            schemaName: tab.tableContext.schemaName
+        )
+        mutateSelectedTabFilterState { state in
+            state.browseSearch = saved
+            if saved.isActive {
+                state.isVisible = true
+            }
         }
     }
 
@@ -102,7 +176,20 @@ final class FilterCoordinator {
             : buffer.columns
 
         let newQuery: String
-        if hasFilters {
+        if usesBrowseSearch, tab.filterState.hasActiveBrowseSearch {
+            let search = tab.filterState.browseSearch
+            newQuery = parent.queryBuilder.buildKeyPatternBrowseQuery(
+                tableName: tableName,
+                schemaName: tab.tableContext.schemaName,
+                pattern: search.pattern,
+                typeScope: search.typeScope,
+                sortState: tab.sortState,
+                columns: columns,
+                selectColumns: parent.selectColumns(for: tab),
+                limit: tab.pagination.pageSize,
+                offset: tab.pagination.currentOffset
+            )
+        } else if hasFilters {
             newQuery = parent.queryBuilder.buildFilteredQuery(
                 tableName: tableName,
                 schemaName: tab.tableContext.schemaName,

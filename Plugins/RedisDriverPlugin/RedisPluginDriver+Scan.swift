@@ -11,6 +11,7 @@ extension RedisPluginDriver {
     func scanAllKeys(
         connection conn: RedisPluginConnection,
         pattern: String?,
+        typeFilter: String? = nil,
         maxKeys: Int
     ) async throws -> [String] {
         var allKeys: [String] = []
@@ -22,6 +23,9 @@ extension RedisPluginDriver {
                 args += ["MATCH", p]
             }
             args += ["COUNT", "1000"]
+            if let type = typeFilter {
+                args += ["TYPE", type]
+            }
 
             let result = try await conn.executeCommand(args)
 
@@ -57,6 +61,28 @@ extension RedisPluginDriver {
         } while cursor != "0"
 
         return allKeys.sorted()
+    }
+
+    func executeKeyBrowse(
+        pattern: String?,
+        typeScope: String?,
+        limit: Int,
+        connection conn: RedisPluginConnection,
+        startTime: Date
+    ) async throws -> PluginQueryResult {
+        let cap = max(1, limit)
+        let rawKeys = try await scanAllKeys(
+            connection: conn,
+            pattern: pattern,
+            typeFilter: typeScope,
+            maxKeys: cap
+        )
+        var seen = Set<String>()
+        let uniqueKeys = rawKeys.filter { seen.insert($0).inserted }
+        let wasCapped = rawKeys.count >= cap
+        return try await buildKeyBrowseResult(
+            keys: uniqueKeys, connection: conn, startTime: startTime, isTruncated: wasCapped
+        )
     }
 
     func handleScanResult(
