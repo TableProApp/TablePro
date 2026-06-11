@@ -656,7 +656,6 @@ struct MainEditorContentView: View {
         return result
     }
 
-
     private func sortStateBinding(for tab: QueryTab) -> Binding<SortState> {
         Binding(
             get: { tab.sortState },

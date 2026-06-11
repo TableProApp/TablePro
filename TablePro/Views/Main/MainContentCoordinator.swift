@@ -1256,29 +1256,35 @@ final class MainContentCoordinator {
     // MARK: - Sorting
 
     func handleSortStateChanged(_ newState: SortState) {
-        guard let (tab, tabIndex) = tabManager.selectedTabAndIndex else { return }
+        guard let (tab, _) = tabManager.selectedTabAndIndex else { return }
         guard newState != tab.sortState else { return }
 
         let tableRows = tabSessionRegistry.tableRows(for: tab.id)
 
         if tab.tabType == .query {
+            let tabId = tab.id
+            let capturedSort = newState
             let baseQuery = tab.pagination.baseQueryForMore ?? tab.content.query
-            let strippedQuery = Self.stripTrailingOrderBy(from: baseQuery)
-            let orderClause = newState.columns.compactMap { sortCol -> String? in
-                guard sortCol.columnIndex >= 0, sortCol.columnIndex < tableRows.columns.count else { return nil }
-                let columnName = tableRows.columns[sortCol.columnIndex]
-                let direction = sortCol.direction == .ascending ? "ASC" : "DESC"
-                return "\(queryBuilder.quoteIdentifier(columnName)) \(direction)"
-            }.joined(separator: ", ")
-            let orderQuery = orderClause.isEmpty ? strippedQuery : "\(strippedQuery) ORDER BY \(orderClause)"
-            tabManager.mutate(at: tabIndex) { tab in
-                tab.sortState = newState
-                tab.hasUserInteraction = true
-                tab.pagination.reset()
-                tab.pagination.resetLoadMore()
-                tab.pagination.sortExecutionOverride = orderQuery
+            let capturedColumns = tableRows.columns
+            confirmDiscardChangesIfNeeded(action: .sort) { [weak self] confirmed in
+                guard let self, confirmed else { return }
+                let strippedQuery = Self.stripTrailingOrderBy(from: baseQuery)
+                let orderClause = capturedSort.columns.compactMap { sortCol -> String? in
+                    guard sortCol.columnIndex >= 0, sortCol.columnIndex < capturedColumns.count else { return nil }
+                    let columnName = capturedColumns[sortCol.columnIndex]
+                    let direction = sortCol.direction == .ascending ? "ASC" : "DESC"
+                    return "\(self.queryBuilder.quoteIdentifier(columnName)) \(direction)"
+                }.joined(separator: ", ")
+                let orderQuery = orderClause.isEmpty ? strippedQuery : "\(strippedQuery) ORDER BY \(orderClause)"
+                guard self.tabManager.mutate(tabId: tabId, { tab in
+                    tab.sortState = capturedSort
+                    tab.hasUserInteraction = true
+                    tab.pagination.reset()
+                    tab.pagination.resetLoadMore()
+                    tab.pagination.sortExecutionOverride = orderQuery
+                }) else { return }
+                self.runQuery()
             }
-            runQuery()
             return
         }
 
