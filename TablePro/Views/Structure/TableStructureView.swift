@@ -35,6 +35,7 @@ struct TableStructureView: View {
     @State var isInitialLoading = true
     @State var errorMessage: String?
     @State var loadedTabs: Set<StructureTab> = []
+    @State var partsReloadToken = 0
     @State var isReloadingAfterSave = false  // Prevent onChange loops during save reload
     @State var lastSaveTime: Date?  // Track when we last saved
     @AppStorage("skipSchemaPreview") var skipSchemaPreview = false
@@ -126,6 +127,7 @@ struct TableStructureView: View {
             actionHandler.redo = { self.gridDelegate.dataGridRedo() }
             actionHandler.addRow = { self.gridDelegate.dataGridAddRow() }
             actionHandler.removeRow = { self.gridDelegate.dataGridDeleteRows(self.selectedRows) }
+            actionHandler.refresh = { self.onRefreshData() }
             coordinator?.structureActions = actionHandler
             publishFooterState()
         }
@@ -148,7 +150,10 @@ struct TableStructureView: View {
             // manager but the grid never displays it.
             displayVersion += 1
         }
-        .onReceive(AppCommands.shared.refreshData) { _ in onRefreshData() }
+        .onReceive(AppCommands.shared.refreshData) { changedConnectionId in
+            guard changedConnectionId == connection.id else { return }
+            onRefreshData()
+        }
     }
 
     // MARK: - Toolbar
@@ -283,7 +288,11 @@ struct TableStructureView: View {
         case .ddl:
             ddlView
         case .parts:
-            ClickHousePartsView(tableName: tableName, connectionId: connection.id)
+            ClickHousePartsView(
+                tableName: tableName,
+                connectionId: connection.id,
+                reloadToken: partsReloadToken
+            )
         }
     }
 
@@ -358,7 +367,7 @@ struct TableStructureView: View {
                         loadSchemaForEditing()
                         isReloadingAfterSave = false
                         columnLayoutPersister.clear(for: tableName, connectionId: connection.id)
-                        AppCommands.shared.refreshData.send(nil)
+                        AppCommands.shared.refreshData.send(connection.id)
                     } catch {
                         AlertHelper.showErrorSheet(
                             title: String(localized: "Column Reorder Failed"),

@@ -40,15 +40,9 @@ final class SchemaProviderRegistry {
             .store(in: &cancellables)
     }
 
-    func invalidateColumnCache(for connectionId: UUID?) {
-        if let id = connectionId {
-            guard let provider = providers[id] else { return }
-            Task { await provider.clearColumnCache() }
-            return
-        }
-        for provider in providers.values {
-            Task { await provider.clearColumnCache() }
-        }
+    func invalidateColumnCache(for connectionId: UUID) {
+        guard let provider = providers[connectionId] else { return }
+        Task { await provider.clearColumnCache() }
     }
 
     func provider(for connectionId: UUID) -> SQLSchemaProvider? {

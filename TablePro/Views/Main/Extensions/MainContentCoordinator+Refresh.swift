@@ -15,37 +15,41 @@ extension MainContentCoordinator {
         hasPendingTableOps: Bool,
         onDiscard: @escaping () -> Void
     ) {
-        // If showing structure view, let it handle refresh notifications
-        if let (tab, _) = tabManager.selectedTabAndIndex,
-           tab.display.resultsViewMode == .structure {
+        guard let (tab, _) = tabManager.selectedTabAndIndex else { return }
+        if tab.display.resultsViewMode == .structure {
+            structureActions?.refresh?()
+            return
+        }
+        reloadActiveTableData(hasPendingTableOps: hasPendingTableOps, onDiscard: onDiscard)
+    }
+
+    func reloadActiveTableData(
+        hasPendingTableOps: Bool,
+        onDiscard: @escaping () -> Void
+    ) {
+        guard let (tab, tabIndex) = tabManager.selectedTabAndIndex,
+              tab.tabType == .table,
+              tab.display.resultsViewMode != .structure else { return }
+
+        guard changeManager.hasChanges || hasPendingTableOps else {
+            reloadTableTab(at: tabIndex)
             return
         }
 
-        let hasEditedCells = changeManager.hasChanges
-
-        if hasEditedCells || hasPendingTableOps {
-            Task {
-                let window = NSApp.keyWindow
-                let confirmed = await confirmDiscardChanges(action: .refresh, window: window)
-                if confirmed {
-                    onDiscard()
-                    changeManager.clearChangesAndUndoHistory()
-                    // Query tabs should not auto-execute on refresh (use Cmd+Enter to execute)
-                    if let (tab, tabIndex) = tabManager.selectedTabAndIndex,
-                       tab.tabType == .table {
-                        cancelCurrentQuery()
-                        rebuildTableQuery(at: tabIndex)
-                        runQuery()
-                    }
-                }
-            }
-        } else {
-            if let (tab, tabIndex) = tabManager.selectedTabAndIndex,
-               tab.tabType == .table {
-                cancelCurrentQuery()
-                rebuildTableQuery(at: tabIndex)
-                runQuery()
-            }
+        Task {
+            let confirmed = await confirmDiscardChanges(action: .refresh, window: NSApp.keyWindow)
+            guard confirmed else { return }
+            onDiscard()
+            changeManager.clearChangesAndUndoHistory()
+            guard let (tab, tabIndex) = tabManager.selectedTabAndIndex,
+                  tab.tabType == .table else { return }
+            reloadTableTab(at: tabIndex)
         }
+    }
+
+    private func reloadTableTab(at tabIndex: Int) {
+        cancelCurrentQuery()
+        rebuildTableQuery(at: tabIndex)
+        runQuery()
     }
 }

@@ -14,6 +14,7 @@ struct ClickHousePartsView: View {
 
     let tableName: String
     let connectionId: UUID
+    let reloadToken: Int
 
     @State private var parts: [ClickHousePartInfo] = []
     @State private var isLoading = true
@@ -50,10 +51,7 @@ struct ClickHousePartsView: View {
                 partsTable
             }
         }
-        .task { await loadParts() }
-        .onReceive(AppCommands.shared.refreshData) { _ in
-            Task { await loadParts() }
-        }
+        .task(id: reloadToken) { await loadParts() }
     }
 
     private var partsToolbar: some View {

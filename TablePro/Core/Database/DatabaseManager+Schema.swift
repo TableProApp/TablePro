@@ -112,7 +112,7 @@ extension DatabaseManager {
                 }
 
                 await MainActor.run {
-                    AppCommands.shared.refreshData.send(nil)
+                    AppCommands.shared.refreshData.send(connectionId)
                 }
             } catch {
                 if useTransaction {
