@@ -74,4 +74,50 @@ struct TabFilterStateTests {
         #expect(decoded == state)
         #expect(decoded.appliedFilters.map(\.id) == [filter.id])
     }
+
+    @Test("browseSearch reads and writes the key pattern fields")
+    func browseSearchAccessor() {
+        var state = TabFilterState()
+        #expect(!state.hasActiveBrowseSearch)
+
+        state.browseSearch = BrowseSearchState(pattern: "user:*", typeScope: "hash")
+        #expect(state.keyPattern == "user:*")
+        #expect(state.keyTypeScope == "hash")
+        #expect(state.hasActiveBrowseSearch)
+        #expect(state.browseSearch == BrowseSearchState(pattern: "user:*", typeScope: "hash"))
+    }
+
+    @Test("A type scope alone counts as an active browse search")
+    func typeScopeAloneIsActive() {
+        var state = TabFilterState()
+        state.browseSearch = BrowseSearchState(pattern: "", typeScope: "stream")
+        #expect(state.hasActiveBrowseSearch)
+    }
+
+    @Test("Legacy JSON without key pattern fields decodes with defaults")
+    func decodesLegacyJsonWithoutKeyPatternFields() throws {
+        let legacy = Data("""
+        {"filters":[],"isVisible":true,"filterLogicMode":"AND"}
+        """.utf8)
+
+        let decoded = try JSONDecoder().decode(TabFilterState.self, from: legacy)
+
+        #expect(decoded.isVisible)
+        #expect(decoded.keyPattern.isEmpty)
+        #expect(decoded.keyTypeScope == nil)
+        #expect(!decoded.hasActiveBrowseSearch)
+    }
+
+    @Test("Key pattern fields survive a Codable round-trip")
+    func browseSearchRoundTrip() throws {
+        var state = TabFilterState(isVisible: true)
+        state.browseSearch = BrowseSearchState(pattern: "cache:*", typeScope: "string")
+
+        let data = try JSONEncoder().encode(state)
+        let decoded = try JSONDecoder().decode(TabFilterState.self, from: data)
+
+        #expect(decoded.keyPattern == "cache:*")
+        #expect(decoded.keyTypeScope == "string")
+        #expect(decoded == state)
+    }
 }

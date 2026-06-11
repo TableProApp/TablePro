@@ -389,7 +389,7 @@ struct CreateTableView: View {
                     wasSuccessful: true
                 )
 
-                AppCommands.shared.refreshData.send(nil)
+                AppCommands.shared.refreshData.send(connection.id)
 
                 if let coordinator {
                     coordinator.openTableTab(tableName)

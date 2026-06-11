@@ -154,7 +154,8 @@ final class CompletionEngine {
             cteNames: context.cteNames,
             nestingLevel: context.nestingLevel,
             currentFunction: context.currentFunction,
-            isAfterComma: context.isAfterComma
+            isAfterComma: context.isAfterComma,
+            expectsObjectName: context.expectsObjectName
         )
 
         return CompletionContext(

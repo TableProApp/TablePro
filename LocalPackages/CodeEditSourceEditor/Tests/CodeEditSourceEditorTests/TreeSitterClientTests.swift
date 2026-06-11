@@ -194,4 +194,38 @@ final class TreeSitterClientTests: XCTestCase {
         wait(for: editExpectations + [finalEditExpectation], timeout: 5.0)
     }
 }
+
+final class TreeSitterClientAsyncGateTests: XCTestCase {
+    private var savedEditLength = 0
+    private var savedContentLength = 0
+
+    override func setUp() {
+        savedEditLength = TreeSitterClient.Constants.maxSyncEditLength
+        savedContentLength = TreeSitterClient.Constants.maxSyncContentLength
+        TreeSitterClient.Constants.maxSyncEditLength = 1024
+        TreeSitterClient.Constants.maxSyncContentLength = 1_000_000
+    }
+
+    override func tearDown() {
+        TreeSitterClient.Constants.maxSyncEditLength = savedEditLength
+        TreeSitterClient.Constants.maxSyncContentLength = savedContentLength
+    }
+
+    func test_largePasteAtCaretRunsAsync() {
+        // The replaced range is empty for a caret paste; the inserted length must still force the async path.
+        XCTAssertTrue(TreeSitterClient.shouldExecuteAsync(editLength: 0, delta: 500_000, documentLength: 500_000))
+    }
+
+    func test_smallEditInSmallDocumentRunsSync() {
+        XCTAssertFalse(TreeSitterClient.shouldExecuteAsync(editLength: 4, delta: 4, documentLength: 1_000))
+    }
+
+    func test_largeDocumentRunsAsync() {
+        XCTAssertTrue(TreeSitterClient.shouldExecuteAsync(editLength: 1, delta: 1, documentLength: 2_000_000))
+    }
+
+    func test_largeDeletionRunsAsync() {
+        XCTAssertTrue(TreeSitterClient.shouldExecuteAsync(editLength: 0, delta: -500_000, documentLength: 10))
+    }
+}
 // swiftlint:enable all

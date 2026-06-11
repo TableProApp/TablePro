@@ -893,34 +893,36 @@ final class MainContentCommandActions {
 
     // MARK: Data Broadcasts
 
+    func refresh() {
+        guard let coordinator else { return }
+        coordinator.requestRefresh(
+            hasPendingTableOps: hasPendingTableOps,
+            onDiscard: { [weak self] in self?.clearPendingTableOps() }
+        )
+    }
+
+    private var hasPendingTableOps: Bool {
+        !pendingTruncates.wrappedValue.isEmpty || !pendingDeletes.wrappedValue.isEmpty
+    }
+
+    private func clearPendingTableOps() {
+        pendingTruncates.wrappedValue.removeAll()
+        pendingDeletes.wrappedValue.removeAll()
+    }
+
     private func setupDataBroadcastObservers() {
         AppCommands.shared.refreshData
             .receive(on: RunLoop.main)
-            .sink { [weak self] target in
-                guard let self else { return }
-                if let target, target != self.connection.id {
-                    return
-                }
-                if target == nil && !self.isKeyWindow() {
-                    return
-                }
-                self.handleRefreshData()
+            .sink { [weak self] changedConnectionId in
+                guard let self, changedConnectionId == self.connection.id,
+                      let coordinator = self.coordinator else { return }
+                coordinator.reloadActiveTableData(
+                    hasPendingTableOps: self.hasPendingTableOps,
+                    onDiscard: { [weak self] in self?.clearPendingTableOps() }
+                )
+                Task { await coordinator.refreshTables() }
             }
             .store(in: &eventCancellables)
-    }
-
-    private func handleRefreshData() {
-        let hasPendingTableOps = !pendingTruncates.wrappedValue.isEmpty || !pendingDeletes.wrappedValue.isEmpty
-        coordinator?.handleRefresh(
-            hasPendingTableOps: hasPendingTableOps,
-            onDiscard: { [weak self] in
-                self?.pendingTruncates.wrappedValue.removeAll()
-                self?.pendingDeletes.wrappedValue.removeAll()
-            }
-        )
-        if let coordinator {
-            Task { await coordinator.refreshTables() }
-        }
     }
 
     // MARK: Tab Broadcasts

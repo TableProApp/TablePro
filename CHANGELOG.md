@@ -18,10 +18,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Redis connections now filter with a key-pattern search field and a key-type scope instead of the SQL-style filter row. Patterns use glob syntax like `user:*`, are matched server-side across the whole keyspace, and the type scope narrows results by value type. The old filter row only matched one batch of keys and ignored any filter on Type, TTL, or Value.
 - Switcher, menus, and alerts now use each database's own container name: Dataset for BigQuery, Keyspace for Cassandra and ScyllaDB. (#509)
 - Quick Switcher highlights the matched characters in each result, finds better alignments for camelCase and snake_case names, and ranks items you open often and recently higher.
 - Quick Switcher now opens as a Spotlight-style floating panel over the window instead of a modal sheet: large borderless search field, scope chips, and rounded row selection. On macOS 26 the panel uses Liquid Glass.
 - The sidebar filter, database switcher, and connection switcher now use the same fuzzy matching as the Quick Switcher, so abbreviations like `upv` find `user_profile_view`.
+- Refresh (Cmd+R) now acts only on the focused window's connection, instead of also reloading views and clearing autocomplete caches for every other open connection.
+- Holding Cmd+R no longer queues a backlog of refreshes that kept running after the key was released; refresh fires once per key press, and rapid presses collapse into a single reload.
 
 ### Fixed
 
@@ -30,6 +33,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Quick Switcher no longer shows an empty table list when opened before the schema has finished loading.
 - Opening a query from history in the Quick Switcher loads the full query instead of a 100-character preview.
 - Refreshing a table now reloads its data even when the previous load is still running; before, the refresh was silently dropped and the grid kept stale rows. (#1637)
+- Cmd+R on a table now reloads its rows instead of failing with a query error; the refresh was sending the database a stray cancel that aborted its own freshly-issued reload.
+- SQL autocomplete now suggests tables after JOIN. It detects the clause at the cursor across multi-join and multi-clause queries, so columns no longer appear where a table is expected, and tables lead the list. (#1646)
+- Large SQL scripts no longer freeze the editor or pin the CPU. Pasting is faster, and above 2 MB the editor suspends syntax highlighting and inline AI so typing, scrolling, and deleting stay responsive. (#1652)
 
 ### Security
 

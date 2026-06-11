@@ -12,7 +12,7 @@ final class AppCommands {
 
     // MARK: - Refresh
 
-    let refreshData = PassthroughSubject<UUID?, Never>()
+    let refreshData = PassthroughSubject<UUID, Never>()
 
     // MARK: - File / Connection Import-Export
 

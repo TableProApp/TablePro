@@ -85,7 +85,7 @@ struct RefreshToolbarButton: View {
     var body: some View {
         let state = coordinator.toolbarState
         Button {
-            AppCommands.shared.refreshData.send(nil)
+            coordinator.commandActions?.refresh()
         } label: {
             Label("Refresh", systemImage: "arrow.clockwise")
         }

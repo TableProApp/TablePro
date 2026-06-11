@@ -16,7 +16,7 @@ extension MainWindowToolbar {
     }
 
     @objc func performRefresh(_ sender: Any?) {
-        AppCommands.shared.refreshData.send(nil)
+        coordinator?.commandActions?.refresh()
     }
 
     @objc func performSaveChanges(_ sender: Any?) {

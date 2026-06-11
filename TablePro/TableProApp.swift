@@ -237,7 +237,7 @@ struct AppMenuCommands: Commands {
         //    - Clean method calls, no global event bus
         //
         // 3. **NotificationCenter** (Multi-listener broadcasts only):
-        //    - refreshData (Sidebar + Coordinator + StructureView)
+        //    - refreshData: targeted per-connection data-changed signal
         //    - Legitimate broadcasts where multiple views respond
 
         // File menu
@@ -423,7 +423,7 @@ struct AppMenuCommands: Commands {
             .disabled(!(actions?.isQueryExecuting ?? false))
 
             Button("Refresh") {
-                AppCommands.shared.refreshData.send(nil)
+                actions?.refresh()
             }
             .optionalKeyboardShortcut(shortcut(for: .refresh))
             .disabled(!(actions?.isConnected ?? false))

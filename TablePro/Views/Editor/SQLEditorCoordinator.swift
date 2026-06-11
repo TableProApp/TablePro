@@ -21,6 +21,10 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "SQLEditorCoordinator")
 
+    /// Above this document length inline AI features are suspended, at the same cutoff where syntax highlighting stops,
+    /// so a large document does not copy its whole contents to the assistant on every keystroke.
+    private static let languageServiceLengthLimit = EditorHighlighting.maxHighlightableCharacters
+
     @ObservationIgnored weak var controller: TextViewController?
     /// Shared schema provider for inline AI suggestions (avoids duplicate schema fetches)
     @ObservationIgnored var schemaProvider: SQLSchemaProvider?
@@ -130,12 +134,16 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
     func textView(_ textView: TextView, didReplaceContentsIn range: NSRange, with string: String) {
         vimEngine?.invalidateLineCache()
 
+        let isLargeDocument = textView.textStorage.length > Self.languageServiceLengthLimit
+
         Task { [weak self] in
-            self?.inlineSuggestionManager?.handleTextChange()
+            if !isLargeDocument {
+                self?.inlineSuggestionManager?.handleTextChange()
+            }
             self?.vimCursorManager?.updatePosition()
         }
 
-        if !didDestroy, let tabID, let sync = copilotDocumentSync {
+        if !isLargeDocument, !didDestroy, let tabID, let sync = copilotDocumentSync {
             let text = textView.string
             Task { await sync.didChangeText(tabID: tabID, newText: text) }
         }

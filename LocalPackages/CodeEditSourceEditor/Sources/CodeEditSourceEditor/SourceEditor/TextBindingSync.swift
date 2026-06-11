@@ -77,7 +77,9 @@ final class TextBindingSync {
     /// tree-sitter state for the old document and highlighting never recovers.
     func applyRepresentableText(_ newValue: String, controller: TextViewController) {
         guard !phase.isEditorChangePending else { return }
-        guard newValue != lastSyncedText else { return }
+        // Compare with NSString literal equality. The text can be multiple megabytes and bridged from NSTextStorage,
+        // so Swift's canonical `!=` walks the whole string through Unicode normalization on every representable update.
+        if let lastSyncedText, (newValue as NSString).isEqual(to: lastSyncedText) { return }
 
         writebackTask?.cancel()
         phase.applyRepresentableValue {

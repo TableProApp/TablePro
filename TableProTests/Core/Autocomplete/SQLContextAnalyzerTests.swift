@@ -964,4 +964,95 @@ struct SQLContextAnalyzerTests {
         let context = analyzer.analyze(query: "SELECT * FROM \"sales\".orders", cursorPosition: 28)
         #expect(context.tableReferences.contains { $0.tableName == "orders" && $0.schema == "sales" })
     }
+
+    // MARK: - Nearest-Clause Detection (multi-clause statements)
+
+    @Test("JOIN after an ON condition detects JOIN, not the earlier ON")
+    func testJoinAfterOnDetectsJoin() {
+        let query = "SELECT * FROM a JOIN b ON a.id = b.id INNER JOIN "
+        let context = analyzer.analyze(query: query, cursorPosition: query.count)
+        #expect(context.clauseType == .join)
+        #expect(context.expectsObjectName)
+    }
+
+    @Test("LEFT JOIN after an ON condition detects JOIN")
+    func testLeftJoinAfterOnDetectsJoin() {
+        let query = "SELECT * FROM a LEFT JOIN b ON a.x = b.x RIGHT JOIN "
+        let context = analyzer.analyze(query: query, cursorPosition: query.count)
+        #expect(context.clauseType == .join)
+    }
+
+    @Test("Third JOIN in a chain detects JOIN, not the earlier ON")
+    func testThirdJoinInChainDetectsJoin() {
+        let query = "SELECT * FROM a JOIN b ON a.id = b.id JOIN c ON b.id = c.id INNER JOIN "
+        let context = analyzer.analyze(query: query, cursorPosition: query.count)
+        #expect(context.clauseType == .join)
+    }
+
+    @Test("WHERE after SET detects WHERE, not the earlier SET")
+    func testWhereAfterSetDetectsWhere() {
+        let query = "UPDATE users SET name = 'a' WHERE "
+        let context = analyzer.analyze(query: query, cursorPosition: query.count)
+        #expect(context.clauseType == .where_)
+    }
+
+    @Test("ORDER BY after HAVING detects ORDER BY, not the earlier HAVING")
+    func testOrderByAfterHavingDetectsOrderBy() {
+        let query = "SELECT id FROM t GROUP BY id HAVING COUNT(*) > 1 ORDER BY "
+        let context = analyzer.analyze(query: query, cursorPosition: query.count)
+        #expect(context.clauseType == .orderBy)
+    }
+
+    @Test("A closed CASE expression does not leak into the following clause")
+    func testClosedCaseDoesNotLeak() {
+        let query = "SELECT CASE WHEN a THEN b ELSE c END, "
+        let context = analyzer.analyze(query: query, cursorPosition: query.count)
+        #expect(context.clauseType == .select)
+    }
+
+    // MARK: - Table-Operand Slot Detection
+
+    @Test("Cursor right after JOIN keyword expects an object name")
+    func testJoinKeywordExpectsObjectName() {
+        let query = "SELECT * FROM users JOIN "
+        let context = analyzer.analyze(query: query, cursorPosition: query.count)
+        #expect(context.clauseType == .join)
+        #expect(context.expectsObjectName)
+    }
+
+    @Test("Cursor after a complete FROM table does not expect an object name")
+    func testFromAfterTableDoesNotExpectObjectName() {
+        let query = "SELECT * FROM users "
+        let context = analyzer.analyze(query: query, cursorPosition: query.count)
+        #expect(context.clauseType == .from)
+        #expect(!context.expectsObjectName)
+    }
+
+    @Test("Cursor right after FROM keyword expects an object name")
+    func testFromKeywordExpectsObjectName() {
+        let query = "SELECT * FROM "
+        let context = analyzer.analyze(query: query, cursorPosition: query.count)
+        #expect(context.clauseType == .from)
+        #expect(context.expectsObjectName)
+    }
+
+    // MARK: - Comma-Separated FROM List
+
+    @Test("Extracts every table from a comma-separated FROM list")
+    func testCommaSeparatedFromTables() {
+        let query = "SELECT * FROM users u, orders o, products WHERE "
+        let context = analyzer.analyze(query: query, cursorPosition: query.count)
+        #expect(context.clauseType == .where_)
+        #expect(context.tableReferences.contains { $0.tableName == "users" && $0.alias == "u" })
+        #expect(context.tableReferences.contains { $0.tableName == "orders" && $0.alias == "o" })
+        #expect(context.tableReferences.contains { $0.tableName == "products" })
+    }
+
+    @Test("DELETE FROM keeps the target table in scope for the WHERE clause")
+    func testDeleteFromTableInScope() {
+        let query = "DELETE FROM users WHERE "
+        let context = analyzer.analyze(query: query, cursorPosition: query.count)
+        #expect(context.clauseType == .where_)
+        #expect(context.tableReferences.contains { $0.tableName == "users" })
+    }
 }

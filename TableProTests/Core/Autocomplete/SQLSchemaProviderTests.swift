@@ -24,6 +24,7 @@ final class MockDatabaseDriver: DatabaseDriver, @unchecked Sendable {
     var fetchColumnsCalls: [String] = []
     var fetchSchemaTablesCalls: [String] = []
     var applyQueryTimeoutValues: [Int] = []
+    var cancelQueryCallCount = 0
 
     init(connection: DatabaseConnection = TestFixtures.makeConnection()) {
         self.connection = connection
@@ -94,7 +95,7 @@ final class MockDatabaseDriver: DatabaseDriver, @unchecked Sendable {
     }
 
     func createDatabase(name: String, charset: String, collation: String?) async throws {}
-    func cancelQuery() throws {}
+    func cancelQuery() throws { cancelQueryCallCount += 1 }
     func beginTransaction() async throws {}
     func commitTransaction() async throws {}
     func rollbackTransaction() async throws {}

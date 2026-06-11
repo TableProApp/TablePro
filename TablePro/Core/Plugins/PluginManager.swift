@@ -832,6 +832,12 @@ final class PluginManager {
         return provider.defaultSortHint(forTable: table)
     }
 
+    func browseFilterDescriptor(for type: DatabaseType) -> BrowseFilterDescriptor? {
+        guard let driver = driverPlugins[type.pluginTypeId] else { return nil }
+        guard let provider = driver as? PluginBrowseFilterProvider else { return nil }
+        return provider.browseFilterDescriptor
+    }
+
     func replaceExistingPlugin(bundleId: String) {
         guard let existingIndex = plugins.firstIndex(where: { $0.id == bundleId }) else { return }
         unregisterCapabilities(pluginId: bundleId)

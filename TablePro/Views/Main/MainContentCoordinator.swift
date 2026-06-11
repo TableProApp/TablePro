@@ -232,6 +232,10 @@ final class MainContentCoordinator {
     /// Eviction task scheduled in `handleWindowDidResignKey` (fires 5s later).
     @ObservationIgnored var evictionTask: Task<Void, Never>?
 
+    @ObservationIgnored var refreshCoalesceTask: Task<Void, Never>?
+    @ObservationIgnored var refreshPendingTrailing = false
+    @ObservationIgnored private var schemaReloadTask: Task<Void, Never>?
+
     /// True once the coordinator's view has appeared (onAppear fired).
     /// Coordinators that SwiftUI creates during body re-evaluation but never
     /// adopts into @State are silently discarded — no teardown warning needed.
@@ -527,6 +531,20 @@ final class MainContentCoordinator {
     }
 
     func refreshTables() async {
+        if let existing = schemaReloadTask {
+            await existing.value
+            return
+        }
+        let task = Task { [weak self] in
+            guard let self else { return }
+            await self.reloadSchema()
+        }
+        schemaReloadTask = task
+        await task.value
+        schemaReloadTask = nil
+    }
+
+    private func reloadSchema() async {
         schemaColumns.removeAll()
         let schemaService = services.schemaService
         let connectionId = connectionId
@@ -653,6 +671,10 @@ final class MainContentCoordinator {
         fileWatcher = nil
         currentQueryTask?.cancel()
         currentQueryTask = nil
+        refreshCoalesceTask?.cancel()
+        refreshCoalesceTask = nil
+        schemaReloadTask?.cancel()
+        schemaReloadTask = nil
         for entry in tableLoadTasks.values { entry.task.cancel() }
         tableLoadTasks.removeAll()
         changeManagerUpdateTask?.cancel()

@@ -15,4 +15,5 @@ final class StructureViewActionHandler {
     var redo: (() -> Void)?
     var addRow: (() -> Void)?
     var removeRow: (() -> Void)?
+    var refresh: (() -> Void)?
 }

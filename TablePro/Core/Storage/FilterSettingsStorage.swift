@@ -93,6 +93,7 @@ final class FilterSettingsStorage {
 
     private var cachedSettings: FilterSettings?
     private var lastFiltersCache: [String: [TableFilter]] = [:]
+    private var browseSearchCache: [String: BrowseSearchState] = [:]
 
     private convenience init() {
         self.init(filterStateDirectory: Self.resolvedFilterStateDirectory(), defaults: .standard)
@@ -225,6 +226,84 @@ final class FilterSettingsStorage {
         lastFiltersCache.removeValue(forKey: key)
     }
 
+    func loadBrowseSearch(
+        for tableName: String,
+        connectionId: UUID,
+        databaseName: String,
+        schemaName: String?
+    ) -> BrowseSearchState {
+        let key = browseKey(
+            tableName: tableName,
+            connectionId: connectionId,
+            databaseName: databaseName,
+            schemaName: schemaName
+        )
+        if let cached = browseSearchCache[key] { return cached }
+
+        let fileURL = fileURL(forKey: key)
+        guard FileManager.default.fileExists(atPath: fileURL.path) else {
+            let empty = BrowseSearchState()
+            browseSearchCache[key] = empty
+            return empty
+        }
+
+        do {
+            let data = try Data(contentsOf: fileURL)
+            let state = try decoder.decode(BrowseSearchState.self, from: data)
+            browseSearchCache[key] = state
+            return state
+        } catch {
+            Self.logger.error("Failed to load browse search for \(tableName): \(error)")
+            let empty = BrowseSearchState()
+            browseSearchCache[key] = empty
+            return empty
+        }
+    }
+
+    func saveBrowseSearch(
+        _ state: BrowseSearchState,
+        for tableName: String,
+        connectionId: UUID,
+        databaseName: String,
+        schemaName: String?
+    ) {
+        let key = browseKey(
+            tableName: tableName,
+            connectionId: connectionId,
+            databaseName: databaseName,
+            schemaName: schemaName
+        )
+        let fileURL = fileURL(forKey: key)
+
+        guard state.isActive else {
+            removeFile(at: fileURL, label: tableName)
+            browseSearchCache.removeValue(forKey: key)
+            return
+        }
+
+        do {
+            let data = try encoder.encode(state)
+            try data.write(to: fileURL, options: .atomic)
+            browseSearchCache[key] = state
+        } catch {
+            Self.logger.error("Failed to save browse search for \(tableName): \(error)")
+        }
+    }
+
+    private func browseKey(
+        tableName: String,
+        connectionId: UUID,
+        databaseName: String,
+        schemaName: String?
+    ) -> String {
+        compositeKey(
+            tableName: tableName,
+            connectionId: connectionId,
+            databaseName: databaseName,
+            schemaName: schemaName
+        ) + ".browse"
+    }
+
     func clearAllLastFilters() {
         let fm = FileManager.default
         do {
@@ -236,6 +315,7 @@ final class FilterSettingsStorage {
             Self.logger.error("Failed to enumerate filter state directory: \(error.localizedDescription)")
         }
         lastFiltersCache.removeAll()
+        browseSearchCache.removeAll()
     }
 
     private func fileURL(forKey key: String) -> URL {

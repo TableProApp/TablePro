@@ -188,3 +188,20 @@ final class RedisPlugin: NSObject, TableProPlugin, DriverPlugin {
         RedisPluginDriver(config: config)
     }
 }
+
+extension RedisPlugin: PluginBrowseFilterProvider {
+    var browseFilterDescriptor: BrowseFilterDescriptor? {
+        BrowseFilterDescriptor(
+            usesGlob: true,
+            caseSensitive: true,
+            typeScopes: [
+                BrowseFilterDescriptor.TypeScope(id: "string", label: "String"),
+                BrowseFilterDescriptor.TypeScope(id: "hash", label: "Hash"),
+                BrowseFilterDescriptor.TypeScope(id: "list", label: "List"),
+                BrowseFilterDescriptor.TypeScope(id: "set", label: "Set"),
+                BrowseFilterDescriptor.TypeScope(id: "zset", label: "Sorted Set"),
+                BrowseFilterDescriptor.TypeScope(id: "stream", label: "Stream"),
+            ]
+        )
+    }
+}

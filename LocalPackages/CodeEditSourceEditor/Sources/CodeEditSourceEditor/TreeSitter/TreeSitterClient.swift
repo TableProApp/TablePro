@@ -138,6 +138,21 @@ public final class TreeSitterClient: HighlightProviding {
 
     // MARK: - HighlightProviding
 
+    /// Decides whether an edit must be parsed asynchronously to keep the main thread responsive.
+    ///
+    /// The magnitude of an edit is the larger of the replaced range and the inserted length. Keying only on the
+    /// replaced range misses a large paste at the caret, where the replaced range is empty but `delta` is huge, so a
+    /// multi-megabyte insertion into a small document would otherwise run a full re-parse synchronously.
+    /// - Parameters:
+    ///   - editLength: The length of the range being replaced.
+    ///   - delta: The change in length, negative for deletions.
+    ///   - documentLength: The length of the document after the edit.
+    /// - Returns: `true` when the edit should be parsed off the main thread.
+    static func shouldExecuteAsync(editLength: Int, delta: Int, documentLength: Int) -> Bool {
+        let editMagnitude = max(editLength, abs(delta))
+        return editMagnitude > Constants.maxSyncEditLength || documentLength > Constants.maxSyncContentLength
+    }
+
     /// Notifies the highlighter of an edit and in exchange gets a set of indices that need to be re-highlighted.
     /// The returned `IndexSet` should include all indexes that need to be highlighted, including any inserted text.
     /// - Parameters:
@@ -161,9 +176,11 @@ public final class TreeSitterClient: HighlightProviding {
             return self?.applyEdit(edit: edit) ?? IndexSet()
         }
 
-        let longEdit = range.length > Constants.maxSyncEditLength
-        let longDocument = textView.documentRange.length > Constants.maxSyncContentLength
-        let execAsync = longEdit || longDocument
+        let execAsync = Self.shouldExecuteAsync(
+            editLength: range.length,
+            delta: delta,
+            documentLength: textView.documentRange.length
+        )
 
         if !execAsync || forceSyncOperation {
             let result = executor.execSync(operation)
