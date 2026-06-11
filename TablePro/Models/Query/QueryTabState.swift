@@ -271,7 +271,21 @@ struct TabTableContext: Equatable {
 }
 
 struct TabQueryContent: Equatable {
-    var query: String = ""
+    /// Holds the query text behind a reference. SwiftUI's attribute-graph diff compares a value by walking its memory
+    /// layout, so a stored `String` field made it normalize the whole multi-megabyte query (NFC) on every view update.
+    /// Storing the text in a class makes that walk compare an 8-byte pointer instead. Value semantics are preserved
+    /// because the setter replaces the box.
+    private final class QueryStorage: Sendable {
+        let text: String
+        init(_ text: String) { self.text = text }
+    }
+
+    private var queryStorage: QueryStorage
+
+    var query: String {
+        get { queryStorage.text }
+        set { queryStorage = QueryStorage(newValue) }
+    }
     var queryParameters: [QueryParameter] = []
     var isParameterPanelVisible: Bool = false
     var sourceFileURL: URL?
@@ -280,6 +294,24 @@ struct TabQueryContent: Equatable {
     var externalModificationDetected: Bool = false
 
     static let maxPersistableQuerySize = 500_000
+
+    init(
+        query: String = "",
+        queryParameters: [QueryParameter] = [],
+        isParameterPanelVisible: Bool = false,
+        sourceFileURL: URL? = nil,
+        savedFileContent: String? = nil,
+        loadMtime: Date? = nil,
+        externalModificationDetected: Bool = false
+    ) {
+        self.queryStorage = QueryStorage(query)
+        self.queryParameters = queryParameters
+        self.isParameterPanelVisible = isParameterPanelVisible
+        self.sourceFileURL = sourceFileURL
+        self.savedFileContent = savedFileContent
+        self.loadMtime = loadMtime
+        self.externalModificationDetected = externalModificationDetected
+    }
 
     var isFileDirty: Bool {
         guard sourceFileURL != nil, let saved = savedFileContent else { return false }
@@ -290,11 +322,10 @@ struct TabQueryContent: Equatable {
     }
 
     static func == (lhs: TabQueryContent, rhs: TabQueryContent) -> Bool {
-        // `query` can be multiple megabytes and is bridged from the editor's NSTextStorage. The synthesized `==`
-        // compared it with Swift's canonical Unicode equality, which walks the whole string through NFC normalization
-        // on every SwiftUI diff and pins the CPU while editing a large query. NSString equality returns in O(1) when
-        // the lengths differ (every keystroke changes the length) and uses literal comparison otherwise.
-        guard (lhs.query as NSString).isEqual(to: rhs.query),
+        // The query can be multiple megabytes and is bridged from the editor's NSTextStorage. Same-box comparison is
+        // O(1); otherwise use NSString literal equality, which returns in O(1) when the lengths differ (every keystroke
+        // changes the length) and avoids Swift's canonical Unicode normalization.
+        guard lhs.queryStorage === rhs.queryStorage || (lhs.query as NSString).isEqual(to: rhs.query),
               lhs.queryParameters == rhs.queryParameters,
               lhs.isParameterPanelVisible == rhs.isParameterPanelVisible,
               lhs.sourceFileURL == rhs.sourceFileURL,

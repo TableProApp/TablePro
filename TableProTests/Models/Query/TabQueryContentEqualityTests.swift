@@ -59,4 +59,14 @@ struct TabQueryContentEqualityTests {
         b.savedFileContent = "other"
         #expect(a != b)
     }
+
+    @Test("Value semantics: mutating a copy does not change the original")
+    func valueSemantics() {
+        let a = TabQueryContent(query: "original")
+        var b = a
+        b.query = "changed"
+        #expect(a.query == "original")
+        #expect(b.query == "changed")
+        #expect(a != b)
+    }
 }
