@@ -29,7 +29,6 @@ struct SQLEditorView: View {
     var onAIExplain: ((String) -> Void)?
     var onAIOptimize: ((String) -> Void)?
     var onSaveAsFavorite: ((String) -> Void)?
-    var onFormatSQL: (() -> Void)?
 
     @State private var editorState = SourceEditorState()
     @State private var completionAdapter: SQLCompletionAdapter?
@@ -46,7 +45,6 @@ struct SQLEditorView: View {
         coordinator.onAIExplain = onAIExplain
         coordinator.onAIOptimize = onAIOptimize
         coordinator.onSaveAsFavorite = onSaveAsFavorite
-        coordinator.onFormatSQL = onFormatSQL
         coordinator.schemaProvider = schemaProvider
         coordinator.connectionAIPolicy = connectionAIPolicy
         coordinator.databaseType = databaseType

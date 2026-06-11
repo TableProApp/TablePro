@@ -263,4 +263,18 @@ struct PaginationStateTests {
         #expect(state.currentPage == 1)
         #expect(state.currentOffset == 0)
     }
+
+    @Test("Reset load more clears the sort execution override")
+    func resetLoadMoreClearsSortOverride() {
+        var state = PaginationState()
+        state.hasMoreRows = true
+        state.baseQueryForMore = "SELECT * FROM t"
+        state.sortExecutionOverride = "SELECT * FROM t ORDER BY id ASC"
+
+        state.resetLoadMore()
+
+        #expect(state.sortExecutionOverride == nil)
+        #expect(state.baseQueryForMore == nil)
+        #expect(state.hasMoreRows == false)
+    }
 }

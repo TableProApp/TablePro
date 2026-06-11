@@ -110,6 +110,7 @@ struct PaginationState: Equatable {
     var isLoadingMore: Bool = false
     var baseQueryForMore: String?
     var baseQueryParameterValues: [String?]?
+    var sortExecutionOverride: String?  // Derived ORDER BY query run for a grid sort; never written back to the editor
 
     /// Default page size constant (used when no explicit value is provided)
     /// Note: For new tabs, callers should pass AppSettingsManager.shared.dataGrid.defaultPageSize
@@ -217,6 +218,7 @@ struct PaginationState: Equatable {
         isLoadingMore = false
         baseQueryForMore = nil
         baseQueryParameterValues = nil
+        sortExecutionOverride = nil
     }
 
     /// Update page size (limit)

@@ -12,9 +12,6 @@ import TableProPluginKit
 
 /// SQL query editor view with execute button
 struct QueryEditorView: View {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "QueryEditorView")
-
-
     @Binding var queryText: String
     @Binding var cursorPositions: [CursorPosition]
     @Binding var parameters: [QueryParameter]
@@ -67,8 +64,7 @@ struct QueryEditorView: View {
                 onExecuteQuery: onExecuteQuery,
                 onAIExplain: onAIExplain,
                 onAIOptimize: onAIOptimize,
-                onSaveAsFavorite: onSaveAsFavorite,
-                onFormatSQL: formatQuery
+                onSaveAsFavorite: onSaveAsFavorite
             )
             .frame(minHeight: 100)
             .clipped()
@@ -202,32 +198,7 @@ struct QueryEditorView: View {
     }
 
     private func formatQuery() {
-        // Get current database type
-        let dbType = databaseType ?? .mysql
-
-        // Create formatter service
-        let formatter = SQLFormatterService()
-        let options = SQLFormatterOptions.default
-
-        let cursorOffset = cursorPositions.first?.range.location ?? 0
-
-        do {
-            // Format SQL with cursor preservation
-            let result = try formatter.format(
-                queryText,
-                dialect: dbType,
-                cursorOffset: cursorOffset,
-                options: options
-            )
-
-            // Update text and cursor position
-            queryText = result.formattedSQL
-            if let newCursor = result.cursorOffset {
-                cursorPositions = [CursorPosition(range: NSRange(location: newCursor, length: 0))]
-            }
-        } catch {
-            Self.logger.error("SQL Formatting error: \(error.localizedDescription, privacy: .public)")
-        }
+        EditorEventRouter.shared.performFormatSQLForKeyWindow()
     }
 }
 

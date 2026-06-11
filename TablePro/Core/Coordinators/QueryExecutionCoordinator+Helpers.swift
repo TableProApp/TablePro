@@ -146,11 +146,11 @@ extension QueryExecutionCoordinator {
 
             if isTruncated {
                 tab.pagination.hasMoreRows = true
-                tab.pagination.baseQueryForMore = sql
                 tab.pagination.isLoadingMore = false
             } else {
                 tab.pagination.resetLoadMore()
             }
+            tab.pagination.baseQueryForMore = sql
 
             if tab.display.isResultsCollapsed {
                 tab.display.isResultsCollapsed = false

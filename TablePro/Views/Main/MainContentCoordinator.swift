@@ -22,16 +22,6 @@ enum DiscardAction {
     case filter
 }
 
-/// Cache entry for async-sorted query tab rows. Stores a permutation of `RowID` so the
-/// sort survives mutations: inserted rows append to the end of the sorted view, and
-/// removed rows are dropped from the permutation without re-sorting.
-struct QuerySortCacheEntry {
-    let sortedIDs: [RowID]
-    let columnIndex: Int
-    let direction: SortDirection
-    let schemaVersion: Int
-}
-
 struct DisplayFormatsCacheEntry {
     let schemaVersion: Int
     let smartDetectionEnabled: Bool
@@ -173,9 +163,6 @@ final class MainContentCoordinator {
     var exportPreselectedTableNames: Set<String>?
     var needsLazyLoad = false
 
-    /// Cache for async-sorted query tab rows (large datasets sorted on background thread)
-    @ObservationIgnored var querySortCache: [UUID: QuerySortCacheEntry] = [:]
-
     @ObservationIgnored var displayFormatsCache: [UUID: DisplayFormatsCacheEntry] = [:]
 
     @ObservationIgnored let schemaColumns = SchemaColumnStore()
@@ -190,7 +177,6 @@ final class MainContentCoordinator {
     @ObservationIgnored internal var tableLoadTasks: [UUID: (token: UUID, task: Task<Void, Never>)] = [:]
     @ObservationIgnored internal var redisDatabaseSwitchTask: Task<Void, Never>?
     @ObservationIgnored private var changeManagerUpdateTask: Task<Void, Never>?
-    @ObservationIgnored private var activeSortTasks: [UUID: Task<Void, Never>] = [:]
     @ObservationIgnored private var terminationObserver: NSObjectProtocol?
     @ObservationIgnored private var postConnectCancellable: AnyCancellable?
     @ObservationIgnored private var externalFileModCancellable: AnyCancellable?
@@ -346,17 +332,10 @@ final class MainContentCoordinator {
         }
     }
 
-    /// Remove sort cache entries for tabs that no longer exist
-    func cleanupSortCache(openTabIds: Set<UUID>) {
-        if querySortCache.keys.contains(where: { !openTabIds.contains($0) }) {
-            querySortCache = querySortCache.filter { openTabIds.contains($0.key) }
-        }
+    /// Remove cache entries for tabs that no longer exist
+    func cleanupTabCaches(openTabIds: Set<UUID>) {
         if displayFormatsCache.keys.contains(where: { !openTabIds.contains($0) }) {
             displayFormatsCache = displayFormatsCache.filter { openTabIds.contains($0.key) }
-        }
-        for (tabId, task) in activeSortTasks where !openTabIds.contains(tabId) {
-            task.cancel()
-            activeSortTasks.removeValue(forKey: tabId)
         }
     }
 
@@ -680,13 +659,10 @@ final class MainContentCoordinator {
         changeManagerUpdateTask = nil
         redisDatabaseSwitchTask?.cancel()
         redisDatabaseSwitchTask = nil
-        for task in activeSortTasks.values { task.cancel() }
-        activeSortTasks.removeAll()
 
         dataTabDelegate?.tableViewCoordinator?.releaseData()
 
         tabSessionRegistry.removeAll()
-        querySortCache.removeAll()
         displayFormatsCache.removeAll()
         schemaColumns.removeAll()
         columnScopeRequeryTask?.cancel()
@@ -820,8 +796,9 @@ final class MainContentCoordinator {
         let fullQuery = tab.content.query
 
         let sql: String
-        if tab.tabType == .table {
-            sql = fullQuery
+        if let sortOverride = tab.pagination.sortExecutionOverride {
+            tabManager.mutate(at: index) { $0.pagination.sortExecutionOverride = nil }
+            sql = sortOverride
         } else if let firstCursor = cursorPositions.first,
                   firstCursor.range.length > 0 {
             // Execute selected text only
@@ -1285,90 +1262,23 @@ final class MainContentCoordinator {
         let tableRows = tabSessionRegistry.tableRows(for: tab.id)
 
         if tab.tabType == .query {
-            if !newState.columns.isEmpty && tab.pagination.hasMoreRows {
-                let baseQuery = tab.pagination.baseQueryForMore ?? tab.content.query
-                let strippedQuery = Self.stripTrailingOrderBy(from: baseQuery)
-                let orderClause = newState.columns.compactMap { sortCol -> String? in
-                    guard sortCol.columnIndex >= 0, sortCol.columnIndex < tableRows.columns.count else { return nil }
-                    let columnName = tableRows.columns[sortCol.columnIndex]
-                    let direction = sortCol.direction == .ascending ? "ASC" : "DESC"
-                    return "\(queryBuilder.quoteIdentifier(columnName)) \(direction)"
-                }.joined(separator: ", ")
-                let orderQuery = orderClause.isEmpty ? strippedQuery : "\(strippedQuery) ORDER BY \(orderClause)"
-                tabManager.mutate(at: tabIndex) { tab in
-                    tab.sortState = newState
-                    tab.hasUserInteraction = true
-                    tab.pagination.resetLoadMore()
-                    tab.content.query = orderQuery
-                }
-                runQuery()
-                return
-            }
-
-            if newState.columns.isEmpty {
-                tabManager.mutate(at: tabIndex) { tab in
-                    tab.sortState = newState
-                    tab.hasUserInteraction = true
-                }
-                querySortCache.removeValue(forKey: tab.id)
-                dataTabDelegate?.dataGridDidReplaceAllRows()
-                return
-            }
-
+            let baseQuery = tab.pagination.baseQueryForMore ?? tab.content.query
+            let strippedQuery = Self.stripTrailingOrderBy(from: baseQuery)
+            let orderClause = newState.columns.compactMap { sortCol -> String? in
+                guard sortCol.columnIndex >= 0, sortCol.columnIndex < tableRows.columns.count else { return nil }
+                let columnName = tableRows.columns[sortCol.columnIndex]
+                let direction = sortCol.direction == .ascending ? "ASC" : "DESC"
+                return "\(queryBuilder.quoteIdentifier(columnName)) \(direction)"
+            }.joined(separator: ", ")
+            let orderQuery = orderClause.isEmpty ? strippedQuery : "\(strippedQuery) ORDER BY \(orderClause)"
             tabManager.mutate(at: tabIndex) { tab in
                 tab.sortState = newState
                 tab.hasUserInteraction = true
                 tab.pagination.reset()
+                tab.pagination.resetLoadMore()
+                tab.pagination.sortExecutionOverride = orderQuery
             }
-            let tabId = tab.id
-            let schemaVersion = tab.schemaVersion
-            let sortColumns = newState.columns
-            let colTypes = tableRows.columnTypes
-            let storageRows = tableRows.rows
-            let snapshotRows: [(id: RowID, values: [PluginCellValue])] = storageRows.map { ($0.id, Array($0.values)) }
-
-            if storageRows.count > 1_000 {
-                activeSortTasks[tabId]?.cancel()
-                activeSortTasks.removeValue(forKey: tabId)
-                tabManager.mutate(at: tabIndex) { $0.execution.isExecuting = true }
-                toolbarState.setExecuting(true)
-                querySortCache.removeValue(forKey: tabId)
-
-                let sortStartTime = Date()
-                let task = Task.detached { [weak self] in
-                    let sortedIDs = Self.multiColumnSortedIDs(
-                        rows: snapshotRows,
-                        sortColumns: sortColumns,
-                        columnTypes: colTypes
-                    )
-                    let sortDuration = Date().timeIntervalSince(sortStartTime)
-
-                    await MainActor.run { [weak self] in
-                        guard let self else { return }
-                        guard let idx = self.tabManager.tabs.firstIndex(where: { $0.id == tabId }),
-                              self.tabManager.tabs[idx].sortState == newState else {
-                            return
-                        }
-                        self.querySortCache[tabId] = QuerySortCacheEntry(
-                            sortedIDs: sortedIDs,
-                            columnIndex: sortColumns.first?.columnIndex ?? 0,
-                            direction: sortColumns.first?.direction ?? .ascending,
-                            schemaVersion: schemaVersion
-                        )
-                        self.tabManager.mutate(at: idx) { tab in
-                            tab.execution.isExecuting = false
-                            tab.execution.executionTime = sortDuration
-                        }
-                        self.toolbarState.setExecuting(false)
-                        self.toolbarState.lastQueryDuration = sortDuration
-                        self.activeSortTasks.removeValue(forKey: tabId)
-                        self.dataTabDelegate?.dataGridDidReplaceAllRows()
-                    }
-                }
-                activeSortTasks[tabId] = task
-            } else {
-                dataTabDelegate?.dataGridDidReplaceAllRows()
-            }
+            runQuery()
             return
         }
 
@@ -1396,48 +1306,5 @@ final class MainContentCoordinator {
             }) else { return }
             self.runQuery()
         }
-    }
-
-    /// Multi-column sort returning a permutation of `RowID` (nonisolated for background thread).
-    nonisolated private static func multiColumnSortedIDs(
-        rows: [(id: RowID, values: [PluginCellValue])],
-        sortColumns: [SortColumn],
-        columnTypes: [ColumnType] = []
-    ) -> [RowID] {
-        if sortColumns.count == 1 {
-            let col = sortColumns[0]
-            let colIndex = col.columnIndex
-            let ascending = col.direction == .ascending
-            let colType = colIndex < columnTypes.count ? columnTypes[colIndex] : nil
-            var indices = Array(0..<rows.count)
-            indices.sort { i1, i2 in
-                let row1 = rows[i1].values
-                let row2 = rows[i2].values
-                let v1 = colIndex < row1.count ? row1[colIndex].sortKey : ""
-                let v2 = colIndex < row2.count ? row2[colIndex].sortKey : ""
-                let cmp = RowSortComparator.compare(v1, v2, columnType: colType)
-                return ascending ? cmp == .orderedAscending : cmp == .orderedDescending
-            }
-            return indices.map { rows[$0].id }
-        }
-
-        var indices = Array(0..<rows.count)
-        indices.sort { i1, i2 in
-            let row1 = rows[i1].values
-            let row2 = rows[i2].values
-            for sortCol in sortColumns {
-                let v1 = sortCol.columnIndex < row1.count ? row1[sortCol.columnIndex].sortKey : ""
-                let v2 = sortCol.columnIndex < row2.count ? row2[sortCol.columnIndex].sortKey : ""
-                let colType = sortCol.columnIndex < columnTypes.count
-                    ? columnTypes[sortCol.columnIndex] : nil
-                let result = RowSortComparator.compare(v1, v2, columnType: colType)
-                if result == .orderedSame { continue }
-                return sortCol.direction == .ascending
-                    ? result == .orderedAscending
-                    : result == .orderedDescending
-            }
-            return false
-        }
-        return indices.map { rows[$0].id }
     }
 }

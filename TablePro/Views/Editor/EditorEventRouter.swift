@@ -104,6 +104,11 @@ internal final class EditorEventRouter {
         coordinator.findPrevious()
     }
 
+    internal func performFormatSQLForKeyWindow() {
+        guard let (coordinator, _) = editor(for: NSApp.keyWindow) else { return }
+        coordinator.performFormatSQL()
+    }
+
     /// Called by the SwiftUI "Clear Selection" menu when its Esc key equivalent fires.
     /// Routes the keystroke to the active editor's Vim engine if it is in a non-normal
     /// mode. Returns true when Vim consumed the escape — caller should suppress its

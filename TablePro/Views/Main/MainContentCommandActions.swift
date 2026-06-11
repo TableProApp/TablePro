@@ -758,23 +758,7 @@ final class MainContentCommandActions {
     }
 
     func formatQuery() {
-        guard let coordinator,
-              let (tab, tabIndex) = coordinator.tabManager.selectedTabAndIndex else { return }
-        let dbType = connection.type
-        let formatter = SQLFormatterService()
-        let options = SQLFormatterOptions.default
-
-        do {
-            let result = try formatter.format(
-                tab.content.query,
-                dialect: dbType,
-                cursorOffset: 0,
-                options: options
-            )
-            coordinator.tabManager.mutate(at: tabIndex) { $0.content.query = result.formattedSQL }
-        } catch {
-            Self.logger.error("SQL Formatting error: \(error.localizedDescription, privacy: .public)")
-        }
+        EditorEventRouter.shared.performFormatSQLForKeyWindow()
     }
 
     // MARK: - UI Operations (Group A — Called Directly)

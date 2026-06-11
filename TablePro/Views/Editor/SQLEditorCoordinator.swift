@@ -56,7 +56,6 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
     @ObservationIgnored var onAIExplain: ((String) -> Void)?
     @ObservationIgnored var onAIOptimize: ((String) -> Void)?
     @ObservationIgnored var onSaveAsFavorite: ((String) -> Void)?
-    @ObservationIgnored var onFormatSQL: (() -> Void)?
     @ObservationIgnored var databaseType: DatabaseType?
     @ObservationIgnored var tabID: UUID?
     @ObservationIgnored var connectionId: UUID?
@@ -189,7 +188,6 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
         onAIExplain = nil
         onAIOptimize = nil
         onSaveAsFavorite = nil
-        onFormatSQL = nil
         schemaProvider = nil
         contextMenu = nil
         vimEngine = nil
@@ -238,8 +236,33 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
         menu.onExplainWithAI = { [weak self] text in self?.onAIExplain?(text) }
         menu.onOptimizeWithAI = { [weak self] text in self?.onAIOptimize?(text) }
         menu.onSaveAsFavorite = { [weak self] text in self?.onSaveAsFavorite?(text) }
-        menu.onFormatSQL = { [weak self] in self?.onFormatSQL?() }
+        menu.onFormatSQL = { [weak self] in self?.performFormatSQL() }
         contextMenu = menu
+    }
+
+    func performFormatSQL() {
+        guard let textView = controller?.textView else { return }
+        let dialect = databaseType ?? .mysql
+        let cursorLocation = textView.selectedRange().location
+        let cursorOffset = cursorLocation == NSNotFound ? 0 : cursorLocation
+        let formatter = SQLFormatterService()
+
+        do {
+            let result = try formatter.format(
+                textView.string,
+                dialect: dialect,
+                cursorOffset: cursorOffset,
+                options: .default
+            )
+            let fullRange = NSRange(location: 0, length: (textView.string as NSString).length)
+            textView.replaceCharacters(in: fullRange, with: result.formattedSQL)
+            if let newOffset = result.cursorOffset {
+                let clamped = min(newOffset, (result.formattedSQL as NSString).length)
+                controller?.setCursorPositions([CursorPosition(range: NSRange(location: clamped, length: 0))])
+            }
+        } catch {
+            Self.logger.error("SQL Formatting error: \(error.localizedDescription, privacy: .public)")
+        }
     }
 
     /// Called by EditorEventRouter when a right-click is detected in this editor's text view.
