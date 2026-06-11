@@ -535,7 +535,8 @@ final class MainContentCoordinator {
             return
         }
         let task = Task { [weak self] in
-            await self?.reloadSchema()
+            guard let self else { return }
+            await self.reloadSchema()
         }
         schemaReloadTask = task
         await task.value
