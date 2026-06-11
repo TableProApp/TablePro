@@ -17,9 +17,10 @@ extension RedisPluginDriver {
         case .get, .set, .del, .keys, .scan, .type, .ttl, .pttl, .expire, .persist, .rename, .exists:
             return try await executeKeyOperation(operation, connection: conn, startTime: startTime)
 
-        case .keyBrowse(let pattern, let typeScope, let limit):
+        case .keyBrowse(let pattern, let typeScope, let limit, let offset):
             return try await executeKeyBrowse(
-                pattern: pattern, typeScope: typeScope, limit: limit, connection: conn, startTime: startTime
+                pattern: pattern, typeScope: typeScope, limit: limit, offset: offset,
+                connection: conn, startTime: startTime
             )
 
         case .hget, .hset, .hgetall, .hdel:

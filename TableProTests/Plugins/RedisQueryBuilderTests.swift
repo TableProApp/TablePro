@@ -53,7 +53,7 @@ struct RedisQueryBuilderTests {
             namespace: "",
             filters: [(column: "Key", op: "MATCH", value: "user:*")]
         )
-        #expect(query == "KEYBROWSE MATCH \"user:*\" LIMIT 10000")
+        #expect(query == "KEYBROWSE MATCH \"user:*\" LIMIT 200 OFFSET 0")
     }
 
     @Test("Type scope maps to a server-side TYPE clause")
@@ -62,7 +62,7 @@ struct RedisQueryBuilderTests {
             namespace: "",
             filters: [(column: "Type", op: "=", value: "STRING")]
         )
-        #expect(query == "KEYBROWSE TYPE string LIMIT 10000")
+        #expect(query == "KEYBROWSE TYPE string LIMIT 200 OFFSET 0")
     }
 
     @Test("Pattern and type scope combine into one KEYBROWSE command")
@@ -74,19 +74,30 @@ struct RedisQueryBuilderTests {
                 (column: "Type", op: "=", value: "hash")
             ]
         )
-        #expect(query == "KEYBROWSE MATCH \"session:*\" TYPE hash LIMIT 10000")
+        #expect(query == "KEYBROWSE MATCH \"session:*\" TYPE hash LIMIT 200 OFFSET 0")
+    }
+
+    @Test("Page limit and offset pass through to the command")
+    func limitAndOffsetPassThrough() {
+        let query = builder.buildFilteredQuery(
+            namespace: "",
+            filters: [(column: "Key", op: "MATCH", value: "user:*")],
+            limit: 50,
+            offset: 100
+        )
+        #expect(query == "KEYBROWSE MATCH \"user:*\" LIMIT 50 OFFSET 100")
     }
 
     @Test("Quotes and backslashes in a pattern are escaped for the command string")
     func patternQuotingEscaped() {
-        let query = builder.buildKeyBrowseQuery(pattern: "a\"b\\c", typeScope: nil, limit: 10_000)
-        #expect(query == "KEYBROWSE MATCH \"a\\\"b\\\\c\" LIMIT 10000")
+        let query = builder.buildKeyBrowseQuery(pattern: "a\"b\\c", typeScope: nil, limit: 200, offset: 0)
+        #expect(query == "KEYBROWSE MATCH \"a\\\"b\\\\c\" LIMIT 200 OFFSET 0")
     }
 
-    @Test("Empty pattern with no type scope produces a bare LIMIT browse")
+    @Test("Empty pattern with no type scope produces a bare browse command")
     func emptyPatternNoScope() {
-        let query = builder.buildKeyBrowseQuery(pattern: "", typeScope: nil, limit: 10_000)
-        #expect(query == "KEYBROWSE LIMIT 10000")
+        let query = builder.buildKeyBrowseQuery(pattern: "", typeScope: nil, limit: 200, offset: 0)
+        #expect(query == "KEYBROWSE LIMIT 200 OFFSET 0")
     }
 
     @Test("Legacy Contains operator resolves to an escaped glob KEYBROWSE")
@@ -95,7 +106,7 @@ struct RedisQueryBuilderTests {
             namespace: "",
             filters: [(column: "Key", op: "CONTAINS", value: "session")]
         )
-        #expect(query == "KEYBROWSE MATCH \"*session*\" LIMIT 10000")
+        #expect(query == "KEYBROWSE MATCH \"*session*\" LIMIT 200 OFFSET 0")
     }
 
     @Test("Non-Key, non-Type filter falls back to base SCAN")

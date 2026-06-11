@@ -47,7 +47,7 @@ struct KeyPatternSearchBar: View {
     }
 
     private var isActive: Bool {
-        !pattern.trimmingCharacters(in: .whitespaces).isEmpty || typeScope != nil
+        BrowseSearchState(pattern: pattern, typeScope: typeScope).isActive
     }
 
     private var placeholder: String {

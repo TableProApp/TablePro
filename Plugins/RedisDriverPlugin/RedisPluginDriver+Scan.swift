@@ -67,21 +67,27 @@ extension RedisPluginDriver {
         pattern: String?,
         typeScope: String?,
         limit: Int,
+        offset: Int,
         connection conn: RedisPluginConnection,
         startTime: Date
     ) async throws -> PluginQueryResult {
-        let cap = max(1, limit)
+        let scanCap = RedisPluginDriver.maxKeyBrowseScan
         let rawKeys = try await scanAllKeys(
             connection: conn,
             pattern: pattern,
             typeFilter: typeScope,
-            maxKeys: cap
+            maxKeys: scanCap
         )
         var seen = Set<String>()
-        let uniqueKeys = rawKeys.filter { seen.insert($0).inserted }
-        let wasCapped = rawKeys.count >= cap
+        let matchedKeys = rawKeys.filter { seen.insert($0).inserted }
+        let scanWasCapped = rawKeys.count >= scanCap
+
+        let pageStart = min(max(0, offset), matchedKeys.count)
+        let pageEnd = limit <= 0 ? matchedKeys.count : min(pageStart + limit, matchedKeys.count)
+        let pageKeys = Array(matchedKeys[pageStart..<pageEnd])
+
         return try await buildKeyBrowseResult(
-            keys: uniqueKeys, connection: conn, startTime: startTime, isTruncated: wasCapped
+            keys: pageKeys, connection: conn, startTime: startTime, isTruncated: scanWasCapped
         )
     }
 

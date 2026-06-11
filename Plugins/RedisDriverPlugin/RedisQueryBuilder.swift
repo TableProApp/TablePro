@@ -10,8 +10,6 @@ import Foundation
 import TableProPluginKit
 
 struct RedisQueryBuilder {
-    static let maxKeyBrowseScan = 10_000
-
     // MARK: - Base Query
 
     /// Build a SCAN command for browsing keys in a namespace.
@@ -35,7 +33,8 @@ struct RedisQueryBuilder {
         namespace: String,
         filters: [(column: String, op: String, value: String)],
         logicMode: String = "and",
-        limit: Int = 200
+        limit: Int = 200,
+        offset: Int = 0
     ) -> String {
         let pattern = extractBrowsePattern(from: filters, namespace: namespace)
         let typeScope = extractTypeScope(from: filters)
@@ -44,10 +43,10 @@ struct RedisQueryBuilder {
             return buildBaseQuery(namespace: namespace, limit: limit)
         }
 
-        return buildKeyBrowseQuery(pattern: pattern, typeScope: typeScope, limit: Self.maxKeyBrowseScan)
+        return buildKeyBrowseQuery(pattern: pattern, typeScope: typeScope, limit: limit, offset: offset)
     }
 
-    func buildKeyBrowseQuery(pattern: String?, typeScope: String?, limit: Int) -> String {
+    func buildKeyBrowseQuery(pattern: String?, typeScope: String?, limit: Int, offset: Int) -> String {
         var command = "KEYBROWSE"
         if let pattern, !pattern.isEmpty {
             command += " MATCH \"\(quoteForCommand(pattern))\""
@@ -55,7 +54,7 @@ struct RedisQueryBuilder {
         if let typeScope, !typeScope.isEmpty {
             command += " TYPE \(typeScope)"
         }
-        command += " LIMIT \(limit)"
+        command += " LIMIT \(limit) OFFSET \(offset)"
         return command
     }
 

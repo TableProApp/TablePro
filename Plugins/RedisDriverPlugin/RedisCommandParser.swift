@@ -17,7 +17,7 @@ enum RedisOperation {
     case del(keys: [String])
     case keys(pattern: String)
     case scan(cursor: Int, pattern: String?, count: Int?)
-    case keyBrowse(pattern: String?, typeScope: String?, limit: Int)
+    case keyBrowse(pattern: String?, typeScope: String?, limit: Int, offset: Int)
     case type(key: String)
     case ttl(key: String)
     case pttl(key: String)
@@ -163,7 +163,8 @@ struct RedisCommandParser {
     private static func parseKeyBrowse(_ args: [String]) -> RedisOperation {
         var pattern: String?
         var typeScope: String?
-        var limit = 10_000
+        var limit = 200
+        var offset = 0
         var i = 0
         while i < args.count {
             switch args[i].uppercased() {
@@ -182,12 +183,17 @@ struct RedisCommandParser {
                     limit = value
                     i += 1
                 }
+            case "OFFSET":
+                if i + 1 < args.count, let value = Int(args[i + 1]) {
+                    offset = value
+                    i += 1
+                }
             default:
                 break
             }
             i += 1
         }
-        return .keyBrowse(pattern: pattern, typeScope: typeScope, limit: limit)
+        return .keyBrowse(pattern: pattern, typeScope: typeScope, limit: limit, offset: offset)
     }
 
     // MARK: - Key Commands
