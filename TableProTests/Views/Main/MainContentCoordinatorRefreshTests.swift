@@ -248,4 +248,51 @@ struct MainContentCoordinatorRefreshTests {
         #expect(coordinator.queryGeneration == initialGeneration)
         #expect(coordinator.currentQueryTask == nil)
     }
+
+    @Test("requestRefresh fires immediately and coalesces a rapid second call")
+    func requestRefreshCoalescesRapidCalls() {
+        let (coordinator, tabManager) = makeCoordinator()
+        let tabId = addTableTab(to: tabManager)
+        guard let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else {
+            Issue.record("expected tab to exist")
+            return
+        }
+        tabManager.tabs[idx].execution.lastExecutedAt = Date()
+        defer {
+            coordinator.refreshCoalesceTask?.cancel()
+            coordinator.currentQueryTask?.cancel()
+        }
+        let initialGeneration = coordinator.queryGeneration
+
+        coordinator.requestRefresh(hasPendingTableOps: false, onDiscard: {})
+        let generationAfterLeading = coordinator.queryGeneration
+        coordinator.requestRefresh(hasPendingTableOps: false, onDiscard: {})
+        let generationAfterSecond = coordinator.queryGeneration
+
+        #expect(generationAfterLeading == initialGeneration + 2)
+        #expect(generationAfterSecond == generationAfterLeading)
+        #expect(coordinator.refreshPendingTrailing == true)
+        #expect(coordinator.refreshCoalesceTask != nil)
+    }
+
+    @Test("A single requestRefresh fires once and schedules no trailing refresh")
+    func singleRequestRefreshHasNoTrailing() async {
+        let (coordinator, tabManager) = makeCoordinator()
+        let tabId = addTableTab(to: tabManager)
+        guard let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else {
+            Issue.record("expected tab to exist")
+            return
+        }
+        tabManager.tabs[idx].execution.lastExecutedAt = Date()
+        defer { coordinator.currentQueryTask?.cancel() }
+
+        coordinator.requestRefresh(hasPendingTableOps: false, onDiscard: {})
+        let generationAfterLeading = coordinator.queryGeneration
+
+        try? await Task.sleep(for: .milliseconds(400))
+
+        #expect(coordinator.queryGeneration == generationAfterLeading)
+        #expect(coordinator.refreshPendingTrailing == false)
+        #expect(coordinator.refreshCoalesceTask == nil)
+    }
 }
