@@ -930,6 +930,8 @@ final class MainContentCoordinator {
                 $0.content.query = query
                 $0.hasUserInteraction = true
             }
+        } else if tabManager.tabs.isEmpty {
+            tabManager.addTab(initialQuery: query, databaseName: activeDatabaseName)
         } else {
             let payload = EditorTabPayload(
                 connectionId: connection.id,
