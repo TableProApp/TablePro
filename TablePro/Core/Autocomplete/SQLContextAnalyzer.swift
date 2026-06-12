@@ -337,13 +337,20 @@ final class SQLContextAnalyzer {
         // Check if immediately after comma
         let isAfterComma = checkIfAfterComma(textBeforeCursor)
 
+        // Clause detection runs on the text BEFORE the token being typed: the
+        // prefix is what completion filters on, so it cannot also count as a
+        // committed clause keyword ("SELECT|" must still suggest the SELECT
+        // keyword, not switch to select-list completions).
+        let nsBeforeCursor = textBeforeCursor as NSString
+        let textBeforePrefix = nsBeforeCursor.substring(to: min(prefixStart, nsBeforeCursor.length))
+
         // For subquery context, extract text from the innermost subquery
         // so clause detection works on the subquery's SQL, not the outer query
         let clauseText: String
         if nestingLevel > 0 {
-            clauseText = extractInnermostSubqueryText(from: textBeforeCursor)
+            clauseText = extractInnermostSubqueryText(from: textBeforePrefix)
         } else {
-            clauseText = textBeforeCursor
+            clauseText = textBeforePrefix
         }
 
         // Determine clause type

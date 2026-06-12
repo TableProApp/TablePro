@@ -766,7 +766,7 @@ struct SQLContextAnalyzerTests {
 
     @Test("Multiple block comments with code between")
     func testMultipleBlockComments() {
-        let context = analyzer.analyze(query: "/* c1 */ SELECT /* c2 */ * FROM ", cursorPosition: 31)
+        let context = analyzer.analyze(query: "/* c1 */ SELECT /* c2 */ * FROM ", cursorPosition: 32)
         #expect(context.isInsideComment == false)
         #expect(context.clauseType == .from)
     }
