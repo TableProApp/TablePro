@@ -10,6 +10,7 @@ internal enum FormatScopeResolver {
         let range: NSRange
         let sql: String
         let cursorOffset: Int?
+        let isSelection: Bool
     }
 
     static func resolve(fullText: String, selectedRange: NSRange) -> Scope {
@@ -23,13 +24,24 @@ internal enum FormatScopeResolver {
             let cursor = selectedRange.location == NSNotFound
                 ? 0
                 : min(selectedRange.location, nsText.length)
-            return Scope(range: fullRange, sql: fullText, cursorOffset: cursor)
+            return Scope(range: fullRange, sql: fullText, cursorOffset: cursor, isSelection: false)
         }
 
         return Scope(
             range: selectedRange,
             sql: nsText.substring(with: selectedRange),
-            cursorOffset: nil
+            cursorOffset: nil,
+            isSelection: true
         )
+    }
+
+    static func reapplyBoundaryWhitespace(from original: String, to formatted: String) -> String {
+        guard let firstNonWhitespace = original.firstIndex(where: { !$0.isWhitespace }),
+              let lastNonWhitespace = original.lastIndex(where: { !$0.isWhitespace })
+        else { return formatted }
+
+        let prefix = original[original.startIndex..<firstNonWhitespace]
+        let suffix = original[original.index(after: lastNonWhitespace)...]
+        return prefix + formatted + suffix
     }
 }

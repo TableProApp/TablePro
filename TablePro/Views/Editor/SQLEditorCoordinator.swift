@@ -264,13 +264,16 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
                 cursorOffset: scope.cursorOffset,
                 options: .default
             )
-            textView.replaceCharacters(in: scope.range, with: result.formattedSQL)
-            let formattedLength = (result.formattedSQL as NSString).length
+            let replacement = scope.isSelection
+                ? FormatScopeResolver.reapplyBoundaryWhitespace(from: scope.sql, to: result.formattedSQL)
+                : result.formattedSQL
+            textView.replaceCharacters(in: scope.range, with: replacement)
+            let replacementLength = (replacement as NSString).length
             let caretLocation: Int
             if let newOffset = result.cursorOffset {
-                caretLocation = scope.range.location + min(newOffset, formattedLength)
+                caretLocation = scope.range.location + min(newOffset, replacementLength)
             } else {
-                caretLocation = scope.range.location + formattedLength
+                caretLocation = scope.range.location + replacementLength
             }
             controller?.setCursorPositions([CursorPosition(range: NSRange(location: caretLocation, length: 0))])
         } catch {

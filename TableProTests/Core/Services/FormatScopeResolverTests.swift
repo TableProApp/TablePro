@@ -63,6 +63,44 @@ struct FormatScopeResolverTests {
         #expect(scope.cursorOffset == 30)
     }
 
+    @Test("Scope reports whether it came from a selection")
+    func scopeReportsSelectionOrigin() {
+        let noSelection = FormatScopeResolver.resolve(fullText: text, selectedRange: NSRange(location: 0, length: 0))
+        #expect(noSelection.isSelection == false)
+        let selection = FormatScopeResolver.resolve(fullText: text, selectedRange: NSRange(location: 0, length: 6))
+        #expect(selection.isSelection)
+    }
+
+    @Test("A selection ending in a newline keeps the newline after formatting")
+    func trailingNewlinePreserved() {
+        let spliced = FormatScopeResolver.reapplyBoundaryWhitespace(
+            from: "select * from users;\n",
+            to: "SELECT *\nFROM users;"
+        )
+        #expect(spliced == "SELECT *\nFROM users;\n")
+    }
+
+    @Test("Leading and trailing whitespace of the selection both survive formatting")
+    func leadingAndTrailingWhitespacePreserved() {
+        let spliced = FormatScopeResolver.reapplyBoundaryWhitespace(
+            from: "\n  select 1; \n\n",
+            to: "SELECT 1;"
+        )
+        #expect(spliced == "\n  SELECT 1; \n\n")
+    }
+
+    @Test("Whitespace-only original returns the formatted text unchanged")
+    func whitespaceOnlyOriginalReturnsFormatted() {
+        let spliced = FormatScopeResolver.reapplyBoundaryWhitespace(from: "  \n ", to: "SELECT 1;")
+        #expect(spliced == "SELECT 1;")
+    }
+
+    @Test("Original without boundary whitespace returns the formatted text unchanged")
+    func noBoundaryWhitespaceReturnsFormatted() {
+        let spliced = FormatScopeResolver.reapplyBoundaryWhitespace(from: "select 1;", to: "SELECT 1;")
+        #expect(spliced == "SELECT 1;")
+    }
+
     @Test("Unicode text resolves ranges in UTF-16 units")
     func unicodeRangesUseUTF16() {
         let unicodeText = "SELECT '😀' AS emoji;\nSELECT 1;"
