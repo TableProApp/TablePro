@@ -229,27 +229,40 @@ final class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] {
         let query = """
             SELECT
-                tc.constraint_name,
-                kcu.column_name,
-                ccu.table_name AS referenced_table,
-                ccu.column_name AS referenced_column,
-                ccu.table_schema AS referenced_schema,
-                rc.delete_rule,
-                rc.update_rule
-            FROM information_schema.table_constraints tc
-            JOIN information_schema.key_column_usage kcu
-                ON tc.constraint_name = kcu.constraint_name
-                AND tc.table_schema = kcu.table_schema
-            JOIN information_schema.referential_constraints rc
-                ON tc.constraint_name = rc.constraint_name
-                AND tc.constraint_schema = rc.constraint_schema
-            JOIN information_schema.constraint_column_usage ccu
-                ON rc.unique_constraint_name = ccu.constraint_name
-                AND rc.unique_constraint_schema = ccu.constraint_schema
-            WHERE tc.table_name = '\(escapeLiteral(table))'
-                AND tc.table_schema = '\(escapedSchema)'
-                AND tc.constraint_type = 'FOREIGN KEY'
-            ORDER BY tc.constraint_name
+                con.conname,
+                src_col.attname,
+                ref_cl.relname AS referenced_table,
+                ref_col.attname AS referenced_column,
+                ref_ns.nspname AS referenced_schema,
+                CASE con.confdeltype
+                    WHEN 'c' THEN 'CASCADE'
+                    WHEN 'n' THEN 'SET NULL'
+                    WHEN 'd' THEN 'SET DEFAULT'
+                    WHEN 'r' THEN 'RESTRICT'
+                    ELSE 'NO ACTION'
+                END AS delete_rule,
+                CASE con.confupdtype
+                    WHEN 'c' THEN 'CASCADE'
+                    WHEN 'n' THEN 'SET NULL'
+                    WHEN 'd' THEN 'SET DEFAULT'
+                    WHEN 'r' THEN 'RESTRICT'
+                    ELSE 'NO ACTION'
+                END AS update_rule
+            FROM pg_catalog.pg_constraint con
+            JOIN pg_catalog.pg_class src_cl ON src_cl.oid = con.conrelid
+            JOIN pg_catalog.pg_namespace src_ns ON src_ns.oid = src_cl.relnamespace
+            JOIN pg_catalog.pg_class ref_cl ON ref_cl.oid = con.confrelid
+            JOIN pg_catalog.pg_namespace ref_ns ON ref_ns.oid = ref_cl.relnamespace
+            CROSS JOIN LATERAL unnest(con.conkey, con.confkey)
+                WITH ORDINALITY AS cols(src_attnum, ref_attnum, ord)
+            JOIN pg_catalog.pg_attribute src_col
+                ON src_col.attrelid = con.conrelid AND src_col.attnum = cols.src_attnum
+            JOIN pg_catalog.pg_attribute ref_col
+                ON ref_col.attrelid = con.confrelid AND ref_col.attnum = cols.ref_attnum
+            WHERE con.contype = 'f'
+                AND src_cl.relname = '\(escapeLiteral(table))'
+                AND src_ns.nspname = '\(escapedSchema)'
+            ORDER BY con.conname, cols.ord
             """
         let result = try await execute(query: query)
         let foreignKeys: [PluginForeignKeyInfo] = result.rows.compactMap { row -> PluginForeignKeyInfo? in
@@ -276,27 +289,40 @@ final class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     func fetchAllForeignKeys(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {
         let query = """
             SELECT
-                tc.table_name,
-                tc.constraint_name,
-                kcu.column_name,
-                ccu.table_name AS referenced_table,
-                ccu.column_name AS referenced_column,
-                ccu.table_schema AS referenced_schema,
-                rc.delete_rule,
-                rc.update_rule
-            FROM information_schema.table_constraints tc
-            JOIN information_schema.key_column_usage kcu
-                ON tc.constraint_name = kcu.constraint_name
-                AND tc.table_schema = kcu.table_schema
-            JOIN information_schema.referential_constraints rc
-                ON tc.constraint_name = rc.constraint_name
-                AND tc.constraint_schema = rc.constraint_schema
-            JOIN information_schema.constraint_column_usage ccu
-                ON rc.unique_constraint_name = ccu.constraint_name
-                AND rc.unique_constraint_schema = ccu.constraint_schema
-            WHERE tc.table_schema = '\(escapedSchema)'
-                AND tc.constraint_type = 'FOREIGN KEY'
-            ORDER BY tc.table_name, tc.constraint_name
+                src_cl.relname AS table_name,
+                con.conname,
+                src_col.attname,
+                ref_cl.relname AS referenced_table,
+                ref_col.attname AS referenced_column,
+                ref_ns.nspname AS referenced_schema,
+                CASE con.confdeltype
+                    WHEN 'c' THEN 'CASCADE'
+                    WHEN 'n' THEN 'SET NULL'
+                    WHEN 'd' THEN 'SET DEFAULT'
+                    WHEN 'r' THEN 'RESTRICT'
+                    ELSE 'NO ACTION'
+                END AS delete_rule,
+                CASE con.confupdtype
+                    WHEN 'c' THEN 'CASCADE'
+                    WHEN 'n' THEN 'SET NULL'
+                    WHEN 'd' THEN 'SET DEFAULT'
+                    WHEN 'r' THEN 'RESTRICT'
+                    ELSE 'NO ACTION'
+                END AS update_rule
+            FROM pg_catalog.pg_constraint con
+            JOIN pg_catalog.pg_class src_cl ON src_cl.oid = con.conrelid
+            JOIN pg_catalog.pg_namespace src_ns ON src_ns.oid = src_cl.relnamespace
+            JOIN pg_catalog.pg_class ref_cl ON ref_cl.oid = con.confrelid
+            JOIN pg_catalog.pg_namespace ref_ns ON ref_ns.oid = ref_cl.relnamespace
+            CROSS JOIN LATERAL unnest(con.conkey, con.confkey)
+                WITH ORDINALITY AS cols(src_attnum, ref_attnum, ord)
+            JOIN pg_catalog.pg_attribute src_col
+                ON src_col.attrelid = con.conrelid AND src_col.attnum = cols.src_attnum
+            JOIN pg_catalog.pg_attribute ref_col
+                ON ref_col.attrelid = con.confrelid AND ref_col.attnum = cols.ref_attnum
+            WHERE con.contype = 'f'
+                AND src_ns.nspname = '\(escapedSchema)'
+            ORDER BY src_cl.relname, con.conname, cols.ord
             """
         let result = try await execute(query: query)
         var grouped: [String: [PluginForeignKeyInfo]] = [:]
