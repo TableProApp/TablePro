@@ -251,23 +251,28 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
     func performFormatSQL() {
         guard let textView = controller?.textView else { return }
         let dialect = databaseType ?? .mysql
-        let cursorLocation = textView.selectedRange().location
-        let cursorOffset = cursorLocation == NSNotFound ? 0 : cursorLocation
         let formatter = SQLFormatterService()
+        let scope = FormatScopeResolver.resolve(
+            fullText: textView.string,
+            selectedRange: textView.selectedRange()
+        )
 
         do {
             let result = try formatter.format(
-                textView.string,
+                scope.sql,
                 dialect: dialect,
-                cursorOffset: cursorOffset,
+                cursorOffset: scope.cursorOffset,
                 options: .default
             )
-            let fullRange = NSRange(location: 0, length: (textView.string as NSString).length)
-            textView.replaceCharacters(in: fullRange, with: result.formattedSQL)
+            textView.replaceCharacters(in: scope.range, with: result.formattedSQL)
+            let formattedLength = (result.formattedSQL as NSString).length
+            let caretLocation: Int
             if let newOffset = result.cursorOffset {
-                let clamped = min(newOffset, (result.formattedSQL as NSString).length)
-                controller?.setCursorPositions([CursorPosition(range: NSRange(location: clamped, length: 0))])
+                caretLocation = scope.range.location + min(newOffset, formattedLength)
+            } else {
+                caretLocation = scope.range.location + formattedLength
             }
+            controller?.setCursorPositions([CursorPosition(range: NSRange(location: caretLocation, length: 0))])
         } catch {
             Self.logger.error("SQL Formatting error: \(error.localizedDescription, privacy: .public)")
         }
