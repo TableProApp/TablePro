@@ -15,6 +15,7 @@ struct TableRows: Sendable {
     var columnForeignKeys: [String: ForeignKeyInfo]
     var columnEnumValues: [String: [String]]
     var columnNullable: [String: Bool]
+    var foreignKeysFetched: Bool
 
     init(
         rows: ContiguousArray<Row> = [],
@@ -23,7 +24,8 @@ struct TableRows: Sendable {
         columnDefaults: [String: String?] = [:],
         columnForeignKeys: [String: ForeignKeyInfo] = [:],
         columnEnumValues: [String: [String]] = [:],
-        columnNullable: [String: Bool] = [:]
+        columnNullable: [String: Bool] = [:],
+        foreignKeysFetched: Bool = false
     ) {
         self.rows = rows
         self.indexByID = Self.buildIndex(for: rows)
@@ -33,6 +35,7 @@ struct TableRows: Sendable {
         self.columnForeignKeys = columnForeignKeys
         self.columnEnumValues = columnEnumValues
         self.columnNullable = columnNullable
+        self.foreignKeysFetched = foreignKeysFetched
     }
 
     var count: Int { rows.count }
@@ -166,9 +169,12 @@ struct TableRows: Sendable {
             self.columnDefaults = columnDefaults
             didChange = true
         }
-        if let columnForeignKeys, columnForeignKeys != self.columnForeignKeys {
-            self.columnForeignKeys = columnForeignKeys
-            didChange = true
+        if let columnForeignKeys {
+            if columnForeignKeys != self.columnForeignKeys {
+                self.columnForeignKeys = columnForeignKeys
+                didChange = true
+            }
+            foreignKeysFetched = true
         }
         if let columnEnumValues, columnEnumValues != self.columnEnumValues {
             self.columnEnumValues = columnEnumValues
@@ -188,7 +194,8 @@ struct TableRows: Sendable {
         columnDefaults: [String: String?] = [:],
         columnForeignKeys: [String: ForeignKeyInfo] = [:],
         columnEnumValues: [String: [String]] = [:],
-        columnNullable: [String: Bool] = [:]
+        columnNullable: [String: Bool] = [:],
+        foreignKeysFetched: Bool = false
     ) -> TableRows {
         var rows = ContiguousArray<Row>()
         rows.reserveCapacity(queryRows.count)
@@ -203,7 +210,8 @@ struct TableRows: Sendable {
             columnDefaults: columnDefaults,
             columnForeignKeys: columnForeignKeys,
             columnEnumValues: columnEnumValues,
-            columnNullable: columnNullable
+            columnNullable: columnNullable,
+            foreignKeysFetched: foreignKeysFetched
         )
     }
 

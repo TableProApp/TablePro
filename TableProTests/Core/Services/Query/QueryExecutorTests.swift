@@ -187,7 +187,7 @@ struct QueryExecutorTests {
         #expect(parsed.columnDefaults["name"] == .some("guest"))
         #expect(parsed.columnNullable["id"] == false)
         #expect(parsed.columnNullable["name"] == true)
-        #expect(parsed.columnForeignKeys["role_id"]?.referencedTable == "roles")
+        #expect(parsed.columnForeignKeys?["role_id"]?.referencedTable == "roles")
         #expect(parsed.approximateRowCount == 1_234)
     }
 
@@ -208,6 +208,14 @@ struct QueryExecutorTests {
         #expect(parsed.columnEnumValues["status"] == ["open", "closed", "archived"])
     }
 
+
+    @Test("parseSchemaMetadata keeps a failed foreign key fetch distinguishable from zero foreign keys")
+    func parseSchemaMetadataNilForeignKeys() {
+        let schema: SchemaResult = (columnInfo: [], fkInfo: nil, approximateRowCount: nil)
+        let parsed = QueryExecutor.parseSchemaMetadata(schema)
+        #expect(parsed.columnForeignKeys == nil)
+    }
+
     @Test("parseSchemaMetadata returns empty containers when input is empty")
     func parseSchemaMetadataEmpty() {
         let schema: SchemaResult = (columnInfo: [], fkInfo: [], approximateRowCount: nil)
@@ -215,7 +223,7 @@ struct QueryExecutorTests {
         #expect(parsed.primaryKeyColumns.isEmpty)
         #expect(parsed.columnDefaults.isEmpty)
         #expect(parsed.columnNullable.isEmpty)
-        #expect(parsed.columnForeignKeys.isEmpty)
+        #expect(parsed.columnForeignKeys?.isEmpty == true)
         #expect(parsed.columnEnumValues.isEmpty)
         #expect(parsed.approximateRowCount == nil)
     }
@@ -233,7 +241,7 @@ struct QueryExecutorTests {
         #expect(parsed.columnNullable["id"] == false)
         #expect(parsed.columnNullable["name"] == true)
         #expect(parsed.columnDefaults.isEmpty)
-        #expect(parsed.columnForeignKeys.isEmpty)
+        #expect(parsed.columnForeignKeys == nil)
         #expect(parsed.approximateRowCount == nil)
     }
 

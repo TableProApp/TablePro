@@ -15,11 +15,11 @@ struct QueryFetchResult {
     let resultColumnMeta: [ResultColumnMeta]?
 }
 
-typealias SchemaResult = (columnInfo: [ColumnInfo], fkInfo: [ForeignKeyInfo], approximateRowCount: Int?)
+typealias SchemaResult = (columnInfo: [ColumnInfo], fkInfo: [ForeignKeyInfo]?, approximateRowCount: Int?)
 
 struct ParsedSchemaMetadata {
     let columnDefaults: [String: String?]
-    let columnForeignKeys: [String: ForeignKeyInfo]
+    let columnForeignKeys: [String: ForeignKeyInfo]?
     let columnNullable: [String: Bool]
     let primaryKeyColumns: [String]
     let approximateRowCount: Int?
@@ -118,24 +118,41 @@ final class QueryExecutor {
     // MARK: - Schema fetch + parse
 
     static func fetchTableSchema(connectionId: UUID, tableName: String) async throws -> SchemaResult {
-        try await DatabaseManager.shared.withMetadataDriver(connectionId: connectionId) { driver in
+        let (columns, approximateRowCount) = try await DatabaseManager.shared.withMetadataDriver(
+            connectionId: connectionId
+        ) { driver in
             let columns = try await driver.fetchColumns(table: tableName)
-            let foreignKeys = try await driver.fetchForeignKeys(table: tableName)
             let approximateRowCount = try? await driver.fetchApproximateRowCount(table: tableName)
-            return (columnInfo: columns, fkInfo: foreignKeys, approximateRowCount: approximateRowCount)
+            return (columns, approximateRowCount)
         }
+        let foreignKeys: [ForeignKeyInfo]?
+        do {
+            foreignKeys = try await DatabaseManager.shared.withMetadataDriver(connectionId: connectionId) { driver in
+                try await driver.fetchForeignKeys(table: tableName)
+            }
+        } catch {
+            queryExecutorLog.error(
+                "[fetchTableSchema] FK fetch failed for \(tableName, privacy: .public): \(error.localizedDescription, privacy: .public)"
+            )
+            foreignKeys = nil
+        }
+        return (columnInfo: columns, fkInfo: foreignKeys, approximateRowCount: approximateRowCount)
     }
 
     static func parseSchemaMetadata(_ schema: SchemaResult) -> ParsedSchemaMetadata {
         var defaults: [String: String?] = [:]
-        var fks: [String: ForeignKeyInfo] = [:]
         var nullable: [String: Bool] = [:]
         for col in schema.columnInfo {
             defaults[col.name] = col.defaultValue
             nullable[col.name] = col.isNullable
         }
-        for fk in schema.fkInfo {
-            fks[fk.column] = fk
+        var fks: [String: ForeignKeyInfo]?
+        if let fkInfo = schema.fkInfo {
+            var byColumn: [String: ForeignKeyInfo] = [:]
+            for fk in fkInfo {
+                byColumn[fk.column] = fk
+            }
+            fks = byColumn
         }
         var enumValues: [String: [String]] = [:]
         for col in schema.columnInfo {
@@ -165,7 +182,7 @@ final class QueryExecutor {
         }
         return ParsedSchemaMetadata(
             columnDefaults: [:],
-            columnForeignKeys: [:],
+            columnForeignKeys: nil,
             columnNullable: nullable,
             primaryKeyColumns: primaryKeys,
             approximateRowCount: nil,

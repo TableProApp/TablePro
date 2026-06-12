@@ -27,7 +27,8 @@ extension QueryExecutionCoordinator {
         let tableRows = parent.tabSessionRegistry.tableRows(for: tab.id)
         guard tab.tableContext.tableName == tableName,
               !tableRows.columnDefaults.isEmpty,
-              !tab.tableContext.primaryKeyColumns.isEmpty else {
+              !tab.tableContext.primaryKeyColumns.isEmpty,
+              tableRows.foreignKeysFetched else {
             return false
         }
         let enumSetColumnNames: [String] = tableRows.columns.enumerated().compactMap { i, name in
@@ -85,10 +86,13 @@ extension QueryExecutionCoordinator {
             }
         }
 
+        var foreignKeysFetched = false
+
         if let metadata {
             columnDefaults = metadata.columnDefaults
-            columnForeignKeys = metadata.columnForeignKeys
+            columnForeignKeys = metadata.columnForeignKeys ?? [:]
             columnNullable = metadata.columnNullable
+            foreignKeysFetched = metadata.columnForeignKeys != nil
             for (col, vals) in metadata.columnEnumValues {
                 columnEnumValues[col] = vals
             }
@@ -97,6 +101,7 @@ extension QueryExecutionCoordinator {
             columnDefaults = existing.columnDefaults
             columnForeignKeys = existing.columnForeignKeys
             columnNullable = existing.columnNullable
+            foreignKeysFetched = existing.foreignKeysFetched
             for (col, vals) in existing.columnEnumValues where columnEnumValues[col] == nil {
                 columnEnumValues[col] = vals
             }
@@ -109,7 +114,8 @@ extension QueryExecutionCoordinator {
             columnDefaults: columnDefaults,
             columnForeignKeys: columnForeignKeys,
             columnEnumValues: columnEnumValues,
-            columnNullable: columnNullable
+            columnNullable: columnNullable,
+            foreignKeysFetched: foreignKeysFetched
         )
         parent.setActiveTableRows(newTableRows, for: existingTabId)
 
@@ -250,10 +256,13 @@ extension QueryExecutionCoordinator {
 
             await MainActor.run { [weak self] in
                 guard let self else { return }
-                guard capturedGeneration == parent.queryGeneration else { return }
-                if let schema {
+                if let schema,
+                   parent.tabManager.tabs.contains(where: {
+                       $0.id == tabId && $0.tableContext.tableName == tableName
+                   }) {
                     applyPhase2Metadata(parsed: QueryExecutor.parseSchemaMetadata(schema), tabId: tabId)
                 }
+                guard capturedGeneration == parent.queryGeneration else { return }
                 resolveRowCount(
                     tableName: tableName,
                     tabId: tabId,

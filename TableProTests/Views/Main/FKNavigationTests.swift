@@ -91,4 +91,41 @@ struct FKNavigationTests {
         #expect(tabManager.selectedTab?.id == tabId)
         #expect(tabManager.selectedTab?.tableContext.tableName == "users")
     }
+
+    @Test("Metadata is not cached until foreign keys were fetched")
+    @MainActor
+    func metadataCacheRequiresFetchedForeignKeys() throws {
+        let connection = TestFixtures.makeConnection(database: "db")
+        let tabManager = QueryTabManager()
+        let coordinator = MainContentCoordinator(
+            connection: connection,
+            tabManager: tabManager,
+            changeManager: DataChangeManager(),
+            toolbarState: ConnectionToolbarState()
+        )
+        defer { coordinator.teardown() }
+
+        try tabManager.addTableTab(
+            tableName: "orders",
+            databaseType: connection.type,
+            databaseName: coordinator.activeDatabaseName
+        )
+        let tabId = tabManager.tabs[0].id
+        tabManager.mutate(at: 0) { $0.tableContext.primaryKeyColumns = ["id"] }
+
+        var rows = TableRows.from(
+            queryRows: [],
+            columns: ["id"],
+            columnTypes: [],
+            columnDefaults: ["id": nil]
+        )
+        coordinator.setActiveTableRows(rows, for: tabId)
+        let cachedBefore = coordinator.queryExecutionCoordinator.isMetadataCached(tabId: tabId, tableName: "orders")
+        #expect(cachedBefore == false)
+
+        _ = rows.updateDisplayMetadata(columnForeignKeys: [:])
+        coordinator.setActiveTableRows(rows, for: tabId)
+        let cachedAfter = coordinator.queryExecutionCoordinator.isMetadataCached(tabId: tabId, tableName: "orders")
+        #expect(cachedAfter)
+    }
 }
