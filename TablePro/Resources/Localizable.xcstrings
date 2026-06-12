@@ -6633,6 +6633,9 @@
         }
       }
     },
+    "All Types" : {
+
+    },
     "Allow" : {
       "localizations" : {
         "tr" : {
@@ -33001,6 +33004,12 @@
         }
       }
     },
+    "Key pattern" : {
+
+    },
+    "Key pattern, e.g. user:*" : {
+
+    },
     "Key Prefix Root" : {
       "localizations" : {
         "tr" : {
@@ -35092,6 +35101,7 @@
       }
     },
     "Loading..." : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -39511,6 +39521,7 @@
       }
     },
     "No matching objects" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -39669,6 +39680,7 @@
       }
     },
     "No objects found" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -39691,6 +39703,7 @@
       }
     },
     "No objects match \"%@\"" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -39867,6 +39880,9 @@
           }
         }
       }
+    },
+    "No results for \"%@\"" : {
+
     },
     "No rows" : {
       "localizations" : {
@@ -41836,6 +41852,9 @@
         }
       }
     },
+    "Open in New Tab" : {
+
+    },
     "Open in Window" : {
       "localizations" : {
         "tr" : {
@@ -42082,6 +42101,9 @@
           }
         }
       }
+    },
+    "Open Structure" : {
+
     },
     "Open Table" : {
       "comment" : "A context menu option to open a table in the main view.",
@@ -51816,6 +51838,9 @@
         }
       }
     },
+    "Saved Queries" : {
+
+    },
     "Saved Query" : {
       "localizations" : {
         "tr" : {
@@ -52509,7 +52534,11 @@
         }
       }
     },
+    "Search tables, views, databases, queries..." : {
+
+    },
     "Search tables, views, databases..." : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {

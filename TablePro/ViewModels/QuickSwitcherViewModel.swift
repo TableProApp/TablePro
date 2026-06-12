@@ -269,6 +269,8 @@ internal final class QuickSwitcherViewModel {
             result.append(Group(id: "recent", header: String(localized: "Recent"), items: recent))
         }
 
+        guard scope != .all else { return result }
+
         for kind in QuickSwitcherItemKind.displayOrder {
             let items = scoped
                 .filter { $0.kind == kind && !recentIdSet.contains($0.id) }

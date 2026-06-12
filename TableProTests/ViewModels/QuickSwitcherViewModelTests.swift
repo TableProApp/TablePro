@@ -38,14 +38,29 @@ struct QuickSwitcherViewModelTests {
         ]
     }
 
-    @Test("Empty search builds one group per kind")
-    func emptySearchGroupsByKind() {
+    @Test("Empty search with the All scope shows only recents")
+    func emptySearchShowsOnlyRecents() {
+        let suite = makeDefaults()
+        let connectionId = UUID()
+        let items = sampleItems()
+        let vm = makeViewModel(items: items, connectionId: connectionId, defaults: suite)
+        #expect(vm.groups.isEmpty)
+
+        vm.recordSelection(items[0])
+        let vm2 = QuickSwitcherViewModel(connectionId: connectionId, services: .live, defaults: suite)
+        vm2.allItems = items
+        #expect(vm2.groups.count == 1)
+        #expect(vm2.groups.first?.header == String(localized: "Recent"))
+    }
+
+    @Test("A browse scope lists every kind it covers")
+    func browseScopeListsKinds() {
         let vm = makeViewModel(items: sampleItems())
+        vm.scope = .tables
         let kinds = vm.groups.compactMap { $0.header }
         #expect(kinds.contains(String(localized: "Tables")))
         #expect(kinds.contains(String(localized: "Views")))
-        #expect(kinds.contains(String(localized: "Databases")))
-        #expect(kinds.contains(String(localized: "Recent Queries")))
+        #expect(!kinds.contains(String(localized: "Databases")))
     }
 
     @Test("Filtered search returns one headerless group of best matches")
@@ -58,19 +73,21 @@ struct QuickSwitcherViewModelTests {
         #expect(vm.flatItems.allSatisfy { $0.name.localizedCaseInsensitiveContains("u") })
     }
 
-    @Test("Filter caps at maxResults")
+    @Test("Browse scope caps at maxResults")
     func filterCaps() {
         var items: [QuickSwitcherItem] = []
         for index in 0..<300 {
             items.append(QuickSwitcherItem(id: "t\(index)", name: "table_\(index)", kind: .table, subtitle: ""))
         }
         let vm = makeViewModel(items: items)
+        vm.scope = .tables
         #expect(vm.flatItems.count == 200)
     }
 
     @Test("moveSelection by 1 advances to next item")
     func moveDownAdvances() {
         let vm = makeViewModel(items: sampleItems())
+        vm.scope = .tables
         let first = vm.flatItems.first?.id
         #expect(vm.selectedItemId == first)
         vm.moveSelection(by: 1)
@@ -80,6 +97,7 @@ struct QuickSwitcherViewModelTests {
     @Test("moveSelection clamps at the bounds")
     func moveSelectionClamps() {
         let vm = makeViewModel(items: sampleItems())
+        vm.scope = .tables
         vm.selectedItemId = vm.flatItems.first?.id
         vm.moveSelection(by: -1)
         #expect(vm.selectedItemId == vm.flatItems.first?.id)
@@ -98,6 +116,7 @@ struct QuickSwitcherViewModelTests {
     @Test("selectedItem returns the current selection")
     func selectedItemReturnsCurrent() {
         let vm = makeViewModel(items: sampleItems())
+        vm.scope = .tables
         let target = vm.flatItems[2]
         vm.selectedItemId = target.id
         #expect(vm.selectedItem()?.id == target.id)
@@ -106,6 +125,7 @@ struct QuickSwitcherViewModelTests {
     @Test("selectedItem is nil when no selection")
     func selectedItemNilWhenNone() {
         let vm = makeViewModel(items: sampleItems())
+        vm.scope = .tables
         vm.selectedItemId = nil
         #expect(vm.selectedItem() == nil)
     }
@@ -175,7 +195,7 @@ struct QuickSwitcherViewModelTests {
         #expect(vm2.flatItems.first?.id == "tb")
     }
 
-    @Test("Saved queries get their own section in the empty-query view")
+    @Test("Saved queries get their own section in the queries browse scope")
     func savedQueriesGetOwnSection() {
         var items = sampleItems()
         items.append(QuickSwitcherItem(
@@ -186,6 +206,7 @@ struct QuickSwitcherViewModelTests {
             payload: "SELECT SUM(total) FROM orders GROUP BY month;"
         ))
         let vm = makeViewModel(items: items)
+        vm.scope = .queries
         let headers = vm.groups.compactMap(\.header)
         #expect(headers.contains(String(localized: "Saved Queries")))
     }
@@ -248,15 +269,11 @@ struct QuickSwitcherViewModelTests {
     @Test("Search keeps selection if still in results")
     func searchKeepsSelectionWhenPresent() async throws {
         let vm = makeViewModel(items: sampleItems())
-        guard let usersItem = vm.flatItems.first(where: { $0.id == "t1" }) else {
-            Issue.record("Expected t1 to be present")
-            return
-        }
-        vm.selectedItemId = usersItem.id
+        vm.selectedItemId = "t1"
         vm.searchText = "users"
         try await Task.sleep(nanoseconds: 200_000_000)
-        #expect(vm.flatItems.contains(where: { $0.id == usersItem.id }))
-        #expect(vm.selectedItemId == usersItem.id)
+        #expect(vm.flatItems.contains(where: { $0.id == "t1" }))
+        #expect(vm.selectedItemId == "t1")
     }
 
     @Test("Search resets selection when previous selection is filtered out")
@@ -310,26 +327,27 @@ struct QuickSwitcherViewModelTests {
         #expect(vm.listHeight(rowHeight: 30, headerHeight: 28, maxVisibleRows: 9) == 270)
     }
 
-    @Test("listHeight for the empty-query view counts section headers")
+    @Test("listHeight for a browse scope counts section headers")
     func listHeightCountsSectionHeaders() {
         let vm = makeViewModel(items: sampleItems())
-        #expect(vm.groups.filter { $0.header != nil }.count == 4)
-        #expect(vm.flatItems.count == 5)
-        #expect(vm.listHeight(rowHeight: 30, headerHeight: 28, maxVisibleRows: 9) == 262)
+        vm.scope = .tables
+        #expect(vm.groups.filter { $0.header != nil }.count == 2)
+        #expect(vm.flatItems.count == 3)
+        #expect(vm.listHeight(rowHeight: 30, headerHeight: 28, maxVisibleRows: 9) == 146)
     }
 
-    @Test("listHeight grows by one header when a Recent group appears")
+    @Test("A recorded selection adds a Recent header and row to the empty-query view")
     func listHeightIncludesRecentHeader() {
         let suite = makeDefaults()
         let connectionId = UUID()
         let items = sampleItems()
         let vm = makeViewModel(items: items, connectionId: connectionId, defaults: suite)
-        let baseline = vm.listHeight(rowHeight: 30, headerHeight: 28, maxVisibleRows: 100)
+        #expect(vm.listHeight(rowHeight: 30, headerHeight: 28, maxVisibleRows: 100) == 0)
         vm.recordSelection(items[0])
 
         let vm2 = QuickSwitcherViewModel(connectionId: connectionId, services: .live, defaults: suite)
         vm2.allItems = items
-        #expect(vm2.listHeight(rowHeight: 30, headerHeight: 28, maxVisibleRows: 100) == baseline + 28)
+        #expect(vm2.listHeight(rowHeight: 30, headerHeight: 28, maxVisibleRows: 100) == 58)
     }
 
     @Test("listHeight clamps to the cap when sections and rows overflow")
@@ -340,6 +358,7 @@ struct QuickSwitcherViewModelTests {
             items.append(QuickSwitcherItem(id: "v\(index)", name: "view_\(index)", kind: .view, subtitle: "View"))
         }
         let vm = makeViewModel(items: items)
+        vm.scope = .tables
         #expect(vm.groups.filter { $0.header != nil }.count >= 2)
         #expect(vm.listHeight(rowHeight: 30, headerHeight: 28, maxVisibleRows: 9) == 270)
     }
