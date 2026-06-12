@@ -34739,6 +34739,9 @@
         }
       }
     },
+    "Load Query" : {
+
+    },
     "Load Table Template" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -54341,6 +54344,9 @@
         }
       }
     },
+    "Show all results" : {
+
+    },
     "Show All Rows" : {
       "localizations" : {
         "tr" : {
@@ -57984,6 +57990,9 @@
         }
       }
     },
+    "Switch" : {
+
+    },
     "switch %@" : {
 
     },
@@ -58284,6 +58293,9 @@
           }
         }
       }
+    },
+    "Switch to Tab" : {
+
     },
     "Switch to this database before executing" : {
       "localizations" : {
