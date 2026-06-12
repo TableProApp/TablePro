@@ -31,6 +31,7 @@ internal struct QuickSwitcherSearchField: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: QuickSwitcherTextField, context: Context) {
+        context.coordinator.parent = self
         if nsView.stringValue != text {
             nsView.stringValue = text
         }
@@ -42,7 +43,7 @@ internal struct QuickSwitcherSearchField: NSViewRepresentable {
 
     @MainActor
     final class Coordinator: NSObject, NSTextFieldDelegate {
-        private let parent: QuickSwitcherSearchField
+        fileprivate var parent: QuickSwitcherSearchField
 
         init(_ parent: QuickSwitcherSearchField) {
             self.parent = parent
