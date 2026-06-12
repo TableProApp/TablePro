@@ -28,6 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Creating a table now turns the Create Table tab into the new table's tab instead of leaving the creation tab open next to a duplicate, and the sidebar shows the new table without a manual refresh. (#1664)
+- Cmd+S in the Create Table tab now creates the table, matching the Save shortcut everywhere else. (#1664)
 - Format Query can now be undone with Cmd+Z; the formatting is applied as a single editor edit instead of clearing the undo history. (#1645)
 - Format Query now formats only the selected text when a selection is active, and the full query when nothing is selected. (#1656)
 - Sorting a query result no longer overwrites the SQL editor text or the contents of an opened `.sql` file; the sort runs as a separate query and the editor keeps what you wrote. (#1645)

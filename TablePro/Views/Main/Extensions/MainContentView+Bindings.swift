@@ -137,4 +137,5 @@ struct PendingChangeTrigger: Equatable {
     let pendingDeletes: Set<String>
     let hasStructureChanges: Bool
     let isFileDirty: Bool
+    let hasCreateTablePending: Bool
 }
