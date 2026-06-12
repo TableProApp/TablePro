@@ -534,7 +534,9 @@ final class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
             SELECT
                 (SELECT COUNT(*)
                  FROM information_schema.tables
-                 WHERE table_schema = 'public' AND table_catalog = '\(escapedDbLiteral)'),
+                 WHERE table_catalog = '\(escapedDbLiteral)'
+                   AND table_schema NOT LIKE 'pg!_%' ESCAPE '!'
+                   AND table_schema <> 'information_schema'),
                 pg_database_size('\(escapedDbLiteral)')
         """
         let result = try await execute(query: query)

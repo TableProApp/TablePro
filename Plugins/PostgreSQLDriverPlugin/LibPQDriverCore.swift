@@ -41,9 +41,11 @@ final class LibPQDriverCore: @unchecked Sendable {
         try await pqConn.connect()
         libpqConnection = pqConn
 
-        if let schemaResult = try? await pqConn.executeQuery("SELECT current_schema()"),
-           let schema = schemaResult.rows.first?.first?.asText {
+        if let schema = await singleSchemaValue(pqConn, query: PostgreSQLSchemaQueries.currentSchema) {
             currentSchema = schema
+        } else if let fallback = await firstFallbackSchema(pqConn) {
+            currentSchema = fallback
+            _ = try? await pqConn.executeQuery(PostgreSQLSchemaQueries.setSearchPath(toSchema: fallback))
         }
 
         if let selectedSchema,
@@ -52,6 +54,20 @@ final class LibPQDriverCore: @unchecked Sendable {
         }
 
         await onPostConnect?()
+    }
+
+    private func firstFallbackSchema(_ pqConn: LibPQPluginConnection) async -> String? {
+        for query in PostgreSQLSchemaQueries.schemaFallbackQueries {
+            if let schema = await singleSchemaValue(pqConn, query: query) {
+                return schema
+            }
+        }
+        return nil
+    }
+
+    private func singleSchemaValue(_ pqConn: LibPQPluginConnection, query: String) async -> String? {
+        guard let result = try? await pqConn.executeQuery(query) else { return nil }
+        return result.rows.first?.first?.asText
     }
 
     func applySchema(_ schema: String) async throws {

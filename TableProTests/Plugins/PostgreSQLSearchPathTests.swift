@@ -8,15 +8,15 @@ import Testing
 
 @Suite("PostgreSQLSchemaQueries.setSearchPath")
 struct PostgreSQLSearchPathTests {
-    @Test("quotes the schema as an identifier and keeps public on the path")
+    @Test("quotes the schema as an identifier")
     func plainSchema() {
         #expect(
             PostgreSQLSchemaQueries.setSearchPath(toSchema: "analytics")
-                == "SET search_path TO \"analytics\", public"
+                == "SET search_path TO \"analytics\""
         )
     }
 
-    @Test("omits the redundant public fallback when public is the selected schema")
+    @Test("sets public as the only search path entry when selected")
     func publicSchema() {
         #expect(
             PostgreSQLSchemaQueries.setSearchPath(toSchema: "public")
@@ -28,7 +28,7 @@ struct PostgreSQLSearchPathTests {
     func mixedCaseSchema() {
         #expect(
             PostgreSQLSchemaQueries.setSearchPath(toSchema: "MySchema")
-                == "SET search_path TO \"MySchema\", public"
+                == "SET search_path TO \"MySchema\""
         )
     }
 
@@ -36,7 +36,7 @@ struct PostgreSQLSearchPathTests {
     func schemaWithEmbeddedQuote() {
         #expect(
             PostgreSQLSchemaQueries.setSearchPath(toSchema: "wei\"rd")
-                == "SET search_path TO \"wei\"\"rd\", public"
+                == "SET search_path TO \"wei\"\"rd\""
         )
     }
 
@@ -45,7 +45,7 @@ struct PostgreSQLSearchPathTests {
         let malicious = "public\"; DROP TABLE users; --"
         #expect(
             PostgreSQLSchemaQueries.setSearchPath(toSchema: malicious)
-                == "SET search_path TO \"public\"\"; DROP TABLE users; --\", public"
+                == "SET search_path TO \"public\"\"; DROP TABLE users; --\""
         )
     }
 }
