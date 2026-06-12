@@ -99,7 +99,7 @@ extension QueryExecutionCoordinator {
         parent.currentQueryTask = Task { [weak self, parent] in
             guard let self else { return }
 
-            let schemaTask: Task<SchemaResult, Error>?
+            let schemaTask: Task<FetchedTableSchema, Error>?
             if needsMetadataFetch, let tableName {
                 schemaTask = Task { try await QueryExecutor.fetchTableSchema(connectionId: connId, tableName: tableName) }
             } else {

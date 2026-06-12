@@ -15,7 +15,7 @@ extension QueryExecutionCoordinator {
         QueryExecutor.resolveRowCap(sql: sql, tabType: tabType, databaseType: parent.connection.type)
     }
 
-    func parseSchemaMetadata(_ schema: SchemaResult) -> ParsedSchemaMetadata {
+    func parseSchemaMetadata(_ schema: FetchedTableSchema) -> ParsedSchemaMetadata {
         QueryExecutor.parseSchemaMetadata(schema)
     }
 
@@ -244,7 +244,7 @@ extension QueryExecutionCoordinator {
         tabId: UUID,
         capturedGeneration: Int,
         connectionType: DatabaseType,
-        schemaTask: Task<SchemaResult, Error>?
+        schemaTask: Task<FetchedTableSchema, Error>?
     ) {
         let isNonSQL = PluginManager.shared.editorLanguage(for: connectionType) != .sql
         Task(priority: .utility) { [weak self, parent] in
@@ -259,58 +259,69 @@ extension QueryExecutionCoordinator {
             await MainActor.run { [weak self] in
                 guard let self else { return }
                 if let schema {
-                    if parent.tabManager.tabs.contains(where: {
-                        $0.id == tabId && $0.tableContext.tableName == tableName
-                    }) {
-                        applyPhase2Metadata(parsed: QueryExecutor.parseSchemaMetadata(schema), tabId: tabId)
-                    } else {
-                        helpersLogger.info("[fk] phase2 apply skipped, tab closed or table changed table=\(tableName, privacy: .public)")
-                    }
+                    applySchemaMetadata(schema, tabId: tabId, tableName: tableName)
                 }
-                guard capturedGeneration == parent.queryGeneration else { return }
-                resolveRowCount(
-                    tableName: tableName,
-                    tabId: tabId,
-                    capturedGeneration: capturedGeneration,
-                    connectionType: connectionType
-                )
+                if capturedGeneration == parent.queryGeneration {
+                    resolveRowCount(
+                        tableName: tableName,
+                        tabId: tabId,
+                        capturedGeneration: capturedGeneration,
+                        connectionType: connectionType
+                    )
+                }
             }
 
             guard !isNonSQL, let schema else { return }
 
             let columnEnumValues = await parent.fetchEnumValues(
-                columnInfo: schema.columnInfo,
+                columnInfo: schema.columns,
                 tableName: tableName,
                 connectionType: connectionType
             )
+            guard !columnEnumValues.isEmpty else { return }
 
-            guard !columnEnumValues.isEmpty else {
-                return
-            }
             await MainActor.run { [weak self] in
-                guard let self else { return }
-                guard capturedGeneration == parent.queryGeneration else { return }
-                guard !Task.isCancelled else { return }
-                guard parent.tabManager.tabs.contains(where: { $0.id == tabId }) else { return }
-                let existing = parent.tabSessionRegistry.tableRows(for: tabId)
-                let hasNewValues = columnEnumValues.contains { key, value in
-                    existing.columnEnumValues[key] != value
-                }
-                if hasNewValues {
-                    parent.mutateActiveTableRows(for: tabId) { rows in
-                        for (col, vals) in columnEnumValues {
-                            rows.columnEnumValues[col] = vals
-                        }
-                        return .columnsReplaced
-                    }
-                    parent.tabManager.mutate(tabId: tabId) { $0.metadataVersion += 1 }
-                    if let activeIdx = parent.tabManager.selectedTabIndex,
-                       activeIdx < parent.tabManager.tabs.count,
-                       parent.tabManager.tabs[activeIdx].id == tabId {
-                        parent.dataTabDelegate?.tableViewCoordinator?.refreshForeignKeyColumns()
-                    }
-                }
+                guard let self, !Task.isCancelled else { return }
+                applyEnumValues(columnEnumValues, tabId: tabId, tableName: tableName)
             }
+        }
+    }
+
+    private func tabShowsTable(_ tabId: UUID, _ tableName: String) -> Bool {
+        parent.tabManager.tabs.contains { $0.id == tabId && $0.tableContext.tableName == tableName }
+    }
+
+    private func isActiveTab(_ tabId: UUID) -> Bool {
+        guard let activeIdx = parent.tabManager.selectedTabIndex,
+              activeIdx < parent.tabManager.tabs.count else { return false }
+        return parent.tabManager.tabs[activeIdx].id == tabId
+    }
+
+    private func applySchemaMetadata(_ schema: FetchedTableSchema, tabId: UUID, tableName: String) {
+        guard tabShowsTable(tabId, tableName) else {
+            helpersLogger.info("[fk] phase2 apply skipped, tab closed or table changed table=\(tableName, privacy: .public)")
+            return
+        }
+        applyPhase2Metadata(parsed: QueryExecutor.parseSchemaMetadata(schema), tabId: tabId)
+    }
+
+    private func applyEnumValues(_ values: [String: [String]], tabId: UUID, tableName: String) {
+        guard tabShowsTable(tabId, tableName) else { return }
+        let existing = parent.tabSessionRegistry.tableRows(for: tabId)
+        let hasNewValues = values.contains { key, value in
+            existing.columnEnumValues[key] != value
+        }
+        guard hasNewValues else { return }
+
+        parent.mutateActiveTableRows(for: tabId) { rows in
+            for (col, vals) in values {
+                rows.columnEnumValues[col] = vals
+            }
+            return .columnsReplaced
+        }
+        parent.tabManager.mutate(tabId: tabId) { $0.metadataVersion += 1 }
+        if isActiveTab(tabId) {
+            parent.dataTabDelegate?.tableViewCoordinator?.refreshForeignKeyColumns()
         }
     }
 
@@ -341,14 +352,12 @@ extension QueryExecutionCoordinator {
             parent.changeManager.setPrimaryKeyColumns(parsed.primaryKeyColumns)
         }
 
-        let isActiveTab = parent.tabManager.selectedTabIndex.map { activeIdx in
-            activeIdx < parent.tabManager.tabs.count && parent.tabManager.tabs[activeIdx].id == tabId
-        } ?? false
-        if isActiveTab {
+        let refreshed = isActiveTab(tabId)
+        if refreshed {
             parent.dataTabDelegate?.tableViewCoordinator?.refreshForeignKeyColumns()
         }
         helpersLogger.info(
-            "[fk] phase2 applied tab=\(tabId, privacy: .public) fks=\(parsed.columnForeignKeys?.count ?? -1) defaults=\(parsed.columnDefaults.count) activeTabRefreshed=\(isActiveTab)"
+            "[fk] phase2 applied tab=\(tabId, privacy: .public) fks=\(parsed.columnForeignKeys?.count ?? -1) defaults=\(parsed.columnDefaults.count) activeTabRefreshed=\(refreshed)"
         )
     }
 

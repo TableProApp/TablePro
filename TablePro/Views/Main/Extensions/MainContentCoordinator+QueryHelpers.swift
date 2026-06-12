@@ -11,7 +11,7 @@ extension MainContentCoordinator {
         queryExecutionCoordinator.resolveRowCap(sql: sql, tabType: tabType)
     }
 
-    func parseSchemaMetadata(_ schema: SchemaResult) -> ParsedSchemaMetadata {
+    func parseSchemaMetadata(_ schema: FetchedTableSchema) -> ParsedSchemaMetadata {
         queryExecutionCoordinator.parseSchemaMetadata(schema)
     }
 
@@ -60,7 +60,7 @@ extension MainContentCoordinator {
         tabId: UUID,
         capturedGeneration: Int,
         connectionType: DatabaseType,
-        schemaTask: Task<SchemaResult, Error>?
+        schemaTask: Task<FetchedTableSchema, Error>?
     ) {
         queryExecutionCoordinator.launchPhase2Work(
             tableName: tableName,

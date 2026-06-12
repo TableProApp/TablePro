@@ -178,7 +178,7 @@ struct QueryExecutorTests {
                 referencedTable: "roles", referencedColumn: "id"
             )
         ]
-        let schema: SchemaResult = (columnInfo: columns, fkInfo: fks, approximateRowCount: 1_234)
+        let schema = FetchedTableSchema(columns: columns, foreignKeys: fks, approximateRowCount: 1_234)
 
         let parsed = QueryExecutor.parseSchemaMetadata(schema)
 
@@ -201,7 +201,7 @@ struct QueryExecutorTests {
                 defaultValue: nil, extra: nil, charset: nil, collation: nil, comment: nil
             )
         ]
-        let schema: SchemaResult = (columnInfo: columns, fkInfo: [], approximateRowCount: nil)
+        let schema = FetchedTableSchema(columns: columns, foreignKeys: [], approximateRowCount: nil)
 
         let parsed = QueryExecutor.parseSchemaMetadata(schema)
 
@@ -211,14 +211,14 @@ struct QueryExecutorTests {
 
     @Test("parseSchemaMetadata keeps a failed foreign key fetch distinguishable from zero foreign keys")
     func parseSchemaMetadataNilForeignKeys() {
-        let schema: SchemaResult = (columnInfo: [], fkInfo: nil, approximateRowCount: nil)
+        let schema = FetchedTableSchema(columns: [], foreignKeys: nil, approximateRowCount: nil)
         let parsed = QueryExecutor.parseSchemaMetadata(schema)
         #expect(parsed.columnForeignKeys == nil)
     }
 
     @Test("parseSchemaMetadata returns empty containers when input is empty")
     func parseSchemaMetadataEmpty() {
-        let schema: SchemaResult = (columnInfo: [], fkInfo: [], approximateRowCount: nil)
+        let schema = FetchedTableSchema(columns: [], foreignKeys: [], approximateRowCount: nil)
         let parsed = QueryExecutor.parseSchemaMetadata(schema)
         #expect(parsed.primaryKeyColumns.isEmpty)
         #expect(parsed.columnDefaults.isEmpty)
