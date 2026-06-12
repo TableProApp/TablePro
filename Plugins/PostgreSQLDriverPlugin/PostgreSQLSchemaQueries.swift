@@ -7,6 +7,13 @@
 //
 
 import Foundation
+import TableProPluginKit
+
+enum PostgreSQLSchemaProbe: Equatable {
+    case schema(String)
+    case empty
+    case failed
+}
 
 enum PostgreSQLSchemaQueries {
     /// Returns the first schema on the effective search path, or SQL NULL
@@ -22,6 +29,19 @@ enum PostgreSQLSchemaQueries {
     /// database without a `public` schema still gets a usable default schema
     /// instead of silently showing no tables.
     static let schemaFallbackQueries = [firstSearchPathSchema, listSchemas]
+
+    /// Redshift fallback: ends with the `USAGE`-filtered schema list so the
+    /// chosen default is one the connected role can actually read.
+    static let schemaFallbackQueriesRedshift = [firstSearchPathSchema, listSchemasRedshift]
+
+    /// Distinguishes a probe whose query failed (keep the prior schema, do
+    /// not fall back on a transient error) from one that succeeded with SQL
+    /// NULL (empty search path, try the next fallback query).
+    static func probe(rows: [[PluginCellValue]]?) -> PostgreSQLSchemaProbe {
+        guard let rows else { return .failed }
+        guard let schema = rows.first?.first?.asText, !schema.isEmpty else { return .empty }
+        return .schema(schema)
+    }
 
     /// Lists user-visible schemas, excluding PostgreSQL's built-in `pg_*`
     /// namespaces and `information_schema`.

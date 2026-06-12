@@ -26,7 +26,10 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     }
 
     init(config: DriverConnectionConfig) {
-        self.core = LibPQDriverCore(config: config)
+        self.core = LibPQDriverCore(
+            config: config,
+            schemaFallbackQueries: PostgreSQLSchemaQueries.schemaFallbackQueriesRedshift
+        )
     }
 
     // MARK: - EXPLAIN

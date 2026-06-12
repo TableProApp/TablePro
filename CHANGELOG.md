@@ -25,10 +25,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The sidebar filter, database switcher, and connection switcher now use the same fuzzy matching as the Quick Switcher, so abbreviations like `upv` find `user_profile_view`.
 - Refresh (Cmd+R) now acts only on the focused window's connection, instead of also reloading views and clearing autocomplete caches for every other open connection.
 - Holding Cmd+R no longer queues a backlog of refreshes that kept running after the key was released; refresh fires once per key press, and rapid presses collapse into a single reload.
+- Switching PostgreSQL schemas now sets the search path to just the selected schema instead of also keeping "public" on it. Unqualified references to objects in "public", such as extension functions, need a "public." prefix while another schema is selected. (#1662)
 
 ### Fixed
 
-- PostgreSQL databases without a "public" schema now load tables from the first available schema, the schema selector also appears when only one schema exists, and the database list counts tables in every user schema instead of only "public". Switching schemas no longer keeps "public" on the search path. (#1662)
+- PostgreSQL databases without a "public" schema now load tables from the first available schema, the schema selector also appears when only one schema exists, and the database list counts tables in every user schema instead of only "public". (#1662)
 - Format Query can now be undone with Cmd+Z; the formatting is applied as a single editor edit instead of clearing the undo history. (#1645)
 - Format Query now formats only the selected text when a selection is active, and the full query when nothing is selected. (#1656)
 - Foreign key jump arrows no longer disappear after sorting, filtering, or paginating a table, and a failed foreign key lookup is retried on the next load instead of hiding the arrows for the whole session.
