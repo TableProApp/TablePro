@@ -304,6 +304,7 @@ extension MainContentCoordinator {
             || tab.hasUserActiveSort {
             return false
         }
+        if tab.tabType == .createTable { return !toolbarState.hasCreateTablePending }
         if tab.isPreview { return true }
         if tab.tabType == .query,
            tab.execution.lastExecutedAt == nil,

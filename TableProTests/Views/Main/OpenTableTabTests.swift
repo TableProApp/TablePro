@@ -82,6 +82,30 @@ struct OpenTableTabTests {
         #expect(tabManager.selectedTab?.filterState.isVisible == false)
     }
 
+    @Test("openTableTab converts a createTable tab in place after the table is created")
+    @MainActor
+    func convertsCreateTableTabInPlace() {
+        let connection = TestFixtures.makeConnection(database: "db_a")
+        let tabManager = QueryTabManager()
+        let coordinator = MainContentCoordinator(
+            connection: connection,
+            tabManager: tabManager,
+            changeManager: DataChangeManager(),
+            toolbarState: ConnectionToolbarState()
+        )
+        defer { coordinator.teardown() }
+
+        tabManager.addCreateTableTab(databaseName: "db_a")
+        #expect(tabManager.tabs.count == 1)
+        #expect(tabManager.selectedTab?.tabType == .createTable)
+
+        coordinator.openTableTab("users")
+
+        #expect(tabManager.tabs.count == 1)
+        #expect(tabManager.selectedTab?.tabType == .table)
+        #expect(tabManager.selectedTab?.tableContext.tableName == "users")
+    }
+
     @Test("Clicking the active table again is a no-op")
     @MainActor
     func clickingActiveTableAgainIsNoOp() throws {
@@ -122,6 +146,25 @@ struct OpenTableTabTests {
         let coordinator = Self.makeCoordinator()
         defer { coordinator.teardown() }
         try coordinator.tabManager.addTableTab(tableName: "users", databaseType: .mysql, databaseName: "db")
+        #expect(coordinator.isActiveTabReusable == false)
+    }
+
+    @Test("A createTable tab without a committable design is reusable")
+    @MainActor
+    func createTableTabIsReusable() {
+        let coordinator = Self.makeCoordinator()
+        defer { coordinator.teardown() }
+        coordinator.tabManager.addCreateTableTab(databaseName: "db")
+        #expect(coordinator.isActiveTabReusable == true)
+    }
+
+    @Test("A createTable tab with a committable design is protected and not reusable")
+    @MainActor
+    func createTableTabWithPendingDesignIsNotReusable() {
+        let coordinator = Self.makeCoordinator()
+        defer { coordinator.teardown() }
+        coordinator.tabManager.addCreateTableTab(databaseName: "db")
+        coordinator.toolbarState.hasCreateTablePending = true
         #expect(coordinator.isActiveTabReusable == false)
     }
 

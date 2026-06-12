@@ -196,6 +196,9 @@ final class ConnectionToolbarState {
     /// Whether the structure view has pending schema changes
     var hasStructureChanges: Bool = false
 
+    /// Whether the Create Table tab has a committable definition (name + valid column)
+    var hasCreateTablePending: Bool = false
+
     /// Whether the current editor has non-empty query text
     var hasQueryText: Bool = false
 

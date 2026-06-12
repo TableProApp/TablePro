@@ -45,6 +45,7 @@ struct CreateTableView: View {
     @State private var showError = false
     @State private var previewSQL = ""
     @State private var gridDelegate: CreateTableGridDelegate
+    @State private var actionHandler = CreateTableActionHandler()
 
     // DataGridView state
     @State private var selectedRows: Set<Int> = []
@@ -85,10 +86,18 @@ struct CreateTableView: View {
             if structureChangeManager.workingColumns.isEmpty {
                 structureChangeManager.addNewColumn()
             }
+            actionHandler.createTable = { createTable() }
+            coordinator?.createTableActions = actionHandler
+            coordinator?.toolbarState.hasCreateTablePending = isReadyToCreate
         }
-        .onDisappear { selectionState.indices = [] }
+        .onDisappear {
+            selectionState.indices = []
+            coordinator?.createTableActions = nil
+            coordinator?.toolbarState.hasCreateTablePending = false
+        }
         .onChange(of: selectedRows) { _, newRows in selectionState.indices = newRows }
         .onChange(of: selectedTab) { updateGridDelegate() }
+        .onChange(of: isReadyToCreate) { updateCreateTablePendingState() }
         .alert(String(localized: "Create Table Failed"), isPresented: $showError) {
             Button("OK") {}
         } message: {
@@ -340,8 +349,18 @@ struct CreateTableView: View {
 
     // MARK: - Create Table
 
+    private var isReadyToCreate: Bool {
+        !isCreating
+            && !tableName.isEmpty
+            && structureChangeManager.workingColumns.contains { !$0.name.isEmpty && !$0.dataType.isEmpty }
+    }
+
+    private func updateCreateTablePendingState() {
+        coordinator?.toolbarState.hasCreateTablePending = isReadyToCreate
+    }
+
     private func createTable() {
-        guard !tableName.isEmpty else { return }
+        guard !isCreating, !tableName.isEmpty else { return }
         guard let sql = buildCreateTableSQL() else {
             errorMessage = String(localized: "Add at least one column with a name and type")
             showError = true
@@ -350,6 +369,7 @@ struct CreateTableView: View {
 
         isCreating = true
         errorMessage = nil
+        updateCreateTablePendingState()
 
         Task {
             defer { isCreating = false }
@@ -389,11 +409,11 @@ struct CreateTableView: View {
                     wasSuccessful: true
                 )
 
-                AppCommands.shared.refreshData.send(connection.id)
-
                 if let coordinator {
                     coordinator.openTableTab(tableName)
                 }
+
+                AppCommands.shared.refreshData.send(connection.id)
             } catch {
                 Self.logger.error("Create table failed: \(error.localizedDescription, privacy: .public)")
                 errorMessage = error.localizedDescription

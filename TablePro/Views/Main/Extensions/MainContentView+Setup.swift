@@ -170,6 +170,11 @@ extension MainContentView {
     // MARK: - Command Actions Setup
 
     func updateToolbarPendingState() {
+        if tabManager.selectedTab?.tabType == .createTable {
+            toolbarState.hasDataPendingChanges = false
+            toolbarState.hasPendingChanges = toolbarState.hasCreateTablePending
+            return
+        }
         let hasDataChanges =
             changeManager.hasChanges
             || !pendingTruncates.isEmpty

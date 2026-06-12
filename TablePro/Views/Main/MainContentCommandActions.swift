@@ -584,6 +584,10 @@ final class MainContentCommandActions {
     // MARK: - Data Operations (Group A — Called Directly)
 
     func saveChanges() {
+        if coordinator?.tabManager.selectedTab?.tabType == .createTable {
+            coordinator?.createTableActions?.createTable?()
+            return
+        }
         // Check if we're in structure view mode
         if coordinator?.tabManager.selectedTab?.display.resultsViewMode == .structure {
             coordinator?.structureActions?.saveChanges?()

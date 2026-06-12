@@ -30,6 +30,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - PostgreSQL databases without a "public" schema now load tables from the first available schema, the schema selector also appears when only one schema exists, and the database list counts tables in every user schema instead of only "public". (#1662)
+- Creating a table now turns the Create Table tab into the new table's tab instead of leaving the creation tab open next to a duplicate, and the sidebar shows the new table without a manual refresh. (#1664)
+- Cmd+S in the Create Table tab now creates the table, matching the Save shortcut everywhere else. (#1664)
 - Format Query can now be undone with Cmd+Z; the formatting is applied as a single editor edit instead of clearing the undo history. (#1645)
 - Format Query now formats only the selected text when a selection is active, and the full query when nothing is selected. (#1656)
 - Foreign key jump arrows no longer disappear after sorting, filtering, or paginating a table, and a failed foreign key lookup is retried on the next load instead of hiding the arrows for the whole session.
