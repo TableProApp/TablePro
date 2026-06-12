@@ -633,6 +633,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     func refreshForeignKeyColumns() {
         guard let tableView else { return }
         let tableRows = tableRowsProvider()
+        rebuildKindSets(from: tableRows)
         let fkColumnIndices = IndexSet(
             tableView.tableColumns.enumerated().compactMap { displayIndex, tableColumn in
                 guard tableColumn.identifier != ColumnIdentitySchema.rowNumberIdentifier,
