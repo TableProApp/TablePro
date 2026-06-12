@@ -118,6 +118,10 @@ final class QueryExecutor {
     // MARK: - Schema fetch + parse
 
     static func fetchTableSchema(connectionId: UUID, tableName: String) async throws -> SchemaResult {
+        let session = DatabaseManager.shared.session(for: connectionId)
+        queryExecutorLog.info(
+            "[fk] schema fetch start table=\(tableName, privacy: .public) db=\(session?.currentDatabase ?? "default", privacy: .public) schema=\(session?.currentSchema ?? "default", privacy: .public)"
+        )
         let (columns, approximateRowCount) = try await DatabaseManager.shared.withMetadataDriver(
             connectionId: connectionId
         ) { driver in
@@ -136,6 +140,9 @@ final class QueryExecutor {
             )
             foreignKeys = nil
         }
+        queryExecutorLog.info(
+            "[fk] schema fetch done table=\(tableName, privacy: .public) columns=\(columns.count) fks=\(foreignKeys.map { String($0.count) } ?? "failed", privacy: .public)"
+        )
         return (columnInfo: columns, fkInfo: foreignKeys, approximateRowCount: approximateRowCount)
     }
 

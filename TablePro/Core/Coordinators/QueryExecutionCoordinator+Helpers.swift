@@ -25,22 +25,21 @@ extension QueryExecutionCoordinator {
         }
         let tab = parent.tabManager.tabs[idx]
         let tableRows = parent.tabSessionRegistry.tableRows(for: tab.id)
-        guard tab.tableContext.tableName == tableName,
-              !tableRows.columnDefaults.isEmpty,
-              !tab.tableContext.primaryKeyColumns.isEmpty,
-              tableRows.foreignKeysFetched else {
-            return false
-        }
         let enumSetColumnNames: [String] = tableRows.columns.enumerated().compactMap { i, name in
             guard i < tableRows.columnTypes.count,
                   tableRows.columnTypes[i].isEnumType || tableRows.columnTypes[i].isSetType else { return nil }
             return name
         }
-        if !enumSetColumnNames.isEmpty,
-           !enumSetColumnNames.allSatisfy({ tableRows.columnEnumValues[$0] != nil }) {
-            return false
-        }
-        return true
+        let enumsReady = enumSetColumnNames.allSatisfy { tableRows.columnEnumValues[$0] != nil }
+        let cached = tab.tableContext.tableName == tableName
+            && !tableRows.columnDefaults.isEmpty
+            && !tab.tableContext.primaryKeyColumns.isEmpty
+            && tableRows.foreignKeysFetched
+            && enumsReady
+        helpersLogger.info(
+            "[fk] cache check table=\(tableName, privacy: .public) defaults=\(tableRows.columnDefaults.count) pks=\(tab.tableContext.primaryKeyColumns.count) fkFetched=\(tableRows.foreignKeysFetched) fks=\(tableRows.columnForeignKeys.count) enumsReady=\(enumsReady) cached=\(cached)"
+        )
+        return cached
     }
 
     func applyPhase1Result( // swiftlint:disable:this function_parameter_count
@@ -253,14 +252,20 @@ extension QueryExecutionCoordinator {
             guard !parent.isTearingDown else { return }
 
             let schema = try? await schemaTask?.value
+            if schemaTask != nil, schema == nil {
+                helpersLogger.error("[fk] phase2 schema fetch failed or cancelled table=\(tableName, privacy: .public)")
+            }
 
             await MainActor.run { [weak self] in
                 guard let self else { return }
-                if let schema,
-                   parent.tabManager.tabs.contains(where: {
-                       $0.id == tabId && $0.tableContext.tableName == tableName
-                   }) {
-                    applyPhase2Metadata(parsed: QueryExecutor.parseSchemaMetadata(schema), tabId: tabId)
+                if let schema {
+                    if parent.tabManager.tabs.contains(where: {
+                        $0.id == tabId && $0.tableContext.tableName == tableName
+                    }) {
+                        applyPhase2Metadata(parsed: QueryExecutor.parseSchemaMetadata(schema), tabId: tabId)
+                    } else {
+                        helpersLogger.info("[fk] phase2 apply skipped, tab closed or table changed table=\(tableName, privacy: .public)")
+                    }
                 }
                 guard capturedGeneration == parent.queryGeneration else { return }
                 resolveRowCount(
@@ -336,11 +341,15 @@ extension QueryExecutionCoordinator {
             parent.changeManager.setPrimaryKeyColumns(parsed.primaryKeyColumns)
         }
 
-        if let activeIdx = parent.tabManager.selectedTabIndex,
-           activeIdx < parent.tabManager.tabs.count,
-           parent.tabManager.tabs[activeIdx].id == tabId {
+        let isActiveTab = parent.tabManager.selectedTabIndex.map { activeIdx in
+            activeIdx < parent.tabManager.tabs.count && parent.tabManager.tabs[activeIdx].id == tabId
+        } ?? false
+        if isActiveTab {
             parent.dataTabDelegate?.tableViewCoordinator?.refreshForeignKeyColumns()
         }
+        helpersLogger.info(
+            "[fk] phase2 applied tab=\(tabId, privacy: .public) fks=\(parsed.columnForeignKeys?.count ?? -1) defaults=\(parsed.columnDefaults.count) activeTabRefreshed=\(isActiveTab)"
+        )
     }
 
     func launchPhase2Count(

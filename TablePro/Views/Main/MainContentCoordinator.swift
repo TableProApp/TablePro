@@ -1084,6 +1084,11 @@ final class MainContentCoordinator {
         } else {
             needsMetadataFetch = false
         }
+        if let tableName {
+            Self.logger.info(
+                "[fk] metadata decision table=\(tableName, privacy: .public) isEditable=\(isEditable) needsFetch=\(needsMetadataFetch)"
+            )
+        }
         let connId = connectionId
 
         currentQueryTask = Task { [weak self] in

@@ -363,7 +363,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
         let result = try await execute(query: query)
 
-        return result.rows.compactMap { row in
+        let foreignKeys: [PluginForeignKeyInfo] = result.rows.compactMap { row in
             guard let name = row[safe: 0]?.asText,
                   let column = row[safe: 1]?.asText,
                   let refTable = row[safe: 2]?.asText,
@@ -378,6 +378,8 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 onUpdate: (row[safe: 6]?.asText) ?? "NO ACTION"
             )
         }
+        Self.logger.info("[fk] mysql fetchForeignKeys db=\(dbName, privacy: .public) table=\(table, privacy: .public) rows=\(result.rows.count) parsed=\(foreignKeys.count)")
+        return foreignKeys
     }
 
     func fetchAllForeignKeys(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {

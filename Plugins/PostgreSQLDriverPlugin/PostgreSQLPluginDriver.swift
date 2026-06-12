@@ -252,7 +252,7 @@ final class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
             ORDER BY tc.constraint_name
             """
         let result = try await execute(query: query)
-        return result.rows.compactMap { row -> PluginForeignKeyInfo? in
+        let foreignKeys: [PluginForeignKeyInfo] = result.rows.compactMap { row -> PluginForeignKeyInfo? in
             guard row.count >= 7,
                   let name = row[0].asText,
                   let column = row[1].asText,
@@ -269,6 +269,8 @@ final class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
                 onUpdate: row[6].asText ?? "NO ACTION"
             )
         }
+        Self.logger.info("[fk] postgres fetchForeignKeys schema=\(self.core.currentSchema, privacy: .public) table=\(table, privacy: .public) rows=\(result.rows.count) parsed=\(foreignKeys.count)")
+        return foreignKeys
     }
 
     func fetchAllForeignKeys(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {
