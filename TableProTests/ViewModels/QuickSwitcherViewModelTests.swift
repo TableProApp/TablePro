@@ -73,6 +73,22 @@ struct QuickSwitcherViewModelTests {
         #expect(vm.flatItems.allSatisfy { $0.name.localizedCaseInsensitiveContains("u") })
     }
 
+    @Test("Saved query is found by its keyword")
+    func savedQueryFoundByKeyword() async throws {
+        var items = sampleItems()
+        items.append(QuickSwitcherItem(
+            id: "favorite_1",
+            name: "Daily Report",
+            kind: .savedQuery,
+            subtitle: "rpt",
+            payload: "SELECT * FROM reports"
+        ))
+        let vm = makeViewModel(items: items)
+        vm.searchText = "rpt"
+        try await Task.sleep(nanoseconds: 200_000_000)
+        #expect(vm.flatItems.contains { $0.id == "favorite_1" }, "Typing the keyword must surface the saved query")
+    }
+
     @Test("Browse scope caps at maxResults")
     func filterCaps() {
         var items: [QuickSwitcherItem] = []

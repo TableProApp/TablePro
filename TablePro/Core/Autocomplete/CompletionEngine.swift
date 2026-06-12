@@ -31,7 +31,7 @@ final class CompletionEngine {
     // MARK: - Initialization
 
     init(
-        schemaProvider: SQLSchemaProvider,
+        schemaProvider: SQLSchemaProvider?,
         databaseType: DatabaseType? = nil,
         dialect: SQLDialectDescriptor? = nil,
         statementCompletions: [CompletionEntry] = []
@@ -59,6 +59,12 @@ final class CompletionEngine {
     /// Used to seed a filterable completion context before the async fetch completes.
     func keywordCompletions() -> [SQLCompletionItem] {
         provider.statementStartCompletionItems()
+    }
+
+    /// All favorite keyword items, used to seed the pre-debounce completion
+    /// session so favorites are filterable before the async fetch completes.
+    func allFavoriteItems() -> [SQLCompletionItem] {
+        provider.allFavoriteItems()
     }
 
     /// Completions for a single-table filter expression (a bare WHERE-clause

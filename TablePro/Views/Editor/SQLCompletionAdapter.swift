@@ -8,14 +8,11 @@
 import AppKit
 import CodeEditSourceEditor
 import CodeEditTextView
-import os
 import SwiftUI
 
 /// Adapts the existing CompletionEngine to CodeEditSourceEditor's suggestion system
 @MainActor
 final class SQLCompletionAdapter: CodeSuggestionDelegate {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "SQLCompletionAdapter")
-
     // MARK: - Properties
 
     private struct CompletionSession {
@@ -28,7 +25,7 @@ final class SQLCompletionAdapter: CodeSuggestionDelegate {
         var context: CompletionContext
     }
 
-    private var completionEngine: CompletionEngine?
+    private var completionEngine: CompletionEngine
     private var favoriteKeywords: [String: (name: String, query: String)] = [:]
     private var session: CompletionSession?
     private let debounceNanoseconds: UInt64 = 50_000_000
@@ -36,31 +33,31 @@ final class SQLCompletionAdapter: CodeSuggestionDelegate {
     // MARK: - Initialization
 
     init(schemaProvider: SQLSchemaProvider?, databaseType: DatabaseType? = nil) {
-        if let provider = schemaProvider {
-            let dialect = databaseType.flatMap { PluginManager.shared.sqlDialect(for: $0) }
-            let completions = databaseType.flatMap { PluginManager.shared.statementCompletions(for: $0) } ?? []
-            self.completionEngine = CompletionEngine(
-                schemaProvider: provider, databaseType: databaseType,
-                dialect: dialect, statementCompletions: completions
-            )
-        }
+        self.completionEngine = Self.makeEngine(schemaProvider: schemaProvider, databaseType: databaseType)
     }
 
     /// Update the schema provider (e.g. when connection changes)
     func updateSchemaProvider(_ provider: SQLSchemaProvider, databaseType: DatabaseType? = nil) {
-        let dialect = databaseType.flatMap { PluginManager.shared.sqlDialect(for: $0) }
-        let completions = databaseType.flatMap { PluginManager.shared.statementCompletions(for: $0) } ?? []
-        self.completionEngine = CompletionEngine(
-            schemaProvider: provider, databaseType: databaseType,
-            dialect: dialect, statementCompletions: completions
-        )
-        completionEngine?.updateFavoriteKeywords(favoriteKeywords)
+        completionEngine = Self.makeEngine(schemaProvider: provider, databaseType: databaseType)
+        completionEngine.updateFavoriteKeywords(favoriteKeywords)
     }
 
     /// Update favorite keywords for autocomplete expansion
     func updateFavoriteKeywords(_ keywords: [String: (name: String, query: String)]) {
         favoriteKeywords = keywords
-        completionEngine?.updateFavoriteKeywords(keywords)
+        completionEngine.updateFavoriteKeywords(keywords)
+    }
+
+    private static func makeEngine(
+        schemaProvider: SQLSchemaProvider?,
+        databaseType: DatabaseType?
+    ) -> CompletionEngine {
+        let dialect = databaseType.flatMap { PluginManager.shared.sqlDialect(for: $0) }
+        let completions = databaseType.flatMap { PluginManager.shared.statementCompletions(for: $0) } ?? []
+        return CompletionEngine(
+            schemaProvider: schemaProvider, databaseType: databaseType,
+            dialect: dialect, statementCompletions: completions
+        )
     }
 
     // MARK: - CodeSuggestionDelegate
@@ -74,11 +71,6 @@ final class SQLCompletionAdapter: CodeSuggestionDelegate {
         cursorPosition: CursorPosition,
         isManualTrigger: Bool
     ) async -> (windowPosition: CursorPosition, items: [CodeSuggestionEntry])? {
-        guard let completionEngine else {
-            Self.logger.debug("Completion skipped: no engine (schema provider was nil at init)")
-            return nil
-        }
-
         seedIntermediateSessionIfNeeded(textView: textView, cursorPosition: cursorPosition)
 
         do {
@@ -161,9 +153,9 @@ final class SQLCompletionAdapter: CodeSuggestionDelegate {
     }
 
     private func seedIntermediateSessionIfNeeded(textView: TextViewController, cursorPosition: CursorPosition) {
-        guard session == nil, let completionEngine else { return }
+        guard session == nil else { return }
 
-        let keywordItems = completionEngine.keywordCompletions()
+        let keywordItems = completionEngine.keywordCompletions() + completionEngine.allFavoriteItems()
         guard !keywordItems.isEmpty else { return }
 
         let offset = cursorPosition.range.location
@@ -193,8 +185,8 @@ final class SQLCompletionAdapter: CodeSuggestionDelegate {
         textView: TextViewController,
         cursorPosition: CursorPosition
     ) -> [CodeSuggestionEntry]? {
-        guard let context = session?.context,
-              let provider = completionEngine?.provider else { return nil }
+        guard let context = session?.context else { return nil }
+        let provider = completionEngine.provider
 
         let offset = cursorPosition.range.location
         guard let nsText = textView.textView.textStorage?.string as NSString?,
@@ -223,7 +215,8 @@ final class SQLCompletionAdapter: CodeSuggestionDelegate {
         textView: TextViewController,
         cursorPosition: CursorPosition?
     ) {
-        guard let entry = item as? SQLSuggestionEntry,
+        guard !textView.textView.hasMarkedText(),
+              let entry = item as? SQLSuggestionEntry,
               let context = session?.context else { return }
 
         let replaceRange = SQLTokenBoundary.replacementRange(

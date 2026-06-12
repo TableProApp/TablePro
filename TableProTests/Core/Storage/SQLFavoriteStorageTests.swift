@@ -215,6 +215,89 @@ struct SQLFavoriteStorageTests {
         #expect(map.count >= 2)
     }
 
+    @Test("Keyword map without connection returns only global keywords")
+    func fetchKeywordMapGlobalOnly() async {
+        let scoped = makeFavorite(name: "Scoped", query: "SELECT 1", keyword: "scoped", connectionId: UUID())
+        let global = makeFavorite(name: "Global", query: "SELECT 2", keyword: "global")
+
+        _ = await storage.addFavorite(scoped)
+        _ = await storage.addFavorite(global)
+
+        let map = await storage.fetchKeywordMap()
+        #expect(map["global"] != nil)
+        #expect(map["scoped"] == nil)
+    }
+
+    // MARK: - Connection Lifecycle
+
+    @Test("Delete favorites by connectionId removes scoped, keeps global and others")
+    func deleteFavoritesByConnection() async {
+        let connectionId = UUID()
+        let otherConnectionId = UUID()
+        let scoped = makeFavorite(name: "Scoped", keyword: "sc", connectionId: connectionId)
+        let other = makeFavorite(name: "Other", connectionId: otherConnectionId)
+        let global = makeFavorite(name: "Global")
+
+        _ = await storage.addFavorite(scoped)
+        _ = await storage.addFavorite(other)
+        _ = await storage.addFavorite(global)
+
+        _ = await storage.deleteFavorites(connectionId: connectionId)
+
+        let remaining = await storage.fetchFavorites()
+        #expect(!remaining.contains { $0.id == scoped.id })
+        #expect(remaining.contains { $0.id == other.id })
+        #expect(remaining.contains { $0.id == global.id })
+    }
+
+    @Test("Orphan prune removes favorites of dead connections only")
+    func pruneOrphanedFavorites() async {
+        let liveConnectionId = UUID()
+        let deadConnectionId = UUID()
+        let live = makeFavorite(name: "Live", keyword: "live", connectionId: liveConnectionId)
+        let dead = makeFavorite(name: "Dead", keyword: "dead", connectionId: deadConnectionId)
+        let global = makeFavorite(name: "Global", keyword: "glob")
+
+        _ = await storage.addFavorite(live)
+        _ = await storage.addFavorite(dead)
+        _ = await storage.addFavorite(global)
+
+        let pruned = await storage.removeOrphanedFavorites(retaining: [liveConnectionId])
+        #expect(pruned == 1)
+
+        let remaining = await storage.fetchFavorites()
+        #expect(remaining.contains { $0.id == live.id })
+        #expect(!remaining.contains { $0.id == dead.id })
+        #expect(remaining.contains { $0.id == global.id })
+    }
+
+    @Test("Orphan prune is skipped when no active connections are known")
+    func pruneSkippedWithoutActiveConnections() async {
+        let scoped = makeFavorite(name: "Scoped", connectionId: UUID())
+        _ = await storage.addFavorite(scoped)
+
+        let pruned = await storage.removeOrphanedFavorites(retaining: [])
+        #expect(pruned == 0)
+
+        let remaining = await storage.fetchFavorites()
+        #expect(remaining.contains { $0.id == scoped.id })
+    }
+
+    @Test("hasFavorites reflects scoped favorites only")
+    func hasFavoritesByConnection() async {
+        let connectionId = UUID()
+        let emptyConnectionId = UUID()
+        _ = await storage.addFavorite(makeFavorite(name: "Scoped", connectionId: connectionId))
+        _ = await storage.addFavorite(makeFavorite(name: "Global"))
+
+        let scopedResult = await storage.hasFavorites(connectionIds: [connectionId])
+        let emptyResult = await storage.hasFavorites(connectionIds: [emptyConnectionId])
+        let noneResult = await storage.hasFavorites(connectionIds: [])
+        #expect(scopedResult)
+        #expect(!emptyResult)
+        #expect(!noneResult)
+    }
+
     // MARK: - FTS5 Search
 
     @Test("Search finds favorites by query text")

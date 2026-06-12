@@ -51,7 +51,9 @@ Enter a name, the SQL text, and optionally a keyword and scope.
 
 Assign a unique keyword to a favorite (e.g., `selall`). Start typing the keyword in the SQL editor and it shows up in the autocomplete popup as a starred suggestion with the favorite's name. Press Tab or Enter to insert the full SQL.
 
-Keywords must be unique across all favorites in the same scope.
+Keywords must be unique across all favorites in the same scope. Typing a keyword in the Quick Switcher (`Shift+Cmd+O`) also finds the saved query.
+
+A favorite saved with a connection scope belongs to that connection: it appears only there, and deleting the connection deletes its saved queries. Use the **Global** scope for queries you want on every connection.
 
 {/* Screenshot: Keyword expansion in autocomplete */}
 <Frame caption="Keyword expansion in the editor autocomplete">

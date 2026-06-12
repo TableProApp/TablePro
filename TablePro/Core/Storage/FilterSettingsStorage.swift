@@ -304,6 +304,22 @@ final class FilterSettingsStorage {
         ) + ".browse"
     }
 
+    func removeFilters(for connectionId: UUID) {
+        let id = connectionId.uuidString
+        let encodedPrefix = (id.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? id) + "."
+        let fm = FileManager.default
+        do {
+            let files = try fm.contentsOfDirectory(at: filterStateDirectory, includingPropertiesForKeys: nil)
+            for file in files where file.lastPathComponent.hasPrefix(encodedPrefix) {
+                try? fm.removeItem(at: file)
+            }
+        } catch {
+            Self.logger.error("Failed to enumerate filter state directory: \(error.localizedDescription)")
+        }
+        lastFiltersCache = lastFiltersCache.filter { !$0.key.hasPrefix(encodedPrefix) }
+        browseSearchCache = browseSearchCache.filter { !$0.key.hasPrefix(encodedPrefix) }
+    }
+
     func clearAllLastFilters() {
         let fm = FileManager.default
         do {

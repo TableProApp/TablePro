@@ -13,7 +13,7 @@ final class SQLCompletionProvider {
     // MARK: - Properties
 
     private let contextAnalyzer = SQLContextAnalyzer()
-    private let schemaProvider: SQLSchemaProvider
+    private let schemaProvider: SQLSchemaProvider?
     private var databaseType: DatabaseType?
     private var cachedDialect: SQLDialectDescriptor?
     private var cachedFunctionItems: [SQLCompletionItem]?
@@ -40,7 +40,7 @@ final class SQLCompletionProvider {
 
     // MARK: - Init
 
-    init(schemaProvider: SQLSchemaProvider, databaseType: DatabaseType? = nil,
+    init(schemaProvider: SQLSchemaProvider?, databaseType: DatabaseType? = nil,
          dialect: SQLDialectDescriptor? = nil, statementCompletions: [CompletionEntry] = []) {
         self.schemaProvider = schemaProvider
         self.databaseType = databaseType
@@ -62,7 +62,7 @@ final class SQLCompletionProvider {
     }
 
     func retrySchemaIfNeeded() async {
-        await schemaProvider.retryLoadSchemaIfNeeded()
+        await schemaProvider?.retryLoadSchemaIfNeeded()
     }
 
     // MARK: - Public API
@@ -133,6 +133,7 @@ final class SQLCompletionProvider {
         // namespace fallback also covers aliases that spuriously resolve to a
         // schema name parsed out of the FROM clause itself.
         if let dotPrefix = context.dotPrefix {
+            guard let schemaProvider else { return [] }
             if let tableName = await schemaProvider.resolveAlias(dotPrefix, in: context.tableReferences) {
                 let schema = context.tableReferences.first {
                     $0.tableName.caseInsensitiveCompare(tableName) == .orderedSame
@@ -153,8 +154,8 @@ final class SQLCompletionProvider {
         switch context.clauseType {
         case .from, .join:
             // Tables + schema/database names + JOIN/clause transition keywords
-            items = await schemaProvider.tableCompletionItems()
-            items += await schemaProvider.namespaceCompletionItems()
+            items = await schemaProvider?.tableCompletionItems() ?? []
+            items += await schemaProvider?.namespaceCompletionItems() ?? []
             items += filterKeywords([
                 "INNER JOIN", "LEFT JOIN", "RIGHT JOIN", "FULL JOIN",
                 "LEFT OUTER JOIN", "RIGHT OUTER JOIN", "FULL OUTER JOIN",
@@ -165,7 +166,7 @@ final class SQLCompletionProvider {
 
         case .into:
             // Tables + INSERT continuation keywords
-            items = await schemaProvider.tableCompletionItems()
+            items = await schemaProvider?.tableCompletionItems() ?? []
             items += filterKeywords([
                 "VALUES", "SELECT", "SET",
                 "INNER JOIN", "LEFT JOIN", "RIGHT JOIN", "FULL JOIN",
@@ -235,7 +236,7 @@ final class SQLCompletionProvider {
             // Add qualified column suggestions (table.column) for join conditions
             for ref in context.tableReferences {
                 let qualifier = ref.alias ?? ref.tableName
-                let cols = await schemaProvider.columnCompletionItems(for: ref.tableName, schema: ref.schema)
+                let cols = await schemaProvider?.columnCompletionItems(for: ref.tableName, schema: ref.schema) ?? []
                 for col in cols {
                     items.append(SQLCompletionItem(
                         label: "\(qualifier).\(col.label)",
@@ -299,14 +300,14 @@ final class SQLCompletionProvider {
         case .set:
             // Columns for UPDATE SET clause + transition keywords
             if let firstTable = context.tableReferences.first {
-                items = await schemaProvider.columnCompletionItems(for: firstTable.tableName, schema: firstTable.schema)
+                items = await schemaProvider?.columnCompletionItems(for: firstTable.tableName, schema: firstTable.schema) ?? []
             }
             items += filterKeywords(["WHERE", "RETURNING"])
 
         case .insertColumns:
             // Columns for INSERT column list
             if let firstTable = context.tableReferences.first {
-                items = await schemaProvider.columnCompletionItems(for: firstTable.tableName, schema: firstTable.schema)
+                items = await schemaProvider?.columnCompletionItems(for: firstTable.tableName, schema: firstTable.schema) ?? []
             }
 
         case .values:
@@ -375,7 +376,7 @@ final class SQLCompletionProvider {
         case .alterTableColumn:
             // After ALTER TABLE tablename DROP/MODIFY/CHANGE/RENAME or AFTER/BEFORE - suggest column names
             if let firstTable = context.tableReferences.first {
-                items = await schemaProvider.columnCompletionItems(for: firstTable.tableName, schema: firstTable.schema)
+                items = await schemaProvider?.columnCompletionItems(for: firstTable.tableName, schema: firstTable.schema) ?? []
             }
 
         case .createTable:
@@ -439,13 +440,13 @@ final class SQLCompletionProvider {
 
         case .dropObject:
             // After DROP TABLE/INDEX/VIEW - suggest tables
-            items = await schemaProvider.tableCompletionItems()
+            items = await schemaProvider?.tableCompletionItems() ?? []
             items += filterKeywords(["IF EXISTS", "CASCADE", "RESTRICT"])
 
         case .createIndex:
             if context.tableReferences.isEmpty {
                 // Before ON tablename — suggest tables and ON keyword
-                items = await schemaProvider.tableCompletionItems()
+                items = await schemaProvider?.tableCompletionItems() ?? []
                 items += filterKeywords(["ON"])
             } else {
                 // After ON tablename (inside parens) — suggest columns
@@ -456,16 +457,22 @@ final class SQLCompletionProvider {
         case .createView:
             // After CREATE VIEW - suggest SELECT
             items = filterKeywords(["SELECT", "AS"])
-            items += await schemaProvider.tableCompletionItems()
+            items += await schemaProvider?.tableCompletionItems() ?? []
 
         case .unknown:
             items = statementStartCompletionItems()
-            items += await schemaProvider.tableCompletionItems()
+            items += await schemaProvider?.tableCompletionItems() ?? []
         }
 
         items += favoriteCompletions(matching: context.prefix)
 
         return items
+    }
+
+    func allFavoriteItems() -> [SQLCompletionItem] {
+        favoriteKeywords
+            .sorted { $0.key.localizedCaseInsensitiveCompare($1.key) == .orderedAscending }
+            .map { SQLCompletionItem.favorite(keyword: $0.key, name: $0.value.name, query: $0.value.query) }
     }
 
     private func favoriteCompletions(matching prefix: String) -> [SQLCompletionItem] {
@@ -507,9 +514,9 @@ final class SQLCompletionProvider {
     /// Columns from explicit table references, or all cached schema columns as fallback
     private func columnItems(for references: [TableReference]) async -> [SQLCompletionItem] {
         if references.isEmpty {
-            return await schemaProvider.allColumnsFromCachedTables()
+            return await schemaProvider?.allColumnsFromCachedTables() ?? []
         }
-        return await schemaProvider.allColumnsInScope(for: references)
+        return await schemaProvider?.allColumnsInScope(for: references) ?? []
     }
 
     /// Filter to specific keywords

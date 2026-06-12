@@ -10,6 +10,7 @@ import os
 private enum QuickSwitcherRanking {
     static let maxResults = 200
     static let subtitleMatchPenalty = 0.6
+    static let keywordMatchWeight = 1.0
     static let frecencyBoost = 0.5
     static let openTabBoost = 1.2
 }
@@ -318,13 +319,25 @@ internal final class QuickSwitcherViewModel {
         for item: QuickSwitcherItem,
         query: String
     ) -> (score: Double, matchedIndices: [Int])? {
-        if let nameMatch = FuzzyMatcher.match(query: query, candidate: item.name) {
-            return (Double(nameMatch.score), nameMatch.matchedIndices)
+        let nameMatch = FuzzyMatcher.match(query: query, candidate: item.name)
+        let subtitleWeight = item.kind == .savedQuery
+            ? QuickSwitcherRanking.keywordMatchWeight
+            : QuickSwitcherRanking.subtitleMatchPenalty
+        var subtitleScore: Double?
+        if !item.subtitle.isEmpty, let subtitleMatch = FuzzyMatcher.match(query: query, candidate: item.subtitle) {
+            subtitleScore = Double(subtitleMatch.score) * subtitleWeight
         }
-        guard !item.subtitle.isEmpty,
-              let subtitleMatch = FuzzyMatcher.match(query: query, candidate: item.subtitle)
-        else { return nil }
-        return (Double(subtitleMatch.score) * QuickSwitcherRanking.subtitleMatchPenalty, [])
+
+        switch (nameMatch, subtitleScore) {
+        case let (match?, score?) where score > Double(match.score):
+            return (score, [])
+        case let (match?, _):
+            return (Double(match.score), match.matchedIndices)
+        case let (nil, score?):
+            return (score, [])
+        case (nil, nil):
+            return nil
+        }
     }
 }
 

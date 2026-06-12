@@ -1090,6 +1090,28 @@ struct SQLCompletionProviderTests {
         #expect(!hasFavorite, "Favorites appear only when the typed token matches their keyword")
     }
 
+    @Test("Favorites and keywords complete without a schema provider")
+    func testFavoriteKeywordWithoutSchemaProvider() async {
+        let schemalessProvider = SQLCompletionProvider(schemaProvider: nil, databaseType: .mysql)
+        schemalessProvider.updateFavoriteKeywords(["report": (name: "Daily Report", query: "SELECT * FROM reports")])
+        let text = "rep"
+        let (items, _) = await schemalessProvider.getCompletions(text: text, cursorPosition: text.count)
+        let favorite = items.first { $0.kind == .favorite }
+        #expect(favorite?.label == "report", "Favorites need no schema and must work without a connection")
+        #expect(items.contains { $0.kind == .keyword }, "SQL keywords must also complete without a connection")
+    }
+
+    @Test("allFavoriteItems returns every favorite for session seeding")
+    func testAllFavoriteItems() {
+        provider.updateFavoriteKeywords([
+            "report": (name: "Daily Report", query: "SELECT 1"),
+            "usr": (name: "Users", query: "SELECT 2")
+        ])
+        let items = provider.allFavoriteItems()
+        #expect(items.count == 2)
+        #expect(items.allSatisfy { $0.kind == .favorite })
+    }
+
     // MARK: - Tables after JOIN (#1646)
 
     @Test("JOIN after an ON condition suggests available tables")

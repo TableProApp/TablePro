@@ -47,6 +47,7 @@ final class WelcomeViewModel {
     var showOnboarding: Bool
     var connectionsToDelete: [DatabaseConnection] = []
     var showDeleteConfirmation = false
+    var pendingDeleteHasFavorites = false
     var showDeleteGroupConfirmation = false
     var groupToDelete: ConnectionGroup?
     var pendingMoveToNewGroup: [DatabaseConnection] = []
@@ -358,6 +359,16 @@ final class WelcomeViewModel {
     }
 
     // MARK: - Delete
+
+    func requestDeleteConnections(_ targets: [DatabaseConnection]) {
+        guard !targets.isEmpty else { return }
+        connectionsToDelete = targets
+        pendingDeleteHasFavorites = false
+        Task {
+            pendingDeleteHasFavorites = await services.sqlFavoriteManager.hasFavorites(for: targets.map(\.id))
+            showDeleteConfirmation = true
+        }
+    }
 
     func deleteSelectedConnections() {
         let idsToDelete = Set(connectionsToDelete.map(\.id))

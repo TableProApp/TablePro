@@ -51,6 +51,21 @@ internal final class SQLFavoriteManager: @unchecked Sendable {
         }
     }
 
+    func removeFavorites(for connectionId: UUID) async {
+        let removed = await storage.deleteFavorites(connectionId: connectionId)
+        if removed {
+            postUpdateNotification(connectionId: nil)
+        }
+    }
+
+    func pruneOrphanedFavorites(activeConnectionIds: Set<UUID>) async {
+        await storage.removeOrphanedFavorites(retaining: activeConnectionIds)
+    }
+
+    func hasFavorites(for connectionIds: [UUID]) async -> Bool {
+        await storage.hasFavorites(connectionIds: connectionIds)
+    }
+
     func fetchFavorite(id: UUID) async -> SQLFavorite? {
         await storage.fetchFavorite(id: id)
     }

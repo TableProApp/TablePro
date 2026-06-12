@@ -54,9 +54,17 @@ struct WelcomeWindowView: View {
             }
         } message: {
             if vm.connectionsToDelete.count == 1, let first = vm.connectionsToDelete.first {
-                Text("Are you sure you want to delete \"\(first.name)\"?")
+                if vm.pendingDeleteHasFavorites {
+                    Text("Are you sure you want to delete \"\(first.name)\"? Saved queries linked to this connection will also be deleted.")
+                } else {
+                    Text("Are you sure you want to delete \"\(first.name)\"?")
+                }
             } else {
-                Text("Are you sure you want to delete \(vm.connectionsToDelete.count) connections? This cannot be undone.")
+                if vm.pendingDeleteHasFavorites {
+                    Text("Are you sure you want to delete \(vm.connectionsToDelete.count) connections? Saved queries linked to these connections will also be deleted. This cannot be undone.")
+                } else {
+                    Text("Are you sure you want to delete \(vm.connectionsToDelete.count) connections? This cannot be undone.")
+                }
             }
         }
         .alert(
@@ -354,8 +362,7 @@ struct WelcomeWindowView: View {
                 guard keyPress.modifiers.contains(.command) else { return .ignored }
                 let toDelete = vm.selectedConnections
                 guard !toDelete.isEmpty else { return .ignored }
-                vm.connectionsToDelete = toDelete
-                vm.showDeleteConfirmation = true
+                vm.requestDeleteConnections(toDelete)
                 return .handled
             }
             .onKeyPress(characters: .init(charactersIn: "a"), phases: .down) { keyPress in
