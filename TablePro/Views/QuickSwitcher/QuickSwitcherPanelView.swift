@@ -285,9 +285,13 @@ struct QuickSwitcherPanelContent: View {
             }
         }
         .contentShape(Rectangle())
-        .onTapGesture {
+        .onTapGesture(count: 2) {
             viewModel.selectedItemId = item.id
             onCommit(item, .open)
+        }
+        .onTapGesture {
+            isNavigating = true
+            viewModel.selectedItemId = item.id
         }
         .contextMenu { contextMenuActions(for: item) }
         .id(item.id)
