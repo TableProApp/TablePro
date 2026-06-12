@@ -257,7 +257,7 @@ final class ConnectionStorage {
         FavoriteTablesStorage.shared.removeFavorites(for: connection.id)
         FilterSettingsStorage.shared.removeFilters(for: connection.id)
         Task {
-            await SQLFavoriteManager.shared.removeFavorites(for: connection.id)
+            await SQLFavoriteManager.shared.removeFavoritesAndFolders(for: connection.id)
         }
     }
 
@@ -287,11 +287,11 @@ final class ConnectionStorage {
             appSettings.saveLastDatabase(nil, for: conn.id)
             appSettings.saveLastSchema(nil, for: conn.id)
             FavoriteTablesStorage.shared.removeFavorites(for: conn.id)
-            FilterSettingsStorage.shared.removeFilters(for: conn.id)
         }
+        FilterSettingsStorage.shared.removeFilters(for: idsToDelete)
         Task {
             for conn in connectionsToDelete {
-                await SQLFavoriteManager.shared.removeFavorites(for: conn.id)
+                await SQLFavoriteManager.shared.removeFavoritesAndFolders(for: conn.id)
             }
         }
     }

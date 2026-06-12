@@ -230,7 +230,7 @@ struct SQLFavoriteStorageTests {
 
     // MARK: - Connection Lifecycle
 
-    @Test("Delete favorites by connectionId removes scoped, keeps global and others")
+    @Test("Connection cascade removes scoped favorites, keeps global and others")
     func deleteFavoritesByConnection() async {
         let connectionId = UUID()
         let otherConnectionId = UUID()
@@ -242,7 +242,7 @@ struct SQLFavoriteStorageTests {
         _ = await storage.addFavorite(other)
         _ = await storage.addFavorite(global)
 
-        _ = await storage.deleteFavorites(connectionId: connectionId)
+        _ = await storage.deleteFavoritesAndFolders(connectionId: connectionId)
 
         let remaining = await storage.fetchFavorites()
         #expect(!remaining.contains { $0.id == scoped.id })
@@ -250,25 +250,55 @@ struct SQLFavoriteStorageTests {
         #expect(remaining.contains { $0.id == global.id })
     }
 
-    @Test("Orphan prune removes favorites of dead connections only")
+    @Test("Connection cascade removes scoped folders and detaches global favorites inside them")
+    func deleteFoldersByConnection() async {
+        let connectionId = UUID()
+        let scopedFolder = makeFolder(name: "Scoped Folder", connectionId: connectionId)
+        let otherFolder = makeFolder(name: "Other Folder", connectionId: UUID())
+        _ = await storage.addFolder(scopedFolder)
+        _ = await storage.addFolder(otherFolder)
+
+        let globalInScopedFolder = makeFavorite(name: "Global In Folder", folderId: scopedFolder.id)
+        _ = await storage.addFavorite(globalInScopedFolder)
+
+        _ = await storage.deleteFavoritesAndFolders(connectionId: connectionId)
+
+        let folders = await storage.fetchFolders()
+        #expect(!folders.contains { $0.id == scopedFolder.id })
+        #expect(folders.contains { $0.id == otherFolder.id })
+
+        let survivor = await storage.fetchFavorite(id: globalInScopedFolder.id)
+        #expect(survivor != nil, "A global favorite survives its connection-scoped folder")
+        #expect(survivor?.folderId == nil, "Its dangling folder reference is cleared")
+    }
+
+    @Test("Orphan prune removes favorites and folders of dead connections only")
     func pruneOrphanedFavorites() async {
         let liveConnectionId = UUID()
         let deadConnectionId = UUID()
         let live = makeFavorite(name: "Live", keyword: "live", connectionId: liveConnectionId)
         let dead = makeFavorite(name: "Dead", keyword: "dead", connectionId: deadConnectionId)
         let global = makeFavorite(name: "Global", keyword: "glob")
+        let deadFolder = makeFolder(name: "Dead Folder", connectionId: deadConnectionId)
+        let liveFolder = makeFolder(name: "Live Folder", connectionId: liveConnectionId)
 
         _ = await storage.addFavorite(live)
         _ = await storage.addFavorite(dead)
         _ = await storage.addFavorite(global)
+        _ = await storage.addFolder(deadFolder)
+        _ = await storage.addFolder(liveFolder)
 
-        let pruned = await storage.removeOrphanedFavorites(retaining: [liveConnectionId])
+        let pruned = await storage.pruneOrphaned(retaining: [liveConnectionId])
         #expect(pruned == 1)
 
         let remaining = await storage.fetchFavorites()
         #expect(remaining.contains { $0.id == live.id })
         #expect(!remaining.contains { $0.id == dead.id })
         #expect(remaining.contains { $0.id == global.id })
+
+        let folders = await storage.fetchFolders()
+        #expect(!folders.contains { $0.id == deadFolder.id })
+        #expect(folders.contains { $0.id == liveFolder.id })
     }
 
     @Test("Orphan prune is skipped when no active connections are known")
@@ -276,7 +306,7 @@ struct SQLFavoriteStorageTests {
         let scoped = makeFavorite(name: "Scoped", connectionId: UUID())
         _ = await storage.addFavorite(scoped)
 
-        let pruned = await storage.removeOrphanedFavorites(retaining: [])
+        let pruned = await storage.pruneOrphaned(retaining: [])
         #expect(pruned == 0)
 
         let remaining = await storage.fetchFavorites()

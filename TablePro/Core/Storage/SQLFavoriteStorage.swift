@@ -375,57 +375,80 @@ internal actor SQLFavoriteStorage {
         return result == SQLITE_DONE
     }
 
+    private static let detachDanglingFolderReferencesSQL = """
+        UPDATE favorites SET folder_id = NULL
+        WHERE folder_id IS NOT NULL AND folder_id NOT IN (SELECT id FROM folders);
+        """
+
     @discardableResult
-    func deleteFavorites(connectionId: UUID) -> Bool {
-        let sql = "DELETE FROM favorites WHERE connection_id = ?;"
+    func deleteFavoritesAndFolders(connectionId: UUID) -> Bool {
+        guard sqlite3_exec(db, "BEGIN IMMEDIATE;", nil, nil, nil) == SQLITE_OK else { return false }
+
+        let id = connectionId.uuidString
+        guard run("DELETE FROM favorites WHERE connection_id = ?;", bindings: [id]),
+              run("DELETE FROM folders WHERE connection_id = ?;", bindings: [id]),
+              run(Self.detachDanglingFolderReferencesSQL) else {
+            sqlite3_exec(db, "ROLLBACK;", nil, nil, nil)
+            return false
+        }
+
+        return sqlite3_exec(db, "COMMIT;", nil, nil, nil) == SQLITE_OK
+    }
+
+    @discardableResult
+    func pruneOrphaned(retaining activeConnectionIds: Set<UUID>) -> Int {
+        guard !activeConnectionIds.isEmpty else { return 0 }
+
+        let ids = activeConnectionIds.map(\.uuidString)
+        let placeholders = ids.map { _ in "?" }.joined(separator: ",")
+        let orphanCondition = "connection_id IS NOT NULL AND connection_id NOT IN (\(placeholders))"
+
+        guard sqlite3_exec(db, "BEGIN IMMEDIATE;", nil, nil, nil) == SQLITE_OK else { return 0 }
+
+        guard run("DELETE FROM favorites WHERE \(orphanCondition);", bindings: ids) else {
+            sqlite3_exec(db, "ROLLBACK;", nil, nil, nil)
+            return 0
+        }
+        let prunedFavorites = Int(sqlite3_changes(db))
+
+        guard run("DELETE FROM folders WHERE \(orphanCondition);", bindings: ids) else {
+            sqlite3_exec(db, "ROLLBACK;", nil, nil, nil)
+            return 0
+        }
+        let prunedFolders = Int(sqlite3_changes(db))
+
+        guard run(Self.detachDanglingFolderReferencesSQL) else {
+            sqlite3_exec(db, "ROLLBACK;", nil, nil, nil)
+            return 0
+        }
+
+        guard sqlite3_exec(db, "COMMIT;", nil, nil, nil) == SQLITE_OK else { return 0 }
+
+        if prunedFavorites > 0 || prunedFolders > 0 {
+            Self.logger.info("Pruned \(prunedFavorites) favorites and \(prunedFolders) folders scoped to deleted connections")
+        }
+        return prunedFavorites
+    }
+
+    private func run(_ sql: String, bindings: [String] = []) -> Bool {
         var statement: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
+            Self.logger.error("Failed to prepare statement: \(String(cString: sqlite3_errmsg(self.db)))")
             return false
         }
 
         defer { sqlite3_finalize(statement) }
 
         let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
-        sqlite3_bind_text(statement, 1, connectionId.uuidString, -1, SQLITE_TRANSIENT)
-
-        let result = sqlite3_step(statement)
-        if result != SQLITE_DONE {
-            Self.logger.error("Failed to delete favorites for connection: \(String(cString: sqlite3_errmsg(self.db)))")
-        }
-        return result == SQLITE_DONE
-    }
-
-    @discardableResult
-    func removeOrphanedFavorites(retaining activeConnectionIds: Set<UUID>) -> Int {
-        guard !activeConnectionIds.isEmpty else { return 0 }
-
-        let placeholders = activeConnectionIds.map { _ in "?" }.joined(separator: ",")
-        let sql = """
-            DELETE FROM favorites
-            WHERE connection_id IS NOT NULL AND connection_id NOT IN (\(placeholders));
-            """
-
-        var statement: OpaquePointer?
-        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
-            return 0
-        }
-
-        defer { sqlite3_finalize(statement) }
-
-        let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
-        for (index, id) in activeConnectionIds.enumerated() {
-            sqlite3_bind_text(statement, Int32(index + 1), id.uuidString, -1, SQLITE_TRANSIENT)
+        for (index, value) in bindings.enumerated() {
+            sqlite3_bind_text(statement, Int32(index + 1), value, -1, SQLITE_TRANSIENT)
         }
 
         guard sqlite3_step(statement) == SQLITE_DONE else {
-            Self.logger.error("Failed to prune orphaned favorites: \(String(cString: sqlite3_errmsg(self.db)))")
-            return 0
+            Self.logger.error("Statement failed: \(String(cString: sqlite3_errmsg(self.db)))")
+            return false
         }
-        let pruned = Int(sqlite3_changes(db))
-        if pruned > 0 {
-            Self.logger.info("Pruned \(pruned) favorites scoped to deleted connections")
-        }
-        return pruned
+        return true
     }
 
     func hasFavorites(connectionIds: [UUID]) -> Bool {

@@ -305,19 +305,31 @@ final class FilterSettingsStorage {
     }
 
     func removeFilters(for connectionId: UUID) {
-        let id = connectionId.uuidString
-        let encodedPrefix = (id.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? id) + "."
+        removeFilters(for: [connectionId])
+    }
+
+    func removeFilters(for connectionIds: Set<UUID>) {
+        guard !connectionIds.isEmpty else { return }
+
+        let encodedPrefixes = connectionIds.map { id in
+            let idString = id.uuidString
+            return (idString.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? idString) + "."
+        }
+        let matchesConnection: (String) -> Bool = { name in
+            encodedPrefixes.contains { name.hasPrefix($0) }
+        }
+
         let fm = FileManager.default
         do {
             let files = try fm.contentsOfDirectory(at: filterStateDirectory, includingPropertiesForKeys: nil)
-            for file in files where file.lastPathComponent.hasPrefix(encodedPrefix) {
+            for file in files where matchesConnection(file.lastPathComponent) {
                 try? fm.removeItem(at: file)
             }
         } catch {
             Self.logger.error("Failed to enumerate filter state directory: \(error.localizedDescription)")
         }
-        lastFiltersCache = lastFiltersCache.filter { !$0.key.hasPrefix(encodedPrefix) }
-        browseSearchCache = browseSearchCache.filter { !$0.key.hasPrefix(encodedPrefix) }
+        lastFiltersCache = lastFiltersCache.filter { !matchesConnection($0.key) }
+        browseSearchCache = browseSearchCache.filter { !matchesConnection($0.key) }
     }
 
     func clearAllLastFilters() {

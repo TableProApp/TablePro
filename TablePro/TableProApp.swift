@@ -776,7 +776,7 @@ struct TableProApp: App {
 
         Task { @MainActor in
             let activeIds = Set(ConnectionStorage.shared.loadConnections().map(\.id))
-            await SQLFavoriteManager.shared.pruneOrphanedFavorites(activeConnectionIds: activeIds)
+            await SQLFavoriteManager.shared.pruneOrphaned(activeConnectionIds: activeIds)
         }
     }
 

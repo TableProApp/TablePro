@@ -29,7 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Favorite keywords now work again: favorites scoped to a deleted connection were silently kept in storage but hidden everywhere, so typing their keyword did nothing. Deleting a connection now also deletes its saved queries and per-table filters, the delete confirmation says so, and favorites already orphaned by an earlier delete are cleaned up at launch.
+- Favorite keywords now work again: favorites scoped to a deleted connection were silently kept in storage but hidden everywhere, so typing their keyword did nothing. Deleting a connection now also deletes its saved queries, their folders, and per-table filters, the delete confirmation says so, and favorites already orphaned by an earlier delete are cleaned up at launch.
 - Keyword autocomplete and SQL keyword suggestions now work in editors without a database connection, and favorites appear in the completion popup immediately instead of after a short delay.
 - Typing a favorite's keyword in the Quick Switcher now finds the saved query instead of ranking it below name matches.
 - PostgreSQL databases without a "public" schema now load tables from the first available schema, the schema selector also appears when only one schema exists, and the database list counts tables in every user schema instead of only "public". (#1662)

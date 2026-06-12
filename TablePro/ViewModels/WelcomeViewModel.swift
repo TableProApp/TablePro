@@ -364,9 +364,9 @@ final class WelcomeViewModel {
         guard !targets.isEmpty else { return }
         connectionsToDelete = targets
         pendingDeleteHasFavorites = false
+        showDeleteConfirmation = true
         Task {
             pendingDeleteHasFavorites = await services.sqlFavoriteManager.hasFavorites(for: targets.map(\.id))
-            showDeleteConfirmation = true
         }
     }
 

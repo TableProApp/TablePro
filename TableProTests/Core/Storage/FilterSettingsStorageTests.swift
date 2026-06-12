@@ -120,6 +120,29 @@ struct FilterSettingsStorageTests {
         )
     }
 
+    @Test("Batch removal clears filters for every given connection in one pass")
+    func removeFiltersForMultipleConnections() {
+        let (storage, directory) = makeStorage()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let first = UUID()
+        let second = UUID()
+        let kept = UUID()
+        for connectionId in [first, second, kept] {
+            storage.saveLastFilters(
+                [TestFixtures.makeTableFilter(column: "a")],
+                for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil
+            )
+        }
+
+        storage.removeFilters(for: [first, second])
+
+        #expect(storage.loadLastFilters(for: "users", connectionId: first, databaseName: "db", schemaName: nil).isEmpty)
+        #expect(storage.loadLastFilters(for: "users", connectionId: second, databaseName: "db", schemaName: nil).isEmpty)
+        #expect(
+            !storage.loadLastFilters(for: "users", connectionId: kept, databaseName: "db", schemaName: nil).isEmpty
+        )
+    }
+
     @Test("Removed filters stay gone for a fresh storage instance")
     func removeFiltersDeletesFiles() {
         let suiteName = "FilterSettingsStorageTests-\(UUID().uuidString)"

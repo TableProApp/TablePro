@@ -7958,6 +7958,12 @@
         }
       }
     },
+    "Are you sure you want to delete \"%@\"? Saved queries linked to this connection will also be deleted." : {
+
+    },
+    "Are you sure you want to delete %lld connections? Saved queries linked to these connections will also be deleted. This cannot be undone." : {
+
+    },
     "Are you sure you want to delete %lld connections? This cannot be undone." : {
       "localizations" : {
         "tr" : {
