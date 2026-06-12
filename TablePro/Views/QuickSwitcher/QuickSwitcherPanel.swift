@@ -120,5 +120,13 @@ internal struct QuickSwitcherPanelBackground: NSViewRepresentable {
         return effectView
     }
 
-    func updateNSView(_ nsView: NSView, context: Context) {}
+    func updateNSView(_ nsView: NSView, context: Context) {
+        if #available(macOS 26.0, *), let glassView = nsView as? NSGlassEffectView {
+            glassView.cornerRadius = cornerRadius
+            return
+        }
+        if let effectView = nsView as? NSVisualEffectView {
+            effectView.layer?.cornerRadius = cornerRadius
+        }
+    }
 }

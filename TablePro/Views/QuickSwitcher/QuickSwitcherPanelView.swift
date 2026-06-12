@@ -79,11 +79,13 @@ struct QuickSwitcherPanelContent: View {
     @State private var keyMonitor: Any?
 
     var body: some View {
-        Group {
-            if showsResultSurface {
-                resultSurface
-            } else {
-                standaloneBar
+        HStack(spacing: 10) {
+            mainSurface
+
+            if !showsResultSurface {
+                ForEach(QuickSwitcherScope.allCases.filter { $0 != .all }) { scope in
+                    scopeButton(scope)
+                }
             }
         }
         .frame(width: PanelMetrics.width)
@@ -101,19 +103,46 @@ struct QuickSwitcherPanelContent: View {
         viewModel.searchText.trimmingCharacters(in: .whitespaces)
     }
 
-    private var standaloneBar: some View {
-        HStack(spacing: 10) {
-            inputFields
-                .padding(.horizontal, 18)
-                .frame(height: PanelMetrics.inputRowHeight)
-                .background(QuickSwitcherPanelBackground(cornerRadius: PanelMetrics.inputRowHeight / 2))
-                .clipShape(Capsule())
-                .overlay(Capsule().strokeBorder(barStrokeColor, lineWidth: 0.5))
+    private var surfaceCornerRadius: CGFloat {
+        showsResultSurface ? PanelMetrics.cornerRadius : PanelMetrics.inputRowHeight / 2
+    }
 
-            ForEach(QuickSwitcherScope.allCases.filter { $0 != .all }) { scope in
-                scopeButton(scope)
+    private var surfaceStrokeColor: Color {
+        if colorSchemeContrast == .increased {
+            return Color(nsColor: .separatorColor)
+        }
+        return showsResultSurface ? .clear : barStrokeColor
+    }
+
+    private var mainSurface: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 10) {
+                inputFields
+                if viewModel.scope != .all {
+                    activeScopeBadge
+                }
+            }
+            .padding(.horizontal, 18)
+            .frame(height: PanelMetrics.inputRowHeight)
+
+            if showsResultSurface {
+                Divider()
+                    .padding(.horizontal, 10)
+
+                if viewModel.flatItems.isEmpty {
+                    noResultsRow
+                } else {
+                    resultsList
+                }
             }
         }
+        .frame(maxWidth: .infinity)
+        .background(QuickSwitcherPanelBackground(cornerRadius: surfaceCornerRadius))
+        .clipShape(RoundedRectangle(cornerRadius: surfaceCornerRadius, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: surfaceCornerRadius, style: .continuous)
+                .strokeBorder(surfaceStrokeColor, lineWidth: showsResultSurface ? 1 : 0.5)
+        )
     }
 
     private func scopeButton(_ scope: QuickSwitcherScope) -> some View {
@@ -137,37 +166,6 @@ struct QuickSwitcherPanelContent: View {
         colorSchemeContrast == .increased
             ? Color(nsColor: .separatorColor)
             : Color(nsColor: .separatorColor).opacity(0.6)
-    }
-
-    private var resultSurface: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 10) {
-                inputFields
-                if viewModel.scope != .all {
-                    activeScopeBadge
-                }
-            }
-            .padding(.horizontal, 18)
-            .frame(height: PanelMetrics.inputRowHeight)
-
-            Divider()
-                .padding(.horizontal, 10)
-
-            if viewModel.flatItems.isEmpty {
-                noResultsRow
-            } else {
-                resultsList
-            }
-        }
-        .background(QuickSwitcherPanelBackground(cornerRadius: PanelMetrics.cornerRadius))
-        .clipShape(RoundedRectangle(cornerRadius: PanelMetrics.cornerRadius, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: PanelMetrics.cornerRadius, style: .continuous)
-                .strokeBorder(
-                    colorSchemeContrast == .increased ? Color(nsColor: .separatorColor) : .clear,
-                    lineWidth: 1
-                )
-        )
     }
 
     private var inputFields: some View {
