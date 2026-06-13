@@ -29,8 +29,10 @@ System (default), English, Tiếng Việt, Türkçe. Changing the language requi
 
 | Option | Description |
 |--------|-------------|
+| **Reopen Last Session** (default) | Restore the windows, tabs, and view state from your last session on launch |
 | **Show Welcome Screen** | Display the welcome screen with recent connections |
-| **Reopen Last Session** | Auto-reconnect to your last database |
+
+Reopened tabs restore their SQL, cursor position, applied sort, filters, page, and column widths. Connections reconnect lazily on first interaction, so a missing or unreachable database does not block launch. See [Tab Persistence](/features/tabs#tab-persistence) for the full list of restored state.
 
 ### Query Execution Timeout
 

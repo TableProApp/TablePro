@@ -29,15 +29,44 @@ extension MainContentCoordinator {
               let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }),
               tabManager.tabs[index].tableContext.tableName == tableName else { return false }
 
-        let sortApplied = applyResolvedDefaultSort(at: index, hint: hint)
-        if sortApplied || !tabManager.tabs[index].columnLayout.hiddenColumns.isEmpty {
+        let restoreApplied = applyPendingRestoredViewState(at: index)
+        let sortApplied = restoreApplied ? false : applyResolvedDefaultSort(at: index, hint: hint)
+        if restoreApplied || sortApplied || !tabManager.tabs[index].columnLayout.hiddenColumns.isEmpty {
             filterCoordinator.rebuildTableQuery(at: index)
         }
         return true
     }
 
     func firstLoadNeedsSchemaColumns(for tab: QueryTab, hint: DefaultSortHint) -> Bool {
-        wantsDefaultSort(for: tab, hint: hint) || !tab.columnLayout.hiddenColumns.isEmpty
+        wantsDefaultSort(for: tab, hint: hint)
+            || !tab.columnLayout.hiddenColumns.isEmpty
+            || tab.pendingRestoredSort != nil
+            || tab.restoredPage != nil
+    }
+
+    private func applyPendingRestoredViewState(at index: Int) -> Bool {
+        let tab = tabManager.tabs[index]
+        guard tab.pendingRestoredSort != nil || tab.restoredPage != nil else { return false }
+
+        let columns = effectiveResultColumns(for: tab)
+        let resolvedSort: [SortColumn] = (tab.pendingRestoredSort ?? []).compactMap { persisted in
+            guard let columnIndex = columns.firstIndex(of: persisted.columnName) else { return nil }
+            return SortColumn(columnIndex: columnIndex, direction: persisted.direction, columnName: persisted.columnName)
+        }
+        let pageSize = max(1, AppSettingsManager.shared.dataGrid.defaultPageSize)
+        let page = max(1, tab.restoredPage ?? 1)
+
+        tabManager.mutate(at: index) { tab in
+            tab.pendingRestoredSort = nil
+            tab.restoredPage = nil
+            if !resolvedSort.isEmpty {
+                tab.sortState = SortState(columns: resolvedSort, source: .user)
+            }
+            tab.pagination.pageSize = pageSize
+            tab.pagination.currentPage = page
+            tab.pagination.currentOffset = (page - 1) * pageSize
+        }
+        return !resolvedSort.isEmpty || page > 1
     }
 
     func wantsDefaultSort(for tab: QueryTab, hint: DefaultSortHint) -> Bool {

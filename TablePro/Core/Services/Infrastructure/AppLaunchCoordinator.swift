@@ -125,10 +125,28 @@ internal final class AppLaunchCoordinator {
         guard intents.isEmpty else { return }
 
         let general = AppSettingsStorage.shared.loadGeneral()
-        if general.startupBehavior == .showWelcome {
+        switch general.startupBehavior {
+        case .showWelcome:
             for window in NSApp.windows where Self.isMainWindow(window) {
                 window.close()
             }
+        case .reopenLast:
+            reopenLastSessionIfArchiveMissing()
+        }
+    }
+
+    private func reopenLastSessionIfArchiveMissing() {
+        guard !NSApp.windows.contains(where: { Self.isMainWindow($0) }) else { return }
+
+        let connectionIds = LastOpenConnectionsStorage.shared.load()
+        guard !connectionIds.isEmpty else { return }
+
+        let connections = ConnectionStorage.shared.loadConnections()
+        let knownIds = Set(connections.map(\.id))
+        for connectionId in connectionIds where knownIds.contains(connectionId) {
+            WindowManager.shared.openTab(
+                payload: EditorTabPayload(connectionId: connectionId, intent: .restoreOrDefault)
+            )
         }
     }
 

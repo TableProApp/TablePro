@@ -143,10 +143,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        persistOpenConnectionsForRecovery()
         LinkedFolderWatcher.shared.stop()
         SQLFolderWatcher.shared.stop()
         SSHTunnelManager.shared.terminateAllProcessesSync()
         CloudflareTunnelManager.shared.terminateAllProcessesSync()
+    }
+
+    private func persistOpenConnectionsForRecovery() {
+        var seen = Set<UUID>()
+        let connectionIds = MainContentCoordinator.activeCoordinators.values
+            .map(\.connectionId)
+            .filter { seen.insert($0).inserted }
+        LastOpenConnectionsStorage.shared.save(connectionIds: connectionIds)
     }
 
     @objc func handleSystemDidWake(_ notification: Notification) {

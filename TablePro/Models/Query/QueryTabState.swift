@@ -33,6 +33,73 @@ struct PersistedTab: Codable {
     var sourceFileURL: URL?
     var erDiagramSchemaKey: String?
     var queryParameters: [QueryParameter]?
+    var sortColumns: [PersistedSortColumn]?
+    var restoredPage: Int?
+    var cursorOffset: Int?
+    var columnWidths: [String: CGFloat]?
+    var windowGroupIndex: Int?
+
+    init(
+        id: UUID,
+        title: String,
+        query: String,
+        tabType: TabType,
+        tableName: String?,
+        isView: Bool = false,
+        databaseName: String = "",
+        schemaName: String? = nil,
+        sourceFileURL: URL? = nil,
+        erDiagramSchemaKey: String? = nil,
+        queryParameters: [QueryParameter]? = nil,
+        sortColumns: [PersistedSortColumn]? = nil,
+        restoredPage: Int? = nil,
+        cursorOffset: Int? = nil,
+        columnWidths: [String: CGFloat]? = nil,
+        windowGroupIndex: Int? = nil
+    ) {
+        self.id = id
+        self.title = title
+        self.query = query
+        self.tabType = tabType
+        self.tableName = tableName
+        self.isView = isView
+        self.databaseName = databaseName
+        self.schemaName = schemaName
+        self.sourceFileURL = sourceFileURL
+        self.erDiagramSchemaKey = erDiagramSchemaKey
+        self.queryParameters = queryParameters
+        self.sortColumns = sortColumns
+        self.restoredPage = restoredPage
+        self.cursorOffset = cursorOffset
+        self.columnWidths = columnWidths
+        self.windowGroupIndex = windowGroupIndex
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, title, query, tabType, tableName, isView, databaseName, schemaName
+        case sourceFileURL, erDiagramSchemaKey, queryParameters
+        case sortColumns, restoredPage, cursorOffset, columnWidths, windowGroupIndex
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        title = try container.decodeIfPresent(String.self, forKey: .title) ?? ""
+        query = try container.decodeIfPresent(String.self, forKey: .query) ?? ""
+        tabType = try container.decode(TabType.self, forKey: .tabType)
+        tableName = try container.decodeIfPresent(String.self, forKey: .tableName)
+        isView = try container.decodeIfPresent(Bool.self, forKey: .isView) ?? false
+        databaseName = try container.decodeIfPresent(String.self, forKey: .databaseName) ?? ""
+        schemaName = try container.decodeIfPresent(String.self, forKey: .schemaName)
+        sourceFileURL = try container.decodeIfPresent(URL.self, forKey: .sourceFileURL)
+        erDiagramSchemaKey = try container.decodeIfPresent(String.self, forKey: .erDiagramSchemaKey)
+        queryParameters = try container.decodeIfPresent([QueryParameter].self, forKey: .queryParameters)
+        sortColumns = try container.decodeIfPresent([PersistedSortColumn].self, forKey: .sortColumns)
+        restoredPage = try container.decodeIfPresent(Int.self, forKey: .restoredPage)
+        cursorOffset = try container.decodeIfPresent(Int.self, forKey: .cursorOffset)
+        columnWidths = try container.decodeIfPresent([String: CGFloat].self, forKey: .columnWidths)
+        windowGroupIndex = try container.decodeIfPresent(Int.self, forKey: .windowGroupIndex)
+    }
 }
 
 struct TabChangeSnapshot: Equatable {
@@ -59,7 +126,7 @@ struct TabChangeSnapshot: Equatable {
     }
 }
 
-enum SortDirection: Equatable {
+enum SortDirection: String, Equatable, Codable {
     case ascending
     case descending
 
@@ -72,6 +139,19 @@ enum SortDirection: Equatable {
 struct SortColumn: Equatable {
     var columnIndex: Int
     var direction: SortDirection
+    var columnName: String?
+
+    init(columnIndex: Int, direction: SortDirection, columnName: String? = nil) {
+        self.columnIndex = columnIndex
+        self.direction = direction
+        self.columnName = columnName
+    }
+}
+
+/// A sort column captured for cross-launch persistence, keyed by name so it survives column reordering
+struct PersistedSortColumn: Codable, Equatable {
+    let columnName: String
+    let direction: SortDirection
 }
 
 enum SortSource: Equatable {

@@ -13,21 +13,34 @@ import os
 internal struct TabDiskState: Codable {
     let tabs: [PersistedTab]
     let selectedTabId: UUID?
+    let lastActiveDatabase: String?
+    let lastActiveSchema: String?
 
-    init(tabs: [PersistedTab], selectedTabId: UUID?) {
+    init(
+        tabs: [PersistedTab],
+        selectedTabId: UUID?,
+        lastActiveDatabase: String? = nil,
+        lastActiveSchema: String? = nil
+    ) {
         self.tabs = tabs
         self.selectedTabId = selectedTabId
+        self.lastActiveDatabase = lastActiveDatabase
+        self.lastActiveSchema = lastActiveSchema
     }
 
     private enum CodingKeys: String, CodingKey {
         case tabs
         case selectedTabId
+        case lastActiveDatabase
+        case lastActiveSchema
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         tabs = try container.decode([LossyTab].self, forKey: .tabs).compactMap(\.value)
         selectedTabId = try container.decodeIfPresent(UUID.self, forKey: .selectedTabId)
+        lastActiveDatabase = try container.decodeIfPresent(String.self, forKey: .lastActiveDatabase)
+        lastActiveSchema = try container.decodeIfPresent(String.self, forKey: .lastActiveSchema)
     }
 }
 
@@ -71,8 +84,19 @@ internal actor TabDiskActor {
 
     // MARK: - Public API
 
-    internal func save(connectionId: UUID, tabs: [PersistedTab], selectedTabId: UUID?) throws {
-        let state = TabDiskState(tabs: tabs, selectedTabId: selectedTabId)
+    internal func save(
+        connectionId: UUID,
+        tabs: [PersistedTab],
+        selectedTabId: UUID?,
+        lastActiveDatabase: String? = nil,
+        lastActiveSchema: String? = nil
+    ) throws {
+        let state = TabDiskState(
+            tabs: tabs,
+            selectedTabId: selectedTabId,
+            lastActiveDatabase: lastActiveDatabase,
+            lastActiveSchema: lastActiveSchema
+        )
         let data = try encoder.encode(state)
         let fileURL = tabStateFileURL(for: connectionId)
         try data.write(to: fileURL, options: .atomic)
@@ -126,9 +150,16 @@ internal actor TabDiskActor {
     nonisolated internal static func saveSync(
         connectionId: UUID,
         tabs: [PersistedTab],
-        selectedTabId: UUID?
+        selectedTabId: UUID?,
+        lastActiveDatabase: String? = nil,
+        lastActiveSchema: String? = nil
     ) {
-        let state = TabDiskState(tabs: tabs, selectedTabId: selectedTabId)
+        let state = TabDiskState(
+            tabs: tabs,
+            selectedTabId: selectedTabId,
+            lastActiveDatabase: lastActiveDatabase,
+            lastActiveSchema: lastActiveSchema
+        )
         let encoder = JSONEncoder()
 
         do {

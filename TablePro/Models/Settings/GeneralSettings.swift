@@ -62,7 +62,7 @@ struct GeneralSettings: Codable, Equatable {
     var shareAnalytics: Bool
 
     static let `default` = GeneralSettings(
-        startupBehavior: .showWelcome,
+        startupBehavior: .reopenLast,
         language: .system,
         automaticallyCheckForUpdates: true,
         queryTimeoutSeconds: 60,
@@ -70,7 +70,7 @@ struct GeneralSettings: Codable, Equatable {
     )
 
     init(
-        startupBehavior: StartupBehavior = .showWelcome,
+        startupBehavior: StartupBehavior = .reopenLast,
         language: AppLanguage = .system,
         automaticallyCheckForUpdates: Bool = true,
         queryTimeoutSeconds: Int = 60,

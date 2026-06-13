@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Option+Return in the Quick Switcher opens the table in a new tab; right-click a result to open its structure, copy the name, or copy the query.
 - Tables already open in a tab show an Open badge in the Quick Switcher, rank higher, and Return switches to the existing tab.
 - `.psql` and `.pgsql` files now open in the SQL editor like `.sql`: Finder double-click, the open and save panels, and linked SQL folders all accept them. (#1641)
+- Session restore now brings back each tab's applied sort, current page, cursor position, and column widths, along with the connection's active database and schema. Tabs save in the background every 30 seconds and a crash still recovers your last session and reopens its connections. (#1673)
 
 ### Changed
 
@@ -27,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Holding Cmd+R no longer queues a backlog of refreshes that kept running after the key was released; refresh fires once per key press, and rapid presses collapse into a single reload.
 - Switching PostgreSQL schemas now sets the search path to just the selected schema instead of also keeping "public" on it. Unqualified references to objects in "public", such as extension functions, need a "public." prefix while another schema is selected. (#1662)
 - The inspector panel can now be resized freely by dragging its divider instead of being capped at a fixed width.
+- New installs now reopen your last session on launch by default instead of showing the welcome screen. Change it under Settings > General > Startup Behavior. (#1673)
 
 ### Fixed
 

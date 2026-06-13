@@ -182,6 +182,7 @@ final class MainContentCoordinator {
     @ObservationIgnored internal var tableLoadTasks: [UUID: (token: UUID, task: Task<Void, Never>)] = [:]
     @ObservationIgnored internal var redisDatabaseSwitchTask: Task<Void, Never>?
     @ObservationIgnored private var changeManagerUpdateTask: Task<Void, Never>?
+    @ObservationIgnored private var periodicSaveTask: Task<Void, Never>?
     @ObservationIgnored private var terminationObserver: NSObjectProtocol?
     @ObservationIgnored private var postConnectCancellable: AnyCancellable?
     @ObservationIgnored private var externalFileModCancellable: AnyCancellable?
@@ -274,8 +275,9 @@ final class MainContentCoordinator {
         Self.activeCoordinators.removeValue(forKey: instanceId)
     }
 
-    /// Collect non-preview tabs for persistence.
-    static func aggregatedTabs(for connectionId: UUID) -> [QueryTab] {
+    /// Collect non-preview tabs for persistence, tagged with the index of the
+    /// native window group they belong to so multi-window layouts restore intact.
+    static func aggregatedTabs(for connectionId: UUID) -> [(tab: QueryTab, windowGroupIndex: Int)] {
         let coordinators = activeCoordinators.values
             .filter { $0.connectionId == connectionId }
 
@@ -295,9 +297,61 @@ final class MainContentCoordinator {
             orderedCoordinators = Array(coordinators)
         }
 
-        return orderedCoordinators
-            .flatMap { $0.tabManager.tabs }
-            .filter { !$0.isPreview }
+        return orderedCoordinators.enumerated().flatMap { groupIndex, coordinator in
+            coordinator.tabManager.tabs
+                .filter { !$0.isPreview }
+                .map { (tab: coordinator.enrichedForPersistence($0), windowGroupIndex: groupIndex) }
+        }
+    }
+
+    /// Resolve transient view state that only the live coordinator knows about
+    /// (sort column names, editor cursor offset) onto the tab before it is serialized.
+    private func enrichedForPersistence(_ tab: QueryTab) -> QueryTab {
+        var enriched = tab
+        if enriched.sortState.isSorting {
+            let columns = columnsForPersistence(of: tab)
+            enriched.sortState.columns = enriched.sortState.columns.map { column in
+                guard column.columnName == nil,
+                      column.columnIndex >= 0,
+                      column.columnIndex < columns.count else { return column }
+                var named = column
+                named.columnName = columns[column.columnIndex]
+                return named
+            }
+        }
+        if tab.tabType == .query, tab.id == tabManager.selectedTabId {
+            enriched.restoredCursorOffset = cursorPositions.first?.range.location
+        }
+        return enriched
+    }
+
+    private func columnsForPersistence(of tab: QueryTab) -> [String] {
+        let buffer = tabSessionRegistry.tableRows(for: tab.id)
+        return buffer.columns.isEmpty ? effectiveResultColumns(for: tab) : buffer.columns
+    }
+
+    func applyRestoredCursor(for tabId: UUID) {
+        guard let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }),
+              tabManager.tabs[index].tabType == .query,
+              let offset = tabManager.tabs[index].restoredCursorOffset else { return }
+        let length = (tabManager.tabs[index].content.query as NSString).length
+        let clamped = min(max(0, offset), length)
+        cursorPositions = [CursorPosition(range: NSRange(location: clamped, length: 0))]
+        tabManager.mutate(at: index) { $0.restoredCursorOffset = nil }
+    }
+
+    private static let periodicSaveInterval: Duration = .seconds(30)
+
+    private func startPeriodicSave() {
+        guard periodicSaveTask == nil else { return }
+        periodicSaveTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: Self.periodicSaveInterval)
+                guard let self, !Task.isCancelled, !Self.isAppTerminating, !self.isTearingDown else { return }
+                guard self.isFirstCoordinatorForConnection() else { continue }
+                self.persistence.saveOrClearAggregated()
+            }
+        }
     }
 
     /// Get selected tab ID from any coordinator for a given connectionId.
@@ -398,7 +452,7 @@ final class MainContentCoordinator {
                 let allTabs = Self.aggregatedTabs(for: self.connectionId)
                 let selectedId = Self.aggregatedSelectedTabId(for: self.connectionId)
                 self.persistence.saveNowSync(
-                    tabs: allTabs,
+                    windowedTabs: allTabs,
                     selectedTabId: selectedId
                 )
             }
@@ -461,6 +515,7 @@ final class MainContentCoordinator {
             services.schemaProviderRegistry.retain(for: connection.id)
         }
         registerForPersistence()
+        startPeriodicSave()
         setupPluginDriver()
         startFileWatcherIfNeeded()
         if changeManager.pluginDriver == nil {
@@ -665,6 +720,8 @@ final class MainContentCoordinator {
         tableLoadTasks.removeAll()
         changeManagerUpdateTask?.cancel()
         changeManagerUpdateTask = nil
+        periodicSaveTask?.cancel()
+        periodicSaveTask = nil
         redisDatabaseSwitchTask?.cancel()
         redisDatabaseSwitchTask = nil
 

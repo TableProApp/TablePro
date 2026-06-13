@@ -90,6 +90,11 @@ extension MainContentView {
     }
 
     private func handleRestoreOrDefault() async {
+        if let group = RestorationGroupRegistry.consume(for: payload?.id) {
+            applyRestoredGroup(group.tabs, selectedTabId: group.selectedTabId)
+            return
+        }
+
         if WindowLifecycleMonitor.shared.hasOtherWindows(for: connection.id, excluding: windowId) {
             MainContentView.lifecycleLogger.info(
                 "[open] handleRestoreOrDefault short-circuit (other windows exist) windowId=\(windowId, privacy: .public)"
@@ -103,66 +108,99 @@ extension MainContentView {
             "[open] restoreFromDisk done windowId=\(windowId, privacy: .public) tabsRestored=\(result.tabs.count) source=\(String(describing: result.source), privacy: .public) elapsedMs=\(Int(Date().timeIntervalSince(restoreStart) * 1_000))"
         )
         guard !result.tabs.isEmpty else { return }
-        do {
-            var restoredTabs = result.tabs
-            for i in restoredTabs.indices where restoredTabs[i].tabType == .table {
-                if let tableName = restoredTabs[i].tableContext.tableName {
-                    do {
-                        restoredTabs[i].content.query = try QueryTab.buildBaseTableQuery(
-                            tableName: tableName,
-                            databaseType: connection.type,
-                            schemaName: restoredTabs[i].tableContext.schemaName
-                        )
-                    } catch {
-                        MainContentView.lifecycleLogger.error(
-                            "[open] buildBaseTableQuery failed for restored tab table=\(tableName, privacy: .public): \(error.localizedDescription, privacy: .public)"
-                        )
-                    }
+
+        var restoredTabs = result.tabs
+        for i in restoredTabs.indices where restoredTabs[i].tabType == .table {
+            if let tableName = restoredTabs[i].tableContext.tableName {
+                do {
+                    restoredTabs[i].content.query = try QueryTab.buildBaseTableQuery(
+                        tableName: tableName,
+                        databaseType: connection.type,
+                        schemaName: restoredTabs[i].tableContext.schemaName
+                    )
+                } catch {
+                    MainContentView.lifecycleLogger.error(
+                        "[open] buildBaseTableQuery failed for restored tab table=\(tableName, privacy: .public): \(error.localizedDescription, privacy: .public)"
+                    )
                 }
             }
+        }
 
-            let selectedId = result.selectedTabId
+        applyRestoredActiveContext(database: result.lastActiveDatabase, schema: result.lastActiveSchema)
 
-            // First tab in the array gets the current window to preserve order.
-            // Remaining tabs open as native window tabs in order.
-            let firstTab = restoredTabs[0]
-            tabManager.tabs = [firstTab]
-            tabManager.selectedTabId = firstTab.id
+        let selectedId = result.selectedTabId
 
-            let remainingTabs = Array(restoredTabs.dropFirst())
+        // First tab gets the current window to preserve order; the rest open as
+        // native window tabs, each carrying its full restored state via the registry.
+        let firstTab = restoredTabs[0]
+        applyRestoredGroup([firstTab], selectedTabId: firstTab.id)
 
-            if !remainingTabs.isEmpty {
-                let selectedWasFirst = firstTab.id == selectedId
-                for tab in remainingTabs {
-                    let restorePayload = EditorTabPayload(
-                        from: tab, connectionId: connection.id, skipAutoExecute: true)
-                    WindowManager.shared.openTab(payload: restorePayload)
-                }
-                if selectedWasFirst {
-                    viewWindow?.makeKeyAndOrderFront(nil)
-                }
+        let remainingTabs = Array(restoredTabs.dropFirst())
+        if !remainingTabs.isEmpty {
+            let selectedWasFirst = firstTab.id == selectedId
+            for tab in remainingTabs {
+                openRestoredTabWindow(tab)
             }
+            if selectedWasFirst {
+                viewWindow?.makeKeyAndOrderFront(nil)
+            }
+        }
+    }
 
-            if firstTab.tabType == .table,
-                !firstTab.content.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    private func applyRestoredGroup(_ tabs: [QueryTab], selectedTabId: UUID?) {
+        guard let firstTab = tabs.first else { return }
+        tabManager.tabs = tabs
+        tabManager.selectedTabId = tabs.contains(where: { $0.id == selectedTabId }) ? selectedTabId : firstTab.id
+
+        guard let selected = tabManager.selectedTab, selected.tabType == .table,
+            !selected.content.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else { return }
+
+        if let tableName = selected.tableContext.tableName {
+            coordinator.restoreLastHiddenColumnsForTable(tableName)
+            coordinator.restoreFiltersForTable(tableName)
+        }
+        if let session = DatabaseManager.shared.activeSessions[connection.id], session.isConnected {
+            if !selected.tableContext.databaseName.isEmpty,
+                selected.tableContext.databaseName != session.activeDatabase
             {
-                if let tableName = firstTab.tableContext.tableName {
-                    coordinator.restoreLastHiddenColumnsForTable(tableName)
-                    coordinator.restoreFiltersForTable(tableName)
-                }
-                if let session = DatabaseManager.shared.activeSessions[connection.id],
-                    session.isConnected
-                {
-                    if !firstTab.tableContext.databaseName.isEmpty,
-                        firstTab.tableContext.databaseName != session.activeDatabase
-                    {
-                        Task { await coordinator.switchDatabase(to: firstTab.tableContext.databaseName) }
-                    } else {
-                        coordinator.lazyLoadCurrentTabIfNeeded()
-                    }
-                } else {
-                    coordinator.needsLazyLoad = true
-                }
+                Task { await coordinator.switchDatabase(to: selected.tableContext.databaseName) }
+            } else {
+                coordinator.lazyLoadCurrentTabIfNeeded()
+            }
+        } else {
+            coordinator.needsLazyLoad = true
+        }
+    }
+
+    private func openRestoredTabWindow(_ tab: QueryTab) {
+        let restorePayload = EditorTabPayload(
+            connectionId: connection.id,
+            tabType: tab.tabType,
+            tableName: tab.tableContext.tableName,
+            databaseName: tab.tableContext.databaseName,
+            schemaName: tab.tableContext.schemaName,
+            isView: tab.tableContext.isView,
+            skipAutoExecute: true,
+            erDiagramSchemaKey: tab.display.erDiagramSchemaKey,
+            tabTitle: tab.title,
+            intent: .restoreOrDefault
+        )
+        RestorationGroupRegistry.register(
+            .init(tabs: [tab], selectedTabId: tab.id),
+            for: restorePayload.id
+        )
+        WindowManager.shared.openTab(payload: restorePayload)
+    }
+
+    private func applyRestoredActiveContext(database: String?, schema: String?) {
+        guard let session = DatabaseManager.shared.activeSessions[connection.id], session.isConnected else { return }
+        Task {
+            if let database, !database.isEmpty, database != session.activeDatabase {
+                await coordinator.switchDatabase(to: database)
+            }
+            if let schema, !schema.isEmpty, schema != session.currentSchema {
+                await coordinator.switchSchema(to: schema)
             }
         }
     }

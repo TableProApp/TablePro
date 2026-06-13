@@ -153,15 +153,20 @@ Each tab maintains its own pending changes. Switching tabs saves and restores ea
 | Saved | Not Saved |
 |-------|-----------|
 | Tab ID and title | Query results (re-queried on reopen) |
-| SQL content | Pending data changes |
-| Tab type and table name | Selected rows, sort/filter state |
-| Pin state | Preview tabs (discarded) |
+| SQL content and cursor position | Pending data changes |
+| Tab type and table name | Selected rows |
+| Applied sort, filters, and page | Preview tabs (discarded) |
+| Column widths | |
+| Active database and schema | |
+| Pin state | |
 
-Tab state auto-saves 500ms after any change. On reconnect, TablePro restores your tabs and re-executes table queries.
+Tab state auto-saves 500ms after any change, plus a background save every 30 seconds so a crash or force quit keeps your recent work. On reconnect, TablePro restores your tabs and re-runs table queries with the sort, filters, and page you left them on. Connections reconnect lazily, when you first interact with a restored tab, so launch stays fast and unreachable hosts do not block startup.
+
+Whether the session reopens on launch is controlled by [Startup Behavior](/customization/settings#general), which defaults to reopening your last session.
 
 ### Multi-Window Restoration
 
-If you had several editor windows open with their own tab groups, TablePro restores every window on next launch. Earlier versions kept tabs from one window and dropped the rest.
+Tabs restore in their original order across launches. If a previous session was recovered after a crash, TablePro reopens each connection that had open tabs.
 
 ### Window Size, Position, and Zoom
 

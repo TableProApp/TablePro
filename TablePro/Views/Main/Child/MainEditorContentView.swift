@@ -329,6 +329,7 @@ struct MainEditorContentView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         )
+        .onAppear { coordinator.applyRestoredCursor(for: tab.id) }
     }
 
     private func reloadFileForTab(tabId: UUID, url: URL) {
