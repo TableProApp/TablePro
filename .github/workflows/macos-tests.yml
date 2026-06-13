@@ -21,6 +21,7 @@ on:
       - "Libs/**"
       - ".github/workflows/macos-tests.yml"
   workflow_dispatch:
+  workflow_call:
 
 # Only one run per PR/branch at a time; new pushes cancel pending older ones.
 concurrency:
