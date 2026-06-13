@@ -38,14 +38,13 @@ internal final class TabPersistenceCoordinator {
     }
 
     internal func saveNow(windowedTabs: [(tab: QueryTab, windowGroupIndex: Int)], selectedTabId: UUID?) {
-        let nonPreviewTabs = windowedTabs.filter { !$0.tab.isPreview }
-        guard !nonPreviewTabs.isEmpty else {
+        guard !windowedTabs.isEmpty else {
             clearSavedState()
             return
         }
-        let persisted = nonPreviewTabs.map { $0.tab.toPersistedTab(windowGroupIndex: $0.windowGroupIndex) }
-        let normalizedSelectedId = nonPreviewTabs.contains(where: { $0.tab.id == selectedTabId })
-            ? selectedTabId : nonPreviewTabs.first?.tab.id
+        let persisted = windowedTabs.map { $0.tab.toPersistedTab(windowGroupIndex: $0.windowGroupIndex) }
+        let normalizedSelectedId = windowedTabs.contains(where: { $0.tab.id == selectedTabId })
+            ? selectedTabId : windowedTabs.first?.tab.id
         let active = currentActiveDatabaseAndSchema()
         scheduleSave(
             tabs: persisted,
@@ -60,16 +59,15 @@ internal final class TabPersistenceCoordinator {
     }
 
     internal func saveNowSync(windowedTabs: [(tab: QueryTab, windowGroupIndex: Int)], selectedTabId: UUID?) {
-        let nonPreviewTabs = windowedTabs.filter { !$0.tab.isPreview }
-        guard !nonPreviewTabs.isEmpty else {
+        guard !windowedTabs.isEmpty else {
             saveTask?.cancel()
             saveTask = nil
             TabDiskActor.clearSync(connectionId: connectionId)
             return
         }
-        let persisted = nonPreviewTabs.map { $0.tab.toPersistedTab(windowGroupIndex: $0.windowGroupIndex) }
-        let normalizedSelectedId = nonPreviewTabs.contains(where: { $0.tab.id == selectedTabId })
-            ? selectedTabId : nonPreviewTabs.first?.tab.id
+        let persisted = windowedTabs.map { $0.tab.toPersistedTab(windowGroupIndex: $0.windowGroupIndex) }
+        let normalizedSelectedId = windowedTabs.contains(where: { $0.tab.id == selectedTabId })
+            ? selectedTabId : windowedTabs.first?.tab.id
         let active = currentActiveDatabaseAndSchema()
         TabDiskActor.saveSync(
             connectionId: connectionId,

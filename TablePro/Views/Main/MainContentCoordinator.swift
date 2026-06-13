@@ -299,7 +299,6 @@ final class MainContentCoordinator {
 
         return orderedCoordinators.enumerated().flatMap { groupIndex, coordinator in
             coordinator.tabManager.tabs
-                .filter { !$0.isPreview }
                 .map { (tab: coordinator.enrichedForPersistence($0), windowGroupIndex: groupIndex) }
         }
     }
