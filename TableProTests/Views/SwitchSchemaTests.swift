@@ -21,8 +21,8 @@ struct SwitchSchemaTests {
     }
 
     private func withSchemaSwitchingConnection(
-        _ body: (DatabaseConnection, MockDatabaseDriver) -> Void
-    ) {
+        _ body: (DatabaseConnection, MockDatabaseDriver) async -> Void
+    ) async {
         let connection = TestFixtures.makeConnection(type: .postgresql)
         let driver = MockDatabaseDriver(connection: connection)
         DatabaseManager.shared.injectSession(
@@ -30,7 +30,7 @@ struct SwitchSchemaTests {
             for: connection.id
         )
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
-        body(connection, driver)
+        await body(connection, driver)
     }
 
     @Test("switchSchema keeps query and table tabs and their contents")
