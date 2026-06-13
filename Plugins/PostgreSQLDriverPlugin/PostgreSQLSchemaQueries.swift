@@ -114,4 +114,61 @@ enum PostgreSQLSchemaQueries {
         let quotedIdentifier = "\"\(schema.replacingOccurrences(of: "\"", with: "\"\""))\""
         return "SET search_path TO \(quotedIdentifier)"
     }
+
+    /// Column introspection for one schema. Passing `tableLiteral` restricts the
+    /// result to a single table; passing `nil` returns every table's columns and
+    /// prefixes each row with `table_name`. `schemaLiteral` is the only schema
+    /// source, so the caller resolves the target schema (qualified reference,
+    /// then current schema) before escaping and passing it here. The identity,
+    /// generated, and attribute-join fragments come from the connected server's
+    /// versioned capabilities.
+    static func columnsQuery(
+        schemaLiteral: String,
+        tableLiteral: String?,
+        identityProjection: String,
+        generatedProjection: String,
+        attributeJoin: String
+    ) -> String {
+        let includesTableName = tableLiteral == nil
+        let selectPrefix = includesTableName ? "c.table_name,\n" : ""
+        let pkSelect = includesTableName ? "kcu.table_name, kcu.column_name" : "kcu.column_name"
+        let pkTableFilter = tableLiteral.map { "\n                    AND tc.table_name = '\($0)'" } ?? ""
+        let pkJoin = includesTableName
+            ? "c.table_name = pk.table_name AND c.column_name = pk.column_name"
+            : "c.column_name = pk.column_name"
+        let mainTableFilter = tableLiteral.map { " AND c.table_name = '\($0)'" } ?? ""
+        let orderBy = includesTableName ? "c.table_name, c.ordinal_position" : "c.ordinal_position"
+        return """
+            SELECT
+                \(selectPrefix)c.column_name,
+                c.data_type,
+                c.is_nullable,
+                c.column_default,
+                c.collation_name,
+                pgd.description,
+                c.udt_name,
+                CASE WHEN pk.column_name IS NOT NULL THEN 'YES' ELSE 'NO' END AS is_pk,
+                \(identityProjection),
+                \(generatedProjection)
+            FROM information_schema.columns c
+            LEFT JOIN pg_catalog.pg_statio_all_tables st
+                ON st.schemaname = c.table_schema
+                AND st.relname = c.table_name
+            LEFT JOIN pg_catalog.pg_description pgd
+                ON pgd.objoid = st.relid
+                AND pgd.objsubid = c.ordinal_position
+            \(attributeJoin)
+            LEFT JOIN (
+                SELECT DISTINCT \(pkSelect)
+                FROM information_schema.table_constraints tc
+                JOIN information_schema.key_column_usage kcu
+                    ON tc.constraint_name = kcu.constraint_name
+                    AND tc.table_schema = kcu.table_schema
+                WHERE tc.constraint_type = 'PRIMARY KEY'
+                    AND tc.table_schema = '\(schemaLiteral)'\(pkTableFilter)
+            ) pk ON \(pkJoin)
+            WHERE c.table_schema = '\(schemaLiteral)'\(mainTableFilter)
+            ORDER BY \(orderBy)
+            """
+    }
 }

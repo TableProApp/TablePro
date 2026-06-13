@@ -230,8 +230,4 @@ extension LibPQBackedDriver {
     func escapeLiteral(_ str: String) -> String {
         escapeStringLiteral(str)
     }
-
-    var escapedSchema: String {
-        escapeLiteral(core.currentSchema)
-    }
 }

@@ -26,9 +26,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Refresh (Cmd+R) now acts only on the focused window's connection, instead of also reloading views and clearing autocomplete caches for every other open connection.
 - Holding Cmd+R no longer queues a backlog of refreshes that kept running after the key was released; refresh fires once per key press, and rapid presses collapse into a single reload.
 - Switching PostgreSQL schemas now sets the search path to just the selected schema instead of also keeping "public" on it. Unqualified references to objects in "public", such as extension functions, need a "public." prefix while another schema is selected. (#1662)
+- The inspector panel can now be resized freely by dragging its divider instead of being capped at a fixed width.
 
 ### Fixed
 
+- PostgreSQL and Redshift autocomplete now completes tables and columns from schemas other than the one selected in the sidebar, so a schema-qualified query like `SELECT * FROM s2.orders` suggests `s2`'s columns. (#1668)
 - Favorite keywords now work again: favorites scoped to a deleted connection were silently kept in storage but hidden everywhere, so typing their keyword did nothing. Deleting a connection now also deletes its saved queries, their folders, and per-table filters, the delete confirmation says so, and favorites already orphaned by an earlier delete are cleaned up at launch.
 - Keyword autocomplete and SQL keyword suggestions now work in editors without a database connection, and favorites appear in the completion popup immediately instead of after a short delay.
 - Typing a favorite's keyword in the Quick Switcher now finds the saved query instead of ranking it below name matches.

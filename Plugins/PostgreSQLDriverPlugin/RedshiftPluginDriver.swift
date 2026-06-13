@@ -41,10 +41,11 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     // MARK: - Schema
 
     func fetchTables(schema: String?) async throws -> [PluginTableInfo] {
+        let schemaLiteral = escapeLiteral(schema ?? core.currentSchema)
         let query = """
             SELECT table_name, table_type
             FROM information_schema.tables
-            WHERE table_schema = '\(escapedSchema)'
+            WHERE table_schema = '\(schemaLiteral)'
             ORDER BY table_name
             """
         let result = try await execute(query: query)
@@ -57,37 +58,11 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     }
 
     func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] {
-        let safeTable = escapeLiteral(table)
-        let query = """
-            SELECT
-                c.column_name,
-                c.data_type,
-                c.is_nullable,
-                c.column_default,
-                c.collation_name,
-                pgd.description,
-                c.udt_name,
-                CASE WHEN pk.column_name IS NOT NULL THEN 'YES' ELSE 'NO' END AS is_pk
-            FROM information_schema.columns c
-            LEFT JOIN pg_catalog.pg_class cls
-                ON cls.relname = c.table_name
-                AND cls.relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = c.table_schema)
-            LEFT JOIN pg_catalog.pg_description pgd
-                ON pgd.objoid = cls.oid
-                AND pgd.objsubid = c.ordinal_position
-            LEFT JOIN (
-                SELECT DISTINCT kcu.column_name
-                FROM information_schema.table_constraints tc
-                JOIN information_schema.key_column_usage kcu
-                    ON tc.constraint_name = kcu.constraint_name
-                    AND tc.table_schema = kcu.table_schema
-                WHERE tc.constraint_type = 'PRIMARY KEY'
-                    AND tc.table_schema = '\(escapedSchema)'
-                    AND tc.table_name = '\(safeTable)'
-            ) pk ON c.column_name = pk.column_name
-            WHERE c.table_schema = '\(escapedSchema)' AND c.table_name = '\(safeTable)'
-            ORDER BY c.ordinal_position
-            """
+        let schemaLiteral = escapeLiteral(schema ?? core.currentSchema)
+        let query = RedshiftSchemaQueries.columnsQuery(
+            schemaLiteral: schemaLiteral,
+            tableLiteral: escapeLiteral(table)
+        )
         let result = try await execute(query: query)
         return result.rows.compactMap { row -> PluginColumnInfo? in
             guard row.count >= 4,
@@ -131,36 +106,8 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     }
 
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
-        let query = """
-            SELECT
-                c.table_name,
-                c.column_name,
-                c.data_type,
-                c.is_nullable,
-                c.column_default,
-                c.collation_name,
-                pgd.description,
-                c.udt_name,
-                CASE WHEN pk.column_name IS NOT NULL THEN 'YES' ELSE 'NO' END AS is_pk
-            FROM information_schema.columns c
-            LEFT JOIN pg_catalog.pg_class cls
-                ON cls.relname = c.table_name
-                AND cls.relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = c.table_schema)
-            LEFT JOIN pg_catalog.pg_description pgd
-                ON pgd.objoid = cls.oid
-                AND pgd.objsubid = c.ordinal_position
-            LEFT JOIN (
-                SELECT DISTINCT kcu.table_name, kcu.column_name
-                FROM information_schema.table_constraints tc
-                JOIN information_schema.key_column_usage kcu
-                    ON tc.constraint_name = kcu.constraint_name
-                    AND tc.table_schema = kcu.table_schema
-                WHERE tc.constraint_type = 'PRIMARY KEY'
-                    AND tc.table_schema = '\(escapedSchema)'
-            ) pk ON c.table_name = pk.table_name AND c.column_name = pk.column_name
-            WHERE c.table_schema = '\(escapedSchema)'
-            ORDER BY c.table_name, c.ordinal_position
-            """
+        let schemaLiteral = escapeLiteral(schema ?? core.currentSchema)
+        let query = RedshiftSchemaQueries.columnsQuery(schemaLiteral: schemaLiteral, tableLiteral: nil)
         let result = try await execute(query: query)
         var allColumns: [String: [PluginColumnInfo]] = [:]
         for row in result.rows {
@@ -209,6 +156,7 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
 
     func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] {
         let safeTable = escapeLiteral(table)
+        let schemaLiteral = escapeLiteral(schema ?? core.currentSchema)
         let query = """
             SELECT
                 "column",
@@ -216,7 +164,7 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
                 distkey,
                 sortkey
             FROM pg_table_def
-            WHERE schemaname = '\(escapedSchema)'
+            WHERE schemaname = '\(schemaLiteral)'
               AND tablename = '\(safeTable)'
               AND (distkey = true OR sortkey != 0)
             ORDER BY sortkey
@@ -285,11 +233,12 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
 
     func fetchApproximateRowCount(table: String, schema: String?) async throws -> Int? {
         let safeTable = escapeLiteral(table)
+        let schemaLiteral = escapeLiteral(schema ?? core.currentSchema)
         let query = """
             SELECT tbl_rows
             FROM svv_table_info
             WHERE "table" = '\(safeTable)'
-              AND schema = '\(escapedSchema)'
+              AND schema = '\(schemaLiteral)'
             """
         let result = try await execute(query: query)
         guard let firstRow = result.rows.first, let value = firstRow[0].asText, let count = Int(value) else { return nil }
@@ -298,8 +247,10 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
 
     func fetchTableDDL(table: String, schema: String?) async throws -> String {
         let safeTable = escapeLiteral(table)
+        let resolvedSchema = schema ?? core.currentSchema
+        let schemaLiteral = escapeLiteral(resolvedSchema)
         let quotedTable = quoteIdentifier(table)
-        let quotedSchema = quoteIdentifier(core.currentSchema)
+        let quotedSchema = quoteIdentifier(resolvedSchema)
 
         do {
             let showResult = try await execute(query: "SHOW TABLE \(quotedSchema).\(quotedTable)")
@@ -320,7 +271,7 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
             JOIN pg_namespace n ON n.oid = c.relnamespace
             LEFT JOIN pg_attrdef d ON d.adrelid = c.oid AND d.adnum = a.attnum
             WHERE c.relname = '\(safeTable)'
-              AND n.nspname = '\(escapedSchema)'
+              AND n.nspname = '\(schemaLiteral)'
               AND a.attnum > 0
               AND NOT a.attisdropped
             ORDER BY a.attnum
@@ -357,11 +308,12 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
 
     func fetchViewDefinition(view: String, schema: String?) async throws -> String {
         let safeView = escapeLiteral(view)
+        let schemaLiteral = escapeLiteral(schema ?? core.currentSchema)
         let query = """
             SELECT 'CREATE OR REPLACE VIEW ' || quote_ident(schemaname) || '.' || quote_ident(viewname) || ' AS ' || E'\\n' || definition AS ddl
             FROM pg_views
             WHERE viewname = '\(safeView)'
-              AND schemaname = '\(escapedSchema)'
+              AND schemaname = '\(schemaLiteral)'
             """
         let result = try await execute(query: query)
         guard let firstRow = result.rows.first, let ddl = firstRow[0].asText else {
@@ -372,6 +324,7 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
 
     func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
         let safeTable = escapeLiteral(table)
+        let schemaLiteral = escapeLiteral(schema ?? core.currentSchema)
         let query = """
             SELECT
                 tbl_rows,
@@ -381,7 +334,7 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
                 stats_off
             FROM svv_table_info
             WHERE "table" = '\(safeTable)'
-              AND schema = '\(escapedSchema)'
+              AND schema = '\(schemaLiteral)'
             """
         let result = try await execute(query: query)
         guard let row = result.rows.first else {
