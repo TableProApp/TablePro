@@ -211,6 +211,7 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         inspectorSplitItem = NSSplitViewItem(inspectorWithViewController: inspectorHosting)
         inspectorSplitItem.canCollapse = true
         inspectorSplitItem.minimumThickness = 270
+        inspectorSplitItem.maximumThickness = NSSplitViewItem.unspecifiedDimension
         addSplitViewItem(inspectorSplitItem)
 
         if currentSession?.driver == nil {
