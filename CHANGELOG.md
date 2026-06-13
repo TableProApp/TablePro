@@ -28,7 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Holding Cmd+R no longer queues a backlog of refreshes that kept running after the key was released; refresh fires once per key press, and rapid presses collapse into a single reload.
 - Switching PostgreSQL schemas now sets the search path to just the selected schema instead of also keeping "public" on it. Unqualified references to objects in "public", such as extension functions, need a "public." prefix while another schema is selected. (#1662)
 - The inspector panel can now be resized freely by dragging its divider instead of being capped at a fixed width.
-- New installs now reopen your last session on launch by default instead of showing the welcome screen. Change it under Settings > General > Startup Behavior. (#1673)
+- TablePro now reopens your last session on launch by default instead of showing the welcome screen. Installs still on the previous default move over once; change it any time under Settings > General > Startup Behavior. (#1673)
 
 ### Fixed
 

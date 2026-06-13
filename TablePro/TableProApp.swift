@@ -767,6 +767,7 @@ struct TableProApp: App {
     @State private var commandRegistry = CommandActionsRegistry.shared
 
     init() {
+        AppSettingsStorage.shared.migrateStartupBehaviorToReopenLastIfNeeded()
         AIProviderRegistration.registerAll()
 
         // Perform startup cleanup of query history if auto-cleanup is enabled

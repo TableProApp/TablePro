@@ -143,10 +143,16 @@ internal final class AppLaunchCoordinator {
 
         let connections = ConnectionStorage.shared.loadConnections()
         let knownIds = Set(connections.map(\.id))
+        var openedAny = false
         for connectionId in connectionIds where knownIds.contains(connectionId) {
             WindowManager.shared.openTab(
                 payload: EditorTabPayload(connectionId: connectionId, intent: .restoreOrDefault)
             )
+            openedAny = true
+        }
+
+        if openedAny {
+            WindowOpener.shared.orderOutWelcome()
         }
     }
 
