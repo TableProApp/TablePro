@@ -141,14 +141,26 @@ internal final class AppLaunchCoordinator {
         let connectionIds = LastOpenConnectionsStorage.shared.load()
         guard !connectionIds.isEmpty else { return }
 
-        let connections = ConnectionStorage.shared.loadConnections()
-        let knownIds = Set(connections.map(\.id))
+        let connectionsById = Dictionary(
+            ConnectionStorage.shared.loadConnections().map { ($0.id, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
         var openedAny = false
-        for connectionId in connectionIds where knownIds.contains(connectionId) {
+        for connectionId in connectionIds {
+            guard let connection = connectionsById[connectionId] else { continue }
             WindowManager.shared.openTab(
                 payload: EditorTabPayload(connectionId: connectionId, intent: .restoreOrDefault)
             )
             openedAny = true
+            Task {
+                do {
+                    try await DatabaseManager.shared.ensureConnected(connection)
+                } catch {
+                    Self.logger.error(
+                        "[restore] reopen connect failed for \(connectionId, privacy: .public): \(error.localizedDescription, privacy: .public)"
+                    )
+                }
+            }
         }
 
         if openedAny {
