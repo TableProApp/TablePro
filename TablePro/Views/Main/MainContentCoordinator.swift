@@ -275,8 +275,8 @@ final class MainContentCoordinator {
         Self.activeCoordinators.removeValue(forKey: instanceId)
     }
 
-    /// Collect non-preview tabs for persistence, tagged with the index of the
-    /// native window group they belong to so multi-window layouts restore intact.
+    /// Collect tabs across all of a connection's windows for persistence, tagged with
+    /// the index of the native window group they belong to so tab order restores intact.
     static func aggregatedTabs(for connectionId: UUID) -> [(tab: QueryTab, windowGroupIndex: Int)] {
         let coordinators = activeCoordinators.values
             .filter { $0.connectionId == connectionId }
@@ -327,6 +327,18 @@ final class MainContentCoordinator {
     private func columnsForPersistence(of tab: QueryTab) -> [String] {
         let buffer = tabSessionRegistry.tableRows(for: tab.id)
         return buffer.columns.isEmpty ? effectiveResultColumns(for: tab) : buffer.columns
+    }
+
+    /// Map persisted sort columns (keyed by name) back to indices into the live column set.
+    /// Columns that no longer exist are dropped, so a renamed or removed column degrades gracefully.
+    static func resolveRestoredSortColumns(
+        _ persisted: [PersistedSortColumn],
+        in columns: [String]
+    ) -> [SortColumn] {
+        persisted.compactMap { column in
+            guard let columnIndex = columns.firstIndex(of: column.columnName) else { return nil }
+            return SortColumn(columnIndex: columnIndex, direction: column.direction, columnName: column.columnName)
+        }
     }
 
     func applyRestoredCursor(for tabId: UUID) {

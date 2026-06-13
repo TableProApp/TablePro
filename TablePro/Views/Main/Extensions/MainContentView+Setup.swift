@@ -126,14 +126,17 @@ extension MainContentView {
             }
         }
 
-        applyRestoredActiveContext(database: result.lastActiveDatabase, schema: result.lastActiveSchema)
-
         let selectedId = result.selectedTabId
 
         // First tab gets the current window to preserve order; the rest open as
         // native window tabs, each carrying its full restored state via the registry.
         let firstTab = restoredTabs[0]
-        applyRestoredGroup([firstTab], selectedTabId: firstTab.id)
+        applyRestoredGroup(
+            [firstTab],
+            selectedTabId: firstTab.id,
+            activeDatabase: result.lastActiveDatabase,
+            activeSchema: result.lastActiveSchema
+        )
 
         let remainingTabs = Array(restoredTabs.dropFirst())
         if !remainingTabs.isEmpty {
@@ -147,29 +150,56 @@ extension MainContentView {
         }
     }
 
-    private func applyRestoredGroup(_ tabs: [QueryTab], selectedTabId: UUID?) {
+    private func applyRestoredGroup(
+        _ tabs: [QueryTab],
+        selectedTabId: UUID?,
+        activeDatabase: String? = nil,
+        activeSchema: String? = nil
+    ) {
         guard let firstTab = tabs.first else { return }
         tabManager.tabs = tabs
         tabManager.selectedTabId = tabs.contains(where: { $0.id == selectedTabId }) ? selectedTabId : firstTab.id
 
-        guard let selected = tabManager.selectedTab, selected.tabType == .table,
-            !selected.content.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        else { return }
+        guard let selected = tabManager.selectedTab else { return }
 
-        if let tableName = selected.tableContext.tableName {
+        if selected.tabType == .table, let tableName = selected.tableContext.tableName,
+            !selected.content.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        {
             coordinator.restoreLastHiddenColumnsForTable(tableName)
             coordinator.restoreFiltersForTable(tableName)
         }
-        if let session = DatabaseManager.shared.activeSessions[connection.id], session.isConnected {
-            if !selected.tableContext.databaseName.isEmpty,
-                selected.tableContext.databaseName != session.activeDatabase
-            {
-                Task { await coordinator.switchDatabase(to: selected.tableContext.databaseName) }
-            } else {
+
+        restoreConnectionContext(for: selected, activeDatabase: activeDatabase, activeSchema: activeSchema)
+    }
+
+    /// Restore the connection's database and schema, then load the selected tab, in a single
+    /// sequenced task so the database and schema switches never race each other.
+    private func restoreConnectionContext(for selected: QueryTab, activeDatabase: String?, activeSchema: String?) {
+        let isTableTab = selected.tabType == .table
+            && !selected.content.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+
+        guard let session = DatabaseManager.shared.activeSessions[connection.id], session.isConnected else {
+            if isTableTab { coordinator.needsLazyLoad = true }
+            return
+        }
+
+        let targetDatabase = selected.tabType == .table && !selected.tableContext.databaseName.isEmpty
+            ? selected.tableContext.databaseName
+            : activeDatabase.flatMap { $0.isEmpty ? nil : $0 }
+
+        Task {
+            var contextChanged = false
+            if let targetDatabase, targetDatabase != session.activeDatabase {
+                await coordinator.switchDatabase(to: targetDatabase)
+                contextChanged = true
+            }
+            if let activeSchema, !activeSchema.isEmpty, activeSchema != session.currentSchema {
+                await coordinator.switchSchema(to: activeSchema)
+                contextChanged = true
+            }
+            if isTableTab, !contextChanged {
                 coordinator.lazyLoadCurrentTabIfNeeded()
             }
-        } else {
-            coordinator.needsLazyLoad = true
         }
     }
 
@@ -191,18 +221,6 @@ extension MainContentView {
             for: restorePayload.id
         )
         WindowManager.shared.openTab(payload: restorePayload)
-    }
-
-    private func applyRestoredActiveContext(database: String?, schema: String?) {
-        guard let session = DatabaseManager.shared.activeSessions[connection.id], session.isConnected else { return }
-        Task {
-            if let database, !database.isEmpty, database != session.activeDatabase {
-                await coordinator.switchDatabase(to: database)
-            }
-            if let schema, !schema.isEmpty, schema != session.currentSchema {
-                await coordinator.switchSchema(to: schema)
-            }
-        }
     }
 
     // MARK: - Command Actions Setup

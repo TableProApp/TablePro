@@ -34,6 +34,31 @@ struct MultiWindowRestorationTests {
         #expect(RestorationGroupRegistry.consume(for: nil) == nil)
     }
 
+    @Test("Restored sort columns resolve to indices, preserving order and dropping missing columns")
+    func resolveRestoredSortColumns() {
+        let persisted = [
+            PersistedSortColumn(columnName: "name", direction: .ascending),
+            PersistedSortColumn(columnName: "ghost", direction: .descending),
+            PersistedSortColumn(columnName: "id", direction: .descending)
+        ]
+
+        let resolved = MainContentCoordinator.resolveRestoredSortColumns(persisted, in: ["id", "email", "name"])
+
+        #expect(resolved.count == 2)
+        #expect(resolved[0].columnName == "name")
+        #expect(resolved[0].columnIndex == 2)
+        #expect(resolved[0].direction == .ascending)
+        #expect(resolved[1].columnName == "id")
+        #expect(resolved[1].columnIndex == 0)
+        #expect(resolved[1].direction == .descending)
+    }
+
+    @Test("Resolving sort columns against an empty column set yields nothing")
+    func resolveRestoredSortColumnsEmpty() {
+        let persisted = [PersistedSortColumn(columnName: "id", direction: .ascending)]
+        #expect(MainContentCoordinator.resolveRestoredSortColumns(persisted, in: []).isEmpty)
+    }
+
     @Test("Last open connections round-trip through storage")
     func connectionListRoundTrip() {
         let directory = FileManager.default.temporaryDirectory

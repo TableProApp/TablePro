@@ -48,11 +48,10 @@ extension MainContentCoordinator {
         let tab = tabManager.tabs[index]
         guard tab.pendingRestoredSort != nil || tab.restoredPage != nil else { return false }
 
-        let columns = effectiveResultColumns(for: tab)
-        let resolvedSort: [SortColumn] = (tab.pendingRestoredSort ?? []).compactMap { persisted in
-            guard let columnIndex = columns.firstIndex(of: persisted.columnName) else { return nil }
-            return SortColumn(columnIndex: columnIndex, direction: persisted.direction, columnName: persisted.columnName)
-        }
+        let resolvedSort = MainContentCoordinator.resolveRestoredSortColumns(
+            tab.pendingRestoredSort ?? [],
+            in: effectiveResultColumns(for: tab)
+        )
         let pageSize = max(1, AppSettingsManager.shared.dataGrid.defaultPageSize)
         let page = max(1, tab.restoredPage ?? 1)
 
