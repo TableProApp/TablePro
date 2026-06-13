@@ -35,6 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Keyword autocomplete and SQL keyword suggestions now work in editors without a database connection, and favorites appear in the completion popup immediately instead of after a short delay.
 - Typing a favorite's keyword in the Quick Switcher now finds the saved query instead of ranking it below name matches.
 - PostgreSQL databases without a "public" schema now load tables from the first available schema, the schema selector also appears when only one schema exists, and the database list counts tables in every user schema instead of only "public". (#1662)
+- Switching schemas no longer closes your open tabs or discards unsaved SQL. Tabs stay open, and the sidebar, schema chip, and autocomplete update to the new schema. (#1669)
 - Creating a table now turns the Create Table tab into the new table's tab instead of leaving the creation tab open next to a duplicate, and the sidebar shows the new table without a manual refresh. (#1664)
 - Cmd+S in the Create Table tab now creates the table, matching the Save shortcut everywhere else. (#1664)
 - Format Query can now be undone with Cmd+Z; the formatting is applied as a single editor edit instead of clearing the undo history. (#1645)

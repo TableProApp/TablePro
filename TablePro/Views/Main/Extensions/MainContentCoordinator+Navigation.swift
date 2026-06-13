@@ -448,18 +448,11 @@ extension MainContentCoordinator {
             return
         }
 
-        clearFilterState()
         let previousSchema = toolbarState.currentSchema
         toolbarState.currentSchema = schema
 
         do {
             try await DatabaseManager.shared.switchSchema(to: schema, for: connectionId)
-
-            closeSiblingNativeWindows()
-            persistence.saveNowSync(tabs: tabManager.tabs, selectedTabId: tabManager.selectedTabId)
-            tabSessionRegistry.removeAll()
-            tabManager.tabs = []
-            tabManager.selectedTabId = nil
         } catch {
             toolbarState.currentSchema = previousSchema
 

@@ -419,6 +419,9 @@ final class MainContentCoordinator {
             .sink { [weak self] changedConnectionId in
                 guard let self, changedConnectionId == self.connectionId else { return }
                 Task { @MainActor in
+                    if let schema = self.services.databaseManager.session(for: self.connectionId)?.currentSchema {
+                        self.toolbarState.currentSchema = schema
+                    }
                     await self.refreshTables()
                 }
             }
