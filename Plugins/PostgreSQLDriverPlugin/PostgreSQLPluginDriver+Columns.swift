@@ -8,7 +8,7 @@ import TableProPluginKit
 
 extension PostgreSQLPluginDriver {
     func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] {
-        let safeSchema = escapeStringLiteral(schema ?? currentSchema ?? "public")
+        let safeSchema = escapeStringLiteral(schema ?? core.currentSchema)
         let safeTable = escapeStringLiteral(table)
         let enumMap = try await fetchEnumLabelMap(schema: safeSchema)
         let projections = columnProjections()
@@ -26,7 +26,7 @@ extension PostgreSQLPluginDriver {
     }
 
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
-        let safeSchema = escapeStringLiteral(schema ?? currentSchema ?? "public")
+        let safeSchema = escapeStringLiteral(schema ?? core.currentSchema)
         let enumMap = try await fetchEnumLabelMap(schema: safeSchema)
         let projections = columnProjections()
         let query = PostgreSQLSchemaQueries.columnsQuery(

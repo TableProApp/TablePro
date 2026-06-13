@@ -16,18 +16,10 @@ enum RedshiftSchemaQueries {
     /// source, so the caller resolves the target schema (qualified reference,
     /// then current schema) before escaping and passing it here.
     static func columnsQuery(schemaLiteral: String, tableLiteral: String?) -> String {
-        let includesTableName = tableLiteral == nil
-        let selectPrefix = includesTableName ? "c.table_name,\n" : ""
-        let pkSelect = includesTableName ? "kcu.table_name, kcu.column_name" : "kcu.column_name"
-        let pkTableFilter = tableLiteral.map { "\n                    AND tc.table_name = '\($0)'" } ?? ""
-        let pkJoin = includesTableName
-            ? "c.table_name = pk.table_name AND c.column_name = pk.column_name"
-            : "c.column_name = pk.column_name"
-        let mainTableFilter = tableLiteral.map { " AND c.table_name = '\($0)'" } ?? ""
-        let orderBy = includesTableName ? "c.table_name, c.ordinal_position" : "c.ordinal_position"
+        let shape = ColumnQueryShape.fragments(tableLiteral: tableLiteral)
         return """
             SELECT
-                \(selectPrefix)c.column_name,
+                \(shape.selectPrefix)c.column_name,
                 c.data_type,
                 c.is_nullable,
                 c.column_default,
@@ -43,16 +35,16 @@ enum RedshiftSchemaQueries {
                 ON pgd.objoid = cls.oid
                 AND pgd.objsubid = c.ordinal_position
             LEFT JOIN (
-                SELECT DISTINCT \(pkSelect)
+                SELECT DISTINCT \(shape.pkSelect)
                 FROM information_schema.table_constraints tc
                 JOIN information_schema.key_column_usage kcu
                     ON tc.constraint_name = kcu.constraint_name
                     AND tc.table_schema = kcu.table_schema
                 WHERE tc.constraint_type = 'PRIMARY KEY'
-                    AND tc.table_schema = '\(schemaLiteral)'\(pkTableFilter)
-            ) pk ON \(pkJoin)
-            WHERE c.table_schema = '\(schemaLiteral)'\(mainTableFilter)
-            ORDER BY \(orderBy)
+                    AND tc.table_schema = '\(schemaLiteral)'\(shape.pkTableFilter)
+            ) pk ON \(shape.pkJoin)
+            WHERE c.table_schema = '\(schemaLiteral)'\(shape.mainTableFilter)
+            ORDER BY \(shape.orderBy)
             """
     }
 }
