@@ -360,6 +360,10 @@ PostgreSQL and Redshift need an initial database. Connect to `postgres` (Redshif
 With a restricted user, the switcher only shows databases that user has been granted access to.
 </Tip>
 
+### Filtering the database tree
+
+When the sidebar is in tree layout, a server with many databases can get noisy. Click the filter button in the sidebar footer and check the databases you want to see. The tree then shows only those; with nothing checked, it shows all. A search box helps with long lists, and the footer shows how many of the total are visible. The choice is saved per connection. If a filtered database is later dropped, the tree shows a **Show All** button to clear the filter.
+
 {/* Screenshot: Database switcher */}
 <Frame caption="Database switcher in toolbar">
   <img

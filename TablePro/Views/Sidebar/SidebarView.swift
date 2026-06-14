@@ -12,8 +12,6 @@ struct SidebarView: View {
     @State private var viewModel: SidebarViewModel
     @State private var favoriteTables: Set<FavoriteTablesStorage.FavoriteEntry> = []
     @State private var showDatabaseFilter: Bool = false
-    @State private var databaseFilterEnabled: Bool = false
-    @State private var databaseFilterSelected: Set<String> = []
 
     private var schemaService: SchemaService { SchemaService.shared }
 
@@ -123,20 +121,12 @@ struct SidebarView: View {
         .onChange(of: windowState.searchText) { _, newValue in
             viewModel.searchText = newValue
         }
-        .onChange(of: databaseFilterEnabled) { _, newValue in
-            DatabaseTreeFilterStorage.shared.setEnabled(newValue, connectionId: connectionId)
-        }
-        .onChange(of: databaseFilterSelected) { _, newValue in
-            DatabaseTreeFilterStorage.shared.setSelectedDatabases(newValue, connectionId: connectionId)
-        }
         .onAppear {
             coordinator?.sidebarViewModel = viewModel
             if let driver = DatabaseManager.shared.driver(for: connectionId),
                coordinator?.toolbarState.databaseVersion == nil {
                 coordinator?.toolbarState.databaseVersion = driver.serverVersion
             }
-            databaseFilterEnabled = DatabaseTreeFilterStorage.shared.isEnabled(connectionId: connectionId)
-            databaseFilterSelected = DatabaseTreeFilterStorage.shared.selectedDatabases(connectionId: connectionId)
         }
         .sheet(isPresented: $viewModel.showOperationDialog) {
             if let operationType = viewModel.pendingOperationType {
@@ -193,14 +183,25 @@ struct SidebarView: View {
         }
     }
 
+    private var isDatabaseFilterActive: Bool {
+        !sidebarState.databaseFilterSelected.isEmpty
+    }
+
+    private var databaseFilterSelectionBinding: Binding<Set<String>> {
+        Binding(
+            get: { sidebarState.databaseFilterSelected },
+            set: { sidebarState.databaseFilterSelected = $0 }
+        )
+    }
+
     private var databaseFilterButton: some View {
         Button {
             showDatabaseFilter = true
         } label: {
-            Image(systemName: databaseFilterEnabled
+            Image(systemName: isDatabaseFilterActive
                 ? "line.3.horizontal.decrease.circle.fill"
                 : "line.3.horizontal.decrease.circle")
-                .foregroundStyle(databaseFilterEnabled ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
+                .foregroundStyle(isDatabaseFilterActive ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
         }
         .buttonStyle(.borderless)
         .help(String(localized: "Filter databases"))
@@ -208,8 +209,7 @@ struct SidebarView: View {
         .popover(isPresented: $showDatabaseFilter) {
             DatabaseTreeFilterPopover(
                 connectionId: connectionId,
-                enabled: $databaseFilterEnabled,
-                selectedDatabases: $databaseFilterSelected
+                selectedDatabases: databaseFilterSelectionBinding
             )
         }
     }
@@ -244,8 +244,7 @@ struct SidebarView: View {
             pendingTruncates: $pendingTruncates,
             pendingDeletes: $pendingDeletes,
             coordinator: coordinator,
-            databaseFilterEnabled: databaseFilterEnabled,
-            selectedDatabases: databaseFilterSelected
+            sidebarState: sidebarState
         )
     }
 

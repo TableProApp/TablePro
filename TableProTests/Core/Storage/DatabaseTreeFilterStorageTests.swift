@@ -12,22 +12,10 @@ struct DatabaseTreeFilterStorageTests {
         return DatabaseTreeFilterStorage(defaults: defaults)
     }
 
-    @Test("Defaults to disabled with empty selection")
-    func defaultsDisabledEmpty() throws {
+    @Test("Defaults to an empty selection")
+    func defaultsEmpty() throws {
         let storage = try makeStorage()
-        let connId = UUID()
-        #expect(storage.isEnabled(connectionId: connId) == false)
-        #expect(storage.selectedDatabases(connectionId: connId).isEmpty)
-    }
-
-    @Test("Enable toggle persists")
-    func enablePersists() throws {
-        let storage = try makeStorage()
-        let connId = UUID()
-        storage.setEnabled(true, connectionId: connId)
-        #expect(storage.isEnabled(connectionId: connId))
-        storage.setEnabled(false, connectionId: connId)
-        #expect(!storage.isEnabled(connectionId: connId))
+        #expect(storage.selectedDatabases(connectionId: UUID()).isEmpty)
     }
 
     @Test("Selected databases round-trip")
@@ -38,25 +26,31 @@ struct DatabaseTreeFilterStorageTests {
         #expect(storage.selectedDatabases(connectionId: connId) == Set(["db1", "db2"]))
     }
 
-    @Test("State is isolated per connection")
+    @Test("Setting an empty selection clears the stored value")
+    func emptySelectionClears() throws {
+        let storage = try makeStorage()
+        let connId = UUID()
+        storage.setSelectedDatabases(Set(["db1"]), connectionId: connId)
+        storage.setSelectedDatabases([], connectionId: connId)
+        #expect(storage.selectedDatabases(connectionId: connId).isEmpty)
+    }
+
+    @Test("Selection is isolated per connection")
     func perConnectionIsolation() throws {
         let storage = try makeStorage()
         let a = UUID()
         let b = UUID()
-        storage.setEnabled(true, connectionId: a)
         storage.setSelectedDatabases(Set(["x"]), connectionId: a)
-        #expect(!storage.isEnabled(connectionId: b))
         #expect(storage.selectedDatabases(connectionId: b).isEmpty)
+        #expect(storage.selectedDatabases(connectionId: a) == Set(["x"]))
     }
 
-    @Test("Remove filter clears both fields")
-    func removeClearsBoth() throws {
+    @Test("Remove filter clears the selection")
+    func removeClears() throws {
         let storage = try makeStorage()
         let connId = UUID()
-        storage.setEnabled(true, connectionId: connId)
         storage.setSelectedDatabases(Set(["db1"]), connectionId: connId)
         storage.removeFilter(for: connId)
-        #expect(!storage.isEnabled(connectionId: connId))
         #expect(storage.selectedDatabases(connectionId: connId).isEmpty)
     }
 
@@ -65,13 +59,9 @@ struct DatabaseTreeFilterStorageTests {
         let storage = try makeStorage()
         let a = UUID()
         let b = UUID()
-        storage.setEnabled(true, connectionId: a)
         storage.setSelectedDatabases(Set(["db1"]), connectionId: a)
-        storage.setEnabled(true, connectionId: b)
         storage.setSelectedDatabases(Set(["db2"]), connectionId: b)
         storage.removeFilters(for: Set([a, b]))
-        #expect(!storage.isEnabled(connectionId: a))
-        #expect(!storage.isEnabled(connectionId: b))
         #expect(storage.selectedDatabases(connectionId: a).isEmpty)
         #expect(storage.selectedDatabases(connectionId: b).isEmpty)
     }

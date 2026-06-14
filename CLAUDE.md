@@ -182,7 +182,7 @@ Missing a case produces a wrong "{Language} Query" title on the first frame.
 | Filter presets       | UserDefaults     | `FilterPresetStorage`                       |
 | Per-table filters    | JSON files       | `FilterSettingsStorage` (one file per connection + database + schema + table; saves the valid working set, each row's enabled flag included) |
 | Favorite tables      | UserDefaults     | `FavoriteTablesStorage` (per connection + database + schema; iCloud-synced) |
-| Tree database filter | UserDefaults     | `DatabaseTreeFilterStorage` (per connection; enable toggle + visible database set; device-local) |
+| Tree database filter | UserDefaults     | `DatabaseTreeFilterStorage` (per connection; selected database set, empty = show all; device-local). Live value held in `SharedSidebarState`. |
 
 ### Logging & Debugging
 

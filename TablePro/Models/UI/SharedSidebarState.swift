@@ -42,6 +42,15 @@ final class SharedSidebarState {
         }
     }
 
+    var databaseFilterSelected: Set<String> {
+        didSet {
+            DatabaseTreeFilterStorage.shared.setSelectedDatabases(
+                databaseFilterSelected,
+                connectionId: connectionId
+            )
+        }
+    }
+
     static var defaultLayout: SidebarLayout {
         get {
             guard let raw = UserDefaults.standard.string(forKey: SidebarPersistenceKey.defaultLayout),
@@ -73,6 +82,7 @@ final class SharedSidebarState {
         } else {
             self.sidebarLayout = SharedSidebarState.defaultLayout
         }
+        self.databaseFilterSelected = DatabaseTreeFilterStorage.shared.selectedDatabases(connectionId: connectionId)
     }
 
     /// Default init for previews and tests
@@ -80,6 +90,7 @@ final class SharedSidebarState {
         self.connectionId = UUID()
         self.selectedSidebarTab = .tables
         self.sidebarLayout = .flat
+        self.databaseFilterSelected = []
     }
 
     private static var registry: [UUID: SharedSidebarState] = [:]
