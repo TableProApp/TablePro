@@ -53,6 +53,8 @@ struct DatabaseTreeView: View {
     @Binding var pendingTruncates: Set<String>
     @Binding var pendingDeletes: Set<String>
     let coordinator: MainContentCoordinator?
+    let databaseFilterEnabled: Bool
+    let selectedDatabases: Set<String>
 
     @State private var localSelection: Set<DatabaseTreeTableRef> = []
     @State private var searchText: String = ""
@@ -436,7 +438,10 @@ struct DatabaseTreeView: View {
 
     private var visibleDatabases: [DatabaseMetadata] {
         let nonSystem = databases.filter { !$0.isSystemDatabase }
-        let matched = searchText.isEmpty ? nonSystem : nonSystem.filter { databaseMatchesSearch($0) }
+        let allowed = databaseFilterEnabled
+            ? nonSystem.filter { selectedDatabases.contains($0.name) }
+            : nonSystem
+        let matched = searchText.isEmpty ? allowed : allowed.filter { databaseMatchesSearch($0) }
         var seen = Set<String>()
         return matched.filter { seen.insert($0.id).inserted }
     }

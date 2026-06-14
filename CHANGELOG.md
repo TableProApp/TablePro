@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- The tree sidebar can show only the databases you select, toggled from a filter button at the bottom of the sidebar.
+
 ## [0.51.0] - 2026-06-13
 
 ### Added
