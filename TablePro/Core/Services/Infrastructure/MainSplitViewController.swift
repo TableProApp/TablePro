@@ -43,12 +43,11 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
     private var sidebarContainer: SidebarContainerViewController!
     private var detailHosting: NSHostingController<AnyView>!
     private var inspectorHosting: NSHostingController<AnyView>!
-    private var hasMaterializedInspector = false
 
     // MARK: - Panel Layout State
 
     private var splitAutosaveName: NSSplitView.AutosaveName {
-        if let connectionId = payload?.connectionId {
+        if let connectionId = payload?.connectionId ?? currentSession?.connection.id {
             return "com.TablePro.mainSplit.\(connectionId.uuidString)"
         }
         return "com.TablePro.mainSplit"
@@ -230,12 +229,6 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         recomputeWindowMinSize()
     }
 
-    private func materializeInspectorIfNeeded() {
-        guard !hasMaterializedInspector, let inspectorHosting else { return }
-        hasMaterializedInspector = true
-        inspectorHosting.rootView = AnyView(buildInspectorView())
-    }
-
     override func viewWillAppear() {
         super.viewWillAppear()
         guard let window = view.window else { return }
@@ -324,6 +317,7 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
                 sessionState = nil
                 currentSession = nil
                 sidebarContainer.updateSidebarState(nil, windowState: nil)
+                sidebarContainer.rootView = AnyView(buildSidebarView())
             }
             return
         }
@@ -514,7 +508,7 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
     }
 
     func showInspector() {
-        materializeInspectorIfNeeded()
+        inspectorHosting.rootView = AnyView(buildInspectorView())
         inspectorSplitItem?.animator().isCollapsed = false
         recomputeWindowMinSize()
     }
