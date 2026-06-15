@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - The tree sidebar can show only the databases you pick. Use the filter button to check the ones you want, with a search box for long lists. The choice is saved per connection. (#1667)
 
+### Fixed
+
+- MongoDB filters on `_id` and other ObjectId fields now match. A 24-character hex value is matched as an ObjectId as well as a string, so filtering by `_id` returns the row instead of nothing. (#1682)
+
 ## [0.51.0] - 2026-06-13
 
 ### Added

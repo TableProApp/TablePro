@@ -106,8 +106,14 @@ struct MongoDBQueryBuilder {
 
         switch op {
         case "=":
+            if isObjectIdString(value) {
+                return "\"$or\": [{\"\(field)\": \(Self.objectIdJson(value))}, {\"\(field)\": \(jsonValue(value))}]"
+            }
             return "\"\(field)\": \(jsonValue(value))"
         case "!=":
+            if isObjectIdString(value) {
+                return "\"\(field)\": {\"$nin\": [\(Self.objectIdJson(value)), \(jsonValue(value))]}"
+            }
             return "\"\(field)\": {\"$ne\": \(jsonValue(value))}"
         case ">":
             return "\"\(field)\": {\"$gt\": \(jsonValue(value))}"
@@ -137,11 +143,11 @@ struct MongoDBQueryBuilder {
             return "\"\(field)\": \(Self.regexBody(pattern: value))"
         case "IN":
             let items = value.split(separator: ",")
-                .map { jsonValue(String($0).trimmingCharacters(in: .whitespaces)) }
+                .flatMap { inValues(String($0).trimmingCharacters(in: .whitespaces)) }
             return "\"\(field)\": {\"$in\": [\(items.joined(separator: ", "))]}"
         case "NOT IN":
             let items = value.split(separator: ",")
-                .map { jsonValue(String($0).trimmingCharacters(in: .whitespaces)) }
+                .flatMap { inValues(String($0).trimmingCharacters(in: .whitespaces)) }
             return "\"\(field)\": {\"$nin\": [\(items.joined(separator: ", "))]}"
         case "BETWEEN":
             let parts = value.split(separator: ",").map { String($0).trimmingCharacters(in: .whitespaces) }
@@ -176,6 +182,23 @@ struct MongoDBQueryBuilder {
         if Int64(value) != nil { return value }
         if Double(value) != nil, value.contains(".") { return value }
         return "\"\(Self.escapeJsonString(value))\""
+    }
+
+    private func inValues(_ value: String) -> [String] {
+        if isObjectIdString(value) {
+            return [Self.objectIdJson(value), jsonValue(value)]
+        }
+        return [jsonValue(value)]
+    }
+
+    /// A string is a candidate ObjectId when it is exactly 24 hexadecimal characters.
+    private func isObjectIdString(_ value: String) -> Bool {
+        let nsValue = value as NSString
+        return nsValue.length == 24 && value.allSatisfy { $0.isHexDigit }
+    }
+
+    private static func objectIdJson(_ value: String) -> String {
+        "{\"$oid\": \"\(value)\"}"
     }
 
     private static func regexBody(pattern: String) -> String {
