@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - The tree sidebar can show only the databases you pick. Use the filter button to check the ones you want, with a search box for long lists. The choice is saved per connection. (#1667)
 
+### Fixed
+
+- Oracle connections no longer crash the app during connect. A short or unexpected handshake packet from the server (such as session-setup metadata or an error) now surfaces the error or continues instead of trapping. (#1683)
+
 ## [0.51.0] - 2026-06-13
 
 ### Added
