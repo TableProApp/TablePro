@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - The tree sidebar can show only the databases you pick. Use the filter button to check the ones you want, with a search box for long lists. The choice is saved per connection. (#1667)
+- Closing a query tab no longer loses unsaved SQL. The next blank query tab you open for the same connection brings the last closed draft back. (#1686)
 
 ### Fixed
 

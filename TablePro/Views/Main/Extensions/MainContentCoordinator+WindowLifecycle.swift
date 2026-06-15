@@ -68,6 +68,12 @@ extension MainContentCoordinator {
         )
 
         if !MainContentCoordinator.isAppTerminating {
+            if let draft = ClosedTabDraftStorage.draftCandidate(
+                from: tabManager.tabs,
+                selectedTabId: tabManager.selectedTabId
+            ) {
+                ClosedTabDraftStorage.shared.saveQuery(draft, connectionId: connectionId)
+            }
             persistence.saveOrClearAggregatedSync()
         }
 
