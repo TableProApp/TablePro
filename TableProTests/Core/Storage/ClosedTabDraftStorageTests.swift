@@ -45,13 +45,25 @@ struct ClosedTabDraftStorageTests {
         #expect(storage.consumeQuery(connectionId: a) == "SELECT a")
     }
 
-    @Test("Clear removes a stored draft")
-    func clearRemovesDraft() throws {
+    @Test("Removing a draft clears the stored value")
+    func removeDraftClears() throws {
         let storage = try makeStorage()
         let connId = UUID()
         storage.saveQuery("SELECT 1", connectionId: connId)
-        storage.clear(connectionId: connId)
+        storage.removeDraft(for: connId)
         #expect(storage.consumeQuery(connectionId: connId) == nil)
+    }
+
+    @Test("Removing drafts in batch clears across connections")
+    func removeDraftsBatchClears() throws {
+        let storage = try makeStorage()
+        let a = UUID()
+        let b = UUID()
+        storage.saveQuery("SELECT a", connectionId: a)
+        storage.saveQuery("SELECT b", connectionId: b)
+        storage.removeDrafts(for: Set([a, b]))
+        #expect(storage.consumeQuery(connectionId: a) == nil)
+        #expect(storage.consumeQuery(connectionId: b) == nil)
     }
 
     @Test("Queries above the cap are truncated")

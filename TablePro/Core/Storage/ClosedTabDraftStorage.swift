@@ -25,8 +25,12 @@ final class ClosedTabDraftStorage {
         return query
     }
 
-    func clear(connectionId: UUID) {
+    func removeDraft(for connectionId: UUID) {
         defaults.removeObject(forKey: draftKey(connectionId: connectionId))
+    }
+
+    func removeDrafts(for connectionIds: Set<UUID>) {
+        for id in connectionIds { removeDraft(for: id) }
     }
 
     static func draftCandidate(from tabs: [QueryTab], selectedTabId: UUID?) -> String? {

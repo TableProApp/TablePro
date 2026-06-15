@@ -257,6 +257,7 @@ final class ConnectionStorage {
         FavoriteTablesStorage.shared.removeFavorites(for: connection.id)
         FilterSettingsStorage.shared.removeFilters(for: connection.id)
         DatabaseTreeFilterStorage.shared.removeFilter(for: connection.id)
+        ClosedTabDraftStorage.shared.removeDraft(for: connection.id)
         Task {
             await SQLFavoriteManager.shared.removeFavoritesAndFolders(for: connection.id)
         }
@@ -291,6 +292,7 @@ final class ConnectionStorage {
         }
         FilterSettingsStorage.shared.removeFilters(for: idsToDelete)
         DatabaseTreeFilterStorage.shared.removeFilters(for: idsToDelete)
+        ClosedTabDraftStorage.shared.removeDrafts(for: idsToDelete)
         Task {
             for conn in connectionsToDelete {
                 await SQLFavoriteManager.shared.removeFavoritesAndFolders(for: conn.id)
