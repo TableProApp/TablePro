@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Traditional Chinese (繁體中文) language in Settings > General with full UI translation
+
 ## [0.51.1] - 2026-06-16
 
 ### Added
