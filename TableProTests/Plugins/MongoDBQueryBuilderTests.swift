@@ -430,6 +430,113 @@ struct MongoDBQueryBuilderTests {
         #expect(query.contains(".countDocuments({})"))
     }
 
+    // MARK: - ObjectId Matching
+
+    @Test("Equals on an ObjectId value matches both the ObjectId and the string form")
+    func equalsObjectIdDualMatch() {
+        let doc = builder.buildFilterDocument(
+            from: [(column: "_id", op: "=", value: "66c0fa26dfcb27034e646356")]
+        )
+        let parsed = parseFilter(doc)
+        let branches = parsed?["$or"] as? [[String: Any]]
+        #expect(branches?.count == 2)
+        let oid = (branches?.first?["_id"] as? [String: Any])?["$oid"] as? String
+        #expect(oid == "66c0fa26dfcb27034e646356")
+        #expect(branches?.last?["_id"] as? String == "66c0fa26dfcb27034e646356")
+    }
+
+    @Test("Equals on a non-ObjectId string stays a plain string match")
+    func equalsNonObjectIdString() {
+        let doc = builder.buildFilterDocument(
+            from: [(column: "_id", op: "=", value: "user-123")]
+        )
+        #expect(!doc.contains("$or"))
+        #expect(!doc.contains("$oid"))
+        #expect(doc.contains("\"_id\": \"user-123\""))
+    }
+
+    @Test("Equals on a 23-character hex value is not treated as an ObjectId")
+    func equalsShortHexNotObjectId() {
+        let doc = builder.buildFilterDocument(
+            from: [(column: "_id", op: "=", value: "66c0fa26dfcb27034e64635")]
+        )
+        #expect(!doc.contains("$oid"))
+    }
+
+    @Test("Equals on a 24-character non-hex value is not treated as an ObjectId")
+    func equalsNonHexNotObjectId() {
+        let doc = builder.buildFilterDocument(
+            from: [(column: "_id", op: "=", value: "zzc0fa26dfcb27034e646356")]
+        )
+        #expect(!doc.contains("$oid"))
+    }
+
+    @Test("ObjectId matching applies to non-_id reference fields too")
+    func equalsObjectIdReferenceField() {
+        let doc = builder.buildFilterDocument(
+            from: [(column: "userId", op: "=", value: "66c0fa26dfcb27034e646356")]
+        )
+        let branches = parseFilter(doc)?["$or"] as? [[String: Any]]
+        let oid = (branches?.first?["userId"] as? [String: Any])?["$oid"] as? String
+        #expect(oid == "66c0fa26dfcb27034e646356")
+    }
+
+    @Test("Not-equals on an ObjectId value excludes both the ObjectId and the string form")
+    func notEqualsObjectIdDualMatch() {
+        let doc = builder.buildFilterDocument(
+            from: [(column: "_id", op: "!=", value: "66c0fa26dfcb27034e646356")]
+        )
+        let nin = (parseFilter(doc)?["_id"] as? [String: Any])?["$nin"] as? [Any]
+        #expect(nin?.count == 2)
+        let oid = (nin?.first as? [String: Any])?["$oid"] as? String
+        #expect(oid == "66c0fa26dfcb27034e646356")
+        #expect(nin?.last as? String == "66c0fa26dfcb27034e646356")
+    }
+
+    @Test("IN expands an ObjectId item to both forms and leaves plain items alone")
+    func inExpandsObjectIdItems() {
+        let doc = builder.buildFilterDocument(
+            from: [(column: "_id", op: "IN", value: "66c0fa26dfcb27034e646356, plain-id")]
+        )
+        let inArray = (parseFilter(doc)?["_id"] as? [String: Any])?["$in"] as? [Any]
+        #expect(inArray?.count == 3)
+        let oid = (inArray?.first as? [String: Any])?["$oid"] as? String
+        #expect(oid == "66c0fa26dfcb27034e646356")
+        let strings = inArray?.compactMap { $0 as? String }
+        #expect(strings?.contains("66c0fa26dfcb27034e646356") == true)
+        #expect(strings?.contains("plain-id") == true)
+    }
+
+    @Test("NOT IN expands an ObjectId item to both forms")
+    func notInExpandsObjectIdItems() {
+        let doc = builder.buildFilterDocument(
+            from: [(column: "_id", op: "NOT IN", value: "66c0fa26dfcb27034e646356, plain-id")]
+        )
+        let ninArray = (parseFilter(doc)?["_id"] as? [String: Any])?["$nin"] as? [Any]
+        #expect(ninArray?.count == 3)
+        let oid = (ninArray?.first as? [String: Any])?["$oid"] as? String
+        #expect(oid == "66c0fa26dfcb27034e646356")
+        let strings = ninArray?.compactMap { $0 as? String }
+        #expect(strings?.contains("plain-id") == true)
+    }
+
+    @Test("An ObjectId equals combined with another filter stays valid JSON under $and")
+    func objectIdEqualsCombinedWithAndFilter() {
+        let doc = builder.buildFilterDocument(
+            from: [
+                (column: "_id", op: "=", value: "66c0fa26dfcb27034e646356"),
+                (column: "shop", op: "=", value: "acme")
+            ],
+            logicMode: "and"
+        )
+        let branches = parseFilter(doc)?["$and"] as? [[String: Any]]
+        #expect(branches?.count == 2)
+        let or = branches?.first?["$or"] as? [[String: Any]]
+        let oid = (or?.first?["_id"] as? [String: Any])?["$oid"] as? String
+        #expect(oid == "66c0fa26dfcb27034e646356")
+        #expect(branches?.last?["shop"] as? String == "acme")
+    }
+
     // MARK: - Security (NoSQL injection)
 
     private func parseFilter(_ json: String) -> [String: Any]? {
