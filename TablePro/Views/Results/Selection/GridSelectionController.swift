@@ -159,10 +159,10 @@ final class GridSelectionController {
         update(.single(rect, anchor: anchor, active: anchor))
     }
 
-    func extendActiveCell(direction: Direction, jumpToEdge: Bool, totalRows: Int, totalColumns: Int) {
-        guard let active = selection.activeCell else { return }
+    func extendActiveCell(from seed: GridCoord? = nil, direction: Direction, jumpToEdge: Bool, totalRows: Int, totalColumns: Int) {
+        guard let active = selection.activeCell ?? seed else { return }
+        let origin = selection.anchor ?? seed ?? active
         let next = step(from: active, direction: direction, jumpToEdge: jumpToEdge, totalRows: totalRows, totalColumns: totalColumns)
-        let origin = selection.anchor ?? active
         update(.single(GridRect.between(origin, next), anchor: origin, active: next))
     }
 

@@ -316,24 +316,16 @@ final class KeyHandlingTableView: NSTableView {
 
         switch key {
         case .leftArrow:
-            handleHorizontalArrow(direction: .left, modifiers: modifiers, currentRow: row)
+            handleArrow(.left, modifiers: modifiers, currentRow: row, event: event)
             return
         case .rightArrow:
-            handleHorizontalArrow(direction: .right, modifiers: modifiers, currentRow: row)
+            handleArrow(.right, modifiers: modifiers, currentRow: row, event: event)
             return
         case .upArrow:
-            if modifiers.contains(.shift) {
-                gridSelection?.extendActiveCell(direction: .up, jumpToEdge: modifiers.contains(.command), totalRows: totalRows(), totalColumns: totalDataColumns())
-                return
-            }
-            super.keyDown(with: event)
+            handleArrow(.up, modifiers: modifiers, currentRow: row, event: event)
             return
         case .downArrow:
-            if modifiers.contains(.shift) {
-                gridSelection?.extendActiveCell(direction: .down, jumpToEdge: modifiers.contains(.command), totalRows: totalRows(), totalColumns: totalDataColumns())
-                return
-            }
-            super.keyDown(with: event)
+            handleArrow(.down, modifiers: modifiers, currentRow: row, event: event)
             return
         case .home, .end, .pageUp, .pageDown:
             super.keyDown(with: event)
@@ -373,16 +365,39 @@ final class KeyHandlingTableView: NSTableView {
         return combo.matches(event)
     }
 
-    private func handleHorizontalArrow(direction: GridSelectionController.Direction, modifiers: NSEvent.ModifierFlags, currentRow: Int) {
-        if modifiers.contains(.shift), let controller = gridSelection, !controller.isEmpty {
-            controller.extendActiveCell(direction: direction, jumpToEdge: modifiers.contains(.command), totalRows: totalRows(), totalColumns: totalDataColumns())
+    private func handleArrow(_ direction: GridSelectionController.Direction, modifiers: NSEvent.ModifierFlags, currentRow: Int, event: NSEvent) {
+        if modifiers.contains(.shift) {
+            if extendGridSelection(direction: direction, jumpToEdge: modifiers.contains(.command)) {
+                return
+            }
+            super.keyDown(with: event)
             return
         }
+        gridSelection?.clear()
         switch direction {
         case .left: handleLeftArrow(currentRow: currentRow)
         case .right: handleRightArrow(currentRow: currentRow)
-        default: break
+        case .up, .down: super.keyDown(with: event)
         }
+    }
+
+    private func extendGridSelection(direction: GridSelectionController.Direction, jumpToEdge: Bool) -> Bool {
+        guard let controller = gridSelection else { return false }
+        let seed = controller.isEmpty ? focusedGridCoord() : nil
+        guard !controller.isEmpty || seed != nil else { return false }
+        controller.extendActiveCell(
+            from: seed,
+            direction: direction,
+            jumpToEdge: jumpToEdge,
+            totalRows: totalRows(),
+            totalColumns: totalDataColumns()
+        )
+        return true
+    }
+
+    private func focusedGridCoord() -> GridCoord? {
+        guard let cell = focusedDataCell() else { return nil }
+        return GridCoord(row: cell.row, column: cell.columnIndex)
     }
 
     @objc override func insertNewline(_ sender: Any?) {
