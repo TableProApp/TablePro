@@ -63,6 +63,16 @@ struct GridSelectionTests {
         #expect(selection.boundingRectangle == rect)
     }
 
+    @Test("a cell-range spanning rows reports every covered row")
+    func cellRangeAffectsEveryCoveredRow() {
+        let selection = GridSelection.single(
+            GridRect(rows: 2...5, columns: 1...3),
+            anchor: GridCoord(row: 2, column: 1),
+            active: GridCoord(row: 5, column: 3)
+        )
+        #expect(selection.affectedRows == IndexSet(integersIn: 2...5))
+    }
+
     @Test("multiple rectangles report union of affected rows and columns")
     func multipleRectanglesUnion() {
         let selection = GridSelection(
