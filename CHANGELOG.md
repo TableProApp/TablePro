@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Oracle connections no longer crash the app during connect. A short or unexpected handshake packet from the server (such as session-setup metadata or an error) now surfaces the error or continues instead of trapping. (#1683)
 - MongoDB filters on `_id` and other ObjectId fields now match. A 24-character hex value is matched as an ObjectId as well as a string, so filtering by `_id` returns the row instead of nothing. (#1682)
+- The sidebar and inspector keep their width per connection, the sidebar keeps its collapsed state, and the inspector keeps its selected tab, when you quit and reopen the app.
 
 ## [0.51.0] - 2026-06-13
 
