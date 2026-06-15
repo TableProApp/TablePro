@@ -106,13 +106,13 @@ struct MongoDBQueryBuilder {
 
         switch op {
         case "=":
-            if isObjectIdString(value) {
-                return "\"$or\": [{\"\(field)\": \(Self.objectIdJson(value))}, {\"\(field)\": \(jsonValue(value))}]"
+            if let oid = objectIdJson(value) {
+                return "\"$or\": [{\"\(field)\": \(oid)}, {\"\(field)\": \(jsonValue(value))}]"
             }
             return "\"\(field)\": \(jsonValue(value))"
         case "!=":
-            if isObjectIdString(value) {
-                return "\"\(field)\": {\"$nin\": [\(Self.objectIdJson(value)), \(jsonValue(value))]}"
+            if let oid = objectIdJson(value) {
+                return "\"\(field)\": {\"$nin\": [\(oid), \(jsonValue(value))]}"
             }
             return "\"\(field)\": {\"$ne\": \(jsonValue(value))}"
         case ">":
@@ -185,20 +185,17 @@ struct MongoDBQueryBuilder {
     }
 
     private func inValues(_ value: String) -> [String] {
-        if isObjectIdString(value) {
-            return [Self.objectIdJson(value), jsonValue(value)]
+        if let oid = objectIdJson(value) {
+            return [oid, jsonValue(value)]
         }
         return [jsonValue(value)]
     }
 
-    /// A string is a candidate ObjectId when it is exactly 24 hexadecimal characters.
-    private func isObjectIdString(_ value: String) -> Bool {
-        let nsValue = value as NSString
-        return nsValue.length == 24 && value.allSatisfy { $0.isHexDigit }
-    }
-
-    private static func objectIdJson(_ value: String) -> String {
-        "{\"$oid\": \"\(value)\"}"
+    private func objectIdJson(_ value: String) -> String? {
+        guard (value as NSString).length == 24, value.allSatisfy({ $0.isASCII && $0.isHexDigit }) else {
+            return nil
+        }
+        return "{\"$oid\": \"\(value)\"}"
     }
 
     private static func regexBody(pattern: String) -> String {

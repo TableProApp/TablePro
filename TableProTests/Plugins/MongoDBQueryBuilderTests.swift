@@ -507,6 +507,36 @@ struct MongoDBQueryBuilderTests {
         #expect(strings?.contains("plain-id") == true)
     }
 
+    @Test("NOT IN expands an ObjectId item to both forms")
+    func notInExpandsObjectIdItems() {
+        let doc = builder.buildFilterDocument(
+            from: [(column: "_id", op: "NOT IN", value: "66c0fa26dfcb27034e646356, plain-id")]
+        )
+        let ninArray = (parseFilter(doc)?["_id"] as? [String: Any])?["$nin"] as? [Any]
+        #expect(ninArray?.count == 3)
+        let oid = (ninArray?.first as? [String: Any])?["$oid"] as? String
+        #expect(oid == "66c0fa26dfcb27034e646356")
+        let strings = ninArray?.compactMap { $0 as? String }
+        #expect(strings?.contains("plain-id") == true)
+    }
+
+    @Test("An ObjectId equals combined with another filter stays valid JSON under $and")
+    func objectIdEqualsCombinedWithAndFilter() {
+        let doc = builder.buildFilterDocument(
+            from: [
+                (column: "_id", op: "=", value: "66c0fa26dfcb27034e646356"),
+                (column: "shop", op: "=", value: "acme")
+            ],
+            logicMode: "and"
+        )
+        let branches = parseFilter(doc)?["$and"] as? [[String: Any]]
+        #expect(branches?.count == 2)
+        let or = branches?.first?["$or"] as? [[String: Any]]
+        let oid = (or?.first?["_id"] as? [String: Any])?["$oid"] as? String
+        #expect(oid == "66c0fa26dfcb27034e646356")
+        #expect(branches?.last?["shop"] as? String == "acme")
+    }
+
     // MARK: - Security (NoSQL injection)
 
     private func parseFilter(_ json: String) -> [String: Any]? {
