@@ -24,7 +24,6 @@ Prefer the Xcode docs tool for API questions: it's authoritative and version-mat
 
 Native macOS database clients worth checking for expected behaviour:
 
-- **TablePlus** — the closest comparison; TablePro positions against it. `https://docs.tableplus.com`.
 - **DataGrip** — JetBrains, feature-rich; good for data-grid and SQL-editor behaviour.
 - **Postico** — native macOS Postgres client, strong HIG conformance; good model for "what feels native on macOS".
 - **Sequel Ace** — open-source MySQL client; behaviour is inspectable.
