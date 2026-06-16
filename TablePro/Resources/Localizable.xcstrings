@@ -9367,7 +9367,7 @@
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "API token"
+            "value" : "API 權杖"
           }
         }
       }
@@ -12004,7 +12004,7 @@
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Boolean"
+            "value" : "布林值"
           }
         }
       }
