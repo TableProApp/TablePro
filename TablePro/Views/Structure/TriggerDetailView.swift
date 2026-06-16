@@ -2,23 +2,24 @@ import SwiftUI
 
 struct TriggerDetailView: View {
     let triggers: [TriggerInfo]
-    @Binding var selectedName: String?
+    @Binding var selectedTriggerID: TriggerInfo.ID?
     @Binding var fontSize: CGFloat
     let databaseType: DatabaseType
     let isLoading: Bool
+    let onOpenInEditor: (TriggerInfo) -> Void
 
     var body: some View {
         if isLoading {
             ProgressView()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if triggers.isEmpty {
-            emptyState
+            EmptyStateView.triggers()
         } else {
-            HSplitView {
-                triggerList
-                    .frame(minWidth: 200, idealWidth: 260)
-                detailPanel
-                    .frame(minWidth: 320)
+            VSplitView {
+                triggerTable
+                    .frame(minHeight: 120, idealHeight: 170)
+                detailPane
+                    .frame(minHeight: 180)
             }
             .onAppear(perform: ensureSelection)
             .onChange(of: triggers) { _, _ in ensureSelection() }
@@ -26,49 +27,40 @@ struct TriggerDetailView: View {
     }
 
     private var selectedTrigger: TriggerInfo? {
-        guard let name = selectedName,
-              let match = triggers.first(where: { $0.name == name }) else {
+        guard let id = selectedTriggerID,
+              let match = triggers.first(where: { $0.id == id }) else {
             return triggers.first
         }
         return match
     }
 
     private func ensureSelection() {
-        guard let name = selectedName,
-              triggers.contains(where: { $0.name == name }) else {
-            selectedName = triggers.first?.name
+        guard let id = selectedTriggerID,
+              triggers.contains(where: { $0.id == id }) else {
+            selectedTriggerID = triggers.first?.id
             return
         }
     }
 
-    private var triggerList: some View {
-        List(triggers, id: \.name, selection: $selectedName) { trigger in
-            VStack(alignment: .leading, spacing: 2) {
-                Text(trigger.name)
-                HStack(spacing: 6) {
-                    if !trigger.timing.isEmpty {
-                        Text(trigger.timing)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    if !trigger.event.isEmpty {
-                        Text(trigger.event)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-            }
-            .padding(.vertical, 2)
+    private var triggerTable: some View {
+        Table(triggers, selection: $selectedTriggerID) {
+            TableColumn(String(localized: "Name"), value: \.name)
+                .width(min: 160, ideal: 240)
+            TableColumn(String(localized: "Timing"), value: \.timing)
+                .width(min: 70, ideal: 90)
+            TableColumn(String(localized: "Event"), value: \.event)
+                .width(min: 90, ideal: 140)
         }
-        .listStyle(.inset)
     }
 
-    private var detailPanel: some View {
-        VStack(spacing: 0) {
+    private var detailPane: some View {
+        Group {
             if let trigger = selectedTrigger {
-                detailToolbar(for: trigger)
-                Divider()
-                DDLTextView(ddl: trigger.statement, fontSize: $fontSize, databaseType: databaseType)
+                VStack(spacing: 0) {
+                    detailToolbar(for: trigger)
+                    Divider()
+                    DDLTextView(ddl: trigger.statement, fontSize: $fontSize, databaseType: databaseType)
+                }
             } else {
                 Color(nsColor: .textBackgroundColor)
             }
@@ -78,7 +70,9 @@ struct TriggerDetailView: View {
     private func detailToolbar(for trigger: TriggerInfo) -> some View {
         HStack(spacing: 12) {
             HStack(spacing: 4) {
-                Button(action: { fontSize = max(10, fontSize - 1) }) {
+                Button {
+                    fontSize = max(10, fontSize - 1)
+                } label: {
                     Image(systemName: "textformat.size.smaller")
                         .frame(width: 24, height: 24)
                 }
@@ -87,7 +81,9 @@ struct TriggerDetailView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .frame(width: 24)
-                Button(action: { fontSize = min(24, fontSize + 1) }) {
+                Button {
+                    fontSize = min(24, fontSize + 1)
+                } label: {
                     Image(systemName: "textformat.size.larger")
                         .frame(width: 24, height: 24)
                 }
@@ -98,6 +94,13 @@ struct TriggerDetailView: View {
             Spacer()
 
             Button {
+                onOpenInEditor(trigger)
+            } label: {
+                Label("Open in Editor", systemImage: "square.and.pencil")
+            }
+            .buttonStyle(.bordered)
+
+            Button {
                 ClipboardService.shared.writeText(trigger.statement)
             } label: {
                 Label("Copy", systemImage: "doc.on.doc")
@@ -106,17 +109,5 @@ struct TriggerDetailView: View {
         }
         .padding()
         .background(Color(nsColor: .controlBackgroundColor))
-    }
-
-    private var emptyState: some View {
-        VStack(spacing: 8) {
-            Image(systemName: "bolt.slash")
-                .font(.largeTitle)
-                .foregroundStyle(.secondary)
-                .accessibilityHidden(true)
-            Text("No triggers")
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }

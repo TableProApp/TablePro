@@ -28,7 +28,7 @@ struct TableStructureView: View {
     @State var indexes: [IndexInfo] = []
     @State var foreignKeys: [ForeignKeyInfo] = []
     @State var triggers: [TriggerInfo] = []
-    @State private var selectedTriggerName: String?
+    @State private var selectedTriggerID: TriggerInfo.ID?
     @State var ddlStatement: String = ""
     @State var ddlFontSize: CGFloat = 13
     @State var showCopyConfirmation = false
@@ -295,10 +295,11 @@ struct TableStructureView: View {
         case .triggers:
             TriggerDetailView(
                 triggers: triggers,
-                selectedName: $selectedTriggerName,
+                selectedTriggerID: $selectedTriggerID,
                 fontSize: $ddlFontSize,
                 databaseType: connection.type,
-                isLoading: !loadedTabs.contains(.triggers)
+                isLoading: !loadedTabs.contains(.triggers),
+                onOpenInEditor: openTriggerInEditor
             )
         case .ddl:
             ddlView

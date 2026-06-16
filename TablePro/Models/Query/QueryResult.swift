@@ -218,7 +218,7 @@ struct ForeignKeyInfo: Identifiable, Hashable {
 }
 
 struct TriggerInfo: Identifiable, Hashable {
-    let id = UUID()
+    var id: String { name }
     let name: String
     let timing: String
     let event: String

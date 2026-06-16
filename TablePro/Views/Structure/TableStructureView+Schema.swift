@@ -228,6 +228,14 @@ extension TableStructureView {
         )
     }
 
+    func openTriggerInEditor(_ trigger: TriggerInfo) {
+        guard !trigger.statement.isEmpty else { return }
+        coordinator?.tabManager.addTab(
+            initialQuery: trigger.statement,
+            title: trigger.name
+        )
+    }
+
     private func copyDDL() {
         ClipboardService.shared.writeText(ddlStatement)
 
