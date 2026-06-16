@@ -83,6 +83,9 @@ protocol DatabaseDriver: AnyObject {
     /// Fetch foreign keys for a specific table
     func fetchForeignKeys(table: String) async throws -> [ForeignKeyInfo]
 
+    /// Fetch triggers for a specific table
+    func fetchTriggers(table: String) async throws -> [TriggerInfo]
+
     /// Fetch foreign keys for all tables in the current database/schema in bulk.
     /// Default implementation falls back to per-table fetchForeignKeys.
     func fetchAllForeignKeys() async throws -> [String: [ForeignKeyInfo]]
@@ -243,6 +246,8 @@ extension DatabaseDriver {
     func fetchColumns(table: String, schema: String?) async throws -> [ColumnInfo] {
         try await fetchColumns(table: table)
     }
+
+    func fetchTriggers(table: String) async throws -> [TriggerInfo] { [] }
 
     func testConnection() async throws -> Bool {
         try await connect()

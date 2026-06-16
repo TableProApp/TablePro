@@ -79,6 +79,10 @@ extension TableStructureView {
                     }
                     return preamble + "\n" + baseDDL
                 }
+            case .triggers:
+                triggers = try await DatabaseManager.shared.withMetadataDriver(connectionId: connection.id) { driver in
+                    try await driver.fetchTriggers(table: tableName)
+                }
             case .parts:
                 return
             }
@@ -176,6 +180,9 @@ extension TableStructureView {
         }
         if selectedTab == .ddl {
             await fetchTabData(.ddl)
+        }
+        if selectedTab == .triggers, connection.type.supportsTriggers {
+            await fetchTabData(.triggers)
         }
     }
 }

@@ -78,6 +78,30 @@ struct StructureGridDelegateAddRowTests {
         #expect(manager.workingForeignKeys.count == fksBefore)
     }
 
+    @Test("Triggers sub-tab: dataGridAddRow is a no-op")
+    func triggersTab_isNoOp() {
+        let (delegate, manager) = makeDelegate(selectedTab: .triggers)
+        let columnsBefore = manager.workingColumns.count
+        let indexesBefore = manager.workingIndexes.count
+        let fksBefore = manager.workingForeignKeys.count
+        delegate.dataGridAddRow()
+        #expect(manager.workingColumns.count == columnsBefore)
+        #expect(manager.workingIndexes.count == indexesBefore)
+        #expect(manager.workingForeignKeys.count == fksBefore)
+    }
+
+    @Test("Delete: triggers sub-tab is a no-op")
+    func triggersTab_deleteIsNoOp() {
+        let (delegate, manager) = makeDelegate(selectedTab: .triggers)
+        let columnsBefore = manager.workingColumns.count
+        let indexesBefore = manager.workingIndexes.count
+        let fksBefore = manager.workingForeignKeys.count
+        delegate.dataGridDeleteRows([0])
+        #expect(manager.workingColumns.count == columnsBefore)
+        #expect(manager.workingIndexes.count == indexesBefore)
+        #expect(manager.workingForeignKeys.count == fksBefore)
+    }
+
     @Test("Indexes sub-tab on SQLite: dataGridAddRow is a no-op (supportsAddIndex == false)")
     func sqliteIndexes_isNoOp() {
         let (delegate, manager) = makeDelegate(selectedTab: .indexes, type: .sqlite)

@@ -217,6 +217,32 @@ struct ForeignKeyInfo: Identifiable, Hashable {
     }
 }
 
+struct TriggerInfo: Identifiable, Hashable {
+    let id = UUID()
+    let name: String
+    let timing: String
+    let event: String
+    let forEachRow: Bool
+    let whenClause: String?
+    let statement: String
+
+    init(
+        name: String,
+        timing: String,
+        event: String,
+        forEachRow: Bool = true,
+        whenClause: String? = nil,
+        statement: String
+    ) {
+        self.name = name
+        self.timing = timing
+        self.event = event
+        self.forEachRow = forEachRow
+        self.whenClause = whenClause
+        self.statement = statement
+    }
+}
+
 /// Connection status
 enum ConnectionStatus: Equatable, Sendable {
     case disconnected

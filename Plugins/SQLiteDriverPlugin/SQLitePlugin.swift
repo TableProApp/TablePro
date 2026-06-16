@@ -35,6 +35,7 @@ final class SQLitePlugin: NSObject, TableProPlugin, DriverPlugin {
     static let fileExtensions: [String] = ["db", "db3", "s3db", "sl3", "sqlite", "sqlite3", "sqlitedb"]
     static let brandColorHex = "#003B57"
     static let supportsDatabaseSwitching = false
+    static let supportsTriggers = true
     static let databaseGroupingStrategy: GroupingStrategy = .flat
     static let columnTypesByCategory: [String: [String]] = [
         "Integer": ["INTEGER", "INT", "TINYINT", "SMALLINT", "MEDIUMINT", "BIGINT"],
@@ -822,6 +823,61 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 onUpdate: onUpdate
             )
         }
+    }
+
+    func fetchTriggers(table: String, schema: String?) async throws -> [PluginTriggerInfo] {
+        let safeTable = escapeStringLiteral(table)
+        let query = """
+            SELECT name, sql FROM sqlite_master
+            WHERE type = 'trigger' AND tbl_name = '\(safeTable)'
+            ORDER BY name
+            """
+        let result = try await execute(query: query)
+
+        return result.rows.compactMap { row -> PluginTriggerInfo? in
+            guard row.count >= 2,
+                  let name = row[0].asText,
+                  let sql = row[1].asText else {
+                return nil
+            }
+
+            let (timing, event) = Self.parseTimingAndEvent(from: sql)
+            return PluginTriggerInfo(
+                name: name,
+                timing: timing,
+                event: event,
+                statement: sql
+            )
+        }
+    }
+
+    private static func parseTimingAndEvent(from sql: String) -> (timing: String, event: String) {
+        let upper = sql.uppercased()
+        let headerEnd = upper.range(of: " ON ")?.lowerBound ?? upper.endIndex
+        let tokens = upper[upper.startIndex..<headerEnd]
+            .split(whereSeparator: { $0.isWhitespace || $0 == "," })
+            .map(String.init)
+
+        let eventIndex = tokens.lastIndex(where: { $0 == "INSERT" || $0 == "UPDATE" || $0 == "DELETE" })
+        let event = eventIndex.map { tokens[$0] } ?? ""
+
+        let timingSearchEnd = eventIndex ?? tokens.endIndex
+        var timing = "AFTER"
+        for token in tokens[tokens.startIndex..<timingSearchEnd].reversed() {
+            if token == "INSTEAD" {
+                timing = "INSTEAD OF"
+                break
+            }
+            if token == "BEFORE" {
+                timing = "BEFORE"
+                break
+            }
+            if token == "AFTER" {
+                timing = "AFTER"
+                break
+            }
+        }
+        return (timing, event)
     }
 
     func fetchTableDDL(table: String, schema: String?) async throws -> String {

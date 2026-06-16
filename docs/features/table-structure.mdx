@@ -1,11 +1,11 @@
 ---
 title: Table Structure
-description: Browse column definitions, indexes, foreign keys, and DDL with a visual structure editor
+description: Browse column definitions, indexes, foreign keys, triggers, and DDL with a visual structure editor
 ---
 
 # Table Structure
 
-Browse columns, indexes, foreign keys, and DDL for any table. Edit structure visually or with SQL.
+Browse columns, indexes, foreign keys, triggers, and DDL for any table. Edit structure visually or with SQL.
 
 {/* Screenshot: Table structure view showing columns tab */}
 <Frame caption="Table structure view">
@@ -156,6 +156,22 @@ The DDL view uses tree-sitter syntax highlighting with line numbers. Use the too
 - **Copy** the DDL to clipboard
 - **Export** as a `.sql` file
 - **Open in Editor** to send the DDL to a new query tab for editing
+
+## Triggers Tab
+
+The Triggers tab lists the table's triggers and shows the full definition of the selected one. It is read-only.
+
+| Property | Description |
+|----------|-------------|
+| **Name** | Trigger name |
+| **Timing** | BEFORE, AFTER, or INSTEAD OF |
+| **Event** | INSERT, UPDATE, DELETE (PostgreSQL can combine events, such as INSERT OR UPDATE) |
+
+Select a trigger to see its full definition in a syntax-highlighted viewer with a **Copy** button. The definition is the `CREATE TRIGGER` statement (MySQL and MariaDB reconstruct it from the trigger body; PostgreSQL uses `pg_get_triggerdef`; SQLite reads the stored statement).
+
+<Note>
+Available for MySQL, MariaDB, PostgreSQL, and SQLite. The tab is hidden for databases that do not expose triggers.
+</Note>
 
 ## Creating a New Table
 

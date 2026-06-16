@@ -402,7 +402,7 @@ final class StructureChangeManager: ChangeManaging {
         case .foreignKeys:
             guard row < workingForeignKeys.count else { return }
             key = .foreignKey(workingForeignKeys[row].id)
-        case .ddl, .parts:
+        case .ddl, .parts, .triggers:
             return
         }
         guard pendingChanges[key]?.isDelete == true else { return }
@@ -789,7 +789,7 @@ final class StructureChangeManager: ChangeManaging {
             let isDeleted = change?.isDelete ?? false
             let isInserted = !currentForeignKeys.contains(where: { $0.id == fk.id })
             return (isDeleted, isInserted)
-        case .ddl, .parts:
+        case .ddl, .parts, .triggers:
             return (false, false)
         }
     }

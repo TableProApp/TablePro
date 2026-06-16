@@ -28,7 +28,7 @@ final class StructureRowViewWithMenu: DataGridRowView {
     var onUndoDelete: ((Int) -> Void)?
 
     override func menu(for event: NSEvent) -> NSMenu? {
-        guard structureTab != .ddl, structureTab != .parts else { return nil }
+        guard structureTab != .ddl, structureTab != .parts, structureTab != .triggers else { return nil }
 
         let menu = NSMenu()
 

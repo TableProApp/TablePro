@@ -27,6 +27,8 @@ struct TableStructureView: View {
     @State var columns: [ColumnInfo] = []
     @State var indexes: [IndexInfo] = []
     @State var foreignKeys: [ForeignKeyInfo] = []
+    @State var triggers: [TriggerInfo] = []
+    @State private var selectedTriggerName: String?
     @State var ddlStatement: String = ""
     @State var ddlFontSize: CGFloat = 13
     @State var showCopyConfirmation = false
@@ -166,6 +168,9 @@ struct TableStructureView: View {
         if connection.type != .clickhouse {
             tabs = tabs.filter { $0 != .parts }
         }
+        if !connection.type.supportsTriggers {
+            tabs = tabs.filter { $0 != .triggers }
+        }
         return tabs
     }
 
@@ -209,7 +214,7 @@ struct TableStructureView: View {
         case .columns: return connection.type.supportsAddColumn
         case .indexes: return connection.type.supportsAddIndex
         case .foreignKeys: return connection.type.supportsForeignKeys
-        case .ddl, .parts: return false
+        case .ddl, .parts, .triggers: return false
         }
     }
 
@@ -219,7 +224,7 @@ struct TableStructureView: View {
         case .columns: return connection.type.supportsDropColumn
         case .indexes: return connection.type.supportsDropIndex
         case .foreignKeys: return connection.type.supportsForeignKeys
-        case .ddl, .parts: return false
+        case .ddl, .parts, .triggers: return false
         }
     }
 
@@ -231,7 +236,7 @@ struct TableStructureView: View {
             return (String(localized: "Add Index"), String(localized: "Remove Index"))
         case .foreignKeys:
             return (String(localized: "Add Foreign Key"), String(localized: "Remove Foreign Key"))
-        case .ddl, .parts:
+        case .ddl, .parts, .triggers:
             return nil
         }
     }
@@ -247,6 +252,8 @@ struct TableStructureView: View {
             count = loadedTabs.contains(.indexes) ? indexes.count : nil
         case .foreignKeys:
             count = loadedTabs.contains(.foreignKeys) ? foreignKeys.count : nil
+        case .triggers:
+            count = loadedTabs.contains(.triggers) ? triggers.count : nil
         case .ddl, .parts:
             count = nil
         }
@@ -285,6 +292,14 @@ struct TableStructureView: View {
             } else {
                 structureGrid
             }
+        case .triggers:
+            TriggerDetailView(
+                triggers: triggers,
+                selectedName: $selectedTriggerName,
+                fontSize: $ddlFontSize,
+                databaseType: connection.type,
+                isLoading: !loadedTabs.contains(.triggers)
+            )
         case .ddl:
             ddlView
         case .parts:
