@@ -390,7 +390,7 @@ actor SQLSchemaProvider {
     func allColumnsInScope(for references: [TableReference]) async -> [SQLCompletionItem] {
         // swiftlint:disable:next large_tuple
         var itemDataBuilder: [(
-            label: String, insertText: String, type: String, table: String,
+            label: String, insertText: String, type: String?, table: String,
             isPK: Bool, isNullable: Bool, defaultValue: String?, comment: String?
         )] = []
 
@@ -402,7 +402,7 @@ actor SQLSchemaProvider {
                     let label = hasMultipleRefs ? "\(refId).\(name)" : name
                     itemDataBuilder.append(
                         (
-                            label: label, insertText: label, type: "",
+                            label: label, insertText: label, type: nil,
                             table: refId, isPK: false, isNullable: true,
                             defaultValue: nil, comment: nil
                         ))

@@ -48,6 +48,10 @@ internal struct DerivedTableParser {
         "FULL", "CROSS", "NATURAL", "AS", "SET", "RETURNING", "WINDOW"
     ]
 
+    private static let identifierPathCharacters = CharacterSet(charactersIn:
+        "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.`\"[]")
+    private static let quoteCharacters = CharacterSet(charactersIn: "`\"[]")
+
     func parse(_ statement: String) -> [DerivedTable] {
         let ns = statement as NSString
         let length = ns.length
@@ -164,14 +168,11 @@ internal struct DerivedTableParser {
     }
 
     private func plainColumnName(_ item: String) -> String? {
-        guard !item.contains("*") else { return nil }
-        let allowed = CharacterSet(charactersIn:
-            "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.`\"[]")
-        guard item.unicodeScalars.allSatisfy(allowed.contains) else { return nil }
-        let segments = item.split(separator: ".")
-        guard let last = segments.last else { return nil }
-        let cleaned = String(last).trimmingCharacters(in: CharacterSet(charactersIn: "`\"[]"))
-        guard !cleaned.isEmpty, cleaned.unicodeScalars.allSatisfy({ isIdentifier($0) }) else { return nil }
+        guard !item.contains("*"),
+              item.unicodeScalars.allSatisfy(Self.identifierPathCharacters.contains) else { return nil }
+        guard let last = item.split(separator: ".").last else { return nil }
+        let cleaned = String(last).trimmingCharacters(in: Self.quoteCharacters)
+        guard !cleaned.isEmpty, cleaned.unicodeScalars.allSatisfy(isIdentifier) else { return nil }
         return cleaned
     }
 
@@ -290,7 +291,7 @@ internal struct DerivedTableParser {
         var names: [String] = []
         for entry in topLevelItems(in: ns, start: open + 1, end: close) {
             let cleaned = entry.trimmingCharacters(in: .whitespacesAndNewlines)
-                .trimmingCharacters(in: CharacterSet(charactersIn: "`\"[]"))
+                .trimmingCharacters(in: Self.quoteCharacters)
             if !cleaned.isEmpty {
                 names.append(cleaned)
             }
