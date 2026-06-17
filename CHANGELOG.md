@@ -11,10 +11,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - The table structure view has a Triggers tab for MySQL, MariaDB, PostgreSQL, SQLite, SQL Server, Oracle, libSQL, and Cloudflare D1. It lists each trigger with its timing and event (plus enabled state where the engine reports it), with a filter field and sortable columns. Selecting a trigger shows its full definition in a read-only syntax-highlighted viewer. (#1695)
 - Traditional Chinese (繁體中文) language in Settings > General with full UI translation
+- An Add button in the table status bar inserts a new row at the end of the grid and starts editing it.
+
+### Changed
+
+- Selecting a Redis namespace in the sidebar key tree now filters the open database view to that prefix, with paging, instead of opening a separate tab limited to one batch of keys. (#1701)
 
 ### Fixed
 
 - The sidebar filter no longer clears when you open a table from the filtered list. It only clears when you empty the field. (#1690)
+- Redis entries no longer disappear after the connection sits idle. The health check was running `SELECT 1`, which on Redis switches the active database, so a later refresh scanned the wrong database. (#1701)
+- Redis key browsing now lists every key in a database or namespace and pages through them correctly. It was reading only the first SCAN batch, so large keyspaces showed a partial, fixed set of keys. (#1701)
+- A dropped Redis connection now reconnects on the next command and replays auth and the selected database, instead of failing until the next health check. (#1701)
 - DuckDB VARIANT columns now show their value as text instead of an empty cell.
 
 ## [0.51.1] - 2026-06-16
@@ -30,8 +38,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The filter panel's "Unset" button is now "Clear". It keeps your filter rows and only drops the applied state. To remove the rows, use "Remove All Filters" in the filter options menu.
 - A row's right-click menu now has "Apply Only This Filter". The inline per-row Apply button is gone.
 
+### Changed
+
+- Expanding a database in the tree sidebar loads tables first and fills in procedures and functions in the background, so the table list appears after one round-trip instead of waiting for three queries to finish in sequence.
+
 ### Fixed
 
+- Expanding or collapsing a database or schema in the tree sidebar while its tables were still loading could crash the app. The tree now updates its rows without rebuilding the outline structure.
+- MongoDB filters on `_id` and other ObjectId fields now match. A 24-character hex value is matched as an ObjectId as well as a string, so filtering by `_id` returns the row instead of nothing. (#1682)
 - Shift+Arrow in the data grid now starts and extends a cell selection from the focused cell. Cmd+Shift+Arrow extends to the row or column edge.
 - Delete key now removes all rows covered by a cell-range selection instead of ignoring it.
 - Right-clicking inside a multi-row or cell-range selection no longer collapses the selection first.

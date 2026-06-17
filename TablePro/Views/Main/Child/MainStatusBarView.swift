@@ -41,15 +41,27 @@ struct MainStatusBarView: View {
     let structureState: StatusBarStructureState
     let onToggleFilters: () -> Void
     let onFetchAll: (() -> Void)?
+    let onAddRow: (() -> Void)?
 
     @State private var showColumnPopover = false
 
     private var isStructureMode: Bool { viewMode == .structure }
     private var showsDataChrome: Bool { !isStructureMode }
 
+    static func showsAddRow(viewMode: ResultsViewMode, canAddRow: Bool) -> Bool {
+        viewMode == .data && canAddRow
+    }
+
     private var filterToggleHelp: String {
-        let label = String(localized: "Toggle Filters")
-        guard let combo = AppSettingsManager.shared.keyboard.shortcut(for: .toggleFilters),
+        helpText(String(localized: "Toggle Filters"), shortcut: .toggleFilters)
+    }
+
+    private var addRowHelp: String {
+        helpText(String(localized: "Add Row"), shortcut: .addRow)
+    }
+
+    private func helpText(_ label: String, shortcut action: ShortcutAction) -> String {
+        guard let combo = AppSettingsManager.shared.keyboard.shortcut(for: action),
               !combo.isCleared else {
             return label
         }
@@ -141,6 +153,20 @@ struct MainStatusBarView: View {
                 }
 
                 if showsDataChrome {
+                    if Self.showsAddRow(viewMode: viewMode, canAddRow: onAddRow != nil), let onAddRow {
+                        Button {
+                            onAddRow()
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "plus")
+                                Text("Add")
+                            }
+                        }
+                        .controlSize(.small)
+                        .help(addRowHelp)
+                        .accessibilityLabel(String(localized: "Add Row"))
+                    }
+
                     if snapshot.hasColumns {
                         Button {
                             showColumnPopover.toggle()

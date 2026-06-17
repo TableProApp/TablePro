@@ -23,18 +23,15 @@ final class DatabaseTreeMetadataService {
         let schema: String?
     }
 
-    struct SchemaObjects: Equatable, Sendable {
-        var tables: [TableInfo]
-        var routines: [RoutineInfo]
-    }
-
     private(set) var databaseList: [UUID: MetadataLoadState<[DatabaseMetadata]>] = [:]
     private(set) var schemaList: [DatabaseKey: MetadataLoadState<[String]>] = [:]
-    private(set) var objects: [ObjectsKey: MetadataLoadState<SchemaObjects>] = [:]
+    private(set) var tablesState: [ObjectsKey: MetadataLoadState<[TableInfo]>] = [:]
+    private(set) var routinesState: [ObjectsKey: MetadataLoadState<[RoutineInfo]>] = [:]
 
     @ObservationIgnored private let databaseDedup = OnceTask<UUID, [DatabaseMetadata]>()
     @ObservationIgnored private let schemaDedup = OnceTask<DatabaseKey, [String]>()
-    @ObservationIgnored private let objectsDedup = OnceTask<ObjectsKey, SchemaObjects>()
+    @ObservationIgnored private let tablesDedup = OnceTask<ObjectsKey, [TableInfo]>()
+    @ObservationIgnored private let routinesDedup = OnceTask<ObjectsKey, [RoutineInfo]>()
 
     @ObservationIgnored private static let logger = Logger(
         subsystem: "com.TablePro", category: "SidebarTree"
@@ -60,16 +57,20 @@ final class DatabaseTreeMetadataService {
         schemaList[DatabaseKey(connectionId: connectionId, database: database)]?.value ?? []
     }
 
-    func objectsState(connectionId: UUID, database: String, schema: String?) -> MetadataLoadState<SchemaObjects> {
-        objects[Self.objectsKey(connectionId: connectionId, database: database, schema: schema)] ?? .idle
+    func tablesLoadState(connectionId: UUID, database: String, schema: String?) -> MetadataLoadState<[TableInfo]> {
+        tablesState[Self.objectsKey(connectionId: connectionId, database: database, schema: schema)] ?? .idle
+    }
+
+    func routinesLoadState(connectionId: UUID, database: String, schema: String?) -> MetadataLoadState<[RoutineInfo]> {
+        routinesState[Self.objectsKey(connectionId: connectionId, database: database, schema: schema)] ?? .idle
     }
 
     func tables(connectionId: UUID, database: String, schema: String?) -> [TableInfo] {
-        objects[Self.objectsKey(connectionId: connectionId, database: database, schema: schema)]?.value?.tables ?? []
+        tablesState[Self.objectsKey(connectionId: connectionId, database: database, schema: schema)]?.value ?? []
     }
 
     func routines(connectionId: UUID, database: String, schema: String?) -> [RoutineInfo] {
-        objects[Self.objectsKey(connectionId: connectionId, database: database, schema: schema)]?.value?.routines ?? []
+        routinesState[Self.objectsKey(connectionId: connectionId, database: database, schema: schema)]?.value ?? []
     }
 
     // MARK: - Loads
@@ -122,34 +123,61 @@ final class DatabaseTreeMetadataService {
         }
     }
 
-    func loadObjects(connectionId: UUID, database: String, schema: String?) async {
+    func loadTables(connectionId: UUID, database: String, schema: String?) async {
         guard isConnected(connectionId) else { return }
         let key = Self.objectsKey(connectionId: connectionId, database: database, schema: schema)
-        switch objects[key] ?? .idle {
+        switch tablesState[key] ?? .idle {
         case .loaded, .loading: return
         case .idle, .failed: break
         }
-        objects[key] = .loading
+        tablesState[key] = .loading
         let normalizedSchema = key.schema
         do {
-            let result = try await objectsDedup.execute(key: key) { [self] in
+            let list = try await tablesDedup.execute(key: key) { [self] in
                 try await withDriver(connectionId: connectionId, database: database) { driver in
-                    async let tables = driver.fetchTables(schema: normalizedSchema)
-                    async let procedures = driver.fetchProcedures(schema: normalizedSchema)
-                    async let functions = driver.fetchFunctions(schema: normalizedSchema)
-                    return SchemaObjects(
-                        tables: try await tables,
-                        routines: try await procedures + functions
-                    )
+                    try await driver.fetchTables(schema: normalizedSchema)
                 }
             }
-            objects[key] = .loaded(result)
+            tablesState[key] = .loaded(list)
         } catch is CancellationError {
-            if case .loading = objects[key] { objects[key] = .idle }
+            if case .loading = tablesState[key] { tablesState[key] = .idle }
         } catch {
-            objects[key] = .failed(error.localizedDescription)
+            tablesState[key] = .failed(error.localizedDescription)
             Self.logger.warning(
-                "objects load failed db=\(database, privacy: .public) schema=\(schema ?? "nil", privacy: .public) error=\(error.localizedDescription, privacy: .public)"
+                "tables load failed db=\(database, privacy: .public) schema=\(schema ?? "nil", privacy: .public) error=\(error.localizedDescription, privacy: .public)"
+            )
+        }
+    }
+
+    func loadRoutines(connectionId: UUID, database: String, schema: String?) async {
+        guard isConnected(connectionId) else { return }
+        let key = Self.objectsKey(connectionId: connectionId, database: database, schema: schema)
+        switch routinesState[key] ?? .idle {
+        case .loaded, .loading: return
+        case .idle, .failed: break
+        }
+        routinesState[key] = .loading
+        let normalizedSchema = key.schema
+        do {
+            let list = try await routinesDedup.execute(key: key) { [self] in
+                try await MetadataConnectionPool.shared.withDriver(
+                    connectionId: connectionId,
+                    database: database,
+                    schema: normalizedSchema,
+                    workload: .bulk
+                ) { driver in
+                    let procedures = try await driver.fetchProcedures(schema: normalizedSchema)
+                    let functions = try await driver.fetchFunctions(schema: normalizedSchema)
+                    return procedures + functions
+                }
+            }
+            routinesState[key] = .loaded(list)
+        } catch is CancellationError {
+            if case .loading = routinesState[key] { routinesState[key] = .idle }
+        } catch {
+            routinesState[key] = .failed(error.localizedDescription)
+            Self.logger.warning(
+                "routines load failed db=\(database, privacy: .public) schema=\(schema ?? "nil", privacy: .public) error=\(error.localizedDescription, privacy: .public)"
             )
         }
     }
@@ -171,9 +199,13 @@ final class DatabaseTreeMetadataService {
 
     func refreshObjects(connectionId: UUID, database: String, schema: String?) async {
         let key = Self.objectsKey(connectionId: connectionId, database: database, schema: schema)
-        await objectsDedup.cancel(key: key)
-        objects.removeValue(forKey: key)
-        await loadObjects(connectionId: connectionId, database: database, schema: schema)
+        await tablesDedup.cancel(key: key)
+        await routinesDedup.cancel(key: key)
+        tablesState.removeValue(forKey: key)
+        routinesState.removeValue(forKey: key)
+        async let tables = loadTables(connectionId: connectionId, database: database, schema: schema)
+        async let routines = loadRoutines(connectionId: connectionId, database: database, schema: schema)
+        _ = await (tables, routines)
     }
 
     // MARK: - Lifecycle
@@ -186,20 +218,28 @@ final class DatabaseTreeMetadataService {
     func handleDisconnect(connectionId: UUID) async {
         MetadataConnectionPool.shared.closeAll(connectionId: connectionId)
         let schemaKeys = schemaList.keys.filter { $0.connectionId == connectionId }
-        let objectKeys = objects.keys.filter { $0.connectionId == connectionId }
+        let objectKeys = Self.connectionObjectKeys(
+            tableKeys: tablesState.keys, routineKeys: routinesState.keys, connectionId: connectionId
+        )
         await databaseDedup.cancel(key: connectionId)
         for key in schemaKeys { await schemaDedup.cancel(key: key) }
-        for key in objectKeys { await objectsDedup.cancel(key: key) }
+        for key in objectKeys {
+            await tablesDedup.cancel(key: key)
+            await routinesDedup.cancel(key: key)
+        }
         databaseList.removeValue(forKey: connectionId)
         schemaList = schemaList.filter { $0.key.connectionId != connectionId }
-        objects = objects.filter { $0.key.connectionId != connectionId }
+        tablesState = tablesState.filter { $0.key.connectionId != connectionId }
+        routinesState = routinesState.filter { $0.key.connectionId != connectionId }
     }
 
     // MARK: - Private
 
     private func resetPending(connectionId: UUID) async {
         let schemaKeys = schemaList.keys.filter { $0.connectionId == connectionId }
-        let objectKeys = objects.keys.filter { $0.connectionId == connectionId }
+        let objectKeys = Self.connectionObjectKeys(
+            tableKeys: tablesState.keys, routineKeys: routinesState.keys, connectionId: connectionId
+        )
 
         if isPending(databaseList[connectionId]) {
             await databaseDedup.cancel(key: connectionId)
@@ -207,13 +247,17 @@ final class DatabaseTreeMetadataService {
         for key in schemaKeys where isPending(schemaList[key]) {
             await schemaDedup.cancel(key: key)
         }
-        for key in objectKeys where isPending(objects[key]) {
-            await objectsDedup.cancel(key: key)
+        for key in objectKeys {
+            if isPending(tablesState[key]) { await tablesDedup.cancel(key: key) }
+            if isPending(routinesState[key]) { await routinesDedup.cancel(key: key) }
         }
 
         if isPending(databaseList[connectionId]) { databaseList[connectionId] = .idle }
         for key in schemaKeys where isPending(schemaList[key]) { schemaList[key] = .idle }
-        for key in objectKeys where isPending(objects[key]) { objects[key] = .idle }
+        for key in objectKeys {
+            if isPending(tablesState[key]) { tablesState[key] = .idle }
+            if isPending(routinesState[key]) { routinesState[key] = .idle }
+        }
     }
 
     private func isPending<Value>(_ state: MetadataLoadState<Value>?) -> Bool {
@@ -246,5 +290,13 @@ final class DatabaseTreeMetadataService {
     private static func objectsKey(connectionId: UUID, database: String, schema: String?) -> ObjectsKey {
         let normalized: String? = (schema?.isEmpty == true) ? nil : schema
         return ObjectsKey(connectionId: connectionId, database: database, schema: normalized)
+    }
+
+    static func connectionObjectKeys(
+        tableKeys: some Sequence<ObjectsKey>,
+        routineKeys: some Sequence<ObjectsKey>,
+        connectionId: UUID
+    ) -> [ObjectsKey] {
+        Array(Set(tableKeys).union(routineKeys)).filter { $0.connectionId == connectionId }
     }
 }

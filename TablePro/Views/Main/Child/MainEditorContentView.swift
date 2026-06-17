@@ -714,7 +714,8 @@ struct MainEditorContentView: View {
                 onRemove: { coordinator.structureActions?.removeRow?() }
             ),
             onToggleFilters: { coordinator.toggleFilterPanel() },
-            onFetchAll: { coordinator.fetchAllRows() }
+            onFetchAll: { coordinator.fetchAllRows() },
+            onAddRow: currentTabAllowsAddRow ? { onAddRow() } : nil
         )
     }
 

@@ -43,6 +43,40 @@ struct DatabaseTreeSchemaRef: Identifiable {
     }
 }
 
+private enum SchemaTreeRow: Identifiable {
+    case loading
+    case empty
+    case error(String)
+    case schema(DatabaseTreeSchemaRef)
+
+    var id: String {
+        switch self {
+        case .loading: return "status.loading"
+        case .empty: return "status.empty"
+        case .error: return "status.error"
+        case .schema(let ref): return "schema.\(ref.id)"
+        }
+    }
+}
+
+private enum ObjectTreeRow: Identifiable {
+    case loading
+    case empty
+    case error(String)
+    case table(DatabaseTreeTableRef)
+    case routine(DatabaseTreeRoutineRef)
+
+    var id: String {
+        switch self {
+        case .loading: return "status.loading"
+        case .empty: return "status.empty"
+        case .error: return "status.error"
+        case .table(let ref): return "table.\(ref.id)"
+        case .routine(let ref): return "routine.\(ref.id)"
+        }
+    }
+}
+
 struct DatabaseTreeView: View {
     @Bindable private var treeService = DatabaseTreeMetadataService.shared
 
@@ -232,63 +266,117 @@ struct DatabaseTreeView: View {
 
     @ViewBuilder
     private func schemasContent(for database: String) -> some View {
+        Group {
+            ForEach(schemaRows(for: database)) { row in
+                schemaRow(row, database: database)
+            }
+        }
+        .task(id: "\(database)|\(connectionToken)") {
+            await treeService.loadSchemas(connectionId: connectionId, database: database)
+        }
+    }
+
+    private func schemaRows(for database: String) -> [SchemaTreeRow] {
         switch treeService.schemaListState(connectionId: connectionId, database: database) {
         case .idle, .loading:
-            loadingRow(String(localized: "Loading schemas\u{2026}"))
-                .task(id: "\(database)|\(connectionToken)") {
-                    await treeService.loadSchemas(connectionId: connectionId, database: database)
-                }
+            return [.loading]
         case .failed(let message):
-            errorRow(message)
+            return [.error(message)]
         case .loaded(let schemas):
             let visible = visibleSchemas(database: database, all: schemas)
-            if visible.isEmpty {
-                emptyRow(String(localized: "No schemas"))
-            } else {
-                ForEach(visible.map { DatabaseTreeSchemaRef(database: database, schema: $0) }) { ref in
-                    DisclosureGroup(isExpanded: schemaExpansionBinding(database: ref.database, schema: ref.schema)) {
-                        objectsContent(database: ref.database, schema: ref.schema)
-                    } label: {
-                        schemaHeader(database: ref.database, schema: ref.schema)
-                    }
-                }
+            guard !visible.isEmpty else { return [.empty] }
+            return visible.map { .schema(DatabaseTreeSchemaRef(database: database, schema: $0)) }
+        }
+    }
+
+    @ViewBuilder
+    private func schemaRow(_ row: SchemaTreeRow, database: String) -> some View {
+        switch row {
+        case .loading:
+            loadingRow(String(localized: "Loading schemas\u{2026}"))
+        case .empty:
+            emptyRow(String(localized: "No schemas"))
+        case .error(let message):
+            errorRow(message)
+        case .schema(let ref):
+            DisclosureGroup(isExpanded: schemaExpansionBinding(database: ref.database, schema: ref.schema)) {
+                objectsContent(database: ref.database, schema: ref.schema)
+            } label: {
+                schemaHeader(database: ref.database, schema: ref.schema)
             }
         }
     }
 
     @ViewBuilder
     private func objectsContent(database: String, schema: String?) -> some View {
-        switch treeService.objectsState(connectionId: connectionId, database: database, schema: schema) {
+        Group {
+            ForEach(objectRows(database: database, schema: schema)) { row in
+                objectRow(row, database: database, schema: schema)
+            }
+        }
+        .task(id: "tables|\(database)|\(schema ?? "")|\(connectionToken)") {
+            await treeService.loadTables(connectionId: connectionId, database: database, schema: schema)
+        }
+        .task(id: "routines|\(database)|\(schema ?? "")|\(connectionToken)") {
+            await treeService.loadRoutines(connectionId: connectionId, database: database, schema: schema)
+        }
+    }
+
+    private func objectRows(database: String, schema: String?) -> [ObjectTreeRow] {
+        switch treeService.tablesLoadState(connectionId: connectionId, database: database, schema: schema) {
         case .idle, .loading:
-            loadingRow(String(localized: "Loading tables\u{2026}"))
-                .task(id: "\(database)|\(schema ?? "")|\(connectionToken)") {
-                    await treeService.loadObjects(connectionId: connectionId, database: database, schema: schema)
-                }
+            return [.loading]
         case .failed(let message):
-            errorRow(message)
+            return [.error(message)]
         case .loaded:
             let tables = filteredTables(database: database, schema: schema)
             let routines = filteredRoutines(database: database, schema: schema)
-            if tables.isEmpty && routines.isEmpty {
-                emptyRow(String(localized: "No items"))
-            } else {
-                ForEach(tables.map { DatabaseTreeTableRef(database: database, schema: schema, table: $0) }) { ref in
-                    TableRow(
-                        table: ref.table,
-                        isPendingTruncate: pendingTruncates.contains(ref.table.name),
-                        isPendingDelete: pendingDeletes.contains(ref.table.name)
-                    )
-                    .tag(ref)
-                }
-                ForEach(routines.map { DatabaseTreeRoutineRef(database: database, schema: schema, routine: $0) }) { ref in
-                    RoutineRowView(routine: ref.routine)
-                        .contextMenu {
-                            RoutineContextMenu(routine: ref.routine) { selected in
-                                coordinator?.showRoutineDDL(selected)
-                            }
-                        }
+            let routinesState = treeService.routinesLoadState(
+                connectionId: connectionId, database: database, schema: schema
+            )
+            guard !tables.isEmpty || !routines.isEmpty else {
+                switch routinesState {
+                case .failed(let message): return [.error(message)]
+                case .loaded: return [.empty]
+                case .idle, .loading: return [.loading]
                 }
             }
+            var rows: [ObjectTreeRow] = tables.map {
+                .table(DatabaseTreeTableRef(database: database, schema: schema, table: $0))
+            }
+            rows += routines.map {
+                .routine(DatabaseTreeRoutineRef(database: database, schema: schema, routine: $0))
+            }
+            if case .failed(let message) = routinesState {
+                rows.append(.error(message))
+            }
+            return rows
+        }
+    }
+
+    @ViewBuilder
+    private func objectRow(_ row: ObjectTreeRow, database: String, schema: String?) -> some View {
+        switch row {
+        case .loading:
+            loadingRow(String(localized: "Loading\u{2026}"))
+        case .empty:
+            emptyRow(String(localized: "No items"))
+        case .error(let message):
+            errorRow(message)
+        case .table(let ref):
+            TableRow(
+                table: ref.table,
+                isPendingTruncate: pendingTruncates.contains(ref.table.name),
+                isPendingDelete: pendingDeletes.contains(ref.table.name)
+            )
+            .tag(ref)
+        case .routine(let ref):
+            RoutineRowView(routine: ref.routine)
+                .contextMenu {
+                    RoutineContextMenu(routine: ref.routine) { selected in
+                        coordinator?.showRoutineDDL(selected)
+                    }
+                }
         }
     }
 

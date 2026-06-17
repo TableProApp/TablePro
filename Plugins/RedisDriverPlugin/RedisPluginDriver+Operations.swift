@@ -481,8 +481,6 @@ extension RedisPluginDriver {
 
         case .select(let database):
             try await conn.selectDatabase(database)
-            cachedScanPattern = nil
-            cachedScanKeys = nil
             return buildStatusResult("OK", startTime: startTime)
 
         case .configGet(let parameter):
