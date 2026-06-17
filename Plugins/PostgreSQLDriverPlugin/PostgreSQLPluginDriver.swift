@@ -307,8 +307,6 @@ final class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
                      WHEN (t.tgtype & 16) != 0 THEN 'DELETE'
                      WHEN (t.tgtype & 32) != 0 THEN 'TRUNCATE'
                      ELSE '' END AS event,
-                (t.tgtype & 1) = 1 AS for_each_row,
-                pg_get_expr(t.tgqual, t.tgrelid) AS when_clause,
                 pg_get_triggerdef(t.oid) AS definition
             FROM pg_catalog.pg_trigger t
             JOIN pg_catalog.pg_class c ON c.oid = t.tgrelid
@@ -320,20 +318,16 @@ final class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
             """
         let result = try await execute(query: query)
         let triggers: [PluginTriggerInfo] = result.rows.compactMap { row -> PluginTriggerInfo? in
-            guard row.count >= 6,
+            guard row.count >= 4,
                   let name = row[0].asText,
                   let timing = row[1].asText,
                   let event = row[2].asText,
-                  let definition = row[5].asText
+                  let definition = row[3].asText
             else { return nil }
-            let forEachRow = row[3].asText == "t"
-            let whenClause = row[4].asText
             return PluginTriggerInfo(
                 name: name,
                 timing: timing,
                 event: event,
-                forEachRow: forEachRow,
-                whenClause: whenClause,
                 statement: definition
             )
         }

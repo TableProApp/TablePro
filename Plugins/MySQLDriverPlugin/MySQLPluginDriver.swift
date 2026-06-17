@@ -388,8 +388,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let escapedTable = table.replacingOccurrences(of: "'", with: "''")
 
         let query = """
-            SELECT TRIGGER_NAME, ACTION_TIMING, EVENT_MANIPULATION,
-                   ACTION_STATEMENT, ACTION_ORIENTATION
+            SELECT TRIGGER_NAME, ACTION_TIMING, EVENT_MANIPULATION, ACTION_STATEMENT
             FROM information_schema.TRIGGERS
             WHERE EVENT_OBJECT_SCHEMA = '\(escapedDb)'
                 AND EVENT_OBJECT_TABLE = '\(escapedTable)'
@@ -405,7 +404,6 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                   let body = row[safe: 3]?.asText
             else { return nil }
 
-            let orientation = row[safe: 4]?.asText ?? "ROW"
             let statement = """
                 CREATE TRIGGER \(quoteIdentifier(name)) \(timing) \(event)
                 ON \(quoteIdentifier(table)) FOR EACH ROW
@@ -416,7 +414,6 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 name: name,
                 timing: timing,
                 event: event,
-                forEachRow: orientation == "ROW",
                 statement: statement
             )
         }

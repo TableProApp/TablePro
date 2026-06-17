@@ -841,7 +841,7 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 return nil
             }
 
-            let (timing, event) = Self.parseTimingAndEvent(from: sql)
+            let (timing, event) = TriggerSQLParser.timingAndEvent(from: sql)
             return PluginTriggerInfo(
                 name: name,
                 timing: timing,
@@ -849,35 +849,6 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 statement: sql
             )
         }
-    }
-
-    private static func parseTimingAndEvent(from sql: String) -> (timing: String, event: String) {
-        let upper = sql.uppercased()
-        let headerEnd = upper.range(of: " ON ")?.lowerBound ?? upper.endIndex
-        let tokens = upper[upper.startIndex..<headerEnd]
-            .split(whereSeparator: { $0.isWhitespace || $0 == "," })
-            .map(String.init)
-
-        let eventIndex = tokens.lastIndex(where: { $0 == "INSERT" || $0 == "UPDATE" || $0 == "DELETE" })
-        let event = eventIndex.map { tokens[$0] } ?? ""
-
-        let timingSearchEnd = eventIndex ?? tokens.endIndex
-        var timing = "AFTER"
-        for token in tokens[tokens.startIndex..<timingSearchEnd].reversed() {
-            if token == "INSTEAD" {
-                timing = "INSTEAD OF"
-                break
-            }
-            if token == "BEFORE" {
-                timing = "BEFORE"
-                break
-            }
-            if token == "AFTER" {
-                timing = "AFTER"
-                break
-            }
-        }
-        return (timing, event)
     }
 
     func fetchTableDDL(table: String, schema: String?) async throws -> String {

@@ -44,13 +44,12 @@ private final class StubTriggerDriver: PluginDatabaseDriver {
 
 @Suite("Trigger info mapping")
 struct TriggerInfoMappingTests {
-    @Test("PluginTriggerInfo encodes and decodes without a when clause")
-    func codableRoundTripNoWhen() throws {
+    @Test("PluginTriggerInfo encodes and decodes")
+    func codableRoundTrip() throws {
         let original = PluginTriggerInfo(
             name: "trg_audit",
             timing: "AFTER",
             event: "INSERT",
-            forEachRow: true,
             statement: "CREATE TRIGGER trg_audit AFTER INSERT ON t FOR EACH ROW BEGIN END"
         )
         let data = try JSONEncoder().encode(original)
@@ -58,25 +57,7 @@ struct TriggerInfoMappingTests {
         #expect(decoded.name == original.name)
         #expect(decoded.timing == original.timing)
         #expect(decoded.event == original.event)
-        #expect(decoded.forEachRow == original.forEachRow)
-        #expect(decoded.whenClause == nil)
         #expect(decoded.statement == original.statement)
-    }
-
-    @Test("PluginTriggerInfo preserves a when clause through Codable")
-    func codableRoundTripWithWhen() throws {
-        let original = PluginTriggerInfo(
-            name: "trg_check",
-            timing: "BEFORE",
-            event: "UPDATE",
-            forEachRow: false,
-            whenClause: "new.amount > 0",
-            statement: "CREATE TRIGGER trg_check BEFORE UPDATE ON t WHEN new.amount > 0 ..."
-        )
-        let data = try JSONEncoder().encode(original)
-        let decoded = try JSONDecoder().decode(PluginTriggerInfo.self, from: data)
-        #expect(decoded.whenClause == "new.amount > 0")
-        #expect(decoded.forEachRow == false)
     }
 
     @Test("Adapter maps plugin triggers to app TriggerInfo preserving fields")
@@ -87,8 +68,6 @@ struct TriggerInfoMappingTests {
                 name: "trg_audit",
                 timing: "AFTER",
                 event: "INSERT OR UPDATE",
-                forEachRow: true,
-                whenClause: "new.id IS NOT NULL",
                 statement: "CREATE TRIGGER trg_audit ..."
             )
         ]
@@ -101,8 +80,6 @@ struct TriggerInfoMappingTests {
         #expect(trigger.name == "trg_audit")
         #expect(trigger.timing == "AFTER")
         #expect(trigger.event == "INSERT OR UPDATE")
-        #expect(trigger.forEachRow == true)
-        #expect(trigger.whenClause == "new.id IS NOT NULL")
         #expect(trigger.statement == "CREATE TRIGGER trg_audit ...")
     }
 }
