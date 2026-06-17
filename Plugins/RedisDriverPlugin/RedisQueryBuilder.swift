@@ -12,8 +12,8 @@ import TableProPluginKit
 struct RedisQueryBuilder {
     // MARK: - Base Query
 
-    /// Build a SCAN command for browsing keys in a namespace.
-    /// Returns: SCAN 0 MATCH namespace:* COUNT limit
+    /// Build a key-browse command for a namespace. KEYBROWSE iterates the SCAN cursor
+    /// to completion (bounded) and honors LIMIT/OFFSET, so paging returns every key.
     func buildBaseQuery(
         namespace: String,
         sortColumns: [(columnIndex: Int, ascending: Bool)] = [],
@@ -21,8 +21,8 @@ struct RedisQueryBuilder {
         limit: Int = 200,
         offset: Int = 0
     ) -> String {
-        let pattern = namespace.isEmpty ? "*" : "\(namespace)*"
-        return "SCAN 0 MATCH \"\(pattern)\" COUNT \(limit)"
+        let pattern = namespace.isEmpty ? nil : "\(namespace)*"
+        return buildKeyBrowseQuery(pattern: pattern, typeScope: nil, limit: limit, offset: offset)
     }
 
     /// Build a key-browse command from filter tuples.
@@ -40,7 +40,7 @@ struct RedisQueryBuilder {
         let typeScope = extractTypeScope(from: filters)
 
         guard pattern != nil || typeScope != nil else {
-            return buildBaseQuery(namespace: namespace, limit: limit)
+            return buildBaseQuery(namespace: namespace, limit: limit, offset: offset)
         }
 
         return buildKeyBrowseQuery(pattern: pattern, typeScope: typeScope, limit: limit, offset: offset)

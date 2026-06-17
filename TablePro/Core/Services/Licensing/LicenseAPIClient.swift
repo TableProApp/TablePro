@@ -14,7 +14,6 @@ final class LicenseAPIClient {
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "LicenseAPIClient")
 
-    // swiftlint:disable:next force_unwrapping
     private let baseURL = URL(string: "https://api.tablepro.app/v1/license")!
 
     private let session: URLSession

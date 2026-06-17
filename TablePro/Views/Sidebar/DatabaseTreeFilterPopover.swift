@@ -115,8 +115,11 @@ struct DatabaseTreeFilterPopover: View {
         Binding(
             get: { selectedDatabases.contains(database) },
             set: { isOn in
-                if isOn { selectedDatabases.insert(database) }
-                else { selectedDatabases.remove(database) }
+                if isOn {
+                    selectedDatabases.insert(database)
+                } else {
+                    selectedDatabases.remove(database)
+                }
             }
         )
     }

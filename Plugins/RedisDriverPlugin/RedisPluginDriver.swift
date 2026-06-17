@@ -33,11 +33,7 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     private static let logger = Logger(subsystem: "com.TablePro.RedisDriver", category: "RedisPluginDriver")
 
-    private static let maxScanKeys = PluginRowLimits.emergencyMax
     static let maxKeyBrowseScan = 10_000
-
-    var cachedScanPattern: String?
-    var cachedScanKeys: [String]?
 
     var serverVersion: String? {
         redisConnection?.serverVersion()
@@ -83,8 +79,6 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     func disconnect() {
         redisConnection?.disconnect()
         redisConnection = nil
-        cachedScanPattern = nil
-        cachedScanKeys = nil
     }
 
     func ping() async throws {
@@ -101,8 +95,6 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func execute(query: String) async throws -> PluginQueryResult {
         let startTime = Date()
-        cachedScanPattern = nil
-        cachedScanKeys = nil
         redisConnection?.resetCancellation()
 
         guard let conn = redisConnection else {
@@ -125,9 +117,7 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         redisConnection?.cancelCurrentQuery()
     }
 
-    func applyQueryTimeout(_ seconds: Int) async throws {
-        // Redis does not support session-level query timeouts
-    }
+    func applyQueryTimeout(_ seconds: Int) async throws {}
 
     // MARK: - Schema Operations
 
@@ -415,7 +405,7 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Streaming
 
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
-        return AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
+        AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
             let streamTask = Task {
                 do {
                     try await self.performStreamRows(query: query, continuation: continuation)
@@ -582,7 +572,6 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
                 batchStart = batchEnd
             }
-
         } while cursor != "0"
 
         continuation.finish()
@@ -604,7 +593,6 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         )
     }
 
-    // Redis SCAN only supports key pattern matching; sortColumns, columns, and offset are unused
     func buildFilteredQuery(
         table: String,
         filters: [(column: String, op: String, value: String)],

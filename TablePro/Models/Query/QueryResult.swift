@@ -217,6 +217,29 @@ struct ForeignKeyInfo: Identifiable, Hashable {
     }
 }
 
+struct TriggerInfo: Identifiable, Hashable {
+    var id: String { name }
+    let name: String
+    let timing: String
+    let event: String
+    let statement: String
+    let enabled: Bool?
+
+    init(
+        name: String,
+        timing: String,
+        event: String,
+        statement: String,
+        enabled: Bool? = nil
+    ) {
+        self.name = name
+        self.timing = timing
+        self.event = event
+        self.statement = statement
+        self.enabled = enabled
+    }
+}
+
 /// Connection status
 enum ConnectionStatus: Equatable, Sendable {
     case disconnected

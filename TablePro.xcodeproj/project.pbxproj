@@ -1960,6 +1960,7 @@
 				tr,
 				vi,
 				"zh-Hans",
+				"zh-Hant",
 				Base,
 			);
 			mainGroup = 5A1091BE2EF17EDC0055EA7C;
@@ -2772,7 +2773,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 98;
+				CURRENT_PROJECT_VERSION = 99;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = D7HJ5TFYCU;
 				ENABLE_APP_SANDBOX = NO;
@@ -2804,7 +2805,7 @@
 				);
 				LIBRARY_SEARCH_PATHS = "$(PROJECT_DIR)/Libs/dylibs";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.51.0;
+				MARKETING_VERSION = 0.51.1;
 				OTHER_LDFLAGS = (
 					"-Wl,-w",
 					"-force_load",
@@ -2849,7 +2850,7 @@
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = YES;
-				CURRENT_PROJECT_VERSION = 98;
+				CURRENT_PROJECT_VERSION = 99;
 				DEAD_CODE_STRIPPING = YES;
 				DEPLOYMENT_POSTPROCESSING = YES;
 				DEVELOPMENT_TEAM = D7HJ5TFYCU;
@@ -2882,7 +2883,7 @@
 				);
 				LIBRARY_SEARCH_PATHS = "$(PROJECT_DIR)/Libs/dylibs";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.51.0;
+				MARKETING_VERSION = 0.51.1;
 				OTHER_LDFLAGS = (
 					"-Wl,-w",
 					"-force_load",
@@ -4776,7 +4777,7 @@
 			repositoryURL = "https://github.com/TableProApp/oracle-nio";
 			requirement = {
 				kind = revision;
-				revision = 18a4872b16f6fb6919833f7897e75b0ea4d19428;
+				revision = 8b39c44c22ff23659ec085def01c767f5e141196;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */

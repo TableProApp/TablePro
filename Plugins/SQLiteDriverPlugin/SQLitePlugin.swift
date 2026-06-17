@@ -35,6 +35,7 @@ final class SQLitePlugin: NSObject, TableProPlugin, DriverPlugin {
     static let fileExtensions: [String] = ["db", "db3", "s3db", "sl3", "sqlite", "sqlite3", "sqlitedb"]
     static let brandColorHex = "#003B57"
     static let supportsDatabaseSwitching = false
+    static let supportsTriggers = true
     static let databaseGroupingStrategy: GroupingStrategy = .flat
     static let columnTypesByCategory: [String: [String]] = [
         "Integer": ["INTEGER", "INT", "TINYINT", "SMALLINT", "MEDIUMINT", "BIGINT"],
@@ -820,6 +821,32 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 referencedColumn: toCol,
                 onDelete: onDelete,
                 onUpdate: onUpdate
+            )
+        }
+    }
+
+    func fetchTriggers(table: String, schema: String?) async throws -> [PluginTriggerInfo] {
+        let safeTable = escapeStringLiteral(table)
+        let query = """
+            SELECT name, sql FROM sqlite_master
+            WHERE type = 'trigger' AND tbl_name = '\(safeTable)'
+            ORDER BY name
+            """
+        let result = try await execute(query: query)
+
+        return result.rows.compactMap { row -> PluginTriggerInfo? in
+            guard row.count >= 2,
+                  let name = row[0].asText,
+                  let sql = row[1].asText else {
+                return nil
+            }
+
+            let (timing, event) = TriggerSQLParser.timingAndEvent(from: sql)
+            return PluginTriggerInfo(
+                name: name,
+                timing: timing,
+                event: event,
+                statement: sql
             )
         }
     }

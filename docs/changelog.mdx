@@ -4,6 +4,28 @@ description: "Product updates and announcements for TablePro"
 rss: true
 ---
 
+<Update label="June 16, 2026" description="v0.51.1">
+  ### New Features
+
+  - **Database filter in the sidebar**: Filter the tree to only the databases you pick, saved per connection (#1667)
+  - **Unsaved SQL recovery**: Closing a query tab no longer loses unsaved SQL. The next blank query tab for the same connection restores the last closed draft (#1686)
+  - **Toggle all filters**: A checkbox in the filter panel header turns every filter row on or off at once
+
+  ### Improvements
+
+  - The filter panel's "Unset" button is now "Clear"; it keeps your filter rows and only drops the applied state
+  - A filter row's right-click menu now has "Apply Only This Filter", replacing the inline per-row Apply button
+  - The sidebar and inspector keep their width per connection, the sidebar its collapsed state, and the inspector its selected tab, across quit and reopen
+
+  ### Bug Fixes
+
+  - Shift+Arrow in the data grid starts and extends a cell selection from the focused cell, and Cmd+Shift+Arrow extends to the row or column edge
+  - Delete key removes all rows covered by a cell-range selection
+  - Right-clicking inside a multi-row or cell-range selection no longer collapses the selection first
+  - Oracle connections no longer crash during connect when the server sends a short or unexpected handshake packet (#1683)
+  - MongoDB filters on `_id` and other ObjectId fields now match a 24-character hex value (#1682)
+</Update>
+
 <Update label="June 13, 2026" description="v0.51.0">
   ### New Features
 

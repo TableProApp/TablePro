@@ -332,16 +332,18 @@ final class MainContentCommandActions {
     // MARK: - Tab Operations (Group A — Called Directly)
 
     func newTab(initialQuery: String? = nil) {
+        let resolvedQuery = initialQuery
+            ?? ClosedTabDraftStorage.shared.consumeQuery(connectionId: connection.id)
         if let coordinator, coordinator.tabManager.tabs.isEmpty {
             coordinator.tabManager.addTab(
-                initialQuery: initialQuery,
+                initialQuery: resolvedQuery,
                 databaseName: coordinator.activeDatabaseName
             )
             return
         }
         let payload = EditorTabPayload(
             connectionId: connection.id,
-            initialQuery: initialQuery,
+            initialQuery: resolvedQuery,
             intent: .newEmptyTab
         )
         WindowManager.shared.openTab(payload: payload)
@@ -384,6 +386,12 @@ final class MainContentCommandActions {
             window.close()
         } else {
             if let coordinator {
+                if let draft = ClosedTabDraftStorage.draftCandidate(
+                    from: coordinator.tabManager.tabs,
+                    selectedTabId: coordinator.tabManager.selectedTabId
+                ) {
+                    ClosedTabDraftStorage.shared.saveQuery(draft, connectionId: connection.id)
+                }
                 for tab in coordinator.tabManager.tabs {
                     coordinator.tabSessionRegistry.removeTableRows(for: tab.id)
                     if let url = tab.content.sourceFileURL {

@@ -24,7 +24,7 @@ final class RegistryClient {
     private static let logger = Logger(subsystem: "com.TablePro", category: "RegistryClient")
 
     private static let defaultRegistryURL = URL(string:
-        "https://cdn.jsdelivr.net/gh/TableProApp/plugins@main/plugins.json")! // swiftlint:disable:this force_unwrapping
+        "https://cdn.jsdelivr.net/gh/TableProApp/plugins@main/plugins.json")!
 
     static let customRegistryURLKey = "com.TablePro.customRegistryURL"
     private static let lastRegistryURLKey = "com.TablePro.lastRegistryURL"

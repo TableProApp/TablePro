@@ -79,6 +79,15 @@ extension TableStructureView {
                     }
                     return preamble + "\n" + baseDDL
                 }
+            case .triggers:
+                do {
+                    triggers = try await DatabaseManager.shared.withMetadataDriver(connectionId: connection.id) { driver in
+                        try await driver.fetchTriggers(table: tableName)
+                    }
+                } catch {
+                    Self.logger.error("Failed to load triggers: \(error.localizedDescription, privacy: .public)")
+                    triggers = []
+                }
             case .parts:
                 return
             }
@@ -176,6 +185,9 @@ extension TableStructureView {
         }
         if selectedTab == .ddl {
             await fetchTabData(.ddl)
+        }
+        if selectedTab == .triggers, connection.type.supportsTriggers {
+            await fetchTabData(.triggers)
         }
     }
 }

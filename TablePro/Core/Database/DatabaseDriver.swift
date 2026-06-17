@@ -34,6 +34,9 @@ protocol DatabaseDriver: AnyObject {
     /// Test the connection (connect and immediately disconnect)
     func testConnection() async throws -> Bool
 
+    /// Check the connection is alive without mutating session state
+    func ping() async throws
+
     // MARK: - Configuration
 
     /// Apply query execution timeout (seconds, 0 = no limit)
@@ -82,6 +85,9 @@ protocol DatabaseDriver: AnyObject {
 
     /// Fetch foreign keys for a specific table
     func fetchForeignKeys(table: String) async throws -> [ForeignKeyInfo]
+
+    /// Fetch triggers for a specific table
+    func fetchTriggers(table: String) async throws -> [TriggerInfo]
 
     /// Fetch foreign keys for all tables in the current database/schema in bulk.
     /// Default implementation falls back to per-table fetchForeignKeys.
@@ -242,6 +248,12 @@ extension DatabaseDriver {
 
     func fetchColumns(table: String, schema: String?) async throws -> [ColumnInfo] {
         try await fetchColumns(table: table)
+    }
+
+    func fetchTriggers(table: String) async throws -> [TriggerInfo] { [] }
+
+    func ping() async throws {
+        _ = try await execute(query: "SELECT 1")
     }
 
     func testConnection() async throws -> Bool {

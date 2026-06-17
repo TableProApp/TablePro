@@ -287,6 +287,56 @@ final class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         return foreignKeys
     }
 
+    func fetchTriggers(table: String, schema: String?) async throws -> [PluginTriggerInfo] {
+        let resolvedSchema = schema ?? core.currentSchema
+        let schemaLiteral = escapeLiteral(resolvedSchema)
+        let tableLiteral = escapeLiteral(table)
+        let query = """
+            SELECT
+                t.tgname,
+                CASE WHEN (t.tgtype & 64) != 0 THEN 'INSTEAD OF'
+                     WHEN (t.tgtype & 2)  != 0 THEN 'BEFORE'
+                     ELSE 'AFTER' END AS timing,
+                CASE WHEN (t.tgtype & 4) != 0 AND (t.tgtype & 8) != 0 AND (t.tgtype & 16) != 0
+                          THEN 'INSERT OR UPDATE OR DELETE'
+                     WHEN (t.tgtype & 4) != 0 AND (t.tgtype & 8) != 0  THEN 'INSERT OR UPDATE'
+                     WHEN (t.tgtype & 4) != 0 AND (t.tgtype & 16) != 0 THEN 'INSERT OR DELETE'
+                     WHEN (t.tgtype & 8) != 0 AND (t.tgtype & 16) != 0 THEN 'UPDATE OR DELETE'
+                     WHEN (t.tgtype & 4) != 0  THEN 'INSERT'
+                     WHEN (t.tgtype & 8) != 0  THEN 'UPDATE'
+                     WHEN (t.tgtype & 16) != 0 THEN 'DELETE'
+                     WHEN (t.tgtype & 32) != 0 THEN 'TRUNCATE'
+                     ELSE '' END AS event,
+                t.tgenabled <> 'D' AS enabled,
+                pg_get_triggerdef(t.oid) AS definition
+            FROM pg_catalog.pg_trigger t
+            JOIN pg_catalog.pg_class c ON c.oid = t.tgrelid
+            JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+            WHERE c.relname = '\(tableLiteral)'
+                AND n.nspname = '\(schemaLiteral)'
+                AND NOT t.tgisinternal
+            ORDER BY t.tgname
+            """
+        let result = try await execute(query: query)
+        let triggers: [PluginTriggerInfo] = result.rows.compactMap { row -> PluginTriggerInfo? in
+            guard row.count >= 5,
+                  let name = row[0].asText,
+                  let timing = row[1].asText,
+                  let event = row[2].asText,
+                  let definition = row[4].asText
+            else { return nil }
+            return PluginTriggerInfo(
+                name: name,
+                timing: timing,
+                event: event,
+                statement: definition,
+                enabled: row[3].asText == "t"
+            )
+        }
+        Self.logger.info("[trigger] postgres fetchTriggers schema=\(resolvedSchema, privacy: .public) table=\(table, privacy: .public) rows=\(result.rows.count) parsed=\(triggers.count)")
+        return triggers
+    }
+
     func fetchAllForeignKeys(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {
         let schemaLiteral = escapeLiteral(schema ?? core.currentSchema)
         let query = """

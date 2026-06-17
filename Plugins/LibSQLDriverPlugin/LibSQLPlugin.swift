@@ -28,6 +28,7 @@ final class LibSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let isDownloadable = true
     static let supportsImport = false
     static let supportsSchemaEditing = true
+    static let supportsTriggers = true
     static let supportsDropDatabase = false
     static let supportsDatabaseSwitching = false
     static let databaseGroupingStrategy: GroupingStrategy = .flat

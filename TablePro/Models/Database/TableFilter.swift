@@ -232,4 +232,11 @@ struct TabFilterState: Equatable, Hashable, Codable {
     var hasAppliedFilters: Bool {
         !appliedFilters.isEmpty
     }
+
+    var allEnabledState: Bool? {
+        guard !filters.isEmpty else { return false }
+        if filters.allSatisfy({ $0.isEnabled }) { return true }
+        if filters.allSatisfy({ !$0.isEnabled }) { return false }
+        return nil
+    }
 }

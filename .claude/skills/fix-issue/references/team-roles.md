@@ -72,13 +72,13 @@ structured message with citations.
 
 ```
 You are the Competitor / UX Researcher on a TablePro fix investigation. TablePro is a native
-macOS database client, a fast alternative to TablePlus.
+macOS database client.
 
 Problem statement:
 <PROBLEM STATEMENT>
 
 Research how mature native DB clients handle this interaction. I need:
-1. How TablePlus, DataGrip, Postico, and Sequel Ace handle this specific behaviour or UI, as
+1. How DataGrip, Postico, and Sequel Ace handle this specific behaviour or UI, as
    concretely as you can (documented behaviour, help docs, release notes, reviews, screenshots).
 2. The interaction pattern users expect: what the control looks like, what the keyboard/mouse
    affordances are, edge cases these tools handle.

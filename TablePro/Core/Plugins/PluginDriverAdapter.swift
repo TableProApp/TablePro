@@ -116,6 +116,10 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
         status = .disconnected
     }
 
+    func ping() async throws {
+        try await pluginDriver.ping()
+    }
+
     func applyQueryTimeout(_ seconds: Int) async throws {
         try await pluginDriver.applyQueryTimeout(seconds)
     }
@@ -247,6 +251,19 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
                 referencedSchema: fk.referencedSchema,
                 onDelete: fk.onDelete,
                 onUpdate: fk.onUpdate
+            )
+        }
+    }
+
+    func fetchTriggers(table: String) async throws -> [TriggerInfo] {
+        let pluginTriggers = try await pluginDriver.fetchTriggers(table: table, schema: pluginDriver.currentSchema)
+        return pluginTriggers.map { trigger in
+            TriggerInfo(
+                name: trigger.name,
+                timing: trigger.timing,
+                event: trigger.event,
+                statement: trigger.statement,
+                enabled: trigger.enabled
             )
         }
     }

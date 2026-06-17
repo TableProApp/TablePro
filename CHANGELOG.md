@@ -9,7 +9,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- The tree sidebar can show only the databases you pick. Use the filter button to check the ones you want, with a search box for long lists. The choice is saved per connection. (#1667)
+- The table structure view has a Triggers tab for MySQL, MariaDB, PostgreSQL, SQLite, SQL Server, Oracle, libSQL, and Cloudflare D1. It lists each trigger with its timing and event (plus enabled state where the engine reports it), with a filter field and sortable columns. Selecting a trigger shows its full definition in a read-only syntax-highlighted viewer. (#1695)
+- Traditional Chinese (繁體中文) language in Settings > General with full UI translation
+- An Add button in the table status bar inserts a new row at the end of the grid and starts editing it.
+
+### Changed
+
+- Selecting a Redis namespace in the sidebar key tree now filters the open database view to that prefix, with paging, instead of opening a separate tab limited to one batch of keys. (#1701)
+
+### Fixed
+
+- Redis entries no longer disappear after the connection sits idle. The health check was running `SELECT 1`, which on Redis switches the active database, so a later refresh scanned the wrong database. (#1701)
+- Redis key browsing now lists every key in a database or namespace and pages through them correctly. It was reading only the first SCAN batch, so large keyspaces showed a partial, fixed set of keys. (#1701)
+- A dropped Redis connection now reconnects on the next command and replays auth and the selected database, instead of failing until the next health check. (#1701)
+- DuckDB VARIANT columns now show their value as text instead of an empty cell.
+
+## [0.51.1] - 2026-06-16
+
+### Added
+
+- The tree sidebar can filter to only the databases you pick, saved per connection. (#1667)
+- Closing a query tab no longer loses unsaved SQL. The next blank query tab for the same connection restores the last closed draft. (#1686)
+- A checkbox in the filter panel header turns every filter row on or off at once, with a dash when only some are on.
+
+### Changed
+
+- The filter panel's "Unset" button is now "Clear". It keeps your filter rows and only drops the applied state. To remove the rows, use "Remove All Filters" in the filter options menu.
+- A row's right-click menu now has "Apply Only This Filter". The inline per-row Apply button is gone.
 
 ### Changed
 
@@ -19,6 +45,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Expanding or collapsing a database or schema in the tree sidebar while its tables were still loading could crash the app. The tree now updates its rows without rebuilding the outline structure.
 - MongoDB filters on `_id` and other ObjectId fields now match. A 24-character hex value is matched as an ObjectId as well as a string, so filtering by `_id` returns the row instead of nothing. (#1682)
+- Shift+Arrow in the data grid now starts and extends a cell selection from the focused cell. Cmd+Shift+Arrow extends to the row or column edge.
+- Delete key now removes all rows covered by a cell-range selection instead of ignoring it.
+- Right-clicking inside a multi-row or cell-range selection no longer collapses the selection first.
+- Oracle connections no longer crash during connect when the server sends a short or unexpected handshake packet. (#1683)
+- MongoDB filters on `_id` and other ObjectId fields now match. A 24-character hex value is matched as an ObjectId as well as a string. (#1682)
+- The sidebar and inspector keep their width per connection, the sidebar its collapsed state, and the inspector its selected tab, across quit and reopen.
 
 ## [0.51.0] - 2026-06-13
 
@@ -2281,7 +2313,8 @@ TablePro is a native macOS database client built with SwiftUI and AppKit, design
     - Custom SQL query templates
     - Performance optimized for large datasets
 
-[Unreleased]: https://github.com/TableProApp/TablePro/compare/v0.51.0...HEAD
+[Unreleased]: https://github.com/TableProApp/TablePro/compare/v0.51.1...HEAD
+[0.51.1]: https://github.com/TableProApp/TablePro/compare/v0.51.0...v0.51.1
 [0.51.0]: https://github.com/TableProApp/TablePro/compare/v0.50.0...v0.51.0
 [0.50.0]: https://github.com/TableProApp/TablePro/compare/v0.49.1...v0.50.0
 [0.49.1]: https://github.com/TableProApp/TablePro/compare/v0.49.0...v0.49.1

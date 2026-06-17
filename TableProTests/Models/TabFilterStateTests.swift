@@ -75,6 +75,42 @@ struct TabFilterStateTests {
         #expect(decoded.appliedFilters.map(\.id) == [filter.id])
     }
 
+    @Test("allEnabledState is false when there are no filters")
+    func allEnabledStateEmpty() {
+        let state = TabFilterState()
+        #expect(state.allEnabledState == false)
+    }
+
+    @Test("allEnabledState is true when every filter is enabled")
+    func allEnabledStateAllOn() {
+        var state = TabFilterState()
+        state.filters = [
+            TestFixtures.makeTableFilter(column: "id"),
+            TestFixtures.makeTableFilter(column: "name")
+        ]
+        #expect(state.allEnabledState == true)
+    }
+
+    @Test("allEnabledState is false when every filter is disabled")
+    func allEnabledStateAllOff() {
+        var state = TabFilterState()
+        state.filters = [
+            TestFixtures.makeTableFilter(column: "id", isEnabled: false),
+            TestFixtures.makeTableFilter(column: "name", isEnabled: false)
+        ]
+        #expect(state.allEnabledState == false)
+    }
+
+    @Test("allEnabledState is nil when filters are mixed")
+    func allEnabledStateMixed() {
+        var state = TabFilterState()
+        state.filters = [
+            TestFixtures.makeTableFilter(column: "id"),
+            TestFixtures.makeTableFilter(column: "name", isEnabled: false)
+        ]
+        #expect(state.allEnabledState == nil)
+    }
+
     @Test("browseSearch reads and writes the key pattern fields")
     func browseSearchAccessor() {
         var state = TabFilterState()

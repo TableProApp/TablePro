@@ -188,16 +188,6 @@
               "development/code-style",
               "development/plugin-registry"
             ]
-          },
-          {
-            "group": "Competitive tracking",
-            "pages": [
-              "development/competitive-tracking/overview",
-              "development/competitive-tracking/top-requests",
-              "development/competitive-tracking/by-category",
-              "development/competitive-tracking/gap-analysis",
-              "development/competitive-tracking/quick-wins"
-            ]
           }
         ]
       }

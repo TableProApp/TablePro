@@ -115,6 +115,14 @@ final class DuckDBDriverTests: XCTestCase {
         XCTAssertTrue(value.contains("2024-01-02"), "expected rendered timestamptz, got \(value)")
     }
 
+    func testVariantRendersAsText() async throws {
+        let driver = try XCTUnwrap(driver)
+        let result = try await driver.execute(query: "SELECT {'a': 42, 'b': [1, 2, 3]}::VARIANT AS v")
+        XCTAssertEqual(result.rows.count, 1)
+        let value = try XCTUnwrap(result.rows[0][0])
+        XCTAssertTrue(value.contains("42"), "expected rendered variant text, got \(value)")
+    }
+
     func testCancelWithoutRunningQueryIsSafe() async throws {
         let driver = try XCTUnwrap(driver)
         try await driver.cancelCurrentQuery()

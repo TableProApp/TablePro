@@ -67,8 +67,26 @@ struct FilterPanelView: View {
         .onPreferenceChange(FilterRowsHeightKey.self) { filterRowsHeight = $0 }
     }
 
+    private func toggleAllFiltersEnabled() {
+        let newState = filterState.allEnabledState != true
+        for filter in filterState.filters {
+            var updated = filter
+            updated.isEnabled = newState
+            coordinator.updateFilter(updated)
+        }
+    }
+
     private var filterHeader: some View {
         HStack(spacing: 8) {
+            if !filterState.filters.isEmpty {
+                TristateCheckbox(
+                    state: TristateCheckbox.State(allEnabled: filterState.allEnabledState),
+                    action: toggleAllFiltersEnabled
+                )
+                .help(String(localized: "Enable or disable all filters"))
+                .accessibilityLabel(String(localized: "Enable or disable all filters"))
+            }
+
             Text("Filters")
                 .font(.callout.weight(.medium))
 
@@ -88,15 +106,15 @@ struct FilterPanelView: View {
 
             filterOptionsMenu
 
-            Button("Unset") {
-                coordinator.clearFilterState()
+            Button("Clear") {
+                coordinator.clearAppliedFilters()
                 onUnset()
                 coordinator.focusActiveGrid()
             }
             .buttonStyle(.bordered)
             .controlSize(.small)
             .disabled(!filterState.hasAppliedFilters)
-            .help(String(localized: "Remove all filters and reload"))
+            .help(String(localized: "Clear applied filters without removing filter rows"))
 
             Button("Apply") {
                 applyAllValidFilters()
@@ -172,6 +190,17 @@ struct FilterPanelView: View {
 
             Divider()
 
+            Button(role: .destructive) {
+                coordinator.clearFilterState()
+                onUnset()
+                coordinator.focusActiveGrid()
+            } label: {
+                Label(String(localized: "Remove All Filters"), systemImage: "xmark.circle")
+            }
+            .disabled(filterState.filters.isEmpty)
+
+            Divider()
+
             Button {
                 showSettingsPopover.toggle()
             } label: {
@@ -198,7 +227,6 @@ struct FilterPanelView: View {
                     completions: completionItems(),
                     enumValuesByColumn: enumValuesByColumn,
                     rawSQLCompletionProvider: rawSQLCompletionProvider,
-                    isApplied: filterState.commit == .solo(filter.id),
                     onAdd: {
                         coordinator.addFilter(columns: columns, primaryKeyColumn: primaryKeyColumn)
                         focusedFilterId = filterState.filters.last?.id

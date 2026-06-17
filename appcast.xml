@@ -3,6 +3,65 @@
     <channel>
         <title>TablePro</title>
         <item>
+            <title>0.51.1</title>
+            <pubDate>Mon, 15 Jun 2026 17:49:43 +0000</pubDate>
+            <sparkle:version>99</sparkle:version>
+            <sparkle:shortVersionString>0.51.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <description><![CDATA[<h3>Added</h3>
+<ul>
+<li>The tree sidebar can filter to only the databases you pick, saved per connection. (#1667)</li>
+<li>Closing a query tab no longer loses unsaved SQL. The next blank query tab for the same connection restores the last closed draft. (#1686)</li>
+<li>A checkbox in the filter panel header turns every filter row on or off at once, with a dash when only some are on.</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>The filter panel's "Unset" button is now "Clear". It keeps your filter rows and only drops the applied state. To remove the rows, use "Remove All Filters" in the filter options menu.</li>
+<li>A row's right-click menu now has "Apply Only This Filter". The inline per-row Apply button is gone.</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Shift+Arrow in the data grid now starts and extends a cell selection from the focused cell. Cmd+Shift+Arrow extends to the row or column edge.</li>
+<li>Delete key now removes all rows covered by a cell-range selection instead of ignoring it.</li>
+<li>Right-clicking inside a multi-row or cell-range selection no longer collapses the selection first.</li>
+<li>Oracle connections no longer crash during connect when the server sends a short or unexpected handshake packet. (#1683)</li>
+<li>MongoDB filters on `_id` and other ObjectId fields now match. A 24-character hex value is matched as an ObjectId as well as a string. (#1682)</li>
+<li>The sidebar and inspector keep their width per connection, the sidebar its collapsed state, and the inspector its selected tab, across quit and reopen.</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.51.1/TablePro-0.51.1-arm64.zip" length="19441611" type="application/octet-stream" sparkle:edSignature="Wi4wcHS1/oemMC1WxgMNOVKzzzFpo4tJoTi+rlpeysp3/IOghsehlriRwi0s3bVec+7YQ2WYqgbj9Bg5X1knAw=="/>
+        </item>
+        <item>
+            <title>0.51.1</title>
+            <pubDate>Mon, 15 Jun 2026 17:49:44 +0000</pubDate>
+            <sparkle:version>99</sparkle:version>
+            <sparkle:shortVersionString>0.51.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[<h3>Added</h3>
+<ul>
+<li>The tree sidebar can filter to only the databases you pick, saved per connection. (#1667)</li>
+<li>Closing a query tab no longer loses unsaved SQL. The next blank query tab for the same connection restores the last closed draft. (#1686)</li>
+<li>A checkbox in the filter panel header turns every filter row on or off at once, with a dash when only some are on.</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>The filter panel's "Unset" button is now "Clear". It keeps your filter rows and only drops the applied state. To remove the rows, use "Remove All Filters" in the filter options menu.</li>
+<li>A row's right-click menu now has "Apply Only This Filter". The inline per-row Apply button is gone.</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Shift+Arrow in the data grid now starts and extends a cell selection from the focused cell. Cmd+Shift+Arrow extends to the row or column edge.</li>
+<li>Delete key now removes all rows covered by a cell-range selection instead of ignoring it.</li>
+<li>Right-clicking inside a multi-row or cell-range selection no longer collapses the selection first.</li>
+<li>Oracle connections no longer crash during connect when the server sends a short or unexpected handshake packet. (#1683)</li>
+<li>MongoDB filters on `_id` and other ObjectId fields now match. A 24-character hex value is matched as an ObjectId as well as a string. (#1682)</li>
+<li>The sidebar and inspector keep their width per connection, the sidebar its collapsed state, and the inspector its selected tab, across quit and reopen.</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.51.1/TablePro-0.51.1-x86_64.zip" length="20542670" type="application/octet-stream" sparkle:edSignature="makYitcy1p/GLeMCpcjbxzNUB4tP1A2chFT7wR4AlPRpbCklxJ7OaPsdLnT+xTEJH8x7ToLpUkyN8WYV8IglDg=="/>
+        </item>
+        <item>
             <title>0.51.0</title>
             <pubDate>Sat, 13 Jun 2026 17:58:13 +0000</pubDate>
             <sparkle:version>98</sparkle:version>

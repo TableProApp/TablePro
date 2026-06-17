@@ -7,7 +7,7 @@ description: >-
   scope, no quick patches. It runs a parallel investigation team (codebase tracing + Apple
   platform research + competitor/UX research), synthesizes a refactor-aware implementation
   blueprint, gets the user's approval, then implements to TablePro's standards. Trigger on
-  things like "fix issue #1234", "fix this bug", "this should behave like TablePlus", "do this
+  things like "fix issue #1234", "fix this bug", "this should behave like a native app", "do this
   properly / natively", or any non-trivial defect or behaviour gap in the app. Prefer this over
   an ad-hoc fix when the change touches UI behaviour, architecture, or anything the user expects
   to match Apple conventions.
@@ -59,7 +59,7 @@ Then spawn the three roles in a single turn so they run concurrently. Full chart
 | --- | --- | --- |
 | Codebase Analyzer | `feature-dev:code-explorer` | How does the relevant code actually work today? Which files, types, and call paths are involved? Where is the real cause? |
 | Apple Platform Researcher | `general-purpose` | What does Apple's documentation (HIG, AppKit, SwiftUI) say the correct behaviour and the right API are? |
-| Competitor / UX Researcher | `general-purpose` | How do TablePlus, DataGrip, Postico, and similar native clients handle this? What's the expected UX? |
+| Competitor / UX Researcher | `general-purpose` | How do DataGrip, Postico, Sequel Ace, and similar native clients handle this? What's the expected UX? |
 
 Give each investigator the Phase 0 problem statement and a sharp question. Tell them to report findings as a structured message back to you, citing concrete evidence (`file:line` for code, doc URLs or API names for platform research). `references/research-sources.md` lists the documentation map and the tools each researcher should reach for (`mcp__xcode__DocumentationSearch`, `WebSearch`, `WebFetch`).
 

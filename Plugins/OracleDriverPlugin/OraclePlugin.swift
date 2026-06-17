@@ -44,6 +44,7 @@ final class OraclePlugin: NSObject, TableProPlugin, DriverPlugin, PluginDiagnost
     // MARK: - UI/Capability Metadata
 
     static let isDownloadable = true
+    static let supportsTriggers = true
     static let pathFieldRole: PathFieldRole = .serviceName
     static let supportsForeignKeyDisable = false
     static let supportsSchemaSwitching = true
@@ -463,6 +464,50 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 referencedColumn: refColumn,
                 onDelete: deleteRule,
                 onUpdate: "NO ACTION"
+            )
+        }
+    }
+
+    func fetchTriggers(table: String, schema: String?) async throws -> [PluginTriggerInfo] {
+        let escapedTable = table.replacingOccurrences(of: "'", with: "''")
+        let escaped = effectiveSchemaEscaped(schema)
+        let sql = """
+            SELECT TRIGGER_NAME, TRIGGER_TYPE, TRIGGERING_EVENT, STATUS, WHEN_CLAUSE
+            FROM ALL_TRIGGERS
+            WHERE TABLE_OWNER = '\(escaped)'
+              AND TABLE_NAME = '\(escapedTable)'
+            ORDER BY TRIGGER_NAME
+            """
+        let result = try await execute(query: sql)
+        return result.rows.compactMap { row -> PluginTriggerInfo? in
+            guard let name = row[safe: 0]?.asText else { return nil }
+            let triggerType = (row[safe: 1]?.asText ?? "").uppercased()
+            let event = row[safe: 2]?.asText ?? ""
+            let timing: String
+            if triggerType.contains("INSTEAD OF") {
+                timing = "INSTEAD OF"
+            } else if triggerType.hasPrefix("BEFORE") {
+                timing = "BEFORE"
+            } else {
+                timing = "AFTER"
+            }
+            let isRowLevel = triggerType.contains("EACH ROW")
+            let enabled = (row[safe: 3]?.asText ?? "").uppercased() == "ENABLED"
+            let whenClause = row[safe: 4]?.asText
+            let quotedName = "\"\(name.replacingOccurrences(of: "\"", with: "\"\""))\""
+            let quotedTable = "\"\(table.replacingOccurrences(of: "\"", with: "\"\""))\""
+            let forEach = isRowLevel ? " FOR EACH ROW" : ""
+            let whenLine = (whenClause?.isEmpty == false) ? "\n    WHEN (\(whenClause ?? ""))" : ""
+            let statement = """
+                CREATE OR REPLACE TRIGGER \(quotedName)
+                    \(timing) \(event) ON \(quotedTable)\(forEach)\(whenLine)
+                """
+            return PluginTriggerInfo(
+                name: name,
+                timing: timing,
+                event: event,
+                statement: statement,
+                enabled: enabled
             )
         }
     }

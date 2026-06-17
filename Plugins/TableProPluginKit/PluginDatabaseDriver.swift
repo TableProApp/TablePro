@@ -88,6 +88,7 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo]
     func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo]
     func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo]
+    func fetchTriggers(table: String, schema: String?) async throws -> [PluginTriggerInfo]
     func fetchTableDDL(table: String, schema: String?) async throws -> String
     func fetchViewDefinition(view: String, schema: String?) async throws -> String
     func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata
@@ -196,6 +197,8 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
 
 public extension PluginDatabaseDriver {
     var capabilities: PluginCapabilities { [] }
+
+    func fetchTriggers(table: String, schema: String?) async throws -> [PluginTriggerInfo] { [] }
 
     var supportsSchemas: Bool { false }
 
