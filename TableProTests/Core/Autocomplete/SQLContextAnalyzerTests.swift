@@ -267,6 +267,27 @@ struct SQLContextAnalyzerTests {
         #expect(context.tableReferences.contains { $0.tableName == "orders" && $0.alias == "o" })
     }
 
+    @Test("Registers derived-table alias with its columns")
+    func testDerivedTableReference() {
+        let query = """
+        SELECT * FROM happiness_scores hs
+        LEFT JOIN (SELECT country, AVG(score) AS avg_score FROM happiness_scores GROUP BY country) ahs
+          ON hs.country = ahs.country
+        """
+        let context = analyzer.analyze(query: query, cursorPosition: (query as NSString).length)
+        let ahs = context.tableReferences.first { $0.identifier == "ahs" }
+        #expect(ahs?.isDerived == true)
+        #expect(ahs?.derivedColumns == ["country", "avg_score"])
+    }
+
+    @Test("Registers CTE alias with its columns")
+    func testCteReference() {
+        let query = "WITH totals AS (SELECT region, SUM(amount) AS total FROM sales GROUP BY region) SELECT * FROM totals t"
+        let context = analyzer.analyze(query: query, cursorPosition: (query as NSString).length)
+        let totals = context.tableReferences.first { $0.identifier == "totals" }
+        #expect(totals?.derivedColumns == ["region", "total"])
+    }
+
     @Test("Extracts table reference from UPDATE")
     func testTableReferenceFromUpdate() {
         let context = analyzer.analyze(query: "UPDATE users SET", cursorPosition: 16)

@@ -102,6 +102,27 @@ FROM users u
 JOIN orders o ON u.id = o.|  -- id, user_id, total (from orders)
 ```
 
+#### Derived Tables and CTEs
+
+An alias for a subquery (derived table) or a `WITH` table completes the columns that subquery's SELECT list produces, including `AS` renames:
+
+```sql
+SELECT ahs.|  -- country, avg_score
+FROM happiness_scores hs
+LEFT JOIN (
+    SELECT country, AVG(score) AS avg_score
+    FROM happiness_scores
+    GROUP BY country
+) ahs ON hs.country = ahs.country
+
+WITH totals AS (
+    SELECT region, SUM(amount) AS total FROM sales GROUP BY region
+)
+SELECT t.| FROM totals t  -- region, total
+```
+
+Explicit (`AS name`), bare (`country`), and qualified (`t.col`) columns resolve. A `SELECT *` subquery and unaliased expressions like `AVG(score)` have no name to suggest, so they are skipped.
+
 {/* Screenshot: Column suggestions after alias */}
 <Frame caption="Column suggestions for aliased table">
   <img

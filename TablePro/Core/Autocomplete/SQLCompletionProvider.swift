@@ -134,6 +134,11 @@ final class SQLCompletionProvider {
         // schema name parsed out of the FROM clause itself.
         if let dotPrefix = context.dotPrefix {
             guard let schemaProvider else { return [] }
+            if let derived = context.tableReferences.first(where: {
+                $0.isDerived && $0.identifier.caseInsensitiveCompare(dotPrefix) == .orderedSame
+            }), let columns = derived.derivedColumns, !columns.isEmpty {
+                return columns.map { SQLCompletionItem.column($0, dataType: nil, tableName: derived.identifier) }
+            }
             if let tableName = await schemaProvider.resolveAlias(dotPrefix, in: context.tableReferences) {
                 let schema = context.tableReferences.first {
                     $0.tableName.caseInsensitiveCompare(tableName) == .orderedSame
