@@ -375,6 +375,15 @@ struct KeyboardSettings: Codable, Equatable {
         return KeyboardShortcut(equivalent, modifiers: key.eventModifiers)
     }
 
+    /// A tooltip/help string that appends the action's resolved shortcut, e.g.
+    /// "Switch Connection (⌃⌘C)". Returns just the label when the shortcut is
+    /// cleared or unset. Reflects user overrides because it resolves through
+    /// `shortcut(for:)`.
+    func shortcutHint(_ label: String, for action: ShortcutAction) -> String {
+        guard let key = shortcut(for: action), !key.isCleared else { return label }
+        return "\(label) (\(key.displayString))"
+    }
+
     // MARK: - Default Shortcuts
 
     /// Default shortcuts, applied when the user has no override. An action absent

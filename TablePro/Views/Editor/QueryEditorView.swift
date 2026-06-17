@@ -142,10 +142,7 @@ struct QueryEditorView: View {
     // MARK: - Helpers
 
     private func shortcutHint(_ label: String, for action: ShortcutAction) -> String {
-        guard let combo = AppSettingsManager.shared.keyboard.shortcut(for: action), !combo.isCleared else {
-            return label
-        }
-        return "\(label) (\(combo.displayString))"
+        AppSettingsManager.shared.keyboard.shortcutHint(label, for: action)
     }
 
     @ViewBuilder

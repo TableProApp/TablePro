@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - DuckDB VARIANT columns now show their value as text instead of an empty cell.
 - A new database group now appears in the connection list right away instead of only after restarting the app. (#1704)
 - The SQL formatter keeps nested indentation for UNION, UNION ALL, INTERSECT, and EXCEPT inside a derived table or CTE, and puts the closing parenthesis of a subquery on its own line instead of collapsing it onto the last SELECT. (#1698)
+- Toolbar button tooltips now show each action's real keyboard shortcut and follow your custom bindings, instead of a fixed value. The Switch Connection tooltip showed the wrong shortcut. (#1694)
 
 ## [0.51.1] - 2026-06-16
 

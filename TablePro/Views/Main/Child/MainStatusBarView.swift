@@ -61,11 +61,7 @@ struct MainStatusBarView: View {
     }
 
     private func helpText(_ label: String, shortcut action: ShortcutAction) -> String {
-        guard let combo = AppSettingsManager.shared.keyboard.shortcut(for: action),
-              !combo.isCleared else {
-            return label
-        }
-        return "\(label) (\(combo.displayString))"
+        AppSettingsManager.shared.keyboard.shortcutHint(label, for: action)
     }
 
     private var columnsAccessibilityLabel: String {
