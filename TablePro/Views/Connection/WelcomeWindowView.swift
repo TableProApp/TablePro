@@ -92,17 +92,7 @@ struct WelcomeWindowView: View {
             switch sheet {
             case .newGroup(let parentId):
                 CreateGroupSheet(parentId: parentId) { name, color, pid in
-                    let group = ConnectionGroup(name: name, color: color, parentId: pid)
-                    GroupStorage.shared.addGroup(group)
-                    vm.groups = GroupStorage.shared.loadGroups()
-                    vm.expandedGroupIds.insert(group.id)
-                    if let pid {
-                        vm.expandedGroupIds.insert(pid)
-                    }
-                    if !vm.pendingMoveToNewGroup.isEmpty {
-                        vm.moveConnections(vm.pendingMoveToNewGroup, toGroup: group.id)
-                        vm.pendingMoveToNewGroup = []
-                    }
+                    vm.createGroup(name: name, color: color, parentId: pid)
                 }
             case .activation:
                 LicenseActivationSheet()

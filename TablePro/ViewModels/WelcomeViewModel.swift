@@ -454,6 +454,22 @@ final class WelcomeViewModel {
         rebuildTree()
     }
 
+    func createGroup(name: String, color: ConnectionColor, parentId: UUID?) {
+        let group = ConnectionGroup(name: name, color: color, parentId: parentId)
+        groupStorage.addGroup(group)
+        groups = groupStorage.loadGroups()
+        guard groups.contains(where: { $0.id == group.id }) else { return }
+        expandedGroupIds.insert(group.id)
+        if let parentId {
+            expandedGroupIds.insert(parentId)
+        }
+        if !pendingMoveToNewGroup.isEmpty {
+            moveConnections(pendingMoveToNewGroup, toGroup: group.id)
+            pendingMoveToNewGroup = []
+        }
+        rebuildTree()
+    }
+
     func createSubgroup(under parentId: UUID) {
         activeSheet = .newGroup(parentId: parentId)
     }
