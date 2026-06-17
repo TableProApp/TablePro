@@ -15,26 +15,26 @@ struct RedisQueryBuilderTests {
 
     // MARK: - Base Query
 
-    @Test("Empty namespace produces wildcard SCAN")
+    @Test("Empty namespace produces a bare key-browse command")
     func emptyNamespaceWildcard() {
         let query = builder.buildBaseQuery(namespace: "")
-        #expect(query == "SCAN 0 MATCH \"*\" COUNT 200")
+        #expect(query == "KEYBROWSE LIMIT 200 OFFSET 0")
     }
 
-    @Test("Namespace appends wildcard")
+    @Test("Namespace appends wildcard to the MATCH pattern")
     func namespaceAppendsWildcard() {
         let query = builder.buildBaseQuery(namespace: "cache:")
-        #expect(query == "SCAN 0 MATCH \"cache:*\" COUNT 200")
+        #expect(query == "KEYBROWSE MATCH \"cache:*\" LIMIT 200 OFFSET 0")
     }
 
     @Test("Custom limit")
     func customLimit() {
         let query = builder.buildBaseQuery(namespace: "user:", limit: 500)
-        #expect(query == "SCAN 0 MATCH \"user:*\" COUNT 500")
+        #expect(query == "KEYBROWSE MATCH \"user:*\" LIMIT 500 OFFSET 0")
     }
 
-    @Test("Sort columns and offset are accepted but do not change SCAN command")
-    func sortAndOffsetIgnored() {
+    @Test("Offset pages through the namespace")
+    func offsetPagesThrough() {
         let query = builder.buildBaseQuery(
             namespace: "test:",
             sortColumns: [(columnIndex: 0, ascending: true)],
@@ -42,7 +42,7 @@ struct RedisQueryBuilderTests {
             limit: 100,
             offset: 50
         )
-        #expect(query == "SCAN 0 MATCH \"test:*\" COUNT 100")
+        #expect(query == "KEYBROWSE MATCH \"test:*\" LIMIT 100 OFFSET 50")
     }
 
     // MARK: - Key Browse Query
@@ -109,16 +109,16 @@ struct RedisQueryBuilderTests {
         #expect(query == "KEYBROWSE MATCH \"*session*\" LIMIT 200 OFFSET 0")
     }
 
-    @Test("Non-Key, non-Type filter falls back to base SCAN")
+    @Test("Non-Key, non-Type filter falls back to the base browse command")
     func nonKeyColumnFallsBack() {
         let query = builder.buildFilteredQuery(
             namespace: "test:",
             filters: [(column: "Value", op: "CONTAINS", value: "hello")]
         )
-        #expect(query == "SCAN 0 MATCH \"test:*\" COUNT 200")
+        #expect(query == "KEYBROWSE MATCH \"test:*\" LIMIT 200 OFFSET 0")
     }
 
-    @Test("Multiple Key filters fall back to base SCAN")
+    @Test("Multiple Key filters fall back to the base browse command")
     func multipleKeyFiltersFallBack() {
         let query = builder.buildFilteredQuery(
             namespace: "",
@@ -127,7 +127,7 @@ struct RedisQueryBuilderTests {
                 (column: "Key", op: "MATCH", value: "b*")
             ]
         )
-        #expect(query == "SCAN 0 MATCH \"*\" COUNT 200")
+        #expect(query == "KEYBROWSE LIMIT 200 OFFSET 0")
     }
 
     // MARK: - Count Query

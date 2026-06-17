@@ -42,7 +42,7 @@ extension DatabaseManager {
                     return false
                 }
                 do {
-                    _ = try await mainDriver.execute(query: "SELECT 1")
+                    try await mainDriver.ping()
                     return true
                 } catch {
                     Self.logger.debug("Ping failed for \(connectionId): \(error.localizedDescription)")

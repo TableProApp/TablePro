@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Redis entries no longer disappear after the connection sits idle. The health check was running `SELECT 1`, which on Redis switches the active database, so a later refresh scanned the wrong database. (#1701)
+- Redis key browsing now lists every key in a database or namespace and pages through them correctly. It was reading only the first SCAN batch, so large keyspaces showed a partial, fixed set of keys. (#1701)
+- A dropped Redis connection now reconnects on the next command and replays auth and the selected database, instead of failing until the next health check. (#1701)
 - DuckDB VARIANT columns now show their value as text instead of an empty cell.
 
 ## [0.51.1] - 2026-06-16

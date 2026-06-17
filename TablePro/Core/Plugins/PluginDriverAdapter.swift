@@ -116,6 +116,10 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
         status = .disconnected
     }
 
+    func ping() async throws {
+        try await pluginDriver.ping()
+    }
+
     func applyQueryTimeout(_ seconds: Int) async throws {
         try await pluginDriver.applyQueryTimeout(seconds)
     }

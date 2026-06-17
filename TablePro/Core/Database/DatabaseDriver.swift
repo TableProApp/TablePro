@@ -34,6 +34,9 @@ protocol DatabaseDriver: AnyObject {
     /// Test the connection (connect and immediately disconnect)
     func testConnection() async throws -> Bool
 
+    /// Check the connection is alive without mutating session state
+    func ping() async throws
+
     // MARK: - Configuration
 
     /// Apply query execution timeout (seconds, 0 = no limit)
@@ -248,6 +251,10 @@ extension DatabaseDriver {
     }
 
     func fetchTriggers(table: String) async throws -> [TriggerInfo] { [] }
+
+    func ping() async throws {
+        _ = try await execute(query: "SELECT 1")
+    }
 
     func testConnection() async throws -> Bool {
         try await connect()
