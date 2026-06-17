@@ -258,19 +258,34 @@ struct DatabaseTreeView: View {
 
     @ViewBuilder
     private func objectsContent(database: String, schema: String?) -> some View {
-        switch treeService.objectsState(connectionId: connectionId, database: database, schema: schema) {
+        switch treeService.tablesLoadState(connectionId: connectionId, database: database, schema: schema) {
         case .idle, .loading:
             loadingRow(String(localized: "Loading tables\u{2026}"))
-                .task(id: "\(database)|\(schema ?? "")|\(connectionToken)") {
-                    await treeService.loadObjects(connectionId: connectionId, database: database, schema: schema)
+                .task(id: "tables|\(database)|\(schema ?? "")|\(connectionToken)") {
+                    await treeService.loadTables(connectionId: connectionId, database: database, schema: schema)
                 }
         case .failed(let message):
             errorRow(message)
         case .loaded:
-            let tables = filteredTables(database: database, schema: schema)
-            let routines = filteredRoutines(database: database, schema: schema)
+            objectsList(database: database, schema: schema)
+        }
+    }
+
+    @ViewBuilder
+    private func objectsList(database: String, schema: String?) -> some View {
+        let tables = filteredTables(database: database, schema: schema)
+        let routines = filteredRoutines(database: database, schema: schema)
+        let routinesSettled = treeService.routinesLoadState(
+            connectionId: connectionId, database: database, schema: schema
+        ).isSettled
+
+        Group {
             if tables.isEmpty && routines.isEmpty {
-                emptyRow(String(localized: "No items"))
+                if routinesSettled {
+                    emptyRow(String(localized: "No items"))
+                } else {
+                    loadingRow(String(localized: "Loading\u{2026}"))
+                }
             } else {
                 ForEach(tables.map { DatabaseTreeTableRef(database: database, schema: schema, table: $0) }) { ref in
                     TableRow(
@@ -289,6 +304,9 @@ struct DatabaseTreeView: View {
                         }
                 }
             }
+        }
+        .task(id: "routines|\(database)|\(schema ?? "")|\(connectionToken)") {
+            await treeService.loadRoutines(connectionId: connectionId, database: database, schema: schema)
         }
     }
 

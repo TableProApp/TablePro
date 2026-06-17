@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - The tree sidebar can show only the databases you pick. Use the filter button to check the ones you want, with a search box for long lists. The choice is saved per connection. (#1667)
 
+### Changed
+
+- Expanding a database in the tree sidebar loads tables first and fills in procedures and functions in the background, so the table list appears after one round-trip instead of waiting for three queries to finish in sequence.
+
 ### Fixed
 
 - MongoDB filters on `_id` and other ObjectId fields now match. A 24-character hex value is matched as an ObjectId as well as a string, so filtering by `_id` returns the row instead of nothing. (#1682)
