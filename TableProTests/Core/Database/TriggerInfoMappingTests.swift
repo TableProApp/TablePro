@@ -69,9 +69,7 @@ struct TriggerInfoMappingTests {
                 timing: "AFTER",
                 event: "INSERT OR UPDATE",
                 statement: "CREATE TRIGGER trg_audit ...",
-                enabled: false,
-                orientation: "ROW",
-                whenClause: "new.id IS NOT NULL"
+                enabled: false
             )
         ]
         let connection = DatabaseConnection(name: "Test", type: .postgresql)
@@ -85,26 +83,20 @@ struct TriggerInfoMappingTests {
         #expect(trigger.event == "INSERT OR UPDATE")
         #expect(trigger.statement == "CREATE TRIGGER trg_audit ...")
         #expect(trigger.enabled == false)
-        #expect(trigger.orientation == "ROW")
-        #expect(trigger.whenClause == "new.id IS NOT NULL")
     }
 
-    @Test("PluginTriggerInfo carries optional metadata through Codable")
-    func codableRoundTripWithMetadata() throws {
+    @Test("PluginTriggerInfo carries enabled state through Codable")
+    func codableRoundTripWithEnabled() throws {
         let original = PluginTriggerInfo(
             name: "trg_check",
             timing: "BEFORE",
             event: "UPDATE",
             statement: "CREATE TRIGGER trg_check ...",
-            enabled: true,
-            orientation: "STATEMENT",
-            whenClause: "new.amount > 0"
+            enabled: true
         )
         let data = try JSONEncoder().encode(original)
         let decoded = try JSONDecoder().decode(PluginTriggerInfo.self, from: data)
         #expect(decoded.enabled == true)
-        #expect(decoded.orientation == "STATEMENT")
-        #expect(decoded.whenClause == "new.amount > 0")
     }
 }
 

@@ -72,8 +72,6 @@ private struct TriggerListPane: View {
     @Bindable var state: TriggerInspectorState
 
     private var showEnabled: Bool { triggers.contains { $0.enabled != nil } }
-    private var showOrientation: Bool { triggers.contains { !($0.orientation ?? "").isEmpty } }
-    private var showWhen: Bool { triggers.contains { !($0.whenClause ?? "").isEmpty } }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -81,6 +79,13 @@ private struct TriggerListPane: View {
                 .padding(.horizontal, 8)
                 .padding(.vertical, 6)
             Divider()
+            table
+        }
+    }
+
+    @ViewBuilder
+    private var table: some View {
+        if showEnabled {
             Table(state.displayed(triggers), selection: $state.selectedID, sortOrder: $state.sortOrder) {
                 TableColumn(String(localized: "Name"), value: \.name)
                     .width(min: 140, ideal: 220)
@@ -88,32 +93,29 @@ private struct TriggerListPane: View {
                     .width(min: 70, ideal: 90)
                 TableColumn(String(localized: "Event"), value: \.event)
                     .width(min: 90, ideal: 150)
-                if showOrientation {
-                    TableColumn(String(localized: "For Each")) { trigger in
-                        Text(trigger.orientation ?? "")
-                    }
-                    .width(min: 70, ideal: 90)
+                TableColumn(String(localized: "Enabled")) { trigger in
+                    enabledIndicator(trigger)
                 }
-                if showEnabled {
-                    TableColumn(String(localized: "Enabled")) { trigger in
-                        if let enabled = trigger.enabled {
-                            Image(systemName: enabled ? "checkmark.circle.fill" : "xmark.circle")
-                                .foregroundStyle(enabled ? Color.green : Color.secondary)
-                                .accessibilityLabel(enabled
-                                    ? String(localized: "Enabled")
-                                    : String(localized: "Disabled"))
-                        }
-                    }
-                    .width(min: 60, ideal: 70)
-                }
-                if showWhen {
-                    TableColumn(String(localized: "When")) { trigger in
-                        Text(trigger.whenClause ?? "")
-                            .foregroundStyle(.secondary)
-                    }
-                    .width(min: 100, ideal: 180)
-                }
+                .width(min: 60, ideal: 70)
             }
+        } else {
+            Table(state.displayed(triggers), selection: $state.selectedID, sortOrder: $state.sortOrder) {
+                TableColumn(String(localized: "Name"), value: \.name)
+                    .width(min: 140, ideal: 240)
+                TableColumn(String(localized: "Timing"), value: \.timing)
+                    .width(min: 70, ideal: 90)
+                TableColumn(String(localized: "Event"), value: \.event)
+                    .width(min: 90, ideal: 160)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func enabledIndicator(_ trigger: TriggerInfo) -> some View {
+        if let enabled = trigger.enabled {
+            Image(systemName: enabled ? "checkmark.circle.fill" : "xmark.circle")
+                .foregroundStyle(enabled ? Color.green : Color.secondary)
+                .accessibilityLabel(enabled ? String(localized: "Enabled") : String(localized: "Disabled"))
         }
     }
 }

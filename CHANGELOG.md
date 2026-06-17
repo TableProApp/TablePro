@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- The table structure view has a Triggers tab for MySQL, MariaDB, PostgreSQL, SQLite, SQL Server, Oracle, libSQL, and Cloudflare D1. It lists each trigger with its timing, event, and (where the engine reports them) orientation, enabled state, and condition, with a filter field and sortable columns. Selecting a trigger shows its full definition in a read-only syntax-highlighted viewer. (#1695)
+- The table structure view has a Triggers tab for MySQL, MariaDB, PostgreSQL, SQLite, SQL Server, Oracle, libSQL, and Cloudflare D1. It lists each trigger with its timing and event (plus enabled state where the engine reports it), with a filter field and sortable columns. Selecting a trigger shows its full definition in a read-only syntax-highlighted viewer. (#1695)
 - Traditional Chinese (繁體中文) language in Settings > General with full UI translation
 
 ### Fixed

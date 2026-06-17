@@ -166,11 +166,9 @@ The Triggers tab lists the table's triggers and shows the full definition of the
 | **Name** | Trigger name |
 | **Timing** | BEFORE, AFTER, or INSTEAD OF |
 | **Event** | INSERT, UPDATE, DELETE (PostgreSQL can combine events, such as INSERT OR UPDATE) |
-| **For Each** | ROW or STATEMENT (shown when the engine reports it) |
 | **Enabled** | Whether the trigger is enabled (PostgreSQL, SQL Server, Oracle) |
-| **When** | The trigger's WHEN condition, where present |
 
-Select a trigger to see its full definition in a syntax-highlighted viewer with **Copy** and **Open in Editor** buttons. The definition is the `CREATE TRIGGER` statement (MySQL and MariaDB reconstruct it from the body; PostgreSQL uses `pg_get_triggerdef`; SQLite, libSQL, and Cloudflare D1 read the stored statement; SQL Server uses `OBJECT_DEFINITION`).
+Select a trigger to see its full definition in a syntax-highlighted viewer with **Copy** and **Open in Editor** buttons. The definition is the `CREATE TRIGGER` statement, which includes the orientation (FOR EACH ROW/STATEMENT) and any WHEN condition. MySQL and MariaDB reconstruct it from the body; PostgreSQL uses `pg_get_triggerdef`; SQLite, libSQL, and Cloudflare D1 read the stored statement; SQL Server uses `OBJECT_DEFINITION`.
 
 <Note>
 Available for MySQL, MariaDB, PostgreSQL, SQLite, SQL Server, Oracle, libSQL, and Cloudflare D1. The tab is hidden for databases that do not expose triggers. Oracle shows trigger metadata only; the body is not retrieved.

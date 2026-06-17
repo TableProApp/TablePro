@@ -491,24 +491,23 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             } else {
                 timing = "AFTER"
             }
-            let orientation = triggerType.contains("EACH ROW") ? "ROW" : "STATEMENT"
+            let isRowLevel = triggerType.contains("EACH ROW")
             let enabled = (row[safe: 3]?.asText ?? "").uppercased() == "ENABLED"
             let whenClause = row[safe: 4]?.asText
             let quotedName = "\"\(name.replacingOccurrences(of: "\"", with: "\"\""))\""
             let quotedTable = "\"\(table.replacingOccurrences(of: "\"", with: "\"\""))\""
-            let forEach = orientation == "ROW" ? " FOR EACH ROW" : ""
+            let forEach = isRowLevel ? " FOR EACH ROW" : ""
+            let whenLine = (whenClause?.isEmpty == false) ? "\n    WHEN (\(whenClause ?? ""))" : ""
             let statement = """
                 CREATE OR REPLACE TRIGGER \(quotedName)
-                    \(timing) \(event) ON \(quotedTable)\(forEach)
+                    \(timing) \(event) ON \(quotedTable)\(forEach)\(whenLine)
                 """
             return PluginTriggerInfo(
                 name: name,
                 timing: timing,
                 event: event,
                 statement: statement,
-                enabled: enabled,
-                orientation: orientation,
-                whenClause: whenClause
+                enabled: enabled
             )
         }
     }
