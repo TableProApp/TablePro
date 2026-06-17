@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A dropped Redis connection now reconnects on the next command and replays auth and the selected database, instead of failing until the next health check. (#1701)
 - DuckDB VARIANT columns now show their value as text instead of an empty cell.
 - A new database group now appears in the connection list right away instead of only after restarting the app. (#1704)
+- The SQL formatter keeps nested indentation for UNION, UNION ALL, INTERSECT, and EXCEPT inside a derived table or CTE, and puts the closing parenthesis of a subquery on its own line instead of collapsing it onto the last SELECT. (#1698)
 
 ## [0.51.1] - 2026-06-16
 
