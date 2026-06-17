@@ -159,7 +159,7 @@ The DDL view uses tree-sitter syntax highlighting with line numbers. Use the too
 
 ## Triggers Tab
 
-The Triggers tab lists the table's triggers and shows the full definition of the selected one. It is read-only. Use the filter field to narrow the list, and click a column header to sort.
+The Triggers tab lists the table's triggers and shows the full definition of the selected one. Use the filter field to narrow the list, and click a column header to sort.
 
 | Property | Description |
 |----------|-------------|
@@ -169,6 +169,10 @@ The Triggers tab lists the table's triggers and shows the full definition of the
 | **Enabled** | Whether the trigger is enabled (PostgreSQL, SQL Server, Oracle) |
 
 Select a trigger to see its full definition in a syntax-highlighted viewer with **Copy** and **Open in Editor** buttons. The definition is the `CREATE TRIGGER` statement, which includes the orientation (FOR EACH ROW/STATEMENT) and any WHEN condition. MySQL and MariaDB reconstruct it from the body; PostgreSQL uses `pg_get_triggerdef`; SQLite, libSQL, and Cloudflare D1 read the stored statement; SQL Server uses `OBJECT_DEFINITION`.
+
+### Editing Triggers
+
+Use **New Trigger**, **Edit**, and **Delete** in the Triggers tab toolbar to manage triggers. The editor opens the trigger's actual DDL so the whole definition round-trips without losing any clause. For PostgreSQL it shows both the trigger function and the trigger so you can edit the logic. Saving runs the correct statements for the engine (`CREATE OR REPLACE` / `CREATE OR ALTER`, or drop-and-recreate), wrapped in a transaction where the engine supports transactional DDL, and goes through the same confirmation and safe-mode checks as other schema changes. Oracle creates and drops triggers, but its body is not retrieved, so editing starts from the trigger header.
 
 <Note>
 Available for MySQL, MariaDB, PostgreSQL, SQLite, SQL Server, Oracle, libSQL, and Cloudflare D1. The tab is hidden for databases that do not expose triggers. Oracle shows trigger metadata only; the body is not retrieved.

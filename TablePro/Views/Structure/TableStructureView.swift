@@ -294,7 +294,8 @@ struct TableStructureView: View {
         case .triggers:
             TriggerDetailView(
                 triggers: triggers,
-                databaseType: connection.type,
+                connection: connection,
+                tableName: tableName,
                 isLoading: !loadedTabs.contains(.triggers),
                 onOpenInEditor: openTriggerInEditor
             )

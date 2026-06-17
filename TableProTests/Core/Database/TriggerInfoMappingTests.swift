@@ -17,6 +17,17 @@ private final class StubTriggerDriver: PluginDatabaseDriver {
     var serverVersion: String? { nil }
 
     var triggersToReturn: [PluginTriggerInfo] = []
+    var templateToReturn: String?
+    var definitionToReturn: String?
+    var dropToReturn: String?
+    var editUsesReplace = false
+    var transactionalDDL = false
+
+    func createTriggerTemplate(table: String, schema: String?) -> String? { templateToReturn }
+    func fetchTriggerDefinition(name: String, table: String, schema: String?) async throws -> String? { definitionToReturn }
+    func generateDropTriggerSQL(name: String, table: String, schema: String?) -> String? { dropToReturn }
+    var triggerEditUsesReplace: Bool { editUsesReplace }
+    var supportsTransactionalDDL: Bool { transactionalDDL }
 
     func connect() async throws {}
     func disconnect() {}
@@ -110,5 +121,44 @@ struct StructureTabTriggersTests {
     @Test("Triggers tab has a localized display name")
     func triggersDisplayName() {
         #expect(StructureTab.triggers.displayName == "Triggers")
+    }
+}
+
+@Suite("Trigger editing bridge")
+struct TriggerEditingBridgeTests {
+    private func makeAdapter(_ configure: (StubTriggerDriver) -> Void) -> PluginDriverAdapter {
+        let driver = StubTriggerDriver()
+        configure(driver)
+        let connection = DatabaseConnection(name: "Test", type: .postgresql)
+        return PluginDriverAdapter(connection: connection, pluginDriver: driver)
+    }
+
+    @Test("Adapter bridges the create-trigger template")
+    func bridgesTemplate() {
+        let adapter = makeAdapter { $0.templateToReturn = "CREATE TRIGGER t ..." }
+        #expect(adapter.createTriggerTemplate(table: "users") == "CREATE TRIGGER t ...")
+    }
+
+    @Test("Adapter bridges the drop-trigger SQL")
+    func bridgesDrop() {
+        let adapter = makeAdapter { $0.dropToReturn = "DROP TRIGGER t" }
+        #expect(adapter.generateDropTriggerSQL(name: "t", table: "users") == "DROP TRIGGER t")
+    }
+
+    @Test("Adapter bridges the editable definition")
+    func bridgesDefinition() async throws {
+        let adapter = makeAdapter { $0.definitionToReturn = "CREATE OR REPLACE TRIGGER t ..." }
+        let def = try await adapter.fetchTriggerDefinition(name: "t", table: "users")
+        #expect(def == "CREATE OR REPLACE TRIGGER t ...")
+    }
+
+    @Test("Adapter bridges edit-strategy capability flags")
+    func bridgesFlags() {
+        let adapter = makeAdapter {
+            $0.editUsesReplace = true
+            $0.transactionalDDL = true
+        }
+        #expect(adapter.triggerEditUsesReplace)
+        #expect(adapter.supportsTransactionalDDL)
     }
 }
