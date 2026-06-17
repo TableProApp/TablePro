@@ -516,7 +516,7 @@ actor DuckDBConnectionActor {
 
     static func isUnrenderable(_ type: duckdb_type) -> Bool {
         switch type {
-        case DUCKDB_TYPE_TIMESTAMP_TZ, DUCKDB_TYPE_TIME_TZ, DUCKDB_TYPE_GEOMETRY:
+        case DUCKDB_TYPE_INVALID, DUCKDB_TYPE_TIMESTAMP_TZ, DUCKDB_TYPE_TIME_TZ, DUCKDB_TYPE_GEOMETRY:
             return true
         default:
             return false
@@ -528,7 +528,7 @@ actor DuckDBConnectionActor {
         switch type {
         case DUCKDB_TYPE_GEOMETRY:
             return "CASE WHEN \(quoted) IS NULL THEN NULL ELSE ST_AsText(\(quoted)) END AS \(quoted)"
-        case DUCKDB_TYPE_TIMESTAMP_TZ, DUCKDB_TYPE_TIME_TZ:
+        case DUCKDB_TYPE_INVALID, DUCKDB_TYPE_TIMESTAMP_TZ, DUCKDB_TYPE_TIME_TZ:
             return "CASE WHEN \(quoted) IS NULL THEN NULL ELSE CAST(\(quoted) AS VARCHAR) END AS \(quoted)"
         default:
             return quoted

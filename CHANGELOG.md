@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Traditional Chinese (繁體中文) language in Settings > General with full UI translation
 
+### Fixed
+
+- DuckDB VARIANT columns now show their value as text instead of an empty cell.
+
 ## [0.51.1] - 2026-06-16
 
 ### Added
