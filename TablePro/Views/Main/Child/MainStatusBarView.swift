@@ -41,6 +41,7 @@ struct MainStatusBarView: View {
     let structureState: StatusBarStructureState
     let onToggleFilters: () -> Void
     let onFetchAll: (() -> Void)?
+    let onAddRow: (() -> Void)?
 
     @State private var showColumnPopover = false
 
@@ -50,6 +51,15 @@ struct MainStatusBarView: View {
     private var filterToggleHelp: String {
         let label = String(localized: "Toggle Filters")
         guard let combo = AppSettingsManager.shared.keyboard.shortcut(for: .toggleFilters),
+              !combo.isCleared else {
+            return label
+        }
+        return "\(label) (\(combo.displayString))"
+    }
+
+    private var addRowHelp: String {
+        let label = String(localized: "Add Row")
+        guard let combo = AppSettingsManager.shared.keyboard.shortcut(for: .addRow),
               !combo.isCleared else {
             return label
         }
@@ -141,6 +151,20 @@ struct MainStatusBarView: View {
                 }
 
                 if showsDataChrome {
+                    if let onAddRow {
+                        Button {
+                            onAddRow()
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "plus")
+                                Text("Add")
+                            }
+                        }
+                        .controlSize(.small)
+                        .help(addRowHelp)
+                        .accessibilityLabel(String(localized: "Add Row"))
+                    }
+
                     if snapshot.hasColumns {
                         Button {
                             showColumnPopover.toggle()

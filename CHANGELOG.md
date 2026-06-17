@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Traditional Chinese (繁體中文) language in Settings > General with full UI translation
+- An Add button in the table status bar inserts a new row at the end of the grid and starts editing it.
 
 ## [0.51.1] - 2026-06-16
 
