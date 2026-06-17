@@ -307,6 +307,9 @@ final class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
                      WHEN (t.tgtype & 16) != 0 THEN 'DELETE'
                      WHEN (t.tgtype & 32) != 0 THEN 'TRUNCATE'
                      ELSE '' END AS event,
+                CASE WHEN (t.tgtype & 1) = 1 THEN 'ROW' ELSE 'STATEMENT' END AS orientation,
+                t.tgenabled <> 'D' AS enabled,
+                pg_get_expr(t.tgqual, t.tgrelid) AS when_clause,
                 pg_get_triggerdef(t.oid) AS definition
             FROM pg_catalog.pg_trigger t
             JOIN pg_catalog.pg_class c ON c.oid = t.tgrelid
@@ -318,17 +321,20 @@ final class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
             """
         let result = try await execute(query: query)
         let triggers: [PluginTriggerInfo] = result.rows.compactMap { row -> PluginTriggerInfo? in
-            guard row.count >= 4,
+            guard row.count >= 7,
                   let name = row[0].asText,
                   let timing = row[1].asText,
                   let event = row[2].asText,
-                  let definition = row[3].asText
+                  let definition = row[6].asText
             else { return nil }
             return PluginTriggerInfo(
                 name: name,
                 timing: timing,
                 event: event,
-                statement: definition
+                statement: definition,
+                enabled: row[4].asText == "t",
+                orientation: row[3].asText,
+                whenClause: row[5].asText
             )
         }
         Self.logger.info("[trigger] postgres fetchTriggers schema=\(resolvedSchema, privacy: .public) table=\(table, privacy: .public) rows=\(result.rows.count) parsed=\(triggers.count)")

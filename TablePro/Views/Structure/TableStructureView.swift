@@ -30,7 +30,7 @@ struct TableStructureView: View {
     @State var triggers: [TriggerInfo] = []
     @State private var selectedTriggerID: TriggerInfo.ID?
     @State var ddlStatement: String = ""
-    @State var ddlFontSize: CGFloat = 13
+    @AppStorage("structureCodeFontSize") var ddlFontSize: Double = 13
     @State var showCopyConfirmation = false
     @State var copyResetTask: Task<Void, Never>?
     @State var isLoading = true

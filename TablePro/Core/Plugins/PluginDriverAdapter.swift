@@ -258,7 +258,10 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
                 name: trigger.name,
                 timing: trigger.timing,
                 event: trigger.event,
-                statement: trigger.statement
+                statement: trigger.statement,
+                enabled: trigger.enabled,
+                orientation: trigger.orientation,
+                whenClause: trigger.whenClause
             )
         }
     }

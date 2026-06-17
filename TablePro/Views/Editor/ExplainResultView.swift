@@ -18,7 +18,7 @@ struct ExplainResultView: View {
     let executionTime: TimeInterval?
     let plan: QueryPlan?
 
-    @State private var fontSize: CGFloat = 13
+    @State private var fontSize: Double = 13
     @State private var showCopyConfirmation = false
     @State private var copyResetTask: Task<Void, Never>?
     @State private var viewMode: ExplainViewMode = .diagram
