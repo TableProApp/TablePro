@@ -131,7 +131,12 @@ extension SidebarContainerViewController: NSSearchFieldDelegate {
     }
 
     func searchFieldDidEndSearching(_ sender: NSSearchField) {
+        guard Self.shouldClearOnEndSearching(fieldValue: sender.stringValue) else { return }
         writeSearchText("")
+    }
+
+    nonisolated static func shouldClearOnEndSearching(fieldValue: String) -> Bool {
+        fieldValue.isEmpty
     }
 
     func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {

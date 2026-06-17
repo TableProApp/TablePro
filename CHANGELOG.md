@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The sidebar filter no longer clears when you open a table from the filtered list. It only clears when you empty the field. (#1690)
 - DuckDB VARIANT columns now show their value as text instead of an empty cell.
 
 ## [0.51.1] - 2026-06-16
