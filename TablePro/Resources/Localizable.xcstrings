@@ -29892,6 +29892,9 @@
         }
       }
     },
+    "Event" : {
+
+    },
     "Every included column needs a name." : {
       "localizations" : {
         "tr" : {
@@ -51088,7 +51091,7 @@
         }
       }
     },
-    "No triggers" : {
+    "No Triggers" : {
 
     },
     "No valid rows found in clipboard data." : {
@@ -78043,6 +78046,9 @@
         }
       }
     },
+    "This table has no triggers. Triggers run automatically when rows are inserted, updated, or deleted." : {
+
+    },
     "This token will not be shown again" : {
       "localizations" : {
         "tr" : {
@@ -78587,6 +78593,9 @@
           }
         }
       }
+    },
+    "Timing" : {
+
     },
     "Tiny" : {
       "extractionState" : "stale",

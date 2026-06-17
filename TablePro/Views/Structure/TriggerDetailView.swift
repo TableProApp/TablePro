@@ -14,6 +14,7 @@ struct TriggerDetailView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if triggers.isEmpty {
             EmptyStateView.triggers()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             VSplitView {
                 triggerTable
@@ -21,6 +22,7 @@ struct TriggerDetailView: View {
                 detailPane
                     .frame(minHeight: 180)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .onAppear(perform: ensureSelection)
             .onChange(of: triggers) { _, _ in ensureSelection() }
         }
