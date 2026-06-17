@@ -48,18 +48,20 @@ struct MainStatusBarView: View {
     private var isStructureMode: Bool { viewMode == .structure }
     private var showsDataChrome: Bool { !isStructureMode }
 
+    static func showsAddRow(viewMode: ResultsViewMode, canAddRow: Bool) -> Bool {
+        viewMode == .data && canAddRow
+    }
+
     private var filterToggleHelp: String {
-        let label = String(localized: "Toggle Filters")
-        guard let combo = AppSettingsManager.shared.keyboard.shortcut(for: .toggleFilters),
-              !combo.isCleared else {
-            return label
-        }
-        return "\(label) (\(combo.displayString))"
+        helpText(String(localized: "Toggle Filters"), shortcut: .toggleFilters)
     }
 
     private var addRowHelp: String {
-        let label = String(localized: "Add Row")
-        guard let combo = AppSettingsManager.shared.keyboard.shortcut(for: .addRow),
+        helpText(String(localized: "Add Row"), shortcut: .addRow)
+    }
+
+    private func helpText(_ label: String, shortcut action: ShortcutAction) -> String {
+        guard let combo = AppSettingsManager.shared.keyboard.shortcut(for: action),
               !combo.isCleared else {
             return label
         }
@@ -151,7 +153,7 @@ struct MainStatusBarView: View {
                 }
 
                 if showsDataChrome {
-                    if let onAddRow {
+                    if Self.showsAddRow(viewMode: viewMode, canAddRow: onAddRow != nil), let onAddRow {
                         Button {
                             onAddRow()
                         } label: {
