@@ -55,6 +55,7 @@ struct PluginMetadataSnapshot: Sendable {
         var supportsDropIndex: Bool = true
         var supportsModifyPrimaryKey: Bool = true
         var supportsTriggers: Bool = false
+        var supportsTriggerEditing: Bool = false
         var defaultSSLMode: SSLMode = .disabled
         var supportsOpportunisticTLS: Bool = true
         var supportsCloudflareTunnel: Bool = true
@@ -451,6 +452,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     supportsDropDatabase: true,
                     supportsRenameColumn: true,
                     supportsTriggers: true,
+                    supportsTriggerEditing: true,
                     defaultSSLMode: .preferred
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
@@ -501,6 +503,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     supportsDropDatabase: true,
                     supportsRenameColumn: true,
                     supportsTriggers: true,
+                    supportsTriggerEditing: true,
                     defaultSSLMode: .preferred
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
@@ -552,6 +555,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     supportsDropDatabase: true,
                     supportsRenameColumn: true,
                     supportsTriggers: true,
+                    supportsTriggerEditing: true,
                     defaultSSLMode: .preferred
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
@@ -714,6 +718,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     supportsRenameColumn: true,
                     supportsModifyPrimaryKey: false,
                     supportsTriggers: true,
+                    supportsTriggerEditing: true,
                     supportsCloudflareTunnel: false
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
@@ -900,6 +905,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                 supportsDropIndex: driverType.supportsDropIndex,
                 supportsModifyPrimaryKey: driverType.supportsModifyPrimaryKey,
                 supportsTriggers: driverType.supportsTriggers,
+                supportsTriggerEditing: driverType.supportsTriggerEditing,
                 defaultSSLMode: existingSnapshot?.capabilities.defaultSSLMode ?? .disabled,
                 supportsOpportunisticTLS: existingSnapshot?.capabilities.supportsOpportunisticTLS ?? true,
                 supportsCloudflareTunnel: driverType.supportsSSH,

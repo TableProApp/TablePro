@@ -27,6 +27,7 @@ final class CloudflareD1Plugin: NSObject, TableProPlugin, DriverPlugin {
     static let supportsImport = false
     static let supportsSchemaEditing = true
     static let supportsTriggers = true
+    static let supportsTriggerEditing = true
     static let databaseGroupingStrategy: GroupingStrategy = .flat
     static let brandColorHex = "#F6821F"
     static let urlSchemes: [String] = ["d1"]

@@ -421,6 +421,22 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return triggers
     }
 
+    var triggerEditUsesReplace: Bool { false }
+
+    func createTriggerTemplate(table: String, schema: String?) -> String? {
+        """
+        CREATE TRIGGER \(quoteIdentifier("trigger_name")) BEFORE INSERT
+        ON \(quoteIdentifier(table)) FOR EACH ROW
+        BEGIN
+            -- SET NEW.column = ...;
+        END
+        """
+    }
+
+    func generateDropTriggerSQL(name: String, table: String, schema: String?) -> String? {
+        "DROP TRIGGER \(quoteIdentifier(name))"
+    }
+
     func fetchAllForeignKeys(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {
         let dbName = _activeDatabase
         let escapedDb = dbName.replacingOccurrences(of: "'", with: "''")

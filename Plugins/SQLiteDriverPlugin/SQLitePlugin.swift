@@ -36,6 +36,7 @@ final class SQLitePlugin: NSObject, TableProPlugin, DriverPlugin {
     static let brandColorHex = "#003B57"
     static let supportsDatabaseSwitching = false
     static let supportsTriggers = true
+    static let supportsTriggerEditing = true
     static let databaseGroupingStrategy: GroupingStrategy = .flat
     static let columnTypesByCategory: [String: [String]] = [
         "Integer": ["INTEGER", "INT", "TINYINT", "SMALLINT", "MEDIUMINT", "BIGINT"],
@@ -849,6 +850,22 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 statement: sql
             )
         }
+    }
+
+    var supportsTransactionalDDL: Bool { true }
+
+    func createTriggerTemplate(table: String, schema: String?) -> String? {
+        """
+        CREATE TRIGGER \(quoteIdentifier("trigger_name"))
+        AFTER INSERT ON \(quoteIdentifier(table))
+        BEGIN
+            -- INSERT INTO audit ...;
+        END;
+        """
+    }
+
+    func generateDropTriggerSQL(name: String, table: String, schema: String?) -> String? {
+        "DROP TRIGGER IF EXISTS \(quoteIdentifier(name))"
     }
 
     func fetchTableDDL(table: String, schema: String?) async throws -> String {

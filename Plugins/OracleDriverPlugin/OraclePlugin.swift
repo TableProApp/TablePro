@@ -45,6 +45,7 @@ final class OraclePlugin: NSObject, TableProPlugin, DriverPlugin, PluginDiagnost
 
     static let isDownloadable = true
     static let supportsTriggers = true
+    static let supportsTriggerEditing = true
     static let pathFieldRole: PathFieldRole = .serviceName
     static let supportsForeignKeyDisable = false
     static let supportsSchemaSwitching = true
@@ -510,6 +511,25 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 enabled: enabled
             )
         }
+    }
+
+    var triggerEditUsesReplace: Bool { true }
+
+    func createTriggerTemplate(table: String, schema: String?) -> String? {
+        let quotedTable = "\"\(table.replacingOccurrences(of: "\"", with: "\"\""))\""
+        return """
+        CREATE OR REPLACE TRIGGER \("\"TRIGGER_NAME\"")
+        BEFORE INSERT ON \(quotedTable)
+        FOR EACH ROW
+        BEGIN
+            -- :NEW.column := ...;
+            NULL;
+        END;
+        """
+    }
+
+    func generateDropTriggerSQL(name: String, table: String, schema: String?) -> String? {
+        "DROP TRIGGER \"\(name.replacingOccurrences(of: "\"", with: "\"\""))\""
     }
 
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {

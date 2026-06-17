@@ -525,6 +525,22 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
     }
 
+    var supportsTransactionalDDL: Bool { true }
+
+    func createTriggerTemplate(table: String, schema: String?) -> String? {
+        """
+        CREATE TRIGGER \(quoteIdentifier("trigger_name"))
+        AFTER INSERT ON \(quoteIdentifier(table))
+        BEGIN
+            -- INSERT INTO audit ...;
+        END;
+        """
+    }
+
+    func generateDropTriggerSQL(name: String, table: String, schema: String?) -> String? {
+        "DROP TRIGGER IF EXISTS \(quoteIdentifier(name))"
+    }
+
     func fetchTableDDL(table: String, schema: String?) async throws -> String {
         let safeTable = escapeStringLiteral(table)
         let query = """

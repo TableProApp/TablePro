@@ -243,6 +243,41 @@ extension MSSQLPluginDriver {
         }
     }
 
+    var triggerEditUsesReplace: Bool { true }
+
+    var supportsTransactionalDDL: Bool { true }
+
+    func createTriggerTemplate(table: String, schema: String?) -> String? {
+        let resolved = schema ?? _currentSchema
+        return """
+        CREATE OR ALTER TRIGGER \(quoteIdentifier("trigger_name"))
+        ON \(quoteIdentifier(resolved)).\(quoteIdentifier(table))
+        AFTER INSERT
+        AS
+        BEGIN
+            SET NOCOUNT ON;
+            -- INSERT INTO audit (...) SELECT ... FROM inserted;
+        END
+        """
+    }
+
+    func fetchTriggerDefinition(name: String, table: String, schema: String?) async throws -> String? {
+        let esc = (schema ?? _currentSchema).replacingOccurrences(of: "]", with: "]]")
+        let bracketedName = name.replacingOccurrences(of: "]", with: "]]")
+        let sql = "SELECT OBJECT_DEFINITION(OBJECT_ID('[\(esc)].[\(bracketedName)]'))"
+        let result = try await execute(query: sql)
+        guard let definition = result.rows.first?[safe: 0]?.asText, !definition.isEmpty else { return nil }
+        guard let range = definition.range(of: "CREATE TRIGGER", options: .caseInsensitive) else {
+            return definition
+        }
+        return definition.replacingCharacters(in: range, with: "CREATE OR ALTER TRIGGER")
+    }
+
+    func generateDropTriggerSQL(name: String, table: String, schema: String?) -> String? {
+        let resolved = schema ?? _currentSchema
+        return "DROP TRIGGER \(quoteIdentifier(resolved)).\(quoteIdentifier(name))"
+    }
+
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
         let esc = effectiveSchemaEscaped(schema)
         let sql = """

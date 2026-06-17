@@ -89,6 +89,13 @@ protocol DatabaseDriver: AnyObject {
     /// Fetch triggers for a specific table
     func fetchTriggers(table: String) async throws -> [TriggerInfo]
 
+    /// Trigger editing hooks (optional — nil when unsupported)
+    func createTriggerTemplate(table: String) -> String?
+    func fetchTriggerDefinition(name: String, table: String) async throws -> String?
+    func generateDropTriggerSQL(name: String, table: String) -> String?
+    var triggerEditUsesReplace: Bool { get }
+    var supportsTransactionalDDL: Bool { get }
+
     /// Fetch foreign keys for all tables in the current database/schema in bulk.
     /// Default implementation falls back to per-table fetchForeignKeys.
     func fetchAllForeignKeys() async throws -> [String: [ForeignKeyInfo]]
@@ -251,6 +258,12 @@ extension DatabaseDriver {
     }
 
     func fetchTriggers(table: String) async throws -> [TriggerInfo] { [] }
+
+    func createTriggerTemplate(table: String) -> String? { nil }
+    func fetchTriggerDefinition(name: String, table: String) async throws -> String? { nil }
+    func generateDropTriggerSQL(name: String, table: String) -> String? { nil }
+    var triggerEditUsesReplace: Bool { false }
+    var supportsTransactionalDDL: Bool { false }
 
     func ping() async throws {
         _ = try await execute(query: "SELECT 1")

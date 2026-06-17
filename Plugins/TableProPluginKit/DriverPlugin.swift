@@ -24,6 +24,7 @@ public protocol DriverPlugin: TableProPlugin {
     static var editorLanguage: EditorLanguage { get }
     static var supportsForeignKeys: Bool { get }
     static var supportsTriggers: Bool { get }
+    static var supportsTriggerEditing: Bool { get }
     static var supportsSchemaEditing: Bool { get }
     static var supportsDatabaseSwitching: Bool { get }
     static var supportsSchemaSwitching: Bool { get }
@@ -84,6 +85,7 @@ public extension DriverPlugin {
     static var editorLanguage: EditorLanguage { .sql }
     static var supportsForeignKeys: Bool { true }
     static var supportsTriggers: Bool { false }
+    static var supportsTriggerEditing: Bool { false }
     static var supportsSchemaEditing: Bool { true }
     static var supportsDatabaseSwitching: Bool { true }
     static var supportsSchemaSwitching: Bool { false }

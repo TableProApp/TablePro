@@ -268,6 +268,22 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
         }
     }
 
+    func createTriggerTemplate(table: String) -> String? {
+        pluginDriver.createTriggerTemplate(table: table, schema: pluginDriver.currentSchema)
+    }
+
+    func fetchTriggerDefinition(name: String, table: String) async throws -> String? {
+        try await pluginDriver.fetchTriggerDefinition(name: name, table: table, schema: pluginDriver.currentSchema)
+    }
+
+    func generateDropTriggerSQL(name: String, table: String) -> String? {
+        pluginDriver.generateDropTriggerSQL(name: name, table: table, schema: pluginDriver.currentSchema)
+    }
+
+    var triggerEditUsesReplace: Bool { pluginDriver.triggerEditUsesReplace }
+
+    var supportsTransactionalDDL: Bool { pluginDriver.supportsTransactionalDDL }
+
     func fetchApproximateRowCount(table: String) async throws -> Int? {
         try await pluginDriver.fetchApproximateRowCount(table: table, schema: pluginDriver.currentSchema)
     }

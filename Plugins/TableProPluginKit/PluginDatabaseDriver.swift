@@ -184,6 +184,13 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     func editViewFallbackTemplate(viewName: String) -> String?
     func castColumnToText(_ column: String) -> String
 
+    // Trigger editing (optional — return nil when unsupported)
+    func createTriggerTemplate(table: String, schema: String?) -> String?
+    func fetchTriggerDefinition(name: String, table: String, schema: String?) async throws -> String?
+    func generateDropTriggerSQL(name: String, table: String, schema: String?) -> String?
+    var triggerEditUsesReplace: Bool { get }
+    var supportsTransactionalDDL: Bool { get }
+
     // All-tables metadata SQL (optional — returns nil for non-SQL databases)
     func allTablesMetadataSQL(schema: String?) -> String?
 
@@ -199,6 +206,12 @@ public extension PluginDatabaseDriver {
     var capabilities: PluginCapabilities { [] }
 
     func fetchTriggers(table: String, schema: String?) async throws -> [PluginTriggerInfo] { [] }
+
+    func createTriggerTemplate(table: String, schema: String?) -> String? { nil }
+    func fetchTriggerDefinition(name: String, table: String, schema: String?) async throws -> String? { nil }
+    func generateDropTriggerSQL(name: String, table: String, schema: String?) -> String? { nil }
+    var triggerEditUsesReplace: Bool { false }
+    var supportsTransactionalDDL: Bool { false }
 
     var supportsSchemas: Bool { false }
 

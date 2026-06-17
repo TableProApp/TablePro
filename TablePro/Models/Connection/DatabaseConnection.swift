@@ -200,6 +200,10 @@ extension DatabaseType {
         PluginMetadataRegistry.shared.snapshot(forTypeId: pluginTypeId)?.capabilities.supportsTriggers ?? false
     }
 
+    var supportsTriggerEditing: Bool {
+        PluginMetadataRegistry.shared.snapshot(forTypeId: pluginTypeId)?.capabilities.supportsTriggerEditing ?? false
+    }
+
     var supportsSchemaEditing: Bool {
         PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.supportsSchemaEditing ?? true
     }

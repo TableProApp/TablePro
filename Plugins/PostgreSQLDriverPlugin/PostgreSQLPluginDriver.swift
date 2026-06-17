@@ -337,6 +337,64 @@ final class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         return triggers
     }
 
+    var triggerEditUsesReplace: Bool { true }
+
+    var supportsTransactionalDDL: Bool { true }
+
+    private func qualifiedTable(_ table: String, schema: String?) -> String {
+        let resolved = schema ?? core.currentSchema
+        return "\(quoteIdentifier(resolved)).\(quoteIdentifier(table))"
+    }
+
+    func createTriggerTemplate(table: String, schema: String?) -> String? {
+        let qualified = qualifiedTable(table, schema: schema)
+        let fn = qualifiedTable("trigger_function", schema: schema)
+        return """
+        CREATE OR REPLACE FUNCTION \(fn)()
+        RETURNS trigger
+        LANGUAGE plpgsql
+        AS $function$
+        BEGIN
+            -- NEW.updated_at := now();
+            RETURN NEW;
+        END;
+        $function$;
+
+        CREATE OR REPLACE TRIGGER \(quoteIdentifier("trigger_name"))
+            BEFORE INSERT ON \(qualified)
+            FOR EACH ROW
+            EXECUTE FUNCTION \(fn)();
+        """
+    }
+
+    func fetchTriggerDefinition(name: String, table: String, schema: String?) async throws -> String? {
+        let resolvedSchema = schema ?? core.currentSchema
+        let query = """
+            SELECT pg_get_functiondef(t.tgfoid), pg_get_triggerdef(t.oid)
+            FROM pg_catalog.pg_trigger t
+            JOIN pg_catalog.pg_class c ON c.oid = t.tgrelid
+            JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+            WHERE t.tgname = '\(escapeLiteral(name))'
+                AND c.relname = '\(escapeLiteral(table))'
+                AND n.nspname = '\(escapeLiteral(resolvedSchema))'
+                AND NOT t.tgisinternal
+            LIMIT 1
+            """
+        let result = try await execute(query: query)
+        guard let row = result.rows.first, row.count >= 2,
+              let functionDef = row[0].asText,
+              let triggerDef = row[1].asText else { return nil }
+        let replaceableTrigger = triggerDef.replacingOccurrences(
+            of: "CREATE TRIGGER ",
+            with: "CREATE OR REPLACE TRIGGER "
+        )
+        return "\(functionDef);\n\n\(replaceableTrigger);"
+    }
+
+    func generateDropTriggerSQL(name: String, table: String, schema: String?) -> String? {
+        "DROP TRIGGER \(quoteIdentifier(name)) ON \(qualifiedTable(table, schema: schema))"
+    }
+
     func fetchAllForeignKeys(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {
         let schemaLiteral = escapeLiteral(schema ?? core.currentSchema)
         let query = """
