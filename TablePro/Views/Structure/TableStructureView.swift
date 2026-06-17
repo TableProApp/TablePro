@@ -28,7 +28,6 @@ struct TableStructureView: View {
     @State var indexes: [IndexInfo] = []
     @State var foreignKeys: [ForeignKeyInfo] = []
     @State var triggers: [TriggerInfo] = []
-    @State private var selectedTriggerID: TriggerInfo.ID?
     @State var ddlStatement: String = ""
     @AppStorage("structureCodeFontSize") var ddlFontSize: Double = 13
     @State var showCopyConfirmation = false
@@ -295,8 +294,6 @@ struct TableStructureView: View {
         case .triggers:
             TriggerDetailView(
                 triggers: triggers,
-                selectedTriggerID: $selectedTriggerID,
-                fontSize: $ddlFontSize,
                 databaseType: connection.type,
                 isLoading: !loadedTabs.contains(.triggers),
                 onOpenInEditor: openTriggerInEditor

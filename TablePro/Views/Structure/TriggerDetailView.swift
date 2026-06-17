@@ -7,16 +7,41 @@
 
 import SwiftUI
 
+@Observable
+final class TriggerInspectorState {
+    var searchText = ""
+    var sortOrder: [KeyPathComparator<TriggerInfo>] = [KeyPathComparator(\.name)]
+    var selectedID: TriggerInfo.ID?
+
+    func displayed(_ triggers: [TriggerInfo]) -> [TriggerInfo] {
+        let filtered = searchText.isEmpty
+            ? triggers
+            : triggers.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
+        return filtered.sorted(using: sortOrder)
+    }
+
+    func selectedTrigger(_ triggers: [TriggerInfo]) -> TriggerInfo? {
+        let list = displayed(triggers)
+        if let id = selectedID, let match = list.first(where: { $0.id == id }) {
+            return match
+        }
+        return list.first
+    }
+
+    func ensureSelection(_ triggers: [TriggerInfo]) {
+        if selectedID == nil || !triggers.contains(where: { $0.id == selectedID }) {
+            selectedID = triggers.first?.id
+        }
+    }
+}
+
 struct TriggerDetailView: View {
     let triggers: [TriggerInfo]
-    @Binding var selectedTriggerID: TriggerInfo.ID?
-    @Binding var fontSize: Double
     let databaseType: DatabaseType
     let isLoading: Bool
     let onOpenInEditor: (TriggerInfo) -> Void
 
-    @State private var searchText = ""
-    @State private var sortOrder: [KeyPathComparator<TriggerInfo>] = [KeyPathComparator(\.name)]
+    @State private var state = TriggerInspectorState()
 
     var body: some View {
         if isLoading {
@@ -31,104 +56,89 @@ struct TriggerDetailView: View {
                 topMinimumHeight: 120,
                 bottomMinimumHeight: 180
             ) {
-                triggerList
+                TriggerListPane(triggers: triggers, state: state)
             } bottom: {
-                detailPane
+                TriggerDetailPane(triggers: triggers, state: state, databaseType: databaseType, onOpenInEditor: onOpenInEditor)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .onAppear(perform: ensureSelection)
-            .onChange(of: triggers) { _, _ in ensureSelection() }
+            .onAppear { state.ensureSelection(triggers) }
+            .onChange(of: triggers) { _, newTriggers in state.ensureSelection(newTriggers) }
         }
     }
+}
 
-    private var displayedTriggers: [TriggerInfo] {
-        let filtered = searchText.isEmpty
-            ? triggers
-            : triggers.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
-        return filtered.sorted(using: sortOrder)
-    }
+private struct TriggerListPane: View {
+    let triggers: [TriggerInfo]
+    @Bindable var state: TriggerInspectorState
 
     private var showEnabled: Bool { triggers.contains { $0.enabled != nil } }
     private var showOrientation: Bool { triggers.contains { !($0.orientation ?? "").isEmpty } }
     private var showWhen: Bool { triggers.contains { !($0.whenClause ?? "").isEmpty } }
 
-    private var selectedTrigger: TriggerInfo? {
-        guard let id = selectedTriggerID,
-              let match = triggers.first(where: { $0.id == id }) else {
-            return triggers.first
-        }
-        return match
-    }
-
-    private func ensureSelection() {
-        guard let id = selectedTriggerID,
-              triggers.contains(where: { $0.id == id }) else {
-            selectedTriggerID = triggers.first?.id
-            return
-        }
-    }
-
-    private var triggerList: some View {
+    var body: some View {
         VStack(spacing: 0) {
-            NativeSearchField(text: $searchText, placeholder: String(localized: "Filter"))
+            NativeSearchField(text: $state.searchText, placeholder: String(localized: "Filter"))
                 .padding(.horizontal, 8)
                 .padding(.vertical, 6)
             Divider()
-            triggerTable
-        }
-    }
-
-    private var triggerTable: some View {
-        Table(displayedTriggers, selection: $selectedTriggerID, sortOrder: $sortOrder) {
-            TableColumn(String(localized: "Name"), value: \.name)
-                .width(min: 140, ideal: 220)
-            TableColumn(String(localized: "Timing"), value: \.timing)
-                .width(min: 70, ideal: 90)
-            TableColumn(String(localized: "Event"), value: \.event)
-                .width(min: 90, ideal: 150)
-            if showOrientation {
-                TableColumn(String(localized: "For Each")) { trigger in
-                    Text(trigger.orientation ?? "")
-                }
-                .width(min: 70, ideal: 90)
-            }
-            if showEnabled {
-                TableColumn(String(localized: "Enabled")) { trigger in
-                    if let enabled = trigger.enabled {
-                        Image(systemName: enabled ? "checkmark.circle.fill" : "xmark.circle")
-                            .foregroundStyle(enabled ? Color.green : Color.secondary)
-                            .accessibilityLabel(enabled
-                                ? String(localized: "Enabled")
-                                : String(localized: "Disabled"))
+            Table(state.displayed(triggers), selection: $state.selectedID, sortOrder: $state.sortOrder) {
+                TableColumn(String(localized: "Name"), value: \.name)
+                    .width(min: 140, ideal: 220)
+                TableColumn(String(localized: "Timing"), value: \.timing)
+                    .width(min: 70, ideal: 90)
+                TableColumn(String(localized: "Event"), value: \.event)
+                    .width(min: 90, ideal: 150)
+                if showOrientation {
+                    TableColumn(String(localized: "For Each")) { trigger in
+                        Text(trigger.orientation ?? "")
                     }
+                    .width(min: 70, ideal: 90)
                 }
-                .width(min: 60, ideal: 70)
-            }
-            if showWhen {
-                TableColumn(String(localized: "When")) { trigger in
-                    Text(trigger.whenClause ?? "")
-                        .foregroundStyle(.secondary)
+                if showEnabled {
+                    TableColumn(String(localized: "Enabled")) { trigger in
+                        if let enabled = trigger.enabled {
+                            Image(systemName: enabled ? "checkmark.circle.fill" : "xmark.circle")
+                                .foregroundStyle(enabled ? Color.green : Color.secondary)
+                                .accessibilityLabel(enabled
+                                    ? String(localized: "Enabled")
+                                    : String(localized: "Disabled"))
+                        }
+                    }
+                    .width(min: 60, ideal: 70)
                 }
-                .width(min: 100, ideal: 180)
-            }
-        }
-    }
-
-    private var detailPane: some View {
-        Group {
-            if let trigger = selectedTrigger {
-                VStack(spacing: 0) {
-                    detailToolbar(for: trigger)
-                    Divider()
-                    DDLTextView(ddl: trigger.statement, fontSize: $fontSize, databaseType: databaseType)
+                if showWhen {
+                    TableColumn(String(localized: "When")) { trigger in
+                        Text(trigger.whenClause ?? "")
+                            .foregroundStyle(.secondary)
+                    }
+                    .width(min: 100, ideal: 180)
                 }
-            } else {
-                Color(nsColor: .textBackgroundColor)
             }
         }
     }
+}
 
-    private func detailToolbar(for trigger: TriggerInfo) -> some View {
+private struct TriggerDetailPane: View {
+    let triggers: [TriggerInfo]
+    let state: TriggerInspectorState
+    let databaseType: DatabaseType
+    let onOpenInEditor: (TriggerInfo) -> Void
+
+    @AppStorage("structureCodeFontSize") private var fontSize: Double = 13
+
+    var body: some View {
+        if let trigger = state.selectedTrigger(triggers) {
+            VStack(spacing: 0) {
+                toolbar(for: trigger)
+                Divider()
+                DDLTextView(ddl: trigger.statement, fontSize: $fontSize, databaseType: databaseType)
+            }
+        } else {
+            Color(nsColor: .textBackgroundColor)
+        }
+    }
+
+    private func toolbar(for trigger: TriggerInfo) -> some View {
         HStack(spacing: 12) {
             HStack(spacing: 4) {
                 Button {

@@ -212,7 +212,7 @@ extension MSSQLPluginDriver {
             FROM sys.triggers t
             JOIN sys.trigger_events te ON t.object_id = te.object_id
             WHERE t.parent_id = OBJECT_ID('\(bracketedFull)')
-            ORDER BY t.name
+            ORDER BY t.name, te.type_desc
             """
         let result = try await execute(query: sql)
 
@@ -220,7 +220,7 @@ extension MSSQLPluginDriver {
         var byName: [String: (timing: String, definition: String, enabled: Bool, events: [String])] = [:]
         for row in result.rows {
             guard let name = row[safe: 0]?.asText else { continue }
-            let event = (row[safe: 4]?.asText ?? "").replacingOccurrences(of: "_", with: " ")
+            let event = row[safe: 4]?.asText ?? ""
             if byName[name] == nil {
                 order.append(name)
                 let timing = (row[safe: 2]?.asText == "1") ? "INSTEAD OF" : "AFTER"
