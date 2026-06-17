@@ -124,6 +124,35 @@ struct StructureTabTriggersTests {
     }
 }
 
+@Suite("Trigger apply strategy")
+struct TriggerApplyStrategyTests {
+    @Test("MySQL edit drops then recreates (no replace, non-transactional)")
+    func mysqlEdit() {
+        #expect(TriggerApplyStrategy.resolve(isEdit: true, usesReplace: false, transactionalDDL: false) == .dropThenCreate)
+    }
+
+    @Test("Create is always direct or transactional, never drop-first")
+    func createNeverDropsFirst() {
+        #expect(TriggerApplyStrategy.resolve(isEdit: false, usesReplace: false, transactionalDDL: false) == .direct)
+        #expect(TriggerApplyStrategy.resolve(isEdit: false, usesReplace: false, transactionalDDL: true) == .transactional(dropFirst: false))
+    }
+
+    @Test("SQLite edit drops first inside a transaction")
+    func sqliteEdit() {
+        #expect(TriggerApplyStrategy.resolve(isEdit: true, usesReplace: false, transactionalDDL: true) == .transactional(dropFirst: true))
+    }
+
+    @Test("PostgreSQL and SQL Server edits replace in a transaction without a drop")
+    func replaceTransactionalEdit() {
+        #expect(TriggerApplyStrategy.resolve(isEdit: true, usesReplace: true, transactionalDDL: true) == .transactional(dropFirst: false))
+    }
+
+    @Test("Oracle edit replaces directly (no transactional DDL)")
+    func oracleEdit() {
+        #expect(TriggerApplyStrategy.resolve(isEdit: true, usesReplace: true, transactionalDDL: false) == .direct)
+    }
+}
+
 @Suite("Trigger editing bridge")
 struct TriggerEditingBridgeTests {
     private func makeAdapter(_ configure: (StubTriggerDriver) -> Void) -> PluginDriverAdapter {

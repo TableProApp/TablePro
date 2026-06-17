@@ -23,6 +23,20 @@ enum TriggerEditingError: LocalizedError {
     }
 }
 
+enum TriggerApplyStrategy: Equatable {
+    case transactional(dropFirst: Bool)
+    case dropThenCreate
+    case direct
+
+    static func resolve(isEdit: Bool, usesReplace: Bool, transactionalDDL: Bool) -> TriggerApplyStrategy {
+        let dropFirst = isEdit && !usesReplace
+        if transactionalDDL {
+            return .transactional(dropFirst: dropFirst)
+        }
+        return dropFirst ? .dropThenCreate : .direct
+    }
+}
+
 @MainActor
 enum TriggerEditing {
     private static let logger = Logger(subsystem: "com.TablePro", category: "TriggerEditing")
@@ -56,15 +70,20 @@ enum TriggerEditing {
             throw TriggerEditingError.denied(decision.deniedReason ?? String(localized: "Operation not permitted"))
         }
 
-        let dropSQL: String? = (isEdit && !driver.triggerEditUsesReplace)
-            ? originalName.flatMap { driver.generateDropTriggerSQL(name: $0, table: tableName) }
-            : nil
+        let strategy = TriggerApplyStrategy.resolve(
+            isEdit: isEdit,
+            usesReplace: driver.triggerEditUsesReplace,
+            transactionalDDL: driver.supportsTransactionalDDL
+        )
+        let dropSQL = originalName.flatMap { driver.generateDropTriggerSQL(name: $0, table: tableName) }
 
-        if driver.supportsTransactionalDDL {
-            try await runInTransaction(driver: driver, dropSQL: dropSQL, sql: sql)
-        } else if let dropSQL {
+        switch strategy {
+        case let .transactional(dropFirst):
+            try await runInTransaction(driver: driver, dropSQL: dropFirst ? dropSQL : nil, sql: sql)
+        case .dropThenCreate:
+            guard let dropSQL else { throw TriggerEditingError.dropUnavailable }
             try await runDropThenCreate(driver: driver, dropSQL: dropSQL, sql: sql, rollback: originalDefinition)
-        } else {
+        case .direct:
             _ = try await driver.execute(query: sql)
         }
 
@@ -118,7 +137,12 @@ enum TriggerEditing {
             _ = try await driver.execute(query: sql)
         } catch {
             if let rollback {
-                _ = try? await driver.execute(query: rollback)
+                do {
+                    _ = try await driver.execute(query: rollback)
+                    logger.error("Trigger edit failed; restored original definition: \(error.localizedDescription, privacy: .public)")
+                } catch let rollbackError {
+                    logger.error("Trigger edit failed and rollback failed, trigger may be missing: edit=\(error.localizedDescription, privacy: .public) rollback=\(rollbackError.localizedDescription, privacy: .public)")
+                }
             }
             throw error
         }

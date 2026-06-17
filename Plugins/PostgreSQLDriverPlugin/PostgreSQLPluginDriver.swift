@@ -384,11 +384,17 @@ final class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         guard let row = result.rows.first, row.count >= 2,
               let functionDef = row[0].asText,
               let triggerDef = row[1].asText else { return nil }
-        let replaceableTrigger = triggerDef.replacingOccurrences(
-            of: "CREATE TRIGGER ",
-            with: "CREATE OR REPLACE TRIGGER "
-        )
-        return "\(functionDef);\n\n\(replaceableTrigger);"
+        let editableTrigger: String
+        if triggerDef.range(of: "CREATE CONSTRAINT TRIGGER", options: .caseInsensitive) != nil {
+            let drop = generateDropTriggerSQL(name: name, table: table, schema: schema) ?? ""
+            editableTrigger = "\(drop);\n\(triggerDef)"
+        } else {
+            editableTrigger = triggerDef.replacingOccurrences(
+                of: "CREATE TRIGGER ",
+                with: "CREATE OR REPLACE TRIGGER "
+            )
+        }
+        return "\(functionDef);\n\n\(editableTrigger);"
     }
 
     func generateDropTriggerSQL(name: String, table: String, schema: String?) -> String? {

@@ -421,8 +421,6 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return triggers
     }
 
-    var triggerEditUsesReplace: Bool { false }
-
     func createTriggerTemplate(table: String, schema: String?) -> String? {
         """
         CREATE TRIGGER \(quoteIdentifier("trigger_name")) BEFORE INSERT
