@@ -552,14 +552,7 @@ extension MainContentCoordinator {
     // MARK: - Redis Key Tree Navigation
 
     func browseRedisNamespace(_ prefix: String) {
-        let separator = connection.additionalFields["redisSeparator"] ?? ":"
-        let escapedPrefix = prefix
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\\\"")
-        let query = "KEYBROWSE MATCH \"\(escapedPrefix)*\" LIMIT 1000 OFFSET 0"
-        let title = prefix.hasSuffix(separator) ? String(prefix.dropLast(separator.count)) : prefix
-        tabManager.addTab(initialQuery: query, title: title)
-        runQuery()
+        applyBrowseSearch(BrowseSearchState(pattern: "\(prefix)*"))
     }
 
     func openRedisKey(_ keyName: String, keyType: String) {

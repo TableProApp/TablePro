@@ -33,7 +33,6 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     private static let logger = Logger(subsystem: "com.TablePro.RedisDriver", category: "RedisPluginDriver")
 
-    private static let maxScanKeys = PluginRowLimits.emergencyMax
     static let maxKeyBrowseScan = 10_000
 
     var serverVersion: String? {

@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The table structure view has a Triggers tab for MySQL, MariaDB, PostgreSQL, SQLite, SQL Server, Oracle, libSQL, and Cloudflare D1. It lists each trigger with its timing and event (plus enabled state where the engine reports it), with a filter field and sortable columns. Selecting a trigger shows its full definition in a read-only syntax-highlighted viewer. (#1695)
 - Traditional Chinese (繁體中文) language in Settings > General with full UI translation
 
+### Changed
+
+- Selecting a Redis namespace in the sidebar key tree now filters the open database view to that prefix, with paging, instead of opening a separate tab limited to one batch of keys. (#1701)
+
 ### Fixed
 
 - Redis entries no longer disappear after the connection sits idle. The health check was running `SELECT 1`, which on Redis switches the active database, so a later refresh scanned the wrong database. (#1701)
