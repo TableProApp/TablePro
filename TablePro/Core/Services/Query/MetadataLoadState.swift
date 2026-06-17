@@ -15,13 +15,6 @@ enum MetadataLoadState<Value: Sendable>: Sendable {
         if case .loaded(let value) = self { return value }
         return nil
     }
-
-    var isSettled: Bool {
-        switch self {
-        case .loaded, .failed: return true
-        case .idle, .loading: return false
-        }
-    }
 }
 
 extension MetadataLoadState: Equatable where Value: Equatable {}

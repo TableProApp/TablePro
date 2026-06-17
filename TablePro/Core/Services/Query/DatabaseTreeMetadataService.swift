@@ -166,9 +166,9 @@ final class DatabaseTreeMetadataService {
                     schema: normalizedSchema,
                     workload: .bulk
                 ) { driver in
-                    async let procedures = driver.fetchProcedures(schema: normalizedSchema)
-                    async let functions = driver.fetchFunctions(schema: normalizedSchema)
-                    return try await procedures + functions
+                    let procedures = try await driver.fetchProcedures(schema: normalizedSchema)
+                    let functions = try await driver.fetchFunctions(schema: normalizedSchema)
+                    return procedures + functions
                 }
             }
             routinesState[key] = .loaded(list)
@@ -218,7 +218,9 @@ final class DatabaseTreeMetadataService {
     func handleDisconnect(connectionId: UUID) async {
         MetadataConnectionPool.shared.closeAll(connectionId: connectionId)
         let schemaKeys = schemaList.keys.filter { $0.connectionId == connectionId }
-        let objectKeys = tablesState.keys.filter { $0.connectionId == connectionId }
+        let objectKeys = Self.connectionObjectKeys(
+            tableKeys: tablesState.keys, routineKeys: routinesState.keys, connectionId: connectionId
+        )
         await databaseDedup.cancel(key: connectionId)
         for key in schemaKeys { await schemaDedup.cancel(key: key) }
         for key in objectKeys {
@@ -235,7 +237,9 @@ final class DatabaseTreeMetadataService {
 
     private func resetPending(connectionId: UUID) async {
         let schemaKeys = schemaList.keys.filter { $0.connectionId == connectionId }
-        let objectKeys = tablesState.keys.filter { $0.connectionId == connectionId }
+        let objectKeys = Self.connectionObjectKeys(
+            tableKeys: tablesState.keys, routineKeys: routinesState.keys, connectionId: connectionId
+        )
 
         if isPending(databaseList[connectionId]) {
             await databaseDedup.cancel(key: connectionId)
@@ -286,5 +290,13 @@ final class DatabaseTreeMetadataService {
     private static func objectsKey(connectionId: UUID, database: String, schema: String?) -> ObjectsKey {
         let normalized: String? = (schema?.isEmpty == true) ? nil : schema
         return ObjectsKey(connectionId: connectionId, database: database, schema: normalized)
+    }
+
+    static func connectionObjectKeys(
+        tableKeys: some Sequence<ObjectsKey>,
+        routineKeys: some Sequence<ObjectsKey>,
+        connectionId: UUID
+    ) -> [ObjectsKey] {
+        Array(Set(tableKeys).union(routineKeys)).filter { $0.connectionId == connectionId }
     }
 }

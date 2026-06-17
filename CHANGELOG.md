@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Expanding or collapsing a database or schema in the tree sidebar while its tables were still loading could crash the app. The tree now updates its rows without rebuilding the outline structure.
 - MongoDB filters on `_id` and other ObjectId fields now match. A 24-character hex value is matched as an ObjectId as well as a string, so filtering by `_id` returns the row instead of nothing. (#1682)
 
 ## [0.51.0] - 2026-06-13
