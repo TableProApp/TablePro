@@ -398,7 +398,7 @@ final class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     }
 
     func generateDropTriggerSQL(name: String, table: String, schema: String?) -> String? {
-        "DROP TRIGGER \(quoteIdentifier(name)) ON \(qualifiedTable(table, schema: schema))"
+        "DROP TRIGGER IF EXISTS \(quoteIdentifier(name)) ON \(qualifiedTable(table, schema: schema))"
     }
 
     func fetchAllForeignKeys(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {

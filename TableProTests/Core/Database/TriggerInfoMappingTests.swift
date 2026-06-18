@@ -22,6 +22,8 @@ private final class StubTriggerDriver: PluginDatabaseDriver {
     var dropToReturn: String?
     var editUsesReplace = false
     var transactionalDDL = false
+    var executedQueries: [String] = []
+    var throwOnQueryContaining: String?
 
     func createTriggerTemplate(table: String, schema: String?) -> String? { templateToReturn }
     func fetchTriggerDefinition(name: String, table: String, schema: String?) async throws -> String? { definitionToReturn }
@@ -33,7 +35,11 @@ private final class StubTriggerDriver: PluginDatabaseDriver {
     func disconnect() {}
     func ping() async throws {}
     func execute(query: String) async throws -> PluginQueryResult {
-        PluginQueryResult(columns: [], columnTypeNames: [], rows: [], rowsAffected: 0, executionTime: 0)
+        executedQueries.append(query)
+        if let marker = throwOnQueryContaining, query.contains(marker) {
+            throw NSError(domain: "StubTriggerDriver", code: 1)
+        }
+        return PluginQueryResult(columns: [], columnTypeNames: [], rows: [], rowsAffected: 0, executionTime: 0)
     }
 
     func fetchTables(schema: String?) async throws -> [PluginTableInfo] { [] }
@@ -189,5 +195,50 @@ struct TriggerEditingBridgeTests {
         }
         #expect(adapter.triggerEditUsesReplace)
         #expect(adapter.supportsTransactionalDDL)
+    }
+}
+
+@MainActor
+@Suite("Trigger apply execution")
+struct TriggerApplyExecutionTests {
+    private func makeStubAndAdapter() -> (StubTriggerDriver, PluginDriverAdapter) {
+        let stub = StubTriggerDriver()
+        let connection = DatabaseConnection(name: "Test", type: .postgresql)
+        return (stub, PluginDriverAdapter(connection: connection, pluginDriver: stub))
+    }
+
+    @Test("Transactional apply runs BEGIN, drop, create, COMMIT in order")
+    func transactionalSuccess() async throws {
+        let (stub, adapter) = makeStubAndAdapter()
+        try await TriggerEditing.runInTransaction(driver: adapter, dropSQL: "DROP TRIGGER t", sql: "CREATE TRIGGER t")
+        #expect(stub.executedQueries == ["BEGIN", "DROP TRIGGER t", "CREATE TRIGGER t", "COMMIT"])
+    }
+
+    @Test("Transactional apply rolls back and does not commit when the create fails")
+    func transactionalRollback() async {
+        let (stub, adapter) = makeStubAndAdapter()
+        stub.throwOnQueryContaining = "CREATE TRIGGER"
+        await #expect(throws: (any Error).self) {
+            try await TriggerEditing.runInTransaction(driver: adapter, dropSQL: nil, sql: "CREATE TRIGGER t")
+        }
+        #expect(stub.executedQueries.contains("ROLLBACK"))
+        #expect(!stub.executedQueries.contains("COMMIT"))
+    }
+
+    @Test("Drop-then-create runs drop then create on success")
+    func dropThenCreateSuccess() async throws {
+        let (stub, adapter) = makeStubAndAdapter()
+        try await TriggerEditing.runDropThenCreate(driver: adapter, dropSQL: "DROP TRIGGER t", sql: "CREATE TRIGGER t", rollback: "RESTORE t")
+        #expect(stub.executedQueries == ["DROP TRIGGER t", "CREATE TRIGGER t"])
+    }
+
+    @Test("Drop-then-create restores the original when the create fails")
+    func dropThenCreateRollbackBuffer() async {
+        let (stub, adapter) = makeStubAndAdapter()
+        stub.throwOnQueryContaining = "CREATE TRIGGER"
+        await #expect(throws: (any Error).self) {
+            try await TriggerEditing.runDropThenCreate(driver: adapter, dropSQL: "DROP TRIGGER t", sql: "CREATE TRIGGER t", rollback: "RESTORE t")
+        }
+        #expect(stub.executedQueries == ["DROP TRIGGER t", "CREATE TRIGGER t", "RESTORE t"])
     }
 }

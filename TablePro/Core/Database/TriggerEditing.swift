@@ -120,7 +120,7 @@ enum TriggerEditing {
         AppCommands.shared.refreshData.send(connection.id)
     }
 
-    private static func runInTransaction(driver: DatabaseDriver, dropSQL: String?, sql: String) async throws {
+    static func runInTransaction(driver: DatabaseDriver, dropSQL: String?, sql: String) async throws {
         try await driver.beginTransaction()
         do {
             if let dropSQL { _ = try await driver.execute(query: dropSQL) }
@@ -132,7 +132,7 @@ enum TriggerEditing {
         }
     }
 
-    private static func runDropThenCreate(driver: DatabaseDriver, dropSQL: String, sql: String, rollback: String?) async throws {
+    static func runDropThenCreate(driver: DatabaseDriver, dropSQL: String, sql: String, rollback: String?) async throws {
         _ = try await driver.execute(query: dropSQL)
         do {
             _ = try await driver.execute(query: sql)
