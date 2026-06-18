@@ -34,15 +34,6 @@ struct DatabaseTreeRoutineRef: Identifiable {
     }
 }
 
-struct DatabaseTreeSchemaRef: Identifiable {
-    let database: String
-    let schema: String
-
-    var id: String {
-        "\(database)|\(schema)"
-    }
-}
-
 struct DatabaseTreeView: View {
     @Bindable private var treeService = DatabaseTreeMetadataService.shared
 

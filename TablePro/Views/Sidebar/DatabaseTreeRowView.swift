@@ -35,105 +35,61 @@ struct DatabaseTreeRowView: View {
     let actions: DatabaseTreeRowActions
 
     var body: some View {
-        content
+        if hasContextMenu {
+            row.contextMenu { menuItems }
+        } else {
+            row
+        }
+    }
+
+    private var row: some View {
+        rowContent
             .frame(maxWidth: .infinity, alignment: .leading)
-            .foregroundStyle(isEmphasized ? AnyShapeStyle(.white) : AnyShapeStyle(.primary))
+            .contentShape(Rectangle())
     }
 
     @ViewBuilder
-    private var content: some View {
+    private var rowContent: some View {
         switch node.kind {
         case .database(let metadata):
-            databaseRow(metadata)
+            header(
+                text: metadata.name,
+                systemImage: metadata.isSystemDatabase ? "gearshape" : "cylinder",
+                isActive: metadata.name == context.activeDatabase,
+                isSystem: metadata.isSystemDatabase
+            )
         case .schema(let database, let schema):
-            schemaRow(database: database, schema: schema)
+            header(
+                text: schema,
+                systemImage: "folder",
+                isActive: database == context.activeDatabase && schema == context.activeSchema,
+                isSystem: context.systemSchemas.contains(schema)
+            )
         case .table(let ref):
-            tableRow(ref)
+            TableRow(
+                table: ref.table,
+                isPendingTruncate: context.pendingTruncates.contains(ref.table.name),
+                isPendingDelete: context.pendingDeletes.contains(ref.table.name)
+            )
+            .foregroundStyle(isEmphasized ? AnyShapeStyle(.white) : AnyShapeStyle(.primary))
         case .routine(let ref):
-            routineRow(ref)
+            RoutineRowView(routine: ref.routine)
+                .foregroundStyle(isEmphasized ? AnyShapeStyle(.white) : AnyShapeStyle(.primary))
         case .status(let status):
             statusRow(status)
         }
     }
 
-    // MARK: - Database
-
-    private func databaseRow(_ metadata: DatabaseMetadata) -> some View {
-        let name = metadata.name
-        let isActive = name == context.activeDatabase
-        return Label {
-            Text(name)
+    private func header(text: String, systemImage: String, isActive: Bool, isSystem: Bool) -> some View {
+        Label {
+            Text(text)
                 .fontWeight(isActive ? .bold : .regular)
         } icon: {
-            Image(systemName: metadata.isSystemDatabase ? "gearshape" : "cylinder")
+            Image(systemName: systemImage)
         }
         .lineLimit(1)
-        .foregroundStyle(foreground(isActive: isActive, isSystem: metadata.isSystemDatabase))
-        .contextMenu {
-            Button(String(localized: "Use as Active Database")) {
-                actions.setActiveDatabase(name)
-            }
-            .disabled(isActive)
-            Button(String(localized: "Refresh")) {
-                actions.refreshDatabase(name)
-            }
-        }
+        .foregroundStyle(foreground(isActive: isActive, isSystem: isSystem))
     }
-
-    // MARK: - Schema
-
-    private func schemaRow(database: String, schema: String) -> some View {
-        let isActive = database == context.activeDatabase && schema == context.activeSchema
-        return Label {
-            Text(schema)
-                .fontWeight(isActive ? .bold : .regular)
-        } icon: {
-            Image(systemName: "folder")
-        }
-        .lineLimit(1)
-        .foregroundStyle(foreground(isActive: isActive, isSystem: context.systemSchemas.contains(schema)))
-        .contextMenu {
-            Button(String(localized: "Use as Active Schema")) {
-                actions.setActiveSchema(database, schema)
-            }
-            .disabled(isActive)
-            Button(String(localized: "Refresh")) {
-                actions.refreshObjects(database, schema)
-            }
-        }
-    }
-
-    // MARK: - Table
-
-    private func tableRow(_ ref: DatabaseTreeTableRef) -> some View {
-        TableRow(
-            table: ref.table,
-            isPendingTruncate: context.pendingTruncates.contains(ref.table.name),
-            isPendingDelete: context.pendingDeletes.contains(ref.table.name)
-        )
-        .contextMenu {
-            SidebarContextMenu(
-                clickedTable: ref.table,
-                selectedTables: actions.selectedTables(),
-                isReadOnly: actions.isReadOnly,
-                onBatchToggleTruncate: actions.batchToggleTruncate,
-                onBatchToggleDelete: actions.batchToggleDelete,
-                coordinator: actions.coordinator,
-                activateBeforeAction: { await actions.activate(ref) }
-            )
-        }
-    }
-
-    // MARK: - Routine
-
-    private func routineRow(_ ref: DatabaseTreeRoutineRef) -> some View {
-        RoutineRowView(routine: ref.routine)
-            .contextMenu {
-                RoutineContextMenu(routine: ref.routine, onShowDDL: actions.showRoutineDDL)
-            }
-    }
-
-    // MARK: - Status
 
     @ViewBuilder
     private func statusRow(_ status: DatabaseTreeNode.Status) -> some View {
@@ -154,6 +110,47 @@ struct DatabaseTreeRowView: View {
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .lineLimit(2)
+        }
+    }
+
+    private var hasContextMenu: Bool {
+        if case .status = node.kind { return false }
+        return true
+    }
+
+    @ViewBuilder
+    private var menuItems: some View {
+        switch node.kind {
+        case .database(let metadata):
+            Button(String(localized: "Use as Active Database")) {
+                actions.setActiveDatabase(metadata.name)
+            }
+            .disabled(metadata.name == context.activeDatabase)
+            Button(String(localized: "Refresh")) {
+                actions.refreshDatabase(metadata.name)
+            }
+        case .schema(let database, let schema):
+            Button(String(localized: "Use as Active Schema")) {
+                actions.setActiveSchema(database, schema)
+            }
+            .disabled(database == context.activeDatabase && schema == context.activeSchema)
+            Button(String(localized: "Refresh")) {
+                actions.refreshObjects(database, schema)
+            }
+        case .table(let ref):
+            SidebarContextMenu(
+                clickedTable: ref.table,
+                selectedTables: actions.selectedTables(),
+                isReadOnly: actions.isReadOnly,
+                onBatchToggleTruncate: actions.batchToggleTruncate,
+                onBatchToggleDelete: actions.batchToggleDelete,
+                coordinator: actions.coordinator,
+                activateBeforeAction: { await actions.activate(ref) }
+            )
+        case .routine(let ref):
+            RoutineContextMenu(routine: ref.routine, onShowDDL: actions.showRoutineDDL)
+        case .status:
+            EmptyView()
         }
     }
 

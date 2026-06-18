@@ -461,9 +461,17 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
     @objc
     func handleDoubleClick() {
         guard let outlineView, outlineView.clickedRow >= 0,
-              let node = outlineView.item(atRow: outlineView.clickedRow) as? DatabaseTreeNode,
-              let ref = node.tableRef else { return }
-        open(ref, activateGridFocus: true)
+              let node = outlineView.item(atRow: outlineView.clickedRow) as? DatabaseTreeNode else { return }
+        if let ref = node.tableRef {
+            open(ref, activateGridFocus: true)
+            return
+        }
+        guard node.isExpandable else { return }
+        if outlineView.isItemExpanded(node) {
+            outlineView.collapseItem(node)
+        } else {
+            outlineView.expandItem(node)
+        }
     }
 }
 
