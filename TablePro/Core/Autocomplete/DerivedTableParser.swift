@@ -131,17 +131,7 @@ internal struct DerivedTableParser {
               select.word.uppercased() == "SELECT" else {
             return []
         }
-        var listStart = firstCode(in: ns, from: select.end, limit: length)
-        if let modifier = readWord(in: ns, at: listStart, limit: length),
-           modifier.text.uppercased() == "DISTINCT" || modifier.text.uppercased() == "ALL" {
-            listStart = firstCode(in: ns, from: modifier.end, limit: length)
-            if let on = readWord(in: ns, at: listStart, limit: length), on.text.uppercased() == "ON" {
-                let parenStart = firstCode(in: ns, from: on.end, limit: length)
-                if parenStart < length, ns.character(at: parenStart) == Self.openParen {
-                    listStart = matchingParen(in: ns, openAt: parenStart, limit: length) + 1
-                }
-            }
-        }
+        let listStart = selectListStart(in: ns, after: select.end, limit: length)
         let listEnd = topLevelKeyword(in: ns, start: listStart, end: length, keywords: Self.clauseKeywords)?.start ?? length
         guard listStart < listEnd else { return [] }
 
@@ -152,6 +142,25 @@ internal struct DerivedTableParser {
             names.append(name)
         }
         return names
+    }
+
+    /// Skip a leading `DISTINCT`/`ALL` (and a `DISTINCT ON (...)` group) so the
+    /// list scan starts at the first projected expression.
+    private func selectListStart(in ns: NSString, after selectEnd: Int, limit: Int) -> Int {
+        var start = firstCode(in: ns, from: selectEnd, limit: limit)
+        guard let modifier = readWord(in: ns, at: start, limit: limit),
+              modifier.text.uppercased() == "DISTINCT" || modifier.text.uppercased() == "ALL" else {
+            return start
+        }
+        start = firstCode(in: ns, from: modifier.end, limit: limit)
+        guard let on = readWord(in: ns, at: start, limit: limit), on.text.uppercased() == "ON" else {
+            return start
+        }
+        let parenStart = firstCode(in: ns, from: on.end, limit: limit)
+        guard parenStart < limit, ns.character(at: parenStart) == Self.openParen else {
+            return start
+        }
+        return matchingParen(in: ns, openAt: parenStart, limit: limit) + 1
     }
 
     private func deriveColumnName(_ rawItem: String) -> String? {

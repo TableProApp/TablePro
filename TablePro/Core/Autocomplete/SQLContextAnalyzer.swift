@@ -805,15 +805,14 @@ final class SQLContextAnalyzer {
         var consumed = Set<String>()
         for index in references.indices {
             let ref = references[index]
-            let tableKey = ref.tableName.lowercased()
-            let identifierKey = ref.identifier.lowercased()
-            let matched = derivedColumnsByAlias[tableKey].map { ($0, tableKey) }
-                ?? derivedColumnsByAlias[identifierKey].map { ($0, identifierKey) }
-            guard let (columns, key) = matched else { continue }
-            consumed.insert(key)
-            references[index] = TableReference(
-                tableName: ref.tableName, alias: ref.alias, schema: ref.schema, derivedColumns: columns
-            )
+            for key in [ref.tableName.lowercased(), ref.identifier.lowercased()] {
+                guard let columns = derivedColumnsByAlias[key] else { continue }
+                consumed.insert(key)
+                references[index] = TableReference(
+                    tableName: ref.tableName, alias: ref.alias, schema: ref.schema, derivedColumns: columns
+                )
+                break
+            }
         }
 
         var present = Set(references.map { $0.identifier.lowercased() }).union(consumed)
