@@ -116,6 +116,7 @@ struct DatabaseTreeView: View {
             pendingTruncates: pendingTruncates,
             pendingDeletes: pendingDeletes,
             searchText: searchText,
+            connectionToken: connectionToken,
             activeDatabase: activeDatabase,
             activeSchema: activeSchema
         )

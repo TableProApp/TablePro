@@ -20,6 +20,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
     private var sidebarState: SharedSidebarState?
     private weak var viewModel: SidebarViewModel?
     private var searchText = ""
+    private var connectionToken = ""
     private var activeDatabase: String?
     private var activeSchema: String?
     private var pendingTruncates: Set<String> = []
@@ -58,11 +59,13 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
 
         let activeChanged = activeDatabase != view.activeDatabase || activeSchema != view.activeSchema
         let changed = searchText != view.searchText
+            || connectionToken != view.connectionToken
             || activeChanged
             || pendingTruncates != view.pendingTruncates
             || pendingDeletes != view.pendingDeletes
 
         searchText = view.searchText
+        connectionToken = view.connectionToken
         activeDatabase = view.activeDatabase
         activeSchema = view.activeSchema
         pendingTruncates = view.pendingTruncates
@@ -294,13 +297,18 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
                 ? databaseMatchesSearch(metadata)
                 : windowState?.expandedTreeDatabases.contains(metadata.name) ?? false
             setExpanded(databaseNode, want)
-            guard supportsSchemaLevel, outlineView.isItemExpanded(databaseNode) else { continue }
+            guard outlineView.isItemExpanded(databaseNode) else { continue }
+            triggerLoad(for: databaseNode)
+            guard supportsSchemaLevel else { continue }
             for schemaNode in resolvedChildren(of: databaseNode) {
                 guard case .schema(let database, let schema) = schemaNode.kind else { continue }
                 let wantSchema = searching
                     ? DatabaseTreeFilter.matches(searchText, schema) || schemaContentMatchesSearch(database: database, schema: schema)
                     : windowState?.expandedTreeDatabaseSchemas.contains(DatabaseSchemaKey(database: database, schema: schema)) ?? false
                 setExpanded(schemaNode, wantSchema)
+                if outlineView.isItemExpanded(schemaNode) {
+                    triggerLoad(for: schemaNode)
+                }
             }
         }
     }

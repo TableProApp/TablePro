@@ -17,6 +17,7 @@ struct DatabaseTreeOutlineView: NSViewRepresentable {
     let pendingTruncates: Set<String>
     let pendingDeletes: Set<String>
     let searchText: String
+    let connectionToken: String
     let activeDatabase: String?
     let activeSchema: String?
 
