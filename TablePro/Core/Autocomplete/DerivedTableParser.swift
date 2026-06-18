@@ -263,8 +263,8 @@ internal struct DerivedTableParser {
         let c = ns.character(at: index)
         if c == Self.backtick || c == Self.doubleQuote {
             let end = matchingQuote(in: ns, from: index, limit: limit, quote: c)
-            guard end > index + 1 else { return nil }
-            return ns.substring(with: NSRange(location: index + 1, length: end - index - 1))
+            guard end > index + 2 else { return nil }
+            return ns.substring(with: NSRange(location: index + 1, length: end - index - 2))
         }
         if c == Self.openBracket {
             var j = index + 1

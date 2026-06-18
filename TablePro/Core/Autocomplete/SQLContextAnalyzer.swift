@@ -790,8 +790,9 @@ final class SQLContextAnalyzer {
     }
 
     /// Attach derived-table columns to references and add any derived table or
-    /// CTE not already in scope. A derived alias wins over a plain reference of
-    /// the same identifier (e.g. a CTE used directly in a FROM clause).
+    /// CTE not already in scope. Columns attach to a matching reference (e.g. a
+    /// CTE aliased in a FROM clause), and the derived table or CTE is still
+    /// registered under its own name so it resolves by either identifier.
     private func mergeDerivedTables(
         _ derivedTables: [DerivedTable],
         cteNames: [String],
@@ -802,12 +803,10 @@ final class SQLContextAnalyzer {
             uniquingKeysWith: { first, _ in first }
         )
 
-        var consumed = Set<String>()
         for index in references.indices {
             let ref = references[index]
             for key in [ref.tableName.lowercased(), ref.identifier.lowercased()] {
                 guard let columns = derivedColumnsByAlias[key] else { continue }
-                consumed.insert(key)
                 references[index] = TableReference(
                     tableName: ref.tableName, alias: ref.alias, schema: ref.schema, derivedColumns: columns
                 )
@@ -815,7 +814,7 @@ final class SQLContextAnalyzer {
             }
         }
 
-        var present = Set(references.map { $0.identifier.lowercased() }).union(consumed)
+        var present = Set(references.map { $0.identifier.lowercased() })
         for derived in derivedTables where present.insert(derived.alias.lowercased()).inserted {
             references.append(
                 TableReference(tableName: derived.alias, alias: derived.alias, derivedColumns: derived.columns)
