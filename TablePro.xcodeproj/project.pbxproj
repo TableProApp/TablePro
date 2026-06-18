@@ -65,6 +65,7 @@
 		5ACE00012F4F000000000005 /* CodeEditLanguages in Frameworks */ = {isa = PBXBuildFile; productRef = 5ACE00012F4F000000000003 /* CodeEditLanguages */; };
 		5ACE00012F4F000000000006 /* CodeEditTextView in Frameworks */ = {isa = PBXBuildFile; productRef = 5ACE00012F4F000000000007 /* CodeEditTextView */; };
 		5ACE00012F4F00000000000A /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 5ACE00012F4F000000000009 /* Sparkle */; };
+		5ACE252A2FE4508500357377 /* DuckDBDriver.tableplugin in Copy Plug-Ins (12 items) */ = {isa = PBXBuildFile; fileRef = 5A869000100000000 /* DuckDBDriver.tableplugin */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		5AD1D8C12FB5000000000001 /* TableProMSSQLCore in Frameworks */ = {isa = PBXBuildFile; productRef = 5AD1D8C12FB5000000000002 /* TableProMSSQLCore */; };
 		5ADDB00100000000000000A1 /* DynamoDBConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5ADDB00200000000000000A1 /* DynamoDBConnection.swift */; };
 		5ADDB00100000000000000A2 /* DynamoDBItemFlattener.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5ADDB00200000000000000A2 /* DynamoDBItemFlattener.swift */; };
@@ -287,6 +288,7 @@
 			dstPath = "";
 			dstSubfolderSpec = 13;
 			files = (
+				5ACE252A2FE4508500357377 /* DuckDBDriver.tableplugin in Copy Plug-Ins (12 items) */,
 				5A865000D00000000 /* MySQLDriver.tableplugin in Copy Plug-Ins (12 items) */,
 				5A868000D00000000 /* PostgreSQLDriver.tableplugin in Copy Plug-Ins (12 items) */,
 				5A862000D00000000 /* SQLiteDriver.tableplugin in Copy Plug-Ins (12 items) */,

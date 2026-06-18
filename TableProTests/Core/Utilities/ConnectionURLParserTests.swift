@@ -943,7 +943,7 @@ struct ConnectionURLParserTests {
         #expect(parsed.sshPort == 2222)
     }
 
-    // MARK: - DuckDB (file-based)
+    // MARK: - DuckDB
 
     @Test("DuckDB absolute file path")
     func testDuckDBAbsolutePath() {
@@ -964,6 +964,28 @@ struct ConnectionURLParserTests {
         }
         #expect(parsed.type == .duckdb)
         #expect(parsed.database == "data.duckdb")
+    }
+
+    @Test("Quack scheme parses as a remote DuckDB connection")
+    func testQuackRemoteURL() {
+        let result = ConnectionURLParser.parse("quack://myhost:9495/remotedb")
+        guard case .success(let parsed) = result else {
+            Issue.record("Expected success"); return
+        }
+        #expect(parsed.type == .duckdb)
+        #expect(parsed.host == "myhost")
+        #expect(parsed.port == 9_495)
+        #expect(parsed.database == "remotedb")
+    }
+
+    @Test("Quack default port is normalized away")
+    func testQuackDefaultPort() {
+        let result = ConnectionURLParser.parse("quack://myhost:9494/remotedb")
+        guard case .success(let parsed) = result else {
+            Issue.record("Expected success"); return
+        }
+        #expect(parsed.host == "myhost")
+        #expect(parsed.port == nil)
     }
 
     // MARK: - etcds TLS

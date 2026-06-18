@@ -803,6 +803,21 @@ final class ConnectionFormCoordinator {
         if parsed.type.pluginTypeId == "Cloudflare D1", !parsed.host.isEmpty {
             writeFieldByRegistry("cfAccountId", value: parsed.host)
         }
+        if parsed.type.pluginTypeId == "DuckDB" {
+            if parsed.host.isEmpty {
+                writeFieldByRegistry("duckdbMode", value: "local")
+                writeFieldByRegistry("duckdbFilePath", value: parsed.database)
+            } else {
+                writeFieldByRegistry("duckdbMode", value: "remote")
+                writeFieldByRegistry("duckdbHost", value: parsed.host)
+                if let port = parsed.port {
+                    writeFieldByRegistry("duckdbPort", value: String(port))
+                }
+                if !parsed.database.isEmpty {
+                    writeFieldByRegistry("duckdbAlias", value: parsed.database)
+                }
+            }
+        }
         if let connectionName = parsed.connectionName, !connectionName.isEmpty {
             network.name = connectionName
         } else if network.name.isEmpty {

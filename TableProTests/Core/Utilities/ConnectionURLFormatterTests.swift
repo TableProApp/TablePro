@@ -457,4 +457,48 @@ struct ConnectionURLFormatterTests {
         let url = ConnectionURLFormatter.format(conn, password: "pass", sshPassword: nil)
         #expect(url.contains("host1:27017,host2:27018,host3:27019"))
     }
+
+    // MARK: - DuckDB
+
+    @Test("DuckDB local mode formats a file URL from the file path field")
+    func testDuckDBLocalURL() {
+        let conn = DatabaseConnection(
+            name: "", database: "", type: .duckdb,
+            additionalFields: ["duckdbMode": "local", "duckdbFilePath": "/Users/me/analytics.duckdb"]
+        )
+        let url = ConnectionURLFormatter.format(conn, password: nil, sshPassword: nil)
+        #expect(url == "duckdb:///Users/me/analytics.duckdb")
+    }
+
+    @Test("DuckDB local mode falls back to the database path for legacy connections")
+    func testDuckDBLocalLegacyURL() {
+        let conn = DatabaseConnection(
+            name: "", database: "/Users/me/legacy.duckdb", type: .duckdb
+        )
+        let url = ConnectionURLFormatter.format(conn, password: nil, sshPassword: nil)
+        #expect(url == "duckdb:///Users/me/legacy.duckdb")
+    }
+
+    @Test("DuckDB remote mode formats a quack URL that round-trips")
+    func testDuckDBRemoteURL() {
+        let conn = DatabaseConnection(
+            name: "", database: "", type: .duckdb,
+            additionalFields: [
+                "duckdbMode": "remote",
+                "duckdbHost": "myhost",
+                "duckdbPort": "9495",
+                "duckdbAlias": "remotedb"
+            ]
+        )
+        let url = ConnectionURLFormatter.format(conn, password: nil, sshPassword: nil)
+        #expect(url == "quack://myhost:9495/remotedb")
+
+        guard case .success(let parsed) = ConnectionURLParser.parse(url) else {
+            Issue.record("Expected the formatted URL to parse"); return
+        }
+        #expect(parsed.type == .duckdb)
+        #expect(parsed.host == "myhost")
+        #expect(parsed.port == 9_495)
+        #expect(parsed.database == "remotedb")
+    }
 }

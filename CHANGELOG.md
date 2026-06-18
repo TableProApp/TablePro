@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The table structure view has a Triggers tab for MySQL, MariaDB, PostgreSQL, SQLite, SQL Server, Oracle, libSQL, and Cloudflare D1. It lists each trigger with its timing and event (plus enabled state where the engine reports it), with a filter field and sortable columns. Selecting a trigger shows its full definition in a read-only syntax-highlighted viewer. (#1695)
 - Traditional Chinese (繁體中文) language in Settings > General with full UI translation
 - An Add button in the table status bar inserts a new row at the end of the grid and starts editing it.
+- DuckDB connections can now reach a remote server over the Quack protocol (experimental). Pick Remote (Quack) in the connection form, enter the host, port, and token, then run SQL against the remote. Listing remote tables in the sidebar is not available yet because the Quack beta cannot enumerate a remote catalog. Needs DuckDB 1.5.3 or later. (#1716)
 
 ### Changed
 

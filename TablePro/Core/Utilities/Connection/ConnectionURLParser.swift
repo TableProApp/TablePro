@@ -104,7 +104,7 @@ struct ConnectionURLParser {
 
         let isSrv = scheme == "mongodb+srv"
 
-        let isFileBased = dbType == .sqlite || dbType == .duckdb
+        let isFileBased = dbType == .sqlite || (dbType == .duckdb && scheme == "duckdb")
             || PluginMetadataRegistry.shared.snapshot(forTypeId: dbType.pluginTypeId)?.connectionMode == .fileBased
         if isFileBased {
             let path = String(trimmed[schemeEnd.upperBound...])
@@ -276,6 +276,8 @@ struct ConnectionURLParser {
             return .cassandra
         case "scylladb", "scylla":
             return .scylladb
+        case "quack":
+            return .duckdb
         default:
             return PluginMetadataRegistry.shared.databaseType(forUrlScheme: scheme)
         }

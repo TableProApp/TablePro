@@ -18704,6 +18704,9 @@
         }
       }
     },
+    "Connection Type" : {
+
+    },
     "Connection URL" : {
       "localizations" : {
         "tr" : {
@@ -22873,6 +22876,9 @@
           }
         }
       }
+    },
+    "Database Alias" : {
+
     },
     "Database Driver" : {
       "localizations" : {
@@ -27341,6 +27347,9 @@
         }
       }
     },
+    "DuckLake Data Path" : {
+
+    },
     "Dump operations are only supported for PostgreSQL and Redshift connections." : {
       "localizations" : {
         "tr" : {
@@ -28618,6 +28627,9 @@
         }
       }
     },
+    "Embedded and remote analytical SQL" : {
+
+    },
     "Embedded zero-config SQL database" : {
       "localizations" : {
         "tr" : {
@@ -28988,7 +29000,6 @@
       }
     },
     "Enabled" : {
-      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -31448,6 +31459,7 @@
       }
     },
     "Export Data (⌘⇧E)" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -38243,7 +38255,6 @@
       }
     },
     "Import Data" : {
-      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -38272,6 +38283,7 @@
       }
     },
     "Import Data (⌘⇧I)" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -48242,7 +48254,6 @@
       }
     },
     "New Query Tab" : {
-      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -48271,6 +48282,7 @@
       }
     },
     "New Query Tab (⌘T)" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -52479,9 +52491,6 @@
           }
         }
       }
-    },
-    "Open %@ (⌘K)" : {
-
     },
     "Open %@ Editor" : {
       "localizations" : {
@@ -57247,6 +57256,7 @@
       }
     },
     "Preview %@ (⌘⇧P)" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -59491,6 +59501,7 @@
       }
     },
     "Quick Switcher (⇧⌘O)" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -61021,6 +61032,7 @@
       }
     },
     "Refresh (⌘R)" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -61391,6 +61403,9 @@
           }
         }
       }
+    },
+    "Remote (Quack)" : {
+
     },
     "Remote (Turso)" : {
 
@@ -65163,6 +65178,7 @@
       }
     },
     "Save Changes (⌘S)" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -73515,6 +73531,7 @@
       }
     },
     "Switch Connection (⌘⌥C)" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -79255,6 +79272,9 @@
         }
       }
     },
+    "Toggle Query History" : {
+
+    },
     "Toggle Query History (⌘⇧H)" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -79285,6 +79305,7 @@
       }
     },
     "Toggle Query History (⌘Y)" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -79341,6 +79362,7 @@
       }
     },
     "Toggle Results (⌘⌥R)" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -82161,6 +82183,9 @@
           }
         }
       }
+    },
+    "Use DuckLake" : {
+
     },
     "Use environment variables in connection fields." : {
       "localizations" : {

@@ -17,15 +17,70 @@ final class DuckDBPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let databaseTypeId = "DuckDB"
     static let databaseDisplayName = "DuckDB"
     static let iconName = "duckdb-icon"
-    static let defaultPort = 0
+    static let defaultPort = 9_494
 
     // MARK: - UI/Capability Metadata
 
     static let isDownloadable = true
-    static let pathFieldRole: PathFieldRole = .filePath
+    static let pathFieldRole: PathFieldRole = .database
     static let requiresAuthentication = false
-    static let connectionMode: ConnectionMode = .fileBased
-    static let urlSchemes: [String] = ["duckdb"]
+    static let connectionMode: ConnectionMode = .apiOnly
+    static let urlSchemes: [String] = ["duckdb", "quack"]
+
+    static let additionalConnectionFields: [ConnectionField] = [
+        ConnectionField(
+            id: "duckdbMode",
+            label: String(localized: "Connection Type"),
+            defaultValue: "local",
+            fieldType: .dropdown(options: [
+                ConnectionField.DropdownOption(value: "local", label: String(localized: "Local File")),
+                ConnectionField.DropdownOption(value: "remote", label: String(localized: "Remote (Quack, experimental)"))
+            ]),
+            section: .authentication
+        ),
+        ConnectionField(
+            id: "duckdbFilePath",
+            label: String(localized: "Database File"),
+            placeholder: "/path/to/database.duckdb",
+            required: true,
+            section: .authentication,
+            visibleWhen: FieldVisibilityRule(fieldId: "duckdbMode", values: ["local"])
+        ),
+        ConnectionField(
+            id: "duckdbHost",
+            label: String(localized: "Host"),
+            placeholder: "localhost",
+            required: true,
+            section: .authentication,
+            visibleWhen: FieldVisibilityRule(fieldId: "duckdbMode", values: ["remote"])
+        ),
+        ConnectionField(
+            id: "duckdbPort",
+            label: String(localized: "Port"),
+            placeholder: "9494",
+            defaultValue: "9494",
+            fieldType: .number,
+            section: .authentication,
+            visibleWhen: FieldVisibilityRule(fieldId: "duckdbMode", values: ["remote"])
+        ),
+        ConnectionField(
+            id: "duckdbToken",
+            label: String(localized: "Token"),
+            fieldType: .secure,
+            section: .authentication,
+            hidesPassword: true,
+            visibleWhen: FieldVisibilityRule(fieldId: "duckdbMode", values: ["remote"])
+        ),
+        ConnectionField(
+            id: "duckdbAlias",
+            label: String(localized: "Database Alias"),
+            placeholder: "remotedb",
+            required: true,
+            defaultValue: "remotedb",
+            section: .authentication,
+            visibleWhen: FieldVisibilityRule(fieldId: "duckdbMode", values: ["remote"])
+        )
+    ]
     static let fileExtensions: [String] = ["duckdb", "ddb"]
     static let brandColorHex = "#FFD900"
     static let supportsDatabaseSwitching = false
@@ -147,8 +202,27 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     // MARK: - Connection
 
+    private var isRemoteMode: Bool {
+        config.additionalFields["duckdbMode"] == "remote"
+    }
+
+    private var remoteAlias: String? {
+        guard isRemoteMode else { return nil }
+        let alias = (config.additionalFields["duckdbAlias"] ?? "").trimmingCharacters(in: .whitespaces)
+        return alias.isEmpty ? "remotedb" : alias
+    }
+
     func connect() async throws {
-        let path = expandPath(config.database)
+        if isRemoteMode {
+            try await connectRemote()
+        } else {
+            try await connectLocal()
+        }
+    }
+
+    private func connectLocal() async throws {
+        let rawPath = config.additionalFields["duckdbFilePath"].flatMap { $0.isEmpty ? nil : $0 } ?? config.database
+        let path = expandPath(rawPath)
 
         if !FileManager.default.fileExists(atPath: path) {
             let directory = (path as NSString).deletingLastPathComponent
@@ -161,15 +235,66 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
 
         try await connectionActor.open(path: path)
+        await enableExtensionAutoloading()
+        await captureInterruptHandle()
+    }
 
-        // Enable auto-install and auto-load of extensions (e.g. core_functions)
+    private func connectRemote() async throws {
+        let host = (config.additionalFields["duckdbHost"] ?? "").trimmingCharacters(in: .whitespaces)
+        let aliasInput = (config.additionalFields["duckdbAlias"] ?? "").trimmingCharacters(in: .whitespaces)
+        let portInput = config.additionalFields["duckdbPort"] ?? ""
+        let token = config.additionalFields["duckdbToken"] ?? ""
+
+        guard QuackConnectBuilder.isValidHost(host) else {
+            throw DuckDBPluginError.connectionFailed(
+                String(localized: "Host is required for a remote DuckDB connection")
+            )
+        }
+        guard let port = QuackConnectBuilder.normalizedPort(portInput) else {
+            throw DuckDBPluginError.connectionFailed(
+                String(localized: "Port must be a number between 1 and 65535")
+            )
+        }
+        let alias = aliasInput.isEmpty ? "remotedb" : aliasInput
+
+        try await connectionActor.open(path: ":memory:")
+        await enableExtensionAutoloading()
+        await loadQuackExtension()
+
+        if !token.isEmpty {
+            try await connectionActor.executeQuery(QuackConnectBuilder.secretSQL(token: token))
+        }
+
+        try await connectionActor.executeQuery(QuackConnectBuilder.attachSQL(host: host, port: port, alias: alias))
+        try await connectionActor.executeQuery(QuackConnectBuilder.useSQL(alias: alias))
+
+        stateLock.lock()
+        _currentSchema = "main"
+        stateLock.unlock()
+
+        await captureInterruptHandle()
+    }
+
+    private func enableExtensionAutoloading() async {
         do {
             try await connectionActor.executeQuery("SET autoinstall_known_extensions=1")
             try await connectionActor.executeQuery("SET autoload_known_extensions=1")
         } catch {
             Self.logger.warning("Failed to enable DuckDB extension autoloading: \(error.localizedDescription)")
         }
+    }
 
+    private func loadQuackExtension() async {
+        for statement in ["INSTALL quack", "LOAD quack"] {
+            do {
+                try await connectionActor.executeQuery(statement)
+            } catch {
+                Self.logger.warning("DuckDB '\(statement)' failed: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    private func captureInterruptHandle() async {
         if let conn = await connectionActor.connectionHandleForInterrupt {
             setInterruptHandle(conn)
         }
@@ -592,6 +717,10 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func fetchSchemas() async throws -> [String] {
         let query = "SELECT schema_name FROM information_schema.schemata ORDER BY schema_name"
+        if let remoteAlias {
+            let schemas = (try? await execute(query: query))?.rows.compactMap { $0[safe: 0]?.asText } ?? []
+            return schemas.isEmpty ? ["main"] : schemas
+        }
         let result = try await execute(query: query)
         return result.rows.compactMap { $0[safe: 0]?.asText }
     }
@@ -607,6 +736,9 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Database Operations
 
     func fetchDatabases() async throws -> [String] {
+        if let remoteAlias {
+            return [remoteAlias]
+        }
         let query = "SELECT database_name FROM duckdb_databases() ORDER BY database_name"
         let result = try await execute(query: query)
         return result.rows.compactMap { row in
@@ -876,4 +1008,3 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
     }
 }
-

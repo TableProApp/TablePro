@@ -5,11 +5,11 @@ description: Connect to DuckDB databases with TablePro
 
 # DuckDB
 
-DuckDB is an embedded analytical database, optimized for OLAP workloads. TablePro supports connecting to DuckDB database files for browsing tables, running queries, and managing schemas.
+DuckDB is an embedded analytical database, optimized for OLAP workloads. TablePro connects to a local DuckDB file or to a remote DuckDB server over the Quack protocol, for browsing tables, running queries, and managing schemas.
 
-The DuckDB driver plugin (1.0.19) bundles DuckDB 1.5.2, with DuckLake 1.0 support.
+The DuckDB driver plugin bundles DuckDB 1.5.3, with DuckLake 1.0 and Quack remote support.
 
-## Connecting to a DuckDB database
+## Connecting to a local DuckDB file
 
 <Steps>
   <Step title="Create a new connection">
@@ -18,7 +18,7 @@ The DuckDB driver plugin (1.0.19) bundles DuckDB 1.5.2, with DuckLake 1.0 suppor
   <Step title="Select DuckDB">
     Choose **DuckDB** from the database type list.
   </Step>
-  <Step title="Choose your database file">
+  <Step title="Keep Connection Type set to Local File">
     Click **Browse** to select an existing `.duckdb` file, or enter the path to create a new database.
   </Step>
   <Step title="Connect">
@@ -26,10 +26,34 @@ The DuckDB driver plugin (1.0.19) bundles DuckDB 1.5.2, with DuckLake 1.0 suppor
   </Step>
 </Steps>
 
+## Connecting to a remote DuckDB server (Quack)
+
+Quack is DuckDB's client-server protocol. A DuckDB server exposes itself with `quack_serve`, and TablePro attaches to it as a remote database.
+
+<Steps>
+  <Step title="Select DuckDB and switch to Remote (Quack)">
+    In the connection form, set **Connection Type** to **Remote (Quack, experimental)**.
+  </Step>
+  <Step title="Enter the server details">
+    Fill in the **Host** and **Port** (9494 by default), the **Token** the server was started with, and a **Database Alias** for the attached remote.
+  </Step>
+  <Step title="Connect">
+    Click **Connect**. TablePro opens an in-memory DuckDB, registers the token as a secret, and attaches the remote server.
+  </Step>
+</Steps>
+
+<Warning>
+Remote (Quack) is experimental and matches the Quack beta. You can connect and run SQL against the remote (for example `SELECT * FROM alias.main.your_table`), but the sidebar does not list remote tables: the Quack beta cannot enumerate a remote catalog (`SHOW TABLES` and `information_schema` queries are rejected with a "multiple streaming scans" error). DuckLake over Quack is not supported yet for the same reason. Browse and DuckLake support are expected once Quack stabilizes in DuckDB 2.0. On macOS the Quack extension downloads from the DuckDB extension registry on first use, so the first remote connection needs network access.
+</Warning>
+
 ## Connection URL
 
 ```text
+# Local file
 duckdb:///path/to/database.duckdb
+
+# Remote (Quack)
+quack://host:9494/alias
 ```
 
 See [Connection URL Reference](/databases/connection-urls) for all parameters.
@@ -42,7 +66,7 @@ Double-click any `.duckdb` file in Finder to open it directly in TablePro.
 
 The iOS app supports DuckDB too. In the connection form, pick DuckDB and either turn on **In-Memory Database** or open a `.duckdb`/`.ddb` file through the Files app. Opened files keep working across launches through a security-scoped bookmark, so edits write back to the original file.
 
-The iOS build links the `core_functions`, `json`, `parquet`, and `icu` extensions. Runtime extension autoloading is off, so extensions that download on demand (such as `httpfs`) are not available on iOS. Large in-memory databases are bounded by the app's memory budget.
+The iOS build statically links the `core_functions`, `json`, `parquet`, `icu`, `httpfs`, and `quack` extensions, so remote Quack connections work on iOS without a download. Runtime extension autoloading stays off, so other on-demand extensions are not available on iOS. Large in-memory databases are bounded by the app's memory budget.
 
 ## Querying files directly
 

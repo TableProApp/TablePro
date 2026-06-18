@@ -8,27 +8,40 @@ set -euo pipefail
 #   - ios-arm64_x86_64-simulator   (Apple Silicon + Intel simulators)
 #
 # DuckDB ships no official iOS binary, so we compile it from source with the
-# leetal/ios-cmake toolchain. Extensions (json, parquet, icu) are linked
-# statically. Remote extension autoloading/autoinstall is disabled: iOS apps
-# may not download executable code (App Store Review Guideline 2.5.2), and the
-# sandbox blocks it anyway.
+# leetal/ios-cmake toolchain. Extensions are linked statically through
+# scripts/duckdb-ios-extensions.cmake (core_functions, json, parquet, icu,
+# autocomplete, httpfs, quack). Remote extension autoloading/autoinstall is
+# disabled: iOS apps may not download executable code (App Store Review
+# Guideline 2.5.2), and the sandbox blocks it anyway. Static linking is what
+# lets remote Quack connections work on iOS without a download.
 #
-# Requirements: macOS, Xcode command line tools, cmake, git, libtool, lipo.
+# quack needs httpfs, and httpfs needs OpenSSL for TLS. We link the OpenSSL that
+# already ships in Libs/ios (OpenSSL-SSL/OpenSSL-Crypto.xcframework). Those slices
+# are ios-arm64 (device) and ios-arm64-simulator (arm64 simulator). There is no
+# x86_64 simulator OpenSSL slice, so the x86_64 simulator DuckDB slice cannot
+# link httpfs/quack. Build OpenSSL for x86_64-simulator first, or drop the
+# SIMULATOR64 slice if Intel-simulator support is not needed.
+#
+# Requirements: macOS, Xcode command line tools, cmake, git, libtool, lipo, and
+# Libs/ios populated (scripts/download-libs.sh).
 #
 # IMPORTANT: DUCKDB_VERSION must match the bundled macOS libduckdb.a so both
 # platforms behave identically. Confirm with the version shown in the app
-# (duckdb_library_version) on macOS, then pin the same tag here.
+# (duckdb_library_version) on macOS, then pin the same tag here. When you bump
+# DuckDB, also update the httpfs/quack pins in duckdb-ios-extensions.cmake.
 #
 # Usage:
 #   scripts/build-duckdb-ios.sh [duckdb-version]
-#   DUCKDB_VERSION=v1.3.2 scripts/build-duckdb-ios.sh
+#   DUCKDB_VERSION=v1.5.3 scripts/build-duckdb-ios.sh
 
-DUCKDB_VERSION="${1:-${DUCKDB_VERSION:-v1.5.2}}"
-CORE_EXTENSIONS="${CORE_EXTENSIONS:-core_functions;json;parquet;icu}"
+DUCKDB_VERSION="${1:-${DUCKDB_VERSION:-v1.5.3}}"
 DEPLOYMENT_TARGET="${DEPLOYMENT_TARGET:-15.0}"
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 OUT_DIR="$REPO_ROOT/Libs/ios"
+EXTENSION_CONFIG="$REPO_ROOT/scripts/duckdb-ios-extensions.cmake"
+OPENSSL_SSL_XCFRAMEWORK="$OUT_DIR/OpenSSL-SSL.xcframework"
+OPENSSL_CRYPTO_XCFRAMEWORK="$OUT_DIR/OpenSSL-Crypto.xcframework"
 WORK_DIR="$(mktemp -d /tmp/duckdb-ios.XXXXXX)"
 TOOLCHAIN="$WORK_DIR/ios.toolchain.cmake"
 TOOLCHAIN_URL="https://raw.githubusercontent.com/leetal/ios-cmake/master/ios.toolchain.cmake"
@@ -37,8 +50,12 @@ for tool in cmake git libtool lipo xcodebuild; do
   command -v "$tool" >/dev/null 2>&1 || { echo "error: '$tool' is required" >&2; exit 1; }
 done
 
-echo "Building DuckDB $DUCKDB_VERSION for iOS (extensions: $CORE_EXTENSIONS)"
+echo "Building DuckDB $DUCKDB_VERSION for iOS (extensions: $EXTENSION_CONFIG)"
 echo "Work dir: $WORK_DIR"
+
+for xcframework in "$OPENSSL_SSL_XCFRAMEWORK" "$OPENSSL_CRYPTO_XCFRAMEWORK"; do
+  [ -d "$xcframework" ] || { echo "error: missing $xcframework; run scripts/download-libs.sh" >&2; exit 1; }
+done
 
 echo "Fetching ios-cmake toolchain..."
 curl -fSL -o "$TOOLCHAIN" "$TOOLCHAIN_URL"
@@ -54,8 +71,15 @@ git clone --depth 1 --branch "$DUCKDB_VERSION" https://github.com/duckdb/duckdb.
 # detection fails. The value only labels the build (extension autoloading is
 # off), so a descriptive string is enough.
 build_platform() {
-  local platform="$1" archs="$2" out_lib="$3" duckdb_platform="$4"
+  local platform="$1" archs="$2" out_lib="$3" duckdb_platform="$4" openssl_slice="$5"
   local build_dir="$WORK_DIR/build-$platform"
+
+  local openssl_include="$OPENSSL_SSL_XCFRAMEWORK/$openssl_slice/Headers"
+  local openssl_ssl_lib="$OPENSSL_SSL_XCFRAMEWORK/$openssl_slice/libssl.a"
+  local openssl_crypto_lib="$OPENSSL_CRYPTO_XCFRAMEWORK/$openssl_slice/libcrypto.a"
+  for path in "$openssl_include" "$openssl_ssl_lib" "$openssl_crypto_lib"; do
+    [ -e "$path" ] || { echo "error: OpenSSL slice missing $path (need an OpenSSL build for $openssl_slice)" >&2; exit 1; }
+  done
 
   # The linked-extension registration in DuckDB core (extension_helper.cpp) is
   # gated on GENERATED_EXTENSION_HEADERS plus a DUCKDB_EXTENSION_<NAME>_LINKED
@@ -73,11 +97,16 @@ build_platform() {
   linked_defines+=" -DDUCKDB_EXTENSION_JSON_LINKED=1"
   linked_defines+=" -DDUCKDB_EXTENSION_PARQUET_LINKED=1"
   linked_defines+=" -DDUCKDB_EXTENSION_ICU_LINKED=1"
+  linked_defines+=" -DDUCKDB_EXTENSION_AUTOCOMPLETE_LINKED=1"
+  linked_defines+=" -DDUCKDB_EXTENSION_HTTPFS_LINKED=1"
+  linked_defines+=" -DDUCKDB_EXTENSION_QUACK_LINKED=1"
   linked_defines+=" -I$build_dir/codegen/include"
   linked_defines+=" -I$ext_root/core_functions/include"
   linked_defines+=" -I$ext_root/json/include"
   linked_defines+=" -I$ext_root/parquet/include"
   linked_defines+=" -I$ext_root/icu/include"
+  linked_defines+=" -I$ext_root/autocomplete/include"
+  linked_defines+=" -I$openssl_include"
 
   echo "Building DuckDB for PLATFORM=$platform (archs: $archs)..."
   cmake -S "$WORK_DIR/duckdb" -B "$build_dir" -G "Unix Makefiles" \
@@ -95,7 +124,11 @@ build_platform() {
     -DBUILD_BENCHMARKS=0 \
     -DENABLE_EXTENSION_AUTOLOADING=0 \
     -DENABLE_EXTENSION_AUTOINSTALL=0 \
-    -DCORE_EXTENSIONS="$CORE_EXTENSIONS"
+    -DOPENSSL_ROOT_DIR="$OPENSSL_SSL_XCFRAMEWORK/$openssl_slice" \
+    -DOPENSSL_INCLUDE_DIR="$openssl_include" \
+    -DOPENSSL_SSL_LIBRARY="$openssl_ssl_lib" \
+    -DOPENSSL_CRYPTO_LIBRARY="$openssl_crypto_lib" \
+    -DEXTENSION_CONFIGS="$EXTENSION_CONFIG"
 
   cmake --build "$build_dir" --config Release -j "$(sysctl -n hw.ncpu)"
 
@@ -133,12 +166,20 @@ SIM_ARM64_LIB="$WORK_DIR/libduckdb-sim-arm64.a"
 SIM_X86_LIB="$WORK_DIR/libduckdb-sim-x86_64.a"
 SIM_LIB="$WORK_DIR/libduckdb-sim.a"
 
-build_platform "OS64" "arm64" "$DEVICE_LIB" "ios_arm64"
-build_platform "SIMULATORARM64" "arm64" "$SIM_ARM64_LIB" "iossimulator_arm64"
-build_platform "SIMULATOR64" "x86_64" "$SIM_X86_LIB" "iossimulator_amd64"
+build_platform "OS64" "arm64" "$DEVICE_LIB" "ios_arm64" "ios-arm64"
+build_platform "SIMULATORARM64" "arm64" "$SIM_ARM64_LIB" "iossimulator_arm64" "ios-arm64-simulator"
 
-echo "Combining simulator slices..."
-lipo -create "$SIM_ARM64_LIB" "$SIM_X86_LIB" -output "$SIM_LIB"
+# The x86_64 simulator slice needs an x86_64-simulator OpenSSL, which the bundled
+# OpenSSL xcframework does not ship. Build it opt-in once that OpenSSL slice
+# exists; otherwise the simulator slice is arm64 only (fine on Apple Silicon).
+if [ "${BUILD_X86_SIMULATOR:-0}" = "1" ]; then
+  build_platform "SIMULATOR64" "x86_64" "$SIM_X86_LIB" "iossimulator_amd64" "ios-x86_64-simulator"
+  echo "Combining simulator slices..."
+  lipo -create "$SIM_ARM64_LIB" "$SIM_X86_LIB" -output "$SIM_LIB"
+else
+  echo "Skipping x86_64 simulator slice (set BUILD_X86_SIMULATOR=1 with an x86_64 OpenSSL slice to include it)"
+  cp "$SIM_ARM64_LIB" "$SIM_LIB"
+fi
 
 # The xcframework exposes the public C API header to consumers.
 HEADERS_DIR="$WORK_DIR/include"

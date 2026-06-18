@@ -285,6 +285,8 @@ extension PluginMetadataRegistry {
             "Enum": ["ENUM"]
         ]
 
+        let duckdbConnectionFields = Self.duckdbConnectionFields
+
         let cassandraDialect = SQLDialectDescriptor(
             identifierQuote: "\"",
             keywords: [
@@ -811,18 +813,18 @@ extension PluginMetadataRegistry {
                 )
             )),
             ("DuckDB", PluginMetadataSnapshot(
-                displayName: "DuckDB", iconName: "duckdb-icon", defaultPort: 0,
+                displayName: "DuckDB", iconName: "duckdb-icon", defaultPort: 9_494,
                 requiresAuthentication: false, supportsForeignKeys: true, supportsSchemaEditing: true,
                 isDownloadable: true, primaryUrlScheme: "duckdb", parameterStyle: .dollar,
                 navigationModel: .standard,
                 explainVariants: [
                     ExplainVariant(id: "explain", label: "EXPLAIN", sqlPrefix: "EXPLAIN"),
                 ],
-                pathFieldRole: .filePath,
-                supportsHealthMonitor: false, urlSchemes: ["duckdb"], postConnectActions: [],
+                pathFieldRole: .database,
+                supportsHealthMonitor: false, urlSchemes: ["duckdb", "quack"], postConnectActions: [],
                 brandColorHex: "#FFD900",
                 queryLanguageName: "SQL", editorLanguage: .sql,
-                connectionMode: .fileBased, supportsDatabaseSwitching: false,
+                connectionMode: .apiOnly, supportsDatabaseSwitching: false,
                 supportsColumnReorder: false,
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
                     supportsSchemaSwitching: false,
@@ -857,8 +859,9 @@ extension PluginMetadataRegistry {
                     columnTypesByCategory: duckdbColumnTypes
                 ),
                 connection: PluginMetadataSnapshot.ConnectionConfig(
+                    additionalConnectionFields: duckdbConnectionFields,
                     category: .analytical,
-                    tagline: String(localized: "Embedded analytical SQL")
+                    tagline: String(localized: "Embedded and remote analytical SQL")
                 )
             )),
             ("Cassandra", PluginMetadataSnapshot(
