@@ -29,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Toolbar button tooltips now show each action's real keyboard shortcut and follow your custom bindings, instead of a fixed value. The Switch Connection tooltip showed the wrong shortcut. (#1694)
 - The row detail panel no longer stays blank when a table is opened in a second tab. The panel now shows the selected row right away instead of only after the inspector is toggled.
 - The sidebar filter now stays put when you open another tab. Before, opening a second table tab cleared the filter text and reset the table list to show everything.
+- Fixed a crash when browsing the database tree on servers with many schemas, such as PostgreSQL. The sidebar tree is now a native outline view that loads each database and schema on demand.
 
 ## [0.51.1] - 2026-06-16
 

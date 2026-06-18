@@ -3,6 +3,7 @@ import Foundation
 import Testing
 
 @Suite("DatabaseTreeMetadataService")
+@MainActor
 struct DatabaseTreeMetadataServiceTests {
     private typealias ObjectsKey = DatabaseTreeMetadataService.ObjectsKey
 
