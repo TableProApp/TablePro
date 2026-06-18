@@ -193,14 +193,14 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         splitView.dividerStyle = .thin
         splitView.isVertical = true
 
-        sidebarContainer = SidebarContainerViewController(rootView: AnyView(buildSidebarView()))
+        sidebarContainer = SidebarContainerViewController(rootView: AnyView(Color.clear))
         sidebarSplitItem = NSSplitViewItem(sidebarWithViewController: sidebarContainer)
         sidebarSplitItem.canCollapse = true
         sidebarSplitItem.minimumThickness = Self.sidebarMinThickness
         sidebarSplitItem.maximumThickness = Self.sidebarMaxThickness
         addSplitViewItem(sidebarSplitItem)
 
-        detailHosting = NSHostingController(rootView: AnyView(buildDetailView()))
+        detailHosting = NSHostingController(rootView: AnyView(Color.clear))
         detailSplitItem = NSSplitViewItem(viewController: detailHosting)
         detailSplitItem.minimumThickness = Self.detailMinThickness
         detailSplitItem.holdingPriority = .defaultLow
@@ -216,12 +216,7 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         splitView.autosaveName = splitAutosaveName
         applyDefaultCollapseStateIfNoAutosave()
 
-        if let session = currentSession, session.driver != nil, let coordinator = sessionState?.coordinator {
-            sidebarContainer.updateSidebarState(
-                SharedSidebarState.forConnection(session.connection.id),
-                windowState: coordinator.windowSidebarState
-            )
-        }
+        rebuildPanes()
     }
 
     override func splitViewDidResizeSubviews(_ notification: Notification) {
