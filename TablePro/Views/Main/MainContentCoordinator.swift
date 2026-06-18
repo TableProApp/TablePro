@@ -963,13 +963,13 @@ final class MainContentCoordinator {
                 )
                 switch decision {
                 case .authorized:
-                    executeQueryInternal(sql)
+                    executeQueryInternal(sql, isAutoLoad: true)
                 case .denied(let reason):
                     tabManager.mutate(at: index) { $0.execution.errorMessage = reason }
                 }
             }
         } else {
-            executeQueryInternal(sql)
+            executeQueryInternal(sql, isAutoLoad: true)
         }
     }
 
@@ -1116,7 +1116,8 @@ final class MainContentCoordinator {
     }
 
     internal func executeQueryInternal(
-        _ sql: String
+        _ sql: String,
+        isAutoLoad: Bool = false
     ) {
         guard let (selectedTab, index) = tabManager.selectedTabAndIndex,
               !selectedTab.execution.isExecuting else { return }
@@ -1168,6 +1169,21 @@ final class MainContentCoordinator {
 
         currentQueryTask = Task { [weak self] in
             guard let self else { return }
+
+            if isAutoLoad {
+                do {
+                    try await services.databaseManager.ensureConnected(conn)
+                } catch {
+                    await MainActor.run { [weak self] in
+                        guard let self else { return }
+                        tabManager.mutate(tabId: tabId) { $0.execution.isExecuting = false }
+                        currentQueryTask = nil
+                        toolbarState.setExecuting(false)
+                        needsLazyLoad = true
+                    }
+                    return
+                }
+            }
 
             let schemaTask: Task<FetchedTableSchema, Error>?
             if needsMetadataFetch, let tableName {
@@ -1262,6 +1278,10 @@ final class MainContentCoordinator {
                     toolbarState.setExecuting(false)
                     if error is CancellationError || Task.isCancelled { return }
                     guard capturedGeneration == queryGeneration else { return }
+                    if isAutoLoad, services.databaseManager.driver(for: connectionId)?.status != .connected {
+                        needsLazyLoad = true
+                        return
+                    }
                     handleQueryExecutionError(error, sql: sql, tabId: tabId, connection: conn)
                 }
             }

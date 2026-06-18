@@ -30,6 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The row detail panel no longer stays blank when a table is opened in a second tab. The panel now shows the selected row right away instead of only after the inspector is toggled.
 - The sidebar filter now stays put when you open another tab. Before, opening a second table tab cleared the filter text and reset the table list to show everything.
 - Fixed a crash when browsing the database tree on servers with many schemas, such as PostgreSQL. The sidebar tree is now a native outline view that loads each database and schema on demand.
+- Reopening the app no longer shows a "Not connected to database" error when it restores a table tab on a connection that is still reconnecting, such as one over SSH. The tab waits for the connection and loads on its own.
 
 ## [0.51.1] - 2026-06-16
 
