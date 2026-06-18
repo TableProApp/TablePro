@@ -12,9 +12,8 @@ internal struct FavoritesTabView: View {
     @State private var showRemoveLinkedFolderAlert = false
     @FocusState private var isRenameFocused: Bool
     let connectionId: UUID
-    let sharedSidebarState: SharedSidebarState
+    @Bindable private var sharedSidebarState: SharedSidebarState
     let tables: [TableInfo]
-    @Bindable private var sidebarState: ConnectionSidebarState
     private var coordinator: MainContentCoordinator?
 
     private var searchText: String { sharedSidebarState.favoritesSearchText }
@@ -43,7 +42,6 @@ internal struct FavoritesTabView: View {
         self.connectionId = connectionId
         self.sharedSidebarState = sharedSidebarState
         self.tables = tables
-        self.sidebarState = ConnectionSidebarState.shared(for: connectionId)
         _viewModel = State(wrappedValue: FavoritesSidebarViewModel(connectionId: connectionId))
         self.coordinator = coordinator
     }
@@ -163,7 +161,7 @@ internal struct FavoritesTabView: View {
         _ items: [FavoriteNode],
         filteredTables: [TableInfo]
     ) -> some View {
-        List(selection: $sidebarState.selectedFavorite) {
+        List(selection: $sharedSidebarState.selectedFavorite) {
             if !filteredTables.isEmpty {
                 Section(String(localized: "Tables")) {
                     ForEach(filteredTables) { table in
@@ -281,7 +279,7 @@ internal struct FavoritesTabView: View {
     }
 
     private func deleteSelectedNode() {
-        guard let selection = sidebarState.selectedFavorite else { return }
+        guard let selection = sharedSidebarState.selectedFavorite else { return }
         switch selection {
         case .table(let database, let schema, let name):
             if let table = favoriteTable(database: database, schema: schema, name: name) {

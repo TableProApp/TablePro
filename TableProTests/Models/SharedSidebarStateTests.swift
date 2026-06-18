@@ -105,4 +105,19 @@ struct SharedSidebarStateTests {
         SharedSidebarState.removeConnection(id1)
         SharedSidebarState.removeConnection(id2)
     }
+
+    // MARK: - Favorite Selection
+
+    @Test("selectedFavorite persists across registry lookups for same connection")
+    @MainActor
+    func selectedFavoritePersists() {
+        let id = UUID()
+        let selection = FavoriteSelection.node(id: "fav-\(id.uuidString)")
+        let a = SharedSidebarState.forConnection(id)
+        a.selectedFavorite = selection
+        let b = SharedSidebarState.forConnection(id)
+        #expect(b.selectedFavorite == selection)
+        a.selectedFavorite = nil
+        SharedSidebarState.removeConnection(id)
+    }
 }
