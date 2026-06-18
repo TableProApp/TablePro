@@ -237,10 +237,9 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
             installToolbar(coordinator: sessionState.coordinator)
         }
 
-        if let currentSession, let coordinator = sessionState?.coordinator {
+        if let currentSession, sessionState?.coordinator != nil {
             sidebarContainer.updateSidebarState(
-                SharedSidebarState.forConnection(currentSession.connection.id),
-                windowState: coordinator.windowSidebarState
+                SharedSidebarState.forConnection(currentSession.connection.id)
             )
         }
 
@@ -311,7 +310,7 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
                 sessionState?.coordinator.teardown()
                 sessionState = nil
                 currentSession = nil
-                sidebarContainer.updateSidebarState(nil, windowState: nil)
+                sidebarContainer.updateSidebarState(nil)
                 sidebarContainer.rootView = AnyView(buildSidebarView())
             }
             return
@@ -346,10 +345,9 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
 
     private func rebuildPanes() {
         sidebarContainer.rootView = AnyView(buildSidebarView())
-        if let currentSession, let coordinator = sessionState?.coordinator {
+        if let currentSession, sessionState?.coordinator != nil {
             sidebarContainer.updateSidebarState(
-                SharedSidebarState.forConnection(currentSession.connection.id),
-                windowState: coordinator.windowSidebarState
+                SharedSidebarState.forConnection(currentSession.connection.id)
             )
         }
         detailHosting.rootView = AnyView(buildDetailView())

@@ -24,6 +24,9 @@ internal enum SidebarLayout: String, CaseIterable, Sendable {
 final class SharedSidebarState {
     var redisKeyTreeViewModel: RedisKeyTreeViewModel?
 
+    var searchText: String = ""
+    var favoritesSearchText: String = ""
+
     var selectedSidebarTab: SidebarTab {
         didSet {
             UserDefaults.standard.set(

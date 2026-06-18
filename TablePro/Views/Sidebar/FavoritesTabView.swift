@@ -12,12 +12,12 @@ internal struct FavoritesTabView: View {
     @State private var showRemoveLinkedFolderAlert = false
     @FocusState private var isRenameFocused: Bool
     let connectionId: UUID
-    let windowState: WindowSidebarState
+    let sharedSidebarState: SharedSidebarState
     let tables: [TableInfo]
     @Bindable private var sidebarState: ConnectionSidebarState
     private var coordinator: MainContentCoordinator?
 
-    private var searchText: String { windowState.favoritesSearchText }
+    private var searchText: String { sharedSidebarState.favoritesSearchText }
     private var activeDatabase: String? {
         let name = coordinator?.activeDatabaseName ?? ""
         return name.isEmpty ? nil : name
@@ -39,9 +39,9 @@ internal struct FavoritesTabView: View {
         "\(schema ?? "")\u{1}\(name)"
     }
 
-    init(connectionId: UUID, windowState: WindowSidebarState, tables: [TableInfo], coordinator: MainContentCoordinator?) {
+    init(connectionId: UUID, sharedSidebarState: SharedSidebarState, tables: [TableInfo], coordinator: MainContentCoordinator?) {
         self.connectionId = connectionId
-        self.windowState = windowState
+        self.sharedSidebarState = sharedSidebarState
         self.tables = tables
         self.sidebarState = ConnectionSidebarState.shared(for: connectionId)
         _viewModel = State(wrappedValue: FavoritesSidebarViewModel(connectionId: connectionId))
