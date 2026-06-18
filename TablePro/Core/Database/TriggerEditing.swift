@@ -6,6 +6,7 @@
 //  with per-engine transaction wrapping or rollback-buffer semantics.
 //
 
+import Combine
 import Foundation
 import os
 

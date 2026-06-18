@@ -53,7 +53,7 @@ struct TriggerDetailView: View {
     @State private var pendingDelete: TriggerInfo?
     @State private var actionError: String?
 
-    private var canEdit: Bool { connection.supportsTriggerEditing }
+    private var canEdit: Bool { connection.type.supportsTriggerEditing }
 
     var body: some View {
         if isLoading {
