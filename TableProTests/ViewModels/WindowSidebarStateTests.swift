@@ -2,9 +2,10 @@
 //  WindowSidebarStateTests.swift
 //  TableProTests
 //
-//  Pins per-window scoping of sidebar state. Regression guard for #1313 where
+//  Pins per-window scoping of table selection. Regression guard for #1313 where
 //  selectedTables was shared across windows of the same connection, causing
-//  Cmd+T to jump focus back to a sibling window.
+//  Cmd+T to jump focus back to a sibling window. Sidebar filter text is
+//  connection-scoped and lives in SharedSidebarState; see SharedSidebarStateTests.
 //
 
 import Foundation
@@ -24,27 +25,5 @@ struct WindowSidebarStateTests {
 
         #expect(windowA.selectedTables == [users])
         #expect(windowB.selectedTables.isEmpty)
-    }
-
-    @Test
-    func twoInstancesHoldIndependentSearchText() {
-        let windowA = WindowSidebarState()
-        let windowB = WindowSidebarState()
-
-        windowA.searchText = "users"
-
-        #expect(windowA.searchText == "users")
-        #expect(windowB.searchText.isEmpty)
-    }
-
-    @Test
-    func twoInstancesHoldIndependentFavoritesSearch() {
-        let windowA = WindowSidebarState()
-        let windowB = WindowSidebarState()
-
-        windowA.favoritesSearchText = "daily"
-
-        #expect(windowA.favoritesSearchText == "daily")
-        #expect(windowB.favoritesSearchText.isEmpty)
     }
 }

@@ -56,16 +56,24 @@ internal struct TableReference: Hashable, Sendable {
     let tableName: String
     let alias: String?
     let schema: String?
+    let derivedColumns: [String]?
 
-    init(tableName: String, alias: String?, schema: String? = nil) {
+    init(tableName: String, alias: String?, schema: String? = nil, derivedColumns: [String]? = nil) {
         self.tableName = tableName
         self.alias = alias
         self.schema = schema
+        self.derivedColumns = derivedColumns
     }
 
     /// Returns the identifier that should be used to reference this table
     var identifier: String {
         alias ?? tableName
+    }
+
+    /// A derived table (subquery or CTE) carries its own column list parsed from
+    /// the subquery's SELECT list, rather than resolving columns from the schema.
+    var isDerived: Bool {
+        derivedColumns != nil
     }
 }
 
@@ -251,6 +259,8 @@ final class SQLContextAnalyzer {
         "|WINDOW|FETCH|FOR)\\b|[;()]|$)"
     )
 
+    private static let derivedTableParser = DerivedTableParser()
+
     // MARK: - UTF-16 Helpers
 
     /// Check if a UTF-16 code unit is whitespace (space, tab, newline, CR)
@@ -307,18 +317,16 @@ final class SQLContextAnalyzer {
 
         // Find all table references in the current statement
         var tableReferences = extractTableReferences(from: currentStatement)
-        var seenReferences = Set<TableReference>(tableReferences)
 
         // Extract CTEs from the current statement
         let cteNames = extractCTENames(from: currentStatement)
 
-        // Add CTE names as table references
-        for cteName in cteNames {
-            let cteRef = TableReference(tableName: cteName, alias: nil)
-            if seenReferences.insert(cteRef).inserted {
-                tableReferences.append(cteRef)
-            }
-        }
+        // Resolve derived tables (FROM/JOIN subqueries and CTEs) to their
+        // SELECT-list columns so `alias.` completes the subquery's output.
+        let derivedTables = Self.derivedTableParser.parse(currentStatement)
+        mergeDerivedTables(derivedTables, cteNames: cteNames, into: &tableReferences)
+
+        var seenReferences = Set<TableReference>(tableReferences)
 
         // Extract ALTER TABLE table name and add to references
         if let alterTableName = extractAlterTableName(from: currentStatement) {
@@ -779,6 +787,43 @@ final class SQLContextAnalyzer {
         }
 
         return references
+    }
+
+    /// Attach derived-table columns to references and add any derived table or
+    /// CTE not already in scope. A derived alias wins over a plain reference of
+    /// the same identifier (e.g. a CTE used directly in a FROM clause).
+    private func mergeDerivedTables(
+        _ derivedTables: [DerivedTable],
+        cteNames: [String],
+        into references: inout [TableReference]
+    ) {
+        let derivedColumnsByAlias = Dictionary(
+            derivedTables.map { ($0.alias.lowercased(), $0.columns) },
+            uniquingKeysWith: { first, _ in first }
+        )
+
+        var consumed = Set<String>()
+        for index in references.indices {
+            let ref = references[index]
+            for key in [ref.tableName.lowercased(), ref.identifier.lowercased()] {
+                guard let columns = derivedColumnsByAlias[key] else { continue }
+                consumed.insert(key)
+                references[index] = TableReference(
+                    tableName: ref.tableName, alias: ref.alias, schema: ref.schema, derivedColumns: columns
+                )
+                break
+            }
+        }
+
+        var present = Set(references.map { $0.identifier.lowercased() }).union(consumed)
+        for derived in derivedTables where present.insert(derived.alias.lowercased()).inserted {
+            references.append(
+                TableReference(tableName: derived.alias, alias: derived.alias, derivedColumns: derived.columns)
+            )
+        }
+        for cteName in cteNames where present.insert(cteName.lowercased()).inserted {
+            references.append(TableReference(tableName: cteName, alias: nil))
+        }
     }
 
     /// Parse each comma-separated entry in a FROM list into a table reference.

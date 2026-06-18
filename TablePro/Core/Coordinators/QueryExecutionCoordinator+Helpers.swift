@@ -524,8 +524,11 @@ extension QueryExecutionCoordinator {
     }
 
     func restoreSchemaAndRunQuery(_ schema: String) async {
-        guard let driver = DatabaseManager.shared.driver(for: parent.connectionId),
-              let schemaDriver = driver as? SchemaSwitchable,
+        guard let driver = DatabaseManager.shared.driver(for: parent.connectionId) else {
+            parent.needsLazyLoad = true
+            return
+        }
+        guard let schemaDriver = driver as? SchemaSwitchable,
               schemaDriver.currentSchema != nil else {
             parent.runQuery()
             return

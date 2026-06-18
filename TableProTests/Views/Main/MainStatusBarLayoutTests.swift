@@ -42,8 +42,23 @@ struct MainStatusBarLayoutTests {
                 onRemove: {}
             ),
             onToggleFilters: {},
-            onFetchAll: nil
+            onFetchAll: nil,
+            onAddRow: nil
         )
         #expect(type(of: view.body) != Never.self)
+    }
+
+    @Test("Add Row button shows only in Data mode when adding is allowed")
+    func addRowVisibilityByMode() {
+        #expect(MainStatusBarView.showsAddRow(viewMode: .data, canAddRow: true))
+        #expect(!MainStatusBarView.showsAddRow(viewMode: .structure, canAddRow: true))
+        #expect(!MainStatusBarView.showsAddRow(viewMode: .json, canAddRow: true))
+    }
+
+    @Test("Add Row button is hidden when adding is not allowed")
+    func addRowHiddenWhenNotAllowed() {
+        #expect(!MainStatusBarView.showsAddRow(viewMode: .data, canAddRow: false))
+        #expect(!MainStatusBarView.showsAddRow(viewMode: .structure, canAddRow: false))
+        #expect(!MainStatusBarView.showsAddRow(viewMode: .json, canAddRow: false))
     }
 }

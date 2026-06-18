@@ -62,6 +62,9 @@ extension DatabaseManager {
                         session.driver = result.driver
                         session.effectiveConnection = result.effectiveConnection
                         session.status = .connected
+                        if let schemaDriver = result.driver as? SchemaSwitchable {
+                            session.currentSchema = schemaDriver.currentSchema
+                        }
                     }
                     return true
                 } catch {
@@ -155,7 +158,7 @@ extension DatabaseManager {
         await restoreSchemaAndDatabase(
             on: driver,
             savedSchema: session.currentSchema,
-            savedDatabase: session.currentDatabase
+            savedDatabase: databaseSwitchRequiresReconnect(session.connection) ? nil : session.currentDatabase
         )
 
         return ReconnectResult(driver: driver, effectiveConnection: connectionForDriver)
@@ -176,6 +179,11 @@ extension DatabaseManager {
         }
 
         await executeStartupCommands(startupCommands, on: driver, connectionName: connectionName)
+    }
+
+    private func databaseSwitchRequiresReconnect(_ connection: DatabaseConnection) -> Bool {
+        PluginMetadataRegistry.shared.snapshot(forTypeId: connection.type.pluginTypeId)?
+            .capabilities.requiresReconnectForDatabaseSwitch ?? false
     }
 
     func restoreSchemaAndDatabase(
@@ -272,7 +280,7 @@ extension DatabaseManager {
             await restoreSchemaAndDatabase(
                 on: driver,
                 savedSchema: activeSessions[sessionId]?.currentSchema,
-                savedDatabase: activeSessions[sessionId]?.currentDatabase
+                savedDatabase: databaseSwitchRequiresReconnect(session.connection) ? nil : activeSessions[sessionId]?.currentDatabase
             )
 
             // Update session
@@ -280,6 +288,9 @@ extension DatabaseManager {
                 session.driver = driver
                 session.status = .connected
                 session.effectiveConnection = effectiveConnection
+                if let schemaDriver = driver as? SchemaSwitchable {
+                    session.currentSchema = schemaDriver.currentSchema
+                }
                 if let passwordOverride, !session.connection.usesAWSIAM {
                     session.cachedPassword = passwordOverride
                 }

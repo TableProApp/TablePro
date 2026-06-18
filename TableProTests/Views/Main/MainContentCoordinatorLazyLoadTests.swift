@@ -165,6 +165,20 @@ struct MainContentCoordinatorLazyLoadTests {
         #expect(coordinator.needsLazyLoad == true)
     }
 
+    @Test("restoreSchemaAndRunQuery defers via needsLazyLoad instead of running a query when the driver is not ready")
+    func restoreSchemaDefersWhenDriverNil() async {
+        let (coordinator, tabManager) = makeCoordinator()
+        let tabId = addTableTab(to: tabManager)
+        coordinator.needsLazyLoad = false
+
+        await coordinator.restoreSchemaAndRunQuery("public")
+
+        #expect(coordinator.needsLazyLoad == true)
+        if let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) {
+            #expect(tabManager.tabs[idx].execution.isExecuting == false)
+        }
+    }
+
     // MARK: - Idempotency
 
     @Test("Idempotent: repeated calls with the same loaded state are no-ops")

@@ -96,9 +96,10 @@ extension MainContentCoordinator {
                     )
                     changeManager.reloadVersion += 1
                     Task {
-                        await switchDatabase(to: newTab.tableContext.databaseName)
+                        await switchDatabase(to: newTab.tableContext.databaseName, clearTabs: false)
+                        lazyLoadCurrentTabIfNeeded()
                     }
-                    return  // switchDatabase will re-execute the query
+                    return
                 }
             }
 

@@ -105,7 +105,6 @@ internal struct SQLTokenFormatter {
 
     // Mutable state
     private var output = ""
-    private var indent = 0
     private var clauseStack: [ClauseContext] = []
     private var afterNewline = true
     private var isFirstClause = true
@@ -210,8 +209,8 @@ internal struct SQLTokenFormatter {
             output += String(repeating: "\n", count: newlineCount)
             afterNewline = true
             isFirstClause = true
-            indent = 0
             clauseStack.removeAll()
+            selectColumnIndentStack.removeAll()
             inSelectColumns = false
 
         case ",":
@@ -256,7 +255,6 @@ internal struct SQLTokenFormatter {
             }
             output += "\n"
             selectColumnIndentStack.append(selectColumnIndent)
-            indent += 1
             afterNewline = true
             isFirstClause = true
             suppressNextSpace = false
@@ -268,7 +266,6 @@ internal struct SQLTokenFormatter {
             output += " ("
             output += "\n"
             selectColumnIndentStack.append(selectColumnIndent)
-            indent += 1
             afterNewline = true
             isFirstClause = true
             suppressNextSpace = false
@@ -279,7 +276,6 @@ internal struct SQLTokenFormatter {
         if clauseStack.contains(.createTable) && !clauseStack.contains(.createTableBody) {
             output += " ("
             output += "\n"
-            indent += 1
             afterNewline = true
             suppressNextSpace = false
             clauseStack.append(.createTableBody)
@@ -318,9 +314,8 @@ internal struct SQLTokenFormatter {
             return
         }
         // Block paren (subquery or CREATE TABLE body): pop back to the block opener
-        if let idx = clauseStack.lastIndex(where: { $0 == .subquery || $0 == .createTableBody }) {
+        if let idx = clauseStack.lastIndex(where: Self.isBlockContext) {
             clauseStack.removeSubrange(idx...)
-            indent = max(0, indent - 1)
             output += "\n" + indentStr() + ")"
             afterNewline = false
             isFirstClause = false
@@ -375,7 +370,7 @@ internal struct SQLTokenFormatter {
             appendToken(kw)
         case "HAVING", "LIMIT", "OFFSET":
             handleClauseKeyword(kw: kw, context: nil)
-        case "UNION", "INTERSECT", "EXCEPT":
+        case "UNION", "INTERSECT", "EXCEPT", "MINUS":
             handleSetOperation(upper: upper, kw: kw, next: next)
         case "ALL":
             // standalone ALL (not consumed by UNION ALL)
@@ -528,14 +523,23 @@ internal struct SQLTokenFormatter {
 
     private mutating func handleSetOperation(upper: String, kw: String, next: SQLToken?) {
         inSelectColumns = false
-        indent = 0
-        clauseStack.removeAll()
+        if let blockIdx = clauseStack.lastIndex(where: Self.isBlockContext) {
+            clauseStack.removeSubrange((blockIdx + 1)...)
+        } else {
+            clauseStack.removeAll()
+        }
+
+        var line = kw
         if upper == "UNION" && next?.upperValue == "ALL" {
             let allKw = options.uppercaseKeywords ? "ALL" : "all"
-            output += "\n\n" + kw + " " + allKw + "\n\n"
+            line += " " + allKw
             skipCount = 1 // skip ALL
+        }
+
+        if clauseStack.contains(where: Self.isBlockContext) {
+            output += "\n" + indentStr() + line + "\n"
         } else {
-            output += "\n\n" + kw + "\n\n"
+            output += "\n\n" + line + "\n\n"
         }
         afterNewline = true
         isFirstClause = true
@@ -599,6 +603,16 @@ internal struct SQLTokenFormatter {
     // MARK: - Helpers
 
     private var currentContext: ClauseContext? { clauseStack.last }
+
+    private static func isBlockContext(_ ctx: ClauseContext) -> Bool {
+        ctx == .subquery || ctx == .createTableBody
+    }
+
+    private var indent: Int {
+        clauseStack.reduce(into: 0) { depth, ctx in
+            if Self.isBlockContext(ctx) { depth += 1 }
+        }
+    }
 
     private mutating func replaceTop(with ctx: ClauseContext) {
         if !clauseStack.isEmpty { clauseStack.removeLast() }

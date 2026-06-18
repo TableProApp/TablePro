@@ -251,3 +251,40 @@ struct KeyboardSettingsMigrationTests {
         #expect(settings.shortcut(for: .executeQuery)?.isCleared == true)
     }
 }
+
+@Suite("Shortcut hint")
+struct ShortcutHintTests {
+    @Test("Switch Connection default hint shows Control+Command+C")
+    func switchConnectionDefaultHint() {
+        let hint = KeyboardSettings.default.shortcutHint(
+            String(localized: "Switch Connection"),
+            for: .switchConnection
+        )
+        #expect(hint == "Switch Connection (⌃⌘C)")
+    }
+
+    @Test("Hint reflects a user override")
+    func hintReflectsOverride() {
+        var settings = KeyboardSettings.default
+        settings.setShortcut(.character("j", command: true), for: .switchConnection)
+        let hint = settings.shortcutHint(String(localized: "Switch Connection"), for: .switchConnection)
+        #expect(hint == "Switch Connection (⌘J)")
+    }
+
+    @Test("Cleared shortcut shows label only")
+    func clearedShortcutShowsLabelOnly() {
+        var settings = KeyboardSettings.default
+        settings.clearShortcut(for: .switchConnection)
+        let hint = settings.shortcutHint(String(localized: "Switch Connection"), for: .switchConnection)
+        #expect(hint == "Switch Connection")
+    }
+
+    @Test("Action without a default shows label only")
+    func unsetShortcutShowsLabelOnly() {
+        let hint = KeyboardSettings.default.shortcutHint(
+            String(localized: "Manage Connections"),
+            for: .manageConnections
+        )
+        #expect(hint == "Manage Connections")
+    }
+}
