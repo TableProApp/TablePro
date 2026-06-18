@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The data view bottom bar groups the row count with the pagination controls, and the rows-per-page menu shows plain numbers instead of locale-grouped values like "1.000". Click the row range to change rows per page.
 - Selecting a Redis namespace in the sidebar key tree now filters the open database view to that prefix, with paging, instead of opening a separate tab limited to one batch of keys. (#1701)
 
 ### Fixed

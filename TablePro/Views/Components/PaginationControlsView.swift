@@ -27,18 +27,18 @@ struct PaginationControlsView: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            pageSizeMenu
+            rangeMenu
             navigationCluster
         }
     }
 
-    // MARK: - Page Size Menu
+    // MARK: - Range / Page Size Menu
 
-    private var pageSizeMenu: some View {
+    private var rangeMenu: some View {
         Menu {
             Picker(String(localized: "Rows per page"), selection: pageSizeBinding) {
                 ForEach(Self.pageSizePresets, id: \.self) { size in
-                    Text(size.formatted()).tag(size)
+                    Text(PaginationState.pageSizeLabel(size)).tag(size)
                 }
             }
             .pickerStyle(.inline)
@@ -52,13 +52,15 @@ struct PaginationControlsView: View {
                 showCustomPopover = true
             }
         } label: {
-            Text(pageSizeLabel)
+            Text(rangeLabel)
+                .lineLimit(1)
         }
         .menuStyle(.borderlessButton)
         .fixedSize()
         .controlSize(.small)
         .help(String(localized: "Rows per page"))
-        .accessibilityLabel(String(localized: "Rows per page"))
+        .accessibilityLabel(rangeLabel)
+        .accessibilityHint(String(localized: "Rows per page"))
         .overlay(alignment: .bottom) {
             Color.clear
                 .frame(width: 0, height: 0)
@@ -72,8 +74,8 @@ struct PaginationControlsView: View {
         Binding(get: { pagination.pageSize }, set: { onPageSizeChange($0) })
     }
 
-    private var pageSizeLabel: String {
-        pagination.pageSize.formatted()
+    private var rangeLabel: String {
+        pagination.rangeText(loadedRowCount: loadedRowCount) ?? PaginationState.pageSizeLabel(pagination.pageSize)
     }
 
     // MARK: - Navigation

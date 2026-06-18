@@ -57,40 +57,39 @@ struct StatusBarSnapshotTests {
     @Test("No rows reports an empty state")
     func rowInfoNoRows() {
         let snapshot = makeSnapshot(rowCount: 0)
-        #expect(snapshot.rowInfoText(selectedCount: 0) == String(localized: "No rows"))
+        #expect(snapshot.statusText(selectedCount: 0) == String(localized: "No rows"))
     }
 
     @Test("Selecting every loaded row reports the all-selected text")
     func rowInfoAllSelected() {
         let snapshot = makeSnapshot(rowCount: 5)
-        #expect(snapshot.rowInfoText(selectedCount: 5) == String(format: String(localized: "All %d rows selected"), 5))
+        #expect(snapshot.statusText(selectedCount: 5) == String(format: String(localized: "All %d rows selected"), 5))
     }
 
     @Test("Selecting some rows reports the partial-selection text")
     func rowInfoPartialSelection() {
         let snapshot = makeSnapshot(rowCount: 5)
-        #expect(snapshot.rowInfoText(selectedCount: 2) == String(format: String(localized: "%d of %d rows selected"), 2, 5))
+        #expect(snapshot.statusText(selectedCount: 2) == String(format: String(localized: "%d of %d rows selected"), 2, 5))
     }
 
-    @Test("A table with a known total reports the offset range")
-    func rowInfoTableRange() {
+    @Test("A paginated table defers its range to the pagination control")
+    func tableRangeDefersToPagination() {
         let snapshot = makeSnapshot(
             rowCount: 1_000,
             pagination: PaginationState(totalRowCount: 5_000, pageSize: 1_000, currentPage: 3, currentOffset: 2_000)
         )
-        let text = snapshot.rowInfoText(selectedCount: 0)
-        #expect(text.contains("2001-3000"))
+        #expect(snapshot.showsPaginationControls)
+        #expect(snapshot.statusText(selectedCount: 0) == nil)
     }
 
-    @Test("A paged table with unknown total reports a question mark for the total")
-    func rowInfoUnknownTotalRange() {
+    @Test("A small single-page table reports a plain row count")
+    func tableSinglePageRowCount() {
         let snapshot = makeSnapshot(
-            rowCount: 50,
-            pagination: PaginationState(totalRowCount: nil, pageSize: 50, currentPage: 2, currentOffset: 50)
+            rowCount: 5,
+            pagination: PaginationState(totalRowCount: nil, pageSize: 50, currentPage: 1)
         )
-        let text = snapshot.rowInfoText(selectedCount: 0)
-        #expect(text.contains("51-100"))
-        #expect(text.contains("?"))
+        #expect(!snapshot.showsPaginationControls)
+        #expect(snapshot.statusText(selectedCount: 0) == String(format: String(localized: "%@ rows"), 5.formatted(.number.grouping(.automatic))))
     }
 
     @Test("A truncated query reports the showing-rows text")
@@ -98,7 +97,7 @@ struct StatusBarSnapshotTests {
         var pagination = PaginationState(pageSize: 1_000)
         pagination.hasMoreRows = true
         let snapshot = makeSnapshot(tabType: .query, rowCount: 1_000, pagination: pagination)
-        let text = snapshot.rowInfoText(selectedCount: 0)
-        #expect(text.contains("1,000") || text.contains("1000"))
+        let text = snapshot.statusText(selectedCount: 0)
+        #expect(text?.contains("1,000") == true || text?.contains("1000") == true)
     }
 }
