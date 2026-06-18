@@ -210,12 +210,32 @@ final class DatabaseTreeMetadataService {
 
     func refreshLoadedTables(connectionId: UUID) async {
         let keys = tablesState.keys.filter { $0.connectionId == connectionId }
-        for key in keys {
-            await tablesDedup.cancel(key: key)
-            tablesState.removeValue(forKey: key)
+        await withTaskGroup(of: Void.self) { group in
+            for key in keys {
+                group.addTask { @MainActor in
+                    await self.reloadTablesInPlace(key)
+                }
+            }
         }
-        for key in keys {
-            await loadTables(connectionId: connectionId, database: key.database, schema: key.schema)
+    }
+
+    private func reloadTablesInPlace(_ key: ObjectsKey) async {
+        guard isConnected(key.connectionId) else { return }
+        await tablesDedup.cancel(key: key)
+        do {
+            let list = try await tablesDedup.execute(key: key) { [self] in
+                try await withDriver(connectionId: key.connectionId, database: key.database) { driver in
+                    try await driver.fetchTables(schema: key.schema)
+                }
+            }
+            let next: MetadataLoadState<[TableInfo]> = .loaded(list)
+            guard tablesState[key] != next else { return }
+            tablesState[key] = next
+        } catch is CancellationError {
+        } catch {
+            Self.logger.warning(
+                "tables refresh failed db=\(key.database, privacy: .public) schema=\(key.schema ?? "nil", privacy: .public) error=\(error.localizedDescription, privacy: .public)"
+            )
         }
     }
 
