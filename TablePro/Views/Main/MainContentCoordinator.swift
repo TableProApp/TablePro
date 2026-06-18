@@ -615,6 +615,7 @@ final class MainContentCoordinator {
         } catch {
             Self.logger.warning("Schema refresh failed: \(error.localizedDescription, privacy: .public)")
         }
+        await DatabaseTreeMetadataService.shared.refreshLoadedTables(connectionId: connectionId)
         await reconcilePostSchemaLoad()
     }
 

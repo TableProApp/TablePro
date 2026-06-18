@@ -208,6 +208,17 @@ final class DatabaseTreeMetadataService {
         _ = await (tables, routines)
     }
 
+    func refreshLoadedTables(connectionId: UUID) async {
+        let keys = tablesState.keys.filter { $0.connectionId == connectionId }
+        for key in keys {
+            await tablesDedup.cancel(key: key)
+            tablesState.removeValue(forKey: key)
+        }
+        for key in keys {
+            await loadTables(connectionId: connectionId, database: key.database, schema: key.schema)
+        }
+    }
+
     // MARK: - Lifecycle
 
     func handleReconnect(connectionId: UUID) async {
@@ -292,7 +303,7 @@ final class DatabaseTreeMetadataService {
         return ObjectsKey(connectionId: connectionId, database: database, schema: normalized)
     }
 
-    static func connectionObjectKeys(
+    nonisolated static func connectionObjectKeys(
         tableKeys: some Sequence<ObjectsKey>,
         routineKeys: some Sequence<ObjectsKey>,
         connectionId: UUID
