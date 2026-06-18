@@ -29,6 +29,8 @@ struct PaginationControlsView: View {
         HStack(spacing: 8) {
             rangeMenu
             navigationCluster
+                .fixedSize()
+                .layoutPriority(1)
         }
     }
 
@@ -54,9 +56,10 @@ struct PaginationControlsView: View {
         } label: {
             Text(rangeLabel)
                 .lineLimit(1)
+                .truncationMode(.middle)
+                .frame(minWidth: 60, alignment: .leading)
         }
         .menuStyle(.borderlessButton)
-        .fixedSize()
         .controlSize(.small)
         .help(String(localized: "Rows per page"))
         .accessibilityLabel(rangeLabel)

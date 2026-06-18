@@ -68,23 +68,23 @@ struct MainStatusBarView: View {
         snapshot.tabType == .table && snapshot.hasTableName && snapshot.showsPaginationControls
     }
 
-    private var hasStatusText: Bool {
+    private var showsTruncation: Bool {
+        snapshot.tabType == .query && snapshot.pagination.hasMoreRows && !snapshot.pagination.isLoadingMore
+    }
+
+    private func hasStatusText(_ status: String?) -> Bool {
         snapshot.pagination.isLoadingMore
-            || statusText != nil
-            || (snapshot.tabType == .query && snapshot.pagination.hasMoreRows)
+            || status != nil
+            || showsTruncation
             || snapshot.statusMessage != nil
     }
 
-    private var showsDataNavigation: Bool {
-        showsDataChrome && (hasStatusText || showsPagination)
+    private func hasPrimaryStatus(_ status: String?) -> Bool {
+        snapshot.pagination.isLoadingMore || status != nil
     }
 
-    private var showsActionDivider: Bool {
-        showsActionButtons && showsDataNavigation
-    }
-
-    private var statusText: String? {
-        snapshot.statusText(selectedCount: selectedRowIndices.count)
+    private func showsDataNavigation(_ status: String?) -> Bool {
+        showsDataChrome && (hasStatusText(status) || showsPagination)
     }
 
     var body: some View {
@@ -130,6 +130,7 @@ struct MainStatusBarView: View {
 
     @ViewBuilder
     private var trailingControls: some View {
+        let status = snapshot.statusText(selectedCount: selectedRowIndices.count)
         HStack(spacing: 8) {
             if isStructureMode {
                 if structureState.footer.isActive {
@@ -137,10 +138,10 @@ struct MainStatusBarView: View {
                 }
             } else {
                 actionButtons
-                if showsActionDivider {
+                if showsActionButtons, showsDataNavigation(status) {
                     Divider().frame(height: 16)
                 }
-                dataNavigationGroup
+                dataNavigationGroup(status: status)
             }
         }
     }
@@ -221,10 +222,10 @@ struct MainStatusBarView: View {
     }
 
     @ViewBuilder
-    private var dataNavigationGroup: some View {
-        if showsDataNavigation {
+    private func dataNavigationGroup(status: String?) -> some View {
+        if showsDataNavigation(status) {
             HStack(spacing: 4) {
-                statusCluster
+                statusCluster(status: status)
                 if showsPagination {
                     PaginationControlsView(
                         pagination: snapshot.pagination,
@@ -242,14 +243,6 @@ struct MainStatusBarView: View {
         }
     }
 
-    private var hasPrimaryStatus: Bool {
-        snapshot.pagination.isLoadingMore || statusText != nil
-    }
-
-    private var showsTruncation: Bool {
-        snapshot.tabType == .query && snapshot.pagination.hasMoreRows && !snapshot.pagination.isLoadingMore
-    }
-
     private var statusSeparator: some View {
         Text("·")
             .font(.caption)
@@ -257,7 +250,7 @@ struct MainStatusBarView: View {
     }
 
     @ViewBuilder
-    private var statusCluster: some View {
+    private func statusCluster(status: String?) -> some View {
         if snapshot.pagination.isLoadingMore {
             ProgressView()
                 .controlSize(.small)
@@ -266,15 +259,15 @@ struct MainStatusBarView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .accessibilityLabel(String(localized: "Loading more rows"))
-        } else if let statusText {
-            Text(statusText)
+        } else if let status {
+            Text(status)
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
         }
 
         if showsTruncation {
-            if hasPrimaryStatus {
+            if hasPrimaryStatus(status) {
                 statusSeparator
             }
             Text("truncated")
@@ -290,7 +283,7 @@ struct MainStatusBarView: View {
         }
 
         if let statusMessage = snapshot.statusMessage {
-            if hasPrimaryStatus || showsTruncation {
+            if hasPrimaryStatus(status) || showsTruncation {
                 statusSeparator
             }
             Text(statusMessage)
