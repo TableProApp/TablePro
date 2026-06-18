@@ -31,6 +31,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
     private var lastSelection: Set<DatabaseTreeTableRef> = []
     private var isApplyingExpansion = false
     private var isSyncingSelection = false
+    private var isReloading = false
     private var hasRenderedOnce = false
     private var reconcileScheduled = false
     private var observationGeneration = 0
@@ -78,10 +79,8 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
         if !hasRenderedOnce {
             hasRenderedOnce = true
             refresh()
-            beginObserving()
         } else if changed {
             refresh()
-            beginObserving()
         }
     }
 
@@ -119,7 +118,6 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
         Task { @MainActor in
             self.reconcileScheduled = false
             self.refresh()
-            self.beginObserving()
         }
     }
 
@@ -142,10 +140,13 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
 
     private func refresh() {
         guard let outlineView else { return }
+        isReloading = true
         childrenCache.removeAll()
         outlineView.reloadData()
         applyDesiredExpansion()
         syncSelectionToModel()
+        isReloading = false
+        beginObserving()
     }
 
     // MARK: - Node building
@@ -522,7 +523,7 @@ extension DatabaseTreeOutlineCoordinator: NSOutlineViewDelegate {
     }
 
     func outlineViewSelectionDidChange(_ notification: Notification) {
-        guard !isSyncingSelection else { return }
+        guard !isSyncingSelection, !isReloading else { return }
         let refs = Set(selectedRefs())
         if let added = SelectionDelta.singleAddition(old: lastSelection, new: refs) {
             open(added, activateGridFocus: false)
