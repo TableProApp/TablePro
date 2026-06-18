@@ -32,7 +32,12 @@ extension MainContentView {
                     !selectedTab.tableContext.databaseName.isEmpty,
                     selectedTab.tableContext.databaseName != session.activeDatabase
                 {
-                    Task { await coordinator.switchDatabase(to: selectedTab.tableContext.databaseName) }
+                    Task {
+                        await coordinator.switchDatabase(
+                            to: selectedTab.tableContext.databaseName, clearTabs: false
+                        )
+                        coordinator.lazyLoadCurrentTabIfNeeded()
+                    }
                 } else if let selectedTab = tabManager.selectedTab,
                     let tabSchema = selectedTab.tableContext.schemaName,
                     !tabSchema.isEmpty,
