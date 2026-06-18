@@ -86,7 +86,7 @@ struct SidebarView: View {
             pendingDeletes: pendingDeletes,
             tableOperationOptions: tableOperationOptions
         )
-        vm.searchText = windowState.searchText
+        vm.searchText = sidebarState.searchText
         if databaseType == .redis, let existingVM = sidebarState.redisKeyTreeViewModel {
             vm.redisKeyTreeViewModel = existingVM
         }
@@ -109,7 +109,7 @@ struct SidebarView: View {
                 if let coordinator {
                     FavoritesTabView(
                         connectionId: connectionId,
-                        windowState: coordinator.windowSidebarState,
+                        sharedSidebarState: sidebarState,
                         tables: tables,
                         coordinator: coordinator
                     )
@@ -118,7 +118,7 @@ struct SidebarView: View {
                 }
             }
         }
-        .onChange(of: windowState.searchText) { _, newValue in
+        .onChange(of: sidebarState.searchText) { _, newValue in
             viewModel.searchText = newValue
         }
         .onAppear {

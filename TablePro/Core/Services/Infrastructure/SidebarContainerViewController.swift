@@ -11,7 +11,6 @@ internal final class SidebarContainerViewController: NSViewController {
     private let searchField = NSSearchField()
     private var hostingController: NSHostingController<AnyView>
     private var sidebarState: SharedSidebarState?
-    private var windowState: WindowSidebarState?
     private var observationTask: Task<Void, Never>?
 
     var rootView: AnyView {
@@ -64,11 +63,10 @@ internal final class SidebarContainerViewController: NSViewController {
         view.window?.makeFirstResponder(searchField)
     }
 
-    func updateSidebarState(_ state: SharedSidebarState?, windowState: WindowSidebarState?) {
+    func updateSidebarState(_ state: SharedSidebarState?) {
         observationTask?.cancel()
         self.sidebarState = state
-        self.windowState = windowState
-        guard let state, let windowState else {
+        guard let state else {
             searchField.isHidden = true
             return
         }
@@ -76,21 +74,21 @@ internal final class SidebarContainerViewController: NSViewController {
         observationTask = Task { @MainActor [weak self] in
             guard let self else { return }
             while !Task.isCancelled {
-                self.syncFromState(state, windowState: windowState)
-                await Self.awaitChange(state: state, windowState: windowState)
+                self.syncFromState(state)
+                await Self.awaitChange(state: state)
             }
         }
     }
 
-    private static func awaitChange(state: SharedSidebarState, windowState: WindowSidebarState) async {
+    private static func awaitChange(state: SharedSidebarState) async {
         let box = ObservationContinuationBox()
         await withTaskCancellationHandler {
             await withCheckedContinuation { continuation in
                 box.attach(continuation)
                 withObservationTracking {
                     _ = state.selectedSidebarTab
-                    _ = windowState.searchText
-                    _ = windowState.favoritesSearchText
+                    _ = state.searchText
+                    _ = state.favoritesSearchText
                 } onChange: {
                     box.resume()
                 }
@@ -104,15 +102,15 @@ internal final class SidebarContainerViewController: NSViewController {
         observationTask?.cancel()
     }
 
-    private func syncFromState(_ state: SharedSidebarState, windowState: WindowSidebarState) {
+    private func syncFromState(_ state: SharedSidebarState) {
         let activeText: String
         let placeholder: String
         switch state.selectedSidebarTab {
         case .tables:
-            activeText = windowState.searchText
+            activeText = state.searchText
             placeholder = String(localized: "Filter")
         case .favorites:
-            activeText = windowState.favoritesSearchText
+            activeText = state.favoritesSearchText
             placeholder = String(localized: "Filter favorites")
         }
 
@@ -141,12 +139,12 @@ extension SidebarContainerViewController: NSSearchFieldDelegate {
     }
 
     private func writeSearchText(_ text: String) {
-        guard let sidebarState, let windowState else { return }
+        guard let sidebarState else { return }
         switch sidebarState.selectedSidebarTab {
         case .tables:
-            windowState.searchText = text
+            sidebarState.searchText = text
         case .favorites:
-            windowState.favoritesSearchText = text
+            sidebarState.favoritesSearchText = text
         }
     }
 }

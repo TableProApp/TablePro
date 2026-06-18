@@ -24,6 +24,9 @@ internal enum SidebarLayout: String, CaseIterable, Sendable {
 final class SharedSidebarState {
     var redisKeyTreeViewModel: RedisKeyTreeViewModel?
 
+    var searchText: String = ""
+    var favoritesSearchText: String = ""
+
     var selectedSidebarTab: SidebarTab {
         didSet {
             UserDefaults.standard.set(
@@ -48,6 +51,18 @@ final class SharedSidebarState {
                 databaseFilterSelected,
                 connectionId: connectionId
             )
+        }
+    }
+
+    var selectedFavorite: FavoriteSelection? {
+        didSet {
+            guard oldValue != selectedFavorite else { return }
+            let key = SidebarPersistenceKey.selectedFavorite(connectionId: connectionId)
+            if let rawValue = selectedFavorite?.rawValue {
+                UserDefaults.standard.set(rawValue, forKey: key)
+            } else {
+                UserDefaults.standard.removeObject(forKey: key)
+            }
         }
     }
 
@@ -83,6 +98,9 @@ final class SharedSidebarState {
             self.sidebarLayout = SharedSidebarState.defaultLayout
         }
         self.databaseFilterSelected = DatabaseTreeFilterStorage.shared.selectedDatabases(connectionId: connectionId)
+        self.selectedFavorite = UserDefaults.standard.string(
+            forKey: SidebarPersistenceKey.selectedFavorite(connectionId: connectionId)
+        ).flatMap(FavoriteSelection.init(rawValue:))
     }
 
     /// Default init for previews and tests
@@ -91,6 +109,7 @@ final class SharedSidebarState {
         self.selectedSidebarTab = .tables
         self.sidebarLayout = .flat
         self.databaseFilterSelected = []
+        self.selectedFavorite = nil
     }
 
     private static var registry: [UUID: SharedSidebarState] = [:]
