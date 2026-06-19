@@ -713,7 +713,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     // MARK: - NSTableViewDataSource
 
     func numberOfRows(in tableView: NSTableView) -> Int {
-        sortedIDs?.count ?? tableRowsProvider().count
+        sortedIDs?.count ?? cachedRowCount
     }
 }
 
