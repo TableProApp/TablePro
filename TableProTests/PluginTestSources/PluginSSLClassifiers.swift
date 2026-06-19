@@ -72,9 +72,6 @@ enum FreeTDSClassifier {
 enum MongoDBClassifier {
     static func classifySSLError(_ message: String) -> SSLHandshakeError? {
         let lower = message.lowercased()
-        if lower.contains("ssl handshake failed") || lower.contains("tls handshake failed") {
-            return .cipherMismatch(serverMessage: message)
-        }
         if lower.contains("certificate verify failed") || lower.contains("ssl certificate") {
             return .untrustedCertificate(serverMessage: message)
         }
@@ -87,7 +84,26 @@ enum MongoDBClassifier {
         if lower.contains("client certificate required") || lower.contains("peer did not return a certificate") {
             return .clientCertRequired(serverMessage: message)
         }
+        if isCipherOrProtocolMismatch(lower) {
+            return .cipherMismatch(serverMessage: message)
+        }
+        if lower.contains("ssl handshake failed") || lower.contains("tls handshake failed") {
+            return .unknown(serverMessage: message)
+        }
         return nil
+    }
+
+    static func isCipherOrProtocolMismatch(_ lower: String) -> Bool {
+        let signatures = [
+            "no shared cipher",
+            "sslv3 alert handshake failure",
+            "wrong version number",
+            "unsupported protocol",
+            "no protocols available",
+            "alert protocol version",
+            "protocol version",
+        ]
+        return signatures.contains { lower.contains($0) }
     }
 }
 

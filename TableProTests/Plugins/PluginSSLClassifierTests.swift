@@ -115,10 +115,28 @@ struct FreeTDSClassifierTests {
 
 @Suite("MongoDB SSL Classifier")
 struct MongoDBClassifierTests {
-    @Test("TLS handshake failed → cipherMismatch")
-    func testTLSHandshake() {
-        guard case .cipherMismatch = MongoDBClassifier.classifySSLError("TLS handshake failed: bad cipher") else {
+    @Test("Atlas internal-error handshake failure → unknown, not cipherMismatch")
+    func testAtlasInternalErrorHandshake() {
+        let message = "No suitable servers found: [TLS handshake failed: internal error (-9838) "
+            + "calling hello on 'ac-zmho1ul-shard-00-00.dsllzcf.mongodb.net:27017']"
+        guard case .unknown = MongoDBClassifier.classifySSLError(message) else {
+            Issue.record("Expected unknown for a generic handshake failure")
+            return
+        }
+    }
+
+    @Test("Genuine cipher/protocol failure → cipherMismatch")
+    func testGenuineCipherMismatch() {
+        guard case .cipherMismatch = MongoDBClassifier.classifySSLError("TLS handshake failed: sslv3 alert handshake failure: no shared cipher") else {
             Issue.record("Expected cipherMismatch")
+            return
+        }
+    }
+
+    @Test("Certificate verify failure → untrustedCertificate")
+    func testCertificateVerifyFailed() {
+        guard case .untrustedCertificate = MongoDBClassifier.classifySSLError("TLS handshake failed: certificate verify failed") else {
+            Issue.record("Expected untrustedCertificate")
             return
         }
     }
