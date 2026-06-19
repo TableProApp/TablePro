@@ -275,7 +275,7 @@ struct SidebarView: View {
             loadingState
         case .failed(let message):
             errorState(message: message)
-        case .loaded where !viewModel.searchText.isEmpty && !hasAnyMatch:
+        case .loaded where !viewModel.filterQuery.isEmpty && !hasAnyMatch:
             noMatchState
         case .loaded(let allTables) where allTables.isEmpty && routines.isEmpty:
             emptyState
@@ -361,7 +361,7 @@ struct SidebarView: View {
             if viewModel.databaseType == .redis, let keyTreeVM = sidebarState.redisKeyTreeViewModel {
                 Section(isExpanded: $viewModel.isRedisKeysExpanded) {
                     RedisKeyTreeView(
-                        nodes: keyTreeVM.displayNodes(searchText: viewModel.searchText),
+                        nodes: keyTreeVM.displayNodes(searchText: viewModel.filterQuery),
                         isLoading: keyTreeVM.isLoading,
                         isTruncated: keyTreeVM.isTruncated,
                         onSelectNamespace: { prefix in

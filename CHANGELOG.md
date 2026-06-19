@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Typing in the sidebar table search stays responsive on databases with thousands of tables; filtering runs after a short pause instead of on every keystroke.
+
 ### Fixed
 
 - Oracle connections no longer crash the app when the server sends a backend message the driver cannot decode; the query fails with a clear error and the connection reconnects. (#483)
