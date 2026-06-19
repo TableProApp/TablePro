@@ -161,6 +161,16 @@ final class OraclePlugin: NSObject, TableProPlugin, DriverPlugin, PluginDiagnost
                 ],
                 supportURL: issuesURL
             )
+        case .protocolError:
+            return PluginDiagnostic(
+                title: String(localized: "Connection Reset"),
+                message: oracleError.message,
+                suggestedActions: [
+                    String(localized: "Run the query again. TablePro reconnects to the server automatically."),
+                    String(localized: "If the same query keeps failing, the server may be returning data the driver cannot decode. File an issue with your Oracle version.")
+                ],
+                supportURL: URL(string: "https://github.com/TableProApp/TablePro/issues/483")
+            )
         case .generic, .notConnected, .connectionFailed, .queryFailed:
             return nil
         }
