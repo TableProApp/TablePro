@@ -230,16 +230,11 @@ extension DatabaseDriver {
     var queryBuildingPluginDriver: (any PluginDatabaseDriver)? { nil }
 
     func quoteIdentifier(_ name: String) -> String {
-        let q = "\""
-        let escaped = name.replacingOccurrences(of: q, with: q + q)
-        return "\(q)\(escaped)\(q)"
+        SQLEscaping.quoteIdentifier(name)
     }
 
     func escapeStringLiteral(_ value: String) -> String {
-        var result = value
-        result = result.replacingOccurrences(of: "'", with: "''")
-        result = result.replacingOccurrences(of: "\0", with: "")
-        return result
+        SQLEscaping.escapeStringLiteral(value)
     }
 
     func createViewTemplate() -> String? { nil }
