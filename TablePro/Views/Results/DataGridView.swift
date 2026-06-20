@@ -109,7 +109,6 @@ struct DataGridView: NSViewRepresentable {
         context.coordinator.tableView = tableView
         installSelectionOverlay(tableView: tableView, coordinator: context.coordinator)
         context.coordinator.attachScrollObservers(scrollView: scrollView)
-        context.coordinator.tableRowsController.attach(tableView)
         context.coordinator.tableRowsProvider = tableRowsProvider
         context.coordinator.tableRowsMutator = tableRowsMutator
         context.coordinator.paginationOffsetProvider = paginationOffsetProvider
@@ -426,7 +425,6 @@ struct DataGridView: NSViewRepresentable {
         coordinator.persistColumnLayoutToStorage()
         coordinator.settingsCancellable = nil
         coordinator.themeCancellable = nil
-        coordinator.tableRowsController.detach()
     }
 
     func makeCoordinator() -> TableViewCoordinator {

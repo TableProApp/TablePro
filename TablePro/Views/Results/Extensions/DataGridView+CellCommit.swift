@@ -26,14 +26,10 @@ extension TableViewCoordinator {
             in: tableView,
             schema: identitySchema
         ) else { return }
-        if case .cellChanged = delta {
-            tableRowsController.apply(.cellChanged(row: row, column: tableColumnIndex))
-        } else {
-            tableView.reloadData(
-                forRowIndexes: IndexSet(integer: row),
-                columnIndexes: IndexSet(integer: tableColumnIndex)
-            )
-        }
+        tableView.reloadData(
+            forRowIndexes: IndexSet(integer: row),
+            columnIndexes: IndexSet(integer: tableColumnIndex)
+        )
     }
 
     @discardableResult

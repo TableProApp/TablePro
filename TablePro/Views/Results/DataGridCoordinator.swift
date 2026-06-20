@@ -109,7 +109,6 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     let cellFactory = DataGridCellFactory()
     let cellRegistry: DataGridCellRegistry
     let columnPool = DataGridColumnPool()
-    let tableRowsController = TableRowsController()
     let selectionController = GridSelectionController()
     var overlayEditor: CellOverlayEditor?
     var overlayViewer: CellOverlayViewer?
@@ -234,7 +233,6 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             }
             tableView.reloadData()
         }
-        tableRowsController.detach()
         delegate = nil
         activeFKPreviewPopover?.close()
         clearFKPreviewState()

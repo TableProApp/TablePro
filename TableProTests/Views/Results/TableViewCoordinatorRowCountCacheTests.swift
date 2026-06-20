@@ -3,6 +3,7 @@
 //  TableProTests
 //
 
+import AppKit
 import SwiftUI
 import TableProPluginKit
 import Testing
@@ -86,6 +87,34 @@ struct TableViewCoordinatorRowCountCacheTests {
 
         #expect(coordinator.cachedRowCount == 4)
         #expect(coordinator.cachedRowCount == coordinator.tableRowsProvider().count)
+    }
+
+    @Test("numberOfRows serves cachedRowCount when unsorted")
+    func numberOfRowsServesCacheWhenUnsorted() {
+        let rows: ContiguousArray<Row> = [
+            Row(id: .existing(0), values: [.text("a")]),
+            Row(id: .existing(1), values: [.text("b")]),
+        ]
+        let coordinator = makeCoordinator(rows: rows)
+        let tableView = NSTableView()
+
+        #expect(coordinator.numberOfRows(in: tableView) == 2)
+        #expect(coordinator.numberOfRows(in: tableView) == coordinator.tableRowsProvider().count)
+    }
+
+    @Test("numberOfRows serves sortedIDs count when sorted")
+    func numberOfRowsServesSortedIDsCountWhenSorted() {
+        let rows: ContiguousArray<Row> = [
+            Row(id: .existing(0), values: [.text("a")]),
+            Row(id: .existing(1), values: [.text("b")]),
+            Row(id: .existing(2), values: [.text("c")]),
+        ]
+        let coordinator = makeCoordinator(rows: rows)
+        let tableView = NSTableView()
+        coordinator.sortedIDs = [.existing(2), .existing(0)]
+        coordinator.updateCache()
+
+        #expect(coordinator.numberOfRows(in: tableView) == 2)
     }
 
     @Test("sortedIDs count takes precedence over cachedRowCount fallback")
