@@ -259,12 +259,6 @@ struct SQLStatementGenerator {
         return ParameterizedStatement(sql: sql, parameters: parameters)
     }
 
-    /// Marker type for SQL function literals that cannot be parameterized
-    private struct SQLFunctionLiteral {
-        let value: String
-        init(_ value: String) { self.value = value }
-    }
-
     // MARK: - UPDATE Generation
 
     func generateUpdateSQL(for change: RowChange) -> ParameterizedStatement? {

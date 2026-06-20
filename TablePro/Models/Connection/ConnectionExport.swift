@@ -6,18 +6,6 @@
 import Foundation
 import UniformTypeIdentifiers
 
-// MARK: - Sheet Binding Wrappers
-
-struct IdentifiableURL: Identifiable {
-    let id = UUID()
-    let url: URL
-}
-
-struct IdentifiableConnections: Identifiable {
-    let id = UUID()
-    let connections: [DatabaseConnection]
-}
-
 // MARK: - UTType
 
 extension UTType {
