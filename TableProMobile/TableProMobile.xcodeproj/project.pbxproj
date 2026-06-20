@@ -22,6 +22,7 @@
 		5AA313542F7EC188008EBA97 /* LibSSH2.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5AA313532F7EC188008EBA97 /* LibSSH2.xcframework */; };
 		5AB9F3E92F7C1D03001F3337 /* TableProDatabase in Frameworks */ = {isa = PBXBuildFile; productRef = 5AB9F3E82F7C1D03001F3337 /* TableProDatabase */; };
 		5AB9F3EB2F7C1D03001F3337 /* TableProModels in Frameworks */ = {isa = PBXBuildFile; productRef = 5AB9F3EA2F7C1D03001F3337 /* TableProModels */; };
+		5A1MPORT00000000000000I1 /* TableProImport in Frameworks */ = {isa = PBXBuildFile; productRef = 5A1MPORT00000000000000I0 /* TableProImport */; };
 		5AB9F3ED2F7C1D03001F3337 /* TableProPluginKit in Frameworks */ = {isa = PBXBuildFile; productRef = 5AB9F3EC2F7C1D03001F3337 /* TableProPluginKit */; };
 		5AB9F3EF2F7C1D03001F3337 /* TableProQuery in Frameworks */ = {isa = PBXBuildFile; productRef = 5AB9F3EE2F7C1D03001F3337 /* TableProQuery */; };
 		5AD1F1B62FB4455700296783 /* TableProMSSQLCore in Frameworks */ = {isa = PBXBuildFile; productRef = 5AD1F1B52FB4455700296783 /* TableProMSSQLCore */; };
@@ -617,6 +618,7 @@
 				5AD1F1B62FB4455700296783 /* TableProMSSQLCore in Frameworks */,
 				5A87EEED2F7F893000D028D0 /* TableProSync in Frameworks */,
 				5AB9F3EB2F7C1D03001F3337 /* TableProModels in Frameworks */,
+				5A1MPORT00000000000000I1 /* TableProImport in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1734,6 +1736,7 @@
 			packageProductDependencies = (
 				5AB9F3E82F7C1D03001F3337 /* TableProDatabase */,
 				5AB9F3EA2F7C1D03001F3337 /* TableProModels */,
+				5A1MPORT00000000000000I0 /* TableProImport */,
 				5AB9F3EC2F7C1D03001F3337 /* TableProPluginKit */,
 				5AB9F3EE2F7C1D03001F3337 /* TableProQuery */,
 				5A87EEEC2F7F893000D028D0 /* TableProSync */,
@@ -2283,6 +2286,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 5AB9F3E72F7C1D03001F3337 /* XCLocalSwiftPackageReference "../Packages/TableProCore" */;
 			productName = TableProMSSQLCore;
+		};
+		5A1MPORT00000000000000I0 /* TableProImport */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 5AB9F3E72F7C1D03001F3337 /* XCLocalSwiftPackageReference "../Packages/TableProCore" */;
+			productName = TableProImport;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

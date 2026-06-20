@@ -6,68 +6,11 @@
 import Combine
 import Foundation
 import os
+import TableProImport
 import TableProPluginKit
 import UniformTypeIdentifiers
 
-// MARK: - Export Error
-
-enum ConnectionExportError: LocalizedError {
-    case encodingFailed
-    case fileWriteFailed(String)
-    case fileReadFailed(String)
-    case invalidFormat
-    case unsupportedVersion(Int)
-    case decodingFailed(String)
-    case requiresPassphrase
-    case decryptionFailed(String)
-
-    var errorDescription: String? {
-        switch self {
-        case .encodingFailed:
-            return String(localized: "Failed to encode connection data")
-        case .fileWriteFailed(let path):
-            return String(format: String(localized: "Failed to write file: %@"), path)
-        case .fileReadFailed(let path):
-            return String(format: String(localized: "Failed to read file: %@"), path)
-        case .invalidFormat:
-            return String(localized: "This file is not a valid TablePro export")
-        case .unsupportedVersion(let version):
-            return String(format: String(localized: "This file requires a newer version of TablePro (format version %d)"), version)
-        case .decodingFailed(let detail):
-            return String(format: String(localized: "Failed to parse connection file: %@"), detail)
-        case .requiresPassphrase:
-            return String(localized: "This file is encrypted and requires a passphrase")
-        case .decryptionFailed(let detail):
-            return String(format: String(localized: "Decryption failed: %@"), detail)
-        }
-    }
-}
-
-// MARK: - Import Preview Types
-
-enum ImportItemStatus {
-    case ready
-    case duplicate(existing: DatabaseConnection)
-    case warnings([String])
-}
-
-struct ImportItem: Identifiable {
-    let id = UUID()
-    let connection: ExportableConnection
-    let status: ImportItemStatus
-}
-
-enum ImportResolution: Hashable {
-    case importNew
-    case skip
-    case replace(existingId: UUID)
-    case importAsCopy
-}
-
-struct ConnectionImportPreview {
-    let envelope: ConnectionExportEnvelope
-    let items: [ImportItem]
-}
+// MARK: - Prepared Import
 
 enum PreparedImportOperation {
     case add(DatabaseConnection)
@@ -356,17 +299,7 @@ enum ConnectionExportService {
             throw ConnectionExportError.requiresPassphrase
         }
 
-        return try decodeData(data)
-    }
-
-    nonisolated static func decodeEncryptedData(_ data: Data, passphrase: String) throws -> ConnectionExportEnvelope {
-        let decryptedData: Data
-        do {
-            decryptedData = try ConnectionExportCrypto.decrypt(data: data, passphrase: passphrase)
-        } catch {
-            throw ConnectionExportError.decryptionFailed(error.localizedDescription)
-        }
-        return try decodeData(decryptedData)
+        return try ConnectionImportDecoder.decodeData(data)
     }
 
     static func restoreCredentials(from envelope: ConnectionExportEnvelope, connectionIdMap: [Int: UUID]) {
@@ -403,33 +336,6 @@ enum ConnectionExportService {
         logger.info("Restored credentials for \(restoredCount) of \(credentials.count) connections")
     }
 
-    /// Decode an envelope from raw JSON data. Can be called from any thread.
-    nonisolated static func decodeData(_ data: Data) throws -> ConnectionExportEnvelope {
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-
-        let envelope: ConnectionExportEnvelope
-        do {
-            envelope = try decoder.decode(ConnectionExportEnvelope.self, from: data)
-        } catch {
-            throw ConnectionExportError.decodingFailed(error.localizedDescription)
-        }
-
-        guard envelope.formatVersion <= currentFormatVersion else {
-            throw ConnectionExportError.unsupportedVersion(envelope.formatVersion)
-        }
-
-        return ConnectionExportEnvelope(
-            formatVersion: envelope.formatVersion,
-            exportedAt: envelope.exportedAt,
-            appVersion: envelope.appVersion,
-            connections: envelope.connections.map { $0.sanitizedForImport() },
-            groups: envelope.groups,
-            tags: envelope.tags,
-            credentials: envelope.credentials
-        )
-    }
-
     static func analyzeImport(_ envelope: ConnectionExportEnvelope) -> ConnectionImportPreview {
         analyzeImport(
             envelope,
@@ -445,74 +351,12 @@ enum ConnectionExportService {
         registeredTypeIds: Set<String>,
         fileExists: (String) -> Bool
     ) -> ConnectionImportPreview {
-        var duplicateMap: [ConnectionImportDuplicateKey: DatabaseConnection] = [:]
-        for existing in existingConnections {
-            let key = duplicateKey(for: existing)
-            if duplicateMap[key] == nil {
-                duplicateMap[key] = existing
-            }
-        }
-
-        let items: [ImportItem] = envelope.connections.map { exportable in
-            let duplicate = duplicateMap[duplicateKey(for: exportable)]
-
-            if let duplicate {
-                return ImportItem(connection: exportable, status: .duplicate(existing: duplicate))
-            }
-
-            var warnings: [String] = []
-
-            // SSH key path check
-            if let ssh = exportable.sshConfig {
-                let keyPath = PathPortability.expandHome(ssh.privateKeyPath)
-                if !keyPath.isEmpty, !fileExists(keyPath) {
-                    warnings.append(String(
-                        format: String(localized: "SSH private key not found: %@"),
-                        ssh.privateKeyPath
-                    ))
-                }
-                for jump in ssh.jumpHosts ?? [] {
-                    let jumpKeyPath = PathPortability.expandHome(jump.privateKeyPath)
-                    if !jumpKeyPath.isEmpty, !fileExists(jumpKeyPath) {
-                        warnings.append(String(
-                            format: String(localized: "Jump host key not found: %@"),
-                            jump.privateKeyPath
-                        ))
-                    }
-                }
-            }
-
-            // SSL cert paths check
-            if let ssl = exportable.sslConfig {
-                for (path, format) in [
-                    (ssl.caCertificatePath, String(localized: "CA certificate not found: %@")),
-                    (ssl.clientCertificatePath, String(localized: "Client certificate not found: %@")),
-                    (ssl.clientKeyPath, String(localized: "Client key not found: %@"))
-                ] {
-                    if let path, !path.isEmpty {
-                        let expanded = PathPortability.expandHome(path)
-                        if !fileExists(expanded) {
-                            warnings.append(String(format: format, path))
-                        }
-                    }
-                }
-            }
-
-            if !registeredTypeIds.contains(exportable.type) {
-                warnings.append(String(
-                    format: String(localized: "Database type \"%@\" is not installed"),
-                    exportable.type
-                ))
-            }
-
-            if !warnings.isEmpty {
-                return ImportItem(connection: exportable, status: .warnings(warnings))
-            }
-
-            return ImportItem(connection: exportable, status: .ready)
-        }
-
-        return ConnectionImportPreview(envelope: envelope, items: items)
+        ConnectionImportAnalyzer.analyze(
+            envelope,
+            existingConnections: existingConnections.map(duplicateCandidate(for:)),
+            registeredTypeIds: registeredTypeIds,
+            fileExists: fileExists
+        )
     }
 
     struct ImportResult {
@@ -890,41 +734,16 @@ enum ConnectionExportService {
         }
     }
 
-    private struct ConnectionImportDuplicateKey: Hashable {
-        let components: [String]
-    }
-
-    private static func duplicateKey(for connection: ExportableConnection) -> ConnectionImportDuplicateKey {
-        ConnectionImportDuplicateKey(
-            components: [
-                normalizedLookupKey(connection.host),
-                String(connection.port),
-                effectiveDatabaseKey(database: connection.database, redisDatabase: connection.redisDatabase),
-                normalizedLookupKey(connection.username)
-            ]
+    private static func duplicateCandidate(for connection: DatabaseConnection) -> ConnectionDuplicateCandidate {
+        ConnectionDuplicateCandidate(
+            id: connection.id,
+            name: connection.name,
+            host: connection.host,
+            port: connection.port,
+            database: connection.database,
+            username: connection.username,
+            redisDatabase: connection.redisDatabase
         )
-    }
-
-    private static func duplicateKey(for connection: DatabaseConnection) -> ConnectionImportDuplicateKey {
-        ConnectionImportDuplicateKey(
-            components: [
-                normalizedLookupKey(connection.host),
-                String(connection.port),
-                effectiveDatabaseKey(database: connection.database, redisDatabase: connection.redisDatabase),
-                normalizedLookupKey(connection.username)
-            ]
-        )
-    }
-
-    private static func effectiveDatabaseKey(database: String?, redisDatabase: Int?) -> String {
-        let normalized = normalizedLookupKey(database)
-        if !normalized.isEmpty {
-            return normalized
-        }
-        if let redisDatabase {
-            return String(redisDatabase)
-        }
-        return ""
     }
 
     private static func tagIdsByName() -> [String: UUID] {

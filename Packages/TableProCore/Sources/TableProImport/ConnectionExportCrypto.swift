@@ -1,20 +1,13 @@
-//
-//  ConnectionExportCrypto.swift
-//  TablePro
-//
-//  AES-256-GCM encryption for connection export files with PBKDF2 key derivation.
-//
-
 import CommonCrypto
 import CryptoKit
 import Foundation
 
-enum ConnectionExportCryptoError: LocalizedError {
+public enum ConnectionExportCryptoError: LocalizedError {
     case invalidPassphrase
     case corruptData
     case unsupportedVersion(UInt8)
 
-    var errorDescription: String? {
+    public var errorDescription: String? {
         switch self {
         case .invalidPassphrase:
             return String(localized: "Incorrect passphrase")
@@ -26,22 +19,21 @@ enum ConnectionExportCryptoError: LocalizedError {
     }
 }
 
-enum ConnectionExportCrypto {
-    private static let magic = Data("TPRO".utf8) // 4 bytes
+public enum ConnectionExportCrypto {
+    private static let magic = Data("TPRO".utf8)
     private static let currentVersion: UInt8 = 1
     private static let saltLength = 32
     private static let nonceLength = 12
     private static let pbkdf2Iterations: UInt32 = 600_000
-    private static let keyLength = 32 // AES-256
+    private static let keyLength = 32
 
-    // Header: magic (4) + version (1) + salt (32) + nonce (12) = 49 bytes
     private static let headerLength = 4 + 1 + saltLength + nonceLength
 
-    static func isEncrypted(_ data: Data) -> Bool {
+    public static func isEncrypted(_ data: Data) -> Bool {
         data.count > headerLength && data.prefix(4) == magic
     }
 
-    static func encrypt(data: Data, passphrase: String) throws -> Data {
+    public static func encrypt(data: Data, passphrase: String) throws -> Data {
         var salt = Data(count: saltLength)
         let saltStatus = salt.withUnsafeMutableBytes { buffer -> OSStatus in
             guard let baseAddress = buffer.baseAddress else { return errSecParam }
@@ -65,7 +57,7 @@ enum ConnectionExportCrypto {
         return result
     }
 
-    static func decrypt(data: Data, passphrase: String) throws -> Data {
+    public static func decrypt(data: Data, passphrase: String) throws -> Data {
         guard data.count > headerLength else {
             throw ConnectionExportCryptoError.corruptData
         }

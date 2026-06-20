@@ -5,6 +5,7 @@
 
 import Foundation
 @testable import TablePro
+import TableProImport
 import Testing
 import UniformTypeIdentifiers
 

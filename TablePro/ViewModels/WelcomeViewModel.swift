@@ -7,6 +7,7 @@ import AppKit
 import Combine
 import os
 import SwiftUI
+import TableProImport
 import TableProPluginKit
 
 enum WelcomeActiveSheet: Identifiable {

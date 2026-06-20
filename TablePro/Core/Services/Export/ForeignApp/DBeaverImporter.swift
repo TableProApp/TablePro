@@ -7,6 +7,7 @@ import AppKit
 import CommonCrypto
 import Foundation
 import os
+import TableProImport
 import TableProPluginKit
 
 struct DBeaverImporter: ForeignAppImporter {

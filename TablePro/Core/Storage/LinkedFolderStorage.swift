@@ -7,6 +7,7 @@
 
 import Foundation
 import os
+import TableProImport
 
 struct LinkedFolder: Codable, Identifiable, Hashable {
     let id: UUID

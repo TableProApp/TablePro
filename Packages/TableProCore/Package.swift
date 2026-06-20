@@ -12,6 +12,7 @@ let package = Package(
         .library(name: "TableProCoreTypes", targets: ["TableProCoreTypes"]),
         .library(name: "TableProPluginKit", targets: ["TableProPluginKit"]),
         .library(name: "TableProModels", targets: ["TableProModels"]),
+        .library(name: "TableProImport", targets: ["TableProImport"]),
         .library(name: "TableProDatabase", targets: ["TableProDatabase"]),
         .library(name: "TableProQuery", targets: ["TableProQuery"]),
         .library(name: "TableProSync", targets: ["TableProSync"]),
@@ -34,6 +35,11 @@ let package = Package(
             name: "TableProModels",
             dependencies: ["TableProPluginKit", "TableProCoreTypes"],
             path: "Sources/TableProModels"
+        ),
+        .target(
+            name: "TableProImport",
+            dependencies: [],
+            path: "Sources/TableProImport"
         ),
         .target(
             name: "TableProDatabase",
@@ -64,6 +70,11 @@ let package = Package(
             name: "TableProModelsTests",
             dependencies: ["TableProModels", "TableProPluginKit"],
             path: "Tests/TableProModelsTests"
+        ),
+        .testTarget(
+            name: "TableProImportTests",
+            dependencies: ["TableProImport"],
+            path: "Tests/TableProImportTests"
         ),
         .testTarget(
             name: "TableProDatabaseTests",

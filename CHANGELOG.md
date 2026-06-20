@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Import connections on iPhone. Open a .tablepro file from Files or AirDrop, or use Import Connections in the list menu. Encrypted files prompt for the passphrase, and you choose how to handle duplicates.
+- Export connections on iPhone from the list menu and share the .tablepro file. Passwords are left out by default; include them by setting a passphrase that encrypts the file.
+
 ### Changed
 
 - Data grid now serves the row count from its existing cache instead of recomputing it on every layout pass, reducing CPU churn while scrolling large result sets.

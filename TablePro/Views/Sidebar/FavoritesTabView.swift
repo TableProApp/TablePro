@@ -1,4 +1,5 @@
 import SwiftUI
+import TableProImport
 
 internal struct FavoritesTabView: View {
     @State private var viewModel: FavoritesSidebarViewModel

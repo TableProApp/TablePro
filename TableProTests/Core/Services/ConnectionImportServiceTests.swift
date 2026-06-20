@@ -1,4 +1,5 @@
 import Foundation
+import TableProImport
 import Testing
 
 @testable import TablePro
@@ -44,12 +45,12 @@ struct ConnectionImportServiceTests {
             fileExists: { _ in true }
         )
 
-        guard case .duplicate(let matched) = preview.items.first?.status else {
+        guard case .duplicate(let matchedId, _) = preview.items.first?.status else {
             Issue.record("Expected duplicate status")
             return
         }
 
-        #expect(matched.id == existing.id)
+        #expect(matchedId == existing.id)
     }
 
     @Test("different username on same host is not a duplicate")
@@ -186,12 +187,12 @@ struct ConnectionImportServiceTests {
             fileExists: { _ in true }
         )
 
-        guard case .duplicate(let matched) = preview.items.first?.status else {
+        guard case .duplicate(let matchedId, _) = preview.items.first?.status else {
             Issue.record("Expected duplicate status for matching Redis database indices")
             return
         }
 
-        #expect(matched.id == existing.id)
+        #expect(matchedId == existing.id)
     }
 
     @Test("replace updates the existing connection")
@@ -484,7 +485,7 @@ struct ConnectionImportServiceTests {
         )
 
         let data = try ConnectionExportService.encode(makeEnvelope(with: [imported]))
-        let decoded = try ConnectionExportService.decodeData(data)
+        let decoded = try ConnectionImportDecoder.decodeData(data)
         let fields = decoded.connections.first?.additionalFields
 
         #expect(fields?["preConnectScript"] == nil)
@@ -515,7 +516,7 @@ struct ConnectionImportServiceTests {
         imported: ExportableConnection,
         existing: DatabaseConnection
     ) -> (ConnectionImportPreview, ImportItem) {
-        let item = ImportItem(connection: imported, status: .duplicate(existing: existing))
+        let item = ImportItem(connection: imported, status: .duplicate(existingId: existing.id, existingName: existing.name))
         let preview = ConnectionImportPreview(
             envelope: makeEnvelope(with: [imported]),
             items: [item]

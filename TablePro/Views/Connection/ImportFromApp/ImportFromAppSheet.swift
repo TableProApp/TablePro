@@ -5,6 +5,7 @@
 
 import AppKit
 import SwiftUI
+import TableProImport
 
 struct ImportFromAppSheet: View {
     var onImported: ((Int) -> Void)?

@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProImport
 import TableProPluginKit
 
 internal enum DeeplinkError: Error, LocalizedError, Equatable {

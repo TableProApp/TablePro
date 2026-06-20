@@ -30,6 +30,7 @@ final class AppState {
 
     var pendingConnectionId: UUID?
     var pendingTableName: String?
+    var pendingImportURL: URL?
     let connectionManager: ConnectionManager
     let syncCoordinator = IOSSyncCoordinator()
     let sshProvider: IOSSSHProvider

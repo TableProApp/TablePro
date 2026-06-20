@@ -6,6 +6,7 @@
 import AppKit
 import Foundation
 import os
+import TableProImport
 import TableProPluginKit
 
 struct TablePlusImporter: ForeignAppImporter {

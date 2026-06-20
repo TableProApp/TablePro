@@ -17,6 +17,7 @@ import AppKit
 import Foundation
 import os
 import SQLite3
+import TableProImport
 import TableProPluginKit
 
 struct BeekeeperStudioImporter: ForeignAppImporter {

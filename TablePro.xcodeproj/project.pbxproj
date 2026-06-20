@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		5A1MPORT000000000000A011 /* TableProImport in Frameworks */ = {isa = PBXBuildFile; productRef = 5A1MPORT000000000000A010 /* TableProImport */; };
 		16C74CC07CC30A38ADE1663E /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
 		267A5C6ECC62401598389396 /* SnowflakeDDLGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53DF2F4A15214F2AA1DE95CF /* SnowflakeDDLGenerator.swift */; };
 		33E6FF2997594F41AA80EEC8 /* SnowflakeConnectionRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE8D74A27EE24B89A7DC79F9 /* SnowflakeConnectionRegistry.swift */; };
@@ -819,6 +820,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				5A7E78A02F95F02A00EEF236 /* TableProAnalytics in Frameworks */,
+				5A1MPORT000000000000A011 /* TableProImport in Frameworks */,
 				5ACE00012F4F000000000004 /* CodeEditSourceEditor in Frameworks */,
 				5ACE00012F4F000000000005 /* CodeEditLanguages in Frameworks */,
 				5A32BBFB2F9D5EAB00BAEB5F /* X509 in Frameworks */,
@@ -1278,6 +1280,7 @@
 				5ACE00012F4F000000000009 /* Sparkle */,
 				5ACE00012F4F000000000010 /* TableProAnalytics */,
 				5A32BBFA2F9D5EAB00BAEB5F /* X509 */,
+				5A1MPORT000000000000A010 /* TableProImport */,
 			);
 			productName = TablePro;
 			productReference = 5A1091C72EF17EDC0055EA7C /* TablePro.app */;
@@ -4820,6 +4823,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 5A0000012F4F000000000102 /* XCLocalSwiftPackageReference "Packages/TableProCore" */;
 			productName = TableProMSSQLCore;
+		};
+		5A1MPORT000000000000A010 /* TableProImport */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 5A0000012F4F000000000102 /* XCLocalSwiftPackageReference "Packages/TableProCore" */;
+			productName = TableProImport;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

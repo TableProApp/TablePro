@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import TableProImport
 import UniformTypeIdentifiers
 
 struct ConnectionImportSheet: View {
@@ -201,7 +202,7 @@ struct ConnectionImportSheet: View {
                     return
                 }
 
-                let envelope = try ConnectionExportService.decodeData(data)
+                let envelope = try ConnectionImportDecoder.decodeData(data)
                 let result = await ConnectionExportService.analyzeImport(envelope)
                 await MainActor.run {
                     preview = result
@@ -224,7 +225,7 @@ struct ConnectionImportSheet: View {
 
         Task.detached(priority: .userInitiated) {
             do {
-                let envelope = try ConnectionExportService.decodeEncryptedData(data, passphrase: currentPassphrase)
+                let envelope = try ConnectionImportDecoder.decodeEncryptedData(data, passphrase: currentPassphrase)
                 let result = await ConnectionExportService.analyzeImport(envelope)
                 await MainActor.run {
                     passphraseError = nil

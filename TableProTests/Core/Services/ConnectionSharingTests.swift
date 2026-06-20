@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProImport
 import TableProPluginKit
 import Testing
 @testable import TablePro

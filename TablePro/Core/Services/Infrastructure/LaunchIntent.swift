@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProImport
 
 internal enum LaunchIntent: @unchecked Sendable {
     case openConnection(UUID)

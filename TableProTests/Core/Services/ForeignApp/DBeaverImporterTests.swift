@@ -5,6 +5,7 @@
 
 import CommonCrypto
 import Foundation
+import TableProImport
 import TableProPluginKit
 @testable import TablePro
 import Testing

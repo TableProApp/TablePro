@@ -7,6 +7,7 @@ import AppKit
 import Combine
 import Foundation
 import Observation
+import TableProImport
 
 internal struct PendingConnectionError {
     let connection: DatabaseConnection

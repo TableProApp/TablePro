@@ -5,6 +5,7 @@
 
 import os
 import SwiftUI
+import TableProImport
 import UniformTypeIdentifiers
 
 struct WelcomeWindowView: View {
