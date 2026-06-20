@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Data grid now serves the row count from its existing cache instead of recomputing it on every layout pass, reducing CPU churn while scrolling large result sets.
 - Typing in the sidebar table search stays responsive on databases with thousands of tables; filtering runs after a short pause instead of on every keystroke.
+- The welcome sidebar rebuilds its connection tree in linear time, so favoriting, moving, or regrouping connections stays responsive with many connections and nested groups.
 
 ### Fixed
 
