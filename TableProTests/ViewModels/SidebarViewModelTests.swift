@@ -523,7 +523,6 @@ struct SidebarViewModelMultiSectionTests {
 
 @Suite("SidebarViewModel search debounce")
 struct SidebarViewModelSearchDebounceTests {
-
     @Test("filterQuery updates immediately on first non-empty input")
     @MainActor
     func filterQueryUpdatesImmediatelyOnFirstInput() {
@@ -598,8 +597,9 @@ struct SidebarViewModelSearchDebounceTests {
     func filteredTablesHonorsFilterQueryNotSearchText() async {
         let vm = makeViewModel()
         let users = TestFixtures.makeTableInfo(name: "users", type: .table)
+        let userLog = TestFixtures.makeTableInfo(name: "user_log", type: .table)
         let orders = TestFixtures.makeTableInfo(name: "orders", type: .table)
-        let mixed = [users, orders]
+        let mixed = [users, userLog, orders]
 
         vm.searchText = "user"
         vm.searchText = "users"
@@ -607,6 +607,6 @@ struct SidebarViewModelSearchDebounceTests {
 
         let matches = vm.filteredTables(of: .table, from: mixed)
 
-        #expect(matches.map(\.name) == ["users"])
+        #expect(matches.map(\.name) == ["users", "user_log"])
     }
 }
