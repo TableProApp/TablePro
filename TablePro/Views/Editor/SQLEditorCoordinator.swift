@@ -201,7 +201,6 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
         vimEngine = nil
         vimCursorManager = nil
 
-        // Release editor controller heavy state
         controller?.releaseHeavyState()
 
         EditorEventRouter.shared.unregister(self)

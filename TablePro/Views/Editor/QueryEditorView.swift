@@ -86,7 +86,6 @@ struct QueryEditorView: View {
 
             Spacer()
 
-            // Clear button
             Button(action: {
                 queryText = ""
                 onClearResults?()
@@ -98,7 +97,6 @@ struct QueryEditorView: View {
             .help(String(localized: "Clear Query"))
             .accessibilityLabel(String(localized: "Clear Query"))
 
-            // Format button
             Button(action: formatQuery) {
                 Image(systemName: "text.alignleft")
                     .frame(width: 24, height: 24)
@@ -122,7 +120,6 @@ struct QueryEditorView: View {
 
             explainButton(hasQueryText: hasQueryText)
 
-            // Execute button
             Button(action: onExecute) {
                 HStack(spacing: 4) {
                     Image(systemName: "play.fill")

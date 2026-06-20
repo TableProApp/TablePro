@@ -290,7 +290,6 @@ extension MainContentView {
         window.representedURL = tabManager.selectedTab?.content.sourceFileURL
         window.isDocumentEdited = tabManager.selectedTab?.content.isFileDirty ?? false
 
-        // Update command actions window reference now that it's available
         commandActions?.window = window
 
         // Publish command actions to the registry NOW. `windowDidBecomeKey`

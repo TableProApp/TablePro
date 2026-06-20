@@ -59,7 +59,6 @@ public protocol DriverPlugin: TableProPlugin {
     static var parameterStyle: ParameterStyle { get }
     static var supportsDropDatabase: Bool { get }
 
-    // Schema editing granularity
     static var supportsAddColumn: Bool { get }
     static var supportsModifyColumn: Bool { get }
     static var supportsDropColumn: Bool { get }
@@ -132,7 +131,6 @@ public extension DriverPlugin {
     static var postConnectActions: [PostConnectAction] { [] }
     static var supportsDropDatabase: Bool { false }
 
-    // Schema editing granularity
     static var supportsAddColumn: Bool { true }
     static var supportsModifyColumn: Bool { true }
     static var supportsDropColumn: Bool { true }

@@ -548,7 +548,6 @@ private final class ImpersonatedServiceAccountDelegate: @unchecked Sendable, Big
     }
 
     private func fetchImpersonatedToken() async throws -> String {
-        // Get source token
         let sourceToken = try await sourceProvider.accessToken()
 
         // Exchange for impersonated token
@@ -649,7 +648,6 @@ internal final class OAuthBrowserAuthProvider: @unchecked Sendable, BigQueryAuth
 
         let redirectUri = "http://127.0.0.1:\(port)"
 
-        // Build authorization URL
         var components = URLComponents(string: Self.authEndpoint)
         components?.queryItems = [
             URLQueryItem(name: "client_id", value: clientId),
@@ -665,7 +663,6 @@ internal final class OAuthBrowserAuthProvider: @unchecked Sendable, BigQueryAuth
             throw BigQueryError.authFailed("Failed to build OAuth authorization URL")
         }
 
-        // Open browser
         Self.logger.info("Opening browser for OAuth authorization")
         await NSWorkspace.shared.open(authUrl)
 
@@ -680,13 +677,10 @@ internal final class OAuthBrowserAuthProvider: @unchecked Sendable, BigQueryAuth
 
         Self.logger.info("Received OAuth authorization code")
 
-        // Exchange auth code for tokens
         let tokens = try await exchangeAuthCode(code, redirectUri: redirectUri)
 
-        // Store refresh token
         lock.withLock { _refreshToken = tokens.refreshToken }
 
-        // Cache access token
         let newToken = CachedToken(
             token: tokens.accessToken,
             expiresAt: Date().addingTimeInterval(Double(tokens.expiresIn))

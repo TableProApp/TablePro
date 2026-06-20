@@ -76,30 +76,24 @@ final class SQLCompletionProvider {
         cursorPosition: Int,
         forcedTableReferences: [TableReference]? = nil
     ) async -> (items: [SQLCompletionItem], context: SQLContext) {
-        // Analyze context
         var context = contextAnalyzer.analyze(query: text, cursorPosition: cursorPosition)
         if let forcedTableReferences {
             context = context.replacingTableReferences(forcedTableReferences)
         }
 
-        // Don't complete inside strings or comments
         if context.isInsideString || context.isInsideComment {
             return ([], context)
         }
 
-        // Get candidates based on context
         var candidates = await getCandidates(for: context)
 
-        // Filter by prefix and compute match highlight ranges
         if !context.prefix.isEmpty {
             candidates = filterByPrefix(candidates, prefix: context.prefix)
             populateMatchRanges(&candidates, prefix: context.prefix)
         }
 
-        // Rank results
         candidates = rankResults(candidates, prefix: context.prefix, context: context)
 
-        // Limit results
         let limited = Array(candidates.prefix(maxSuggestions(for: context.clauseType)))
 
         return (limited, context)
@@ -155,10 +149,8 @@ final class SQLCompletionProvider {
             return items
         }
 
-        // Add items based on clause type
         switch context.clauseType {
         case .from, .join:
-            // Tables + schema/database names + JOIN/clause transition keywords
             items = await schemaProvider?.tableCompletionItems() ?? []
             items += await schemaProvider?.namespaceCompletionItems() ?? []
             items += filterKeywords([
@@ -170,7 +162,6 @@ final class SQLCompletionProvider {
             ])
 
         case .into:
-            // Tables + INSERT continuation keywords
             items = await schemaProvider?.tableCompletionItems() ?? []
             items += filterKeywords([
                 "VALUES", "SELECT", "SET",
@@ -183,7 +174,6 @@ final class SQLCompletionProvider {
 
         case .select:
             if let funcName = context.currentFunction {
-                // Inside function arguments within SELECT context
                 let upperFunc = funcName.uppercased()
                 if upperFunc == "COUNT" {
                     // COUNT() special: suggest * and DISTINCT as top items
@@ -200,7 +190,6 @@ final class SQLCompletionProvider {
                     distinctItem.sortPriority = 20
                     items.append(distinctItem)
                 }
-                // Function-arg items: columns, functions, value keywords
                 items += await columnItems(for: context.tableReferences)
                 items += functionItems()
                 items += filterKeywords(["NULL", "TRUE", "FALSE"])
@@ -208,7 +197,6 @@ final class SQLCompletionProvider {
                     items += filterKeywords(["DISTINCT"])
                 }
             } else {
-                // Normal SELECT list: star wildcard + columns + functions + keywords
                 items.append(SQLCompletionItem(
                     label: "*",
                     kind: .keyword,
@@ -238,7 +226,6 @@ final class SQLCompletionProvider {
         case .on:
             // HP-3: ON clause — prioritize columns from joined tables
             items += await columnItems(for: context.tableReferences)
-            // Add qualified column suggestions (table.column) for join conditions
             for ref in context.tableReferences {
                 let qualifier = ref.alias ?? ref.tableName
                 let cols = await schemaProvider?.columnCompletionItems(for: ref.tableName, schema: ref.schema) ?? []
@@ -279,14 +266,12 @@ final class SQLCompletionProvider {
                 "IS NULL", "IS NOT NULL"
             ])
             items += functionItems()
-            // Clause transitions after WHERE conditions
             items += filterKeywords([
                 "ORDER BY", "GROUP BY", "HAVING", "LIMIT",
                 "UNION", "INTERSECT", "EXCEPT"
             ])
 
         case .groupBy:
-            // Columns + clause transitions
             items += await columnItems(for: context.tableReferences)
             items += filterKeywords([
                 "HAVING", "ORDER BY", "LIMIT",
@@ -294,7 +279,6 @@ final class SQLCompletionProvider {
             ])
 
         case .orderBy:
-            // Columns + sort direction + clause transitions
             items += await columnItems(for: context.tableReferences)
             items += filterKeywords([
                 "ASC", "DESC", "NULLS FIRST", "NULLS LAST",
@@ -303,20 +287,17 @@ final class SQLCompletionProvider {
             ])
 
         case .set:
-            // Columns for UPDATE SET clause + transition keywords
             if let firstTable = context.tableReferences.first {
                 items = await schemaProvider?.columnCompletionItems(for: firstTable.tableName, schema: firstTable.schema) ?? []
             }
             items += filterKeywords(["WHERE", "RETURNING"])
 
         case .insertColumns:
-            // Columns for INSERT column list
             if let firstTable = context.tableReferences.first {
                 items = await schemaProvider?.columnCompletionItems(for: firstTable.tableName, schema: firstTable.schema) ?? []
             }
 
         case .values:
-            // Functions and keywords for VALUES + post-values transitions
             items = functionItems()
             items += filterKeywords([
                 "NULL", "DEFAULT", "TRUE", "FALSE",
@@ -324,7 +305,6 @@ final class SQLCompletionProvider {
             ])
 
         case .functionArg:
-            // Inside function arguments - suggest columns and other functions
             let isCountFunction = context.currentFunction?.uppercased() == "COUNT"
             if isCountFunction {
                 // COUNT() special: suggest * as top item
@@ -352,14 +332,12 @@ final class SQLCompletionProvider {
             }
 
         case .caseExpression:
-            // Inside CASE expression
             items += await columnItems(for: context.tableReferences)
             items += filterKeywords(["WHEN", "THEN", "ELSE", "END", "AND", "OR", "IS", "NULL", "TRUE", "FALSE"])
             items += SQLKeywords.operatorItems()
             items += functionItems()
 
         case .inList:
-            // Inside IN (...) list - suggest values, subqueries, columns
             items += await columnItems(for: context.tableReferences)
             items += filterKeywords(["SELECT", "NULL", "TRUE", "FALSE"])
             items += functionItems()
@@ -369,7 +347,6 @@ final class SQLCompletionProvider {
             items += filterKeywords(["OFFSET", "FETCH", "NEXT", "ROWS", "ONLY"])
 
         case .alterTable:
-            // After ALTER TABLE tablename - suggest DDL operations and constraint types
             items = filterKeywords([
                 "ADD", "DROP", "MODIFY", "CHANGE", "RENAME",
                 "COLUMN", "INDEX", "PRIMARY", "FOREIGN", "KEY",
@@ -379,14 +356,12 @@ final class SQLCompletionProvider {
             ])
 
         case .alterTableColumn:
-            // After ALTER TABLE tablename DROP/MODIFY/CHANGE/RENAME or AFTER/BEFORE - suggest column names
             if let firstTable = context.tableReferences.first {
                 items = await schemaProvider?.columnCompletionItems(for: firstTable.tableName, schema: firstTable.schema) ?? []
             }
 
         case .createTable:
             if context.nestingLevel >= 1 {
-                // Inside CREATE TABLE (...) — column definitions
                 // Boost FK-related keywords so they appear within the 20-item limit
                 items = boostedKeywords([
                     "REFERENCES", "ON DELETE", "ON UPDATE",
@@ -411,7 +386,6 @@ final class SQLCompletionProvider {
             }
 
         case .columnDef:
-            // Typing column data type (after ADD COLUMN name)
             items = dataTypeKeywords()
             items += filterKeywords([
                 "NOT", "NULL", "DEFAULT", "AUTO_INCREMENT", "SERIAL",
@@ -422,20 +396,16 @@ final class SQLCompletionProvider {
             ])
 
         case .returning:
-            // After RETURNING (PostgreSQL) - suggest columns
             items += await columnItems(for: context.tableReferences)
             items += filterKeywords(["*"])
 
         case .union:
-            // After UNION/INTERSECT/EXCEPT - suggest SELECT
             items = filterKeywords(["SELECT", "ALL"])
 
         case .using:
-            // After USING in JOIN - suggest columns
             items += await columnItems(for: context.tableReferences)
 
         case .window:
-            // After OVER/PARTITION BY - suggest columns and window keywords
             items += await columnItems(for: context.tableReferences)
             items += filterKeywords([
                 "PARTITION BY", "ORDER BY", "ASC", "DESC",
@@ -444,23 +414,19 @@ final class SQLCompletionProvider {
             ])
 
         case .dropObject:
-            // After DROP TABLE/INDEX/VIEW - suggest tables
             items = await schemaProvider?.tableCompletionItems() ?? []
             items += filterKeywords(["IF EXISTS", "CASCADE", "RESTRICT"])
 
         case .createIndex:
             if context.tableReferences.isEmpty {
-                // Before ON tablename — suggest tables and ON keyword
                 items = await schemaProvider?.tableCompletionItems() ?? []
                 items += filterKeywords(["ON"])
             } else {
-                // After ON tablename (inside parens) — suggest columns
                 items = await columnItems(for: context.tableReferences)
                 items += filterKeywords(["USING", "BTREE", "HASH", "GIN", "GIST"])
             }
 
         case .createView:
-            // After CREATE VIEW - suggest SELECT
             items = filterKeywords(["SELECT", "AS"])
             items += await schemaProvider?.tableCompletionItems() ?? []
 
@@ -579,12 +545,10 @@ final class SQLCompletionProvider {
         let lowerPrefix = prefix.lowercased()
 
         return items.filter { item in
-            // Exact prefix match
             if item.filterText.hasPrefix(lowerPrefix) {
                 return true
             }
 
-            // Contains match
             if item.filterText.contains(lowerPrefix) {
                 return true
             }
@@ -751,12 +715,10 @@ final class SQLCompletionProvider {
     func calculateScore(for item: SQLCompletionItem, prefix: String, context: SQLContext) -> Int {
         var score = item.sortPriority
 
-        // Exact prefix match bonus
         if item.filterText.hasPrefix(prefix) {
             score -= 500
         }
 
-        // Exact match bonus
         if item.filterText == prefix {
             score -= 1_000
         }

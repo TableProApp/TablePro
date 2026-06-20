@@ -284,7 +284,6 @@ struct ImportDialog: View {
                     Spacer()
                 }
 
-                // Plugin-provided options
                 if let settable = currentPlugin as? any SettablePluginDiscoverable,
                    let pluginView = settable.settingsView() {
                     pluginView

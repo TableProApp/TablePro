@@ -103,7 +103,6 @@ internal struct SQLTokenFormatter {
         self.dataTypes = Self.builtinDataTypes.union(dialectDataTypes)
     }
 
-    // Mutable state
     private var output = ""
     private var clauseStack: [ClauseContext] = []
     private var afterNewline = true

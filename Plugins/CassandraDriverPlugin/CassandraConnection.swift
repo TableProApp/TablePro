@@ -288,7 +288,6 @@ actor CassandraConnectionActor {
 
         let startTime = Date()
 
-        // Prepare
         let prepareFuture = cass_session_prepare(session, cql)
         guard let prepareFuture else {
             throw CassandraPluginError.queryFailed("Failed to prepare statement")
@@ -307,7 +306,6 @@ actor CassandraConnectionActor {
         }
         defer { cass_prepared_free(prepared) }
 
-        // Bind parameters
         let statement = cass_prepared_bind(prepared)
         guard let statement else {
             throw CassandraPluginError.queryFailed("Failed to bind prepared statement")
@@ -331,7 +329,6 @@ actor CassandraConnectionActor {
             }
         }
 
-        // Execute
         let future = cass_session_execute(session, statement)
         guard let future else {
             throw CassandraPluginError.queryFailed("Failed to execute prepared statement")

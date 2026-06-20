@@ -88,7 +88,6 @@ internal final class HostKeyStore: @unchecked Sendable {
         let hostKey = hostIdentifier(hostname, port)
         var entries = loadEntries()
 
-        // Remove existing entry for this host and key type if present
         entries.removeAll { $0.host == hostKey && $0.keyType == keyType }
 
         entries.append((host: hostKey, keyType: keyType, keyData: key))

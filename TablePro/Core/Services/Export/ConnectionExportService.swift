@@ -106,7 +106,6 @@ enum ConnectionExportService {
                 sshConfig = connection.sshConfig
             }
 
-            // Resolve tag name
             let tagName: String?
             if let tagId = connection.tagId {
                 tagName = TagStorage.shared.tag(for: tagId)?.name
@@ -114,7 +113,6 @@ enum ConnectionExportService {
                 tagName = nil
             }
 
-            // Resolve group name
             let groupName: String?
             if let groupId = connection.groupId {
                 groupName = GroupStorage.shared.group(for: groupId)?.name
@@ -165,13 +163,10 @@ enum ConnectionExportService {
                 exportableSSL = nil
             }
 
-            // Color
             let color: String? = connection.color == .none ? nil : connection.color.rawValue
 
-            // Safe mode level
             let safeModeLevel: String? = connection.safeModeLevel == .silent ? nil : connection.safeModeLevel.rawValue
 
-            // AI policy
             let aiPolicy: String? = connection.aiPolicy?.rawValue
 
             // Filter secure fields from additionalFields
@@ -213,7 +208,6 @@ enum ConnectionExportService {
 
             exportableConnections.append(exportable)
 
-            // Collect unique group/tag names
             if let name = tagName { tagNames.insert(name) }
             if let name = groupName { groupNames.insert(name) }
         }
@@ -466,7 +460,6 @@ enum ConnectionExportService {
                 return ImportItem(connection: exportable, status: .duplicate(existing: duplicate))
             }
 
-            // Check for warnings
             var warnings: [String] = []
 
             // SSH key path check

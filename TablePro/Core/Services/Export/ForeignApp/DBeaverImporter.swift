@@ -197,7 +197,6 @@ struct DBeaverImporter: ForeignAppImporter {
             if let folderInfo = folders[path], let desc = folderInfo["description"] as? String, !desc.isEmpty {
                 groupName = desc
             } else {
-                // Use last component of folder path as group name
                 groupName = path.components(separatedBy: "/").last
             }
         } else {
@@ -236,7 +235,6 @@ struct DBeaverImporter: ForeignAppImporter {
 
         let properties = sshTunnel["properties"] as? [String: Any] ?? [:]
 
-        // Check if the handler is enabled
         let enabled = sshTunnel["enabled"] as? Bool ?? (properties["host"] != nil)
         guard enabled else { return nil }
 
@@ -309,7 +307,6 @@ struct DBeaverImporter: ForeignAppImporter {
     private func parseColor(_ config: [String: Any]) -> String? {
         guard let colorString = config["color"] as? String, !colorString.isEmpty else { return nil }
         // DBeaver stores colors as comma-separated RGB values like "255,0,0"
-        // Map common colors to our color names
         let components = colorString.components(separatedBy: ",").compactMap { Int($0.trimmingCharacters(in: .whitespaces)) }
         guard components.count >= 3 else { return nil }
         let (r, g, b) = (components[0], components[1], components[2])

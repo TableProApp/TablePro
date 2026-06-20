@@ -93,7 +93,6 @@ extension MainContentCoordinator {
             return
         }
 
-        // If no tabs exist (empty state), add a table tab directly.
         if tabManager.tabs.isEmpty {
             addFirstTableTab(
                 tableName: tableName,

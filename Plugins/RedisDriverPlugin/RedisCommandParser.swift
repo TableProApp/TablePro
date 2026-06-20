@@ -608,7 +608,6 @@ struct RedisCommandParser {
                 if knownFlags.contains(upper) {
                     flags.append(upper)
                     if upper == "LIMIT" {
-                        // LIMIT requires offset and count
                         guard i + 2 < args.count else {
                             throw RedisParseError.missingArgument("LIMIT requires offset and count")
                         }

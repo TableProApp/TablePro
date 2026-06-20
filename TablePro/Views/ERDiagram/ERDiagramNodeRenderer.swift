@@ -42,14 +42,11 @@ enum ERDiagramNodeRenderer {
         let roundedRect = RoundedRectangle(cornerRadius: cornerRadius)
         let path = Path(roundedRect: rect, cornerRadius: cornerRadius)
 
-        // Background
         context.fill(path, with: .color(Color(nsColor: .controlBackgroundColor)))
 
-        // Border
         let borderColor = isSelected ? Color.accentColor : Color(nsColor: .tertiaryLabelColor)
         context.stroke(path, with: .color(borderColor), lineWidth: isSelected ? 2 : 1)
 
-        // Header background
         let headerHeight: CGFloat = ERDiagramLayout.headerHeight
         let headerRect = CGRect(x: rect.minX, y: rect.minY, width: rect.width, height: headerHeight)
         let headerPath = Path { p in
@@ -60,7 +57,6 @@ enum ERDiagramNodeRenderer {
         }
         context.fill(headerPath, with: .color(Color.accentColor.opacity(0.15)))
 
-        // Header text
         let displayName = (node.tableName as NSString).length > maxTableNameChars
             ? String(node.tableName.prefix(maxTableNameChars)) + "\u{2026}"
             : node.tableName
@@ -72,7 +68,6 @@ enum ERDiagramNodeRenderer {
             anchor: .leading
         )
 
-        // Table icon
         let iconText = Text(Image(systemName: "tablecells"))
             .font(.system(size: Self.iconPointSize * scale))
             .foregroundStyle(.secondary)
@@ -82,7 +77,6 @@ enum ERDiagramNodeRenderer {
             anchor: .leading
         )
 
-        // Header divider
         let dividerY = rect.minY + headerHeight
         var dividerPath = Path()
         dividerPath.move(to: CGPoint(x: rect.minX, y: dividerY))
@@ -96,7 +90,6 @@ enum ERDiagramNodeRenderer {
         for (idx, col) in node.displayColumns.enumerated() {
             let rowY = dividerY + CGFloat(idx) * rowHeight + rowHeight / 2
 
-            // PK/FK badge
             if col.isPrimaryKey {
                 let badge = Text(Image(systemName: "key.fill")).font(.system(size: Self.badgePointSize * scale)).foregroundStyle(.yellow)
                 clipped.draw(clipped.resolve(badge), at: CGPoint(x: rect.minX + badgeXOffset, y: rowY), anchor: .center)
@@ -105,7 +98,6 @@ enum ERDiagramNodeRenderer {
                 clipped.draw(clipped.resolve(badge), at: CGPoint(x: rect.minX + badgeXOffset, y: rowY), anchor: .center)
             }
 
-            // Column name
             let nameText = Text(col.name).font(.system(size: Self.columnNamePointSize * scale, design: .monospaced))
             clipped.draw(
                 clipped.resolve(nameText),

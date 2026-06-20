@@ -33,7 +33,6 @@ final class AIEditorContextMenu: NSMenu, NSMenuDelegate {
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
 
-        // Standard editing items
         let cutItem = NSMenuItem(title: String(localized: "Cut"), action: #selector(NSText.cut(_:)), keyEquivalent: "")
         menu.addItem(cutItem)
 

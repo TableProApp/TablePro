@@ -305,7 +305,6 @@ final class ConnectionStorage {
     func duplicateConnection(_ connection: DatabaseConnection) -> DatabaseConnection {
         let newId = UUID()
 
-        // Create duplicate with new ID and "(Copy)" suffix
         let duplicate = DatabaseConnection(
             id: newId,
             name: String(format: String(localized: "%@ (Copy)"), connection.name),
@@ -333,7 +332,6 @@ final class ConnectionStorage {
             additionalFields: connection.additionalFields.isEmpty ? nil : connection.additionalFields
         )
 
-        // Save the duplicate connection
         var connections = loadConnections()
         connections.append(duplicate)
         guard saveConnections(connections) else {

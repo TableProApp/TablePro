@@ -13,11 +13,11 @@ final class GridSelectionState {
 
 /// Type of tab
 enum TabType: Equatable, Codable, Hashable {
-    case query            // SQL editor tab
-    case table            // Direct table view tab
-    case createTable      // Create new table tab
-    case erDiagram        // ER diagram tab
-    case serverDashboard  // Server dashboard tab
+    case query
+    case table
+    case createTable
+    case erDiagram
+    case serverDashboard
 }
 
 /// Minimal representation of a tab for persistence
@@ -182,7 +182,7 @@ struct PaginationState: Equatable {
     var pageSize: Int               // Rows per page (passed from manager/coordinator)
     var currentPage: Int = 1         // Current page number (1-based)
     var currentOffset: Int = 0       // Current OFFSET for SQL query
-    var isLoading: Bool = false      // Loading indicator
+    var isLoading: Bool = false
     var isApproximateRowCount: Bool = false  // True when totalRowCount is from fast estimate
 
     // Result truncation state (query tabs)
@@ -305,7 +305,6 @@ struct PaginationState: Equatable {
     mutating func updatePageSize(_ newSize: Int) {
         guard newSize > 0 else { return }
         pageSize = newSize
-        // Recalculate current page based on current offset
         currentPage = (currentOffset / pageSize) + 1
     }
 

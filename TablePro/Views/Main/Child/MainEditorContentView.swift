@@ -45,7 +45,6 @@ struct MainEditorContentView: View {
     let onApplyFilters: ([TableFilter]) -> Void
     let onClearFilters: () -> Void
 
-    // Pagination callbacks
     let onFirstPage: () -> Void
     let onPreviousPage: () -> Void
     let onNextPage: () -> Void
@@ -88,7 +87,6 @@ struct MainEditorContentView: View {
                 emptyStateView
             }
 
-            // Global History Panel
             if isHistoryVisible {
                 Divider()
                 HistoryPanelView(connectionId: connectionId)
@@ -736,19 +734,16 @@ struct MainEditorContentView: View {
 
     private var emptyStateView: some View {
         VStack(spacing: 20) {
-            // Icon
             Image(systemName: "tablecells")
                 .font(.largeTitle)
                 .imageScale(.large)
                 .symbolRenderingMode(.hierarchical)
                 .foregroundStyle(.quaternary)
 
-            // Title
             Text("No tabs open")
                 .font(.title3.weight(.medium))
                 .foregroundStyle(.secondary)
 
-            // Helpful instructions with keyboard shortcuts
             VStack(spacing: 8) {
                 HStack(spacing: 6) {
                     Text("⌘T")

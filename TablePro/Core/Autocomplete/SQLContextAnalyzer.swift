@@ -87,7 +87,6 @@ struct SQLContext {
     let isInsideString: Bool        // Inside a string literal
     let isInsideComment: Bool       // Inside a comment
 
-    // Enhanced context for smarter completions
     let cteNames: [String]          // Common Table Expression names in scope
     let nestingLevel: Int           // Subquery nesting level (0 = main query)
     let currentFunction: String?    // If inside function args, the function name
@@ -191,21 +190,15 @@ final class SQLContextAnalyzer {
             ("\\bCREATE\\s+TABLE\\s+[^(]*\\([^)]*$", .createTable),
             ("\\bCREATE\\s+(?:TEMPORARY\\s+)?TABLE\\s+[^;]*\\([^)]*\\)\\s*\\w*$", .createTable),
             ("\\bCREATE\\s+(?:TEMPORARY\\s+)?TABLE\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?\\w*$", .createTable),
-            // DROP object patterns
             ("\\bDROP\\s+(?:TABLE|VIEW|INDEX)\\s+(?:IF\\s+EXISTS\\s+)?\\w*$", .dropObject),
-            // CREATE INDEX pattern
             ("\\bCREATE\\s+(?:UNIQUE\\s+)?INDEX\\s+\\w+\\s+ON\\s+\\w+\\s*\\([^)]*$", .createIndex),
             ("\\bCREATE\\s+(?:UNIQUE\\s+)?INDEX\\s+\\w*$", .createIndex),
-            // CREATE VIEW pattern
             ("\\bCREATE\\s+(?:OR\\s+REPLACE\\s+)?(?:MATERIALIZED\\s+)?VIEW\\s+\\w+\\s+AS\\s+[^;]*$",
              .createView),
             ("\\bCREATE\\s+(?:OR\\s+REPLACE\\s+)?(?:MATERIALIZED\\s+)?VIEW\\s+\\w*$", .createView),
-            // USING clause in JOIN
             ("\\bUSING\\s*\\([^)]*$", .using),
-            // Window function OVER clause
             ("\\bOVER\\s*\\([^)]*$", .window),
             ("\\bPARTITION\\s+BY\\s+[^)]*$", .window),
-            // Parenthesis-bounded value/list contexts
             ("\\bIN\\s*\\([^)]*$", .inList),
             ("\\b(LIMIT|OFFSET)\\s+\\d*$", .limit),
             ("\\bVALUES\\s*(?:\\([^)]*\\)\\s*,?\\s*)+\\w*$", .values),
@@ -287,7 +280,6 @@ final class SQLContextAnalyzer {
         let clampedPosition = max(0, min(adjustedPosition, nsStatement.length))
         let textBeforeCursor = nsStatement.substring(to: clampedPosition)
 
-        // Check if inside string or comment
         if isInsideString(textBeforeCursor) {
             return SQLContext(
                 clauseType: .unknown,
@@ -312,13 +304,10 @@ final class SQLContextAnalyzer {
             )
         }
 
-        // Extract prefix and dot prefix
         let (prefix, prefixStart, dotPrefix) = extractPrefix(from: textBeforeCursor)
 
-        // Find all table references in the current statement
         var tableReferences = extractTableReferences(from: currentStatement)
 
-        // Extract CTEs from the current statement
         let cteNames = extractCTENames(from: currentStatement)
 
         // Resolve derived tables (FROM/JOIN subqueries and CTEs) to their
@@ -328,7 +317,6 @@ final class SQLContextAnalyzer {
 
         var seenReferences = Set<TableReference>(tableReferences)
 
-        // Extract ALTER TABLE table name and add to references
         if let alterTableName = extractAlterTableName(from: currentStatement) {
             let alterRef = TableReference(tableName: alterTableName, alias: nil)
             if seenReferences.insert(alterRef).inserted {
@@ -336,13 +324,10 @@ final class SQLContextAnalyzer {
             }
         }
 
-        // Calculate nesting level (subquery depth)
         let nestingLevel = calculateNestingLevel(in: textBeforeCursor)
 
-        // Detect function context
         let currentFunction = detectFunctionContext(in: textBeforeCursor)
 
-        // Check if immediately after comma
         let isAfterComma = checkIfAfterComma(textBeforeCursor)
 
         // Clause detection runs on the text BEFORE the token being typed: the
@@ -361,7 +346,6 @@ final class SQLContextAnalyzer {
             clauseText = textBeforePrefix
         }
 
-        // Determine clause type
         let resolution = determineClauseType(
             textBeforeCursor: clauseText,
             dotPrefix: dotPrefix,
@@ -391,7 +375,6 @@ final class SQLContextAnalyzer {
         var cteNames: [String] = []
         let nsRange = NSRange(location: 0, length: (query as NSString).length)
 
-        // Find first CTE (uses pre-compiled static regex)
         if let match = Self.cteFirstRegex.firstMatch(in: query, range: nsRange) {
             let nameNSRange = match.range(at: 1)
             if nameNSRange.location != NSNotFound {
@@ -399,7 +382,6 @@ final class SQLContextAnalyzer {
             }
         }
 
-        // Find additional CTEs (comma-separated, uses pre-compiled static regex)
         Self.cteCommaRegex.enumerateMatches(in: query, range: nsRange) { match, _, _ in
             if let match = match {
                 let nameNSRange = match.range(at: 1)
@@ -557,7 +539,6 @@ final class SQLContextAnalyzer {
             lastWord = ns.substring(with: NSRange(location: wordStart, length: length - wordStart))
         }
 
-        // If we're inside parentheses, check if it's a function call
         if let lastParen = parenStack.last,
            let funcName = lastParen.precedingWord {
             let upperFunc = funcName.uppercased()
@@ -588,7 +569,6 @@ final class SQLContextAnalyzer {
     private func checkIfAfterComma(_ text: String) -> Bool {
         let ns = text as NSString
         let length = ns.length
-        // Scan backwards past whitespace
         var i = length - 1
         while i >= 0 {
             let ch = ns.character(at: i)
@@ -929,7 +909,6 @@ final class SQLContextAnalyzer {
             windowedText = textBeforeCursor
         }
 
-        // Remove string literals and comments for analysis
         let cleaned = removeStringsAndComments(from: windowedText)
 
         // Structural / DDL contexts FIRST. These are anchored to a leading keyword
@@ -1132,8 +1111,6 @@ final class SQLContextAnalyzer {
         for match in matches.reversed() {
             let matchRange = match.range
             let matched = ns.substring(with: matchRange)
-            // Single-quoted strings -> empty quotes; double-quoted strings -> empty quotes
-            // Block comments and line comments -> removed entirely
             if matched.hasPrefix("'") {
                 mutable.replaceCharacters(in: matchRange, with: "''")
             } else if matched.hasPrefix("\"") {

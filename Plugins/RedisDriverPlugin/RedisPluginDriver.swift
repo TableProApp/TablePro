@@ -127,7 +127,6 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             throw RedisPluginError.notConnected
         }
 
-        // Parse key counts from INFO keyspace
         let result = try await conn.executeCommand(["INFO", "keyspace"])
         var keyCounts: [String: Int] = [:]
         if let info = result.stringValue {
@@ -149,7 +148,6 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             }
         }
 
-        // Get total database count from CONFIG GET databases
         let configResult = try await conn.executeCommand(["CONFIG", "GET", "databases"])
         var maxDatabases = 16
         if let array = configResult.arrayValue, array.count >= 2, let count = Int(redisReplyToString(array[1])) {

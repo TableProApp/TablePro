@@ -173,7 +173,6 @@ internal struct BigQueryQueryBuilder {
         var sql = "SELECT * FROM \(fqTable)"
         var whereClauses: [String] = []
 
-        // Filters
         if let filters = params.filters, !filters.isEmpty {
             let rawMode = params.logicMode ?? "AND"
             let logicMode = (rawMode.uppercased() == "OR") ? "OR" : "AND"
@@ -183,7 +182,6 @@ internal struct BigQueryQueryBuilder {
             }
         }
 
-        // Search
         if let searchText = params.searchText, !searchText.isEmpty {
             let searchCols = params.searchColumns?.isEmpty == false
                 ? params.searchColumns!
@@ -201,7 +199,6 @@ internal struct BigQueryQueryBuilder {
             sql += " WHERE " + whereClauses.joined(separator: " AND ")
         }
 
-        // Sort
         if let sortColumns = params.sortColumns, !sortColumns.isEmpty {
             let orderClauses = sortColumns.compactMap { sort -> String? in
                 guard sort.columnIndex < columns.count else { return nil }

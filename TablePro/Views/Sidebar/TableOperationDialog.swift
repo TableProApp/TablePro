@@ -87,7 +87,6 @@ struct TableOperationDialog: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Header
             Text(title)
                 .font(.body.weight(.semibold))
                 .padding(.vertical, 16)
@@ -95,16 +94,13 @@ struct TableOperationDialog: View {
 
             Divider()
 
-            // Options
             VStack(alignment: .leading, spacing: 16) {
-                // Note for multiple tables
                 if isMultipleTables {
                     Text("Same options will be applied to all selected tables.")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
 
-                // Ignore foreign key checks
                 VStack(alignment: .leading, spacing: 4) {
                     Toggle(isOn: $ignoreForeignKeys) {
                         Text("Ignore foreign key checks")
@@ -123,7 +119,6 @@ struct TableOperationDialog: View {
                 }
                 .opacity(ignoreFKDisabled ? 0.6 : 1.0)
 
-                // Cascade option
                 VStack(alignment: .leading, spacing: 4) {
                     Toggle(isOn: $cascade) {
                         Text("Cascade")
@@ -145,7 +140,6 @@ struct TableOperationDialog: View {
 
             Divider()
 
-            // Footer buttons
             HStack {
                 Button("Cancel") {
                     isPresented = false
@@ -171,7 +165,6 @@ struct TableOperationDialog: View {
             isPresented = false
         }
         .onAppear {
-            // Reset state when dialog opens
             ignoreForeignKeys = false
             cascade = false
         }

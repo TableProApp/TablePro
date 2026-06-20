@@ -690,7 +690,6 @@ struct AppMenuCommands: Commands {
 
         // Tab navigation shortcuts — native macOS window tabs
         CommandGroup(after: .windowArrangement) {
-            // Tab switching by number (Cmd+1 through Cmd+9)
             ForEach(1...9, id: \.self) { number in
                 Button("Select Tab \(number)") {
                     actions?.selectTab(number: number)
@@ -758,7 +757,6 @@ struct AppMenuCommands: Commands {
 
 @main
 struct TableProApp: App {
-    // Connect AppKit delegate for proper window configuration
     @NSApplicationDelegateAdaptor(AppDelegate.self)
     var appDelegate
 

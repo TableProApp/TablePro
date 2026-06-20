@@ -108,11 +108,9 @@ final class LicenseAPIClient {
             throw LicenseError.invalidKey
 
         case 409:
-            // Conflict — activation limit reached
             throw LicenseError.activationLimitReached
 
         case 403:
-            // Parse error message to determine specific error
             if let errorResponse = try? decoder.decode(LicenseAPIErrorResponse.self, from: data) {
                 let msg = errorResponse.message.lowercased()
                 if msg.contains("suspend") {

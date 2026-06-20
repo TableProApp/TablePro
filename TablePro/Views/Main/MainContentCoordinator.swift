@@ -752,7 +752,6 @@ final class MainContentCoordinator {
         changeManager.clearChanges()
         changeManager.pluginDriver = nil
 
-        // Release metadata
         tableMetadata = nil
 
         services.schemaProviderRegistry.release(for: connection.id)

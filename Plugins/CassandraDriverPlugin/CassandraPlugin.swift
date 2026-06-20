@@ -304,7 +304,6 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
         """
         let result = try await execute(query: query)
 
-        // Parse and sort by kind order then position before mapping to PluginColumnInfo
         struct RawColumn {
             let name: String
             let dataType: String
@@ -390,7 +389,6 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
                 let kind = row[safe: 1]?.asText ?? "COMPOSITES"
                 let options = row[safe: 2]?.asText ?? ""
 
-                // Extract target column from options map
                 var targetColumns: [String] = []
                 if let targetRange = options.range(of: "target: ") {
                     let target = String(options[targetRange.upperBound...])
@@ -419,7 +417,6 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
     func fetchTableDDL(table: String, schema: String?) async throws -> String {
         let ks = resolveKeyspace(schema)
 
-        // Build DDL from schema metadata
         let columns = try await fetchColumns(table: table, schema: ks)
 
         let partitionKeys = columns.filter(\.isPrimaryKey)

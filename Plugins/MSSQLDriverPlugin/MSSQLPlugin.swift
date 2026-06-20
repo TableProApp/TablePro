@@ -531,7 +531,6 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             query: query, parameters: parameters.map { $0.asText }
         )
 
-        // If no placeholders were found, execute the query as-is
         guard !paramDecls.isEmpty else {
             return try await execute(query: query)
         }

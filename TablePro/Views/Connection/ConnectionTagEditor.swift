@@ -22,7 +22,6 @@ struct ConnectionTagEditor: View {
 
     var body: some View {
         Menu {
-            // None option
             Button {
                 selectedTagId = nil
             } label: {
@@ -37,7 +36,6 @@ struct ConnectionTagEditor: View {
 
             Divider()
 
-            // Available tags
             ForEach(allTags) { tag in
                 Button {
                     selectedTagId = tag.id
@@ -55,14 +53,12 @@ struct ConnectionTagEditor: View {
 
             Divider()
 
-            // Create new tag
             Button {
                 showingCreateSheet = true
             } label: {
                 Label("Create New Tag...", systemImage: "plus.circle")
             }
 
-            // Manage tags (delete custom tags)
             if allTags.contains(where: { !$0.isPreset }) {
                 Divider()
 

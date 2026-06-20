@@ -616,7 +616,6 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         if let firstRow = nativeResult.rows.first, let sql = firstRow[0].asText {
             var ddl = sql.hasSuffix(";") ? sql : sql + ";"
 
-            // Append index definitions
             let indexes = try await fetchIndexes(table: table, schema: schemaName)
             for index in indexes where !index.isPrimary {
                 let uniqueStr = index.isUnique ? "UNIQUE " : ""

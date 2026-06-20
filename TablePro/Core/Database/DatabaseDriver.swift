@@ -405,7 +405,6 @@ extension DatabaseDriver {
     var supportsTransactions: Bool { true }
 
     func cancelQuery() throws {
-        // No-op by default
     }
 
     /// Default timeout implementation — delegates to each plugin's PluginDatabaseDriver.

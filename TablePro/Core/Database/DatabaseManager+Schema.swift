@@ -97,7 +97,6 @@ extension DatabaseManager {
                     try await driver.commitTransaction()
                 }
 
-                // Record each statement in query history
                 let connId = connectionId
                 let dbName = self.activeSessions[connectionId]?.activeDatabase ?? ""
                 for stmt in statements {
@@ -148,7 +147,6 @@ extension DatabaseManager {
             return nil
         }
 
-        // Query the actual constraint name from pg_constraint
         let escapedTable = tableName.replacingOccurrences(of: "'", with: "''")
         let schema: String
         if let schemaDriver = driver as? SchemaSwitchable,

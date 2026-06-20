@@ -38,7 +38,7 @@ struct TableStructureView: View {
     @State var loadedTabs: Set<StructureTab> = []
     @State var partsReloadToken = 0
     @State var isReloadingAfterSave = false  // Prevent onChange loops during save reload
-    @State var lastSaveTime: Date?  // Track when we last saved
+    @State var lastSaveTime: Date?
     @AppStorage("skipSchemaPreview") var skipSchemaPreview = false
 
     // Search and sort state

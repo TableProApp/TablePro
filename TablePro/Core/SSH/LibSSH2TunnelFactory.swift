@@ -48,7 +48,6 @@ internal enum LibSSH2TunnelFactory {
         )
 
         do {
-            // Bind local listening socket
             let listenFD = try bindListenSocket(port: localPort)
 
             let tunnel = LibSSH2Tunnel(
@@ -292,7 +291,6 @@ internal enum LibSSH2TunnelFactory {
 
     /// Clean up all resources in an authenticated chain.
     private static func cleanupChain(_ chain: AuthenticatedChain, reason: String) {
-        // Disconnect the final session
         tablepro_libssh2_session_disconnect(chain.session, reason)
         libssh2_session_free(chain.session)
         if chain.socketFD != chain.initialSocketFD {
@@ -334,7 +332,6 @@ internal enum LibSSH2TunnelFactory {
         }
         defer { freeaddrinfo(result) }
 
-        // Iterate through all addresses returned by getaddrinfo
         var currentAddr: UnsafeMutablePointer<addrinfo>? = firstAddr
         var lastError: String = "No address found"
 

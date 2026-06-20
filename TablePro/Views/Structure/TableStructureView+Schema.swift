@@ -25,7 +25,6 @@ extension TableStructureView {
             return
         }
 
-        // If user chose to skip preview, apply changes directly
         if skipSchemaPreview {
             Task {
                 await executeSchemaChanges()
@@ -66,7 +65,6 @@ extension TableStructureView {
         let changes = structureChangeManager.getChangesArray()
         guard !changes.isEmpty else { return }
 
-        // Check for destructive changes that require confirmation
         let destructiveChanges = changes.filter { $0.requiresDataMigration }
         if !destructiveChanges.isEmpty {
             let descriptions = destructiveChanges.map { $0.description }
@@ -95,7 +93,6 @@ extension TableStructureView {
                 databaseType: connection.type
             )
 
-            // Success - reload schema
             loadedTabs.removeAll()
 
             // Reload all structure data before calling loadSchemaForEditing
@@ -116,10 +113,8 @@ extension TableStructureView {
                 Self.logger.error("Failed to reload indexes/FKs: \(error.localizedDescription, privacy: .public)")
             }
 
-            // Now load the complete schema into the change manager
             loadSchemaForEditing()
 
-            // Load current tab data for display
             await loadTabDataIfNeeded(selectedTab)
 
             // Force clear state after reload (in case it got set during the async process)
@@ -137,7 +132,7 @@ extension TableStructureView {
             lastSaveTime = Date()
             isReloadingAfterSave = false
         } catch {
-            isReloadingAfterSave = false  // Clear flag on error
+            isReloadingAfterSave = false
             AlertHelper.showErrorSheet(
                 title: String(localized: "Error Applying Changes"),
                 message: error.localizedDescription,
@@ -158,7 +153,6 @@ extension TableStructureView {
 
     var ddlView: some View {
         VStack(spacing: 0) {
-            // DDL toolbar
             HStack(spacing: 12) {
                 HStack(spacing: 4) {
                     Button(action: { ddlFontSize = max(10, ddlFontSize - 1) }) {

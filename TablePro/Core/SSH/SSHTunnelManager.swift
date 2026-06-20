@@ -98,7 +98,6 @@ actor SSHTunnelManager {
         totpDigits: Int = 6,
         totpPeriod: Int = 30
     ) async throws -> Int {
-        // Close existing tunnel if any
         if tunnels[connectionId] != nil {
             try await closeTunnel(connectionId: connectionId)
         }

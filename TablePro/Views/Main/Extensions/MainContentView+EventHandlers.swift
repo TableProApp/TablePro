@@ -70,7 +70,6 @@ extension MainContentView {
         // Skip during tab switch — handleTabChange already configures the change manager
         guard !coordinator.isHandlingTabSwitch else { return }
 
-        // Prune hidden columns that no longer exist in results
         if let newColumns = newColumns {
             coordinator.pruneHiddenColumns(currentColumns: newColumns)
         }
@@ -80,7 +79,6 @@ extension MainContentView {
             !changeManager.hasChanges
         else { return }
 
-        // Reconfigure if columns changed OR table name changed (switching tables)
         let columnsChanged = changeManager.columns != newColumns
         let tableChanged = changeManager.tableName != (tab.tableContext.tableName ?? "")
 

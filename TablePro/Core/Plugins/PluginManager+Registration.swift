@@ -34,7 +34,6 @@ extension PluginManager {
                     driverPlugins[additionalId] = driver
                 }
 
-                // Self-register plugin metadata from the DriverPlugin protocol.
                 let snapshot = PluginMetadataRegistry.shared.buildMetadataSnapshot(
                     from: driverType,
                     isDownloadable: driverType.isDownloadable

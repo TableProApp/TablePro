@@ -596,7 +596,6 @@ final class MainContentCommandActions {
             coordinator?.createTableActions?.createTable?()
             return
         }
-        // Check if we're in structure view mode
         if coordinator?.tabManager.selectedTab?.display.resultsViewMode == .structure {
             coordinator?.structureActions?.saveChanges?()
         } else if coordinator?.changeManager.hasChanges == true

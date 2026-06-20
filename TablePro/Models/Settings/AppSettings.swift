@@ -223,7 +223,6 @@ struct DataGridSettings: Codable, Equatable {
         let sanitized = nullDisplay.sanitized
         let maxLength = SettingsValidationRules.nullDisplayMaxLength
 
-        // Clamp to max length
         if sanitized.isEmpty {
             return "NULL" // Fallback to default
         } else if sanitized.count > maxLength {

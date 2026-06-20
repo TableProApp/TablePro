@@ -140,7 +140,6 @@ enum ERDiagramLayout {
             layerAssignment[id] = 0
         }
 
-        // Group by layer
         var layers: [Int: [UUID]] = [:]
         for (id, layer) in layerAssignment {
             layers[layer, default: []].append(id)

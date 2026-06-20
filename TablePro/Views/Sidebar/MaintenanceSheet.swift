@@ -23,7 +23,6 @@ struct MaintenanceSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            // Header
             HStack {
                 Image(systemName: "wrench.and.screwdriver")
                     .font(.title2)
@@ -40,10 +39,8 @@ struct MaintenanceSheet: View {
 
             Divider()
 
-            // Operation-specific options
             operationOptions
 
-            // SQL preview
             VStack(alignment: .leading, spacing: 4) {
                 Text(String(localized: "SQL Preview"))
                     .font(.caption)
@@ -58,7 +55,6 @@ struct MaintenanceSheet: View {
 
             Divider()
 
-            // Buttons
             HStack {
                 Spacer()
                 Button(String(localized: "Cancel")) { dismiss() }

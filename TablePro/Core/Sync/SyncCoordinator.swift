@@ -172,7 +172,6 @@ final class SyncCoordinator {
             changeTracker.markDirty(.tableFavorite, id: FavoriteTablesStorage.syncId(for: entry))
         }
 
-        // Mark all settings categories as dirty
         for category in ["general", "appearance", "editor", "dataGrid", "history", "tabs", "keyboard", "ai"] {
             changeTracker.markDirty(.settings, id: category)
         }
@@ -199,7 +198,6 @@ final class SyncCoordinator {
     private func evaluateStatus() {
         let licenseManager = services.licenseManager
 
-        // Check license
         guard licenseManager.isFeatureAvailable(.iCloudSync) else {
             switch licenseManager.status {
             case .expired:
@@ -210,14 +208,12 @@ final class SyncCoordinator {
             return
         }
 
-        // Check sync settings
         let syncSettings = services.appSettingsStorage.loadSync()
         guard syncSettings.enabled else {
             syncStatus = .disabled(.userDisabled)
             return
         }
 
-        // Check iCloud account
         guard iCloudAccountAvailable else {
             syncStatus = .disabled(.noAccount)
             return
@@ -258,7 +254,6 @@ final class SyncCoordinator {
         var recordIDsToDelete: [CKRecord.ID] = []
         let zoneID = await engine.zoneID
 
-        // Collect dirty connections
         if settings.syncConnections {
             let dirtyConnectionIds = changeTracker.dirtyRecords(for: .connection)
             if !dirtyConnectionIds.isEmpty {
@@ -281,18 +276,15 @@ final class SyncCoordinator {
             }
         }
 
-        // Collect dirty groups and tags
         if settings.syncGroupsAndTags {
             collectDirtyGroups(into: &recordsToSave, deletions: &recordIDsToDelete, zoneID: zoneID)
             collectDirtyTags(into: &recordsToSave, deletions: &recordIDsToDelete, zoneID: zoneID)
         }
 
-        // Collect dirty SSH profiles
         if settings.syncSSHProfiles {
             collectDirtySSHProfiles(into: &recordsToSave, deletions: &recordIDsToDelete, zoneID: zoneID)
         }
 
-        // Collect dirty settings
         if settings.syncSettings {
             let dirtySettingsIds = changeTracker.dirtyRecords(for: .settings)
             for category in dirtySettingsIds {
@@ -665,7 +657,6 @@ final class SyncCoordinator {
                 await checkAccountStatus()
                 evaluateStatus()
 
-                // If account changed, clear metadata and re-sync
                 let currentAccountId = metadataStorage.lastAccountId
                 if let newAccountId = try? await self.currentAccountId(),
                    currentAccountId != nil, currentAccountId != newAccountId {

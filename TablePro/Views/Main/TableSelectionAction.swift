@@ -49,7 +49,6 @@ enum SidebarSyncAction: Equatable {
         selectedTables: Set<TableInfo>,
         currentTabTableName: String?
     ) -> SidebarSyncAction {
-        // Only sync when tables just loaded and sidebar has no selection
         guard !newTables.isEmpty, selectedTables.isEmpty,
               let tabTableName = currentTabTableName,
               newTables.contains(where: { $0.name == tabTableName })

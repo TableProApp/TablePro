@@ -22,14 +22,12 @@ struct ExportSuccessView: View {
     }
     var body: some View {
         VStack(spacing: 20) {
-            // Success icon
             Image(systemName: "checkmark.circle.fill")
                 .font(.largeTitle)
                 .imageScale(.large)
                 .symbolRenderingMode(.hierarchical)
                 .foregroundStyle(.green)
 
-            // Title and message
             VStack(spacing: 6) {
                 Text("Success")
                     .font(.title3.weight(.semibold))
@@ -39,7 +37,6 @@ struct ExportSuccessView: View {
                     .foregroundStyle(.secondary)
             }
 
-            // Buttons
             VStack(spacing: 10) {
                 Button("Open containing folder") {
                     if localDontShowAgain {
@@ -59,7 +56,6 @@ struct ExportSuccessView: View {
                 .controlSize(.large)
             }
 
-            // Don't show again checkbox
             Toggle("Don't show this again", isOn: $localDontShowAgain)
                 .toggleStyle(.checkbox)
                 .font(.callout)

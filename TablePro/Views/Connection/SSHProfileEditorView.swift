@@ -15,15 +15,12 @@ struct SSHProfileEditorView: View {
     var onSave: ((SSHProfile) -> Void)?
     var onDelete: (() -> Void)?
 
-    // Profile identity
     @State private var profileName: String = ""
 
-    // Server
     @State private var host: String = ""
     @State private var port: String = "22"
     @State private var username: String = ""
 
-    // Authentication
     @State private var authMethod: SSHAuthMethod = .password
     @State private var sshPassword: String = ""
     @State private var privateKeyPath: String = ""
@@ -31,21 +28,17 @@ struct SSHProfileEditorView: View {
     @State private var agentSocketOption: SSHAgentSocketOption = .systemDefault
     @State private var customAgentSocketPath: String = ""
 
-    // TOTP
     @State private var totpMode: TOTPMode = .none
     @State private var totpSecret: String = ""
     @State private var totpAlgorithm: TOTPAlgorithm = .sha1
     @State private var totpDigits: Int = 6
     @State private var totpPeriod: Int = 30
 
-    // Jump hosts
     @State private var jumpHosts: [SSHJumpHost] = []
 
-    // SSH config auto-fill
     @State private var sshConfigEntries: [SSHConfigEntry] = []
     @State private var selectedSSHConfigHost: String = ""
 
-    // Deletion
     @State private var showingDeleteConfirmation = false
     @State private var connectionsUsingProfile = 0
     @State private var isTesting = false
@@ -424,7 +417,6 @@ struct SSHProfileEditorView: View {
             SSHProfileStorage.shared.addProfile(profile)
         }
 
-        // Save secrets to Keychain
         if (authMethod == .password || authMethod == .keyboardInteractive) && !sshPassword.isEmpty {
             SSHProfileStorage.shared.saveSSHPassword(sshPassword, for: profileId)
         } else {

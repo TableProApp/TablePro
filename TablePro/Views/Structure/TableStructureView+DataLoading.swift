@@ -140,7 +140,6 @@ extension TableStructureView {
     }
 
     func onRefreshData() {
-        // Ignore refresh notifications while we're in the middle of our own save/reload
         guard !isReloadingAfterSave else {
             Self.logger.debug("Ignoring refresh notification - currently reloading after save")
             return
@@ -149,9 +148,7 @@ extension TableStructureView {
         // Skip warning if we just saved (within 2 seconds)
         let justSaved = lastSaveTime.map { Date().timeIntervalSince($0) < 2.0 } ?? false
 
-        // Check for unsaved changes before refreshing
         if structureChangeManager.hasChanges && !justSaved {
-            // Show confirmation dialog
             Task { @MainActor in
                 let window = coordinator?.contentWindow
                 let confirmed = await AlertHelper.confirmDestructive(

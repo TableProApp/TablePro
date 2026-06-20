@@ -64,7 +64,6 @@ final class StructureChangeManager: ChangeManaging {
     ) {
         self.tableName = tableName
 
-        // Convert to definitions
         self.currentColumns = columns.map { EditableColumnDefinition.from($0) }
 
         // Merge primary key info into columns (handles PostgreSQL where isPrimaryKey is always false)
@@ -91,7 +90,6 @@ final class StructureChangeManager: ChangeManaging {
         }
         self.currentPrimaryKey = primaryKey
 
-        // Reset working state
         resetWorkingState()
 
         pendingChanges.removeAll()
@@ -416,14 +414,12 @@ final class StructureChangeManager: ChangeManaging {
     private func validate() {
         validationErrors.removeAll()
 
-        // Validate all columns have name and dataType (no invalid placeholders)
         for column in workingColumns {
             if !column.isValid {
                 validationErrors[.column(column.id)] = "Column must have a name and data type"
             }
         }
 
-        // Validate column names are unique
         let columnNames = workingColumns.filter { column in
             column.isValid && !isColumnPendingDeletion(column.id)
         }.map { $0.name }
@@ -437,21 +433,18 @@ final class StructureChangeManager: ChangeManaging {
             }
         }
 
-        // Validate all indexes have required fields
         for index in workingIndexes {
             if !index.isValid {
                 validationErrors[.index(index.id)] = "Index must have a name and at least one column"
             }
         }
 
-        // Validate all foreign keys have required fields
         for fk in workingForeignKeys {
             if !fk.isValid {
                 validationErrors[.foreignKey(fk.id)] = "Foreign key must have name, columns, and referenced table"
             }
         }
 
-        // Validate index names are unique
         let indexNames = workingIndexes.filter { $0.isValid }.map { $0.name }
         let duplicateIndexes = Dictionary(grouping: indexNames, by: { $0 })
             .filter { $0.value.count > 1 }
@@ -463,7 +456,6 @@ final class StructureChangeManager: ChangeManaging {
             }
         }
 
-        // Validate index columns exist
         for index in workingIndexes.filter({ $0.isValid }) {
             for columnName in index.columns {
                 if !columnNames.contains(columnName) {
@@ -472,7 +464,6 @@ final class StructureChangeManager: ChangeManaging {
             }
         }
 
-        // Validate foreign key columns exist
         for fk in workingForeignKeys.filter({ $0.isValid }) {
             for columnName in fk.columns {
                 if !columnNames.contains(columnName) {
@@ -481,7 +472,6 @@ final class StructureChangeManager: ChangeManaging {
             }
         }
 
-        // Validate primary key columns exist
         for columnName in workingPrimaryKey {
             if !columnNames.contains(columnName) {
                 validationErrors[.primaryKey] = "Primary key references non-existent column: \(columnName)"

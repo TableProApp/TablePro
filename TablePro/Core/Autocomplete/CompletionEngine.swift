@@ -128,14 +128,12 @@ final class CompletionEngine {
 
         let adjustedCursor = cursorPosition - windowOffset
 
-        // Get completions from provider (uses the potentially windowed text)
         let (items, context) = await provider.getCompletions(
             text: analysisText,
             cursorPosition: adjustedCursor,
             forcedTableReferences: forcedTableReferences
         )
 
-        // Don't return empty results
         guard !items.isEmpty else {
             return nil
         }
@@ -184,7 +182,6 @@ final class CompletionEngine {
         let textLength = nsText.length
         let radius = Self.localWindowRadius
 
-        // Raw window bounds
         var windowStart = max(0, cursorPosition - radius)
         let windowEnd = min(textLength, cursorPosition + radius)
 

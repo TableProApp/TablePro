@@ -95,7 +95,6 @@ internal final class ThemeRegistryInstaller {
         // Remove old files without triggering theme reload or fallback
         _ = try removeRegistryFiles(for: plugin.id)
 
-        // Write new themes
         var installedThemes: [InstalledRegistryTheme] = []
         for theme in stagedThemes {
             try ThemeStorage.saveRegistryTheme(theme)

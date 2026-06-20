@@ -106,7 +106,6 @@ final class RegistryClient {
     func fetchManifest(forceRefresh: Bool = false) async {
         fetchState = .loading
 
-        // Invalidate ETag cache when registry URL changes
         let currentURL = registryURL.absoluteString
         let lastURL = UserDefaults.standard.string(forKey: Self.lastRegistryURLKey)
         if currentURL != lastURL {

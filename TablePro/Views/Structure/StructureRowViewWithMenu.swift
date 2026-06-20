@@ -60,7 +60,6 @@ final class StructureRowViewWithMenu: DataGridRowView {
         copyDefItem.target = self
         menu.addItem(copyDefItem)
 
-        // Copy As submenu
         let copyAsSubmenu = NSMenu()
         let csvItem = NSMenuItem(
             title: "CSV",

@@ -101,7 +101,6 @@ final class ExportService {
             throw ExportError.formatNotFound(config.formatId)
         }
 
-        // Reset state
         state = ExportState(isExporting: true, totalTables: tables.count)
         isCancelled = false
 
@@ -116,18 +115,14 @@ final class ExportService {
             throw ExportError.notConnected
         }
 
-        // Fetch total row counts
         state.totalRows = await fetchTotalRowCount(for: tables, driver: driver)
 
-        // Create data source adapter
         let dataSource = ExportDataSourceAdapter(driver: driver, databaseType: databaseType)
 
-        // Create progress tracker
         let nsProgress = Progress(totalUnitCount: Int64(state.totalRows))
         let progress = PluginExportProgress(progress: nsProgress)
         currentProgress = progress
 
-        // Observe NSProgress for UI updates
         let observation = nsProgress.observe(\.completedUnitCount) { [weak self] observed, _ in
             let count = Int(observed.completedUnitCount)
             Task { @MainActor [weak self] in
@@ -148,7 +143,6 @@ final class ExportService {
         }
         defer { descObservation.invalidate() }
 
-        // Convert ExportTableItems to PluginExportTables
         let pluginTables = tables.map { table in
             PluginExportTable(
                 name: table.name,

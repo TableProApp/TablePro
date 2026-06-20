@@ -213,7 +213,6 @@ struct FilterSQLGenerator {
             return "NULL"
         }
 
-        // Check for boolean literals
         if trimmed.caseInsensitiveCompare("TRUE") == .orderedSame {
             return dialect.booleanLiteralStyle == .truefalse ? "TRUE" : "1"
         }
@@ -221,12 +220,10 @@ struct FilterSQLGenerator {
             return dialect.booleanLiteralStyle == .truefalse ? "FALSE" : "0"
         }
 
-        // Try to detect numeric values
         if Int(trimmed) != nil || Double(trimmed) != nil {
             return trimmed
         }
 
-        // String value - escape and quote
         return "'\(escapeStringValue(trimmed))'"
     }
 

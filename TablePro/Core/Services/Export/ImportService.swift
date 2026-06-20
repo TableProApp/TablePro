@@ -64,7 +64,6 @@ final class ImportService {
             throw DatabaseError.notConnected
         }
 
-        // Reset state
         state = ImportState(isImporting: true)
         defer {
             state.isImporting = false
@@ -93,7 +92,6 @@ final class ImportService {
         }
         defer { source.cleanup() }
 
-        // Create progress tracker
         let initialTotal = Int64(knownStatementCount ?? 0)
         let nsProgress = Progress(totalUnitCount: initialTotal)
         let progress = PluginImportProgress(progress: nsProgress)
@@ -135,7 +133,6 @@ final class ImportService {
         } catch {
             state.errorMessage = error.localizedDescription
 
-            // Record failed import history
             QueryHistoryManager.shared.recordQuery(
                 query: "-- Import from \(url.lastPathComponent) (\(progress.processedStatements) statements before failure)",
                 connectionId: connection.id,
@@ -149,13 +146,11 @@ final class ImportService {
             throw error
         }
 
-        // Update final state
         state.processedStatements = result.executedStatements
         state.skippedStatements = result.skippedStatements
         state.estimatedTotalStatements = result.executedStatements + result.skippedStatements
         state.progress = 1.0
 
-        // Record success history
         QueryHistoryManager.shared.recordQuery(
             query: "-- Import from \(url.lastPathComponent) (\(result.executedStatements) statements)",
             connectionId: connection.id,

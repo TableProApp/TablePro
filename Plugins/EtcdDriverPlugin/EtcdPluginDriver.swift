@@ -131,7 +131,6 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             )
         }
 
-        // Check for tagged browsing queries
         if EtcdQueryBuilder.isTaggedQuery(trimmed) {
             return try await executeTaggedQuery(trimmed, client: client, startTime: startTime)
         }
@@ -927,7 +926,6 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             }
         }
 
-        // Apply pagination
         let total = kvs.count
         guard offset < total else {
             return emptyResult(startTime: startTime)

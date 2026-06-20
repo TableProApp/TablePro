@@ -17,7 +17,6 @@ extension DatabaseManager {
     /// Start health monitoring for a connection
     internal func startHealthMonitor(for connectionId: UUID) async {
         Self.logger.info("startHealthMonitor called for \(connectionId) (existing monitors: \(self.healthMonitors.count))")
-        // Stop any existing monitor
         await stopHealthMonitor(for: connectionId)
 
         let monitor = ConnectionHealthMonitor(
@@ -112,7 +111,6 @@ extension DatabaseManager {
     /// Creates a fresh driver, connects, and applies timeout for the given session.
     /// For SSH-tunneled sessions, rebuilds the tunnel before connecting the driver.
     internal func reconnectDriver(for session: ConnectionSession) async throws -> ReconnectResult {
-        // Disconnect existing driver
         session.driver?.disconnect()
 
         // Rebuild the tunnel if needed; otherwise reuse effective connection
@@ -228,7 +226,6 @@ extension DatabaseManager {
 
         Self.logger.info("Manual reconnect requested for: \(session.connection.name)")
 
-        // Update status to connecting
         updateSession(sessionId) { session in
             session.status = .connecting
         }
@@ -236,7 +233,6 @@ extension DatabaseManager {
         await SchemaService.shared.invalidate(connectionId: sessionId)
         await DatabaseTreeMetadataService.shared.handleReconnect(connectionId: sessionId)
 
-        // Stop existing health monitor
         await stopHealthMonitor(for: sessionId)
 
         do {
@@ -264,7 +260,6 @@ extension DatabaseManager {
                 passwordOverride = prompted
             }
 
-            // Create new driver and connect
             let driver = try await DatabaseDriverFactory.createDriver(
                 for: effectiveConnection,
                 passwordOverride: passwordOverride,
@@ -283,7 +278,6 @@ extension DatabaseManager {
                 savedDatabase: databaseSwitchRequiresReconnect(session.connection) ? nil : activeSessions[sessionId]?.currentDatabase
             )
 
-            // Update session
             updateSession(sessionId) { session in
                 session.driver = driver
                 session.status = .connected

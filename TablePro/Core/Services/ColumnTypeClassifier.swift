@@ -95,12 +95,10 @@ struct ColumnTypeClassifier {
     private static let typeLookup: [String: (String) -> ColumnType] = {
         var map: [String: (String) -> ColumnType] = [:]
 
-        // Boolean
         for key in ["BOOL", "BOOLEAN", "BIT"] {
             map[key] = { .boolean(rawType: $0) }
         }
 
-        // Integer
         for key in [
             "INT", "INTEGER", "BIGINT", "SMALLINT", "TINYINT", "MEDIUMINT",
             "SERIAL", "BIGSERIAL", "SMALLSERIAL",
@@ -112,7 +110,6 @@ struct ColumnTypeClassifier {
             map[key] = { .integer(rawType: $0) }
         }
 
-        // Decimal
         for key in [
             "FLOAT", "DOUBLE", "DECIMAL", "NUMERIC", "REAL", "NUMBER",
             "MONEY", "SMALLMONEY",
@@ -124,12 +121,10 @@ struct ColumnTypeClassifier {
             map[key] = { .decimal(rawType: $0) }
         }
 
-        // Date
         for key in ["DATE", "DATE32"] {
             map[key] = { .date(rawType: $0) }
         }
 
-        // Timestamp
         for key in [
             "TIMESTAMP", "TIMESTAMPTZ", "TIMESTAMP_TZ", "TIMESTAMP_NTZ",
             "TIMESTAMP_S", "TIMESTAMP_MS", "TIMESTAMP_NS",
@@ -138,7 +133,6 @@ struct ColumnTypeClassifier {
             map[key] = { .timestamp(rawType: $0) }
         }
 
-        // Datetime
         for key in [
             "DATETIME", "DATETIME2", "DATETIME64",
             "DATETIMEOFFSET", "SMALLDATETIME"
@@ -146,12 +140,10 @@ struct ColumnTypeClassifier {
             map[key] = { .datetime(rawType: $0) }
         }
 
-        // JSON
         for key in ["JSON", "JSONB"] {
             map[key] = { .json(rawType: $0) }
         }
 
-        // Blob
         for key in [
             "BLOB", "BYTEA", "BINARY", "VARBINARY", "RAW", "IMAGE",
             "TINYBLOB", "MEDIUMBLOB", "LONGBLOB"
@@ -159,15 +151,12 @@ struct ColumnTypeClassifier {
             map[key] = { .blob(rawType: $0) }
         }
 
-        // Enum
         for key in ["ENUM", "ENUM8", "ENUM16"] {
             map[key] = { .enumType(rawType: $0, values: nil) }
         }
 
-        // Set
         map["SET"] = { .set(rawType: $0, values: nil) }
 
-        // Spatial
         for key in [
             "GEOMETRY", "POINT", "LINESTRING", "POLYGON",
             "MULTIPOINT", "MULTILINESTRING", "MULTIPOLYGON",

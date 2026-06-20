@@ -104,11 +104,9 @@ struct SQLStatementGenerator {
             }
         }
 
-        // Generate DELETE statements
         // Try batched DELETE first (uses PK if available), fall back to individual DELETEs
         if !deleteChanges.isEmpty {
             if let stmt = generateBatchDeleteSQL(for: deleteChanges) {
-                // Batched delete successful (has PK)
                 statements.append(stmt)
             } else {
                 // No PK - generate individual DELETE statements matching all columns

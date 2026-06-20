@@ -21,7 +21,6 @@ final class TagStorage {
     private var cachedTags: [ConnectionTag]?
 
     private init() {
-        // Initialize with presets on first launch
         if loadTags().isEmpty {
             saveTags(ConnectionTag.presets)
         }
@@ -66,7 +65,6 @@ final class TagStorage {
     /// Add a new custom tag
     func addTag(_ tag: ConnectionTag) {
         var tags = loadTags()
-        // Prevent duplicates by name
         guard !tags.contains(where: { $0.name.lowercased() == tag.name.lowercased() }) else {
             return
         }
