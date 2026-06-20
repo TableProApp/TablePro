@@ -91,8 +91,8 @@ extension RedisParseError: PluginDriverError {
     var pluginErrorMessage: String {
         switch self {
         case .emptySyntax: return String(localized: "Empty Redis command")
-        case .invalidArgument(let msg): return String(localized: "Invalid argument: \(msg)")
-        case .missingArgument(let msg): return String(localized: "Missing argument: \(msg)")
+        case .invalidArgument(let msg): return String(format: String(localized: "Invalid argument: %@"), msg)
+        case .missingArgument(let msg): return String(format: String(localized: "Missing argument: %@"), msg)
         }
     }
 }

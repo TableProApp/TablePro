@@ -80,7 +80,7 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
 
             guard let match = databases.first(where: { $0.name == databaseName }) else {
                 throw CloudflareD1Error(
-                    message: String(localized: "Database '\(databaseName)' not found in account")
+                    message: String(format: String(localized: "Database '%@' not found in account"), databaseName)
                 )
             }
             databaseId = match.uuid
@@ -603,7 +603,7 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
 
         guard let resolvedUuid = uuid else {
             throw CloudflareD1Error(
-                message: String(localized: "Database '\(database)' not found")
+                message: String(format: String(localized: "Database '%@' not found"), database)
             )
         }
 

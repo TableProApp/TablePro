@@ -72,9 +72,9 @@ extension EtcdParseError: PluginDriverError {
     var pluginErrorMessage: String {
         switch self {
         case .emptySyntax: return String(localized: "Empty etcd command")
-        case .unknownCommand(let cmd): return String(localized: "Unknown command: \(cmd)")
-        case .missingArgument(let msg): return String(localized: "Missing argument: \(msg)")
-        case .invalidArgument(let msg): return String(localized: "Invalid argument: \(msg)")
+        case .unknownCommand(let cmd): return String(format: String(localized: "Unknown command: %@"), cmd)
+        case .missingArgument(let msg): return String(format: String(localized: "Missing argument: %@"), msg)
+        case .invalidArgument(let msg): return String(format: String(localized: "Invalid argument: %@"), msg)
         }
     }
 }

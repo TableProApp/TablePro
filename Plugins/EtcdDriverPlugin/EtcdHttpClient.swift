@@ -22,11 +22,11 @@ internal enum EtcdError: Error, LocalizedError {
         case .notConnected:
             return String(localized: "Not connected to etcd")
         case .connectionFailed(let detail):
-            return String(localized: "Connection failed: \(detail)")
+            return String(format: String(localized: "Connection failed: %@"), detail)
         case .serverError(let detail):
-            return String(localized: "Server error: \(detail)")
+            return String(format: String(localized: "Server error: %@"), detail)
         case .authFailed(let detail):
-            return String(localized: "Authentication failed: \(detail)")
+            return String(format: String(localized: "Authentication failed: %@"), detail)
         case .requestCancelled:
             return String(localized: "Request was cancelled")
         }
