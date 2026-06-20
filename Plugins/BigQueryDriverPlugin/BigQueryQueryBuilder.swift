@@ -185,9 +185,7 @@ internal struct BigQueryQueryBuilder {
 
         // Search
         if let searchText = params.searchText, !searchText.isEmpty {
-            let searchCols = params.searchColumns?.isEmpty == false
-                ? params.searchColumns!
-                : columns
+            let searchCols = params.searchColumns.flatMap { $0.isEmpty ? nil : $0 } ?? columns
             let escapedSearch = searchText.replacingOccurrences(of: "'", with: "''")
             let searchClauses = searchCols.map { col in
                 "CAST(\(quoteIdentifier(col)) AS STRING) LIKE '%\(escapedSearch)%'"
@@ -236,9 +234,7 @@ internal struct BigQueryQueryBuilder {
         }
 
         if let searchText = params.searchText, !searchText.isEmpty {
-            let searchCols = params.searchColumns?.isEmpty == false
-                ? params.searchColumns!
-                : columns
+            let searchCols = params.searchColumns.flatMap { $0.isEmpty ? nil : $0 } ?? columns
             let escapedSearch = searchText.replacingOccurrences(of: "'", with: "''")
             let searchClauses = searchCols.map { col in
                 "CAST(\(quoteIdentifier(col)) AS STRING) LIKE '%\(escapedSearch)%'"

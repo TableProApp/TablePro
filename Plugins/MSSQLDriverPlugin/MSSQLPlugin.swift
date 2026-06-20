@@ -219,9 +219,7 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     init(config: DriverConnectionConfig) {
         self.config = config
-        self._currentSchema = config.additionalFields["mssqlSchema"]?.isEmpty == false
-            ? config.additionalFields["mssqlSchema"]!
-            : "dbo"
+        self._currentSchema = config.additionalFields["mssqlSchema"].flatMap { $0.isEmpty ? nil : $0 } ?? "dbo"
     }
 
     private var escapedSchema: String {

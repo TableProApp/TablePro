@@ -88,7 +88,7 @@ internal final class ServiceAccountAuthProvider: @unchecked Sendable, BigQueryAu
 
         self.clientEmail = email
         self.privateKeyPEM = key
-        self.projectId = overrideProjectId?.isEmpty == false ? overrideProjectId! : saProjectId
+        self.projectId = overrideProjectId.flatMap { $0.isEmpty ? nil : $0 } ?? saProjectId
 
         if self.projectId.isEmpty {
             throw BigQueryError.authFailed("No project ID found in service account JSON or connection settings")
@@ -349,9 +349,7 @@ internal final class ADCAuthProvider: @unchecked Sendable, BigQueryAuthProvider 
             }
 
             let quotaProject = json["quota_project_id"] as? String ?? ""
-            self.projectId = overrideProjectId?.isEmpty == false
-                ? overrideProjectId!
-                : quotaProject
+            self.projectId = overrideProjectId.flatMap { $0.isEmpty ? nil : $0 } ?? quotaProject
 
             if self.projectId.isEmpty {
                 throw BigQueryError.authFailed(
@@ -374,9 +372,7 @@ internal final class ADCAuthProvider: @unchecked Sendable, BigQueryAuthProvider 
             }
 
             // Resolve source credentials
-            let resolvedProjectId = overrideProjectId?.isEmpty == false
-                ? overrideProjectId!
-                : (json["quota_project_id"] as? String ?? "")
+            let resolvedProjectId = overrideProjectId.flatMap { $0.isEmpty ? nil : $0 } ?? (json["quota_project_id"] as? String ?? "")
 
             if resolvedProjectId.isEmpty {
                 throw BigQueryError.authFailed(
