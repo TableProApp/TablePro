@@ -38,6 +38,27 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     private(set) var identitySchema: ColumnIdentitySchema = .empty
     var currentSortState = SortState()
 
+    private var columnIndexByDataIndex: [Int: Int] = [:]
+    private static let selectionCacheLogger = Logger(subsystem: "com.TablePro", category: "DataGrid.ColumnIndexCache")
+
+    func tableColumnIndex(for dataIndex: Int) -> Int? {
+        if let cached = columnIndexByDataIndex[dataIndex] {
+            return cached
+        }
+        guard let tableView,
+              let identifier = identitySchema.identifier(for: dataIndex) else { return nil }
+        let resolved = tableView.column(withIdentifier: identifier)
+        guard resolved >= 0 else { return nil }
+        columnIndexByDataIndex[dataIndex] = resolved
+        return resolved
+    }
+
+    func invalidateColumnIndexCache() {
+        guard !columnIndexByDataIndex.isEmpty else { return }
+        Self.selectionCacheLogger.debug("invalidate column index cache (had \(self.columnIndexByDataIndex.count))")
+        columnIndexByDataIndex.removeAll()
+    }
+
     func columnIdentifier(for dataIndex: Int) -> NSUserInterfaceItemIdentifier? {
         identitySchema.identifier(for: dataIndex)
     }
@@ -224,6 +245,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         columnDisplayFormats = []
         cachedRowCount = 0
         cachedColumnCount = 0
+        invalidateColumnIndexCache()
         sortedIDs = nil
         lastUpdateSnapshot = nil
         columnPool.detachFromTableView()
@@ -666,6 +688,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         guard schemaChanged else { return false }
         identitySchema = nextSchema
         displayCache.removeAll()
+        invalidateColumnIndexCache()
         return true
     }
 

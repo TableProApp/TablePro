@@ -271,6 +271,7 @@ struct DataGridView: NSViewRepresentable {
                 savedLayout: savedLayout
             )
             coordinator.isRebuildingColumns = false
+            coordinator.invalidateColumnIndexCache()
 
             if savedLayout == nil {
                 coordinator.scheduleLayoutPersist()
