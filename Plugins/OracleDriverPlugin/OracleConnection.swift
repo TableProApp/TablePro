@@ -286,16 +286,7 @@ final class OracleConnectionWrapper: @unchecked Sendable {
     }
 
     private static func isChannelFatal(_ error: OracleSQLError) -> Bool {
-        isChannelFatalCode(error.code.description)
-    }
-
-    static func isChannelFatalCode(_ codeDescription: String) -> Bool {
-        switch codeDescription {
-        case "connectionError", "messageDecodingFailure", "unexpectedBackendMessage":
-            return true
-        default:
-            return false
-        }
+        OracleChannelFatalCode.isChannelFatal(error.code.description)
     }
 
     func disconnect() {
