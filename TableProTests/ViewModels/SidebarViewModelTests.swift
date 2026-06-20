@@ -520,3 +520,93 @@ struct SidebarViewModelMultiSectionTests {
         UserDefaults.standard.removeObject(forKey: SidebarPersistenceKey.legacyTablesExpanded)
     }
 }
+
+@Suite("SidebarViewModel search debounce")
+struct SidebarViewModelSearchDebounceTests {
+    @Test("filterQuery updates immediately on first non-empty input")
+    @MainActor
+    func filterQueryUpdatesImmediatelyOnFirstInput() {
+        let vm = makeViewModel()
+
+        vm.searchText = "user"
+
+        #expect(vm.filterQuery == "user")
+    }
+
+    @Test("filterQuery clears immediately when search becomes empty")
+    @MainActor
+    func filterQueryClearsImmediatelyOnEmpty() async {
+        let vm = makeViewModel()
+        vm.searchText = "user"
+        vm.searchText = "users"
+        await Task.yield()
+
+        vm.searchText = ""
+
+        #expect(vm.filterQuery == "")
+    }
+
+    @Test("filterQuery stays at previous value during debounce window")
+    @MainActor
+    func filterQueryHoldsPreviousValueDuringDebounce() async {
+        let vm = makeViewModel()
+        vm.searchText = "user"
+        #expect(vm.filterQuery == "user")
+
+        vm.searchText = "users"
+        await Task.yield()
+
+        #expect(vm.filterQuery == "user")
+    }
+
+    @Test("filterQuery catches up after debounce window elapses")
+    @MainActor
+    func filterQueryCatchesUpAfterDebounce() async {
+        let vm = makeViewModel()
+        vm.searchText = "user"
+
+        vm.searchText = "users"
+
+        try? await Task.sleep(nanoseconds: 300_000_000)
+        await Task.yield()
+
+        #expect(vm.filterQuery == "users")
+    }
+
+    @Test("rapid consecutive keystrokes collapse to the final value")
+    @MainActor
+    func rapidKeystrokesCollapseToFinalValue() async {
+        let vm = makeViewModel()
+        vm.searchText = "u"
+
+        vm.searchText = "us"
+        vm.searchText = "use"
+        vm.searchText = "user"
+        await Task.yield()
+
+        #expect(vm.filterQuery == "u")
+
+        try? await Task.sleep(nanoseconds: 300_000_000)
+        await Task.yield()
+
+        #expect(vm.filterQuery == "user")
+    }
+
+    @Test("filter caches still serve filteredTables using filterQuery, not searchText")
+    @MainActor
+    func filteredTablesHonorsFilterQueryNotSearchText() async {
+        let vm = makeViewModel()
+        let users = TestFixtures.makeTableInfo(name: "users", type: .table)
+        let userLog = TestFixtures.makeTableInfo(name: "user_log", type: .table)
+        let orders = TestFixtures.makeTableInfo(name: "orders", type: .table)
+        let mixed = [users, userLog, orders]
+
+        vm.searchText = "user"
+        vm.searchText = "users"
+        await Task.yield()
+
+        let matches = vm.filteredTables(of: .table, from: mixed)
+
+        #expect(matches.map(\.name) == ["users", "user_log"])
+    }
+}

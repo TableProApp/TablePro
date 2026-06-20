@@ -23,7 +23,7 @@ struct SidebarTreeView: View {
     }
 
     private var searchText: String {
-        viewModel.searchText
+        viewModel.filterQuery
     }
 
     private var visibleSchemas: [String] {
