@@ -23,12 +23,10 @@ protocol RowDataParser {
 /// Matches the format produced by RowOperationsManager.copySelectedRowsToClipboard()
 struct TSVRowParser: RowDataParser {
     func parse(_ text: String, schema: TableSchema) -> Result<[ParsedRow], RowParseError> {
-        // Check for empty input
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return .failure(.emptyClipboard)
         }
 
-        // Split into lines
         let lines = text.components(separatedBy: .newlines)
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty }
@@ -42,18 +40,14 @@ struct TSVRowParser: RowDataParser {
         for (index, line) in lines.enumerated() {
             let lineNumber = index + 1
 
-            // Parse TSV line
             let rawValues = line.components(separatedBy: "\t")
             var values = rawValues.map { normalizeValue($0) }
 
-            // Handle column count mismatch
             if values.count < schema.columnCount {
-                // Pad with NULL for missing columns
                 while values.count < schema.columnCount {
                     values.append(nil)
                 }
             } else if values.count > schema.columnCount {
-                // Truncate extra columns
                 values = Array(values.prefix(schema.columnCount))
             }
 
@@ -76,7 +70,6 @@ struct TSVRowParser: RowDataParser {
     private func normalizeValue(_ rawValue: String) -> String? {
         let trimmed = rawValue.trimmingCharacters(in: .whitespaces)
 
-        // Empty string or "NULL" (case-insensitive) → nil
         if trimmed.isEmpty || trimmed.uppercased() == "NULL" {
             return nil
         }
@@ -107,7 +100,6 @@ struct CSVRowParser: RowDataParser {
             return .failure(.noValidRows)
         }
 
-        // Detect header row: if first row's values match column names, skip it
         let startIndex = isHeaderRow(records[0], schema: schema) ? 1 : 0
         guard startIndex < records.count else {
             return .failure(.noValidRows)
@@ -119,7 +111,6 @@ struct CSVRowParser: RowDataParser {
             let lineNumber = recordIndex + 1
             var values = records[recordIndex].map { normalizeValue($0) }
 
-            // Handle column count mismatch
             if values.count < schema.columnCount {
                 while values.count < schema.columnCount {
                     values.append(nil)
