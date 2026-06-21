@@ -34,13 +34,12 @@ final class GridSelectionOverlay: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         guard let tableView, let coordinator else { return }
-        let schema = coordinator.identitySchema
         let totalRows = tableView.numberOfRows
         let editingCell = activeOverlayCell(in: coordinator)
 
         NSColor.selectedContentBackgroundColor.withAlphaComponent(Self.borderAlpha).setStroke()
         for rect in selection.rectangles {
-            guard let frame = frame(for: rect, in: tableView, schema: schema) else { continue }
+            guard let frame = frame(for: rect, in: tableView, coordinator: coordinator) else { continue }
             guard frame.intersects(dirtyRect) else { continue }
             if isFullHeight(rect, totalRows: totalRows) { continue }
             if let editingCell, rect.contains(editingCell) { continue }
@@ -53,7 +52,7 @@ final class GridSelectionOverlay: NSView {
         if let active = selection.activeCell,
            editingCell != active,
            selection.rectangles.count > 1 || (selection.rectangles.first?.rows.count ?? 0) > 1 || (selection.rectangles.first?.columns.count ?? 0) > 1,
-           let frame = frame(for: GridRect(cell: active), in: tableView, schema: schema),
+           let frame = frame(for: GridRect(cell: active), in: tableView, coordinator: coordinator),
            frame.intersects(dirtyRect) {
             NSColor.controlAccentColor.setStroke()
             let inset = frame.insetBy(dx: Self.activeCellBorderWidth / 2, dy: Self.activeCellBorderWidth / 2)
@@ -78,7 +77,7 @@ final class GridSelectionOverlay: NSView {
         return rect.rows.lowerBound <= 0 && rect.rows.upperBound >= totalRows - 1
     }
 
-    private func frame(for rect: GridRect, in tableView: NSTableView, schema: ColumnIdentitySchema) -> NSRect? {
+    private func frame(for rect: GridRect, in tableView: NSTableView, coordinator: TableViewCoordinator) -> NSRect? {
         guard tableView.numberOfRows > 0, tableView.numberOfColumns > 0 else { return nil }
         let firstRow = max(0, rect.rows.lowerBound)
         let lastRow = min(tableView.numberOfRows - 1, rect.rows.upperBound)
@@ -92,7 +91,7 @@ final class GridSelectionOverlay: NSView {
         var leadingX = CGFloat.infinity
         var trailingX = -CGFloat.infinity
         for dataColumn in rect.columns.lowerBound...rect.columns.upperBound {
-            guard let tableColumnIndex = DataGridView.tableColumnIndex(for: dataColumn, in: tableView, schema: schema) else { continue }
+            guard let tableColumnIndex = coordinator.tableColumnIndex(for: dataColumn) else { continue }
             let columnRect = tableView.rect(ofColumn: tableColumnIndex)
             leadingX = min(leadingX, columnRect.minX)
             trailingX = max(trailingX, columnRect.maxX)

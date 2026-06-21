@@ -109,7 +109,7 @@ final class WelcomeViewModel {
             .filter(\.isFavorite)
             .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
 
-        let tree = buildGroupTree(groups: groups, connections: connections, parentId: nil)
+        let (tree, indices) = buildGroupTreeWithIndices(groups: groups, connections: connections)
         let baseItems = searchText.isEmpty ? tree : filterGroupTree(tree, searchText: searchText)
         if searchText.isEmpty, !favoriteConnections.isEmpty {
             treeItems = baseItems.filter { node in
@@ -120,17 +120,9 @@ final class WelcomeViewModel {
             treeItems = baseItems
         }
 
-        var counts: [UUID: Int] = [:]
-        var depths: [UUID: Int] = [:]
-        var descendantDepths: [UUID: Int] = [:]
-        for group in groups {
-            counts[group.id] = connectionCount(in: group.id, connections: connections, groups: groups)
-            depths[group.id] = depthOf(groupId: group.id, groups: groups)
-            descendantDepths[group.id] = maxDescendantDepth(groupId: group.id, groups: groups)
-        }
-        connectionCountByGroup = counts
-        depthByGroup = depths
-        maxDescendantDepthByGroup = descendantDepths
+        connectionCountByGroup = indices.connectionCountByGroup
+        depthByGroup = indices.depthByGroup
+        maxDescendantDepthByGroup = indices.maxDescendantDepthByGroup
     }
 
     private func scheduleRebuildTree(oldValue: String) {

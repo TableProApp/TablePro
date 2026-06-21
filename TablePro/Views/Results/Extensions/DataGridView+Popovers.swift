@@ -82,11 +82,7 @@ extension TableViewCoordinator {
         let focusedRow = (tableView as? KeyHandlingTableView)?.focusedRow ?? -1
         let newRow = focusedRow >= 0 ? focusedRow : (tableView.selectedRowIndexes.max() ?? -1)
         guard newRow >= 0,
-              let tableColumnIndex = DataGridView.tableColumnIndex(
-                for: columnIndex,
-                in: tableView,
-                schema: identitySchema
-              ) else {
+              let tableColumnIndex = tableColumnIndex(for: columnIndex) else {
             popover.close()
             clearFKPreviewState()
             return

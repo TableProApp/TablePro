@@ -1,21 +1,19 @@
-import Foundation
 import Testing
-
-@testable import TablePro
+import TableProPluginKit
 
 @Suite("Oracle channel-fatal error classification")
 struct OracleConnectionErrorTests {
     @Test("Decode and connection failures are treated as channel-fatal")
     func channelFatalCodes() {
-        #expect(OracleConnectionWrapper.isChannelFatalCode("connectionError"))
-        #expect(OracleConnectionWrapper.isChannelFatalCode("messageDecodingFailure"))
-        #expect(OracleConnectionWrapper.isChannelFatalCode("unexpectedBackendMessage"))
+        #expect(OracleChannelFatalCode.isChannelFatal("connectionError"))
+        #expect(OracleChannelFatalCode.isChannelFatal("messageDecodingFailure"))
+        #expect(OracleChannelFatalCode.isChannelFatal("unexpectedBackendMessage"))
     }
 
     @Test("Server-side SQL errors keep the connection alive")
     func nonFatalCodes() {
-        #expect(!OracleConnectionWrapper.isChannelFatalCode("server"))
-        #expect(!OracleConnectionWrapper.isChannelFatalCode("statementCancelled"))
-        #expect(!OracleConnectionWrapper.isChannelFatalCode("malformedStatement"))
+        #expect(!OracleChannelFatalCode.isChannelFatal("server"))
+        #expect(!OracleChannelFatalCode.isChannelFatal("statementCancelled"))
+        #expect(!OracleChannelFatalCode.isChannelFatal("malformedStatement"))
     }
 }

@@ -271,6 +271,7 @@ struct DataGridView: NSViewRepresentable {
                 savedLayout: savedLayout
             )
             coordinator.isRebuildingColumns = false
+            coordinator.invalidateColumnIndexCache()
 
             if savedLayout == nil {
                 coordinator.scheduleLayoutPersist()
@@ -398,16 +399,6 @@ struct DataGridView: NSViewRepresentable {
 
     static func isDataTableColumn(_ tableColumnIndex: Int) -> Bool {
         tableColumnIndex >= firstDataTableColumnIndex
-    }
-
-    static func tableColumnIndex(
-        for dataIndex: Int,
-        in tableView: NSTableView,
-        schema: ColumnIdentitySchema
-    ) -> Int? {
-        guard let identifier = schema.identifier(for: dataIndex) else { return nil }
-        let index = tableView.column(withIdentifier: identifier)
-        return index >= 0 ? index : nil
     }
 
     static func dataColumnIndex(
