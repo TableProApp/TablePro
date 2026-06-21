@@ -166,10 +166,6 @@ func connectionCount(in groupId: UUID, connections: [DatabaseConnection], groups
 
 // MARK: - Indexed Tree (O(G+C))
 
-private struct GroupParentKey: Hashable {
-    let id: UUID?
-}
-
 struct GroupTreeIndices {
     var connectionCountByGroup: [UUID: Int] = [:]
     var depthByGroup: [UUID: Int] = [:]
@@ -178,7 +174,7 @@ struct GroupTreeIndices {
 
 private struct GroupTreeIndex {
     let validGroupIds: Set<UUID>
-    let childrenByParentId: [GroupParentKey: [ConnectionGroup]]
+    let childrenByParentId: [UUID?: [ConnectionGroup]]
     let connectionsByGroupId: [UUID: [DatabaseConnection]]
 }
 
@@ -201,10 +197,10 @@ private func sortConnections(_ connections: [DatabaseConnection]) -> [DatabaseCo
 private func buildGroupTreeIndex(groups: [ConnectionGroup], connections: [DatabaseConnection]) -> GroupTreeIndex {
     let validGroupIds = Set(groups.map(\.id))
 
-    var childrenByParentId: [GroupParentKey: [ConnectionGroup]] = [:]
+    var childrenByParentId: [UUID?: [ConnectionGroup]] = [:]
     for group in groups {
-        let key = GroupParentKey(id: group.parentId.flatMap { validGroupIds.contains($0) ? $0 : nil })
-        childrenByParentId[key, default: []].append(group)
+        let parentKey = group.parentId.flatMap { validGroupIds.contains($0) ? $0 : nil }
+        childrenByParentId[parentKey, default: []].append(group)
     }
     for key in childrenByParentId.keys {
         if let levelGroups = childrenByParentId[key] {
@@ -253,8 +249,7 @@ private func buildGroupTreeIndexedLevel(
     connections: [DatabaseConnection]
 ) -> [ConnectionGroupTreeNode] {
     var items: [ConnectionGroupTreeNode] = []
-    let key = GroupParentKey(id: parentId)
-    let levelGroups = index.childrenByParentId[key] ?? []
+    let levelGroups = index.childrenByParentId[parentId] ?? []
 
     for group in levelGroups {
         var children: [ConnectionGroupTreeNode] = []
@@ -286,14 +281,41 @@ private func buildGroupTreeIndexedLevel(
     return items
 }
 
-func computeGroupTreeIndices(groups: [ConnectionGroup], connections: [DatabaseConnection]) -> GroupTreeIndices {
+func buildGroupTreeWithIndices(
+    groups: [ConnectionGroup],
+    connections: [DatabaseConnection],
+    maxDepth: Int = 3
+) -> (tree: [ConnectionGroupTreeNode], indices: GroupTreeIndices) {
     let index = buildGroupTreeIndex(groups: groups, connections: connections)
+    let tree = buildGroupTreeIndexedLevel(
+        parentId: nil,
+        currentDepth: 0,
+        maxDepth: maxDepth,
+        index: index,
+        connections: connections
+    )
+    return (tree, computeGroupTreeIndices(from: index, groups: groups, connections: connections))
+}
+
+func computeGroupTreeIndices(groups: [ConnectionGroup], connections: [DatabaseConnection]) -> GroupTreeIndices {
+    computeGroupTreeIndices(
+        from: buildGroupTreeIndex(groups: groups, connections: connections),
+        groups: groups,
+        connections: connections
+    )
+}
+
+private func computeGroupTreeIndices(
+    from index: GroupTreeIndex,
+    groups: [ConnectionGroup],
+    connections: [DatabaseConnection]
+) -> GroupTreeIndices {
     var result = GroupTreeIndices()
 
     var depthByGroup: [UUID: Int] = [:]
     var visitedDepth: Set<UUID> = []
     var queue: [(UUID, Int)] = []
-    let roots = index.childrenByParentId[GroupParentKey(id: nil)] ?? []
+    let roots = index.childrenByParentId[nil] ?? []
     for root in roots where !visitedDepth.contains(root.id) {
         visitedDepth.insert(root.id)
         depthByGroup[root.id] = 1
@@ -303,7 +325,7 @@ func computeGroupTreeIndices(groups: [ConnectionGroup], connections: [DatabaseCo
     while queueIndex < queue.count {
         let (currentId, currentDepth) = queue[queueIndex]
         queueIndex += 1
-        let children = index.childrenByParentId[GroupParentKey(id: currentId)] ?? []
+        let children = index.childrenByParentId[currentId] ?? []
         for child in children where !visitedDepth.contains(child.id) {
             visitedDepth.insert(child.id)
             depthByGroup[child.id] = currentDepth + 1
@@ -313,38 +335,23 @@ func computeGroupTreeIndices(groups: [ConnectionGroup], connections: [DatabaseCo
 
     var maxDepthByGroup: [UUID: Int] = [:]
     var connectionCountByGroup: [UUID: Int] = [:]
-    var aggregated: Set<UUID> = []
     for root in roots {
-        aggregateSubtree(
+        _ = aggregateSubtree(
             groupId: root.id,
             visited: [],
             index: index,
-            aggregated: &aggregated,
             maxDepthByGroup: &maxDepthByGroup,
             connectionCountByGroup: &connectionCountByGroup
         )
     }
 
     for group in groups {
-        if let depth = depthByGroup[group.id] {
-            result.depthByGroup[group.id] = depth
-        } else {
-            result.depthByGroup[group.id] = depthOf(groupId: group.id, groups: groups)
-        }
-        if maxDepthByGroup[group.id] == nil {
-            result.maxDescendantDepthByGroup[group.id] = maxDescendantDepth(groupId: group.id, groups: groups)
-        } else {
-            result.maxDescendantDepthByGroup[group.id] = maxDepthByGroup[group.id]
-        }
-        if connectionCountByGroup[group.id] == nil {
-            result.connectionCountByGroup[group.id] = connectionCount(
-                in: group.id,
-                connections: connections,
-                groups: groups
-            )
-        } else {
-            result.connectionCountByGroup[group.id] = connectionCountByGroup[group.id]
-        }
+        result.depthByGroup[group.id] = depthByGroup[group.id]
+            ?? depthOf(groupId: group.id, groups: groups)
+        result.maxDescendantDepthByGroup[group.id] = maxDepthByGroup[group.id]
+            ?? maxDescendantDepth(groupId: group.id, groups: groups)
+        result.connectionCountByGroup[group.id] = connectionCountByGroup[group.id]
+            ?? connectionCount(in: group.id, connections: connections, groups: groups)
     }
 
     return result
@@ -359,15 +366,13 @@ private func aggregateSubtree(
     groupId: UUID,
     visited: Set<UUID>,
     index: GroupTreeIndex,
-    aggregated: inout Set<UUID>,
     maxDepthByGroup: inout [UUID: Int],
     connectionCountByGroup: inout [UUID: Int]
 ) -> SubtreeAggregate {
-    aggregated.insert(groupId)
     var nextVisited = visited
     nextVisited.insert(groupId)
 
-    let children = index.childrenByParentId[GroupParentKey(id: groupId)] ?? []
+    let children = index.childrenByParentId[groupId] ?? []
     var maxChildDescendantDepth = 0
     var subtreeCount = index.connectionsByGroupId[groupId]?.count ?? 0
 
@@ -376,7 +381,6 @@ private func aggregateSubtree(
             groupId: child.id,
             visited: nextVisited,
             index: index,
-            aggregated: &aggregated,
             maxDepthByGroup: &maxDepthByGroup,
             connectionCountByGroup: &connectionCountByGroup
         )

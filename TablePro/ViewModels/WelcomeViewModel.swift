@@ -108,7 +108,7 @@ final class WelcomeViewModel {
             .filter(\.isFavorite)
             .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
 
-        let tree = buildGroupTreeIndexed(groups: groups, connections: connections)
+        let (tree, indices) = buildGroupTreeWithIndices(groups: groups, connections: connections)
         let baseItems = searchText.isEmpty ? tree : filterGroupTree(tree, searchText: searchText)
         if searchText.isEmpty, !favoriteConnections.isEmpty {
             treeItems = baseItems.filter { node in
@@ -119,7 +119,6 @@ final class WelcomeViewModel {
             treeItems = baseItems
         }
 
-        let indices = computeGroupTreeIndices(groups: groups, connections: connections)
         connectionCountByGroup = indices.connectionCountByGroup
         depthByGroup = indices.depthByGroup
         maxDescendantDepthByGroup = indices.maxDescendantDepthByGroup
