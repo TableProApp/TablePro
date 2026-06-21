@@ -162,7 +162,7 @@ final class KeyHandlingTableView: NSTableView {
                 selectRowIndexes(IndexSet(integer: activeCoord.row), byExtendingSelection: false)
             }
             focusedRow = activeCoord.row
-            focusedColumn = DataGridView.tableColumnIndex(for: activeCoord.column, in: self, schema: schema) ?? clickedColumn
+            focusedColumn = coordinator?.tableColumnIndex(for: activeCoord.column) ?? clickedColumn
         case .clearFocus:
             deselectAll(nil)
             focusedRow = -1

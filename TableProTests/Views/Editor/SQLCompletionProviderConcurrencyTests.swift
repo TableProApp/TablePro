@@ -8,8 +8,8 @@
 //  actor's synchronous fast path must not diverge.
 //
 
-import TableProPluginKit
 @testable import TablePro
+import TableProPluginKit
 import Testing
 
 @Suite("SQL Completion Provider Concurrency")
@@ -96,5 +96,10 @@ struct SQLCompletionProviderConcurrencyTests {
 
         #expect(extendedLabels == directLabels)
         #expect(extended.count <= short.count)
+
+        let context = makeContext(prefix: "se")
+        let rankedExtended = provider.rankResults(extended, prefix: "se", context: context)
+        let rankedDirect = provider.rankResults(direct, prefix: "se", context: context)
+        #expect(rankedExtended.map { $0.label } == rankedDirect.map { $0.label })
     }
 }
