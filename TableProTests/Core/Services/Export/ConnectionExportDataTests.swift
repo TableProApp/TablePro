@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProImport
 import Testing
 
 @testable import TablePro
@@ -11,7 +12,6 @@ import Testing
 @Suite("Connection Export Data")
 @MainActor
 struct ConnectionExportDataTests {
-
     private func makeConnection(name: String = "Dev") -> DatabaseConnection {
         DatabaseConnection(
             name: name, host: "db.example.com", port: 5_432,
@@ -52,7 +52,6 @@ struct ConnectionExportDataTests {
 
 @Suite("Connection Export Passphrase State")
 struct ConnectionExportPassphraseStateTests {
-
     @Test("empty passphrase is not exportable")
     func testEmpty() {
         let state = ConnectionExportPassphraseState.evaluate(passphrase: "", confirmation: "")

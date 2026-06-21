@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import TableProImport
 import UniformTypeIdentifiers
 
 struct ConnectionExportDocument: FileDocument {
