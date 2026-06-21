@@ -77,6 +77,7 @@ struct SQLCompletionItem: Identifiable, Hashable {
     var sortPriority: Int       // For ranking (lower = higher priority)
     let filterText: String      // Text used for matching
     var matchedRanges: [Range<Int>] = []
+    var fuzzyPenalty: Int = 0
 
     init(
         label: String,

@@ -89,7 +89,6 @@ final class SQLCompletionProvider {
 
         if !context.prefix.isEmpty {
             candidates = filterByPrefix(candidates, prefix: context.prefix)
-            populateMatchRanges(&candidates, prefix: context.prefix)
         }
 
         candidates = rankResults(candidates, prefix: context.prefix, context: context)
@@ -531,87 +530,65 @@ final class SQLCompletionProvider {
 
     /// Filter and rank items by prefix, returning sorted results with match ranges
     func filterAndRank(_ items: [SQLCompletionItem], prefix: String, context: SQLContext) -> [SQLCompletionItem] {
-        var filtered = filterByPrefix(items, prefix: prefix)
-        // Clear stale match ranges before recomputing
-        for i in filtered.indices { filtered[i].matchedRanges = [] }
-        populateMatchRanges(&filtered, prefix: prefix)
+        let filtered = filterByPrefix(items, prefix: prefix)
         return rankResults(filtered, prefix: prefix, context: context)
     }
 
-    /// Filter candidates by prefix (case-insensitive) with fuzzy matching support
+    /// Filter candidates by prefix (case-insensitive) with fuzzy matching support.
+    /// Resolves `matchedRanges` and the fuzzy-only `fuzzyPenalty` in one pass per
+    /// candidate so `rankResults` never recomputes a fuzzy match. Both fields are
+    /// assigned (never accumulated), so re-filtering a prior result is idempotent.
     func filterByPrefix(_ items: [SQLCompletionItem], prefix: String) -> [SQLCompletionItem] {
-        guard !prefix.isEmpty else { return items }
+        guard !prefix.isEmpty else {
+            var reset = items
+            for i in reset.indices {
+                reset[i].matchedRanges = []
+                reset[i].fuzzyPenalty = 0
+            }
+            return reset
+        }
 
         let lowerPrefix = prefix.lowercased()
+        let nsPrefix = lowerPrefix as NSString
 
-        return items.filter { item in
-            if item.filterText.hasPrefix(lowerPrefix) {
-                return true
+        var kept: [SQLCompletionItem] = []
+        kept.reserveCapacity(items.count)
+
+        for var item in items {
+            let nsFilterText = item.filterText as NSString
+
+            if nsFilterText.range(of: lowerPrefix, options: .anchored).location != NSNotFound {
+                item.matchedRanges = [0..<nsPrefix.length]
+                item.fuzzyPenalty = 0
+            } else if let containsRange = optionalRange(of: lowerPrefix, in: nsFilterText) {
+                item.matchedRanges = [containsRange]
+                item.fuzzyPenalty = 0
+            } else if let resolution = resolveFuzzyMatch(pattern: lowerPrefix, target: item.filterText) {
+                item.matchedRanges = indicesToRanges(resolution.indices)
+                item.fuzzyPenalty = resolution.penalty
+            } else {
+                continue
             }
 
-            if item.filterText.contains(lowerPrefix) {
-                return true
-            }
-
-            // Fuzzy match: check if all characters appear in order
-            return fuzzyMatch(pattern: lowerPrefix, target: item.filterText)
-        }
-    }
-
-    /// Fuzzy matching with scoring: returns penalty score (higher = worse),
-    /// nil = no match. Uses NSString character-at-index for O(1) random
-    /// access instead of Swift String indexing (LP-9).
-    func fuzzyMatchScore(pattern: String, target: String) -> Int? {
-        let nsPattern = pattern as NSString
-        let nsTarget = target as NSString
-        let patternLen = nsPattern.length
-        let targetLen = nsTarget.length
-
-        guard patternLen > 0, targetLen > 0 else { return nil }
-
-        var patternIdx = 0
-        var targetIdx = 0
-        var gaps = 0
-        var consecutiveMatches = 0
-        var maxConsecutive = 0
-        var lastMatchIdx = -1
-
-        while patternIdx < patternLen && targetIdx < targetLen {
-            let pChar = nsPattern.character(at: patternIdx)
-            let tChar = nsTarget.character(at: targetIdx)
-
-            if pChar == tChar {
-                if lastMatchIdx == targetIdx - 1 {
-                    consecutiveMatches += 1
-                    maxConsecutive = max(maxConsecutive, consecutiveMatches)
-                } else {
-                    if lastMatchIdx >= 0 {
-                        gaps += targetIdx - lastMatchIdx - 1
-                    }
-                    consecutiveMatches = 1
-                }
-                lastMatchIdx = targetIdx
-                patternIdx += 1
-            }
-            targetIdx += 1
+            kept.append(item)
         }
 
-        guard patternIdx == patternLen else { return nil }
-
-        // Score: base penalty + gap penalty - consecutive bonus
-        let basePenalty = 50
-        let gapPenalty = gaps * 10
-        let consecutiveBonus = maxConsecutive * 15
-        return max(0, basePenalty + gapPenalty - consecutiveBonus)
+        return kept
     }
 
-    /// Backward-compatible fuzzy matching (Bool) for filterByPrefix
-    private func fuzzyMatch(pattern: String, target: String) -> Bool {
-        fuzzyMatchScore(pattern: pattern, target: target) != nil
+    /// NSString.range(of:) without the anchored option, returning a Swift Range
+    /// or nil when not found. Avoids re-bridging the result through NSNotFound.
+    private func optionalRange(of substring: String, in target: NSString) -> Range<Int>? {
+        let range = target.range(of: substring)
+        guard range.location != NSNotFound else { return nil }
+        return range.location..<(range.location + range.length)
     }
 
-    /// Fuzzy matching that returns both score and matched character indices
-    private func fuzzyMatchWithIndices(pattern: String, target: String) -> (score: Int, indices: [Int])? {
+    /// Single fuzzy pass that resolves match state, penalty score, and matched
+    /// character indices in one traversal. `filterByPrefix` calls this once per
+    /// candidate. Uses NSString character-at-index for O(1) random access instead
+    /// of Swift String indexing (LP-9).
+    private func resolveFuzzyMatch(pattern: String, target: String) -> (penalty: Int, indices: [Int])? {
         let nsPattern = pattern as NSString
         let nsTarget = target as NSString
         let patternLen = nsPattern.length
@@ -626,6 +603,7 @@ final class SQLCompletionProvider {
         var maxConsecutive = 0
         var lastMatchIdx = -1
         var matchedIndices: [Int] = []
+        matchedIndices.reserveCapacity(min(patternLen, targetLen))
 
         while patternIdx < patternLen && targetIdx < targetLen {
             let pChar = nsPattern.character(at: patternIdx)
@@ -653,30 +631,14 @@ final class SQLCompletionProvider {
         let basePenalty = 50
         let gapPenalty = gaps * 10
         let consecutiveBonus = maxConsecutive * 15
-        let score = max(0, basePenalty + gapPenalty - consecutiveBonus)
-        return (score, matchedIndices)
+        let penalty = max(0, basePenalty + gapPenalty - consecutiveBonus)
+        return (penalty, matchedIndices)
     }
 
-    /// Populate matchedRanges on each item based on how it matched the prefix
-    private func populateMatchRanges(_ items: inout [SQLCompletionItem], prefix: String) {
-        guard !prefix.isEmpty else { return }
-        let lowerPrefix = prefix.lowercased()
-        let nsPrefix = lowerPrefix as NSString
-
-        for i in items.indices {
-            let nsFilterText = items[i].filterText as NSString
-            let prefixRange = nsFilterText.range(of: lowerPrefix, options: .anchored)
-            if prefixRange.location != NSNotFound {
-                items[i].matchedRanges = [0..<nsPrefix.length]
-            } else {
-                let containsRange = nsFilterText.range(of: lowerPrefix)
-                if containsRange.location != NSNotFound {
-                    items[i].matchedRanges = [containsRange.location..<(containsRange.location + containsRange.length)]
-                } else if let result = fuzzyMatchWithIndices(pattern: lowerPrefix, target: items[i].filterText) {
-                    items[i].matchedRanges = indicesToRanges(result.indices)
-                }
-            }
-        }
+    /// Fuzzy matching with scoring: returns penalty score (higher = worse),
+    /// nil = no match.
+    func fuzzyMatchScore(pattern: String, target: String) -> Int? {
+        resolveFuzzyMatch(pattern: pattern, target: target)?.penalty
     }
 
     /// Convert sorted individual character indices into contiguous ranges
@@ -711,9 +673,11 @@ final class SQLCompletionProvider {
         }
     }
 
-    /// Calculate ranking score for an item (lower = better)
+    /// Calculate ranking score for an item (lower = better).
+    /// The fuzzy-only penalty is precomputed into `fuzzyPenalty` by `filterByPrefix`
+    /// so the ranking comparator does not invoke fuzzy matching again.
     func calculateScore(for item: SQLCompletionItem, prefix: String, context: SQLContext) -> Int {
-        var score = item.sortPriority
+        var score = item.sortPriority + item.fuzzyPenalty
 
         if item.filterText.hasPrefix(prefix) {
             score -= 500
@@ -758,17 +722,6 @@ final class SQLCompletionProvider {
 
         // Shorter names slightly preferred
         score += (item.label as NSString).length
-
-        // Fuzzy match penalty — items matched only by fuzzy get demoted
-        if !prefix.isEmpty {
-            let filterText = item.filterText
-            if !filterText.hasPrefix(prefix) && !filterText.contains(prefix) {
-                // This is a fuzzy-only match — apply penalty
-                if let fuzzyPenalty = fuzzyMatchScore(pattern: prefix, target: filterText) {
-                    score += fuzzyPenalty
-                }
-            }
-        }
 
         return score
     }

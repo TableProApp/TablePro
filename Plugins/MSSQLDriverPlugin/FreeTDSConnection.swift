@@ -169,7 +169,7 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
         guard let proc = dbopen(login, serverName) else {
             let detail = freetdsGetError(for: nil)
             let msg = detail.isEmpty ? "Check host, port, credentials, and TLS settings" : detail
-            if let kind = FreeTDSConnection.classifySSLError(detail) {
+            if let kind = MSSQLTLSClassifier.classifySSLError(detail) {
                 throw MSSQLCoreError.tlsHandshakeFailed(kind: kind, serverMessage: detail)
             }
             throw MSSQLCoreError.connectionFailed("Failed to connect to \(options.host):\(options.port): \(msg)")
@@ -525,26 +525,6 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
             return MSSQLDatetimeFormatter.reformat(raw, type: type) ?? raw
         }
         return raw
-    }
-
-    static func classifySSLError(_ message: String) -> MSSQLTLSFailureKind? {
-        let lower = message.lowercased()
-        if lower.contains("encryption is required") || lower.contains("server requires encryption") {
-            return .serverRejectedPlaintext
-        }
-        if lower.contains("encryption not supported") || lower.contains("server does not support encryption") {
-            return .serverRequiresPlaintext
-        }
-        if lower.contains("certificate verify failed") || lower.contains("certificate is not trusted") {
-            return .untrustedCertificate
-        }
-        if lower.contains("does not match host") {
-            return .hostnameMismatch
-        }
-        if lower.contains("ssl handshake") || lower.contains("tls handshake") || lower.contains("openssl error") {
-            return .cipherMismatch
-        }
-        return nil
     }
 }
 
