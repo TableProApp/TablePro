@@ -56,11 +56,7 @@ extension TableViewCoordinator {
         let isFocused: Bool = {
             guard let keyTableView = tableView as? KeyHandlingTableView,
                   keyTableView.focusedRow == row,
-                  let tableColumnIndex = DataGridView.tableColumnIndex(
-                    for: columnIndex,
-                    in: tableView,
-                    schema: identitySchema
-                  ),
+                  let tableColumnIndex = tableColumnIndex(for: columnIndex),
                   keyTableView.focusedColumn == tableColumnIndex else { return false }
             return true
         }()

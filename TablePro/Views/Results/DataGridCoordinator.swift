@@ -499,7 +499,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         switch delta {
         case .cellChanged(let row, let column):
             guard let tableView,
-                  let tableColumn = DataGridView.tableColumnIndex(for: column, in: tableView, schema: identitySchema)
+                  let tableColumn = tableColumnIndex(for: column)
             else { return }
             guard row >= 0, row < tableView.numberOfRows else { return }
             invalidateDisplayCache(forDisplayRow: row, column: column)
@@ -516,11 +516,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
                 if position.row >= 0, position.row < tableView.numberOfRows {
                     rowSet.insert(position.row)
                 }
-                if let tableColumn = DataGridView.tableColumnIndex(
-                    for: position.column,
-                    in: tableView,
-                    schema: identitySchema
-                ) {
+                if let tableColumn = tableColumnIndex(for: position.column) {
                     colSet.insert(tableColumn)
                 }
                 invalidateDisplayCache(forDisplayRow: position.row, column: position.column)
@@ -642,7 +638,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
 
     func beginEditing(displayRow: Int, column: Int) {
         guard let tableView,
-              let displayCol = DataGridView.tableColumnIndex(for: column, in: tableView, schema: identitySchema)
+              let displayCol = tableColumnIndex(for: column)
         else { return }
         guard displayRow >= 0, displayRow < tableView.numberOfRows else { return }
         tableView.scrollRowToVisible(displayRow)
@@ -751,11 +747,7 @@ extension TableViewCoordinator: DataGridCellAccessoryDelegate {
 
     func dataGridCellDidDoubleClick(row: Int, columnIndex: Int) {
         guard row >= 0, columnIndex >= 0, let tableView else { return }
-        guard let tableColumn = DataGridView.tableColumnIndex(
-            for: columnIndex,
-            in: tableView,
-            schema: identitySchema
-        ) else { return }
+        guard let tableColumn = tableColumnIndex(for: columnIndex) else { return }
         handleCellInteraction(row: row, tableColumn: tableColumn, columnIndex: columnIndex, tableView: tableView)
     }
 }

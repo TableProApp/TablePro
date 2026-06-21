@@ -530,11 +530,7 @@ class DataGridRowView: NSTableRowView {
     @objc private func previewForeignKey(_ sender: NSMenuItem) {
         guard let columnIndex = sender.representedObject as? Int,
               let coordinator, let tableView = coordinator.tableView,
-              let column = DataGridView.tableColumnIndex(
-                for: columnIndex,
-                in: tableView,
-                schema: coordinator.identitySchema
-              ) else { return }
+              let column = coordinator.tableColumnIndex(for: columnIndex) else { return }
         coordinator.showForeignKeyPreview(
             tableView: tableView, row: rowIndex, column: column, columnIndex: columnIndex
         )

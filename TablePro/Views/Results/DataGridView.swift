@@ -401,16 +401,6 @@ struct DataGridView: NSViewRepresentable {
         tableColumnIndex >= firstDataTableColumnIndex
     }
 
-    static func tableColumnIndex(
-        for dataIndex: Int,
-        in tableView: NSTableView,
-        schema: ColumnIdentitySchema
-    ) -> Int? {
-        guard let identifier = schema.identifier(for: dataIndex) else { return nil }
-        let index = tableView.column(withIdentifier: identifier)
-        return index >= 0 ? index : nil
-    }
-
     static func dataColumnIndex(
         for tableColumnIndex: Int,
         in tableView: NSTableView,
