@@ -216,30 +216,24 @@ final class MariaDBPluginConnection: @unchecked Sendable {
 
     // MARK: - Connection Management
 
-    private static let sslOnlyErrorCodes: Set<UInt32> = [
-        2_026,
-        2_012,
-        1_043
-    ]
-
     func connect() async throws {
         try await pluginDispatchAsync(on: queue) { [self] in
             let mode = self.sslConfig.mode
             let handle: UnsafeMutablePointer<MYSQL>
             do {
                 handle = try self.attemptConnect(enforceSSL: mode != .disabled)
-            } catch let error as MariaDBPluginError where mode == .preferred && Self.sslOnlyErrorCodes.contains(error.code) {
+            } catch let error as MariaDBPluginError where mode == .preferred && MariaDBSSLClassifier.sslOnlyErrorCodes.contains(error.code) {
                 logger.notice("MySQL SSL handshake failed (code \(error.code)); falling back to plaintext for .preferred mode")
                 do {
                     handle = try self.attemptConnect(enforceSSL: false)
                 } catch let fallbackError as MariaDBPluginError {
-                    if let sslError = Self.classifySSLError(fallbackError) {
+                    if let sslError = MariaDBSSLClassifier.classifySSLError(code: fallbackError.code, message: fallbackError.message) {
                         throw sslError
                     }
                     throw fallbackError
                 }
             } catch let error as MariaDBPluginError {
-                if let sslError = Self.classifySSLError(error) {
+                if let sslError = MariaDBSSLClassifier.classifySSLError(code: error.code, message: error.message) {
                     throw sslError
                 }
                 throw error
@@ -254,20 +248,6 @@ final class MariaDBPluginConnection: @unchecked Sendable {
             self._isConnected = true
             self.stateLock.unlock()
         }
-    }
-
-    static func classifySSLError(_ error: MariaDBPluginError) -> SSLHandshakeError? {
-        let lower = error.message.lowercased()
-        if lower.contains("insecure transport") || lower.contains("require_secure_transport") {
-            return .serverRejectedPlaintext(serverMessage: error.message)
-        }
-        if Self.sslOnlyErrorCodes.contains(error.code) {
-            if lower.contains("certificate") {
-                return .untrustedCertificate(serverMessage: error.message)
-            }
-            return .cipherMismatch(serverMessage: error.message)
-        }
-        return nil
     }
 
     private func attemptConnect(enforceSSL: Bool) throws -> UnsafeMutablePointer<MYSQL> {
