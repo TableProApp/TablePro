@@ -2433,6 +2433,9 @@
         }
       }
     },
+    "%d connections" : {
+
+    },
     "%d connections found" : {
       "localizations" : {
         "tr" : {
@@ -21936,6 +21939,9 @@
         }
       }
     },
+    "Create Trigger" : {
+
+    },
     "Create your own slash commands. Use {{query}}, {{schema}}, {{database}}, or {{body}} in the template to insert chat context at runtime." : {
       "localizations" : {
         "tr" : {
@@ -27808,6 +27814,12 @@
         }
       }
     },
+    "Drop Trigger" : {
+
+    },
+    "Drop trigger “%@”?" : {
+
+    },
     "Drop View" : {
       "localizations" : {
         "tr" : {
@@ -27866,6 +27878,7 @@
       }
     },
     "DuckLake Data Path" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -28832,6 +28845,9 @@
           }
         }
       }
+    },
+    "Edit Trigger" : {
+
     },
     "Edit Values..." : {
       "localizations" : {
@@ -45207,6 +45223,7 @@
       }
     },
     "Loading schemas…" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -49424,6 +49441,9 @@
         }
       }
     },
+    "New Trigger" : {
+
+    },
     "New View" : {
       "localizations" : {
         "tr" : {
@@ -51727,6 +51747,7 @@
       }
     },
     "No schemas" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -53303,6 +53324,9 @@
           }
         }
       }
+    },
+    "Off by default. Turn it on to encrypt saved passwords with a passphrase." : {
+
     },
     "Offset" : {
       "extractionState" : "stale",
@@ -56313,6 +56337,7 @@
       }
     },
     "Passwords will be encrypted with the passphrase you provide." : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -62747,7 +62772,11 @@
         }
       }
     },
+    "Remote (Quack, experimental)" : {
+
+    },
     "Remote (Quack)" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -67429,6 +67458,7 @@
       }
     },
     "Schema: %@" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -79026,6 +79056,9 @@
         }
       }
     },
+    "This database cannot drop triggers" : {
+
+    },
     "This database has no %@ yet." : {
       "extractionState" : "stale",
       "localizations" : {
@@ -81966,6 +81999,9 @@
         }
       }
     },
+    "Trigger operation failed" : {
+
+    },
     "Triggers" : {
       "localizations" : {
         "tr" : {
@@ -84246,6 +84282,9 @@
         }
       }
     },
+    "Use at least 8 characters" : {
+
+    },
     "Use clipboard URL" : {
       "localizations" : {
         "tr" : {
@@ -84303,6 +84342,7 @@
       }
     },
     "Use DuckLake" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
