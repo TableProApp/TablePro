@@ -97,37 +97,40 @@ struct MobileConnectionImportSheet: View {
     private func row(for item: ImportItem) -> some View {
         let isSelected = selectedIds.contains(item.id)
         return HStack(spacing: 12) {
-            Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
-                .onTapGesture { toggle(item.id) }
+            Button {
+                toggle(item.id)
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                        .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
 
-            DatabaseIconView(type: DatabaseType(rawValue: item.connection.type), size: 18)
-                .frame(width: 28, height: 28)
+                    DatabaseIconView(type: DatabaseType(rawValue: item.connection.type), size: 18)
+                        .frame(width: 28, height: 28)
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(item.connection.name)
-                    .lineLimit(1)
-                Text(subtitle(for: item))
-                    .font(.caption)
-                    .foregroundStyle(statusColor(for: item.status))
-                    .lineLimit(1)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(item.connection.name)
+                            .lineLimit(1)
+                        Text(subtitle(for: item))
+                            .font(.caption)
+                            .foregroundStyle(statusColor(for: item.status))
+                            .lineLimit(1)
+                    }
+
+                    Spacer()
+                }
+                .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
 
-            Spacer()
-
-            if case .duplicate = item.status, isSelected {
+            if case .duplicate(let existingId, _) = item.status, isSelected {
                 Picker("", selection: resolutionBinding(for: item)) {
                     Text(String(localized: "As Copy")).tag(ImportResolution.importAsCopy)
-                    if case .duplicate(let existingId, _) = item.status {
-                        Text(String(localized: "Replace")).tag(ImportResolution.replace(existingId: existingId))
-                    }
+                    Text(String(localized: "Replace")).tag(ImportResolution.replace(existingId: existingId))
                 }
                 .pickerStyle(.menu)
                 .labelsHidden()
             }
         }
-        .contentShape(Rectangle())
-        .onTapGesture { toggle(item.id) }
     }
 
     private func subtitle(for item: ImportItem) -> String {

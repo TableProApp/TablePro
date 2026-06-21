@@ -101,19 +101,15 @@ enum IOSConnectionExportService {
         var credentialsMap: [String: ExportableCredentials] = [:]
         for (index, connection) in connections.enumerated() {
             let suffix = connection.id.uuidString
-            let password = try? store.retrieve(forKey: "com.TablePro.password.\(suffix)")
-            let sshPassword = try? store.retrieve(forKey: "com.TablePro.sshpassword.\(suffix)")
-            let keyPassphrase = try? store.retrieve(forKey: "com.TablePro.keypassphrase.\(suffix)")
+            let password = secret(from: store, key: "com.TablePro.password.\(suffix)")
+            let sshPassword = secret(from: store, key: "com.TablePro.sshpassword.\(suffix)")
+            let keyPassphrase = secret(from: store, key: "com.TablePro.keypassphrase.\(suffix)")
 
-            let unwrappedPassword = password ?? nil
-            let unwrappedSSH = sshPassword ?? nil
-            let unwrappedKey = keyPassphrase ?? nil
-
-            guard unwrappedPassword != nil || unwrappedSSH != nil || unwrappedKey != nil else { continue }
+            guard password != nil || sshPassword != nil || keyPassphrase != nil else { continue }
             credentialsMap[String(index)] = ExportableCredentials(
-                password: unwrappedPassword,
-                sshPassword: unwrappedSSH,
-                keyPassphrase: unwrappedKey,
+                password: password,
+                sshPassword: sshPassword,
+                keyPassphrase: keyPassphrase,
                 sslClientKeyPassphrase: nil,
                 totpSecret: nil,
                 pluginSecureFields: nil
@@ -132,6 +128,10 @@ enum IOSConnectionExportService {
     }
 
     // MARK: - Helpers
+
+    private static func secret(from store: any SecureStore, key: String) -> String? {
+        (try? store.retrieve(forKey: key)) ?? nil
+    }
 
     private static func exportableSSH(_ connection: DatabaseConnection) -> ExportableSSHConfig? {
         guard connection.sshEnabled, let ssh = connection.sshConfiguration else { return nil }

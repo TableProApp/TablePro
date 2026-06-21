@@ -17,6 +17,7 @@ struct MobileConnectionExportSheet: View {
     @State private var confirmPassphrase = ""
     @State private var error: String?
     @State private var shareItem: IdentifiableURL?
+    @State private var exportedURL: URL?
 
     private var canExport: Bool {
         guard includePasswords else { return true }
@@ -67,7 +68,12 @@ struct MobileConnectionExportSheet: View {
                         .disabled(!canExport || connections.isEmpty)
                 }
             }
-            .sheet(item: $shareItem, onDismiss: { dismiss() }) { item in
+            .sheet(item: $shareItem, onDismiss: {
+                if let exportedURL {
+                    try? FileManager.default.removeItem(at: exportedURL)
+                }
+                dismiss()
+            }) { item in
                 ActivityViewController(items: [item.url])
             }
         }
@@ -90,6 +96,7 @@ struct MobileConnectionExportSheet: View {
             let filename = IOSConnectionExportService.suggestedFilename(for: connections)
             let url = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
             try data.write(to: url, options: .atomic)
+            exportedURL = url
             shareItem = IdentifiableURL(url: url)
         } catch {
             self.error = error.localizedDescription
