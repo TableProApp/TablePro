@@ -535,13 +535,16 @@ final class SQLCompletionProvider {
     }
 
     /// Filter candidates by prefix (case-insensitive) with fuzzy matching support.
-    /// As a side effect this populates `matchedRanges` and folds the fuzzy-only
-    /// penalty into `sortPriority` once per candidate, so downstream steps
-    /// (`populateMatchRanges`, `rankResults`) do not recompute fuzzy matches.
+    /// Resolves `matchedRanges` and the fuzzy-only `fuzzyPenalty` in one pass per
+    /// candidate so `rankResults` never recomputes a fuzzy match. Both fields are
+    /// assigned (never accumulated), so re-filtering a prior result is idempotent.
     func filterByPrefix(_ items: [SQLCompletionItem], prefix: String) -> [SQLCompletionItem] {
         guard !prefix.isEmpty else {
             var reset = items
-            for i in reset.indices { reset[i].matchedRanges = [] }
+            for i in reset.indices {
+                reset[i].matchedRanges = []
+                reset[i].fuzzyPenalty = 0
+            }
             return reset
         }
 
@@ -556,11 +559,13 @@ final class SQLCompletionProvider {
 
             if nsFilterText.range(of: lowerPrefix, options: .anchored).location != NSNotFound {
                 item.matchedRanges = [0..<nsPrefix.length]
+                item.fuzzyPenalty = 0
             } else if let containsRange = optionalRange(of: lowerPrefix, in: nsFilterText) {
                 item.matchedRanges = [containsRange]
+                item.fuzzyPenalty = 0
             } else if let resolution = resolveFuzzyMatch(pattern: lowerPrefix, target: item.filterText) {
                 item.matchedRanges = indicesToRanges(resolution.indices)
-                item.sortPriority += resolution.penalty
+                item.fuzzyPenalty = resolution.penalty
             } else {
                 continue
             }
@@ -581,8 +586,8 @@ final class SQLCompletionProvider {
 
     /// Single fuzzy pass that resolves match state, penalty score, and matched
     /// character indices in one traversal. `filterByPrefix` calls this once per
-    /// candidate; the older `fuzzyMatchScore` / `fuzzyMatchWithIndices` thin-wrap
-    /// it so existing callers (and tests) keep their behaviour.
+    /// candidate. Uses NSString character-at-index for O(1) random access instead
+    /// of Swift String indexing (LP-9).
     private func resolveFuzzyMatch(pattern: String, target: String) -> (penalty: Int, indices: [Int])? {
         let nsPattern = pattern as NSString
         let nsTarget = target as NSString
@@ -631,29 +636,9 @@ final class SQLCompletionProvider {
     }
 
     /// Fuzzy matching with scoring: returns penalty score (higher = worse),
-    /// nil = no match. Uses NSString character-at-index for O(1) random
-    /// access instead of Swift String indexing (LP-9).
+    /// nil = no match.
     func fuzzyMatchScore(pattern: String, target: String) -> Int? {
         resolveFuzzyMatch(pattern: pattern, target: target)?.penalty
-    }
-
-    /// Backward-compatible fuzzy matching (Bool) for filterByPrefix
-    private func fuzzyMatch(pattern: String, target: String) -> Bool {
-        resolveFuzzyMatch(pattern: pattern, target: target) != nil
-    }
-
-    /// Fuzzy matching that returns both score and matched character indices
-    private func fuzzyMatchWithIndices(pattern: String, target: String) -> (score: Int, indices: [Int])? {
-        guard let resolution = resolveFuzzyMatch(pattern: pattern, target: target) else { return nil }
-        return (resolution.penalty, resolution.indices)
-    }
-
-    /// No-op retained for API stability. Match ranges are now populated by
-    /// `filterByPrefix` in its single fuzzy pass; calling this again would only
-    /// recompute ranges the filter already wrote.
-    private func populateMatchRanges(_ items: inout [SQLCompletionItem], prefix: String) {
-        _ = items
-        _ = prefix
     }
 
     /// Convert sorted individual character indices into contiguous ranges
@@ -689,10 +674,10 @@ final class SQLCompletionProvider {
     }
 
     /// Calculate ranking score for an item (lower = better).
-    /// The fuzzy-only penalty is folded into `sortPriority` by `filterByPrefix`
+    /// The fuzzy-only penalty is precomputed into `fuzzyPenalty` by `filterByPrefix`
     /// so the ranking comparator does not invoke fuzzy matching again.
     func calculateScore(for item: SQLCompletionItem, prefix: String, context: SQLContext) -> Int {
-        var score = item.sortPriority
+        var score = item.sortPriority + item.fuzzyPenalty
 
         if item.filterText.hasPrefix(prefix) {
             score -= 500

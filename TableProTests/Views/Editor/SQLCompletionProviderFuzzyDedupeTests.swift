@@ -9,8 +9,8 @@
 //
 
 import Foundation
-import TableProPluginKit
 @testable import TablePro
+import TableProPluginKit
 import Testing
 
 @Suite("SQL Completion Fuzzy Dedupe")
@@ -150,8 +150,8 @@ struct SQLCompletionProviderFuzzyDedupeTests {
         }
     }
 
-    @Test("filterByPrefix folds fuzzy penalty into sortPriority once")
-    func fuzzyPenaltyFoldedOnce() {
+    @Test("filterByPrefix records the fuzzy penalty without mutating sortPriority")
+    func fuzzyPenaltyRecordedOnce() {
         let provider = makeProvider()
         let items = ["ssl_certificate", "session_variables"]
             .map { SQLCompletionItem.keyword($0) }
@@ -162,6 +162,25 @@ struct SQLCompletionProviderFuzzyDedupeTests {
         #expect(filtered.count == 1)
         #expect(filtered[0].label == "SSL_CERTIFICATE")
         let expectedPenalty = referenceFuzzyScore(pattern: "slc", target: "ssl_certificate") ?? 0
-        #expect(filtered[0].sortPriority == basePriority + expectedPenalty)
+        #expect(filtered[0].sortPriority == basePriority)
+        #expect(filtered[0].fuzzyPenalty == expectedPenalty)
+    }
+
+    @Test("re-filtering a prior result is idempotent for fuzzy candidates")
+    func reFilteringIsIdempotent() {
+        let provider = makeProvider()
+        let items = ["ssl_certificate", "scalar_function", "select"]
+            .map { SQLCompletionItem.keyword($0) }
+
+        let once = provider.filterByPrefix(items, prefix: "slc")
+        let twice = provider.filterByPrefix(once, prefix: "slc")
+        let context = makeContext(prefix: "slc")
+
+        let rankedOnce = provider.rankResults(once, prefix: "slc", context: context)
+        let rankedTwice = provider.rankResults(twice, prefix: "slc", context: context)
+
+        #expect(once.map { $0.fuzzyPenalty } == twice.map { $0.fuzzyPenalty })
+        #expect(once.map { $0.sortPriority } == twice.map { $0.sortPriority })
+        #expect(rankedOnce.map { $0.label } == rankedTwice.map { $0.label })
     }
 }
