@@ -220,6 +220,10 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
         if inlineSuggestionManager == nil, let controller {
             installInlineSuggestionManager(controller: controller)
         }
+        if let controller {
+            installEditorSettingsObserver(controller: controller)
+            installWindowKeyObserver(for: controller.textView?.window)
+        }
     }
 
     // MARK: - AI Context Menu

@@ -44,9 +44,9 @@ final class SQLCompletionAdapter: CodeSuggestionDelegate {
         self.completionEngine = Self.makeEngine(schemaProvider: schemaProvider, databaseType: databaseType)
     }
 
-    /// Update the schema provider (e.g. when connection changes)
-    func updateSchemaProvider(_ provider: SQLSchemaProvider, databaseType: DatabaseType? = nil) {
-        completionEngine = Self.makeEngine(schemaProvider: provider, databaseType: databaseType)
+    /// Rebuild the completion engine for the current connection (nil schema still yields keyword completion)
+    func configure(schemaProvider: SQLSchemaProvider?, databaseType: DatabaseType?) {
+        completionEngine = Self.makeEngine(schemaProvider: schemaProvider, databaseType: databaseType)
         completionEngine.updateFavoriteKeywords(favoriteKeywords)
     }
 

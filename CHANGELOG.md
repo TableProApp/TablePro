@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- SQL autocomplete no longer stops appearing until the app is relaunched; the suggestion list stays available after switching query tabs and windows. (#1731)
 - Oracle connections no longer crash the app when the server sends a backend message the driver cannot decode; the query fails with a clear error and the connection reconnects. (#483)
 - MongoDB TLS handshake failures now report the actual cause instead of always blaming a cipher or protocol mismatch. (#1418)
 - The External Clients access level no longer reverts to Read Only after saving and reopening a connection, so MCP clients keep the write access you granted. (#1730)
