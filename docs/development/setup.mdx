@@ -65,6 +65,11 @@ Optional but recommended:
     1. Select the **TablePro** target
     2. Go to **Signing & Capabilities**
     3. Change **Team** to your Apple Developer account (free account works)
+
+    The Debug build leaves out the iCloud capability, so a free personal team
+    signs it without a paid Apple Developer Program membership. If you build a
+    target that still shows a team error (a driver plugin or the MCP server),
+    set its **Team** the same way.
   </Step>
 
   <Step title="Build and run">
@@ -75,6 +80,15 @@ Optional but recommended:
     ```bash
     xcodebuild -project TablePro.xcodeproj -scheme TablePro -configuration Debug build -skipPackagePluginValidation
     ```
+  </Step>
+
+  <Step title="Test a plugin you built">
+    The app only loads plugins signed by the same team as the app, so a plugin
+    you built separately will not install into a release build. To try one in
+    your local build, add it to the **Copy Plug-Ins** build phase of the
+    **TablePro** target and run, or set `TABLEPRO_ALLOW_UNSIGNED_PLUGINS=1` in
+    the scheme's environment to skip the signature check. Once it works, open a
+    PR so the official CI signs and ships it through the registry.
   </Step>
 </Steps>
 
