@@ -7,13 +7,13 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		5A1MPORT000000000000A011 /* TableProImport in Frameworks */ = {isa = PBXBuildFile; productRef = 5A1MPORT000000000000A010 /* TableProImport */; };
 		16C74CC07CC30A38ADE1663E /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
 		267A5C6ECC62401598389396 /* SnowflakeDDLGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53DF2F4A15214F2AA1DE95CF /* SnowflakeDDLGenerator.swift */; };
 		33E6FF2997594F41AA80EEC8 /* SnowflakeConnectionRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE8D74A27EE24B89A7DC79F9 /* SnowflakeConnectionRegistry.swift */; };
 		3DD7311CA07CFCA8A996058F /* SnowflakeAuth.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9D129A56E1AB45F7D82AC58 /* SnowflakeAuth.swift */; };
 		4355C825A7554BBCB978E1E4 /* SnowflakeSchemaQueries.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C399209C2D14499870FBD49 /* SnowflakeSchemaQueries.swift */; };
 		4CA0E909166145AAB6B6CDD7 /* SnowflakeHTTPRetry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55F1B63541C24A10BF4AF873 /* SnowflakeHTTPRetry.swift */; };
+		5A1MPORT000000000000A011 /* TableProImport in Frameworks */ = {isa = PBXBuildFile; productRef = 5A1MPORT000000000000A010 /* TableProImport */; };
 		5A32BBFB2F9D5EAB00BAEB5F /* X509 in Frameworks */ = {isa = PBXBuildFile; productRef = 5A32BBFA2F9D5EAB00BAEB5F /* X509 */; };
 		5A32BC0B2F9D659100BAEB5F /* tablepro-mcp in Copy Files */ = {isa = PBXBuildFile; fileRef = 5A32BC002F9D5F1300BAEB5F /* tablepro-mcp */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
 		5A3BE6FC2F97DB0000611C1F /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
@@ -66,7 +66,6 @@
 		5ACE00012F4F000000000005 /* CodeEditLanguages in Frameworks */ = {isa = PBXBuildFile; productRef = 5ACE00012F4F000000000003 /* CodeEditLanguages */; };
 		5ACE00012F4F000000000006 /* CodeEditTextView in Frameworks */ = {isa = PBXBuildFile; productRef = 5ACE00012F4F000000000007 /* CodeEditTextView */; };
 		5ACE00012F4F00000000000A /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 5ACE00012F4F000000000009 /* Sparkle */; };
-		5ACE252A2FE4508500357377 /* DuckDBDriver.tableplugin in Copy Plug-Ins (12 items) */ = {isa = PBXBuildFile; fileRef = 5A869000100000000 /* DuckDBDriver.tableplugin */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		5AD1D8C12FB5000000000001 /* TableProMSSQLCore in Frameworks */ = {isa = PBXBuildFile; productRef = 5AD1D8C12FB5000000000002 /* TableProMSSQLCore */; };
 		5ADDB00100000000000000A1 /* DynamoDBConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5ADDB00200000000000000A1 /* DynamoDBConnection.swift */; };
 		5ADDB00100000000000000A2 /* DynamoDBItemFlattener.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5ADDB00200000000000000A2 /* DynamoDBItemFlattener.swift */; };
@@ -289,7 +288,6 @@
 			dstPath = "";
 			dstSubfolderSpec = 13;
 			files = (
-				5ACE252A2FE4508500357377 /* DuckDBDriver.tableplugin in Copy Plug-Ins (12 items) */,
 				5A865000D00000000 /* MySQLDriver.tableplugin in Copy Plug-Ins (12 items) */,
 				5A868000D00000000 /* PostgreSQLDriver.tableplugin in Copy Plug-Ins (12 items) */,
 				5A862000D00000000 /* SQLiteDriver.tableplugin in Copy Plug-Ins (12 items) */,
@@ -343,7 +341,7 @@
 		5A866000100000000 /* MongoDBDriver.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MongoDBDriver.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
 		5A867000100000000 /* RedisDriver.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RedisDriver.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
 		5A868000100000000 /* PostgreSQLDriver.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PostgreSQLDriver.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
-		5A869000100000000 /* DuckDBDriver.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = DuckDBDriver.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
+		5A869000100000000 /* DuckDBDriver.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; name = DuckDBDriver.tableplugin; path = /Users/ngoquocdat/Workspaces/TablePro/build/Debug/DuckDBDriver.tableplugin; sourceTree = "<absolute>"; };
 		5A86A000100000000 /* CSVExport.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CSVExport.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
 		5A86B000100000000 /* JSONExport.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = JSONExport.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
 		5A86C000100000000 /* SQLExport.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SQLExport.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -1122,7 +1120,6 @@
 				5A866000100000000 /* MongoDBDriver.tableplugin */,
 				5A867000100000000 /* RedisDriver.tableplugin */,
 				5A868000100000000 /* PostgreSQLDriver.tableplugin */,
-				5A869000100000000 /* DuckDBDriver.tableplugin */,
 				5A87A000100000000 /* CassandraDriver.tableplugin */,
 				5A86A000100000000 /* CSVExport.tableplugin */,
 				5A86B000100000000 /* JSONExport.tableplugin */,
@@ -4788,6 +4785,11 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		5A1MPORT000000000000A010 /* TableProImport */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 5A0000012F4F000000000102 /* XCLocalSwiftPackageReference "Packages/TableProCore" */;
+			productName = TableProImport;
+		};
 		5A32BBFA2F9D5EAB00BAEB5F /* X509 */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 5A32BBF92F9D5EAB00BAEB5F /* XCRemoteSwiftPackageReference "swift-certificates" */;
@@ -4823,11 +4825,6 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 5A0000012F4F000000000102 /* XCLocalSwiftPackageReference "Packages/TableProCore" */;
 			productName = TableProMSSQLCore;
-		};
-		5A1MPORT000000000000A010 /* TableProImport */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 5A0000012F4F000000000102 /* XCLocalSwiftPackageReference "Packages/TableProCore" */;
-			productName = TableProImport;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
