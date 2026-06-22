@@ -8,6 +8,7 @@ struct ERTableNode: Identifiable, Sendable {
     let tableName: String
     let columns: [ERColumnDisplay]
     var displayColumns: [ERColumnDisplay]
+    var clusterId: Int
 }
 
 struct ERColumnDisplay: Identifiable, Sendable {
@@ -81,7 +82,8 @@ enum ERDiagramGraphBuilder {
                 id: id,
                 tableName: tableName,
                 columns: displayColumns,
-                displayColumns: displayColumns
+                displayColumns: displayColumns,
+                clusterId: -1
             ))
         }
 
@@ -108,7 +110,14 @@ enum ERDiagramGraphBuilder {
             }
         }
 
-        return ERDiagramGraph(nodes: nodes, edges: edges, nodeIndex: nodeIndex)
+        let clusters = ERClusterAnalyzer.assignClusters(nodes: nodes, edges: edges, nodeIndex: nodeIndex)
+        let clusteredNodes = nodes.map { node -> ERTableNode in
+            var updated = node
+            updated.clusterId = clusters[node.id] ?? -1
+            return updated
+        }
+
+        return ERDiagramGraph(nodes: clusteredNodes, edges: edges, nodeIndex: nodeIndex)
     }
 
     private static func stableId(for name: String) -> UUID {

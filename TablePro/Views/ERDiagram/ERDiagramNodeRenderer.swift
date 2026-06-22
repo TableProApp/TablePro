@@ -35,7 +35,8 @@ enum ERDiagramNodeRenderer {
         context: inout GraphicsContext,
         node: ERTableNode,
         rect: CGRect,
-        isSelected: Bool
+        isSelected: Bool,
+        clusterColor: Color?
     ) {
         let scale = ERDiagramLayout.typeScale
         let cornerRadius: CGFloat = 6
@@ -55,7 +56,8 @@ enum ERDiagramNodeRenderer {
                 cornerRadii: RectangleCornerRadii(topLeading: cornerRadius, topTrailing: cornerRadius)
             )
         }
-        context.fill(headerPath, with: .color(Color.accentColor.opacity(0.15)))
+        let headerTint = clusterColor ?? Color.accentColor
+        context.fill(headerPath, with: .color(headerTint.opacity(clusterColor == nil ? 0.15 : 0.22)))
 
         let displayName = (node.tableName as NSString).length > maxTableNameChars
             ? String(node.tableName.prefix(maxTableNameChars)) + "\u{2026}"

@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Connections can now have more than one tag. Assign several tags in the connection form, and filter the welcome list by tag with Match Any or Match All. (#744)
 - Elasticsearch support. Connect to Elasticsearch 7.x and 8.x, browse indices, run Query DSL requests in a console, and edit documents in the data grid. Install from Settings > Plugins. (#1529)
 
+### Changed
+
+- The ER diagram now arranges tables in a compact layout that fills the canvas in both directions, keeps tables linked by foreign keys together, and tints each group of connected tables with its own header color. (#1755)
+
 ### Fixed
 
 - Raw filters in the data grid now apply on document and key-value databases; the typed text was being dropped before it reached the driver. (#1529)

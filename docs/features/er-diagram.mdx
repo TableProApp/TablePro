@@ -22,11 +22,13 @@ View all tables and foreign key relationships in your schema as an interactive d
 
 ## Layout
 
-Tables are arranged automatically using a layered layout algorithm. Tables with foreign keys (child tables) are placed above the tables they reference (parent tables). Tables with no relationships are placed in a grid below.
+Tables are arranged automatically so the diagram fills the canvas in both directions instead of stacking into one tall column. TablePro finds groups of tables connected by foreign keys, places each group together, then packs the groups across the available width. Tables with no relationships sit in a grid at the bottom.
+
+Each group of connected tables gets its own header color, so you can tell related tables apart at a glance in a large schema. Single tables and tables without foreign keys stay uncolored. When the system **Differentiate Without Color** accessibility setting is on, the color tint is dropped and grouping is shown by position alone.
 
 Each table node shows:
 
-- **Header**: table name with icon
+- **Header**: table name with icon, tinted by its relationship group
 - **Columns**: name and data type, with badges for primary keys and foreign keys
 - **Edges**: lines connecting FK columns to their referenced tables
 

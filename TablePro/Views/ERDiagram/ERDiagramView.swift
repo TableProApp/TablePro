@@ -5,6 +5,7 @@ import UniformTypeIdentifiers
 
 struct ERDiagramView: View {
     @Bindable var viewModel: ERDiagramViewModel
+    @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
     @State private var selectedNodeId: UUID?
     @State private var scrollMonitor: Any?
     @State private var currentCursor: NSCursor?
@@ -71,6 +72,7 @@ struct ERDiagramView: View {
             let selectedId = selectedNodeId
             let mag = viewModel.magnification
             let offset = viewModel.canvasOffset
+            let clusterColors = nodeClusterColors(nodes: nodes)
 
             Canvas { context, _ in
                 context.translateBy(x: offset.x, y: offset.y)
@@ -89,7 +91,8 @@ struct ERDiagramView: View {
                         context: &context,
                         node: node,
                         rect: rect,
-                        isSelected: selectedId == node.id
+                        isSelected: selectedId == node.id,
+                        clusterColor: clusterColors[node.id]
                     )
                 }
             }
@@ -163,6 +166,19 @@ struct ERDiagramView: View {
         }
     }
 
+    // MARK: - Cluster Colors
+
+    private func nodeClusterColors(nodes: [ERTableNode]) -> [UUID: Color] {
+        guard !differentiateWithoutColor else { return [:] }
+        var colors: [UUID: Color] = [:]
+        for node in nodes {
+            if let color = ERClusterPalette.color(forCluster: node.clusterId) {
+                colors[node.id] = color
+            }
+        }
+        return colors
+    }
+
     // MARK: - Hit Testing
 
     private func nodeAt(point: CGPoint) -> UUID? {
@@ -228,6 +244,7 @@ struct ERDiagramView: View {
         let nodes = viewModel.graph.nodes
         let edges = viewModel.graph.edges
         let nodeIndex = viewModel.graph.nodeIndex
+        let clusterColors = nodeClusterColors(nodes: nodes)
 
         let padding: CGFloat = 40
         let bounds = nodeRects.values.reduce(CGRect.null) { $0.union($1) }
@@ -246,7 +263,13 @@ struct ERDiagramView: View {
             )
             for node in nodes {
                 guard let rect = nodeRects[node.id] else { continue }
-                ERDiagramNodeRenderer.drawNode(context: &context, node: node, rect: rect, isSelected: false)
+                ERDiagramNodeRenderer.drawNode(
+                    context: &context,
+                    node: node,
+                    rect: rect,
+                    isSelected: false,
+                    clusterColor: clusterColors[node.id]
+                )
             }
         }
         .frame(width: exportWidth, height: exportHeight)
