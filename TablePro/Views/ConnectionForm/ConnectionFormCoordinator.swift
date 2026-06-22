@@ -275,7 +275,7 @@ final class ConnectionFormCoordinator {
             sshConfig: sshConfig,
             sslConfig: sslConfig,
             color: customization.color,
-            tagId: customization.tagId,
+            tagIds: customization.tagIds,
             groupId: customization.groupId,
             sshProfileId: ssh.state.enabled ? ssh.state.profileId : nil,
             sshTunnelMode: sshTunnelMode,
@@ -458,7 +458,7 @@ final class ConnectionFormCoordinator {
             sshConfig: sshConfig,
             sslConfig: sslConfig,
             color: customization.color,
-            tagId: customization.tagId,
+            tagIds: customization.tagIds,
             groupId: customization.groupId,
             sshProfileId: ssh.state.enabled ? ssh.state.profileId : nil,
             sshTunnelMode: testTunnelMode,
@@ -790,8 +790,10 @@ final class ConnectionFormCoordinator {
         if let hex = parsed.statusColor, !hex.isEmpty {
             customization.color = ConnectionURLParser.connectionColor(fromHex: hex)
         }
-        if let env = parsed.envTag, !env.isEmpty {
-            customization.tagId = ConnectionURLParser.tagId(fromEnvName: env)
+        if let env = parsed.envTag, !env.isEmpty,
+           let resolved = ConnectionURLParser.tagId(fromEnvName: env),
+           !customization.tagIds.contains(resolved) {
+            customization.tagIds.append(resolved)
         }
         if parsed.type.pluginTypeId == "libSQL", !parsed.host.isEmpty {
             var urlString = "https://\(parsed.host)"

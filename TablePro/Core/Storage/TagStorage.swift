@@ -81,6 +81,14 @@ final class TagStorage {
         SyncChangeTracker.shared.markDeleted(.tag, id: tag.id.uuidString)
     }
 
+    /// Delete a custom tag and clear it from every connection that referenced it.
+    /// Connections are persisted before the tag tombstone fires (sync delete-ordering invariant).
+    func deleteTag(_ tag: ConnectionTag, clearingFrom connectionStorage: ConnectionStorage) {
+        guard !tag.isPreset else { return }
+        connectionStorage.removeTagId(tag.id)
+        deleteTag(tag)
+    }
+
     /// Get tag by ID
     func tag(for id: UUID) -> ConnectionTag? {
         loadTags().first { $0.id == id }

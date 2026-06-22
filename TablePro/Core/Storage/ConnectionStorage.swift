@@ -201,6 +201,18 @@ final class ConnectionStorage {
     }
 
     @discardableResult
+    func removeTagId(_ tagId: UUID) -> Bool {
+        let affected = loadConnections()
+            .filter { $0.tagIds.contains(tagId) }
+            .map { connection -> DatabaseConnection in
+                var updated = connection
+                updated.tagIds.removeAll { $0 == tagId }
+                return updated
+            }
+        return updateConnections(affected)
+    }
+
+    @discardableResult
     func updateSafeModeLevel(_ level: SafeModeLevel, for connectionId: UUID) -> Bool {
         var connections = loadConnections()
         guard let index = connections.firstIndex(where: { $0.id == connectionId }) else {
@@ -316,7 +328,7 @@ final class ConnectionStorage {
             sshConfig: connection.sshConfig,
             sslConfig: connection.sslConfig,
             color: connection.color,
-            tagId: connection.tagId,
+            tagIds: connection.tagIds,
             groupId: connection.groupId,
             sshProfileId: connection.sshProfileId,
             sshTunnelMode: connection.sshTunnelMode,

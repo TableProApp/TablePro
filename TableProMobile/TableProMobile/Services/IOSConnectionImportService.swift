@@ -182,7 +182,8 @@ enum IOSConnectionImportService {
             sslEnabled: sslEnabled,
             sslConfiguration: sslConfiguration,
             groupId: exportable.groupName.flatMap { groupIdsByName[normalizedKey($0)] },
-            tagId: exportable.tagName.flatMap { tagIdsByName[normalizedKey($0)] },
+            tagIds: (exportable.tagNames ?? exportable.tagName.map { [$0] } ?? [])
+                .compactMap { tagIdsByName[normalizedKey($0)] },
             sortOrder: sortOrder
         )
     }

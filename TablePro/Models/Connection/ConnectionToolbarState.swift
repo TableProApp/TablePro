@@ -72,8 +72,8 @@ enum ToolbarConnectionState: Equatable {
 final class ConnectionToolbarState {
     // MARK: - Connection Info
 
-    /// The tag assigned to this connection (optional)
-    var tagId: UUID?
+    /// The tags assigned to this connection
+    var tagIds: [UUID] = []
 
     /// Database type (MySQL, MariaDB, PostgreSQL, SQLite)
     var databaseType: DatabaseType = .mysql
@@ -239,7 +239,7 @@ final class ConnectionToolbarState {
         connectionName = connection.name
         databaseType = connection.type
         displayColor = connection.displayColor
-        tagId = connection.tagId
+        tagIds = connection.tagIds
         databaseGroupingStrategy = PluginManager.shared.databaseGroupingStrategy(for: connection.type)
         syncFromSession(for: connection)
     }
@@ -289,7 +289,7 @@ final class ConnectionToolbarState {
 
     /// Reset to default disconnected state
     func reset() {
-        tagId = nil
+        tagIds = []
         databaseType = .mysql
         databaseVersion = nil
         connectionName = ""

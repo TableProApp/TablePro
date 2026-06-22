@@ -331,7 +331,7 @@ struct DatabaseConnection: Identifiable, Hashable {
     var sshConfig: SSHConfiguration
     var sslConfig: SSLConfiguration
     var color: ConnectionColor
-    var tagId: UUID?
+    var tagIds: [UUID]
     var groupId: UUID?
     var sshProfileId: UUID?
     var sshTunnelMode: SSHTunnelMode
@@ -429,7 +429,7 @@ struct DatabaseConnection: Identifiable, Hashable {
         sshConfig: SSHConfiguration = SSHConfiguration(),
         sslConfig: SSLConfiguration = SSLConfiguration(),
         color: ConnectionColor = .none,
-        tagId: UUID? = nil,
+        tagIds: [UUID] = [],
         groupId: UUID? = nil,
         sshProfileId: UUID? = nil,
         sshTunnelMode: SSHTunnelMode = .disabled,
@@ -466,7 +466,7 @@ struct DatabaseConnection: Identifiable, Hashable {
         self.sshConfig = sshConfig
         self.sslConfig = sslConfig
         self.color = color
-        self.tagId = tagId
+        self.tagIds = tagIds
         self.groupId = groupId
         self.sshProfileId = sshProfileId
         self.safeModeLevel = safeModeLevel
@@ -542,7 +542,7 @@ extension DatabaseConnection {
 extension DatabaseConnection: Codable {
     private enum CodingKeys: String, CodingKey {
         case id, name, host, port, database, username, type
-        case sshConfig, sslConfig, color, tagId, groupId, sshProfileId
+        case sshConfig, sslConfig, color, tagId, tagIds, groupId, sshProfileId
         case sshTunnelMode, cloudflareTunnelMode, safeModeLevel, aiPolicy, aiRules, aiAlwaysAllowedTools, externalAccess, additionalFields
         case redisDatabase, startupCommands, sortOrder, localOnly, isSample, isFavorite
         case passwordSource
@@ -560,7 +560,12 @@ extension DatabaseConnection: Codable {
         sshConfig = try container.decodeIfPresent(SSHConfiguration.self, forKey: .sshConfig) ?? SSHConfiguration()
         sslConfig = try container.decodeIfPresent(SSLConfiguration.self, forKey: .sslConfig) ?? SSLConfiguration()
         color = try container.decodeIfPresent(ConnectionColor.self, forKey: .color) ?? .none
-        tagId = try container.decodeIfPresent(UUID.self, forKey: .tagId)
+        let decodedTagIds = try container.decodeIfPresent([UUID].self, forKey: .tagIds) ?? []
+        if decodedTagIds.isEmpty {
+            tagIds = try container.decodeIfPresent(UUID.self, forKey: .tagId).map { [$0] } ?? []
+        } else {
+            tagIds = decodedTagIds
+        }
         groupId = try container.decodeIfPresent(UUID.self, forKey: .groupId)
         sshProfileId = try container.decodeIfPresent(UUID.self, forKey: .sshProfileId)
         safeModeLevel = try container.decodeIfPresent(SafeModeLevel.self, forKey: .safeModeLevel) ?? .silent
@@ -606,7 +611,10 @@ extension DatabaseConnection: Codable {
         try container.encode(sshConfig, forKey: .sshConfig)
         try container.encode(sslConfig, forKey: .sslConfig)
         try container.encode(color, forKey: .color)
-        try container.encodeIfPresent(tagId, forKey: .tagId)
+        if !tagIds.isEmpty {
+            try container.encode(tagIds, forKey: .tagIds)
+            try container.encode(tagIds[0], forKey: .tagId)
+        }
         try container.encodeIfPresent(groupId, forKey: .groupId)
         try container.encodeIfPresent(sshProfileId, forKey: .sshProfileId)
         try container.encode(sshTunnelMode, forKey: .sshTunnelMode)

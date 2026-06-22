@@ -13,7 +13,7 @@ struct WelcomeConnectionRow: View {
     @State private var isHovering = false
     private let pluginManager = PluginManager.shared
 
-    private var metadata: (tag: ConnectionTag?, group: ConnectionGroup?) {
+    private var metadata: (tags: [ConnectionTag], group: ConnectionGroup?) {
         ConnectionMetadata.resolve(
             connection: connection,
             tags: TagStorage.shared.loadTags(),
@@ -68,7 +68,7 @@ struct WelcomeConnectionRow: View {
 
             Spacer(minLength: 8)
 
-            trailingAccessories(tag: meta.tag)
+            trailingAccessories(tags: meta.tags)
         }
         .contentShape(Rectangle())
         .onHover { hovering in isHovering = hovering }
@@ -79,7 +79,7 @@ struct WelcomeConnectionRow: View {
     }
 
     @ViewBuilder
-    private func trailingAccessories(tag: ConnectionTag?) -> some View {
+    private func trailingAccessories(tags: [ConnectionTag]) -> some View {
         HStack(spacing: 8) {
             if isDriverRejected {
                 Image(systemName: "exclamationmark.triangle.fill")
@@ -97,9 +97,7 @@ struct WelcomeConnectionRow: View {
                     .accessibilityLabel(String(localized: "Local only"))
             }
 
-            if let tag {
-                ConnectionTagBadge(tag: tag)
-            }
+            ConnectionTagsBadge(tags: tags)
 
             favoriteButton
         }

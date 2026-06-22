@@ -14,8 +14,8 @@ struct CustomizationPaneView: View {
                 LabeledContent(String(localized: "Color")) {
                     ConnectionColorPicker(selectedColor: $coordinator.customization.color)
                 }
-                LabeledContent(String(localized: "Tag")) {
-                    ConnectionTagEditor(selectedTagId: $coordinator.customization.tagId)
+                LabeledContent(String(localized: "Tags")) {
+                    ConnectionTagEditor(tagIds: $coordinator.customization.tagIds)
                 }
                 LabeledContent(String(localized: "Group")) {
                     ConnectionGroupPicker(selectedGroupId: $coordinator.customization.groupId)

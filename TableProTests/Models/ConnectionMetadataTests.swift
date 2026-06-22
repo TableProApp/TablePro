@@ -11,43 +11,56 @@ import Testing
 
 @Suite("ConnectionMetadata")
 struct ConnectionMetadataTests {
-    private func makeConnection(tagId: UUID? = nil, groupId: UUID? = nil) -> DatabaseConnection {
+    private func makeConnection(tagIds: [UUID] = [], groupId: UUID? = nil) -> DatabaseConnection {
         var connection = DatabaseConnection(name: "Test")
-        connection.tagId = tagId
+        connection.tagIds = tagIds
         connection.groupId = groupId
         return connection
     }
 
-    private let tag = ConnectionTag(name: "production", color: .red)
+    private let production = ConnectionTag(name: "production", color: .red)
+    private let staging = ConnectionTag(name: "staging", color: .orange)
     private let group = ConnectionGroup(id: UUID(), name: "Backend", sortOrder: 0)
 
-    @Test("Resolves the assigned tag and group")
+    @Test("Resolves assigned tags in order and the assigned group")
     func resolvesAssigned() {
-        let connection = makeConnection(tagId: tag.id, groupId: group.id)
+        let connection = makeConnection(tagIds: [staging.id, production.id], groupId: group.id)
 
-        let result = ConnectionMetadata.resolve(connection: connection, tags: [tag], groups: [group])
+        let result = ConnectionMetadata.resolve(
+            connection: connection,
+            tags: [production, staging],
+            groups: [group]
+        )
 
-        #expect(result.tag == tag)
+        #expect(result.tags == [staging, production])
         #expect(result.group == group)
     }
 
-    @Test("Returns nil when no tag or group is assigned")
-    func returnsNilWhenUnassigned() {
+    @Test("Returns no tags and no group when nothing is assigned")
+    func returnsEmptyWhenUnassigned() {
         let connection = makeConnection()
 
-        let result = ConnectionMetadata.resolve(connection: connection, tags: [tag], groups: [group])
+        let result = ConnectionMetadata.resolve(
+            connection: connection,
+            tags: [production],
+            groups: [group]
+        )
 
-        #expect(result.tag == nil)
+        #expect(result.tags.isEmpty)
         #expect(result.group == nil)
     }
 
-    @Test("Returns nil when the assigned tag or group no longer exists")
-    func returnsNilForStaleReferences() {
-        let connection = makeConnection(tagId: UUID(), groupId: UUID())
+    @Test("Drops tag and group references that no longer exist")
+    func dropsStaleReferences() {
+        let connection = makeConnection(tagIds: [production.id, UUID()], groupId: UUID())
 
-        let result = ConnectionMetadata.resolve(connection: connection, tags: [tag], groups: [group])
+        let result = ConnectionMetadata.resolve(
+            connection: connection,
+            tags: [production],
+            groups: [group]
+        )
 
-        #expect(result.tag == nil)
+        #expect(result.tags == [production])
         #expect(result.group == nil)
     }
 }

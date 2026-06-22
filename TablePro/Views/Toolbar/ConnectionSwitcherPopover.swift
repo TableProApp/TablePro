@@ -231,9 +231,7 @@ struct ConnectionSwitcherPopover: View {
 
             Spacer()
 
-            if let tag = metadata.tag {
-                ConnectionTagBadge(tag: tag)
-            }
+            ConnectionTagsBadge(tags: metadata.tags)
 
             if isActive {
                 Image(systemName: "checkmark.circle.fill")

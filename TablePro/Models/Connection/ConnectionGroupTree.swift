@@ -104,6 +104,23 @@ func filterGroupTree(_ items: [ConnectionGroupTreeNode], searchText: String) -> 
     }
 }
 
+func filterGroupTreeByTags(_ items: [ConnectionGroupTreeNode], filter: TagFilter) -> [ConnectionGroupTreeNode] {
+    guard filter.isActive else { return items }
+
+    return items.compactMap { item in
+        switch item {
+        case .connection(let conn):
+            return filter.matches(conn) ? item : nil
+        case .group(let group, let children):
+            let filteredChildren = filterGroupTreeByTags(children, filter: filter)
+            if !filteredChildren.isEmpty {
+                return .group(group, children: filteredChildren)
+            }
+            return nil
+        }
+    }
+}
+
 // MARK: - Tree Traversal
 
 func flattenVisibleConnections(

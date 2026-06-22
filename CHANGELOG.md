@@ -9,8 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Connections can now have more than one tag. Assign several tags in the connection form, and filter the welcome list by tag with Match Any or Match All. (#744)
 - Elasticsearch support. Connect to Elasticsearch 7.x and 8.x, browse indices, run Query DSL requests in a console, and edit documents in the data grid. Install from Settings > Plugins. (#1529)
-- The connection switcher and welcome list now show each connection's tag and group, so you can tell production from staging at a glance. (#1323)
+- The connection switcher and welcome list now show each connection's tags and group, so you can tell production from staging at a glance. (#1323)
 
 ### Fixed
 

@@ -278,8 +278,8 @@ final class AppState {
         persist(tags: updatedTags)
 
         var updatedConnections = connections
-        for index in updatedConnections.indices where updatedConnections[index].tagId == tagId {
-            updatedConnections[index].tagId = nil
+        for index in updatedConnections.indices where updatedConnections[index].tagIds.contains(tagId) {
+            updatedConnections[index].tagIds.removeAll { $0 == tagId }
             syncCoordinator.markDirty(updatedConnections[index].id)
         }
         persist(connections: updatedConnections)

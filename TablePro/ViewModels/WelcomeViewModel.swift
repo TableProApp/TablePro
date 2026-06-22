@@ -42,6 +42,7 @@ final class WelcomeViewModel {
 
     var connections: [DatabaseConnection] = []
     var searchText = "" { didSet { scheduleRebuildTree(oldValue: oldValue) } }
+    var tagFilter = TagFilter() { didSet { if tagFilter != oldValue { rebuildTree() } } }
     var selectedConnectionIds: Set<UUID> = []
     var groups: [ConnectionGroup] = []
     var linkedConnections: [LinkedConnection] = []
@@ -104,13 +105,22 @@ final class WelcomeViewModel {
     private(set) var depthByGroup: [UUID: Int] = [:]
     private(set) var maxDescendantDepthByGroup: [UUID: Int] = [:]
 
+    var availableTags: [ConnectionTag] {
+        let usedIds = Set(connections.flatMap { $0.tagIds })
+        return TagStorage.shared.loadTags().filter { usedIds.contains($0.id) }
+    }
+
     func rebuildTree() {
         favoriteConnections = connections
             .filter(\.isFavorite)
+            .filter { tagFilter.matches($0) }
             .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
 
         let (tree, indices) = buildGroupTreeWithIndices(groups: groups, connections: connections)
-        let baseItems = searchText.isEmpty ? tree : filterGroupTree(tree, searchText: searchText)
+        var baseItems = searchText.isEmpty ? tree : filterGroupTree(tree, searchText: searchText)
+        if tagFilter.isActive {
+            baseItems = filterGroupTreeByTags(baseItems, filter: tagFilter)
+        }
         if searchText.isEmpty, !favoriteConnections.isEmpty {
             treeItems = baseItems.filter { node in
                 if case .connection(let conn) = node, conn.isFavorite { return false }
@@ -369,6 +379,16 @@ final class WelcomeViewModel {
         connections.removeAll { idsToDelete.contains($0.id) }
         selectedConnectionIds.subtract(idsToDelete)
         connectionsToDelete = []
+        rebuildTree()
+    }
+
+    // MARK: - Tags
+
+    func deleteTag(_ tag: ConnectionTag) {
+        guard !tag.isPreset else { return }
+        TagStorage.shared.deleteTag(tag, clearingFrom: storage)
+        connections = storage.loadConnections()
+        tagFilter.selectedIds.remove(tag.id)
         rebuildTree()
     }
 

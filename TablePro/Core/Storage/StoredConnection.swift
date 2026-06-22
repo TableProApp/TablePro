@@ -30,6 +30,7 @@ struct StoredConnection: Codable {
 
     let color: String
     let tagId: String?
+    let tagIds: [String]?
     let groupId: String?
     let sshProfileId: String?
 
@@ -111,7 +112,8 @@ struct StoredConnection: Codable {
         self.sslClientKeyPath = connection.sslConfig.clientKeyPath
 
         self.color = connection.color.rawValue
-        self.tagId = connection.tagId?.uuidString
+        self.tagId = connection.tagIds.first?.uuidString
+        self.tagIds = connection.tagIds.isEmpty ? nil : connection.tagIds.map { $0.uuidString }
         self.groupId = connection.groupId?.uuidString
         self.sshProfileId = connection.sshProfileId?.uuidString
 
@@ -165,7 +167,7 @@ struct StoredConnection: Codable {
         case sshAgentSocketPath
         case totpMode, totpAlgorithm, totpDigits, totpPeriod
         case sslMode, sslCaCertificatePath, sslClientCertificatePath, sslClientKeyPath
-        case color, tagId, groupId, sshProfileId
+        case color, tagId, tagIds, groupId, sshProfileId
         case safeModeLevel
         case externalAccess
         case isReadOnly // Legacy key for migration reading only
@@ -209,6 +211,7 @@ struct StoredConnection: Codable {
         try container.encode(sslClientKeyPath, forKey: .sslClientKeyPath)
         try container.encode(color, forKey: .color)
         try container.encodeIfPresent(tagId, forKey: .tagId)
+        try container.encodeIfPresent(tagIds, forKey: .tagIds)
         try container.encodeIfPresent(groupId, forKey: .groupId)
         try container.encodeIfPresent(sshProfileId, forKey: .sshProfileId)
         try container.encode(safeModeLevel, forKey: .safeModeLevel)
@@ -269,6 +272,7 @@ struct StoredConnection: Codable {
         // Migration: use defaults if fields are missing
         color = try container.decodeIfPresent(String.self, forKey: .color) ?? ConnectionColor.none.rawValue
         tagId = try container.decodeIfPresent(String.self, forKey: .tagId)
+        tagIds = try container.decodeIfPresent([String].self, forKey: .tagIds)
         groupId = try container.decodeIfPresent(String.self, forKey: .groupId)
         sshProfileId = try container.decodeIfPresent(String.self, forKey: .sshProfileId)
         // Migration: read new safeModeLevel first, fall back to old isReadOnly boolean
@@ -355,7 +359,14 @@ struct StoredConnection: Codable {
         )
 
         let parsedColor = ConnectionColor(rawValue: color) ?? .none
-        let parsedTagId = tagId.flatMap { UUID(uuidString: $0) }
+        let parsedTagIds: [UUID]
+        if let ids = tagIds, !ids.isEmpty {
+            parsedTagIds = ids.compactMap { UUID(uuidString: $0) }
+        } else if let single = tagId.flatMap({ UUID(uuidString: $0) }) {
+            parsedTagIds = [single]
+        } else {
+            parsedTagIds = []
+        }
         let parsedGroupId = groupId.flatMap { UUID(uuidString: $0) }
         let parsedSSHProfileId = sshProfileId.flatMap { UUID(uuidString: $0) }
         let parsedAIPolicy = aiPolicy.flatMap { AIConnectionPolicy(rawValue: $0) }
@@ -388,7 +399,7 @@ struct StoredConnection: Codable {
             sshConfig: sshConfig,
             sslConfig: sslConfig,
             color: parsedColor,
-            tagId: parsedTagId,
+            tagIds: parsedTagIds,
             groupId: parsedGroupId,
             sshProfileId: parsedSSHProfileId,
             sshTunnelMode: resolvedTunnelMode,
