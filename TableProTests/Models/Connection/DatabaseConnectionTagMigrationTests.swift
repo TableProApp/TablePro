@@ -43,8 +43,8 @@ struct DatabaseConnectionTagMigrationTests {
         #expect(connection.tagIds.isEmpty)
     }
 
-    @Test("Encoding writes tagIds and not legacy tagId")
-    func encodeWritesTagIdsOnly() throws {
+    @Test("Encoding writes tagIds plus the first tag as legacy tagId for downgrade safety")
+    func encodeWritesTagIdsAndLegacyFirst() throws {
         let a = UUID()
         let b = UUID()
         var connection = DatabaseConnection(name: "Local")
@@ -52,7 +52,7 @@ struct DatabaseConnectionTagMigrationTests {
         let data = try JSONEncoder().encode(connection)
         let object = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
         #expect(object["tagIds"] as? [String] == [a.uuidString, b.uuidString])
-        #expect(object["tagId"] == nil)
+        #expect(object["tagId"] as? String == a.uuidString)
     }
 
     @Test("Empty tagIds omits the key on encode")

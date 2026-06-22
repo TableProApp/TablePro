@@ -613,6 +613,7 @@ extension DatabaseConnection: Codable {
         try container.encode(color, forKey: .color)
         if !tagIds.isEmpty {
             try container.encode(tagIds, forKey: .tagIds)
+            try container.encode(tagIds[0], forKey: .tagId)
         }
         try container.encodeIfPresent(groupId, forKey: .groupId)
         try container.encodeIfPresent(sshProfileId, forKey: .sshProfileId)

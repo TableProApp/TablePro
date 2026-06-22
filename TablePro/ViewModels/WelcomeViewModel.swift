@@ -386,8 +386,7 @@ final class WelcomeViewModel {
 
     func deleteTag(_ tag: ConnectionTag) {
         guard !tag.isPreset else { return }
-        storage.removeTagId(tag.id)
-        TagStorage.shared.deleteTag(tag)
+        TagStorage.shared.deleteTag(tag, clearingFrom: storage)
         connections = storage.loadConnections()
         tagFilter.selectedIds.remove(tag.id)
         rebuildTree()

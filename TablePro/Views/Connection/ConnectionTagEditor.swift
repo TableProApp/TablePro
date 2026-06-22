@@ -129,8 +129,7 @@ struct ConnectionTagEditor: View {
 
     private func deleteTag(_ tag: ConnectionTag) {
         tagIds = tagIds.filter { $0 != tag.id }
-        ConnectionStorage.shared.removeTagId(tag.id)
-        tagStorage.deleteTag(tag)
+        tagStorage.deleteTag(tag, clearingFrom: .shared)
         allTags = tagStorage.loadTags()
     }
 
