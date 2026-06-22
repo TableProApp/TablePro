@@ -75,7 +75,7 @@ struct ElasticsearchStatementGenerator {
 
         var document: [String: Any] = [:]
         for column in columns where !metaColumns.contains(column) {
-            guard let value = values[column], let text = value.asText, !text.isEmpty else { continue }
+            guard let value = values[column], let text = value.asText else { continue }
             document[column] = jsonValue(text, for: column)
         }
 
@@ -139,8 +139,12 @@ struct ElasticsearchStatementGenerator {
         encodePathComponent(index)
     }
 
+    private static let pathComponentAllowed: CharacterSet =
+        .urlPathAllowed.subtracting(CharacterSet(charactersIn: "/"))
+    private static let structuredTypes: Set<String> = ["object", "nested", "flattened", "join"]
+
     private func encodePathComponent(_ value: String) -> String {
-        value.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? value
+        value.addingPercentEncoding(withAllowedCharacters: Self.pathComponentAllowed) ?? value
     }
 
     private func jsonValue(_ text: String, for column: String) -> Any {
@@ -159,9 +163,9 @@ struct ElasticsearchStatementGenerator {
         }
 
         if let data = text.data(using: .utf8),
-           let parsed = try? JSONSerialization.jsonObject(with: data),
-           parsed is [Any] || parsed is [String: Any] {
-            return parsed
+           let parsed = try? JSONSerialization.jsonObject(with: data) {
+            if parsed is [Any] { return parsed }
+            if parsed is [String: Any], Self.structuredTypes.contains(typeName) { return parsed }
         }
         return text
     }

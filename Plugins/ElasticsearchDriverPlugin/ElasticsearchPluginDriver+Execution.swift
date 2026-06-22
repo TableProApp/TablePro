@@ -77,7 +77,9 @@ extension ElasticsearchPluginDriver {
         conn: ElasticsearchConnection
     ) async throws -> [[String: Any]] {
         if parsed.from + parsed.size <= Self.maxResultWindow {
-            var body = ElasticsearchQueryBuilder.searchBody(for: parsed, fields: fields, size: parsed.size)
+            var body = ElasticsearchQueryBuilder.searchBody(
+                for: parsed, fields: fields, size: parsed.size, caseInsensitive: supportsCaseInsensitiveSearch
+            )
             body["from"] = parsed.from
             Self.logger.debug("POST /\(index, privacy: .public)/_search body=\(Self.jsonString(body), privacy: .public)")
             let response = try await conn.search(index: index, body: body)
@@ -119,7 +121,7 @@ extension ElasticsearchPluginDriver {
             try Task.checkCancellation()
             var body = ElasticsearchQueryBuilder.searchBody(
                 for: parsed, fields: fields, size: Self.deepPageBatchSize,
-                tiebreaker: true, searchAfter: searchAfter
+                tiebreaker: true, searchAfter: searchAfter, caseInsensitive: supportsCaseInsensitiveSearch
             )
             body["pit"] = ["id": pit, "keep_alive": Self.pitKeepAlive]
             let response = try await conn.search(index: nil, body: body)
@@ -185,7 +187,10 @@ extension ElasticsearchPluginDriver {
             throw mapWriteError(response)
         }
 
-        if let json = response.json as? [String: Any], json["hits"] is [String: Any] {
+        if let json = response.json as? [String: Any],
+           json["hits"] is [String: Any],
+           json["aggregations"] == nil,
+           json["suggest"] == nil {
             let hits = extractHits(response)
             return renderHits(hits, mappingColumns: [], fields: [:], startTime: startTime)
         }

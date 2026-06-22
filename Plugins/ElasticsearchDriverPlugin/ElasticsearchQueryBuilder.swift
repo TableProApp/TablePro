@@ -169,10 +169,13 @@ struct ElasticsearchQueryBuilder {
         fields: [String: ElasticsearchFieldInfo],
         size: Int,
         tiebreaker: Bool = false,
-        searchAfter: [Any]? = nil
+        searchAfter: [Any]? = nil,
+        caseInsensitive: Bool = true
     ) -> [String: Any] {
         var body: [String: Any] = ["size": size]
-        body["query"] = queryClause(filters: parsed.filters, logicMode: parsed.logicMode, fields: fields)
+        body["query"] = queryClause(
+            filters: parsed.filters, logicMode: parsed.logicMode, fields: fields, caseInsensitive: caseInsensitive
+        )
         body["sort"] = sortClause(parsed.sorts, fields: fields, tiebreaker: tiebreaker)
         if let searchAfter {
             body["search_after"] = searchAfter
@@ -183,12 +186,13 @@ struct ElasticsearchQueryBuilder {
     static func queryClause(
         filters: [ElasticsearchFilterSpec],
         logicMode: String,
-        fields: [String: ElasticsearchFieldInfo]
+        fields: [String: ElasticsearchFieldInfo],
+        caseInsensitive: Bool = true
     ) -> [String: Any] {
         let active = filters.filter { !($0.column == rawColumn && $0.value.trimmingCharacters(in: .whitespaces).isEmpty) }
         guard !active.isEmpty else { return ["match_all": [String: Any]()] }
 
-        let clauses = active.map { clause(for: $0, fields: fields) }
+        let clauses = active.map { clause(for: $0, fields: fields, caseInsensitive: caseInsensitive) }
         let occur = logicMode.uppercased() == "OR" ? "should" : "must"
         var bool: [String: Any] = [occur: clauses]
         if occur == "should" {
@@ -242,7 +246,11 @@ struct ElasticsearchQueryBuilder {
 
     // MARK: - Per-Filter Clause
 
-    static func clause(for filter: ElasticsearchFilterSpec, fields: [String: ElasticsearchFieldInfo]) -> [String: Any] {
+    static func clause(
+        for filter: ElasticsearchFilterSpec,
+        fields: [String: ElasticsearchFieldInfo],
+        caseInsensitive: Bool = true
+    ) -> [String: Any] {
         let column = filter.column
         let op = filter.op.uppercased()
         let value = filter.value
@@ -255,7 +263,7 @@ struct ElasticsearchQueryBuilder {
         case "=":
             return equalsClause(column: column, value: value, fields: fields)
         case "!=", "<>":
-            return ["bool": ["must_not": [equalsClause(column: column, value: value, fields: fields)]]]
+            return mustNot(equalsClause(column: column, value: value, fields: fields))
         case ">":
             return ["range": [column: ["gt": typedValue(value, column: column, fields: fields)]]]
         case ">=":
@@ -264,28 +272,78 @@ struct ElasticsearchQueryBuilder {
             return ["range": [column: ["lt": typedValue(value, column: column, fields: fields)]]]
         case "<=":
             return ["range": [column: ["lte": typedValue(value, column: column, fields: fields)]]]
+        case "BETWEEN":
+            let bounds = value.split(separator: ",", maxSplits: 1).map { $0.trimmingCharacters(in: .whitespaces) }
+            guard bounds.count == 2 else { return equalsClause(column: column, value: value, fields: fields) }
+            return ["range": [column: [
+                "gte": typedValue(bounds[0], column: column, fields: fields),
+                "lte": typedValue(bounds[1], column: column, fields: fields),
+            ]]]
         case "CONTAINS":
-            if isTextField(column, fields: fields) {
-                return ["match": [column: value]]
-            }
-            return ["wildcard": [keywordField(column, fields: fields): ["value": "*\(escapeWildcard(value))*", "case_insensitive": true]]]
+            return containsClause(column: column, value: value, fields: fields, caseInsensitive: caseInsensitive)
+        case "NOT CONTAINS":
+            return mustNot(containsClause(column: column, value: value, fields: fields, caseInsensitive: caseInsensitive))
         case "STARTS WITH":
             if isTextField(column, fields: fields) {
                 return ["match_phrase_prefix": [column: value]]
             }
-            return ["prefix": [keywordField(column, fields: fields): ["value": value, "case_insensitive": true]]]
+            return prefixClause(keywordField(column, fields: fields), value: value, caseInsensitive: caseInsensitive)
         case "ENDS WITH":
-            return ["wildcard": [keywordField(column, fields: fields): ["value": "*\(escapeWildcard(value))", "case_insensitive": true]]]
+            return wildcardClause(keywordField(column, fields: fields), pattern: "*\(escapeWildcard(value))", caseInsensitive: caseInsensitive)
         case "IN":
-            let values = value.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
-            return ["terms": [keywordField(column, fields: fields): values]]
-        case "IS NULL", "IS_NULL":
-            return ["bool": ["must_not": [["exists": ["field": column]]]]]
-        case "IS NOT NULL", "IS_NOT_NULL":
-            return ["exists": ["field": column]]
+            return ["terms": [keywordField(column, fields: fields): splitList(value)]]
+        case "NOT IN":
+            return mustNot(["terms": [keywordField(column, fields: fields): splitList(value)]])
+        case "REGEX":
+            return regexpClause(keywordField(column, fields: fields), value: value, caseInsensitive: caseInsensitive)
+        case "IS NULL", "IS_NULL", "IS EMPTY", "IS_EMPTY":
+            return ["bool": [
+                "should": [mustNot(["exists": ["field": column]]), ["term": [keywordField(column, fields: fields): ""]]],
+                "minimum_should_match": 1,
+            ]]
+        case "IS NOT NULL", "IS_NOT_NULL", "IS NOT EMPTY", "IS_NOT_EMPTY":
+            return ["bool": [
+                "must": [["exists": ["field": column]]],
+                "must_not": [["term": [keywordField(column, fields: fields): ""]]],
+            ]]
         default:
             return equalsClause(column: column, value: value, fields: fields)
         }
+    }
+
+    private static func containsClause(
+        column: String, value: String, fields: [String: ElasticsearchFieldInfo], caseInsensitive: Bool
+    ) -> [String: Any] {
+        if isTextField(column, fields: fields) {
+            return ["match": [column: value]]
+        }
+        return wildcardClause(keywordField(column, fields: fields), pattern: "*\(escapeWildcard(value))*", caseInsensitive: caseInsensitive)
+    }
+
+    private static func wildcardClause(_ field: String, pattern: String, caseInsensitive: Bool) -> [String: Any] {
+        var options: [String: Any] = ["value": pattern]
+        if caseInsensitive { options["case_insensitive"] = true }
+        return ["wildcard": [field: options]]
+    }
+
+    private static func prefixClause(_ field: String, value: String, caseInsensitive: Bool) -> [String: Any] {
+        var options: [String: Any] = ["value": value]
+        if caseInsensitive { options["case_insensitive"] = true }
+        return ["prefix": [field: options]]
+    }
+
+    private static func regexpClause(_ field: String, value: String, caseInsensitive: Bool) -> [String: Any] {
+        var options: [String: Any] = ["value": value]
+        if caseInsensitive { options["case_insensitive"] = true }
+        return ["regexp": [field: options]]
+    }
+
+    private static func mustNot(_ clause: [String: Any]) -> [String: Any] {
+        ["bool": ["must_not": [clause]]]
+    }
+
+    private static func splitList(_ value: String) -> [String] {
+        value.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
     }
 
     private static func equalsClause(

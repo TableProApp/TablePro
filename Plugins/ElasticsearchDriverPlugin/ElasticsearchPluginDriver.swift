@@ -24,6 +24,15 @@ internal final class ElasticsearchPluginDriver: PluginDatabaseDriver, @unchecked
 
     var serverVersion: String? { connection?.serverVersion }
 
+    var supportsCaseInsensitiveSearch: Bool {
+        guard let version = serverVersion else { return true }
+        let parts = version.split(separator: ".").compactMap { Int($0) }
+        guard let major = parts.first else { return true }
+        if major >= 8 { return true }
+        if major == 7 { return (parts.count >= 2 ? parts[1] : 0) >= 10 }
+        return false
+    }
+
     var supportsTransactions: Bool { false }
 
     var capabilities: PluginCapabilities { [.cancelQuery] }
@@ -124,7 +133,9 @@ internal final class ElasticsearchPluginDriver: PluginDatabaseDriver, @unchecked
         guard let conn = connection else { throw ElasticsearchError.notConnected }
         let fields = ElasticsearchMappingFlattener.fieldInfo(from: try await cachedMappingColumns(table))
         let specs = filters.map { ElasticsearchFilterSpec(column: $0.column, op: $0.op, value: $0.value) }
-        let query = ElasticsearchQueryBuilder.queryClause(filters: specs, logicMode: logicMode, fields: fields)
+        let query = ElasticsearchQueryBuilder.queryClause(
+            filters: specs, logicMode: logicMode, fields: fields, caseInsensitive: supportsCaseInsensitiveSearch
+        )
         return try await conn.count(index: table, query: query)
     }
 

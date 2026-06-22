@@ -98,11 +98,20 @@ enum ElasticsearchMappingFlattener {
                 case scoreColumn:
                     return cell(hit["_score"])
                 default:
-                    guard let value = flat[column] else { return .null }
-                    return value
+                    if let value = flat[column] { return value }
+                    return cell(rawValue(in: source, atPath: column))
                 }
             }
         }
+    }
+
+    static func rawValue(in source: [String: Any], atPath path: String) -> Any? {
+        var current: Any = source
+        for key in path.split(separator: ".") {
+            guard let dict = current as? [String: Any], let next = dict[String(key)] else { return nil }
+            current = next
+        }
+        return current
     }
 
     static func flattenSource(_ source: [String: Any]) -> [String: PluginCellValue] {

@@ -125,7 +125,8 @@ struct ElasticsearchQueryDSLTests {
         let filter = ElasticsearchFilterSpec(column: "status", op: "IS NULL", value: "")
         let clause = ElasticsearchQueryBuilder.clause(for: filter, fields: keywordField)
         let bool = clause["bool"] as? [String: Any]
-        #expect(bool?["must_not"] != nil)
+        #expect((bool?["should"] as? [[String: Any]])?.count == 2)
+        #expect(bool?["minimum_should_match"] as? Int == 1)
     }
 
     @Test("Deep pagination body includes _shard_doc tiebreaker")
@@ -155,6 +156,53 @@ struct ElasticsearchQueryDSLTests {
     func idNotSortable() {
         #expect(ElasticsearchQueryBuilder.sortableField("_id", fields: [:]) == nil)
         #expect(ElasticsearchQueryBuilder.sortableField("_score", fields: [:]) == "_score")
+    }
+
+    @Test("BETWEEN builds a gte/lte range")
+    func betweenRange() {
+        let clause = ElasticsearchQueryBuilder.clause(
+            for: ElasticsearchFilterSpec(column: "age", op: "BETWEEN", value: "10,20"),
+            fields: numericField
+        )
+        let bounds = (clause["range"] as? [String: Any])?["age"] as? [String: Any]
+        #expect(bounds?["gte"] as? Int == 10)
+        #expect(bounds?["lte"] as? Int == 20)
+    }
+
+    @Test("NOT CONTAINS and NOT IN wrap in must_not")
+    func negatedClauses() {
+        let notContains = ElasticsearchQueryBuilder.clause(
+            for: ElasticsearchFilterSpec(column: "status", op: "NOT CONTAINS", value: "x"), fields: keywordField
+        )
+        #expect((notContains["bool"] as? [String: Any])?["must_not"] != nil)
+        let notIn = ElasticsearchQueryBuilder.clause(
+            for: ElasticsearchFilterSpec(column: "status", op: "NOT IN", value: "a,b"), fields: keywordField
+        )
+        #expect((notIn["bool"] as? [String: Any])?["must_not"] != nil)
+    }
+
+    @Test("REGEX builds a regexp query")
+    func regexClause() {
+        let clause = ElasticsearchQueryBuilder.clause(
+            for: ElasticsearchFilterSpec(column: "status", op: "REGEX", value: "a.*"), fields: keywordField
+        )
+        let regexp = clause["regexp"] as? [String: Any]
+        #expect((regexp?["status"] as? [String: Any])?["value"] as? String == "a.*")
+    }
+
+    @Test("case_insensitive is omitted when unsupported (pre-7.10)")
+    func caseInsensitiveGated() {
+        let on = ElasticsearchQueryBuilder.clause(
+            for: ElasticsearchFilterSpec(column: "status", op: "CONTAINS", value: "x"),
+            fields: keywordField, caseInsensitive: true
+        )
+        #expect((on["wildcard"] as? [String: Any]).map { ($0["status"] as? [String: Any])?["case_insensitive"] as? Bool } == true)
+        let off = ElasticsearchQueryBuilder.clause(
+            for: ElasticsearchFilterSpec(column: "status", op: "CONTAINS", value: "x"),
+            fields: keywordField, caseInsensitive: false
+        )
+        let offOptions = (off["wildcard"] as? [String: Any])?["status"] as? [String: Any]
+        #expect(offOptions?["case_insensitive"] == nil)
     }
 }
 
@@ -246,6 +294,13 @@ struct ElasticsearchMappingFlattenerTests {
         #expect(columns.contains("a"))
         #expect(columns.contains("b"))
     }
+
+    @Test("Object-valued parent column renders as JSON, not null")
+    func parentObjectColumnRendersJSON() {
+        let hits: [[String: Any]] = [["_source": ["labels": ["env": "prod", "tier": "1"]]]]
+        let rows = ElasticsearchMappingFlattener.rows(forHits: hits, columns: ["labels"])
+        #expect(rows.first?[0].asText?.contains("env") == true)
+    }
 }
 
 @Suite("Elasticsearch - Statement Generator")
@@ -320,5 +375,46 @@ struct ElasticsearchStatementGeneratorTests {
         let decoded = ElasticsearchStatementGenerator.decode(statements[0].statement)
         #expect(decoded?.method == "PUT")
         #expect(decoded?.path.contains("/users/_doc/custom") == true)
+    }
+
+    @Test("Document id with a slash is percent-encoded into one path segment")
+    func slashInDocumentId() {
+        let change = PluginRowChange(
+            rowIndex: 0,
+            type: .delete,
+            cellChanges: [],
+            originalRow: [.text("tenant/123"), .text("users"), .text("1"), .text("Bob"), .text("30")]
+        )
+        let statements = generator().generateStatements(
+            from: [change], insertedRowData: [:], deletedRowIndices: [0], insertedRowIndices: []
+        )
+        let decoded = ElasticsearchStatementGenerator.decode(statements[0].statement)
+        #expect(decoded?.path.contains("/users/_doc/tenant%2F123") == true)
+    }
+
+    @Test("Insert preserves an intentional empty string")
+    func insertKeepsEmptyString() {
+        let change = PluginRowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)
+        let statements = generator().generateStatements(
+            from: [change],
+            insertedRowData: [0: [.null, .null, .null, .text(""), .text("25")]],
+            deletedRowIndices: [],
+            insertedRowIndices: [0]
+        )
+        let decoded = ElasticsearchStatementGenerator.decode(statements[0].statement)
+        #expect(decoded?.body?.contains("\"name\":\"\"") == true)
+    }
+
+    @Test("JSON object text is kept as a string on a scalar field")
+    func jsonObjectKeptAsStringOnScalarField() {
+        let change = PluginRowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)
+        let statements = generator().generateStatements(
+            from: [change],
+            insertedRowData: [0: [.null, .null, .null, .text("{\"a\":1}"), .text("25")]],
+            deletedRowIndices: [],
+            insertedRowIndices: [0]
+        )
+        let decoded = ElasticsearchStatementGenerator.decode(statements[0].statement)
+        #expect(decoded?.body?.contains("\"name\":\"{\\\"a\\\":1}\"") == true)
     }
 }
