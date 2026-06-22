@@ -122,6 +122,38 @@ extension TableViewCoordinator {
         menu.addItem(filterItem)
 
         if let dataColumnIndex = dataColumnIndex(from: column.identifier) {
+            let filterValuesItem = NSMenuItem(
+                title: String(localized: "Filter Values…"),
+                action: #selector(filterColumnValues(_:)),
+                keyEquivalent: ""
+            )
+            filterValuesItem.representedObject = dataColumnIndex
+            filterValuesItem.target = self
+            menu.addItem(filterValuesItem)
+
+            if valueFilterState.isActive(column: dataColumnIndex) {
+                let clearColumnItem = NSMenuItem(
+                    title: String(localized: "Clear Value Filter"),
+                    action: #selector(clearColumnValueFilter(_:)),
+                    keyEquivalent: ""
+                )
+                clearColumnItem.representedObject = dataColumnIndex
+                clearColumnItem.target = self
+                menu.addItem(clearColumnItem)
+            }
+        }
+
+        if valueFilterState.isActive {
+            let clearAllItem = NSMenuItem(
+                title: String(localized: "Clear All Value Filters"),
+                action: #selector(clearAllValueFiltersAction),
+                keyEquivalent: ""
+            )
+            clearAllItem.target = self
+            menu.addItem(clearAllItem)
+        }
+
+        if let dataColumnIndex = dataColumnIndex(from: column.identifier) {
             let columnType = dataColumnIndex < tableRows.columnTypes.count ? tableRows.columnTypes[dataColumnIndex] : nil
             let applicableFormats = ValueDisplayFormat.applicableFormats(for: columnType)
             if applicableFormats.count > 1 {
@@ -228,6 +260,25 @@ extension TableViewCoordinator {
     @objc func filterWithColumn(_ sender: NSMenuItem) {
         guard let columnName = sender.representedObject as? String else { return }
         delegate?.dataGridFilterColumn(columnName)
+    }
+
+    @objc func filterColumnValues(_ sender: NSMenuItem) {
+        guard let dataIndex = sender.representedObject as? Int,
+              let tableView,
+              let header = tableView.headerView as? SortableHeaderView,
+              let columnIndex = tableColumnIndex(for: dataIndex),
+              let cell = tableView.tableColumns[columnIndex].headerCell as? SortableHeaderCell else { return }
+        let anchor = cell.funnelRect(forBounds: header.headerRect(ofColumn: columnIndex))
+        presentValueFilterPopover(forColumn: dataIndex, anchor: anchor, in: header)
+    }
+
+    @objc func clearColumnValueFilter(_ sender: NSMenuItem) {
+        guard let dataIndex = sender.representedObject as? Int else { return }
+        applyValueFilter(nil, columnName: "", forColumn: dataIndex)
+    }
+
+    @objc func clearAllValueFiltersAction() {
+        clearAllValueFilters()
     }
 
     @objc func hideColumn(_ sender: NSMenuItem) {

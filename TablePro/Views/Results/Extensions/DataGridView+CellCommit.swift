@@ -19,7 +19,7 @@ extension TableViewCoordinator {
         guard let delta = recordCellEdit(row: row, columnIndex: columnIndex, newValue: typedNewValue) else { return }
 
         invalidateDisplayCache()
-        visualIndex.updateRow(row, from: changeManager, sortedIDs: sortedIDs)
+        visualIndex.updateRow(row, from: changeManager, sortedIDs: displayIDs)
 
         guard let tableColumnIndex = tableColumnIndex(for: columnIndex) else { return }
         tableView.reloadData(

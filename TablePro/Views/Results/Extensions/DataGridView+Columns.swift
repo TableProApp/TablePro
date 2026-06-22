@@ -16,7 +16,7 @@ extension TableViewCoordinator {
         guard let column = tableColumn else { return nil }
 
         let tableRows = tableRowsProvider()
-        let displayCount = sortedIDs?.count ?? tableRows.count
+        let displayCount = displayIDs?.count ?? tableRows.count
 
         if column.identifier == ColumnIdentitySchema.rowNumberIdentifier {
             return cellRegistry.makeRowNumberCell(

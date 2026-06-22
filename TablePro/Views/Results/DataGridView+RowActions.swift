@@ -15,7 +15,7 @@ extension TableViewCoordinator {
     @MainActor
     func undoDeleteRow(at index: Int) {
         changeManager.undoRowDeletion(rowIndex: index)
-        visualIndex.updateRow(index, from: changeManager, sortedIDs: sortedIDs)
+        visualIndex.updateRow(index, from: changeManager, sortedIDs: displayIDs)
         tableView?.reloadData(
             forRowIndexes: IndexSet(integer: index),
             columnIndexes: IndexSet(integersIn: 0..<(tableView?.numberOfColumns ?? 0)))
@@ -216,7 +216,7 @@ extension TableViewCoordinator {
     func copyColumnValues(columnIndex: Int) {
         let tableRows = tableRowsProvider()
         guard columnIndex >= 0, columnIndex < tableRows.columns.count else { return }
-        let totalRows = sortedIDs?.count ?? tableRows.rows.count
+        let totalRows = displayIDs?.count ?? tableRows.rows.count
         let rowCount = min(totalRows, PluginRowLimits.emergencyMax)
         guard rowCount > 0 else { return }
 
@@ -318,7 +318,7 @@ extension TableViewCoordinator {
     }
 
     func selectColumn(_ dataColumnIndex: Int) {
-        let totalRows = sortedIDs?.count ?? tableRowsProvider().rows.count
+        let totalRows = displayIDs?.count ?? tableRowsProvider().rows.count
         selectionController.selectEntireColumn(dataColumnIndex, totalRows: totalRows)
         if let keyTableView = tableView as? KeyHandlingTableView {
             keyTableView.deselectAll(nil)
@@ -329,7 +329,7 @@ extension TableViewCoordinator {
         guard let rect = selection.boundingRectangle else { return }
         let tableRows = tableRowsProvider()
         let columnTypes = tableRows.columnTypes
-        let rowCount = sortedIDs?.count ?? tableRows.rows.count
+        let rowCount = displayIDs?.count ?? tableRows.rows.count
         let columnCount = tableRows.columns.count
 
         let rowRange = rect.rows.lowerBound...min(rect.rows.upperBound, max(0, rowCount - 1))
