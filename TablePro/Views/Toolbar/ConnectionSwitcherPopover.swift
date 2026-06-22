@@ -202,7 +202,12 @@ struct ConnectionSwitcherPopover: View {
         isActive: Bool,
         isConnected: Bool
     ) -> some View {
-        HStack(spacing: 8) {
+        let metadata = ConnectionMetadata.resolve(
+            connection: connection,
+            tags: TagStorage.shared.loadTags(),
+            groups: GroupStorage.shared.loadGroups()
+        )
+        return HStack(spacing: 8) {
             Circle()
                 .fill(connection.displayColor)
                 .frame(width: 8, height: 8)
@@ -212,13 +217,23 @@ struct ConnectionSwitcherPopover: View {
                     .font(.body.weight(isActive ? .semibold : .regular))
                     .lineLimit(1)
 
-                Text(connectionSubtitle(connection))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                HStack(spacing: 6) {
+                    Text(connectionSubtitle(connection))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+
+                    if let group = metadata.group {
+                        ConnectionGroupBadge(group: group)
+                    }
+                }
             }
 
             Spacer()
+
+            if let tag = metadata.tag {
+                ConnectionTagBadge(tag: tag)
+            }
 
             if isActive {
                 Image(systemName: "checkmark.circle.fill")
