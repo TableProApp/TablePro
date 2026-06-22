@@ -12713,6 +12713,7 @@
       }
     },
     "CA certificate not found: %@" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -15748,6 +15749,7 @@
       }
     },
     "Client certificate not found: %@" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -15917,6 +15919,7 @@
       }
     },
     "Client key not found: %@" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -23814,6 +23817,7 @@
       }
     },
     "Database type \"%@\" is not installed" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -24435,6 +24439,7 @@
       }
     },
     "Decryption failed: %@" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -33109,6 +33114,7 @@
       }
     },
     "Failed to encode connection data" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -33908,6 +33914,7 @@
       }
     },
     "Failed to parse connection file: %@" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -40070,6 +40077,7 @@
       }
     },
     "Incorrect passphrase" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -42158,6 +42166,7 @@
       }
     },
     "Jump host key not found: %@" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -73551,6 +73560,7 @@
       }
     },
     "SSH private key not found: %@" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -78137,6 +78147,7 @@
       }
     },
     "The encrypted file is corrupt or incomplete" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -79316,6 +79327,7 @@
       }
     },
     "This file is encrypted and requires a passphrase" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -79344,6 +79356,7 @@
       }
     },
     "This file is not a valid TablePro export" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -79372,6 +79385,7 @@
       }
     },
     "This file requires a newer version of TablePro (format version %d)" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -83440,6 +83454,7 @@
       }
     },
     "Unsupported encryption version %d" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
