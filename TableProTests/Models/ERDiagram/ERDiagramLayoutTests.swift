@@ -133,4 +133,19 @@ struct ERDiagramLayoutTests {
         let layout = ERDiagramLayout.compute(graph: graph)
         #expect(layout.count == 1)
     }
+
+    @Test("A long foreign-key chain does not stack into a tall narrow column")
+    func longChainStaysCompact() {
+        let tables = (0..<10).map { "t\($0)" }
+        let chainFks = (0..<9).map { (from: "t\($0)", to: "t\($0 + 1)") }
+        let graph = makeGraph(tables: tables, foreignKeys: chainFks)
+        let layout = ERDiagramLayout.compute(graph: graph)
+        let bounds = graph.nodes
+            .compactMap { node in layout[node.id].map { rect(for: node, at: $0) } }
+            .reduce(CGRect.null) { $0.union($1) }
+
+        let aspect = bounds.width / bounds.height
+        #expect(aspect > 0.7)
+        #expect(aspect < 4.0)
+    }
 }

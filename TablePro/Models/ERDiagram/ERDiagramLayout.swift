@@ -94,6 +94,11 @@ enum ERDiagramLayout {
         let count = members.count
         let spacing = idealDistance(members: members, sizes: sizes)
         let edges = uniqueEdges(members: members, adjacency: adjacency)
+        var degree: [UUID: Int] = [:]
+        for (source, target) in edges {
+            degree[source, default: 0] += 1
+            degree[target, default: 0] += 1
+        }
         var positions = circularInit(members: members, idealDistance: spacing)
         let iterations = max(60, min(300, 2_000 / count))
         var temperature = spacing * 2
@@ -102,6 +107,7 @@ enum ERDiagramLayout {
             let displacement = forceStep(
                 members: members,
                 edges: edges,
+                degree: degree,
                 positions: positions,
                 idealDistance: spacing
             )
@@ -117,8 +123,45 @@ enum ERDiagramLayout {
             temperature = max(temperature * 0.95, spacing * 0.05)
         }
 
+        positions = rotateToLandscape(members: members, positions: positions)
         removeOverlaps(members: members, positions: &positions, sizes: sizes)
         return positions
+    }
+
+    private static func rotateToLandscape(members: [UUID], positions: [UUID: CGPoint]) -> [UUID: CGPoint] {
+        guard members.count > 2 else { return positions }
+        var centerX: CGFloat = 0
+        var centerY: CGFloat = 0
+        for id in members {
+            centerX += positions[id]?.x ?? 0
+            centerY += positions[id]?.y ?? 0
+        }
+        centerX /= CGFloat(members.count)
+        centerY /= CGFloat(members.count)
+
+        var sxx: CGFloat = 0
+        var syy: CGFloat = 0
+        var sxy: CGFloat = 0
+        for id in members {
+            guard let position = positions[id] else { continue }
+            let dx = position.x - centerX
+            let dy = position.y - centerY
+            sxx += dx * dx
+            syy += dy * dy
+            sxy += dx * dy
+        }
+
+        let theta = 0.5 * atan2(2 * sxy, sxx - syy)
+        let cosT = cos(-theta)
+        let sinT = sin(-theta)
+        var rotated: [UUID: CGPoint] = [:]
+        for id in members {
+            guard let position = positions[id] else { continue }
+            let dx = position.x - centerX
+            let dy = position.y - centerY
+            rotated[id] = CGPoint(x: centerX + dx * cosT - dy * sinT, y: centerY + dx * sinT + dy * cosT)
+        }
+        return rotated
     }
 
     private static func uniqueEdges(members: [UUID], adjacency: [UUID: [UUID]]) -> [(UUID, UUID)] {
@@ -141,11 +184,21 @@ enum ERDiagramLayout {
     private static func forceStep(
         members: [UUID],
         edges: [(UUID, UUID)],
+        degree: [UUID: Int],
         positions: [UUID: CGPoint],
         idealDistance: CGFloat
     ) -> [UUID: CGVector] {
         var displacement: [UUID: CGVector] = [:]
         for id in members { displacement[id] = .zero }
+
+        var centerX: CGFloat = 0
+        var centerY: CGFloat = 0
+        for id in members {
+            centerX += positions[id]?.x ?? 0
+            centerY += positions[id]?.y ?? 0
+        }
+        centerX /= CGFloat(members.count)
+        centerY /= CGFloat(members.count)
 
         let count = members.count
         for i in 0..<count {
@@ -184,6 +237,17 @@ enum ERDiagramLayout {
             displacement[source]?.dy -= unitY * attraction
             displacement[target]?.dx += unitX * attraction
             displacement[target]?.dy += unitY * attraction
+        }
+
+        let gravity: CGFloat = 0.16
+        for id in members {
+            guard let position = positions[id] else { continue }
+            let dx = centerX - position.x
+            let dy = centerY - position.y
+            let distance = max(hypot(dx, dy), 0.01)
+            let pull = gravity * CGFloat((degree[id] ?? 0) + 1) * distance
+            displacement[id]?.dx += dx / distance * pull
+            displacement[id]?.dy += dy / distance * pull
         }
 
         return displacement
