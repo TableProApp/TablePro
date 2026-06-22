@@ -239,7 +239,7 @@ enum ERDiagramLayout {
             displacement[target]?.dy += unitY * attraction
         }
 
-        let gravity: CGFloat = 0.34
+        let gravity: CGFloat = 0.28
         for id in members {
             guard let position = positions[id] else { continue }
             let dx = centerX - position.x
