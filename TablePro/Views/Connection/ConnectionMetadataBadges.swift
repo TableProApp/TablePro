@@ -17,26 +17,38 @@ enum ConnectionMetadata {
     }
 }
 
+struct ConnectionTagsBadgeLayout: Equatable {
+    let shown: [ConnectionTag]
+    let overflow: Int
+    let name: String?
+
+    init(tags: [ConnectionTag]) {
+        let visible = Array(tags.prefix(3))
+        shown = visible
+        overflow = tags.count - visible.count
+        name = tags.count == 1 ? tags.first?.name : nil
+    }
+}
+
 struct ConnectionTagsBadge: View {
     let tags: [ConnectionTag]
 
-    private var shown: [ConnectionTag] { Array(tags.prefix(3)) }
-
     var body: some View {
         if !tags.isEmpty {
+            let layout = ConnectionTagsBadgeLayout(tags: tags)
             HStack(spacing: 4) {
-                ForEach(shown) { tag in
+                ForEach(layout.shown) { tag in
                     Circle()
                         .fill(tag.color.color)
                         .frame(width: 8, height: 8)
                 }
-                if tags.count == 1 {
-                    Text(tags[0].name)
+                if let name = layout.name {
+                    Text(name)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
-                } else if tags.count > shown.count {
-                    Text("+\(tags.count - shown.count)")
+                } else if layout.overflow > 0 {
+                    Text("+\(layout.overflow)")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

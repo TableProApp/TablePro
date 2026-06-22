@@ -225,6 +225,7 @@ struct ConnectionSwitcherPopover: View {
 
                     if let group = metadata.group {
                         ConnectionGroupBadge(group: group)
+                            .layoutPriority(1)
                     }
                 }
             }

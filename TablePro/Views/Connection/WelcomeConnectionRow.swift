@@ -62,6 +62,7 @@ struct WelcomeConnectionRow: View {
 
                     if let group = meta.group {
                         ConnectionGroupBadge(group: group)
+                            .layoutPriority(1)
                     }
                 }
             }

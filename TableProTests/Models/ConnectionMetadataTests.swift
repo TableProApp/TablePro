@@ -64,3 +64,47 @@ struct ConnectionMetadataTests {
         #expect(result.group == nil)
     }
 }
+
+@Suite("ConnectionTagsBadgeLayout")
+struct ConnectionTagsBadgeLayoutTests {
+    private func tags(_ count: Int) -> [ConnectionTag] {
+        (0 ..< count).map { ConnectionTag(name: "tag\($0)") }
+    }
+
+    @Test("Empty input shows nothing")
+    func empty() {
+        let layout = ConnectionTagsBadgeLayout(tags: [])
+
+        #expect(layout.shown.isEmpty)
+        #expect(layout.overflow == 0)
+        #expect(layout.name == nil)
+    }
+
+    @Test("A single tag shows its name and no overflow")
+    func single() {
+        let tag = ConnectionTag(name: "production")
+        let layout = ConnectionTagsBadgeLayout(tags: [tag])
+
+        #expect(layout.shown == [tag])
+        #expect(layout.overflow == 0)
+        #expect(layout.name == "production")
+    }
+
+    @Test("Up to three tags show dots only, no name and no overflow")
+    func threeShowDotsOnly() {
+        let layout = ConnectionTagsBadgeLayout(tags: tags(3))
+
+        #expect(layout.shown.count == 3)
+        #expect(layout.overflow == 0)
+        #expect(layout.name == nil)
+    }
+
+    @Test("More than three tags cap at three dots and report the overflow count")
+    func overflow() {
+        let layout = ConnectionTagsBadgeLayout(tags: tags(5))
+
+        #expect(layout.shown.count == 3)
+        #expect(layout.overflow == 2)
+        #expect(layout.name == nil)
+    }
+}
