@@ -100,7 +100,6 @@ Driver tích hợp sẵn đi kèm app. Driver dạng plugin cài thêm khi cần
 - Lịch sử query tìm kiếm full-text
 - iCloud sync cho connection, group, tag, cài đặt, SSH profile
 - AI chat, gợi ý inline, Explain/Optimize
-- Terminal tích hợp: mysql, psql, redis-cli, mongosh (hỗ trợ SSH và Docker)
 - MCP server và URL scheme cho Raycast, Cursor, Claude Desktop
 - Hệ thống plugin, tự viết driver database bằng Swift
 

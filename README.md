@@ -100,7 +100,6 @@ Built-in drivers ship with the app. Plugin drivers install on demand from the [p
 - Query history with full-text search
 - iCloud sync for connections, groups, tags, settings, and SSH profiles
 - AI chat, inline suggestions, and Explain/Optimize
-- Built-in terminal with mysql, psql, redis-cli, mongosh (SSH and Docker aware)
 - MCP server and URL scheme for Raycast, Cursor, Claude Desktop
 - Plugin system, write your own database driver in Swift
 

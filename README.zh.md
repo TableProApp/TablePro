@@ -100,7 +100,6 @@ TablePro 补上缺失的第四类:原生、多数据库、开源。
 - 查询历史全文搜索
 - iCloud 同步:连接、分组、标签、设置、SSH 配置
 - AI 聊天、行内建议、Explain/Optimize
-- 内置终端:mysql、psql、redis-cli、mongosh(支持 SSH 和 Docker)
 - MCP 服务器和 URL scheme:Raycast、Cursor、Claude Desktop
 - 插件系统:用 Swift 自己写数据库驱动
 
