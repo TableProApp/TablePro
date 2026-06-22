@@ -9,7 +9,7 @@ import Foundation
 @MainActor
 final class CustomizationPaneViewModel {
     var color: ConnectionColor = .none
-    var tagId: UUID?
+    var tagIds: [UUID] = []
     var groupId: UUID?
     var safeModeLevel: SafeModeLevel = .silent
 
@@ -19,7 +19,7 @@ final class CustomizationPaneViewModel {
 
     func load(from connection: DatabaseConnection) {
         color = connection.color
-        tagId = connection.tagId
+        tagIds = connection.tagIds
         groupId = connection.groupId
         safeModeLevel = connection.safeModeLevel
     }

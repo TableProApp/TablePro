@@ -41,9 +41,10 @@ enum IOSConnectionExportService {
         var tagNames: Set<String> = []
 
         let exportables: [ExportableConnection] = connections.map { connection in
-            let tagName = appState.tag(for: connection.tagId)?.name
+            let connectionTagNames = connection.tagIds.compactMap { appState.tag(for: $0)?.name }
+            let tagName = connectionTagNames.first
             let groupName = appState.group(for: connection.groupId)?.name
-            if let tagName { tagNames.insert(tagName) }
+            connectionTagNames.forEach { tagNames.insert($0) }
             if let groupName { groupNames.insert(groupName) }
 
             return ExportableConnection(
@@ -58,6 +59,7 @@ enum IOSConnectionExportService {
                 color: (connection.colorTag?.isEmpty == false && connection.colorTag != ConnectionColor.none.rawValue)
                     ? connection.colorTag : nil,
                 tagName: tagName,
+                tagNames: connectionTagNames.isEmpty ? nil : connectionTagNames,
                 groupName: groupName,
                 sshProfileId: nil,
                 safeModeLevel: connection.safeModeLevel == .off ? nil : connection.safeModeLevel.rawValue,

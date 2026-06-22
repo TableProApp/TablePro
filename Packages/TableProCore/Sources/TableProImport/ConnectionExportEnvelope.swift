@@ -84,6 +84,7 @@ public struct ExportableConnection: Codable {
     public let sslConfig: ExportableSSLConfig?
     public let color: String?
     public let tagName: String?
+    public let tagNames: [String]?
     public let groupName: String?
     public let sshProfileId: String?
     public let safeModeLevel: String?
@@ -104,6 +105,7 @@ public struct ExportableConnection: Codable {
         sslConfig: ExportableSSLConfig?,
         color: String?,
         tagName: String?,
+        tagNames: [String]? = nil,
         groupName: String?,
         sshProfileId: String?,
         safeModeLevel: String?,
@@ -123,6 +125,7 @@ public struct ExportableConnection: Codable {
         self.sslConfig = sslConfig
         self.color = color
         self.tagName = tagName
+        self.tagNames = tagNames
         self.groupName = groupName
         self.sshProfileId = sshProfileId
         self.safeModeLevel = safeModeLevel
@@ -137,7 +140,7 @@ public struct ExportableConnection: Codable {
         ExportableConnection(
             name: newName, host: host, port: port, database: database,
             username: username, type: type, sshConfig: sshConfig,
-            sslConfig: sslConfig, color: color, tagName: tagName,
+            sslConfig: sslConfig, color: color, tagName: tagName, tagNames: tagNames,
             groupName: groupName, sshProfileId: sshProfileId,
             safeModeLevel: safeModeLevel, aiPolicy: aiPolicy,
             additionalFields: additionalFields, redisDatabase: redisDatabase,
@@ -156,7 +159,7 @@ public extension ExportableConnection {
         return ExportableConnection(
             name: name, host: host, port: port, database: database,
             username: username, type: type, sshConfig: sshConfig,
-            sslConfig: sslConfig, color: color, tagName: tagName,
+            sslConfig: sslConfig, color: color, tagName: tagName, tagNames: tagNames,
             groupName: groupName, sshProfileId: sshProfileId,
             safeModeLevel: safeModeLevel, aiPolicy: aiPolicy,
             additionalFields: allowed.isEmpty ? nil : allowed, redisDatabase: redisDatabase,

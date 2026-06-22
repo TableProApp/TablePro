@@ -13,9 +13,8 @@ struct WelcomeConnectionRow: View {
     @State private var isHovering = false
     private let pluginManager = PluginManager.shared
 
-    private var displayTag: ConnectionTag? {
-        guard let tagId = connection.tagId else { return nil }
-        return TagStorage.shared.tag(for: tagId)
+    private var displayTags: [ConnectionTag] {
+        TagStorage.shared.tags(for: connection.tagIds)
     }
 
     private var showsLocalOnly: Bool {
@@ -87,21 +86,37 @@ struct WelcomeConnectionRow: View {
                     .accessibilityLabel(String(localized: "Local only"))
             }
 
-            if let tag = displayTag {
-                HStack(spacing: 4) {
+            tagAccessory
+
+            favoriteButton
+        }
+    }
+
+    @ViewBuilder
+    private var tagAccessory: some View {
+        let tags = displayTags
+        if !tags.isEmpty {
+            let shown = Array(tags.prefix(3))
+            HStack(spacing: 4) {
+                ForEach(shown) { tag in
                     Circle()
                         .fill(tag.color.color)
                         .frame(width: 8, height: 8)
-                    Text(tag.name)
+                }
+                if tags.count == 1 {
+                    Text(tags[0].name)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
+                } else if tags.count > shown.count {
+                    Text("+\(tags.count - shown.count)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
-                .accessibilityElement(children: .combine)
-                .accessibilityLabel(String(format: String(localized: "Tag: %@"), tag.name))
             }
-
-            favoriteButton
+            .help(tags.map(\.name).joined(separator: ", "))
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(String(format: String(localized: "Tags: %@"), tags.map(\.name).joined(separator: ", ")))
         }
     }
 

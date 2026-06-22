@@ -230,6 +230,9 @@ internal enum DeeplinkParser {
         func value(_ key: String) -> String? {
             queryItems.first(where: { $0.name == key })?.value
         }
+        func values(_ key: String) -> [String] {
+            queryItems.filter { $0.name == key }.compactMap { $0.value }
+        }
 
         guard let name = value("name"), !name.isEmpty else {
             return .failure(.missingRequiredParam("name"))
@@ -323,6 +326,7 @@ internal enum DeeplinkParser {
             sslConfig: sslConfig,
             color: value("color"),
             tagName: value("tagName"),
+            tagNames: values("tagName").isEmpty ? nil : values("tagName"),
             groupName: value("groupName"),
             sshProfileId: nil,
             safeModeLevel: value("safeModeLevel"),

@@ -203,7 +203,7 @@ struct ConnectionURLFormatter {
             params.append("statusColor=\(hex)")
         }
 
-        if let tagId = connection.tagId,
+        if let tagId = connection.tagIds.first,
            let tag = TagStorage.shared.tag(for: tagId) {
             let encoded = tag.name
                 .replacingOccurrences(of: " ", with: "+")

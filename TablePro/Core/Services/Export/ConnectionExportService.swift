@@ -49,12 +49,8 @@ enum ConnectionExportService {
                 sshConfig = connection.sshConfig
             }
 
-            let tagName: String?
-            if let tagId = connection.tagId {
-                tagName = TagStorage.shared.tag(for: tagId)?.name
-            } else {
-                tagName = nil
-            }
+            let resolvedTagNames = TagStorage.shared.tags(for: connection.tagIds).map { $0.name }
+            let tagName = resolvedTagNames.first
 
             let groupName: String?
             if let groupId = connection.groupId {
@@ -139,6 +135,7 @@ enum ConnectionExportService {
                 sslConfig: exportableSSL,
                 color: color,
                 tagName: tagName,
+                tagNames: resolvedTagNames.isEmpty ? nil : resolvedTagNames,
                 groupName: groupName,
                 sshProfileId: connection.sshProfileId?.uuidString,
                 safeModeLevel: safeModeLevel,
@@ -151,7 +148,7 @@ enum ConnectionExportService {
 
             exportableConnections.append(exportable)
 
-            if let name = tagName { tagNames.insert(name) }
+            resolvedTagNames.forEach { tagNames.insert($0) }
             if let name = groupName { groupNames.insert(name) }
         }
 
@@ -589,7 +586,8 @@ enum ConnectionExportService {
         if let color = exportable.color {
             queryItems.append(URLQueryItem(name: "color", value: color))
         }
-        if let tagName = exportable.tagName {
+        let exportableTagNames = exportable.tagNames ?? exportable.tagName.map { [$0] } ?? []
+        for tagName in exportableTagNames {
             queryItems.append(URLQueryItem(name: "tagName", value: tagName))
         }
         if let groupName = exportable.groupName {
@@ -689,10 +687,9 @@ enum ConnectionExportService {
             sslConfig = SSLConfiguration()
         }
 
-        // Resolve tag and group by name
-        let tagId = exportable.tagName.flatMap { name in
-            tagIdsByName[normalizedLookupKey(name)]
-        }
+        // Resolve tags and group by name
+        let resolvedTagNames = exportable.tagNames ?? exportable.tagName.map { [$0] } ?? []
+        let tagIds = resolvedTagNames.compactMap { tagIdsByName[normalizedLookupKey($0)] }
         let groupId = exportable.groupName.flatMap { name in
             groupIdsByName[normalizedLookupKey(name)]
         }
@@ -713,7 +710,7 @@ enum ConnectionExportService {
             sshConfig: sshConfig,
             sslConfig: sslConfig,
             color: exportable.color.flatMap { ConnectionColor(rawValue: $0) } ?? .none,
-            tagId: tagId,
+            tagIds: tagIds,
             groupId: groupId,
             sshProfileId: parsedSSHProfileId,
             safeModeLevel: exportable.safeModeLevel.flatMap { SafeModeLevel(rawValue: $0) } ?? .silent,

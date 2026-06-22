@@ -83,8 +83,10 @@ struct SyncRecordMapper {
         record["sortOrder"] = Int64(connection.sortOrder) as CKRecordValue
         record["isFavorite"] = Int64(connection.isFavorite ? 1 : 0) as CKRecordValue
 
-        if let tagId = connection.tagId {
-            record["tagId"] = tagId.uuidString as CKRecordValue
+        if !connection.tagIds.isEmpty {
+            let tagIdStrings = connection.tagIds.map { $0.uuidString }
+            record["tagIds"] = tagIdStrings as CKRecordValue
+            record["tagId"] = tagIdStrings[0] as CKRecordValue
         }
         if let groupId = connection.groupId {
             record["groupId"] = groupId.uuidString as CKRecordValue
@@ -161,7 +163,14 @@ struct SyncRecordMapper {
         let username = record["username"] as? String ?? ""
         let colorRaw = record["color"] as? String ?? ConnectionColor.none.rawValue
         let safeModeLevelRaw = record["safeModeLevel"] as? String ?? SafeModeLevel.silent.rawValue
-        let tagId = (record["tagId"] as? String).flatMap { UUID(uuidString: $0) }
+        let tagIds: [UUID]
+        if let rawIds = record["tagIds"] as? [String], !rawIds.isEmpty {
+            tagIds = rawIds.compactMap { UUID(uuidString: $0) }
+        } else if let single = (record["tagId"] as? String).flatMap({ UUID(uuidString: $0) }) {
+            tagIds = [single]
+        } else {
+            tagIds = []
+        }
         let groupId = (record["groupId"] as? String).flatMap { UUID(uuidString: $0) }
         let aiPolicyRaw = record["aiPolicy"] as? String
         let aiRulesRaw = record["aiRules"] as? String
@@ -213,7 +222,7 @@ struct SyncRecordMapper {
             sshConfig: sshConfig,
             sslConfig: sslConfig,
             color: ConnectionColor(rawValue: colorRaw) ?? .none,
-            tagId: tagId,
+            tagIds: tagIds,
             groupId: groupId,
             sshProfileId: sshProfileId,
             safeModeLevel: SafeModeLevel(rawValue: safeModeLevelRaw) ?? .silent,

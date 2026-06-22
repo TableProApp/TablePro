@@ -20,7 +20,7 @@ struct ConnectionFormViewModelTests {
             sshEnabled: false,
             sslEnabled: true,
             groupId: nil,
-            tagId: nil
+            tagIds: []
         )
         conn.safeModeLevel = .readOnly
         return conn
