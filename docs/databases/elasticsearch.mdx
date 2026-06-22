@@ -68,7 +68,7 @@ POST /my-index/_doc
 
 Search responses render as a grid; `_cat` and other array responses tabularize; everything else shows as formatted JSON.
 
-**Filtering and Sorting**: Grid filters translate to Query DSL (`term`, `range`, `wildcard`, `terms`, `exists`). Sorting a `text` field automatically targets its `.keyword` subfield when one exists, since `text` fields are not directly sortable.
+**Filtering and Sorting**: Column filters translate to Query DSL (`term`, `range`, `wildcard`, `terms`, `exists`). A raw filter (the default filter mode) is treated as an Elasticsearch `query_string`, so its text is Lucene syntax, for example `name:Widget` or `price:>10`, run across all fields. Sorting a `text` field automatically targets its `.keyword` subfield when one exists, since `text` fields are not directly sortable.
 
 **Data Editing**: Edit cells, insert documents, and delete documents. Edits map to REST operations keyed by `_id`: `POST /index/_update/{id}`, `PUT /index/_doc/{id}`, and `DELETE /index/_doc/{id}`. The `_id`, `_index`, and `_score` columns are read-only.
 

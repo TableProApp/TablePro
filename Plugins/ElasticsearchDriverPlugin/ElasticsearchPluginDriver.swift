@@ -116,10 +116,21 @@ internal final class ElasticsearchPluginDriver: PluginDatabaseDriver, @unchecked
         return try await conn.count(index: table, query: nil)
     }
 
+    func fetchFilteredRowCount(
+        table: String,
+        filters: [(column: String, op: String, value: String)],
+        logicMode: String
+    ) async throws -> Int? {
+        guard let conn = connection else { throw ElasticsearchError.notConnected }
+        let fields = ElasticsearchMappingFlattener.fieldInfo(from: try await cachedMappingColumns(table))
+        let specs = filters.map { ElasticsearchFilterSpec(column: $0.column, op: $0.op, value: $0.value) }
+        let query = ElasticsearchQueryBuilder.queryClause(filters: specs, logicMode: logicMode, fields: fields)
+        return try await conn.count(index: table, query: query)
+    }
+
     func fetchTableDDL(table: String, schema: String?) async throws -> String {
         guard let conn = connection else { throw ElasticsearchError.notConnected }
-        let response = try await conn.request(method: "GET", path: "/\(table)/_mapping")
-        return prettyJson(response.rawText)
+        return prettyJson(try await conn.mappingJSON(index: table))
     }
 
     func fetchViewDefinition(view: String, schema: String?) async throws -> String {

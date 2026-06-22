@@ -95,8 +95,22 @@ extension ElasticsearchPluginDriver {
         conn: ElasticsearchConnection
     ) async throws -> [[String: Any]] {
         let pit = try await conn.openPointInTime(index: index, keepAlive: Self.pitKeepAlive)
-        defer { Task { await conn.closePointInTime(id: pit) } }
+        do {
+            let hits = try await collectDeepHits(parsed: parsed, fields: fields, pit: pit, conn: conn)
+            await conn.closePointInTime(id: pit)
+            return hits
+        } catch {
+            await conn.closePointInTime(id: pit)
+            throw error
+        }
+    }
 
+    private func collectDeepHits(
+        parsed: ElasticsearchParsedSearch,
+        fields: [String: ElasticsearchFieldInfo],
+        pit: String,
+        conn: ElasticsearchConnection
+    ) async throws -> [[String: Any]] {
         var searchAfter: [Any]?
         var skipped = 0
         var collected: [[String: Any]] = []

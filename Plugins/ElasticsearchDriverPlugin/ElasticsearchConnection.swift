@@ -158,6 +158,12 @@ internal final class ElasticsearchConnection: NSObject, @unchecked Sendable {
         return columns
     }
 
+    func mappingJSON(index: String) async throws -> String {
+        let response = try await request(method: "GET", path: "/\(encode(index))/_mapping")
+        guard response.statusCode == 200 else { throw mapError(response, fallback: "Failed to fetch mapping") }
+        return response.rawText
+    }
+
     func count(index: String, query: [String: Any]?) async throws -> Int {
         let body: String?
         if let query, JSONSerialization.isValidJSONObject(["query": query]) {
@@ -208,7 +214,7 @@ internal final class ElasticsearchConnection: NSObject, @unchecked Sendable {
         }
 
         var urlRequest = URLRequest(url: url)
-        urlRequest.httpMethod = method
+        urlRequest.httpMethod = Self.effectiveMethod(method, hasBody: body != nil)
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
         urlRequest.setValue("application/json", forHTTPHeaderField: "Accept")
         if let authHeader {
@@ -284,6 +290,12 @@ internal final class ElasticsearchConnection: NSObject, @unchecked Sendable {
             return error
         }
         return nil
+    }
+
+    static func effectiveMethod(_ method: String, hasBody: Bool) -> String {
+        guard hasBody else { return method }
+        let upper = method.uppercased()
+        return (upper == "GET" || upper == "HEAD") ? "POST" : method
     }
 
     private static func resolveAuthHeader(config: DriverConnectionConfig) -> String? {
