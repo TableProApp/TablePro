@@ -171,6 +171,9 @@ struct TableFilter: Identifiable, Equatable, Hashable, Codable {
 
 extension TableFilter {
     var asPluginFilterTuple: (column: String, op: String, value: String) {
+        if isRawSQL {
+            return (columnName, filterOperator.rawValue, rawSQL ?? "")
+        }
         let resolvedValue: String
         if filterOperator == .between, let second = secondValue {
             resolvedValue = "\(value),\(second)"

@@ -949,7 +949,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
             return .relational
         case "Redshift", "ClickHouse", "DuckDB", "BigQuery":
             return .analytical
-        case "MongoDB":
+        case "MongoDB", "Elasticsearch":
             return .document
         case "Redis":
             return .keyValue
@@ -974,6 +974,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
         case "MSSQL":          return String(localized: "Microsoft's enterprise SQL database")
         case "Oracle":         return String(localized: "Enterprise SQL with PL/SQL")
         case "MongoDB":        return String(localized: "JSON-style document database")
+        case "Elasticsearch":  return String(localized: "Search and analytics engine")
         case "Redis":          return String(localized: "In-memory data store and cache")
         case "ClickHouse":     return String(localized: "Column-oriented OLAP for big data")
         case "DuckDB":         return String(localized: "Embedded analytical SQL")

@@ -51,7 +51,8 @@
                   "databases/mongodb",
                   "databases/redis",
                   "databases/cassandra",
-                  "databases/etcd"
+                  "databases/etcd",
+                  "databases/elasticsearch"
                 ]
               },
               {

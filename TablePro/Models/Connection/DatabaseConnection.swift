@@ -45,6 +45,7 @@ extension DatabaseType {
     static let bigQuery = DatabaseType(rawValue: "BigQuery")
     static let libsql = DatabaseType(rawValue: "libSQL")
     static let turso = DatabaseType(rawValue: "Turso")
+    static let elasticsearch = DatabaseType(rawValue: "Elasticsearch")
 }
 
 extension DatabaseType: Codable {
