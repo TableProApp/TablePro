@@ -172,7 +172,7 @@ struct ERDiagramView: View {
         guard !differentiateWithoutColor else { return [:] }
         var colors: [UUID: Color] = [:]
         for node in nodes {
-            if let color = ERClusterPalette.color(forCluster: node.clusterId) {
+            if let color = ERClusterPalette.color(for: node.clusterId) {
                 colors[node.id] = color
             }
         }

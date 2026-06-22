@@ -64,7 +64,6 @@ enum ERClusterAnalyzer {
         }
 
         var result: [UUID: Int] = [:]
-        for node in nodes { result[node.id] = -1 }
         for (index, component) in ordered.enumerated() {
             for member in component { result[member] = index }
         }

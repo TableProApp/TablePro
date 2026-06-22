@@ -35,8 +35,8 @@ enum ERDiagramLayout {
         var componentGroups: [Int: [UUID]] = [:]
         var singletons: [UUID] = []
         for node in graph.nodes.sorted(by: { $0.tableName < $1.tableName }) {
-            if node.clusterId >= 0 {
-                componentGroups[node.clusterId, default: []].append(node.id)
+            if let clusterId = node.clusterId {
+                componentGroups[clusterId, default: []].append(node.id)
             } else {
                 singletons.append(node.id)
             }
@@ -92,8 +92,8 @@ enum ERDiagramLayout {
         guard members.count > 1 else { return [first: .zero] }
 
         let count = members.count
-        let memberSet = Set(members)
         let spacing = idealDistance(members: members, sizes: sizes)
+        let edges = uniqueEdges(members: members, adjacency: adjacency)
         var positions = circularInit(members: members, idealDistance: spacing)
         let iterations = max(60, min(300, 2_000 / count))
         var temperature = spacing * 2
@@ -101,8 +101,7 @@ enum ERDiagramLayout {
         for _ in 0..<iterations {
             let displacement = forceStep(
                 members: members,
-                memberSet: memberSet,
-                adjacency: adjacency,
+                edges: edges,
                 positions: positions,
                 idealDistance: spacing
             )
@@ -122,10 +121,26 @@ enum ERDiagramLayout {
         return positions
     }
 
+    private static func uniqueEdges(members: [UUID], adjacency: [UUID: [UUID]]) -> [(UUID, UUID)] {
+        let memberSet = Set(members)
+        var seen: Set<String> = []
+        var edges: [(UUID, UUID)] = []
+        for source in members {
+            for target in adjacency[source] ?? [] where memberSet.contains(target) {
+                let key = source.uuidString < target.uuidString
+                    ? source.uuidString + target.uuidString
+                    : target.uuidString + source.uuidString
+                guard !seen.contains(key) else { continue }
+                seen.insert(key)
+                edges.append((source, target))
+            }
+        }
+        return edges
+    }
+
     private static func forceStep(
         members: [UUID],
-        memberSet: Set<UUID>,
-        adjacency: [UUID: [UUID]],
+        edges: [(UUID, UUID)],
         positions: [UUID: CGPoint],
         idealDistance: CGFloat
     ) -> [UUID: CGVector] {
@@ -157,26 +172,18 @@ enum ERDiagramLayout {
             }
         }
 
-        var seen: Set<String> = []
-        for source in members {
-            for target in adjacency[source] ?? [] where memberSet.contains(target) {
-                let key = source.uuidString < target.uuidString
-                    ? source.uuidString + target.uuidString
-                    : target.uuidString + source.uuidString
-                guard !seen.contains(key) else { continue }
-                seen.insert(key)
-                guard let posSource = positions[source], let posTarget = positions[target] else { continue }
-                let dx = posSource.x - posTarget.x
-                let dy = posSource.y - posTarget.y
-                let distance = max(hypot(dx, dy), 0.01)
-                let attraction = distance * distance / idealDistance
-                let unitX = dx / distance
-                let unitY = dy / distance
-                displacement[source]?.dx -= unitX * attraction
-                displacement[source]?.dy -= unitY * attraction
-                displacement[target]?.dx += unitX * attraction
-                displacement[target]?.dy += unitY * attraction
-            }
+        for (source, target) in edges {
+            guard let posSource = positions[source], let posTarget = positions[target] else { continue }
+            let dx = posSource.x - posTarget.x
+            let dy = posSource.y - posTarget.y
+            let distance = max(hypot(dx, dy), 0.01)
+            let attraction = distance * distance / idealDistance
+            let unitX = dx / distance
+            let unitY = dy / distance
+            displacement[source]?.dx -= unitX * attraction
+            displacement[source]?.dy -= unitY * attraction
+            displacement[target]?.dx += unitX * attraction
+            displacement[target]?.dy += unitY * attraction
         }
 
         return displacement
@@ -207,7 +214,8 @@ enum ERDiagramLayout {
     ) {
         let count = members.count
         let padding = horizontalGap * 0.5
-        for _ in 0..<20 {
+        let passes = max(20, min(count, 60))
+        for _ in 0..<passes {
             var moved = false
             for i in 0..<count {
                 let lhs = members[i]

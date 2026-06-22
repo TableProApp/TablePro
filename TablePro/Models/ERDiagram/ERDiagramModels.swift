@@ -8,7 +8,7 @@ struct ERTableNode: Identifiable, Sendable {
     let tableName: String
     let columns: [ERColumnDisplay]
     var displayColumns: [ERColumnDisplay]
-    var clusterId: Int
+    var clusterId: Int?
 }
 
 struct ERColumnDisplay: Identifiable, Sendable {
@@ -83,7 +83,7 @@ enum ERDiagramGraphBuilder {
                 tableName: tableName,
                 columns: displayColumns,
                 displayColumns: displayColumns,
-                clusterId: -1
+                clusterId: nil
             ))
         }
 
@@ -113,7 +113,7 @@ enum ERDiagramGraphBuilder {
         let clusters = ERClusterAnalyzer.assignClusters(nodes: nodes, edges: edges, nodeIndex: nodeIndex)
         let clusteredNodes = nodes.map { node -> ERTableNode in
             var updated = node
-            updated.clusterId = clusters[node.id] ?? -1
+            updated.clusterId = clusters[node.id]
             return updated
         }
 

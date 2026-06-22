@@ -12,7 +12,7 @@ import Testing
 @Suite("ER cluster analyzer")
 struct ERClusterAnalyzerTests {
     private func node(_ name: String) -> ERTableNode {
-        ERTableNode(id: UUID(), tableName: name, columns: [], displayColumns: [], clusterId: -1)
+        ERTableNode(id: UUID(), tableName: name, columns: [], displayColumns: [], clusterId: nil)
     }
 
     private func makeGraph(
@@ -74,7 +74,7 @@ struct ERClusterAnalyzerTests {
         let graph = makeGraph(tables: ["a", "b", "c"], foreignKeys: [])
         let clusters = ERClusterAnalyzer.assignClusters(nodes: graph.nodes, edges: graph.edges, nodeIndex: graph.index)
 
-        #expect(clusters.values.allSatisfy { $0 == -1 })
+        #expect(clusters.isEmpty)
     }
 
     @Test("A self-referencing table stays a singleton")
@@ -82,7 +82,7 @@ struct ERClusterAnalyzerTests {
         let graph = makeGraph(tables: ["employee"], foreignKeys: [("employee", "employee")])
         let clusters = ERClusterAnalyzer.assignClusters(nodes: graph.nodes, edges: graph.edges, nodeIndex: graph.index)
 
-        #expect(clusterId(of: "employee", clusters: clusters, nodes: graph.nodes) == -1)
+        #expect(clusterId(of: "employee", clusters: clusters, nodes: graph.nodes) == nil)
     }
 
     @Test("A connected pair and an isolated table coexist")
@@ -92,7 +92,7 @@ struct ERClusterAnalyzerTests {
 
         #expect(clusterId(of: "a", clusters: clusters, nodes: graph.nodes) == 0)
         #expect(clusterId(of: "b", clusters: clusters, nodes: graph.nodes) == 0)
-        #expect(clusterId(of: "loner", clusters: clusters, nodes: graph.nodes) == -1)
+        #expect(clusterId(of: "loner", clusters: clusters, nodes: graph.nodes) == nil)
     }
 
     @Test("Assignment is deterministic across runs")
