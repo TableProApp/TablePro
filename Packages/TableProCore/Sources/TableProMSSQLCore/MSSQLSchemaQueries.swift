@@ -13,6 +13,41 @@ public enum MSSQLSchemaQueries {
         "[\(escapeBracket(schema))].[\(escapeBracket(table))]"
     }
 
+    public static func qualifiedName(schema: String?, table: String) -> String {
+        guard let schema, !schema.isEmpty else {
+            return "[\(escapeBracket(table))]"
+        }
+        return bracketed(schema: schema, table: table)
+    }
+
+    public static func browse(
+        schema: String?,
+        table: String,
+        orderByClause: String,
+        offset: Int,
+        limit: Int
+    ) -> String {
+        let target = qualifiedName(schema: schema, table: table)
+        return "SELECT * FROM \(target) \(orderByClause) OFFSET \(offset) ROWS FETCH NEXT \(limit) ROWS ONLY"
+    }
+
+    public static func filtered(
+        schema: String?,
+        table: String,
+        whereClause: String,
+        orderByClause: String,
+        offset: Int,
+        limit: Int
+    ) -> String {
+        let target = qualifiedName(schema: schema, table: table)
+        var query = "SELECT * FROM \(target)"
+        if !whereClause.isEmpty {
+            query += " WHERE \(whereClause)"
+        }
+        query += " \(orderByClause) OFFSET \(offset) ROWS FETCH NEXT \(limit) ROWS ONLY"
+        return query
+    }
+
     public static let currentSchema = "SELECT SCHEMA_NAME()"
     public static let serverVersion = "SELECT @@VERSION"
     public static let beginTransaction = "BEGIN TRANSACTION"

@@ -17,12 +17,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - The ER diagram now arranges tables in a compact layout that fills the canvas in both directions, keeps tables linked by foreign keys together, and tints each group of connected tables with its own header color. (#1755)
+- When an Oracle server closes the connection during login, the error dialog now shows which handshake phase it stopped at, so dropped-handshake failures (for example on Oracle 11g) are easier to pin down. (#1746)
 
 ### Fixed
 
 - Raw filters in the data grid now apply on document and key-value databases; the typed text was being dropped before it reached the driver. (#1529)
 - Connecting to Oracle no longer crashes the app while reading certain server values during the handshake; a bad packet now fails the connection with an error instead. (#1746)
 - Following a foreign key into a table in another schema now opens the correct table for SQL Server and Oracle; the referenced schema was missing, so navigation fell back to the default schema. (#1754)
+- Browsing and editing a SQL Server or Oracle table or view outside the default schema no longer fails with "Invalid object name" or writes to the wrong table; data, filter, and save queries now qualify the table with its schema. (#1754)
 
 ## [0.52.1] - 2026-06-22
 

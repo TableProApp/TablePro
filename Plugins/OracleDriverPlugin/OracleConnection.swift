@@ -27,7 +27,7 @@ struct OracleError: Error {
         case protocolError
         case authVerifierUnsupported(flag: String)
         case authVersionNotSupported
-        case authConnectionDropped
+        case authConnectionDropped(phase: String?)
     }
 
     let message: String
@@ -191,7 +191,8 @@ final class OracleConnectionWrapper: @unchecked Sendable {
             osLogger.debug("Connected to Oracle \(target)")
         } catch let sqlError as OracleSQLError {
             let detail = Self.connectFailureDetail(sqlError)
-            osLogger.error("Oracle connection failed: \(detail)")
+            let phase = sqlError.handshakePhase ?? "unknown"
+            osLogger.error("Oracle connection failed at phase \(phase, privacy: .public) (\(sqlError.code.description, privacy: .public)): \(detail)")
             if let sslError = OracleSSLClassifier.classifySSLError(detail) {
                 throw sslError
             }
@@ -215,16 +216,14 @@ final class OracleConnectionWrapper: @unchecked Sendable {
     }
 
     private func classifyConnectError(_ error: OracleSQLError) -> OracleError.Category {
-        let codeDescription = error.code.description
-        if codeDescription.hasPrefix("unsupportedVerifierType") {
-            return .authVerifierUnsupported(flag: codeDescription)
-        }
-        switch codeDescription {
-        case "uncleanShutdown":
-            return .authConnectionDropped
-        case "serverVersionNotSupported":
+        switch OracleConnectErrorClassifier.classify(error.code.description) {
+        case .verifierUnsupported(let flag):
+            return .authVerifierUnsupported(flag: flag)
+        case .versionNotSupported:
             return .authVersionNotSupported
-        default:
+        case .connectionDropped:
+            return .authConnectionDropped(phase: error.handshakePhase)
+        case .connectionFailed:
             return .connectionFailed
         }
     }
