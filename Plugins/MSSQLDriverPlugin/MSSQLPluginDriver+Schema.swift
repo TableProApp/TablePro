@@ -166,37 +166,16 @@ extension MSSQLPluginDriver {
     }
 
     func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] {
-        let escapedTable = table.replacingOccurrences(of: "'", with: "''")
-        let esc = effectiveSchemaEscaped(schema)
-        let sql = """
-            SELECT
-                fk.name AS constraint_name,
-                cp.name AS column_name,
-                tr.name AS ref_table,
-                cr.name AS ref_column
-            FROM sys.foreign_keys fk
-            JOIN sys.foreign_key_columns fkc ON fk.object_id = fkc.constraint_object_id
-            JOIN sys.tables tp ON fkc.parent_object_id = tp.object_id
-            JOIN sys.schemas s ON tp.schema_id = s.schema_id
-            JOIN sys.columns cp
-                ON fkc.parent_object_id = cp.object_id AND fkc.parent_column_id = cp.column_id
-            JOIN sys.tables tr ON fkc.referenced_object_id = tr.object_id
-            JOIN sys.columns cr
-                ON fkc.referenced_object_id = cr.object_id AND fkc.referenced_column_id = cr.column_id
-            WHERE tp.name = '\(escapedTable)' AND s.name = '\(esc)'
-            ORDER BY fk.name
-            """
+        let sql = MSSQLSchemaQueries.foreignKeys(schema: schema ?? _currentSchema, table: table)
         let result = try await execute(query: sql)
         return result.rows.compactMap { row -> PluginForeignKeyInfo? in
-            guard let constraintName = row[safe: 0]?.asText,
-                  let columnName = row[safe: 1]?.asText,
-                  let refTable = row[safe: 2]?.asText,
-                  let refColumn = row[safe: 3]?.asText else { return nil }
+            guard let parsed = MSSQLSchemaQueries.parseForeignKeyRow(row.map { $0.asText }) else { return nil }
             return PluginForeignKeyInfo(
-                name: constraintName,
-                column: columnName,
-                referencedTable: refTable,
-                referencedColumn: refColumn
+                name: parsed.constraintName,
+                column: parsed.columnName,
+                referencedTable: parsed.referencedTable,
+                referencedColumn: parsed.referencedColumn,
+                referencedSchema: parsed.referencedSchema
             )
         }
     }
@@ -360,7 +339,8 @@ extension MSSQLPluginDriver {
                 fk.name AS constraint_name,
                 cp.name AS column_name,
                 tr.name AS ref_table,
-                cr.name AS ref_column
+                cr.name AS ref_column,
+                sr.name AS ref_schema
             FROM sys.foreign_keys fk
             JOIN sys.foreign_key_columns fkc ON fk.object_id = fkc.constraint_object_id
             JOIN sys.tables tp ON fkc.parent_object_id = tp.object_id
@@ -368,6 +348,7 @@ extension MSSQLPluginDriver {
             JOIN sys.columns cp
                 ON fkc.parent_object_id = cp.object_id AND fkc.parent_column_id = cp.column_id
             JOIN sys.tables tr ON fkc.referenced_object_id = tr.object_id
+            JOIN sys.schemas sr ON tr.schema_id = sr.schema_id
             JOIN sys.columns cr
                 ON fkc.referenced_object_id = cr.object_id AND fkc.referenced_column_id = cr.column_id
             WHERE s.name = '\(esc)'
@@ -385,7 +366,8 @@ extension MSSQLPluginDriver {
                 name: constraintName,
                 column: columnName,
                 referencedTable: refTable,
-                referencedColumn: refColumn
+                referencedColumn: refColumn,
+                referencedSchema: row[safe: 5]?.asText
             )
             fksByTable[tableName, default: []].append(fk)
         }

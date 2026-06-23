@@ -448,7 +448,8 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 acc.COLUMN_NAME,
                 rc.TABLE_NAME AS REF_TABLE,
                 rcc.COLUMN_NAME AS REF_COLUMN,
-                ac.DELETE_RULE
+                ac.DELETE_RULE,
+                rc.OWNER AS REF_SCHEMA
             FROM ALL_CONSTRAINTS ac
             JOIN ALL_CONS_COLUMNS acc ON ac.CONSTRAINT_NAME = acc.CONSTRAINT_NAME
                 AND ac.OWNER = acc.OWNER
@@ -473,6 +474,7 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 column: columnName,
                 referencedTable: refTable,
                 referencedColumn: refColumn,
+                referencedSchema: row[safe: 5]?.asText,
                 onDelete: deleteRule,
                 onUpdate: "NO ACTION"
             )
@@ -600,7 +602,8 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 acc.COLUMN_NAME,
                 rc.TABLE_NAME AS REF_TABLE,
                 rcc.COLUMN_NAME AS REF_COLUMN,
-                ac.DELETE_RULE
+                ac.DELETE_RULE,
+                rc.OWNER AS REF_SCHEMA
             FROM ALL_CONSTRAINTS ac
             JOIN ALL_CONS_COLUMNS acc ON ac.CONSTRAINT_NAME = acc.CONSTRAINT_NAME
                 AND ac.OWNER = acc.OWNER
@@ -625,6 +628,7 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 column: columnName,
                 referencedTable: refTable,
                 referencedColumn: refColumn,
+                referencedSchema: row[safe: 6]?.asText,
                 onDelete: deleteRule,
                 onUpdate: "NO ACTION"
             )
