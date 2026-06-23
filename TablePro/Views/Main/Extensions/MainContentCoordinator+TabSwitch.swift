@@ -69,10 +69,16 @@ extension MainContentCoordinator {
 
             let pendingState = newTab.pendingChanges
             if pendingState.hasChanges {
-                changeManager.restoreState(from: pendingState, tableName: newTab.tableContext.tableName ?? "", databaseType: connection.type)
+                changeManager.restoreState(
+                    from: pendingState,
+                    tableName: newTab.tableContext.tableName ?? "",
+                    schemaName: newTab.tableContext.schemaName,
+                    databaseType: connection.type
+                )
             } else {
                 changeManager.configureForTable(
                     tableName: newTab.tableContext.tableName ?? "",
+                    schemaName: newTab.tableContext.schemaName,
                     columns: newRows.columns,
                     primaryKeyColumns: newTab.tableContext.primaryKeyColumns.isEmpty
                         ? newRows.columns.prefix(1).map { $0 }

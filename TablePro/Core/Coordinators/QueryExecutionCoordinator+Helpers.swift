@@ -179,6 +179,7 @@ extension QueryExecutionCoordinator {
         if parent.tabManager.selectedTabId == tabId {
             parent.changeManager.configureForTable(
                 tableName: tableName ?? "",
+                schemaName: parent.tabManager.tabs[idx].tableContext.schemaName,
                 columns: columns,
                 primaryKeyColumns: resolvedPKs,
                 databaseType: conn.type

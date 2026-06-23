@@ -313,6 +313,24 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         deletedRowIndices: Set<Int>,
         insertedRowIndices: Set<Int>
     ) -> [(statement: String, parameters: [PluginCellValue])]? {
+        generateStatements(
+            table: table, schema: nil, columns: columns, primaryKeyColumns: primaryKeyColumns,
+            changes: changes, insertedRowData: insertedRowData,
+            deletedRowIndices: deletedRowIndices, insertedRowIndices: insertedRowIndices
+        )
+    }
+
+    func generateStatements(
+        table: String,
+        schema: String?,
+        columns: [String],
+        primaryKeyColumns: [String],
+        changes: [PluginRowChange],
+        insertedRowData: [Int: [PluginCellValue]],
+        deletedRowIndices: Set<Int>,
+        insertedRowIndices: Set<Int>
+    ) -> [(statement: String, parameters: [PluginCellValue])]? {
+        let qualifiedTable = MSSQLSchemaQueries.qualifiedName(schema: schema, table: table)
         var statements: [(statement: String, parameters: [PluginCellValue])] = []
 
         var deleteChanges: [PluginRowChange] = []
@@ -322,13 +340,15 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             case .insert:
                 guard insertedRowIndices.contains(change.rowIndex) else { continue }
                 if let values = insertedRowData[change.rowIndex] {
-                    if let stmt = generateMssqlInsert(table: table, columns: columns, values: values) {
+                    if let stmt = generateMssqlInsert(
+                        table: table, qualifiedTable: qualifiedTable, columns: columns, values: values
+                    ) {
                         statements.append(stmt)
                     }
                 }
             case .update:
                 if let stmt = generateMssqlUpdate(
-                    table: table, columns: columns,
+                    qualifiedTable: qualifiedTable, columns: columns,
                     primaryKeyColumns: primaryKeyColumns, change: change
                 ) {
                     statements.append(stmt)
@@ -342,7 +362,7 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         if !deleteChanges.isEmpty {
             for change in deleteChanges {
                 if let stmt = generateMssqlDelete(
-                    table: table, columns: columns,
+                    qualifiedTable: qualifiedTable, columns: columns,
                     primaryKeyColumns: primaryKeyColumns, change: change
                 ) {
                     statements.append(stmt)
@@ -355,6 +375,7 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     private func generateMssqlInsert(
         table: String,
+        qualifiedTable: String,
         columns: [String],
         values: [PluginCellValue]
     ) -> (statement: String, parameters: [PluginCellValue])? {
@@ -378,13 +399,12 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
         let columnList = nonDefaultColumns.joined(separator: ", ")
         let placeholders = parameters.map { _ in "?" }.joined(separator: ", ")
-        let escapedTable = "[\(table.replacingOccurrences(of: "]", with: "]]"))]"
-        let sql = "INSERT INTO \(escapedTable) (\(columnList)) VALUES (\(placeholders))"
+        let sql = "INSERT INTO \(qualifiedTable) (\(columnList)) VALUES (\(placeholders))"
         return (statement: sql, parameters: parameters)
     }
 
     private func generateMssqlUpdate(
-        table: String,
+        qualifiedTable: String,
         columns: [String],
         primaryKeyColumns: [String],
         change: PluginRowChange
@@ -392,7 +412,6 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         guard !change.cellChanges.isEmpty else { return nil }
         guard let originalRow = change.originalRow else { return nil }
 
-        let escapedTable = "[\(table.replacingOccurrences(of: "]", with: "]]"))]"
         var parameters: [PluginCellValue] = []
 
         let setClauses = change.cellChanges.map { cellChange -> String in
@@ -422,19 +441,18 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
         let whereClause = conditions.joined(separator: " AND ")
         let topClause = primaryKeyColumns.isEmpty ? "TOP (1) " : ""
-        let sql = "UPDATE \(topClause)\(escapedTable) SET \(setClauses) WHERE \(whereClause)"
+        let sql = "UPDATE \(topClause)\(qualifiedTable) SET \(setClauses) WHERE \(whereClause)"
         return (statement: sql, parameters: parameters)
     }
 
     private func generateMssqlDelete(
-        table: String,
+        qualifiedTable: String,
         columns: [String],
         primaryKeyColumns: [String],
         change: PluginRowChange
     ) -> (statement: String, parameters: [PluginCellValue])? {
         guard let originalRow = change.originalRow else { return nil }
 
-        let escapedTable = "[\(table.replacingOccurrences(of: "]", with: "]]"))]"
         var parameters: [PluginCellValue] = []
         var conditions: [String] = []
 
@@ -458,7 +476,7 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
         let whereClause = conditions.joined(separator: " AND ")
         let topClause = primaryKeyColumns.isEmpty ? "TOP (1) " : ""
-        let sql = "DELETE \(topClause)FROM \(escapedTable) WHERE \(whereClause)"
+        let sql = "DELETE \(topClause)FROM \(qualifiedTable) WHERE \(whereClause)"
         return (statement: sql, parameters: parameters)
     }
 

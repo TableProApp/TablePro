@@ -22,7 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Raw filters in the data grid now apply on document and key-value databases; the typed text was being dropped before it reached the driver. (#1529)
 - Connecting to Oracle no longer crashes the app while reading certain server values during the handshake; a bad packet now fails the connection with an error instead. (#1746)
-- Opening a SQL Server or Oracle table or view outside the default schema no longer fails with "Invalid object name"; the data query now qualifies the table with its schema. (#1754)
+- Browsing and editing a SQL Server or Oracle table or view outside the default schema no longer fails with "Invalid object name" or writes to the wrong table; data, filter, and save queries now qualify the table with its schema. (#1754)
 
 ## [0.52.1] - 2026-06-22
 
