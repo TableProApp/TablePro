@@ -9,6 +9,7 @@ struct SortableHeaderCellTests {
     @Test("Title rect uses data cell horizontal padding")
     func titleRectUsesDataCellHorizontalPadding() {
         let cell = SortableHeaderCell(textCell: "id")
+        cell.supportsValueFilter = false
         let titleRect = cell.titleRect(forBounds: NSRect(x: 10, y: 0, width: 100, height: 24))
 
         #expect(titleRect.minX == 14)
