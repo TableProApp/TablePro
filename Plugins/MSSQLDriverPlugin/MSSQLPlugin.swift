@@ -562,13 +562,26 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         limit: Int,
         offset: Int
     ) -> String? {
-        let quotedTable = mssqlQuoteIdentifier(table)
-        var query = "SELECT * FROM \(quotedTable)"
+        buildBrowseQuery(
+            table: table, schema: nil, sortColumns: sortColumns,
+            columns: columns, limit: limit, offset: offset
+        )
+    }
+
+    func buildBrowseQuery(
+        table: String,
+        schema: String?,
+        sortColumns: [(columnIndex: Int, ascending: Bool)],
+        columns: [String],
+        limit: Int,
+        offset: Int
+    ) -> String? {
         let orderBy = PluginSQLFilter.buildOrderByClause(
             sortColumns: sortColumns, columns: columns, quoteIdentifier: mssqlQuoteIdentifier
         ) ?? "ORDER BY (SELECT NULL)"
-        query += " \(orderBy) OFFSET \(offset) ROWS FETCH NEXT \(limit) ROWS ONLY"
-        return query
+        return MSSQLSchemaQueries.browse(
+            schema: schema, table: table, orderByClause: orderBy, offset: offset, limit: limit
+        )
     }
 
     func buildFilteredQuery(
@@ -580,8 +593,22 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         limit: Int,
         offset: Int
     ) -> String? {
-        let quotedTable = mssqlQuoteIdentifier(table)
-        var query = "SELECT * FROM \(quotedTable)"
+        buildFilteredQuery(
+            table: table, schema: nil, filters: filters, logicMode: logicMode,
+            sortColumns: sortColumns, columns: columns, limit: limit, offset: offset
+        )
+    }
+
+    func buildFilteredQuery(
+        table: String,
+        schema: String?,
+        filters: [(column: String, op: String, value: String)],
+        logicMode: String,
+        sortColumns: [(columnIndex: Int, ascending: Bool)],
+        columns: [String],
+        limit: Int,
+        offset: Int
+    ) -> String? {
         let whereClause = PluginSQLFilter.buildWhereClause(
             filters: filters,
             logicMode: logicMode,
@@ -591,14 +618,13 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 "\(quoted) LIKE '%\(value.replacingOccurrences(of: "'", with: "''"))%'"
             }
         )
-        if !whereClause.isEmpty {
-            query += " WHERE \(whereClause)"
-        }
         let orderBy = PluginSQLFilter.buildOrderByClause(
             sortColumns: sortColumns, columns: columns, quoteIdentifier: mssqlQuoteIdentifier
         ) ?? "ORDER BY (SELECT NULL)"
-        query += " \(orderBy) OFFSET \(offset) ROWS FETCH NEXT \(limit) ROWS ONLY"
-        return query
+        return MSSQLSchemaQueries.filtered(
+            schema: schema, table: table, whereClause: whereClause,
+            orderByClause: orderBy, offset: offset, limit: limit
+        )
     }
 
     // MARK: - Query Building Helpers

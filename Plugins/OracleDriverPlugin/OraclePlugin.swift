@@ -1109,8 +1109,21 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         limit: Int,
         offset: Int
     ) -> String? {
-        let quotedTable = oracleQuoteIdentifier(table)
-        var query = "SELECT * FROM \(quotedTable)"
+        buildBrowseQuery(
+            table: table, schema: nil, sortColumns: sortColumns,
+            columns: columns, limit: limit, offset: offset
+        )
+    }
+
+    func buildBrowseQuery(
+        table: String,
+        schema: String?,
+        sortColumns: [(columnIndex: Int, ascending: Bool)],
+        columns: [String],
+        limit: Int,
+        offset: Int
+    ) -> String? {
+        var query = "SELECT * FROM \(oracleQualifiedName(schema: schema, table: table))"
         let orderBy = PluginSQLFilter.buildOrderByClause(
             sortColumns: sortColumns, columns: columns, quoteIdentifier: oracleQuoteIdentifier
         ) ?? "ORDER BY 1"
@@ -1127,8 +1140,23 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         limit: Int,
         offset: Int
     ) -> String? {
-        let quotedTable = oracleQuoteIdentifier(table)
-        var query = "SELECT * FROM \(quotedTable)"
+        buildFilteredQuery(
+            table: table, schema: nil, filters: filters, logicMode: logicMode,
+            sortColumns: sortColumns, columns: columns, limit: limit, offset: offset
+        )
+    }
+
+    func buildFilteredQuery(
+        table: String,
+        schema: String?,
+        filters: [(column: String, op: String, value: String)],
+        logicMode: String,
+        sortColumns: [(columnIndex: Int, ascending: Bool)],
+        columns: [String],
+        limit: Int,
+        offset: Int
+    ) -> String? {
+        var query = "SELECT * FROM \(oracleQualifiedName(schema: schema, table: table))"
         let whereClause = PluginSQLFilter.buildWhereClause(
             filters: filters,
             logicMode: logicMode,
@@ -1149,6 +1177,13 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     // MARK: - Query Building Helpers
+
+    private func oracleQualifiedName(schema: String?, table: String) -> String {
+        guard let schema, !schema.isEmpty else {
+            return oracleQuoteIdentifier(table)
+        }
+        return "\(oracleQuoteIdentifier(schema)).\(oracleQuoteIdentifier(table))"
+    }
 
     private func oracleQuoteIdentifier(_ identifier: String) -> String {
         "\"\(identifier.replacingOccurrences(of: "\"", with: "\"\""))\""

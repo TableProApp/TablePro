@@ -110,4 +110,57 @@ final class MSSQLSchemaQueriesTests: XCTestCase {
         XCTAssertEqual(parsed?.referencedTable, "users")
         XCTAssertEqual(parsed?.referencedColumn, "id")
     }
+
+    func testQualifiedNamePrefixesSchema() {
+        XCTAssertEqual(MSSQLSchemaQueries.qualifiedName(schema: "sales", table: "routeCache"), "[sales].[routeCache]")
+    }
+
+    func testQualifiedNameOmitsSchemaWhenNilOrEmpty() {
+        XCTAssertEqual(MSSQLSchemaQueries.qualifiedName(schema: nil, table: "routeCache"), "[routeCache]")
+        XCTAssertEqual(MSSQLSchemaQueries.qualifiedName(schema: "", table: "routeCache"), "[routeCache]")
+    }
+
+    func testBrowseQualifiesNonDefaultSchema() {
+        let sql = MSSQLSchemaQueries.browse(
+            schema: "sales", table: "routeCache",
+            orderByClause: "ORDER BY (SELECT NULL)", offset: 0, limit: 200
+        )
+        XCTAssertEqual(
+            sql,
+            "SELECT * FROM [sales].[routeCache] ORDER BY (SELECT NULL) OFFSET 0 ROWS FETCH NEXT 200 ROWS ONLY"
+        )
+    }
+
+    func testBrowseWithoutSchemaStaysUnqualified() {
+        let sql = MSSQLSchemaQueries.browse(
+            schema: nil, table: "routeCache",
+            orderByClause: "ORDER BY (SELECT NULL)", offset: 10, limit: 50
+        )
+        XCTAssertEqual(
+            sql,
+            "SELECT * FROM [routeCache] ORDER BY (SELECT NULL) OFFSET 10 ROWS FETCH NEXT 50 ROWS ONLY"
+        )
+    }
+
+    func testFilteredQualifiesSchemaAndAppendsWhere() {
+        let sql = MSSQLSchemaQueries.filtered(
+            schema: "sales", table: "routeCache", whereClause: "[id] = 1",
+            orderByClause: "ORDER BY (SELECT NULL)", offset: 0, limit: 200
+        )
+        XCTAssertEqual(
+            sql,
+            "SELECT * FROM [sales].[routeCache] WHERE [id] = 1 ORDER BY (SELECT NULL) OFFSET 0 ROWS FETCH NEXT 200 ROWS ONLY"
+        )
+    }
+
+    func testFilteredOmitsWhenWhereClauseEmpty() {
+        let sql = MSSQLSchemaQueries.filtered(
+            schema: "sales", table: "routeCache", whereClause: "",
+            orderByClause: "ORDER BY (SELECT NULL)", offset: 0, limit: 200
+        )
+        XCTAssertEqual(
+            sql,
+            "SELECT * FROM [sales].[routeCache] ORDER BY (SELECT NULL) OFFSET 0 ROWS FETCH NEXT 200 ROWS ONLY"
+        )
+    }
 }
