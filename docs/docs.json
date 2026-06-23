@@ -187,7 +187,8 @@
               "development/architecture",
               "development/building",
               "development/code-style",
-              "development/plugin-registry"
+              "development/plugin-registry",
+              "development/testing-plugins"
             ]
           }
         ]

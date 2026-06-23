@@ -1,0 +1,37 @@
+---
+title: Testing a Custom Plugin
+description: Run and test a third-party driver plugin in a local debug build without a code signing error
+---
+
+# Testing a Custom Plugin
+
+When you write your own driver plugin, you can run it inside a local debug build of TablePro before publishing it to the registry. Packaging the plugin and installing it like a registry plugin fails with a code signing error ("Unable to install plug-in"), because the registry install path verifies the bundle's signature. A locally-built plugin is unsigned, so that path rejects it.
+
+The fix is to copy the plugin into the app at build time. A plugin bundled into the **Copy Plug-Ins** build phase runs under the debug build's own signature, so the signature check passes and the plugin loads.
+
+## Steps
+
+<Steps>
+  <Step title="Add the plugin to Copy Plug-Ins">
+    In Xcode, select the **TablePro** target, open the **Build Phases** tab, and add your `.tableplugin` bundle to the **Copy Plug-Ins** phase.
+  </Step>
+  <Step title="Run the app">
+    Press `Cmd+R` to build and run. See [Building](/development/building) for the `-skipPackagePluginValidation` requirement on command-line builds.
+  </Step>
+  <Step title="Test the plugin">
+    The plugin loads with the app. Create a connection for your database type and confirm the driver works.
+  </Step>
+  <Step title="Remove it after testing">
+    Once the plugin works, remove it from the **Copy Plug-Ins** phase so it does not ride into a release build.
+  </Step>
+</Steps>
+
+<Note>
+Keep the plugin in **Copy Plug-Ins** only while you are testing. Release builds distribute plugins through the [Plugin Registry](/development/plugin-registry), where every binary is signed.
+</Note>
+
+## Why the signing error happens
+
+Plugins installed from the registry are signed, and TablePro verifies that signature before loading them. A plugin you just built locally has no such signature, so the registry install path reports "Unable to install plug-in." Copying the plugin into the **Copy Plug-Ins** build phase sidesteps that path: the plugin ships inside the debug app bundle and runs under the build's signature, which is enough to load and test it.
+
+When the plugin is ready to ship, publish it through the registry so users receive a signed binary. See [Plugin Registry](/development/plugin-registry) for the manifest format and publishing flow.
