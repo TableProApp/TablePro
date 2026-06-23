@@ -340,16 +340,15 @@ extension DatabaseDriver {
         return all.filter { nameSet.contains($0.key) }
     }
 
-    func fetchAllIndexes() async throws -> [String: [IndexInfo]] {
-        let allTables = try await fetchTables()
+    func fetchIndexes(forTables tableNames: [String]) async throws -> [String: [IndexInfo]] {
         var result: [String: [IndexInfo]] = [:]
-        for table in allTables {
+        for tableName in tableNames {
             do {
-                let indexes = try await fetchIndexes(table: table.name)
-                if !indexes.isEmpty { result[table.name] = indexes }
+                let indexes = try await fetchIndexes(table: tableName)
+                if !indexes.isEmpty { result[tableName] = indexes }
             } catch {
                 Logger(subsystem: "com.TablePro", category: "DatabaseDriver")
-                    .debug("Failed to fetch indexes for \(table.name): \(error.localizedDescription)")
+                    .debug("Failed to fetch indexes for \(tableName): \(error.localizedDescription)")
             }
         }
         return result

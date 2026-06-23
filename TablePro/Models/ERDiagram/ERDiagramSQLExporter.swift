@@ -83,12 +83,27 @@ enum ERDiagramSQLExporter {
             definition += " NOT NULL"
         }
         if let defaultValue = column.defaultValue, !defaultValue.isEmpty {
-            definition += " DEFAULT \(defaultValue)"
+            definition += " DEFAULT \(formatDefaultValue(defaultValue))"
         }
         if inlinePrimaryKey {
             definition += " PRIMARY KEY"
         }
         return definition
+    }
+
+    private static func formatDefaultValue(_ value: String) -> String {
+        let trimmed = value.trimmingCharacters(in: .whitespaces)
+        let passthroughKeywords: Set<String> = [
+            "NULL", "TRUE", "FALSE",
+            "CURRENT_TIMESTAMP", "CURRENT_TIMESTAMP()",
+            "CURRENT_DATE", "CURRENT_TIME", "NOW()", "LOCALTIMESTAMP"
+        ]
+        if passthroughKeywords.contains(trimmed.uppercased()) { return trimmed }
+        if trimmed.hasPrefix("'") { return trimmed }
+        if trimmed.contains("(") || trimmed.contains("::") { return trimmed }
+        if Int64(trimmed) != nil || Double(trimmed) != nil { return trimmed }
+        let escaped = trimmed.replacingOccurrences(of: "'", with: "''")
+        return "'\(escaped)'"
     }
 
     private static func inlineForeignKeyClause(

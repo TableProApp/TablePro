@@ -123,6 +123,42 @@ struct ERDiagramGraphBuilderTests {
         #expect(cardinality(from: "memberships", in: graph) == .manyToOne)
     }
 
+    @Test("A foreign key that is only part of a composite primary key is many-to-one")
+    func compositePrimaryKeyMemberIsNotOneToOne() {
+        let graph = ERDiagramGraphBuilder.build(
+            allColumns: [
+                "users": [column("id", primaryKey: true)],
+                "audit": [
+                    column("user_id", nullable: false, primaryKey: true),
+                    column("seq", nullable: false, primaryKey: true)
+                ]
+            ],
+            allForeignKeys: ["audit": [foreignKey(column: "user_id", references: "users")]]
+        )
+        #expect(cardinality(from: "audit", in: graph) == .manyToOne)
+    }
+
+    @Test("Junction edges are many-to-one in the expanded graph")
+    func junctionEdgesAreManyToOne() {
+        let graph = ERDiagramGraphBuilder.build(
+            allColumns: [
+                "users": [column("id", primaryKey: true)],
+                "roles": [column("id", primaryKey: true)],
+                "user_roles": [
+                    column("user_id", nullable: false, primaryKey: true),
+                    column("role_id", nullable: false, primaryKey: true)
+                ]
+            ],
+            allForeignKeys: ["user_roles": [
+                foreignKey("fk_user", column: "user_id", references: "users"),
+                foreignKey("fk_role", column: "role_id", references: "roles")
+            ]]
+        )
+        let junctionEdges = graph.edges.filter { $0.fromTable == "user_roles" }
+        #expect(junctionEdges.count == 2)
+        #expect(junctionEdges.allSatisfy { $0.cardinality == .manyToOne })
+    }
+
     @Test("Missing column metadata falls back to zero-or-many-to-one")
     func missingColumnFallsBack() {
         let graph = ERDiagramGraphBuilder.build(

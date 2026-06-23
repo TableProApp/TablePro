@@ -117,7 +117,7 @@ final class ERDiagramViewModel {
             ) { driver in
                 let cols = try await driver.fetchAllColumns()
                 let fks = try await driver.fetchAllForeignKeys()
-                let idx = try await driver.fetchAllIndexes()
+                let idx = try await driver.fetchIndexes(forTables: Array(fks.keys))
                 return (cols, fks, idx)
             }
 

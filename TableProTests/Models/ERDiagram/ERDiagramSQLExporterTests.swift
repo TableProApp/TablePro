@@ -86,6 +86,37 @@ struct ERDiagramSQLExporterTests {
         #expect(sql.contains("\"status\" varchar NOT NULL DEFAULT 'active'"))
     }
 
+    @Test("Unquoted string default is quoted")
+    func unquotedStringDefaultIsQuoted() {
+        let sql = ERDiagramSQLExporter.generate(
+            tableNames: ["t"],
+            allColumns: ["t": [column("status", type: "varchar", nullable: false, defaultValue: "active")]],
+            allForeignKeys: [:],
+            isSQLite: false,
+            quoteIdentifier: quote
+        )
+        #expect(sql.contains("\"status\" varchar NOT NULL DEFAULT 'active'"))
+        #expect(!sql.contains("DEFAULT active"))
+    }
+
+    @Test("Numeric, expression, and keyword defaults pass through unquoted")
+    func nonLiteralDefaultsPassThrough() {
+        let sql = ERDiagramSQLExporter.generate(
+            tableNames: ["t"],
+            allColumns: ["t": [
+                column("count", type: "integer", nullable: false, defaultValue: "0"),
+                column("created", type: "timestamp", nullable: false, defaultValue: "CURRENT_TIMESTAMP"),
+                column("uid", type: "uuid", nullable: false, defaultValue: "gen_random_uuid()")
+            ]],
+            allForeignKeys: [:],
+            isSQLite: false,
+            quoteIdentifier: quote
+        )
+        #expect(sql.contains("\"count\" integer NOT NULL DEFAULT 0"))
+        #expect(sql.contains("\"created\" timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP"))
+        #expect(sql.contains("\"uid\" uuid NOT NULL DEFAULT gen_random_uuid()"))
+    }
+
     @Test("Composite primary key becomes a trailing clause")
     func compositePrimaryKey() {
         let sql = ERDiagramSQLExporter.generate(

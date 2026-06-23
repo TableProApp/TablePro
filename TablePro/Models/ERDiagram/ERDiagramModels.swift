@@ -91,8 +91,17 @@ enum ERDiagramGraphBuilder {
         let columnsByTable: [String: [String: ColumnInfo]] = allColumns.mapValues { columns in
             Dictionary(columns.map { ($0.name, $0) }, uniquingKeysWith: { first, _ in first })
         }
-        let uniqueSingleColumnsByTable: [String: Set<String>] = allIndexes.mapValues { indexes in
-            Set(indexes.filter { $0.isUnique && $0.columns.count == 1 }.compactMap { $0.columns.first })
+        let uniqueSingleColumnsByTable: [String: Set<String>] = allColumns.reduce(into: [:]) { result, entry in
+            let (tableName, columns) = entry
+            var unique: Set<String> = []
+            let primaryKeyColumns = columns.filter(\.isPrimaryKey).map(\.name)
+            if primaryKeyColumns.count == 1, let only = primaryKeyColumns.first {
+                unique.insert(only)
+            }
+            for index in allIndexes[tableName] ?? [] where index.isUnique && index.columns.count == 1 {
+                if let column = index.columns.first { unique.insert(column) }
+            }
+            result[tableName] = unique
         }
 
         var junctionTableIds: Set<UUID> = []
@@ -182,7 +191,7 @@ enum ERDiagramGraphBuilder {
 
     private static func inferCardinality(column: ColumnInfo?, uniqueColumns: Set<String>) -> ERCardinality {
         guard let column else { return .zeroOrManyToOne }
-        let isUnique = column.isPrimaryKey || uniqueColumns.contains(column.name)
+        let isUnique = uniqueColumns.contains(column.name)
         let isMandatory = !column.isNullable
         switch (isUnique, isMandatory) {
         case (true, true): return .oneToOne
