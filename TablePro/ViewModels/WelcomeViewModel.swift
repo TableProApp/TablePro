@@ -163,7 +163,11 @@ final class WelcomeViewModel {
 
     // MARK: - Initialization
 
-    init(services: AppServices = .live) {
+    convenience init() {
+        self.init(services: .live)
+    }
+
+    init(services: AppServices) {
         self.services = services
         self.showOnboarding = !services.appSettingsStorage.hasCompletedOnboarding()
     }

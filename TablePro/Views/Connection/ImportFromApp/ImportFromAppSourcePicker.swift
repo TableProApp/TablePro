@@ -164,11 +164,10 @@ struct ImportFromAppSourcePicker: View {
     private func loadStates() {
         Task.detached(priority: .userInitiated) {
             let importers = ForeignAppImporterRegistry.all
-            var states: [(importer: any ForeignAppImporter, available: Bool, count: Int)] = []
-            for importer in importers {
+            let states: [(importer: any ForeignAppImporter, available: Bool, count: Int)] = importers.map { importer in
                 let available = importer.isAvailable()
                 let count = available ? importer.connectionCount() : 0
-                states.append((importer: importer, available: available, count: count))
+                return (importer: importer, available: available, count: count)
             }
             await MainActor.run {
                 importerStates = states
