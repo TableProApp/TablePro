@@ -101,7 +101,8 @@ enum ERDiagramSQLExporter {
         if passthroughKeywords.contains(trimmed.uppercased()) { return trimmed }
         if trimmed.hasPrefix("'") { return trimmed }
         if trimmed.contains("(") || trimmed.contains("::") { return trimmed }
-        if Int64(trimmed) != nil || Double(trimmed) != nil { return trimmed }
+        if Int64(trimmed) != nil { return trimmed }
+        if let number = Double(trimmed), number.isFinite { return trimmed }
         let escaped = trimmed.replacingOccurrences(of: "'", with: "''")
         return "'\(escaped)'"
     }

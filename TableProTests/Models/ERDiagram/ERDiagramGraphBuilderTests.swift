@@ -123,6 +123,27 @@ struct ERDiagramGraphBuilderTests {
         #expect(cardinality(from: "memberships", in: graph) == .manyToOne)
     }
 
+    @Test("A partial unique index does not make a column one-to-one")
+    func partialUniqueIndexIsNotOneToOne() {
+        let partialIndex = IndexInfo(
+            name: "uq_active_user",
+            columns: ["user_id"],
+            isUnique: true,
+            isPrimary: false,
+            type: "BTREE",
+            whereClause: "deleted_at IS NULL"
+        )
+        let graph = ERDiagramGraphBuilder.build(
+            allColumns: [
+                "users": [column("id", primaryKey: true)],
+                "profiles": [column("id", primaryKey: true), column("user_id", nullable: false)]
+            ],
+            allForeignKeys: ["profiles": [foreignKey(column: "user_id", references: "users")]],
+            allIndexes: ["profiles": [partialIndex]]
+        )
+        #expect(cardinality(from: "profiles", in: graph) == .manyToOne)
+    }
+
     @Test("A foreign key that is only part of a composite primary key is many-to-one")
     func compositePrimaryKeyMemberIsNotOneToOne() {
         let graph = ERDiagramGraphBuilder.build(

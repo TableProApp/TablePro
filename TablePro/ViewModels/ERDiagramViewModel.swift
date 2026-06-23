@@ -129,9 +129,9 @@ final class ERDiagramViewModel {
                 allIndexes: indexes
             )
 
+            nodeIdToName = Dictionary(uniqueKeysWithValues: fullGraph.nodes.map { ($0.id, $0.tableName) })
             let visibleGraph = makeVisibleGraph()
             graph = visibleGraph
-            nodeIdToName = Dictionary(uniqueKeysWithValues: visibleGraph.nodes.map { ($0.id, $0.tableName) })
 
             let layout = await Task.detached {
                 ERDiagramLayout.compute(graph: visibleGraph)
@@ -247,7 +247,6 @@ final class ERDiagramViewModel {
         guard loadState == .loaded else { return }
         let visibleGraph = makeVisibleGraph()
         graph = visibleGraph
-        nodeIdToName = Dictionary(uniqueKeysWithValues: visibleGraph.nodes.map { ($0.id, $0.tableName) })
         invalidateCachedRects()
         layoutTask?.cancel()
         layoutTask = Task {
@@ -503,7 +502,7 @@ final class ERDiagramViewModel {
     private func loadPersistedPositions() {
         let stored = ERDiagramPositionStorage.shared.load(connectionId: connectionId, schemaKey: schemaKey)
         for (tableName, point) in stored {
-            if let nodeId = graph.nodeIndex[tableName] {
+            if let nodeId = fullGraph.nodeIndex[tableName] {
                 positionOverrides[nodeId] = point
             }
         }

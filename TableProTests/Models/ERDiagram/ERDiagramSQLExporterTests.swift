@@ -117,6 +117,24 @@ struct ERDiagramSQLExporterTests {
         #expect(sql.contains("\"uid\" uuid NOT NULL DEFAULT gen_random_uuid()"))
     }
 
+    @Test("Non-finite numeric-looking string defaults are quoted")
+    func infinityLikeStringDefaultIsQuoted() {
+        let sql = ERDiagramSQLExporter.generate(
+            tableNames: ["t"],
+            allColumns: ["t": [
+                column("a", type: "varchar", nullable: false, defaultValue: "inf"),
+                column("b", type: "varchar", nullable: false, defaultValue: "nan")
+            ]],
+            allForeignKeys: [:],
+            isSQLite: false,
+            quoteIdentifier: quote
+        )
+        #expect(sql.contains("\"a\" varchar NOT NULL DEFAULT 'inf'"))
+        #expect(sql.contains("\"b\" varchar NOT NULL DEFAULT 'nan'"))
+        #expect(!sql.contains("DEFAULT inf"))
+        #expect(!sql.contains("DEFAULT nan"))
+    }
+
     @Test("Composite primary key becomes a trailing clause")
     func compositePrimaryKey() {
         let sql = ERDiagramSQLExporter.generate(

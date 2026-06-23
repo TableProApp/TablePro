@@ -98,7 +98,8 @@ enum ERDiagramGraphBuilder {
             if primaryKeyColumns.count == 1, let only = primaryKeyColumns.first {
                 unique.insert(only)
             }
-            for index in allIndexes[tableName] ?? [] where index.isUnique && index.columns.count == 1 {
+            for index in allIndexes[tableName] ?? []
+                where index.isUnique && index.whereClause == nil && index.columns.count == 1 {
                 if let column = index.columns.first { unique.insert(column) }
             }
             result[tableName] = unique
