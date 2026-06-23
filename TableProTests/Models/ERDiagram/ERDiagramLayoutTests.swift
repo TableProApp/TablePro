@@ -5,6 +5,7 @@
 //  Tests the component-aware compact layout used by the ER diagram.
 //
 
+import CoreGraphics
 import Foundation
 @testable import TablePro
 import Testing
