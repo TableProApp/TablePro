@@ -140,15 +140,17 @@ final class OraclePlugin: NSObject, TableProPlugin, DriverPlugin, PluginDiagnost
                 ],
                 supportURL: issuesURL
             )
-        case .authConnectionDropped:
+        case .authConnectionDropped(let phase):
             return PluginDiagnostic(
                 title: String(localized: "Connection Dropped During Handshake"),
                 message: oracleError.message,
                 suggestedActions: [
                     String(localized: "Check for a firewall, VPN, or load balancer between you and the server that closes connections mid-handshake."),
                     String(localized: "If the listener endpoint is TLS-only (TCPS), set the SSL mode in the connection's SSL settings."),
-                    String(localized: "Confirm the host and port reach the database listener directly, not a proxy that resets unknown traffic.")
+                    String(localized: "Confirm the host and port reach the database listener directly, not a proxy that resets unknown traffic."),
+                    String(localized: "If this is Oracle 11g, open an issue and include the handshake phase shown below.")
                 ],
+                diagnosticInfo: phase.map { [DiagnosticEntry(label: String(localized: "Handshake phase"), value: $0)] } ?? [],
                 supportURL: URL(string: "https://github.com/TableProApp/TablePro/issues/483")
             )
         case .authVersionNotSupported:

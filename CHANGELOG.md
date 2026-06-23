@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - The ER diagram now arranges tables in a compact layout that fills the canvas in both directions, keeps tables linked by foreign keys together, and tints each group of connected tables with its own header color. (#1755)
+- When an Oracle server closes the connection during login, the error dialog now shows which handshake phase it stopped at, so dropped-handshake failures (for example on Oracle 11g) are easier to pin down. (#1746)
 
 ### Fixed
 
