@@ -3,6 +3,7 @@ import Combine
 import Foundation
 import os
 import SwiftUI
+import TableProPluginKit
 
 @MainActor
 @Observable
@@ -35,8 +36,18 @@ final class ERDiagramViewModel {
     var graph: ERDiagramGraph = .empty
     var magnification: CGFloat = 1.0
     var isCompactMode = false {
-        didSet { rebuildDisplayColumns() }
+        didSet { rebuildVisibleGraph() }
     }
+
+    var collapseJunctions = true {
+        didSet { rebuildVisibleGraph() }
+    }
+
+    var hasJunctionTables: Bool { !fullGraph.junctionTableIds.isEmpty }
+
+    @ObservationIgnored private var fullGraph: ERDiagramGraph = .empty
+    @ObservationIgnored private var allColumns: [String: [ColumnInfo]] = [:]
+    @ObservationIgnored private var allForeignKeys: [String: [ForeignKeyInfo]] = [:]
 
     // MARK: - Canvas Viewport
 
@@ -101,23 +112,29 @@ final class ERDiagramViewModel {
         }
 
         do {
-            let (allColumns, allFKs) = try await services.databaseManager.withMetadataDriver(
+            let (columns, foreignKeys, indexes) = try await services.databaseManager.withMetadataDriver(
                 connectionId: connectionId, workload: .bulk
             ) { driver in
                 let cols = try await driver.fetchAllColumns()
                 let fks = try await driver.fetchAllForeignKeys()
-                return (cols, fks)
+                let idx = try await driver.fetchAllIndexes()
+                return (cols, fks, idx)
             }
 
-            let builtGraph = ERDiagramGraphBuilder.build(
-                allColumns: allColumns,
-                allForeignKeys: allFKs
+            allColumns = columns
+            allForeignKeys = foreignKeys
+            fullGraph = ERDiagramGraphBuilder.build(
+                allColumns: columns,
+                allForeignKeys: foreignKeys,
+                allIndexes: indexes
             )
-            graph = builtGraph
-            nodeIdToName = Dictionary(uniqueKeysWithValues: builtGraph.nodes.map { ($0.id, $0.tableName) })
+
+            let visibleGraph = makeVisibleGraph()
+            graph = visibleGraph
+            nodeIdToName = Dictionary(uniqueKeysWithValues: visibleGraph.nodes.map { ($0.id, $0.tableName) })
 
             let layout = await Task.detached {
-                ERDiagramLayout.compute(graph: builtGraph)
+                ERDiagramLayout.compute(graph: visibleGraph)
             }.value
             computedLayout = layout
             loadPersistedPositions()
@@ -209,10 +226,11 @@ final class ERDiagramViewModel {
         }
     }
 
-    // MARK: - Compact Mode
+    // MARK: - Visible Graph (compact mode + junction collapse)
 
-    private func rebuildDisplayColumns() {
-        graph.nodes = graph.nodes.map { node in
+    private func makeVisibleGraph() -> ERDiagramGraph {
+        var projected = fullGraph.projected(collapseJunctions: collapseJunctions)
+        projected.nodes = projected.nodes.map { node in
             var updated = node
             updated.displayColumns = isCompactMode
                 ? node.columns.filter { $0.isPrimaryKey || $0.isForeignKey }
@@ -222,16 +240,60 @@ final class ERDiagramViewModel {
             }
             return updated
         }
+        return projected
+    }
+
+    private func rebuildVisibleGraph() {
+        guard loadState == .loaded else { return }
+        let visibleGraph = makeVisibleGraph()
+        graph = visibleGraph
+        nodeIdToName = Dictionary(uniqueKeysWithValues: visibleGraph.nodes.map { ($0.id, $0.tableName) })
         invalidateCachedRects()
-        let currentGraph = graph
         layoutTask?.cancel()
         layoutTask = Task {
             let layout = await Task.detached {
-                ERDiagramLayout.compute(graph: currentGraph)
+                ERDiagramLayout.compute(graph: visibleGraph)
             }.value
             guard !Task.isCancelled else { return }
             computedLayout = layout
             invalidateCachedRects()
+        }
+    }
+
+    // MARK: - SQL Export
+
+    func exportSchemaAsSQL() {
+        guard loadState == .loaded, !fullGraph.nodes.isEmpty else { return }
+        guard let driver = services.databaseManager.driver(for: connectionId) else { return }
+        let databaseType = driver.connection.type
+        do {
+            let dialect = try resolveSQLDialect(for: databaseType)
+            let quote = quoteIdentifierFromDialect(dialect)
+            let sql = ERDiagramSQLExporter.generate(
+                tableNames: fullGraph.nodes.map(\.tableName),
+                allColumns: allColumns,
+                allForeignKeys: allForeignKeys,
+                isSQLite: databaseType == .sqlite,
+                quoteIdentifier: quote
+            )
+            guard !sql.isEmpty else { return }
+
+            let payload = EditorTabPayload(
+                connectionId: connectionId,
+                tabType: .query,
+                databaseName: services.databaseManager.activeDatabaseName(for: driver.connection),
+                initialQuery: sql,
+                skipAutoExecute: true,
+                tabTitle: String(localized: "Schema SQL")
+            )
+            WindowManager.shared.openTab(payload: payload)
+        } catch {
+            Self.logger.error("Failed to export ER diagram as SQL: \(error.localizedDescription)")
+            AlertHelper.showErrorSheet(
+                title: String(localized: "Export Failed"),
+                message: error.localizedDescription,
+                window: nil
+            )
         }
     }
 

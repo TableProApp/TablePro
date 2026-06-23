@@ -70,7 +70,8 @@ enum ERDiagramNodeRenderer {
             anchor: .leading
         )
 
-        let iconText = Text(Image(systemName: "tablecells"))
+        let iconName = node.isJunctionTable ? "arrow.left.arrow.right" : "tablecells"
+        let iconText = Text(Image(systemName: iconName))
             .font(.system(size: Self.iconPointSize * scale))
             .foregroundStyle(.secondary)
         context.draw(

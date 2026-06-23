@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Per-column value filter in the data grid. Hover a column header and click the funnel icon to pick which values to show from the loaded rows. Filter several columns at once, search the value list, and clear filters from the header menu. The filter runs on loaded rows without re-querying. (#1454)
 - Elasticsearch support. Connect to Elasticsearch 7.x and 8.x, browse indices, run Query DSL requests in a console, and edit documents in the data grid. Install from Settings > Plugins. (#1529)
 - The connection switcher and welcome list now show each connection's tags and group, so you can tell production from staging at a glance. (#1323)
+- The ER diagram now reads each relationship's cardinality (one-to-one, one-to-many, and optional variants) from primary key and unique index data and marks the edges with crow's foot notation. Junction tables are detected and shown as a single many-to-many link, with a toolbar toggle to expand them back to the underlying tables. (#1335)
+- Export the ER diagram to SQL. A new toolbar button opens a query tab with CREATE TABLE and foreign key statements for the current schema in the connection's SQL dialect. (#1335)
 
 ### Changed
 

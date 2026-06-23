@@ -52,6 +52,16 @@ struct ERDiagramToolbar: View {
             .help(String(localized: "Compact Mode"))
             .accessibilityLabel(String(localized: "Compact Mode"))
 
+            if viewModel.hasJunctionTables {
+                Toggle(isOn: $viewModel.collapseJunctions) {
+                    Image(systemName: "arrow.left.arrow.right")
+                }
+                .toggleStyle(.button)
+                .buttonStyle(.borderless)
+                .help(String(localized: "Collapse junction tables into many-to-many relationships"))
+                .accessibilityLabel(String(localized: "Collapse Junction Tables"))
+            }
+
             Divider().frame(height: 16)
 
             Button {
@@ -69,6 +79,15 @@ struct ERDiagramToolbar: View {
             .buttonStyle(.borderless)
             .help(String(localized: "Export as PNG"))
             .accessibilityLabel(String(localized: "Export as PNG"))
+
+            Button {
+                viewModel.exportSchemaAsSQL()
+            } label: {
+                Image(systemName: "doc.plaintext")
+            }
+            .buttonStyle(.borderless)
+            .help(String(localized: "Export as SQL"))
+            .accessibilityLabel(String(localized: "Export as SQL"))
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
