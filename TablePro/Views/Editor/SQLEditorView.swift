@@ -23,6 +23,7 @@ struct SQLEditorView: View {
     var connectionId: UUID?
     var connectionAIPolicy: AIConnectionPolicy?
     var tabID: UUID?
+    var claimFocusOnAppear: Bool = false
     @Binding var vimMode: VimMode
     var onCloseTab: (() -> Void)?
     var onExecuteQuery: (() -> Void)?
@@ -49,6 +50,9 @@ struct SQLEditorView: View {
         coordinator.databaseType = databaseType
         coordinator.tabID = tabID
         coordinator.connectionId = connectionId
+        if claimFocusOnAppear {
+            coordinator.scheduleEditorFocusClaim()
+        }
 
         return SourceEditor(
             $text,

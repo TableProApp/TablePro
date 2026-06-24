@@ -154,7 +154,8 @@ enum SessionStateFactory {
                 tabMgr.addTab(
                     initialQuery: payload.initialQuery,
                     title: title,
-                    databaseName: payload.databaseName ?? activeDatabaseName
+                    databaseName: payload.databaseName ?? activeDatabaseName,
+                    claimFocus: true
                 )
             case .restoreOrDefault:
                 break

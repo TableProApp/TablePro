@@ -266,6 +266,7 @@ struct MainEditorContentView: View {
     @ViewBuilder
     private func queryTabContent(tab: QueryTab) -> some View {
         @Bindable var bindableCoordinator = coordinator
+        let claimFocus = coordinator.tabManager.pendingFocusTabId == tab.id
         QuerySplitView(
             isBottomCollapsed: tab.display.isResultsCollapsed,
             autosaveName: "QuerySplit-\(connectionId)-\(tab.id)",
@@ -291,6 +292,7 @@ struct MainEditorContentView: View {
                         connectionId: coordinator.connection.id,
                         connectionAIPolicy: coordinator.connection.aiPolicy ?? AppSettingsManager.shared.ai.defaultConnectionPolicy,
                         tabID: tab.id,
+                        claimFocusOnAppear: claimFocus,
                         onCloseTab: {
                             NSApp.keyWindow?.close()
                         },
@@ -327,7 +329,12 @@ struct MainEditorContentView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         )
-        .onAppear { coordinator.applyRestoredCursor(for: tab.id) }
+        .onAppear {
+            coordinator.applyRestoredCursor(for: tab.id)
+            if coordinator.tabManager.pendingFocusTabId == tab.id {
+                coordinator.tabManager.pendingFocusTabId = nil
+            }
+        }
     }
 
     private func reloadFileForTab(tabId: UUID, url: URL) {

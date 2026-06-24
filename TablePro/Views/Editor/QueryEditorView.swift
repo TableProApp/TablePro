@@ -22,6 +22,7 @@ struct QueryEditorView: View {
     var connectionId: UUID?
     var connectionAIPolicy: AIConnectionPolicy?
     var tabID: UUID?
+    var claimFocusOnAppear: Bool = false
     var onCloseTab: (() -> Void)?
     var onExecuteQuery: (() -> Void)?
     var onExplain: ((ClickHouseExplainVariant?) -> Void)?
@@ -59,6 +60,7 @@ struct QueryEditorView: View {
                 connectionId: connectionId,
                 connectionAIPolicy: connectionAIPolicy,
                 tabID: tabID,
+                claimFocusOnAppear: claimFocusOnAppear,
                 vimMode: $vimMode,
                 onCloseTab: onCloseTab,
                 onExecuteQuery: onExecuteQuery,

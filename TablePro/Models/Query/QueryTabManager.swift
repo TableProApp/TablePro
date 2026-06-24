@@ -24,6 +24,8 @@ final class QueryTabManager {
 
     var tabStructureVersion: Int = 0
 
+    @ObservationIgnored var pendingFocusTabId: UUID?
+
     @ObservationIgnored private var _tabIndexMap: [UUID: Int] = [:]
     @ObservationIgnored private var _tabIndexMapDirty = true
 
@@ -103,7 +105,7 @@ final class QueryTabManager {
 
     // MARK: - Tab Management
 
-    func addTab(initialQuery: String? = nil, title: String? = nil, databaseName: String = "", sourceFileURL: URL? = nil) {
+    func addTab(initialQuery: String? = nil, title: String? = nil, databaseName: String = "", sourceFileURL: URL? = nil, claimFocus: Bool = false) {
         if let sourceFileURL,
            let existingIndex = tabs.firstIndex(where: { $0.content.sourceFileURL == sourceFileURL }) {
             if let query = initialQuery {
@@ -136,6 +138,9 @@ final class QueryTabManager {
         }
         tabs.append(newTab)
         selectedTabId = newTab.id
+        if claimFocus {
+            pendingFocusTabId = newTab.id
+        }
     }
 
     func addTableTab(
