@@ -37,6 +37,14 @@ struct QueryTabManagerFocusTests {
         #expect(manager.pendingFocusTabId == manager.tabs.last?.id)
     }
 
+    @Test("opening a new file-backed tab with claimFocus sets pendingFocusTabId")
+    func newFileTabWithClaimFocusSetsPendingId() {
+        let manager = QueryTabManager()
+        let url = URL(fileURLWithPath: "/tmp/tablepro-focus-new.sql")
+        manager.addTab(initialQuery: "SELECT 1", sourceFileURL: url, claimFocus: true)
+        #expect(manager.pendingFocusTabId == manager.tabs.last?.id)
+    }
+
     @Test("reopening an existing file tab does not set pendingFocusTabId")
     func fileURLDeduplicationDoesNotSetFocusId() {
         let manager = QueryTabManager()

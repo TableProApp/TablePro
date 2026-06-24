@@ -50,9 +50,6 @@ struct SQLEditorView: View {
         coordinator.databaseType = databaseType
         coordinator.tabID = tabID
         coordinator.connectionId = connectionId
-        if claimFocusOnAppear {
-            coordinator.scheduleEditorFocusClaim()
-        }
 
         return SourceEditor(
             $text,
@@ -63,6 +60,11 @@ struct SQLEditorView: View {
             completionDelegate: completionAdapter
         )
         .accessibilityLabel(String(localized: "SQL query editor"))
+        .onAppear {
+            if claimFocusOnAppear {
+                coordinator.scheduleEditorFocusClaim()
+            }
+        }
         .onChange(of: editorState.cursorPositions) { _, newValue in
             guard let positions = newValue else { return }
             // Skip cursor propagation when the editor doesn't have focus

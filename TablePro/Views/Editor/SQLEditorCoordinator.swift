@@ -117,7 +117,7 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
             if let textView = controller.textView {
                 EditorEventRouter.shared.register(self, textView: textView)
 
-                if !self.isDestroyed, let window = textView.window, textView.acceptsFirstResponder {
+                if !self.isDestroyed, let window = textView.window {
                     if self.focusClaimPending {
                         self.focusClaimPending = false
                         window.makeFirstResponder(textView)
@@ -184,6 +184,7 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
 
     func destroy() {
         didDestroy = true
+        focusClaimPending = false
 
         uninstallVimKeyInterceptor()
 
