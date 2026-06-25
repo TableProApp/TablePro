@@ -9,25 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Connections can now have more than one tag. Assign several tags in the connection form, and filter the welcome list by tag with Match Any or Match All. (#744)
-- Per-column value filter in the data grid. Hover a column header and click the funnel icon to pick which values to show from the loaded rows. Filter several columns at once, search the value list, and clear filters from the header menu. The filter runs on loaded rows without re-querying. (#1454)
-- Elasticsearch support. Connect to Elasticsearch 7.x and 8.x, browse indices, run Query DSL requests in a console, and edit documents in the data grid. Install from Settings > Plugins. (#1529)
-- The connection switcher and welcome list now show each connection's tags and group, so you can tell production from staging at a glance. (#1323)
-- The ER diagram now reads each relationship's cardinality (one-to-one, one-to-many, and optional variants) from primary key and unique index data and marks the edges with crow's foot notation. Junction tables are detected and shown as a single many-to-many link, with a toolbar toggle to expand them back to the underlying tables. (#1335)
-- Export the ER diagram to SQL. A new toolbar button opens a query tab with CREATE TABLE and foreign key statements for the current schema in the connection's SQL dialect. (#1335)
+- Connections can have multiple tags. Assign them in the connection form and filter the welcome list by tag with Match Any or Match All. (#744)
+- Per-column value filter in the data grid. Click the funnel icon on a column header to choose which loaded values to show, across several columns at once. Filters loaded rows without re-querying. (#1454)
+- Elasticsearch support: connect to 7.x and 8.x, browse indices, run Query DSL in a console, and edit documents in the data grid. Install from Settings > Plugins. (#1529)
+- The connection switcher and welcome list now show each connection's tags and group. (#1323)
+- The ER diagram marks relationship cardinality (one-to-one, one-to-many, and optional variants) with crow's foot notation, read from primary keys and unique indexes. Junction tables collapse into a single many-to-many link, with a toolbar toggle to expand them. (#1335)
+- Export the ER diagram to SQL. A toolbar button opens a query tab with CREATE TABLE and foreign key statements for the current schema. (#1335)
 
 ### Changed
 
-- The ER diagram now arranges tables in a compact layout that fills the canvas in both directions, keeps tables linked by foreign keys together, and tints each group of connected tables with its own header color. (#1755)
-- When an Oracle server closes the connection during login, the error dialog now shows which handshake phase it stopped at, so dropped-handshake failures (for example on Oracle 11g) are easier to pin down. (#1746)
+- The ER diagram uses a more compact layout, keeps foreign-key-linked tables together, and tints each connected group with its own header color. (#1755)
+- When an Oracle server drops the connection during login, the error dialog now shows which handshake phase it stopped at (helps diagnose Oracle 11g). (#1746)
 
 ### Fixed
 
-- Opening a new query tab (Cmd+T, or opening a saved query or .sql file in its own window) now puts the keyboard focus in the SQL editor instead of the sidebar filter field, so you can start typing right away. (#1765)
-- Raw filters in the data grid now apply on document and key-value databases; the typed text was being dropped before it reached the driver. (#1529)
-- Connecting to Oracle no longer crashes the app while reading certain server values during the handshake; a bad packet now fails the connection with an error instead. (#1746)
-- Following a foreign key into a table in another schema now opens the correct table for SQL Server and Oracle; the referenced schema was missing, so navigation fell back to the default schema. (#1754)
-- Browsing and editing a SQL Server or Oracle table or view outside the default schema no longer fails with "Invalid object name" or writes to the wrong table; data, filter, and save queries now qualify the table with its schema. (#1754)
+- Opening a new query tab now puts keyboard focus in the SQL editor instead of the sidebar filter, so you can type right away. (#1765)
+- Raw filters in the data grid now work on document and key-value databases; the typed text was dropped before reaching the driver. (#1529)
+- Connecting to Oracle no longer crashes on certain server values during the handshake; a bad packet now fails the connection with an error. (#1746)
+- Following a foreign key into another schema now opens the correct table on SQL Server and Oracle, instead of falling back to the default schema. (#1754)
+- Browsing or editing a SQL Server or Oracle table outside the default schema no longer fails with "Invalid object name" or writes to the wrong table; queries now qualify the table with its schema. (#1754)
 
 ## [0.52.1] - 2026-06-22
 
