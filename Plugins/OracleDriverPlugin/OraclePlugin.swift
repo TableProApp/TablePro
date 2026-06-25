@@ -38,6 +38,12 @@ final class OraclePlugin: NSObject, TableProPlugin, DriverPlugin, PluginDiagnost
             label: "SID",
             placeholder: "XE",
             visibleWhen: FieldVisibilityRule(fieldId: "oracleConnectionType", values: ["sid"])
+        ),
+        ConnectionField(
+            id: "oracleNativeEncryption",
+            label: "Native network encryption",
+            defaultValue: "false",
+            fieldType: .toggle
         )
     ]
 
@@ -230,7 +236,8 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             database: config.database,
             serviceName: identifier,
             useSID: useSID,
-            sslConfig: config.ssl
+            sslConfig: config.ssl,
+            nativeNetworkEncryption: config.additionalFields["oracleNativeEncryption"] == "true"
         )
         try await conn.connect()
         self.oracleConn = conn

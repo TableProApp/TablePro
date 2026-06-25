@@ -120,6 +120,7 @@ final class OracleConnectionWrapper: @unchecked Sendable {
     private let serviceName: String
     private let useSID: Bool
     private let sslConfig: SSLConfiguration
+    private let nativeNetworkEncryption: Bool
 
     private struct LockedState: Sendable {
         var isConnected = false
@@ -143,7 +144,8 @@ final class OracleConnectionWrapper: @unchecked Sendable {
         database: String,
         serviceName: String = "",
         useSID: Bool = false,
-        sslConfig: SSLConfiguration = SSLConfiguration()
+        sslConfig: SSLConfiguration = SSLConfiguration(),
+        nativeNetworkEncryption: Bool = false
     ) {
         self.host = host
         self.port = port
@@ -153,6 +155,7 @@ final class OracleConnectionWrapper: @unchecked Sendable {
         self.serviceName = serviceName
         self.useSID = useSID
         self.sslConfig = sslConfig
+        self.nativeNetworkEncryption = nativeNetworkEncryption
     }
 
     // MARK: - Connection
@@ -161,7 +164,7 @@ final class OracleConnectionWrapper: @unchecked Sendable {
         let identifier = serviceName.isEmpty ? database : serviceName
         let service: OracleServiceMethod = useSID ? .sid(identifier) : .serviceName(identifier)
         let tls = try OracleSSLMapping.tls(for: sslConfig)
-        let config = OracleNIO.OracleConnection.Configuration(
+        var config = OracleNIO.OracleConnection.Configuration(
             host: host,
             port: port,
             service: service,
@@ -169,6 +172,7 @@ final class OracleConnectionWrapper: @unchecked Sendable {
             password: password,
             tls: tls
         )
+        config.nativeNetworkEncryption = nativeNetworkEncryption
 
         let connectionId = Self.connectionCounter.withLock { state -> Int in
             state += 1
