@@ -54,7 +54,6 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
 
     func scheduleEditorFocusClaim() {
         focusClaimPending = true
-        Self.logger.debug("Editor focus claim armed")
     }
 
     /// Vim mode for UI observation
