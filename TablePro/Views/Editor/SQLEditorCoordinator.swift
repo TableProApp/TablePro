@@ -54,6 +54,7 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
 
     func scheduleEditorFocusClaim() {
         focusClaimPending = true
+        Self.logger.debug("Editor focus claim armed")
     }
 
     /// Vim mode for UI observation
@@ -118,12 +119,18 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
                 EditorEventRouter.shared.register(self, textView: textView)
 
                 if !self.isDestroyed, let window = textView.window {
-                    if self.focusClaimPending {
+                    let claimPending = self.focusClaimPending
+                    let responderName = window.firstResponder.map { String(describing: type(of: $0)) } ?? "nil"
+                    var made = false
+                    if claimPending {
                         self.focusClaimPending = false
-                        window.makeFirstResponder(textView)
+                        made = window.makeFirstResponder(textView)
                     } else if window.firstResponder == nil || window.firstResponder === window {
-                        window.makeFirstResponder(textView)
+                        made = window.makeFirstResponder(textView)
                     }
+                    Self.logger.debug("Editor focus claim: pending=\(claimPending) isKey=\(window.isKeyWindow) responderBefore=\(responderName, privacy: .public) made=\(made)")
+                } else {
+                    Self.logger.debug("Editor focus claim skipped: hasWindow=\(textView.window != nil) destroyed=\(self.isDestroyed) pending=\(self.focusClaimPending)")
                 }
                 if controller.cursorPositions.isEmpty {
                     controller.setCursorPositions([CursorPosition(range: NSRange(location: 0, length: 0))])
