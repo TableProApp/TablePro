@@ -41,7 +41,9 @@ internal enum RelayTermination: Equatable {
 /// Polls the local fd and the SSH transport fd, draining buffered data before
 /// tearing down on hangup so the last bytes are not dropped. Hangup and error
 /// on either fd terminate the loop instead of spinning on a permanently
-/// poll-ready, closed fd.
+/// poll-ready, closed fd. Because libssh2 reports EAGAIN rather than a channel
+/// close when only the transport dies, a transport that polls readable but is
+/// at EOF is detected directly so a half-closed transport cannot spin.
 internal struct SSHChannelRelay {
     let localFD: Int32
     let transportFD: Int32
@@ -75,10 +77,11 @@ internal struct SSHChannelRelay {
             if localState == .stop { return .localClosed }
 
             if transportState != .idle || pollResult == 0 {
-                switch pumpChannelToLocal(buffer) {
+                switch pumpChannelToLocal(buffer, transportReadable: transportState != .idle) {
                 case .keepGoing: break
                 case .channelClosed: return .channelClosed
                 case .localClosed: return .localClosed
+                case .transportHangup: return .transportHangup
                 }
             }
 
@@ -87,6 +90,7 @@ internal struct SSHChannelRelay {
                 case .keepGoing: break
                 case .channelClosed: return .channelClosed
                 case .localClosed: return .localClosed
+                case .transportHangup: return .transportHangup
                 }
             }
 
@@ -101,9 +105,15 @@ internal struct SSHChannelRelay {
         case keepGoing
         case channelClosed
         case localClosed
+        case transportHangup
     }
 
-    private func pumpChannelToLocal(_ buffer: UnsafeMutablePointer<CChar>) -> PumpOutcome {
+    private enum TransportWait {
+        case ready
+        case hangup
+    }
+
+    private func pumpChannelToLocal(_ buffer: UnsafeMutablePointer<CChar>, transportReadable: Bool) -> PumpOutcome {
         switch channelIO.read(into: buffer, count: bufferSize) {
         case .bytes(let count):
             var totalSent = 0
@@ -114,6 +124,7 @@ internal struct SSHChannelRelay {
             }
             return .keepGoing
         case .wouldBlock:
+            if transportReadable, transportAtEOF() { return .transportHangup }
             return .keepGoing
         case .closed:
             return .channelClosed
@@ -130,7 +141,10 @@ internal struct SSHChannelRelay {
             case .bytes(let count):
                 totalWritten += count
             case .wouldBlock:
-                if !waitForTransport(channelIO.blockDirections()) { return .channelClosed }
+                switch waitForTransport(channelIO.blockDirections()) {
+                case .ready: break
+                case .hangup: return .transportHangup
+                }
             case .closed:
                 return .channelClosed
             }
@@ -138,21 +152,30 @@ internal struct SSHChannelRelay {
         return .keepGoing
     }
 
-    private func waitForTransport(_ directions: RelayDirections) -> Bool {
+    private func waitForTransport(_ directions: RelayDirections) -> TransportWait {
         var events: Int16 = 0
         if directions.contains(.inbound) { events |= Int16(POLLIN) }
         if directions.contains(.outbound) { events |= Int16(POLLOUT) }
-        guard events != 0 else { return true }
+        guard events != 0 else { return .ready }
 
-        var pollFD = pollfd(fd: transportFD, events: events, revents: 0)
-        let rc = poll(&pollFD, 1, Self.writeWaitTimeoutMs)
-        if rc < 0 { return false }
-
-        switch relayFDState(pollFD.revents) {
-        case .stop, .drainThenStop:
-            return false
-        case .readable, .idle:
-            return true
+        while true {
+            var pollFD = pollfd(fd: transportFD, events: events, revents: 0)
+            let rc = poll(&pollFD, 1, Self.writeWaitTimeoutMs)
+            if rc < 0 {
+                if errno == EINTR { continue }
+                return .hangup
+            }
+            switch relayFDState(pollFD.revents) {
+            case .stop, .drainThenStop:
+                return .hangup
+            case .readable, .idle:
+                return .ready
+            }
         }
+    }
+
+    private func transportAtEOF() -> Bool {
+        var byte: UInt8 = 0
+        return recv(transportFD, &byte, 1, MSG_PEEK | MSG_DONTWAIT) == 0
     }
 }

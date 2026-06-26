@@ -46,6 +46,23 @@ struct SSHChannelRelayTests {
         #expect(result == .transportHangup)
     }
 
+    @Test("Transport half-close at EOF terminates instead of spinning")
+    func transportHalfCloseEOF() {
+        let local = SocketPair()
+        let transport = SocketPair()
+        defer { local.close(); transport.close() }
+
+        shutdown(transport.b, SHUT_WR)
+
+        let result = runRelay(
+            localFD: local.a,
+            transportFD: transport.a,
+            io: FakeChannelIO(fallback: .wouldBlock)
+        )
+
+        #expect(result == .transportHangup)
+    }
+
     @Test("Local hangup terminates instead of spinning")
     func localHangup() {
         let local = SocketPair()
