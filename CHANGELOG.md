@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Team plan: publish connections to a shared folder your team reads from, without sending passwords. Right-click a connection, then Share > Publish to Team Catalog. Teammates add the folder under Settings > Linked Folders.
 - Saved SQL queries and their folders now sync across your Macs when iCloud Sync is on. Toggle "Saved Queries" under Settings > Sync.
 
 ## [0.53.0] - 2026-06-25

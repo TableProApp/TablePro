@@ -104,10 +104,12 @@ struct LicenseTierTests {
 
     // MARK: - ProFeature required tiers
 
-    @Test("current Pro features all require only the starter tier")
-    func currentFeaturesRequireStarter() {
-        for feature in ProFeature.allCases {
-            #expect(feature.requiredTier == .starter)
-        }
+    @Test("Pro features require the starter tier; Team features require the team tier")
+    func featureRequiredTiers() {
+        #expect(ProFeature.iCloudSync.requiredTier == .starter)
+        #expect(ProFeature.encryptedExport.requiredTier == .starter)
+        #expect(ProFeature.envVarReferences.requiredTier == .starter)
+        #expect(ProFeature.linkedFolders.requiredTier == .starter)
+        #expect(ProFeature.teamCatalog.requiredTier == .team)
     }
 }
