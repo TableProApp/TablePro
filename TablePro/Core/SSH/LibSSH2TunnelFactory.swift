@@ -735,75 +735,23 @@ internal enum LibSSH2TunnelFactory {
         return Task.detached {
             await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
                 relayQueue.async {
-                    let bufferSize = 32_768
-                    let buffer = UnsafeMutablePointer<CChar>.allocate(capacity: bufferSize)
-                    defer {
-                        buffer.deallocate()
-                        Darwin.close(socketFD)
-                        continuation.resume()
-                    }
+                    let relay = SSHChannelRelay(
+                        localFD: socketFD,
+                        transportFD: sshSocketFD,
+                        channelIO: LibSSH2ChannelIO(
+                            channel: channel,
+                            session: session,
+                            sessionQueue: sessionQueue
+                        ),
+                        bufferSize: 32_768,
+                        isActive: { !Task.isCancelled }
+                    )
 
-                    while !Task.isCancelled {
-                        var pollFDs = [
-                            pollfd(fd: socketFD, events: Int16(POLLIN), revents: 0),
-                            pollfd(fd: sshSocketFD, events: Int16(POLLIN), revents: 0),
-                        ]
+                    _ = relay.run()
 
-                        let pollResult = poll(&pollFDs, 2, 500)
-                        if pollResult < 0 { break }
-
-                        // Channel -> socketpair (serialized libssh2 call)
-                        if pollFDs[1].revents & Int16(POLLIN) != 0 || pollResult == 0 {
-                            let channelRead: Int = sessionQueue.sync {
-                                Int(tablepro_libssh2_channel_read(channel, buffer, bufferSize))
-                            }
-                            if channelRead > 0 {
-                                var totalSent = 0
-                                while totalSent < channelRead {
-                                    let sent = send(
-                                        socketFD,
-                                        buffer.advanced(by: totalSent),
-                                        channelRead - totalSent,
-                                        0
-                                    )
-                                    if sent <= 0 { return }
-                                    totalSent += sent
-                                }
-                            } else if channelRead == 0
-                                || sessionQueue.sync(execute: { libssh2_channel_eof(channel) }) != 0 {
-                                return
-                            } else if channelRead != Int(LIBSSH2_ERROR_EAGAIN) {
-                                return
-                            }
-                        }
-
-                        // Socketpair -> channel
-                        if pollFDs[0].revents & Int16(POLLIN) != 0 {
-                            let socketRead = recv(socketFD, buffer, bufferSize, 0)
-                            if socketRead <= 0 { return }
-
-                            var totalWritten = 0
-                            while totalWritten < Int(socketRead) {
-                                let written: Int = sessionQueue.sync {
-                                    Int(tablepro_libssh2_channel_write(
-                                        channel,
-                                        buffer.advanced(by: totalWritten),
-                                        Int(socketRead) - totalWritten
-                                    ))
-                                }
-                                if written > 0 {
-                                    totalWritten += written
-                                } else if written == Int(LIBSSH2_ERROR_EAGAIN) {
-                                    var writePollFD = pollfd(
-                                        fd: sshSocketFD, events: Int16(POLLOUT), revents: 0
-                                    )
-                                    _ = poll(&writePollFD, 1, 1_000)
-                                } else {
-                                    return
-                                }
-                            }
-                        }
-                    }
+                    shutdown(socketFD, SHUT_RDWR)
+                    Darwin.close(socketFD)
+                    continuation.resume()
                 }
             }
         }
