@@ -52,12 +52,21 @@ internal enum ProFeature: String, CaseIterable {
             return String(localized: "Watch shared folders for connection files.")
         }
     }
+
+    /// The lowest license tier that unlocks this feature.
+    var requiredTier: LicenseTier {
+        switch self {
+        case .iCloudSync, .encryptedExport, .envVarReferences, .linkedFolders:
+            return .starter
+        }
+    }
 }
 
 /// Result of checking Pro feature availability
-internal enum ProFeatureAccess {
+internal enum ProFeatureAccess: Equatable {
     case available
     case unlicensed
     case expired
     case validationFailed
+    case requiresUpgrade(LicenseTier)
 }
