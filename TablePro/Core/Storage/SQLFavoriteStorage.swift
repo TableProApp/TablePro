@@ -336,6 +336,54 @@ internal actor SQLFavoriteStorage {
         return sqlite3_step(statement) == SQLITE_DONE
     }
 
+    func upsertFavorite(_ favorite: SQLFavorite) -> Bool {
+        let sql = """
+            INSERT INTO favorites (id, name, query, keyword, folder_id, connection_id, sort_order, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                name = excluded.name, query = excluded.query, keyword = excluded.keyword,
+                folder_id = excluded.folder_id, connection_id = excluded.connection_id,
+                sort_order = excluded.sort_order, updated_at = excluded.updated_at;
+            """
+
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
+            return false
+        }
+
+        defer { sqlite3_finalize(statement) }
+
+        let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+
+        sqlite3_bind_text(statement, 1, favorite.id.uuidString, -1, SQLITE_TRANSIENT)
+        sqlite3_bind_text(statement, 2, favorite.name, -1, SQLITE_TRANSIENT)
+        sqlite3_bind_text(statement, 3, favorite.query, -1, SQLITE_TRANSIENT)
+
+        if let keyword = favorite.keyword {
+            sqlite3_bind_text(statement, 4, keyword, -1, SQLITE_TRANSIENT)
+        } else {
+            sqlite3_bind_null(statement, 4)
+        }
+
+        if let folderId = favorite.folderId?.uuidString {
+            sqlite3_bind_text(statement, 5, folderId, -1, SQLITE_TRANSIENT)
+        } else {
+            sqlite3_bind_null(statement, 5)
+        }
+
+        if let connectionId = favorite.connectionId?.uuidString {
+            sqlite3_bind_text(statement, 6, connectionId, -1, SQLITE_TRANSIENT)
+        } else {
+            sqlite3_bind_null(statement, 6)
+        }
+
+        sqlite3_bind_int(statement, 7, Int32(favorite.sortOrder))
+        sqlite3_bind_double(statement, 8, favorite.createdAt.timeIntervalSince1970)
+        sqlite3_bind_double(statement, 9, favorite.updatedAt.timeIntervalSince1970)
+
+        return sqlite3_step(statement) == SQLITE_DONE
+    }
+
     func deleteFavorite(id: UUID) -> Bool {
         let sql = "DELETE FROM favorites WHERE id = ?;"
         var statement: OpaquePointer?
@@ -654,6 +702,47 @@ internal actor SQLFavoriteStorage {
         sqlite3_bind_int(statement, 4, Int32(folder.sortOrder))
         sqlite3_bind_double(statement, 5, folder.updatedAt.timeIntervalSince1970)
         sqlite3_bind_text(statement, 6, folder.id.uuidString, -1, SQLITE_TRANSIENT)
+
+        return sqlite3_step(statement) == SQLITE_DONE
+    }
+
+    func upsertFolder(_ folder: SQLFavoriteFolder) -> Bool {
+        let sql = """
+            INSERT INTO folders (id, name, parent_id, connection_id, sort_order, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                name = excluded.name, parent_id = excluded.parent_id,
+                connection_id = excluded.connection_id, sort_order = excluded.sort_order,
+                updated_at = excluded.updated_at;
+            """
+
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
+            return false
+        }
+
+        defer { sqlite3_finalize(statement) }
+
+        let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+
+        sqlite3_bind_text(statement, 1, folder.id.uuidString, -1, SQLITE_TRANSIENT)
+        sqlite3_bind_text(statement, 2, folder.name, -1, SQLITE_TRANSIENT)
+
+        if let parentId = folder.parentId?.uuidString {
+            sqlite3_bind_text(statement, 3, parentId, -1, SQLITE_TRANSIENT)
+        } else {
+            sqlite3_bind_null(statement, 3)
+        }
+
+        if let connectionId = folder.connectionId?.uuidString {
+            sqlite3_bind_text(statement, 4, connectionId, -1, SQLITE_TRANSIENT)
+        } else {
+            sqlite3_bind_null(statement, 4)
+        }
+
+        sqlite3_bind_int(statement, 5, Int32(folder.sortOrder))
+        sqlite3_bind_double(statement, 6, folder.createdAt.timeIntervalSince1970)
+        sqlite3_bind_double(statement, 7, folder.updatedAt.timeIntervalSince1970)
 
         return sqlite3_step(statement) == SQLITE_DONE
     }
