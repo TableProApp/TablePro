@@ -401,7 +401,7 @@ extension MainContentCoordinator {
             }
             await SchemaService.shared.invalidate(connectionId: connectionId)
 
-            await refreshTables()
+            await refreshTables(currentDatabaseOnly: true)
         } catch {
             toolbarState.currentDatabase = previousDatabase
 

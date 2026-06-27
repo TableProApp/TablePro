@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Database pickers in the toolbar switcher, quick switcher, and query editor now follow the sidebar database filter and only list enabled databases.
 - The per-tab database picker is read-only for connections that must reconnect to switch databases (PostgreSQL, Redshift, CockroachDB).
 - Switching table tabs no longer blocks on writing filter settings to disk, so tab changes feel smoother.
+- Switching to a table tab in a different database refreshes only the active database's table list instead of every expanded database, so cross-database tab switches are faster.
 
 ### Fixed
 

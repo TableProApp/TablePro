@@ -582,21 +582,21 @@ final class MainContentCoordinator {
         _teardownScheduled.withLock { $0 = false }
     }
 
-    func refreshTables() async {
+    func refreshTables(currentDatabaseOnly: Bool = false) async {
         if let existing = schemaReloadTask {
             await existing.value
             return
         }
         let task = Task { [weak self] in
             guard let self else { return }
-            await self.reloadSchema()
+            await self.reloadSchema(currentDatabaseOnly: currentDatabaseOnly)
         }
         schemaReloadTask = task
         await task.value
         schemaReloadTask = nil
     }
 
-    private func reloadSchema() async {
+    private func reloadSchema(currentDatabaseOnly: Bool = false) async {
         schemaColumns.removeAll()
         let schemaService = services.schemaService
         let connectionId = connectionId
@@ -615,7 +615,8 @@ final class MainContentCoordinator {
         } catch {
             Self.logger.warning("Schema refresh failed: \(error.localizedDescription, privacy: .public)")
         }
-        await DatabaseTreeMetadataService.shared.refreshLoadedTables(connectionId: connectionId)
+        let database = currentDatabaseOnly ? activeDatabaseName : nil
+        await DatabaseTreeMetadataService.shared.refreshLoadedTables(connectionId: connectionId, database: database)
         await reconcilePostSchemaLoad()
     }
 
