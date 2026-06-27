@@ -231,8 +231,14 @@ final class FilterSettingsStorage {
             schemaName: schemaName
         )
         let fileURL = fileURL(forKey: key)
-        removeFile(at: fileURL, label: tableName)
         lastFiltersCache.removeValue(forKey: key)
+        ioQueue.async {
+            try? FileManager.default.removeItem(at: fileURL)
+        }
+    }
+
+    func waitForPendingDiskWrites() {
+        ioQueue.sync {}
     }
 
     func loadBrowseSearch(
@@ -328,31 +334,39 @@ final class FilterSettingsStorage {
             encodedPrefixes.contains { name.hasPrefix($0) }
         }
 
-        let fm = FileManager.default
-        do {
-            let files = try fm.contentsOfDirectory(at: filterStateDirectory, includingPropertiesForKeys: nil)
-            for file in files where matchesConnection(file.lastPathComponent) {
-                try? fm.removeItem(at: file)
-            }
-        } catch {
-            Self.logger.error("Failed to enumerate filter state directory: \(error.localizedDescription)")
-        }
         lastFiltersCache = lastFiltersCache.filter { !matchesConnection($0.key) }
         browseSearchCache = browseSearchCache.filter { !matchesConnection($0.key) }
+
+        let directory = filterStateDirectory
+        ioQueue.async {
+            let fm = FileManager.default
+            do {
+                let files = try fm.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
+                for file in files where encodedPrefixes.contains(where: { file.lastPathComponent.hasPrefix($0) }) {
+                    try? fm.removeItem(at: file)
+                }
+            } catch {
+                Self.logger.error("Failed to enumerate filter state directory: \(error.localizedDescription)")
+            }
+        }
     }
 
     func clearAllLastFilters() {
-        let fm = FileManager.default
-        do {
-            let files = try fm.contentsOfDirectory(at: filterStateDirectory, includingPropertiesForKeys: nil)
-            for file in files where file.pathExtension == "json" {
-                try? fm.removeItem(at: file)
-            }
-        } catch {
-            Self.logger.error("Failed to enumerate filter state directory: \(error.localizedDescription)")
-        }
         lastFiltersCache.removeAll()
         browseSearchCache.removeAll()
+
+        let directory = filterStateDirectory
+        ioQueue.async {
+            let fm = FileManager.default
+            do {
+                let files = try fm.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
+                for file in files where file.pathExtension == "json" {
+                    try? fm.removeItem(at: file)
+                }
+            } catch {
+                Self.logger.error("Failed to enumerate filter state directory: \(error.localizedDescription)")
+            }
+        }
     }
 
     private func fileURL(forKey key: String) -> URL {
