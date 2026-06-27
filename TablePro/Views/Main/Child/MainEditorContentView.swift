@@ -269,10 +269,17 @@ struct MainEditorContentView: View {
         PluginManager.shared.containerSwitchTarget(for: connection.type)
     }
 
-    private var filteredContainerDatabases: [DatabaseMetadata] {
+    private func containerDatabases(for tab: QueryTab) -> [DatabaseMetadata] {
         guard containerSwitchTarget == .database else { return [] }
+        let all = treeService.databases(for: connectionId)
         let selected = SharedSidebarState.forConnection(connectionId).databaseFilterSelected
-        return DatabaseTreeVisibility.visible(databases: treeService.databases(for: connectionId), selected: selected)
+        var visible = DatabaseTreeVisibility.visible(databases: all, selected: selected)
+        let bound = containerName(for: tab)
+        if !bound.isEmpty, !visible.contains(where: { $0.name == bound }),
+           let boundDatabase = all.first(where: { $0.name == bound }) {
+            visible.insert(boundDatabase, at: 0)
+        }
+        return visible
     }
 
     private var isContainerSwitchReadOnly: Bool {
@@ -291,8 +298,14 @@ struct MainEditorContentView: View {
 
     private func changeContainer(for tab: QueryTab, to name: String) {
         let tabId = tab.id
+        let previousBinding = tab.tableContext.databaseName
         tabManager.mutate(tabId: tabId) { $0.tableContext.databaseName = name }
-        Task { await coordinator.switchDatabase(to: name) }
+        Task {
+            let switched = await coordinator.switchDatabase(to: name, persist: false)
+            if !switched {
+                tabManager.mutate(tabId: tabId) { $0.tableContext.databaseName = previousBinding }
+            }
+        }
     }
 
     // MARK: - Query Tab Content
@@ -354,7 +367,7 @@ struct MainEditorContentView: View {
                             coordinator.favoriteDialogQuery = FavoriteDialogQuery(query: text)
                         },
                         onClearResults: { coordinator.clearActiveQueryResults() },
-                        availableContainers: filteredContainerDatabases,
+                        availableContainers: containerDatabases(for: tab),
                         selectedContainerName: containerName(for: tab),
                         containerEntityName: containerEntityName,
                         isContainerSwitchReadOnly: isContainerSwitchReadOnly,

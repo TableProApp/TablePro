@@ -255,7 +255,7 @@ extension DatabaseManager {
 
     // MARK: - Database / Schema Switching
 
-    func switchDatabase(to database: String, for connectionId: UUID) async throws {
+    func switchDatabase(to database: String, for connectionId: UUID, persist: Bool = true) async throws {
         guard let driver = driver(for: connectionId) else {
             throw DatabaseError.notConnected
         }
@@ -285,7 +285,9 @@ extension DatabaseManager {
             }
         }
 
-        appSettingsStorage.saveLastDatabase(database, for: connectionId)
+        if persist {
+            appSettingsStorage.saveLastDatabase(database, for: connectionId)
+        }
     }
 
     func switchSchema(to schema: String, for connectionId: UUID) async throws {

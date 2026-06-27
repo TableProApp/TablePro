@@ -367,17 +367,21 @@ extension MainContentCoordinator {
 
     // MARK: - Database Switching
 
-    /// Switch to a different database (called from database switcher)
-    func switchDatabase(to database: String) async {
+    /// Switch to a different database (called from database switcher).
+    /// `persist` records the database as the connection's saved default; pass `false`
+    /// for transient per-tab switches that must not change the connection default.
+    @discardableResult
+    func switchDatabase(to database: String, persist: Bool = true) async -> Bool {
         let previousDatabase = toolbarState.currentDatabase
         toolbarState.currentDatabase = database
 
         do {
-            try await DatabaseManager.shared.switchDatabase(to: database, for: connectionId)
+            try await DatabaseManager.shared.switchDatabase(to: database, for: connectionId, persist: persist)
 
             await SchemaService.shared.invalidate(connectionId: connectionId)
 
             await refreshTables(currentDatabaseOnly: true)
+            return true
         } catch {
             toolbarState.currentDatabase = previousDatabase
 
@@ -390,6 +394,7 @@ extension MainContentCoordinator {
                 message: error.localizedDescription,
                 window: contentWindow
             )
+            return false
         }
     }
 

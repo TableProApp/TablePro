@@ -21,6 +21,8 @@ struct QueryContainerPicker: View {
             readOnlyLabel
         } else if containers.count > 1 {
             menu
+        } else if !selectedName.isEmpty {
+            indicatorLabel
         } else {
             EmptyView()
         }
@@ -69,5 +71,17 @@ struct QueryContainerPicker: View {
         }
         .foregroundStyle(.secondary)
         .help(String(format: String(localized: "%@ switches reconnect the session"), entityName))
+    }
+
+    private var indicatorLabel: some View {
+        HStack(spacing: 4) {
+            Image(systemName: selectedIcon)
+                .font(.body)
+            Text(selectedName)
+                .font(.callout)
+                .lineLimit(1)
+        }
+        .foregroundStyle(.secondary)
+        .accessibilityLabel(entityName)
     }
 }
