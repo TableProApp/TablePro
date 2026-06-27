@@ -90,6 +90,7 @@ final class FilterSettingsStorage {
     private let filterStateDirectory: URL
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
+    private let ioQueue = DispatchQueue(label: "com.TablePro.FilterSettingsStorage.io", qos: .utility)
 
     private var cachedSettings: FilterSettings?
     private var lastFiltersCache: [String: [TableFilter]] = [:]
@@ -196,10 +197,8 @@ final class FilterSettingsStorage {
 
         guard !filters.isEmpty else {
             lastFiltersCache.removeValue(forKey: key)
-            Task.detached(priority: .utility) {
-                if FileManager.default.fileExists(atPath: fileURL.path) {
-                    try? FileManager.default.removeItem(at: fileURL)
-                }
+            ioQueue.async {
+                try? FileManager.default.removeItem(at: fileURL)
             }
             return
         }
@@ -207,7 +206,7 @@ final class FilterSettingsStorage {
         lastFiltersCache[key] = filters
         do {
             let data = try encoder.encode(filters)
-            Task.detached(priority: .utility) {
+            ioQueue.async {
                 do {
                     try data.write(to: fileURL, options: .atomic)
                 } catch {
