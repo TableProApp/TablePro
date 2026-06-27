@@ -32,7 +32,7 @@ struct QueryContainerPicker: View {
 
     private var menu: some View {
         Menu {
-            ForEach(containers, id: \.name) { container in
+            ForEach(containers) { container in
                 Button {
                     if container.name != selectedName { onChange(container.name) }
                 } label: {

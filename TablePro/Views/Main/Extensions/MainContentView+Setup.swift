@@ -189,7 +189,7 @@ extension MainContentView {
 
         Task {
             if let targetDatabase, targetDatabase != session.activeDatabase {
-                await coordinator.switchDatabase(to: targetDatabase, clearTabs: false)
+                await coordinator.switchDatabase(to: targetDatabase)
             }
             if let activeSchema, !activeSchema.isEmpty, activeSchema != session.currentSchema {
                 await coordinator.switchSchema(to: activeSchema)

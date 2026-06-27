@@ -367,38 +367,14 @@ extension MainContentCoordinator {
 
     // MARK: - Database Switching
 
-    /// Close all sibling native window-tabs except the current key window.
-    /// Each table opened via WindowOpener creates a separate NSWindow in the same
-    /// tab group. Clearing `tabManager.tabs` only affects the in-app state of the
-    /// *current* window — other NSWindows remain open with stale content.
-    private func closeSiblingNativeWindows() {
-        guard let keyWindow = NSApp.keyWindow else { return }
-        let siblings = keyWindow.tabbedWindows ?? []
-        let ownWindows = Set(WindowLifecycleMonitor.shared.windows(for: connectionId).map { ObjectIdentifier($0) })
-        for sibling in siblings where sibling !== keyWindow {
-            // Only close windows belonging to this connection to avoid
-            // destroying tabs from other connections when groupAllConnectionTabs is ON
-            guard ownWindows.contains(ObjectIdentifier(sibling)) else { continue }
-            sibling.close()
-        }
-    }
-
     /// Switch to a different database (called from database switcher)
-    func switchDatabase(to database: String, clearTabs: Bool = false) async {
-        if clearTabs { clearFilterState() }
+    func switchDatabase(to database: String) async {
         let previousDatabase = toolbarState.currentDatabase
         toolbarState.currentDatabase = database
 
         do {
             try await DatabaseManager.shared.switchDatabase(to: database, for: connectionId)
 
-            if clearTabs {
-                closeSiblingNativeWindows()
-                persistence.saveNowSync(tabs: tabManager.tabs, selectedTabId: tabManager.selectedTabId)
-                tabSessionRegistry.removeAll()
-                tabManager.tabs = []
-                tabManager.selectedTabId = nil
-            }
             await SchemaService.shared.invalidate(connectionId: connectionId)
 
             await refreshTables(currentDatabaseOnly: true)

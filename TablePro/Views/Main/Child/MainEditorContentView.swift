@@ -292,7 +292,7 @@ struct MainEditorContentView: View {
     private func changeContainer(for tab: QueryTab, to name: String) {
         let tabId = tab.id
         tabManager.mutate(tabId: tabId) { $0.tableContext.databaseName = name }
-        Task { await coordinator.switchDatabase(to: name, clearTabs: false) }
+        Task { await coordinator.switchDatabase(to: name) }
     }
 
     // MARK: - Query Tab Content
