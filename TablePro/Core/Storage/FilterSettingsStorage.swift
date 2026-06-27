@@ -291,17 +291,25 @@ final class FilterSettingsStorage {
         let fileURL = fileURL(forKey: key)
 
         guard state.isActive else {
-            removeFile(at: fileURL, label: tableName)
             browseSearchCache.removeValue(forKey: key)
+            ioQueue.async {
+                try? FileManager.default.removeItem(at: fileURL)
+            }
             return
         }
 
         do {
             let data = try encoder.encode(state)
-            try data.write(to: fileURL, options: .atomic)
             browseSearchCache[key] = state
+            ioQueue.async {
+                do {
+                    try data.write(to: fileURL, options: .atomic)
+                } catch {
+                    Self.logger.error("Failed to persist browse search for \(tableName): \(error.localizedDescription)")
+                }
+            }
         } catch {
-            Self.logger.error("Failed to save browse search for \(tableName): \(error)")
+            Self.logger.error("Failed to encode browse search for \(tableName): \(error)")
         }
     }
 
@@ -371,15 +379,6 @@ final class FilterSettingsStorage {
 
     private func fileURL(forKey key: String) -> URL {
         filterStateDirectory.appendingPathComponent("\(key).json")
-    }
-
-    private func removeFile(at fileURL: URL, label: String) {
-        guard FileManager.default.fileExists(atPath: fileURL.path) else { return }
-        do {
-            try FileManager.default.removeItem(at: fileURL)
-        } catch {
-            Self.logger.error("Failed to remove last filters file for \(label): \(error.localizedDescription)")
-        }
     }
 
     private func compositeKey(

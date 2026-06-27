@@ -269,4 +269,37 @@ struct FilterSettingsStorageTests {
             reader.loadLastFilters(for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil).isEmpty
         )
     }
+
+    @Test("Browse search persists to disk and clearing it leaves nothing")
+    func browseSearchPersistsAndClears() {
+        let suiteName = "FilterSettingsStorageTests-\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: suiteName) else {
+            fatalError("Failed to create UserDefaults suite for tests")
+        }
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("FilterSettingsStorageTests-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let connectionId = UUID()
+        let state = BrowseSearchState(pattern: "user:*", typeScope: "hash")
+
+        let writer = FilterSettingsStorage(filterStateDirectory: directory, defaults: defaults)
+        writer.saveBrowseSearch(state, for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil)
+        writer.waitForPendingDiskWrites()
+
+        let reader = FilterSettingsStorage(filterStateDirectory: directory, defaults: defaults)
+        #expect(
+            reader.loadBrowseSearch(for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil) == state
+        )
+
+        writer.saveBrowseSearch(
+            BrowseSearchState(), for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil
+        )
+        writer.waitForPendingDiskWrites()
+
+        let afterClear = FilterSettingsStorage(filterStateDirectory: directory, defaults: defaults)
+        #expect(
+            !afterClear.loadBrowseSearch(for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil)
+                .isActive
+        )
+    }
 }
