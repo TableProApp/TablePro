@@ -58,6 +58,8 @@ struct MainEditorContentView: View {
     @State private var serverDashboardViewModels: [UUID: ServerDashboardViewModel] = [:]
     @State private var dataTabDelegate = DataTabGridDelegate()
 
+    @Bindable private var treeService = DatabaseTreeMetadataService.shared
+
     // Native macOS window tabs — no LRU tracking needed (single tab per window)
 
     // MARK: - Environment
@@ -261,6 +263,38 @@ struct MainEditorContentView: View {
         .id(tab.id)
     }
 
+    // MARK: - Per-tab container picker
+
+    private var containerSwitchTarget: ContainerSwitchTarget? {
+        PluginManager.shared.containerSwitchTarget(for: connection.type)
+    }
+
+    private var filteredContainerDatabases: [DatabaseMetadata] {
+        guard containerSwitchTarget == .database else { return [] }
+        let selected = SharedSidebarState.forConnection(connectionId).databaseFilterSelected
+        return DatabaseTreeVisibility.visible(databases: treeService.databases(for: connectionId), selected: selected)
+    }
+
+    private var isContainerSwitchReadOnly: Bool {
+        guard containerSwitchTarget == .database else { return false }
+        return PluginManager.shared.requiresReconnectForDatabaseSwitch(for: connection.type)
+    }
+
+    private var containerEntityName: String {
+        PluginManager.shared.containerEntityName(for: connection.type)
+    }
+
+    private func containerName(for tab: QueryTab) -> String {
+        let bound = tab.tableContext.databaseName
+        return bound.isEmpty ? coordinator.activeDatabaseName : bound
+    }
+
+    private func changeContainer(for tab: QueryTab, to name: String) {
+        let tabId = tab.id
+        tabManager.mutate(tabId: tabId) { $0.tableContext.databaseName = name }
+        Task { await coordinator.switchDatabase(to: name, clearTabs: false) }
+    }
+
     // MARK: - Query Tab Content
 
     @ViewBuilder
@@ -319,7 +353,12 @@ struct MainEditorContentView: View {
                             guard !text.isEmpty else { return }
                             coordinator.favoriteDialogQuery = FavoriteDialogQuery(query: text)
                         },
-                        onClearResults: { coordinator.clearActiveQueryResults() }
+                        onClearResults: { coordinator.clearActiveQueryResults() },
+                        availableContainers: filteredContainerDatabases,
+                        selectedContainerName: containerName(for: tab),
+                        containerEntityName: containerEntityName,
+                        isContainerSwitchReadOnly: isContainerSwitchReadOnly,
+                        onContainerChanged: { name in changeContainer(for: tab, to: name) }
                     )
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)

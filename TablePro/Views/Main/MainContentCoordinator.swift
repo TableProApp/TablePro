@@ -1166,6 +1166,12 @@ final class MainContentCoordinator {
             )
         }
         let connId = connectionId
+        let currentDatabase = activeDatabaseName
+        let targetDatabase = tab.tableContext.databaseName.isEmpty
+            ? currentDatabase
+            : tab.tableContext.databaseName
+        let perTabSwitchAllowed = !services.pluginManager.requiresReconnectForDatabaseSwitch(for: connection.type)
+        let needsDatabaseSwitch = perTabSwitchAllowed && !targetDatabase.isEmpty && targetDatabase != currentDatabase
 
         currentQueryTask = Task { [weak self] in
             guard let self else { return }
@@ -1183,6 +1189,10 @@ final class MainContentCoordinator {
                     }
                     return
                 }
+            }
+
+            if needsDatabaseSwitch {
+                await switchDatabaseBeforeExecution(to: targetDatabase, connectionId: connId)
             }
 
             let schemaTask: Task<FetchedTableSchema, Error>?

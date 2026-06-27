@@ -31,6 +31,11 @@ struct QueryEditorView: View {
     var onAIOptimize: ((String) -> Void)?
     var onSaveAsFavorite: ((String) -> Void)?
     var onClearResults: (() -> Void)?
+    var availableContainers: [DatabaseMetadata] = []
+    var selectedContainerName: String = ""
+    var containerEntityName: String = ""
+    var isContainerSwitchReadOnly: Bool = false
+    var onContainerChanged: ((String) -> Void)?
 
     @State private var vimMode: VimMode = .normal
 
@@ -85,6 +90,14 @@ struct QueryEditorView: View {
             if AppSettingsManager.shared.editor.vimModeEnabled {
                 VimModeIndicatorView(mode: vimMode)
             }
+
+            QueryContainerPicker(
+                containers: availableContainers,
+                selectedName: selectedContainerName,
+                entityName: containerEntityName,
+                isReadOnly: isContainerSwitchReadOnly,
+                onChange: { name in onContainerChanged?(name) }
+            )
 
             Spacer()
 
