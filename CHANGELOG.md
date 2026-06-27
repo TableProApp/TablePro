@@ -14,11 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Switching the active database keeps existing tabs open instead of closing them, so tabs for different databases can stay open together.
-- Database pickers in the toolbar switcher, quick switcher, and query editor now follow the sidebar database filter and only list enabled databases.
-- The per-tab database picker is read-only for connections that must reconnect to switch databases (PostgreSQL, Redshift, CockroachDB).
-- Switching table tabs no longer blocks on writing filter settings to disk, so tab changes feel smoother.
-- Switching to a table tab in a different database refreshes only the active database's table list instead of every expanded database, so cross-database tab switches are faster.
+- Switching the active database keeps existing tabs open instead of closing them.
+- The toolbar, quick switcher, and query editor database pickers follow the sidebar database filter.
+- Switching table tabs is faster: filter settings persist off the main thread, and only the active database's table list refreshes.
 
 ### Fixed
 
