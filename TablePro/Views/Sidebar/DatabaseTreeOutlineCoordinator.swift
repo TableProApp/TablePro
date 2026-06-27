@@ -529,9 +529,24 @@ extension DatabaseTreeOutlineCoordinator: NSOutlineViewDelegate {
         guard !isSyncingSelection, !isReloading else { return }
         let refs = Set(selectedRefs())
         if let added = SelectionDelta.singleAddition(old: lastSelection, new: refs) {
-            scheduleSingleClickOpen(added)
+            if isKeyboardDrivenSelection {
+                pendingSingleClickWork?.cancel()
+                pendingSingleClickWork = nil
+                open(added, activateGridFocus: false)
+            } else {
+                scheduleSingleClickOpen(added)
+            }
         }
         lastSelection = refs
+    }
+
+    private var isKeyboardDrivenSelection: Bool {
+        switch NSApp.currentEvent?.type {
+        case .keyDown, .keyUp:
+            return true
+        default:
+            return false
+        }
     }
 
     private func scheduleSingleClickOpen(_ ref: DatabaseTreeTableRef) {
