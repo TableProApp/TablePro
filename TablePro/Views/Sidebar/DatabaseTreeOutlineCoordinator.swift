@@ -541,6 +541,7 @@ extension DatabaseTreeOutlineCoordinator: NSOutlineViewDelegate {
     }
 
     private var isKeyboardDrivenSelection: Bool {
+        guard let outlineView, outlineView.window?.firstResponder === outlineView else { return false }
         switch NSApp.currentEvent?.type {
         case .keyDown, .keyUp:
             return true
