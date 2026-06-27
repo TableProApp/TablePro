@@ -195,17 +195,27 @@ final class FilterSettingsStorage {
         let fileURL = fileURL(forKey: key)
 
         guard !filters.isEmpty else {
-            removeFile(at: fileURL, label: tableName)
             lastFiltersCache.removeValue(forKey: key)
+            Task.detached(priority: .utility) {
+                if FileManager.default.fileExists(atPath: fileURL.path) {
+                    try? FileManager.default.removeItem(at: fileURL)
+                }
+            }
             return
         }
 
+        lastFiltersCache[key] = filters
         do {
             let data = try encoder.encode(filters)
-            try data.write(to: fileURL, options: .atomic)
-            lastFiltersCache[key] = filters
+            Task.detached(priority: .utility) {
+                do {
+                    try data.write(to: fileURL, options: .atomic)
+                } catch {
+                    Self.logger.error("Failed to persist last filters for \(tableName): \(error.localizedDescription)")
+                }
+            }
         } catch {
-            Self.logger.error("Failed to save last filters for \(tableName): \(error)")
+            Self.logger.error("Failed to encode last filters for \(tableName): \(error)")
         }
     }
 
