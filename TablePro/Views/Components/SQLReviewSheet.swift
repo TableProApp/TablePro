@@ -87,7 +87,7 @@ struct SQLReviewSheet: View {
         return build(statements: statements, isJavaScript: isJavaScript)
     }
 
-    private nonisolated static func build(statements: [String], isJavaScript: Bool) -> Prepared {
+    nonisolated private static func build(statements: [String], isJavaScript: Bool) -> Prepared {
         var full = statements
             .map { $0.hasSuffix(";") ? $0 : $0 + ";" }
             .joined(separator: "\n\n")
@@ -95,16 +95,17 @@ struct SQLReviewSheet: View {
             full = convertExtendedJsonToShellSyntax(full)
         }
 
-        let fullCount = full.count
+        let nsFull = full as NSString
+        let fullCount = nsFull.length
         if fullCount > maxDisplayChars {
-            let head = full.prefix(maxDisplayChars)
+            let head = nsFull.substring(to: maxDisplayChars)
             let remaining = fullCount - maxDisplayChars
             let note = String(
                 format: String(localized: "-- … %d more characters not shown; use Copy All for the full output."),
                 remaining
             )
             return Prepared(
-                display: String(head) + "\n\n" + note,
+                display: head + "\n\n" + note,
                 full: full,
                 mode: .truncated
             )
