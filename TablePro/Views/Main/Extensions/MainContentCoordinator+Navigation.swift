@@ -19,7 +19,8 @@ extension MainContentCoordinator {
         _ table: TableInfo,
         showStructure: Bool = false,
         forceNonPreview: Bool = false,
-        activateGridFocus: Bool = false
+        activateGridFocus: Bool = false,
+        forceNewWindowTab: Bool = false
     ) {
         openTableTab(
             table.name,
@@ -27,7 +28,8 @@ extension MainContentCoordinator {
             showStructure: showStructure,
             isView: table.type == .view,
             forceNonPreview: forceNonPreview,
-            activateGridFocus: activateGridFocus
+            activateGridFocus: activateGridFocus,
+            forceNewWindowTab: forceNewWindowTab
         )
     }
 
@@ -382,7 +384,7 @@ extension MainContentCoordinator {
     }
 
     /// Switch to a different database (called from database switcher)
-    func switchDatabase(to database: String, clearTabs: Bool = true) async {
+    func switchDatabase(to database: String, clearTabs: Bool = false) async {
         if clearTabs { clearFilterState() }
         let previousDatabase = toolbarState.currentDatabase
         toolbarState.currentDatabase = database

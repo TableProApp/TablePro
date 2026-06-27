@@ -29,6 +29,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
     private var nodeCache: [String: DatabaseTreeNode] = [:]
     private var childrenCache: [String: [DatabaseTreeNode]] = [:]
     private var lastSelection: Set<DatabaseTreeTableRef> = []
+    private var pendingSingleClickWork: DispatchWorkItem?
     private var isApplyingExpansion = false
     private var isSyncingSelection = false
     private var isReloading = false
@@ -395,10 +396,10 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
         isSyncingSelection = false
     }
 
-    private func open(_ ref: DatabaseTreeTableRef, activateGridFocus: Bool) {
+    private func open(_ ref: DatabaseTreeTableRef, activateGridFocus: Bool, forceNewWindowTab: Bool = false) {
         Task { @MainActor in
             await activate(ref)
-            mainCoordinator?.openTableTab(ref.table, activateGridFocus: activateGridFocus)
+            mainCoordinator?.openTableTab(ref.table, activateGridFocus: activateGridFocus, forceNewWindowTab: forceNewWindowTab)
         }
     }
 
@@ -472,7 +473,9 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
         guard let outlineView, outlineView.clickedRow >= 0,
               let node = outlineView.item(atRow: outlineView.clickedRow) as? DatabaseTreeNode else { return }
         if let ref = node.tableRef {
-            open(ref, activateGridFocus: true)
+            pendingSingleClickWork?.cancel()
+            pendingSingleClickWork = nil
+            open(ref, activateGridFocus: true, forceNewWindowTab: true)
             return
         }
         guard node.isExpandable else { return }
@@ -526,9 +529,18 @@ extension DatabaseTreeOutlineCoordinator: NSOutlineViewDelegate {
         guard !isSyncingSelection, !isReloading else { return }
         let refs = Set(selectedRefs())
         if let added = SelectionDelta.singleAddition(old: lastSelection, new: refs) {
-            open(added, activateGridFocus: false)
+            scheduleSingleClickOpen(added)
         }
         lastSelection = refs
+    }
+
+    private func scheduleSingleClickOpen(_ ref: DatabaseTreeTableRef) {
+        pendingSingleClickWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            self?.open(ref, activateGridFocus: false)
+        }
+        pendingSingleClickWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + NSEvent.doubleClickInterval, execute: work)
     }
 
     private func makeCell() -> DatabaseTreeCellView {
