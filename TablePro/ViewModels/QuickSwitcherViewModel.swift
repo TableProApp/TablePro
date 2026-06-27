@@ -126,6 +126,7 @@ internal final class QuickSwitcherViewModel {
         }
 
         let switchTarget = services.pluginManager.containerSwitchTarget(for: databaseType)
+        let databaseFilter = SharedSidebarState.forConnection(connectionId).databaseFilterSelected
         do {
             let databases = try await services.databaseManager.withMetadataDriver(connectionId: connectionId) { driver in
                 try await driver.fetchDatabases()
@@ -134,6 +135,7 @@ internal final class QuickSwitcherViewModel {
                 ? services.pluginManager.containerEntityName(for: databaseType)
                 : String(localized: "Database")
             for db in databases {
+                if !databaseFilter.isEmpty && !databaseFilter.contains(db) { continue }
                 items.append(QuickSwitcherItem(
                     id: "db_\(db)",
                     name: db,

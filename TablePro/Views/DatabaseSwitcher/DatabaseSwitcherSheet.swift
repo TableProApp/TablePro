@@ -43,7 +43,8 @@ struct DatabaseSwitcherSheet: View {
             wrappedValue: DatabaseSwitcherViewModel(
                 connectionId: connectionId,
                 currentDatabase: currentDatabase,
-                databaseType: databaseType
+                databaseType: databaseType,
+                sidebarState: SharedSidebarState.forConnection(connectionId)
             ))
     }
 

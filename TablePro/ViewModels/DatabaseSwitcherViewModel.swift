@@ -27,11 +27,18 @@ final class DatabaseSwitcherViewModel {
     private let currentDatabase: String?
     private let databaseType: DatabaseType
     @ObservationIgnored private let services: AppServices
+    private let sidebarState: SharedSidebarState?
+
+    private var treeVisibleDatabases: [DatabaseMetadata] {
+        guard switchTarget == .database, let sidebarState else { return databases }
+        return DatabaseTreeVisibility.visible(databases: databases, selected: sidebarState.databaseFilterSelected)
+    }
 
     var filteredDatabases: [DatabaseMetadata] {
+        let visible = treeVisibleDatabases
         let trimmed = searchText.trimmingCharacters(in: .whitespaces)
-        guard !trimmed.isEmpty else { return databases }
-        return databases
+        guard !trimmed.isEmpty else { return visible }
+        return visible
             .compactMap { database -> (DatabaseMetadata, Int)? in
                 guard let match = FuzzyMatcher.match(query: trimmed, candidate: database.name) else { return nil }
                 return (database, match.score)
@@ -47,12 +54,14 @@ final class DatabaseSwitcherViewModel {
         connectionId: UUID,
         currentDatabase: String?,
         databaseType: DatabaseType,
-        services: AppServices = .live
+        services: AppServices = .live,
+        sidebarState: SharedSidebarState? = nil
     ) {
         self.connectionId = connectionId
         self.currentDatabase = currentDatabase
         self.databaseType = databaseType
         self.services = services
+        self.sidebarState = sidebarState
         self.switchTarget = services.pluginManager.containerSwitchTarget(for: databaseType) ?? .database
     }
 
