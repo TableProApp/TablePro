@@ -132,9 +132,35 @@ final class MSSQLSchemaQueriesTests: XCTestCase {
         XCTAssertEqual(MSSQLSchemaQueries.qualifiedName(schema: "", table: "routeCache"), "[routeCache]")
     }
 
+    func testResolvedObjectSchemaPrefersExplicitSchema() {
+        XCTAssertEqual(MSSQLSchemaQueries.resolvedObjectSchema("audit", currentSchema: "sales"), "audit")
+    }
+
+    func testResolvedObjectSchemaFallsBackToCurrentSchema() {
+        XCTAssertEqual(MSSQLSchemaQueries.resolvedObjectSchema(nil, currentSchema: "sales"), "sales")
+        XCTAssertEqual(MSSQLSchemaQueries.resolvedObjectSchema("", currentSchema: "sales"), "sales")
+    }
+
+    func testResolvedObjectSchemaReturnsNilWhenBothSchemasAreBlank() {
+        XCTAssertNil(MSSQLSchemaQueries.resolvedObjectSchema(nil, currentSchema: nil))
+        XCTAssertNil(MSSQLSchemaQueries.resolvedObjectSchema("", currentSchema: ""))
+    }
+
     func testBrowseQualifiesNonDefaultSchema() {
         let sql = MSSQLSchemaQueries.browse(
             schema: "sales", table: "routeCache",
+            orderByClause: "ORDER BY (SELECT NULL)", offset: 0, limit: 200
+        )
+        XCTAssertEqual(
+            sql,
+            "SELECT * FROM [sales].[routeCache] ORDER BY (SELECT NULL) OFFSET 0 ROWS FETCH NEXT 200 ROWS ONLY"
+        )
+    }
+
+    func testBrowseUsesResolvedCurrentSchema() {
+        let schema = MSSQLSchemaQueries.resolvedObjectSchema(nil, currentSchema: "sales")
+        let sql = MSSQLSchemaQueries.browse(
+            schema: schema, table: "routeCache",
             orderByClause: "ORDER BY (SELECT NULL)", offset: 0, limit: 200
         )
         XCTAssertEqual(

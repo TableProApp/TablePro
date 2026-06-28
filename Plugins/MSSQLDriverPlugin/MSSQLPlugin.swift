@@ -330,7 +330,7 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         deletedRowIndices: Set<Int>,
         insertedRowIndices: Set<Int>
     ) -> [(statement: String, parameters: [PluginCellValue])]? {
-        let qualifiedTable = MSSQLSchemaQueries.qualifiedName(schema: schema, table: table)
+        let qualifiedTable = MSSQLSchemaQueries.qualifiedName(schema: resolvedObjectSchema(schema), table: table)
         var statements: [(statement: String, parameters: [PluginCellValue])] = []
 
         var deleteChanges: [PluginRowChange] = []
@@ -598,7 +598,7 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             sortColumns: sortColumns, columns: columns, quoteIdentifier: mssqlQuoteIdentifier
         ) ?? "ORDER BY (SELECT NULL)"
         return MSSQLSchemaQueries.browse(
-            schema: schema, table: table, orderByClause: orderBy, offset: offset, limit: limit
+            schema: resolvedObjectSchema(schema), table: table, orderByClause: orderBy, offset: offset, limit: limit
         )
     }
 
@@ -640,7 +640,7 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             sortColumns: sortColumns, columns: columns, quoteIdentifier: mssqlQuoteIdentifier
         ) ?? "ORDER BY (SELECT NULL)"
         return MSSQLSchemaQueries.filtered(
-            schema: schema, table: table, whereClause: whereClause,
+            schema: resolvedObjectSchema(schema), table: table, whereClause: whereClause,
             orderByClause: orderBy, offset: offset, limit: limit
         )
     }
@@ -649,6 +649,10 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     private func mssqlQuoteIdentifier(_ identifier: String) -> String {
         quoteIdentifier(identifier)
+    }
+
+    private func resolvedObjectSchema(_ schema: String?) -> String? {
+        MSSQLSchemaQueries.resolvedObjectSchema(schema, currentSchema: _currentSchema)
     }
 
     private func mssqlEscapeValue(_ value: String) -> String {

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- SQL Server table browsing and edits now use the active schema when opening objects outside `dbo`. (#1774)
+
 ## [0.54.0] - 2026-06-30
 
 ### Added

@@ -20,6 +20,16 @@ public enum MSSQLSchemaQueries {
         return bracketed(schema: schema, table: table)
     }
 
+    public static func resolvedObjectSchema(_ schema: String?, currentSchema: String?) -> String? {
+        if let schema, !schema.isEmpty {
+            return schema
+        }
+        guard let currentSchema, !currentSchema.isEmpty else {
+            return nil
+        }
+        return currentSchema
+    }
+
     public static func browse(
         schema: String?,
         table: String,
