@@ -376,10 +376,7 @@ struct SidebarView: View {
                 }
             }
         }
-        .listStyle(.sidebar)
-        .scrollContentBackground(.hidden)
-        .safeAreaPadding(.top, 0)
-        .environment(\.defaultMinListHeaderHeight, 0)
+        .sidebarListLayout()
         .contextMenu(forSelectionType: TableInfo.self) { selection in
             SidebarContextMenu(
                 clickedTable: selection.first,
