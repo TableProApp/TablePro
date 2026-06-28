@@ -65,6 +65,8 @@ struct SidebarTreeView: View {
         }
         .listStyle(.sidebar)
         .scrollContentBackground(.hidden)
+        .safeAreaPadding(.top, 0)
+        .environment(\.defaultMinListHeaderHeight, 0)
         .contextMenu(forSelectionType: TableInfo.self) { _ in
             EmptyView()
         } primaryAction: { selection in
