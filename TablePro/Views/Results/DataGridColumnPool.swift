@@ -28,7 +28,7 @@ final class DataGridColumnPool {
         tableView: NSTableView,
         schema: ColumnIdentitySchema,
         columnTypes: [ColumnType],
-        columnComments: [String: String],
+        columnComments: [String: String] = [:],
         savedLayout: ColumnLayoutState?,
         isEditable: Bool,
         hiddenColumnNames: Set<String>,

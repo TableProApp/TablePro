@@ -37,4 +37,19 @@ struct PostgreSQLFetchTablesCommentTests {
         let branches = query.components(separatedBy: "UNION ALL").count
         #expect(commentColumns == branches)
     }
+
+    @Test("Comment-free fallback omits obj_description but keeps the aligned comment column")
+    func commentFreeFallbackOmitsObjDescription() {
+        let query = PostgreSQLSchemaQueries.fetchTables(
+            schemaLiteral: "public",
+            includeMaterializedViews: true,
+            includeForeignTables: true,
+            includeComments: false
+        )
+        #expect(!query.contains("obj_description"))
+        #expect(!query.contains("to_regclass"))
+        let commentColumns = query.components(separatedBy: "AS table_comment").count - 1
+        let branches = query.components(separatedBy: "UNION ALL").count
+        #expect(commentColumns == branches)
+    }
 }
