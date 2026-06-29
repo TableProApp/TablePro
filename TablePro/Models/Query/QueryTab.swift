@@ -72,7 +72,7 @@ struct QueryTab: Identifiable, Equatable {
         self.restoredCursorOffset = nil
     }
 
-    init(from persisted: PersistedTab) {
+    init(from persisted: PersistedTab, defaultPageSize: Int) {
         self.id = persisted.id
         self.title = persisted.title
         self.tabType = persisted.tabType
@@ -96,7 +96,7 @@ struct QueryTab: Identifiable, Equatable {
         self.sortState = SortState()
         self.filterState = TabFilterState()
         self.columnLayout = ColumnLayoutState(columnWidths: persisted.columnWidths ?? [:])
-        self.pagination = PaginationState()
+        self.pagination = PaginationState(pageSize: defaultPageSize)
         self.hasUserInteraction = false
         self.schemaVersion = 0
         self.metadataVersion = 0

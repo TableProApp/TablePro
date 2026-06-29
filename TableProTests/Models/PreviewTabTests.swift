@@ -28,7 +28,7 @@ struct PreviewTabTests {
             tabType: .table,
             tableName: "users"
         )
-        let tab = QueryTab(from: persisted)
+        let tab = QueryTab(from: persisted, defaultPageSize: 1_000)
         #expect(tab.isPreview == false)
     }
 
