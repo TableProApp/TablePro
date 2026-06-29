@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SSH tunnels no longer pin a CPU core after the connection drops. A dropped tunnel is now detected and torn down instead of spinning in its relay loop. (#1769)
 - Restored table tabs now load with the current page size instead of the page size from the previous session.
 - MSSQL: large `nvarchar(max)` and `text` values no longer truncate to 2048 bytes when copied or viewed. TEXTSIZE is raised at connect time. (#1783)
+- Oracle connections with Native network encryption turned on no longer hang for about a minute against servers that do not complete it, such as Oracle 11g. The login now stops after 30 seconds and explains how to turn the option off. (#1746)
 
 ## [0.53.0] - 2026-06-25
 

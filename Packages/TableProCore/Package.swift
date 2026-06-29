@@ -100,6 +100,11 @@ let package = Package(
             name: "TableProSyncTests",
             dependencies: ["TableProSync", "TableProModels"],
             path: "Tests/TableProSyncTests"
+        ),
+        .testTarget(
+            name: "TableProPluginKitTests",
+            dependencies: ["TableProPluginKit"],
+            path: "Tests/TableProPluginKitTests"
         )
     ]
 )

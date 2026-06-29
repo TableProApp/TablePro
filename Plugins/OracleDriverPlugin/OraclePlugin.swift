@@ -179,6 +179,28 @@ final class OraclePlugin: NSObject, TableProPlugin, DriverPlugin, PluginDiagnost
                 ],
                 supportURL: URL(string: "https://github.com/TableProApp/TablePro/issues/483")
             )
+        case .nativeEncryptionFailed:
+            return PluginDiagnostic(
+                title: String(localized: "Native Network Encryption Not Completed"),
+                message: oracleError.message,
+                suggestedActions: [
+                    String(localized: "Turn off the Native network encryption option in this connection's settings, then connect again."),
+                    String(localized: "Some servers, including Oracle 11g, accept but never complete native network encryption. Plain connections to such servers still work."),
+                    String(localized: "If you need encryption in transit, use TLS instead by setting an SSL mode in the connection's SSL settings.")
+                ],
+                supportURL: issuesURL
+            )
+        case .loginTimedOut:
+            return PluginDiagnostic(
+                title: String(localized: "Login Handshake Timed Out"),
+                message: oracleError.message,
+                suggestedActions: [
+                    String(localized: "Check for a firewall, VPN, or proxy between you and the server that stalls connections after the TCP handshake."),
+                    String(localized: "Confirm the host and port reach the database listener directly."),
+                    String(localized: "If you enabled the Native network encryption option, turn it off; some servers stall instead of completing it.")
+                ],
+                supportURL: issuesURL
+            )
         case .generic, .notConnected, .connectionFailed, .queryFailed:
             return nil
         }

@@ -28,6 +28,8 @@ struct OracleError: Error {
         case authVerifierUnsupported(flag: String)
         case authVersionNotSupported
         case authConnectionDropped(phase: String?)
+        case loginTimedOut
+        case nativeEncryptionFailed
     }
 
     let message: String
@@ -173,6 +175,7 @@ final class OracleConnectionWrapper: @unchecked Sendable {
             tls: tls
         )
         config.nativeNetworkEncryption = nativeNetworkEncryption
+        let connectConfig = config
 
         let connectionId = Self.connectionCounter.withLock { state -> Int in
             state += 1
@@ -180,11 +183,13 @@ final class OracleConnectionWrapper: @unchecked Sendable {
         }
 
         do {
-            let connection = try await OracleNIO.OracleConnection.connect(
-                configuration: config,
-                id: connectionId,
-                logger: nioLogger
-            )
+            let connection = try await withTimeout(seconds: Self.loginTimeoutSeconds) {
+                try await OracleNIO.OracleConnection.connect(
+                    configuration: connectConfig,
+                    id: connectionId,
+                    logger: nioLogger
+                )
+            }
 
             state.withLock { current in
                 current.nioConnection = connection
@@ -193,6 +198,9 @@ final class OracleConnectionWrapper: @unchecked Sendable {
 
             let target = useSID ? "\(self.host):\(self.port):\(identifier)" : "\(self.host):\(self.port)/\(identifier)"
             osLogger.debug("Connected to Oracle \(target)")
+        } catch is TimeoutError {
+            osLogger.error("Oracle login handshake timed out after \(Self.loginTimeoutSeconds, privacy: .public)s (nativeEncryption=\(self.nativeNetworkEncryption, privacy: .public))")
+            throw makeConnectError(failure: .connectionFailed, detail: "", timedOut: true, phase: nil)
         } catch let sqlError as OracleSQLError {
             let detail = Self.connectFailureDetail(sqlError)
             let phase = sqlError.handshakePhase ?? "unknown"
@@ -200,11 +208,8 @@ final class OracleConnectionWrapper: @unchecked Sendable {
             if let sslError = OracleSSLClassifier.classifySSLError(detail) {
                 throw sslError
             }
-            let category = classifyConnectError(sqlError)
-            throw OracleError(
-                message: Self.connectErrorMessage(for: category, serverDetail: detail),
-                category: category
-            )
+            let failure = OracleConnectErrorClassifier.classify(sqlError.code.description)
+            throw makeConnectError(failure: failure, detail: detail, timedOut: false, phase: sqlError.handshakePhase)
         } catch let nioSslError as NIOSSLError {
             let detail = String(describing: nioSslError)
             osLogger.error("Oracle TLS error: \(detail)")
@@ -219,18 +224,55 @@ final class OracleConnectionWrapper: @unchecked Sendable {
         }
     }
 
-    private func classifyConnectError(_ error: OracleSQLError) -> OracleError.Category {
-        switch OracleConnectErrorClassifier.classify(error.code.description) {
+    private static let loginTimeoutSeconds: Double = 30
+
+    private func makeConnectError(
+        failure: OracleConnectFailure,
+        detail: String,
+        timedOut: Bool,
+        phase: String?
+    ) -> OracleError {
+        if OracleConnectErrorClassifier.isLikelyNativeEncryptionFailure(
+            failure: failure,
+            nativeNetworkEncryptionEnabled: nativeNetworkEncryption,
+            timedOut: timedOut
+        ) {
+            return OracleError(message: Self.nativeEncryptionFailureMessage, category: .nativeEncryptionFailed)
+        }
+        if timedOut {
+            return OracleError(message: Self.loginTimeoutMessage, category: .loginTimedOut)
+        }
+        let category = Self.category(for: failure, phase: phase)
+        return OracleError(
+            message: Self.connectErrorMessage(for: category, serverDetail: detail),
+            category: category
+        )
+    }
+
+    private static func category(for failure: OracleConnectFailure, phase: String?) -> OracleError.Category {
+        switch failure {
         case .verifierUnsupported(let flag):
             return .authVerifierUnsupported(flag: flag)
         case .versionNotSupported:
             return .authVersionNotSupported
         case .connectionDropped:
-            return .authConnectionDropped(phase: error.handshakePhase)
+            return .authConnectionDropped(phase: phase)
         case .connectionFailed:
             return .connectionFailed
         }
     }
+
+    private static let loginTimeoutMessage = String(
+        localized: "Timed out during the Oracle login handshake. The server accepted the network connection but did not finish logging in."
+    )
+
+    private static let nativeEncryptionFailureMessage = String(
+        localized: """
+        Could not finish logging in with native network encryption enabled. \
+        This Oracle server may not support it, which is common with Oracle 11g. \
+        Turn off the Native network encryption option in this connection's settings and try again.
+        """
+    )
 
     private static func connectFailureDetail(_ error: OracleSQLError) -> String {
         if let refused = error.underlying as? OracleListenerRefusedError {
@@ -250,6 +292,10 @@ final class OracleConnectionWrapper: @unchecked Sendable {
             return String(localized: "The Oracle server closed the connection during the login handshake.")
         case .authVerifierUnsupported:
             return String(localized: "This account uses a password verifier the database driver does not support.")
+        case .loginTimedOut:
+            return loginTimeoutMessage
+        case .nativeEncryptionFailed:
+            return nativeEncryptionFailureMessage
         case .generic, .notConnected, .connectionFailed, .queryFailed, .protocolError:
             return serverDetail
         }

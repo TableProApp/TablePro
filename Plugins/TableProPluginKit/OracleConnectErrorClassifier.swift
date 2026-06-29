@@ -21,4 +21,19 @@ public enum OracleConnectErrorClassifier {
             return .connectionFailed
         }
     }
+
+    public static func isLikelyNativeEncryptionFailure(
+        failure: OracleConnectFailure,
+        nativeNetworkEncryptionEnabled: Bool,
+        timedOut: Bool
+    ) -> Bool {
+        guard nativeNetworkEncryptionEnabled else { return false }
+        if timedOut { return true }
+        switch failure {
+        case .connectionDropped, .connectionFailed:
+            return true
+        case .verifierUnsupported, .versionNotSupported:
+            return false
+        }
+    }
 }

@@ -40,7 +40,7 @@ The Oracle driver is available as a downloadable plugin. When you select Oracle 
 | **Port** | `1521` | Listener port |
 | **Service Name** | - | **Required**. Check `tnsnames.ora` if unclear. To connect by SID instead, set **Connection Type** to SID and enter the SID. |
 | **Username** | - | Requires username/password auth (no OS auth) |
-| **Native network encryption** | Off | Advanced. Turn on only if the server requires encrypted traffic (`SQLNET.ENCRYPTION_SERVER = REQUIRED`). Leave off for servers that merely accept encryption, which connect in clear text like Oracle's own clients. |
+| **Native network encryption** | Off | Advanced. Turn on only if the server requires encrypted traffic (`SQLNET.ENCRYPTION_SERVER = REQUIRED`). Leave off for servers that merely accept encryption, which connect in clear text like Oracle's own clients. Some servers, including Oracle 11g, accept but never complete native encryption; with this on, the connect times out after 30 seconds and tells you to turn it off. |
 
 ## Example Configurations
 
@@ -150,5 +150,7 @@ Columns with types not yet supported render as `<unsupported: type>` rather than
 **Instant Client not found**: Download Basic package, extract to `/usr/local/oracle/instantclient`, set `DYLD_LIBRARY_PATH`
 
 **Connection dropped during handshake**: The server closed the connection mid-login. The error dialog shows the handshake phase it stopped at (for example `advancedNegotiation`, `dataTypeNegotiation`, or `authentication`). Check for a firewall, VPN, or proxy that resets traffic, and confirm the host and port reach the listener directly. If the phase is around negotiation and the server requires native network encryption, turn on the **Native network encryption** option; if you turned it on for a server that only accepts encryption, turn it back off.
+
+**Login handshake timed out / native network encryption not completed**: The TCP connection is accepted but login never finishes. The connect now stops after 30 seconds instead of waiting for the server to reset. The common cause is the **Native network encryption** option turned on against a server that does not complete it, such as Oracle 11g; turn it off and connect again. Plain connections to those servers still work. For encryption in transit, use TLS by setting an SSL mode in the SSL settings.
 
 **Limitations**: Username/password only, BFILE shows locator metadata only (content fetch via DBMS_LOB not supported), PL/SQL limited to anonymous blocks.
