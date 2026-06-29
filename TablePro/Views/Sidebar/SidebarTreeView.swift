@@ -63,8 +63,7 @@ struct SidebarTreeView: View {
                 }
             }
         }
-        .listStyle(.sidebar)
-        .scrollContentBackground(.hidden)
+        .sidebarListLayout()
         .contextMenu(forSelectionType: TableInfo.self) { _ in
             EmptyView()
         } primaryAction: { selection in

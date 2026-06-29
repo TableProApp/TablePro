@@ -40,7 +40,7 @@ final class InspectorViewController: NSViewController, NSUserInterfaceValidation
         self.gridDelegate = InspectorGridDelegate()
         super.init(nibName: nil, bundle: nil)
         gridDelegate.owner = self
-        state.pageSize = max(1, AppSettingsManager.shared.dataGrid.defaultPageSize)
+        state.pageSize = AppSettingsManager.shared.dataGrid.defaultPageSize
         inspectorDocument.onChange = { [weak self] in
             guard let self else { return }
             if self.isApplyingGridCellEdit, self.displayIndices == nil {

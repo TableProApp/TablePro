@@ -267,6 +267,29 @@ struct SettingsValidationTests {
         #expect(range.upperBound == 100_000)
     }
 
+    @Test("Decoding clamps an out-of-range stored page size to the valid range")
+    func decodingClampsDefaultPageSize() throws {
+        let range = SettingsValidationRules.defaultPageSizeRange
+
+        let zero = try JSONDecoder().decode(
+            DataGridSettings.self,
+            from: Data(#"{"defaultPageSize":0}"#.utf8)
+        )
+        #expect(zero.defaultPageSize == range.lowerBound)
+
+        let tooLarge = try JSONDecoder().decode(
+            DataGridSettings.self,
+            from: Data(#"{"defaultPageSize":9999999}"#.utf8)
+        )
+        #expect(tooLarge.defaultPageSize == range.upperBound)
+
+        let valid = try JSONDecoder().decode(
+            DataGridSettings.self,
+            from: Data(#"{"defaultPageSize":1000}"#.utf8)
+        )
+        #expect(valid.defaultPageSize == 1_000)
+    }
+
     @Test("Validation rules min non-negative is correct")
     func validationRulesMinNonNegative() {
         #expect(SettingsValidationRules.minNonNegative == 0)

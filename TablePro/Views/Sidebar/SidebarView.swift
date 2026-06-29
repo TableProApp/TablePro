@@ -376,8 +376,7 @@ struct SidebarView: View {
                 }
             }
         }
-        .listStyle(.sidebar)
-        .scrollContentBackground(.hidden)
+        .sidebarListLayout()
         .contextMenu(forSelectionType: TableInfo.self) { selection in
             SidebarContextMenu(
                 clickedTable: selection.first,

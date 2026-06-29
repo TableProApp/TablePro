@@ -141,7 +141,8 @@ internal final class TabPersistenceCoordinator {
             return RestoreResult(tabs: [], selectedTabId: nil, source: .none)
         }
 
-        var restoredTabs = state.tabs.map { QueryTab(from: $0) }
+        let defaultPageSize = AppSettingsManager.shared.dataGrid.defaultPageSize
+        var restoredTabs = state.tabs.map { QueryTab(from: $0, defaultPageSize: defaultPageSize) }
         for index in restoredTabs.indices {
             guard let url = restoredTabs[index].content.sourceFileURL else { continue }
             if let loaded = FileTextLoader.load(url) {

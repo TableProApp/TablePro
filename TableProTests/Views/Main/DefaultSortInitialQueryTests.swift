@@ -103,18 +103,50 @@ struct DefaultSortInitialQueryTests {
         #expect(tabManager.tabs[index].content.query == originalQuery)
     }
 
-    @Test("None behavior takes the fast path without touching the query")
-    func noneBehaviorSkipsSchemaWait() async {
+    @Test("None behavior takes the fast path and regenerates the browse query from current state")
+    func noneBehaviorRegeneratesQueryOnFastPath() async {
         let (coordinator, tabManager, index) = makeCoordinator(tableName: "users")
-        let originalQuery = tabManager.tabs[index].content.query
+        let pageSize = tabManager.tabs[index].pagination.pageSize
 
         await withDefaultSortBehavior(DefaultSortBehavior.none) {
             let ready = await coordinator.prepareTableTabFirstLoad(tabId: tabManager.tabs[index].id)
             #expect(ready)
         }
 
-        #expect(tabManager.tabs[index].content.query == originalQuery)
+        let query = tabManager.tabs[index].content.query
+        #expect(query.contains("LIMIT \(pageSize)"))
+        #expect(!query.localizedCaseInsensitiveContains("ORDER BY"))
         #expect(!tabManager.tabs[index].sortState.isSorting)
+    }
+
+    @Test("A restored table tab loads with the live page size, not the persisted query LIMIT")
+    func restoredTableTabUsesLivePageSize() async {
+        let tabManager = QueryTabManager()
+        let coordinator = MainContentCoordinator(
+            connection: TestFixtures.makeConnection(),
+            tabManager: tabManager,
+            changeManager: DataChangeManager(),
+            toolbarState: ConnectionToolbarState()
+        )
+        let persisted = PersistedTab(
+            id: UUID(),
+            title: "users",
+            query: "SELECT * FROM `users` LIMIT 500 OFFSET 0",
+            tabType: .table,
+            tableName: "users"
+        )
+        let tab = QueryTab(from: persisted, defaultPageSize: 1_000)
+        tabManager.tabs.append(tab)
+        tabManager.selectedTabId = tab.id
+
+        await withDefaultSortBehavior(DefaultSortBehavior.none) {
+            let ready = await coordinator.prepareTableTabFirstLoad(tabId: tab.id)
+            #expect(ready)
+        }
+
+        let query = tabManager.tabs[0].content.query
+        #expect(query.contains("LIMIT 1000"))
+        #expect(!query.contains("500"))
     }
 
     @Test("A restored user sort is never overwritten by the default sort")
