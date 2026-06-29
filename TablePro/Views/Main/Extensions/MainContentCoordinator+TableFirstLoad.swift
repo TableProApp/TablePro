@@ -57,7 +57,7 @@ extension MainContentCoordinator {
             tab.pendingRestoredSort ?? [],
             in: effectiveResultColumns(for: tab)
         )
-        let pageSize = max(1, AppSettingsManager.shared.dataGrid.defaultPageSize)
+        let pageSize = AppSettingsManager.shared.dataGrid.defaultPageSize
         let page = max(1, tab.restoredPage ?? 1)
 
         tabManager.mutate(at: index) { tab in
