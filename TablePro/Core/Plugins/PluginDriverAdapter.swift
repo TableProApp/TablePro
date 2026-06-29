@@ -194,7 +194,8 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
             name: table.name,
             type: tableType,
             rowCount: table.rowCount,
-            schema: table.schema ?? schemaFallback
+            schema: table.schema ?? schemaFallback,
+            comment: table.comment
         )
     }
 

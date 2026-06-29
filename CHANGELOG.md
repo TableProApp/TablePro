@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Per-tab database picker in the query editor toolbar. Each SQL tab can target its own database without clearing other tabs.
 - Single-clicking a table in the sidebar tree opens it in the current tab; double-clicking opens it in a new tab.
+- Table and column comments from the database now show in the UI. The sidebar shows a table's comment in dimmed text after its name, the data grid column header tooltip includes the column comment, and the table inspector shows the table comment. Toggle from View > Show Object Comments. Available for MySQL and PostgreSQL. (#1771)
 
 ### Changed
 

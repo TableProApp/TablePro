@@ -63,12 +63,16 @@ struct GeneralSettings: Codable, Equatable {
     /// Whether to share anonymous usage analytics
     var shareAnalytics: Bool
 
+    /// Whether to show database object comments in the sidebar and data grid headers
+    var showObjectComments: Bool
+
     static let `default` = GeneralSettings(
         startupBehavior: .reopenLast,
         language: .system,
         automaticallyCheckForUpdates: true,
         queryTimeoutSeconds: 60,
-        shareAnalytics: true
+        shareAnalytics: true,
+        showObjectComments: true
     )
 
     init(
@@ -76,13 +80,15 @@ struct GeneralSettings: Codable, Equatable {
         language: AppLanguage = .system,
         automaticallyCheckForUpdates: Bool = true,
         queryTimeoutSeconds: Int = 60,
-        shareAnalytics: Bool = true
+        shareAnalytics: Bool = true,
+        showObjectComments: Bool = true
     ) {
         self.startupBehavior = startupBehavior
         self.language = language
         self.automaticallyCheckForUpdates = automaticallyCheckForUpdates
         self.queryTimeoutSeconds = queryTimeoutSeconds
         self.shareAnalytics = shareAnalytics
+        self.showObjectComments = showObjectComments
     }
 
     init(from decoder: Decoder) throws {
@@ -92,5 +98,6 @@ struct GeneralSettings: Codable, Equatable {
         automaticallyCheckForUpdates = try container.decodeIfPresent(Bool.self, forKey: .automaticallyCheckForUpdates) ?? true
         queryTimeoutSeconds = try container.decodeIfPresent(Int.self, forKey: .queryTimeoutSeconds) ?? 60
         shareAnalytics = try container.decodeIfPresent(Bool.self, forKey: .shareAnalytics) ?? true
+        showObjectComments = try container.decodeIfPresent(Bool.self, forKey: .showObjectComments) ?? true
     }
 }

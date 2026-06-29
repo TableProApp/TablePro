@@ -91,6 +91,7 @@ struct TableInfo: Identifiable, Hashable, Sendable {
     let type: TableType
     let rowCount: Int?
     let schema: String?
+    let comment: String?
 
     enum TableType: String, Sendable {
         case table = "TABLE"
@@ -100,11 +101,12 @@ struct TableInfo: Identifiable, Hashable, Sendable {
         case systemTable = "SYSTEM TABLE"
     }
 
-    init(name: String, type: TableType, rowCount: Int?, schema: String? = nil) {
+    init(name: String, type: TableType, rowCount: Int?, schema: String? = nil, comment: String? = nil) {
         self.name = name
         self.type = type
         self.rowCount = rowCount
         self.schema = schema
+        self.comment = comment
     }
 
     static func == (lhs: TableInfo, rhs: TableInfo) -> Bool {

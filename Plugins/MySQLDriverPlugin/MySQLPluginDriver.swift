@@ -188,13 +188,21 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Schema Operations
 
     func fetchTables(schema: String?) async throws -> [PluginTableInfo] {
-        let result = try await execute(query: "SHOW FULL TABLES")
+        let query = """
+        SELECT TABLE_NAME, TABLE_TYPE, TABLE_COMMENT
+        FROM information_schema.TABLES
+        WHERE TABLE_SCHEMA = DATABASE()
+        """
+        let result = try await execute(query: query)
 
         return result.rows.compactMap { row -> PluginTableInfo? in
             guard let name = row[safe: 0]?.asText else { return nil }
             let typeStr = (row[safe: 1]?.asText) ?? "BASE TABLE"
-            let type = typeStr.contains("VIEW") ? "VIEW" : "TABLE"
-            return PluginTableInfo(name: name, type: type)
+            let isView = typeStr.contains("VIEW")
+            let type = isView ? "VIEW" : "TABLE"
+            let rawComment = row[safe: 2]?.asText
+            let comment = (!isView && rawComment?.isEmpty == false) ? rawComment : nil
+            return PluginTableInfo(name: name, type: type, comment: comment)
         }.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 

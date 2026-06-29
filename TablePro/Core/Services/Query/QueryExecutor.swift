@@ -28,6 +28,7 @@ struct ParsedSchemaMetadata {
     let primaryKeyColumns: [String]
     let approximateRowCount: Int?
     let columnEnumValues: [String: [String]]
+    let columnComments: [String: String]
 }
 
 @MainActor
@@ -169,9 +170,13 @@ final class QueryExecutor {
             fks = byColumn
         }
         var enumValues: [String: [String]] = [:]
+        var comments: [String: String] = [:]
         for col in schema.columns {
             if let values = col.allowedValues, !values.isEmpty {
                 enumValues[col.name] = values
+            }
+            if let comment = col.comment, !comment.isEmpty {
+                comments[col.name] = comment
             }
         }
         return ParsedSchemaMetadata(
@@ -180,7 +185,8 @@ final class QueryExecutor {
             columnNullable: nullable,
             primaryKeyColumns: schema.columns.filter { $0.isPrimaryKey }.map(\.name),
             approximateRowCount: schema.approximateRowCount,
-            columnEnumValues: enumValues
+            columnEnumValues: enumValues,
+            columnComments: comments
         )
     }
 
@@ -200,7 +206,8 @@ final class QueryExecutor {
             columnNullable: nullable,
             primaryKeyColumns: primaryKeys,
             approximateRowCount: nil,
-            columnEnumValues: [:]
+            columnEnumValues: [:],
+            columnComments: [:]
         )
     }
 

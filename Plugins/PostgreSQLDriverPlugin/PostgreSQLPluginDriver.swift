@@ -182,7 +182,9 @@ final class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
             case "VIEW":              type = "VIEW"
             default:                  type = "TABLE"
             }
-            return PluginTableInfo(name: name, type: type)
+            let rawComment = row[safe: 2]?.asText
+            let comment = rawComment?.isEmpty == false ? rawComment : nil
+            return PluginTableInfo(name: name, type: type, comment: comment)
         }
     }
 

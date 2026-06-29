@@ -79,18 +79,25 @@ enum PostgreSQLSchemaQueries {
     ) -> String {
         var unions: [String] = [
             """
-            SELECT table_name, table_type FROM information_schema.tables
-            WHERE table_schema = '\(schemaLiteral)'
-              AND table_type IN ('BASE TABLE', 'VIEW')
+            SELECT t.table_name, t.table_type, d.description AS table_comment
+            FROM information_schema.tables t
+            LEFT JOIN pg_catalog.pg_namespace n ON n.nspname = t.table_schema
+            LEFT JOIN pg_catalog.pg_class c ON c.relname = t.table_name AND c.relnamespace = n.oid
+            LEFT JOIN pg_catalog.pg_description d ON d.objoid = c.oid AND d.objsubid = 0
+            WHERE t.table_schema = '\(schemaLiteral)'
+              AND t.table_type IN ('BASE TABLE', 'VIEW')
             """
         ]
 
         if includeMaterializedViews {
             unions.append(
                 """
-                SELECT matviewname AS table_name, 'MATERIALIZED VIEW' AS table_type
-                FROM pg_matviews
-                WHERE schemaname = '\(schemaLiteral)'
+                SELECT m.matviewname AS table_name, 'MATERIALIZED VIEW' AS table_type, d.description AS table_comment
+                FROM pg_matviews m
+                LEFT JOIN pg_catalog.pg_namespace n ON n.nspname = m.schemaname
+                LEFT JOIN pg_catalog.pg_class c ON c.relname = m.matviewname AND c.relnamespace = n.oid
+                LEFT JOIN pg_catalog.pg_description d ON d.objoid = c.oid AND d.objsubid = 0
+                WHERE m.schemaname = '\(schemaLiteral)'
                 """
             )
         }
@@ -98,10 +105,11 @@ enum PostgreSQLSchemaQueries {
         if includeForeignTables {
             unions.append(
                 """
-                SELECT c.relname AS table_name, 'FOREIGN TABLE' AS table_type
+                SELECT c.relname AS table_name, 'FOREIGN TABLE' AS table_type, d.description AS table_comment
                 FROM pg_foreign_table ft
                 JOIN pg_class c ON c.oid = ft.ftrelid
                 JOIN pg_namespace n ON n.oid = c.relnamespace
+                LEFT JOIN pg_catalog.pg_description d ON d.objoid = c.oid AND d.objsubid = 0
                 WHERE n.nspname = '\(schemaLiteral)'
                 """
             )

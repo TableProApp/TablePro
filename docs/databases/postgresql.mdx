@@ -71,7 +71,11 @@ The database role must be set up for IAM auth (`GRANT rds_iam TO "user"`). Conne
 
 ## Features
 
-Sidebar displays all accessible schemas and tables. Switch databases/schemas with **Cmd+K**. Table info shows structure (columns, indexes, constraints) and DDL. Full PostgreSQL syntax support:
+Sidebar displays all accessible schemas and tables. Switch databases/schemas with **Cmd+K**. Table info shows structure (columns, indexes, constraints) and DDL.
+
+Table and column comments are shown in the UI: the sidebar shows a table's comment in dimmed text after its name (full text on hover), and the data grid column header tooltip includes the column comment. Turn this off from **View > Show Object Comments**.
+
+Full PostgreSQL syntax support:
 
 ```sql
 -- JSONB queries

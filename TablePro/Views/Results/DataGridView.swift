@@ -305,10 +305,14 @@ struct DataGridView: NSViewRepresentable {
         tableRows: TableRows,
         savedLayout: ColumnLayoutState?
     ) {
+        let columnComments = AppSettingsManager.shared.general.showObjectComments
+            ? tableRows.columnComments
+            : [:]
         coordinator.columnPool.reconcile(
             tableView: tableView,
             schema: coordinator.identitySchema,
             columnTypes: tableRows.columnTypes,
+            columnComments: columnComments,
             savedLayout: savedLayout,
             isEditable: isEditable,
             hiddenColumnNames: configuration.hiddenColumns,

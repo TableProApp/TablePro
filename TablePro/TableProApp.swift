@@ -150,6 +150,13 @@ struct AppMenuCommands: Commands {
         )
     }
 
+    private var showObjectCommentsBinding: Binding<Bool> {
+        Binding(
+            get: { settingsManager.general.showObjectComments },
+            set: { settingsManager.general.showObjectComments = $0 }
+        )
+    }
+
     private func shortcut(for action: ShortcutAction) -> KeyboardShortcut? {
         settingsManager.keyboard.keyboardShortcut(for: action)
     }
@@ -602,6 +609,8 @@ struct AppMenuCommands: Commands {
             }
             .pickerStyle(.inline)
             .disabled(!(actions?.canSwitchSidebarLayout ?? false))
+
+            Toggle(String(localized: "Show Object Comments"), isOn: showObjectCommentsBinding)
 
             Divider()
 
