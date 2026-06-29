@@ -4,7 +4,7 @@ import Testing
 
 @Suite("PostgreSQLSchemaQueries.fetchTables comments")
 struct PostgreSQLFetchTablesCommentTests {
-    @Test("Base query selects the table comment from pg_description")
+    @Test("Base query selects the table comment via obj_description")
     func baseQuerySelectsComment() {
         let query = PostgreSQLSchemaQueries.fetchTables(
             schemaLiteral: "public",
@@ -12,7 +12,18 @@ struct PostgreSQLFetchTablesCommentTests {
             includeForeignTables: false
         )
         #expect(query.contains("table_comment"))
-        #expect(query.contains("pg_description"))
+        #expect(query.contains("obj_description"))
+    }
+
+    @Test("Base query does not reference pg_class/pg_namespace so the portability fallback stays minimal")
+    func baseQueryStaysPortable() {
+        let query = PostgreSQLSchemaQueries.fetchTables(
+            schemaLiteral: "public",
+            includeMaterializedViews: false,
+            includeForeignTables: false
+        )
+        #expect(!query.contains("pg_catalog.pg_class"))
+        #expect(!query.contains("pg_catalog.pg_namespace"))
     }
 
     @Test("Every union branch projects a comment column so columns stay aligned")

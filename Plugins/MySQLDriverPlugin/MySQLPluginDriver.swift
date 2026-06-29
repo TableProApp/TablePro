@@ -200,8 +200,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             let typeStr = (row[safe: 1]?.asText) ?? "BASE TABLE"
             let isView = typeStr.contains("VIEW")
             let type = isView ? "VIEW" : "TABLE"
-            let rawComment = row[safe: 2]?.asText
-            let comment = (!isView && rawComment?.isEmpty == false) ? rawComment : nil
+            let comment = isView ? nil : row[safe: 2]?.asText?.nilIfEmpty
             return PluginTableInfo(name: name, type: type, comment: comment)
         }.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }

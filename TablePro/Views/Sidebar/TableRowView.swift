@@ -124,7 +124,6 @@ struct TableRow: View {
                 isFavorite: isFavorite
             )
         )
-        .accessibilityHint(visibleComment ?? "")
         .modifier(FavoriteAccessibilityAction(isFavorite: isFavorite, toggle: onToggleFavorite))
     }
 }

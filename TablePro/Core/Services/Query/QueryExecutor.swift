@@ -175,7 +175,7 @@ final class QueryExecutor {
             if let values = col.allowedValues, !values.isEmpty {
                 enumValues[col.name] = values
             }
-            if let comment = col.comment, !comment.isEmpty {
+            if let comment = col.comment?.nilIfEmpty {
                 comments[col.name] = comment
             }
         }

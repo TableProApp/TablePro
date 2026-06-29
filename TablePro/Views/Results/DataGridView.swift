@@ -166,7 +166,8 @@ struct DataGridView: NSViewRepresentable {
             hasMoveDelegate: delegate != nil,
             rowHeight: rowHeight,
             alternatingRows: alternatingRows,
-            reloadVersion: changeManager.reloadVersion
+            reloadVersion: changeManager.reloadVersion,
+            showObjectComments: AppSettingsManager.shared.general.showObjectComments
         )
 
         if snapshot != coordinator.lastUpdateSnapshot {
