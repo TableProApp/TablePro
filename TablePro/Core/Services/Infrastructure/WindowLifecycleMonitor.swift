@@ -115,6 +115,19 @@ internal final class WindowLifecycleMonitor {
             .first { $0.isVisible }
     }
 
+    /// The active window for a connection, preferring `candidate` (typically the
+    /// key window) when it belongs to this connection. Each editor tab is a
+    /// separate window in a native tab group, so `findWindow` returns an
+    /// arbitrary tab's window; anchoring a connection-scoped sheet there would
+    /// switch the selected tab. Preferring the key window keeps the user on the
+    /// tab they triggered the action from.
+    internal func activeWindow(for connectionId: UUID, preferring candidate: NSWindow?) -> NSWindow? {
+        if let candidate, self.connectionId(forWindow: candidate) == connectionId {
+            return candidate
+        }
+        return findWindow(for: connectionId)
+    }
+
     /// Look up the connectionId for a given windowId.
     internal func connectionId(for windowId: UUID) -> UUID? {
         purgeStaleEntries()

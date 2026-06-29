@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Safe mode no longer jumps to the first tab after you confirm a query. The confirmation now stays on the tab you ran the query from. (#1781)
 - Switching between sidebar tables no longer leaves extra blank space above the list. (#1675)
 - SSH tunnels no longer pin a CPU core after the connection drops. A dropped tunnel is now detected and torn down instead of spinning in its relay loop. (#1769)
 - Restored table tabs now load with the current page size instead of the page size from the previous session.
