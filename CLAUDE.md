@@ -23,7 +23,7 @@ TablePro is a native macOS database client (SwiftUI + AppKit) — a fast, lightw
 - **Source**: `TablePro/` — `Core/` (business logic, services), `Views/` (UI), `Models/` (data structures), `ViewModels/`, `Extensions/`, `Theme/`
 - **Plugins**: `Plugins/` — `.tableplugin` bundles + `TableProPluginKit` shared framework.
     - **Bundled in app**: MySQL, PostgreSQL, SQLite, ClickHouse, Redis, CSV, JSON, SQL export, XLSX export, MQL export, SQL import. Shipped only inside the app bundle. **Never publish bundled plugins to the registry.** Updates ride with the next app release.
-    - **Registry-only**: MongoDB, Oracle, DuckDB, MSSQL, Cassandra, Etcd, CloudflareD1, DynamoDB, BigQuery, LibSQL. Distributed via [TableProApp/plugins](https://github.com/TableProApp/plugins) `plugins.json`, installed into the user plugins directory.
+    - **Registry-only**: MongoDB, Oracle, DuckDB, MSSQL, Cassandra, Etcd, CloudflareD1, DynamoDB, BigQuery, LibSQL, Snowflake, Elasticsearch. Distributed via [TableProApp/plugins](https://github.com/TableProApp/plugins) `plugins.json`, installed into the user plugins directory.
 - **C bridges**: Each plugin contains its own C bridge module (e.g., `Plugins/MySQLDriverPlugin/CMariaDB/`, `Plugins/PostgreSQLDriverPlugin/CLibPQ/`)
 - **Static libs**: `Libs/` — pre-built `.a` files. `Libs/ios/` — xcframeworks for iOS. Both downloaded via `scripts/download-libs.sh` (not in git)
 - **SPM deps**: CodeEditSourceEditor (`main` branch, tree-sitter editor), Sparkle (2.8.1, auto-update), OracleNIO. Managed via Xcode, no `Package.swift`.
