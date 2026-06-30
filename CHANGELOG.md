@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- iOS: add data to a table from the Shortcuts app. Two new shortcuts, Add Row to Table and Add Rows to Table, pick a saved connection, database or schema, and table, then insert from JSON or CSV. They run without opening the app. (#1788)
+
 ## [0.54.0] - 2026-06-30
 
 ### Added

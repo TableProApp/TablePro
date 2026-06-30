@@ -165,6 +165,7 @@
             "pages": [
               "external-api/index",
               "external-api/url-scheme",
+              "external-api/ios-shortcuts",
               "external-api/mcp-tools",
               "external-api/mcp-resources",
               "external-api/pairing",
