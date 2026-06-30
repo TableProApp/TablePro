@@ -46,7 +46,27 @@ jobs:
       # macos-26 lazy-loads simulator runtimes; -downloadPlatform pulls the runtime
       # matching Xcode's SDK and is a no-op when it is already present.
       - name: Install iOS simulator runtime
-        run: sudo xcodebuild -downloadPlatform iOS
+        run: |
+          if sudo xcodebuild -downloadPlatform iOS; then
+            exit 0
+          fi
+
+          echo "::warning::xcodebuild -downloadPlatform iOS failed; checking existing simulator destinations"
+          destinations="$(
+            xcodebuild -showdestinations \
+              -project "$XCODE_PROJECT" \
+              -scheme "$XCODE_SCHEME" \
+              -skipPackagePluginValidation 2>&1 || true
+          )"
+          echo "$destinations"
+
+          if echo "$destinations" | grep -q "platform:iOS Simulator.*name:iPhone 17 Pro"; then
+            echo "iPhone 17 Pro simulator destination is already available; continuing."
+            exit 0
+          fi
+
+          echo "::error::No iPhone 17 Pro simulator destination is available after downloadPlatform failed."
+          exit 70
 
       # Secrets.xcconfig is gitignored. Tests do not need analytics keys, so the
       # checked-in example template is enough for the project to resolve.
