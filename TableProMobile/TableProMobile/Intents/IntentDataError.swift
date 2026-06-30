@@ -7,6 +7,7 @@ enum IntentDataError: Error, CustomLocalizedStringResourceConvertible {
     case connectionFailed(String)
     case readOnly(String)
     case noColumns(String)
+    case noInsertableValues(String)
     case unknownColumns([String], String)
     case emptyPayload
     case expectedSingleRow
@@ -25,6 +26,8 @@ enum IntentDataError: Error, CustomLocalizedStringResourceConvertible {
             return "\(name) is read-only, so rows cannot be added."
         case .noColumns(let table):
             return "Could not read the columns of \(table)."
+        case .noInsertableValues(let table):
+            return "The data has no values to insert into \(table)."
         case .unknownColumns(let columns, let table):
             return "\(table) has no column named \(columns.joined(separator: ", "))."
         case .emptyPayload:

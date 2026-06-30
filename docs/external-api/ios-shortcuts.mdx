@@ -67,4 +67,6 @@ Each action returns the number of rows inserted, so you can show it or use it in
 
 - The action requires the device to be unlocked, since it reads the connection password from the Keychain.
 - A read-only connection refuses the insert with an error.
+- Add Rows to Table runs the batch in one transaction on databases that support it, so a row that fails rolls the whole batch back instead of leaving a partial insert.
+- Data that maps to no columns (an empty object, for example) returns an error rather than reporting that it added nothing.
 - Up to 10,000 rows per run.

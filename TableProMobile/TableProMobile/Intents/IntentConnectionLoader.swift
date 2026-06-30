@@ -13,7 +13,18 @@ enum IntentConnectionLoader {
     }
 
     static func decode(_ data: Data) -> [DatabaseConnection] {
-        (try? JSONDecoder().decode([DatabaseConnection].self, from: data)) ?? []
+        guard let elements = try? JSONDecoder().decode([FailableConnection].self, from: data) else {
+            return []
+        }
+        return elements.compactMap(\.value)
+    }
+
+    private struct FailableConnection: Decodable {
+        let value: DatabaseConnection?
+
+        init(from decoder: Decoder) throws {
+            value = try? DatabaseConnection(from: decoder)
+        }
     }
 
     private static var fileURL: URL? {

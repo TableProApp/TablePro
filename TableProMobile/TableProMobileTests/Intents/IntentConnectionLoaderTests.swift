@@ -35,4 +35,20 @@ struct IntentConnectionLoaderTests {
         let decoded = IntentConnectionLoader.decode(Data("not json".utf8))
         #expect(decoded.isEmpty)
     }
+
+    @Test("skips a connection that does not fully decode and keeps the valid ones")
+    func skipsUndecodableConnection() throws {
+        let valid = DatabaseConnection(
+            id: UUID(), name: "Prod", type: .mysql,
+            host: "h", port: 3306, username: "u", database: "d"
+        )
+        let validObject = try JSONSerialization.jsonObject(with: JSONEncoder().encode(valid))
+        let mixed: [Any] = [["unexpected": "shape"], validObject]
+        let data = try JSONSerialization.data(withJSONObject: mixed)
+
+        let decoded = IntentConnectionLoader.decode(data)
+
+        #expect(decoded.count == 1)
+        #expect(decoded[0].id == valid.id)
+    }
 }
