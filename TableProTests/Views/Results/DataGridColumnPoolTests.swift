@@ -399,4 +399,77 @@ struct DataGridColumnPoolTests {
         #expect(dataColumns(in: tableView).count == 3)
         #expect(pool.totalSlots == 3)
     }
+
+    @Test("reconcile sets comment subtitle state on header cells")
+    func reconcile_setsCommentStateOnHeaderCells() {
+        let pool = DataGridColumnPool()
+        let tableView = makeTableView()
+        let schema = ColumnIdentitySchema(columns: ["id", "name"])
+
+        pool.reconcile(
+            tableView: tableView,
+            schema: schema,
+            columnTypes: makeColumnTypes(count: 2),
+            columnComments: ["name": "Display name"],
+            savedLayout: nil,
+            isEditable: true,
+            hiddenColumnNames: [],
+            widthCalculator: defaultWidthCalculator
+        )
+
+        #expect(pool.requiresCommentLine)
+        let cellsByName = Dictionary(uniqueKeysWithValues: dataColumns(in: tableView).compactMap { column -> (String, SortableHeaderCell)? in
+            guard let cell = column.headerCell as? SortableHeaderCell else { return nil }
+            return (cell.stringValue, cell)
+        })
+        #expect(cellsByName["name"]?.comment == "Display name")
+        #expect(cellsByName["id"]?.comment == nil)
+        #expect(cellsByName["id"]?.isTwoLineLayout == true)
+        #expect(cellsByName["name"]?.isTwoLineLayout == true)
+    }
+
+    @Test("reconcile stays single line when no visible column has a comment")
+    func reconcile_singleLineWhenNoComments() {
+        let pool = DataGridColumnPool()
+        let tableView = makeTableView()
+        let schema = ColumnIdentitySchema(columns: ["id", "name"])
+
+        pool.reconcile(
+            tableView: tableView,
+            schema: schema,
+            columnTypes: makeColumnTypes(count: 2),
+            columnComments: [:],
+            savedLayout: nil,
+            isEditable: true,
+            hiddenColumnNames: [],
+            widthCalculator: defaultWidthCalculator
+        )
+
+        #expect(pool.requiresCommentLine == false)
+        let cells = dataColumns(in: tableView).compactMap { $0.headerCell as? SortableHeaderCell }
+        #expect(cells.allSatisfy { !$0.isTwoLineLayout })
+    }
+
+    @Test("reconcile ignores comments on hidden columns for the subtitle row")
+    func reconcile_ignoresCommentsOnHiddenColumns() {
+        let pool = DataGridColumnPool()
+        let tableView = makeTableView()
+        let schema = ColumnIdentitySchema(columns: ["id", "name"])
+
+        var layout = ColumnLayoutState()
+        layout.hiddenColumns = ["name"]
+
+        pool.reconcile(
+            tableView: tableView,
+            schema: schema,
+            columnTypes: makeColumnTypes(count: 2),
+            columnComments: ["name": "Display name"],
+            savedLayout: layout,
+            isEditable: true,
+            hiddenColumnNames: [],
+            widthCalculator: defaultWidthCalculator
+        )
+
+        #expect(pool.requiresCommentLine == false)
+    }
 }

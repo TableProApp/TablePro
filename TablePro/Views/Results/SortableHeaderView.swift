@@ -70,13 +70,33 @@ final class SortableHeaderView: NSTableHeaderView {
     private var dragOccurredDuringClick = false
     private var mouseMovedTrackingArea: NSTrackingArea?
     private var hoveredColumnIndex: Int?
+    private var baseHeight: CGFloat = 0
+
+    var showsCommentLine: Bool = false {
+        didSet {
+            guard oldValue != showsCommentLine else { return }
+            tableView?.tile()
+            needsDisplay = true
+        }
+    }
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
+        baseHeight = frameRect.height
     }
 
     required init?(coder: NSCoder) {
         super.init(coder: coder)
+        baseHeight = frame.height
+    }
+
+    override func setFrameSize(_ newSize: NSSize) {
+        if baseHeight <= 0 {
+            baseHeight = newSize.height
+        }
+        var size = newSize
+        size.height = showsCommentLine ? baseHeight + SortableHeaderCell.commentBandHeight : baseHeight
+        super.setFrameSize(size)
     }
 
     override func updateTrackingAreas() {

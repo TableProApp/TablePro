@@ -13,6 +13,8 @@ final class SortableHeaderCell: NSTableHeaderCell {
     var isValueFiltered: Bool = false
     var isFunnelVisible: Bool = false
     var supportsValueFilter: Bool = true
+    var comment: String?
+    var isTwoLineLayout: Bool = false
 
     private static let indicatorPadding: CGFloat = 4
     private static let indicatorSpacing: CGFloat = 2
@@ -20,6 +22,8 @@ final class SortableHeaderCell: NSTableHeaderCell {
     private static let defaultIndicatorSize = NSSize(width: 9, height: 6)
     private static let funnelSize = NSSize(width: 13, height: 13)
     private static let funnelPointSize: CGFloat = 11
+    private static let subtitleFont = NSFont.systemFont(ofSize: NSFont.smallSystemFontSize - 1)
+    static let commentBandHeight: CGFloat = ceil(SortableHeaderCell.subtitleFont.boundingRectForFont.height) + 4
 
     override init(textCell string: String) {
         super.init(textCell: string)
@@ -42,11 +46,17 @@ final class SortableHeaderCell: NSTableHeaderCell {
         }
 
         let foreground = foregroundColor(emphasized: isColumnSelected)
+        let nameBand = nameBandRect(forBounds: cellFrame)
+
         drawTitle(
-            in: titleRect(forBounds: cellFrame),
+            in: titleRect(forBounds: nameBand),
             font: titleFont(isSorted: sortDirection != nil),
             color: foreground
         )
+
+        if isTwoLineLayout, let comment, !comment.isEmpty {
+            drawSubtitle(comment, in: commentBandRect(forBounds: cellFrame))
+        }
 
         var trailingCursorX = cellFrame.maxX - Self.indicatorPadding
 
@@ -59,7 +69,7 @@ final class SortableHeaderCell: NSTableHeaderCell {
                 let drawSize = funnelImage?.size ?? Self.funnelSize
                 let funnelRect = NSRect(
                     x: trailingCursorX - drawSize.width,
-                    y: cellFrame.midY - drawSize.height / 2,
+                    y: nameBand.midY - drawSize.height / 2,
                     width: drawSize.width,
                     height: drawSize.height
                 )
@@ -73,7 +83,7 @@ final class SortableHeaderCell: NSTableHeaderCell {
         let indicatorImage = Self.indicatorImage(for: direction, color: foreground)
         let indicatorSize = indicatorImage?.size ?? Self.defaultIndicatorSize
         let indicatorOriginX = trailingCursorX - indicatorSize.width
-        let indicatorOriginY = cellFrame.midY - indicatorSize.height / 2
+        let indicatorOriginY = nameBand.midY - indicatorSize.height / 2
         let indicatorRect = NSRect(
             x: indicatorOriginX,
             y: indicatorOriginY,
@@ -87,20 +97,37 @@ final class SortableHeaderCell: NSTableHeaderCell {
             let textOriginX = indicatorOriginX - Self.indicatorSpacing - priorityWidth
             let textRect = NSRect(
                 x: textOriginX,
-                y: cellFrame.minY,
+                y: nameBand.minY,
                 width: priorityWidth,
-                height: cellFrame.height
+                height: nameBand.height
             )
             Self.drawPriorityText(priorityText, in: textRect, color: foreground)
         }
     }
 
+    func nameBandRect(forBounds rect: NSRect) -> NSRect {
+        guard isTwoLineLayout else { return rect }
+        let bandHeight = max(0, rect.height - Self.commentBandHeight)
+        return NSRect(x: rect.minX, y: rect.minY, width: rect.width, height: bandHeight)
+    }
+
+    private func commentBandRect(forBounds rect: NSRect) -> NSRect {
+        let nameBand = nameBandRect(forBounds: rect)
+        return NSRect(
+            x: rect.minX,
+            y: nameBand.maxY,
+            width: rect.width,
+            height: max(0, rect.maxY - nameBand.maxY)
+        )
+    }
+
     func funnelRect(forBounds rect: NSRect) -> NSRect {
         guard supportsValueFilter else { return .null }
+        let band = nameBandRect(forBounds: rect)
         let size = Self.funnelSize
         return NSRect(
             x: rect.maxX - Self.indicatorPadding - size.width,
-            y: rect.midY - size.height / 2,
+            y: band.midY - size.height / 2,
             width: size.width,
             height: size.height
         )
@@ -178,6 +205,36 @@ final class SortableHeaderCell: NSTableHeaderCell {
         title.draw(in: drawRect)
     }
 
+    private func drawSubtitle(_ text: String, in rect: NSRect) {
+        let inset = min(DataGridMetrics.cellHorizontalInset, rect.width / 2)
+        let availableWidth = max(0, rect.width - inset * 2)
+        guard availableWidth > 0, rect.height > 0 else { return }
+
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.alignment = alignment
+        paragraph.lineBreakMode = .byTruncatingTail
+
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: Self.subtitleFont,
+            .foregroundColor: subtitleColor(),
+            .paragraphStyle: paragraph
+        ]
+
+        let subtitle = NSAttributedString(string: text, attributes: attributes)
+        let textHeight = subtitle.size().height
+        let drawRect = NSRect(
+            x: rect.minX + inset,
+            y: rect.midY - textHeight / 2,
+            width: availableWidth,
+            height: textHeight
+        )
+        subtitle.draw(in: drawRect)
+    }
+
+    private func subtitleColor() -> NSColor {
+        isColumnSelected ? .alternateSelectedControlTextColor.withAlphaComponent(0.8) : .secondaryLabelColor
+    }
+
     override func drawSortIndicator(
         withFrame cellFrame: NSRect,
         in controlView: NSView,
@@ -187,6 +244,9 @@ final class SortableHeaderCell: NSTableHeaderCell {
 
     override func accessibilityLabel() -> String? {
         var components = [super.accessibilityLabel() ?? stringValue]
+        if isTwoLineLayout, let comment, !comment.isEmpty {
+            components.append(comment)
+        }
         if let direction = sortDirection {
             switch direction {
             case .ascending:

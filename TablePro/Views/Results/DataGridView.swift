@@ -98,6 +98,7 @@ struct DataGridView: NSViewRepresentable {
         headerMenu.delegate = context.coordinator
         sortableHeader.menu = headerMenu
         tableView.headerView = sortableHeader
+        sortableHeader.showsCommentLine = context.coordinator.columnPool.requiresCommentLine
 
         let hasMoveRow = delegate != nil
         if hasMoveRow {
@@ -167,7 +168,10 @@ struct DataGridView: NSViewRepresentable {
             rowHeight: rowHeight,
             alternatingRows: alternatingRows,
             reloadVersion: changeManager.reloadVersion,
-            showObjectComments: AppSettingsManager.shared.general.showObjectComments
+            showObjectComments: AppSettingsManager.shared.general.showObjectComments,
+            columnCommentsSignature: AppSettingsManager.shared.general.showObjectComments
+                ? latestRows.columnComments.hashValue
+                : 0
         )
 
         if snapshot != coordinator.lastUpdateSnapshot {
@@ -325,6 +329,15 @@ struct DataGridView: NSViewRepresentable {
                 )
             }
         )
+
+        let requiresCommentLine = coordinator.columnPool.requiresCommentLine
+        if let rowNumberColumn = tableView.tableColumns.first(where: {
+            $0.identifier == ColumnIdentitySchema.rowNumberIdentifier
+        }),
+            let rowNumberCell = rowNumberColumn.headerCell as? SortableHeaderCell,
+            rowNumberCell.isTwoLineLayout != requiresCommentLine {
+            rowNumberCell.isTwoLineLayout = requiresCommentLine
+        }
     }
 
     private func syncSortDescriptors(tableView: NSTableView, coordinator: TableViewCoordinator, columns: [String]) {

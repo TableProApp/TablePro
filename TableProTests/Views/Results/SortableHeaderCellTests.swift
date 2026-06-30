@@ -57,6 +57,43 @@ struct SortableHeaderCellTests {
 
         #expect(prioritizedWidth < sortedWidth)
     }
+
+    @Test("Name band fills the bounds when single line")
+    func nameBandFillsBoundsWhenSingleLine() {
+        let cell = SortableHeaderCell(textCell: "id")
+        let bounds = NSRect(x: 0, y: 0, width: 100, height: 24)
+
+        #expect(cell.nameBandRect(forBounds: bounds) == bounds)
+    }
+
+    @Test("Two-line layout reserves the comment band below the name")
+    func twoLineLayoutReservesCommentBandBelowName() {
+        let cell = SortableHeaderCell(textCell: "id")
+        cell.isTwoLineLayout = true
+        let bounds = NSRect(x: 0, y: 0, width: 100, height: 38)
+
+        let nameBand = cell.nameBandRect(forBounds: bounds)
+
+        #expect(nameBand.minY == bounds.minY)
+        #expect(nameBand.height == bounds.height - SortableHeaderCell.commentBandHeight)
+        #expect(nameBand.maxY < bounds.maxY)
+    }
+
+    @Test("Funnel aligns to the name band in a two-line header")
+    func funnelAlignsToNameBandInTwoLineHeader() {
+        let bounds = NSRect(x: 0, y: 0, width: 100, height: 38)
+
+        let single = SortableHeaderCell(textCell: "id")
+        let two = SortableHeaderCell(textCell: "id")
+        two.isTwoLineLayout = true
+
+        let singleFunnel = single.funnelRect(forBounds: bounds)
+        let twoFunnel = two.funnelRect(forBounds: bounds)
+
+        #expect(singleFunnel.midY == bounds.midY)
+        #expect(twoFunnel.midY == two.nameBandRect(forBounds: bounds).midY)
+        #expect(twoFunnel.midY < singleFunnel.midY)
+    }
 }
 
 @MainActor

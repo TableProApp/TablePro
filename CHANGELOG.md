@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- The data grid column header now shows a column's comment on a second line under the name, not just in the hover tooltip. Turn it on with View > Show Object Comments. (#1789)
+
 ## [0.54.0] - 2026-06-30
 
 ### Added

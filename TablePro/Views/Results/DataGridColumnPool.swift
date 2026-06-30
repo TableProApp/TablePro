@@ -11,6 +11,7 @@ final class DataGridColumnPool {
     private weak var attachedTableView: NSTableView?
 
     var totalSlots: Int { pooledColumns.count }
+    private(set) var requiresCommentLine = false
 
     func attach(to tableView: NSTableView) {
         attachedTableView = tableView
@@ -42,6 +43,14 @@ final class DataGridColumnPool {
         let willRestoreWidths = !(savedLayout?.columnWidths.isEmpty ?? true)
         let hiddenFromLayout = savedLayout?.hiddenColumns ?? []
 
+        requiresCommentLine = visibleColumnHasComment(
+            schema: schema,
+            visibleCount: visibleCount,
+            columnComments: columnComments,
+            hiddenFromLayout: hiddenFromLayout,
+            hiddenColumnNames: hiddenColumnNames
+        )
+
         for slot in 0..<pooledColumns.count {
             let column = pooledColumns[slot]
             if slot < visibleCount {
@@ -54,6 +63,7 @@ final class DataGridColumnPool {
                     name: columnName,
                     columnType: slot < columnTypes.count ? columnTypes[slot] : nil,
                     comment: columnComments[columnName],
+                    isTwoLine: requiresCommentLine,
                     width: resolvedWidth,
                     isEditable: isEditable
                 )
@@ -77,6 +87,26 @@ final class DataGridColumnPool {
             visibleCount: visibleCount,
             targetOrder: targetOrder
         )
+
+        (tableView.headerView as? SortableHeaderView)?.showsCommentLine = requiresCommentLine
+    }
+
+    private func visibleColumnHasComment(
+        schema: ColumnIdentitySchema,
+        visibleCount: Int,
+        columnComments: [String: String],
+        hiddenFromLayout: Set<String>,
+        hiddenColumnNames: Set<String>
+    ) -> Bool {
+        guard !columnComments.isEmpty else { return false }
+        for slot in 0..<visibleCount {
+            let columnName = schema.columnNames[slot]
+            guard !hiddenFromLayout.contains(columnName), !hiddenColumnNames.contains(columnName) else { continue }
+            if let comment = columnComments[columnName], !comment.isEmpty {
+                return true
+            }
+        }
+        return false
     }
 
     private func growBackingPoolIfNeeded(to count: Int) {
@@ -180,6 +210,7 @@ final class DataGridColumnPool {
         name: String,
         columnType: ColumnType?,
         comment: String?,
+        isTwoLine: Bool,
         width: CGFloat,
         isEditable: Bool
     ) {
@@ -188,6 +219,16 @@ final class DataGridColumnPool {
             cell.font = column.headerCell.font
             cell.alignment = column.headerCell.alignment
             column.headerCell = cell
+        }
+
+        if let headerCell = column.headerCell as? SortableHeaderCell {
+            let resolvedComment = comment?.isEmpty == false ? comment : nil
+            if headerCell.comment != resolvedComment {
+                headerCell.comment = resolvedComment
+            }
+            if headerCell.isTwoLineLayout != isTwoLine {
+                headerCell.isTwoLineLayout = isTwoLine
+            }
         }
 
         var tooltip: String
