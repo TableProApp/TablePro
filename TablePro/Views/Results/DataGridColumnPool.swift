@@ -190,6 +190,23 @@ final class DataGridColumnPool {
             column.headerCell = cell
         }
 
+        let resolvedComment = comment?.isEmpty == false ? comment : nil
+        let typeName = columnType?.displayName ?? columnType?.rawType
+        if let headerCell = column.headerCell as? SortableHeaderCell {
+            var changed = false
+            if headerCell.comment != resolvedComment {
+                headerCell.comment = resolvedComment
+                changed = true
+            }
+            if headerCell.typeDisplayName != typeName {
+                headerCell.typeDisplayName = typeName
+                changed = true
+            }
+            if changed {
+                column.headerCell = headerCell
+            }
+        }
+
         var tooltip: String
         if let typeName = columnType?.rawType ?? columnType?.displayName {
             tooltip = "\(name) (\(typeName))"

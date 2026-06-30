@@ -167,7 +167,8 @@ struct DataGridView: NSViewRepresentable {
             rowHeight: rowHeight,
             alternatingRows: alternatingRows,
             reloadVersion: changeManager.reloadVersion,
-            showObjectComments: AppSettingsManager.shared.general.showObjectComments
+            showObjectComments: AppSettingsManager.shared.general.showObjectComments,
+            displayMetadataVersion: latestRows.displayMetadataVersion
         )
 
         if snapshot != coordinator.lastUpdateSnapshot {
@@ -306,13 +307,15 @@ struct DataGridView: NSViewRepresentable {
         tableRows: TableRows,
         savedLayout: ColumnLayoutState?
     ) {
-        let columnComments = AppSettingsManager.shared.general.showObjectComments
+        let showComments = AppSettingsManager.shared.general.showObjectComments
+        let columnComments = showComments
             ? tableRows.columnComments
             : [:]
+        let columnTypes = showComments ? tableRows.columnTypes : []
         coordinator.columnPool.reconcile(
             tableView: tableView,
             schema: coordinator.identitySchema,
-            columnTypes: tableRows.columnTypes,
+            columnTypes: columnTypes,
             columnComments: columnComments,
             savedLayout: savedLayout,
             isEditable: isEditable,
@@ -325,6 +328,25 @@ struct DataGridView: NSViewRepresentable {
                 )
             }
         )
+
+        if let headerView = tableView.headerView as? SortableHeaderView {
+            var maxLineCount = 0
+            if showComments {
+                for (index, colName) in tableRows.columns.enumerated() {
+                    let hasType = index < columnTypes.count && columnTypes[index].displayName != nil
+                    let hasComment = !(columnComments[colName]?.isEmpty ?? true)
+                    let lineCount: Int
+                    switch (hasType, hasComment) {
+                    case (true, true): lineCount = 2
+                    case (true, false), (false, true): lineCount = 1
+                    default: lineCount = 0
+                    }
+                    maxLineCount = max(maxLineCount, lineCount)
+                }
+            }
+            headerView.applyHeaderHeight(subtitleLineCount: maxLineCount)
+            headerView.needsDisplay = true
+        }
     }
 
     private func syncSortDescriptors(tableView: NSTableView, coordinator: TableViewCoordinator, columns: [String]) {

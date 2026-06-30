@@ -65,6 +65,9 @@ final class SortableHeaderView: NSTableHeaderView {
 
     private static let clickDragThreshold: CGFloat = 4
     private static let resizeZoneWidth: CGFloat = 4
+    static let defaultHeaderHeight: CGFloat = 17
+    static let singleSubtitleHeaderHeight: CGFloat = 28
+    static let doubleSubtitleHeaderHeight: CGFloat = 38
 
     private var pendingClickStartLocation: NSPoint?
     private var dragOccurredDuringClick = false
@@ -191,6 +194,21 @@ final class SortableHeaderView: NSTableHeaderView {
                 cell.sortPriority = newPriority
                 setNeedsDisplay(headerRect(ofColumn: columnIndex))
             }
+        }
+    }
+
+    func applyHeaderHeight(subtitleLineCount: Int) {
+        let targetHeight: CGFloat
+        switch subtitleLineCount {
+        case 2: targetHeight = Self.doubleSubtitleHeaderHeight
+        case 1: targetHeight = Self.singleSubtitleHeaderHeight
+        default: targetHeight = Self.defaultHeaderHeight
+        }
+        guard frame.height != targetHeight else { return }
+        frame.size.height = targetHeight
+        if let tableView {
+            tableView.tile()
+            needsDisplay = true
         }
     }
 

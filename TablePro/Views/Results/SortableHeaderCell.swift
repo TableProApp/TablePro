@@ -13,6 +13,18 @@ final class SortableHeaderCell: NSTableHeaderCell {
     var isValueFiltered: Bool = false
     var isFunnelVisible: Bool = false
     var supportsValueFilter: Bool = true
+    var comment: String?
+    var typeDisplayName: String?
+
+    var subtitleLineCount: Int {
+        let hasType = typeDisplayName != nil
+        let hasComment = !(comment?.isEmpty ?? true)
+        switch (hasType, hasComment) {
+        case (true, true): return 2
+        case (true, false), (false, true): return 1
+        case (false, false): return 0
+        }
+    }
 
     private static let indicatorPadding: CGFloat = 4
     private static let indicatorSpacing: CGFloat = 2
@@ -20,6 +32,7 @@ final class SortableHeaderCell: NSTableHeaderCell {
     private static let defaultIndicatorSize = NSSize(width: 9, height: 6)
     private static let funnelSize = NSSize(width: 13, height: 13)
     private static let funnelPointSize: CGFloat = 11
+    private static let fixedTitleHeight: CGFloat = 15
 
     override init(textCell string: String) {
         super.init(textCell: string)
@@ -42,8 +55,20 @@ final class SortableHeaderCell: NSTableHeaderCell {
         }
 
         let foreground = foregroundColor(emphasized: isColumnSelected)
+        let lineCount = subtitleLineCount
+        let hasType = typeDisplayName != nil
+        let hasComment = !(comment?.isEmpty ?? true)
+
+        let titleFrame: NSRect
+        if lineCount > 0 {
+            let titleHeight = min(cellFrame.height * 0.55, Self.fixedTitleHeight)
+            titleFrame = NSRect(x: cellFrame.minX, y: cellFrame.minY, width: cellFrame.width, height: titleHeight)
+        } else {
+            titleFrame = cellFrame
+        }
+
         drawTitle(
-            in: titleRect(forBounds: cellFrame),
+            in: titleRect(forBounds: titleFrame),
             font: titleFont(isSorted: sortDirection != nil),
             color: foreground
         )
@@ -66,6 +91,22 @@ final class SortableHeaderCell: NSTableHeaderCell {
                 Self.drawIndicator(image: funnelImage, in: funnelRect)
             }
             trailingCursorX -= Self.funnelSize.width + Self.indicatorSpacing
+        }
+
+        if lineCount > 0 {
+            let subtitleStartY = titleFrame.maxY
+            let subtitleTotalHeight = cellFrame.maxY - subtitleStartY
+            let lineHeight = subtitleTotalHeight / CGFloat(lineCount)
+            var lineY = subtitleStartY
+            if hasType, let type = typeDisplayName {
+                let typeFrame = NSRect(x: cellFrame.minX, y: lineY, width: cellFrame.width, height: lineHeight)
+                drawSubtitle(type, in: typeFrame, color: foreground)
+                lineY += lineHeight
+            }
+            if hasComment, let commentText = comment {
+                let commentFrame = NSRect(x: cellFrame.minX, y: lineY, width: cellFrame.width, height: lineHeight)
+                drawSubtitle(commentText, in: commentFrame, color: foreground)
+            }
         }
 
         guard let direction = sortDirection else { return }
@@ -176,6 +217,37 @@ final class SortableHeaderCell: NSTableHeaderCell {
             height: textHeight
         )
         title.draw(in: drawRect)
+    }
+
+    private func drawSubtitle(_ text: String, in rect: NSRect, color: NSColor) {
+        let inset = DataGridMetrics.cellHorizontalInset
+        let drawRect = NSRect(
+            x: rect.minX + inset,
+            y: rect.minY + 1,
+            width: max(0, rect.width - inset * 2),
+            height: max(0, rect.height - 2)
+        )
+        guard drawRect.width > 0, drawRect.height > 0 else { return }
+
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.alignment = alignment
+        paragraph.lineBreakMode = .byTruncatingTail
+
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: NSFont.labelFontSize),
+            .foregroundColor: color.withAlphaComponent(0.65),
+            .paragraphStyle: paragraph
+        ]
+
+        let attrString = NSAttributedString(string: text, attributes: attributes)
+        let textHeight = attrString.size().height
+        let centeredRect = NSRect(
+            x: drawRect.minX,
+            y: drawRect.minY + (drawRect.height - textHeight) / 2,
+            width: drawRect.width,
+            height: textHeight
+        )
+        attrString.draw(in: centeredRect)
     }
 
     override func drawSortIndicator(

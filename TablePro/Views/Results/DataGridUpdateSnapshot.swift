@@ -21,4 +21,5 @@ struct DataGridUpdateSnapshot: Equatable {
     let alternatingRows: Bool
     let reloadVersion: Int
     let showObjectComments: Bool
+    let displayMetadataVersion: Int
 }

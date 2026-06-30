@@ -17,6 +17,7 @@ struct TableRows: Sendable {
     var columnNullable: [String: Bool]
     var columnComments: [String: String]
     var foreignKeysFetched: Bool
+    var displayMetadataVersion: Int = 0
 
     init(
         rows: ContiguousArray<Row> = [],
@@ -191,6 +192,9 @@ struct TableRows: Sendable {
         if let columnComments, columnComments != self.columnComments {
             self.columnComments = columnComments
             didChange = true
+        }
+        if didChange {
+            displayMetadataVersion &+= 1
         }
         return didChange ? .columnsReplaced : .none
     }
