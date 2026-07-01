@@ -3,7 +3,36 @@ import Foundation
 import TableProModels
 import UniformTypeIdentifiers
 
-struct AddRowToTableIntent: AppIntent {
+protocol RowInsertingIntent: AppIntent {
+    var connection: ConnectionEntity { get }
+    var database: DatabaseEntity? { get }
+    var table: TableEntity { get }
+}
+
+extension RowInsertingIntent {
+    func insert(rows: [PayloadRow]) async throws -> Int {
+        guard let savedConnection = IntentConnectionLoader.connection(id: connection.id) else {
+            throw IntentDataError.connectionNotFound
+        }
+        switch savedConnection.safeModeLevel.writePermission {
+        case .blocked:
+            throw IntentDataError.readOnly(savedConnection.name.isEmpty ? savedConnection.host : savedConnection.name)
+        case .requiresConfirmation:
+            let noun = rows.count == 1 ? "row" : "rows"
+            try await requestConfirmation(
+                actionName: .add,
+                dialog: "Add \(rows.count) \(noun) to \(table.name)?"
+            )
+        case .proceed:
+            break
+        }
+        return try await IntentDatabaseSession.with(connection: savedConnection) { session in
+            try await session.insertRows(namespace: database?.id, table: table.name, rows: rows)
+        }
+    }
+}
+
+struct AddRowToTableIntent: RowInsertingIntent {
     static var title: LocalizedStringResource = "Add Row to Table"
     static var description = IntentDescription(
         "Add one row to a table on a saved connection. Provide the row as a JSON object or a CSV row."
@@ -33,17 +62,12 @@ struct AddRowToTableIntent: AppIntent {
 
     func perform() async throws -> some IntentResult & ReturnsValue<Int> & ProvidesDialog {
         let rows = try await RowPayload.parseSingle(data: data, file: nil)
-        let count = try await RowInsertRunner.run(
-            connectionId: connection.id,
-            namespace: database?.id,
-            table: table.name,
-            rows: rows
-        )
+        let count = try await insert(rows: rows)
         return .result(value: count, dialog: "Added \(count) row to \(table.name).")
     }
 }
 
-struct AddRowsToTableIntent: AppIntent {
+struct AddRowsToTableIntent: RowInsertingIntent {
     static var title: LocalizedStringResource = "Add Rows to Table"
     static var description = IntentDescription(
         "Add multiple rows to a table on a saved connection. Provide the rows as a JSON array, CSV text, or a file."
@@ -77,26 +101,7 @@ struct AddRowsToTableIntent: AppIntent {
 
     func perform() async throws -> some IntentResult & ReturnsValue<Int> & ProvidesDialog {
         let rows = try await RowPayload.parse(data: data, file: file)
-        let count = try await RowInsertRunner.run(
-            connectionId: connection.id,
-            namespace: database?.id,
-            table: table.name,
-            rows: rows
-        )
+        let count = try await insert(rows: rows)
         return .result(value: count, dialog: "Added \(count) rows to \(table.name).")
-    }
-}
-
-enum RowInsertRunner {
-    static func run(connectionId: UUID, namespace: String?, table: String, rows: [PayloadRow]) async throws -> Int {
-        guard let connection = IntentConnectionLoader.connection(id: connectionId) else {
-            throw IntentDataError.connectionNotFound
-        }
-        if connection.safeModeLevel.writePermission == .blocked {
-            throw IntentDataError.readOnly(connection.name.isEmpty ? connection.host : connection.name)
-        }
-        return try await IntentDatabaseSession.with(connection: connection) { session in
-            try await session.insertRows(namespace: namespace, table: table, rows: rows)
-        }
     }
 }
