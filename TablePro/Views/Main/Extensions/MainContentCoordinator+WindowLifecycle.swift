@@ -18,8 +18,10 @@ extension MainContentCoordinator {
 
     /// Called from `TabWindowController.windowDidBecomeKey(_:)`.
     /// Updates focus state, refreshes file-based schema if stale, and syncs the
-    /// sidebar selection to the active tab. No query work runs here — lazy-load
-    /// is owned by `MainEditorContentView`'s `.task(id:)` modifier.
+    /// sidebar selection to the active tab. The one query-related action here is
+    /// consuming a deferred restore load: a restored background tab loads its data
+    /// the first time its window becomes key. All other lazy-load is owned by
+    /// `MainEditorContentView`'s `.task(id:)` modifier.
     func handleWindowDidBecomeKey() {
         let t0 = Date()
         Self.lifecycleLogger.debug(
@@ -28,6 +30,8 @@ extension MainContentCoordinator {
         isKeyWindow = true
         evictionTask?.cancel()
         evictionTask = nil
+
+        consumeDeferredRestoreLoadIfNeeded()
 
         syncSidebarToSelectedTab()
         announceActiveTabToVoiceOver()
@@ -133,8 +137,9 @@ extension MainContentCoordinator {
 
     // MARK: - Lazy Load
 
-    func lazyLoadCurrentTabIfNeeded() {
+    func lazyLoadCurrentTabIfNeeded(trigger: TableLoadTrigger = .userInitiated) {
         guard let tab = tabManager.selectedTab else { return }
+        guard deferredRestoreLoadTabId != tab.id else { return }
         guard canAutoLoadTableTab(tab) else { return }
         guard tableLoadTasks[tab.id] == nil else { return }
 
@@ -142,7 +147,7 @@ extension MainContentCoordinator {
 
         guard let session = DatabaseManager.shared.session(for: connectionId),
               session.isConnected else {
-            needsLazyLoad = true
+            pendingLoadTrigger = trigger
             return
         }
 
@@ -158,7 +163,7 @@ extension MainContentCoordinator {
                     self.tableLoadTasks[tabId] = nil
                 }
             }
-            await self.openTableTabQuery(tabId: tabId)
+            await self.openTableTabQuery(tabId: tabId, trigger: trigger)
             if let queryTask = self.currentQueryTask {
                 await queryTask.value
             }
@@ -169,6 +174,14 @@ extension MainContentCoordinator {
     func cancelTableLoad(for tabId: UUID) {
         tableLoadTasks[tabId]?.task.cancel()
         tableLoadTasks[tabId] = nil
+    }
+
+    func consumeDeferredRestoreLoadIfNeeded() {
+        guard isKeyWindow else { return }
+        guard let deferredId = deferredRestoreLoadTabId,
+              deferredId == tabManager.selectedTabId else { return }
+        deferredRestoreLoadTabId = nil
+        lazyLoadCurrentTabIfNeeded(trigger: .restore)
     }
 
     private func canAutoLoadTableTab(_ tab: QueryTab) -> Bool {

@@ -131,11 +131,11 @@ internal final class AppLaunchCoordinator {
                 window.close()
             }
         case .reopenLast:
-            reopenLastSessionIfArchiveMissing()
+            reopenLastSession()
         }
     }
 
-    private func reopenLastSessionIfArchiveMissing() {
+    private func reopenLastSession() {
         guard !NSApp.windows.contains(where: { Self.isMainWindow($0) }) else { return }
 
         let connectionIds = LastOpenConnectionsStorage.shared.load()

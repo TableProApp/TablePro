@@ -5,11 +5,17 @@
 
 import Foundation
 
+enum RestoreLoadTiming {
+    case immediate
+    case deferred
+}
+
 @MainActor
 enum RestorationGroupRegistry {
     struct WindowGroup {
         let tabs: [QueryTab]
         let selectedTabId: UUID?
+        var loadTiming: RestoreLoadTiming = .immediate
     }
 
     private static var groups: [UUID: WindowGroup] = [:]

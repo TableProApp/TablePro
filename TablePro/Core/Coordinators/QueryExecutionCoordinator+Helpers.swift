@@ -485,7 +485,8 @@ extension QueryExecutionCoordinator {
         _ error: Error,
         sql: String,
         tabId: UUID,
-        connection conn: DatabaseConnection
+        connection conn: DatabaseConnection,
+        trigger: TableLoadTrigger = .userInitiated
     ) {
         parent.currentQueryTask = nil
         parent.tabManager.mutate(tabId: tabId) { tab in
@@ -504,6 +505,8 @@ extension QueryExecutionCoordinator {
             wasSuccessful: false,
             errorMessage: error.localizedDescription
         )
+
+        guard !trigger.suppressesFailureModal else { return }
 
         let errorMessage = error.localizedDescription
         let queryCopy = sql
@@ -529,14 +532,14 @@ extension QueryExecutionCoordinator {
         }
     }
 
-    func restoreSchemaAndRunQuery(_ schema: String) async {
+    func restoreSchemaAndRunQuery(_ schema: String, trigger: TableLoadTrigger = .userInitiated) async {
         guard let driver = DatabaseManager.shared.driver(for: parent.connectionId) else {
-            parent.needsLazyLoad = true
+            parent.pendingLoadTrigger = trigger
             return
         }
         guard let schemaDriver = driver as? SchemaSwitchable,
               schemaDriver.currentSchema != nil else {
-            parent.runQuery()
+            parent.runQuery(trigger: trigger)
             return
         }
         do {
@@ -550,7 +553,7 @@ extension QueryExecutionCoordinator {
             helpersLogger.warning("Failed to restore schema '\(schema, privacy: .public)': \(error.localizedDescription, privacy: .public)")
             return
         }
-        parent.runQuery()
+        parent.runQuery(trigger: trigger)
     }
 }
 

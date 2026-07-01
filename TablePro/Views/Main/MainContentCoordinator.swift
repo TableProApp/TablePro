@@ -166,7 +166,8 @@ final class MainContentCoordinator {
     var databaseToDrop: String?
     var importFileURL: URL?
     var exportPreselectedTableNames: Set<String>?
-    var needsLazyLoad = false
+    var pendingLoadTrigger: TableLoadTrigger?
+    @ObservationIgnored var deferredRestoreLoadTabId: UUID?
 
     @ObservationIgnored var displayFormatsCache: [UUID: DisplayFormatsCacheEntry] = [:]
 
@@ -861,12 +862,12 @@ final class MainContentCoordinator {
 
     // MARK: - Query Execution
 
-    func runQuery() {
+    func runQuery(trigger: TableLoadTrigger = .userInitiated) {
         guard let (tab, index) = tabManager.selectedTabAndIndex,
               !tab.execution.isExecuting else { return }
 
         if tab.tabType == .table {
-            executeTableTabQueryDirectly()
+            executeTableTabQueryDirectly(trigger: trigger)
             return
         }
 
@@ -936,7 +937,7 @@ final class MainContentCoordinator {
     /// Execute table tab query directly.
     /// Table tab queries are always app-generated SELECTs, so they skip dangerous-query
     /// checks but still respect safe mode levels that apply to all queries.
-    func executeTableTabQueryDirectly() {
+    func executeTableTabQueryDirectly(trigger: TableLoadTrigger = .userInitiated) {
         guard let (tab, index) = tabManager.selectedTabAndIndex,
               !tab.execution.isExecuting else { return }
 
@@ -964,13 +965,13 @@ final class MainContentCoordinator {
                 )
                 switch decision {
                 case .authorized:
-                    executeQueryInternal(sql, isAutoLoad: true)
+                    executeQueryInternal(sql, isAutoLoad: true, trigger: trigger)
                 case .denied(let reason):
                     tabManager.mutate(at: index) { $0.execution.errorMessage = reason }
                 }
             }
         } else {
-            executeQueryInternal(sql, isAutoLoad: true)
+            executeQueryInternal(sql, isAutoLoad: true, trigger: trigger)
         }
     }
 
@@ -1118,7 +1119,8 @@ final class MainContentCoordinator {
 
     internal func executeQueryInternal(
         _ sql: String,
-        isAutoLoad: Bool = false
+        isAutoLoad: Bool = false,
+        trigger: TableLoadTrigger = .userInitiated
     ) {
         guard let (selectedTab, index) = tabManager.selectedTabAndIndex,
               !selectedTab.execution.isExecuting else { return }
@@ -1186,7 +1188,7 @@ final class MainContentCoordinator {
                         tabManager.mutate(tabId: tabId) { $0.execution.isExecuting = false }
                         currentQueryTask = nil
                         toolbarState.setExecuting(false)
-                        needsLazyLoad = true
+                        pendingLoadTrigger = trigger
                     }
                     return
                 }
@@ -1290,10 +1292,10 @@ final class MainContentCoordinator {
                     if error is CancellationError || Task.isCancelled { return }
                     guard capturedGeneration == queryGeneration else { return }
                     if isAutoLoad, services.databaseManager.driver(for: connectionId)?.status != .connected {
-                        needsLazyLoad = true
+                        pendingLoadTrigger = trigger
                         return
                     }
-                    handleQueryExecutionError(error, sql: sql, tabId: tabId, connection: conn)
+                    handleQueryExecutionError(error, sql: sql, tabId: tabId, connection: conn, trigger: trigger)
                 }
             }
         }
