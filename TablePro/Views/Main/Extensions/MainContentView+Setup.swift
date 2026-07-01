@@ -91,7 +91,12 @@ extension MainContentView {
 
     private func handleRestoreOrDefault() async {
         if let group = RestorationGroupRegistry.consume(for: payload?.id) {
-            applyRestoredGroup(group.tabs, selectedTabId: group.selectedTabId, loadTiming: group.loadTiming)
+            applyRestoredGroup(
+                group.tabs,
+                selectedTabId: group.selectedTabId,
+                loadTiming: group.loadTiming,
+                consumeDeferredWhenKey: true
+            )
             return
         }
 
@@ -165,7 +170,8 @@ extension MainContentView {
         selectedTabId: UUID?,
         activeDatabase: String? = nil,
         activeSchema: String? = nil,
-        loadTiming: RestoreLoadTiming = .immediate
+        loadTiming: RestoreLoadTiming = .immediate,
+        consumeDeferredWhenKey: Bool = false
     ) {
         guard let firstTab = tabs.first else { return }
         tabManager.tabs = tabs
@@ -184,18 +190,25 @@ extension MainContentView {
             for: selected,
             activeDatabase: activeDatabase,
             activeSchema: activeSchema,
-            loadTiming: loadTiming
+            loadTiming: loadTiming,
+            consumeDeferredWhenKey: consumeDeferredWhenKey
         )
     }
 
     /// Restore the connection's database and schema, then load the selected tab, in a single
     /// sequenced task so the database and schema switches never race each other. A deferred
-    /// tab records its id and loads only when its window first becomes key.
+    /// tab records its id and loads only when its window becomes key from a user switch.
+    ///
+    /// `consumeDeferredWhenKey` is true only for sibling windows opened by restoration, which
+    /// may already be key because the user is showing them. The initial window is transiently
+    /// key at launch before the front window activates, so it must never consume here — it loads
+    /// its deferred tab through `windowDidBecomeKey` when the user switches back to it.
     private func restoreConnectionContext(
         for selected: QueryTab,
         activeDatabase: String?,
         activeSchema: String?,
-        loadTiming: RestoreLoadTiming
+        loadTiming: RestoreLoadTiming,
+        consumeDeferredWhenKey: Bool
     ) {
         let isTableTab = selected.tabType == .table
             && !selected.content.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -203,7 +216,9 @@ extension MainContentView {
         guard loadTiming == .immediate else {
             if isTableTab {
                 coordinator.deferredRestoreLoadTabId = selected.id
-                coordinator.consumeDeferredRestoreLoadIfNeeded()
+                if consumeDeferredWhenKey {
+                    coordinator.consumeDeferredRestoreLoadIfNeeded()
+                }
             }
             return
         }

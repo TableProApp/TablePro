@@ -189,6 +189,21 @@ struct MainContentCoordinatorLazyLoadTests {
         #expect(coordinator.tableLoadTasks[tabId] == nil)
     }
 
+    @Test("consumeDeferredRestoreLoadIfNeeded is a no-op while the window is not key")
+    func consumeDeferredIsNoOpWhenNotKey() {
+        let (coordinator, tabManager) = makeCoordinator()
+        let tabId = addTableTab(to: tabManager)
+        coordinator.deferredRestoreLoadTabId = tabId
+        coordinator.isKeyWindow = false
+        coordinator.pendingLoadTrigger = nil
+
+        coordinator.consumeDeferredRestoreLoadIfNeeded()
+
+        #expect(coordinator.deferredRestoreLoadTabId == tabId)
+        #expect(coordinator.pendingLoadTrigger == nil)
+        #expect(coordinator.tableLoadTasks[tabId] == nil)
+    }
+
     @Test("handleWindowDidBecomeKey consumes a deferred restore load with the restore trigger")
     func windowDidBecomeKeyConsumesDeferredRestoreLoad() {
         let (coordinator, tabManager) = makeCoordinator()
