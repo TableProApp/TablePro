@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Restored table tabs no longer reload all at once or flood failure dialogs on launch. Only the frontmost tab loads immediately; other restored tabs load when you switch to them, and a load failure now shows inline in the tab instead of a dialog. (#1796)
+
 ## [0.54.0] - 2026-06-30
 
 ### Added

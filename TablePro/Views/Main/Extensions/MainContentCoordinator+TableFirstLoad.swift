@@ -7,9 +7,9 @@ import Foundation
 import TableProPluginKit
 
 extension MainContentCoordinator {
-    func openTableTabQuery(tabId: UUID) async {
+    func openTableTabQuery(tabId: UUID, trigger: TableLoadTrigger = .userInitiated) async {
         guard await prepareTableTabFirstLoad(tabId: tabId) else { return }
-        executeTableTabQueryDirectly()
+        executeTableTabQueryDirectly(trigger: trigger)
     }
 
     @discardableResult

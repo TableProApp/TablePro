@@ -160,7 +160,7 @@ Each tab maintains its own pending changes. Switching tabs saves and restores ea
 | Active database and schema | |
 | Pin state | |
 
-Tab state auto-saves 500ms after any change, plus a background save every 30 seconds so a crash or force quit keeps your recent work. On reconnect, TablePro restores your tabs and re-runs table queries with the sort, filters, and page you left them on. Connections reconnect lazily, when you first interact with a restored tab, so launch stays fast and unreachable hosts do not block startup.
+Tab state auto-saves 500ms after any change, plus a background save every 30 seconds so a crash or force quit keeps your recent work. On reconnect, TablePro restores your tabs with the sort, filters, and page you left them on. Only the frontmost tab loads its data right away; other restored tabs load the first time you switch to them, so launch stays fast and a connection storm never hits the database. Connections reconnect lazily on first interaction, and if a restored tab fails to load the error shows inline in that tab rather than as a dialog.
 
 Whether the session reopens on launch is controlled by [Startup Behavior](/customization/settings#general), which defaults to reopening your last session.
 

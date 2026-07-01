@@ -34,6 +34,22 @@ struct MultiWindowRestorationTests {
         #expect(RestorationGroupRegistry.consume(for: nil) == nil)
     }
 
+    @Test("Window group defaults to immediate load timing")
+    func windowGroupDefaultsToImmediate() {
+        let group = RestorationGroupRegistry.WindowGroup(tabs: [tab("A")], selectedTabId: nil)
+        #expect(group.loadTiming == .immediate)
+    }
+
+    @Test("Registry round-trips deferred load timing")
+    func registryRoundTripsLoadTiming() {
+        let payloadId = UUID()
+        RestorationGroupRegistry.register(
+            .init(tabs: [tab("A")], selectedTabId: nil, loadTiming: .deferred),
+            for: payloadId
+        )
+        #expect(RestorationGroupRegistry.consume(for: payloadId)?.loadTiming == .deferred)
+    }
+
     @Test("Restored sort columns resolve to indices, preserving order and dropping missing columns")
     func resolveRestoredSortColumns() {
         let persisted = [
