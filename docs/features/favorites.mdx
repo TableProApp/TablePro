@@ -53,6 +53,18 @@ Assign a unique keyword to a favorite (e.g., `selall`). Start typing the keyword
 
 Keywords must be unique across all favorites in the same scope. Typing a keyword in the Quick Switcher (`Shift+Cmd+O`) also finds the saved query.
 
+### Cursor Placement
+
+Put `;;` in a favorite's SQL to set where the cursor lands after expansion. The marker is removed on insert and the cursor is placed at its position:
+
+```sql
+SELECT COUNT(*)
+FROM orders
+WHERE orders.;;
+```
+
+Accepting the keyword inserts the query without the `;;` and leaves the cursor right after `orders.`, ready for a column name. Only the first `;;` counts as a marker. Without one, the cursor lands at the end of the inserted SQL.
+
 A favorite saved with a connection scope belongs to that connection: it appears only there, and deleting the connection deletes its saved queries. Use the **Global** scope for queries you want on every connection.
 
 {/* Screenshot: Keyword expansion in autocomplete */}
@@ -131,6 +143,8 @@ WHERE last_seen > NOW() - INTERVAL 24 HOUR;
 | `@description` | Optional. Shown in tooltips. |
 
 The parser stops at the first non-frontmatter line, so put these at the very top of the file. UTF-8 BOM at the start of the file is handled. Files without frontmatter still appear, with the filename as the display name and no keyword registered.
+
+The `;;` [cursor marker](#cursor-placement) works in linked files too: a `@keyword` expansion places the cursor at the first `;;` in the file's SQL.
 
 To edit frontmatter without opening the file, right-click a linked row and choose **Edit Metadata...** The dialog rewrites only the leading comment block and preserves the rest of the file plus its original encoding.
 

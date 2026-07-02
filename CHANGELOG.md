@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - iOS: add data to a table from the Shortcuts app. Two new shortcuts, Add Row to Table and Add Rows to Table, pick a saved connection, database or schema, and table, then insert from JSON or CSV. They run without opening the app. (#1788)
 - Refresh button in Settings > Plugins > Browse to reload the plugin list on demand. (#1799)
+- SQL Favorites: put ;; in a saved query to set where the cursor lands after keyword expansion in the editor. (#1795)
 
 ### Fixed
 
