@@ -522,6 +522,7 @@ extension PluginManager {
 
     func installMissingPlugin(
         for databaseType: DatabaseType,
+        registryClient: RegistryClient = .shared,
         progress: @escaping @MainActor @Sendable (Double) -> Void
     ) async throws {
         let pluginTypeId = databaseType.pluginTypeId
@@ -546,20 +547,26 @@ extension PluginManager {
             }
         }
 
-        let registryClient = RegistryClient.shared
-        await registryClient.fetchManifest()
+        await registryClient.ensureManifest(.ifStale)
+        var registryPlugin = Self.registryPlugin(forTypeId: pluginTypeId, in: registryClient.manifest)
 
-        guard let manifest = registryClient.manifest else {
-            throw PluginError.downloadFailed(String(localized: "Could not fetch plugin registry"))
+        if registryPlugin == nil {
+            await registryClient.ensureManifest(.mustBeCurrent)
+            registryPlugin = Self.registryPlugin(forTypeId: pluginTypeId, in: registryClient.manifest)
         }
 
-        guard let registryPlugin = manifest.plugins.first(where: { plugin in
-            plugin.databaseTypeIds?.contains(pluginTypeId) == true
-        }) else {
+        guard let registryPlugin else {
+            guard registryClient.fetchState == .loaded else {
+                throw PluginError.registryUnreachable
+            }
             throw PluginError.notFound
         }
 
-        let entry = try await installFromRegistry(registryPlugin, progress: progress)
+        let entry = try await installFromRegistry(registryPlugin, registryClient: registryClient, progress: progress)
         Self.logger.info("Installed missing plugin '\(entry.name)' for database type '\(databaseType.rawValue)'")
+    }
+
+    nonisolated static func registryPlugin(forTypeId pluginTypeId: String, in manifest: RegistryManifest?) -> RegistryPlugin? {
+        manifest?.plugins.first { $0.databaseTypeIds?.contains(pluginTypeId) == true }
     }
 }

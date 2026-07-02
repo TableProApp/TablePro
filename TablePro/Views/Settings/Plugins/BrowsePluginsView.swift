@@ -26,9 +26,7 @@ struct BrowsePluginsView: View {
     var body: some View {
         mainContent
         .task {
-            if registryClient.fetchState == .idle {
-                await registryClient.fetchManifest()
-            }
+            await registryClient.ensureManifest(.ifStale)
             await downloadCountService.fetchCounts(for: registryClient.manifest)
         }
         .alert(errorTitle, isPresented: $showErrorAlert) {
@@ -48,61 +46,97 @@ struct BrowsePluginsView: View {
 
     @ViewBuilder
     private var mainContent: some View {
-        switch registryClient.fetchState {
-        case .idle, .loading:
-            ProgressView()
+        if registryClient.manifest != nil {
+            loadedContent
+        } else {
+            switch registryClient.fetchState {
+            case .idle, .loading, .loaded, .loadedFromCache:
+                ProgressView()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            case .failed(let message):
+                ContentUnavailableView {
+                    Label("Failed to Load", systemImage: "wifi.slash")
+                } description: {
+                    Text(message)
+                } actions: {
+                    Button("Try Again") {
+                        refreshRegistry()
+                    }
+                    .buttonStyle(.bordered)
+                }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-        case .loaded:
-            let plugins = registryClient.search(query: searchText, category: selectedCategory)
-            HSplitView {
-                VStack(spacing: 0) {
-                    HStack(spacing: 6) {
-                        NativeSearchField(text: $searchText, placeholder: String(localized: "Search..."))
-                        Picker("", selection: $selectedCategory) {
-                            Text("All").tag(RegistryCategory?.none)
-                            ForEach(RegistryCategory.allCases) { category in
-                                Text(category.displayName).tag(RegistryCategory?.some(category))
-                            }
-                        }
-                        .labelsHidden()
-                        .fixedSize()
-                    }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 6)
-
-                    if plugins.isEmpty {
-                        ContentUnavailableView.search(text: searchText)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    } else {
-                        List(plugins, selection: $selectedPluginId) { plugin in
-                            browseRow(plugin)
-                                .tag(plugin.id)
-                        }
-                        .listStyle(.inset)
-                    }
-                }
-                .frame(minWidth: 200, idealWidth: 240, maxWidth: 280)
-
-                detailContent
-                    .frame(minWidth: 340)
             }
+        }
+    }
 
-        case .failed(let message):
-            ContentUnavailableView {
-                Label("Failed to Load", systemImage: "wifi.slash")
-            } description: {
-                Text(message)
-            } actions: {
-                Button("Try Again") {
-                    Task {
-                        await registryClient.fetchManifest(forceRefresh: true)
-                        await downloadCountService.fetchCounts(for: registryClient.manifest)
+    private var loadedContent: some View {
+        let plugins = registryClient.search(query: searchText, category: selectedCategory)
+        return HSplitView {
+            VStack(spacing: 0) {
+                HStack(spacing: 6) {
+                    NativeSearchField(text: $searchText, placeholder: String(localized: "Search..."))
+                    Picker("", selection: $selectedCategory) {
+                        Text("All").tag(RegistryCategory?.none)
+                        ForEach(RegistryCategory.allCases) { category in
+                            Text(category.displayName).tag(RegistryCategory?.some(category))
+                        }
                     }
+                    .labelsHidden()
+                    .fixedSize()
+
+                    Button {
+                        refreshRegistry()
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(registryClient.fetchState == .loading)
+                    .help("Refresh plugin list")
+                    .accessibilityLabel(String(localized: "Refresh plugin list"))
                 }
-                .buttonStyle(.bordered)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 6)
+
+                if case .loadedFromCache(let reason) = registryClient.fetchState {
+                    staleManifestBanner(reason)
+                }
+
+                if plugins.isEmpty {
+                    ContentUnavailableView.search(text: searchText)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    List(plugins, selection: $selectedPluginId) { plugin in
+                        browseRow(plugin)
+                            .tag(plugin.id)
+                    }
+                    .listStyle(.inset)
+                }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .frame(minWidth: 200, idealWidth: 240, maxWidth: 280)
+
+            detailContent
+                .frame(minWidth: 340)
+        }
+    }
+
+    private func staleManifestBanner(_ reason: String) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: "exclamationmark.triangle")
+                .foregroundStyle(.yellow)
+            Text(String(format: String(localized: "Showing saved plugin list. %@"), reason))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Spacer()
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+    }
+
+    private func refreshRegistry() {
+        Task {
+            await registryClient.ensureManifest(.mustBeCurrent)
+            await downloadCountService.fetchCounts(for: registryClient.manifest)
         }
     }
 

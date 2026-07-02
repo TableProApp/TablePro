@@ -10,10 +10,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - iOS: add data to a table from the Shortcuts app. Two new shortcuts, Add Row to Table and Add Rows to Table, pick a saved connection, database or schema, and table, then insert from JSON or CSV. They run without opening the app. (#1788)
+- Refresh button in Settings > Plugins > Browse to reload the plugin list on demand. (#1799)
 
 ### Fixed
 
 - Restored table tabs no longer reload all at once or flood failure dialogs on launch. Only the frontmost tab loads immediately; other restored tabs load when you switch to them, and a load failure now shows inline in the tab instead of a dialog. (#1796)
+- The plugin list no longer goes stale. The app now checks the plugin registry for changes at launch, when the plugin browser opens, and before reporting a plugin as missing, so newly published plugins show up and install right away. A registry that cannot be reached now reports a connection problem instead of "Plugin not found". (#1799)
 - Dropping a materialized view or foreign table from the sidebar now generates the correct DROP statement instead of DROP TABLE, and drop and truncate statements are schema-qualified. ClickHouse now lists materialized views as their own sidebar section and drops them with the DROP VIEW syntax it requires. (#1800)
 
 ## [0.54.0] - 2026-06-30
