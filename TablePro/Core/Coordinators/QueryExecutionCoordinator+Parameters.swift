@@ -45,7 +45,8 @@ extension QueryExecutionCoordinator {
             conversion.sql,
             parameters: conversion.values,
             originalParameters: parameters,
-            bypassRowLimit: bypassRowLimit
+            bypassRowLimit: bypassRowLimit,
+            originalSQL: sql
         )
     }
 
@@ -53,7 +54,8 @@ extension QueryExecutionCoordinator {
         _ sql: String,
         parameters: [Any?],
         originalParameters: [QueryParameter],
-        bypassRowLimit: Bool = false
+        bypassRowLimit: Bool = false,
+        originalSQL: String? = nil
     ) {
         guard let (selectedTab, index) = parent.tabManager.selectedTabAndIndex,
               !selectedTab.execution.isExecuting else { return }
@@ -136,7 +138,7 @@ extension QueryExecutionCoordinator {
                     capturedGeneration: capturedGeneration,
                     originalParameters: originalParameters,
                     nativeParameters: parameters,
-                    executedSQL: plan.executedSQL
+                    originalSQL: originalSQL
                 )
 
                 if isEditable, let tableName {
@@ -182,7 +184,11 @@ extension QueryExecutionCoordinator {
         }
     }
 
-    func executeMultipleStatementsWithParameters(_ statements: [String], parameters: [QueryParameter]) {
+    func executeMultipleStatementsWithParameters(
+        _ statements: [String],
+        parameters: [QueryParameter],
+        bypassRowLimit: Bool = false
+    ) {
         guard let (selectedTab, index) = parent.tabManager.selectedTabAndIndex,
               !selectedTab.execution.isExecuting else { return }
 
@@ -225,8 +231,6 @@ extension QueryExecutionCoordinator {
             var cumulativeTime: TimeInterval = 0
             var lastSelectResult: QueryResult?
             var lastSelectSQL: String?
-            var lastSelectTruncated = false
-            var lastSelectParameterValues: [String?]?
             var totalRowsAffected = 0
             var executedCount = 0
             var failedSQL: String?
@@ -266,13 +270,15 @@ extension QueryExecutionCoordinator {
                         return
                     }
 
-                    let stmtParamNames = SQLParameterExtractor.extractParameters(from: stmtSQL)
+                    let stmtParamNames = parameters.isEmpty
+                        ? []
+                        : SQLParameterExtractor.extractParameters(from: stmtSQL)
                     let conversion = stmtParamNames.isEmpty
                         ? nil
                         : SQLParameterExtractor.convertToNativeStyle(sql: stmtSQL, parameters: parameters, style: style)
                     let statementSQL = conversion?.sql ?? stmtSQL
 
-                    let plan = resolveExecutionPlan(sql: statementSQL, tabType: tabType)
+                    let plan = resolveExecutionPlan(sql: statementSQL, tabType: tabType, bypassLimit: bypassRowLimit)
                     failedSQL = plan.executedSQL
                     let result = try await executeStatement(
                         plan: plan,
@@ -288,13 +294,17 @@ extension QueryExecutionCoordinator {
                     if !result.columns.isEmpty {
                         lastSelectResult = result
                         lastSelectSQL = statementSQL
-                        lastSelectTruncated = result.isTruncated
-                        lastSelectParameterValues = conversion?.values.map { $0 as? String }
                     }
 
-                    newResultSets.append(makeStatementResultSet(result: result, sql: stmtSQL, index: stmtIndex))
+                    newResultSets.append(makeStatementResultSet(
+                        result: result,
+                        sql: stmtSQL,
+                        index: stmtIndex,
+                        baseQuery: statementSQL,
+                        baseQueryParameterValues: conversion?.values.map { $0 as? String }
+                    ))
                     recordStatementHistory(
-                        executedSQL: plan.executedSQL,
+                        sql: stmtSQL,
                         result: result,
                         connection: conn,
                         parameterValues: stmtParamNames.isEmpty ? nil : parameters
@@ -313,9 +323,7 @@ extension QueryExecutionCoordinator {
                         totalRowsAffected: totalRowsAffected,
                         lastSelectResult: lastSelectResult,
                         lastSelectSQL: lastSelectSQL,
-                        newResultSets: newResultSets,
-                        lastSelectTruncated: lastSelectTruncated,
-                        lastSelectParameterValues: lastSelectParameterValues
+                        newResultSets: newResultSets
                     )
                 }
             } catch {
@@ -346,7 +354,7 @@ extension QueryExecutionCoordinator {
         capturedGeneration: Int,
         originalParameters: [QueryParameter],
         nativeParameters: [Any?],
-        executedSQL: String? = nil
+        originalSQL: String? = nil
     ) async {
         await MainActor.run { [weak self] in
             guard let self else { return }
@@ -378,11 +386,13 @@ extension QueryExecutionCoordinator {
                 connection: connection,
                 isTruncated: fetchResult.isTruncated,
                 queryParameterValues: originalParameters,
-                executedSQL: executedSQL
+                historySQL: originalSQL
             )
 
+            let parameterValues = nativeParameters.map { $0 as? String }
             parent.tabManager.mutate(tabId: tabId) {
-                $0.pagination.baseQueryParameterValues = nativeParameters.map { $0 as? String }
+                $0.pagination.baseQueryParameterValues = parameterValues
+                $0.display.activeResultSet?.baseQueryParameterValues = parameterValues
             }
         }
     }

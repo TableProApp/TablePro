@@ -110,7 +110,7 @@ final class QueryExecutionCoordinator {
         if statements.count == 1 {
             executeQueryWithParameters(statements[0], parameters: parameters, bypassRowLimit: bypassRowLimit)
         } else {
-            executeMultipleStatementsWithParameters(statements, parameters: parameters)
+            executeMultipleStatementsWithParameters(statements, parameters: parameters, bypassRowLimit: bypassRowLimit)
         }
     }
 }

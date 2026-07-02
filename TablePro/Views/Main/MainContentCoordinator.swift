@@ -1244,8 +1244,7 @@ final class MainContentCoordinator {
                         hasSchema: false,
                         sql: sql,
                         connection: conn,
-                        isTruncated: fetchResult.isTruncated,
-                        executedSQL: plan.executedSQL
+                        isTruncated: fetchResult.isTruncated
                     )
                 }
 
@@ -1386,7 +1385,10 @@ final class MainContentCoordinator {
         if tab.tabType == .query {
             let tabId = tab.id
             let capturedSort = newState
-            let baseQuery = tab.pagination.baseQueryForMore ?? tab.content.query
+            let hasBoundParameters = tab.pagination.baseQueryParameterValues?.isEmpty == false
+            let baseQuery = hasBoundParameters
+                ? tab.content.query
+                : (tab.pagination.baseQueryForMore ?? tab.content.query)
             let capturedColumns = tableRows.columns
             confirmDiscardChangesIfNeeded(action: .sort) { [weak self] confirmed in
                 guard let self, confirmed else { return }

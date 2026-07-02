@@ -174,6 +174,8 @@ final class QueryExecutor {
         for col in schema.columns {
             if let values = col.allowedValues, !values.isEmpty {
                 enumValues[col.name] = values
+            } else if let values = EnumValueParser.parseMySQLEnumOrSet(from: col.dataType), !values.isEmpty {
+                enumValues[col.name] = values
             }
             if let comment = col.comment?.nilIfEmpty {
                 comments[col.name] = comment
@@ -225,11 +227,8 @@ final class QueryExecutor {
 
     static func qualifiesForRowCap(sql: String, tabType: TabType, databaseType: DatabaseType) -> Bool {
         guard tabType == .query else { return false }
-        let strippedUpper = QueryClassifier.strippingLeadingComments(sql)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .uppercased()
-        let isSelectQuery = strippedUpper.hasPrefix("SELECT ") || strippedUpper.hasPrefix("WITH ")
-        return isSelectQuery
+        let keyword = QueryClassifier.leadingKeyword(of: sql)
+        return (keyword == "SELECT" || keyword == "WITH")
             && !QueryClassifier.isWriteQuery(sql, databaseType: databaseType)
             && !isDDLStatement(sql)
     }

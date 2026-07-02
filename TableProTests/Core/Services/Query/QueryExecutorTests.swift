@@ -120,6 +120,22 @@ struct QueryExecutorTests {
         ))
     }
 
+    @Test("qualifiesForRowCap accepts SELECT followed by newline, tab, or punctuation")
+    func qualifiesForRowCapKeywordBoundaries() {
+        #expect(QueryExecutor.qualifiesForRowCap(
+            sql: "SELECT\n  *\nFROM big_table", tabType: .query, databaseType: .mysql
+        ))
+        #expect(QueryExecutor.qualifiesForRowCap(
+            sql: "SELECT\t* FROM t", tabType: .query, databaseType: .mysql
+        ))
+        #expect(QueryExecutor.qualifiesForRowCap(
+            sql: "SELECT*FROM t", tabType: .query, databaseType: .mysql
+        ))
+        #expect(!QueryExecutor.qualifiesForRowCap(
+            sql: "SELECTX FROM t", tabType: .query, databaseType: .mysql
+        ))
+    }
+
     @Test("qualifiesForRowCap accepts SELECT queries preceded by comments")
     func qualifiesForRowCapCommentPrefixed() {
         #expect(QueryExecutor.qualifiesForRowCap(

@@ -23,10 +23,6 @@ extension MainContentCoordinator {
         }
     }
 
-    func resolveRowCap(sql: String, tabType: TabType) -> Int? {
-        queryExecutionCoordinator.resolveRowCap(sql: sql, tabType: tabType)
-    }
-
     func resolveExecutionPlan(sql: String, tabType: TabType, bypassLimit: Bool = false) -> QueryLimitPlan {
         queryExecutionCoordinator.resolveExecutionPlan(sql: sql, tabType: tabType, bypassLimit: bypassLimit)
     }
@@ -54,8 +50,7 @@ extension MainContentCoordinator {
         sql: String,
         connection conn: DatabaseConnection,
         isTruncated: Bool = false,
-        queryParameterValues: [QueryParameter]? = nil,
-        executedSQL: String? = nil
+        queryParameterValues: [QueryParameter]? = nil
     ) {
         queryExecutionCoordinator.applyPhase1Result(
             tabId: tabId,
@@ -72,8 +67,7 @@ extension MainContentCoordinator {
             sql: sql,
             connection: conn,
             isTruncated: isTruncated,
-            queryParameterValues: queryParameterValues,
-            executedSQL: executedSQL
+            queryParameterValues: queryParameterValues
         )
     }
 
