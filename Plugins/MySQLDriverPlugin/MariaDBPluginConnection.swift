@@ -414,12 +414,12 @@ final class MariaDBPluginConnection: @unchecked Sendable {
 
     // MARK: - Query Execution
 
-    func executeQuery(_ query: String) async throws -> MariaDBPluginQueryResult {
+    func executeQuery(_ query: String, rowCap: Int? = nil) async throws -> MariaDBPluginQueryResult {
         let queryToRun = String(query)
 
         return try await pluginDispatchAsync(on: queue) { [self] in
             guard !isShuttingDown else { throw MariaDBPluginError.notConnected }
-            return try executeQuerySync(queryToRun)
+            return try executeQuerySync(queryToRun, rowCap: rowCap)
         }
     }
 
@@ -433,7 +433,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         }
     }
 
-    private func executeQuerySync(_ query: String) throws -> MariaDBPluginQueryResult {
+    private func executeQuerySync(_ query: String, rowCap: Int? = nil) throws -> MariaDBPluginQueryResult {
         guard !isShuttingDown, let mysql = self.mysql else {
             throw MariaDBPluginError.notConnected
         }
@@ -500,7 +500,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         var rows: [[PluginCellValue]] = []
         rows.reserveCapacity(min(1_000, PluginRowLimits.emergencyMax))
 
-        let maxRows = PluginRowLimits.emergencyMax
+        let maxRows = rowCap.map { min(max($0, 1), PluginRowLimits.emergencyMax) } ?? PluginRowLimits.emergencyMax
         var truncated = false
 
         while let rowPtr = mysql_fetch_row(resultPtr) {

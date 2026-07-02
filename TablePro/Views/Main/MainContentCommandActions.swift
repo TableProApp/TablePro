@@ -761,6 +761,10 @@ final class MainContentCommandActions {
         coordinator?.runQuery()
     }
 
+    func runQueryWithoutLimit() {
+        coordinator?.runQuery(bypassRowLimit: true)
+    }
+
     func runAllStatements() {
         coordinator?.runAllStatements()
     }

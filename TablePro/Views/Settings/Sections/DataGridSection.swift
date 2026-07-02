@@ -73,7 +73,7 @@ struct DataGridSection: View {
 
         Section {
             Toggle("Truncate query results", isOn: $settings.truncateQueryResults)
-                .help(String(localized: "Cap user query results at the configured row count"))
+                .help(String(localized: "Apply a row limit when running queries and cap results at the configured row count"))
 
             if settings.truncateQueryResults {
                 Picker("Row cap:", selection: $settings.queryResultRowCap) {
@@ -96,7 +96,11 @@ struct DataGridSection: View {
             Text("Query Result Row Cap")
         } footer: {
             if settings.truncateQueryResults, settings.queryResultRowCapValidationError == nil {
-                Text("Capped results show a Fetch All button to load the full set")
+                Text("""
+                SELECT queries without their own LIMIT run with this cap applied. The query text in the \
+                editor never changes. Capped results show a Fetch All button, and Execute Without Limit \
+                skips the cap for one run.
+                """)
             }
         }
     }

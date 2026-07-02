@@ -111,6 +111,25 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         try await executeWithReconnect(query: query, isRetry: false)
     }
 
+    func executeUserQuery(query: String, rowCap: Int?, parameters: [PluginCellValue]?) async throws -> PluginQueryResult {
+        if let parameters {
+            let raw = try await executeParameterized(query: query, parameters: parameters)
+            guard let cap = rowCap, cap > 0, raw.rows.count > cap else { return raw }
+            return PluginQueryResult(
+                columns: raw.columns,
+                columnTypeNames: raw.columnTypeNames,
+                rows: Array(raw.rows.prefix(cap)),
+                rowsAffected: raw.rowsAffected,
+                executionTime: raw.executionTime,
+                isTruncated: true,
+                statusMessage: raw.statusMessage,
+                columnMeta: raw.columnMeta
+            )
+        }
+        let cap = rowCap.flatMap { $0 > 0 ? $0 : nil }
+        return try await executeWithReconnect(query: query, isRetry: false, rowCap: cap)
+    }
+
     func executeParameterized(query: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult {
         guard let conn = mariadbConnection else {
             throw MariaDBPluginError.notConnected
@@ -134,7 +153,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         mariadbConnection?.cancelCurrentQuery()
     }
 
-    private func executeWithReconnect(query: String, isRetry: Bool) async throws -> PluginQueryResult {
+    private func executeWithReconnect(query: String, isRetry: Bool, rowCap: Int? = nil) async throws -> PluginQueryResult {
         let startTime = Date()
 
         guard let conn = mariadbConnection else {
@@ -142,7 +161,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
 
         do {
-            let result = try await conn.executeQuery(query)
+            let result = try await conn.executeQuery(query, rowCap: rowCap)
 
             if result.columns.isEmpty && result.rows.isEmpty {
                 let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -171,7 +190,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             )
         } catch let error as MariaDBPluginError where !isRetry && isConnectionLostError(error) {
             try await reconnect()
-            return try await executeWithReconnect(query: query, isRetry: true)
+            return try await executeWithReconnect(query: query, isRetry: true, rowCap: rowCap)
         }
     }
 

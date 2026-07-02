@@ -27,6 +27,10 @@ extension MainContentCoordinator {
         queryExecutionCoordinator.resolveRowCap(sql: sql, tabType: tabType)
     }
 
+    func resolveExecutionPlan(sql: String, tabType: TabType, bypassLimit: Bool = false) -> QueryLimitPlan {
+        queryExecutionCoordinator.resolveExecutionPlan(sql: sql, tabType: tabType, bypassLimit: bypassLimit)
+    }
+
     func parseSchemaMetadata(_ schema: FetchedTableSchema) -> ParsedSchemaMetadata {
         queryExecutionCoordinator.parseSchemaMetadata(schema)
     }
@@ -50,7 +54,8 @@ extension MainContentCoordinator {
         sql: String,
         connection conn: DatabaseConnection,
         isTruncated: Bool = false,
-        queryParameterValues: [QueryParameter]? = nil
+        queryParameterValues: [QueryParameter]? = nil,
+        executedSQL: String? = nil
     ) {
         queryExecutionCoordinator.applyPhase1Result(
             tabId: tabId,
@@ -67,7 +72,8 @@ extension MainContentCoordinator {
             sql: sql,
             connection: conn,
             isTruncated: isTruncated,
-            queryParameterValues: queryParameterValues
+            queryParameterValues: queryParameterValues,
+            executedSQL: executedSQL
         )
     }
 

@@ -215,17 +215,23 @@ final class QueryExecutor {
 
     static func resolveRowCap(sql: String, tabType: TabType, databaseType: DatabaseType) -> Int? {
         let dataGridSettings = AppSettingsManager.shared.dataGrid
-        let trimmedUpper = sql.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
-        let isSelectQuery = trimmedUpper.hasPrefix("SELECT ") || trimmedUpper.hasPrefix("WITH ")
-        let isWrite = QueryClassifier.isWriteQuery(sql, databaseType: databaseType)
-        let isDDL = isDDLStatement(sql)
-
-        guard tabType == .query, isSelectQuery, !isWrite, !isDDL,
-              dataGridSettings.truncateQueryResults
+        guard dataGridSettings.truncateQueryResults,
+              qualifiesForRowCap(sql: sql, tabType: tabType, databaseType: databaseType)
         else {
             return nil
         }
         return dataGridSettings.validatedQueryResultRowCap
+    }
+
+    static func qualifiesForRowCap(sql: String, tabType: TabType, databaseType: DatabaseType) -> Bool {
+        guard tabType == .query else { return false }
+        let strippedUpper = QueryClassifier.strippingLeadingComments(sql)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .uppercased()
+        let isSelectQuery = strippedUpper.hasPrefix("SELECT ") || strippedUpper.hasPrefix("WITH ")
+        return isSelectQuery
+            && !QueryClassifier.isWriteQuery(sql, databaseType: databaseType)
+            && !isDDLStatement(sql)
     }
 
     private static let ddlPrefixes: [String] = [

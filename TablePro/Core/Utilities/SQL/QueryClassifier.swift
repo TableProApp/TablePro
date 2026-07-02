@@ -37,7 +37,7 @@ enum QueryClassifier {
     private static let whereClauseRegex = try? NSRegularExpression(pattern: "\\sWHERE\\s", options: [])
 
     static func isWriteQuery(_ sql: String, databaseType: DatabaseType) -> Bool {
-        let trimmed = sql.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmed = strippingLeadingComments(sql).trimmingCharacters(in: .whitespacesAndNewlines)
 
         if databaseType == .redis {
             let firstToken = trimmed.prefix(while: { !$0.isWhitespace }).uppercased()
@@ -64,7 +64,7 @@ enum QueryClassifier {
     }
 
     static func isDangerousQuery(_ sql: String, databaseType: DatabaseType) -> Bool {
-        let trimmed = sql.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmed = strippingLeadingComments(sql).trimmingCharacters(in: .whitespacesAndNewlines)
 
         if databaseType == .redis {
             let firstToken = trimmed.prefix(while: { !$0.isWhitespace }).uppercased()
@@ -95,7 +95,7 @@ enum QueryClassifier {
     }
 
     static func classifyTier(_ sql: String, databaseType: DatabaseType) -> QueryTier {
-        let trimmed = sql.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmed = strippingLeadingComments(sql).trimmingCharacters(in: .whitespacesAndNewlines)
         let uppercased = trimmed.uppercased()
 
         if databaseType == .redis {
@@ -147,7 +147,7 @@ enum QueryClassifier {
         }
     }
 
-    private static func strippingLeadingComments(_ sql: String) -> String {
+    static func strippingLeadingComments(_ sql: String) -> String {
         var remaining = sql[...]
         while true {
             let trimmed = remaining.drop { $0.isWhitespace }

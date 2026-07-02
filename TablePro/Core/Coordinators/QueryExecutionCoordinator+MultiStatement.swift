@@ -11,7 +11,7 @@ import TableProPluginKit
 private let multiStatementLogger = Logger(subsystem: "com.TablePro", category: "MultiStatement")
 
 extension QueryExecutionCoordinator {
-    func executeMultipleStatements(_ statements: [String]) {
+    func executeMultipleStatements(_ statements: [String], bypassRowLimit: Bool = false) {
         guard let index = parent.tabManager.selectedTabIndex else { return }
         guard !parent.tabManager.tabs[index].execution.isExecuting else { return }
 
@@ -28,6 +28,7 @@ extension QueryExecutionCoordinator {
 
         let conn = parent.connection
         let tabId = parent.tabManager.tabs[index].id
+        let tabType = parent.tabManager.tabs[index].tabType
         let totalCount = statements.count
 
         parent.currentQueryTask = Task { [weak self, parent] in
@@ -35,6 +36,7 @@ extension QueryExecutionCoordinator {
             var cumulativeTime: TimeInterval = 0
             var lastSelectResult: QueryResult?
             var lastSelectSQL: String?
+            var lastSelectTruncated = false
             var totalRowsAffected = 0
             var executedCount = 0
             var failedSQL: String?
@@ -74,8 +76,9 @@ extension QueryExecutionCoordinator {
                         return
                     }
 
-                    failedSQL = sql
-                    let result = try await driver.execute(query: sql)
+                    let plan = resolveExecutionPlan(sql: sql, tabType: tabType, bypassLimit: bypassRowLimit)
+                    failedSQL = plan.executedSQL
+                    let result = try await executeStatement(plan: plan, originalSQL: sql, driver: driver)
                     failedSQL = nil
                     executedCount = stmtIndex + 1
                     cumulativeTime += result.executionTime
@@ -84,33 +87,11 @@ extension QueryExecutionCoordinator {
                     if !result.columns.isEmpty {
                         lastSelectResult = result
                         lastSelectSQL = sql
+                        lastSelectTruncated = result.isTruncated
                     }
 
-                    let stmtTableName = await MainActor.run { parent.extractTableName(from: sql) }
-                    let stmtRows = TableRows.from(
-                        queryRows: result.rows,
-                        columns: result.columns.map { String($0) },
-                        columnTypes: result.columnTypes
-                    )
-                    let rs = ResultSet(label: stmtTableName ?? "Result \(stmtIndex + 1)", tableRows: stmtRows)
-                    rs.executionTime = result.executionTime
-                    rs.rowsAffected = result.rowsAffected
-                    rs.statusMessage = result.statusMessage
-                    rs.tableName = stmtTableName
-                    newResultSets.append(rs)
-
-                    let historySQL = sql.hasSuffix(";") ? sql : sql + ";"
-                    await MainActor.run {
-                        QueryHistoryManager.shared.recordQuery(
-                            query: historySQL,
-                            connectionId: conn.id,
-                            databaseName: parent.activeDatabaseName,
-                            executionTime: result.executionTime,
-                            rowCount: result.rows.count,
-                            wasSuccessful: true,
-                            errorMessage: nil
-                        )
-                    }
+                    newResultSets.append(makeStatementResultSet(result: result, sql: sql, index: stmtIndex))
+                    recordStatementHistory(executedSQL: plan.executedSQL, result: result, connection: conn)
                 }
 
                 if useTransaction {
@@ -125,7 +106,8 @@ extension QueryExecutionCoordinator {
                         totalRowsAffected: totalRowsAffected,
                         lastSelectResult: lastSelectResult,
                         lastSelectSQL: lastSelectSQL,
-                        newResultSets: newResultSets
+                        newResultSets: newResultSets,
+                        lastSelectTruncated: lastSelectTruncated
                     )
                 }
             } catch {
@@ -194,6 +176,55 @@ extension QueryExecutionCoordinator {
         }
     }
 
+    func executeStatement(
+        plan: QueryLimitPlan,
+        originalSQL: String,
+        driver: DatabaseDriver,
+        parameters: [Any?]? = nil
+    ) async throws -> QueryResult {
+        if plan.rowCap != nil {
+            return try await driver.executeUserQuery(query: plan.executedSQL, rowCap: plan.rowCap, parameters: parameters)
+        }
+        if let parameters {
+            return try await driver.executeParameterized(query: originalSQL, parameters: parameters)
+        }
+        return try await driver.execute(query: originalSQL)
+    }
+
+    func makeStatementResultSet(result: QueryResult, sql: String, index: Int) -> ResultSet {
+        let tableName = parent.extractTableName(from: sql)
+        let rows = TableRows.from(
+            queryRows: result.rows,
+            columns: result.columns.map { String($0) },
+            columnTypes: result.columnTypes
+        )
+        let resultSet = ResultSet(label: tableName ?? "Result \(index + 1)", tableRows: rows)
+        resultSet.executionTime = result.executionTime
+        resultSet.rowsAffected = result.rowsAffected
+        resultSet.statusMessage = result.statusMessage
+        resultSet.tableName = tableName
+        return resultSet
+    }
+
+    func recordStatementHistory(
+        executedSQL: String,
+        result: QueryResult,
+        connection: DatabaseConnection,
+        parameterValues: [QueryParameter]? = nil
+    ) {
+        let historySQL = executedSQL.hasSuffix(";") ? executedSQL : executedSQL + ";"
+        QueryHistoryManager.shared.recordQuery(
+            query: historySQL,
+            connectionId: connection.id,
+            databaseName: parent.activeDatabaseName,
+            executionTime: result.executionTime,
+            rowCount: result.rows.count,
+            wasSuccessful: true,
+            errorMessage: nil,
+            parameterValues: parameterValues
+        )
+    }
+
     func applyMultiStatementResults(
         tabId: UUID,
         capturedGeneration: Int,
@@ -201,7 +232,9 @@ extension QueryExecutionCoordinator {
         totalRowsAffected: Int,
         lastSelectResult: QueryResult?,
         lastSelectSQL: String?,
-        newResultSets: [ResultSet]
+        newResultSets: [ResultSet],
+        lastSelectTruncated: Bool = false,
+        lastSelectParameterValues: [String?]? = nil
     ) {
         parent.currentQueryTask = nil
         parent.toolbarState.setExecuting(false)
@@ -260,6 +293,15 @@ extension QueryExecutionCoordinator {
             if tab.display.isResultsCollapsed {
                 tab.display.isResultsCollapsed = false
             }
+
+            if lastSelectTruncated {
+                tab.pagination.hasMoreRows = true
+                tab.pagination.isLoadingMore = false
+            } else {
+                tab.pagination.resetLoadMore()
+            }
+            tab.pagination.baseQueryForMore = lastSelectSQL
+            tab.pagination.baseQueryParameterValues = lastSelectParameterValues
         }
         parent.toolbarState.isResultsCollapsed = false
 

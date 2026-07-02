@@ -57,7 +57,8 @@ extension QueryExecutionCoordinator {
         sql: String,
         connection conn: DatabaseConnection,
         isTruncated: Bool = false,
-        queryParameterValues: [QueryParameter]? = nil
+        queryParameterValues: [QueryParameter]? = nil,
+        executedSQL: String? = nil
     ) {
         guard let idx = parent.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
 
@@ -191,7 +192,7 @@ extension QueryExecutionCoordinator {
         }
 
         QueryHistoryManager.shared.recordQuery(
-            query: sql,
+            query: executedSQL ?? sql,
             connectionId: conn.id,
             databaseName: parent.activeDatabaseName,
             executionTime: executionTime,

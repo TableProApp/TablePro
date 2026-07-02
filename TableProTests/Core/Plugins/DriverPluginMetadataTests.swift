@@ -287,3 +287,31 @@ struct DriverPluginCustomOverridesTests {
 // NOTE: Per-plugin metadata tests (MySQL, PostgreSQL, etc.) cannot run in xcodebuild test
 // because .tableplugin bundles are loaded at runtime by the main app, not the test runner.
 // The protocol defaults and override mechanism are fully covered by the mock-based tests above.
+
+@Suite("Registry defaults auto-limit styles")
+struct RegistryAutoLimitStyleTests {
+    private var defaults: [String: PluginMetadataSnapshot] {
+        Dictionary(
+            PluginMetadataRegistry.shared.registryPluginDefaults().map { ($0.typeId, $0.snapshot) },
+            uniquingKeysWith: { first, _ in first }
+        )
+    }
+
+    @Test("Non-SQL plugins declare no SQL dialect so auto-limit resolves to none")
+    func nonSqlPluginsHaveNoDialect() {
+        #expect(defaults["MongoDB"]?.editor.sqlDialect == nil)
+        #expect(defaults["Redis"]?.editor.sqlDialect == nil)
+        #expect(defaults["etcd"]?.editor.sqlDialect == nil)
+    }
+
+    @Test("SQL plugins declare the auto-limit style matching their dialect")
+    func sqlPluginsDeclareStyle() {
+        #expect(defaults["SQL Server"]?.editor.sqlDialect?.autoLimitStyle == .top)
+        #expect(defaults["Oracle"]?.editor.sqlDialect?.autoLimitStyle == .fetchFirst)
+        #expect(defaults["ClickHouse"]?.editor.sqlDialect?.autoLimitStyle == .limit)
+        #expect(defaults["DuckDB"]?.editor.sqlDialect?.autoLimitStyle == .limit)
+        #expect(defaults["Cassandra"]?.editor.sqlDialect?.autoLimitStyle == .limit)
+        #expect(defaults["Cloudflare D1"]?.editor.sqlDialect?.autoLimitStyle == .limit)
+        #expect(defaults["libSQL"]?.editor.sqlDialect?.autoLimitStyle == .limit)
+    }
+}

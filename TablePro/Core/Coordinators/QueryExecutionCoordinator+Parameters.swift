@@ -14,7 +14,7 @@ extension QueryExecutionCoordinator {
         QueryExecutor.detectAndReconcileParameters(sql: sql, existing: existing)
     }
 
-    func executeQueryWithParameters(_ sql: String, parameters: [QueryParameter]) {
+    func executeQueryWithParameters(_ sql: String, parameters: [QueryParameter], bypassRowLimit: Bool = false) {
         guard let (_, index) = parent.tabManager.selectedTabAndIndex else { return }
 
         let missing = parameters.filter {
@@ -44,14 +44,16 @@ extension QueryExecutionCoordinator {
         executeQueryInternalParameterized(
             conversion.sql,
             parameters: conversion.values,
-            originalParameters: parameters
+            originalParameters: parameters,
+            bypassRowLimit: bypassRowLimit
         )
     }
 
     func executeQueryInternalParameterized(
         _ sql: String,
         parameters: [Any?],
-        originalParameters: [QueryParameter]
+        originalParameters: [QueryParameter],
+        bypassRowLimit: Bool = false
     ) {
         guard let (selectedTab, index) = parent.tabManager.selectedTabAndIndex,
               !selectedTab.execution.isExecuting else { return }
@@ -85,7 +87,7 @@ extension QueryExecutionCoordinator {
         let conn = parent.connection
         let tabId = parent.tabManager.tabs[index].id
 
-        let rowCap = resolveRowCap(sql: sql, tabType: tab.tabType)
+        let plan = resolveExecutionPlan(sql: sql, tabType: tab.tabType, bypassLimit: bypassRowLimit)
         let (tableName, isEditable) = parent.resolveTableEditability(tab: tab, sql: sql)
 
         let needsMetadataFetch: Bool
@@ -108,9 +110,9 @@ extension QueryExecutionCoordinator {
 
             do {
                 let fetchResult = try await parent.queryExecutor.executeQuery(
-                    sql: sql,
+                    sql: plan.executedSQL,
                     parameters: parameters,
-                    rowCap: rowCap
+                    rowCap: plan.rowCap
                 )
 
                 guard !Task.isCancelled else {
@@ -133,7 +135,8 @@ extension QueryExecutionCoordinator {
                     connection: conn,
                     capturedGeneration: capturedGeneration,
                     originalParameters: originalParameters,
-                    nativeParameters: parameters
+                    nativeParameters: parameters,
+                    executedSQL: plan.executedSQL
                 )
 
                 if isEditable, let tableName {
@@ -173,7 +176,7 @@ extension QueryExecutionCoordinator {
                     parent.toolbarState.setExecuting(false)
                     if error is CancellationError || Task.isCancelled { return }
                     guard capturedGeneration == parent.queryGeneration else { return }
-                    handleQueryExecutionError(error, sql: sql, tabId: tabId, connection: conn)
+                    handleQueryExecutionError(error, sql: plan.executedSQL, tabId: tabId, connection: conn)
                 }
             }
         }
@@ -215,11 +218,15 @@ extension QueryExecutionCoordinator {
         let tabId = parent.tabManager.tabs[index].id
         let totalCount = statements.count
 
+        let tabType = parent.tabManager.tabs[index].tabType
+
         parent.currentQueryTask = Task { [weak self, parent] in
             guard let self else { return }
             var cumulativeTime: TimeInterval = 0
             var lastSelectResult: QueryResult?
             var lastSelectSQL: String?
+            var lastSelectTruncated = false
+            var lastSelectParameterValues: [String?]?
             var totalRowsAffected = 0
             var executedCount = 0
             var failedSQL: String?
@@ -259,24 +266,20 @@ extension QueryExecutionCoordinator {
                         return
                     }
 
-                    failedSQL = stmtSQL
                     let stmtParamNames = SQLParameterExtractor.extractParameters(from: stmtSQL)
+                    let conversion = stmtParamNames.isEmpty
+                        ? nil
+                        : SQLParameterExtractor.convertToNativeStyle(sql: stmtSQL, parameters: parameters, style: style)
+                    let statementSQL = conversion?.sql ?? stmtSQL
 
-                    let result: QueryResult
-                    if stmtParamNames.isEmpty {
-                        result = try await driver.execute(query: stmtSQL)
-                    } else {
-                        let conversion = SQLParameterExtractor.convertToNativeStyle(
-                            sql: stmtSQL,
-                            parameters: parameters,
-                            style: style
-                        )
-                        result = try await driver.executeParameterized(
-                            query: conversion.sql,
-                            parameters: conversion.values
-                        )
-                    }
-
+                    let plan = resolveExecutionPlan(sql: statementSQL, tabType: tabType)
+                    failedSQL = plan.executedSQL
+                    let result = try await executeStatement(
+                        plan: plan,
+                        originalSQL: statementSQL,
+                        driver: driver,
+                        parameters: conversion?.values
+                    )
                     failedSQL = nil
                     executedCount = stmtIndex + 1
                     cumulativeTime += result.executionTime
@@ -284,35 +287,18 @@ extension QueryExecutionCoordinator {
 
                     if !result.columns.isEmpty {
                         lastSelectResult = result
-                        lastSelectSQL = stmtSQL
+                        lastSelectSQL = statementSQL
+                        lastSelectTruncated = result.isTruncated
+                        lastSelectParameterValues = conversion?.values.map { $0 as? String }
                     }
 
-                    let stmtTableName = await MainActor.run { parent.extractTableName(from: stmtSQL) }
-                    let stmtRows = TableRows.from(
-                        queryRows: result.rows,
-                        columns: result.columns.map { String($0) },
-                        columnTypes: result.columnTypes
+                    newResultSets.append(makeStatementResultSet(result: result, sql: stmtSQL, index: stmtIndex))
+                    recordStatementHistory(
+                        executedSQL: plan.executedSQL,
+                        result: result,
+                        connection: conn,
+                        parameterValues: stmtParamNames.isEmpty ? nil : parameters
                     )
-                    let rs = ResultSet(label: stmtTableName ?? "Result \(stmtIndex + 1)", tableRows: stmtRows)
-                    rs.executionTime = result.executionTime
-                    rs.rowsAffected = result.rowsAffected
-                    rs.statusMessage = result.statusMessage
-                    rs.tableName = stmtTableName
-                    newResultSets.append(rs)
-
-                    let historySQL = stmtSQL.hasSuffix(";") ? stmtSQL : stmtSQL + ";"
-                    await MainActor.run {
-                        QueryHistoryManager.shared.recordQuery(
-                            query: historySQL,
-                            connectionId: conn.id,
-                            databaseName: parent.activeDatabaseName,
-                            executionTime: result.executionTime,
-                            rowCount: result.rows.count,
-                            wasSuccessful: true,
-                            errorMessage: nil,
-                            parameterValues: stmtParamNames.isEmpty ? nil : parameters
-                        )
-                    }
                 }
 
                 if useTransaction {
@@ -327,7 +313,9 @@ extension QueryExecutionCoordinator {
                         totalRowsAffected: totalRowsAffected,
                         lastSelectResult: lastSelectResult,
                         lastSelectSQL: lastSelectSQL,
-                        newResultSets: newResultSets
+                        newResultSets: newResultSets,
+                        lastSelectTruncated: lastSelectTruncated,
+                        lastSelectParameterValues: lastSelectParameterValues
                     )
                 }
             } catch {
@@ -357,7 +345,8 @@ extension QueryExecutionCoordinator {
         connection: DatabaseConnection,
         capturedGeneration: Int,
         originalParameters: [QueryParameter],
-        nativeParameters: [Any?]
+        nativeParameters: [Any?],
+        executedSQL: String? = nil
     ) async {
         await MainActor.run { [weak self] in
             guard let self else { return }
@@ -388,7 +377,8 @@ extension QueryExecutionCoordinator {
                 sql: sql,
                 connection: connection,
                 isTruncated: fetchResult.isTruncated,
-                queryParameterValues: originalParameters
+                queryParameterValues: originalParameters,
+                executedSQL: executedSQL
             )
 
             parent.tabManager.mutate(tabId: tabId) {

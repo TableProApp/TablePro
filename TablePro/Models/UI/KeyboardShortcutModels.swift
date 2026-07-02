@@ -71,6 +71,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
     case saveAs
     case executeQuery
     case executeAllStatements
+    case executeQueryWithoutLimit
     case cancelQuery
     case explainQuery
     case formatQuery
@@ -130,8 +131,8 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
         case .manageConnections, .newConnection, .openDatabase, .switchConnection:
             return .connections
         case .openFile, .saveChanges, .saveAs, .executeQuery, .executeAllStatements,
-             .cancelQuery, .explainQuery, .formatQuery, .previewSQL, .findNext,
-             .findPrevious, .aiExplainQuery, .aiOptimizeQuery:
+             .executeQueryWithoutLimit, .cancelQuery, .explainQuery, .formatQuery,
+             .previewSQL, .findNext, .findPrevious, .aiExplainQuery, .aiOptimizeQuery:
             return .editor
         case .undo, .redo, .cut, .copy, .copyRowsExplicit, .copyWithHeaders, .copyAsJson,
              .paste, .delete, .selectAll, .clearSelection, .addRow, .duplicateRow,
@@ -148,9 +149,9 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
 
     var context: ShortcutContext {
         switch self {
-        case .executeQuery, .executeAllStatements, .cancelQuery, .explainQuery,
-             .formatQuery, .previewSQL, .findNext, .findPrevious, .aiExplainQuery,
-             .aiOptimizeQuery:
+        case .executeQuery, .executeAllStatements, .executeQueryWithoutLimit,
+             .cancelQuery, .explainQuery, .formatQuery, .previewSQL, .findNext,
+             .findPrevious, .aiExplainQuery, .aiOptimizeQuery:
             return .editor
         case .previousPage, .nextPage, .firstPage, .lastPage, .addRow, .duplicateRow,
              .delete, .truncateTable, .previewFKReference, .saveAsFavorite,
@@ -176,6 +177,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
         case .newConnection: return String(localized: "New Connection")
         case .executeQuery: return String(localized: "Execute Query")
         case .executeAllStatements: return String(localized: "Execute All Statements")
+        case .executeQueryWithoutLimit: return String(localized: "Execute Query Without Limit")
         case .cancelQuery: return String(localized: "Cancel Query")
         case .newTab: return String(localized: "New Tab")
         case .openDatabase: return String(localized: "Open Database")
@@ -400,6 +402,7 @@ struct KeyboardSettings: Codable, Equatable {
         .saveAs: .character("s", command: true, shift: true),
         .executeQuery: .special(.return, command: true),
         .executeAllStatements: .special(.return, command: true, shift: true),
+        .executeQueryWithoutLimit: .special(.return, command: true, option: true),
         .cancelQuery: .character(".", command: true),
         .explainQuery: .character("e", command: true, option: true),
         .formatQuery: .character("l", command: true, shift: true),
