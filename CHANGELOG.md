@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Tables and views outside the connection's default schema now open and save correctly when reached through the Quick Switcher, a restored tab, or the MCP table-open tool. These paths used to send unqualified queries, which failed with "Invalid object name" on SQL Server or silently targeted the wrong table. (#1774)
 - Quick Switcher opens again on macOS Sequoia. Since 0.51.0 the panel came up invisible on macOS 15, and the toolbar button and keyboard shortcut appeared to do nothing. (#1806)
 - Quick Switcher keyboard navigation (Ctrl-J/K and arrow shortcuts) no longer goes dead after the switcher has been opened and closed repeatedly. (#1806)
 - Restored table tabs no longer reload all at once or flood failure dialogs on launch. Only the frontmost tab loads immediately; other restored tabs load when you switch to them, and a load failure now shows inline in the tab instead of a dialog. (#1796)
