@@ -6,10 +6,12 @@
 import AppKit
 import SwiftUI
 
+private let fallbackScreenFrame = NSRect(x: 0, y: 0, width: 1_280, height: 800)
+
 internal final class QuickSwitcherPanel: NSPanel {
     init<Content: View>(hostingController: NSHostingController<Content>) {
         hostingController.sizingOptions = []
-        let proposal = NSScreen.main?.visibleFrame.size ?? NSSize(width: 1_280, height: 800)
+        let proposal = NSScreen.main?.visibleFrame.size ?? fallbackScreenFrame.size
         let contentSize = hostingController.sizeThatFits(in: proposal)
         super.init(
             contentRect: NSRect(origin: .zero, size: contentSize),
@@ -31,7 +33,7 @@ internal final class QuickSwitcherPanel: NSPanel {
     }
 
     override var canBecomeKey: Bool { true }
-    override var canBecomeMain: Bool { true }
+    override var canBecomeMain: Bool { false }
 
     override func resignKey() {
         super.resignKey()
@@ -73,7 +75,7 @@ internal final class QuickSwitcherPanelController: NSObject, NSWindowDelegate {
 
         let reference = parentWindow?.frame
             ?? NSScreen.main?.visibleFrame
-            ?? NSRect(x: 0, y: 0, width: 1_280, height: 800)
+            ?? fallbackScreenFrame
         anchor = Anchor(
             centerX: reference.midX,
             top: reference.maxY - reference.height * Self.topOffsetRatio

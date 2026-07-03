@@ -18,7 +18,7 @@ struct QuickSwitcherPanelControllerTests {
         controller.dismiss()
     }
 
-    @Test("dismiss hides the panel")
+    @Test("dismiss closes the panel and clears the presented state")
     func dismissHidesPanel() {
         let controller = QuickSwitcherPanelController()
         controller.present(Text(verbatim: "content"), over: nil)
@@ -45,48 +45,44 @@ struct QuickSwitcherPanelControllerTests {
         panel.close()
     }
 
-    @Test("closing the panel window clears the presented state")
-    func windowWillCloseClearsPresentedState() {
-        let controller = QuickSwitcherPanelController()
-        controller.present(Text(verbatim: "content"), over: nil)
-        controller.windowWillClose(Notification(name: NSWindow.willCloseNotification))
-        #expect(controller.isPresented == false)
-    }
-
     @Test("dismiss after the panel already closed is a safe no-op")
     func dismissAfterAlreadyClosedIsNoOp() {
         let controller = QuickSwitcherPanelController()
         controller.present(Text(verbatim: "content"), over: nil)
-        controller.windowWillClose(Notification(name: NSWindow.willCloseNotification))
+        controller.dismiss()
         controller.dismiss()
         #expect(controller.isPresented == false)
     }
 
-    @Test("panel can become key and main")
+    @Test("panel can become key but not main")
     func panelKeyAndMainBehavior() {
-        let panel = QuickSwitcherPanel(hostingController: NSHostingController(rootView: EmptyView()))
+        let panel = QuickSwitcherPanel(hostingController: NSHostingController(rootView: Text(verbatim: "content")))
         #expect(panel.canBecomeKey)
-        #expect(panel.canBecomeMain)
+        #expect(panel.canBecomeMain == false)
         panel.close()
     }
 
     @Test("resigning key closes the panel")
     func resignKeyClosesPanel() {
-        let panel = QuickSwitcherPanel(hostingController: NSHostingController(rootView: EmptyView()))
+        let panel = QuickSwitcherPanel(hostingController: NSHostingController(rootView: Text(verbatim: "content")))
+        panel.makeKeyAndOrderFront(nil)
+        #expect(panel.isVisible)
         panel.resignKey()
         #expect(panel.isVisible == false)
     }
 
     @Test("escape closes the panel")
     func escapeClosesPanel() {
-        let panel = QuickSwitcherPanel(hostingController: NSHostingController(rootView: EmptyView()))
+        let panel = QuickSwitcherPanel(hostingController: NSHostingController(rootView: Text(verbatim: "content")))
+        panel.makeKeyAndOrderFront(nil)
+        #expect(panel.isVisible)
         panel.cancelOperation(nil)
         #expect(panel.isVisible == false)
     }
 
     @Test("panel uses a nonactivating borderless style mask")
     func panelStyleMask() {
-        let panel = QuickSwitcherPanel(hostingController: NSHostingController(rootView: EmptyView()))
+        let panel = QuickSwitcherPanel(hostingController: NSHostingController(rootView: Text(verbatim: "content")))
         #expect(panel.styleMask.contains(.nonactivatingPanel))
         #expect(panel.styleMask.contains(.borderless))
         panel.close()
