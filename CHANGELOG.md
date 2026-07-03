@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Enum and set value pickers now populate when the driver reports the values only inside the column type instead of as a separate list.
 - The plugin list no longer goes stale. The app now checks the plugin registry for changes at launch, when the plugin browser opens, and before reporting a plugin as missing, so newly published plugins show up and install right away. A registry that cannot be reached now reports a connection problem instead of "Plugin not found". (#1799)
 - Dropping a materialized view or foreign table from the sidebar now generates the correct DROP statement instead of DROP TABLE, and drop and truncate statements are schema-qualified. ClickHouse now lists materialized views as their own sidebar section and drops them with the DROP VIEW syntax it requires. (#1800)
+- Scrolling no longer goes dead across the whole app after opening an ER diagram and switching tabs while the pointer rests over the canvas. Diagram pan and zoom now handle scroll events on the canvas itself instead of intercepting them app-wide. (#1805)
 
 ## [0.54.0] - 2026-06-30
 
