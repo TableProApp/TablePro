@@ -121,7 +121,7 @@ The registry serves the newest binary whose `pluginKitVersion` is in the app's r
 
 If a connection's driver is installed but its binary predates a breaking bump, opening the connection refreshes the registry and updates the driver in the background, then proceeds. The app does not block on this; if a compatible binary is not published yet, the connection reports that it is updating and retries on its own (on a timer and when the network returns), so no quit and reopen is needed.
 
-The manifest is served through jsDelivr (`cdn.jsdelivr.net/gh/TableProApp/plugins@main/plugins.json`) and purged on each publish, so a new binary is visible within seconds rather than waiting out a CDN cache.
+The manifest is served from the raw GitHub origin (`raw.githubusercontent.com/TableProApp/plugins/main/plugins.json`), which caches at the edge for five minutes. The app never trusts its local copy blindly: every fetch revalidates with a conditional request, the list refreshes at launch and when the plugin browser opens (throttled to one check per five minutes), and an install prompt forces a fresh fetch before reporting a plugin as missing. A newly published plugin is visible in the app within minutes.
 
 Drivers that most users reach for are bundled inside the app and ship in lockstep, so they never depend on the registry. Reserve registry-only distribution for the long tail, where a short, non-blocking update on first connect is acceptable.
 
@@ -165,4 +165,4 @@ defaults write com.TablePro com.TablePro.customRegistryURL "https://your-registr
 defaults delete com.TablePro com.TablePro.customRegistryURL
 ```
 
-The app invalidates its ETag cache when the registry URL changes, forcing a fresh fetch on the next Browse visit.
+HTTP caching keys on the full URL, so changing the registry URL takes effect on the next fetch with no manual cache invalidation.

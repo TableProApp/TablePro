@@ -174,6 +174,8 @@ final class QueryExecutor {
         for col in schema.columns {
             if let values = col.allowedValues, !values.isEmpty {
                 enumValues[col.name] = values
+            } else if let values = EnumValueParser.parseMySQLEnumOrSet(from: col.dataType), !values.isEmpty {
+                enumValues[col.name] = values
             }
             if let comment = col.comment?.nilIfEmpty {
                 comments[col.name] = comment
@@ -215,17 +217,20 @@ final class QueryExecutor {
 
     static func resolveRowCap(sql: String, tabType: TabType, databaseType: DatabaseType) -> Int? {
         let dataGridSettings = AppSettingsManager.shared.dataGrid
-        let trimmedUpper = sql.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
-        let isSelectQuery = trimmedUpper.hasPrefix("SELECT ") || trimmedUpper.hasPrefix("WITH ")
-        let isWrite = QueryClassifier.isWriteQuery(sql, databaseType: databaseType)
-        let isDDL = isDDLStatement(sql)
-
-        guard tabType == .query, isSelectQuery, !isWrite, !isDDL,
-              dataGridSettings.truncateQueryResults
+        guard dataGridSettings.truncateQueryResults,
+              qualifiesForRowCap(sql: sql, tabType: tabType, databaseType: databaseType)
         else {
             return nil
         }
         return dataGridSettings.validatedQueryResultRowCap
+    }
+
+    static func qualifiesForRowCap(sql: String, tabType: TabType, databaseType: DatabaseType) -> Bool {
+        guard tabType == .query else { return false }
+        let keyword = QueryClassifier.leadingKeyword(of: sql)
+        return (keyword == "SELECT" || keyword == "WITH")
+            && !QueryClassifier.isWriteQuery(sql, databaseType: databaseType)
+            && !isDDLStatement(sql)
     }
 
     private static let ddlPrefixes: [String] = [

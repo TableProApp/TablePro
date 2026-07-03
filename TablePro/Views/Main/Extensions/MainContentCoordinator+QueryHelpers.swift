@@ -23,8 +23,8 @@ extension MainContentCoordinator {
         }
     }
 
-    func resolveRowCap(sql: String, tabType: TabType) -> Int? {
-        queryExecutionCoordinator.resolveRowCap(sql: sql, tabType: tabType)
+    func resolveExecutionPlan(sql: String, tabType: TabType, bypassLimit: Bool = false) -> QueryLimitPlan {
+        queryExecutionCoordinator.resolveExecutionPlan(sql: sql, tabType: tabType, bypassLimit: bypassLimit)
     }
 
     func parseSchemaMetadata(_ schema: FetchedTableSchema) -> ParsedSchemaMetadata {
@@ -105,17 +105,19 @@ extension MainContentCoordinator {
         _ error: Error,
         sql: String,
         tabId: UUID,
-        connection conn: DatabaseConnection
+        connection conn: DatabaseConnection,
+        trigger: TableLoadTrigger = .userInitiated
     ) {
         queryExecutionCoordinator.handleQueryExecutionError(
             error,
             sql: sql,
             tabId: tabId,
-            connection: conn
+            connection: conn,
+            trigger: trigger
         )
     }
 
-    func restoreSchemaAndRunQuery(_ schema: String) async {
-        await queryExecutionCoordinator.restoreSchemaAndRunQuery(schema)
+    func restoreSchemaAndRunQuery(_ schema: String, trigger: TableLoadTrigger = .userInitiated) async {
+        await queryExecutionCoordinator.restoreSchemaAndRunQuery(schema, trigger: trigger)
     }
 }

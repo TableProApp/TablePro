@@ -346,6 +346,8 @@
 		53DF2F4A15214F2AA1DE95CF /* SnowflakeDDLGenerator.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SnowflakeDDLGenerator.swift; sourceTree = "<group>"; };
 		55F1B63541C24A10BF4AF873 /* SnowflakeHTTPRetry.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SnowflakeHTTPRetry.swift; sourceTree = "<group>"; };
 		5A1091C72EF17EDC0055EA7C /* TablePro.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TablePro.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		5A2A9AE12FF52C7D0082A7AC /* DuckDBDriver.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = DuckDBDriver.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
+		5A2A9AE22FF52C7D0082A7AC /* ElasticsearchDriverPlugin.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ElasticsearchDriverPlugin.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
 		5A32BC002F9D5F1300BAEB5F /* tablepro-mcp */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = "tablepro-mcp"; sourceTree = BUILT_PRODUCTS_DIR; };
 		5A3BE6F82F97DA8100611C1F /* LibSQLDriverPlugin.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = LibSQLDriverPlugin.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
 		5A860000100000000 /* TableProPluginKit.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = TableProPluginKit.framework; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -357,7 +359,6 @@
 		5A866000100000000 /* MongoDBDriver.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MongoDBDriver.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
 		5A867000100000000 /* RedisDriver.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RedisDriver.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
 		5A868000100000000 /* PostgreSQLDriver.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PostgreSQLDriver.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
-		5A869000100000000 /* DuckDBDriver.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; name = DuckDBDriver.tableplugin; path = /Users/ngoquocdat/Workspaces/TablePro/build/Debug/DuckDBDriver.tableplugin; sourceTree = "<absolute>"; };
 		5A86A000100000000 /* CSVExport.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CSVExport.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
 		5A86B000100000000 /* JSONExport.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = JSONExport.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
 		5A86C000100000000 /* SQLExport.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SQLExport.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -405,7 +406,6 @@
 		5E1A500200000000000000A6 /* ElasticsearchPluginDriver+Execution.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ElasticsearchPluginDriver+Execution.swift"; sourceTree = "<group>"; };
 		5E1A500200000000000000A7 /* ElasticsearchQueryBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ElasticsearchQueryBuilder.swift; sourceTree = "<group>"; };
 		5E1A500200000000000000A8 /* ElasticsearchStatementGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ElasticsearchStatementGenerator.swift; sourceTree = "<group>"; };
-		5E1A500300000000000000A0 /* ElasticsearchDriverPlugin.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; name = ElasticsearchDriverPlugin.tableplugin; path = /Users/ngoquocdat/Workspaces/TablePro/build/Debug/ElasticsearchDriverPlugin.tableplugin; sourceTree = "<absolute>"; };
 		73CFCC6EA4288F34EBED5F37 /* SnowflakePlugin.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SnowflakePlugin.swift; sourceTree = "<group>"; };
 		7D67B38E07DF4F42A9C86639 /* SnowflakeIdTokenStore.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SnowflakeIdTokenStore.swift; sourceTree = "<group>"; };
 		84A5EE73D62C4576A9B9DFF2 /* SnowflakeStatementGenerator.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SnowflakeStatementGenerator.swift; sourceTree = "<group>"; };
@@ -477,6 +477,13 @@
 				Info.plist,
 			);
 			target = 5A863000000000000 /* ClickHouseDriver */;
+		};
+		5A863000E00000000 /* Exceptions for "Plugins/ClickHouseDriverPlugin" folder in "TableProTests" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				ClickHouseTableOperations.swift,
+			);
+			target = 5ABCC5A62F43856700EAF3FC /* TableProTests */;
 		};
 		5A864000900000000 /* Exceptions for "Plugins/MSSQLDriverPlugin" folder in "MSSQLDriver" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
@@ -682,6 +689,7 @@
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
 				5A863000900000000 /* Exceptions for "Plugins/ClickHouseDriverPlugin" folder in "ClickHouseDriver" target */,
+				5A863000E00000000 /* Exceptions for "Plugins/ClickHouseDriverPlugin" folder in "TableProTests" target */,
 			);
 			path = Plugins/ClickHouseDriverPlugin;
 			sourceTree = "<group>";
@@ -1173,6 +1181,8 @@
 				5A32BC002F9D5F1300BAEB5F /* tablepro-mcp */,
 				5ABBED792FB55E1400A78382 /* CSVInspectorPlugin.tableplugin */,
 				48B9743D4BDA458C9C0502A8 /* SnowflakeDriverPlugin.tableplugin */,
+				5A2A9AE12FF52C7D0082A7AC /* DuckDBDriver.tableplugin */,
+				5A2A9AE22FF52C7D0082A7AC /* ElasticsearchDriverPlugin.tableplugin */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -1581,7 +1591,7 @@
 			);
 			name = DuckDBDriver;
 			productName = DuckDBDriver;
-			productReference = 5A869000100000000 /* DuckDBDriver.tableplugin */;
+			productReference = 5A2A9AE12FF52C7D0082A7AC /* DuckDBDriver.tableplugin */;
 			productType = "com.apple.product-type.bundle";
 		};
 		5A86A000000000000 /* CSVExport */ = {
@@ -1921,7 +1931,7 @@
 			packageProductDependencies = (
 			);
 			productName = ElasticsearchDriverPlugin;
-			productReference = 5E1A500300000000000000A0 /* ElasticsearchDriverPlugin.tableplugin */;
+			productReference = 5A2A9AE22FF52C7D0082A7AC /* ElasticsearchDriverPlugin.tableplugin */;
 			productType = "com.apple.product-type.bundle";
 		};
 		FABFFD08BCD1EEE7219EAE75 /* SnowflakeDriverPlugin */ = {

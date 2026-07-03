@@ -619,6 +619,12 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
         pluginDriver.buildExplainQuery(sql)
     }
 
+    // MARK: - Row Limit Injection
+
+    func injectRowLimit(_ sql: String, limit: Int) -> String? {
+        pluginDriver.injectRowLimit(sql, limit: limit)
+    }
+
     // MARK: - View Templates
 
     func createViewTemplate() -> String? {

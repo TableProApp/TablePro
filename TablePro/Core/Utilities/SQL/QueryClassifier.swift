@@ -13,11 +13,11 @@ enum QueryTier {
 }
 
 enum QueryClassifier {
-    private static let writeQueryPrefixes: [String] = [
-        "INSERT ", "UPDATE ", "DELETE ", "REPLACE ",
-        "DROP ", "TRUNCATE ", "ALTER ", "CREATE ",
-        "RENAME ", "GRANT ", "REVOKE ",
-        "MERGE ", "UPSERT ", "CALL ", "EXEC ", "EXECUTE ", "LOAD ",
+    private static let writeQueryKeywords: Set<String> = [
+        "INSERT", "UPDATE", "DELETE", "REPLACE",
+        "DROP", "TRUNCATE", "ALTER", "CREATE",
+        "RENAME", "GRANT", "REVOKE",
+        "MERGE", "UPSERT", "CALL", "EXEC", "EXECUTE", "LOAD",
     ]
 
     private static let redisWriteCommands: Set<String> = [
@@ -37,7 +37,7 @@ enum QueryClassifier {
     private static let whereClauseRegex = try? NSRegularExpression(pattern: "\\sWHERE\\s", options: [])
 
     static func isWriteQuery(_ sql: String, databaseType: DatabaseType) -> Bool {
-        let trimmed = sql.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmed = strippingLeadingComments(sql).trimmingCharacters(in: .whitespacesAndNewlines)
 
         if databaseType == .redis {
             let firstToken = trimmed.prefix(while: { !$0.isWhitespace }).uppercased()
@@ -48,14 +48,15 @@ enum QueryClassifier {
             return redisWriteCommands.contains(firstToken)
         }
 
-        let uppercased = trimmed.uppercased()
-        if writeQueryPrefixes.contains(where: { uppercased.hasPrefix($0) }) {
+        let keyword = leadingKeyword(of: trimmed)
+        if writeQueryKeywords.contains(keyword) {
             return true
         }
 
-        if uppercased.hasPrefix("WITH ") {
+        if keyword == "WITH" {
+            let uppercased = trimmed.uppercased()
             let dmlKeywords = ["INSERT ", "UPDATE ", "DELETE ", "MERGE "]
-            for keyword in dmlKeywords where uppercased.contains(keyword) {
+            for dmlKeyword in dmlKeywords where uppercased.contains(dmlKeyword) {
                 return true
             }
         }
@@ -64,7 +65,7 @@ enum QueryClassifier {
     }
 
     static func isDangerousQuery(_ sql: String, databaseType: DatabaseType) -> Bool {
-        let trimmed = sql.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmed = strippingLeadingComments(sql).trimmingCharacters(in: .whitespacesAndNewlines)
 
         if databaseType == .redis {
             let firstToken = trimmed.prefix(while: { !$0.isWhitespace }).uppercased()
@@ -75,17 +76,14 @@ enum QueryClassifier {
             return redisDangerousCommands.contains(firstToken)
         }
 
-        let uppercased = trimmed.uppercased()
+        let keyword = leadingKeyword(of: trimmed)
 
-        if uppercased.hasPrefix("DROP ") {
+        if keyword == "DROP" || keyword == "TRUNCATE" {
             return true
         }
 
-        if uppercased.hasPrefix("TRUNCATE ") {
-            return true
-        }
-
-        if uppercased.hasPrefix("DELETE ") {
+        if keyword == "DELETE" {
+            let uppercased = trimmed.uppercased()
             let range = NSRange(uppercased.startIndex..., in: uppercased)
             let hasWhere = whereClauseRegex?.firstMatch(in: uppercased, options: [], range: range) != nil
             return !hasWhere
@@ -95,8 +93,7 @@ enum QueryClassifier {
     }
 
     static func classifyTier(_ sql: String, databaseType: DatabaseType) -> QueryTier {
-        let trimmed = sql.trimmingCharacters(in: .whitespacesAndNewlines)
-        let uppercased = trimmed.uppercased()
+        let trimmed = strippingLeadingComments(sql).trimmingCharacters(in: .whitespacesAndNewlines)
 
         if databaseType == .redis {
             let firstToken = trimmed.prefix(while: { !$0.isWhitespace }).uppercased()
@@ -104,20 +101,22 @@ enum QueryClassifier {
                 return .destructive
             }
         } else {
-            if uppercased.hasPrefix("DROP ") || uppercased.hasPrefix("TRUNCATE ") {
+            let keyword = leadingKeyword(of: trimmed)
+            if keyword == "DROP" || keyword == "TRUNCATE" {
                 return .destructive
             }
-            if uppercased.hasPrefix("ALTER ") && uppercased.range(of: " DROP ", options: .literal) != nil {
+            if keyword == "ALTER", trimmed.uppercased().range(of: " DROP ", options: .literal) != nil {
                 return .destructive
             }
 
-            if uppercased.hasPrefix("WITH ") {
+            if keyword == "WITH" {
+                let uppercased = trimmed.uppercased()
                 let destructiveKeywords = ["DROP ", "TRUNCATE "]
-                for keyword in destructiveKeywords where uppercased.contains(keyword) {
+                for destructiveKeyword in destructiveKeywords where uppercased.contains(destructiveKeyword) {
                     return .destructive
                 }
                 let writeKeywords = ["INSERT ", "UPDATE ", "DELETE ", "MERGE "]
-                for keyword in writeKeywords where uppercased.contains(keyword) {
+                for writeKeyword in writeKeywords where uppercased.contains(writeKeyword) {
                     return .write
                 }
             }
@@ -147,7 +146,12 @@ enum QueryClassifier {
         }
     }
 
-    private static func strippingLeadingComments(_ sql: String) -> String {
+    static func leadingKeyword(of sql: String) -> String {
+        let stripped = strippingLeadingComments(sql)
+        return stripped.prefix { $0.isLetter || $0.isNumber || $0 == "_" }.uppercased()
+    }
+
+    static func strippingLeadingComments(_ sql: String) -> String {
         var remaining = sql[...]
         while true {
             let trimmed = remaining.drop { $0.isWhitespace }

@@ -17,6 +17,7 @@ struct QueryEditorView: View {
     @Binding var parameters: [QueryParameter]
     @Binding var isParameterPanelVisible: Bool
     var onExecute: () -> Void
+    var onExecuteWithoutLimit: (() -> Void)?
     var schemaProvider: SQLSchemaProvider?
     var databaseType: DatabaseType?
     var connectionId: UUID?
@@ -135,14 +136,25 @@ struct QueryEditorView: View {
 
             explainButton(hasQueryText: hasQueryText)
 
-            Button(action: onExecute) {
+            Menu {
+                Button(String(localized: "Execute Without Limit")) {
+                    onExecuteWithoutLimit?()
+                }
+                .optionalKeyboardShortcut(
+                    AppSettingsManager.shared.keyboard.keyboardShortcut(for: .executeQueryWithoutLimit)
+                )
+            } label: {
                 HStack(spacing: 4) {
                     Image(systemName: "play.fill")
                     Text("Execute")
                 }
+            } primaryAction: {
+                onExecute()
             }
+            .menuStyle(.button)
             .buttonStyle(.borderedProminent)
             .controlSize(.small)
+            .fixedSize()
             .help(shortcutHint(String(localized: "Execute"), for: .executeQuery))
             .optionalKeyboardShortcut(AppSettingsManager.shared.keyboard.keyboardShortcut(for: .executeQuery))
         }

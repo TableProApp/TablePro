@@ -4,23 +4,26 @@
 //
 
 import Foundation
+import os
 
 @MainActor
 struct TableOperationSQLBuilder {
+    private static let logger = Logger(subsystem: "com.TablePro", category: "TableOperationSQLBuilder")
+
     let connectionId: UUID
     let databaseType: DatabaseType
-    let viewNamesProvider: () -> Set<String>
+    let tableInfoProvider: () -> [String: TableInfo]
     let adapterProvider: () -> PluginDriverAdapter?
 
     init(
         connectionId: UUID,
         databaseType: DatabaseType,
-        viewNamesProvider: @escaping () -> Set<String>,
+        tableInfoProvider: @escaping () -> [String: TableInfo],
         adapterProvider: @escaping () -> PluginDriverAdapter?
     ) {
         self.connectionId = connectionId
         self.databaseType = databaseType
-        self.viewNamesProvider = viewNamesProvider
+        self.tableInfoProvider = tableInfoProvider
         self.adapterProvider = adapterProvider
     }
 
@@ -42,20 +45,19 @@ struct TableOperationSQLBuilder {
             statements.append(contentsOf: foreignKeyDisableStatements())
         }
 
+        let tableLookup = tableInfoProvider()
+
         for tableName in sortedTruncates {
             let tableOptions = options[tableName] ?? TableOperationOptions()
             statements.append(contentsOf: truncateStatements(
-                tableName: tableName, options: tableOptions
+                tableName: tableName, schema: tableLookup[tableName]?.schema, options: tableOptions
             ))
         }
 
-        let viewNames = viewNamesProvider()
-
         for tableName in sortedDeletes {
             let tableOptions = options[tableName] ?? TableOperationOptions()
-            let stmt = dropTableStatement(
-                tableName: tableName,
-                isView: viewNames.contains(tableName), options: tableOptions
+            let stmt = dropObjectStatement(
+                tableName: tableName, tableInfo: tableLookup[tableName], options: tableOptions
             )
             if !stmt.isEmpty {
                 statements.append(stmt)
@@ -78,21 +80,39 @@ struct TableOperationSQLBuilder {
     }
 
     private func truncateStatements(
-        tableName: String, options: TableOperationOptions
+        tableName: String, schema: String?, options: TableOperationOptions
     ) -> [String] {
         guard let adapter = adapterProvider() else { return [] }
         return adapter.truncateTableStatements(
-            table: tableName, schema: nil, cascade: options.cascade
+            table: tableName, schema: schema, cascade: options.cascade
         )
     }
 
-    private func dropTableStatement(
-        tableName: String, isView: Bool, options: TableOperationOptions
+    private func dropObjectStatement(
+        tableName: String, tableInfo: TableInfo?, options: TableOperationOptions
     ) -> String {
-        let keyword = isView ? "VIEW" : "TABLE"
         guard let adapter = adapterProvider() else { return "" }
+        if tableInfo == nil {
+            Self.logger.warning("No cached TableInfo for \(tableName, privacy: .public); dropping as TABLE")
+        }
         return adapter.dropObjectStatement(
-            name: tableName, objectType: keyword, schema: nil, cascade: options.cascade
+            name: tableName,
+            objectType: Self.dropKeyword(for: tableInfo?.type),
+            schema: tableInfo?.schema,
+            cascade: options.cascade
         )
+    }
+
+    private static func dropKeyword(for type: TableInfo.TableType?) -> String {
+        switch type {
+        case .view:
+            return "VIEW"
+        case .materializedView:
+            return "MATERIALIZED VIEW"
+        case .foreignTable:
+            return "FOREIGN TABLE"
+        case .table, .systemTable, .none:
+            return "TABLE"
+        }
     }
 }

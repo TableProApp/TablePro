@@ -394,6 +394,12 @@ struct AppMenuCommands: Commands {
             .optionalKeyboardShortcut(shortcut(for: .executeAllStatements))
             .disabled(!(actions?.isConnected ?? false) || !(actions?.hasQueryText ?? false))
 
+            Button(String(localized: "Execute Query Without Limit")) {
+                actions?.runQueryWithoutLimit()
+            }
+            .optionalKeyboardShortcut(shortcut(for: .executeQueryWithoutLimit))
+            .disabled(!(actions?.isConnected ?? false) || !(actions?.hasQueryText ?? false))
+
             Button("Explain Query") {
                 actions?.explainQuery()
             }

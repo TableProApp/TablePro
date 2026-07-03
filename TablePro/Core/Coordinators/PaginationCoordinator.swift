@@ -231,6 +231,7 @@ final class PaginationCoordinator {
                         tab.execution.executionTime = result.executionTime
                         tab.schemaVersion += 1
                         tab.pagination.resetLoadMore()
+                        tab.display.activeResultSet?.isTruncated = false
                     }
                     parent.dataTabDelegate?.tableViewCoordinator?.applyDelta(replaceDelta)
                     parent.toolbarState.setExecuting(false)

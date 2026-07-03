@@ -71,7 +71,7 @@ extension MainContentView {
                         coordinator.lazyLoadCurrentTabIfNeeded()
                     }
                 } else {
-                    coordinator.needsLazyLoad = true
+                    coordinator.pendingLoadTrigger = .userInitiated
                 }
             }
             if let sourceURL = payload.sourceFileURL {
@@ -91,7 +91,12 @@ extension MainContentView {
 
     private func handleRestoreOrDefault() async {
         if let group = RestorationGroupRegistry.consume(for: payload?.id) {
-            applyRestoredGroup(group.tabs, selectedTabId: group.selectedTabId)
+            applyRestoredGroup(
+                group.tabs,
+                selectedTabId: group.selectedTabId,
+                loadTiming: group.loadTiming,
+                consumeDeferredWhenKey: true
+            )
             return
         }
 
@@ -130,23 +135,33 @@ extension MainContentView {
 
         // First tab gets the current window to preserve order; the rest open as
         // native window tabs, each carrying its full restored state via the registry.
+        // Only the frontmost restored tab loads its data immediately; the others
+        // load the first time the user switches to them.
         let firstTab = restoredTabs[0]
+        let remainingTabs = Array(restoredTabs.dropFirst())
+        let frontTabId = RestoreWindowPlan.resolveFrontTabId(
+            remainingTabIds: remainingTabs.map(\.id),
+            firstTabId: firstTab.id,
+            selectedId: selectedId
+        )
+
         applyRestoredGroup(
             [firstTab],
             selectedTabId: firstTab.id,
             activeDatabase: result.lastActiveDatabase,
-            activeSchema: result.lastActiveSchema
+            activeSchema: result.lastActiveSchema,
+            loadTiming: frontTabId == firstTab.id ? .immediate : .deferred
         )
 
-        let remainingTabs = Array(restoredTabs.dropFirst())
-        if !remainingTabs.isEmpty {
-            let selectedWasFirst = firstTab.id == selectedId
-            for tab in remainingTabs {
-                openRestoredTabWindow(tab)
-            }
-            if selectedWasFirst {
-                viewWindow?.makeKeyAndOrderFront(nil)
-            }
+        for tab in remainingTabs {
+            openRestoredTabWindow(
+                tab,
+                activate: tab.id == frontTabId,
+                loadTiming: tab.id == frontTabId ? .immediate : .deferred
+            )
+        }
+        if frontTabId == firstTab.id, !remainingTabs.isEmpty {
+            viewWindow?.makeKeyAndOrderFront(nil)
         }
     }
 
@@ -154,7 +169,9 @@ extension MainContentView {
         _ tabs: [QueryTab],
         selectedTabId: UUID?,
         activeDatabase: String? = nil,
-        activeSchema: String? = nil
+        activeSchema: String? = nil,
+        loadTiming: RestoreLoadTiming = .immediate,
+        consumeDeferredWhenKey: Bool = false
     ) {
         guard let firstTab = tabs.first else { return }
         tabManager.tabs = tabs
@@ -169,17 +186,45 @@ extension MainContentView {
             coordinator.restoreFiltersForTable(tableName)
         }
 
-        restoreConnectionContext(for: selected, activeDatabase: activeDatabase, activeSchema: activeSchema)
+        restoreConnectionContext(
+            for: selected,
+            activeDatabase: activeDatabase,
+            activeSchema: activeSchema,
+            loadTiming: loadTiming,
+            consumeDeferredWhenKey: consumeDeferredWhenKey
+        )
     }
 
     /// Restore the connection's database and schema, then load the selected tab, in a single
-    /// sequenced task so the database and schema switches never race each other.
-    private func restoreConnectionContext(for selected: QueryTab, activeDatabase: String?, activeSchema: String?) {
+    /// sequenced task so the database and schema switches never race each other. A deferred
+    /// tab records its id and loads only when its window becomes key from a user switch.
+    ///
+    /// `consumeDeferredWhenKey` is true only for sibling windows opened by restoration, which
+    /// may already be key because the user is showing them. The initial window is transiently
+    /// key at launch before the front window activates, so it must never consume here — it loads
+    /// its deferred tab through `windowDidBecomeKey` when the user switches back to it.
+    private func restoreConnectionContext(
+        for selected: QueryTab,
+        activeDatabase: String?,
+        activeSchema: String?,
+        loadTiming: RestoreLoadTiming,
+        consumeDeferredWhenKey: Bool
+    ) {
         let isTableTab = selected.tabType == .table
             && !selected.content.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
 
+        guard loadTiming == .immediate else {
+            if isTableTab {
+                coordinator.deferredRestoreLoadTabId = selected.id
+                if consumeDeferredWhenKey {
+                    coordinator.consumeDeferredRestoreLoadIfNeeded()
+                }
+            }
+            return
+        }
+
         guard let session = DatabaseManager.shared.activeSessions[connection.id], session.isConnected else {
-            if isTableTab { coordinator.needsLazyLoad = true }
+            if isTableTab { coordinator.pendingLoadTrigger = .restore }
             return
         }
 
@@ -195,12 +240,12 @@ extension MainContentView {
                 await coordinator.switchSchema(to: activeSchema)
             }
             if isTableTab {
-                coordinator.lazyLoadCurrentTabIfNeeded()
+                coordinator.lazyLoadCurrentTabIfNeeded(trigger: .restore)
             }
         }
     }
 
-    private func openRestoredTabWindow(_ tab: QueryTab) {
+    private func openRestoredTabWindow(_ tab: QueryTab, activate: Bool, loadTiming: RestoreLoadTiming) {
         let restorePayload = EditorTabPayload(
             connectionId: connection.id,
             tabType: tab.tabType,
@@ -214,10 +259,10 @@ extension MainContentView {
             intent: .restoreOrDefault
         )
         RestorationGroupRegistry.register(
-            .init(tabs: [tab], selectedTabId: tab.id),
+            .init(tabs: [tab], selectedTabId: tab.id, loadTiming: loadTiming),
             for: restorePayload.id
         )
-        WindowManager.shared.openTab(payload: restorePayload)
+        WindowManager.shared.openTab(payload: restorePayload, activate: activate)
     }
 
     // MARK: - Command Actions Setup

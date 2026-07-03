@@ -108,6 +108,63 @@ struct QueryExecutorTests {
         #expect(!QueryExecutor.isDDLStatement("DELETE FROM foo"))
     }
 
+    // MARK: - Row cap qualification
+
+    @Test("qualifiesForRowCap accepts SELECT and WITH queries on query tabs")
+    func qualifiesForRowCapSelects() {
+        #expect(QueryExecutor.qualifiesForRowCap(
+            sql: "SELECT * FROM users", tabType: .query, databaseType: .mysql
+        ))
+        #expect(QueryExecutor.qualifiesForRowCap(
+            sql: "WITH cte AS (SELECT 1) SELECT * FROM cte", tabType: .query, databaseType: .postgresql
+        ))
+    }
+
+    @Test("qualifiesForRowCap accepts SELECT followed by newline, tab, or punctuation")
+    func qualifiesForRowCapKeywordBoundaries() {
+        #expect(QueryExecutor.qualifiesForRowCap(
+            sql: "SELECT\n  *\nFROM big_table", tabType: .query, databaseType: .mysql
+        ))
+        #expect(QueryExecutor.qualifiesForRowCap(
+            sql: "SELECT\t* FROM t", tabType: .query, databaseType: .mysql
+        ))
+        #expect(QueryExecutor.qualifiesForRowCap(
+            sql: "SELECT*FROM t", tabType: .query, databaseType: .mysql
+        ))
+        #expect(!QueryExecutor.qualifiesForRowCap(
+            sql: "SELECTX FROM t", tabType: .query, databaseType: .mysql
+        ))
+    }
+
+    @Test("qualifiesForRowCap accepts SELECT queries preceded by comments")
+    func qualifiesForRowCapCommentPrefixed() {
+        #expect(QueryExecutor.qualifiesForRowCap(
+            sql: "-- top users\nSELECT * FROM users", tabType: .query, databaseType: .mysql
+        ))
+        #expect(QueryExecutor.qualifiesForRowCap(
+            sql: "/* audit */ SELECT * FROM users", tabType: .query, databaseType: .mysql
+        ))
+    }
+
+    @Test("qualifiesForRowCap rejects writes, DDL, EXPLAIN, and table tabs")
+    func qualifiesForRowCapRejections() {
+        #expect(!QueryExecutor.qualifiesForRowCap(
+            sql: "DELETE FROM users", tabType: .query, databaseType: .mysql
+        ))
+        #expect(!QueryExecutor.qualifiesForRowCap(
+            sql: "CREATE TABLE foo (id INT)", tabType: .query, databaseType: .mysql
+        ))
+        #expect(!QueryExecutor.qualifiesForRowCap(
+            sql: "EXPLAIN SELECT * FROM users", tabType: .query, databaseType: .mysql
+        ))
+        #expect(!QueryExecutor.qualifiesForRowCap(
+            sql: "SELECT * FROM users", tabType: .table, databaseType: .mysql
+        ))
+        #expect(!QueryExecutor.qualifiesForRowCap(
+            sql: "WITH cte AS (SELECT 1) DELETE FROM users", tabType: .query, databaseType: .postgresql
+        ))
+    }
+
     // MARK: - Parameter detection
 
     @Test("detectAndReconcileParameters returns empty when SQL has no placeholders")

@@ -151,7 +151,7 @@ Copies follow the grid as shown: hidden columns are left out and columns keep th
   <img className="hidden dark:block" src="/images/pagination-controls-dark.png" alt="Pagination controls" />
 </Frame>
 
-**Query tabs** cap results at 10,000 rows by default to stay responsive. When the cap applies, the status bar shows **Fetch All** to load the rest (with a confirmation, since large results use a lot of memory). Your own `LIMIT` and `OFFSET` are passed through unchanged. Adjust the cap in **Settings > Editor** (**Truncate query results**, **Row cap**).
+**Query tabs** cap results at 10,000 rows by default to stay responsive. For databases with `LIMIT` syntax, TablePro appends the cap to the statement it sends to the server, so the database stops early; the query text in the editor never changes. A query with its own `LIMIT` or `FETCH FIRST` is sent as written and not capped. When the cap trims a result, the status bar shows **Fetch All** to load the rest (with a confirmation, since large results use a lot of memory); in a multi-statement run, each result tab remembers its own truncation state. Run one query without the cap via **Execute Without Limit** (`Option+Cmd+Enter`). Adjust the cap in **Settings > Editor** (**Truncate query results**, **Row cap**).
 
 Press `Cmd+.` to cancel a running query or a Fetch All.
 

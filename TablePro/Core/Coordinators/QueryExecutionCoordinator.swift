@@ -50,7 +50,7 @@ final class QueryExecutionCoordinator {
         dispatchStatements(statements, tabIndex: index)
     }
 
-    func dispatchStatements(_ statements: [String], tabIndex index: Int) {
+    func dispatchStatements(_ statements: [String], tabIndex index: Int, bypassRowLimit: Bool = false) {
         guard !parent.isShowingSafeModePrompt else { return }
         parent.isShowingSafeModePrompt = true
         let request = makeExecuteRequest(statements: statements)
@@ -59,9 +59,9 @@ final class QueryExecutionCoordinator {
             switch await ExecutionGateProvider.shared.authorize(request) {
             case .authorized:
                 if statements.count == 1 {
-                    parent.executeQueryInternal(statements[0])
+                    parent.executeQueryInternal(statements[0], bypassRowLimit: bypassRowLimit)
                 } else {
-                    executeMultipleStatements(statements)
+                    executeMultipleStatements(statements, bypassRowLimit: bypassRowLimit)
                 }
             case .denied(let reason):
                 parent.tabManager.mutate(at: index) { $0.execution.errorMessage = reason }
@@ -84,7 +84,8 @@ final class QueryExecutionCoordinator {
     func dispatchParameterizedStatements(
         _ statements: [String],
         parameters: [QueryParameter],
-        tabIndex index: Int
+        tabIndex index: Int,
+        bypassRowLimit: Bool = false
     ) {
         guard !parent.isShowingSafeModePrompt else { return }
         parent.isShowingSafeModePrompt = true
@@ -94,7 +95,7 @@ final class QueryExecutionCoordinator {
             defer { parent.isShowingSafeModePrompt = false }
             switch await ExecutionGateProvider.shared.authorize(request) {
             case .authorized:
-                executeParameterizedAfterSafeMode(statements, parameters: parameters)
+                executeParameterizedAfterSafeMode(statements, parameters: parameters, bypassRowLimit: bypassRowLimit)
             case .denied(let reason):
                 parent.tabManager.mutate(tabId: tabId) { $0.execution.errorMessage = reason }
             }
@@ -103,12 +104,13 @@ final class QueryExecutionCoordinator {
 
     private func executeParameterizedAfterSafeMode(
         _ statements: [String],
-        parameters: [QueryParameter]
+        parameters: [QueryParameter],
+        bypassRowLimit: Bool
     ) {
         if statements.count == 1 {
-            executeQueryWithParameters(statements[0], parameters: parameters)
+            executeQueryWithParameters(statements[0], parameters: parameters, bypassRowLimit: bypassRowLimit)
         } else {
-            executeMultipleStatementsWithParameters(statements, parameters: parameters)
+            executeMultipleStatementsWithParameters(statements, parameters: parameters, bypassRowLimit: bypassRowLimit)
         }
     }
 }

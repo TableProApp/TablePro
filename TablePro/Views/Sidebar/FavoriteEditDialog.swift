@@ -93,6 +93,15 @@ internal struct FavoriteEditDialog: View {
                         )
                 }
 
+                LabeledContent {} label: {
+                    Text(String(
+                        format: String(localized: "Type %@ in the query to set where the cursor lands after keyword expansion."),
+                        SQLSnippetMarker.token
+                    ))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                }
+
                 TextField("Keyword", text: $keyword)
                     .focused($focusedField, equals: .keyword)
                     .onChange(of: keyword) { _, newValue in

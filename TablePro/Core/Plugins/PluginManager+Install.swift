@@ -9,6 +9,7 @@ import os
 extension PluginManager {
     func installFromRegistry(
         _ registryPlugin: RegistryPlugin,
+        registryClient: RegistryClient = .shared,
         progress: @escaping @MainActor @Sendable (Double) -> Void
     ) async throws -> PluginEntry {
         if plugins.contains(where: { $0.id == registryPlugin.id }) {
@@ -22,7 +23,7 @@ extension PluginManager {
         installsInFlight.insert(registryPlugin.id)
         defer { installsInFlight.remove(registryPlugin.id) }
 
-        let registryPlugin = await RegistryClient.shared.refreshedPlugin(matching: registryPlugin)
+        let registryPlugin = await registryClient.refreshedPlugin(matching: registryPlugin)
         let binary = try validateRegistryCompatibility(registryPlugin)
 
         let userPluginsDir = self.userPluginsDir
