@@ -652,7 +652,11 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     private func resolvedObjectSchema(_ schema: String?) -> String? {
-        MSSQLSchemaQueries.resolvedObjectSchema(schema, currentSchema: _currentSchema)
+        MSSQLSchemaQueries.resolvedObjectSchema(
+            schema,
+            currentSchema: _currentSchema,
+            allowCurrentSchemaFallback: freeTDSConn != nil
+        )
     }
 
     private func mssqlEscapeValue(_ value: String) -> String {

@@ -141,6 +141,16 @@ final class MSSQLSchemaQueriesTests: XCTestCase {
         XCTAssertEqual(MSSQLSchemaQueries.resolvedObjectSchema("", currentSchema: "sales"), "sales")
     }
 
+    func testResolvedObjectSchemaCanDisableCurrentSchemaFallback() {
+        XCTAssertNil(
+            MSSQLSchemaQueries.resolvedObjectSchema(
+                nil,
+                currentSchema: "dbo",
+                allowCurrentSchemaFallback: false
+            )
+        )
+    }
+
     func testResolvedObjectSchemaReturnsNilWhenBothSchemasAreBlank() {
         XCTAssertNil(MSSQLSchemaQueries.resolvedObjectSchema(nil, currentSchema: nil))
         XCTAssertNil(MSSQLSchemaQueries.resolvedObjectSchema("", currentSchema: ""))
