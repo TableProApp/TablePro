@@ -43,6 +43,9 @@ extension MainContentView {
     }
 
     private func consumePendingLoad(trigger: TableLoadTrigger, session: ConnectionSession) {
+        if let tabId = tabManager.selectedTab?.id {
+            coordinator.resolveTableTabSchemaIfNeeded(tabId: tabId)
+        }
         if let selectedTab = tabManager.selectedTab,
             !selectedTab.tableContext.databaseName.isEmpty,
             selectedTab.tableContext.databaseName != session.activeDatabase

@@ -314,6 +314,7 @@ extension FilterSQLGenerator {
     /// Generate a preview-friendly query string (for display, not execution)
     func generatePreviewSQL(
         tableName: String,
+        schemaName: String? = nil,
         filters: [TableFilter],
         logicMode: FilterLogicMode = .and,
         limit: Int = 1_000,
@@ -333,7 +334,7 @@ extension FilterSQLGenerator {
                     return (filter.columnName, filter.filterOperator.rawValue, value)
                 }
             if let result = pluginDriver.buildFilteredQuery(
-                table: tableName, filters: filterTuples,
+                table: tableName, schema: schemaName, filters: filterTuples,
                 logicMode: logicMode == .and ? "and" : "or",
                 sortColumns: [], columns: [],
                 limit: limit, offset: 0
@@ -342,7 +343,12 @@ extension FilterSQLGenerator {
             }
         }
 
-        let quotedTable = quoteIdentifierFn(tableName)
+        let quotedTable: String
+        if let schemaName, !schemaName.isEmpty {
+            quotedTable = "\(quoteIdentifierFn(schemaName)).\(quoteIdentifierFn(tableName))"
+        } else {
+            quotedTable = quoteIdentifierFn(tableName)
+        }
         var sql = "SELECT * FROM \(quotedTable)"
 
         let whereClause = generateWhereClause(from: filters, logicMode: logicMode)

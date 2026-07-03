@@ -31,4 +31,40 @@ struct DatabaseManagerSessionTests {
         let session = DatabaseManager.shared.activeSessions[unknownId]
         #expect(session == nil)
     }
+
+    @Test("resolvedSchemaName keeps an explicit schema over the session's current schema")
+    func resolvedSchemaNameKeepsExplicitSchema() {
+        let connection = TestFixtures.makeConnection()
+        var session = ConnectionSession(connection: connection)
+        session.currentSchema = "sales"
+        DatabaseManager.shared.injectSession(session, for: connection.id)
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+
+        #expect(DatabaseManager.shared.resolvedSchemaName("audit", for: connection.id) == "audit")
+    }
+
+    @Test("resolvedSchemaName falls back to the session's current schema")
+    func resolvedSchemaNameFallsBackToSessionSchema() {
+        let connection = TestFixtures.makeConnection()
+        var session = ConnectionSession(connection: connection)
+        session.currentSchema = "sales"
+        DatabaseManager.shared.injectSession(session, for: connection.id)
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+
+        #expect(DatabaseManager.shared.resolvedSchemaName(nil, for: connection.id) == "sales")
+    }
+
+    @Test("resolvedSchemaName stays nil without a session")
+    func resolvedSchemaNameStaysNilWithoutSession() {
+        #expect(DatabaseManager.shared.resolvedSchemaName(nil, for: UUID()) == nil)
+    }
+
+    @Test("resolvedSchemaName stays nil for a schema-less session")
+    func resolvedSchemaNameStaysNilForSchemaLessSession() {
+        let connection = TestFixtures.makeConnection()
+        DatabaseManager.shared.injectSession(ConnectionSession(connection: connection), for: connection.id)
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+
+        #expect(DatabaseManager.shared.resolvedSchemaName(nil, for: connection.id) == nil)
+    }
 }
