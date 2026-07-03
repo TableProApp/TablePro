@@ -43,6 +43,11 @@ jobs:
       - name: Install xcbeautify
         run: brew list xcbeautify &>/dev/null || brew install xcbeautify
 
+      # Secrets.xcconfig is gitignored. Tests do not need analytics keys, so the
+      # checked-in example template is enough for the project to resolve.
+      - name: Stub Secrets.xcconfig
+        run: cp TableProMobile/Secrets.xcconfig.example TableProMobile/Secrets.xcconfig
+
       # macos-26 lazy-loads simulator runtimes; -downloadPlatform pulls the runtime
       # matching Xcode's SDK and is a no-op when it is already present.
       - name: Install iOS simulator runtime
@@ -67,11 +72,6 @@ jobs:
 
           echo "::error::No iPhone 17 Pro simulator destination is available after downloadPlatform failed."
           exit 70
-
-      # Secrets.xcconfig is gitignored. Tests do not need analytics keys, so the
-      # checked-in example template is enough for the project to resolve.
-      - name: Stub Secrets.xcconfig
-        run: cp TableProMobile/Secrets.xcconfig.example TableProMobile/Secrets.xcconfig
 
       - name: Cache static libraries
         uses: actions/cache@v4
