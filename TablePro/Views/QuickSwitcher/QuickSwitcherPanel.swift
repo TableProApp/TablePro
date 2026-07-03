@@ -89,6 +89,7 @@ internal final class QuickSwitcherPanelController: NSObject, NSWindowDelegate {
     }
 
     func windowWillClose(_ notification: Notification) {
+        panel?.contentViewController = nil
         panel = nil
         anchor = nil
     }
