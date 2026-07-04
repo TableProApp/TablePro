@@ -29,6 +29,7 @@ struct OracleError: Error {
         case authVersionNotSupported
         case authConnectionDropped(phase: String?)
         case loginTimedOut
+        case queryTimedOut
         case nativeEncryptionFailed
     }
 
@@ -127,6 +128,7 @@ final class OracleConnectionWrapper: @unchecked Sendable {
     private struct LockedState: Sendable {
         var isConnected = false
         var nioConnection: OracleNIO.OracleConnection?
+        var queryTimeoutSeconds = 0
     }
 
     private let state = OSAllocatedUnfairLock(initialState: LockedState())
@@ -297,12 +299,18 @@ final class OracleConnectionWrapper: @unchecked Sendable {
             return String(localized: "This account uses a password verifier the database driver does not support.")
         case .loginTimedOut:
             return loginTimeoutMessage
+        case .queryTimedOut:
+            return queryTimeoutMessage
         case .nativeEncryptionFailed:
             return nativeEncryptionFailureMessage
         case .generic, .notConnected, .connectionFailed, .queryFailed, .protocolError:
             return serverDetail
         }
     }
+
+    private static let queryTimeoutMessage = String(
+        localized: "The query did not finish within the configured timeout, so the connection was reset. Run the query again."
+    )
 
     private func mapQueryError(_ sqlError: OracleSQLError) -> OracleError {
         guard Self.isChannelFatal(sqlError) else {
@@ -340,71 +348,71 @@ final class OracleConnectionWrapper: @unchecked Sendable {
         }
     }
 
+    func applyQueryTimeout(_ seconds: Int) {
+        state.withLock { $0.queryTimeoutSeconds = max(0, seconds) }
+    }
+
+    func abortCurrentQuery() {
+        guard isConnected else { return }
+        osLogger.notice("Aborting Oracle query by closing the connection; the driver has no server-side cancel")
+        disconnect()
+    }
+
     // MARK: - Query Execution
 
-    func executeQuery(_ query: String) async throws -> OracleQueryResult {
-        let connection = try state.withLock { current -> OracleNIO.OracleConnection in
+    private func requireConnection() throws -> OracleNIO.OracleConnection {
+        try state.withLock { current in
             guard let conn = current.nioConnection, current.isConnected else {
                 throw OracleError.notConnected
             }
             return conn
         }
+    }
+
+    /// Races the operation against the configured query timeout. On timeout the
+    /// connection is closed first, which fails the in-flight OracleNIO call even
+    /// if it ignores task cancellation, so the group can always unwind.
+    private func withQueryDeadline<T: Sendable>(
+        _ operation: @escaping @Sendable () async throws -> T
+    ) async throws -> T {
+        let timeoutSeconds = state.withLock { $0.queryTimeoutSeconds }
+        guard timeoutSeconds > 0 else { return try await operation() }
+
+        return try await withThrowingTaskGroup(of: T?.self) { group in
+            group.addTask { try await operation() }
+            group.addTask {
+                try await Task.sleep(nanoseconds: UInt64(timeoutSeconds) * 1_000_000_000)
+                return nil
+            }
+            defer { group.cancelAll() }
+            guard let first = try await group.next(), let result = first else {
+                disconnect()
+                throw TimeoutError(seconds: Double(timeoutSeconds))
+            }
+            return result
+        }
+    }
+
+    private func queryTimeoutError(_ timeout: TimeoutError) -> OracleError {
+        osLogger.error("Oracle query timed out after \(Int(timeout.seconds), privacy: .public)s; the connection was closed to recover")
+        return OracleError(message: Self.queryTimeoutMessage, category: .queryTimedOut)
+    }
+
+    func executeQuery(_ query: String) async throws -> OracleQueryResult {
+        let connection = try requireConnection()
 
         // OracleNIO does not support concurrent queries on a single connection.
         // Serialize all queries to prevent state-machine corruption.
         await queryGate.acquire()
 
         do {
-            let statement = OracleStatement(stringLiteral: query)
-            let stream = try await connection.execute(statement, logger: nioLogger)
-
-            // Read column metadata from stream (available even with 0 rows)
-            var columns: [String] = []
-            for col in stream.columns {
-                columns.append(col.name)
+            let result = try await withQueryDeadline { [self] in
+                try await collectRows(query, on: connection)
             }
-            osLogger.debug("Oracle columns: \(columns.count) — \(columns.joined(separator: ", "))")
-
-            var columnTypeNames: [String] = []
-            var allRows: [[PluginCellValue]] = []
-            var didReadTypes = false
-            var truncated = false
-
-            for try await row in stream {
-                var rowValues: [PluginCellValue] = []
-                for cell in row {
-                    if !didReadTypes {
-                        columnTypeNames.append(oracleTypeName(cell.dataType))
-                    }
-                    if cell.bytes == nil {
-                        rowValues.append(.null)
-                    } else if cell.dataType == .raw || cell.dataType == .longRAW || cell.dataType == .blob,
-                              let bytes = cell.bytes {
-                        rowValues.append(.bytes(Data(bytes.readableBytesView)))
-                    } else {
-                        rowValues.append(PluginCellValue.fromOptional(decodeCell(cell)))
-                    }
-                }
-                didReadTypes = true
-                allRows.append(rowValues)
-                if allRows.count >= PluginRowLimits.emergencyMax {
-                    truncated = true
-                    break
-                }
-            }
-
-            if !didReadTypes {
-                columnTypeNames = Array(repeating: "unknown", count: columns.count)
-            }
-
             await queryGate.release()
-            return OracleQueryResult(
-                columns: columns,
-                columnTypeNames: columnTypeNames,
-                rows: allRows,
-                affectedRows: allRows.count,
-                isTruncated: truncated
-            )
+            return result
+        } catch let timeout as TimeoutError {
+            throw queryTimeoutError(timeout)
         } catch let sqlError as OracleSQLError {
             await queryGate.release()
             throw mapQueryError(sqlError)
@@ -420,76 +428,79 @@ final class OracleConnectionWrapper: @unchecked Sendable {
         }
     }
 
+    private func collectRows(
+        _ query: String,
+        on connection: OracleNIO.OracleConnection
+    ) async throws -> OracleQueryResult {
+        let statement = OracleStatement(stringLiteral: query)
+        let stream = try await connection.execute(statement, logger: nioLogger)
+
+        // Read column metadata from stream (available even with 0 rows)
+        var columns: [String] = []
+        for col in stream.columns {
+            columns.append(col.name)
+        }
+        osLogger.debug("Oracle columns (\(columns.count)): \(columns.joined(separator: ", "))")
+
+        var columnTypeNames: [String] = []
+        var allRows: [[PluginCellValue]] = []
+        var didReadTypes = false
+        var truncated = false
+
+        for try await row in stream {
+            var rowValues: [PluginCellValue] = []
+            for cell in row {
+                if !didReadTypes {
+                    columnTypeNames.append(oracleTypeName(cell.dataType))
+                }
+                if cell.bytes == nil {
+                    rowValues.append(.null)
+                } else if cell.dataType == .raw || cell.dataType == .longRAW || cell.dataType == .blob,
+                          let bytes = cell.bytes {
+                    rowValues.append(.bytes(Data(bytes.readableBytesView)))
+                } else {
+                    rowValues.append(PluginCellValue.fromOptional(decodeCell(cell)))
+                }
+            }
+            didReadTypes = true
+            allRows.append(rowValues)
+            if allRows.count >= PluginRowLimits.emergencyMax {
+                truncated = true
+                break
+            }
+        }
+
+        if !didReadTypes {
+            columnTypeNames = Array(repeating: "unknown", count: columns.count)
+        }
+
+        return OracleQueryResult(
+            columns: columns,
+            columnTypeNames: columnTypeNames,
+            rows: allRows,
+            affectedRows: allRows.count,
+            isTruncated: truncated
+        )
+    }
+
     // MARK: - Streaming Query
 
     func streamQuery(
         _ query: String,
         continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
     ) async throws {
-        let connection = try state.withLock { current -> OracleNIO.OracleConnection in
-            guard let conn = current.nioConnection, current.isConnected else {
-                throw OracleError.notConnected
-            }
-            return conn
-        }
+        let connection = try requireConnection()
 
         await queryGate.acquire()
 
         do {
-            let statement = OracleStatement(stringLiteral: query)
-            let stream = try await connection.execute(statement, logger: nioLogger)
-
-            var columns: [String] = []
-            for col in stream.columns {
-                columns.append(col.name)
+            try await withQueryDeadline { [self] in
+                try await streamRows(query, on: connection, continuation: continuation)
             }
-
-            var columnTypeNames: [String] = []
-            var headerSent = false
-
-            for try await row in stream {
-                if Task.isCancelled {
-                    await queryGate.release()
-                    continuation.finish(throwing: CancellationError())
-                    return
-                }
-
-                var rowValues: [PluginCellValue] = []
-                for cell in row {
-                    if !headerSent {
-                        columnTypeNames.append(oracleTypeName(cell.dataType))
-                    }
-                    if cell.bytes == nil {
-                        rowValues.append(.null)
-                    } else if cell.dataType == .raw || cell.dataType == .longRAW || cell.dataType == .blob,
-                              let bytes = cell.bytes {
-                        rowValues.append(.bytes(Data(bytes.readableBytesView)))
-                    } else {
-                        rowValues.append(PluginCellValue.fromOptional(decodeCell(cell)))
-                    }
-                }
-
-                if !headerSent {
-                    continuation.yield(.header(PluginStreamHeader(
-                        columns: columns,
-                        columnTypeNames: columnTypeNames
-                    )))
-                    headerSent = true
-                }
-
-                continuation.yield(.rows([rowValues]))
-            }
-
-            if !headerSent {
-                columnTypeNames = Array(repeating: "unknown", count: columns.count)
-                continuation.yield(.header(PluginStreamHeader(
-                    columns: columns,
-                    columnTypeNames: columnTypeNames
-                )))
-            }
-
             await queryGate.release()
             continuation.finish()
+        } catch let timeout as TimeoutError {
+            throw queryTimeoutError(timeout)
         } catch let sqlError as OracleSQLError {
             await queryGate.release()
             throw mapQueryError(sqlError)
@@ -499,6 +510,60 @@ final class OracleConnectionWrapper: @unchecked Sendable {
         } catch {
             await queryGate.release()
             throw OracleError(message: "Query execution failed: \(String(describing: error))")
+        }
+    }
+
+    private func streamRows(
+        _ query: String,
+        on connection: OracleNIO.OracleConnection,
+        continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
+    ) async throws {
+        let statement = OracleStatement(stringLiteral: query)
+        let stream = try await connection.execute(statement, logger: nioLogger)
+
+        var columns: [String] = []
+        for col in stream.columns {
+            columns.append(col.name)
+        }
+
+        var columnTypeNames: [String] = []
+        var headerSent = false
+
+        for try await row in stream {
+            try Task.checkCancellation()
+
+            var rowValues: [PluginCellValue] = []
+            for cell in row {
+                if !headerSent {
+                    columnTypeNames.append(oracleTypeName(cell.dataType))
+                }
+                if cell.bytes == nil {
+                    rowValues.append(.null)
+                } else if cell.dataType == .raw || cell.dataType == .longRAW || cell.dataType == .blob,
+                          let bytes = cell.bytes {
+                    rowValues.append(.bytes(Data(bytes.readableBytesView)))
+                } else {
+                    rowValues.append(PluginCellValue.fromOptional(decodeCell(cell)))
+                }
+            }
+
+            if !headerSent {
+                continuation.yield(.header(PluginStreamHeader(
+                    columns: columns,
+                    columnTypeNames: columnTypeNames
+                )))
+                headerSent = true
+            }
+
+            continuation.yield(.rows([rowValues]))
+        }
+
+        if !headerSent {
+            columnTypeNames = Array(repeating: "unknown", count: columns.count)
+            continuation.yield(.header(PluginStreamHeader(
+                columns: columns,
+                columnTypeNames: columnTypeNames
+            )))
         }
     }
 

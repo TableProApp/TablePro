@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 
 @MainActor
 final class MetadataConnectionPool {
@@ -53,7 +54,7 @@ final class MetadataConnectionPool {
     private var entries: [Key: Entry] = [:]
     private var pending: [Key: Task<Void, Error>] = [:]
     private let maxPerConnection = 6
-    private let connectTimeoutSeconds: UInt64 = 15
+    private let operationTimeoutSeconds: Double = 15
 
     private init() {}
 
@@ -151,13 +152,13 @@ final class MetadataConnectionPool {
             awaitPlugins: true
         )
         do {
-            try await connectWithTimeout(driver: driver, database: key.database)
+            try await Self.connect(driver, database: key.database, timeoutSeconds: operationTimeoutSeconds)
             try? await driver.applyQueryTimeout(AppSettingsManager.shared.general.queryTimeoutSeconds)
             await DatabaseManager.shared.executeStartupCommands(
                 session.connection.startupCommands, on: driver, connectionName: session.connection.name
             )
             if let schema = key.schema, let switchable = driver as? SchemaSwitchable {
-                try await switchable.switchSchema(to: schema)
+                try await Self.switchSchema(switchable, to: schema, timeoutSeconds: operationTimeoutSeconds)
             }
         } catch {
             driver.disconnect()
@@ -166,18 +167,27 @@ final class MetadataConnectionPool {
         return Entry(driver: driver)
     }
 
-    private func connectWithTimeout(driver: DatabaseDriver, database: String) async throws {
-        let timeoutNanos = connectTimeoutSeconds * 1_000_000_000
-        try await withThrowingTaskGroup(of: Void.self) { group in
-            group.addTask { try await driver.connect() }
-            group.addTask {
-                try await Task.sleep(nanoseconds: timeoutNanos)
-                throw DatabaseError.connectionFailed(
-                    String(format: String(localized: "Connecting to '%@' timed out."), database)
-                )
-            }
-            try await group.next()
-            group.cancelAll()
+    static func connect(_ driver: DatabaseDriver, database: String, timeoutSeconds: Double) async throws {
+        do {
+            try await withTimeout(seconds: timeoutSeconds) { try await driver.connect() }
+        } catch is TimeoutError {
+            throw DatabaseError.connectionFailed(
+                String(format: String(localized: "Connecting to '%@' timed out."), database)
+            )
+        }
+    }
+
+    static func switchSchema(
+        _ switchable: SchemaSwitchable,
+        to schema: String,
+        timeoutSeconds: Double
+    ) async throws {
+        do {
+            try await withTimeout(seconds: timeoutSeconds) { try await switchable.switchSchema(to: schema) }
+        } catch is TimeoutError {
+            throw DatabaseError.connectionFailed(
+                String(format: String(localized: "Switching to schema '%@' timed out."), schema)
+            )
         }
     }
 

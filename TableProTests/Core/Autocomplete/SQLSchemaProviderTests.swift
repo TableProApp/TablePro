@@ -29,12 +29,18 @@ final class MockDatabaseDriver: DatabaseDriver, SchemaSwitchable, @unchecked Sen
     var fetchSchemaTablesCalls: [String] = []
     var applyQueryTimeoutValues: [Int] = []
     var cancelQueryCallCount = 0
+    var connectDelaySeconds: Double = 0
+    var switchSchemaDelaySeconds: Double = 0
 
     init(connection: DatabaseConnection = TestFixtures.makeConnection()) {
         self.connection = connection
     }
 
-    func connect() async throws {}
+    func connect() async throws {
+        guard connectDelaySeconds > 0 else { return }
+        try await Task.sleep(nanoseconds: UInt64(connectDelaySeconds * 1_000_000_000))
+    }
+
     func disconnect() {}
 
     func testConnection() async throws -> Bool { true }
@@ -105,6 +111,9 @@ final class MockDatabaseDriver: DatabaseDriver, SchemaSwitchable, @unchecked Sen
     func rollbackTransaction() async throws {}
 
     func switchSchema(to schema: String) async throws {
+        if switchSchemaDelaySeconds > 0 {
+            try await Task.sleep(nanoseconds: UInt64(switchSchemaDelaySeconds * 1_000_000_000))
+        }
         switchSchemaCallCount += 1
         currentSchema = schema
     }

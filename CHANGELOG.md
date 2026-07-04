@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Switching schemas on an Oracle connection no longer hangs on an infinite loading spinner. Oracle now switches by schema like BigQuery, the sidebar lists every schema with its tables loading on expand, Oracle queries respect the query timeout setting and can be cancelled, and a schema load that fails now shows an error with a Retry button instead of spinning forever. Requires the updated Oracle plugin for the full fix. (#1807)
+
 ## [0.55.0] - 2026-07-04
 
 ### Added

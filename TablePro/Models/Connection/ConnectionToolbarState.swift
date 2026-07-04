@@ -187,9 +187,10 @@ final class ConnectionToolbarState {
     }
 
     /// Text shown in the toolbar's database/schema chip. For `.bySchema` engines
-    /// (SQL Server, PostgreSQL, Oracle, BigQuery), this is the active schema; for
-    /// `.byDatabase` and `.flat` engines, it is the active database. Falls back to
-    /// `currentDatabase` when a schema-grouped engine has not yet resolved its schema.
+    /// (SQL Server, PostgreSQL) and `.hierarchicalSchema` engines that switch by
+    /// schema (Oracle, BigQuery), this is the active schema; other engines show the
+    /// active database, which is also the fallback while a schema-grouped engine
+    /// has not yet resolved its schema.
     var chipText: String {
         switch databaseGroupingStrategy {
         case .bySchema:

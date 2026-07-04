@@ -214,6 +214,12 @@ final class SchemaService {
         await reload(connectionId: connectionId, driver: driver, connection: session.connection)
     }
 
+    func markLoadFailed(connectionId: UUID, message: String) {
+        if case .loaded = state(for: connectionId) { return }
+        states[connectionId] = .failed(message)
+        bumpGeneration(connectionId)
+    }
+
     private func runLoad(
         connectionId: UUID,
         driver: DatabaseDriver,

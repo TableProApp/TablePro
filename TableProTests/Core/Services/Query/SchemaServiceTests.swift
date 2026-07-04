@@ -58,4 +58,31 @@ struct SchemaServiceTests {
         let service = SchemaService()
         #expect(service.allLoadedTables(for: UUID()).isEmpty)
     }
+
+    @Test("markLoadFailed surfaces a failed state for spinners to resolve")
+    func markLoadFailedSetsFailedState() {
+        let service = SchemaService()
+        let connectionId = UUID()
+
+        service.markLoadFailed(connectionId: connectionId, message: "connect timed out")
+
+        #expect(service.state(for: connectionId) == .failed("connect timed out"))
+    }
+
+    @Test("markLoadFailed keeps already-loaded tables instead of replacing them")
+    func markLoadFailedKeepsLoadedTables() async {
+        let connectionId = UUID()
+        let driver = MockDatabaseDriver()
+        driver.tablesToReturn = [TableInfo(name: "orders", type: .table, rowCount: 0, schema: nil)]
+        let service = SchemaService()
+        await service.reload(
+            connectionId: connectionId,
+            driver: driver,
+            connection: TestFixtures.makeConnection()
+        )
+
+        service.markLoadFailed(connectionId: connectionId, message: "refresh failed")
+
+        #expect(service.state(for: connectionId) == .loaded(driver.tablesToReturn))
+    }
 }

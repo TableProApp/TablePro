@@ -615,6 +615,7 @@ final class MainContentCoordinator {
             }
         } catch {
             Self.logger.warning("Schema refresh failed: \(error.localizedDescription, privacy: .public)")
+            schemaService.markLoadFailed(connectionId: connectionId, message: error.localizedDescription)
         }
         let database = currentDatabaseOnly ? activeDatabaseName : nil
         await DatabaseTreeMetadataService.shared.refreshLoadedTables(connectionId: connectionId, database: database)
