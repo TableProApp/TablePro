@@ -129,6 +129,73 @@ struct OpenTableTabTests {
         #expect(tabManager.selectedTab?.tableContext.tableName == "users")
     }
 
+    // MARK: - Schema identity resolution (issue #1774)
+
+    @Test("Opening a bare table name stamps the session's current schema")
+    @MainActor
+    func bareTableNameResolvesActiveSchema() {
+        let connection = TestFixtures.makeConnection(type: .postgresql)
+        var session = ConnectionSession(connection: connection)
+        session.currentSchema = "sales"
+        DatabaseManager.shared.injectSession(session, for: connection.id)
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+
+        let tabManager = QueryTabManager()
+        let coordinator = MainContentCoordinator(
+            connection: connection,
+            tabManager: tabManager,
+            changeManager: DataChangeManager(),
+            toolbarState: ConnectionToolbarState()
+        )
+        defer { coordinator.teardown() }
+
+        coordinator.openTableTab("routes")
+
+        #expect(tabManager.selectedTab?.tableContext.tableName == "routes")
+        #expect(tabManager.selectedTab?.tableContext.schemaName == "sales")
+    }
+
+    @Test("Opening with an explicit schema wins over the session's current schema")
+    @MainActor
+    func explicitSchemaWinsOverActiveSchema() {
+        let connection = TestFixtures.makeConnection(type: .postgresql)
+        var session = ConnectionSession(connection: connection)
+        session.currentSchema = "sales"
+        DatabaseManager.shared.injectSession(session, for: connection.id)
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+
+        let tabManager = QueryTabManager()
+        let coordinator = MainContentCoordinator(
+            connection: connection,
+            tabManager: tabManager,
+            changeManager: DataChangeManager(),
+            toolbarState: ConnectionToolbarState()
+        )
+        defer { coordinator.teardown() }
+
+        coordinator.openTableTab("routes", schema: "audit")
+
+        #expect(tabManager.selectedTab?.tableContext.schemaName == "audit")
+    }
+
+    @Test("Opening without a session leaves the schema nil")
+    @MainActor
+    func noSessionLeavesSchemaNil() {
+        let connection = TestFixtures.makeConnection(database: "db_a")
+        let tabManager = QueryTabManager()
+        let coordinator = MainContentCoordinator(
+            connection: connection,
+            tabManager: tabManager,
+            changeManager: DataChangeManager(),
+            toolbarState: ConnectionToolbarState()
+        )
+        defer { coordinator.teardown() }
+
+        coordinator.openTableTab("routes")
+
+        #expect(tabManager.selectedTab?.tableContext.schemaName == nil)
+    }
+
     // MARK: - isActiveTabReusable
 
     @Test("A preview table tab is reusable")

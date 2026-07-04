@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- SQL Server table browsing and edits now use the active schema when opening objects outside `dbo`. (#1778)
+
+## [0.55.0] - 2026-07-04
+
 ### Added
 
 - iOS: add data to a table from the Shortcuts app. Two new shortcuts, Add Row to Table and Add Rows to Table, pick a saved connection, database or schema, and table, then insert from JSON or CSV. They run without opening the app. (#1788)
@@ -16,7 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- SQL Server table browsing and edits now use the active schema when opening objects outside `dbo`. (#1774)
+- The New/Edit Favorite and linked file metadata dialogs no longer open with a large empty area and fields crushed against the right edge. They now use the standard macOS grouped form layout: the query editor spans the full dialog width, the cursor marker hint sits under the editor, keyword validation shows under the keyword field, and the Global option is a checkbox that explains its scope. (#1809)
+- Tables and views outside the connection's default schema now open and save correctly when reached through the Quick Switcher, a restored tab, or the MCP table-open tool. These paths used to send unqualified queries, which failed with "Invalid object name" on SQL Server or silently targeted the wrong table. (#1774)
 - Quick Switcher opens again on macOS Sequoia. Since 0.51.0 the panel came up invisible on macOS 15, and the toolbar button and keyboard shortcut appeared to do nothing. (#1806)
 - Quick Switcher keyboard navigation (Ctrl-J/K and arrow shortcuts) no longer goes dead after the switcher has been opened and closed repeatedly. (#1806)
 - Restored table tabs no longer reload all at once or flood failure dialogs on launch. Only the frontmost tab loads immediately; other restored tabs load when you switch to them, and a load failure now shows inline in the tab instead of a dialog. (#1796)
@@ -25,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Enum and set value pickers now populate when the driver reports the values only inside the column type instead of as a separate list.
 - The plugin list no longer goes stale. The app now checks the plugin registry for changes at launch, when the plugin browser opens, and before reporting a plugin as missing, so newly published plugins show up and install right away. A registry that cannot be reached now reports a connection problem instead of "Plugin not found". (#1799)
 - Dropping a materialized view or foreign table from the sidebar now generates the correct DROP statement instead of DROP TABLE, and drop and truncate statements are schema-qualified. ClickHouse now lists materialized views as their own sidebar section and drops them with the DROP VIEW syntax it requires. (#1800)
+- Scrolling no longer goes dead across the whole app after opening an ER diagram and switching tabs while the pointer rests over the canvas. Diagram pan and zoom now handle scroll events on the canvas itself instead of intercepting them app-wide. (#1805)
 
 ## [0.54.0] - 2026-06-30
 
@@ -2418,7 +2426,8 @@ TablePro is a native macOS database client built with SwiftUI and AppKit, design
     - Custom SQL query templates
     - Performance optimized for large datasets
 
-[Unreleased]: https://github.com/TableProApp/TablePro/compare/v0.54.0...HEAD
+[Unreleased]: https://github.com/TableProApp/TablePro/compare/v0.55.0...HEAD
+[0.55.0]: https://github.com/TableProApp/TablePro/compare/v0.54.0...v0.55.0
 [0.54.0]: https://github.com/TableProApp/TablePro/compare/v0.53.0...v0.54.0
 [0.53.0]: https://github.com/TableProApp/TablePro/compare/v0.52.1...v0.53.0
 [0.52.1]: https://github.com/TableProApp/TablePro/compare/v0.52.0...v0.52.1

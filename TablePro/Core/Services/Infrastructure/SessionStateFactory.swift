@@ -90,6 +90,9 @@ enum SessionStateFactory {
                 switch payload.tabType {
                 case .table:
                     toolbarSt.isTableTab = true
+                    let resolvedSchemaName = DatabaseManager.shared.resolvedSchemaName(
+                        payload.schemaName, for: connectionId
+                    )
                     if let tableName = payload.tableName {
                         do {
                             if payload.isPreview {
@@ -97,14 +100,14 @@ enum SessionStateFactory {
                                     tableName: tableName,
                                     databaseType: connection.type,
                                     databaseName: payload.databaseName ?? activeDatabaseName,
-                                    schemaName: payload.schemaName
+                                    schemaName: resolvedSchemaName
                                 )
                             } else {
                                 try tabMgr.addTableTab(
                                     tableName: tableName,
                                     databaseType: connection.type,
                                     databaseName: payload.databaseName ?? activeDatabaseName,
-                                    schemaName: payload.schemaName
+                                    schemaName: resolvedSchemaName
                                 )
                             }
                         } catch {
@@ -113,7 +116,7 @@ enum SessionStateFactory {
                         if let index = tabMgr.selectedTabIndex {
                             tabMgr.tabs[index].tableContext.isView = payload.isView
                             tabMgr.tabs[index].tableContext.isEditable = !payload.isView
-                            tabMgr.tabs[index].tableContext.schemaName = payload.schemaName
+                            tabMgr.tabs[index].tableContext.schemaName = resolvedSchemaName
                             if payload.showStructure {
                                 tabMgr.tabs[index].display.resultsViewMode = .structure
                             }

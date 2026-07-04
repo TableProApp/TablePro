@@ -4,6 +4,32 @@ description: "Product updates and announcements for TablePro"
 rss: true
 ---
 
+<Update label="July 4, 2026" description="v0.55.0">
+  ### New Features
+
+  - **Add rows from the Shortcuts app (iOS)**: Two new shortcuts, Add Row to Table and Add Rows to Table, pick a saved connection, database or schema, and table, then insert rows from JSON or CSV. They run without opening the app (#1788)
+  - **Row cap as a real LIMIT**: SELECT queries without their own LIMIT now run with the row cap applied to the statement sent to the server, so forgetting a LIMIT no longer pulls millions of rows. A query with its own LIMIT is sent as written, and Execute Query Without Limit (Option+Cmd+Enter) skips the cap for one run (#1794)
+  - **Cursor marker in SQL Favorites**: Put ;; in a saved query to set where the cursor lands after keyword expansion in the editor (#1795)
+
+  ### Improvements
+
+  - Settings > Plugins > Browse has a Refresh button to reload the plugin list on demand (#1799)
+  - Restored table tabs no longer reload all at once on launch. Only the frontmost tab loads immediately; other tabs load when you switch to them, and a load failure shows inline in the tab instead of a dialog (#1796)
+
+  ### Bug Fixes
+
+  - The New/Edit Favorite and linked file metadata dialogs now use the standard macOS grouped form layout instead of opening with a large empty area and crushed fields (#1809)
+  - Tables and views outside the connection's default schema now open and save correctly when reached through the Quick Switcher, a restored tab, or the MCP table-open tool (#1774)
+  - Quick Switcher opens again on macOS Sequoia; since 0.51.0 the panel came up invisible on macOS 15 (#1806)
+  - Quick Switcher keyboard navigation (Ctrl-J/K and arrows) no longer goes dead after the switcher has been opened and closed repeatedly (#1806)
+  - Execute All Statements now applies the row cap to each SELECT in the batch, and each result tab tracks its own truncation state so Fetch All loads the rest of the result you are viewing (#1794)
+  - Queries starting with a comment or with a newline right after the first keyword are classified correctly: the row cap applies to them, and Safe Mode recognizes such writes and destructive statements
+  - Enum and set value pickers now populate when the driver reports the values only inside the column type
+  - The plugin list no longer goes stale. The app checks the plugin registry for changes at launch, when the plugin browser opens, and before reporting a plugin as missing. An unreachable registry reports a connection problem instead of "Plugin not found" (#1799)
+  - Dropping a materialized view or foreign table from the sidebar now generates the correct DROP statement, and drop and truncate statements are schema-qualified. ClickHouse lists materialized views as their own sidebar section (#1800)
+  - Scrolling no longer goes dead across the app after opening an ER diagram and switching tabs while the pointer rests over the canvas (#1805)
+</Update>
+
 <Update label="June 30, 2026" description="v0.54.0">
   ### New Features
 

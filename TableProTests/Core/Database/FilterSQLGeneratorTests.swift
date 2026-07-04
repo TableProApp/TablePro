@@ -808,6 +808,24 @@ struct FilterSQLGeneratorTests {
         #expect(result.contains("LIMIT 1000"))
     }
 
+    @Test("Preview SQL qualifies the table with the schema")
+    func testPreviewSQLWithSchema() {
+        let generator = FilterSQLGenerator(dialect: Self.mysqlDialect)
+        let result = generator.generatePreviewSQL(
+            tableName: "users", schemaName: "sales", filters: [], limit: 1_000
+        )
+        #expect(result.contains("SELECT * FROM `sales`.`users`"))
+    }
+
+    @Test("Preview SQL with an empty schema stays unqualified")
+    func testPreviewSQLWithEmptySchema() {
+        let generator = FilterSQLGenerator(dialect: Self.mysqlDialect)
+        let result = generator.generatePreviewSQL(
+            tableName: "users", schemaName: "", filters: [], limit: 1_000
+        )
+        #expect(result.contains("SELECT * FROM `users`"))
+    }
+
     // MARK: - Edge Cases
 
     @Test("Between with missing secondValue returns nil")

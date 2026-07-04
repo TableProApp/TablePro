@@ -31,7 +31,7 @@ extension MainContentCoordinator {
 
         let currentDatabase = activeDatabaseName
 
-        let targetSchema = fkInfo.referencedSchema ?? DatabaseManager.shared.session(for: connectionId)?.currentSchema
+        let targetSchema = DatabaseManager.shared.resolvedSchemaName(fkInfo.referencedSchema, for: connectionId)
 
         if !openInNewTab,
            let current = tabManager.selectedTab,

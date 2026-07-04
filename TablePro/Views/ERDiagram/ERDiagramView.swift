@@ -7,7 +7,6 @@ struct ERDiagramView: View {
     @Bindable var viewModel: ERDiagramViewModel
     @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
     @State private var selectedNodeId: UUID?
-    @State private var scrollMonitor: Any?
     @State private var currentCursor: NSCursor?
     @State private var magnifyStartMag: CGFloat?
 
@@ -48,7 +47,7 @@ struct ERDiagramView: View {
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
-                    diagramContent
+                    ERDiagramCanvasContainer(viewModel: viewModel) { diagramContent }
                 }
                 ERDiagramToolbar(viewModel: viewModel, onExport: exportDiagram)
                 .onKeyPress(characters: .init(charactersIn: "c"), phases: .down) { keyPress in
@@ -123,7 +122,6 @@ struct ERDiagramView: View {
         .onContinuousHover { phase in
             switch phase {
             case .active(let location):
-                viewModel.isMouseOverCanvas = true
                 guard !viewModel.isDragging else { return }
                 let desired: NSCursor? = nodeAt(point: location) != nil ? .openHand : nil
                 if desired !== currentCursor {
@@ -132,36 +130,12 @@ struct ERDiagramView: View {
                     currentCursor = desired
                 }
             case .ended:
-                viewModel.isMouseOverCanvas = false
                 if currentCursor != nil {
                     NSCursor.pop()
                     currentCursor = nil
                 }
             @unknown default:
                 break
-            }
-        }
-        .onAppear {
-            guard scrollMonitor == nil else { return }
-            scrollMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { event in
-                guard viewModel.isMouseOverCanvas else { return event }
-                if event.modifierFlags.contains(.command) {
-                    let zoomDelta = event.scrollingDeltaY * 0.01
-                    viewModel.zoom(to: viewModel.magnification + zoomDelta)
-                    return nil
-                }
-                let multiplier: CGFloat = event.hasPreciseScrollingDeltas ? 1.0 : 10.0
-                viewModel.canvasOffset = CGPoint(
-                    x: viewModel.canvasOffset.x + event.scrollingDeltaX * multiplier,
-                    y: viewModel.canvasOffset.y + event.scrollingDeltaY * multiplier
-                )
-                return nil
-            }
-        }
-        .onDisappear {
-            if let monitor = scrollMonitor {
-                NSEvent.removeMonitor(monitor)
-                scrollMonitor = nil
             }
         }
     }
