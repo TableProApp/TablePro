@@ -31,17 +31,35 @@ final class MockDatabaseDriver: DatabaseDriver, SchemaSwitchable, @unchecked Sen
     var cancelQueryCallCount = 0
     var connectDelaySeconds: Double = 0
     var switchSchemaDelaySeconds: Double = 0
+    var hangsUntilDisconnect = false
+    var schemasToReturn: [String] = []
+    var fetchSchemasError: Error?
+    private var hangContinuation: CheckedContinuation<Void, Never>?
 
     init(connection: DatabaseConnection = TestFixtures.makeConnection()) {
         self.connection = connection
     }
 
     func connect() async throws {
+        if hangsUntilDisconnect {
+            await withCheckedContinuation { hangContinuation = $0 }
+            throw DatabaseError.notConnected
+        }
         guard connectDelaySeconds > 0 else { return }
         try await Task.sleep(nanoseconds: UInt64(connectDelaySeconds * 1_000_000_000))
     }
 
-    func disconnect() {}
+    func disconnect() {
+        hangContinuation?.resume()
+        hangContinuation = nil
+    }
+
+    func fetchSchemas() async throws -> [String] {
+        if let fetchSchemasError {
+            throw fetchSchemasError
+        }
+        return schemasToReturn
+    }
 
     func testConnection() async throws -> Bool { true }
 

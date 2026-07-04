@@ -613,6 +613,8 @@ final class MainContentCoordinator {
                     connection: connection
                 )
             }
+        } catch is CancellationError {
+            return
         } catch {
             Self.logger.warning("Schema refresh failed: \(error.localizedDescription, privacy: .public)")
             schemaService.markLoadFailed(connectionId: connectionId, message: error.localizedDescription)

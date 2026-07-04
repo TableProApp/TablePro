@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import os
 import TableProPluginKit
 
 struct PluginMetadataSnapshot: Sendable {
@@ -217,6 +218,37 @@ struct PluginMetadataSnapshot: Sendable {
             supportsDatabaseSwitching: supportsDatabaseSwitching,
             supportsColumnReorder: supportsColumnReorder,
             capabilities: capabilities, schema: schema, editor: editor, connection: connection
+        )
+    }
+
+    func withSwitchRouting(from source: PluginMetadataSnapshot) -> PluginMetadataSnapshot {
+        PluginMetadataSnapshot(
+            displayName: displayName, iconName: iconName, defaultPort: defaultPort,
+            requiresAuthentication: requiresAuthentication, supportsForeignKeys: supportsForeignKeys,
+            supportsSchemaEditing: supportsSchemaEditing, isDownloadable: isDownloadable,
+            primaryUrlScheme: primaryUrlScheme, parameterStyle: parameterStyle,
+            navigationModel: navigationModel, explainVariants: explainVariants,
+            pathFieldRole: pathFieldRole, supportsHealthMonitor: supportsHealthMonitor,
+            urlSchemes: urlSchemes, postConnectActions: postConnectActions,
+            brandColorHex: brandColorHex, queryLanguageName: queryLanguageName,
+            editorLanguage: editorLanguage, connectionMode: connectionMode,
+            supportsDatabaseSwitching: source.supportsDatabaseSwitching,
+            supportsColumnReorder: supportsColumnReorder,
+            capabilities: capabilities,
+            schema: SchemaInfo(
+                defaultSchemaName: source.schema.defaultSchemaName,
+                defaultGroupName: schema.defaultGroupName,
+                tableEntityName: schema.tableEntityName,
+                containerEntityName: source.schema.containerEntityName,
+                defaultPrimaryKeyColumn: schema.defaultPrimaryKeyColumn,
+                immutableColumns: schema.immutableColumns,
+                systemDatabaseNames: schema.systemDatabaseNames,
+                systemSchemaNames: schema.systemSchemaNames,
+                fileExtensions: schema.fileExtensions,
+                databaseGroupingStrategy: source.schema.databaseGroupingStrategy,
+                structureColumnFields: schema.structureColumnFields
+            ),
+            editor: editor, connection: connection
         )
     }
 }
@@ -771,11 +803,31 @@ final class PluginMetadataRegistry: @unchecked Sendable {
         }
         if let registryDefault = defaultSnapshots[typeId] {
             resolved = resolved.withIsDownloadable(registryDefault.isDownloadable)
+            if Self.declaresLegacySchemaOnlyRouting(resolved, registryDefault: registryDefault) {
+                Logger(subsystem: "com.TablePro", category: "PluginMetadataRegistry").notice(
+                    "Plugin '\(typeId, privacy: .public)' declares legacy two-tier switching for a schema-only engine; applying the app's switch routing"
+                )
+                resolved = resolved.withSwitchRouting(from: registryDefault)
+            }
         }
         snapshots[typeId] = resolved
         for scheme in resolved.urlSchemes {
             schemeIndex[scheme.lowercased()] = typeId
         }
+    }
+
+    /// A plugin built before its engine moved to schema-only switching still
+    /// declares database switching with bySchema grouping. The app's registry
+    /// default is the ground truth for routing, so its switch fields win.
+    static func declaresLegacySchemaOnlyRouting(
+        _ snapshot: PluginMetadataSnapshot,
+        registryDefault: PluginMetadataSnapshot
+    ) -> Bool {
+        !registryDefault.supportsDatabaseSwitching
+            && registryDefault.capabilities.supportsSchemaSwitching
+            && snapshot.supportsDatabaseSwitching
+            && snapshot.capabilities.supportsSchemaSwitching
+            && snapshot.schema.databaseGroupingStrategy == .bySchema
     }
 
     func unregister(typeId: String) {

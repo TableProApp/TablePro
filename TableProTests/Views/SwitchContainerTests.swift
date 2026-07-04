@@ -3,9 +3,7 @@
 //  TableProTests
 //
 //  Regression coverage for #1807: Oracle declares schema-only switching, so
-//  the container switcher must route through switchSchema. The old routing
-//  went through switchDatabase, whose bySchema branch overwrote the session
-//  schema with a nonexistent default and hung the schema load.
+//  the container switcher must route through switchSchema.
 //
 
 import Foundation

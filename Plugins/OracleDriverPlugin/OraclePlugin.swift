@@ -239,7 +239,6 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             .transactions,
             .alterTableDDL,
             .multiSchema,
-            .cancelQuery,
         ]
     }
 
@@ -299,10 +298,6 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func ping() async throws {
         _ = try await execute(query: "SELECT 1 FROM DUAL")
-    }
-
-    func cancelQuery() throws {
-        oracleConn?.abortCurrentQuery()
     }
 
     func applyQueryTimeout(_ seconds: Int) async throws {
@@ -1149,6 +1144,7 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let escaped = schema.replacingOccurrences(of: "\"", with: "\"\"")
         _ = try await execute(query: "ALTER SESSION SET CURRENT_SCHEMA = \"\(escaped)\"")
         _currentSchema = schema
+        oracleConn?.noteSessionSchema(schema)
     }
 
     /// Oracle has no real database concept; "switch database" is a schema switch.

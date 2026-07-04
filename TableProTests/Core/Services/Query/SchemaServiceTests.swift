@@ -85,4 +85,47 @@ struct SchemaServiceTests {
 
         #expect(service.state(for: connectionId) == .loaded(driver.tablesToReturn))
     }
+
+    @Test("hierarchical load lists schemas")
+    func hierarchicalLoadListsSchemas() async {
+        let driver = MockDatabaseDriver()
+        driver.schemasToReturn = ["HR", "SALES"]
+        let connection = TestFixtures.makeConnection(type: .oracle)
+        let service = SchemaService()
+
+        await service.reload(connectionId: connection.id, driver: driver, connection: connection)
+
+        #expect(service.state(for: connection.id) == .loaded([]))
+        #expect(service.schemas(for: connection.id) == ["HR", "SALES"])
+    }
+
+    @Test("hierarchical schema list failure surfaces a failed state")
+    func hierarchicalFailureSetsFailedState() async {
+        let driver = MockDatabaseDriver()
+        driver.fetchSchemasError = DatabaseError.connectionFailed("schema list failed")
+        let connection = TestFixtures.makeConnection(type: .oracle)
+        let service = SchemaService()
+
+        await service.reload(connectionId: connection.id, driver: driver, connection: connection)
+
+        var isFailed = false
+        if case .failed = service.state(for: connection.id) {
+            isFailed = true
+        }
+        #expect(isFailed)
+    }
+
+    @Test("refresh without a session surfaces a failed state")
+    func refreshWithoutSessionSetsFailedState() async {
+        let service = SchemaService()
+        let connectionId = UUID()
+
+        await service.refresh(connectionId: connectionId)
+
+        var isFailed = false
+        if case .failed = service.state(for: connectionId) {
+            isFailed = true
+        }
+        #expect(isFailed)
+    }
 }

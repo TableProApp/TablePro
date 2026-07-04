@@ -127,8 +127,10 @@ final class OracleConnectionWrapper: @unchecked Sendable {
 
     private struct LockedState: Sendable {
         var isConnected = false
+        var hasEverConnected = false
         var nioConnection: OracleNIO.OracleConnection?
         var queryTimeoutSeconds = 0
+        var sessionSchema: String?
     }
 
     private let state = OSAllocatedUnfairLock(initialState: LockedState())
@@ -197,6 +199,7 @@ final class OracleConnectionWrapper: @unchecked Sendable {
             state.withLock { current in
                 current.nioConnection = connection
                 current.isConnected = true
+                current.hasEverConnected = true
             }
 
             let target = useSID ? "\(self.host):\(self.port):\(identifier)" : "\(self.host):\(self.port)/\(identifier)"
@@ -352,10 +355,8 @@ final class OracleConnectionWrapper: @unchecked Sendable {
         state.withLock { $0.queryTimeoutSeconds = max(0, seconds) }
     }
 
-    func abortCurrentQuery() {
-        guard isConnected else { return }
-        osLogger.notice("Aborting Oracle query by closing the connection; the driver has no server-side cancel")
-        disconnect()
+    func noteSessionSchema(_ schema: String) {
+        state.withLock { $0.sessionSchema = schema }
     }
 
     // MARK: - Query Execution
@@ -369,28 +370,47 @@ final class OracleConnectionWrapper: @unchecked Sendable {
         }
     }
 
+    /// Serialized behind the query gate, so at most one reconnect runs at a time.
+    /// Reconnecting restores the session schema, which ALTER SESSION state does
+    /// not survive across connections.
+    private func reconnectedConnection() async throws -> OracleNIO.OracleConnection {
+        if let connection = state.withLock({ $0.isConnected ? $0.nioConnection : nil }) {
+            return connection
+        }
+        guard state.withLock({ $0.hasEverConnected }) else {
+            throw OracleError.notConnected
+        }
+
+        osLogger.notice("Reconnecting to Oracle after the previous connection was closed")
+        try await connect()
+        let connection = try requireConnection()
+        if let schema = state.withLock({ $0.sessionSchema }) {
+            _ = try await withQueryDeadline { [self] in
+                try await collectRows(Self.currentSchemaStatement(schema), on: connection)
+            }
+        }
+        return connection
+    }
+
+    private static func currentSchemaStatement(_ schema: String) -> String {
+        let escaped = schema.replacingOccurrences(of: "\"", with: "\"\"")
+        return "ALTER SESSION SET CURRENT_SCHEMA = \"\(escaped)\""
+    }
+
     /// Races the operation against the configured query timeout. On timeout the
     /// connection is closed first, which fails the in-flight OracleNIO call even
-    /// if it ignores task cancellation, so the group can always unwind.
+    /// if it ignores task cancellation, so the race can always unwind.
     private func withQueryDeadline<T: Sendable>(
         _ operation: @escaping @Sendable () async throws -> T
     ) async throws -> T {
         let timeoutSeconds = state.withLock { $0.queryTimeoutSeconds }
         guard timeoutSeconds > 0 else { return try await operation() }
 
-        return try await withThrowingTaskGroup(of: T?.self) { group in
-            group.addTask { try await operation() }
-            group.addTask {
-                try await Task.sleep(nanoseconds: UInt64(timeoutSeconds) * 1_000_000_000)
-                return nil
-            }
-            defer { group.cancelAll() }
-            guard let first = try await group.next(), let result = first else {
-                disconnect()
-                throw TimeoutError(seconds: Double(timeoutSeconds))
-            }
-            return result
-        }
+        return try await withTimeout(
+            seconds: Double(timeoutSeconds),
+            onTimeout: { [self] in disconnect() },
+            operation: operation
+        )
     }
 
     private func queryTimeoutError(_ timeout: TimeoutError) -> OracleError {
@@ -398,33 +418,36 @@ final class OracleConnectionWrapper: @unchecked Sendable {
         return OracleError(message: Self.queryTimeoutMessage, category: .queryTimedOut)
     }
 
-    func executeQuery(_ query: String) async throws -> OracleQueryResult {
-        let connection = try requireConnection()
+    private func mapExecutionError(_ error: Error) -> Error {
+        switch error {
+        case let timeout as TimeoutError:
+            return queryTimeoutError(timeout)
+        case let sqlError as OracleSQLError:
+            return mapQueryError(sqlError)
+        case let oracleError as OracleError:
+            return oracleError
+        case is CancellationError:
+            return error
+        default:
+            return OracleError(message: "Query execution failed: \(String(describing: error))")
+        }
+    }
 
+    func executeQuery(_ query: String) async throws -> OracleQueryResult {
         // OracleNIO does not support concurrent queries on a single connection.
         // Serialize all queries to prevent state-machine corruption.
         await queryGate.acquire()
 
         do {
+            let connection = try await reconnectedConnection()
             let result = try await withQueryDeadline { [self] in
                 try await collectRows(query, on: connection)
             }
             await queryGate.release()
             return result
-        } catch let timeout as TimeoutError {
-            throw queryTimeoutError(timeout)
-        } catch let sqlError as OracleSQLError {
-            await queryGate.release()
-            throw mapQueryError(sqlError)
-        } catch let error as OracleError {
-            await queryGate.release()
-            throw error
-        } catch is CancellationError {
-            await queryGate.release()
-            throw CancellationError()
         } catch {
             await queryGate.release()
-            throw OracleError(message: "Query execution failed: \(String(describing: error))")
+            throw mapExecutionError(error)
         }
     }
 
@@ -489,27 +512,18 @@ final class OracleConnectionWrapper: @unchecked Sendable {
         _ query: String,
         continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
     ) async throws {
-        let connection = try requireConnection()
-
         await queryGate.acquire()
 
         do {
+            let connection = try await reconnectedConnection()
             try await withQueryDeadline { [self] in
                 try await streamRows(query, on: connection, continuation: continuation)
             }
             await queryGate.release()
             continuation.finish()
-        } catch let timeout as TimeoutError {
-            throw queryTimeoutError(timeout)
-        } catch let sqlError as OracleSQLError {
-            await queryGate.release()
-            throw mapQueryError(sqlError)
-        } catch is CancellationError {
-            await queryGate.release()
-            throw CancellationError()
         } catch {
             await queryGate.release()
-            throw OracleError(message: "Query execution failed: \(String(describing: error))")
+            throw mapExecutionError(error)
         }
     }
 

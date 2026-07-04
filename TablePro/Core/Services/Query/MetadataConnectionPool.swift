@@ -157,8 +157,8 @@ final class MetadataConnectionPool {
             await DatabaseManager.shared.executeStartupCommands(
                 session.connection.startupCommands, on: driver, connectionName: session.connection.name
             )
-            if let schema = key.schema, let switchable = driver as? SchemaSwitchable {
-                try await Self.switchSchema(switchable, to: schema, timeoutSeconds: operationTimeoutSeconds)
+            if let schema = key.schema {
+                try await Self.switchSchema(driver, to: schema, timeoutSeconds: operationTimeoutSeconds)
             }
         } catch {
             driver.disconnect()
@@ -168,26 +168,42 @@ final class MetadataConnectionPool {
     }
 
     static func connect(_ driver: DatabaseDriver, database: String, timeoutSeconds: Double) async throws {
-        do {
-            try await withTimeout(seconds: timeoutSeconds) { try await driver.connect() }
-        } catch is TimeoutError {
-            throw DatabaseError.connectionFailed(
-                String(format: String(localized: "Connecting to '%@' timed out."), database)
-            )
+        try await bounded(
+            driver: driver,
+            timeoutSeconds: timeoutSeconds,
+            timeoutMessage: String(format: String(localized: "Connecting to '%@' timed out."), database)
+        ) {
+            try await driver.connect()
         }
     }
 
-    static func switchSchema(
-        _ switchable: SchemaSwitchable,
-        to schema: String,
-        timeoutSeconds: Double
+    static func switchSchema(_ driver: DatabaseDriver, to schema: String, timeoutSeconds: Double) async throws {
+        guard let switchable = driver as? SchemaSwitchable else { return }
+        try await bounded(
+            driver: driver,
+            timeoutSeconds: timeoutSeconds,
+            timeoutMessage: String(format: String(localized: "Switching to schema '%@' timed out."), schema)
+        ) {
+            try await switchable.switchSchema(to: schema)
+        }
+    }
+
+    /// Disconnects the driver when the deadline fires so a driver call that
+    /// ignores task cancellation still completes and the timeout can propagate.
+    private static func bounded(
+        driver: DatabaseDriver,
+        timeoutSeconds: Double,
+        timeoutMessage: String,
+        _ operation: @escaping @Sendable () async throws -> Void
     ) async throws {
         do {
-            try await withTimeout(seconds: timeoutSeconds) { try await switchable.switchSchema(to: schema) }
-        } catch is TimeoutError {
-            throw DatabaseError.connectionFailed(
-                String(format: String(localized: "Switching to schema '%@' timed out."), schema)
+            try await withTimeout(
+                seconds: timeoutSeconds,
+                onTimeout: { driver.disconnect() },
+                operation: operation
             )
+        } catch is TimeoutError {
+            throw DatabaseError.connectionFailed(timeoutMessage)
         }
     }
 

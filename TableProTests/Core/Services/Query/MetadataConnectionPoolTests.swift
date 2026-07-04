@@ -2,9 +2,8 @@
 //  MetadataConnectionPoolTests.swift
 //  TableProTests
 //
-//  Tests for the pool's bounded connect and schema-switch steps: a driver
-//  that hangs must fail within the deadline instead of stalling the pool
-//  entry forever (#1807).
+//  Tests for the pool's bounded connect and schema-switch steps: a hanging
+//  driver must fail within the deadline instead of stalling the pool entry.
 //
 
 import Foundation
@@ -25,6 +24,16 @@ struct MetadataConnectionPoolTests {
     func connectTimesOut() async {
         let driver = MockDatabaseDriver()
         driver.connectDelaySeconds = 5
+
+        await #expect(throws: DatabaseError.self) {
+            try await MetadataConnectionPool.connect(driver, database: "db", timeoutSeconds: 0.05)
+        }
+    }
+
+    @Test("connect force-disconnects a driver that ignores cancellation")
+    func connectUnsticksCancellationDeafDriver() async {
+        let driver = MockDatabaseDriver()
+        driver.hangsUntilDisconnect = true
 
         await #expect(throws: DatabaseError.self) {
             try await MetadataConnectionPool.connect(driver, database: "db", timeoutSeconds: 0.05)
