@@ -125,7 +125,7 @@ build_plugin() {
         done
     fi
 
-    # Sign executable helper resources such as Beancount's bundled rledger.
+    # Sign executable helper resources when a plugin ships them.
     if [ -d "$plugin_bundle/Contents/Resources" ]; then
         find "$plugin_bundle/Contents/Resources" -type f -perm -111 | sort | while read -r nested; do
             if file "$nested" | grep -q "Mach-O"; then

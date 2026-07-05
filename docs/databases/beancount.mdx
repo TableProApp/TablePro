@@ -5,9 +5,23 @@ description: Open Beancount ledgers with TablePro
 
 # Beancount
 
-TablePro opens `.beancount` ledgers as read-only, file-based connections. If the Beancount plugin is not installed yet, TablePro prompts you to download it before opening the ledger. The driver projects transactions, postings, accounts, prices, balances, and source files into SQL tables for browsing and exports.
+TablePro opens `.beancount` ledgers as read-only, file-based connections. If the Beancount plugin is not installed yet, TablePro prompts you to download it before opening the ledger. The driver projects transactions, postings, accounts, prices, computed balances, balance assertions, and source files into SQL tables for browsing and exports.
 
-The plugin also supports BQL queries through its packaged `rustledger` helper.
+The plugin also supports BQL queries through `rledger`. Install rustledger separately so the `rledger` executable is available on your `PATH`, or launch TablePro with `TABLEPRO_RUSTLEDGER_BINARY` set to the executable path.
+
+## rledger requirement
+
+Beancount support uses the external `rledger` executable to parse ledger data and run BQL. TablePro does not bundle `rledger`.
+
+```bash
+rledger --version
+```
+
+If TablePro cannot find `rledger`, set the executable path before launching the app:
+
+```bash
+launchctl setenv TABLEPRO_RUSTLEDGER_BINARY /opt/homebrew/bin/rledger
+```
 
 ## Connecting to a Beancount ledger
 
@@ -42,10 +56,11 @@ See [Connection URL Reference](/databases/connection-urls) for all parameters.
 | `postings` | Posting account, amount, commodity, and resolved cost basis (`cost_number`, `cost_currency`) |
 | `accounts` | Opened accounts and declared currencies |
 | `prices` | Price directives |
-| `balances` | Balance directives |
+| `balances` | Computed account balances by commodity |
+| `balance_assertions` | Beancount balance directives |
 | `source_files` | Parsed ledger and include files |
 
-Amounts are read straight from `rustledger`, so thousands separators, arithmetic, cost (`{}`), and price (`@`/`@@`) annotations are resolved to their booked values.
+Amounts are read straight from `rledger`, so thousands separators, arithmetic, cost (`{}`), and price (`@`/`@@`) annotations are resolved to their booked values.
 
 ## Includes
 
@@ -53,7 +68,7 @@ The parser follows Beancount `include` directives. Literal includes and glob pat
 
 ## BQL
 
-Prefix a query with `BQL:` to run it through `rustledger`:
+Prefix a query with `BQL:` to run it through your configured `rledger` executable:
 
 ```sql
 BQL: SELECT account FROM accounts ORDER BY account

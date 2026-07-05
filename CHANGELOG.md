@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Beancount ledger support as a downloadable, read-only file-based driver. Transactions, postings (with resolved cost basis), accounts, prices, and balances project to SQL tables with amounts booked by rustledger, and BQL runs with a `BQL:` prefix. (#1474)
+- Beancount ledger support as a downloadable, read-only file-based driver. Transactions, postings (with resolved cost basis), accounts, prices, computed balances, and balance assertions project to SQL tables with amounts booked by user-provided `rledger`, and BQL runs with a `BQL:` prefix. (#1474)
 
 ### Fixed
 

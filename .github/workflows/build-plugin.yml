@@ -160,7 +160,7 @@ jobs:
               CATEGORY="database-driver"; HOMEPAGE="https://docs.tablepro.app/databases/duckdb" ;;
             beancount)
               TARGET="BeancountDriver"; BUNDLE_ID="com.TablePro.BeancountDriver"
-              DISPLAY_NAME="Beancount Driver"; SUMMARY="Read-only Beancount ledger driver with bundled rustledger BQL helper"
+              DISPLAY_NAME="Beancount Driver"; SUMMARY="Read-only Beancount ledger driver using user-provided rledger"
               DB_TYPE_IDS='["Beancount"]'; ICON="beancount-icon"; BUNDLE_NAME="BeancountDriver"
               CATEGORY="database-driver"; HOMEPAGE="https://docs.tablepro.app/databases/beancount" ;;
             cassandra)

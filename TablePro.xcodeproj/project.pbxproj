@@ -1637,7 +1637,6 @@
 				5ABC14740000000000000A /* Sources */,
 				5ABC147400000000000008 /* Frameworks */,
 				5ABC14740000000000000B /* Resources */,
-				5ABC147400000000000012 /* Bundle RustLedger */,
 			);
 			buildRules = (
 			);
@@ -2377,27 +2376,6 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
-		5ABC147400000000000012 /* Bundle RustLedger */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-			);
-			inputPaths = (
-				"$(SRCROOT)/scripts/download-rustledger.sh",
-			);
-			name = "Bundle RustLedger";
-			outputFileListPaths = (
-			);
-			outputPaths = (
-				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/rledger",
-				"$(TARGET_TEMP_DIR)/rustledger-cache",
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "TABLEPRO_RUSTLEDGER_CACHE=\"$TARGET_TEMP_DIR/rustledger-cache\" \"$SRCROOT/scripts/download-rustledger.sh\" \"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/rledger\"\n";
-		};
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */

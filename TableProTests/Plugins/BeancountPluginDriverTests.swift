@@ -15,39 +15,21 @@ private enum RustledgerLocator {
         if let env = ProcessInfo.processInfo.environment["TABLEPRO_RUSTLEDGER_BINARY"] {
             candidates.append(env)
         }
-        if let bundled = Bundle.main.builtInPlugInsURL?
-            .appendingPathComponent("BeancountDriver.tableplugin/Contents/Resources/rledger").path {
-            candidates.append(bundled)
-        }
-        candidates.append(cachedPath())
+
+        let pathCandidates = (ProcessInfo.processInfo.environment["PATH"] ?? "")
+            .split(separator: ":")
+            .map { URL(fileURLWithPath: String($0)).appendingPathComponent("rledger").path }
+        candidates.append(contentsOf: pathCandidates)
+
         candidates.append(contentsOf: ["/opt/homebrew/bin/rledger", "/usr/local/bin/rledger"])
         return candidates.first { FileManager.default.isExecutableFile(atPath: $0) }
-    }
-
-    static func cachedPath(file: StaticString = #filePath) -> String {
-        #if arch(arm64)
-        let triple = "aarch64-apple-darwin"
-        #else
-        let triple = "x86_64-apple-darwin"
-        #endif
-        var directory = URL(fileURLWithPath: "\(file)").deletingLastPathComponent()
-        while directory.path != "/" {
-            let marker = directory.appendingPathComponent("TablePro.xcodeproj")
-            if FileManager.default.fileExists(atPath: marker.path) {
-                return directory
-                    .appendingPathComponent("Libs/rustledger/v0.15.0/\(triple)/rledger")
-                    .path
-            }
-            directory = directory.deletingLastPathComponent()
-        }
-        return ""
     }
 }
 
 @Suite(
     "Beancount plugin driver",
     .serialized,
-    .enabled(if: RustledgerLocator.path != nil, "rustledger helper unavailable")
+    .enabled(if: RustledgerLocator.path != nil, "rledger executable unavailable")
 )
 struct BeancountPluginDriverTests {
     @Test("reloads the SQL projection when an included ledger file changes")
@@ -171,6 +153,75 @@ struct BeancountPluginDriverTests {
         }
     }
 
+    @Test("projects computed balances from postings")
+    func projectsComputedBalancesFromPostings() async throws {
+        try await Self.withRustledger {
+            let directory = try Self.makeTempDirectory()
+            defer { try? FileManager.default.removeItem(at: directory) }
+
+            let ledger = directory.appendingPathComponent("main.beancount")
+            try """
+            2024-01-01 open Assets:Cash USD
+            2024-01-01 open Expenses:Food USD
+            2024-01-01 open Income:Salary USD
+
+            2024-01-05 * "Employer" "Pay"
+              Assets:Cash   10.00 USD
+              Income:Salary
+
+            2024-01-06 * "Cafe" "Coffee"
+              Expenses:Food   3.00 USD
+              Assets:Cash
+            """.write(to: ledger, atomically: true, encoding: .utf8)
+
+            let driver = BeancountPluginDriver(config: Self.config(ledger))
+            try await driver.connect()
+            defer { driver.disconnect() }
+
+            let result = try await driver.execute(query: """
+                SELECT account, amount, commodity
+                FROM balances ORDER BY account, commodity
+                """)
+            #expect(result.rows.map { $0.map(\.asText) } == [
+                ["Assets:Cash", "7.00", "USD"],
+                ["Expenses:Food", "3.00", "USD"],
+                ["Income:Salary", "-10.00", "USD"]
+            ])
+        }
+    }
+
+    @Test("projects balance assertions separately")
+    func projectsBalanceAssertionsSeparately() async throws {
+        try await Self.withRustledger {
+            let directory = try Self.makeTempDirectory()
+            defer { try? FileManager.default.removeItem(at: directory) }
+
+            let ledger = directory.appendingPathComponent("main.beancount")
+            try """
+            2024-01-01 open Assets:Cash USD
+            2024-01-01 open Income:Salary USD
+
+            2024-01-05 * "Employer" "Pay"
+              Assets:Cash   10.00 USD
+              Income:Salary
+
+            2024-01-31 balance Assets:Cash 10.00 USD
+            """.write(to: ledger, atomically: true, encoding: .utf8)
+
+            let driver = BeancountPluginDriver(config: Self.config(ledger))
+            try await driver.connect()
+            defer { driver.disconnect() }
+
+            let result = try await driver.execute(query: """
+                SELECT date, account, amount, commodity
+                FROM balance_assertions
+                """)
+            #expect(result.rows.map { $0.map(\.asText) } == [
+                ["2024-01-31", "Assets:Cash", "10.00", "USD"]
+            ])
+        }
+    }
+
     @Test("links postings to a single transaction row")
     func linksPostingsToTransaction() async throws {
         try await Self.withRustledger {
@@ -202,8 +253,8 @@ struct BeancountPluginDriverTests {
         }
     }
 
-    @Test("executes BQL queries through the rustledger helper")
-    func executesBQLQueriesThroughRustledgerHelper() async throws {
+    @Test("executes BQL queries through the rledger executable")
+    func executesBQLQueriesThroughRustledgerExecutable() async throws {
         try await Self.withRustledger {
             let directory = try Self.makeTempDirectory()
             defer { try? FileManager.default.removeItem(at: directory) }
@@ -239,12 +290,48 @@ struct BeancountPluginDriverTests {
         }
     }
 
+    @Test("fails clearly when TABLEPRO_RUSTLEDGER_BINARY points at a missing executable")
+    func failsClearlyWhenConfiguredRustledgerIsMissing() async throws {
+        let directory = try Self.makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let ledger = directory.appendingPathComponent("main.beancount")
+        try "2024-01-01 open Assets:Bank:Checking USD\n"
+            .write(to: ledger, atomically: true, encoding: .utf8)
+
+        let missing = directory.appendingPathComponent("missing-rledger").path
+        try await Self.withRustledgerEnvironment(missing) {
+            let driver = BeancountPluginDriver(config: Self.config(ledger))
+            do {
+                try await driver.connect()
+                Issue.record("Expected missing rledger configuration to fail")
+            } catch let error as BeancountDriverError {
+                let message = error.errorDescription ?? ""
+                #expect(message.contains("TABLEPRO_RUSTLEDGER_BINARY"))
+                #expect(message.contains(missing))
+            } catch {
+                Issue.record("Expected BeancountDriverError, got \(error)")
+            }
+        }
+    }
+
     // MARK: - Helpers
 
     private static func withRustledger(_ body: () async throws -> Void) async throws {
         let rledger = try #require(RustledgerLocator.path)
-        setenv("TABLEPRO_RUSTLEDGER_BINARY", rledger, 1)
-        defer { unsetenv("TABLEPRO_RUSTLEDGER_BINARY") }
+        try await withRustledgerEnvironment(rledger, body)
+    }
+
+    private static func withRustledgerEnvironment(_ path: String, _ body: () async throws -> Void) async throws {
+        let previous = ProcessInfo.processInfo.environment["TABLEPRO_RUSTLEDGER_BINARY"]
+        setenv("TABLEPRO_RUSTLEDGER_BINARY", path, 1)
+        defer {
+            if let previous {
+                setenv("TABLEPRO_RUSTLEDGER_BINARY", previous, 1)
+            } else {
+                unsetenv("TABLEPRO_RUSTLEDGER_BINARY")
+            }
+        }
         try await body()
     }
 

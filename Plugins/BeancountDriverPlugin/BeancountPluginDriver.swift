@@ -13,7 +13,7 @@ enum BeancountDriverError: LocalizedError {
     case connectionFailed(String)
     case queryFailed(String)
     case readOnly
-    case rustledgerUnavailable
+    case rustledgerUnavailable(String)
 
     var errorDescription: String? {
         switch self {
@@ -25,8 +25,8 @@ enum BeancountDriverError: LocalizedError {
             return message
         case .readOnly:
             return String(localized: "Beancount ledgers are exposed as a read-only SQL database")
-        case .rustledgerUnavailable:
-            return String(localized: "The Beancount driver requires its bundled rustledger helper")
+        case .rustledgerUnavailable(let message):
+            return message
         }
     }
 }
@@ -60,7 +60,11 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         + "FROM #postings ORDER BY id"
     private static let accountsQuery = "SELECT account, open, currencies FROM #accounts ORDER BY account"
     private static let pricesQuery = "SELECT date, currency, amount FROM #prices ORDER BY date, currency"
-    private static let balancesQuery = "SELECT date, account, amount FROM #balances ORDER BY date, account"
+    private static let balancesQuery =
+        "SELECT account, sum(position) AS balance FROM #postings GROUP BY account ORDER BY account"
+    private static let balanceAssertionsQuery = "SELECT date, account, amount FROM #balances ORDER BY date, account"
+    private static let rledgerCapabilityLock = NSLock()
+    private static var rledgerNoCacheSupport: [String: Bool] = [:]
 
     var currentSchema: String? { nil }
     var serverVersion: String? { "Beancount" }
@@ -290,7 +294,7 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             return ledgerURL.path
         }
         let start = Date()
-        let output = try Self.runRledger(arguments: ["query", "-f", "json", "--no-errors", "--no-cache", ledgerPath, query])
+        let output = try Self.runRledger(arguments: Self.rledgerQueryArguments(ledgerPath: ledgerPath, query: query))
         return try Self.decodeRustledgerQueryOutput(output, executionTime: Date().timeIntervalSince(start))
     }
 
@@ -421,6 +425,7 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             try loadAccounts(query(ledgerPath: ledgerPath, bql: accountsQuery), into: handle)
             try loadPrices(query(ledgerPath: ledgerPath, bql: pricesQuery), into: handle)
             try loadBalances(query(ledgerPath: ledgerPath, bql: balancesQuery), into: handle)
+            try loadBalanceAssertions(query(ledgerPath: ledgerPath, bql: balanceAssertionsQuery), into: handle)
             try loadSourceFiles(graph.sourceFiles, into: handle)
             try exec(handle, "PRAGMA query_only = ON")
         } catch {
@@ -432,7 +437,7 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     private static func query(ledgerPath: String, bql: String) throws -> [[String: Any]] {
-        let data = try runRledger(arguments: ["query", "-f", "json", "--no-errors", "--no-cache", ledgerPath, bql])
+        let data = try runRledger(arguments: rledgerQueryArguments(ledgerPath: ledgerPath, query: bql))
         return try decodeRledgerRows(data)
     }
 
@@ -468,6 +473,12 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 currency TEXT NOT NULL
             );
             CREATE TABLE balances (
+                id INTEGER PRIMARY KEY,
+                account TEXT NOT NULL,
+                amount TEXT NOT NULL,
+                commodity TEXT NOT NULL
+            );
+            CREATE TABLE balance_assertions (
                 id INTEGER PRIMARY KEY,
                 date DATE NOT NULL,
                 account TEXT NOT NULL,
@@ -557,15 +568,27 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private static func loadBalances(_ rows: [[String: Any]], into db: OpaquePointer) throws {
         var balanceId = 0
         for row in rows {
-            guard let account = stringValue(row["account"]),
-                  let date = stringValue(row["date"]) else {
-                continue
+            guard let account = stringValue(row["account"]) else { continue }
+            for position in inventoryPositions(row["balance"]) {
+                balanceId += 1
+                try insert(db, sql: """
+                    INSERT INTO balances (id, account, amount, commodity)
+                    VALUES (?, ?, ?, ?)
+                    """, values: [String(balanceId), account, position.number, position.currency])
             }
+        }
+    }
+
+    private static func loadBalanceAssertions(_ rows: [[String: Any]], into db: OpaquePointer) throws {
+        var balanceId = 0
+        for row in rows {
+            guard let account = stringValue(row["account"]),
+                  let date = stringValue(row["date"]) else { continue }
             let amount = amountFields(row["amount"])
             guard let number = amount.number, let commodity = amount.currency else { continue }
             balanceId += 1
             try insert(db, sql: """
-                INSERT INTO balances (id, date, account, amount, commodity)
+                INSERT INTO balance_assertions (id, date, account, amount, commodity)
                 VALUES (?, ?, ?, ?, ?)
                 """, values: [String(balanceId), date, account, number, commodity])
         }
@@ -578,6 +601,16 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     // MARK: - rustledger Helpers
+
+    private static func rledgerQueryArguments(ledgerPath: String, query: String) throws -> [String] {
+        let rustledgerPath = try rustledgerExecutablePath()
+        var arguments = ["query", "-f", "json", "--no-errors"]
+        if rledgerSupportsNoCache(executablePath: rustledgerPath) {
+            arguments.append("--no-cache")
+        }
+        arguments.append(contentsOf: [ledgerPath, query])
+        return arguments
+    }
 
     private static func runRledger(arguments: [String]) throws -> Data {
         let rustledgerPath = try rustledgerExecutablePath()
@@ -621,25 +654,69 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return outputCollector.data
     }
 
+    private static func rledgerSupportsNoCache(executablePath: String) -> Bool {
+        rledgerCapabilityLock.lock()
+        if let cached = rledgerNoCacheSupport[executablePath] {
+            rledgerCapabilityLock.unlock()
+            return cached
+        }
+        rledgerCapabilityLock.unlock()
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: executablePath)
+        process.arguments = ["query", "--help"]
+
+        let stdout = Pipe()
+        let stderr = Pipe()
+        process.standardOutput = stdout
+        process.standardError = stderr
+
+        let supports: Bool
+        do {
+            try process.run()
+            process.waitUntilExit()
+            var helpData = stdout.fileHandleForReading.readDataToEndOfFile()
+            helpData.append(stderr.fileHandleForReading.readDataToEndOfFile())
+            let help = String(data: helpData, encoding: .utf8) ?? ""
+            supports = process.terminationStatus == 0 && help.contains("--no-cache")
+        } catch {
+            supports = false
+        }
+
+        rledgerCapabilityLock.withLock {
+            rledgerNoCacheSupport[executablePath] = supports
+        }
+        return supports
+    }
+
     private static func rustledgerExecutablePath() throws -> String {
         let environment = ProcessInfo.processInfo.environment
-        if let path = environment["TABLEPRO_RUSTLEDGER_BINARY"],
-           FileManager.default.isExecutableFile(atPath: path) {
-            return path
+        if let configured = environment["TABLEPRO_RUSTLEDGER_BINARY"], !configured.isEmpty {
+            if FileManager.default.isExecutableFile(atPath: configured) {
+                return configured
+            }
+            throw BeancountDriverError.rustledgerUnavailable(
+                String(
+                    format: String(localized: "TABLEPRO_RUSTLEDGER_BINARY points to a missing or non-executable rledger at %@"),
+                    configured
+                )
+            )
         }
 
-        let bundleCandidates = [
-            Bundle(for: BeancountPluginDriver.self).url(forResource: "rledger", withExtension: nil)?.path,
-            Bundle.main.builtInPlugInsURL?
-                .appendingPathComponent("BeancountDriver.tableplugin")
-                .appendingPathComponent("Contents/Resources/rledger")
-                .path
-        ].compactMap { $0 }
-        if let path = bundleCandidates.first(where: { FileManager.default.isExecutableFile(atPath: $0) }) {
-            return path
+        let pathEntries = (environment["PATH"] ?? "")
+            .split(separator: ":")
+            .map(String.init)
+        let fallbackDirectories = ["/opt/homebrew/bin", "/usr/local/bin"]
+        for directory in pathEntries + fallbackDirectories {
+            let candidate = URL(fileURLWithPath: directory).appendingPathComponent("rledger").path
+            if FileManager.default.isExecutableFile(atPath: candidate) {
+                return candidate
+            }
         }
 
-        throw BeancountDriverError.rustledgerUnavailable
+        throw BeancountDriverError.rustledgerUnavailable(
+            String(localized: "Beancount support requires rledger. Install rustledger so rledger is on PATH or in a standard Homebrew location, or set TABLEPRO_RUSTLEDGER_BINARY to the executable path.")
+        )
     }
 
     private static func parseRledgerJSON(_ data: Data) throws -> (columns: [String]?, rows: [[String: Any]]) {
@@ -738,6 +815,20 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private static func amountFields(_ value: Any?) -> (number: String?, currency: String?) {
         guard let dictionary = value as? [String: Any] else { return (nil, nil) }
         return (stringValue(dictionary["number"]), stringValue(dictionary["currency"]))
+    }
+
+    private static func inventoryPositions(_ value: Any?) -> [(number: String, currency: String)] {
+        guard let dictionary = value as? [String: Any],
+              let positions = dictionary["positions"] as? [[String: Any]] else {
+            return []
+        }
+        return positions.compactMap { position in
+            guard let number = stringValue(position["number"]),
+                  let currency = stringValue(position["currency"]) else {
+                return nil
+            }
+            return (number: number, currency: currency)
+        }
     }
 
     private static func currencyList(_ value: Any?) -> String? {
