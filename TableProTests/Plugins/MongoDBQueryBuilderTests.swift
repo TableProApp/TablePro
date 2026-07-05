@@ -6,8 +6,8 @@
 //
 
 import Foundation
-import Testing
 import TableProPluginKit
+import Testing
 
 @Suite("MongoDB Query Builder")
 struct MongoDBQueryBuilderTests {
@@ -364,6 +364,27 @@ struct MongoDBQueryBuilderTests {
             from: [(column: "price", op: "=", value: "19.99")]
         )
         #expect(doc.contains("\"price\": 19.99"))
+    }
+
+    @Test("Filter document emits JSON-valid scientific numbers")
+    func filterDocumentScientificNumber() {
+        let doc = builder.buildFilterDocument(
+            from: [(column: "score", op: "=", value: "1.5e-3")]
+        )
+        let parsed = parseFilter(doc)
+        #expect(parsed?["score"] as? Double == 0.0015)
+    }
+
+    @Test("Filter document quotes non-JSON numeric spellings")
+    func filterDocumentQuotesNonJsonNumericSpellings() {
+        let values = [".5", "1.", "+7", "01", "NaN", "Infinity"]
+        for value in values {
+            let doc = builder.buildFilterDocument(
+                from: [(column: "score", op: "=", value: value)]
+            )
+            let parsed = parseFilter(doc)
+            #expect(parsed?["score"] as? String == value)
+        }
     }
 
     @Test("Filter document with null literal")

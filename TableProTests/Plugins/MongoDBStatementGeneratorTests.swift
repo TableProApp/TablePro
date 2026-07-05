@@ -6,12 +6,11 @@
 //
 
 import Foundation
-import Testing
 import TableProPluginKit
+import Testing
 
 @Suite("MongoDB Statement Generator")
 struct MongoDBStatementGeneratorTests {
-
     // MARK: - INSERT
 
     @Test("Simple insert generates insertOne, skipping _id")
@@ -192,6 +191,68 @@ struct MongoDBStatementGeneratorTests {
 
         #expect(results.count == 1)
         #expect(results[0].statement.contains("\"count\": 42"))
+    }
+
+    @Test("Insert emits JSON-valid decimal and exponent numbers")
+    func insertEmitsJsonValidNumbers() {
+        let gen = MongoDBStatementGenerator(
+            collectionName: "users",
+            columns: ["_id", "decimal", "exponent"]
+        )
+
+        let change = PluginRowChange(
+            rowIndex: 0,
+            type: .insert,
+            cellChanges: [],
+            originalRow: nil
+        )
+
+        let insertedData: [Int: [PluginCellValue]] = [
+            0: [nil, "0.5", "1e3"]
+        ]
+
+        let results = gen.generateStatements(
+            from: [change],
+            insertedRowData: insertedData,
+            deletedRowIndices: [],
+            insertedRowIndices: [0]
+        )
+
+        let document = firstArgumentObject(in: results[0].statement)
+        #expect(document?["decimal"] as? Double == 0.5)
+        #expect(document?["exponent"] as? Double == 1_000)
+    }
+
+    @Test("Insert quotes non-JSON numeric spellings")
+    func insertQuotesNonJsonNumericSpellings() {
+        let gen = MongoDBStatementGenerator(
+            collectionName: "users",
+            columns: ["_id", "leadingDecimal", "trailingDecimal", "leadingPlus", "leadingZero"]
+        )
+
+        let change = PluginRowChange(
+            rowIndex: 0,
+            type: .insert,
+            cellChanges: [],
+            originalRow: nil
+        )
+
+        let insertedData: [Int: [PluginCellValue]] = [
+            0: [nil, ".5", "1.", "+7", "01"]
+        ]
+
+        let results = gen.generateStatements(
+            from: [change],
+            insertedRowData: insertedData,
+            deletedRowIndices: [],
+            insertedRowIndices: [0]
+        )
+
+        let document = firstArgumentObject(in: results[0].statement)
+        #expect(document?["leadingDecimal"] as? String == ".5")
+        #expect(document?["trailingDecimal"] as? String == "1.")
+        #expect(document?["leadingPlus"] as? String == "+7")
+        #expect(document?["leadingZero"] as? String == "01")
     }
 
     @Test("Insert not in insertedRowIndices is skipped")
@@ -759,4 +820,13 @@ struct MongoDBStatementGeneratorTests {
         #expect(results.count == 1)
         #expect(results[0].statement.contains("\"tags\": [1, 2, 3]"))
     }
+}
+
+private func firstArgumentObject(in statement: String) -> [String: Any]? {
+    guard let openParen = statement.firstIndex(of: "("),
+          let closeParen = statement.lastIndex(of: ")"),
+          openParen < closeParen else { return nil }
+    let json = String(statement[statement.index(after: openParen) ..< closeParen])
+    guard let data = json.data(using: .utf8) else { return nil }
+    return try? JSONSerialization.jsonObject(with: data) as? [String: Any]
 }

@@ -179,8 +179,7 @@ struct MongoDBQueryBuilder {
     private func jsonValue(_ value: String) -> String {
         if value == "true" || value == "false" { return value }
         if value == "null" { return value }
-        if Int64(value) != nil { return value }
-        if Double(value) != nil, value.contains(".") { return value }
+        if Self.isValidJsonNumber(value) { return value }
         return "\"\(Self.escapeJsonString(value))\""
     }
 
@@ -200,6 +199,14 @@ struct MongoDBQueryBuilder {
 
     private static func regexBody(pattern: String) -> String {
         "{\"$regex\": \"\(escapeJsonString(pattern))\", \"$options\": \"i\"}"
+    }
+
+    private static func isValidJsonNumber(_ value: String) -> Bool {
+        let pattern = #"^-?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][+-]?[0-9]+)?$"#
+        guard let range = value.range(of: pattern, options: .regularExpression) else {
+            return false
+        }
+        return range == value.startIndex ..< value.endIndex
     }
 
     static func escapeJsonString(_ value: String) -> String {
