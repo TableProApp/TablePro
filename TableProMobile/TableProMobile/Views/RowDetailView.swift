@@ -216,13 +216,13 @@ struct RowDetailView: View {
                             .contextMenu {
                                 if let value {
                                     Button {
-                                        UIPasteboard.general.string = value
+                                        ClipboardExporter.copyToClipboard(value)
                                     } label: {
                                         Label("Copy Value", systemImage: "doc.on.doc")
                                     }
                                 }
                                 Button {
-                                    UIPasteboard.general.string = column.name
+                                    ClipboardExporter.copyToClipboard(column.name)
                                 } label: {
                                     Label("Copy Column Name", systemImage: "textformat")
                                 }

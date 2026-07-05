@@ -43,7 +43,6 @@ final class RowEditingCoordinator {
 
         parent.selectionState.indices = [result.rowIndex]
         parent.tabManager.mutate(at: tabIndex) { $0.hasUserInteraction = true }
-        parent.querySortCache.removeValue(forKey: tabId)
         parent.dataTabDelegate?.tableViewCoordinator?.applyDelta(result.delta)
         parent.dataTabDelegate?.tableViewCoordinator?.beginEditing(displayRow: result.rowIndex, column: 0)
     }
@@ -80,7 +79,6 @@ final class RowEditingCoordinator {
         parent.tabManager.mutate(at: tabIndex) { $0.hasUserInteraction = true }
 
         if !deleteResult.physicallyRemovedIndices.isEmpty {
-            parent.querySortCache.removeValue(forKey: tabId)
             parent.dataTabDelegate?.tableViewCoordinator?.applyDelta(deleteResult.delta)
         } else {
             parent.dataTabDelegate?.tableViewCoordinator?.invalidateCachesForUndoRedo()
@@ -114,7 +112,6 @@ final class RowEditingCoordinator {
 
         parent.selectionState.indices = [result.rowIndex]
         parent.tabManager.mutate(at: tabIndex) { $0.hasUserInteraction = true }
-        parent.querySortCache.removeValue(forKey: tabId)
         parent.dataTabDelegate?.tableViewCoordinator?.applyDelta(result.delta)
         parent.dataTabDelegate?.tableViewCoordinator?.beginEditing(displayRow: result.rowIndex, column: 0)
     }
@@ -138,7 +135,6 @@ final class RowEditingCoordinator {
         }
 
         parent.selectionState.indices = undoResult.adjustedSelection
-        parent.querySortCache.removeValue(forKey: tabId)
         parent.dataTabDelegate?.tableViewCoordinator?.applyDelta(undoResult.delta)
     }
 
@@ -159,7 +155,6 @@ final class RowEditingCoordinator {
         }
 
         parent.tabManager.mutate(at: tabIndex) { $0.hasUserInteraction = true }
-        parent.querySortCache.removeValue(forKey: tabId)
         parent.dataTabDelegate?.tableViewCoordinator?.invalidateCachesForUndoRedo()
         parent.dataTabDelegate?.tableViewCoordinator?.applyDelta(application.delta)
     }
@@ -231,7 +226,6 @@ final class RowEditingCoordinator {
             tab.selectedRowIndices = newIndices
             tab.hasUserInteraction = true
         }
-        parent.querySortCache.removeValue(forKey: tabId)
         parent.dataTabDelegate?.tableViewCoordinator?.applyDelta(pasteResult.delta)
     }
 

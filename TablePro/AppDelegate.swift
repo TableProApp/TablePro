@@ -26,6 +26,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         _ = InspectorDocumentController()
         guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
         PluginManager.shared.loadPlugins()
+        Task { await RegistryClient.shared.ensureManifest(.ifStale) }
     }
 
     func application(_ application: NSApplication, open urls: [URL]) {
@@ -60,6 +61,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         )
 
         NSWindow.allowsAutomaticWindowTabbing = true
+        KeyRepeatFilter.shared.install()
         let syncSettings = AppSettingsStorage.shared.loadSync()
         let passwordSyncExpected = syncSettings.enabled && syncSettings.syncConnections && syncSettings.syncPasswords
         UserDefaults.standard.set(passwordSyncExpected, forKey: KeychainHelper.passwordSyncEnabledKey)
@@ -142,10 +144,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        persistOpenConnectionsForRecovery()
         LinkedFolderWatcher.shared.stop()
         SQLFolderWatcher.shared.stop()
         SSHTunnelManager.shared.terminateAllProcessesSync()
         CloudflareTunnelManager.shared.terminateAllProcessesSync()
+    }
+
+    private func persistOpenConnectionsForRecovery() {
+        var seen = Set<UUID>()
+        let connectionIds = MainContentCoordinator.activeCoordinators.values
+            .map(\.connectionId)
+            .filter { seen.insert($0).inserted }
+        LastOpenConnectionsStorage.shared.save(connectionIds: connectionIds)
     }
 
     @objc func handleSystemDidWake(_ notification: Notification) {

@@ -17,7 +17,6 @@ struct LicenseActivationSheet: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Header
             VStack(spacing: 8) {
                 Image(systemName: "key.fill")
                     .font(.title)
@@ -34,7 +33,6 @@ struct LicenseActivationSheet: View {
             .padding(.top, 24)
             .padding(.bottom, 20)
 
-            // License key input
             VStack(spacing: 12) {
                 TextField("XXXXX-XXXXX-XXXXX-XXXXX-XXXXX", text: $licenseKeyInput)
                     .font(.system(.body, design: .monospaced))
@@ -52,7 +50,6 @@ struct LicenseActivationSheet: View {
             }
             .padding(.horizontal, 32)
 
-            // Actions
             VStack(spacing: 10) {
                 if isActivating {
                     ProgressView()

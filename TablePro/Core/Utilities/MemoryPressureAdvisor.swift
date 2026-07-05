@@ -54,7 +54,6 @@ internal enum MemoryPressureAdvisor {
             baseBudget = 2
         }
 
-        // Halve the budget under memory pressure
         return isUnderPressure ? max(1, baseBudget / 2) : baseBudget
     }
 

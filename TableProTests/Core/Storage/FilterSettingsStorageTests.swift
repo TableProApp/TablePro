@@ -92,6 +92,84 @@ struct FilterSettingsStorageTests {
         )
     }
 
+    @Test("Removing a connection's filters keeps other connections intact")
+    func removeFiltersForConnection() {
+        let (storage, directory) = makeStorage()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let deletedConnection = UUID()
+        let keptConnection = UUID()
+        let deletedFilters = [TestFixtures.makeTableFilter(column: "a")]
+        let keptFilters = [TestFixtures.makeTableFilter(column: "b")]
+
+        storage.saveLastFilters(
+            deletedFilters, for: "users", connectionId: deletedConnection, databaseName: "db", schemaName: nil
+        )
+        storage.saveLastFilters(
+            keptFilters, for: "users", connectionId: keptConnection, databaseName: "db", schemaName: nil
+        )
+
+        storage.removeFilters(for: deletedConnection)
+        storage.waitForPendingDiskWrites()
+
+        #expect(
+            storage.loadLastFilters(for: "users", connectionId: deletedConnection, databaseName: "db", schemaName: nil)
+                .isEmpty
+        )
+        #expect(
+            storage.loadLastFilters(for: "users", connectionId: keptConnection, databaseName: "db", schemaName: nil)
+                == keptFilters
+        )
+    }
+
+    @Test("Batch removal clears filters for every given connection in one pass")
+    func removeFiltersForMultipleConnections() {
+        let (storage, directory) = makeStorage()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let first = UUID()
+        let second = UUID()
+        let kept = UUID()
+        for connectionId in [first, second, kept] {
+            storage.saveLastFilters(
+                [TestFixtures.makeTableFilter(column: "a")],
+                for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil
+            )
+        }
+
+        storage.removeFilters(for: [first, second])
+        storage.waitForPendingDiskWrites()
+
+        #expect(storage.loadLastFilters(for: "users", connectionId: first, databaseName: "db", schemaName: nil).isEmpty)
+        #expect(storage.loadLastFilters(for: "users", connectionId: second, databaseName: "db", schemaName: nil).isEmpty)
+        #expect(
+            !storage.loadLastFilters(for: "users", connectionId: kept, databaseName: "db", schemaName: nil).isEmpty
+        )
+    }
+
+    @Test("Removed filters stay gone for a fresh storage instance")
+    func removeFiltersDeletesFiles() {
+        let suiteName = "FilterSettingsStorageTests-\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: suiteName) else {
+            fatalError("Failed to create UserDefaults suite for tests")
+        }
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("FilterSettingsStorageTests-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let connectionId = UUID()
+        let storage = FilterSettingsStorage(filterStateDirectory: directory, defaults: defaults)
+        storage.saveLastFilters(
+            [TestFixtures.makeTableFilter(column: "a")],
+            for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil
+        )
+
+        storage.removeFilters(for: connectionId)
+        storage.waitForPendingDiskWrites()
+
+        let fresh = FilterSettingsStorage(filterStateDirectory: directory, defaults: defaults)
+        #expect(
+            fresh.loadLastFilters(for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil).isEmpty
+        )
+    }
+
     @Test("Saving an empty filter set clears the stored filters")
     func savingEmptyClearsState() {
         let (storage, directory) = makeStorage()
@@ -101,6 +179,7 @@ struct FilterSettingsStorageTests {
             [TestFixtures.makeTableFilter()], for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil
         )
         storage.saveLastFilters([], for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil)
+        storage.waitForPendingDiskWrites()
 
         #expect(
             storage.loadLastFilters(for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil).isEmpty
@@ -144,6 +223,7 @@ struct FilterSettingsStorageTests {
 
         let writer = FilterSettingsStorage(filterStateDirectory: directory, defaults: defaults)
         writer.saveLastFilters(filters, for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil)
+        writer.waitForPendingDiskWrites()
 
         let reader = FilterSettingsStorage(filterStateDirectory: directory, defaults: defaults)
         #expect(
@@ -160,9 +240,66 @@ struct FilterSettingsStorageTests {
 
         storage.saveLastFilters(filters, for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil)
         storage.clearLastFilters(for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil)
+        storage.waitForPendingDiskWrites()
 
         #expect(
             storage.loadLastFilters(for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil).isEmpty
+        )
+    }
+
+    @Test("A save followed by an immediate clear leaves no file on disk")
+    func clearAfterSaveLeavesNothingOnDisk() {
+        let suiteName = "FilterSettingsStorageTests-\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: suiteName) else {
+            fatalError("Failed to create UserDefaults suite for tests")
+        }
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("FilterSettingsStorageTests-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let connectionId = UUID()
+        let filters = [TestFixtures.makeTableFilter(column: "email", value: "a@b.com")]
+
+        let writer = FilterSettingsStorage(filterStateDirectory: directory, defaults: defaults)
+        writer.saveLastFilters(filters, for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil)
+        writer.clearLastFilters(for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil)
+        writer.waitForPendingDiskWrites()
+
+        let reader = FilterSettingsStorage(filterStateDirectory: directory, defaults: defaults)
+        #expect(
+            reader.loadLastFilters(for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil).isEmpty
+        )
+    }
+
+    @Test("Browse search persists to disk and clearing it leaves nothing")
+    func browseSearchPersistsAndClears() {
+        let suiteName = "FilterSettingsStorageTests-\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: suiteName) else {
+            fatalError("Failed to create UserDefaults suite for tests")
+        }
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("FilterSettingsStorageTests-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let connectionId = UUID()
+        let state = BrowseSearchState(pattern: "user:*", typeScope: "hash")
+
+        let writer = FilterSettingsStorage(filterStateDirectory: directory, defaults: defaults)
+        writer.saveBrowseSearch(state, for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil)
+        writer.waitForPendingDiskWrites()
+
+        let reader = FilterSettingsStorage(filterStateDirectory: directory, defaults: defaults)
+        #expect(
+            reader.loadBrowseSearch(for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil) == state
+        )
+
+        writer.saveBrowseSearch(
+            BrowseSearchState(), for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil
+        )
+        writer.waitForPendingDiskWrites()
+
+        let afterClear = FilterSettingsStorage(filterStateDirectory: directory, defaults: defaults)
+        #expect(
+            !afterClear.loadBrowseSearch(for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil)
+                .isActive
         )
     }
 }

@@ -14,7 +14,7 @@ internal struct AlertOperationConfirming: OperationConfirming {
     @MainActor
     func confirm(sql: String, operationDescription: String, connectionId: UUID, isDestructive: Bool) async -> Bool {
         NSApp.activate(ignoringOtherApps: true)
-        let window = WindowLifecycleMonitor.shared.findWindow(for: connectionId)
+        let window = WindowLifecycleMonitor.shared.activeWindow(for: connectionId, preferring: NSApp.keyWindow)
         let preview = Self.preview(of: sql)
 
         if isDestructive {

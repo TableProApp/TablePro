@@ -216,30 +216,24 @@ final class MariaDBPluginConnection: @unchecked Sendable {
 
     // MARK: - Connection Management
 
-    private static let sslOnlyErrorCodes: Set<UInt32> = [
-        2_026,
-        2_012,
-        1_043
-    ]
-
     func connect() async throws {
         try await pluginDispatchAsync(on: queue) { [self] in
             let mode = self.sslConfig.mode
             let handle: UnsafeMutablePointer<MYSQL>
             do {
                 handle = try self.attemptConnect(enforceSSL: mode != .disabled)
-            } catch let error as MariaDBPluginError where mode == .preferred && Self.sslOnlyErrorCodes.contains(error.code) {
+            } catch let error as MariaDBPluginError where mode == .preferred && MariaDBSSLClassifier.sslOnlyErrorCodes.contains(error.code) {
                 logger.notice("MySQL SSL handshake failed (code \(error.code)); falling back to plaintext for .preferred mode")
                 do {
                     handle = try self.attemptConnect(enforceSSL: false)
                 } catch let fallbackError as MariaDBPluginError {
-                    if let sslError = Self.classifySSLError(fallbackError) {
+                    if let sslError = MariaDBSSLClassifier.classifySSLError(code: fallbackError.code, message: fallbackError.message) {
                         throw sslError
                     }
                     throw fallbackError
                 }
             } catch let error as MariaDBPluginError {
-                if let sslError = Self.classifySSLError(error) {
+                if let sslError = MariaDBSSLClassifier.classifySSLError(code: error.code, message: error.message) {
                     throw sslError
                 }
                 throw error
@@ -254,20 +248,6 @@ final class MariaDBPluginConnection: @unchecked Sendable {
             self._isConnected = true
             self.stateLock.unlock()
         }
-    }
-
-    static func classifySSLError(_ error: MariaDBPluginError) -> SSLHandshakeError? {
-        let lower = error.message.lowercased()
-        if lower.contains("insecure transport") || lower.contains("require_secure_transport") {
-            return .serverRejectedPlaintext(serverMessage: error.message)
-        }
-        if Self.sslOnlyErrorCodes.contains(error.code) {
-            if lower.contains("certificate") {
-                return .untrustedCertificate(serverMessage: error.message)
-            }
-            return .cipherMismatch(serverMessage: error.message)
-        }
-        return nil
     }
 
     private func attemptConnect(enforceSSL: Bool) throws -> UnsafeMutablePointer<MYSQL> {
@@ -434,26 +414,30 @@ final class MariaDBPluginConnection: @unchecked Sendable {
 
     // MARK: - Query Execution
 
-    func executeQuery(_ query: String) async throws -> MariaDBPluginQueryResult {
+    func executeQuery(_ query: String, rowCap: Int? = nil) async throws -> MariaDBPluginQueryResult {
         let queryToRun = String(query)
 
         return try await pluginDispatchAsync(on: queue) { [self] in
             guard !isShuttingDown else { throw MariaDBPluginError.notConnected }
-            return try executeQuerySync(queryToRun)
+            return try executeQuerySync(queryToRun, rowCap: rowCap)
         }
     }
 
-    func executeParameterizedQuery(_ query: String, parameters: [PluginCellValue]) async throws -> MariaDBPluginQueryResult {
+    func executeParameterizedQuery(
+        _ query: String,
+        parameters: [PluginCellValue],
+        rowCap: Int? = nil
+    ) async throws -> MariaDBPluginQueryResult {
         let queryToRun = String(query)
         let params = parameters
 
         return try await pluginDispatchAsync(on: queue) { [self] in
             guard !isShuttingDown else { throw MariaDBPluginError.notConnected }
-            return try executeParameterizedQuerySync(queryToRun, parameters: params)
+            return try executeParameterizedQuerySync(queryToRun, parameters: params, rowCap: rowCap)
         }
     }
 
-    private func executeQuerySync(_ query: String) throws -> MariaDBPluginQueryResult {
+    private func executeQuerySync(_ query: String, rowCap: Int? = nil) throws -> MariaDBPluginQueryResult {
         guard !isShuttingDown, let mysql = self.mysql else {
             throw MariaDBPluginError.notConnected
         }
@@ -520,7 +504,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         var rows: [[PluginCellValue]] = []
         rows.reserveCapacity(min(1_000, PluginRowLimits.emergencyMax))
 
-        let maxRows = PluginRowLimits.emergencyMax
+        let maxRows = rowCap.map { min(max($0, 1), PluginRowLimits.emergencyMax) } ?? PluginRowLimits.emergencyMax
         var truncated = false
 
         while let rowPtr = mysql_fetch_row(resultPtr) {
@@ -679,7 +663,8 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         columns: [String],
         columnTypes: [UInt32],
         columnTypeNames: [String],
-        columnIsBinary: [Bool]
+        columnIsBinary: [Bool],
+        rowCap: Int? = nil
     ) throws -> (rows: [[PluginCellValue]], isTruncated: Bool) {
         let numFields = columns.count
         var resultBinds: [MYSQL_BIND] = Array(repeating: MYSQL_BIND(), count: numFields)
@@ -714,7 +699,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         }
 
         var rows: [[PluginCellValue]] = []
-        let maxRows = PluginRowLimits.emergencyMax
+        let maxRows = rowCap.map { min(max($0, 1), PluginRowLimits.emergencyMax) } ?? PluginRowLimits.emergencyMax
         var truncated = false
 
         while true {
@@ -782,7 +767,11 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         return (rows: rows, isTruncated: truncated)
     }
 
-    private func executeParameterizedQuerySync(_ query: String, parameters: [PluginCellValue]) throws -> MariaDBPluginQueryResult {
+    private func executeParameterizedQuerySync(
+        _ query: String,
+        parameters: [PluginCellValue],
+        rowCap: Int? = nil
+    ) throws -> MariaDBPluginQueryResult {
         guard !isShuttingDown, let mysql = self.mysql else {
             throw MariaDBPluginError.notConnected
         }
@@ -877,7 +866,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         let fetchResult = try fetchResultSet(
             from: stmt, metadata: metadata,
             columns: columns, columnTypes: columnTypes, columnTypeNames: columnTypeNames,
-            columnIsBinary: columnIsBinary
+            columnIsBinary: columnIsBinary, rowCap: rowCap
         )
 
         return MariaDBPluginQueryResult(

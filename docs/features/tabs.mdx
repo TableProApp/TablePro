@@ -45,7 +45,7 @@ A preview tab becomes permanent when you:
 - **Double-click** a table in the sidebar
 - **Interact** with the tab (sort, filter, edit data, select rows)
 
-Preview tabs are not saved across restarts.
+A preview tab that is still open when you quit is restored as a permanent tab on next launch.
 
 <Tip>
 Disable preview tabs in **Settings** > **Tabs** if you prefer every click to open a permanent tab.
@@ -153,15 +153,20 @@ Each tab maintains its own pending changes. Switching tabs saves and restores ea
 | Saved | Not Saved |
 |-------|-----------|
 | Tab ID and title | Query results (re-queried on reopen) |
-| SQL content | Pending data changes |
-| Tab type and table name | Selected rows, sort/filter state |
-| Pin state | Preview tabs (discarded) |
+| SQL content and cursor position | Pending data changes |
+| Tab type and table name | Selected rows |
+| Applied sort, filters, and page | |
+| Column widths | |
+| Active database and schema | |
+| Pin state | |
 
-Tab state auto-saves 500ms after any change. On reconnect, TablePro restores your tabs and re-executes table queries.
+Tab state auto-saves 500ms after any change, plus a background save every 30 seconds so a crash or force quit keeps your recent work. On reconnect, TablePro restores your tabs with the sort, filters, and page you left them on. Only the frontmost tab loads its data right away; other restored tabs load the first time you switch to them, so launch stays fast and a connection storm never hits the database. Connections reconnect lazily on first interaction, and if a restored tab fails to load the error shows inline in that tab rather than as a dialog.
+
+Whether the session reopens on launch is controlled by [Startup Behavior](/customization/settings#general), which defaults to reopening your last session.
 
 ### Multi-Window Restoration
 
-If you had several editor windows open with their own tab groups, TablePro restores every window on next launch. Earlier versions kept tabs from one window and dropped the rest.
+Tabs restore in their original order across launches. If a previous session was recovered after a crash, TablePro reopens each connection that had open tabs.
 
 ### Window Size, Position, and Zoom
 

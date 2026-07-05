@@ -74,39 +74,34 @@ public struct PluginRowChange: Sendable {
 public protocol PluginDatabaseDriver: AnyObject, Sendable {
     var capabilities: PluginCapabilities { get }
 
-    // Connection
     func connect() async throws
     func disconnect()
     func ping() async throws
 
-    // Queries
     func execute(query: String) async throws -> PluginQueryResult
     func executeUserQuery(query: String, rowCap: Int?, parameters: [PluginCellValue]?) async throws -> PluginQueryResult
 
-    // Schema
     func fetchTables(schema: String?) async throws -> [PluginTableInfo]
     func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo]
     func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo]
     func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo]
+    func fetchTriggers(table: String, schema: String?) async throws -> [PluginTriggerInfo]
     func fetchTableDDL(table: String, schema: String?) async throws -> String
     func fetchViewDefinition(view: String, schema: String?) async throws -> String
     func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata
     func fetchDatabases() async throws -> [String]
     func fetchDatabaseMetadata(_ database: String) async throws -> PluginDatabaseMetadata
 
-    // Schema navigation
     var supportsSchemas: Bool { get }
     func fetchSchemas() async throws -> [String]
     func switchSchema(to schema: String) async throws
     var currentSchema: String? { get }
 
-    // Transactions
     var supportsTransactions: Bool { get }
     func beginTransaction() async throws
     func commitTransaction() async throws
     func rollbackTransaction() async throws
 
-    // Execution control
     func cancelQuery() throws
     func applyQueryTimeout(_ seconds: Int) async throws
     var serverVersion: String? { get }
@@ -114,7 +109,6 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
 
     var requiresBackslashEscapingInLiterals: Bool { get }
 
-    // Batch operations
     func fetchApproximateRowCount(table: String, schema: String?) async throws -> Int?
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]]
     func fetchAllForeignKeys(schema: String?) async throws -> [String: [PluginForeignKeyInfo]]
@@ -139,6 +133,7 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     func fetchFilteredRowCount(table: String, filters: [(column: String, op: String, value: String)], logicMode: String) async throws -> Int?
     // Statement generation (optional, for NoSQL plugins)
     func generateStatements(table: String, columns: [String], primaryKeyColumns: [String], changes: [PluginRowChange], insertedRowData: [Int: [PluginCellValue]], deletedRowIndices: Set<Int>, insertedRowIndices: Set<Int>) -> [(statement: String, parameters: [PluginCellValue])]?
+    func generateStatements(table: String, schema: String?, columns: [String], primaryKeyColumns: [String], changes: [PluginRowChange], insertedRowData: [Int: [PluginCellValue]], deletedRowIndices: Set<Int>, insertedRowIndices: Set<Int>) -> [(statement: String, parameters: [PluginCellValue])]?
 
     // Database switching (SQL Server USE, ClickHouse database switch, etc.)
     func switchDatabase(to database: String) async throws
@@ -173,15 +168,23 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     // EXPLAIN query building (optional)
     func buildExplainQuery(_ sql: String) -> String?
 
-    // Identifier quoting
+    // Row limit injection for executed queries (optional, return nil to use app-level fallback)
+    func injectRowLimit(_ sql: String, limit: Int) -> String?
+
     func quoteIdentifier(_ name: String) -> String
 
-    // String escaping
     func escapeStringLiteral(_ value: String) -> String
 
     func createViewTemplate() -> String?
     func editViewFallbackTemplate(viewName: String) -> String?
     func castColumnToText(_ column: String) -> String
+
+    // Trigger editing (optional — return nil when unsupported)
+    func createTriggerTemplate(table: String, schema: String?) -> String?
+    func fetchTriggerDefinition(name: String, table: String, schema: String?) async throws -> String?
+    func generateDropTriggerSQL(name: String, table: String, schema: String?) -> String?
+    var triggerEditUsesReplace: Bool { get }
+    var supportsTransactionalDDL: Bool { get }
 
     // All-tables metadata SQL (optional — returns nil for non-SQL databases)
     func allTablesMetadataSQL(schema: String?) -> String?
@@ -196,6 +199,14 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
 
 public extension PluginDatabaseDriver {
     var capabilities: PluginCapabilities { [] }
+
+    func fetchTriggers(table: String, schema: String?) async throws -> [PluginTriggerInfo] { [] }
+
+    func createTriggerTemplate(table: String, schema: String?) -> String? { nil }
+    func fetchTriggerDefinition(name: String, table: String, schema: String?) async throws -> String? { nil }
+    func generateDropTriggerSQL(name: String, table: String, schema: String?) -> String? { nil }
+    var triggerEditUsesReplace: Bool { false }
+    var supportsTransactionalDDL: Bool { false }
 
     var supportsSchemas: Bool { false }
 
@@ -307,6 +318,12 @@ public extension PluginDatabaseDriver {
     }
     func fetchFilteredRowCount(table: String, filters: [(column: String, op: String, value: String)], logicMode: String) async throws -> Int? { nil }
     func generateStatements(table: String, columns: [String], primaryKeyColumns: [String], changes: [PluginRowChange], insertedRowData: [Int: [PluginCellValue]], deletedRowIndices: Set<Int>, insertedRowIndices: Set<Int>) -> [(statement: String, parameters: [PluginCellValue])]? { nil }
+    func generateStatements(table: String, schema: String?, columns: [String], primaryKeyColumns: [String], changes: [PluginRowChange], insertedRowData: [Int: [PluginCellValue]], deletedRowIndices: Set<Int>, insertedRowIndices: Set<Int>) -> [(statement: String, parameters: [PluginCellValue])]? {
+        generateStatements(
+            table: table, columns: columns, primaryKeyColumns: primaryKeyColumns, changes: changes,
+            insertedRowData: insertedRowData, deletedRowIndices: deletedRowIndices, insertedRowIndices: insertedRowIndices
+        )
+    }
 
     func generateAddColumnSQL(table: String, column: PluginColumnDefinition) -> String? { nil }
     func generateModifyColumnSQL(table: String, oldColumn: PluginColumnDefinition, newColumn: PluginColumnDefinition) -> String? { nil }
@@ -332,6 +349,8 @@ public extension PluginDatabaseDriver {
     func maintenanceStatements(operation: String, table: String?, schema: String?, options: [String: String]) -> [String]? { nil }
 
     func buildExplainQuery(_ sql: String) -> String? { nil }
+
+    func injectRowLimit(_ sql: String, limit: Int) -> String? { nil }
 
     func createViewTemplate() -> String? { nil }
     func editViewFallbackTemplate(viewName: String) -> String? { nil }

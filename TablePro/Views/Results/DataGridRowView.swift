@@ -99,9 +99,10 @@ class DataGridRowView: NSTableRowView {
     }
 
     private func drawCellSelectionFill(in dirtyRect: NSRect) {
-        guard let selection = coordinator?.selectionController.selection,
-              !selection.isEmpty,
-              let tableView = coordinator?.tableView else { return }
+        guard let coordinator,
+              let tableView = coordinator.tableView else { return }
+        let selection = coordinator.selectionController.selection
+        guard !selection.isEmpty else { return }
         let columns = selection.columns(in: rowIndex)
         guard !columns.isEmpty else { return }
 
@@ -110,10 +111,8 @@ class DataGridRowView: NSTableRowView {
             : NSColor.selectedContentBackgroundColor.withAlphaComponent(0.28)
         fillColor.setFill()
 
-        let schema = coordinator?.identitySchema
         for dataColumn in columns {
-            guard let schema,
-                  let tableColumnIndex = DataGridView.tableColumnIndex(for: dataColumn, in: tableView, schema: schema) else { continue }
+            guard let tableColumnIndex = coordinator.tableColumnIndex(for: dataColumn) else { continue }
             let columnRect = tableView.rect(ofColumn: tableColumnIndex)
             let localRect = NSRect(x: columnRect.minX, y: 0, width: columnRect.width, height: bounds.height)
             guard localRect.intersects(dirtyRect) else { continue }
@@ -531,11 +530,7 @@ class DataGridRowView: NSTableRowView {
     @objc private func previewForeignKey(_ sender: NSMenuItem) {
         guard let columnIndex = sender.representedObject as? Int,
               let coordinator, let tableView = coordinator.tableView,
-              let column = DataGridView.tableColumnIndex(
-                for: columnIndex,
-                in: tableView,
-                schema: coordinator.identitySchema
-              ) else { return }
+              let column = coordinator.tableColumnIndex(for: columnIndex) else { return }
         coordinator.showForeignKeyPreview(
             tableView: tableView, row: rowIndex, column: column, columnIndex: columnIndex
         )

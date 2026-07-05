@@ -91,7 +91,6 @@ final class CopilotService {
 
             guard generation == serverGeneration else { return }
 
-            // Register notification handlers
             await client.onNotification(method: "didChangeStatus") { [weak self] data in
                 Task { @MainActor [weak self] in
                     self?.handleStatusNotification(data)

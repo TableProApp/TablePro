@@ -38,6 +38,7 @@ extension BeancountDriverError: PluginDriverError {
 private struct BeancountSourceSignature: Equatable {
     let modificationDate: Date?
     let fileSize: UInt64?
+    let directoryEntries: [String]?
 }
 
 private struct BeancountProjection {
@@ -289,7 +290,7 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             return ledgerURL.path
         }
         let start = Date()
-        let output = try Self.runRledger(arguments: ["query", "-f", "json", "--no-errors", ledgerPath, query])
+        let output = try Self.runRledger(arguments: ["query", "-f", "json", "--no-errors", "--no-cache", ledgerPath, query])
         return try Self.decodeRustledgerQueryOutput(output, executionTime: Date().timeIntervalSince(start))
     }
 
@@ -431,7 +432,7 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     private static func query(ledgerPath: String, bql: String) throws -> [[String: Any]] {
-        let data = try runRledger(arguments: ["query", "-f", "json", "--no-errors", ledgerPath, bql])
+        let data = try runRledger(arguments: ["query", "-f", "json", "--no-errors", "--no-cache", ledgerPath, bql])
         return try decodeRledgerRows(data)
     }
 
@@ -819,9 +820,16 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         sourceFiles.reduce(into: [:]) { signatures, fileURL in
             let path = fileURL.path
             let attributes = try? FileManager.default.attributesOfItem(atPath: path)
+            let directoryEntries: [String]?
+            if attributes?[.type] as? FileAttributeType == .typeDirectory {
+                directoryEntries = (try? FileManager.default.contentsOfDirectory(atPath: path))?.sorted()
+            } else {
+                directoryEntries = nil
+            }
             signatures[path] = BeancountSourceSignature(
                 modificationDate: attributes?[.modificationDate] as? Date,
-                fileSize: (attributes?[.size] as? NSNumber)?.uint64Value
+                fileSize: (attributes?[.size] as? NSNumber)?.uint64Value,
+                directoryEntries: directoryEntries
             )
         }
     }

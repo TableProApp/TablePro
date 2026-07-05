@@ -108,6 +108,63 @@ struct QueryExecutorTests {
         #expect(!QueryExecutor.isDDLStatement("DELETE FROM foo"))
     }
 
+    // MARK: - Row cap qualification
+
+    @Test("qualifiesForRowCap accepts SELECT and WITH queries on query tabs")
+    func qualifiesForRowCapSelects() {
+        #expect(QueryExecutor.qualifiesForRowCap(
+            sql: "SELECT * FROM users", tabType: .query, databaseType: .mysql
+        ))
+        #expect(QueryExecutor.qualifiesForRowCap(
+            sql: "WITH cte AS (SELECT 1) SELECT * FROM cte", tabType: .query, databaseType: .postgresql
+        ))
+    }
+
+    @Test("qualifiesForRowCap accepts SELECT followed by newline, tab, or punctuation")
+    func qualifiesForRowCapKeywordBoundaries() {
+        #expect(QueryExecutor.qualifiesForRowCap(
+            sql: "SELECT\n  *\nFROM big_table", tabType: .query, databaseType: .mysql
+        ))
+        #expect(QueryExecutor.qualifiesForRowCap(
+            sql: "SELECT\t* FROM t", tabType: .query, databaseType: .mysql
+        ))
+        #expect(QueryExecutor.qualifiesForRowCap(
+            sql: "SELECT*FROM t", tabType: .query, databaseType: .mysql
+        ))
+        #expect(!QueryExecutor.qualifiesForRowCap(
+            sql: "SELECTX FROM t", tabType: .query, databaseType: .mysql
+        ))
+    }
+
+    @Test("qualifiesForRowCap accepts SELECT queries preceded by comments")
+    func qualifiesForRowCapCommentPrefixed() {
+        #expect(QueryExecutor.qualifiesForRowCap(
+            sql: "-- top users\nSELECT * FROM users", tabType: .query, databaseType: .mysql
+        ))
+        #expect(QueryExecutor.qualifiesForRowCap(
+            sql: "/* audit */ SELECT * FROM users", tabType: .query, databaseType: .mysql
+        ))
+    }
+
+    @Test("qualifiesForRowCap rejects writes, DDL, EXPLAIN, and table tabs")
+    func qualifiesForRowCapRejections() {
+        #expect(!QueryExecutor.qualifiesForRowCap(
+            sql: "DELETE FROM users", tabType: .query, databaseType: .mysql
+        ))
+        #expect(!QueryExecutor.qualifiesForRowCap(
+            sql: "CREATE TABLE foo (id INT)", tabType: .query, databaseType: .mysql
+        ))
+        #expect(!QueryExecutor.qualifiesForRowCap(
+            sql: "EXPLAIN SELECT * FROM users", tabType: .query, databaseType: .mysql
+        ))
+        #expect(!QueryExecutor.qualifiesForRowCap(
+            sql: "SELECT * FROM users", tabType: .table, databaseType: .mysql
+        ))
+        #expect(!QueryExecutor.qualifiesForRowCap(
+            sql: "WITH cte AS (SELECT 1) DELETE FROM users", tabType: .query, databaseType: .postgresql
+        ))
+    }
+
     // MARK: - Parameter detection
 
     @Test("detectAndReconcileParameters returns empty when SQL has no placeholders")
@@ -178,7 +235,7 @@ struct QueryExecutorTests {
                 referencedTable: "roles", referencedColumn: "id"
             )
         ]
-        let schema: SchemaResult = (columnInfo: columns, fkInfo: fks, approximateRowCount: 1_234)
+        let schema = FetchedTableSchema(columns: columns, foreignKeys: fks, approximateRowCount: 1_234)
 
         let parsed = QueryExecutor.parseSchemaMetadata(schema)
 
@@ -187,7 +244,7 @@ struct QueryExecutorTests {
         #expect(parsed.columnDefaults["name"] == .some("guest"))
         #expect(parsed.columnNullable["id"] == false)
         #expect(parsed.columnNullable["name"] == true)
-        #expect(parsed.columnForeignKeys["role_id"]?.referencedTable == "roles")
+        #expect(parsed.columnForeignKeys?["role_id"]?.referencedTable == "roles")
         #expect(parsed.approximateRowCount == 1_234)
     }
 
@@ -201,21 +258,29 @@ struct QueryExecutorTests {
                 defaultValue: nil, extra: nil, charset: nil, collation: nil, comment: nil
             )
         ]
-        let schema: SchemaResult = (columnInfo: columns, fkInfo: [], approximateRowCount: nil)
+        let schema = FetchedTableSchema(columns: columns, foreignKeys: [], approximateRowCount: nil)
 
         let parsed = QueryExecutor.parseSchemaMetadata(schema)
 
         #expect(parsed.columnEnumValues["status"] == ["open", "closed", "archived"])
     }
 
+
+    @Test("parseSchemaMetadata keeps a failed foreign key fetch distinguishable from zero foreign keys")
+    func parseSchemaMetadataNilForeignKeys() {
+        let schema = FetchedTableSchema(columns: [], foreignKeys: nil, approximateRowCount: nil)
+        let parsed = QueryExecutor.parseSchemaMetadata(schema)
+        #expect(parsed.columnForeignKeys == nil)
+    }
+
     @Test("parseSchemaMetadata returns empty containers when input is empty")
     func parseSchemaMetadataEmpty() {
-        let schema: SchemaResult = (columnInfo: [], fkInfo: [], approximateRowCount: nil)
+        let schema = FetchedTableSchema(columns: [], foreignKeys: [], approximateRowCount: nil)
         let parsed = QueryExecutor.parseSchemaMetadata(schema)
         #expect(parsed.primaryKeyColumns.isEmpty)
         #expect(parsed.columnDefaults.isEmpty)
         #expect(parsed.columnNullable.isEmpty)
-        #expect(parsed.columnForeignKeys.isEmpty)
+        #expect(parsed.columnForeignKeys?.isEmpty == true)
         #expect(parsed.columnEnumValues.isEmpty)
         #expect(parsed.approximateRowCount == nil)
     }
@@ -233,7 +298,7 @@ struct QueryExecutorTests {
         #expect(parsed.columnNullable["id"] == false)
         #expect(parsed.columnNullable["name"] == true)
         #expect(parsed.columnDefaults.isEmpty)
-        #expect(parsed.columnForeignKeys.isEmpty)
+        #expect(parsed.columnForeignKeys == nil)
         #expect(parsed.approximateRowCount == nil)
     }
 

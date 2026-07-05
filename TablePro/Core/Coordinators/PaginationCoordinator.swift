@@ -129,10 +129,11 @@ final class PaginationCoordinator {
     // MARK: - Cancel Current Query
 
     func cancelCurrentQuery() {
+        let hadInFlightTask = parent.currentQueryTask != nil
         parent.currentQueryTask?.cancel()
         parent.currentQueryTask = nil
         parent.queryGeneration += 1
-        if let driver = DatabaseManager.shared.driver(for: parent.connectionId) {
+        if hadInFlightTask, let driver = DatabaseManager.shared.driver(for: parent.connectionId) {
             try? driver.cancelQuery()
         }
         parent.toolbarState.setExecuting(false)
@@ -230,6 +231,7 @@ final class PaginationCoordinator {
                         tab.execution.executionTime = result.executionTime
                         tab.schemaVersion += 1
                         tab.pagination.resetLoadMore()
+                        tab.display.activeResultSet?.isTruncated = false
                     }
                     parent.dataTabDelegate?.tableViewCoordinator?.applyDelta(replaceDelta)
                     parent.toolbarState.setExecuting(false)

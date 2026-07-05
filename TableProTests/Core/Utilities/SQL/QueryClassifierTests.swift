@@ -45,3 +45,51 @@ struct QueryClassifierExplainTests {
         #expect(!QueryClassifier.isExplainStatement(""))
     }
 }
+
+@Suite("QueryClassifier classification with leading comments")
+struct QueryClassifierLeadingCommentTests {
+    @Test("isWriteQuery detects writes preceded by comments")
+    func writeDetectionWithComments() {
+        #expect(QueryClassifier.isWriteQuery("-- cleanup\nDELETE FROM users", databaseType: .mysql))
+        #expect(QueryClassifier.isWriteQuery("/* batch */ INSERT INTO t VALUES (1)", databaseType: .postgresql))
+        #expect(!QueryClassifier.isWriteQuery("-- note\nSELECT * FROM users", databaseType: .mysql))
+    }
+
+    @Test("isDangerousQuery detects destructive statements preceded by comments")
+    func dangerousDetectionWithComments() {
+        #expect(QueryClassifier.isDangerousQuery("-- reset\nDROP TABLE users", databaseType: .mysql))
+        #expect(QueryClassifier.isDangerousQuery("/* wipe */ TRUNCATE users", databaseType: .postgresql))
+        #expect(QueryClassifier.isDangerousQuery("-- purge\nDELETE FROM users", databaseType: .mysql))
+        #expect(!QueryClassifier.isDangerousQuery("-- purge\nDELETE FROM users WHERE id = 1", databaseType: .mysql))
+    }
+
+    @Test("classifyTier classifies statements preceded by comments")
+    func tierClassificationWithComments() {
+        #expect(QueryClassifier.classifyTier("-- reset\nDROP TABLE users", databaseType: .mysql) == .destructive)
+        #expect(QueryClassifier.classifyTier("/* batch */ UPDATE t SET x = 1", databaseType: .mysql) == .write)
+        #expect(QueryClassifier.classifyTier("-- note\nSELECT 1", databaseType: .mysql) == .safe)
+    }
+}
+
+@Suite("QueryClassifier keyword boundary handling")
+struct QueryClassifierKeywordBoundaryTests {
+    @Test("isWriteQuery detects writes followed by newline or tab")
+    func writeDetectionAcrossWhitespace() {
+        #expect(QueryClassifier.isWriteQuery("DELETE\nFROM users", databaseType: .mysql))
+        #expect(QueryClassifier.isWriteQuery("INSERT\tINTO t VALUES (1)", databaseType: .postgresql))
+        #expect(!QueryClassifier.isWriteQuery("DELETED_ROWS", databaseType: .mysql))
+    }
+
+    @Test("isDangerousQuery detects destructive statements followed by newline")
+    func dangerousDetectionAcrossWhitespace() {
+        #expect(QueryClassifier.isDangerousQuery("DROP\nTABLE users", databaseType: .mysql))
+        #expect(QueryClassifier.isDangerousQuery("DELETE\nFROM users", databaseType: .mysql))
+        #expect(!QueryClassifier.isDangerousQuery("DELETE\nFROM users WHERE id = 1", databaseType: .mysql))
+    }
+
+    @Test("classifyTier classifies statements followed by newline")
+    func tierClassificationAcrossWhitespace() {
+        #expect(QueryClassifier.classifyTier("TRUNCATE\nusers", databaseType: .mysql) == .destructive)
+        #expect(QueryClassifier.classifyTier("UPDATE\nt SET x = 1", databaseType: .mysql) == .write)
+    }
+}

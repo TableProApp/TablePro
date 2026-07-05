@@ -65,6 +65,17 @@ struct RightSidebarView: View {
 
     private func tableInfoContent(_ metadata: TableMetadata) -> some View {
         Form {
+            if AppSettingsManager.shared.general.showObjectComments,
+               let comment = metadata.comment, !comment.isEmpty {
+                Section {
+                    Text(comment)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .textSelection(.enabled)
+                } header: {
+                    Text("COMMENT")
+                }
+            }
+
             Section {
                 LabeledContent(
                     String(localized: "Data Size"),

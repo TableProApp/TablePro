@@ -4,14 +4,30 @@
 //
 
 import Foundation
+import os
 import TableProPluginKit
 
 extension MainContentCoordinator {
-    func resolveRowCap(sql: String, tabType: TabType) -> Int? {
-        queryExecutionCoordinator.resolveRowCap(sql: sql, tabType: tabType)
+    func switchDatabaseBeforeExecution(to database: String, connectionId: UUID) async {
+        do {
+            try await DatabaseManager.shared.switchDatabase(to: database, for: connectionId, persist: false)
+            await MainActor.run { toolbarState.currentDatabase = database }
+            Task { [weak self] in
+                await SchemaService.shared.invalidate(connectionId: connectionId)
+                await self?.refreshTables(currentDatabaseOnly: true)
+            }
+        } catch {
+            Self.logger.warning(
+                "Pre-execute switch to \(database, privacy: .public) failed: \(error.localizedDescription, privacy: .public)"
+            )
+        }
     }
 
-    func parseSchemaMetadata(_ schema: SchemaResult) -> ParsedSchemaMetadata {
+    func resolveExecutionPlan(sql: String, tabType: TabType, bypassLimit: Bool = false) -> QueryLimitPlan {
+        queryExecutionCoordinator.resolveExecutionPlan(sql: sql, tabType: tabType, bypassLimit: bypassLimit)
+    }
+
+    func parseSchemaMetadata(_ schema: FetchedTableSchema) -> ParsedSchemaMetadata {
         queryExecutionCoordinator.parseSchemaMetadata(schema)
     }
 
@@ -60,7 +76,7 @@ extension MainContentCoordinator {
         tabId: UUID,
         capturedGeneration: Int,
         connectionType: DatabaseType,
-        schemaTask: Task<SchemaResult, Error>?
+        schemaTask: Task<FetchedTableSchema, Error>?
     ) {
         queryExecutionCoordinator.launchPhase2Work(
             tableName: tableName,
@@ -89,17 +105,19 @@ extension MainContentCoordinator {
         _ error: Error,
         sql: String,
         tabId: UUID,
-        connection conn: DatabaseConnection
+        connection conn: DatabaseConnection,
+        trigger: TableLoadTrigger = .userInitiated
     ) {
         queryExecutionCoordinator.handleQueryExecutionError(
             error,
             sql: sql,
             tabId: tabId,
-            connection: conn
+            connection: conn,
+            trigger: trigger
         )
     }
 
-    func restoreSchemaAndRunQuery(_ schema: String) async {
-        await queryExecutionCoordinator.restoreSchemaAndRunQuery(schema)
+    func restoreSchemaAndRunQuery(_ schema: String, trigger: TableLoadTrigger = .userInitiated) async {
+        await queryExecutionCoordinator.restoreSchemaAndRunQuery(schema, trigger: trigger)
     }
 }

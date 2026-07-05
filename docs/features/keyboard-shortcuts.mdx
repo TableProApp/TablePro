@@ -38,9 +38,10 @@ TablePro is keyboard-driven. Most actions have shortcuts, and most menu shortcut
 |--------|----------|-------------|
 | Execute query | `Cmd+Enter` | Run query at cursor. Shows parameter panel if `:name` placeholders are detected |
 | Execute all statements | `Cmd+Shift+Enter` | Run all statements in the editor. Shows parameter panel if parameters are detected |
+| Execute query without limit | `Option+Cmd+Enter` | Run query at cursor without the row cap |
 | Cancel query | `Cmd+.` | Stop the currently running query |
 | Explain query | `Option+Cmd+E` | Show execution plan for query at cursor |
-| Format SQL | `Cmd+Shift+L` | Format SQL query |
+| Format SQL | `Cmd+Shift+L` | Format the selected SQL, or the whole query when nothing is selected |
 | Save as Favorite | `Cmd+D` | Save the current query as a favorite |
 
 ### Text Editing
@@ -128,6 +129,7 @@ TablePro is keyboard-driven. Most actions have shortcuts, and most menu shortcut
 | Undo change | `Cmd+Z` |
 | Redo change | `Cmd+Shift+Z` |
 | Commit all changes | `Cmd+S` |
+| Create table from the Create Table tab | `Cmd+S` or `Cmd+Return` |
 | Preview SQL | `Cmd+Shift+P` | Preview pending SQL before commit |
 
 ### Selection
@@ -298,16 +300,18 @@ These shortcuts only apply when the table structure view is focused. They overri
 
 ## Quick switcher
 
-The Quick Switcher (`Cmd+Shift+O`) lets you search and jump to any table, view, database, schema, or recent query. It uses fuzzy matching, so typing `usr` finds `users`, `user_settings`, etc.
+The Quick Switcher (`Cmd+Shift+O`) opens a floating panel to search and jump to any table, view, database, schema, saved query, or recent query. It uses fuzzy matching, so typing `usr` finds `users`, `user_settings`, etc. Matched characters are highlighted in each result.
 
 | Action | Shortcut |
 |--------|----------|
 | Open Quick Switcher | `Cmd+Shift+O` |
 | Navigate results | `Up` / `Down` arrows |
 | Open selected item | `Return` |
+| Open in a new tab | `Option+Return` |
+| Switch scope (All, Tables, Databases, Queries) | `Cmd+1` to `Cmd+4` |
 | Dismiss | `Escape` |
 
-Results are grouped by type (tables, views, system tables, databases, schemas, recent queries) and ranked by match quality when searching.
+Results are grouped by type (tables, views, system tables, databases, schemas, saved queries, recent queries) and ranked by match quality, how often you open each item, and how recently. Tables already open in a tab show an `Open` badge and rank higher; selecting one switches to the existing tab instead of opening a duplicate. Right-click a result for more actions: open the table structure, copy the name, or copy the query.
 
 ## Global Shortcuts
 

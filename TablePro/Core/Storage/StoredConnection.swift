@@ -15,7 +15,6 @@ struct StoredConnection: Codable {
     let username: String
     let type: String
 
-    // SSH Configuration
     let sshEnabled: Bool
     let sshHost: String
     let sshPort: Int?
@@ -24,45 +23,38 @@ struct StoredConnection: Codable {
     let sshPrivateKeyPath: String
     let sshAgentSocketPath: String
 
-    // SSL Configuration
     let sslMode: String
     let sslCaCertificatePath: String
     let sslClientCertificatePath: String
     let sslClientKeyPath: String
 
-    // Color, Tag, and Group
     let color: String
     let tagId: String?
+    let tagIds: [String]?
     let groupId: String?
     let sshProfileId: String?
 
-    // Safe mode level
     let safeModeLevel: String
 
-    // AI policy
+    let externalAccess: String
+
     let aiPolicy: String?
 
     // AI rules text included in the system prompt for this connection
     let aiRules: String?
 
-    // AI tools whitelisted for this connection
     let aiAlwaysAllowedTools: [String]?
 
-    // MongoDB-specific
     let mongoAuthSource: String?
     let mongoReadPreference: String?
     let mongoWriteConcern: String?
 
-    // Redis-specific
     let redisDatabase: Int?
 
-    // MSSQL schema
     let mssqlSchema: String?
 
-    // Oracle service name
     let oracleServiceName: String?
 
-    // Startup commands
     let startupCommands: String?
 
     // Sort order for sync
@@ -75,7 +67,6 @@ struct StoredConnection: Codable {
 
     let isFavorite: Bool
 
-    // TOTP configuration
     let totpMode: String
     let totpAlgorithm: String
     let totpDigits: Int
@@ -102,7 +93,6 @@ struct StoredConnection: Codable {
         self.username = connection.username
         self.type = connection.type.rawValue
 
-        // SSH Configuration
         self.sshEnabled = connection.sshConfig.enabled
         self.sshHost = connection.sshConfig.host
         self.sshPort = connection.sshConfig.port
@@ -111,61 +101,50 @@ struct StoredConnection: Codable {
         self.sshPrivateKeyPath = connection.sshConfig.privateKeyPath
         self.sshAgentSocketPath = connection.sshConfig.agentSocketPath
 
-        // TOTP configuration
         self.totpMode = connection.sshConfig.totpMode.rawValue
         self.totpAlgorithm = connection.sshConfig.totpAlgorithm.rawValue
         self.totpDigits = connection.sshConfig.totpDigits
         self.totpPeriod = connection.sshConfig.totpPeriod
 
-        // SSL Configuration
         self.sslMode = connection.sslConfig.mode.rawValue
         self.sslCaCertificatePath = connection.sslConfig.caCertificatePath
         self.sslClientCertificatePath = connection.sslConfig.clientCertificatePath
         self.sslClientKeyPath = connection.sslConfig.clientKeyPath
 
-        // Color, Tag, and Group
         self.color = connection.color.rawValue
-        self.tagId = connection.tagId?.uuidString
+        self.tagId = connection.tagIds.first?.uuidString
+        self.tagIds = connection.tagIds.isEmpty ? nil : connection.tagIds.map { $0.uuidString }
         self.groupId = connection.groupId?.uuidString
         self.sshProfileId = connection.sshProfileId?.uuidString
 
-        // Safe mode level
         self.safeModeLevel = connection.safeModeLevel.rawValue
 
-        // AI policy
+        self.externalAccess = connection.externalAccess.rawValue
+
         self.aiPolicy = connection.aiPolicy?.rawValue
         self.aiRules = connection.aiRules
         self.aiAlwaysAllowedTools = connection.aiAlwaysAllowedTools.isEmpty
             ? nil
             : Array(connection.aiAlwaysAllowedTools).sorted()
 
-        // MongoDB-specific
         self.mongoAuthSource = connection.mongoAuthSource
         self.mongoReadPreference = connection.mongoReadPreference
         self.mongoWriteConcern = connection.mongoWriteConcern
 
-        // Redis-specific
         self.redisDatabase = connection.redisDatabase
 
-        // MSSQL schema
         self.mssqlSchema = connection.mssqlSchema
 
-        // Oracle service name
         self.oracleServiceName = connection.oracleServiceName
 
-        // Startup commands
         self.startupCommands = connection.startupCommands
 
-        // Sort order
         self.sortOrder = connection.sortOrder
 
-        // Local-only
         self.localOnly = connection.localOnly
 
-        // Sample marker
         self.isSample = connection.isSample
 
-        // Favorite flag
         self.isFavorite = connection.isFavorite
 
         // SSH tunnel mode (v2 format preserving jump hosts, profiles, etc.)
@@ -176,7 +155,6 @@ struct StoredConnection: Codable {
             ? (try? JSONEncoder().encode(connection.cloudflareTunnelMode))
             : nil
 
-        // Plugin-driven additional fields
         self.additionalFields = connection.additionalFields.isEmpty ? nil : connection.additionalFields
 
         // Password source (not synced to iCloud; see SyncRecordMapper)
@@ -189,8 +167,9 @@ struct StoredConnection: Codable {
         case sshAgentSocketPath
         case totpMode, totpAlgorithm, totpDigits, totpPeriod
         case sslMode, sslCaCertificatePath, sslClientCertificatePath, sslClientKeyPath
-        case color, tagId, groupId, sshProfileId
+        case color, tagId, tagIds, groupId, sshProfileId
         case safeModeLevel
+        case externalAccess
         case isReadOnly // Legacy key for migration reading only
         case aiPolicy
         case aiRules
@@ -232,9 +211,11 @@ struct StoredConnection: Codable {
         try container.encode(sslClientKeyPath, forKey: .sslClientKeyPath)
         try container.encode(color, forKey: .color)
         try container.encodeIfPresent(tagId, forKey: .tagId)
+        try container.encodeIfPresent(tagIds, forKey: .tagIds)
         try container.encodeIfPresent(groupId, forKey: .groupId)
         try container.encodeIfPresent(sshProfileId, forKey: .sshProfileId)
         try container.encode(safeModeLevel, forKey: .safeModeLevel)
+        try container.encode(externalAccess, forKey: .externalAccess)
         try container.encodeIfPresent(aiPolicy, forKey: .aiPolicy)
         try container.encodeIfPresent(aiRules, forKey: .aiRules)
         try container.encodeIfPresent(aiAlwaysAllowedTools, forKey: .aiAlwaysAllowedTools)
@@ -291,6 +272,7 @@ struct StoredConnection: Codable {
         // Migration: use defaults if fields are missing
         color = try container.decodeIfPresent(String.self, forKey: .color) ?? ConnectionColor.none.rawValue
         tagId = try container.decodeIfPresent(String.self, forKey: .tagId)
+        tagIds = try container.decodeIfPresent([String].self, forKey: .tagIds)
         groupId = try container.decodeIfPresent(String.self, forKey: .groupId)
         sshProfileId = try container.decodeIfPresent(String.self, forKey: .sshProfileId)
         // Migration: read new safeModeLevel first, fall back to old isReadOnly boolean
@@ -300,6 +282,9 @@ struct StoredConnection: Codable {
             let wasReadOnly = try container.decodeIfPresent(Bool.self, forKey: .isReadOnly) ?? false
             safeModeLevel = wasReadOnly ? SafeModeLevel.readOnly.rawValue : SafeModeLevel.silent.rawValue
         }
+        externalAccess = try container.decodeIfPresent(
+            String.self, forKey: .externalAccess
+        ) ?? ExternalAccessLevel.readOnly.rawValue
         aiPolicy = try container.decodeIfPresent(String.self, forKey: .aiPolicy)
         aiRules = try container.decodeIfPresent(String.self, forKey: .aiRules)
         aiAlwaysAllowedTools = try container.decodeIfPresent([String].self, forKey: .aiAlwaysAllowedTools)
@@ -374,7 +359,14 @@ struct StoredConnection: Codable {
         )
 
         let parsedColor = ConnectionColor(rawValue: color) ?? .none
-        let parsedTagId = tagId.flatMap { UUID(uuidString: $0) }
+        let parsedTagIds: [UUID]
+        if let ids = tagIds, !ids.isEmpty {
+            parsedTagIds = ids.compactMap { UUID(uuidString: $0) }
+        } else if let single = tagId.flatMap({ UUID(uuidString: $0) }) {
+            parsedTagIds = [single]
+        } else {
+            parsedTagIds = []
+        }
         let parsedGroupId = groupId.flatMap { UUID(uuidString: $0) }
         let parsedSSHProfileId = sshProfileId.flatMap { UUID(uuidString: $0) }
         let parsedAIPolicy = aiPolicy.flatMap { AIConnectionPolicy(rawValue: $0) }
@@ -407,7 +399,7 @@ struct StoredConnection: Codable {
             sshConfig: sshConfig,
             sslConfig: sslConfig,
             color: parsedColor,
-            tagId: parsedTagId,
+            tagIds: parsedTagIds,
             groupId: parsedGroupId,
             sshProfileId: parsedSSHProfileId,
             sshTunnelMode: resolvedTunnelMode,
@@ -416,6 +408,7 @@ struct StoredConnection: Codable {
             aiPolicy: parsedAIPolicy,
             aiRules: aiRules,
             aiAlwaysAllowedTools: Set(aiAlwaysAllowedTools ?? []),
+            externalAccess: ExternalAccessLevel(rawValue: externalAccess) ?? .readOnly,
             redisDatabase: redisDatabase,
             startupCommands: startupCommands,
             sortOrder: sortOrder,

@@ -11,6 +11,7 @@ import TableProPluginKit
 
 final class LibPQDriverCore: @unchecked Sendable {
     private let config: DriverConnectionConfig
+    private let schemaFallbackQueries: [String]
     private var libpqConnection: LibPQPluginConnection?
 
     var currentSchema: String = "public"
@@ -21,8 +22,12 @@ final class LibPQDriverCore: @unchecked Sendable {
     var serverVersion: String? { libpqConnection?.serverVersion() }
     var serverVersionNumber: Int32 { libpqConnection?.serverVersionNumber() ?? 0 }
 
-    init(config: DriverConnectionConfig) {
+    init(
+        config: DriverConnectionConfig,
+        schemaFallbackQueries: [String] = PostgreSQLSchemaQueries.schemaFallbackQueries
+    ) {
         self.config = config
+        self.schemaFallbackQueries = schemaFallbackQueries
     }
 
     // MARK: - Connection
@@ -41,9 +46,16 @@ final class LibPQDriverCore: @unchecked Sendable {
         try await pqConn.connect()
         libpqConnection = pqConn
 
-        if let schemaResult = try? await pqConn.executeQuery("SELECT current_schema()"),
-           let schema = schemaResult.rows.first?.first?.asText {
+        switch await probeSchema(pqConn, query: PostgreSQLSchemaQueries.currentSchema) {
+        case .schema(let schema):
             currentSchema = schema
+        case .empty:
+            if let fallback = await firstFallbackSchema(pqConn) {
+                currentSchema = fallback
+                _ = try? await pqConn.executeQuery(PostgreSQLSchemaQueries.setSearchPath(toSchema: fallback))
+            }
+        case .failed:
+            break
         }
 
         if let selectedSchema,
@@ -52,6 +64,20 @@ final class LibPQDriverCore: @unchecked Sendable {
         }
 
         await onPostConnect?()
+    }
+
+    private func firstFallbackSchema(_ pqConn: LibPQPluginConnection) async -> String? {
+        for query in schemaFallbackQueries {
+            if case .schema(let schema) = await probeSchema(pqConn, query: query) {
+                return schema
+            }
+        }
+        return nil
+    }
+
+    private func probeSchema(_ pqConn: LibPQPluginConnection, query: String) async -> PostgreSQLSchemaProbe {
+        let result = try? await pqConn.executeQuery(query)
+        return PostgreSQLSchemaQueries.probe(rows: result?.rows)
     }
 
     func applySchema(_ schema: String) async throws {
@@ -203,9 +229,5 @@ extension LibPQBackedDriver {
 
     func escapeLiteral(_ str: String) -> String {
         escapeStringLiteral(str)
-    }
-
-    var escapedSchema: String {
-        escapeLiteral(core.currentSchema)
     }
 }

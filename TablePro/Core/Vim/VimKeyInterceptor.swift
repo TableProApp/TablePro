@@ -166,7 +166,6 @@ final class VimKeyInterceptor {
             return event // Pass through other Ctrl combinations
         }
 
-        // Translate NSEvent to Character
         guard let characters = event.characters, let char = characters.first else {
             return event
         }
@@ -188,7 +187,6 @@ final class VimKeyInterceptor {
             closeSuggestionPopup()
         }
 
-        // Feed to Vim engine
         let shift = modifiers.contains(.shift)
         let consumed = engine.process(char, shift: shift)
 

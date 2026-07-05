@@ -32,6 +32,7 @@ final class AppSettingsStorage {
         static let sync = "com.TablePro.settings.sync"
         static let mcp = "com.TablePro.settings.mcp"
         static let hasCompletedOnboarding = "com.TablePro.settings.hasCompletedOnboarding"
+        static let startupReopenMigration = "com.TablePro.settings.didMigrateStartupToReopenLast"
     }
 
     init(userDefaults: UserDefaults = .standard) {
@@ -46,6 +47,17 @@ final class AppSettingsStorage {
 
     func saveGeneral(_ settings: GeneralSettings) {
         save(settings, key: Keys.general)
+    }
+
+    func migrateStartupBehaviorToReopenLastIfNeeded() {
+        guard !defaults.bool(forKey: Keys.startupReopenMigration) else { return }
+        defaults.set(true, forKey: Keys.startupReopenMigration)
+
+        guard defaults.data(forKey: Keys.general) != nil else { return }
+        var general = loadGeneral()
+        guard general.startupBehavior == .showWelcome else { return }
+        general.startupBehavior = .reopenLast
+        saveGeneral(general)
     }
 
     // MARK: - Appearance Settings

@@ -27,16 +27,18 @@ struct TableStructureView: View {
     @State var columns: [ColumnInfo] = []
     @State var indexes: [IndexInfo] = []
     @State var foreignKeys: [ForeignKeyInfo] = []
+    @State var triggers: [TriggerInfo] = []
     @State var ddlStatement: String = ""
-    @State var ddlFontSize: CGFloat = 13
+    @AppStorage("structureCodeFontSize") var ddlFontSize: Double = 13
     @State var showCopyConfirmation = false
     @State var copyResetTask: Task<Void, Never>?
     @State var isLoading = true
     @State var isInitialLoading = true
     @State var errorMessage: String?
     @State var loadedTabs: Set<StructureTab> = []
+    @State var partsReloadToken = 0
     @State var isReloadingAfterSave = false  // Prevent onChange loops during save reload
-    @State var lastSaveTime: Date?  // Track when we last saved
+    @State var lastSaveTime: Date?
     @AppStorage("skipSchemaPreview") var skipSchemaPreview = false
 
     // Search and sort state
@@ -126,6 +128,7 @@ struct TableStructureView: View {
             actionHandler.redo = { self.gridDelegate.dataGridRedo() }
             actionHandler.addRow = { self.gridDelegate.dataGridAddRow() }
             actionHandler.removeRow = { self.gridDelegate.dataGridDeleteRows(self.selectedRows) }
+            actionHandler.refresh = { self.onRefreshData() }
             coordinator?.structureActions = actionHandler
             publishFooterState()
         }
@@ -148,7 +151,10 @@ struct TableStructureView: View {
             // manager but the grid never displays it.
             displayVersion += 1
         }
-        .onReceive(AppCommands.shared.refreshData) { _ in onRefreshData() }
+        .onReceive(AppCommands.shared.refreshData) { changedConnectionId in
+            guard changedConnectionId == connection.id else { return }
+            onRefreshData()
+        }
     }
 
     // MARK: - Toolbar
@@ -160,6 +166,9 @@ struct TableStructureView: View {
         }
         if connection.type != .clickhouse {
             tabs = tabs.filter { $0 != .parts }
+        }
+        if !connection.type.supportsTriggers {
+            tabs = tabs.filter { $0 != .triggers }
         }
         return tabs
     }
@@ -204,7 +213,7 @@ struct TableStructureView: View {
         case .columns: return connection.type.supportsAddColumn
         case .indexes: return connection.type.supportsAddIndex
         case .foreignKeys: return connection.type.supportsForeignKeys
-        case .ddl, .parts: return false
+        case .ddl, .parts, .triggers: return false
         }
     }
 
@@ -214,7 +223,7 @@ struct TableStructureView: View {
         case .columns: return connection.type.supportsDropColumn
         case .indexes: return connection.type.supportsDropIndex
         case .foreignKeys: return connection.type.supportsForeignKeys
-        case .ddl, .parts: return false
+        case .ddl, .parts, .triggers: return false
         }
     }
 
@@ -226,7 +235,7 @@ struct TableStructureView: View {
             return (String(localized: "Add Index"), String(localized: "Remove Index"))
         case .foreignKeys:
             return (String(localized: "Add Foreign Key"), String(localized: "Remove Foreign Key"))
-        case .ddl, .parts:
+        case .ddl, .parts, .triggers:
             return nil
         }
     }
@@ -242,6 +251,8 @@ struct TableStructureView: View {
             count = loadedTabs.contains(.indexes) ? indexes.count : nil
         case .foreignKeys:
             count = loadedTabs.contains(.foreignKeys) ? foreignKeys.count : nil
+        case .triggers:
+            count = loadedTabs.contains(.triggers) ? triggers.count : nil
         case .ddl, .parts:
             count = nil
         }
@@ -280,10 +291,22 @@ struct TableStructureView: View {
             } else {
                 structureGrid
             }
+        case .triggers:
+            TriggerDetailView(
+                triggers: triggers,
+                connection: connection,
+                tableName: tableName,
+                isLoading: !loadedTabs.contains(.triggers),
+                onOpenInEditor: openTriggerInEditor
+            )
         case .ddl:
             ddlView
         case .parts:
-            ClickHousePartsView(tableName: tableName, connectionId: connection.id)
+            ClickHousePartsView(
+                tableName: tableName,
+                connectionId: connection.id,
+                reloadToken: partsReloadToken
+            )
         }
     }
 
@@ -358,7 +381,7 @@ struct TableStructureView: View {
                         loadSchemaForEditing()
                         isReloadingAfterSave = false
                         columnLayoutPersister.clear(for: tableName, connectionId: connection.id)
-                        AppCommands.shared.refreshData.send(nil)
+                        AppCommands.shared.refreshData.send(connection.id)
                     } catch {
                         AlertHelper.showErrorSheet(
                             title: String(localized: "Column Reorder Failed"),

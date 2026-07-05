@@ -127,15 +127,15 @@ internal enum DynamoDBError: Error, LocalizedError {
         case .notConnected:
             return String(localized: "Not connected to DynamoDB")
         case .connectionFailed(let detail):
-            return String(localized: "Connection failed: \(detail)")
+            return String(format: String(localized: "Connection failed: %@"), detail)
         case .serverError(let detail):
-            return String(localized: "DynamoDB error: \(detail)")
+            return String(format: String(localized: "DynamoDB error: %@"), detail)
         case .authFailed(let detail):
-            return String(localized: "Authentication failed: \(detail)")
+            return String(format: String(localized: "Authentication failed: %@"), detail)
         case .requestCancelled:
             return String(localized: "Request was cancelled")
         case .invalidResponse(let detail):
-            return String(localized: "Invalid response: \(detail)")
+            return String(format: String(localized: "Invalid response: %@"), detail)
         }
     }
 }

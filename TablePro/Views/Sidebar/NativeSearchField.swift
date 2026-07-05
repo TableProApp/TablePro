@@ -61,6 +61,7 @@ struct NativeSearchField: NSViewRepresentable {
     var focusOnAppear: Bool = false
     var focusTrigger: Int = 0
     var maxWidth: CGFloat?
+    var accessibilityIdentifier: String = "sidebar-filter"
 
     func makeNSView(context: Context) -> NSSearchField {
         let field = IntrinsicHeightSearchField()
@@ -68,7 +69,7 @@ struct NativeSearchField: NSViewRepresentable {
         field.delegate = context.coordinator
         field.controlSize = controlSize
         field.sendsSearchStringImmediately = true
-        field.setAccessibilityIdentifier("sidebar-filter")
+        field.setAccessibilityIdentifier(accessibilityIdentifier)
         field.cell?.usesSingleLineMode = true
         if let maxWidth {
             field.preferredMaxLayoutWidth = maxWidth

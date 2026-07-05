@@ -59,13 +59,13 @@ public enum MongoShellParseError: Error, LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .invalidSyntax(let msg):
-            return String(localized: "Invalid MongoDB syntax: \(msg)")
+            return String(format: String(localized: "Invalid MongoDB syntax: %@"), msg)
         case .unsupportedMethod(let method):
-            return String(localized: "Unsupported MongoDB method: \(method)")
+            return String(format: String(localized: "Unsupported MongoDB method: %@"), method)
         case .invalidJson(let msg):
-            return String(localized: "Invalid JSON: \(msg)")
+            return String(format: String(localized: "Invalid JSON: %@"), msg)
         case .missingArgument(let msg):
-            return String(localized: "Missing argument: \(msg)")
+            return String(format: String(localized: "Missing argument: %@"), msg)
         }
     }
 }

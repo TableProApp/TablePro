@@ -31,7 +31,7 @@ extension MainContentCoordinator {
 
         let currentDatabase = activeDatabaseName
 
-        let targetSchema = fkInfo.referencedSchema ?? DatabaseManager.shared.session(for: connectionId)?.currentSchema
+        let targetSchema = DatabaseManager.shared.resolvedSchemaName(fkInfo.referencedSchema, for: connectionId)
 
         if !openInNewTab,
            let current = tabManager.selectedTab,
@@ -84,7 +84,7 @@ extension MainContentCoordinator {
             let tableRows = tabSessionRegistry.tableRows(for: tab.id)
             let filteredQuery = queryBuilder.buildFilteredQuery(
                 tableName: referencedTable,
-                schemaName: fkInfo.referencedSchema,
+                schemaName: targetSchema,
                 filters: [filter],
                 columns: tableRows.columns,
                 limit: tab.pagination.pageSize,

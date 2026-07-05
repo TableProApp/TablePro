@@ -1,6 +1,8 @@
 import SwiftUI
+import TableProImport
 import TableProModels
 import TableProSync
+import UniformTypeIdentifiers
 
 struct ConnectionListView: View {
     @Environment(AppState.self) private var appState
@@ -18,6 +20,10 @@ struct ConnectionListView: View {
     @State private var connectionToDelete: DatabaseConnection?
     @State private var showingSettings = false
     @State private var coordinatorCache: [UUID: ConnectionCoordinator] = [:]
+    @State private var showingFileImporter = false
+    @State private var importItem: IdentifiableURL?
+    @State private var showingExport = false
+    @State private var importResultCount: Int?
 
     private var showDeleteConfirmation: Binding<Bool> {
         Binding(
@@ -67,6 +73,7 @@ struct ConnectionListView: View {
                 .navigationTitle("Connections")
                 .toolbar {
                     ToolbarItemGroup(placement: .topBarTrailing) {
+                        moreMenu
                         filterMenu
                         if filterTagId == nil && !appState.connections.isEmpty {
                             Button(editMode == .active ? "Done" : "Edit") {
@@ -167,6 +174,72 @@ struct ConnectionListView: View {
                     }
             }
         }
+        .fileImporter(
+            isPresented: $showingFileImporter,
+            allowedContentTypes: [.tableproConnectionShare],
+            allowsMultipleSelection: false
+        ) { result in
+            if case .success(let urls) = result, let url = urls.first {
+                importItem = IdentifiableURL(url: url)
+            }
+        }
+        .sheet(item: $importItem) { item in
+            MobileConnectionImportSheet(fileURL: item.url) { count in
+                importResultCount = count
+            }
+            .environment(appState)
+        }
+        .sheet(isPresented: $showingExport) {
+            MobileConnectionExportSheet(connections: appState.connections)
+                .environment(appState)
+        }
+        .onChange(of: appState.pendingImportURL) { _, url in
+            guard let url else { return }
+            importItem = IdentifiableURL(url: url)
+            appState.pendingImportURL = nil
+        }
+        .onAppear {
+            if let url = appState.pendingImportURL {
+                importItem = IdentifiableURL(url: url)
+                appState.pendingImportURL = nil
+            }
+        }
+        .alert(importResultMessage, isPresented: importResultPresented) {
+            Button(String(localized: "OK")) { importResultCount = nil }
+        }
+    }
+
+    private var moreMenu: some View {
+        Menu {
+            Button {
+                showingFileImporter = true
+            } label: {
+                Label("Import Connections", systemImage: "square.and.arrow.down")
+            }
+            Button {
+                showingExport = true
+            } label: {
+                Label("Export Connections", systemImage: "square.and.arrow.up")
+            }
+            .disabled(appState.connections.isEmpty)
+        } label: {
+            Image(systemName: "ellipsis.circle")
+        }
+        .accessibilityLabel(Text("More"))
+    }
+
+    private var importResultPresented: Binding<Bool> {
+        Binding(
+            get: { importResultCount != nil },
+            set: { if !$0 { importResultCount = nil } }
+        )
+    }
+
+    private var importResultMessage: String {
+        let count = importResultCount ?? 0
+        return count == 1
+            ? String(localized: "1 connection imported.")
+            : String(format: String(localized: "%d connections imported."), count)
     }
 
     @ViewBuilder

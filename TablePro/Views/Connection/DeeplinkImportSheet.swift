@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import TableProImport
 
 struct DeeplinkImportSheet: View {
     let connection: ExportableConnection

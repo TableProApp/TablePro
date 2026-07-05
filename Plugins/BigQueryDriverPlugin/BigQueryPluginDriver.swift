@@ -208,12 +208,10 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
             )
         }
 
-        // Tagged browsing queries
         if BigQueryQueryBuilder.isTaggedQuery(trimmed) {
             return try await executeTaggedQuery(trimmed, conn: conn, startTime: startTime)
         }
 
-        // Regular GoogleSQL
         let dataset = lock.withLock { _currentDataset }
         let result: BQExecuteResult
         do {
@@ -871,7 +869,6 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
         let typeNames = BigQueryTypeMapper.columnTypeNames(from: schema)
         let rows = BigQueryTypeMapper.flattenRows(from: result.queryResponse, schema: schema)
 
-        // Update column cache
         lock.withLock { _columnCache["\(params.dataset).\(params.table)"] = colNames }
 
         return PluginQueryResult(

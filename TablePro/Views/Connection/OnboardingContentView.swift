@@ -24,7 +24,6 @@ struct OnboardingContentView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Main content area
             ZStack {
                 switch currentPage {
                 case 0:
@@ -40,7 +39,6 @@ struct OnboardingContentView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-            // Bottom navigation bar
             navigationBar
         }
         .onKeyPress(.leftArrow) {

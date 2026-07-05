@@ -18,12 +18,10 @@ enum OllamaDetector {
         let settings = AppSettingsManager.shared.ai
         guard settings.enabled else { return }
 
-        // Skip if an Ollama provider already exists
         if settings.providers.contains(where: { $0.type == .ollama }) {
             return
         }
 
-        // Try to fetch models from local Ollama
         guard let models = await fetchOllamaModels(), !models.isEmpty else {
             return
         }

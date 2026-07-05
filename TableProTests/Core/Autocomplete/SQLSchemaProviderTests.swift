@@ -12,10 +12,14 @@ import Testing
 
 // MARK: - Mock Driver
 
-final class MockDatabaseDriver: DatabaseDriver, @unchecked Sendable {
+final class MockDatabaseDriver: DatabaseDriver, SchemaSwitchable, @unchecked Sendable {
     let connection: DatabaseConnection
     var status: ConnectionStatus = .connected
     var serverVersion: String? { nil }
+
+    var currentSchema: String?
+    var escapedSchema: String?
+    var switchSchemaCallCount = 0
 
     var tablesToReturn: [TableInfo] = []
     var schemaTablesToReturn: [String: [TableInfo]] = [:]
@@ -23,17 +27,45 @@ final class MockDatabaseDriver: DatabaseDriver, @unchecked Sendable {
     var fetchColumnsCallCount = 0
     var fetchColumnsCalls: [String] = []
     var fetchSchemaTablesCalls: [String] = []
+    var applyQueryTimeoutValues: [Int] = []
+    var cancelQueryCallCount = 0
+    var connectDelaySeconds: Double = 0
+    var switchSchemaDelaySeconds: Double = 0
+    var hangsUntilDisconnect = false
+    var schemasToReturn: [String] = []
+    var fetchSchemasError: Error?
+    private var hangContinuation: CheckedContinuation<Void, Never>?
 
     init(connection: DatabaseConnection = TestFixtures.makeConnection()) {
         self.connection = connection
     }
 
-    func connect() async throws {}
-    func disconnect() {}
+    func connect() async throws {
+        if hangsUntilDisconnect {
+            await withCheckedContinuation { hangContinuation = $0 }
+            throw DatabaseError.notConnected
+        }
+        guard connectDelaySeconds > 0 else { return }
+        try await Task.sleep(nanoseconds: UInt64(connectDelaySeconds * 1_000_000_000))
+    }
+
+    func disconnect() {
+        hangContinuation?.resume()
+        hangContinuation = nil
+    }
+
+    func fetchSchemas() async throws -> [String] {
+        if let fetchSchemasError {
+            throw fetchSchemasError
+        }
+        return schemasToReturn
+    }
 
     func testConnection() async throws -> Bool { true }
 
-    func applyQueryTimeout(_ seconds: Int) async throws {}
+    func applyQueryTimeout(_ seconds: Int) async throws {
+        applyQueryTimeoutValues.append(seconds)
+    }
 
     func execute(query: String) async throws -> QueryResult {
         QueryResult(columns: [], columnTypes: [], rows: [], rowsAffected: 0, executionTime: 0, error: nil)
@@ -91,10 +123,18 @@ final class MockDatabaseDriver: DatabaseDriver, @unchecked Sendable {
     }
 
     func createDatabase(name: String, charset: String, collation: String?) async throws {}
-    func cancelQuery() throws {}
+    func cancelQuery() throws { cancelQueryCallCount += 1 }
     func beginTransaction() async throws {}
     func commitTransaction() async throws {}
     func rollbackTransaction() async throws {}
+
+    func switchSchema(to schema: String) async throws {
+        if switchSchemaDelaySeconds > 0 {
+            try await Task.sleep(nanoseconds: UInt64(switchSchemaDelaySeconds * 1_000_000_000))
+        }
+        switchSchemaCallCount += 1
+        currentSchema = schema
+    }
 }
 
 // MARK: - Tests

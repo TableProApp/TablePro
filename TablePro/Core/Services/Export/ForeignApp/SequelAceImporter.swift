@@ -5,6 +5,7 @@
 
 import Foundation
 import os
+import TableProImport
 
 struct SequelAceImporter: ForeignAppImporter {
     private static let logger = Logger(subsystem: "com.TablePro", category: "SequelAceImporter")

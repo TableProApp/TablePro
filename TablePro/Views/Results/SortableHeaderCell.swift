@@ -10,11 +10,16 @@ final class SortableHeaderCell: NSTableHeaderCell {
     var sortDirection: SortDirection?
     var sortPriority: Int?
     var isColumnSelected: Bool = false
+    var isValueFiltered: Bool = false
+    var isFunnelVisible: Bool = false
+    var supportsValueFilter: Bool = true
 
     private static let indicatorPadding: CGFloat = 4
     private static let indicatorSpacing: CGFloat = 2
     private static let priorityFontSize: CGFloat = 9
     private static let defaultIndicatorSize = NSSize(width: 9, height: 6)
+    private static let funnelSize = NSSize(width: 13, height: 13)
+    private static let funnelPointSize: CGFloat = 11
 
     override init(textCell string: String) {
         super.init(textCell: string)
@@ -43,11 +48,31 @@ final class SortableHeaderCell: NSTableHeaderCell {
             color: foreground
         )
 
+        var trailingCursorX = cellFrame.maxX - Self.indicatorPadding
+
+        if supportsValueFilter {
+            if isValueFiltered || isFunnelVisible {
+                let funnelImage = Self.funnelImage(
+                    active: isValueFiltered,
+                    color: funnelColor(active: isValueFiltered, emphasized: isColumnSelected)
+                )
+                let drawSize = funnelImage?.size ?? Self.funnelSize
+                let funnelRect = NSRect(
+                    x: trailingCursorX - drawSize.width,
+                    y: cellFrame.midY - drawSize.height / 2,
+                    width: drawSize.width,
+                    height: drawSize.height
+                )
+                Self.drawIndicator(image: funnelImage, in: funnelRect)
+            }
+            trailingCursorX -= Self.funnelSize.width + Self.indicatorSpacing
+        }
+
         guard let direction = sortDirection else { return }
 
         let indicatorImage = Self.indicatorImage(for: direction, color: foreground)
         let indicatorSize = indicatorImage?.size ?? Self.defaultIndicatorSize
-        let indicatorOriginX = cellFrame.maxX - Self.indicatorPadding - indicatorSize.width
+        let indicatorOriginX = trailingCursorX - indicatorSize.width
         let indicatorOriginY = cellFrame.midY - indicatorSize.height / 2
         let indicatorRect = NSRect(
             x: indicatorOriginX,
@@ -70,6 +95,17 @@ final class SortableHeaderCell: NSTableHeaderCell {
         }
     }
 
+    func funnelRect(forBounds rect: NSRect) -> NSRect {
+        guard supportsValueFilter else { return .null }
+        let size = Self.funnelSize
+        return NSRect(
+            x: rect.maxX - Self.indicatorPadding - size.width,
+            y: rect.midY - size.height / 2,
+            width: size.width,
+            height: size.height
+        )
+    }
+
     override func titleRect(forBounds rect: NSRect) -> NSRect {
         let inset = min(DataGridMetrics.cellHorizontalInset, rect.width / 2)
         let availableWidth = max(0, rect.width - inset * 2 - reservedTrailingWidth())
@@ -82,12 +118,32 @@ final class SortableHeaderCell: NSTableHeaderCell {
     }
 
     private func reservedTrailingWidth() -> CGFloat {
-        guard let direction = sortDirection else { return 0 }
-        let indicatorWidth = Self.indicatorImage(for: direction, color: .secondaryLabelColor)?.size.width
-            ?? Self.defaultIndicatorSize.width
-        let priorityText = priorityNumberString()
-        let priorityComponent = priorityText.map { Self.measureWidth(of: $0, color: .secondaryLabelColor) + Self.indicatorSpacing } ?? 0
-        return indicatorWidth + Self.indicatorPadding * 2 + priorityComponent
+        var width: CGFloat = 0
+        if supportsValueFilter {
+            width += Self.funnelSize.width + Self.indicatorSpacing
+        }
+        if let direction = sortDirection {
+            width += Self.indicatorImage(for: direction, color: .secondaryLabelColor)?.size.width
+                ?? Self.defaultIndicatorSize.width
+            if let priorityText = priorityNumberString() {
+                width += Self.measureWidth(of: priorityText, color: .secondaryLabelColor) + Self.indicatorSpacing
+            }
+        }
+        guard width > 0 else { return 0 }
+        return width + Self.indicatorPadding * 2
+    }
+
+    private func funnelColor(active: Bool, emphasized: Bool) -> NSColor {
+        if emphasized { return .alternateSelectedControlTextColor }
+        return active ? .controlAccentColor : .secondaryLabelColor
+    }
+
+    private static func funnelImage(active: Bool, color: NSColor) -> NSImage? {
+        let symbolName = active ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle"
+        let configuration = NSImage.SymbolConfiguration(pointSize: funnelPointSize, weight: .regular)
+            .applying(.init(hierarchicalColor: color))
+        return NSImage(systemSymbolName: symbolName, accessibilityDescription: nil)?
+            .withSymbolConfiguration(configuration)
     }
 
     private func titleFont(isSorted: Bool) -> NSFont {
@@ -130,20 +186,22 @@ final class SortableHeaderCell: NSTableHeaderCell {
     ) {}
 
     override func accessibilityLabel() -> String? {
-        let baseLabel = super.accessibilityLabel() ?? stringValue
-        guard let direction = sortDirection else { return baseLabel }
-        let directionSuffix: String
-        switch direction {
-        case .ascending:
-            directionSuffix = String(localized: "Sorted ascending")
-        case .descending:
-            directionSuffix = String(localized: "Sorted descending")
+        var components = [super.accessibilityLabel() ?? stringValue]
+        if let direction = sortDirection {
+            switch direction {
+            case .ascending:
+                components.append(String(localized: "Sorted ascending"))
+            case .descending:
+                components.append(String(localized: "Sorted descending"))
+            }
+            if let sortPriority, sortPriority >= 2 {
+                components.append(String(format: String(localized: "Priority %d"), sortPriority))
+            }
         }
-        guard let sortPriority, sortPriority >= 2 else {
-            return "\(baseLabel), \(directionSuffix)"
+        if isValueFiltered {
+            components.append(String(localized: "Filtered"))
         }
-        let prioritySuffix = String(format: String(localized: "Priority %d"), sortPriority)
-        return "\(baseLabel), \(directionSuffix), \(prioritySuffix)"
+        return components.joined(separator: ", ")
     }
 
     private func priorityNumberString() -> String? {

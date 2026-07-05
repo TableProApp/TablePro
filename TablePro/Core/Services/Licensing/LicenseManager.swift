@@ -126,13 +126,10 @@ final class LicenseManager {
         )
 
         do {
-            // Call server
             let signedPayload = try await apiClient.activate(request: request)
 
-            // Verify signature
             let payloadData = try verifier.verify(payload: signedPayload)
 
-            // Build and store license
             let newLicense = License.from(
                 payload: payloadData,
                 signedPayload: signedPayload,
@@ -221,7 +218,6 @@ final class LicenseManager {
             let signedPayload = try await apiClient.validate(request: request)
             let payloadData = try verifier.verify(payload: signedPayload)
 
-            // Update cached license with fresh data
             let updatedLicense = License.from(
                 payload: payloadData,
                 signedPayload: signedPayload,
@@ -238,7 +234,6 @@ final class LicenseManager {
             Self.logger.warning("Re-validation failed: \(error.localizedDescription)")
 
             if license.daysSinceLastValidation > gracePeriodDays {
-                // Grace period exceeded — mark as validation failed
                 self.status = .validationFailed
                 Self.logger.error("Grace period exceeded (\(license.daysSinceLastValidation) days)")
             }

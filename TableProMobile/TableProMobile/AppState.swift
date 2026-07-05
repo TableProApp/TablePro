@@ -30,6 +30,7 @@ final class AppState {
 
     var pendingConnectionId: UUID?
     var pendingTableName: String?
+    var pendingImportURL: URL?
     let connectionManager: ConnectionManager
     let syncCoordinator = IOSSyncCoordinator()
     let sshProvider: IOSSSHProvider
@@ -277,8 +278,8 @@ final class AppState {
         persist(tags: updatedTags)
 
         var updatedConnections = connections
-        for index in updatedConnections.indices where updatedConnections[index].tagId == tagId {
-            updatedConnections[index].tagId = nil
+        for index in updatedConnections.indices where updatedConnections[index].tagIds.contains(tagId) {
+            updatedConnections[index].tagIds.removeAll { $0 == tagId }
             syncCoordinator.markDirty(updatedConnections[index].id)
         }
         persist(connections: updatedConnections)
@@ -318,8 +319,6 @@ final class AppState {
                     id: conn.id,
                     name: conn.name.isEmpty ? conn.host : conn.name,
                     type: conn.type.rawValue,
-                    host: conn.host,
-                    port: conn.port,
                     sortOrder: conn.sortOrder
                 )
             }

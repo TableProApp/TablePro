@@ -116,6 +116,10 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
         status = .disconnected
     }
 
+    func ping() async throws {
+        try await pluginDriver.ping()
+    }
+
     func applyQueryTimeout(_ seconds: Int) async throws {
         try await pluginDriver.applyQueryTimeout(seconds)
     }
@@ -190,7 +194,8 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
             name: table.name,
             type: tableType,
             rowCount: table.rowCount,
-            schema: table.schema ?? schemaFallback
+            schema: table.schema ?? schemaFallback,
+            comment: table.comment
         )
     }
 
@@ -250,6 +255,35 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
             )
         }
     }
+
+    func fetchTriggers(table: String) async throws -> [TriggerInfo] {
+        let pluginTriggers = try await pluginDriver.fetchTriggers(table: table, schema: pluginDriver.currentSchema)
+        return pluginTriggers.map { trigger in
+            TriggerInfo(
+                name: trigger.name,
+                timing: trigger.timing,
+                event: trigger.event,
+                statement: trigger.statement,
+                enabled: trigger.enabled
+            )
+        }
+    }
+
+    func createTriggerTemplate(table: String) -> String? {
+        pluginDriver.createTriggerTemplate(table: table, schema: pluginDriver.currentSchema)
+    }
+
+    func fetchTriggerDefinition(name: String, table: String) async throws -> String? {
+        try await pluginDriver.fetchTriggerDefinition(name: name, table: table, schema: pluginDriver.currentSchema)
+    }
+
+    func generateDropTriggerSQL(name: String, table: String) -> String? {
+        pluginDriver.generateDropTriggerSQL(name: name, table: table, schema: pluginDriver.currentSchema)
+    }
+
+    var triggerEditUsesReplace: Bool { pluginDriver.triggerEditUsesReplace }
+
+    var supportsTransactionalDDL: Bool { pluginDriver.supportsTransactionalDDL }
 
     func fetchApproximateRowCount(table: String) async throws -> Int? {
         try await pluginDriver.fetchApproximateRowCount(table: table, schema: pluginDriver.currentSchema)
@@ -583,6 +617,12 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
 
     func buildExplainQuery(_ sql: String) -> String? {
         pluginDriver.buildExplainQuery(sql)
+    }
+
+    // MARK: - Row Limit Injection
+
+    func injectRowLimit(_ sql: String, limit: Int) -> String? {
+        pluginDriver.injectRowLimit(sql, limit: limit)
     }
 
     // MARK: - View Templates

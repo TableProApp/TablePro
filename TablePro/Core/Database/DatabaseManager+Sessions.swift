@@ -14,7 +14,11 @@ import TableProPluginKit
 // MARK: - Session Management
 
 extension DatabaseManager {
-    func connectToSession(_ requestedConnection: DatabaseConnection) async throws {
+    func connectToSession(
+        _ requestedConnection: DatabaseConnection,
+        passwordOverride incomingPasswordOverride: String? = nil,
+        sshPasswordOverride: String? = nil
+    ) async throws {
         let connection = resolvedConnectionDefinition(for: requestedConnection)
 
         if let existing = activeSessions[connection.id], existing.driver != nil {
@@ -40,7 +44,10 @@ extension DatabaseManager {
 
         let effectiveConnection: DatabaseConnection
         do {
-            effectiveConnection = try await buildEffectiveConnection(for: resolvedConnection)
+            effectiveConnection = try await buildEffectiveConnection(
+                for: resolvedConnection,
+                sshPasswordOverride: sshPasswordOverride
+            )
         } catch {
             finalizeConnectionFailure(for: connection.id, cancelled: Task.isCancelled)
             throw error
@@ -57,8 +64,8 @@ extension DatabaseManager {
             }
         }
 
-        var passwordOverride: String?
-        if connection.promptForPassword, !pluginManager.hidesPassword(for: connection) {
+        var passwordOverride: String? = incomingPasswordOverride
+        if passwordOverride == nil, connection.promptForPassword, !pluginManager.hidesPassword(for: connection) {
             if let cached = activeSessions[connection.id]?.cachedPassword {
                 passwordOverride = cached
             } else {
@@ -248,7 +255,7 @@ extension DatabaseManager {
 
     // MARK: - Database / Schema Switching
 
-    func switchDatabase(to database: String, for connectionId: UUID) async throws {
+    func switchDatabase(to database: String, for connectionId: UUID, persist: Bool = true) async throws {
         guard let driver = driver(for: connectionId) else {
             throw DatabaseError.notConnected
         }
@@ -278,7 +285,9 @@ extension DatabaseManager {
             }
         }
 
-        appSettingsStorage.saveLastDatabase(database, for: connectionId)
+        if persist {
+            appSettingsStorage.saveLastDatabase(database, for: connectionId)
+        }
     }
 
     func switchSchema(to schema: String, for connectionId: UUID) async throws {

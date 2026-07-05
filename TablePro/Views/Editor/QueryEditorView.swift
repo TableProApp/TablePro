@@ -12,19 +12,18 @@ import TableProPluginKit
 
 /// SQL query editor view with execute button
 struct QueryEditorView: View {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "QueryEditorView")
-
-
     @Binding var queryText: String
     @Binding var cursorPositions: [CursorPosition]
     @Binding var parameters: [QueryParameter]
     @Binding var isParameterPanelVisible: Bool
     var onExecute: () -> Void
+    var onExecuteWithoutLimit: (() -> Void)?
     var schemaProvider: SQLSchemaProvider?
     var databaseType: DatabaseType?
     var connectionId: UUID?
     var connectionAIPolicy: AIConnectionPolicy?
     var tabID: UUID?
+    var claimFocusOnAppear: Bool = false
     var onCloseTab: (() -> Void)?
     var onExecuteQuery: (() -> Void)?
     var onExplain: ((ClickHouseExplainVariant?) -> Void)?
@@ -33,6 +32,11 @@ struct QueryEditorView: View {
     var onAIOptimize: ((String) -> Void)?
     var onSaveAsFavorite: ((String) -> Void)?
     var onClearResults: (() -> Void)?
+    var availableContainers: [DatabaseMetadata] = []
+    var selectedContainerName: String = ""
+    var containerEntityName: String = ""
+    var isContainerSwitchReadOnly: Bool = false
+    var onContainerChanged: ((String) -> Void)?
 
     @State private var vimMode: VimMode = .normal
 
@@ -62,13 +66,13 @@ struct QueryEditorView: View {
                 connectionId: connectionId,
                 connectionAIPolicy: connectionAIPolicy,
                 tabID: tabID,
+                claimFocusOnAppear: claimFocusOnAppear,
                 vimMode: $vimMode,
                 onCloseTab: onCloseTab,
                 onExecuteQuery: onExecuteQuery,
                 onAIExplain: onAIExplain,
                 onAIOptimize: onAIOptimize,
-                onSaveAsFavorite: onSaveAsFavorite,
-                onFormatSQL: formatQuery
+                onSaveAsFavorite: onSaveAsFavorite
             )
             .frame(minHeight: 100)
             .clipped()
@@ -88,9 +92,16 @@ struct QueryEditorView: View {
                 VimModeIndicatorView(mode: vimMode)
             }
 
+            QueryContainerPicker(
+                containers: availableContainers,
+                selectedName: selectedContainerName,
+                entityName: containerEntityName,
+                isReadOnly: isContainerSwitchReadOnly,
+                onChange: { name in onContainerChanged?(name) }
+            )
+
             Spacer()
 
-            // Clear button
             Button(action: {
                 queryText = ""
                 onClearResults?()
@@ -102,7 +113,6 @@ struct QueryEditorView: View {
             .help(String(localized: "Clear Query"))
             .accessibilityLabel(String(localized: "Clear Query"))
 
-            // Format button
             Button(action: formatQuery) {
                 Image(systemName: "text.alignleft")
                     .frame(width: 24, height: 24)
@@ -126,15 +136,25 @@ struct QueryEditorView: View {
 
             explainButton(hasQueryText: hasQueryText)
 
-            // Execute button
-            Button(action: onExecute) {
+            Menu {
+                Button(String(localized: "Execute Without Limit")) {
+                    onExecuteWithoutLimit?()
+                }
+                .optionalKeyboardShortcut(
+                    AppSettingsManager.shared.keyboard.keyboardShortcut(for: .executeQueryWithoutLimit)
+                )
+            } label: {
                 HStack(spacing: 4) {
                     Image(systemName: "play.fill")
                     Text("Execute")
                 }
+            } primaryAction: {
+                onExecute()
             }
+            .menuStyle(.button)
             .buttonStyle(.borderedProminent)
             .controlSize(.small)
+            .fixedSize()
             .help(shortcutHint(String(localized: "Execute"), for: .executeQuery))
             .optionalKeyboardShortcut(AppSettingsManager.shared.keyboard.keyboardShortcut(for: .executeQuery))
         }
@@ -146,10 +166,7 @@ struct QueryEditorView: View {
     // MARK: - Helpers
 
     private func shortcutHint(_ label: String, for action: ShortcutAction) -> String {
-        guard let combo = AppSettingsManager.shared.keyboard.shortcut(for: action), !combo.isCleared else {
-            return label
-        }
-        return "\(label) (\(combo.displayString))"
+        AppSettingsManager.shared.keyboard.shortcutHint(label, for: action)
     }
 
     @ViewBuilder
@@ -202,32 +219,7 @@ struct QueryEditorView: View {
     }
 
     private func formatQuery() {
-        // Get current database type
-        let dbType = databaseType ?? .mysql
-
-        // Create formatter service
-        let formatter = SQLFormatterService()
-        let options = SQLFormatterOptions.default
-
-        let cursorOffset = cursorPositions.first?.range.location ?? 0
-
-        do {
-            // Format SQL with cursor preservation
-            let result = try formatter.format(
-                queryText,
-                dialect: dbType,
-                cursorOffset: cursorOffset,
-                options: options
-            )
-
-            // Update text and cursor position
-            queryText = result.formattedSQL
-            if let newCursor = result.cursorOffset {
-                cursorPositions = [CursorPosition(range: NSRange(location: newCursor, length: 0))]
-            }
-        } catch {
-            Self.logger.error("SQL Formatting error: \(error.localizedDescription, privacy: .public)")
-        }
+        EditorEventRouter.shared.performFormatSQLForKeyWindow()
     }
 }
 

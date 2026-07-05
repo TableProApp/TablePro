@@ -65,6 +65,8 @@ For untrusted-CA endpoints (Upstash, internal load balancers), pick **Required (
 
 **TTL Management**: View TTL for each key. `-1` = no expiration, `-2` = doesn't exist. Update TTL directly from interface.
 
+**Key Filtering**: Toggle the filter bar to search keys by pattern. Patterns use Redis glob syntax (`*` matches any sequence, `?` matches one character, `[ae]` matches a character set) and are case-sensitive, the same as `redis-cli`. The type scope narrows results to one value type (String, Hash, List, Set, Sorted Set, Stream). Matching runs server-side with `SCAN MATCH` and `SCAN TYPE` across the whole keyspace, scanning up to 10,000 matching keys; a truncation indicator appears when more exist. Filtering by key value or TTL is not supported, since Redis has no server-side primitive for it.
+
 **Redis CLI** (execute commands directly):
 
 ```redis

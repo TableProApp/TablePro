@@ -11,46 +11,6 @@ import Observation
 import SwiftUI
 import TableProPluginKit
 
-// MARK: - Connection Environment
-
-/// Represents the connection environment type for visual badges
-enum ConnectionEnvironment: String, CaseIterable {
-    case local = "LOCAL"
-    case ssh = "SSH"
-    case production = "PROD"
-    case staging = "STAGING"
-
-    /// SF Symbol for this environment type
-    var iconName: String {
-        switch self {
-        case .local: return "house.fill"
-        case .ssh: return "lock.fill"
-        case .production: return "exclamationmark.triangle.fill"
-        case .staging: return "testtube.2"
-        }
-    }
-
-    /// Badge background color
-    var backgroundColor: Color {
-        switch self {
-        case .local: return .gray.opacity(0.3)
-        case .ssh: return .orange.opacity(0.3)
-        case .production: return .red.opacity(0.3)
-        case .staging: return .blue.opacity(0.3)
-        }
-    }
-
-    /// Badge foreground color
-    var foregroundColor: Color {
-        switch self {
-        case .local: return .secondary
-        case .ssh: return .orange
-        case .production: return .red
-        case .staging: return .blue
-        }
-    }
-}
-
 // MARK: - Connection State
 
 /// Represents the current state of the database connection
@@ -112,8 +72,8 @@ enum ToolbarConnectionState: Equatable {
 final class ConnectionToolbarState {
     // MARK: - Connection Info
 
-    /// The tag assigned to this connection (optional)
-    var tagId: UUID?
+    /// The tags assigned to this connection
+    var tagIds: [UUID] = []
 
     /// Database type (MySQL, MariaDB, PostgreSQL, SQLite)
     var databaseType: DatabaseType = .mysql
@@ -196,6 +156,9 @@ final class ConnectionToolbarState {
     /// Whether the structure view has pending schema changes
     var hasStructureChanges: Bool = false
 
+    /// Whether the Create Table tab has a committable definition (name + valid column)
+    var hasCreateTablePending: Bool = false
+
     /// Whether the current editor has non-empty query text
     var hasQueryText: Bool = false
 
@@ -224,9 +187,10 @@ final class ConnectionToolbarState {
     }
 
     /// Text shown in the toolbar's database/schema chip. For `.bySchema` engines
-    /// (SQL Server, PostgreSQL, Oracle, BigQuery), this is the active schema; for
-    /// `.byDatabase` and `.flat` engines, it is the active database. Falls back to
-    /// `currentDatabase` when a schema-grouped engine has not yet resolved its schema.
+    /// (SQL Server, PostgreSQL) and `.hierarchicalSchema` engines that switch by
+    /// schema (Oracle, BigQuery), this is the active schema; other engines show the
+    /// active database, which is also the fallback while a schema-grouped engine
+    /// has not yet resolved its schema.
     var chipText: String {
         switch databaseGroupingStrategy {
         case .bySchema:
@@ -235,6 +199,10 @@ final class ConnectionToolbarState {
             }
             return currentDatabase
         case .byDatabase, .flat, .hierarchicalSchema:
+            if PluginManager.shared.containerSwitchTarget(for: databaseType) == .schema,
+               let schema = currentSchema, !schema.isEmpty {
+                return schema
+            }
             return currentDatabase
         }
     }
@@ -272,7 +240,7 @@ final class ConnectionToolbarState {
         connectionName = connection.name
         databaseType = connection.type
         displayColor = connection.displayColor
-        tagId = connection.tagId
+        tagIds = connection.tagIds
         databaseGroupingStrategy = PluginManager.shared.databaseGroupingStrategy(for: connection.type)
         syncFromSession(for: connection)
     }
@@ -322,7 +290,7 @@ final class ConnectionToolbarState {
 
     /// Reset to default disconnected state
     func reset() {
-        tagId = nil
+        tagIds = []
         databaseType = .mysql
         databaseVersion = nil
         connectionName = ""

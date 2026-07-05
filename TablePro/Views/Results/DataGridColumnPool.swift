@@ -28,6 +28,7 @@ final class DataGridColumnPool {
         tableView: NSTableView,
         schema: ColumnIdentitySchema,
         columnTypes: [ColumnType],
+        columnComments: [String: String] = [:],
         savedLayout: ColumnLayoutState?,
         isEditable: Bool,
         hiddenColumnNames: Set<String>,
@@ -52,6 +53,7 @@ final class DataGridColumnPool {
                     column,
                     name: columnName,
                     columnType: slot < columnTypes.count ? columnTypes[slot] : nil,
+                    comment: columnComments[columnName],
                     width: resolvedWidth,
                     isEditable: isEditable
                 )
@@ -177,6 +179,7 @@ final class DataGridColumnPool {
         _ column: NSTableColumn,
         name: String,
         columnType: ColumnType?,
+        comment: String?,
         width: CGFloat,
         isEditable: Bool
     ) {
@@ -187,11 +190,14 @@ final class DataGridColumnPool {
             column.headerCell = cell
         }
 
-        let tooltip: String
+        var tooltip: String
         if let typeName = columnType?.rawType ?? columnType?.displayName {
             tooltip = "\(name) (\(typeName))"
         } else {
             tooltip = name
+        }
+        if let comment, !comment.isEmpty {
+            tooltip += "\n\(comment)"
         }
         if column.headerToolTip != tooltip {
             column.headerToolTip = tooltip

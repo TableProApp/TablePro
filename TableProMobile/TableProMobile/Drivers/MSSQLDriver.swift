@@ -36,21 +36,15 @@ final class MSSQLDriver: DatabaseDriver, @unchecked Sendable {
             password: password ?? "",
             database: connection.database,
             schema: MSSQLConnectionOptions.schema(from: connection.additionalFields),
-            encryptionFlag: Self.freetdsEncryptionFlag(for: connection.sslConfiguration),
+            encryptionFlag: DriverSSLConfiguration(
+                sslEnabled: connection.sslEnabled,
+                configuration: connection.sslConfiguration
+            ).freetdsEncryptionFlag,
             loginTimeoutSeconds: Int(connection.additionalFields["mssqlLoginTimeout"] ?? "") ?? MSSQLConnectionOptions.defaultLoginTimeoutSeconds
         )
         self.conn = FreeTDSConnection(options: options)
         self.host = connection.host
         self.currentSchema = options.schema
-    }
-
-    private static func freetdsEncryptionFlag(for ssl: SSLConfiguration?) -> String {
-        guard let mode = ssl?.mode else { return "off" }
-        switch mode {
-        case .disable: return "off"
-        case .require: return "require"
-        case .verifyCa, .verifyFull: return "require"
-        }
     }
 
     private var escapedSchema: String {

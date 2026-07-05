@@ -58,7 +58,7 @@ struct ConnectionStatusView: View {
 
     @ViewBuilder
     private var chipSection: some View {
-        if !PluginManager.shared.supportsDatabaseSwitching(for: databaseType) {
+        if !PluginManager.shared.supportsContainerSwitching(for: databaseType) {
             chipLabel
                 .help(staticChipTooltip)
         } else {
@@ -89,7 +89,8 @@ struct ConnectionStatusView: View {
     private var chipKindLabel: String {
         switch databaseGroupingStrategy {
         case .bySchema: return String(localized: "Schema")
-        case .byDatabase, .flat, .hierarchicalSchema: return String(localized: "Database")
+        case .byDatabase, .flat, .hierarchicalSchema:
+            return PluginManager.shared.containerEntityName(for: databaseType)
         }
     }
 
@@ -100,7 +101,8 @@ struct ConnectionStatusView: View {
     private var switchableChipTooltip: String {
         let switchVerb: String = switch databaseGroupingStrategy {
         case .bySchema: String(localized: "switch schema")
-        case .byDatabase, .flat, .hierarchicalSchema: String(localized: "switch database")
+        case .byDatabase, .flat, .hierarchicalSchema:
+            String(format: String(localized: "switch %@"), chipKindLabel.lowercased())
         }
         if safeModeLevel == .readOnly {
             return String(

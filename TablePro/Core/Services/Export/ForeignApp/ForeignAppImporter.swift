@@ -7,6 +7,7 @@ import AppKit
 import Foundation
 import os
 import Security
+import TableProImport
 import UniformTypeIdentifiers
 
 // MARK: - Protocol

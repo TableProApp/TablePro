@@ -8,7 +8,7 @@
 //  documented value. If a requirement is ever added without a default, this file
 //  (and FakeMSSQLPluginDriver) stops compiling, flagging a breaking change that
 //  needs a currentPluginKitVersion bump. Cross-binary load compatibility itself
-//  is enforced by scripts/check-pluginkit-abi.sh in CI.
+//  is checked by scripts/check-pluginkit-abi.sh, run manually before merging.
 //
 
 import Foundation

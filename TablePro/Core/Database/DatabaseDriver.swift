@@ -34,6 +34,9 @@ protocol DatabaseDriver: AnyObject {
     /// Test the connection (connect and immediately disconnect)
     func testConnection() async throws -> Bool
 
+    /// Check the connection is alive without mutating session state
+    func ping() async throws
+
     // MARK: - Configuration
 
     /// Apply query execution timeout (seconds, 0 = no limit)
@@ -82,6 +85,16 @@ protocol DatabaseDriver: AnyObject {
 
     /// Fetch foreign keys for a specific table
     func fetchForeignKeys(table: String) async throws -> [ForeignKeyInfo]
+
+    /// Fetch triggers for a specific table
+    func fetchTriggers(table: String) async throws -> [TriggerInfo]
+
+    /// Trigger editing hooks (optional — nil when unsupported)
+    func createTriggerTemplate(table: String) -> String?
+    func fetchTriggerDefinition(name: String, table: String) async throws -> String?
+    func generateDropTriggerSQL(name: String, table: String) -> String?
+    var triggerEditUsesReplace: Bool { get }
+    var supportsTransactionalDDL: Bool { get }
 
     /// Fetch foreign keys for all tables in the current database/schema in bulk.
     /// Default implementation falls back to per-table fetchForeignKeys.
@@ -217,16 +230,11 @@ extension DatabaseDriver {
     var queryBuildingPluginDriver: (any PluginDatabaseDriver)? { nil }
 
     func quoteIdentifier(_ name: String) -> String {
-        let q = "\""
-        let escaped = name.replacingOccurrences(of: q, with: q + q)
-        return "\(q)\(escaped)\(q)"
+        SQLEscaping.quoteIdentifier(name)
     }
 
     func escapeStringLiteral(_ value: String) -> String {
-        var result = value
-        result = result.replacingOccurrences(of: "'", with: "''")
-        result = result.replacingOccurrences(of: "\0", with: "")
-        return result
+        SQLEscaping.escapeStringLiteral(value)
     }
 
     func createViewTemplate() -> String? { nil }
@@ -242,6 +250,18 @@ extension DatabaseDriver {
 
     func fetchColumns(table: String, schema: String?) async throws -> [ColumnInfo] {
         try await fetchColumns(table: table)
+    }
+
+    func fetchTriggers(table: String) async throws -> [TriggerInfo] { [] }
+
+    func createTriggerTemplate(table: String) -> String? { nil }
+    func fetchTriggerDefinition(name: String, table: String) async throws -> String? { nil }
+    func generateDropTriggerSQL(name: String, table: String) -> String? { nil }
+    var triggerEditUsesReplace: Bool { false }
+    var supportsTransactionalDDL: Bool { false }
+
+    func ping() async throws {
+        _ = try await execute(query: "SELECT 1")
     }
 
     func testConnection() async throws -> Bool {
@@ -320,6 +340,20 @@ extension DatabaseDriver {
         return all.filter { nameSet.contains($0.key) }
     }
 
+    func fetchIndexes(forTables tableNames: [String]) async throws -> [String: [IndexInfo]] {
+        var result: [String: [IndexInfo]] = [:]
+        for tableName in tableNames {
+            do {
+                let indexes = try await fetchIndexes(table: tableName)
+                if !indexes.isEmpty { result[tableName] = indexes }
+            } catch {
+                Logger(subsystem: "com.TablePro", category: "DatabaseDriver")
+                    .debug("Failed to fetch indexes for \(tableName): \(error.localizedDescription)")
+            }
+        }
+        return result
+    }
+
     /// Default fetchAllColumns: falls back to per-table fetchColumns (N+1).
     /// Drivers should override with a single bulk query where possible.
     func fetchAllColumns() async throws -> [String: [ColumnInfo]] {
@@ -385,7 +419,6 @@ extension DatabaseDriver {
     var supportsTransactions: Bool { true }
 
     func cancelQuery() throws {
-        // No-op by default
     }
 
     /// Default timeout implementation — delegates to each plugin's PluginDatabaseDriver.

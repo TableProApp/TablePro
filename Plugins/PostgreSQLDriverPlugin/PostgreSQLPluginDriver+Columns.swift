@@ -8,51 +8,17 @@ import TableProPluginKit
 
 extension PostgreSQLPluginDriver {
     func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] {
-        let safeSchema = escapeStringLiteral(currentSchema ?? "public")
+        let safeSchema = escapeStringLiteral(schema ?? core.currentSchema)
         let safeTable = escapeStringLiteral(table)
         let enumMap = try await fetchEnumLabelMap(schema: safeSchema)
-        let caps = versionedCapabilities
-        let identityProjection = caps.hasIdentityColumns ? "a.attidentity" : "NULL::text"
-        let generatedProjection = caps.hasGeneratedColumns ? "a.attgenerated" : "NULL::text"
-        let attributeJoin = (caps.hasIdentityColumns || caps.hasGeneratedColumns) ? """
-            LEFT JOIN pg_catalog.pg_attribute a
-                ON a.attrelid = st.relid
-                AND a.attname = c.column_name
-                AND NOT a.attisdropped
-            """ : ""
-        let query = """
-            SELECT
-                c.column_name,
-                c.data_type,
-                c.is_nullable,
-                c.column_default,
-                c.collation_name,
-                pgd.description,
-                c.udt_name,
-                CASE WHEN pk.column_name IS NOT NULL THEN 'YES' ELSE 'NO' END AS is_pk,
-                \(identityProjection),
-                \(generatedProjection)
-            FROM information_schema.columns c
-            LEFT JOIN pg_catalog.pg_statio_all_tables st
-                ON st.schemaname = c.table_schema
-                AND st.relname = c.table_name
-            LEFT JOIN pg_catalog.pg_description pgd
-                ON pgd.objoid = st.relid
-                AND pgd.objsubid = c.ordinal_position
-            \(attributeJoin)
-            LEFT JOIN (
-                SELECT DISTINCT kcu.column_name
-                FROM information_schema.table_constraints tc
-                JOIN information_schema.key_column_usage kcu
-                    ON tc.constraint_name = kcu.constraint_name
-                    AND tc.table_schema = kcu.table_schema
-                WHERE tc.constraint_type = 'PRIMARY KEY'
-                    AND tc.table_schema = '\(safeSchema)'
-                    AND tc.table_name = '\(safeTable)'
-            ) pk ON c.column_name = pk.column_name
-            WHERE c.table_schema = '\(safeSchema)' AND c.table_name = '\(safeTable)'
-            ORDER BY c.ordinal_position
-            """
+        let projections = columnProjections()
+        let query = PostgreSQLSchemaQueries.columnsQuery(
+            schemaLiteral: safeSchema,
+            tableLiteral: safeTable,
+            identityProjection: projections.identity,
+            generatedProjection: projections.generated,
+            attributeJoin: projections.attributeJoin
+        )
         let result = try await execute(query: query)
         return result.rows.compactMap { row in
             mapPgColumnRow(row, tableNameOffset: 0, enumLabelsByType: enumMap)
@@ -60,50 +26,16 @@ extension PostgreSQLPluginDriver {
     }
 
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
-        let safeSchema = escapeStringLiteral(currentSchema ?? "public")
+        let safeSchema = escapeStringLiteral(schema ?? core.currentSchema)
         let enumMap = try await fetchEnumLabelMap(schema: safeSchema)
-        let caps = versionedCapabilities
-        let identityProjection = caps.hasIdentityColumns ? "a.attidentity" : "NULL::text"
-        let generatedProjection = caps.hasGeneratedColumns ? "a.attgenerated" : "NULL::text"
-        let attributeJoin = (caps.hasIdentityColumns || caps.hasGeneratedColumns) ? """
-            LEFT JOIN pg_catalog.pg_attribute a
-                ON a.attrelid = st.relid
-                AND a.attname = c.column_name
-                AND NOT a.attisdropped
-            """ : ""
-        let query = """
-            SELECT
-                c.table_name,
-                c.column_name,
-                c.data_type,
-                c.is_nullable,
-                c.column_default,
-                c.collation_name,
-                pgd.description,
-                c.udt_name,
-                CASE WHEN pk.column_name IS NOT NULL THEN 'YES' ELSE 'NO' END AS is_pk,
-                \(identityProjection),
-                \(generatedProjection)
-            FROM information_schema.columns c
-            LEFT JOIN pg_catalog.pg_statio_all_tables st
-                ON st.schemaname = c.table_schema
-                AND st.relname = c.table_name
-            LEFT JOIN pg_catalog.pg_description pgd
-                ON pgd.objoid = st.relid
-                AND pgd.objsubid = c.ordinal_position
-            \(attributeJoin)
-            LEFT JOIN (
-                SELECT DISTINCT kcu.table_name, kcu.column_name
-                FROM information_schema.table_constraints tc
-                JOIN information_schema.key_column_usage kcu
-                    ON tc.constraint_name = kcu.constraint_name
-                    AND tc.table_schema = kcu.table_schema
-                WHERE tc.constraint_type = 'PRIMARY KEY'
-                    AND tc.table_schema = '\(safeSchema)'
-            ) pk ON c.table_name = pk.table_name AND c.column_name = pk.column_name
-            WHERE c.table_schema = '\(safeSchema)'
-            ORDER BY c.table_name, c.ordinal_position
-            """
+        let projections = columnProjections()
+        let query = PostgreSQLSchemaQueries.columnsQuery(
+            schemaLiteral: safeSchema,
+            tableLiteral: nil,
+            identityProjection: projections.identity,
+            generatedProjection: projections.generated,
+            attributeJoin: projections.attributeJoin
+        )
         let result = try await execute(query: query)
         var allColumns: [String: [PluginColumnInfo]] = [:]
         for row in result.rows {
@@ -113,6 +45,19 @@ extension PostgreSQLPluginDriver {
             }
         }
         return allColumns
+    }
+
+    private func columnProjections() -> (identity: String, generated: String, attributeJoin: String) {
+        let caps = versionedCapabilities
+        let identity = caps.hasIdentityColumns ? "a.attidentity" : "NULL::text"
+        let generated = caps.hasGeneratedColumns ? "a.attgenerated" : "NULL::text"
+        let attributeJoin = (caps.hasIdentityColumns || caps.hasGeneratedColumns) ? """
+            LEFT JOIN pg_catalog.pg_attribute a
+                ON a.attrelid = st.relid
+                AND a.attname = c.column_name
+                AND NOT a.attisdropped
+            """ : ""
+        return (identity, generated, attributeJoin)
     }
 
     fileprivate func fetchEnumLabelMap(schema: String) async throws -> [String: [String]] {

@@ -305,7 +305,7 @@ struct QueryEditorView: View {
     private func resultRowContextMenu(columns: [ColumnInfo], row: [String?]) -> some View {
         if let firstValue = row.first, let value = firstValue {
             Button {
-                UIPasteboard.general.string = value
+                ClipboardExporter.copyToClipboard(value)
             } label: {
                 Label("Copy Value", systemImage: "doc.on.doc")
             }

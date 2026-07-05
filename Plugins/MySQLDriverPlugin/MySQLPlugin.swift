@@ -146,6 +146,8 @@ final class MySQLPlugin: NSObject, TableProPlugin, DriverPlugin {
     )
 
     static let supportsDropDatabase = true
+    static let supportsTriggers = true
+    static let supportsTriggerEditing = true
 
     func createDriver(config: DriverConnectionConfig) -> any PluginDatabaseDriver {
         MySQLPluginDriver(config: config)

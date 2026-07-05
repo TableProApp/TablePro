@@ -65,11 +65,7 @@ extension TableViewCoordinator {
         guard row >= 0, columnIndex >= 0 else { return }
         guard !changeManager.isRowDeleted(row) else { return }
         guard let tableView else { return }
-        guard let column = DataGridView.tableColumnIndex(
-            for: columnIndex,
-            in: tableView,
-            schema: identitySchema
-        ) else { return }
+        guard let column = tableColumnIndex(for: columnIndex) else { return }
 
         if let dropdownCols = dropdownColumns, dropdownCols.contains(columnIndex) {
             showDropdownMenu(tableView: tableView, row: row, column: column, columnIndex: columnIndex)

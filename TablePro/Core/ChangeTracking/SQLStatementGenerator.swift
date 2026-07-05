@@ -104,11 +104,9 @@ struct SQLStatementGenerator {
             }
         }
 
-        // Generate DELETE statements
         // Try batched DELETE first (uses PK if available), fall back to individual DELETEs
         if !deleteChanges.isEmpty {
             if let stmt = generateBatchDeleteSQL(for: deleteChanges) {
-                // Batched delete successful (has PK)
                 statements.append(stmt)
             } else {
                 // No PK - generate individual DELETE statements matching all columns
@@ -257,12 +255,6 @@ struct SQLStatementGenerator {
             "INSERT INTO \(quoteIdentifierFn(tableName)) (\(columnNames)) VALUES (\(placeholders))"
 
         return ParameterizedStatement(sql: sql, parameters: parameters)
-    }
-
-    /// Marker type for SQL function literals that cannot be parameterized
-    private struct SQLFunctionLiteral {
-        let value: String
-        init(_ value: String) { self.value = value }
     }
 
     // MARK: - UPDATE Generation

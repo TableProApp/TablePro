@@ -119,12 +119,10 @@ internal final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Send
             )
         }
 
-        // Check for tagged browsing queries
         if DynamoDBQueryBuilder.isTaggedQuery(trimmed) {
             return try await executeTaggedQuery(trimmed, conn: conn, startTime: startTime)
         }
 
-        // Execute as PartiQL
         return try await executePartiQL(trimmed, conn: conn, startTime: startTime)
     }
 
@@ -137,12 +135,10 @@ internal final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Send
 
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        // If no parameters, fall back to regular execute
         guard !parameters.isEmpty else {
             return try await execute(query: trimmed)
         }
 
-        // Convert parameters to DynamoDB attribute value dictionaries
         let dynamoParams: [[String: Any]] = parameters.map { param -> [String: Any] in
             switch param {
             case .null:
@@ -278,7 +274,6 @@ internal final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Send
         let tableDesc = try await cachedDescribeTable(table, conn: conn)
         var indexes: [PluginIndexInfo] = []
 
-        // Primary key
         if let keySchema = tableDesc.KeySchema {
             let columns = keySchema.map(\.AttributeName)
             indexes.append(PluginIndexInfo(
@@ -290,7 +285,6 @@ internal final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Send
             ))
         }
 
-        // Global Secondary Indexes
         if let gsis = tableDesc.GlobalSecondaryIndexes {
             for gsi in gsis {
                 let columns = (gsi.KeySchema ?? []).map(\.AttributeName)
@@ -305,7 +299,6 @@ internal final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Send
             }
         }
 
-        // Local Secondary Indexes
         if let lsis = tableDesc.LocalSecondaryIndexes {
             for lsi in lsis {
                 let columns = (lsi.KeySchema ?? []).map(\.AttributeName)
@@ -353,7 +346,6 @@ internal final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Send
             lines.append("ARN: \(arn)")
         }
 
-        // Key Schema
         if let keySchema = tableDesc.KeySchema {
             lines.append("")
             lines.append("Key Schema:")
@@ -365,7 +357,6 @@ internal final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Send
             }
         }
 
-        // Attribute Definitions
         if let attrs = tableDesc.AttributeDefinitions {
             lines.append("")
             lines.append("Attribute Definitions:")
@@ -374,7 +365,6 @@ internal final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Send
             }
         }
 
-        // Billing Mode
         let billingMode = tableDesc.BillingModeSummary?.BillingMode ?? "PROVISIONED"
         lines.append("")
         lines.append("Billing Mode: \(billingMode)")
@@ -384,7 +374,6 @@ internal final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Send
             lines.append("Write Capacity: \(throughput.WriteCapacityUnits ?? 0)")
         }
 
-        // Item Count and Size
         if let itemCount = tableDesc.ItemCount {
             lines.append("")
             lines.append("Item Count: \(itemCount)")
@@ -393,7 +382,6 @@ internal final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Send
             lines.append("Table Size: \(formatBytes(sizeBytes))")
         }
 
-        // Global Secondary Indexes
         if let gsis = tableDesc.GlobalSecondaryIndexes, !gsis.isEmpty {
             lines.append("")
             lines.append("Global Secondary Indexes:")
@@ -407,7 +395,6 @@ internal final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Send
             }
         }
 
-        // Local Secondary Indexes
         if let lsis = tableDesc.LocalSecondaryIndexes, !lsis.isEmpty {
             lines.append("")
             lines.append("Local Secondary Indexes:")

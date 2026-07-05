@@ -23,7 +23,7 @@ struct EtcdQueryBuilderBrowseTests {
         #expect(parsed?.limit == 100)
         #expect(parsed?.offset == 0)
         #expect(parsed?.sortAscending == true)
-        #expect(parsed?.filterType == .none)
+        #expect(parsed?.filterType == EtcdFilterType.none)
         #expect(parsed?.filterValue == "")
     }
 
@@ -191,7 +191,7 @@ struct EtcdQueryBuilderFilteredTests {
         )
         #expect(query != nil)
         let parsed = EtcdQueryBuilder.parseRangeQuery(query!)
-        #expect(parsed?.filterType == .none)
+        #expect(parsed?.filterType == EtcdFilterType.none)
     }
 }
 
@@ -262,7 +262,7 @@ struct EtcdQueryBuilderCountTests {
         let parsed = EtcdQueryBuilder.parseCountQuery(query)
         #expect(parsed != nil)
         #expect(parsed?.prefix == "/myprefix/")
-        #expect(parsed?.filterType == .none)
+        #expect(parsed?.filterType == EtcdFilterType.none)
         #expect(parsed?.filterValue == "")
     }
 
@@ -322,7 +322,7 @@ struct EtcdQueryBuilderTagTests {
         #expect(parsed?.limit == 42)
         #expect(parsed?.offset == 7)
         #expect(parsed?.sortAscending == false)
-        #expect(parsed?.filterType == .none)
+        #expect(parsed?.filterType == EtcdFilterType.none)
         #expect(parsed?.filterValue == "")
     }
 

@@ -14,7 +14,6 @@ MCPBridgeIntegrationTests
 #     host (only plugin metadata loads), so driver-backed SQL generation returns empty.
 TableOperationsPluginTests
 TableQueryBuilderFilteredQueryTests
-FilterSQLGeneratorTests
 SQLCompletionProviderTests
 SQLStatementGeneratorPKRegressionTests
 SQLStatementGeneratorCompositePKTests
@@ -31,7 +30,6 @@ ValidateDriverDescriptorTests
 PluginCapabilityTests
 FreeTDSClassifierTests
 DatabaseTypeCassandraTests
-RowOperationsManagerBinaryCopyTests
 RowOperationsManagerTests
 StructureGridDelegateAddRowTests
 SaveCompletionTests
@@ -39,7 +37,6 @@ ChangeReapplyVersionTests
 
 # --- Persistence-entangled: tests assume lowercase enum values but rawValues are
 #     display-style ("Red"/"Private Key"); changing them needs a Codable migration.
-ConnectionSharingTests
 ConnectionURLFormatterSSHProfileTests
 DatabaseConnectionExternalAccessTests
 DataGridSettingsDefaultSortDecoderTests
@@ -50,8 +47,6 @@ MCPPairingServiceTests
 MCPBearerTokenAuthenticatorTests
 TablePlusImporterTests
 SequelAceImporterTests
-DBeaverImporterTests
-ForeignAppImporterRegistryTests
 HostKeyStoreTests
 KeychainHelperTests
 
@@ -60,8 +55,6 @@ StructureChangeManagerUndoTests
 DataChangeManagerExtendedTests
 DataChangeManagerTests
 CoordinatorEditorLoadTests
-CoordinatorColumnVisibilityTests
 CommandActionsDispatchTests
-SidebarViewModelTests
 ChatToolSpecCopilotTests
 SQLStatementScannerLocatedTests

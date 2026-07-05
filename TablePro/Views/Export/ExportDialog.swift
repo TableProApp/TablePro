@@ -72,17 +72,14 @@ struct ExportDialog: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Content
             HStack(spacing: 0) {
                 if !isQueryResultsMode {
-                    // Left: Table tree view
                     tableSelectionView
                         .frame(minWidth: leftPanelWidth)
 
                     Divider()
                 }
 
-                // Right: Export options
                 exportOptionsView
                     .frame(width: 280)
             }
@@ -90,7 +87,6 @@ struct ExportDialog: View {
 
             Divider()
 
-            // Footer
             footerView
         }
         .frame(width: dialogWidth)
@@ -209,7 +205,6 @@ struct ExportDialog: View {
 
     private var tableSelectionView: some View {
         VStack(spacing: 0) {
-            // Header with title and selection count
             HStack {
                 Text("Items")
                     .font(.subheadline.weight(.medium))
@@ -232,7 +227,6 @@ struct ExportDialog: View {
 
             Divider()
 
-            // Tree view or loading indicator
             if isLoading {
                 VStack {
                     Spacer()
@@ -270,7 +264,6 @@ struct ExportDialog: View {
 
     private var exportOptionsView: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Format picker with selection count
             VStack(alignment: .leading, spacing: 12) {
                 if availableFormats.isEmpty {
                     HStack {
@@ -333,7 +326,6 @@ struct ExportDialog: View {
 
             Divider()
 
-            // Format-specific options
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     if let settable = currentPlugin as? any SettablePluginDiscoverable,
@@ -359,7 +351,6 @@ struct ExportDialog: View {
 
             Divider()
 
-            // File name section
             VStack(alignment: .leading, spacing: 6) {
                 Text("File name")
                     .font(.subheadline)
@@ -377,7 +368,6 @@ struct ExportDialog: View {
                         .fixedSize()
                 }
 
-                // Show validation error if filename is invalid
                 if let validationError = fileNameValidationError {
                     Text(validationError)
                         .font(.subheadline)
@@ -506,7 +496,6 @@ struct ExportDialog: View {
             return String(localized: "Filename cannot be '.' or '..' or contain path traversal")
         }
 
-        // Check for Windows reserved device names (case-insensitive)
         let baseName = name.components(separatedBy: ".").first ?? name
         if Self.windowsReservedNames.contains(baseName.uppercased()) {
             return String(format: String(localized: "'%@' is a reserved Windows device name"), baseName)
@@ -677,7 +666,6 @@ struct ExportDialog: View {
             databaseItems = items
             isLoading = false
 
-            // Set default filename based on selection
             if preselectedTables.count == 1, let first = preselectedTables.first {
                 config.fileName = first
             } else if !connection.database.isEmpty {

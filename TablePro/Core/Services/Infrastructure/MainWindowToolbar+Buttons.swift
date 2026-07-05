@@ -17,7 +17,7 @@ struct ConnectionToolbarButton: View {
         } label: {
             Label("Connection", systemImage: "network")
         }
-        .help(String(localized: "Switch Connection (⌘⌥C)"))
+        .help(AppSettingsManager.shared.keyboard.shortcutHint(String(localized: "Switch Connection"), for: .switchConnection))
         .popover(isPresented: $coordinator.isConnectionSwitcherShown, arrowEdge: .bottom) {
             ConnectionSwitcherPopover()
         }
@@ -29,14 +29,15 @@ struct DatabaseToolbarButton: View {
 
     var body: some View {
         let state = coordinator.toolbarState
-        let supportsSwitch = PluginManager.shared.supportsDatabaseSwitching(for: state.databaseType)
+        let supportsSwitch = PluginManager.shared.supportsContainerSwitching(for: state.databaseType)
+        let containerName = PluginManager.shared.containerEntityName(for: state.databaseType)
         if supportsSwitch {
             Button {
                 coordinator.commandActions?.openDatabaseSwitcher()
             } label: {
-                Label("Database", systemImage: "cylinder")
+                Label(containerName, systemImage: "cylinder")
             }
-            .help(String(localized: "Open Database (⌘K)"))
+            .help(AppSettingsManager.shared.keyboard.shortcutHint(String(format: String(localized: "Open %@"), containerName), for: .openDatabase))
             .disabled(
                 state.connectionState != .connected
                     || PluginManager.shared.connectionMode(for: state.databaseType) == .fileBased
@@ -84,11 +85,11 @@ struct RefreshToolbarButton: View {
     var body: some View {
         let state = coordinator.toolbarState
         Button {
-            AppCommands.shared.refreshData.send(nil)
+            coordinator.commandActions?.refresh()
         } label: {
             Label("Refresh", systemImage: "arrow.clockwise")
         }
-        .help(String(localized: "Refresh (⌘R)"))
+        .help(AppSettingsManager.shared.keyboard.shortcutHint(String(localized: "Refresh"), for: .refresh))
         .disabled(state.connectionState != .connected)
     }
 }
@@ -103,7 +104,7 @@ struct SaveChangesToolbarButton: View {
         } label: {
             Label("Save Changes", systemImage: "checkmark.circle.fill")
         }
-        .help(String(localized: "Save Changes (⌘S)"))
+        .help(AppSettingsManager.shared.keyboard.shortcutHint(String(localized: "Save Changes"), for: .saveChanges))
         .disabled(
             !state.hasPendingChanges
                 || state.connectionState != .connected
@@ -123,7 +124,7 @@ struct QuickSwitcherToolbarButton: View {
         } label: {
             Label("Quick Switcher", systemImage: "magnifyingglass")
         }
-        .help(String(localized: "Quick Switcher (⇧⌘O)"))
+        .help(AppSettingsManager.shared.keyboard.shortcutHint(String(localized: "Quick Switcher"), for: .quickSwitcher))
         .disabled(state.connectionState != .connected)
     }
 }
@@ -138,7 +139,7 @@ struct NewTabToolbarButton: View {
         } label: {
             Label("New Tab", systemImage: "plus.rectangle")
         }
-        .help(String(localized: "New Query Tab (⌘T)"))
+        .help(AppSettingsManager.shared.keyboard.shortcutHint(String(localized: "New Query Tab"), for: .newTab))
         .disabled(state.connectionState != .connected)
     }
 }
@@ -148,13 +149,14 @@ struct PreviewSQLToolbarButton: View {
 
     var body: some View {
         let state = coordinator.toolbarState
+        let langName = PluginManager.shared.queryLanguageName(for: state.databaseType)
+        let previewLabel = String(format: String(localized: "Preview %@"), langName)
         Button {
             coordinator.commandActions?.previewSQL()
         } label: {
-            let langName = PluginManager.shared.queryLanguageName(for: state.databaseType)
-            Label(String(format: String(localized: "Preview %@"), langName), systemImage: "eye")
+            Label(previewLabel, systemImage: "eye")
         }
-        .help(String(format: String(localized: "Preview %@ (⌘⇧P)"), PluginManager.shared.queryLanguageName(for: state.databaseType)))
+        .help(AppSettingsManager.shared.keyboard.shortcutHint(previewLabel, for: .previewSQL))
         .disabled(!state.hasDataPendingChanges || state.connectionState != .connected)
     }
 }
@@ -174,7 +176,7 @@ struct ResultsToolbarButton: View {
                     : "rectangle.inset.filled"
             )
         }
-        .help(String(localized: "Toggle Results (⌘⌥R)"))
+        .help(AppSettingsManager.shared.keyboard.shortcutHint(String(localized: "Toggle Results"), for: .toggleResults))
         .disabled(state.connectionState != .connected || state.isTableTab)
     }
 }
@@ -204,7 +206,7 @@ struct HistoryToolbarButton: View {
         } label: {
             Label("History", systemImage: "clock")
         }
-        .help(String(localized: "Toggle Query History (⌘Y)"))
+        .help(AppSettingsManager.shared.keyboard.shortcutHint(String(localized: "Toggle Query History"), for: .toggleHistory))
     }
 }
 
@@ -218,7 +220,7 @@ struct ExportToolbarButton: View {
         } label: {
             Label("Export", systemImage: "square.and.arrow.up")
         }
-        .help(String(localized: "Export Data (⌘⇧E)"))
+        .help(AppSettingsManager.shared.keyboard.shortcutHint(String(localized: "Export Data"), for: .export))
         .disabled(state.connectionState != .connected)
     }
 }
@@ -237,7 +239,7 @@ struct ImportToolbarButton: View {
                 } label: {
                     Label("Import", systemImage: "square.and.arrow.down")
                 }
-                .help(String(localized: "Import Data (⌘⇧I)"))
+                .help(AppSettingsManager.shared.keyboard.shortcutHint(String(localized: "Import Data"), for: .importData))
                 .disabled(isDisabled || formats.isEmpty)
             } else {
                 Menu {
@@ -249,7 +251,7 @@ struct ImportToolbarButton: View {
                 } label: {
                     Label("Import", systemImage: "square.and.arrow.down")
                 }
-                .help(String(localized: "Import Data (⌘⇧I)"))
+                .help(AppSettingsManager.shared.keyboard.shortcutHint(String(localized: "Import Data"), for: .importData))
                 .disabled(isDisabled)
             }
         }

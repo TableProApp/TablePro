@@ -78,6 +78,9 @@ public class GutterView: NSView {
     public var showFoldingRibbon: Bool = true {
         didSet {
             foldingRibbon.isHidden = !showFoldingRibbon
+            if showFoldingRibbon {
+                foldingRibbon.model?.refresh()
+            }
         }
     }
 

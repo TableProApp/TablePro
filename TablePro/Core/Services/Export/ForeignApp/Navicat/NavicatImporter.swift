@@ -5,6 +5,7 @@
 
 import Foundation
 import os
+import TableProImport
 import TableProPluginKit
 import UniformTypeIdentifiers
 

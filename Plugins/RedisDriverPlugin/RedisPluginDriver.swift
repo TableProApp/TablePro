@@ -33,10 +33,7 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     private static let logger = Logger(subsystem: "com.TablePro.RedisDriver", category: "RedisPluginDriver")
 
-    private static let maxScanKeys = PluginRowLimits.emergencyMax
-
-    var cachedScanPattern: String?
-    var cachedScanKeys: [String]?
+    static let maxKeyBrowseScan = 10_000
 
     var serverVersion: String? {
         redisConnection?.serverVersion()
@@ -82,8 +79,6 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     func disconnect() {
         redisConnection?.disconnect()
         redisConnection = nil
-        cachedScanPattern = nil
-        cachedScanKeys = nil
     }
 
     func ping() async throws {
@@ -100,8 +95,6 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func execute(query: String) async throws -> PluginQueryResult {
         let startTime = Date()
-        cachedScanPattern = nil
-        cachedScanKeys = nil
         redisConnection?.resetCancellation()
 
         guard let conn = redisConnection else {
@@ -124,9 +117,7 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         redisConnection?.cancelCurrentQuery()
     }
 
-    func applyQueryTimeout(_ seconds: Int) async throws {
-        // Redis does not support session-level query timeouts
-    }
+    func applyQueryTimeout(_ seconds: Int) async throws {}
 
     // MARK: - Schema Operations
 
@@ -136,7 +127,6 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             throw RedisPluginError.notConnected
         }
 
-        // Parse key counts from INFO keyspace
         let result = try await conn.executeCommand(["INFO", "keyspace"])
         var keyCounts: [String: Int] = [:]
         if let info = result.stringValue {
@@ -158,7 +148,6 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             }
         }
 
-        // Get total database count from CONFIG GET databases
         let configResult = try await conn.executeCommand(["CONFIG", "GET", "databases"])
         var maxDatabases = 16
         if let array = configResult.arrayValue, array.count >= 2, let count = Int(redisReplyToString(array[1])) {
@@ -414,7 +403,7 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Streaming
 
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
-        return AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
+        AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
             let streamTask = Task {
                 do {
                     try await self.performStreamRows(query: query, continuation: continuation)
@@ -443,6 +432,10 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         switch operation {
         case .scan(_, let pattern, _):
             try await streamScanRows(connection: conn, pattern: pattern, continuation: continuation)
+        case .keyBrowse(let pattern, let typeScope, _, _):
+            try await streamScanRows(
+                connection: conn, pattern: pattern, typeFilter: typeScope, continuation: continuation
+            )
         default:
             let startTime = Date()
             let result = try await executeOperation(operation, connection: conn, startTime: startTime)
@@ -461,6 +454,7 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private func streamScanRows(
         connection conn: RedisPluginConnection,
         pattern: String?,
+        typeFilter: String? = nil,
         continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
     ) async throws {
         continuation.yield(.header(PluginStreamHeader(
@@ -478,6 +472,7 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             var args = ["SCAN", cursor]
             if let p = pattern { args += ["MATCH", p] }
             args += ["COUNT", "1000"]
+            if let type = typeFilter { args += ["TYPE", type] }
 
             let result = try await conn.executeCommand(args)
 
@@ -575,7 +570,6 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
                 batchStart = batchEnd
             }
-
         } while cursor != "0"
 
         continuation.finish()
@@ -597,7 +591,6 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         )
     }
 
-    // Redis SCAN only supports key pattern matching; sortColumns, columns, and offset are unused
     func buildFilteredQuery(
         table: String,
         filters: [(column: String, op: String, value: String)],
@@ -610,7 +603,7 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let builder = RedisQueryBuilder()
         return builder.buildFilteredQuery(
             namespace: "", filters: filters,
-            logicMode: logicMode, limit: limit
+            logicMode: logicMode, limit: limit, offset: offset
         )
     }
 

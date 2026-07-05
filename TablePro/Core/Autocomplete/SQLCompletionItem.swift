@@ -10,14 +10,14 @@ import Foundation
 
 /// Category of completion item
 enum SQLCompletionKind: String, CaseIterable {
-    case keyword    // SELECT, FROM, WHERE, etc.
-    case table      // Database tables
-    case view       // Database views
-    case column     // Table columns
-    case function   // SQL functions (COUNT, SUM, NOW, etc.)
-    case schema     // Database/schema names
-    case alias      // Table aliases
-    case `operator` // Operators (=, <>, LIKE, etc.)
+    case keyword
+    case table
+    case view
+    case column
+    case function
+    case schema
+    case alias
+    case `operator`
     case favorite   // Saved SQL favorite (keyword expansion)
 
     /// SF Symbol for display
@@ -69,7 +69,7 @@ enum SQLCompletionKind: String, CaseIterable {
 /// A single completion suggestion
 struct SQLCompletionItem: Identifiable, Hashable {
     let id: UUID
-    let label: String           // Display text
+    let label: String
     let kind: SQLCompletionKind
     let insertText: String      // Text to insert (may differ from label)
     let detail: String?         // Type info, e.g., "VARCHAR(255)"
@@ -77,6 +77,7 @@ struct SQLCompletionItem: Identifiable, Hashable {
     var sortPriority: Int       // For ranking (lower = higher priority)
     let filterText: String      // Text used for matching
     var matchedRanges: [Range<Int>] = []
+    var fuzzyPenalty: Int = 0
 
     init(
         label: String,
@@ -247,7 +248,6 @@ extension SQLCompletionItem {
         if let dataType { detailParts.append(dataType) }
         let detail = detailParts.isEmpty ? nil : detailParts.joined(separator: " · ")
 
-        // Build documentation
         var docParts: [String] = []
         if let tableName { docParts.append("Column from \(tableName)") }
         if let defaultValue { docParts.append("Default: \(defaultValue)") }

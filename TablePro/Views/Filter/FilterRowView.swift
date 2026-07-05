@@ -11,7 +11,6 @@ struct FilterRowView: View {
     let completions: [String]
     var enumValuesByColumn: [String: [String]] = [:]
     var rawSQLCompletionProvider: RawSQLFilterCompletionProvider?
-    let isApplied: Bool
     let onAdd: () -> Void
     let onDuplicate: () -> Void
     let onRemove: () -> Void
@@ -160,28 +159,8 @@ struct FilterRowView: View {
         }
     }
 
-    @ViewBuilder
-    private var soloApplyButton: some View {
-        if isApplied {
-            Button(String(localized: "Applied"), action: onApply)
-                .buttonStyle(.borderedProminent)
-        } else {
-            Button(String(localized: "Apply"), action: onApply)
-                .buttonStyle(.bordered)
-        }
-    }
-
     private var rowButtons: some View {
         HStack(spacing: 4) {
-            soloApplyButton
-                .controlSize(.small)
-                .disabled(!filter.isValid)
-                .accessibilityLabel(String(localized: "Apply only this filter"))
-                .accessibilityValue(isApplied ? String(localized: "Applied") : "")
-                .help(isApplied
-                    ? String(localized: "Filtering by only this row")
-                    : String(localized: "Filter by only this row"))
-
             Button(action: onAdd) {
                 Image(systemName: "plus")
                     .frame(width: rowButtonGlyphSize, height: rowButtonGlyphSize)
@@ -204,6 +183,15 @@ struct FilterRowView: View {
 
     @ViewBuilder
     private var rowContextMenu: some View {
+        Button {
+            onApply()
+        } label: {
+            Label(String(localized: "Apply Only This Filter"), systemImage: "checkmark.circle")
+        }
+        .disabled(!filter.isValid)
+
+        Divider()
+
         Button {
             onAdd()
         } label: {

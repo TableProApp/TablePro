@@ -171,6 +171,9 @@ struct TableFilter: Identifiable, Equatable, Hashable, Codable {
 
 extension TableFilter {
     var asPluginFilterTuple: (column: String, op: String, value: String) {
+        if isRawSQL {
+            return (columnName, filterOperator.rawValue, rawSQL ?? "")
+        }
         let resolvedValue: String
         if filterOperator == .between, let second = secondValue {
             resolvedValue = "\(value),\(second)"
@@ -187,12 +190,30 @@ struct TabFilterState: Equatable, Hashable, Codable {
     var commit: FilterCommit?
     var isVisible: Bool
     var filterLogicMode: FilterLogicMode
+    var keyPattern: String
+    var keyTypeScope: String?
 
     init(isVisible: Bool = false) {
         self.filters = []
         self.commit = nil
         self.isVisible = isVisible
         self.filterLogicMode = .and
+        self.keyPattern = ""
+        self.keyTypeScope = nil
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case filters, commit, isVisible, filterLogicMode, keyPattern, keyTypeScope
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.filters = try container.decodeIfPresent([TableFilter].self, forKey: .filters) ?? []
+        self.commit = try container.decodeIfPresent(FilterCommit.self, forKey: .commit)
+        self.isVisible = try container.decodeIfPresent(Bool.self, forKey: .isVisible) ?? false
+        self.filterLogicMode = try container.decodeIfPresent(FilterLogicMode.self, forKey: .filterLogicMode) ?? .and
+        self.keyPattern = try container.decodeIfPresent(String.self, forKey: .keyPattern) ?? ""
+        self.keyTypeScope = try container.decodeIfPresent(String.self, forKey: .keyTypeScope)
     }
 
     var appliedFilters: [TableFilter] {
@@ -213,5 +234,12 @@ struct TabFilterState: Equatable, Hashable, Codable {
 
     var hasAppliedFilters: Bool {
         !appliedFilters.isEmpty
+    }
+
+    var allEnabledState: Bool? {
+        guard !filters.isEmpty else { return false }
+        if filters.allSatisfy({ $0.isEnabled }) { return true }
+        if filters.allSatisfy({ !$0.isEnabled }) { return false }
+        return nil
     }
 }

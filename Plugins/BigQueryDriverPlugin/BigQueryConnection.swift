@@ -317,7 +317,6 @@ internal final class BigQueryConnection: @unchecked Sendable {
             _session = urlSession
         }
 
-        // Test connectivity
         do {
             _ = try await executeQuery("SELECT 1")
         } catch {
@@ -428,7 +427,6 @@ internal final class BigQueryConnection: @unchecked Sendable {
             _currentJobLocation = jobRef.location
         }
 
-        // Poll for completion if not done
         let finalJobResponse: BQJobResponse
         if let state = jobResponse.status?.state, state != "DONE" {
             finalJobResponse = try await pollJobCompletion(
@@ -441,7 +439,6 @@ internal final class BigQueryConnection: @unchecked Sendable {
             finalJobResponse = jobResponse
         }
 
-        // Extract DML affected rows from job statistics
         let dmlAffectedRows: Int
         if let numStr = finalJobResponse.statistics?.query?.numDmlAffectedRows {
             dmlAffectedRows = Int(numStr) ?? 0
@@ -453,7 +450,6 @@ internal final class BigQueryConnection: @unchecked Sendable {
         let totalBytesBilled = finalJobResponse.statistics?.query?.totalBytesBilled
         let cacheHit = finalJobResponse.statistics?.query?.cacheHit
 
-        // Fetch first page of results
         let firstPage = try await getQueryResults(
             jobId: jobId, location: jobRef.location, auth: auth, session: session
         )

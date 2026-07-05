@@ -44,9 +44,24 @@ jobs:
         run: brew list xcbeautify &>/dev/null || brew install xcbeautify
 
       # macos-26 lazy-loads simulator runtimes; -downloadPlatform pulls the runtime
-      # matching Xcode's SDK and is a no-op when it is already present.
+      # matching Xcode's SDK and is a no-op when it is already present. The download
+      # endpoint flakes on hosted runners, so a failure falls back to checking whether
+      # the test device already exists before failing the job.
       - name: Install iOS simulator runtime
-        run: sudo xcodebuild -downloadPlatform iOS
+        run: |
+          if sudo xcodebuild -downloadPlatform iOS; then
+            exit 0
+          fi
+
+          echo "::warning::xcodebuild -downloadPlatform iOS failed; checking for an existing simulator"
+          device_name="$(echo "$TEST_DESTINATION" | sed -n 's/.*name=\([^,]*\).*/\1/p')"
+          if xcrun simctl list devices available | grep -qF "$device_name ("; then
+            echo "$device_name simulator is already available; continuing."
+            exit 0
+          fi
+
+          echo "::error::$device_name simulator is not available and the runtime download failed."
+          exit 1
 
       # Secrets.xcconfig is gitignored. Tests do not need analytics keys, so the
       # checked-in example template is enough for the project to resolve.

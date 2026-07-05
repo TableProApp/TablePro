@@ -24,9 +24,7 @@ struct ConnectionSidebarHeader: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Connection selector button
             Menu {
-                // Active connections
                 if !sessions.isEmpty {
                     Section("Active Connections") {
                         ForEach(sortedSessions) { session in
@@ -42,10 +40,8 @@ struct ConnectionSidebarHeader: View {
 
                                     Spacer()
 
-                                    // Status indicator
                                     statusIndicator(for: session)
 
-                                    // Checkmark for active
                                     if session.id == currentSessionId {
                                         Image(systemName: "checkmark")
                                     }
@@ -55,7 +51,6 @@ struct ConnectionSidebarHeader: View {
                     }
                 }
 
-                // Saved connections
                 if !savedConnections.isEmpty {
                     if !sessions.isEmpty {
                         Divider()
@@ -82,13 +77,11 @@ struct ConnectionSidebarHeader: View {
                     Divider()
                 }
 
-                // New connection
                 Button(action: onNewConnection) {
                     Label("New Connection", systemImage: "plus.circle")
                 }
             } label: {
                 HStack(spacing: 8) {
-                    // Database icon
                     if let session = currentSession {
                         session.connection.type.iconImage
                             .renderingMode(.template)
@@ -100,14 +93,12 @@ struct ConnectionSidebarHeader: View {
                             .foregroundStyle(.secondary)
                     }
 
-                    // Connection name
                     Text(currentSession?.connection.name ?? "No Connection")
                         .font(.body.weight(.medium))
                         .lineLimit(1)
 
                     Spacer()
 
-                    // Status + Chevron
                     HStack(spacing: 6) {
                         if let session = currentSession {
                             Circle()

@@ -350,82 +350,27 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
 
     /// Blocking relay loop. Runs on `relayQueue`; libssh2 calls go through `sessionQueue`.
     private func runRelay(clientFD: Int32, channel: OpaquePointer) {
-        let buffer = UnsafeMutablePointer<CChar>.allocate(capacity: Self.relayBufferSize)
-        defer {
-            buffer.deallocate()
-            Darwin.close(clientFD)
-            if self.isRunning {
-                sessionQueue.sync {
-                    libssh2_channel_close(channel)
-                    libssh2_channel_free(channel)
-                }
-            }
+        let relay = SSHChannelRelay(
+            localFD: clientFD,
+            transportFD: socketFD,
+            channelIO: LibSSH2ChannelIO(channel: channel, session: session, sessionQueue: sessionQueue),
+            bufferSize: Self.relayBufferSize,
+            isActive: { [weak self] in self?.isRunning ?? false }
+        )
+
+        let termination = relay.run()
+
+        Darwin.close(clientFD)
+        guard self.isRunning else { return }
+
+        sessionQueue.sync {
+            libssh2_channel_close(channel)
+            libssh2_channel_free(channel)
         }
 
-        while self.isRunning {
-            var pollFDs = [
-                pollfd(fd: clientFD, events: Int16(POLLIN), revents: 0),
-                pollfd(fd: self.socketFD, events: Int16(POLLIN), revents: 0),
-            ]
-
-            let pollResult = poll(&pollFDs, 2, 500) // 500ms timeout
-            if pollResult < 0 { break }
-
-            // Read from SSH channel when the SSH socket has data or on timeout
-            // (libssh2 may have internally buffered data)
-            if pollFDs[1].revents & Int16(POLLIN) != 0 || pollResult == 0 {
-                let readResult: Int = sessionQueue.sync {
-                    Int(tablepro_libssh2_channel_read(channel, buffer, Self.relayBufferSize))
-                }
-                if readResult > 0 {
-                    var totalSent = 0
-                    while totalSent < readResult {
-                        let sent = send(
-                            clientFD,
-                            buffer.advanced(by: totalSent),
-                            readResult - totalSent,
-                            0
-                        )
-                        if sent <= 0 { return }
-                        totalSent += sent
-                    }
-                } else if readResult == 0 || sessionQueue.sync(execute: { libssh2_channel_eof(channel) }) != 0 {
-                    return
-                } else if readResult != Int(LIBSSH2_ERROR_EAGAIN) {
-                    return
-                }
-            }
-
-            // Read from client -> write to SSH channel
-            if pollFDs[0].revents & Int16(POLLIN) != 0 {
-                let clientRead = recv(clientFD, buffer, Self.relayBufferSize, 0)
-                if clientRead <= 0 { return }
-
-                var totalWritten = 0
-                while totalWritten < Int(clientRead) {
-                    let written: Int = sessionQueue.sync {
-                        Int(tablepro_libssh2_channel_write(
-                            channel,
-                            buffer.advanced(by: totalWritten),
-                            Int(clientRead) - totalWritten
-                        ))
-                    }
-                    if written > 0 {
-                        totalWritten += written
-                    } else if written == Int(LIBSSH2_ERROR_EAGAIN) {
-                        let directions = sessionQueue.sync {
-                            libssh2_session_block_directions(self.session)
-                        }
-                        _ = self.waitForSocketDirections(
-                            directions: directions,
-                            socketFD: self.socketFD,
-                            timeoutMs: 1_000
-                        )
-                    } else {
-                        return
-                    }
-                }
-            }
+        if termination == .transportHangup {
+            Self.logger.info("SSH transport hung up, marking tunnel dead for \(self.connectionId)")
+            markDead()
         }
     }
 

@@ -49,12 +49,16 @@ struct CreateDatabaseSheet: View {
 
     private var titleRow: some View {
         HStack {
-            Text(String(localized: "New Database"))
+            Text(String(format: String(localized: "New %@"), containerEntityName))
                 .font(.headline)
             Spacer()
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 14)
+    }
+
+    private var containerEntityName: String {
+        PluginManager.shared.containerEntityName(for: databaseType)
     }
 
     @ViewBuilder
@@ -63,7 +67,7 @@ struct CreateDatabaseSheet: View {
             TextField(
                 String(localized: "Name"),
                 text: $databaseName,
-                prompt: Text(String(localized: "Database name"))
+                prompt: Text(String(format: String(localized: "%@ name"), containerEntityName))
             )
 
             switch loadState {

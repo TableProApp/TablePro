@@ -14,6 +14,8 @@
 			<key>CFBundleTypeExtensions</key>
 			<array>
 				<string>sql</string>
+				<string>psql</string>
+				<string>pgsql</string>
 			</array>
 			<key>CFBundleTypeIconSystemGenerated</key>
 			<true/>
@@ -170,6 +172,8 @@
 				<key>public.filename-extension</key>
 				<array>
 					<string>sql</string>
+					<string>psql</string>
+					<string>pgsql</string>
 				</array>
 			</dict>
 		</dict>

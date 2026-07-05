@@ -79,6 +79,15 @@ extension TableStructureView {
                     }
                     return preamble + "\n" + baseDDL
                 }
+            case .triggers:
+                do {
+                    triggers = try await DatabaseManager.shared.withMetadataDriver(connectionId: connection.id) { driver in
+                        try await driver.fetchTriggers(table: tableName)
+                    }
+                } catch {
+                    Self.logger.error("Failed to load triggers: \(error.localizedDescription, privacy: .public)")
+                    triggers = []
+                }
             case .parts:
                 return
             }
@@ -131,7 +140,6 @@ extension TableStructureView {
     }
 
     func onRefreshData() {
-        // Ignore refresh notifications while we're in the middle of our own save/reload
         guard !isReloadingAfterSave else {
             Self.logger.debug("Ignoring refresh notification - currently reloading after save")
             return
@@ -140,9 +148,7 @@ extension TableStructureView {
         // Skip warning if we just saved (within 2 seconds)
         let justSaved = lastSaveTime.map { Date().timeIntervalSince($0) < 2.0 } ?? false
 
-        // Check for unsaved changes before refreshing
         if structureChangeManager.hasChanges && !justSaved {
-            // Show confirmation dialog
             Task { @MainActor in
                 let window = coordinator?.contentWindow
                 let confirmed = await AlertHelper.confirmDestructive(
@@ -168,6 +174,7 @@ extension TableStructureView {
 
     private func reloadAllTabs() async {
         loadedTabs.removeAll()
+        partsReloadToken += 1
         await loadColumns()
         await fetchTabData(.indexes)
         if connection.type.supportsForeignKeys {
@@ -175,6 +182,9 @@ extension TableStructureView {
         }
         if selectedTab == .ddl {
             await fetchTabData(.ddl)
+        }
+        if selectedTab == .triggers, connection.type.supportsTriggers {
+            await fetchTabData(.triggers)
         }
     }
 }

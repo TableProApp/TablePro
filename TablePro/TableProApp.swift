@@ -150,8 +150,22 @@ struct AppMenuCommands: Commands {
         )
     }
 
+    private var showObjectCommentsBinding: Binding<Bool> {
+        Binding(
+            get: { settingsManager.general.showObjectComments },
+            set: { settingsManager.general.showObjectComments = $0 }
+        )
+    }
+
     private func shortcut(for action: ShortcutAction) -> KeyboardShortcut? {
         settingsManager.keyboard.keyboardShortcut(for: action)
+    }
+
+    private var openContainerMenuTitle: String {
+        let containerName = actions.map {
+            PluginManager.shared.containerEntityName(for: $0.currentDatabaseType)
+        } ?? "Database"
+        return String(format: String(localized: "Open %@..."), containerName)
     }
 
     /// Prefers the focused scene value; falls back to the coordinator back-reference
@@ -230,7 +244,7 @@ struct AppMenuCommands: Commands {
         //    - Clean method calls, no global event bus
         //
         // 3. **NotificationCenter** (Multi-listener broadcasts only):
-        //    - refreshData (Sidebar + Coordinator + StructureView)
+        //    - refreshData: targeted per-connection data-changed signal
         //    - Legitimate broadcasts where multiple views respond
 
         // File menu
@@ -266,11 +280,11 @@ struct AppMenuCommands: Commands {
             }
             .disabled(!(actions?.isConnected ?? false) || actions?.isReadOnly ?? false)
 
-            Button("Open Database...") {
+            Button(openContainerMenuTitle) {
                 actions?.openDatabaseSwitcher()
             }
             .optionalKeyboardShortcut(shortcut(for: .openDatabase))
-            .disabled(!(actions?.isConnected ?? false) || !(actions?.supportsDatabaseSwitching ?? false))
+            .disabled(!(actions?.isConnected ?? false) || !(actions?.supportsContainerSwitching ?? false))
 
             Button(String(localized: "Open File...")) {
                 actions?.openSQLFile()
@@ -380,6 +394,12 @@ struct AppMenuCommands: Commands {
             .optionalKeyboardShortcut(shortcut(for: .executeAllStatements))
             .disabled(!(actions?.isConnected ?? false) || !(actions?.hasQueryText ?? false))
 
+            Button(String(localized: "Execute Query Without Limit")) {
+                actions?.runQueryWithoutLimit()
+            }
+            .optionalKeyboardShortcut(shortcut(for: .executeQueryWithoutLimit))
+            .disabled(!(actions?.isConnected ?? false) || !(actions?.hasQueryText ?? false))
+
             Button("Explain Query") {
                 actions?.explainQuery()
             }
@@ -416,7 +436,7 @@ struct AppMenuCommands: Commands {
             .disabled(!(actions?.isQueryExecuting ?? false))
 
             Button("Refresh") {
-                AppCommands.shared.refreshData.send(nil)
+                actions?.refresh()
             }
             .optionalKeyboardShortcut(shortcut(for: .refresh))
             .disabled(!(actions?.isConnected ?? false))
@@ -596,6 +616,8 @@ struct AppMenuCommands: Commands {
             .pickerStyle(.inline)
             .disabled(!(actions?.canSwitchSidebarLayout ?? false))
 
+            Toggle(String(localized: "Show Object Comments"), isOn: showObjectCommentsBinding)
+
             Divider()
 
             Button("Toggle Filters") {
@@ -683,7 +705,6 @@ struct AppMenuCommands: Commands {
 
         // Tab navigation shortcuts — native macOS window tabs
         CommandGroup(after: .windowArrangement) {
-            // Tab switching by number (Cmd+1 through Cmd+9)
             ForEach(1...9, id: \.self) { number in
                 Button("Select Tab \(number)") {
                     actions?.selectTab(number: number)
@@ -751,7 +772,6 @@ struct AppMenuCommands: Commands {
 
 @main
 struct TableProApp: App {
-    // Connect AppKit delegate for proper window configuration
     @NSApplicationDelegateAdaptor(AppDelegate.self)
     var appDelegate
 
@@ -760,11 +780,17 @@ struct TableProApp: App {
     @State private var commandRegistry = CommandActionsRegistry.shared
 
     init() {
+        AppSettingsStorage.shared.migrateStartupBehaviorToReopenLastIfNeeded()
         AIProviderRegistration.registerAll()
 
         // Perform startup cleanup of query history if auto-cleanup is enabled
         Task {
             await QueryHistoryManager.shared.performStartupCleanup()
+        }
+
+        Task { @MainActor in
+            let activeIds = Set(ConnectionStorage.shared.loadConnections().map(\.id))
+            await SQLFavoriteManager.shared.pruneOrphaned(activeConnectionIds: activeIds)
         }
     }
 

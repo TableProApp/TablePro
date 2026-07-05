@@ -15,7 +15,6 @@ struct QueryPlanTreeView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Tree list
             List(selection: $selection) {
                 OutlineGroup(
                     [plan.rootNode],
@@ -27,7 +26,6 @@ struct QueryPlanTreeView: View {
             }
             .listStyle(.inset(alternatesRowBackgrounds: true))
 
-            // Detail panel for selected node
             if let selectedNode = findNode(selection, in: plan.rootNode) {
                 Divider()
                 QueryPlanDetailView(node: selectedNode)
@@ -55,13 +53,11 @@ private struct QueryPlanRowView: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            // Cost indicator
             Circle()
                 .fill(costColor)
                 .frame(width: 8, height: 8)
                 .accessibilityHidden(true)
 
-            // Operation + table
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 4) {
                     Text(node.operation)
@@ -89,7 +85,6 @@ private struct QueryPlanRowView: View {
 
             Spacer(minLength: 16)
 
-            // Cost
             if let startup = node.estimatedStartupCost, let total = node.estimatedTotalCost {
                 Text(String(format: "%.2f..%.2f", startup, total))
                     .font(.system(.caption, design: .monospaced))
@@ -97,7 +92,6 @@ private struct QueryPlanRowView: View {
                     .frame(width: 110, alignment: .trailing)
             }
 
-            // Rows
             if let rows = node.estimatedRows {
                 Text("\(rows.formatted(.number.grouping(.automatic))) rows")
                     .font(.system(.caption, design: .monospaced))
@@ -145,7 +139,6 @@ private struct QueryPlanDetailView: View {
         ScrollView(.horizontal, showsIndicators: false) {
             ScrollView(.vertical) {
                 HStack(alignment: .top, spacing: 24) {
-                    // Estimates
                     VStack(alignment: .leading, spacing: 4) {
                         Text(node.operation)
                             .font(.caption.weight(.semibold))
@@ -170,7 +163,6 @@ private struct QueryPlanDetailView: View {
                         }
                     }
 
-                    // Extra properties
                     if !filteredProperties.isEmpty {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("Details")

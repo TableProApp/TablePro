@@ -24,7 +24,7 @@ internal final class CassandraPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let databaseTypeId = "Cassandra"
     static let databaseDisplayName = "Cassandra / ScyllaDB"
     static let iconName = "cassandra-icon"
-    static let defaultPort = 9042
+    static let defaultPort = 9_042
     static let additionalConnectionFields: [ConnectionField] = AWSAuthFields.standard()
     static let additionalDatabaseTypeIds: [String] = ["ScyllaDB"]
 
@@ -36,6 +36,7 @@ internal final class CassandraPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let brandColorHex = "#26A0D8"
     static let queryLanguageName = "CQL"
     static let supportsDatabaseSwitching = true
+    static let containerEntityName = "Keyspace"
     static let databaseGroupingStrategy: GroupingStrategy = .byDatabase
     static let defaultGroupName = "default"
     static let systemDatabaseNames: [String] = [
@@ -303,7 +304,6 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
         """
         let result = try await execute(query: query)
 
-        // Parse and sort by kind order then position before mapping to PluginColumnInfo
         struct RawColumn {
             let name: String
             let dataType: String
@@ -389,7 +389,6 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
                 let kind = row[safe: 1]?.asText ?? "COMPOSITES"
                 let options = row[safe: 2]?.asText ?? ""
 
-                // Extract target column from options map
                 var targetColumns: [String] = []
                 if let targetRange = options.range(of: "target: ") {
                     let target = String(options[targetRange.upperBound...])
@@ -418,7 +417,6 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
     func fetchTableDDL(table: String, schema: String?) async throws -> String {
         let ks = resolveKeyspace(schema)
 
-        // Build DDL from schema metadata
         let columns = try await fetchColumns(table: table, schema: ks)
 
         let partitionKeys = columns.filter(\.isPrimaryKey)
@@ -603,4 +601,3 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
         }
     }
 }
-

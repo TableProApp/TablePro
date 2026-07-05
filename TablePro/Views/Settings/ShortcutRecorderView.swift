@@ -111,7 +111,6 @@ final class ShortcutRecorderNSView: NSView {
     override func draw(_ dirtyRect: NSRect) {
         let bounds = self.bounds
 
-        // Background
         if isRecording {
             NSColor.controlAccentColor.withAlphaComponent(0.1).setFill()
         } else {
@@ -120,7 +119,6 @@ final class ShortcutRecorderNSView: NSView {
         let bgPath = NSBezierPath(roundedRect: bounds, xRadius: 6, yRadius: 6)
         bgPath.fill()
 
-        // Border
         if isRecording {
             NSColor.controlAccentColor.setStroke()
         } else {
@@ -134,7 +132,6 @@ final class ShortcutRecorderNSView: NSView {
         borderPath.lineWidth = isRecording ? 2.0 : 1.0
         borderPath.stroke()
 
-        // Text
         let text = displayText
         let textColor: NSColor = isRecording ? .secondaryLabelColor : .labelColor
         let font = NSFont.systemFont(ofSize: 12, weight: .medium)
@@ -156,7 +153,6 @@ final class ShortcutRecorderNSView: NSView {
     /// The text to display in the view
     private var displayText: String {
         if isRecording {
-            // Show live modifier display or placeholder
             let modifierString = modifierDisplayString
             if modifierString.isEmpty {
                 return String(localized: "Type shortcut...")
@@ -164,7 +160,6 @@ final class ShortcutRecorderNSView: NSView {
             return modifierString
         }
 
-        // Not recording — show current shortcut or "None"
         if let combo = currentCombo, !combo.isCleared {
             return combo.displayString
         }

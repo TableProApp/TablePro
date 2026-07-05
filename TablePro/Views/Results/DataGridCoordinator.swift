@@ -1,7 +1,10 @@
 import AppKit
 import Combine
+import os
 import SwiftUI
 import TableProPluginKit
+
+private let fkTraceLogger = Logger(subsystem: "com.TablePro", category: "DataGrid")
 
 // MARK: - Coordinator
 
@@ -15,10 +18,14 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     var changeManager: AnyChangeManager
     var isEditable: Bool
     var sortedIDs: [RowID]?
+    var valueFilteredIDs: [RowID]?
+    var valueFilterState = GridValueFilterState()
+    var displayIDs: [RowID]? { valueFilteredIDs ?? sortedIDs }
     private(set) var columnDisplayFormats: [ValueDisplayFormat?] = []
     private let displayCache = RowDisplayCache()
     weak var delegate: (any DataGridViewDelegate)?
     weak var activeFKPreviewPopover: NSPopover?
+    weak var activeValueFilterPopover: NSPopover?
     var activeFKPreviewModel: FKPreviewModel?
     var activeFKPreviewColumnIndex: Int?
     var dropdownColumns: Set<Int>?
@@ -34,6 +41,27 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     var onColumnLayoutDidChange: ((ColumnLayoutState) -> Void)?
     private(set) var identitySchema: ColumnIdentitySchema = .empty
     var currentSortState = SortState()
+
+    private var columnIndexByDataIndex: [Int: Int] = [:]
+    private static let selectionCacheLogger = Logger(subsystem: "com.TablePro", category: "DataGrid.ColumnIndexCache")
+
+    func tableColumnIndex(for dataIndex: Int) -> Int? {
+        if let cached = columnIndexByDataIndex[dataIndex] {
+            return cached
+        }
+        guard let tableView,
+              let identifier = identitySchema.identifier(for: dataIndex) else { return nil }
+        let resolved = tableView.column(withIdentifier: identifier)
+        guard resolved >= 0 else { return nil }
+        columnIndexByDataIndex[dataIndex] = resolved
+        return resolved
+    }
+
+    func invalidateColumnIndexCache() {
+        guard !columnIndexByDataIndex.isEmpty else { return }
+        Self.selectionCacheLogger.debug("invalidate column index cache (had \(self.columnIndexByDataIndex.count))")
+        columnIndexByDataIndex.removeAll()
+    }
 
     func columnIdentifier(for dataIndex: Int) -> NSUserInterfaceItemIdentifier? {
         identitySchema.identifier(for: dataIndex)
@@ -106,7 +134,6 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     let cellFactory = DataGridCellFactory()
     let cellRegistry: DataGridCellRegistry
     let columnPool = DataGridColumnPool()
-    let tableRowsController = TableRowsController()
     let selectionController = GridSelectionController()
     var overlayEditor: CellOverlayEditor?
     var overlayViewer: CellOverlayViewer?
@@ -222,7 +249,10 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         columnDisplayFormats = []
         cachedRowCount = 0
         cachedColumnCount = 0
+        invalidateColumnIndexCache()
         sortedIDs = nil
+        valueFilteredIDs = nil
+        valueFilterState.clearAll()
         lastUpdateSnapshot = nil
         columnPool.detachFromTableView()
         if let tableView {
@@ -231,15 +261,16 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             }
             tableView.reloadData()
         }
-        tableRowsController.detach()
         delegate = nil
         activeFKPreviewPopover?.close()
+        activeValueFilterPopover?.close()
+        activeValueFilterPopover = nil
         clearFKPreviewState()
     }
 
     func updateCache() {
         let tableRows = tableRowsProvider()
-        cachedRowCount = sortedIDs?.count ?? tableRows.count
+        cachedRowCount = displayIDs?.count ?? tableRows.count
         cachedColumnCount = tableRows.columns.count
         resizeRowNumberColumnForCurrentRange()
     }
@@ -256,14 +287,22 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
 
     func applyInsertedRows(_ indices: IndexSet) {
         guard let tableView else { return }
-        visualIndex.rebuild(from: changeManager, sortedIDs: sortedIDs)
+        if valueFilterState.isActive {
+            reloadAfterRowMutationWithValueFilter()
+            return
+        }
+        visualIndex.rebuild(from: changeManager, sortedIDs: displayIDs)
         updateCache()
         tableView.insertRows(at: indices, withAnimation: .slideDown)
     }
 
     func applyRemovedRows(_ indices: IndexSet) {
         guard let tableView else { return }
-        visualIndex.rebuild(from: changeManager, sortedIDs: sortedIDs)
+        if valueFilterState.isActive {
+            reloadAfterRowMutationWithValueFilter()
+            return
+        }
+        visualIndex.rebuild(from: changeManager, sortedIDs: displayIDs)
         updateCache()
         tableView.removeRows(at: indices, withAnimation: .slideUp)
     }
@@ -271,8 +310,19 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     func applyFullReplace() {
         guard let tableView else { return }
         invalidateAllDisplayCaches()
+        recomputeValueFilteredIDs()
+        updateValueFilterHeaderIndicators()
         updateCache()
         selectionController.clear()
+        tableView.reloadData()
+        startBackgroundPrewarm()
+    }
+
+    private func reloadAfterRowMutationWithValueFilter() {
+        guard let tableView else { return }
+        recomputeValueFilteredIDs()
+        updateCache()
+        visualIndex.rebuild(from: changeManager, sortedIDs: displayIDs)
         tableView.reloadData()
         startBackgroundPrewarm()
     }
@@ -282,18 +332,18 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     }
 
     func displayRow(at displayIndex: Int, in tableRows: TableRows) -> Row? {
-        if let sorted = sortedIDs {
-            guard displayIndex >= 0, displayIndex < sorted.count else { return nil }
-            return tableRows.row(withID: sorted[displayIndex])
+        if let displayIDs {
+            guard displayIndex >= 0, displayIndex < displayIDs.count else { return nil }
+            return tableRows.row(withID: displayIDs[displayIndex])
         }
         guard displayIndex >= 0, displayIndex < tableRows.count else { return nil }
         return tableRows.rows[displayIndex]
     }
 
     func tableRowsIndex(forDisplayRow displayIndex: Int) -> Int? {
-        if let sorted = sortedIDs {
-            guard displayIndex >= 0, displayIndex < sorted.count else { return nil }
-            return tableRowsProvider().index(of: sorted[displayIndex])
+        if let displayIDs {
+            guard displayIndex >= 0, displayIndex < displayIDs.count else { return nil }
+            return tableRowsProvider().index(of: displayIDs[displayIndex])
         }
         let count = tableRowsProvider().count
         guard displayIndex >= 0, displayIndex < count else { return nil }
@@ -336,7 +386,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
 
     func invalidateAllDisplayCaches() {
         displayCache.removeAll()
-        visualIndex.rebuild(from: changeManager, sortedIDs: sortedIDs)
+        visualIndex.rebuild(from: changeManager, sortedIDs: displayIDs)
     }
 
     func updateDisplayFormats(_ formats: [ValueDisplayFormat?]) {
@@ -352,7 +402,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
 
     func preWarmDisplayCache(upTo rowCount: Int) {
         let tableRows = tableRowsProvider()
-        let displayCount = sortedIDs?.count ?? tableRows.count
+        let displayCount = displayIDs?.count ?? tableRows.count
         let count = min(rowCount, displayCount)
         guard count > 0 else { return }
         for displayIndex in 0..<count {
@@ -421,7 +471,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         var nextIndex = 0
         while !Task.isCancelled {
             let tableRows = tableRowsProvider()
-            let displayCount = sortedIDs?.count ?? tableRows.count
+            let displayCount = displayIDs?.count ?? tableRows.count
             guard nextIndex < displayCount else { return }
 
             let deadline = ContinuousClock.now.advanced(by: Self.prewarmFrameBudget)
@@ -476,11 +526,11 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         switch delta {
         case .cellChanged(let row, let column):
             guard let tableView,
-                  let tableColumn = DataGridView.tableColumnIndex(for: column, in: tableView, schema: identitySchema)
+                  let tableColumn = tableColumnIndex(for: column)
             else { return }
             guard row >= 0, row < tableView.numberOfRows else { return }
             invalidateDisplayCache(forDisplayRow: row, column: column)
-            visualIndex.updateRow(row, from: changeManager, sortedIDs: sortedIDs)
+            visualIndex.updateRow(row, from: changeManager, sortedIDs: displayIDs)
             tableView.reloadData(
                 forRowIndexes: IndexSet(integer: row),
                 columnIndexes: IndexSet(integer: tableColumn)
@@ -493,18 +543,14 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
                 if position.row >= 0, position.row < tableView.numberOfRows {
                     rowSet.insert(position.row)
                 }
-                if let tableColumn = DataGridView.tableColumnIndex(
-                    for: position.column,
-                    in: tableView,
-                    schema: identitySchema
-                ) {
+                if let tableColumn = tableColumnIndex(for: position.column) {
                     colSet.insert(tableColumn)
                 }
                 invalidateDisplayCache(forDisplayRow: position.row, column: position.column)
             }
             guard !rowSet.isEmpty, !colSet.isEmpty else { return }
             for row in rowSet {
-                visualIndex.updateRow(row, from: changeManager, sortedIDs: sortedIDs)
+                visualIndex.updateRow(row, from: changeManager, sortedIDs: displayIDs)
             }
             tableView.reloadData(forRowIndexes: rowSet, columnIndexes: colSet)
         case .rowsInserted(let indices):
@@ -619,7 +665,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
 
     func beginEditing(displayRow: Int, column: Int) {
         guard let tableView,
-              let displayCol = DataGridView.tableColumnIndex(for: column, in: tableView, schema: identitySchema)
+              let displayCol = tableColumnIndex(for: column)
         else { return }
         guard displayRow >= 0, displayRow < tableView.numberOfRows else { return }
         tableView.scrollRowToVisible(displayRow)
@@ -630,6 +676,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     func refreshForeignKeyColumns() {
         guard let tableView else { return }
         let tableRows = tableRowsProvider()
+        rebuildKindSets(from: tableRows)
         let fkColumnIndices = IndexSet(
             tableView.tableColumns.enumerated().compactMap { displayIndex, tableColumn in
                 guard tableColumn.identifier != ColumnIdentitySchema.rowNumberIdentifier,
@@ -664,6 +711,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         guard schemaChanged else { return false }
         identitySchema = nextSchema
         displayCache.removeAll()
+        invalidateColumnIndexCache()
         return true
     }
 
@@ -689,6 +737,11 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             }
         }
         enumOrSetColumns = enumSet
+        if fkSet != fkColumns {
+            fkTraceLogger.info(
+                "[fk] grid columns=\(columns.count) fkColumns=\(fkSet.count) fkMeta=\(fkKeys.count)"
+            )
+        }
         fkColumns = fkSet
     }
 
@@ -704,7 +757,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     // MARK: - NSTableViewDataSource
 
     func numberOfRows(in tableView: NSTableView) -> Int {
-        sortedIDs?.count ?? tableRowsProvider().count
+        displayIDs?.count ?? cachedRowCount
     }
 }
 
@@ -721,11 +774,7 @@ extension TableViewCoordinator: DataGridCellAccessoryDelegate {
 
     func dataGridCellDidDoubleClick(row: Int, columnIndex: Int) {
         guard row >= 0, columnIndex >= 0, let tableView else { return }
-        guard let tableColumn = DataGridView.tableColumnIndex(
-            for: columnIndex,
-            in: tableView,
-            schema: identitySchema
-        ) else { return }
+        guard let tableColumn = tableColumnIndex(for: columnIndex) else { return }
         handleCellInteraction(row: row, tableColumn: tableColumn, columnIndex: columnIndex, tableView: tableView)
     }
 }

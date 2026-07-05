@@ -5,12 +5,7 @@ import os
 typealias MCPToolName = String
 
 extension MCPToolName {
-    static let stateMutating: Set<String> = [
-        "execute_query", "confirm_destructive_operation",
-        "switch_database", "switch_schema", "export_data"
-    ]
     static let requiresFullAccess: Set<String> = ["confirm_destructive_operation"]
-    static let requiresReadWrite: Set<String> = ["switch_database", "switch_schema", "export_data"]
     static let writeQueryTools: Set<String> = ["execute_query"]
 }
 
@@ -20,10 +15,27 @@ enum AuthDecision: Sendable {
     case denied(reason: String)
 }
 
+struct MCPConnectionAuthSnapshot: Sendable {
+    let policy: AIConnectionPolicy
+    let externalAccess: ExternalAccessLevel
+    let name: String
+    let databaseType: String
+}
+
+typealias MCPConnectionSnapshotResolver = @Sendable (UUID) async -> MCPConnectionAuthSnapshot?
+
 public actor MCPAuthPolicy {
     private static let logger = Logger(subsystem: "com.TablePro", category: "MCPAuthPolicy")
 
-    public init() {}
+    private let connectionResolver: MCPConnectionSnapshotResolver
+
+    public init() {
+        self.init(connectionResolver: MCPAuthPolicy.defaultConnectionResolver)
+    }
+
+    init(connectionResolver: @escaping MCPConnectionSnapshotResolver) {
+        self.connectionResolver = connectionResolver
+    }
 
     private var sessionApprovals: [String: Set<UUID>] = [:]
     private let approvalDedup = OnceTask<ApprovalKey, Bool>()
@@ -33,26 +45,18 @@ public actor MCPAuthPolicy {
         let connectionId: UUID
     }
 
-    private struct ConnectionSnapshot: Sendable {
-        let policy: AIConnectionPolicy
-        let externalAccess: ExternalAccessLevel
-        let name: String
-        let databaseType: String
-        let safeModeLevel: SafeModeLevel
-    }
-
     func authorize(
-        token: MCPAuthToken,
+        principal: MCPPrincipal,
         tool: MCPToolName,
         connectionId: UUID?,
         sql: String? = nil,
         sessionId: String
     ) async throws -> AuthDecision {
         guard let connectionId else {
-            return decideTokenTier(token: token, tool: tool)
+            return .allowed
         }
 
-        guard let snapshot = await loadConnection(connectionId) else {
+        guard let snapshot = await connectionResolver(connectionId) else {
             return .denied(reason: String(localized: "Connection not found"))
         }
 
@@ -64,12 +68,8 @@ public actor MCPAuthPolicy {
             return .denied(reason: String(localized: "External access is disabled for this connection"))
         }
 
-        if !token.connectionAccess.allows(connectionId) {
+        if !principal.connectionAccess.allows(connectionId) {
             return .denied(reason: String(localized: "Token does not have access to this connection"))
-        }
-
-        if case .denied(let reason) = decideTokenTier(token: token, tool: tool) {
-            return .denied(reason: reason)
         }
 
         if let writeReason = denialForWriteIntent(
@@ -97,14 +97,14 @@ public actor MCPAuthPolicy {
     }
 
     func resolveAndAuthorize(
-        token: MCPAuthToken,
+        principal: MCPPrincipal,
         tool: MCPToolName,
         connectionId: UUID?,
         sql: String? = nil,
         sessionId: String
     ) async throws {
         let decision = try await authorize(
-            token: token,
+            principal: principal,
             tool: tool,
             connectionId: connectionId,
             sql: sql,
@@ -229,34 +229,13 @@ public actor MCPAuthPolicy {
         }
     }
 
-    private func decideTokenTier(token: MCPAuthToken, tool: MCPToolName) -> AuthDecision {
-        let required = requiredPermission(for: tool)
-        if token.permissions.satisfies(required) {
-            return .allowed
-        }
-        return .denied(
-            reason: String(
-                format: String(localized: "Token '%@' with permission '%@' cannot access '%@'"),
-                token.name,
-                token.permissions.displayName,
-                tool
-            )
-        )
-    }
-
-    private func requiredPermission(for tool: MCPToolName) -> TokenPermissions {
-        if MCPToolName.requiresFullAccess.contains(tool) { return .fullAccess }
-        if MCPToolName.requiresReadWrite.contains(tool) { return .readWrite }
-        return .readOnly
-    }
-
     private func denialForWriteIntent(
         tool: MCPToolName,
         sql: String?,
         externalAccess: ExternalAccessLevel,
         databaseType: String
     ) -> String? {
-        if MCPToolName.requiresReadWrite.contains(tool) || MCPToolName.requiresFullAccess.contains(tool) {
+        if MCPToolName.requiresFullAccess.contains(tool) {
             if externalAccess != .readWrite {
                 return String(localized: "Connection is read only for external clients")
             }
@@ -277,26 +256,23 @@ public actor MCPAuthPolicy {
         return nil
     }
 
-    private func loadConnection(_ connectionId: UUID) async -> ConnectionSnapshot? {
+    private static let defaultConnectionResolver: MCPConnectionSnapshotResolver = { connectionId in
         await MainActor.run {
-            let state = DatabaseManager.shared.connectionState(connectionId)
-            switch state {
+            switch DatabaseManager.shared.connectionState(connectionId) {
             case .live(_, let session):
                 let conn = session.connection
-                return ConnectionSnapshot(
+                return MCPConnectionAuthSnapshot(
                     policy: conn.aiPolicy ?? AppSettingsManager.shared.ai.defaultConnectionPolicy,
                     externalAccess: conn.externalAccess,
                     name: conn.name,
-                    databaseType: conn.type.rawValue,
-                    safeModeLevel: session.safeModeLevel
+                    databaseType: conn.type.rawValue
                 )
             case .stored(let conn):
-                return ConnectionSnapshot(
+                return MCPConnectionAuthSnapshot(
                     policy: conn.aiPolicy ?? AppSettingsManager.shared.ai.defaultConnectionPolicy,
                     externalAccess: conn.externalAccess,
                     name: conn.name,
-                    databaseType: conn.type.rawValue,
-                    safeModeLevel: conn.safeModeLevel
+                    databaseType: conn.type.rawValue
                 )
             case .unknown:
                 return nil

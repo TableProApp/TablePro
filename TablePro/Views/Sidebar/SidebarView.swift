@@ -11,6 +11,7 @@ import TableProPluginKit
 struct SidebarView: View {
     @State private var viewModel: SidebarViewModel
     @State private var favoriteTables: Set<FavoriteTablesStorage.FavoriteEntry> = []
+    @State private var showDatabaseFilter: Bool = false
 
     private var schemaService: SchemaService { SchemaService.shared }
 
@@ -85,7 +86,7 @@ struct SidebarView: View {
             pendingDeletes: pendingDeletes,
             tableOperationOptions: tableOperationOptions
         )
-        vm.searchText = windowState.searchText
+        vm.searchText = sidebarState.searchText
         if databaseType == .redis, let existingVM = sidebarState.redisKeyTreeViewModel {
             vm.redisKeyTreeViewModel = existingVM
         }
@@ -108,7 +109,7 @@ struct SidebarView: View {
                 if let coordinator {
                     FavoritesTabView(
                         connectionId: connectionId,
-                        windowState: coordinator.windowSidebarState,
+                        sharedSidebarState: sidebarState,
                         tables: tables,
                         coordinator: coordinator
                     )
@@ -117,7 +118,7 @@ struct SidebarView: View {
                 }
             }
         }
-        .onChange(of: windowState.searchText) { _, newValue in
+        .onChange(of: sidebarState.searchText) { _, newValue in
             viewModel.searchText = newValue
         }
         .onAppear {
@@ -165,6 +166,9 @@ struct SidebarView: View {
             Divider()
             HStack(spacing: 8) {
                 createObjectMenu
+                if usesDatabaseTree {
+                    databaseFilterButton
+                }
                 Spacer()
                 if supportsSchemaFooter {
                     SchemaPickerControl(
@@ -176,6 +180,37 @@ struct SidebarView: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
+        }
+    }
+
+    private var isDatabaseFilterActive: Bool {
+        !sidebarState.databaseFilterSelected.isEmpty
+    }
+
+    private var databaseFilterSelectionBinding: Binding<Set<String>> {
+        Binding(
+            get: { sidebarState.databaseFilterSelected },
+            set: { sidebarState.databaseFilterSelected = $0 }
+        )
+    }
+
+    private var databaseFilterButton: some View {
+        Button {
+            showDatabaseFilter = true
+        } label: {
+            Image(systemName: isDatabaseFilterActive
+                ? "line.3.horizontal.decrease.circle.fill"
+                : "line.3.horizontal.decrease.circle")
+                .foregroundStyle(isDatabaseFilterActive ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
+        }
+        .buttonStyle(.borderless)
+        .help(String(localized: "Filter databases"))
+        .accessibilityIdentifier("sidebar-database-filter")
+        .popover(isPresented: $showDatabaseFilter) {
+            DatabaseTreeFilterPopover(
+                connectionId: connectionId,
+                selectedDatabases: databaseFilterSelectionBinding
+            )
         }
     }
 
@@ -208,7 +243,8 @@ struct SidebarView: View {
             windowState: windowState,
             pendingTruncates: $pendingTruncates,
             pendingDeletes: $pendingDeletes,
-            coordinator: coordinator
+            coordinator: coordinator,
+            sidebarState: sidebarState
         )
     }
 
@@ -239,7 +275,7 @@ struct SidebarView: View {
             loadingState
         case .failed(let message):
             errorState(message: message)
-        case .loaded where !viewModel.searchText.isEmpty && !hasAnyMatch:
+        case .loaded where !viewModel.filterQuery.isEmpty && !hasAnyMatch:
             noMatchState
         case .loaded(let allTables) where allTables.isEmpty && routines.isEmpty:
             emptyState
@@ -264,6 +300,10 @@ struct SidebarView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
+            Button("Retry") {
+                Task { await schemaService.refresh(connectionId: connectionId) }
+            }
+            .controlSize(.small)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding()
@@ -276,8 +316,13 @@ struct SidebarView: View {
 
     private var emptyState: some View {
         let entityName = PluginManager.shared.tableEntityName(for: viewModel.databaseType)
+        let containerName = PluginManager.shared.containerEntityName(for: viewModel.databaseType)
         let noItemsLabel = String(format: String(localized: "No %@"), entityName)
-        let noItemsDetail = String(format: String(localized: "This database has no %@ yet."), entityName.lowercased())
+        let noItemsDetail = String(
+            format: String(localized: "This %1$@ has no %2$@ yet."),
+            containerName.lowercased(),
+            entityName.lowercased()
+        )
         return ContentUnavailableView(
             noItemsLabel,
             systemImage: "tablecells",
@@ -320,7 +365,7 @@ struct SidebarView: View {
             if viewModel.databaseType == .redis, let keyTreeVM = sidebarState.redisKeyTreeViewModel {
                 Section(isExpanded: $viewModel.isRedisKeysExpanded) {
                     RedisKeyTreeView(
-                        nodes: keyTreeVM.displayNodes(searchText: viewModel.searchText),
+                        nodes: keyTreeVM.displayNodes(searchText: viewModel.filterQuery),
                         isLoading: keyTreeVM.isLoading,
                         isTruncated: keyTreeVM.isTruncated,
                         onSelectNamespace: { prefix in
@@ -335,8 +380,7 @@ struct SidebarView: View {
                 }
             }
         }
-        .listStyle(.sidebar)
-        .scrollContentBackground(.hidden)
+        .sidebarListLayout()
         .contextMenu(forSelectionType: TableInfo.self) { selection in
             SidebarContextMenu(
                 clickedTable: selection.first,

@@ -124,6 +124,8 @@ final class PostgreSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let requiresReconnectForDatabaseSwitch = true
     static let parameterStyle: ParameterStyle = .dollar
     static let supportsDropDatabase = true
+    static let supportsTriggers = true
+    static let supportsTriggerEditing = true
 
     static let sqlDialect: SQLDialectDescriptor? = SQLDialectDescriptor(
         identifierQuote: "\"",

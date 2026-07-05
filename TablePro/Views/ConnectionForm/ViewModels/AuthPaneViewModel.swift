@@ -105,6 +105,12 @@ final class AuthPaneViewModel {
                 values[field.id] = secureValue
             }
         }
+        if connection.type.pluginTypeId == "DuckDB",
+           (values["duckdbFilePath"] ?? "").isEmpty,
+           !connection.database.isEmpty {
+            values["duckdbFilePath"] = connection.database
+        }
+
         additionalFieldValues = values
 
         if let savedPassword = storage.loadPassword(for: connection.id) {

@@ -1072,4 +1072,12 @@ struct MongoShellParserTests {
             Issue.record("Expected .deleteOne operation")
         }
     }
+
+    @Test("error descriptions substitute the interpolated value")
+    func testErrorDescriptionsFormatArgument() {
+        #expect(MongoShellParseError.invalidSyntax("bad{").errorDescription == "Invalid MongoDB syntax: bad{")
+        #expect(MongoShellParseError.unsupportedMethod("foo").errorDescription == "Unsupported MongoDB method: foo")
+        #expect(MongoShellParseError.invalidJson("oops").errorDescription == "Invalid JSON: oops")
+        #expect(MongoShellParseError.missingArgument("id").errorDescription == "Missing argument: id")
+    }
 }

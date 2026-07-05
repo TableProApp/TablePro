@@ -23,7 +23,7 @@ struct SidebarTreeView: View {
     }
 
     private var searchText: String {
-        viewModel.searchText
+        viewModel.filterQuery
     }
 
     private var visibleSchemas: [String] {
@@ -63,8 +63,7 @@ struct SidebarTreeView: View {
                 }
             }
         }
-        .listStyle(.sidebar)
-        .scrollContentBackground(.hidden)
+        .sidebarListLayout()
         .contextMenu(forSelectionType: TableInfo.self) { _ in
             EmptyView()
         } primaryAction: { selection in
@@ -167,14 +166,14 @@ struct SidebarTreeView: View {
 
     private func tablesToShow(for schema: String) -> [TableInfo] {
         let tables = schemaService.tables(for: connectionId, schema: schema)
-        guard !searchText.isEmpty, !schema.localizedCaseInsensitiveContains(searchText) else {
+        guard !searchText.isEmpty, !FuzzyMatcher.matches(query: searchText, candidate: schema) else {
             return tables
         }
-        return tables.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
+        return tables.filter { FuzzyMatcher.matches(query: searchText, candidate: $0.name) }
     }
 
     private func schemaIsVisibleDuringSearch(_ schema: String) -> Bool {
-        if schema.localizedCaseInsensitiveContains(searchText) { return true }
+        if FuzzyMatcher.matches(query: searchText, candidate: schema) { return true }
         switch schemaService.schemaState(for: connectionId, schema: schema) {
         case .loaded:
             return !tablesToShow(for: schema).isEmpty

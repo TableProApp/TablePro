@@ -23,6 +23,8 @@ public protocol DriverPlugin: TableProPlugin {
     static var queryLanguageName: String { get }
     static var editorLanguage: EditorLanguage { get }
     static var supportsForeignKeys: Bool { get }
+    static var supportsTriggers: Bool { get }
+    static var supportsTriggerEditing: Bool { get }
     static var supportsSchemaEditing: Bool { get }
     static var supportsDatabaseSwitching: Bool { get }
     static var supportsSchemaSwitching: Bool { get }
@@ -37,6 +39,7 @@ public protocol DriverPlugin: TableProPlugin {
     static var sqlDialect: SQLDialectDescriptor? { get }
     static var statementCompletions: [CompletionEntry] { get }
     static var tableEntityName: String { get }
+    static var containerEntityName: String { get }
     static var supportsCascadeDrop: Bool { get }
     static var supportsForeignKeyDisable: Bool { get }
     static var immutableColumns: [String] { get }
@@ -56,7 +59,6 @@ public protocol DriverPlugin: TableProPlugin {
     static var parameterStyle: ParameterStyle { get }
     static var supportsDropDatabase: Bool { get }
 
-    // Schema editing granularity
     static var supportsAddColumn: Bool { get }
     static var supportsModifyColumn: Bool { get }
     static var supportsDropColumn: Bool { get }
@@ -81,6 +83,8 @@ public extension DriverPlugin {
     static var queryLanguageName: String { "SQL" }
     static var editorLanguage: EditorLanguage { .sql }
     static var supportsForeignKeys: Bool { true }
+    static var supportsTriggers: Bool { false }
+    static var supportsTriggerEditing: Bool { false }
     static var supportsSchemaEditing: Bool { true }
     static var supportsDatabaseSwitching: Bool { true }
     static var supportsSchemaSwitching: Bool { false }
@@ -105,6 +109,7 @@ public extension DriverPlugin {
     static var sqlDialect: SQLDialectDescriptor? { nil }
     static var statementCompletions: [CompletionEntry] { [] }
     static var tableEntityName: String { "Tables" }
+    static var containerEntityName: String { "Database" }
     static var supportsCascadeDrop: Bool { false }
     static var supportsForeignKeyDisable: Bool { true }
     static var immutableColumns: [String] { [] }
@@ -126,7 +131,6 @@ public extension DriverPlugin {
     static var postConnectActions: [PostConnectAction] { [] }
     static var supportsDropDatabase: Bool { false }
 
-    // Schema editing granularity
     static var supportsAddColumn: Bool { true }
     static var supportsModifyColumn: Bool { true }
     static var supportsDropColumn: Bool { true }

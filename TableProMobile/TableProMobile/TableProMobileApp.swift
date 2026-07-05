@@ -41,6 +41,10 @@ struct TableProMobileApp: App {
             }
             .animation(.default, value: lockState.isLocked)
             .onOpenURL { url in
+                if url.isFileURL, url.pathExtension.lowercased() == "tablepro" {
+                    appState.pendingImportURL = url
+                    return
+                }
                 guard url.scheme == "tablepro",
                       url.host(percentEncoded: false) == "connect",
                       let uuidString = url.pathComponents.dropFirst().first,

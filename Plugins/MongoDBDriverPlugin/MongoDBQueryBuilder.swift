@@ -106,8 +106,14 @@ struct MongoDBQueryBuilder {
 
         switch op {
         case "=":
+            if let oid = objectIdJson(value) {
+                return "\"$or\": [{\"\(field)\": \(oid)}, {\"\(field)\": \(jsonValue(value))}]"
+            }
             return "\"\(field)\": \(jsonValue(value))"
         case "!=":
+            if let oid = objectIdJson(value) {
+                return "\"\(field)\": {\"$nin\": [\(oid), \(jsonValue(value))]}"
+            }
             return "\"\(field)\": {\"$ne\": \(jsonValue(value))}"
         case ">":
             return "\"\(field)\": {\"$gt\": \(jsonValue(value))}"
@@ -118,13 +124,13 @@ struct MongoDBQueryBuilder {
         case "<=":
             return "\"\(field)\": {\"$lte\": \(jsonValue(value))}"
         case "CONTAINS":
-            return "\"\(field)\": {\"$regex\": \"\(escapeRegexChars(value))\", \"$options\": \"i\"}"
+            return "\"\(field)\": \(Self.regexBody(pattern: escapeRegexChars(value)))"
         case "NOT CONTAINS":
-            return "\"\(field)\": {\"$not\": {\"$regex\": \"\(escapeRegexChars(value))\", \"$options\": \"i\"}}"
+            return "\"\(field)\": {\"$not\": \(Self.regexBody(pattern: escapeRegexChars(value)))}"
         case "STARTS WITH":
-            return "\"\(field)\": {\"$regex\": \"^\(escapeRegexChars(value))\", \"$options\": \"i\"}"
+            return "\"\(field)\": \(Self.regexBody(pattern: "^\(escapeRegexChars(value))"))"
         case "ENDS WITH":
-            return "\"\(field)\": {\"$regex\": \"\(escapeRegexChars(value))$\", \"$options\": \"i\"}"
+            return "\"\(field)\": \(Self.regexBody(pattern: "\(escapeRegexChars(value))$"))"
         case "IS NULL":
             return "\"\(field)\": null"
         case "IS NOT NULL":
@@ -134,14 +140,14 @@ struct MongoDBQueryBuilder {
         case "IS NOT EMPTY":
             return "\"\(field)\": {\"$ne\": \"\"}"
         case "REGEX":
-            return "\"\(field)\": {\"$regex\": \"\(value)\", \"$options\": \"i\"}"
+            return "\"\(field)\": \(Self.regexBody(pattern: value))"
         case "IN":
             let items = value.split(separator: ",")
-                .map { jsonValue(String($0).trimmingCharacters(in: .whitespaces)) }
+                .flatMap { inValues(String($0).trimmingCharacters(in: .whitespaces)) }
             return "\"\(field)\": {\"$in\": [\(items.joined(separator: ", "))]}"
         case "NOT IN":
             let items = value.split(separator: ",")
-                .map { jsonValue(String($0).trimmingCharacters(in: .whitespaces)) }
+                .flatMap { inValues(String($0).trimmingCharacters(in: .whitespaces)) }
             return "\"\(field)\": {\"$nin\": [\(items.joined(separator: ", "))]}"
         case "BETWEEN":
             let parts = value.split(separator: ",").map { String($0).trimmingCharacters(in: .whitespaces) }
@@ -176,6 +182,24 @@ struct MongoDBQueryBuilder {
         if Int64(value) != nil { return value }
         if Double(value) != nil, value.contains(".") { return value }
         return "\"\(Self.escapeJsonString(value))\""
+    }
+
+    private func inValues(_ value: String) -> [String] {
+        if let oid = objectIdJson(value) {
+            return [oid, jsonValue(value)]
+        }
+        return [jsonValue(value)]
+    }
+
+    private func objectIdJson(_ value: String) -> String? {
+        guard (value as NSString).length == 24, value.allSatisfy({ $0.isASCII && $0.isHexDigit }) else {
+            return nil
+        }
+        return "{\"$oid\": \"\(value)\"}"
+    }
+
+    private static func regexBody(pattern: String) -> String {
+        "{\"$regex\": \"\(escapeJsonString(pattern))\", \"$options\": \"i\"}"
     }
 
     static func escapeJsonString(_ value: String) -> String {

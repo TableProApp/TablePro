@@ -28,7 +28,7 @@ internal enum URLClassifier {
         if ext == "tablepro" {
             return .success(.openConnectionShare(url))
         }
-        if ext == "sql" {
+        if SQLFileService.supportedExtensions.contains(ext) {
             return .success(.openSQLFile(url))
         }
         if PluginManager.shared.allInspectorFileExtensions.contains(ext) {

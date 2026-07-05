@@ -51,7 +51,8 @@
                   "databases/mongodb",
                   "databases/redis",
                   "databases/cassandra",
-                  "databases/etcd"
+                  "databases/etcd",
+                  "databases/elasticsearch"
                 ]
               },
               {
@@ -165,6 +166,7 @@
             "pages": [
               "external-api/index",
               "external-api/url-scheme",
+              "external-api/ios-shortcuts",
               "external-api/mcp-tools",
               "external-api/mcp-resources",
               "external-api/pairing",
@@ -187,17 +189,8 @@
               "development/architecture",
               "development/building",
               "development/code-style",
-              "development/plugin-registry"
-            ]
-          },
-          {
-            "group": "Competitive tracking",
-            "pages": [
-              "development/competitive-tracking/overview",
-              "development/competitive-tracking/top-requests",
-              "development/competitive-tracking/by-category",
-              "development/competitive-tracking/gap-analysis",
-              "development/competitive-tracking/quick-wins"
+              "development/plugin-registry",
+              "development/testing-plugins"
             ]
           }
         ]

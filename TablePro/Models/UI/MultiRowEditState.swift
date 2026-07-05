@@ -57,7 +57,7 @@ final class MultiRowEditState {
     private(set) var selectedRowIndices: Set<Int> = []
     private(set) var allRows: [[String?]] = []
     private(set) var columns: [String] = []
-    private(set) var columnTypes: [ColumnType] = []  // Changed from [String] to [ColumnType]
+    private(set) var columnTypes: [ColumnType] = []
 
     var hasEdits: Bool {
         fields.contains { $0.hasEdit }
@@ -82,21 +82,18 @@ final class MultiRowEditState {
         self.columns = columns
         self.columnTypes = columnTypes
 
-        // Build field states
         var newFields: [FieldEditState] = []
 
         for (colIndex, columnName) in columns.enumerated() {
             let columnTypeEnum = colIndex < columnTypes.count ? columnTypes[colIndex] : ColumnType.text(rawType: nil)
             let isLongText = columnTypeEnum.isLongText
 
-            // Gather values from all selected rows
             var values: [String?] = []
             for row in allRows {
                 let value = colIndex < row.count ? row[colIndex] : nil
                 values.append(value)
             }
 
-            // Check if all values are the same
             let allSame = values.dropFirst().allSatisfy { $0 == values.first }
             let hasMultipleValues = !allSame
 
@@ -104,7 +101,6 @@ final class MultiRowEditState {
             if hasMultipleValues {
                 originalValue = nil
             } else {
-                // Get first value, unwrapping the optional properly
                 originalValue = values.first.flatMap { $0 }
             }
 

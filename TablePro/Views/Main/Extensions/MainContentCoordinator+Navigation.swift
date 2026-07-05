@@ -19,7 +19,8 @@ extension MainContentCoordinator {
         _ table: TableInfo,
         showStructure: Bool = false,
         forceNonPreview: Bool = false,
-        activateGridFocus: Bool = false
+        activateGridFocus: Bool = false,
+        forceNewWindowTab: Bool = false
     ) {
         openTableTab(
             table.name,
@@ -27,7 +28,8 @@ extension MainContentCoordinator {
             showStructure: showStructure,
             isView: table.type == .view,
             forceNonPreview: forceNonPreview,
-            activateGridFocus: activateGridFocus
+            activateGridFocus: activateGridFocus,
+            forceNewWindowTab: forceNewWindowTab
         )
     }
 
@@ -37,7 +39,8 @@ extension MainContentCoordinator {
         showStructure: Bool = false,
         isView: Bool = false,
         forceNonPreview: Bool = false,
-        activateGridFocus: Bool = false
+        activateGridFocus: Bool = false,
+        forceNewWindowTab: Bool = false
     ) {
         let navigationModel = PluginMetadataRegistry.shared.snapshot(
             forTypeId: connection.type.pluginTypeId
@@ -53,10 +56,11 @@ extension MainContentCoordinator {
             currentDatabase = activeDatabaseName
         }
 
-        let resolvedSchema = schema
-        let createAsPreview = !forceNonPreview && AppSettingsManager.shared.tabs.enablePreviewTabs
+        let resolvedSchema = DatabaseManager.shared.resolvedSchemaName(schema, for: connectionId)
+        let createAsPreview = !forceNonPreview && !forceNewWindowTab
+            && AppSettingsManager.shared.tabs.enablePreviewTabs
 
-        if activateIfAlreadyOpen(
+        if !forceNewWindowTab, activateIfAlreadyOpen(
             tableName: tableName,
             databaseName: currentDatabase,
             schemaName: resolvedSchema,
@@ -91,7 +95,6 @@ extension MainContentCoordinator {
             return
         }
 
-        // If no tabs exist (empty state), add a table tab directly.
         if tabManager.tabs.isEmpty {
             addFirstTableTab(
                 tableName: tableName,
@@ -136,7 +139,7 @@ extension MainContentCoordinator {
             return
         }
 
-        if isActiveTabReusable {
+        if isActiveTabReusable, !forceNewWindowTab {
             reuseActiveTab(
                 for: tableName,
                 currentDatabase: currentDatabase,
@@ -302,6 +305,7 @@ extension MainContentCoordinator {
             || tab.hasUserActiveSort {
             return false
         }
+        if tab.tabType == .createTable { return !toolbarState.hasCreateTablePending }
         if tab.isPreview { return true }
         if tab.tabType == .query,
            tab.execution.lastExecutedAt == nil,
@@ -363,49 +367,53 @@ extension MainContentCoordinator {
 
     // MARK: - Database Switching
 
-    /// Close all sibling native window-tabs except the current key window.
-    /// Each table opened via WindowOpener creates a separate NSWindow in the same
-    /// tab group. Clearing `tabManager.tabs` only affects the in-app state of the
-    /// *current* window — other NSWindows remain open with stale content.
-    private func closeSiblingNativeWindows() {
-        guard let keyWindow = NSApp.keyWindow else { return }
-        let siblings = keyWindow.tabbedWindows ?? []
-        let ownWindows = Set(WindowLifecycleMonitor.shared.windows(for: connectionId).map { ObjectIdentifier($0) })
-        for sibling in siblings where sibling !== keyWindow {
-            // Only close windows belonging to this connection to avoid
-            // destroying tabs from other connections when groupAllConnectionTabs is ON
-            guard ownWindows.contains(ObjectIdentifier(sibling)) else { continue }
-            sibling.close()
-        }
-    }
-
-    /// Switch to a different database (called from database switcher)
-    func switchDatabase(to database: String) async {
-        clearFilterState()
+    /// Switch to a different database (called from database switcher).
+    /// `persist` records the database as the connection's saved default; pass `false`
+    /// for transient per-tab switches that must not change the connection default.
+    @discardableResult
+    func switchDatabase(to database: String, persist: Bool = true) async -> Bool {
         let previousDatabase = toolbarState.currentDatabase
         toolbarState.currentDatabase = database
 
         do {
-            try await DatabaseManager.shared.switchDatabase(to: database, for: connectionId)
+            try await DatabaseManager.shared.switchDatabase(to: database, for: connectionId, persist: persist)
 
-            closeSiblingNativeWindows()
-            persistence.saveNowSync(tabs: tabManager.tabs, selectedTabId: tabManager.selectedTabId)
-            tabSessionRegistry.removeAll()
-            tabManager.tabs = []
-            tabManager.selectedTabId = nil
             await SchemaService.shared.invalidate(connectionId: connectionId)
 
-            await refreshTables()
+            await refreshTables(currentDatabaseOnly: true)
+            return true
         } catch {
             toolbarState.currentDatabase = previousDatabase
 
             navigationLogger.error("Failed to switch database: \(error.localizedDescription, privacy: .public)")
             AlertHelper.showErrorSheet(
-                title: String(localized: "Database Switch Failed"),
+                title: String(
+                    format: String(localized: "%@ Switch Failed"),
+                    PluginManager.shared.containerEntityName(for: connection.type)
+                ),
                 message: error.localizedDescription,
                 window: contentWindow
             )
+            return false
         }
+    }
+
+    /// Switch the active container (database, or schema for schema-switching-only
+    /// engines like BigQuery), routing by the plugin's container switch target.
+    func switchContainer(to container: String) async {
+        switch PluginManager.shared.containerSwitchTarget(for: connection.type) {
+        case .schema:
+            await switchSchema(to: container)
+        case .database, nil:
+            await switchDatabase(to: container)
+        }
+    }
+
+    private var schemaEntityName: String {
+        guard PluginManager.shared.containerSwitchTarget(for: connection.type) == .schema else {
+            return String(localized: "Schema")
+        }
+        return PluginManager.shared.containerEntityName(for: connection.type)
     }
 
     func switchSchema(to schema: String) async {
@@ -424,24 +432,17 @@ extension MainContentCoordinator {
             return
         }
 
-        clearFilterState()
         let previousSchema = toolbarState.currentSchema
         toolbarState.currentSchema = schema
 
         do {
             try await DatabaseManager.shared.switchSchema(to: schema, for: connectionId)
-
-            closeSiblingNativeWindows()
-            persistence.saveNowSync(tabs: tabManager.tabs, selectedTabId: tabManager.selectedTabId)
-            tabSessionRegistry.removeAll()
-            tabManager.tabs = []
-            tabManager.selectedTabId = nil
         } catch {
             toolbarState.currentSchema = previousSchema
 
             navigationLogger.error("Failed to switch schema: \(error.localizedDescription, privacy: .public)")
             AlertHelper.showErrorSheet(
-                title: String(localized: "Schema Switch Failed"),
+                title: String(format: String(localized: "%@ Switch Failed"), schemaEntityName),
                 message: error.localizedDescription,
                 window: contentWindow
             )
@@ -535,12 +536,7 @@ extension MainContentCoordinator {
     // MARK: - Redis Key Tree Navigation
 
     func browseRedisNamespace(_ prefix: String) {
-        let separator = connection.additionalFields["redisSeparator"] ?? ":"
-        let escapedPrefix = prefix.replacingOccurrences(of: "\"", with: "\\\"")
-        let query = "SCAN 0 MATCH \"\(escapedPrefix)*\" COUNT 200"
-        let title = prefix.hasSuffix(separator) ? String(prefix.dropLast(separator.count)) : prefix
-        tabManager.addTab(initialQuery: query, title: title)
-        runQuery()
+        applyBrowseSearch(BrowseSearchState(pattern: "\(prefix)*"))
     }
 
     func openRedisKey(_ keyName: String, keyType: String) {

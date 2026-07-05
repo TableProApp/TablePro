@@ -166,39 +166,95 @@ extension MSSQLPluginDriver {
     }
 
     func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] {
-        let escapedTable = table.replacingOccurrences(of: "'", with: "''")
-        let esc = effectiveSchemaEscaped(schema)
-        let sql = """
-            SELECT
-                fk.name AS constraint_name,
-                cp.name AS column_name,
-                tr.name AS ref_table,
-                cr.name AS ref_column
-            FROM sys.foreign_keys fk
-            JOIN sys.foreign_key_columns fkc ON fk.object_id = fkc.constraint_object_id
-            JOIN sys.tables tp ON fkc.parent_object_id = tp.object_id
-            JOIN sys.schemas s ON tp.schema_id = s.schema_id
-            JOIN sys.columns cp
-                ON fkc.parent_object_id = cp.object_id AND fkc.parent_column_id = cp.column_id
-            JOIN sys.tables tr ON fkc.referenced_object_id = tr.object_id
-            JOIN sys.columns cr
-                ON fkc.referenced_object_id = cr.object_id AND fkc.referenced_column_id = cr.column_id
-            WHERE tp.name = '\(escapedTable)' AND s.name = '\(esc)'
-            ORDER BY fk.name
-            """
+        let sql = MSSQLSchemaQueries.foreignKeys(schema: schema ?? _currentSchema, table: table)
         let result = try await execute(query: sql)
         return result.rows.compactMap { row -> PluginForeignKeyInfo? in
-            guard let constraintName = row[safe: 0]?.asText,
-                  let columnName = row[safe: 1]?.asText,
-                  let refTable = row[safe: 2]?.asText,
-                  let refColumn = row[safe: 3]?.asText else { return nil }
+            guard let parsed = MSSQLSchemaQueries.parseForeignKeyRow(row.map { $0.asText }) else { return nil }
             return PluginForeignKeyInfo(
-                name: constraintName,
-                column: columnName,
-                referencedTable: refTable,
-                referencedColumn: refColumn
+                name: parsed.constraintName,
+                column: parsed.columnName,
+                referencedTable: parsed.referencedTable,
+                referencedColumn: parsed.referencedColumn,
+                referencedSchema: parsed.referencedSchema
             )
         }
+    }
+
+    func fetchTriggers(table: String, schema: String?) async throws -> [PluginTriggerInfo] {
+        let esc = (schema ?? _currentSchema).replacingOccurrences(of: "]", with: "]]")
+        let bracketedTable = table.replacingOccurrences(of: "]", with: "]]")
+        let bracketedFull = "[\(esc)].[\(bracketedTable)]"
+        let sql = """
+            SELECT t.name, t.is_disabled, t.is_instead_of_trigger,
+                   OBJECT_DEFINITION(t.object_id) AS definition,
+                   te.type_desc AS event
+            FROM sys.triggers t
+            JOIN sys.trigger_events te ON t.object_id = te.object_id
+            WHERE t.parent_id = OBJECT_ID('\(bracketedFull)')
+            ORDER BY t.name, te.type_desc
+            """
+        let result = try await execute(query: sql)
+
+        var order: [String] = []
+        var byName: [String: (timing: String, definition: String, enabled: Bool, events: [String])] = [:]
+        for row in result.rows {
+            guard let name = row[safe: 0]?.asText else { continue }
+            let event = row[safe: 4]?.asText ?? ""
+            if byName[name] == nil {
+                order.append(name)
+                let timing = (row[safe: 2]?.asText == "1") ? "INSTEAD OF" : "AFTER"
+                let enabled = (row[safe: 1]?.asText != "1")
+                byName[name] = (timing: timing, definition: row[safe: 3]?.asText ?? "", enabled: enabled, events: [])
+            }
+            if !event.isEmpty {
+                byName[name]?.events.append(event)
+            }
+        }
+        return order.compactMap { name in
+            guard let info = byName[name] else { return nil }
+            return PluginTriggerInfo(
+                name: name,
+                timing: info.timing,
+                event: info.events.joined(separator: " OR "),
+                statement: info.definition,
+                enabled: info.enabled
+            )
+        }
+    }
+
+    var triggerEditUsesReplace: Bool { true }
+
+    var supportsTransactionalDDL: Bool { true }
+
+    func createTriggerTemplate(table: String, schema: String?) -> String? {
+        let resolved = schema ?? _currentSchema
+        return """
+        CREATE OR ALTER TRIGGER \(quoteIdentifier("trigger_name"))
+        ON \(quoteIdentifier(resolved)).\(quoteIdentifier(table))
+        AFTER INSERT
+        AS
+        BEGIN
+            SET NOCOUNT ON;
+            -- INSERT INTO audit (...) SELECT ... FROM inserted;
+        END
+        """
+    }
+
+    func fetchTriggerDefinition(name: String, table: String, schema: String?) async throws -> String? {
+        let esc = (schema ?? _currentSchema).replacingOccurrences(of: "]", with: "]]")
+        let bracketedName = name.replacingOccurrences(of: "]", with: "]]")
+        let sql = "SELECT OBJECT_DEFINITION(OBJECT_ID('[\(esc)].[\(bracketedName)]'))"
+        let result = try await execute(query: sql)
+        guard let definition = result.rows.first?[safe: 0]?.asText, !definition.isEmpty else { return nil }
+        guard let range = definition.range(of: "CREATE TRIGGER", options: .caseInsensitive) else {
+            return definition
+        }
+        return definition.replacingCharacters(in: range, with: "CREATE OR ALTER TRIGGER")
+    }
+
+    func generateDropTriggerSQL(name: String, table: String, schema: String?) -> String? {
+        let resolved = schema ?? _currentSchema
+        return "DROP TRIGGER \(quoteIdentifier(resolved)).\(quoteIdentifier(name))"
     }
 
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
@@ -283,7 +339,8 @@ extension MSSQLPluginDriver {
                 fk.name AS constraint_name,
                 cp.name AS column_name,
                 tr.name AS ref_table,
-                cr.name AS ref_column
+                cr.name AS ref_column,
+                sr.name AS ref_schema
             FROM sys.foreign_keys fk
             JOIN sys.foreign_key_columns fkc ON fk.object_id = fkc.constraint_object_id
             JOIN sys.tables tp ON fkc.parent_object_id = tp.object_id
@@ -291,6 +348,7 @@ extension MSSQLPluginDriver {
             JOIN sys.columns cp
                 ON fkc.parent_object_id = cp.object_id AND fkc.parent_column_id = cp.column_id
             JOIN sys.tables tr ON fkc.referenced_object_id = tr.object_id
+            JOIN sys.schemas sr ON tr.schema_id = sr.schema_id
             JOIN sys.columns cr
                 ON fkc.referenced_object_id = cr.object_id AND fkc.referenced_column_id = cr.column_id
             WHERE s.name = '\(esc)'
@@ -308,7 +366,8 @@ extension MSSQLPluginDriver {
                 name: constraintName,
                 column: columnName,
                 referencedTable: refTable,
-                referencedColumn: refColumn
+                referencedColumn: refColumn,
+                referencedSchema: row[safe: 5]?.asText
             )
             fksByTable[tableName, default: []].append(fk)
         }

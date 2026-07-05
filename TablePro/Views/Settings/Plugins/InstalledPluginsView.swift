@@ -43,9 +43,7 @@ struct InstalledPluginsView: View {
             }
         }
         .task {
-            if registryClient.fetchState == .idle {
-                await registryClient.fetchManifest()
-            }
+            await registryClient.ensureManifest(.ifStale)
         }
         .onDrop(of: [.fileURL], isTargeted: nil) { providers in
             guard let provider = providers.first,

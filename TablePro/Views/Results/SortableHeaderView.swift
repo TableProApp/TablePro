@@ -69,6 +69,7 @@ final class SortableHeaderView: NSTableHeaderView {
     private var pendingClickStartLocation: NSPoint?
     private var dragOccurredDuringClick = false
     private var mouseMovedTrackingArea: NSTrackingArea?
+    private var hoveredColumnIndex: Int?
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -85,7 +86,7 @@ final class SortableHeaderView: NSTableHeaderView {
         }
         let area = NSTrackingArea(
             rect: bounds,
-            options: [.activeInKeyWindow, .mouseMoved, .inVisibleRect],
+            options: [.activeInKeyWindow, .mouseMoved, .mouseEnteredAndExited, .inVisibleRect],
             owner: self,
             userInfo: nil
         )
@@ -107,8 +108,52 @@ final class SortableHeaderView: NSTableHeaderView {
         }
         if inResizeZone {
             NSCursor.resizeLeftRight.set()
+            updateFunnelHover(column: nil)
         } else {
             NSCursor.arrow.set()
+            updateFunnelHover(column: hoverableColumn(at: point))
+        }
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        super.mouseExited(with: event)
+        updateFunnelHover(column: nil)
+    }
+
+    private func hoverableColumn(at point: NSPoint) -> Int? {
+        guard let tableView else { return nil }
+        let columnIndex = column(at: point)
+        guard columnIndex >= 0, columnIndex < tableView.numberOfColumns else { return nil }
+        guard tableView.tableColumns[columnIndex].identifier != ColumnIdentitySchema.rowNumberIdentifier else { return nil }
+        return columnIndex
+    }
+
+    private func updateFunnelHover(column columnIndex: Int?) {
+        guard hoveredColumnIndex != columnIndex else { return }
+        let previous = hoveredColumnIndex
+        hoveredColumnIndex = columnIndex
+        guard let tableView else { return }
+        for index in [previous, columnIndex].compactMap({ $0 }) {
+            guard index >= 0, index < tableView.tableColumns.count,
+                  let cell = tableView.tableColumns[index].headerCell as? SortableHeaderCell else { continue }
+            let shouldShow = index == columnIndex
+            if cell.isFunnelVisible != shouldShow {
+                cell.isFunnelVisible = shouldShow
+                setNeedsDisplay(headerRect(ofColumn: index))
+            }
+        }
+    }
+
+    func updateValueFilterIndicators(activeColumns: Set<Int>) {
+        guard let tableView, let coordinator else { return }
+        for (columnIndex, column) in tableView.tableColumns.enumerated() {
+            guard let cell = column.headerCell as? SortableHeaderCell,
+                  let dataIndex = coordinator.dataColumnIndex(from: column.identifier) else { continue }
+            let shouldBeFiltered = activeColumns.contains(dataIndex)
+            if cell.isValueFiltered != shouldBeFiltered {
+                cell.isValueFiltered = shouldBeFiltered
+                setNeedsDisplay(headerRect(ofColumn: columnIndex))
+            }
         }
     }
 
@@ -181,6 +226,16 @@ final class SortableHeaderView: NSTableHeaderView {
             return
         }
 
+        let modifierFlags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        if modifierFlags.isEmpty,
+           let cell = column.headerCell as? SortableHeaderCell {
+            let funnelRect = cell.funnelRect(forBounds: headerRect(ofColumn: columnIndex))
+            if funnelRect.insetBy(dx: -2, dy: -4).contains(pointInHeader) {
+                coordinator.presentValueFilterPopover(forColumn: dataIndex, anchor: funnelRect, in: self)
+                return
+            }
+        }
+
         let originalColumnOrder = tableView.tableColumns.map { $0.identifier }
         let originalColumnWidths = tableView.tableColumns.map { $0.width }
         pendingClickStartLocation = pointInHeader
@@ -198,14 +253,12 @@ final class SortableHeaderView: NSTableHeaderView {
             return
         }
 
-        let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-
-        if modifiers.contains(.command) && !modifiers.contains(.shift) {
+        if modifierFlags.contains(.command) && !modifierFlags.contains(.shift) {
             coordinator.selectColumn(dataIndex)
             return
         }
 
-        let isMultiSort = modifiers.contains(.shift)
+        let isMultiSort = modifierFlags.contains(.shift)
         let transition = HeaderSortCycle.nextTransition(
             state: coordinator.currentSortState,
             clickedColumn: dataIndex,

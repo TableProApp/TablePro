@@ -94,7 +94,7 @@ final class StructureGridDelegate: DataGridViewDelegate {
             StructureEditingSupport.updateForeignKey(&fk, at: column, with: newValue ?? "")
             structureChangeManager.updateForeignKey(id: fk.id, with: fk)
 
-        case .ddl, .parts:
+        case .ddl, .parts, .triggers:
             break
         }
 
@@ -148,7 +148,7 @@ final class StructureGridDelegate: DataGridViewDelegate {
                 let fk = structureChangeManager.workingForeignKeys[row]
                 structureChangeManager.deleteForeignKey(id: fk.id)
             }
-        case .parts, .ddl:
+        case .parts, .ddl, .triggers:
             onSelectedRowsChanged?([])
             return
         }
@@ -174,7 +174,7 @@ final class StructureGridDelegate: DataGridViewDelegate {
     }
 
     func dataGridCopyRows(_ indices: Set<Int>) {
-        guard selectedTab != .ddl, selectedTab != .parts, !indices.isEmpty else { return }
+        guard selectedTab != .ddl, selectedTab != .parts, selectedTab != .triggers, !indices.isEmpty else { return }
         let translated = sourceRows(for: indices)
 
         var copiedItems: [Any] = []
@@ -195,7 +195,7 @@ final class StructureGridDelegate: DataGridViewDelegate {
                 guard row < structureChangeManager.workingForeignKeys.count else { continue }
                 copiedItems.append(structureChangeManager.workingForeignKeys[row])
             }
-        case .ddl, .parts:
+        case .ddl, .parts, .triggers:
             break
         }
 
@@ -306,13 +306,13 @@ final class StructureGridDelegate: DataGridViewDelegate {
                 structureChangeManager.addForeignKey(newFK)
             }
 
-        case .ddl, .parts:
+        case .ddl, .parts, .triggers:
             break
         }
     }
 
     func dataGridUndo() {
-        guard selectedTab != .ddl else { return }
+        guard selectedTab != .ddl, selectedTab != .triggers else { return }
         structureChangeManager.undo()
         // Undo can revert any row's content and visual state. The SwiftUI
         // re-render driven by `reloadVersion` only invalidates the snapshot;
@@ -322,7 +322,7 @@ final class StructureGridDelegate: DataGridViewDelegate {
     }
 
     func dataGridRedo() {
-        guard selectedTab != .ddl else { return }
+        guard selectedTab != .ddl, selectedTab != .triggers else { return }
         structureChangeManager.redo()
         reloadAllVisibleRows()
     }
@@ -338,7 +338,7 @@ final class StructureGridDelegate: DataGridViewDelegate {
         case .foreignKeys:
             guard connection.type.supportsForeignKeys else { return }
             structureChangeManager.addNewForeignKey()
-        case .ddl, .parts:
+        case .ddl, .parts, .triggers:
             break
         }
     }
@@ -386,7 +386,7 @@ final class StructureGridDelegate: DataGridViewDelegate {
             let working = structureChangeManager.workingForeignKeys[sourceRow]
             guard let original = structureChangeManager.currentForeignKeys.first(where: { $0.id == working.id }) else { return [] }
             return StructureEditingSupport.foreignKeyModifiedIndices(old: original, new: working)
-        case .ddl, .parts:
+        case .ddl, .parts, .triggers:
             return []
         }
     }
@@ -462,7 +462,7 @@ final class StructureGridDelegate: DataGridViewDelegate {
     }
 
     private func makeEmptySpaceMenu() -> NSMenu? {
-        guard selectedTab != .ddl, selectedTab != .parts else { return nil }
+        guard selectedTab != .ddl, selectedTab != .parts, selectedTab != .triggers else { return nil }
         guard connection.type.supportsSchemaEditing else { return nil }
 
         let menu = NSMenu()
@@ -477,7 +477,8 @@ final class StructureGridDelegate: DataGridViewDelegate {
         case .foreignKeys:
             guard connection.type.supportsForeignKeys else { return nil }
             label = String(localized: "Add Foreign Key")
-        case .ddl, .parts: return nil
+        case .ddl, .parts, .triggers:
+            return nil
         }
 
         let target = StructureMenuTarget { [weak self] in self?.dataGridAddRow() }
@@ -524,7 +525,7 @@ final class StructureGridDelegate: DataGridViewDelegate {
                 if let sql = driver.generateForeignKeyDefinitionSQL(fk: fk.toPlugin()) {
                     definitions.append(sql)
                 }
-            case .ddl, .parts:
+            case .ddl, .parts, .triggers:
                 break
             }
         }
@@ -618,7 +619,7 @@ final class StructureGridDelegate: DataGridViewDelegate {
                     referencedSchema: copy.referencedSchema,
                     onDelete: copy.onDelete, onUpdate: copy.onUpdate
                 ))
-            case .ddl, .parts:
+            case .ddl, .parts, .triggers:
                 break
             }
         }

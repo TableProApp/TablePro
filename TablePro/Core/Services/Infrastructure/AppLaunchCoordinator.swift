@@ -125,10 +125,46 @@ internal final class AppLaunchCoordinator {
         guard intents.isEmpty else { return }
 
         let general = AppSettingsStorage.shared.loadGeneral()
-        if general.startupBehavior == .showWelcome {
+        switch general.startupBehavior {
+        case .showWelcome:
             for window in NSApp.windows where Self.isMainWindow(window) {
                 window.close()
             }
+        case .reopenLast:
+            reopenLastSession()
+        }
+    }
+
+    private func reopenLastSession() {
+        guard !NSApp.windows.contains(where: { Self.isMainWindow($0) }) else { return }
+
+        let connectionIds = LastOpenConnectionsStorage.shared.load()
+        guard !connectionIds.isEmpty else { return }
+
+        let connectionsById = Dictionary(
+            ConnectionStorage.shared.loadConnections().map { ($0.id, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        var openedAny = false
+        for connectionId in connectionIds {
+            guard let connection = connectionsById[connectionId] else { continue }
+            WindowManager.shared.openTab(
+                payload: EditorTabPayload(connectionId: connectionId, intent: .restoreOrDefault)
+            )
+            openedAny = true
+            Task {
+                do {
+                    try await DatabaseManager.shared.ensureConnected(connection)
+                } catch {
+                    Self.logger.error(
+                        "[restore] reopen connect failed for \(connectionId, privacy: .public): \(error.localizedDescription, privacy: .public)"
+                    )
+                }
+            }
+        }
+
+        if openedAny {
+            WindowOpener.shared.orderOutWelcome()
         }
     }
 

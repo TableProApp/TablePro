@@ -25,6 +25,13 @@ enum SQLEscaping {
         return result
     }
 
+    /// Quote a SQL identifier using ANSI double-quote rules, doubling any embedded quote.
+    static func quoteIdentifier(_ identifier: String) -> String {
+        let quote = "\""
+        let escaped = identifier.replacingOccurrences(of: quote, with: quote + quote)
+        return "\(quote)\(escaped)\(quote)"
+    }
+
     /// Known SQL temporal function expressions that should not be quoted/parameterized.
     /// Canonical source — used by SQLStatementGenerator and sidebar save logic.
     static let temporalFunctionExpressions: Set<String> = [

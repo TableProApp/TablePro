@@ -382,7 +382,7 @@ final class ConnectionFormViewModel {
             sshEnabled: sshEnabled,
             sslEnabled: type == .mssql ? (mssqlSSLMode != .disable) : sslEnabled,
             groupId: groupId,
-            tagId: tagId
+            tagIds: tagId.map { [$0] } ?? []
         )
         if type == .mssql {
             conn.sslConfiguration = SSLConfiguration(mode: mssqlSSLMode)

@@ -90,8 +90,7 @@ extension WelcomeWindowView {
         Divider()
 
         Button(role: .destructive) {
-            vm.connectionsToDelete = connections
-            vm.showDeleteConfirmation = true
+            vm.requestDeleteConnections(connections)
         } label: {
             Label(
                 String(format: String(localized: "Delete %d Connections"), connections.count),
@@ -210,8 +209,7 @@ extension WelcomeWindowView {
         Divider()
 
         Button(role: .destructive) {
-            vm.connectionsToDelete = [connection]
-            vm.showDeleteConfirmation = true
+            vm.requestDeleteConnections([connection])
         } label: {
             Label(String(localized: "Delete"), systemImage: "trash")
         }

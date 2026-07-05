@@ -91,7 +91,7 @@ actor DuckDBConnectionActor {
         }
 
         var raw = Self.extractResult(from: &result, startTime: startTime)
-        Self.patchTzColumns(&raw, query: query, connection: conn)
+        Self.patchCastedColumns(&raw, query: query, connection: conn)
         return raw
     }
 
@@ -163,7 +163,7 @@ actor DuckDBConnectionActor {
         }
 
         var raw = Self.extractResult(from: &result, startTime: startTime)
-        Self.patchTzColumns(&raw, query: query, connection: conn)
+        Self.patchCastedColumns(&raw, query: query, connection: conn)
         return raw
     }
 
@@ -204,7 +204,7 @@ actor DuckDBConnectionActor {
             columnTypeNames.append(Self.typeName(for: colType))
         }
 
-        if columnTypes.contains(where: Self.isUnrenderable) {
+        if columnTypes.contains(where: Self.requiresTextCast) {
             duckdb_destroy_result(&result)
             try Self.streamWrappedQuery(
                 query: query,
@@ -235,7 +235,7 @@ actor DuckDBConnectionActor {
         continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
     ) throws {
         let castExprs = columns.enumerated().map { i, name in
-            castExpression(for: columnTypes[i], column: name)
+            projection(for: columnTypes[i], column: name)
         }
         let wrappedQuery = buildWrappedQuery(originalQuery: query, castExprs: castExprs)
 
@@ -484,16 +484,16 @@ actor DuckDBConnectionActor {
         }
     }
 
-    static func patchTzColumns(
+    static func patchCastedColumns(
         _ raw: inout DuckDBRawResult, query: String, connection: duckdb_connection
     ) {
         let patchedColIndices = raw.columnTypes.enumerated().compactMap { idx, type in
-            isUnrenderable(type) ? idx : nil
+            requiresTextCast(type) ? idx : nil
         }
         guard !patchedColIndices.isEmpty, !raw.rows.isEmpty else { return }
 
         let castExprs = raw.columns.enumerated().map { i, name in
-            castExpression(for: raw.columnTypes[i], column: name)
+            projection(for: raw.columnTypes[i], column: name)
         }
         let wrappedQuery = buildWrappedQuery(originalQuery: query, castExprs: castExprs)
 
@@ -514,25 +514,36 @@ actor DuckDBConnectionActor {
         }
     }
 
-    static func isUnrenderable(_ type: duckdb_type) -> Bool {
+    static func isNativelyRenderable(_ type: duckdb_type) -> Bool {
         switch type {
-        case DUCKDB_TYPE_TIMESTAMP_TZ, DUCKDB_TYPE_TIME_TZ, DUCKDB_TYPE_GEOMETRY:
+        case DUCKDB_TYPE_BOOLEAN,
+             DUCKDB_TYPE_TINYINT, DUCKDB_TYPE_SMALLINT, DUCKDB_TYPE_INTEGER, DUCKDB_TYPE_BIGINT, DUCKDB_TYPE_HUGEINT,
+             DUCKDB_TYPE_UTINYINT, DUCKDB_TYPE_USMALLINT, DUCKDB_TYPE_UINTEGER, DUCKDB_TYPE_UBIGINT, DUCKDB_TYPE_UHUGEINT,
+             DUCKDB_TYPE_FLOAT, DUCKDB_TYPE_DOUBLE, DUCKDB_TYPE_DECIMAL,
+             DUCKDB_TYPE_VARCHAR, DUCKDB_TYPE_BLOB, DUCKDB_TYPE_UUID, DUCKDB_TYPE_BIT, DUCKDB_TYPE_ENUM,
+             DUCKDB_TYPE_DATE, DUCKDB_TYPE_TIME, DUCKDB_TYPE_TIME_NS, DUCKDB_TYPE_INTERVAL,
+             DUCKDB_TYPE_TIMESTAMP, DUCKDB_TYPE_TIMESTAMP_S, DUCKDB_TYPE_TIMESTAMP_MS, DUCKDB_TYPE_TIMESTAMP_NS,
+             DUCKDB_TYPE_LIST, DUCKDB_TYPE_STRUCT, DUCKDB_TYPE_MAP, DUCKDB_TYPE_ARRAY, DUCKDB_TYPE_UNION:
             return true
         default:
             return false
         }
     }
 
+    static func requiresTextCast(_ type: duckdb_type) -> Bool {
+        !isNativelyRenderable(type)
+    }
+
     static func castExpression(for type: duckdb_type, column: String) -> String {
         let quoted = quoteIdentifier(column)
-        switch type {
-        case DUCKDB_TYPE_GEOMETRY:
+        if type == DUCKDB_TYPE_GEOMETRY {
             return "CASE WHEN \(quoted) IS NULL THEN NULL ELSE ST_AsText(\(quoted)) END AS \(quoted)"
-        case DUCKDB_TYPE_TIMESTAMP_TZ, DUCKDB_TYPE_TIME_TZ:
-            return "CASE WHEN \(quoted) IS NULL THEN NULL ELSE CAST(\(quoted) AS VARCHAR) END AS \(quoted)"
-        default:
-            return quoted
         }
+        return "CASE WHEN \(quoted) IS NULL THEN NULL ELSE CAST(\(quoted) AS VARCHAR) END AS \(quoted)"
+    }
+
+    static func projection(for type: duckdb_type, column: String) -> String {
+        requiresTextCast(type) ? castExpression(for: type, column: column) : quoteIdentifier(column)
     }
 
     static func buildWrappedQuery(originalQuery: String, castExprs: [String]) -> String {

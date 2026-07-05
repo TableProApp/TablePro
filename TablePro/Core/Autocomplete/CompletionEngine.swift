@@ -31,7 +31,7 @@ final class CompletionEngine {
     // MARK: - Initialization
 
     init(
-        schemaProvider: SQLSchemaProvider,
+        schemaProvider: SQLSchemaProvider?,
         databaseType: DatabaseType? = nil,
         dialect: SQLDialectDescriptor? = nil,
         statementCompletions: [CompletionEntry] = []
@@ -59,6 +59,12 @@ final class CompletionEngine {
     /// Used to seed a filterable completion context before the async fetch completes.
     func keywordCompletions() -> [SQLCompletionItem] {
         provider.statementStartCompletionItems()
+    }
+
+    /// All favorite keyword items, used to seed the pre-debounce completion
+    /// session so favorites are filterable before the async fetch completes.
+    func allFavoriteItems() -> [SQLCompletionItem] {
+        provider.allFavoriteItems()
     }
 
     /// Completions for a single-table filter expression (a bare WHERE-clause
@@ -122,14 +128,12 @@ final class CompletionEngine {
 
         let adjustedCursor = cursorPosition - windowOffset
 
-        // Get completions from provider (uses the potentially windowed text)
         let (items, context) = await provider.getCompletions(
             text: analysisText,
             cursorPosition: adjustedCursor,
             forcedTableReferences: forcedTableReferences
         )
 
-        // Don't return empty results
         guard !items.isEmpty else {
             return nil
         }
@@ -154,7 +158,8 @@ final class CompletionEngine {
             cteNames: context.cteNames,
             nestingLevel: context.nestingLevel,
             currentFunction: context.currentFunction,
-            isAfterComma: context.isAfterComma
+            isAfterComma: context.isAfterComma,
+            expectsObjectName: context.expectsObjectName
         )
 
         return CompletionContext(
@@ -177,7 +182,6 @@ final class CompletionEngine {
         let textLength = nsText.length
         let radius = Self.localWindowRadius
 
-        // Raw window bounds
         var windowStart = max(0, cursorPosition - radius)
         let windowEnd = min(textLength, cursorPosition + radius)
 

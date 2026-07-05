@@ -235,21 +235,18 @@ actor SQLSchemaProvider {
     func resolveAlias(_ aliasOrName: String, in references: [TableReference]) -> String? {
         let lowerName = aliasOrName.lowercased()
 
-        // First check if it's an alias
         for ref in references {
             if ref.alias?.lowercased() == lowerName {
                 return ref.tableName
             }
         }
 
-        // Then check if it's a table name directly
         for ref in references {
             if ref.tableName.lowercased() == lowerName {
                 return ref.tableName
             }
         }
 
-        // Finally check against known tables
         for table in tables {
             if table.name.lowercased() == lowerName {
                 return table.name
@@ -390,14 +387,26 @@ actor SQLSchemaProvider {
     func allColumnsInScope(for references: [TableReference]) async -> [SQLCompletionItem] {
         // swiftlint:disable:next large_tuple
         var itemDataBuilder: [(
-            label: String, insertText: String, type: String, table: String,
+            label: String, insertText: String, type: String?, table: String,
             isPK: Bool, isNullable: Bool, defaultValue: String?, comment: String?
         )] = []
 
         let hasMultipleRefs = references.count > 1
         for ref in references {
-            let columns = await getColumns(for: ref.tableName, schema: ref.schema)
             let refId = ref.identifier
+            if let derivedColumns = ref.derivedColumns {
+                for name in derivedColumns {
+                    let label = hasMultipleRefs ? "\(refId).\(name)" : name
+                    itemDataBuilder.append(
+                        (
+                            label: label, insertText: label, type: nil,
+                            table: refId, isPK: false, isNullable: true,
+                            defaultValue: nil, comment: nil
+                        ))
+                }
+                continue
+            }
+            let columns = await getColumns(for: ref.tableName, schema: ref.schema)
             for column in columns {
                 let label = hasMultipleRefs ? "\(refId).\(column.name)" : column.name
                 let insertText = hasMultipleRefs ? "\(refId).\(column.name)" : column.name

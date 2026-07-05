@@ -45,16 +45,13 @@ internal struct ThemeStorage {
             themes.append(contentsOf: loadBuiltInThemes(from: bundleDir))
         }
 
-        // If no bundled themes loaded, use compiled presets as fallback
         if themes.isEmpty {
             themes = [ThemeDefinition.default]
         }
 
-        // Load registry themes
         ensureRegistryDirectory()
         themes.append(contentsOf: loadThemes(from: registryThemesDirectory, isBuiltIn: false))
 
-        // Load user themes
         ensureUserDirectory()
         themes.append(contentsOf: loadThemes(from: userThemesDirectory, isBuiltIn: false))
 

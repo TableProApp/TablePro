@@ -21,6 +21,10 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "SQLEditorCoordinator")
 
+    /// Above this document length inline AI features are suspended, at the same cutoff where syntax highlighting stops,
+    /// so a large document does not copy its whole contents to the assistant on every keystroke.
+    private static let languageServiceLengthLimit = EditorHighlighting.maxHighlightableCharacters
+
     @ObservationIgnored weak var controller: TextViewController?
     /// Shared schema provider for inline AI suggestions (avoids duplicate schema fetches)
     @ObservationIgnored var schemaProvider: SQLSchemaProvider?
@@ -41,9 +45,16 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
     @ObservationIgnored private var isUppercasing = false
     @ObservationIgnored private var wasEditorFocused = false
     @ObservationIgnored private var didDestroy = false
+    @ObservationIgnored private var focusClaimPending = false
 
     /// Test-only accessor for destroy state
     var isDestroyed: Bool { didDestroy }
+
+    var pendingFocusClaim: Bool { focusClaimPending }
+
+    func scheduleEditorFocusClaim() {
+        focusClaimPending = true
+    }
 
     /// Vim mode for UI observation
     private(set) var vimMode: VimMode = .normal
@@ -56,7 +67,6 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
     @ObservationIgnored var onAIExplain: ((String) -> Void)?
     @ObservationIgnored var onAIOptimize: ((String) -> Void)?
     @ObservationIgnored var onSaveAsFavorite: ((String) -> Void)?
-    @ObservationIgnored var onFormatSQL: (() -> Void)?
     @ObservationIgnored var databaseType: DatabaseType?
     @ObservationIgnored var tabID: UUID?
     @ObservationIgnored var connectionId: UUID?
@@ -107,12 +117,19 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
             if let textView = controller.textView {
                 EditorEventRouter.shared.register(self, textView: textView)
 
-                // Auto-focus: make the editor first responder, then ensure a
-                // cursor exists. Order matters — setCursorPositions calls
-                // updateSelectionViews which guards on isFirstResponder.
-                if !self.isDestroyed, let window = textView.window,
-                   window.firstResponder == nil || window.firstResponder === window {
-                    window.makeFirstResponder(textView)
+                if !self.isDestroyed, let window = textView.window {
+                    let claimPending = self.focusClaimPending
+                    let responderName = window.firstResponder.map { String(describing: type(of: $0)) } ?? "nil"
+                    var made = false
+                    if claimPending {
+                        self.focusClaimPending = false
+                        made = window.makeFirstResponder(textView)
+                    } else if window.firstResponder == nil || window.firstResponder === window {
+                        made = window.makeFirstResponder(textView)
+                    }
+                    Self.logger.debug("Editor focus claim: pending=\(claimPending) isKey=\(window.isKeyWindow) responderBefore=\(responderName, privacy: .public) made=\(made)")
+                } else {
+                    Self.logger.debug("Editor focus claim skipped: hasWindow=\(textView.window != nil) destroyed=\(self.isDestroyed) pending=\(self.focusClaimPending)")
                 }
                 if controller.cursorPositions.isEmpty {
                     controller.setCursorPositions([CursorPosition(range: NSRange(location: 0, length: 0))])
@@ -130,12 +147,16 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
     func textView(_ textView: TextView, didReplaceContentsIn range: NSRange, with string: String) {
         vimEngine?.invalidateLineCache()
 
+        let isLargeDocument = textView.textStorage.length > Self.languageServiceLengthLimit
+
         Task { [weak self] in
-            self?.inlineSuggestionManager?.handleTextChange()
+            if !isLargeDocument {
+                self?.inlineSuggestionManager?.handleTextChange()
+            }
             self?.vimCursorManager?.updatePosition()
         }
 
-        if !didDestroy, let tabID, let sync = copilotDocumentSync {
+        if !isLargeDocument, !didDestroy, let tabID, let sync = copilotDocumentSync {
             let text = textView.string
             Task { await sync.didChangeText(tabID: tabID, newText: text) }
         }
@@ -169,6 +190,7 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
 
     func destroy() {
         didDestroy = true
+        focusClaimPending = false
 
         uninstallVimKeyInterceptor()
 
@@ -189,13 +211,11 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
         onAIExplain = nil
         onAIOptimize = nil
         onSaveAsFavorite = nil
-        onFormatSQL = nil
         schemaProvider = nil
         contextMenu = nil
         vimEngine = nil
         vimCursorManager = nil
 
-        // Release editor controller heavy state
         controller?.releaseHeavyState()
 
         EditorEventRouter.shared.unregister(self)
@@ -214,6 +234,10 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
         }
         if inlineSuggestionManager == nil, let controller {
             installInlineSuggestionManager(controller: controller)
+        }
+        if let controller {
+            installEditorSettingsObserver(controller: controller)
+            installWindowKeyObserver(for: controller.textView?.window)
         }
     }
 
@@ -238,8 +262,41 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
         menu.onExplainWithAI = { [weak self] text in self?.onAIExplain?(text) }
         menu.onOptimizeWithAI = { [weak self] text in self?.onAIOptimize?(text) }
         menu.onSaveAsFavorite = { [weak self] text in self?.onSaveAsFavorite?(text) }
-        menu.onFormatSQL = { [weak self] in self?.onFormatSQL?() }
+        menu.onFormatSQL = { [weak self] in self?.performFormatSQL() }
         contextMenu = menu
+    }
+
+    func performFormatSQL() {
+        guard let textView = controller?.textView else { return }
+        let dialect = databaseType ?? .mysql
+        let formatter = SQLFormatterService()
+        let scope = FormatScopeResolver.resolve(
+            fullText: textView.string,
+            selectedRange: textView.selectedRange()
+        )
+
+        do {
+            let result = try formatter.format(
+                scope.sql,
+                dialect: dialect,
+                cursorOffset: scope.cursorOffset,
+                options: .default
+            )
+            let replacement = scope.isSelection
+                ? FormatScopeResolver.reapplyBoundaryWhitespace(from: scope.sql, to: result.formattedSQL)
+                : result.formattedSQL
+            textView.replaceCharacters(in: scope.range, with: replacement)
+            let replacementLength = (replacement as NSString).length
+            let caretLocation: Int
+            if let newOffset = result.cursorOffset {
+                caretLocation = scope.range.location + min(newOffset, replacementLength)
+            } else {
+                caretLocation = scope.range.location + replacementLength
+            }
+            controller?.setCursorPositions([CursorPosition(range: NSRange(location: caretLocation, length: 0))])
+        } catch {
+            Self.logger.error("SQL Formatting error: \(error.localizedDescription, privacy: .public)")
+        }
     }
 
     /// Called by EditorEventRouter when a right-click is detected in this editor's text view.

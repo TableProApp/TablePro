@@ -15,6 +15,9 @@ final class MockDatabaseDriver: DatabaseDriver, @unchecked Sendable {
     private(set) var executedQueries: [String] = []
     private(set) var fetchColumnsCalls: Int = 0
     private(set) var fetchForeignKeysCalls: Int = 0
+    private(set) var didBeginTransaction = false
+    private(set) var didCommitTransaction = false
+    private(set) var didRollbackTransaction = false
 
     var supportsSchemas: Bool = false
     var currentSchema: String? = nil
@@ -55,9 +58,9 @@ final class MockDatabaseDriver: DatabaseDriver, @unchecked Sendable {
     func fetchSchemas() async throws -> [String] { scriptedSchemas }
     func switchDatabase(to name: String) async throws {}
     func switchSchema(to name: String) async throws {}
-    func beginTransaction() async throws {}
-    func commitTransaction() async throws {}
-    func rollbackTransaction() async throws {}
+    func beginTransaction() async throws { didBeginTransaction = true }
+    func commitTransaction() async throws { didCommitTransaction = true }
+    func rollbackTransaction() async throws { didRollbackTransaction = true }
 }
 
 final class MockSecureStore: SecureStore, @unchecked Sendable {

@@ -2,10 +2,9 @@
 //  ConnectionExportOptionsSheet.swift
 //  TablePro
 //
-//  Sheet for choosing export options before saving a .tablepro file.
-//
 
 import SwiftUI
+import TableProImport
 import UniformTypeIdentifiers
 
 struct ConnectionExportOptionsSheet: View {
@@ -15,120 +14,171 @@ struct ConnectionExportOptionsSheet: View {
     @State private var includeCredentials = false
     @State private var passphrase = ""
     @State private var confirmPassphrase = ""
+    @State private var exportDocument: ConnectionExportDocument?
+    @State private var isExporting = false
+    @State private var exportError: String?
 
     private var isProAvailable: Bool {
         LicenseManager.shared.isFeatureAvailable(.encryptedExport)
     }
 
+    private var passphraseState: ConnectionExportPassphraseState {
+        ConnectionExportPassphraseState.evaluate(passphrase: passphrase, confirmation: confirmPassphrase)
+    }
+
     private var canExport: Bool {
-        if includeCredentials {
-            return (passphrase as NSString).length >= 8 && passphrase == confirmPassphrase
-        }
-        return true
+        guard includeCredentials else { return true }
+        return passphraseState.allowsExport
+    }
+
+    private var defaultFilename: String {
+        connections.count == 1 ? connections[0].name : String(localized: "Connections")
     }
 
     var body: some View {
         VStack(spacing: 0) {
-            Text(String(localized: "Export Options"))
-                .font(.body.weight(.semibold))
-                .padding(.vertical, 12)
+            header
 
             Divider()
 
-            Form {
-                Section {
-                    HStack(spacing: 6) {
-                        Toggle("Include Credentials", isOn: $includeCredentials)
-                            .toggleStyle(.checkbox)
-                            .disabled(!isProAvailable)
-                        if !isProAvailable {
-                            ProBadge()
-                        }
-                    }
-                } footer: {
-                    if includeCredentials {
-                        Text("Passwords will be encrypted with the passphrase you provide.")
-                    }
-                }
+            options
+                .padding(20)
 
-                if includeCredentials {
-                    Section {
-                        LabeledContent(String(localized: "Passphrase")) {
-                            SecureField(String(localized: "8+ characters"), text: $passphrase)
-                        }
-                        LabeledContent(String(localized: "Confirm")) {
-                            SecureField(String(localized: "Re-enter passphrase"), text: $confirmPassphrase)
-                        }
-                    }
-
-                    if !passphrase.isEmpty && !confirmPassphrase.isEmpty && passphrase != confirmPassphrase {
-                        Section {
-                            Label(String(localized: "Passphrases do not match"), systemImage: "exclamationmark.triangle.fill")
-                                .foregroundStyle(.orange)
-                        }
-                    }
-                }
-            }
-            .formStyle(.grouped)
-            .scrollContentBackground(.hidden)
+            Spacer(minLength: 0)
 
             Divider()
 
-            HStack {
-                Button("Cancel") { dismiss() }
-                    .keyboardShortcut(.cancelAction)
-                Spacer()
-                Button("Export...") { performExport() }
-                    .buttonStyle(.borderedProminent)
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(!canExport)
-            }
-            .padding(12)
+            footer
+                .padding(16)
         }
-        .frame(width: 420)
+        .frame(width: 440, height: 300)
+        .fileExporter(
+            isPresented: $isExporting,
+            document: exportDocument,
+            contentType: .tableproConnectionShare,
+            defaultFilename: defaultFilename
+        ) { result in
+            if case .failure(let error) = result, (error as NSError).code != NSUserCancelledError {
+                exportError = error.localizedDescription
+                return
+            }
+            dismiss()
+        }
+        .alert(
+            String(localized: "Export Failed"),
+            isPresented: Binding(get: { exportError != nil }, set: { if !$0 { exportError = nil } })
+        ) {
+            Button(String(localized: "OK"), role: .cancel) { exportError = nil }
+        } message: {
+            if let exportError {
+                Text(exportError)
+            }
+        }
+    }
+
+    private var header: some View {
+        VStack(spacing: 2) {
+            Text("Export Options")
+                .font(.headline)
+            Text(exportSummary)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.vertical, 14)
+    }
+
+    private var exportSummary: String {
+        connections.count == 1
+            ? connections[0].name
+            : String(format: String(localized: "%d connections"), connections.count)
+    }
+
+    private var options: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Toggle("Include Credentials", isOn: $includeCredentials)
+                        .toggleStyle(.checkbox)
+                        .disabled(!isProAvailable)
+                    if !isProAvailable {
+                        ProBadge()
+                    }
+                }
+                Text("Off by default. Turn it on to encrypt saved passwords with a passphrase.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            if includeCredentials {
+                passphraseFields
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var passphraseFields: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 8) {
+                GridRow {
+                    Text("Passphrase")
+                        .gridColumnAlignment(.trailing)
+                    SecureField(String(localized: "8+ characters"), text: $passphrase)
+                        .textFieldStyle(.roundedBorder)
+                }
+                GridRow {
+                    Text("Confirm")
+                        .gridColumnAlignment(.trailing)
+                    SecureField(String(localized: "Re-enter passphrase"), text: $confirmPassphrase)
+                        .textFieldStyle(.roundedBorder)
+                }
+            }
+
+            validationMessage
+                .frame(height: 16, alignment: .leading)
+        }
+    }
+
+    @ViewBuilder
+    private var validationMessage: some View {
+        switch passphraseState {
+        case .tooShort:
+            warningLabel(String(localized: "Use at least 8 characters"))
+        case .mismatch:
+            warningLabel(String(localized: "Passphrases do not match"))
+        case .empty, .incomplete, .ok:
+            EmptyView()
+        }
+    }
+
+    private func warningLabel(_ text: String) -> some View {
+        Label(text, systemImage: "exclamationmark.triangle.fill")
+            .font(.caption)
+            .foregroundStyle(.orange)
+    }
+
+    private var footer: some View {
+        HStack {
+            Button("Cancel") { dismiss() }
+                .keyboardShortcut(.cancelAction)
+            Spacer()
+            Button("Export...") { performExport() }
+                .buttonStyle(.borderedProminent)
+                .keyboardShortcut(.defaultAction)
+                .disabled(!canExport)
+        }
     }
 
     private func performExport() {
-        let shouldEncrypt = includeCredentials && isProAvailable
-        let capturedPassphrase = passphrase
-        let capturedConnections = connections
-
-        // Zero passphrase state before dismissing
-        passphrase = ""
-        confirmPassphrase = ""
-        dismiss()
-
-        Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(200))
-            let panel = NSSavePanel()
-            panel.allowedContentTypes = [.tableproConnectionShare]
-            let defaultName = capturedConnections.count == 1
-                ? "\(capturedConnections[0].name).tablepro"
-                : "Connections.tablepro"
-            panel.nameFieldStringValue = defaultName
-            panel.canCreateDirectories = true
-            guard let window = NSApp.keyWindow else { return }
-            panel.beginSheetModal(for: window) { response in
-                guard response == .OK, let url = panel.url else { return }
-
-                do {
-                    if shouldEncrypt {
-                        try ConnectionExportService.exportConnectionsEncrypted(
-                            capturedConnections,
-                            to: url,
-                            passphrase: capturedPassphrase
-                        )
-                    } else {
-                        try ConnectionExportService.exportConnections(capturedConnections, to: url)
-                    }
-                } catch {
-                    AlertHelper.showErrorSheet(
-                        title: String(localized: "Export Failed"),
-                        message: error.localizedDescription,
-                        window: window
-                    )
-                }
-            }
+        do {
+            let data = includeCredentials && isProAvailable
+                ? try ConnectionExportService.exportEncryptedData(connections, passphrase: passphrase)
+                : try ConnectionExportService.exportData(connections)
+            passphrase = ""
+            confirmPassphrase = ""
+            exportDocument = ConnectionExportDocument(data: data)
+            isExporting = true
+        } catch {
+            exportError = error.localizedDescription
         }
     }
 }

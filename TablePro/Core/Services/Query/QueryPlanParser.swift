@@ -277,7 +277,6 @@ struct IndentedTextPlanParser: QueryPlanParser {
         let lines = rawText.components(separatedBy: "\n").filter { !$0.isEmpty }
         guard !lines.isEmpty else { return nil }
 
-        // Parse each line's indent level and content
         struct ParsedLine {
             let indent: Int
             let text: String

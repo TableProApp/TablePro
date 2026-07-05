@@ -15,7 +15,6 @@ final class DownloadCountService {
     private static let cooldown: TimeInterval = 300 // 5 minutes
     private static let logger = Logger(subsystem: "com.TablePro", category: "DownloadCountService")
 
-    // swiftlint:disable:next force_unwrapping
     private static let releasesURL = URL(string: "https://api.github.com/repos/TableProApp/TablePro/releases?per_page=100")!
 
     private let session: URLSession

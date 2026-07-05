@@ -9,14 +9,18 @@ struct DatabaseSwitcherPopoverHost: View {
         if let coordinator {
             let connection = coordinator.connection
             let session = DatabaseManager.shared.session(for: connection.id)
-            let activeDatabase = session?.currentDatabase ?? connection.database
+            let switchTarget = PluginManager.shared.containerSwitchTarget(for: connection.type) ?? .database
+            let activeContainer: String? = switch switchTarget {
+            case .database: session?.currentDatabase ?? connection.database
+            case .schema: coordinator.toolbarState.currentSchema ?? session?.currentSchema
+            }
 
             DatabaseSwitcherPopover(
-                currentDatabase: activeDatabase,
+                currentDatabase: activeContainer,
                 databaseType: connection.type,
                 connectionId: connection.id,
-                onSelect: { [weak coordinator] database in
-                    Task { await coordinator?.switchDatabase(to: database) }
+                onSelect: { [weak coordinator] container in
+                    Task { await coordinator?.switchContainer(to: container) }
                 },
                 onRequestCreate: { [weak coordinator] in
                     coordinator?.activeSheet = .createDatabase
@@ -52,6 +56,12 @@ struct DatabaseSwitcherPopover: View {
     private var showsCreateRow: Bool {
         supportsCreateDatabase
     }
+    private var containerName: String {
+        PluginManager.shared.containerEntityName(for: databaseType)
+    }
+    private var containerNamePlural: String {
+        PluginManager.shared.containerEntityNamePlural(for: databaseType)
+    }
 
     init(
         currentDatabase: String?,
@@ -71,7 +81,8 @@ struct DatabaseSwitcherPopover: View {
             wrappedValue: DatabaseSwitcherViewModel(
                 connectionId: connectionId,
                 currentDatabase: currentDatabase,
-                databaseType: databaseType
+                databaseType: databaseType,
+                sidebarState: SharedSidebarState.forConnection(connectionId)
             ))
     }
 
@@ -105,7 +116,7 @@ struct DatabaseSwitcherPopover: View {
     private var searchField: some View {
         NativeSearchField(
             text: $viewModel.searchText,
-            placeholder: String(localized: "Search databases"),
+            placeholder: String(format: String(localized: "Search %@"), containerNamePlural.lowercased()),
             onMoveUp: { viewModel.moveUp() },
             onMoveDown: { viewModel.moveDown() },
             onSubmit: { commitSelection() },
@@ -196,7 +207,7 @@ struct DatabaseSwitcherPopover: View {
                 dismiss()
                 onRequestDrop(database.name)
             } label: {
-                Label(String(localized: "Drop Database…"), systemImage: "trash")
+                Label(String(format: String(localized: "Drop %@…"), containerName), systemImage: "trash")
             }
         }
     }
@@ -204,7 +215,7 @@ struct DatabaseSwitcherPopover: View {
     private var loadingView: some View {
         VStack(spacing: 10) {
             ProgressView().controlSize(.small)
-            Text(String(localized: "Loading databases…"))
+            Text(String(format: String(localized: "Loading %@…"), containerNamePlural.lowercased()))
                 .font(.callout)
                 .foregroundStyle(.secondary)
         }
@@ -216,7 +227,7 @@ struct DatabaseSwitcherPopover: View {
             Image(systemName: "exclamationmark.triangle")
                 .font(.title3)
                 .foregroundStyle(.orange)
-            Text(String(localized: "Failed to load databases"))
+            Text(String(format: String(localized: "Failed to load %@"), containerNamePlural.lowercased()))
                 .font(.callout.weight(.medium))
             Text(message)
                 .font(.caption)
@@ -255,13 +266,17 @@ struct DatabaseSwitcherPopover: View {
                 .font(.title3)
                 .foregroundStyle(.secondary)
             if viewModel.searchText.isEmpty {
-                Text(String(localized: "No databases"))
+                Text(String(format: String(localized: "No %@"), containerNamePlural.lowercased()))
                     .font(.callout.weight(.medium))
             } else {
-                Text(String(format: String(localized: "No databases match “%@”"), viewModel.searchText))
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
+                Text(String(
+                    format: String(localized: "No %1$@ match “%2$@”"),
+                    containerNamePlural.lowercased(),
+                    viewModel.searchText
+                ))
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -274,10 +289,10 @@ struct DatabaseSwitcherPopover: View {
                 dismiss()
                 onRequestCreate()
             } label: {
-                Label(String(localized: "New Database…"), systemImage: "plus")
+                Label(String(format: String(localized: "New %@…"), containerName), systemImage: "plus")
             }
             .buttonStyle(.borderless)
-            .help(String(localized: "New Database (⌘N)"))
+            .help(String(format: String(localized: "New %@ (⌘N)"), containerName))
             .keyboardShortcut("n", modifiers: .command)
 
             Spacer()

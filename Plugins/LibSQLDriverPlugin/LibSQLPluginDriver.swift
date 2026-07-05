@@ -505,6 +505,42 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
     }
 
+    func fetchTriggers(table: String, schema: String?) async throws -> [PluginTriggerInfo] {
+        let safeTable = escapeStringLiteral(table)
+        let query = """
+            SELECT name, sql FROM sqlite_master
+            WHERE type = 'trigger' AND tbl_name = '\(safeTable)'
+            ORDER BY name
+            """
+        let result = try await execute(query: query)
+
+        return result.rows.compactMap { row -> PluginTriggerInfo? in
+            guard row.count >= 2,
+                  let name = row[0].asText,
+                  let sql = row[1].asText else {
+                return nil
+            }
+            let (timing, event) = TriggerSQLParser.timingAndEvent(from: sql)
+            return PluginTriggerInfo(name: name, timing: timing, event: event, statement: sql)
+        }
+    }
+
+    var supportsTransactionalDDL: Bool { true }
+
+    func createTriggerTemplate(table: String, schema: String?) -> String? {
+        """
+        CREATE TRIGGER \(quoteIdentifier("trigger_name"))
+        AFTER INSERT ON \(quoteIdentifier(table))
+        BEGIN
+            -- INSERT INTO audit ...;
+        END;
+        """
+    }
+
+    func generateDropTriggerSQL(name: String, table: String, schema: String?) -> String? {
+        "DROP TRIGGER IF EXISTS \(quoteIdentifier(name))"
+    }
+
     func fetchTableDDL(table: String, schema: String?) async throws -> String {
         let safeTable = escapeStringLiteral(table)
         let query = """

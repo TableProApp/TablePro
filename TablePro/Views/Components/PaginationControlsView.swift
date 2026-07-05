@@ -139,10 +139,7 @@ struct PaginationControlsView: View {
     }
 
     private func helpText(_ label: String, for shortcut: ShortcutAction) -> String {
-        guard let combo = AppSettingsManager.shared.keyboard.shortcut(for: shortcut), !combo.isCleared else {
-            return label
-        }
-        return "\(label) (\(combo.displayString))"
+        AppSettingsManager.shared.keyboard.shortcutHint(label, for: shortcut)
     }
 
     private var pageIndicator: some View {

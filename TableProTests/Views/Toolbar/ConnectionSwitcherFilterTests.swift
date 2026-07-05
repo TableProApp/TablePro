@@ -41,6 +41,12 @@ struct ConnectionSwitcherFilterTests {
         let connection = TestFixtures.makeConnection(name: "Primary", database: "analytics")
         #expect(!ConnectionSwitcherFilter.matches(connection, query: "zzz"))
     }
+
+    @Test("Fuzzy abbreviation matches across word boundaries")
+    func fuzzyAbbreviationMatches() {
+        let connection = TestFixtures.makeConnection(name: "Production DB", database: "app")
+        #expect(ConnectionSwitcherFilter.matches(connection, query: "pdb"))
+    }
 }
 
 @Suite("Connection Switcher Selection")

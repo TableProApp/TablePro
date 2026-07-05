@@ -63,6 +63,16 @@ struct GridSelectionTests {
         #expect(selection.boundingRectangle == rect)
     }
 
+    @Test("a cell-range spanning rows reports every covered row")
+    func cellRangeAffectsEveryCoveredRow() {
+        let selection = GridSelection.single(
+            GridRect(rows: 2...5, columns: 1...3),
+            anchor: GridCoord(row: 2, column: 1),
+            active: GridCoord(row: 5, column: 3)
+        )
+        #expect(selection.affectedRows == IndexSet(integersIn: 2...5))
+    }
+
     @Test("multiple rectangles report union of affected rows and columns")
     func multipleRectanglesUnion() {
         let selection = GridSelection(
@@ -281,11 +291,82 @@ struct GridSelectionControllerTests {
         #expect(controller.selection.rectangles == [GridRect(rows: 2...2, columns: 2...9)])
     }
 
-    @Test("extendActiveCell is a no-op when the selection is empty")
+    @Test("extendActiveCell without a seed is a no-op when the selection is empty")
     func extendActiveCellNoOpEmpty() {
         let controller = GridSelectionController()
         controller.extendActiveCell(direction: .down, jumpToEdge: false, totalRows: 10, totalColumns: 10)
         #expect(controller.selection.isEmpty)
+    }
+
+    @Test("extendActiveCell with a seed begins a range anchored at the focused cell")
+    func extendActiveCellSeedsFromFocusedCell() {
+        let controller = GridSelectionController()
+        let focused = GridCoord(row: 3, column: 4)
+
+        controller.extendActiveCell(from: focused, direction: .down, jumpToEdge: false, totalRows: 10, totalColumns: 10)
+
+        #expect(controller.selection.rectangles == [GridRect(rows: 3...4, columns: 4...4)])
+        #expect(controller.selection.anchor == focused)
+        #expect(controller.selection.activeCell == GridCoord(row: 4, column: 4))
+    }
+
+    @Test("a seeded extend grows by one cell in each direction from the focused cell")
+    func extendActiveCellSeedsInEveryDirection() {
+        let focused = GridCoord(row: 3, column: 3)
+        let cases: [(GridSelectionController.Direction, GridRect, GridCoord)] = [
+            (.up, GridRect(rows: 2...3, columns: 3...3), GridCoord(row: 2, column: 3)),
+            (.down, GridRect(rows: 3...4, columns: 3...3), GridCoord(row: 4, column: 3)),
+            (.left, GridRect(rows: 3...3, columns: 2...3), GridCoord(row: 3, column: 2)),
+            (.right, GridRect(rows: 3...3, columns: 3...4), GridCoord(row: 3, column: 4))
+        ]
+        for (direction, expectedRect, expectedActive) in cases {
+            let controller = GridSelectionController()
+            controller.extendActiveCell(from: focused, direction: direction, jumpToEdge: false, totalRows: 10, totalColumns: 10)
+            #expect(controller.selection.rectangles == [expectedRect])
+            #expect(controller.selection.anchor == focused)
+            #expect(controller.selection.activeCell == expectedActive)
+        }
+    }
+
+    @Test("repeated seeded extend keeps the anchor fixed and reverses by shrinking")
+    func extendActiveCellAnchorStaysFixedOnReverse() {
+        let controller = GridSelectionController()
+        let focused = GridCoord(row: 2, column: 2)
+
+        controller.extendActiveCell(from: focused, direction: .down, jumpToEdge: false, totalRows: 10, totalColumns: 10)
+        controller.extendActiveCell(direction: .down, jumpToEdge: false, totalRows: 10, totalColumns: 10)
+        #expect(controller.selection.rectangles == [GridRect(rows: 2...4, columns: 2...2)])
+
+        controller.extendActiveCell(direction: .up, jumpToEdge: false, totalRows: 10, totalColumns: 10)
+        #expect(controller.selection.rectangles == [GridRect(rows: 2...3, columns: 2...2)])
+        #expect(controller.selection.anchor == focused)
+        #expect(controller.selection.activeCell == GridCoord(row: 3, column: 2))
+    }
+
+    @Test("a seeded extend with jumpToEdge runs from the focused cell to the grid edge")
+    func extendActiveCellSeedsToEdge() {
+        let controller = GridSelectionController()
+        let focused = GridCoord(row: 2, column: 2)
+
+        controller.extendActiveCell(from: focused, direction: .right, jumpToEdge: true, totalRows: 10, totalColumns: 10)
+
+        #expect(controller.selection.rectangles == [GridRect(rows: 2...2, columns: 2...9)])
+        #expect(controller.selection.anchor == focused)
+        #expect(controller.selection.activeCell == GridCoord(row: 2, column: 9))
+    }
+
+    @Test("the seed is ignored when a selection already exists")
+    func extendActiveCellIgnoresSeedWhenSelectionExists() {
+        let controller = GridSelectionController()
+        let origin = GridCoord(row: 2, column: 2)
+        _ = controller.beginDrag(at: origin, modifiers: [])
+        controller.continueDrag(to: origin)
+        controller.endDrag(dragged: true, originalCoord: origin)
+
+        controller.extendActiveCell(from: GridCoord(row: 9, column: 9), direction: .down, jumpToEdge: false, totalRows: 10, totalColumns: 10)
+
+        #expect(controller.selection.rectangles == [GridRect(rows: 2...3, columns: 2...2)])
+        #expect(controller.selection.anchor == origin)
     }
 
     @Test("clear empties the selection")

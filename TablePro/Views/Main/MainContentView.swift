@@ -108,7 +108,7 @@ struct MainContentView: View {
                 titleVisibility: .visible,
                 presenting: coordinator.databaseToDrop
             ) { name in
-                Button(String(localized: "Drop Database"), role: .destructive) {
+                Button(String(format: String(localized: "Drop %@"), containerEntityName), role: .destructive) {
                     Task { await dropDatabase(name: name) }
                 }
                 Button(String(localized: "Cancel"), role: .cancel) {
@@ -131,9 +131,17 @@ struct MainContentView: View {
 
     private var dropConfirmationTitle: String {
         if let name = coordinator.databaseToDrop {
-            return String(format: String(localized: "Drop database “%@”?"), name)
+            return String(
+                format: String(localized: "Drop %1$@ “%2$@”?"),
+                containerEntityName.lowercased(),
+                name
+            )
         }
         return ""
+    }
+
+    private var containerEntityName: String {
+        PluginManager.shared.containerEntityName(for: coordinator.connection.type)
     }
 
     private func dropDatabase(name: String) async {
@@ -179,7 +187,7 @@ struct MainContentView: View {
                 databaseType: connection.type,
                 viewModel: viewModel,
                 onCreated: { newDatabaseName in
-                    Task { await coordinator.switchDatabase(to: newDatabaseName) }
+                    Task { await coordinator.switchContainer(to: newDatabaseName) }
                 }
             )
         case .exportDialog:
@@ -270,14 +278,6 @@ struct MainContentView: View {
                 databaseType: connection.type,
                 onExecute: coordinator.executeMaintenance
             )
-        case .quickSwitcher:
-            QuickSwitcherSheet(
-                isPresented: dismissBinding,
-                schemaProvider: SchemaProviderRegistry.shared.getOrCreate(for: connection.id),
-                connectionId: connection.id,
-                databaseType: connection.type,
-                onSelect: coordinator.handleQuickSwitcherSelection
-            )
         case .sqlPreview:
             SQLReviewSheet(
                 isPresented: dismissBinding,
@@ -296,7 +296,8 @@ struct MainContentView: View {
             pendingTruncates: pendingTruncates,
             pendingDeletes: pendingDeletes,
             hasStructureChanges: toolbarState.hasStructureChanges,
-            isFileDirty: tabManager.selectedTab?.content.isFileDirty ?? false
+            isFileDirty: tabManager.selectedTab?.content.isFileDirty ?? false,
+            hasCreateTablePending: toolbarState.hasCreateTablePending
         )
     }
 
@@ -461,9 +462,6 @@ struct MainContentView: View {
             },
             onClearFilters: {
                 coordinator.clearFiltersAndReload()
-            },
-            onRefresh: {
-                coordinator.runQuery()
             },
             onFirstPage: {
                 coordinator.goToFirstPage()

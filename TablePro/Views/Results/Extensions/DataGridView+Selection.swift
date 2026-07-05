@@ -14,6 +14,7 @@ extension TableViewCoordinator {
 
     func tableViewColumnDidMove(_ notification: Notification) {
         guard !isRebuildingColumns else { return }
+        invalidateColumnIndexCache()
         layoutPersistTask?.cancel()
         persistColumnLayoutToStorage()
     }

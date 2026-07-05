@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import TableProImport
 
 struct ImportFromAppPreviewStep: View {
     let preview: ConnectionImportPreview

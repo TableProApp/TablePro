@@ -1,0 +1,93 @@
+---
+title: Elasticsearch
+description: Connect to Elasticsearch with a Query DSL console, index browsing, and document editing
+---
+
+# Elasticsearch Connections
+
+TablePro connects to Elasticsearch 7.x and 8.x over the REST API. Browse indices as tables, run Query DSL requests in a Kibana-style console, page through documents in the data grid, and edit documents inline. Supports HTTP Basic auth, API keys, and TLS.
+
+## Quick Setup
+
+Click **New Connection**, select **Elasticsearch**, enter host and port (default 9200), pick an auth method, and connect. The plugin auto-installs, or use **Settings** > **Plugins** > **Browse** > **Elasticsearch Driver**.
+
+## Authentication Methods
+
+**Username & Password**: HTTP Basic auth. Enter the username and password in the standard connection fields.
+
+**API Key**: Paste a base64-encoded API key (the `id:api_key` pair encoded as base64, or the `encoded` value returned by the create API key request). Sent as the `Authorization: ApiKey` header.
+
+**None**: No authentication, for clusters with security disabled.
+
+## Connection Settings
+
+### Required Fields
+
+| Field | Description |
+|-------|-------------|
+| **Host** | Cluster host (e.g. `localhost`) |
+| **Port** | REST port, default `9200` |
+| **Auth Method** | Username & Password, API Key, or None |
+
+### Optional Fields
+
+| Field | Description |
+|-------|-------------|
+| **SSL** | Enable to connect over HTTPS |
+| **Skip TLS Verification** | Trust self-signed certificates (Advanced section). Elasticsearch 8.x ships with TLS on by default |
+| **API Key** | Base64-encoded key, shown when Auth Method is API Key |
+
+## Features
+
+**Index Browsing**: The sidebar lists indices as tables. System and hidden indices (names starting with `.`) are hidden. Each index shows its documents in the grid, its fields in the structure view, and its mapping as DDL.
+
+**Field Discovery**: Columns come from the index mapping. Nested `object` and `nested` fields flatten into dotted paths (`address.city`). Documents always include the `_id`, `_index`, and `_score` meta columns; `_id` is the primary key. Array and object values render as JSON in the cell.
+
+**Query DSL Console**: The editor is a Kibana Dev Tools-style console. Write a method, a path, and an optional JSON body:
+
+```json
+GET /my-index/_search
+{
+  "query": {
+    "match": { "title": "search term" }
+  }
+}
+```
+
+```json
+GET /_cat/indices?format=json
+```
+
+```json
+POST /my-index/_doc
+{
+  "title": "New document",
+  "views": 0
+}
+```
+
+Search responses render as a grid; `_cat` and other array responses tabularize; everything else shows as formatted JSON.
+
+**Filtering and Sorting**: Column filters translate to Query DSL (`term`, `range`, `wildcard`, `terms`, `exists`). A raw filter (the default filter mode) is treated as an Elasticsearch `query_string`, so its text is Lucene syntax, for example `name:Widget` or `price:>10`, run across all fields. Sorting a `text` field automatically targets its `.keyword` subfield when one exists, since `text` fields are not directly sortable.
+
+**Data Editing**: Edit cells, insert documents, and delete documents. Edits map to REST operations keyed by `_id`: `POST /index/_update/{id}`, `PUT /index/_doc/{id}`, and `DELETE /index/_doc/{id}`. The `_id`, `_index`, and `_score` columns are read-only.
+
+**Pagination**: The grid pages with `from`/`size` up to the index `max_result_window` (default 10,000). Past that window, TablePro pages with `search_after` and a point-in-time (PIT) for deeper browsing.
+
+## Example Configurations
+
+**Local cluster**: Host `localhost`, port `9200`, Auth Method None (security disabled) or Username & Password.
+
+**Elastic 8.x with TLS**: Enable SSL, set Username & Password, and enable Skip TLS Verification if the cluster uses the default self-signed certificate.
+
+**API key**: Auth Method API Key, paste the base64-encoded key.
+
+## Troubleshooting
+
+**Authentication failed**: Verify the username and password, or the API key. On 8.x, security and TLS are on by default.
+
+**TLS errors**: Enable SSL, and enable Skip TLS Verification for self-signed certificates.
+
+**Sort not allowed on a text field**: Sort on the field's `.keyword` subfield, or add one to the mapping.
+
+**Limitations**: Read-only `_sql` is not exposed; use the Query DSL console. No schema editing, no transactions. Deep paging past `max_result_window` uses `search_after` and can drift under concurrent writes. Elasticsearch only (OpenSearch is not yet supported).

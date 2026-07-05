@@ -20,7 +20,7 @@ extension ClickHousePluginDriver {
         return result.rows.compactMap { row -> PluginTableInfo? in
             guard let name = row[safe: 0]?.asText else { return nil }
             let engine = row[safe: 1]?.asText
-            let tableType = (engine?.contains("View") == true) ? "VIEW" : "TABLE"
+            let tableType = clickHouseTableType(forEngine: engine)
             return PluginTableInfo(name: name, type: tableType)
         }
     }

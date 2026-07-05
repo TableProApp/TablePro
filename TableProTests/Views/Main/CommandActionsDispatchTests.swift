@@ -173,4 +173,42 @@ struct CommandActionsDispatchTests {
 
         #expect(removeRowCalled)
     }
+
+    // MARK: - saveChanges (createTable tab)
+
+    @Test("saveChanges dispatches createTableActions when the selected tab is createTable")
+    func saveChanges_createTableTab_callsCreateTableAction() {
+        let (actions, coordinator) = makeSUT()
+        coordinator.tabManager.addCreateTableTab(databaseName: "testdb")
+
+        let createHandler = CreateTableActionHandler()
+        var createCalled = false
+        createHandler.createTable = { createCalled = true }
+        coordinator.createTableActions = createHandler
+
+        let handler = StructureViewActionHandler()
+        var structureSaveCalled = false
+        handler.saveChanges = { structureSaveCalled = true }
+        coordinator.structureActions = handler
+
+        actions.saveChanges()
+
+        #expect(createCalled)
+        #expect(!structureSaveCalled)
+    }
+
+    @Test("saveChanges without createTableActions is a no-op for a createTable tab")
+    func saveChanges_createTableTab_withoutAction_doesNothing() {
+        let (actions, coordinator) = makeSUT()
+        coordinator.tabManager.addCreateTableTab(databaseName: "testdb")
+
+        let handler = StructureViewActionHandler()
+        var structureSaveCalled = false
+        handler.saveChanges = { structureSaveCalled = true }
+        coordinator.structureActions = handler
+
+        actions.saveChanges()
+
+        #expect(!structureSaveCalled)
+    }
 }

@@ -39,6 +39,7 @@ PLUGINS=(
     bigquery
     snowflake
     libsql
+    elasticsearch
 )
 
 BUNDLED_PLUGINS=(

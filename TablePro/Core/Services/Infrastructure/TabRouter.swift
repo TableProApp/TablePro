@@ -98,7 +98,8 @@ internal final class TabRouter {
 
     private func openTable(
         connectionId: UUID, transientConnection: DatabaseConnection? = nil,
-        database: String?, schema: String?, table: String, isView: Bool
+        database: String?, schema: String?, table: String, isView: Bool,
+        passwordOverride: String? = nil, sshPasswordOverride: String? = nil
     ) async throws {
         let connection: DatabaseConnection
         if let transientConnection {
@@ -109,7 +110,11 @@ internal final class TabRouter {
             throw TabRouterError.connectionNotFound(connectionId)
         }
         try await runPreConnectScriptIfNeeded(connection)
-        try await DatabaseManager.shared.ensureConnected(connection)
+        try await DatabaseManager.shared.ensureConnected(
+            connection,
+            passwordOverride: passwordOverride,
+            sshPasswordOverride: sshPasswordOverride
+        )
 
         if let schema {
             await switchSchemaOrDatabase(connectionId: connectionId, target: schema)
@@ -247,46 +252,84 @@ internal final class TabRouter {
             isTransient = true
         }
 
-        if !parsed.password.isEmpty {
-            ConnectionStorage.shared.savePassword(parsed.password, for: connection.id)
-        }
-        if let sshPass = parsed.sshPassword, !sshPass.isEmpty {
-            ConnectionStorage.shared.saveSSHPassword(sshPass, for: connection.id)
+        guard await confirmExternalDatabaseConnection(connection) else {
+            throw TabRouterError.userCancelled
         }
 
-        do {
-            if let table = parsed.tableName {
-                try await openTable(
-                    connectionId: connection.id,
-                    transientConnection: isTransient ? connection : nil,
-                    database: parsed.database.isEmpty ? nil : parsed.database,
-                    schema: parsed.schema,
-                    table: table,
-                    isView: parsed.isView
-                )
-                if parsed.filterColumn != nil || parsed.filterCondition != nil {
-                    try await applyFilterFromParsedURL(parsed: parsed, connectionId: connection.id)
+        let passwordOverride = parsed.password.isEmpty ? nil : parsed.password
+        let sshPasswordOverride = parsed.sshPassword.flatMap { $0.isEmpty ? nil : $0 }
+
+        if let table = parsed.tableName {
+            try await openTable(
+                connectionId: connection.id,
+                transientConnection: isTransient ? connection : nil,
+                database: parsed.database.isEmpty ? nil : parsed.database,
+                schema: parsed.schema,
+                table: table,
+                isView: parsed.isView,
+                passwordOverride: passwordOverride,
+                sshPasswordOverride: sshPasswordOverride
+            )
+            if parsed.filterColumn != nil || parsed.filterCondition != nil {
+                try await applyFilterFromParsedURL(parsed: parsed, connectionId: connection.id)
+            }
+            return
+        }
+
+        try await runPreConnectScriptIfNeeded(connection)
+        let payload = EditorTabPayload(connectionId: connection.id, intent: .restoreOrDefault)
+        WindowManager.shared.openTab(payload: payload)
+        NSApp.activate(ignoringOtherApps: true)
+        try await DatabaseManager.shared.ensureConnected(
+            connection,
+            passwordOverride: passwordOverride,
+            sshPasswordOverride: sshPasswordOverride
+        )
+        closeWelcomeWindows()
+
+        if let schema = parsed.schema {
+            await switchSchemaOrDatabase(connectionId: connection.id, target: schema)
+        }
+    }
+
+    private func confirmExternalDatabaseConnection(_ connection: DatabaseConnection) async -> Bool {
+        var details: [String] = [
+            String(format: String(localized: "Host: %@"), "\(connection.host):\(connection.port)")
+        ]
+        if !connection.username.isEmpty {
+            details.append(String(format: String(localized: "User: %@"), connection.username))
+        }
+        if !connection.database.isEmpty {
+            details.append(String(format: String(localized: "Database: %@"), connection.database))
+        }
+
+        let alert = NSAlert()
+        alert.messageText = String(localized: "Open External Database Connection?")
+        alert.informativeText = String(
+            format: String(localized: """
+                An external link wants to connect to a %@ database:
+
+                %@
+
+                Connect only if you trust the source of this link.
+                """),
+            connection.type.rawValue,
+            details.joined(separator: "\n")
+        )
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: String(localized: "Connect"))
+        alert.addButton(withTitle: String(localized: "Cancel"))
+        alert.buttons[1].keyEquivalent = "\r"
+        alert.buttons[0].keyEquivalent = ""
+
+        if let window = AlertHelper.resolveWindow(NSApp.keyWindow) {
+            return await withCheckedContinuation { continuation in
+                alert.beginSheetModal(for: window) { response in
+                    continuation.resume(returning: response == .alertFirstButtonReturn)
                 }
-                return
             }
-
-            try await runPreConnectScriptIfNeeded(connection)
-            let payload = EditorTabPayload(connectionId: connection.id, intent: .restoreOrDefault)
-            WindowManager.shared.openTab(payload: payload)
-            NSApp.activate(ignoringOtherApps: true)
-            try await DatabaseManager.shared.ensureConnected(connection)
-            closeWelcomeWindows()
-
-            if let schema = parsed.schema {
-                await switchSchemaOrDatabase(connectionId: connection.id, target: schema)
-            }
-        } catch {
-            if isTransient {
-                ConnectionStorage.shared.deletePassword(for: connection.id)
-                ConnectionStorage.shared.deleteSSHPassword(for: connection.id)
-            }
-            throw error
         }
+        return alert.runModal() == .alertFirstButtonReturn
     }
 
     // MARK: - Database File

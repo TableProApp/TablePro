@@ -42,20 +42,40 @@ else
   curl -fSL -o "/tmp/$LIBS_ARCHIVE" "$DOWNLOAD_URL"
 fi
 
+# Capture the trusted checksum baseline from git BEFORE extraction. The archive
+# bundles its own checksums.sha256, and extraction overwrites Libs/checksums.sha256
+# with that copy, so verifying against the extracted file is self-referential: a
+# tampered release ships matching checksums and passes. The committed baseline
+# (Libs/checksums.sha256 at HEAD) is the only trusted reference.
+TRUSTED_CHECKSUMS=""
+if git rev-parse --is-inside-work-tree &>/dev/null \
+   && git cat-file -e "HEAD:$LIBS_DIR/checksums.sha256" 2>/dev/null; then
+  TRUSTED_CHECKSUMS="$(mktemp)"
+  git show "HEAD:$LIBS_DIR/checksums.sha256" > "$TRUSTED_CHECKSUMS"
+fi
+
 echo "Extracting to $LIBS_DIR/..."
 mkdir -p "$LIBS_DIR"
 tar xzf "/tmp/$LIBS_ARCHIVE" -C "$LIBS_DIR"
 rm -f "/tmp/$LIBS_ARCHIVE"
 
-# Verify checksums if file exists
-if [[ -f "$LIBS_DIR/checksums.sha256" ]]; then
-  echo "Verifying checksums..."
-  if shasum -a 256 -c "$LIBS_DIR/checksums.sha256" --quiet 2>/dev/null; then
+# Verify the extracted libraries against the trusted git baseline, never the
+# archive's own bundled checksum file.
+if [[ -n "$TRUSTED_CHECKSUMS" ]]; then
+  echo "Verifying checksums against the baseline committed in git..."
+  if shasum -a 256 -c "$TRUSTED_CHECKSUMS" --quiet 2>/dev/null; then
     echo "Checksums OK"
+    rm -f "$TRUSTED_CHECKSUMS"
   else
-    echo "WARNING: Checksum verification failed!"
+    rm -f "$TRUSTED_CHECKSUMS"
+    echo "ERROR: extracted libraries do not match Libs/checksums.sha256 committed in git."
+    echo "The downloaded archive may be corrupt or tampered with. Aborting."
     exit 1
   fi
+else
+  echo "WARNING: no trusted checksum baseline found (not a git checkout, or"
+  echo "         Libs/checksums.sha256 is absent at HEAD). Skipping integrity"
+  echo "         verification. The archive's own checksum file is NOT trusted."
 fi
 
 # Mark as downloaded

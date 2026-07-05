@@ -91,4 +91,72 @@ struct FKNavigationTests {
         #expect(tabManager.selectedTab?.id == tabId)
         #expect(tabManager.selectedTab?.tableContext.tableName == "users")
     }
+
+    @Test("FK navigation with no referenced schema resolves the session's current schema")
+    @MainActor
+    func nilReferencedSchemaResolvesActiveSchema() throws {
+        let connection = TestFixtures.makeConnection(database: "db_a", type: .postgresql)
+        var session = ConnectionSession(connection: connection)
+        session.currentSchema = "sales"
+        DatabaseManager.shared.injectSession(session, for: connection.id)
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+
+        let tabManager = QueryTabManager()
+        let coordinator = MainContentCoordinator(
+            connection: connection,
+            tabManager: tabManager,
+            changeManager: DataChangeManager(),
+            toolbarState: ConnectionToolbarState()
+        )
+        defer { coordinator.teardown() }
+
+        try tabManager.addTableTab(
+            tableName: "orders",
+            databaseType: connection.type,
+            databaseName: coordinator.activeDatabaseName
+        )
+
+        let fkInfo = TestFixtures.makeForeignKeyInfo(referencedTable: "users", referencedColumn: "id")
+        coordinator.navigateToFKReference(value: "42", fkInfo: fkInfo, openInNewTab: false)
+
+        #expect(tabManager.selectedTab?.tableContext.tableName == "users")
+        #expect(tabManager.selectedTab?.tableContext.schemaName == "sales")
+    }
+
+    @Test("Metadata is not cached until foreign keys were fetched")
+    @MainActor
+    func metadataCacheRequiresFetchedForeignKeys() throws {
+        let connection = TestFixtures.makeConnection(database: "db")
+        let tabManager = QueryTabManager()
+        let coordinator = MainContentCoordinator(
+            connection: connection,
+            tabManager: tabManager,
+            changeManager: DataChangeManager(),
+            toolbarState: ConnectionToolbarState()
+        )
+        defer { coordinator.teardown() }
+
+        try tabManager.addTableTab(
+            tableName: "orders",
+            databaseType: connection.type,
+            databaseName: coordinator.activeDatabaseName
+        )
+        let tabId = tabManager.tabs[0].id
+        tabManager.mutate(at: 0) { $0.tableContext.primaryKeyColumns = ["id"] }
+
+        var rows = TableRows.from(
+            queryRows: [],
+            columns: ["id"],
+            columnTypes: [],
+            columnDefaults: ["id": nil]
+        )
+        coordinator.setActiveTableRows(rows, for: tabId)
+        let cachedBefore = coordinator.queryExecutionCoordinator.isMetadataCached(tabId: tabId, tableName: "orders")
+        #expect(cachedBefore == false)
+
+        _ = rows.updateDisplayMetadata(columnForeignKeys: [:])
+        coordinator.setActiveTableRows(rows, for: tabId)
+        let cachedAfter = coordinator.queryExecutionCoordinator.isMetadataCached(tabId: tabId, tableName: "orders")
+        #expect(cachedAfter)
+    }
 }

@@ -40,8 +40,12 @@ struct SchemaPickerControl: View {
         )
     }
 
+    static func shouldShow(schemaCount: Int) -> Bool {
+        schemaCount > 0
+    }
+
     var body: some View {
-        if allSchemas.count > 1 {
+        if Self.shouldShow(schemaCount: allSchemas.count) {
             Menu {
                 Picker(String(localized: "Schema"), selection: selectedSchema) {
                     ForEach(userSchemas, id: \.self) { schema in

@@ -89,6 +89,13 @@ final class DatabaseManager {
         activeSessions[connection.id]?.activeDatabase ?? connection.database
     }
 
+    /// Authoritative schema for a table identity when the caller has no explicit
+    /// schema. Explicit schemas pass through unchanged; nil resolves to the live
+    /// session's current schema and stays nil for schema-less engines.
+    func resolvedSchemaName(_ schemaName: String?, for connectionId: UUID) -> String? {
+        schemaName ?? activeSessions[connectionId]?.currentSchema
+    }
+
     /// Current connection status
     var status: ConnectionStatus {
         currentSession?.status ?? .disconnected

@@ -70,7 +70,6 @@ struct HistoryPanelView: View {
 private extension HistoryPanelView {
     var historyList: some View {
         VStack(spacing: 0) {
-            // Header with filter controls and search
             VStack(spacing: 8) {
                 HStack {
                     Spacer()
@@ -101,7 +100,6 @@ private extension HistoryPanelView {
 
             Divider()
 
-            // Entry list or empty state
             if entries.isEmpty {
                 emptyState
             } else {
@@ -217,7 +215,6 @@ private extension HistoryPanelView {
     var queryPreview: some View {
         if let entry = selectedEntry {
             VStack(spacing: 0) {
-                // Query text with syntax highlighting
                 HighlightedSQLTextView(
                     sql: entry.query.hasSuffix(";") ? entry.query : entry.query + ";",
                     databaseType: entry.query.trimmingCharacters(in: .whitespaces)
@@ -227,7 +224,6 @@ private extension HistoryPanelView {
 
                 Divider()
 
-                // Metadata
                 VStack(alignment: .leading, spacing: 4) {
                     Text(buildPrimaryMetadata(entry))
                         .font(.subheadline)
@@ -241,7 +237,6 @@ private extension HistoryPanelView {
 
                 Divider()
 
-                // Action buttons
                 HStack {
                     Button(copyButtonTitle) {
                         copyQueryWithFeedback(entry)
@@ -316,7 +311,6 @@ private extension HistoryPanelView {
             await dataProvider.loadData()
             entries = dataProvider.historyEntries
 
-            // Clear selection if the selected entry no longer exists
             if let id = selectedEntryID, !entries.contains(where: { $0.id == id }) {
                 selectedEntryID = nil
             }

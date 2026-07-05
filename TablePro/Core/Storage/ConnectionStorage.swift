@@ -201,6 +201,18 @@ final class ConnectionStorage {
     }
 
     @discardableResult
+    func removeTagId(_ tagId: UUID) -> Bool {
+        let affected = loadConnections()
+            .filter { $0.tagIds.contains(tagId) }
+            .map { connection -> DatabaseConnection in
+                var updated = connection
+                updated.tagIds.removeAll { $0 == tagId }
+                return updated
+            }
+        return updateConnections(affected)
+    }
+
+    @discardableResult
     func updateSafeModeLevel(_ level: SafeModeLevel, for connectionId: UUID) -> Bool {
         var connections = loadConnections()
         guard let index = connections.firstIndex(where: { $0.id == connectionId }) else {
@@ -255,6 +267,12 @@ final class ConnectionStorage {
         appSettings.saveLastSchema(nil, for: connection.id)
 
         FavoriteTablesStorage.shared.removeFavorites(for: connection.id)
+        FilterSettingsStorage.shared.removeFilters(for: connection.id)
+        DatabaseTreeFilterStorage.shared.removeFilter(for: connection.id)
+        ClosedTabDraftStorage.shared.removeDraft(for: connection.id)
+        Task {
+            await SQLFavoriteManager.shared.removeFavoritesAndFolders(for: connection.id)
+        }
     }
 
     /// Batch-delete multiple connections and clean up their Keychain entries
@@ -284,6 +302,14 @@ final class ConnectionStorage {
             appSettings.saveLastSchema(nil, for: conn.id)
             FavoriteTablesStorage.shared.removeFavorites(for: conn.id)
         }
+        FilterSettingsStorage.shared.removeFilters(for: idsToDelete)
+        DatabaseTreeFilterStorage.shared.removeFilters(for: idsToDelete)
+        ClosedTabDraftStorage.shared.removeDrafts(for: idsToDelete)
+        Task {
+            for conn in connectionsToDelete {
+                await SQLFavoriteManager.shared.removeFavoritesAndFolders(for: conn.id)
+            }
+        }
     }
 
     /// Duplicate a connection with a new UUID and "(Copy)" suffix
@@ -291,7 +317,6 @@ final class ConnectionStorage {
     func duplicateConnection(_ connection: DatabaseConnection) -> DatabaseConnection {
         let newId = UUID()
 
-        // Create duplicate with new ID and "(Copy)" suffix
         let duplicate = DatabaseConnection(
             id: newId,
             name: String(format: String(localized: "%@ (Copy)"), connection.name),
@@ -303,7 +328,7 @@ final class ConnectionStorage {
             sshConfig: connection.sshConfig,
             sslConfig: connection.sslConfig,
             color: connection.color,
-            tagId: connection.tagId,
+            tagIds: connection.tagIds,
             groupId: connection.groupId,
             sshProfileId: connection.sshProfileId,
             sshTunnelMode: connection.sshTunnelMode,
@@ -319,7 +344,6 @@ final class ConnectionStorage {
             additionalFields: connection.additionalFields.isEmpty ? nil : connection.additionalFields
         )
 
-        // Save the duplicate connection
         var connections = loadConnections()
         connections.append(duplicate)
         guard saveConnections(connections) else {

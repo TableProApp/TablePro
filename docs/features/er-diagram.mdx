@@ -22,11 +22,13 @@ View all tables and foreign key relationships in your schema as an interactive d
 
 ## Layout
 
-Tables are arranged automatically using a layered layout algorithm. Tables with foreign keys (child tables) are placed above the tables they reference (parent tables). Tables with no relationships are placed in a grid below.
+Tables are arranged automatically so the diagram fills the canvas in both directions instead of stacking into one tall column. TablePro finds groups of tables connected by foreign keys, places each group together, then packs the groups across the available width. Tables with no relationships sit in a grid at the bottom.
+
+Each group of connected tables gets its own header color, so you can tell related tables apart at a glance in a large schema. Single tables and tables without foreign keys stay uncolored. When the system **Differentiate Without Color** accessibility setting is on, the color tint is dropped and grouping is shown by position alone.
 
 Each table node shows:
 
-- **Header**: table name with icon
+- **Header**: table name with icon, tinted by its relationship group
 - **Columns**: name and data type, with badges for primary keys and foreign keys
 - **Edges**: lines connecting FK columns to their referenced tables
 
@@ -55,16 +57,28 @@ Toggle compact mode with the filter button in the toolbar. In compact mode, each
 
 ## Edge Notation
 
-Edges use crow's foot notation:
+Edges use crow's foot notation. The referenced table always carries a single **bar** ("exactly one"). The foreign key side shows the relationship's cardinality, inferred from the column's primary key and unique index data:
 
-- A **fork** (three lines) marks the "many" side of the relationship (the table that holds the foreign key)
-- A **bar** (single perpendicular line) marks the "one" side (the referenced table)
+| Foreign key column | Marker | Meaning |
+|--------------------|--------|---------|
+| Unique and NOT NULL | bar + bar | One-to-one |
+| Unique and nullable | bar + circle | Zero-or-one-to-one |
+| Not unique, NOT NULL | fork + bar | One-to-many |
+| Not unique, nullable | fork + circle | Zero-or-many-to-one |
 
-For example, an edge from `orders.user_id` to `users.id` has the fork at `orders` and the bar at `users`.
+A **fork** (three lines) marks the "many" side, a **bar** marks "one", and a **circle** marks an optional (nullable) side. For example, an edge from `orders.user_id` to `users.id` shows a fork at `orders` and a bar at `users`.
+
+## Junction Tables
+
+When a table's primary key is made of two foreign keys (a junction or associative table, like `user_roles`), TablePro treats it as a many-to-many relationship. By default the junction table is hidden and a single many-to-many edge is drawn between the two related tables, with a fork at each end.
+
+Use the **junction toggle** in the toolbar (shown only when the schema has junction tables) to expand them back to the underlying table and its two one-to-many edges. Junction tables carry a distinct header icon when expanded.
 
 ## Export
 
 Click the **export button** in the toolbar to save the diagram as a PNG image. You can also press `Cmd C` to copy the diagram to the clipboard.
+
+Click the **Export as SQL** button to open a new query tab with `CREATE TABLE` and foreign key statements for the diagram's tables, written in the connection's SQL dialect. SQLite inlines foreign keys in each `CREATE TABLE`; other databases add them with `ALTER TABLE ... ADD CONSTRAINT` after the tables are created, so the script handles circular references.
 
 ## Database Support
 

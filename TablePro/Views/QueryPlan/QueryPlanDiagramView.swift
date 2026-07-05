@@ -258,7 +258,6 @@ struct QueryPlanDiagramView: View {
             path.addCurve(to: end, control1: CGPoint(x: start.x, y: midY), control2: CGPoint(x: end.x, y: midY))
             context.stroke(path, with: .color(.secondary.opacity(0.4)), lineWidth: 1)
 
-            // Arrowhead
             var arrow = Path()
             let s = PlanLayout.arrowHeadSize
             arrow.move(to: end)

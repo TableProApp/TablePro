@@ -197,22 +197,8 @@ actor CassandraConnectionActor {
         let keyResult = cass_ssl_set_private_key(ssl, keyString, passphrase)
         if keyResult != CASS_OK {
             cleanup()
-            throw Self.privateKeyLoadError(keyPEM: keyString, hasPassphrase: passphrase != nil, keyPath: keyPath)
+            throw CassandraClientKeyClassifier.privateKeyLoadError(keyPEM: keyString, hasPassphrase: passphrase != nil, keyPath: keyPath)
         }
-    }
-
-    static func isEncryptedPrivateKey(_ pem: String) -> Bool {
-        pem.contains("ENCRYPTED PRIVATE KEY") || (pem.contains("Proc-Type:") && pem.contains("ENCRYPTED"))
-    }
-
-    static func privateKeyLoadError(keyPEM: String, hasPassphrase: Bool, keyPath: String) -> SSLHandshakeError {
-        guard isEncryptedPrivateKey(keyPEM) else {
-            return .clientKeyInvalid(serverMessage: "The client key at \(keyPath) is not a valid private key")
-        }
-        if hasPassphrase {
-            return .clientKeyPassphraseIncorrect(serverMessage: "The passphrase for the client key at \(keyPath) is incorrect")
-        }
-        return .clientKeyPassphraseRequired(serverMessage: "The client key at \(keyPath) is encrypted. Enter its passphrase.")
     }
 
     func close() {
@@ -288,7 +274,6 @@ actor CassandraConnectionActor {
 
         let startTime = Date()
 
-        // Prepare
         let prepareFuture = cass_session_prepare(session, cql)
         guard let prepareFuture else {
             throw CassandraPluginError.queryFailed("Failed to prepare statement")
@@ -307,7 +292,6 @@ actor CassandraConnectionActor {
         }
         defer { cass_prepared_free(prepared) }
 
-        // Bind parameters
         let statement = cass_prepared_bind(prepared)
         guard let statement else {
             throw CassandraPluginError.queryFailed("Failed to bind prepared statement")
@@ -331,7 +315,6 @@ actor CassandraConnectionActor {
             }
         }
 
-        // Execute
         let future = cass_session_execute(session, statement)
         guard let future else {
             throw CassandraPluginError.queryFailed("Failed to execute prepared statement")

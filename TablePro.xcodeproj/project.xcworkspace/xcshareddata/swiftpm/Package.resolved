@@ -1,5 +1,5 @@
 {
-  "originHash" : "475d5c8ee85aa1d1e11facad23a0ba0c8149e7ea855d30de709ab6e3dd78d3be",
+  "originHash" : "e3a3828307ccec4f2ef033715de2df6c1d530d8772905d223ccdb8d7525b77ad",
   "pins" : [
     {
       "identity" : "bigint",
@@ -24,7 +24,7 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/TableProApp/oracle-nio",
       "state" : {
-        "revision" : "18a4872b16f6fb6919833f7897e75b0ea4d19428"
+        "revision" : "1140759e3bc339a8383b5d38f45fcb4ef61e602a"
       }
     },
     {
@@ -178,15 +178,6 @@
       "state" : {
         "revision" : "7c6ad0fc39d0763e0b699210e4124afd5041c5df",
         "version" : "1.6.4"
-      }
-    },
-    {
-      "identity" : "swiftlintplugin",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/lukepistrol/SwiftLintPlugin",
-      "state" : {
-        "revision" : "a3877065a7d72ee40e1fa64e13b9e33e846c667c",
-        "version" : "0.63.1"
       }
     },
     {
