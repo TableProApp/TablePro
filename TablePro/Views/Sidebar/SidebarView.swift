@@ -300,6 +300,10 @@ struct SidebarView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
+            Button("Retry") {
+                Task { await schemaService.refresh(connectionId: connectionId) }
+            }
+            .controlSize(.small)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding()

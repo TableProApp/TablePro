@@ -67,6 +67,21 @@ struct ContainerEntityNameTests {
         #expect(PluginManager.shared.containerSwitchTarget(for: .bigQuery) == .schema)
     }
 
+    @Test("Oracle switches schemas, not databases")
+    func oracleSwitchesSchemas() {
+        #expect(PluginManager.shared.containerSwitchTarget(for: .oracle) == .schema)
+        #expect(PluginManager.shared.supportsDatabaseSwitching(for: .oracle) == false)
+        #expect(PluginManager.shared.supportsSchemaSwitching(for: .oracle) == true)
+    }
+
+    @Test("Oracle container is Schema with hierarchical grouping")
+    func oracleContainerIsSchema() {
+        #expect(PluginManager.shared.containerEntityName(for: .oracle) == "Schema")
+        #expect(PluginManager.shared.databaseGroupingStrategy(for: .oracle) == .hierarchicalSchema)
+        #expect(PluginManager.shared.supportsDatabaseTree(for: .oracle) == false)
+        #expect(snapshot(forTypeId: "Oracle")?.schema.defaultSchemaName == "")
+    }
+
     @Test("Engines supporting both prefer databases")
     func dualModeEnginesPreferDatabases() {
         #expect(PluginManager.shared.containerSwitchTarget(for: .postgresql) == .database)

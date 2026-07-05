@@ -32,4 +32,42 @@ final class AsyncTimeoutTests: XCTestCase {
             XCTFail("Expected Boom, got \(error)")
         }
     }
+
+    func testOnTimeoutUnblocksCancellationDeafOperation() async {
+        final class Latch: @unchecked Sendable {
+            var continuation: CheckedContinuation<Void, Never>?
+        }
+        struct Closed: Error {}
+        let latch = Latch()
+
+        do {
+            _ = try await withTimeout(
+                seconds: 0.05,
+                onTimeout: {
+                    latch.continuation?.resume()
+                    latch.continuation = nil
+                }
+            ) { () -> Int in
+                await withCheckedContinuation { latch.continuation = $0 }
+                throw Closed()
+            }
+            XCTFail("Expected an error")
+        } catch {
+            // TimeoutError or Closed both prove onTimeout unblocked the operation.
+            // Without it this test hangs: the continuation ignores task
+            // cancellation and the group waits for the operation child.
+        }
+    }
+
+    func testOnTimeoutNotInvokedWhenOperationWins() async throws {
+        final class Flag: @unchecked Sendable {
+            var value = false
+        }
+        let flag = Flag()
+
+        let value = try await withTimeout(seconds: 5, onTimeout: { flag.value = true }) { 42 }
+
+        XCTAssertEqual(value, 42)
+        XCTAssertFalse(flag.value)
+    }
 }

@@ -54,11 +54,14 @@ final class OraclePlugin: NSObject, TableProPlugin, DriverPlugin, PluginDiagnost
     static let supportsTriggerEditing = true
     static let pathFieldRole: PathFieldRole = .serviceName
     static let supportsForeignKeyDisable = false
+    static let supportsDatabaseSwitching = false
     static let supportsSchemaSwitching = true
+    static let defaultSchemaName = ""
+    static let containerEntityName = "Schema"
     static let postConnectActions: [PostConnectAction] = [.selectSchemaFromLastSession]
     static let brandColorHex = "#C3160B"
     static let systemDatabaseNames: [String] = ["SYS", "SYSTEM", "OUTLN", "DBSNMP", "APPQOSSYS", "WMSYS", "XDB"]
-    static let databaseGroupingStrategy: GroupingStrategy = .bySchema
+    static let databaseGroupingStrategy: GroupingStrategy = .hierarchicalSchema
     static let columnTypesByCategory: [String: [String]] = [
         "Integer": ["NUMBER", "INTEGER", "INT", "SMALLINT"],
         "Float": ["FLOAT", "BINARY_FLOAT", "BINARY_DOUBLE", "DECIMAL", "NUMERIC", "REAL", "DOUBLE PRECISION"],
@@ -201,6 +204,17 @@ final class OraclePlugin: NSObject, TableProPlugin, DriverPlugin, PluginDiagnost
                 ],
                 supportURL: issuesURL
             )
+        case .queryTimedOut:
+            return PluginDiagnostic(
+                title: String(localized: "Query Timed Out"),
+                message: oracleError.message,
+                suggestedActions: [
+                    String(localized: "Run the query again. TablePro reconnects to the server automatically."),
+                    String(localized: "If the query legitimately needs more time, raise the query timeout in Settings > General."),
+                    String(localized: "If a metadata query timed out, the schema may hold a very large number of objects; try again once the server is less busy.")
+                ],
+                supportURL: issuesURL
+            )
         case .generic, .notConnected, .connectionFailed, .queryFailed:
             return nil
         }
@@ -284,6 +298,10 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func ping() async throws {
         _ = try await execute(query: "SELECT 1 FROM DUAL")
+    }
+
+    func applyQueryTimeout(_ seconds: Int) async throws {
+        oracleConn?.applyQueryTimeout(seconds)
     }
 
     // MARK: - Transaction Management
@@ -1126,6 +1144,7 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let escaped = schema.replacingOccurrences(of: "\"", with: "\"\"")
         _ = try await execute(query: "ALTER SESSION SET CURRENT_SCHEMA = \"\(escaped)\"")
         _currentSchema = schema
+        oracleConn?.noteSessionSchema(schema)
     }
 
     /// Oracle has no real database concept; "switch database" is a schema switch.

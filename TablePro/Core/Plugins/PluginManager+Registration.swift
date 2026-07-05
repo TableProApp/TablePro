@@ -38,6 +38,9 @@ extension PluginManager {
                     from: driverType,
                     isDownloadable: driverType.isDownloadable
                 )
+                if snapshot.schema.databaseGroupingStrategy == .hierarchicalSchema, snapshot.supportsDatabaseSwitching {
+                    Self.logger.warning("Plugin '\(pluginId)' declares hierarchicalSchema grouping together with supportsDatabaseSwitching; schema-only engines must declare supportsDatabaseSwitching = false or the container switcher misroutes")
+                }
                 PluginMetadataRegistry.shared.register(snapshot: snapshot, forTypeId: typeId, preserveIcon: true)
                 for additionalId in driverType.additionalDatabaseTypeIds {
                     var additionalSnapshot = snapshot
