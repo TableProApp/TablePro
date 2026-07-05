@@ -13,7 +13,7 @@ enum BeancountDriverError: LocalizedError {
     case connectionFailed(String)
     case queryFailed(String)
     case readOnly
-    case rustledgerUnavailable(String)
+    case beancountBackendUnavailable(String)
 
     var errorDescription: String? {
         switch self {
@@ -25,7 +25,7 @@ enum BeancountDriverError: LocalizedError {
             return message
         case .readOnly:
             return String(localized: "Beancount ledgers are exposed as a read-only SQL database")
-        case .rustledgerUnavailable(let message):
+        case .beancountBackendUnavailable(let message):
             return message
         }
     }
@@ -47,6 +47,11 @@ private struct BeancountProjection {
     let signatures: [String: BeancountSourceSignature]
 }
 
+private enum BeancountBackend {
+    case rledger
+    case python(String)
+}
+
 final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private let config: DriverConnectionConfig
     private let lock = NSLock()
@@ -65,6 +70,99 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private static let balanceAssertionsQuery = "SELECT date, account, amount FROM #balances ORDER BY date, account"
     private static let rledgerCapabilityLock = NSLock()
     private static var rledgerNoCacheSupport: [String: Bool] = [:]
+    private static let pythonProjectionScript = """
+import json
+import sys
+from collections import defaultdict
+from decimal import Decimal
+
+from beancount import loader
+
+def date_value(value):
+    return value.isoformat() if value is not None else None
+
+def decimal_value(value):
+    return str(value) if value is not None else None
+
+def amount_value(amount):
+    if amount is None:
+        return None
+    return {
+        "number": decimal_value(getattr(amount, "number", None)),
+        "currency": getattr(amount, "currency", None),
+    }
+
+entries, errors, options_map = loader.load_file(sys.argv[1])
+if errors:
+    for error in errors:
+        print(str(error), file=sys.stderr)
+    sys.exit(1)
+
+rows = {
+    "transactions_and_postings": [],
+    "accounts": [],
+    "prices": [],
+    "balances": [],
+    "balance_assertions": [],
+}
+balances = defaultdict(Decimal)
+transaction_id = 0
+
+for entry in entries:
+    entry_type = type(entry).__name__
+    if entry_type == "Transaction":
+        transaction_id += 1
+        for posting in entry.postings:
+            units = getattr(posting, "units", None)
+            cost = getattr(posting, "cost", None)
+            if units is not None and getattr(units, "number", None) is not None and getattr(units, "currency", None):
+                balances[(posting.account, units.currency)] += units.number
+            rows["transactions_and_postings"].append({
+                "id": transaction_id,
+                "date": date_value(entry.date),
+                "flag": str(entry.flag),
+                "payee": entry.payee,
+                "narration": entry.narration,
+                "account": posting.account,
+                "number": decimal_value(getattr(units, "number", None)) if units is not None else None,
+                "currency": getattr(units, "currency", None) if units is not None else None,
+                "cost_number": decimal_value(getattr(cost, "number", None)) if cost is not None else None,
+                "cost_currency": getattr(cost, "currency", None) if cost is not None else None,
+            })
+    elif entry_type == "Open":
+        rows["accounts"].append({
+            "account": entry.account,
+            "open": date_value(entry.date),
+            "currencies": list(entry.currencies or []),
+        })
+    elif entry_type == "Price":
+        rows["prices"].append({
+            "date": date_value(entry.date),
+            "currency": entry.currency,
+            "amount": amount_value(entry.amount),
+        })
+    elif entry_type == "Balance":
+        rows["balance_assertions"].append({
+            "date": date_value(entry.date),
+            "account": entry.account,
+            "amount": amount_value(entry.amount),
+        })
+
+for (account, currency), number in sorted(balances.items()):
+    if number == 0:
+        continue
+    rows["balances"].append({
+        "account": account,
+        "balance": {
+            "positions": [{
+                "number": decimal_value(number),
+                "currency": currency,
+            }]
+        },
+    })
+
+print(json.dumps(rows, separators=(",", ":")))
+"""
 
     var currentSchema: String? { nil }
     var serverVersion: String? { "Beancount" }
@@ -421,11 +519,21 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
         do {
             try createSchema(handle)
-            try loadTransactionsAndPostings(query(ledgerPath: ledgerPath, bql: postingsQuery), into: handle)
-            try loadAccounts(query(ledgerPath: ledgerPath, bql: accountsQuery), into: handle)
-            try loadPrices(query(ledgerPath: ledgerPath, bql: pricesQuery), into: handle)
-            try loadBalances(query(ledgerPath: ledgerPath, bql: balancesQuery), into: handle)
-            try loadBalanceAssertions(query(ledgerPath: ledgerPath, bql: balanceAssertionsQuery), into: handle)
+            switch try resolveProjectionBackend() {
+            case .rledger:
+                try loadTransactionsAndPostings(query(ledgerPath: ledgerPath, bql: postingsQuery), into: handle)
+                try loadAccounts(query(ledgerPath: ledgerPath, bql: accountsQuery), into: handle)
+                try loadPrices(query(ledgerPath: ledgerPath, bql: pricesQuery), into: handle)
+                try loadBalances(query(ledgerPath: ledgerPath, bql: balancesQuery), into: handle)
+                try loadBalanceAssertions(query(ledgerPath: ledgerPath, bql: balanceAssertionsQuery), into: handle)
+            case .python(let executablePath):
+                let rows = try pythonProjectionRows(ledgerPath: ledgerPath, executablePath: executablePath)
+                try loadTransactionsAndPostings(rows["transactions_and_postings"] ?? [], into: handle)
+                try loadAccounts(rows["accounts"] ?? [], into: handle)
+                try loadPrices(rows["prices"] ?? [], into: handle)
+                try loadBalances(rows["balances"] ?? [], into: handle)
+                try loadBalanceAssertions(rows["balance_assertions"] ?? [], into: handle)
+            }
             try loadSourceFiles(graph.sourceFiles, into: handle)
             try exec(handle, "PRAGMA query_only = ON")
         } catch {
@@ -602,6 +710,27 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     // MARK: - rustledger Helpers
 
+    private static func resolveProjectionBackend() throws -> BeancountBackend {
+        let preference = ProcessInfo.processInfo.environment["TABLEPRO_BEANCOUNT_BACKEND"]?.lowercased()
+        switch preference {
+        case "rledger", "rustledger":
+            _ = try rustledgerExecutablePath()
+            return .rledger
+        case "python", "beancount":
+            return .python(try pythonBeancountExecutablePath())
+        default:
+            if try optionalRustledgerExecutablePath() != nil {
+                return .rledger
+            }
+            if let pythonPath = try optionalPythonBeancountExecutablePath() {
+                return .python(pythonPath)
+            }
+            throw BeancountDriverError.beancountBackendUnavailable(
+                String(localized: "Beancount support requires either rledger or Python Beancount. Install rledger, or install Python Beancount and make python3 available, or set TABLEPRO_RUSTLEDGER_BINARY or TABLEPRO_BEANCOUNT_PYTHON.")
+            )
+        }
+    }
+
     private static func rledgerQueryArguments(ledgerPath: String, query: String) throws -> [String] {
         let rustledgerPath = try rustledgerExecutablePath()
         var arguments = ["query", "-f", "json", "--no-errors"]
@@ -614,9 +743,20 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     private static func runRledger(arguments: [String]) throws -> Data {
         let rustledgerPath = try rustledgerExecutablePath()
+        return try runProcess(
+            executablePath: rustledgerPath,
+            arguments: arguments,
+            failureMessage: String(localized: "rustledger command failed")
+        )
+    }
 
+    private static func runProcess(
+        executablePath: String,
+        arguments: [String],
+        failureMessage: String
+    ) throws -> Data {
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: rustledgerPath)
+        process.executableURL = URL(fileURLWithPath: executablePath)
         process.arguments = arguments
 
         let stdout = Pipe()
@@ -648,7 +788,7 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             if let message, !message.isEmpty {
                 throw BeancountDriverError.queryFailed(message)
             }
-            throw BeancountDriverError.queryFailed(String(localized: "rustledger command failed"))
+            throw BeancountDriverError.queryFailed(failureMessage)
         }
 
         return outputCollector.data
@@ -690,12 +830,21 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     private static func rustledgerExecutablePath() throws -> String {
+        if let path = try optionalRustledgerExecutablePath() {
+            return path
+        }
+        throw BeancountDriverError.beancountBackendUnavailable(
+            String(localized: "BQL queries require rledger. Install rustledger so rledger is on PATH or in a standard Homebrew location, or set TABLEPRO_RUSTLEDGER_BINARY to the executable path.")
+        )
+    }
+
+    private static func optionalRustledgerExecutablePath() throws -> String? {
         let environment = ProcessInfo.processInfo.environment
         if let configured = environment["TABLEPRO_RUSTLEDGER_BINARY"], !configured.isEmpty {
             if FileManager.default.isExecutableFile(atPath: configured) {
                 return configured
             }
-            throw BeancountDriverError.rustledgerUnavailable(
+            throw BeancountDriverError.beancountBackendUnavailable(
                 String(
                     format: String(localized: "TABLEPRO_RUSTLEDGER_BINARY points to a missing or non-executable rledger at %@"),
                     configured
@@ -714,9 +863,82 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             }
         }
 
-        throw BeancountDriverError.rustledgerUnavailable(
-            String(localized: "Beancount support requires rledger. Install rustledger so rledger is on PATH or in a standard Homebrew location, or set TABLEPRO_RUSTLEDGER_BINARY to the executable path.")
+        return nil
+    }
+
+    // MARK: - Python Beancount Helpers
+
+    private static func pythonProjectionRows(
+        ledgerPath: String,
+        executablePath: String
+    ) throws -> [String: [[String: Any]]] {
+        let output = try runProcess(
+            executablePath: executablePath,
+            arguments: ["-c", pythonProjectionScript, ledgerPath],
+            failureMessage: String(localized: "Python Beancount projection failed")
         )
+        let object = try JSONSerialization.jsonObject(with: output)
+        guard let dictionary = object as? [String: Any] else {
+            throw BeancountDriverError.queryFailed(String(localized: "Invalid Python Beancount JSON output"))
+        }
+        var rows: [String: [[String: Any]]] = [:]
+        for (key, value) in dictionary {
+            rows[key] = value as? [[String: Any]]
+        }
+        return rows
+    }
+
+    private static func pythonBeancountExecutablePath() throws -> String {
+        if let path = try optionalPythonBeancountExecutablePath() {
+            return path
+        }
+        throw BeancountDriverError.beancountBackendUnavailable(
+            String(localized: "Python Beancount backend requires python3 with the beancount package installed. Set TABLEPRO_BEANCOUNT_PYTHON to the Python executable if needed.")
+        )
+    }
+
+    private static func optionalPythonBeancountExecutablePath() throws -> String? {
+        let environment = ProcessInfo.processInfo.environment
+        if let configured = environment["TABLEPRO_BEANCOUNT_PYTHON"], !configured.isEmpty {
+            if FileManager.default.isExecutableFile(atPath: configured), pythonSupportsBeancount(configured) {
+                return configured
+            }
+            throw BeancountDriverError.beancountBackendUnavailable(
+                String(
+                    format: String(localized: "TABLEPRO_BEANCOUNT_PYTHON points to a Python executable that cannot import beancount at %@"),
+                    configured
+                )
+            )
+        }
+
+        let pathEntries = (environment["PATH"] ?? "")
+            .split(separator: ":")
+            .map(String.init)
+        let fallbackCandidates = [
+            "/opt/homebrew/bin/python3",
+            "/usr/local/bin/python3",
+            "/usr/bin/python3"
+        ]
+        let candidates = pathEntries.map {
+            URL(fileURLWithPath: $0).appendingPathComponent("python3").path
+        } + fallbackCandidates
+
+        return candidates.first {
+            FileManager.default.isExecutableFile(atPath: $0) && pythonSupportsBeancount($0)
+        }
+    }
+
+    private static func pythonSupportsBeancount(_ executablePath: String) -> Bool {
+        do {
+            _ = try runProcess(
+                executablePath: executablePath,
+                arguments: ["-c", "import beancount"],
+                failureMessage: String(localized: "Python cannot import beancount")
+            )
+            return true
+        } catch {
+            return false
+        }
     }
 
     private static func parseRledgerJSON(_ data: Data) throws -> (columns: [String]?, rows: [[String: Any]]) {

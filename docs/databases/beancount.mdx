@@ -7,20 +7,42 @@ description: Open Beancount ledgers with TablePro
 
 TablePro opens `.beancount` ledgers as read-only, file-based connections. If the Beancount plugin is not installed yet, TablePro prompts you to download it before opening the ledger. The driver projects transactions, postings, accounts, prices, computed balances, balance assertions, and source files into SQL tables for browsing and exports.
 
-The plugin also supports BQL queries through `rledger`. Install rustledger separately so the `rledger` executable is available on your `PATH`, or launch TablePro with `TABLEPRO_RUSTLEDGER_BINARY` set to the executable path.
+The plugin uses either `rledger` or Python Beancount to parse ledgers. Install one of those backends separately. When both are available, TablePro uses `rledger`; Python Beancount is used as a fallback for browsing projected SQL tables.
 
-## rledger requirement
+The plugin also supports BQL queries through `rledger`. BQL requires the `rledger` executable even when the ledger was opened through Python Beancount.
 
-Beancount support uses the external `rledger` executable to parse ledger data and run BQL. TablePro does not bundle `rledger`.
+## Backend requirements
+
+TablePro does not bundle a Beancount parser. It discovers backends in this order:
+
+1. `rledger` from `TABLEPRO_RUSTLEDGER_BINARY`, `PATH`, or standard Homebrew locations.
+2. Python Beancount from `TABLEPRO_BEANCOUNT_PYTHON`, `PATH`, or standard Python locations.
+
+Other Beancount-compatible parsers are not discovered unless they expose one of these supported interfaces.
+
+To verify `rledger`:
 
 ```bash
 rledger --version
 ```
 
-If TablePro cannot find `rledger`, set the executable path before launching the app:
+To verify Python Beancount:
+
+```bash
+python3 -c "import beancount"
+```
+
+If TablePro cannot find a supported backend, set the executable path before launching the app:
 
 ```bash
 launchctl setenv TABLEPRO_RUSTLEDGER_BINARY /opt/homebrew/bin/rledger
+launchctl setenv TABLEPRO_BEANCOUNT_PYTHON /opt/homebrew/bin/python3
+```
+
+To force a backend:
+
+```bash
+launchctl setenv TABLEPRO_BEANCOUNT_BACKEND python
 ```
 
 ## Connecting to a Beancount ledger
