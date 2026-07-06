@@ -14,8 +14,11 @@ internal final class SuggestionPanel: NSPanel {
 }
 
 extension SuggestionController {
-    /// Will constrain the window's frame to be within the visible screen
-    public func constrainWindowToScreenEdges(cursorRect: NSRect, font: NSFont) {
+    /// Will constrain the window's frame to be within the visible screen and, when provided, the editor's bounds.
+    ///
+    /// `editorFrame` is the editor pane in screen coordinates. The panel flips above the cursor when it would
+    /// extend past the editor's bottom edge, so it never overlaps sibling chrome below the editor.
+    public func constrainWindowToScreenEdges(cursorRect: NSRect, font: NSFont, editorFrame: NSRect? = nil) {
         guard let window = self.window,
               let screenFrame = window.screen?.visibleFrame else {
             return
@@ -39,24 +42,31 @@ extension SuggestionController {
             newWindowOrigin.x = maxX
         }
 
-        // Check if the window will go below the screen
+        let lowerLimit = max(screenFrame.minY, editorFrame?.minY ?? screenFrame.minY)
+        let upperLimit = min(screenFrame.maxY, editorFrame?.maxY ?? screenFrame.maxY)
+
+        // Check if the window will drop below the editor (or screen) bottom.
         // We determine whether the window drops down or upwards by choosing which
         // corner of the window we will position: `setFrameOrigin` or `setFrameTopLeftPoint`
-        if newWindowOrigin.y - windowSize.height < screenFrame.minY {
-            // If the cursor itself is below the screen, then position the window
-            // at the bottom of the screen with some padding
-            if newWindowOrigin.y < screenFrame.minY {
-                newWindowOrigin.y = screenFrame.minY + padding
+        if newWindowOrigin.y - windowSize.height < lowerLimit {
+            // If the cursor itself is below the lower limit, pin the window there with some padding
+            if newWindowOrigin.y < lowerLimit {
+                newWindowOrigin.y = lowerLimit + padding
             } else {
                 // Place above the cursor
                 newWindowOrigin.y += cursorRect.height
             }
 
+            // Keep the top edge within the upper limit so the panel never overlaps chrome above the editor
+            if newWindowOrigin.y + windowSize.height > upperLimit {
+                newWindowOrigin.y = max(lowerLimit, upperLimit - windowSize.height)
+            }
+
             isWindowAboveCursor = true
             window.setFrameOrigin(newWindowOrigin)
         } else {
-            // If the window goes above the screen, position it below the screen with padding
-            let maxY = screenFrame.maxY - padding
+            // If the window goes above the upper limit, pin it there with padding
+            let maxY = upperLimit - padding
             if newWindowOrigin.y > maxY {
                 newWindowOrigin.y = maxY
             }
