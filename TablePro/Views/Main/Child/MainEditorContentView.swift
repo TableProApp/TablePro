@@ -480,12 +480,13 @@ struct MainEditorContentView: View {
             InlineErrorBanner(
                 message: error,
                 onFixWithAI: AppSettingsManager.shared.ai.enabled && tab.tabType == .query
-                    ? { coordinator.fixErrorWithAI(query: tab.content.query, error: error) }
+                    ? { coordinator.fixErrorWithAI(query: tab.execution.errorQuery ?? tab.content.query, error: error) }
                     : nil,
                 onDismiss: {
                     tabManager.mutate(tabId: tab.id) {
                         $0.display.activeResultSet?.errorMessage = nil
                         $0.execution.errorMessage = nil
+                        $0.execution.errorQuery = nil
                     }
                 }
             )

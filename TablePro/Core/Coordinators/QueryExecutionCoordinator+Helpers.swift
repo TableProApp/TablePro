@@ -493,6 +493,7 @@ extension QueryExecutionCoordinator {
         parent.currentQueryTask = nil
         parent.tabManager.mutate(tabId: tabId) { tab in
             tab.execution.errorMessage = error.localizedDescription
+            tab.execution.errorQuery = sql
             tab.execution.isExecuting = false
             tab.execution.lastExecutedAt = Date()
         }

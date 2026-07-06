@@ -339,6 +339,7 @@ struct TabExecutionState: Equatable {
     var executionTime: TimeInterval?
     var statusMessage: String?
     var errorMessage: String?
+    var errorQuery: String?
     var rowsAffected: Int = 0
     var lastExecutedAt: Date?
 
