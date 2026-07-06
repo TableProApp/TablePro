@@ -194,7 +194,8 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
             name: table.name,
             type: tableType,
             rowCount: table.rowCount,
-            schema: table.schema ?? schemaFallback
+            schema: table.schema ?? schemaFallback,
+            comment: table.comment
         )
     }
 
@@ -616,6 +617,12 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
 
     func buildExplainQuery(_ sql: String) -> String? {
         pluginDriver.buildExplainQuery(sql)
+    }
+
+    // MARK: - Row Limit Injection
+
+    func injectRowLimit(_ sql: String, limit: Int) -> String? {
+        pluginDriver.injectRowLimit(sql, limit: limit)
     }
 
     // MARK: - View Templates

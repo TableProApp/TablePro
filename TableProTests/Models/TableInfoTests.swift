@@ -151,6 +151,31 @@ struct TableInfoTests {
         #expect(selected.contains(lookup))
     }
 
+    // MARK: - Comment does not affect identity
+
+    @Test("Comment does not affect equality")
+    func testCommentDoesNotAffectEquality() {
+        let a = TableInfo(name: "users", type: .table, rowCount: nil, comment: "Account records")
+        let b = TableInfo(name: "users", type: .table, rowCount: nil, comment: nil)
+        #expect(a == b)
+    }
+
+    @Test("Comment does not affect hash")
+    func testCommentDoesNotAffectHash() {
+        let a = TableInfo(name: "users", type: .table, rowCount: nil, comment: "Account records")
+        let b = TableInfo(name: "users", type: .table, rowCount: nil, comment: "Something else")
+        #expect(a.hashValue == b.hashValue)
+    }
+
+    @Test("Set deduplication ignores comment")
+    func testSetDeduplicationIgnoresComment() {
+        let a = TableInfo(name: "orders", type: .table, rowCount: nil, comment: "First")
+        let b = TableInfo(name: "orders", type: .table, rowCount: nil, comment: "Second")
+        var set: Set<TableInfo> = [a]
+        set.insert(b)
+        #expect(set.count == 1)
+    }
+
     @Test("Subtracting sets works correctly")
     func testSetSubtraction() {
         let all: Set<TableInfo> = [

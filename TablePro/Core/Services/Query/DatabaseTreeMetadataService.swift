@@ -208,8 +208,10 @@ final class DatabaseTreeMetadataService {
         _ = await (tables, routines)
     }
 
-    func refreshLoadedTables(connectionId: UUID) async {
-        let keys = tablesState.keys.filter { $0.connectionId == connectionId }
+    func refreshLoadedTables(connectionId: UUID, database: String? = nil) async {
+        let keys = tablesState.keys.filter { key in
+            key.connectionId == connectionId && (database == nil || key.database == database)
+        }
         await withTaskGroup(of: Void.self) { group in
             for key in keys {
                 group.addTask { @MainActor in

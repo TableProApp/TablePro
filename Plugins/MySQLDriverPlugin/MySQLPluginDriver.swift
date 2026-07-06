@@ -111,6 +111,27 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         try await executeWithReconnect(query: query, isRetry: false)
     }
 
+    func executeUserQuery(query: String, rowCap: Int?, parameters: [PluginCellValue]?) async throws -> PluginQueryResult {
+        let cap = rowCap.flatMap { $0 > 0 ? $0 : nil }
+        guard let parameters else {
+            return try await executeWithReconnect(query: query, isRetry: false, rowCap: cap)
+        }
+        guard let conn = mariadbConnection else {
+            throw MariaDBPluginError.notConnected
+        }
+        let startTime = Date()
+        let result = try await conn.executeParameterizedQuery(query, parameters: parameters, rowCap: cap)
+        return PluginQueryResult(
+            columns: result.columns,
+            columnTypeNames: result.columnTypeNames,
+            rows: result.rows,
+            rowsAffected: Int(result.affectedRows),
+            executionTime: Date().timeIntervalSince(startTime),
+            isTruncated: result.isTruncated,
+            columnMeta: result.columnMeta
+        )
+    }
+
     func executeParameterized(query: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult {
         guard let conn = mariadbConnection else {
             throw MariaDBPluginError.notConnected
@@ -134,7 +155,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         mariadbConnection?.cancelCurrentQuery()
     }
 
-    private func executeWithReconnect(query: String, isRetry: Bool) async throws -> PluginQueryResult {
+    private func executeWithReconnect(query: String, isRetry: Bool, rowCap: Int? = nil) async throws -> PluginQueryResult {
         let startTime = Date()
 
         guard let conn = mariadbConnection else {
@@ -142,7 +163,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
 
         do {
-            let result = try await conn.executeQuery(query)
+            let result = try await conn.executeQuery(query, rowCap: rowCap)
 
             if result.columns.isEmpty && result.rows.isEmpty {
                 let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -171,7 +192,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             )
         } catch let error as MariaDBPluginError where !isRetry && isConnectionLostError(error) {
             try await reconnect()
-            return try await executeWithReconnect(query: query, isRetry: true)
+            return try await executeWithReconnect(query: query, isRetry: true, rowCap: rowCap)
         }
     }
 
@@ -188,13 +209,20 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Schema Operations
 
     func fetchTables(schema: String?) async throws -> [PluginTableInfo] {
-        let result = try await execute(query: "SHOW FULL TABLES")
+        let query = """
+        SELECT TABLE_NAME, TABLE_TYPE, TABLE_COMMENT
+        FROM information_schema.TABLES
+        WHERE TABLE_SCHEMA = DATABASE()
+        """
+        let result = try await execute(query: query)
 
         return result.rows.compactMap { row -> PluginTableInfo? in
             guard let name = row[safe: 0]?.asText else { return nil }
             let typeStr = (row[safe: 1]?.asText) ?? "BASE TABLE"
-            let type = typeStr.contains("VIEW") ? "VIEW" : "TABLE"
-            return PluginTableInfo(name: name, type: type)
+            let isView = typeStr.contains("VIEW")
+            let type = isView ? "VIEW" : "TABLE"
+            let comment = isView ? nil : row[safe: 2]?.asText?.nilIfEmpty
+            return PluginTableInfo(name: name, type: type, comment: comment)
         }.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 

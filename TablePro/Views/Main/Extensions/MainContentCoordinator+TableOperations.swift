@@ -10,9 +10,9 @@ extension MainContentCoordinator {
         TableOperationSQLBuilder(
             connectionId: connectionId,
             databaseType: connection.type,
-            viewNamesProvider: {
-                guard let session = DatabaseManager.shared.session(for: self.connectionId) else { return [] }
-                return Set(session.tables.filter { $0.type == .view }.map(\.name))
+            tableInfoProvider: {
+                guard let session = DatabaseManager.shared.session(for: self.connectionId) else { return [:] }
+                return Dictionary(session.tables.map { ($0.name, $0) }, uniquingKeysWith: { first, _ in first })
             },
             adapterProvider: {
                 DatabaseManager.shared.driver(for: self.connectionId) as? PluginDriverAdapter

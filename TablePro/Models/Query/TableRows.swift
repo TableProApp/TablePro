@@ -15,6 +15,7 @@ struct TableRows: Sendable {
     var columnForeignKeys: [String: ForeignKeyInfo]
     var columnEnumValues: [String: [String]]
     var columnNullable: [String: Bool]
+    var columnComments: [String: String]
     var foreignKeysFetched: Bool
 
     init(
@@ -25,6 +26,7 @@ struct TableRows: Sendable {
         columnForeignKeys: [String: ForeignKeyInfo] = [:],
         columnEnumValues: [String: [String]] = [:],
         columnNullable: [String: Bool] = [:],
+        columnComments: [String: String] = [:],
         foreignKeysFetched: Bool = false
     ) {
         self.rows = rows
@@ -35,6 +37,7 @@ struct TableRows: Sendable {
         self.columnForeignKeys = columnForeignKeys
         self.columnEnumValues = columnEnumValues
         self.columnNullable = columnNullable
+        self.columnComments = columnComments
         self.foreignKeysFetched = foreignKeysFetched
     }
 
@@ -158,7 +161,8 @@ struct TableRows: Sendable {
         columnDefaults: [String: String?]? = nil,
         columnForeignKeys: [String: ForeignKeyInfo]? = nil,
         columnEnumValues: [String: [String]]? = nil,
-        columnNullable: [String: Bool]? = nil
+        columnNullable: [String: Bool]? = nil,
+        columnComments: [String: String]? = nil
     ) -> Delta {
         var didChange = false
         if let columnTypes, columnTypes != self.columnTypes {
@@ -184,6 +188,10 @@ struct TableRows: Sendable {
             self.columnNullable = columnNullable
             didChange = true
         }
+        if let columnComments, columnComments != self.columnComments {
+            self.columnComments = columnComments
+            didChange = true
+        }
         return didChange ? .columnsReplaced : .none
     }
 
@@ -195,6 +203,7 @@ struct TableRows: Sendable {
         columnForeignKeys: [String: ForeignKeyInfo] = [:],
         columnEnumValues: [String: [String]] = [:],
         columnNullable: [String: Bool] = [:],
+        columnComments: [String: String] = [:],
         foreignKeysFetched: Bool = false
     ) -> TableRows {
         var rows = ContiguousArray<Row>()
@@ -211,6 +220,7 @@ struct TableRows: Sendable {
             columnForeignKeys: columnForeignKeys,
             columnEnumValues: columnEnumValues,
             columnNullable: columnNullable,
+            columnComments: columnComments,
             foreignKeysFetched: foreignKeysFetched
         )
     }

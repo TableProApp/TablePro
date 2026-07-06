@@ -26,6 +26,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         _ = InspectorDocumentController()
         guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
         PluginManager.shared.loadPlugins()
+        Task { await RegistryClient.shared.ensureManifest(.ifStale) }
     }
 
     func application(_ application: NSApplication, open urls: [URL]) {

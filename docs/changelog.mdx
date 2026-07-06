@@ -4,6 +4,55 @@ description: "Product updates and announcements for TablePro"
 rss: true
 ---
 
+<Update label="July 4, 2026" description="v0.55.0">
+  ### New Features
+
+  - **Add rows from the Shortcuts app (iOS)**: Two new shortcuts, Add Row to Table and Add Rows to Table, pick a saved connection, database or schema, and table, then insert rows from JSON or CSV. They run without opening the app (#1788)
+  - **Row cap as a real LIMIT**: SELECT queries without their own LIMIT now run with the row cap applied to the statement sent to the server, so forgetting a LIMIT no longer pulls millions of rows. A query with its own LIMIT is sent as written, and Execute Query Without Limit (Option+Cmd+Enter) skips the cap for one run (#1794)
+  - **Cursor marker in SQL Favorites**: Put ;; in a saved query to set where the cursor lands after keyword expansion in the editor (#1795)
+
+  ### Improvements
+
+  - Settings > Plugins > Browse has a Refresh button to reload the plugin list on demand (#1799)
+  - Restored table tabs no longer reload all at once on launch. Only the frontmost tab loads immediately; other tabs load when you switch to them, and a load failure shows inline in the tab instead of a dialog (#1796)
+
+  ### Bug Fixes
+
+  - The New/Edit Favorite and linked file metadata dialogs now use the standard macOS grouped form layout instead of opening with a large empty area and crushed fields (#1809)
+  - Tables and views outside the connection's default schema now open and save correctly when reached through the Quick Switcher, a restored tab, or the MCP table-open tool (#1774)
+  - Quick Switcher opens again on macOS Sequoia; since 0.51.0 the panel came up invisible on macOS 15 (#1806)
+  - Quick Switcher keyboard navigation (Ctrl-J/K and arrows) no longer goes dead after the switcher has been opened and closed repeatedly (#1806)
+  - Execute All Statements now applies the row cap to each SELECT in the batch, and each result tab tracks its own truncation state so Fetch All loads the rest of the result you are viewing (#1794)
+  - Queries starting with a comment or with a newline right after the first keyword are classified correctly: the row cap applies to them, and Safe Mode recognizes such writes and destructive statements
+  - Enum and set value pickers now populate when the driver reports the values only inside the column type
+  - The plugin list no longer goes stale. The app checks the plugin registry for changes at launch, when the plugin browser opens, and before reporting a plugin as missing. An unreachable registry reports a connection problem instead of "Plugin not found" (#1799)
+  - Dropping a materialized view or foreign table from the sidebar now generates the correct DROP statement, and drop and truncate statements are schema-qualified. ClickHouse lists materialized views as their own sidebar section (#1800)
+  - Scrolling no longer goes dead across the app after opening an ER diagram and switching tabs while the pointer rests over the canvas (#1805)
+</Update>
+
+<Update label="June 30, 2026" description="v0.54.0">
+  ### New Features
+
+  - **Per-tab database picker**: Each SQL tab can target its own database from the editor toolbar, without clearing other tabs.
+  - **Table and column comments**: Comments from the database now show in the sidebar, the column header tooltip, and the table inspector. Toggle from View > Show Object Comments. Available for MySQL and PostgreSQL (#1771)
+
+  ### Improvements
+
+  - Single-click a table in the sidebar to open it in the current tab; double-click to open it in a new tab.
+  - Switching the active database keeps your open tabs instead of closing them.
+  - The toolbar, quick switcher, and query editor database pickers follow the sidebar database filter.
+  - Switching table tabs is faster.
+
+  ### Bug Fixes
+
+  - Safe mode keeps the confirmation on the tab you ran the query from instead of jumping to the first tab (#1781)
+  - Switching between sidebar tables no longer leaves blank space above the list (#1675)
+  - SSH tunnels no longer pin a CPU core after the connection drops (#1769)
+  - Restored table tabs load with the current page size from this session.
+  - SQL Server: large nvarchar(max) and text values no longer truncate when copied or viewed (#1783)
+  - Oracle: connections with Native network encryption turned on no longer hang for about a minute against servers that do not complete it, such as Oracle 11g. The login now stops after 30 seconds and explains how to turn the option off (#1746)
+</Update>
+
 <Update label="June 25, 2026" description="v0.53.0">
   ### New Features
 

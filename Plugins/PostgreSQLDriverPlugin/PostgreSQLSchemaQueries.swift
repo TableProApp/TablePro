@@ -72,25 +72,37 @@ enum PostgreSQLSchemaQueries {
     /// `pg_foreign_table`, which some PostgreSQL-compatible engines do not
     /// implement; the caller passes `false` when those catalogs are absent so
     /// the whole query does not fail with `relation does not exist`.
+    ///
+    /// `includeComments` projects each table's comment via `obj_description` /
+    /// `to_regclass`. Engines that lack those functions fail the whole listing,
+    /// so the caller passes `false` to fall back to a comment-free listing.
     static func fetchTables(
         schemaLiteral: String,
         includeMaterializedViews: Bool,
-        includeForeignTables: Bool
+        includeForeignTables: Bool,
+        includeComments: Bool = true
     ) -> String {
+        func commentColumn(_ expression: String) -> String {
+            includeComments ? expression : "NULL::text"
+        }
+
         var unions: [String] = [
             """
-            SELECT table_name, table_type FROM information_schema.tables
-            WHERE table_schema = '\(schemaLiteral)'
-              AND table_type IN ('BASE TABLE', 'VIEW')
+            SELECT t.table_name, t.table_type,
+                   \(commentColumn("obj_description(to_regclass(quote_ident(t.table_schema) || '.' || quote_ident(t.table_name)), 'pg_class')")) AS table_comment
+            FROM information_schema.tables t
+            WHERE t.table_schema = '\(schemaLiteral)'
+              AND t.table_type IN ('BASE TABLE', 'VIEW')
             """
         ]
 
         if includeMaterializedViews {
             unions.append(
                 """
-                SELECT matviewname AS table_name, 'MATERIALIZED VIEW' AS table_type
-                FROM pg_matviews
-                WHERE schemaname = '\(schemaLiteral)'
+                SELECT m.matviewname AS table_name, 'MATERIALIZED VIEW' AS table_type,
+                       \(commentColumn("obj_description(to_regclass(quote_ident(m.schemaname) || '.' || quote_ident(m.matviewname)), 'pg_class')")) AS table_comment
+                FROM pg_matviews m
+                WHERE m.schemaname = '\(schemaLiteral)'
                 """
             )
         }
@@ -98,7 +110,8 @@ enum PostgreSQLSchemaQueries {
         if includeForeignTables {
             unions.append(
                 """
-                SELECT c.relname AS table_name, 'FOREIGN TABLE' AS table_type
+                SELECT c.relname AS table_name, 'FOREIGN TABLE' AS table_type,
+                       \(commentColumn("obj_description(c.oid, 'pg_class')")) AS table_comment
                 FROM pg_foreign_table ft
                 JOIN pg_class c ON c.oid = ft.ftrelid
                 JOIN pg_namespace n ON n.oid = c.relnamespace

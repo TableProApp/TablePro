@@ -28,7 +28,7 @@ struct PersistedTabRoundTripTests {
             source: .user
         )
 
-        let restored = QueryTab(from: tab.toPersistedTab())
+        let restored = QueryTab(from: tab.toPersistedTab(), defaultPageSize: 1_000)
 
         #expect(restored.pendingRestoredSort?.count == 2)
         #expect(restored.pendingRestoredSort?[0].columnName == "created_at")
@@ -52,7 +52,17 @@ struct PersistedTabRoundTripTests {
 
         let persisted = tab.toPersistedTab()
         #expect(persisted.restoredPage == 3)
-        #expect(QueryTab(from: persisted).restoredPage == 3)
+        #expect(QueryTab(from: persisted, defaultPageSize: 1_000).restoredPage == 3)
+    }
+
+    @Test("Restored table tab seeds pagination from the live page size, not the persisted query")
+    func paginationSeedsFromLivePageSize() {
+        var tab = tableTab(query: "SELECT * FROM users LIMIT 500 OFFSET 0")
+        tab.pagination.pageSize = 500
+
+        let restored = QueryTab(from: tab.toPersistedTab(), defaultPageSize: 1_000)
+
+        #expect(restored.pagination.pageSize == 1_000)
     }
 
     @Test("Page 1 is not persisted")
@@ -70,7 +80,7 @@ struct PersistedTabRoundTripTests {
 
         let persisted = tab.toPersistedTab()
         #expect(persisted.cursorOffset == 7)
-        #expect(QueryTab(from: persisted).restoredCursorOffset == 7)
+        #expect(QueryTab(from: persisted, defaultPageSize: 1_000).restoredCursorOffset == 7)
     }
 
     @Test("Cursor offset is clamped to query length on restore")
@@ -84,7 +94,7 @@ struct PersistedTabRoundTripTests {
             cursorOffset: 10_000
         )
 
-        #expect(QueryTab(from: persisted).restoredCursorOffset == ("SELECT" as NSString).length)
+        #expect(QueryTab(from: persisted, defaultPageSize: 1_000).restoredCursorOffset == ("SELECT" as NSString).length)
     }
 
     @Test("A truncated query drops the persisted cursor offset")
@@ -107,7 +117,7 @@ struct PersistedTabRoundTripTests {
         var tab = tableTab()
         tab.columnLayout.columnWidths = ["id": 80, "name": 220.5]
 
-        let restored = QueryTab(from: tab.toPersistedTab())
+        let restored = QueryTab(from: tab.toPersistedTab(), defaultPageSize: 1_000)
         #expect(restored.columnLayout.columnWidths == ["id": 80, "name": 220.5])
     }
 

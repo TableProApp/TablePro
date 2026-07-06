@@ -20,6 +20,7 @@ struct SessionStateFactoryTests {
         tabType: TabType = .query,
         tableName: String? = nil,
         databaseName: String? = nil,
+        schemaName: String? = nil,
         initialQuery: String? = nil,
         isView: Bool = false,
         showStructure: Bool = false
@@ -29,6 +30,7 @@ struct SessionStateFactoryTests {
             tabType: tabType,
             tableName: tableName,
             databaseName: databaseName,
+            schemaName: schemaName,
             initialQuery: initialQuery,
             isView: isView,
             showStructure: showStructure
@@ -111,6 +113,49 @@ struct SessionStateFactoryTests {
         }
         #expect(tab.tableContext.isView == true)
         #expect(tab.tableContext.isEditable == false)
+    }
+
+    @Test("Table payload without a schema resolves the session's current schema")
+    @MainActor
+    func tablePayloadWithoutSchema_resolvesActiveSchema() {
+        let conn = TestFixtures.makeConnection(type: .postgresql)
+        var session = ConnectionSession(connection: conn)
+        session.currentSchema = "sales"
+        DatabaseManager.shared.injectSession(session, for: conn.id)
+        defer { DatabaseManager.shared.removeSession(for: conn.id) }
+
+        let payload = makePayload(connectionId: conn.id, tabType: .table, tableName: "users")
+        let state = SessionStateFactory.create(connection: conn, payload: payload)
+
+        #expect(state.tabManager.tabs.first?.tableContext.schemaName == "sales")
+    }
+
+    @Test("Table payload with an explicit schema keeps it over the session's current schema")
+    @MainActor
+    func tablePayloadWithExplicitSchema_keepsIt() {
+        let conn = TestFixtures.makeConnection(type: .postgresql)
+        var session = ConnectionSession(connection: conn)
+        session.currentSchema = "sales"
+        DatabaseManager.shared.injectSession(session, for: conn.id)
+        defer { DatabaseManager.shared.removeSession(for: conn.id) }
+
+        let payload = makePayload(
+            connectionId: conn.id, tabType: .table, tableName: "users", schemaName: "audit"
+        )
+        let state = SessionStateFactory.create(connection: conn, payload: payload)
+
+        #expect(state.tabManager.tabs.first?.tableContext.schemaName == "audit")
+    }
+
+    @Test("Table payload without a session leaves the schema nil")
+    @MainActor
+    func tablePayloadWithoutSession_leavesSchemaNil() {
+        let conn = TestFixtures.makeConnection()
+        let payload = makePayload(connectionId: conn.id, tabType: .table, tableName: "users")
+
+        let state = SessionStateFactory.create(connection: conn, payload: payload)
+
+        #expect(state.tabManager.tabs.first?.tableContext.schemaName == nil)
     }
 
     @Test("Nil payload creates empty tab manager")

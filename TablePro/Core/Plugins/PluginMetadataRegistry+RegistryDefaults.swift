@@ -710,7 +710,7 @@ extension PluginMetadataRegistry {
                 postConnectActions: [.selectSchemaFromLastSession],
                 brandColorHex: "#C3160B",
                 queryLanguageName: "SQL", editorLanguage: .sql,
-                connectionMode: .network, supportsDatabaseSwitching: true,
+                connectionMode: .network, supportsDatabaseSwitching: false,
                 supportsColumnReorder: false,
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
                     supportsSchemaSwitching: true,
@@ -728,10 +728,10 @@ extension PluginMetadataRegistry {
                     supportsOpportunisticTLS: false
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
-                    defaultSchemaName: "public",
+                    defaultSchemaName: "",
                     defaultGroupName: "main",
                     tableEntityName: "Tables",
-                    containerEntityName: "Database",
+                    containerEntityName: "Schema",
                     defaultPrimaryKeyColumn: nil,
                     immutableColumns: [],
                     systemDatabaseNames: [
@@ -739,7 +739,7 @@ extension PluginMetadataRegistry {
                     ],
                     systemSchemaNames: [],
                     fileExtensions: [],
-                    databaseGroupingStrategy: .bySchema,
+                    databaseGroupingStrategy: .hierarchicalSchema,
                     structureColumnFields: [.name, .type, .nullable, .defaultValue, .autoIncrement, .comment]
                 ),
                 editor: PluginMetadataSnapshot.EditorConfig(

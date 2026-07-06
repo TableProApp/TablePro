@@ -46,6 +46,7 @@ struct DatabaseTreeOutlineView: NSViewRepresentable {
         outlineView.dataSource = context.coordinator
         outlineView.delegate = context.coordinator
         outlineView.target = context.coordinator
+        outlineView.action = #selector(DatabaseTreeOutlineCoordinator.handleSingleClick)
         outlineView.doubleAction = #selector(DatabaseTreeOutlineCoordinator.handleDoubleClick)
 
         context.coordinator.attach(outlineView: outlineView)

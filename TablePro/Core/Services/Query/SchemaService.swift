@@ -209,9 +209,21 @@ final class SchemaService {
 
     func refresh(connectionId: UUID) async {
         guard let session = DatabaseManager.shared.activeSessions[connectionId],
-              let driver = session.driver else { return }
+              let driver = session.driver else {
+            markLoadFailed(
+                connectionId: connectionId,
+                message: String(localized: "The connection is not available. Reconnect and try again.")
+            )
+            return
+        }
         await invalidate(connectionId: connectionId)
         await reload(connectionId: connectionId, driver: driver, connection: session.connection)
+    }
+
+    func markLoadFailed(connectionId: UUID, message: String) {
+        if case .loaded = state(for: connectionId) { return }
+        states[connectionId] = .failed(message)
+        bumpGeneration(connectionId)
     }
 
     private func runLoad(
@@ -316,18 +328,30 @@ final class SchemaService {
 
         let loadedProcedures = await proceduresTask
         let loadedFunctions = await functionsTask
-        let loadedSchemas = await Self.fetchSchemasSafely(
-            connectionId: connectionId,
-            dedup: schemasDedup,
-            fetch: { try await driver.fetchSchemas() }
-        )
+
+        let loadedSchemas: [String]
+        do {
+            loadedSchemas = try await schemasDedup.execute(key: connectionId) {
+                try await driver.fetchSchemas()
+            }
+        } catch is CancellationError {
+            return
+        } catch {
+            guard isCurrentLoadGeneration(generation, for: connectionId, phase: "hierarchical-failed") else {
+                return
+            }
+            Self.logger.warning(
+                "[schema] hierarchical schema list failed connId=\(connectionId, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
+            )
+            states[connectionId] = .failed(error.localizedDescription)
+            bumpGeneration(connectionId)
+            return
+        }
 
         guard isCurrentLoadGeneration(generation, for: connectionId, phase: "hierarchical-loaded") else {
             return
         }
-        if let loadedSchemas {
-            schemasInOrder[connectionId] = loadedSchemas
-        }
+        schemasInOrder[connectionId] = loadedSchemas
         procedures[connectionId] = loadedProcedures
         functions[connectionId] = loadedFunctions
         states[connectionId] = .loaded([])

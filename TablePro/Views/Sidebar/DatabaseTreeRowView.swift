@@ -18,6 +18,8 @@ struct DatabaseTreeRowActions {
     let showRoutineDDL: (RoutineInfo) -> Void
     let batchToggleTruncate: ([String]) -> Void
     let batchToggleDelete: ([String]) -> Void
+    let removeRecent: (DatabaseTreeTableRef) -> Void
+    let clearRecents: () -> Void
 }
 
 struct DatabaseTreeRowContext {
@@ -51,6 +53,20 @@ struct DatabaseTreeRowView: View {
     @ViewBuilder
     private var rowContent: some View {
         switch node.kind {
+        case .recentSection:
+            header(
+                text: String(localized: "Recent"),
+                systemImage: "clock.arrow.circlepath",
+                isActive: false,
+                isSystem: false
+            )
+        case .recentTable(let ref):
+            TableRow(
+                table: ref.table,
+                isPendingTruncate: context.pendingTruncates.contains(ref.table.name),
+                isPendingDelete: context.pendingDeletes.contains(ref.table.name)
+            )
+            .foregroundStyle(isEmphasized ? AnyShapeStyle(.white) : AnyShapeStyle(.primary))
         case .database(let metadata):
             header(
                 text: metadata.name,
@@ -114,13 +130,34 @@ struct DatabaseTreeRowView: View {
     }
 
     private var hasContextMenu: Bool {
-        if case .status = node.kind { return false }
-        return true
+        switch node.kind {
+        case .status, .recentSection: return false
+        default: return true
+        }
     }
 
     @ViewBuilder
     private var menuItems: some View {
         switch node.kind {
+        case .recentSection:
+            EmptyView()
+        case .recentTable(let ref):
+            SidebarContextMenu(
+                clickedTable: ref.table,
+                selectedTables: [ref.table],
+                isReadOnly: actions.isReadOnly,
+                onBatchToggleTruncate: actions.batchToggleTruncate,
+                onBatchToggleDelete: actions.batchToggleDelete,
+                coordinator: actions.coordinator,
+                activateBeforeAction: { await actions.activate(ref) }
+            )
+            Divider()
+            Button(String(localized: "Remove from Recent")) {
+                actions.removeRecent(ref)
+            }
+            Button(String(localized: "Clear Recent Tables")) {
+                actions.clearRecents()
+            }
         case .database(let metadata):
             Button(String(localized: "Use as Active Database")) {
                 actions.setActiveDatabase(metadata.name)

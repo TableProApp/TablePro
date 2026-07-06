@@ -1,0 +1,74 @@
+---
+title: iOS Shortcuts
+description: Add rows to a table from the Shortcuts app on iPhone and iPad
+---
+
+# iOS Shortcuts
+
+TablePro for iOS exposes App Intents, so you can add data to a database table from the Shortcuts app, the Share Sheet, or by voice. The actions connect to a saved connection and insert the rows in the background, without opening the app.
+
+This is iOS only. On macOS, use the [URL scheme](/external-api/url-scheme) and [MCP](/external-api/mcp-tools).
+
+## Actions
+
+| Action | Use it for |
+| --- | --- |
+| **Add Row to Table** | Insert a single row. |
+| **Add Rows to Table** | Insert many rows from a JSON array, CSV text, or a file. |
+
+Both actions share the same pickers:
+
+- **Connection**: one of your saved connections. Relational databases only (MySQL, MariaDB, PostgreSQL, Redshift, SQL Server, SQLite, DuckDB).
+- **Database or Schema**: optional. Leave it empty to use the connection's configured database. On schema databases like PostgreSQL it lists schemas; on others it lists databases.
+- **Table**: the table to insert into. The list is read from the chosen connection.
+
+## Data formats
+
+The row data is matched to the table's columns by name. A column you don't include is left out of the insert, so the database applies its default (an auto-increment primary key, for example).
+
+### JSON
+
+A single object is one row:
+
+```json
+{ "title": "TablePro docs", "url": "https://docs.tablepro.app", "tags": "reference" }
+```
+
+An array of objects is many rows (Add Rows to Table):
+
+```json
+[
+  { "title": "First", "url": "https://example.com/1" },
+  { "title": "Second", "url": "https://example.com/2" }
+]
+```
+
+`null` inserts a SQL `NULL`. Numbers and booleans are inserted as text.
+
+Wrap very large or high-precision numbers in quotes so they stay exact. A bare JSON number past 64-bit integer range (a long unsigned ID, for example) is read as a floating-point value and loses digits; `"18446744073709551615"` as a string keeps every digit.
+
+A Shortcuts **Dictionary** action passes straight into the Data field, so you can build the row visually with key/value pairs instead of typing JSON.
+
+### CSV
+
+The first row is the header and names the columns:
+
+```text
+title,url
+First,https://example.com/1
+Second,https://example.com/2
+```
+
+Quoted fields with commas and embedded quotes follow the usual CSV rules. Pass CSV as text in the Data field, or as a file in the File field.
+
+## Result
+
+Each action returns the number of rows inserted, so you can show it or use it in a later step, and speaks a short confirmation ("Added 2 rows to bookmarks.").
+
+## Notes
+
+- The action requires the device to be unlocked, since it reads the connection password from the Keychain.
+- A read-only connection refuses the insert with an error. A connection set to Confirm Writes asks you to confirm before the rows are added.
+- Add Rows to Table runs the batch in one transaction on databases that support it, so a row that fails rolls the whole batch back instead of leaving a partial insert.
+- Data that maps to no columns (an empty object, for example) returns an error rather than reporting that it added nothing.
+- Up to 10,000 rows per run.

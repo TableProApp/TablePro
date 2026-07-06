@@ -179,6 +179,21 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
         lock.lock()
         _isConnected = true
         lock.unlock()
+
+        applyMaxTextSize(proc)
+    }
+
+    private func applyMaxTextSize(_ proc: UnsafeMutablePointer<DBPROCESS>) {
+        guard dbcmd(proc, "SET TEXTSIZE \(Int32.max)") != FAIL, dbsqlexec(proc) != FAIL else {
+            freetdsLogger.error("Failed to raise TEXTSIZE; large text columns may be truncated to the 2048-byte default")
+            return
+        }
+        while true {
+            let resCode = dbresults(proc)
+            if resCode == FAIL || resCode == Int32(NO_MORE_RESULTS) {
+                break
+            }
+        }
     }
 
     func switchDatabase(_ database: String) async throws {

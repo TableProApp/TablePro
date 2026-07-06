@@ -19,7 +19,8 @@ extension MainContentCoordinator {
         _ table: TableInfo,
         showStructure: Bool = false,
         forceNonPreview: Bool = false,
-        activateGridFocus: Bool = false
+        activateGridFocus: Bool = false,
+        forceNewWindowTab: Bool = false
     ) {
         openTableTab(
             table.name,
@@ -27,7 +28,8 @@ extension MainContentCoordinator {
             showStructure: showStructure,
             isView: table.type == .view,
             forceNonPreview: forceNonPreview,
-            activateGridFocus: activateGridFocus
+            activateGridFocus: activateGridFocus,
+            forceNewWindowTab: forceNewWindowTab
         )
     }
 
@@ -54,7 +56,7 @@ extension MainContentCoordinator {
             currentDatabase = activeDatabaseName
         }
 
-        let resolvedSchema = schema
+        let resolvedSchema = DatabaseManager.shared.resolvedSchemaName(schema, for: connectionId)
         let createAsPreview = !forceNonPreview && !forceNewWindowTab
             && AppSettingsManager.shared.tabs.enablePreviewTabs
 
@@ -82,7 +84,8 @@ extension MainContentCoordinator {
                         tableName: tableName,
                         databaseType: connection.type,
                         databaseName: currentDatabase,
-                        schemaName: resolvedSchema
+                        schemaName: resolvedSchema,
+                        isView: isView
                     )
                 } catch {
                     navigationLogger.error("openTableTab addTableTab failed: \(error.localizedDescription, privacy: .public)")
@@ -221,14 +224,16 @@ extension MainContentCoordinator {
                     tableName: tableName,
                     databaseType: connection.type,
                     databaseName: currentDatabase,
-                    schemaName: resolvedSchema
+                    schemaName: resolvedSchema,
+                    isView: isView
                 )
             } else {
                 try tabManager.addTableTab(
                     tableName: tableName,
                     databaseType: connection.type,
                     databaseName: currentDatabase,
-                    schemaName: resolvedSchema
+                    schemaName: resolvedSchema,
+                    isView: isView
                 )
             }
         } catch {
@@ -365,41 +370,21 @@ extension MainContentCoordinator {
 
     // MARK: - Database Switching
 
-    /// Close all sibling native window-tabs except the current key window.
-    /// Each table opened via WindowOpener creates a separate NSWindow in the same
-    /// tab group. Clearing `tabManager.tabs` only affects the in-app state of the
-    /// *current* window — other NSWindows remain open with stale content.
-    private func closeSiblingNativeWindows() {
-        guard let keyWindow = NSApp.keyWindow else { return }
-        let siblings = keyWindow.tabbedWindows ?? []
-        let ownWindows = Set(WindowLifecycleMonitor.shared.windows(for: connectionId).map { ObjectIdentifier($0) })
-        for sibling in siblings where sibling !== keyWindow {
-            // Only close windows belonging to this connection to avoid
-            // destroying tabs from other connections when groupAllConnectionTabs is ON
-            guard ownWindows.contains(ObjectIdentifier(sibling)) else { continue }
-            sibling.close()
-        }
-    }
-
-    /// Switch to a different database (called from database switcher)
-    func switchDatabase(to database: String, clearTabs: Bool = true) async {
-        if clearTabs { clearFilterState() }
+    /// Switch to a different database (called from database switcher).
+    /// `persist` records the database as the connection's saved default; pass `false`
+    /// for transient per-tab switches that must not change the connection default.
+    @discardableResult
+    func switchDatabase(to database: String, persist: Bool = true) async -> Bool {
         let previousDatabase = toolbarState.currentDatabase
         toolbarState.currentDatabase = database
 
         do {
-            try await DatabaseManager.shared.switchDatabase(to: database, for: connectionId)
+            try await DatabaseManager.shared.switchDatabase(to: database, for: connectionId, persist: persist)
 
-            if clearTabs {
-                closeSiblingNativeWindows()
-                persistence.saveNowSync(tabs: tabManager.tabs, selectedTabId: tabManager.selectedTabId)
-                tabSessionRegistry.removeAll()
-                tabManager.tabs = []
-                tabManager.selectedTabId = nil
-            }
             await SchemaService.shared.invalidate(connectionId: connectionId)
 
-            await refreshTables()
+            await refreshTables(currentDatabaseOnly: true)
+            return true
         } catch {
             toolbarState.currentDatabase = previousDatabase
 
@@ -412,6 +397,7 @@ extension MainContentCoordinator {
                 message: error.localizedDescription,
                 window: contentWindow
             )
+            return false
         }
     }
 

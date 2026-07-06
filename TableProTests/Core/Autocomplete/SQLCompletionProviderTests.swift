@@ -1112,6 +1112,20 @@ struct SQLCompletionProviderTests {
         #expect(items.allSatisfy { $0.kind == .favorite })
     }
 
+    @Test("Favorite items keep the raw cursor marker in insertText")
+    func testFavoriteKeepsRawCursorMarker() async {
+        provider.updateFavoriteKeywords([
+            "slc": (name: "Count", query: "SELECT COUNT(*) FROM t WHERE x = ;;")
+        ])
+        let text = "slc"
+        let (items, _) = await provider.getCompletions(text: text, cursorPosition: text.count)
+        let favorite = items.first { $0.kind == .favorite }
+        #expect(
+            favorite?.insertText.contains(SQLSnippetMarker.token) == true,
+            "Marker stripping happens at accept time, not at item construction"
+        )
+    }
+
     // MARK: - Tables after JOIN (#1646)
 
     @Test("JOIN after an ON condition suggests available tables")

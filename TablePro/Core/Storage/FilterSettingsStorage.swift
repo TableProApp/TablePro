@@ -90,6 +90,7 @@ final class FilterSettingsStorage {
     private let filterStateDirectory: URL
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
+    private let ioQueue = DispatchQueue(label: "com.TablePro.FilterSettingsStorage.io", qos: .utility)
 
     private var cachedSettings: FilterSettings?
     private var lastFiltersCache: [String: [TableFilter]] = [:]
@@ -195,17 +196,25 @@ final class FilterSettingsStorage {
         let fileURL = fileURL(forKey: key)
 
         guard !filters.isEmpty else {
-            removeFile(at: fileURL, label: tableName)
             lastFiltersCache.removeValue(forKey: key)
+            ioQueue.async {
+                try? FileManager.default.removeItem(at: fileURL)
+            }
             return
         }
 
+        lastFiltersCache[key] = filters
         do {
             let data = try encoder.encode(filters)
-            try data.write(to: fileURL, options: .atomic)
-            lastFiltersCache[key] = filters
+            ioQueue.async {
+                do {
+                    try data.write(to: fileURL, options: .atomic)
+                } catch {
+                    Self.logger.error("Failed to persist last filters for \(tableName): \(error.localizedDescription)")
+                }
+            }
         } catch {
-            Self.logger.error("Failed to save last filters for \(tableName): \(error)")
+            Self.logger.error("Failed to encode last filters for \(tableName): \(error)")
         }
     }
 
@@ -222,8 +231,14 @@ final class FilterSettingsStorage {
             schemaName: schemaName
         )
         let fileURL = fileURL(forKey: key)
-        removeFile(at: fileURL, label: tableName)
         lastFiltersCache.removeValue(forKey: key)
+        ioQueue.async {
+            try? FileManager.default.removeItem(at: fileURL)
+        }
+    }
+
+    func waitForPendingDiskWrites() {
+        ioQueue.sync {}
     }
 
     func loadBrowseSearch(
@@ -276,17 +291,25 @@ final class FilterSettingsStorage {
         let fileURL = fileURL(forKey: key)
 
         guard state.isActive else {
-            removeFile(at: fileURL, label: tableName)
             browseSearchCache.removeValue(forKey: key)
+            ioQueue.async {
+                try? FileManager.default.removeItem(at: fileURL)
+            }
             return
         }
 
         do {
             let data = try encoder.encode(state)
-            try data.write(to: fileURL, options: .atomic)
             browseSearchCache[key] = state
+            ioQueue.async {
+                do {
+                    try data.write(to: fileURL, options: .atomic)
+                } catch {
+                    Self.logger.error("Failed to persist browse search for \(tableName): \(error.localizedDescription)")
+                }
+            }
         } catch {
-            Self.logger.error("Failed to save browse search for \(tableName): \(error)")
+            Self.logger.error("Failed to encode browse search for \(tableName): \(error)")
         }
     }
 
@@ -319,44 +342,43 @@ final class FilterSettingsStorage {
             encodedPrefixes.contains { name.hasPrefix($0) }
         }
 
-        let fm = FileManager.default
-        do {
-            let files = try fm.contentsOfDirectory(at: filterStateDirectory, includingPropertiesForKeys: nil)
-            for file in files where matchesConnection(file.lastPathComponent) {
-                try? fm.removeItem(at: file)
-            }
-        } catch {
-            Self.logger.error("Failed to enumerate filter state directory: \(error.localizedDescription)")
-        }
         lastFiltersCache = lastFiltersCache.filter { !matchesConnection($0.key) }
         browseSearchCache = browseSearchCache.filter { !matchesConnection($0.key) }
+
+        let directory = filterStateDirectory
+        ioQueue.async {
+            let fm = FileManager.default
+            do {
+                let files = try fm.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
+                for file in files where encodedPrefixes.contains(where: { file.lastPathComponent.hasPrefix($0) }) {
+                    try? fm.removeItem(at: file)
+                }
+            } catch {
+                Self.logger.error("Failed to enumerate filter state directory: \(error.localizedDescription)")
+            }
+        }
     }
 
     func clearAllLastFilters() {
-        let fm = FileManager.default
-        do {
-            let files = try fm.contentsOfDirectory(at: filterStateDirectory, includingPropertiesForKeys: nil)
-            for file in files where file.pathExtension == "json" {
-                try? fm.removeItem(at: file)
-            }
-        } catch {
-            Self.logger.error("Failed to enumerate filter state directory: \(error.localizedDescription)")
-        }
         lastFiltersCache.removeAll()
         browseSearchCache.removeAll()
+
+        let directory = filterStateDirectory
+        ioQueue.async {
+            let fm = FileManager.default
+            do {
+                let files = try fm.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
+                for file in files where file.pathExtension == "json" {
+                    try? fm.removeItem(at: file)
+                }
+            } catch {
+                Self.logger.error("Failed to enumerate filter state directory: \(error.localizedDescription)")
+            }
+        }
     }
 
     private func fileURL(forKey key: String) -> URL {
         filterStateDirectory.appendingPathComponent("\(key).json")
-    }
-
-    private func removeFile(at fileURL: URL, label: String) {
-        guard FileManager.default.fileExists(atPath: fileURL.path) else { return }
-        do {
-            try FileManager.default.removeItem(at: fileURL)
-        } catch {
-            Self.logger.error("Failed to remove last filters file for \(label): \(error.localizedDescription)")
-        }
     }
 
     private func compositeKey(

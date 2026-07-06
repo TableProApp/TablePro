@@ -14,6 +14,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Connections can take their password from 1Password (op://), HashiCorp Vault, or AWS Secrets Manager, resolved at connect time so the secret is never stored in TablePro.
 - Team plan: publish connections to a shared folder your team reads from, without sending passwords. Right-click a connection, then Share > Publish to Team Catalog. Teammates add the folder under Settings > Linked Folders.
 - Saved SQL queries and their folders now sync across your Macs when iCloud Sync is on. Toggle "Saved Queries" under Settings > Sync.
+- Recent section at the top of the sidebar tracks the last 10 tables you opened per connection and database, in every sidebar layout, and remembers them between launches. It records a table when you open it, not while you arrow through previews. Click a recent table to reopen it, or right-click to remove one or clear the list. Off by default, turn it on in Settings > General > Sidebar. (#1352)
+
+### Fixed
+
+- Switching schemas on an Oracle connection no longer hangs on an infinite loading spinner. Oracle now switches by schema like BigQuery, the sidebar lists every schema with its tables loading on expand, Oracle queries respect the query timeout setting and reconnect automatically after a timeout, and a schema load that fails shows an error with a Retry button instead of spinning forever. Works with an already-installed Oracle plugin; updating the plugin adds the query timeout enforcement. (#1807)
+
+## [0.55.0] - 2026-07-04
+
+### Added
+
+- iOS: add data to a table from the Shortcuts app. Two new shortcuts, Add Row to Table and Add Rows to Table, pick a saved connection, database or schema, and table, then insert from JSON or CSV. They run without opening the app. (#1788)
+- Refresh button in Settings > Plugins > Browse to reload the plugin list on demand. (#1799)
+- SQL Favorites: put ;; in a saved query to set where the cursor lands after keyword expansion in the editor. (#1795)
+- SELECT queries without their own LIMIT now run with the row cap applied as a real LIMIT on the statement sent to the server, so forgetting a LIMIT no longer pulls millions of rows. The query text in the editor never changes, a query with its own LIMIT is sent as written and not capped, and Execute Query Without Limit (Option+Cmd+Enter, also in the Query menu and the Execute button menu) skips the cap for one run. (#1794)
+
+### Fixed
+
+- The New/Edit Favorite and linked file metadata dialogs no longer open with a large empty area and fields crushed against the right edge. They now use the standard macOS grouped form layout: the query editor spans the full dialog width, the cursor marker hint sits under the editor, keyword validation shows under the keyword field, and the Global option is a checkbox that explains its scope. (#1809)
+- Tables and views outside the connection's default schema now open and save correctly when reached through the Quick Switcher, a restored tab, or the MCP table-open tool. These paths used to send unqualified queries, which failed with "Invalid object name" on SQL Server or silently targeted the wrong table. (#1774)
+- Quick Switcher opens again on macOS Sequoia. Since 0.51.0 the panel came up invisible on macOS 15, and the toolbar button and keyboard shortcut appeared to do nothing. (#1806)
+- Quick Switcher keyboard navigation (Ctrl-J/K and arrow shortcuts) no longer goes dead after the switcher has been opened and closed repeatedly. (#1806)
+- Restored table tabs no longer reload all at once or flood failure dialogs on launch. Only the frontmost tab loads immediately; other restored tabs load when you switch to them, and a load failure now shows inline in the tab instead of a dialog. (#1796)
+- Execute All Statements now applies the query result row cap to each SELECT in the batch instead of returning every row, and each result tab tracks its own truncation state so Fetch All loads the rest of the result you are viewing. (#1794)
+- Queries starting with a comment or with a newline right after the first keyword are now classified correctly: the row cap applies to them, and Safe Mode recognizes such writes and destructive statements instead of letting them through unprompted.
+- Enum and set value pickers now populate when the driver reports the values only inside the column type instead of as a separate list.
+- The plugin list no longer goes stale. The app now checks the plugin registry for changes at launch, when the plugin browser opens, and before reporting a plugin as missing, so newly published plugins show up and install right away. A registry that cannot be reached now reports a connection problem instead of "Plugin not found". (#1799)
+- Dropping a materialized view or foreign table from the sidebar now generates the correct DROP statement instead of DROP TABLE, and drop and truncate statements are schema-qualified. ClickHouse now lists materialized views as their own sidebar section and drops them with the DROP VIEW syntax it requires. (#1800)
+- Scrolling no longer goes dead across the whole app after opening an ER diagram and switching tabs while the pointer rests over the canvas. Diagram pan and zoom now handle scroll events on the canvas itself instead of intercepting them app-wide. (#1805)
+
+## [0.54.0] - 2026-06-30
+
+### Added
+
+- Per-tab database picker in the query editor toolbar. Each SQL tab can target its own database without clearing other tabs.
+- Single-clicking a table in the sidebar tree opens it in the current tab; double-clicking opens it in a new tab.
+- Table and column comments from the database now show in the UI. The sidebar shows a table's comment in dimmed text after its name, the data grid column header tooltip includes the column comment, and the table inspector shows the table comment. Toggle from View > Show Object Comments. Available for MySQL and PostgreSQL. (#1771)
+
+### Changed
+
+- Switching the active database keeps existing tabs open instead of closing them.
+- The toolbar, quick switcher, and query editor database pickers follow the sidebar database filter.
+- Switching table tabs is faster: filter settings persist off the main thread, and only the active database's table list refreshes.
+
+### Fixed
+
+- Safe mode no longer jumps to the first tab after you confirm a query. The confirmation now stays on the tab you ran the query from. (#1781)
+- Switching between sidebar tables no longer leaves extra blank space above the list. (#1675)
+- SSH tunnels no longer pin a CPU core after the connection drops. A dropped tunnel is now detected and torn down instead of spinning in its relay loop. (#1769)
+- Restored table tabs now load with the current page size instead of the page size from the previous session.
+- MSSQL: large `nvarchar(max)` and `text` values no longer truncate to 2048 bytes when copied or viewed. TEXTSIZE is raised at connect time. (#1783)
+- Oracle connections with Native network encryption turned on no longer hang for about a minute against servers that do not complete it, such as Oracle 11g. The login now stops after 30 seconds and explains how to turn the option off. (#1746)
 
 ## [0.53.0] - 2026-06-25
 
@@ -2384,7 +2435,9 @@ TablePro is a native macOS database client built with SwiftUI and AppKit, design
     - Custom SQL query templates
     - Performance optimized for large datasets
 
-[Unreleased]: https://github.com/TableProApp/TablePro/compare/v0.53.0...HEAD
+[Unreleased]: https://github.com/TableProApp/TablePro/compare/v0.55.0...HEAD
+[0.55.0]: https://github.com/TableProApp/TablePro/compare/v0.54.0...v0.55.0
+[0.54.0]: https://github.com/TableProApp/TablePro/compare/v0.53.0...v0.54.0
 [0.53.0]: https://github.com/TableProApp/TablePro/compare/v0.52.1...v0.53.0
 [0.52.1]: https://github.com/TableProApp/TablePro/compare/v0.52.0...v0.52.1
 [0.52.0]: https://github.com/TableProApp/TablePro/compare/v0.51.1...v0.52.0

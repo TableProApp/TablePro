@@ -9,13 +9,22 @@ import Testing
 
 @MainActor
 struct DatabaseSwitcherFilterTests {
-    private func makeViewModel(databaseNames: [String]) -> DatabaseSwitcherViewModel {
+    private func makeViewModel(
+        databaseNames: [String],
+        filter: Set<String> = [],
+        systemNames: [String] = []
+    ) -> DatabaseSwitcherViewModel {
+        let sidebarState = SharedSidebarState()
+        sidebarState.databaseFilterSelected = filter
         let vm = DatabaseSwitcherViewModel(
             connectionId: UUID(),
             currentDatabase: nil,
-            databaseType: .mysql
+            databaseType: .mysql,
+            sidebarState: sidebarState
         )
-        vm.databases = databaseNames.map { DatabaseMetadata.minimal(name: $0) }
+        vm.databases = databaseNames.map { name in
+            DatabaseMetadata.minimal(name: name, isSystem: systemNames.contains(name))
+        }
         return vm
     }
 
@@ -44,5 +53,33 @@ struct DatabaseSwitcherFilterTests {
         let vm = makeViewModel(databaseNames: ["app", "analytics"])
         vm.searchText = "zzz"
         #expect(vm.filteredDatabases.isEmpty)
+    }
+
+    @Test("Sidebar filter narrows the database list to the selected set")
+    func sidebarFilterNarrowsList() {
+        let vm = makeViewModel(
+            databaseNames: ["app", "analytics", "staging", "logs"],
+            filter: ["app", "staging"]
+        )
+        #expect(Set(vm.filteredDatabases.map(\.name)) == ["app", "staging"])
+    }
+
+    @Test("Empty sidebar filter still hides system databases")
+    func emptySidebarFilterHidesSystemDatabases() {
+        let vm = makeViewModel(
+            databaseNames: ["app", "analytics", "staging"],
+            systemNames: ["analytics"]
+        )
+        #expect(vm.filteredDatabases.map(\.name) == ["app", "staging"])
+    }
+
+    @Test("Sidebar filter keeps hiding system databases even when selected")
+    func sidebarFilterHidesSystemDatabasesWhenSelected() {
+        let vm = makeViewModel(
+            databaseNames: ["app", "mysql", "sys"],
+            filter: ["app", "mysql", "sys"],
+            systemNames: ["mysql", "sys"]
+        )
+        #expect(vm.filteredDatabases.map(\.name) == ["app"])
     }
 }

@@ -7,20 +7,30 @@ import Foundation
 import TableProPluginKit
 
 extension MainContentCoordinator {
-    func openTableTabQuery(tabId: UUID) async {
+    func openTableTabQuery(tabId: UUID, trigger: TableLoadTrigger = .userInitiated) async {
         guard await prepareTableTabFirstLoad(tabId: tabId) else { return }
-        executeTableTabQueryDirectly()
+        executeTableTabQueryDirectly(trigger: trigger)
     }
 
     @discardableResult
     func prepareTableTabFirstLoad(tabId: UUID) async -> Bool {
         guard tabManager.selectedTabId == tabId,
-              let tab = tabManager.tabs.first(where: { $0.id == tabId }),
+              var tab = tabManager.tabs.first(where: { $0.id == tabId }),
               tab.tabType == .table,
               let tableName = tab.tableContext.tableName, !tableName.isEmpty else { return false }
 
+        if resolveTableTabSchemaIfNeeded(tabId: tabId),
+           let resolvedTab = tabManager.tabs.first(where: { $0.id == tabId }) {
+            tab = resolvedTab
+        }
+
         let hint = PluginManager.shared.defaultSortHint(for: connection.type, table: tableName)
-        guard firstLoadNeedsSchemaColumns(for: tab, hint: hint) else { return true }
+        guard firstLoadNeedsSchemaColumns(for: tab, hint: hint) else {
+            if let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }) {
+                filterCoordinator.rebuildTableQuery(at: index)
+            }
+            return true
+        }
 
         await loadSchemaColumns(for: tableName, schema: tab.tableContext.schemaName)
 
@@ -34,6 +44,19 @@ extension MainContentCoordinator {
         if restoreApplied || sortApplied || !tabManager.tabs[index].columnLayout.hiddenColumns.isEmpty {
             filterCoordinator.rebuildTableQuery(at: index)
         }
+        return true
+    }
+
+    @discardableResult
+    func resolveTableTabSchemaIfNeeded(tabId: UUID) -> Bool {
+        guard let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }),
+              tabManager.tabs[index].tabType == .table,
+              tabManager.tabs[index].tableContext.schemaName == nil,
+              let resolvedSchema = DatabaseManager.shared.resolvedSchemaName(nil, for: connectionId)
+        else { return false }
+
+        tabManager.mutate(at: index) { $0.tableContext.schemaName = resolvedSchema }
+        filterCoordinator.rebuildTableQuery(at: index)
         return true
     }
 
@@ -52,7 +75,7 @@ extension MainContentCoordinator {
             tab.pendingRestoredSort ?? [],
             in: effectiveResultColumns(for: tab)
         )
-        let pageSize = max(1, AppSettingsManager.shared.dataGrid.defaultPageSize)
+        let pageSize = AppSettingsManager.shared.dataGrid.defaultPageSize
         let page = max(1, tab.restoredPage ?? 1)
 
         tabManager.mutate(at: index) { tab in

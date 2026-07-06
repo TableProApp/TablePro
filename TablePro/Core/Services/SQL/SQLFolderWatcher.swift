@@ -141,27 +141,17 @@ internal final class SQLFolderWatcher {
             return
         }
 
-        guard let enumerator = fileManager.enumerator(
-            at: folderURL,
-            includingPropertiesForKeys: [.isRegularFileKey, .contentModificationDateKey, .fileSizeKey],
-            options: [.skipsHiddenFiles]
-        ) else {
-            return
-        }
-
         var indexed: [LinkedSQLIndex.IndexedFile] = []
 
-        for case let url as URL in enumerator {
-            guard SQLFileService.supportedExtensions.contains(url.pathExtension.lowercased()) else { continue }
-
+        enumerateSQLFileURLs(in: folderURL, fileManager: fileManager) { url in
             let resourceValues = try? url.resourceValues(forKeys: [
                 .isRegularFileKey, .contentModificationDateKey, .fileSizeKey
             ])
-            guard resourceValues?.isRegularFile == true else { continue }
+            guard resourceValues?.isRegularFile == true else { return }
             let mtime = resourceValues?.contentModificationDate ?? Date()
             let fileSize = Int64(resourceValues?.fileSize ?? 0)
 
-            guard let relativePath = relativePathFor(url: url, base: folderURL) else { continue }
+            guard let relativePath = relativePathFor(url: url, base: folderURL) else { return }
             let header = FileTextLoader.loadHeader(url)
             let metadata = header.map { SQLFrontmatter.parse($0.content) } ?? SQLFrontmatter.Metadata()
             let encoding = header?.encoding ?? .utf8
@@ -182,6 +172,25 @@ internal final class SQLFolderWatcher {
         }
 
         await LinkedSQLIndex.shared.replaceAll(folderId: folder.id, files: indexed, folderURL: folderURL)
+    }
+
+    private static func enumerateSQLFileURLs(
+        in folderURL: URL,
+        fileManager: FileManager,
+        handle: (URL) -> Void
+    ) {
+        guard let enumerator = fileManager.enumerator(
+            at: folderURL,
+            includingPropertiesForKeys: [.isRegularFileKey, .contentModificationDateKey, .fileSizeKey],
+            options: [.skipsHiddenFiles]
+        ) else {
+            return
+        }
+
+        for case let url as URL in enumerator {
+            guard SQLFileService.supportedExtensions.contains(url.pathExtension.lowercased()) else { continue }
+            handle(url)
+        }
     }
 
     private static func pruneRemovedFolders(stillKnownIds: Set<UUID>) async {

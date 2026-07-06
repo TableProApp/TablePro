@@ -183,8 +183,7 @@ internal struct FavoritesTabView: View {
                 }
             }
         }
-        .listStyle(.sidebar)
-        .scrollContentBackground(.hidden)
+        .sidebarListLayout()
         .onDeleteCommand {
             deleteSelectedNode()
         }

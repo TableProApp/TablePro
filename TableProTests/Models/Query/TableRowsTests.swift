@@ -575,6 +575,33 @@ struct TableRowsMetadataTests {
         )
         #expect(delta == .none)
     }
+
+    @Test("updateDisplayMetadata stores columnComments and reports columnsReplaced")
+    func updateDisplayMetadataStoresComments() {
+        var table = Self.makeTable()
+        let delta = table.updateDisplayMetadata(columnComments: ["c1": "Primary key"])
+        #expect(delta == .columnsReplaced)
+        #expect(table.columnComments == ["c1": "Primary key"])
+    }
+
+    @Test("updateDisplayMetadata returns Delta.none when columnComments are unchanged")
+    func updateDisplayMetadataUnchangedCommentsIsNoOp() {
+        var table = Self.makeTable()
+        _ = table.updateDisplayMetadata(columnComments: ["c1": "Primary key"])
+        let delta = table.updateDisplayMetadata(columnComments: ["c1": "Primary key"])
+        #expect(delta == .none)
+    }
+
+    @Test("Factory preserves columnComments")
+    func factoryPreservesComments() {
+        let table = TableRows.from(
+            queryRows: [["a"]],
+            columns: ["c1"],
+            columnTypes: [.text(rawType: nil)],
+            columnComments: ["c1": "A note"]
+        )
+        #expect(table.columnComments == ["c1": "A note"])
+    }
 }
 
 @Suite("TableRows - metadata preservation regression")

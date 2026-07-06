@@ -166,7 +166,8 @@ struct DataGridView: NSViewRepresentable {
             hasMoveDelegate: delegate != nil,
             rowHeight: rowHeight,
             alternatingRows: alternatingRows,
-            reloadVersion: changeManager.reloadVersion
+            reloadVersion: changeManager.reloadVersion,
+            showObjectComments: AppSettingsManager.shared.general.showObjectComments
         )
 
         if snapshot != coordinator.lastUpdateSnapshot {
@@ -305,10 +306,14 @@ struct DataGridView: NSViewRepresentable {
         tableRows: TableRows,
         savedLayout: ColumnLayoutState?
     ) {
+        let columnComments = AppSettingsManager.shared.general.showObjectComments
+            ? tableRows.columnComments
+            : [:]
         coordinator.columnPool.reconcile(
             tableView: tableView,
             schema: coordinator.identitySchema,
             columnTypes: tableRows.columnTypes,
+            columnComments: columnComments,
             savedLayout: savedLayout,
             isEditable: isEditable,
             hiddenColumnNames: configuration.hiddenColumns,

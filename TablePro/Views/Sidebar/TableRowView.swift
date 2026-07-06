@@ -49,6 +49,13 @@ struct TableRow: View {
 
     @State private var isHovered = false
 
+    private var visibleComment: String? {
+        guard AppSettingsManager.shared.general.showObjectComments,
+              let comment = table.comment, !comment.isEmpty
+        else { return nil }
+        return comment
+    }
+
     @ViewBuilder
     private var pendingStateBadge: some View {
         if isPendingDelete {
@@ -65,8 +72,19 @@ struct TableRow: View {
     var body: some View {
         HStack(spacing: 6) {
             Label {
-                Text(table.name)
-                    .lineLimit(1)
+                HStack(spacing: 6) {
+                    Text(table.name)
+                        .lineLimit(1)
+                        .layoutPriority(1)
+                    if let visibleComment {
+                        Text(visibleComment)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                            .help(visibleComment)
+                    }
+                }
             } icon: {
                 Image(systemName: TableRowLogic.iconName(for: table.type))
                     .sidebarTint(Color.accentColor)

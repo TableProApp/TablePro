@@ -306,20 +306,14 @@ final class SQLCompletionAdapter: CodeSuggestionDelegate {
             cursor: cursorPosition?.range.location,
             fallback: context.replacementRange
         )
-        let insertText = entry.item.insertText
+        let resolution = SQLCompletionInsertion.resolve(for: entry.item)
 
         textView.textView.replaceCharacters(
             in: [replaceRange],
-            with: insertText
+            with: resolution.text
         )
 
-        let insertLength = (insertText as NSString).length
-        let newPosition: Int
-        if insertText.hasSuffix("()") {
-            newPosition = replaceRange.location + insertLength - 1
-        } else {
-            newPosition = replaceRange.location + insertLength
-        }
+        let newPosition = replaceRange.location + resolution.cursorOffset
         textView.setCursorPositions([CursorPosition(range: NSRange(location: newPosition, length: 0))])
     }
 }

@@ -99,6 +99,14 @@ final class SidebarViewModel {
             )
         }
     }
+    var isRecentsExpanded: Bool {
+        didSet {
+            UserDefaults.standard.set(
+                isRecentsExpanded,
+                forKey: SidebarPersistenceKey.recentsExpanded(connectionId: connectionId)
+            )
+        }
+    }
     var redisKeyTreeViewModel: RedisKeyTreeViewModel?
     var showOperationDialog = false
     var pendingOperationType: TableOperationType?
@@ -165,6 +173,10 @@ final class SidebarViewModel {
             legacyKey: SidebarPersistenceKey.legacyRedisKeysExpanded,
             defaultValue: true
         )
+        self.isRecentsExpanded = Self.loadExpansion(
+            perConnectionKey: SidebarPersistenceKey.recentsExpanded(connectionId: connectionId),
+            defaultValue: true
+        )
     }
 
     private static func loadInitialExpansion(connectionId: UUID) -> ExpansionState {
@@ -199,14 +211,14 @@ final class SidebarViewModel {
 
     private static func loadExpansion(
         perConnectionKey: String,
-        legacyKey: String,
+        legacyKey: String? = nil,
         defaultValue: Bool
     ) -> Bool {
         let defaults = UserDefaults.standard
         if defaults.object(forKey: perConnectionKey) != nil {
             return defaults.bool(forKey: perConnectionKey)
         }
-        if defaults.object(forKey: legacyKey) != nil {
+        if let legacyKey, defaults.object(forKey: legacyKey) != nil {
             let seeded = defaults.bool(forKey: legacyKey)
             defaults.set(seeded, forKey: perConnectionKey)
             return seeded
@@ -383,6 +395,10 @@ final class SidebarViewModel {
             cachedFilteredByKindFingerprint = fingerprint
         }
         return cachedFilteredByKind[kind] ?? []
+    }
+
+    func filteredRecentTables(_ tables: [TableInfo]) -> [TableInfo] {
+        applyQuery(filterQuery, to: tables)
     }
 
     func filteredRoutines(of kind: SidebarObjectKind, from routines: [RoutineInfo]) -> [RoutineInfo] {

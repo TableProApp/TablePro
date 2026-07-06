@@ -33,9 +33,9 @@ struct SQLReviewSheet: View {
     }
 
     /// Past this many characters the display is truncated; the full text stays available via Copy All.
-    static let maxDisplayChars = 20_000
+    nonisolated static let maxDisplayChars = 20_000
     /// Past this many characters tree-sitter is skipped in favour of a plain monospaced view.
-    static let treeSitterCutoff = 8_000
+    nonisolated static let treeSitterCutoff = 8_000
 
     var body: some View {
         VStack(spacing: 0) {
@@ -75,31 +75,37 @@ struct SQLReviewSheet: View {
 
     private func prepare() async {
         guard prepared == nil, !statements.isEmpty else { return }
-        let result = await Task.detached(priority: .userInitiated) { [statements, databaseType] in
-            Self.build(statements: statements, databaseType: databaseType)
+        let isJavaScript = PluginManager.shared.editorLanguage(for: databaseType) == .javascript
+        let result = await Task.detached(priority: .userInitiated) { [statements, isJavaScript] in
+            Self.build(statements: statements, isJavaScript: isJavaScript)
         }.value
         prepared = result
     }
 
     static func build(statements: [String], databaseType: DatabaseType) -> Prepared {
-        let isJS = PluginManager.shared.editorLanguage(for: databaseType) == .javascript
+        let isJavaScript = PluginManager.shared.editorLanguage(for: databaseType) == .javascript
+        return build(statements: statements, isJavaScript: isJavaScript)
+    }
+
+    nonisolated private static func build(statements: [String], isJavaScript: Bool) -> Prepared {
         var full = statements
             .map { $0.hasSuffix(";") ? $0 : $0 + ";" }
             .joined(separator: "\n\n")
-        if isJS {
+        if isJavaScript {
             full = convertExtendedJsonToShellSyntax(full)
         }
 
-        let fullCount = full.count
+        let nsFull = full as NSString
+        let fullCount = nsFull.length
         if fullCount > maxDisplayChars {
-            let head = full.prefix(maxDisplayChars)
+            let head = nsFull.substring(to: maxDisplayChars)
             let remaining = fullCount - maxDisplayChars
             let note = String(
                 format: String(localized: "-- … %d more characters not shown; use Copy All for the full output."),
                 remaining
             )
             return Prepared(
-                display: String(head) + "\n\n" + note,
+                display: head + "\n\n" + note,
                 full: full,
                 mode: .truncated
             )
@@ -112,7 +118,7 @@ struct SQLReviewSheet: View {
         )
     }
 
-    static func convertExtendedJsonToShellSyntax(_ mql: String) -> String {
+    nonisolated static func convertExtendedJsonToShellSyntax(_ mql: String) -> String {
         let pattern = #"\{"\$oid":\s*"([0-9a-fA-F]{24})"\}"#
         guard let regex = try? NSRegularExpression(pattern: pattern) else { return mql }
         let nsString = mql as NSString

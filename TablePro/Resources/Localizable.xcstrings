@@ -748,6 +748,12 @@
         }
       }
     },
+    "(Empty)" : {
+
+    },
+    "(NULL)" : {
+
+    },
     "(optional)" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -2020,6 +2026,9 @@
           }
         }
       }
+    },
+    "%@ switches reconnect the session" : {
+
     },
     "%@ was not found on this system. Install it with `brew install libpq` and link it." : {
       "localizations" : {
@@ -7307,6 +7316,9 @@
         }
       }
     },
+    "Adds a Recent section at the top of the Tables sidebar with the last tables you opened per connection and database." : {
+
+    },
     "admin" : {
       "localizations" : {
         "tr" : {
@@ -9732,6 +9744,9 @@
         }
       }
     },
+    "Apply a row limit when running queries and cap results at the configured row count" : {
+
+    },
     "Apply active filters (Cmd+Return)" : {
       "localizations" : {
         "tr" : {
@@ -11403,6 +11418,9 @@
           }
         }
       }
+    },
+    "Available in all connections" : {
+
     },
     "Avg Row" : {
       "localizations" : {
@@ -13402,6 +13420,7 @@
       }
     },
     "Cap user query results at the configured row count" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -13487,6 +13506,7 @@
       }
     },
     "Capped results show a Fetch All button to load the full set" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -15015,6 +15035,9 @@
         }
       }
     },
+    "Clear All Value Filters" : {
+
+    },
     "Clear applied filters without removing filter rows" : {
       "localizations" : {
         "tr" : {
@@ -15184,6 +15207,9 @@
           }
         }
       }
+    },
+    "Clear Recent Tables" : {
+
     },
     "Clear Recents" : {
       "localizations" : {
@@ -15355,6 +15381,9 @@
           }
         }
       }
+    },
+    "Clear Value Filter" : {
+
     },
     "CLI Connection Name" : {
       "localizations" : {
@@ -16826,6 +16855,12 @@
         }
       }
     },
+    "Collapse Junction Tables" : {
+
+    },
+    "Collapse junction tables into many-to-many relationships" : {
+
+    },
     "Collation" : {
       "localizations" : {
         "tr" : {
@@ -17486,6 +17521,9 @@
           }
         }
       }
+    },
+    "COMMENT" : {
+
     },
     "Compact" : {
       "localizations" : {
@@ -20930,6 +20968,7 @@
       }
     },
     "Could not fetch plugin registry" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -21348,6 +21387,9 @@
           }
         }
       }
+    },
+    "Couldn't reach the plugin registry. Check your connection and try again." : {
+
     },
     "Count all rows" : {
       "localizations" : {
@@ -30973,6 +31015,12 @@
         }
       }
     },
+    "Execute Query Without Limit" : {
+
+    },
+    "Execute Without Limit" : {
+
+    },
     "Executed %lld statements" : {
       "localizations" : {
         "tr" : {
@@ -31961,6 +32009,9 @@
           }
         }
       }
+    },
+    "Export as SQL" : {
+
     },
     "Export completed successfully" : {
       "localizations" : {
@@ -35624,6 +35675,9 @@
         }
       }
     },
+    "Filter Values…" : {
+
+    },
     "Filter with column" : {
       "localizations" : {
         "tr" : {
@@ -35679,6 +35733,9 @@
           }
         }
       }
+    },
+    "Filtered" : {
+
     },
     "Filtering by only this row" : {
       "extractionState" : "stale",
@@ -37791,6 +37848,9 @@
           }
         }
       }
+    },
+    "Group: %@" : {
+
     },
     "Groups & Tags:" : {
       "localizations" : {
@@ -62597,6 +62657,9 @@
         }
       }
     },
+    "Refresh plugin list" : {
+
+    },
     "Refreshing will discard all unsaved changes." : {
       "localizations" : {
         "tr" : {
@@ -63331,6 +63394,9 @@
           }
         }
       }
+    },
+    "Remove from Recent" : {
+
     },
     "Remove from Sidebar" : {
       "localizations" : {
@@ -67421,6 +67487,9 @@
         }
       }
     },
+    "Schema SQL" : {
+
+    },
     "Schema Switch Failed" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -68159,6 +68228,9 @@
           }
         }
       }
+    },
+    "Search values" : {
+
     },
     "Search..." : {
       "localizations" : {
@@ -68983,6 +69055,9 @@
           }
         }
       }
+    },
+    "SELECT queries without their own LIMIT run with this cap applied. The query text in the editor never changes. Capped results show a Fetch All button, and Execute Without Limit skips the cap for one run." : {
+
     },
     "Select schema" : {
       "localizations" : {
@@ -70724,6 +70799,9 @@
         }
       }
     },
+    "Show Object Comments" : {
+
+    },
     "Show Previous Tab" : {
       "localizations" : {
         "tr" : {
@@ -70751,6 +70829,9 @@
           }
         }
       }
+    },
+    "Show recent tables" : {
+
     },
     "Show row numbers" : {
       "localizations" : {
@@ -71031,6 +71112,9 @@
           }
         }
       }
+    },
+    "Showing saved plugin list. %@" : {
+
     },
     "Sidebar" : {
       "localizations" : {
@@ -75807,6 +75891,9 @@
         }
       }
     },
+    "Switching to schema '%@' timed out." : {
+
+    },
     "Sync" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -78058,6 +78145,9 @@
           }
         }
       }
+    },
+    "The connection is not available. Reconnect and try again." : {
+
     },
     "The Cursor CLI is not installed." : {
       "localizations" : {
@@ -82661,6 +82751,9 @@
         }
       }
     },
+    "Type %@ in the query to set where the cursor lands after keyword expansion." : {
+
+    },
     "Type shortcut..." : {
       "localizations" : {
         "tr" : {
@@ -85370,6 +85463,9 @@
         }
       }
     },
+    "Values from %d loaded rows" : {
+
+    },
     "VERBOSE (print progress)" : {
       "localizations" : {
         "tr" : {
@@ -86401,6 +86497,7 @@
       }
     },
     "When enabled, this favorite is visible in all connections" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {

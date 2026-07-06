@@ -16,6 +16,7 @@ final class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     private static let logger = Logger(subsystem: "com.TablePro.PostgreSQLDriver", category: "PostgreSQLPluginDriver")
 
     private static let undefinedTableSQLState = "42P01"
+    private static let undefinedFunctionSQLState = "42883"
 
     private var catalogPresence: PostgreSQLCatalogPresence?
 
@@ -154,22 +155,22 @@ final class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
 
     func fetchTables(schema: String?) async throws -> [PluginTableInfo] {
         let schemaLiteral = escapeLiteral(schema ?? core.currentSchema)
-        let query = PostgreSQLSchemaQueries.fetchTables(
-            schemaLiteral: schemaLiteral,
-            includeMaterializedViews: includesMaterializedViews(),
-            includeForeignTables: includesForeignTables()
-        )
+        func query(includeOptionalCatalogs: Bool, includeComments: Bool) -> String {
+            PostgreSQLSchemaQueries.fetchTables(
+                schemaLiteral: schemaLiteral,
+                includeMaterializedViews: includeOptionalCatalogs && includesMaterializedViews(),
+                includeForeignTables: includeOptionalCatalogs && includesForeignTables(),
+                includeComments: includeComments
+            )
+        }
 
         let result: PluginQueryResult
         do {
-            result = try await execute(query: query)
+            result = try await execute(query: query(includeOptionalCatalogs: true, includeComments: true))
         } catch let error as LibPQPluginError where error.sqlState == Self.undefinedTableSQLState {
-            let baseQuery = PostgreSQLSchemaQueries.fetchTables(
-                schemaLiteral: schemaLiteral,
-                includeMaterializedViews: false,
-                includeForeignTables: false
-            )
-            result = try await execute(query: baseQuery)
+            result = try await execute(query: query(includeOptionalCatalogs: false, includeComments: true))
+        } catch let error as LibPQPluginError where error.sqlState == Self.undefinedFunctionSQLState {
+            result = try await execute(query: query(includeOptionalCatalogs: false, includeComments: false))
         }
 
         return result.rows.compactMap { row -> PluginTableInfo? in
@@ -182,7 +183,8 @@ final class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
             case "VIEW":              type = "VIEW"
             default:                  type = "TABLE"
             }
-            return PluginTableInfo(name: name, type: type)
+            let comment = row[safe: 2]?.asText?.nilIfEmpty
+            return PluginTableInfo(name: name, type: type, comment: comment)
         }
     }
 

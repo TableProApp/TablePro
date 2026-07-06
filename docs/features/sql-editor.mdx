@@ -121,9 +121,18 @@ See [Query Parameters](/features/query-parameters) for details.
 | Action | Shortcut | Description |
 |--------|----------|-------------|
 | Execute query | `Cmd+Enter` | Runs query at cursor, or all selected statements |
+| Execute without limit | `Option+Cmd+Enter` | Runs the query at cursor without the row cap |
 | Cancel query | `Cmd+.` | Stops the running query |
 | Explain query | `Option+Cmd+E` | Show the execution plan for the query at cursor |
 | Format query | `Cmd+Shift+L` | Format the current query for readability |
+
+### Automatic Row Limit
+
+SELECT and WITH queries that have no `LIMIT` or `FETCH FIRST` of their own run with the configured row cap applied. For MySQL, PostgreSQL, SQLite, ClickHouse, DuckDB, Cassandra, Cloudflare D1, and libSQL, TablePro appends a `LIMIT` to the statement it sends to the server, so the database stops early instead of returning millions of rows. The query text in the editor never changes, and query history records your query text, not the rewritten statement.
+
+Your own `LIMIT` or `FETCH FIRST` always wins: the query is sent as written and the row cap does not apply to that run. Statements like `EXPLAIN`, `SHOW`, writes, and DDL are never limited. Statements ending in clauses that must follow `LIMIT` (such as `FOR UPDATE` or CQL's `ALLOW FILTERING`) are sent as written, with the cap enforced after the query runs. SQL Server and Oracle also keep the row cap applied after the query runs.
+
+When the cap trims a result, the status bar shows **truncated** with a **Fetch All** link. To run one query without the cap, use the Execute button's menu (**Execute Without Limit**), the Query menu, or `Option+Cmd+Enter`. Configure or disable the cap in **Settings > Editor** (**Truncate query results**, **Row cap**).
 
 ### Query Results
 

@@ -52,8 +52,7 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
         )
         window.identifier = NSUserInterfaceItemIdentifier("main")
         window.minSize = NSSize(width: 720, height: 480)
-        window.isRestorable = AppSettingsStorage.shared.loadGeneral().startupBehavior == .reopenLast
-        window.restorationClass = TabWindowRestoration.self
+        window.isRestorable = false
         window.toolbarStyle = .unified
         window.titleVisibility = .visible
         window.tabbingMode = .preferred
@@ -86,11 +85,6 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
     @available(*, unavailable)
     required init?(coder: NSCoder) {
         fatalError("TabWindowController does not support NSCoder init")
-    }
-
-    override func encodeRestorableState(with coder: NSCoder) {
-        super.encodeRestorableState(with: coder)
-        coder.encode(payload.connectionId.uuidString as NSString, forKey: TabWindowRestoration.connectionIdKey)
     }
 
     // MARK: - NSWindowDelegate

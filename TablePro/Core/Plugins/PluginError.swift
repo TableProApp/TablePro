@@ -13,6 +13,7 @@ enum PluginError: LocalizedError {
     case pluginOutdated(pluginVersion: Int, requiredVersion: Int)
     case cannotUninstallBuiltIn
     case notFound
+    case registryUnreachable
     case noCompatibleBinary
     case installFailed(String)
     case pluginConflict(existingName: String)
@@ -40,6 +41,8 @@ enum PluginError: LocalizedError {
             return String(localized: "Built-in plugins cannot be uninstalled")
         case .notFound:
             return String(localized: "Plugin not found")
+        case .registryUnreachable:
+            return String(localized: "Couldn't reach the plugin registry. Check your connection and try again.")
         case .noCompatibleBinary:
             return String(localized: "Plugin does not contain a compatible binary for this architecture")
         case .installFailed(let reason):

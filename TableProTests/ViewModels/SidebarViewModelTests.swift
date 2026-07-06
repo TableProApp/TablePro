@@ -487,6 +487,25 @@ struct SidebarViewModelMultiSectionTests {
         UserDefaults.standard.removeObject(forKey: key)
     }
 
+    @Test("recents expansion defaults to expanded and persists across init")
+    @MainActor
+    func recentsExpansionPersists() {
+        let connectionId = UUID()
+        let key = SidebarPersistenceKey.recentsExpanded(connectionId: connectionId)
+        UserDefaults.standard.removeObject(forKey: key)
+
+        let first = makeViewModel(connectionId: connectionId)
+        #expect(first.isRecentsExpanded == true)
+
+        first.isRecentsExpanded = false
+        #expect(UserDefaults.standard.bool(forKey: key) == false)
+
+        let second = makeViewModel(connectionId: connectionId)
+        #expect(second.isRecentsExpanded == false)
+
+        UserDefaults.standard.removeObject(forKey: key)
+    }
+
     @Test("expansion seeds .table from legacy per-connection key on first init")
     @MainActor
     func legacyMigrationFromPerConnectionKey() {

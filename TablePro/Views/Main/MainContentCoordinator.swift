@@ -166,7 +166,8 @@ final class MainContentCoordinator {
     var databaseToDrop: String?
     var importFileURL: URL?
     var exportPreselectedTableNames: Set<String>?
-    var needsLazyLoad = false
+    var pendingLoadTrigger: TableLoadTrigger?
+    @ObservationIgnored var deferredRestoreLoadTabId: UUID?
 
     @ObservationIgnored var displayFormatsCache: [UUID: DisplayFormatsCacheEntry] = [:]
 
@@ -582,21 +583,21 @@ final class MainContentCoordinator {
         _teardownScheduled.withLock { $0 = false }
     }
 
-    func refreshTables() async {
+    func refreshTables(currentDatabaseOnly: Bool = false) async {
         if let existing = schemaReloadTask {
             await existing.value
             return
         }
         let task = Task { [weak self] in
             guard let self else { return }
-            await self.reloadSchema()
+            await self.reloadSchema(currentDatabaseOnly: currentDatabaseOnly)
         }
         schemaReloadTask = task
         await task.value
         schemaReloadTask = nil
     }
 
-    private func reloadSchema() async {
+    private func reloadSchema(currentDatabaseOnly: Bool = false) async {
         schemaColumns.removeAll()
         let schemaService = services.schemaService
         let connectionId = connectionId
@@ -612,10 +613,14 @@ final class MainContentCoordinator {
                     connection: connection
                 )
             }
+        } catch is CancellationError {
+            return
         } catch {
             Self.logger.warning("Schema refresh failed: \(error.localizedDescription, privacy: .public)")
+            schemaService.markLoadFailed(connectionId: connectionId, message: error.localizedDescription)
         }
-        await DatabaseTreeMetadataService.shared.refreshLoadedTables(connectionId: connectionId)
+        let database = currentDatabaseOnly ? activeDatabaseName : nil
+        await DatabaseTreeMetadataService.shared.refreshLoadedTables(connectionId: connectionId, database: database)
         await reconcilePostSchemaLoad()
     }
 
@@ -860,12 +865,12 @@ final class MainContentCoordinator {
 
     // MARK: - Query Execution
 
-    func runQuery() {
+    func runQuery(trigger: TableLoadTrigger = .userInitiated, bypassRowLimit: Bool = false) {
         guard let (tab, index) = tabManager.selectedTabAndIndex,
               !tab.execution.isExecuting else { return }
 
         if tab.tabType == .table {
-            executeTableTabQueryDirectly()
+            executeTableTabQueryDirectly(trigger: trigger)
             return
         }
 
@@ -919,7 +924,8 @@ final class MainContentCoordinator {
                 dispatchParameterizedStatements(
                     paramStatements,
                     parameters: reconciled,
-                    tabIndex: index
+                    tabIndex: index,
+                    bypassRowLimit: bypassRowLimit
                 )
                 return
             }
@@ -929,13 +935,13 @@ final class MainContentCoordinator {
         guard !statements.isEmpty else { return }
 
         tabManager.tabStructureVersion += 1
-        dispatchStatements(statements, tabIndex: index)
+        dispatchStatements(statements, tabIndex: index, bypassRowLimit: bypassRowLimit)
     }
 
     /// Execute table tab query directly.
     /// Table tab queries are always app-generated SELECTs, so they skip dangerous-query
     /// checks but still respect safe mode levels that apply to all queries.
-    func executeTableTabQueryDirectly() {
+    func executeTableTabQueryDirectly(trigger: TableLoadTrigger = .userInitiated) {
         guard let (tab, index) = tabManager.selectedTabAndIndex,
               !tab.execution.isExecuting else { return }
 
@@ -963,13 +969,13 @@ final class MainContentCoordinator {
                 )
                 switch decision {
                 case .authorized:
-                    executeQueryInternal(sql, isAutoLoad: true)
+                    executeQueryInternal(sql, isAutoLoad: true, trigger: trigger)
                 case .denied(let reason):
                     tabManager.mutate(at: index) { $0.execution.errorMessage = reason }
                 }
             }
         } else {
-            executeQueryInternal(sql, isAutoLoad: true)
+            executeQueryInternal(sql, isAutoLoad: true, trigger: trigger)
         }
     }
 
@@ -1117,20 +1123,14 @@ final class MainContentCoordinator {
 
     internal func executeQueryInternal(
         _ sql: String,
-        isAutoLoad: Bool = false
+        isAutoLoad: Bool = false,
+        trigger: TableLoadTrigger = .userInitiated,
+        bypassRowLimit: Bool = false
     ) {
         guard let (selectedTab, index) = tabManager.selectedTabAndIndex,
               !selectedTab.execution.isExecuting else { return }
 
-        if currentQueryTask != nil {
-            currentQueryTask?.cancel()
-            do {
-                try services.databaseManager.driver(for: connectionId)?.cancelQuery()
-            } catch {
-                Self.logger.warning("cancelQuery failed: \(error.localizedDescription, privacy: .public)")
-            }
-            currentQueryTask = nil
-        }
+        cancelInFlightQueryTask()
         queryGeneration += 1
         let capturedGeneration = queryGeneration
 
@@ -1151,7 +1151,7 @@ final class MainContentCoordinator {
         let conn = connection
         let tabId = tabManager.tabs[index].id
 
-        let rowCap = resolveRowCap(sql: sql, tabType: tab.tabType)
+        let plan = resolveExecutionPlan(sql: sql, tabType: tab.tabType, bypassLimit: bypassRowLimit)
         let (tableName, isEditable) = resolveTableEditability(tab: tab, sql: sql)
 
         let needsMetadataFetch: Bool
@@ -1166,6 +1166,12 @@ final class MainContentCoordinator {
             )
         }
         let connId = connectionId
+        let currentDatabase = activeDatabaseName
+        let targetDatabase = tab.tableContext.databaseName.isEmpty
+            ? currentDatabase
+            : tab.tableContext.databaseName
+        let perTabSwitchAllowed = !services.pluginManager.requiresReconnectForDatabaseSwitch(for: connection.type)
+        let needsDatabaseSwitch = perTabSwitchAllowed && !targetDatabase.isEmpty && targetDatabase != currentDatabase
 
         currentQueryTask = Task { [weak self] in
             guard let self else { return }
@@ -1179,10 +1185,14 @@ final class MainContentCoordinator {
                         tabManager.mutate(tabId: tabId) { $0.execution.isExecuting = false }
                         currentQueryTask = nil
                         toolbarState.setExecuting(false)
-                        needsLazyLoad = true
+                        pendingLoadTrigger = trigger
                     }
                     return
                 }
+            }
+
+            if needsDatabaseSwitch {
+                await switchDatabaseBeforeExecution(to: targetDatabase, connectionId: connId)
             }
 
             let schemaTask: Task<FetchedTableSchema, Error>?
@@ -1194,9 +1204,9 @@ final class MainContentCoordinator {
 
             do {
                 let fetchResult = try await queryExecutor.executeQuery(
-                    sql: sql,
+                    sql: plan.executedSQL,
                     parameters: nil,
-                    rowCap: rowCap
+                    rowCap: plan.rowCap
                 )
 
                 guard !Task.isCancelled else {
@@ -1279,13 +1289,24 @@ final class MainContentCoordinator {
                     if error is CancellationError || Task.isCancelled { return }
                     guard capturedGeneration == queryGeneration else { return }
                     if isAutoLoad, services.databaseManager.driver(for: connectionId)?.status != .connected {
-                        needsLazyLoad = true
+                        pendingLoadTrigger = trigger
                         return
                     }
-                    handleQueryExecutionError(error, sql: sql, tabId: tabId, connection: conn)
+                    handleQueryExecutionError(error, sql: plan.executedSQL, tabId: tabId, connection: conn, trigger: trigger)
                 }
             }
         }
+    }
+
+    private func cancelInFlightQueryTask() {
+        guard currentQueryTask != nil else { return }
+        currentQueryTask?.cancel()
+        do {
+            try services.databaseManager.driver(for: connectionId)?.cancelQuery()
+        } catch {
+            Self.logger.warning("cancelQuery failed: \(error.localizedDescription, privacy: .public)")
+        }
+        currentQueryTask = nil
     }
 
     /// Reset execution state when a query is cancelled
@@ -1367,7 +1388,10 @@ final class MainContentCoordinator {
         if tab.tabType == .query {
             let tabId = tab.id
             let capturedSort = newState
-            let baseQuery = tab.pagination.baseQueryForMore ?? tab.content.query
+            let hasBoundParameters = tab.pagination.baseQueryParameterValues?.isEmpty == false
+            let baseQuery = hasBoundParameters
+                ? tab.content.query
+                : (tab.pagination.baseQueryForMore ?? tab.content.query)
             let capturedColumns = tableRows.columns
             confirmDiscardChangesIfNeeded(action: .sort) { [weak self] confirmed in
                 guard let self, confirmed else { return }
