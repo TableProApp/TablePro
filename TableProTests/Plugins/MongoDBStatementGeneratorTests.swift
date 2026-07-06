@@ -255,6 +255,36 @@ struct MongoDBStatementGeneratorTests {
         #expect(document?["leadingZero"] as? String == "01")
     }
 
+    @Test("Insert quotes integers that overflow Int64 but keeps in-range integers numeric")
+    func insertQuotesInt64Overflow() {
+        let gen = MongoDBStatementGenerator(
+            collectionName: "users",
+            columns: ["_id", "overflow", "maxInt64"]
+        )
+
+        let change = PluginRowChange(
+            rowIndex: 0,
+            type: .insert,
+            cellChanges: [],
+            originalRow: nil
+        )
+
+        let insertedData: [Int: [PluginCellValue]] = [
+            0: [nil, "12345678901234567890", "9223372036854775807"]
+        ]
+
+        let results = gen.generateStatements(
+            from: [change],
+            insertedRowData: insertedData,
+            deletedRowIndices: [],
+            insertedRowIndices: [0]
+        )
+
+        let document = firstArgumentObject(in: results[0].statement)
+        #expect(document?["overflow"] as? String == "12345678901234567890")
+        #expect(document?["maxInt64"] as? Int64 == 9_223_372_036_854_775_807)
+    }
+
     @Test("Insert not in insertedRowIndices is skipped")
     func insertNotInIndicesSkipped() {
         let gen = MongoDBStatementGenerator(
@@ -564,6 +594,30 @@ struct MongoDBStatementGeneratorTests {
         let stmt = results[0].statement
         #expect(stmt.contains("deleteMany"))
         #expect(stmt.contains("\"$in\": [1, 2]"))
+    }
+
+    @Test("Delete quotes an _id that overflows Int64 to preserve precision")
+    func deleteQuotesInt64OverflowId() {
+        let gen = MongoDBStatementGenerator(
+            collectionName: "users",
+            columns: ["_id", "name"]
+        )
+
+        let change = PluginRowChange(
+            rowIndex: 0,
+            type: .delete,
+            cellChanges: [],
+            originalRow: ["12345678901234567890", "Alice"]
+        )
+
+        let results = gen.generateStatements(
+            from: [change],
+            insertedRowData: [:],
+            deletedRowIndices: [0],
+            insertedRowIndices: []
+        )
+
+        #expect(results[0].statement.contains("{\"_id\": \"12345678901234567890\"}"))
     }
 
     @Test("Single delete without _id falls back to all-field match")

@@ -387,6 +387,23 @@ struct MongoDBQueryBuilderTests {
         }
     }
 
+    @Test("Filter document quotes integers that overflow Int64 to preserve precision")
+    func filterDocumentQuotesInt64Overflow() {
+        let doc = builder.buildFilterDocument(
+            from: [(column: "code", op: "=", value: "12345678901234567890")]
+        )
+        let parsed = parseFilter(doc)
+        #expect(parsed?["code"] as? String == "12345678901234567890")
+    }
+
+    @Test("Filter document emits the largest Int64 integer unquoted")
+    func filterDocumentEmitsMaxInt64() {
+        let doc = builder.buildFilterDocument(
+            from: [(column: "code", op: "=", value: "9223372036854775807")]
+        )
+        #expect(doc.contains("\"code\": 9223372036854775807"))
+    }
+
     @Test("Filter document with null literal")
     func filterDocumentNullLiteral() {
         let doc = builder.buildFilterDocument(

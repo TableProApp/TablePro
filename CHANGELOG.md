@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- MongoDB filters and generated edit statements now quote non-standard numeric-looking values such as `.5`, `1.`, `+7`, and `01` instead of emitting invalid JSON.
+- MongoDB filters and generated edit statements now quote numeric-looking values that would not round-trip, such as `.5`, `1.`, `+7`, `01`, and integers larger than 64 bits, instead of emitting invalid or lossy JSON.
 - Switching schemas on an Oracle connection no longer hangs on an infinite loading spinner. Oracle now switches by schema like BigQuery, the sidebar lists every schema with its tables loading on expand, Oracle queries respect the query timeout setting and reconnect automatically after a timeout, and a schema load that fails shows an error with a Retry button instead of spinning forever. Works with an already-installed Oracle plugin; updating the plugin adds the query timeout enforcement. (#1807)
 
 ## [0.55.0] - 2026-07-04

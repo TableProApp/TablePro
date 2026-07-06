@@ -169,7 +169,7 @@ struct MongoDBStatementGenerator {
             }
             if isObjectIdString(idValue) {
                 idValues.append("{\"$oid\": \"\(idValue)\"}")
-            } else if isValidJsonNumber(idValue) {
+            } else if MongoDBJsonNumber.isValid(idValue) {
                 idValues.append(idValue)
             } else {
                 idValues.append("\"\(escapeJsonString(idValue))\"")
@@ -218,7 +218,7 @@ struct MongoDBStatementGenerator {
         if isObjectIdString(idValue) {
             return "{\"_id\": {\"$oid\": \"\(idValue)\"}}"
         }
-        if isValidJsonNumber(idValue) {
+        if MongoDBJsonNumber.isValid(idValue) {
             return "{\"_id\": \(idValue)}"
         }
         return "{\"_id\": \"\(escapeJsonString(idValue))\"}"
@@ -247,7 +247,7 @@ struct MongoDBStatementGenerator {
         if value == "null" {
             return "null"
         }
-        if isValidJsonNumber(value) {
+        if MongoDBJsonNumber.isValid(value) {
             return value
         }
         // JSON object or array
@@ -256,14 +256,6 @@ struct MongoDBStatementGenerator {
             return value
         }
         return "\"\(escapeJsonString(value))\""
-    }
-
-    private func isValidJsonNumber(_ value: String) -> Bool {
-        let pattern = #"^-?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][+-]?[0-9]+)?$"#
-        guard let range = value.range(of: pattern, options: .regularExpression) else {
-            return false
-        }
-        return range == value.startIndex ..< value.endIndex
     }
 
     /// Escape special characters for JSON strings (handles Unicode control chars U+0000-U+001F)
