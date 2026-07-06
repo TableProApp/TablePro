@@ -168,6 +168,18 @@ Works with Git repos, Dropbox, network drives.
   />
 </Frame>
 
+## Team Catalog <sup>Team</sup>
+
+Publish connections to a shared folder in one step so your teammates pick them up as [Linked Folders](#linked-folders). Passwords, passphrases, TOTP secrets, and secure plugin fields are never written. Team Catalog is part of the [Team plan](/features/team).
+
+Right-click a connection > **Share** > **Publish to Team Catalog...**. Select several first to publish them together.
+
+The first time, TablePro asks for the shared folder. Point it at a Git repo, a Dropbox folder, or a network drive that your team already shares. TablePro remembers it for next time.
+
+Each connection is written as its own `.tablepro` file, named after the connection. Republishing a connection overwrites its file, so the catalog stays current as you rename hosts or add connections.
+
+Teammates add the same folder under **Settings** (`Cmd+,`) > **Account** > **Linked Folders**. Published connections show up read-only in their sidebar, and each person enters their own password.
+
 ## Environment Variables <sup>Pro</sup>
 
 Use `$VAR` and `${VAR}` in `.tablepro` files. Resolved at connection time.
@@ -198,6 +210,22 @@ Add a `passwordSource` object to the connection:
 - `command`: runs the command through `/bin/bash` and reads stdout. Works with `op`, `vault`, `pass`, and `sops`. A trailing newline is trimmed, a non-zero exit fails the connection, and the command has a 30 second timeout.
 
 When `passwordSource` is set it replaces the Keychain lookup for that connection. If resolution fails, the connection reports the error instead of falling back to the Keychain.
+
+### Secret managers
+
+For 1Password, HashiCorp Vault, and AWS Secrets Manager there are dedicated kinds. They build the CLI call for you and quote every argument, so a reference can never break out into the shell.
+
+```json
+{ "passwordSource": { "kind": "onePassword", "reference": "op://vault/feature-x/password" } }
+{ "passwordSource": { "kind": "vault", "path": "secret/data/staging/db", "field": "password" } }
+{ "passwordSource": { "kind": "awsSecretsManager", "secretId": "prod/db", "jsonKey": "password" } }
+```
+
+- `onePassword`: runs `op read` on the secret reference. Sign in to the 1Password CLI first (`op signin`).
+- `vault`: runs `vault kv get` for one field at a path. Set `VAULT_ADDR` and `VAULT_TOKEN` in TablePro's environment.
+- `awsSecretsManager`: runs `aws secretsmanager get-secret-value` for the secret. When the secret is a JSON blob, set `jsonKey` to pull one field out of it. Leave `jsonKey` off to use the whole value.
+
+The CLI tools must be on `PATH`. TablePro also looks in `/usr/local/bin` and `/opt/homebrew/bin`. Each call has the same 30 second timeout as `command`.
 
 ## File Format
 
