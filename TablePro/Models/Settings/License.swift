@@ -136,6 +136,23 @@ struct LicenseActivationRequest: Codable {
     }
 }
 
+/// Request body for accepting a team invitation (activation via invite code)
+struct LicenseAcceptInviteRequest: Codable {
+    let token: String
+    let machineId: String
+    let machineName: String
+    let appVersion: String
+    let osVersion: String
+
+    private enum CodingKeys: String, CodingKey {
+        case token
+        case machineId = "machine_id"
+        case machineName = "machine_name"
+        case appVersion = "app_version"
+        case osVersion = "os_version"
+    }
+}
+
 /// Request body for license validation
 struct LicenseValidationRequest: Codable {
     let licenseKey: String

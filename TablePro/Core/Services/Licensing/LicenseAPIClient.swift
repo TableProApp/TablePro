@@ -45,6 +45,12 @@ final class LicenseAPIClient {
         return try await post(url: url, body: request)
     }
 
+    /// Accept a team invitation, activating this machine as a member
+    func acceptInvite(request: LicenseAcceptInviteRequest) async throws -> SignedLicensePayload {
+        let url = baseURL.appendingPathComponent("accept-invite")
+        return try await post(url: url, body: request)
+    }
+
     /// Validate an existing activation (periodic re-validation)
     func validate(request: LicenseValidationRequest) async throws -> SignedLicensePayload {
         let url = baseURL.appendingPathComponent("validate")
