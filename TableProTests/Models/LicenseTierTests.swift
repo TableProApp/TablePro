@@ -30,6 +30,13 @@ struct LicenseTierTests {
         #expect(LicenseTier(rawValue: "enterprise") == .unknown("enterprise"))
     }
 
+    @Test("An empty or blank tier is treated as starter, not a super-tier")
+    func emptyTierIsStarter() {
+        #expect(LicenseTier(rawValue: "") == .starter)
+        #expect(LicenseTier(rawValue: "   ") == .starter)
+        #expect(LicenseTier(rawValue: "").unlocks(.team) == false)
+    }
+
     // MARK: - unlocks
 
     @Test("starter unlocks only starter features")

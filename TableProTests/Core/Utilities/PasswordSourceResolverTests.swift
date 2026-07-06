@@ -247,6 +247,22 @@ struct PasswordSourceResolverTests {
         }
     }
 
+    @Test("Throws when the JSON value is null or a container, not a usable secret")
+    func throwsOnNonStringJsonValue() {
+        #expect(throws: PasswordSourceResolver.ResolutionError.self) {
+            _ = try PasswordSourceResolver.extractJsonField("password", from: #"{"password":null}"#)
+        }
+        #expect(throws: PasswordSourceResolver.ResolutionError.self) {
+            _ = try PasswordSourceResolver.extractJsonField("password", from: #"{"password":{"nested":1}}"#)
+        }
+    }
+
+    @Test("Extracts a numeric JSON value as its string form")
+    func extractsNumericJsonValue() throws {
+        let value = try PasswordSourceResolver.extractJsonField("secret", from: #"{"secret":5432}"#)
+        #expect(value == "5432")
+    }
+
     private func makeTempFile(contents: String) throws -> URL {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("tablepro_pwtest_\(UUID().uuidString).pw")

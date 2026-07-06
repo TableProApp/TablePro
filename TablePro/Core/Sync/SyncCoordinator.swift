@@ -519,10 +519,10 @@ final class SyncCoordinator {
                 sshProfileIdsToDelete.insert(uuid)
             } else if name.hasPrefix("FavoriteTable_") {
                 tableFavoriteIdsToDelete.insert(String(name.dropFirst("FavoriteTable_".count)))
-            } else if name.hasPrefix("FavoriteFolder_"),
+            } else if settings.syncSQLFavorites, name.hasPrefix("FavoriteFolder_"),
                       let uuid = UUID(uuidString: String(name.dropFirst("FavoriteFolder_".count))) {
                 sqlFolderIdsToDelete.insert(uuid)
-            } else if name.hasPrefix("Favorite_"),
+            } else if settings.syncSQLFavorites, name.hasPrefix("Favorite_"),
                       let uuid = UUID(uuidString: String(name.dropFirst("Favorite_".count))) {
                 sqlFavoriteIdsToDelete.insert(uuid)
             }

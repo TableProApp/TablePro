@@ -109,7 +109,10 @@ enum PasswordSourceResolver {
         if let stringValue = value as? String {
             return try nonEmpty(stringValue.trimmingCharacters(in: .whitespacesAndNewlines))
         }
-        return try nonEmpty(String(describing: value))
+        if let number = value as? NSNumber {
+            return try nonEmpty(number.stringValue)
+        }
+        throw ResolutionError.invalidSecretJson
     }
 
     private static func resolveExternalTool(_ source: PasswordSource) async throws -> String {

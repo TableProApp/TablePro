@@ -14,8 +14,8 @@ internal enum LicenseTier: Equatable {
     case unknown(String)
 
     init(rawValue: String) {
-        switch rawValue.lowercased() {
-        case "starter":
+        switch rawValue.trimmingCharacters(in: .whitespaces).lowercased() {
+        case "", "starter":
             self = .starter
         case "team":
             self = .team
