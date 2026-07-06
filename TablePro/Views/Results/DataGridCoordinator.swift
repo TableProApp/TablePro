@@ -113,6 +113,14 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         return saved.mergingWidths(liveWidths)
     }
 
+    static func liveWidthsForSameTable(
+        previous: ColumnLayoutTableKey?,
+        current: ColumnLayoutTableKey?,
+        liveWidths: [String: CGFloat]
+    ) -> [String: CGFloat] {
+        previous == current ? liveWidths : [:]
+    }
+
     func currentColumnWidths() -> [String: CGFloat] {
         guard let tableView else { return [:] }
         var widths: [String: CGFloat] = [:]
