@@ -139,15 +139,18 @@ struct PluginMetadataSnapshot: Sendable {
         let additionalConnectionFields: [ConnectionField]
         let category: DatabaseCategory
         let tagline: String
+        let hidesBuiltInPassword: Bool
 
         init(
             additionalConnectionFields: [ConnectionField] = [],
             category: DatabaseCategory = .other,
-            tagline: String = ""
+            tagline: String = "",
+            hidesBuiltInPassword: Bool = false
         ) {
             self.additionalConnectionFields = additionalConnectionFields
             self.category = category
             self.tagline = tagline
+            self.hidesBuiltInPassword = hidesBuiltInPassword
         }
 
         static let defaults = ConnectionConfig()
@@ -986,7 +989,8 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                 category: existingSnapshot?.connection.category
                     ?? Self.fallbackCategory(forTypeId: driverType.databaseTypeId),
                 tagline: existingSnapshot?.connection.tagline
-                    ?? Self.fallbackTagline(forTypeId: driverType.databaseTypeId)
+                    ?? Self.fallbackTagline(forTypeId: driverType.databaseTypeId),
+                hidesBuiltInPassword: existingSnapshot?.connection.hidesBuiltInPassword ?? false
             )
         )
     }

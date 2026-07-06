@@ -16,15 +16,26 @@ extension Sequence where Element == ConnectionField {
                 let value = values[field.id] ?? field.defaultValue
                 return value != field.defaultValue
             default:
-                return true
+                return isVisible(field, forValues: values)
             }
         }
+    }
+
+    func isVisible(_ field: ConnectionField, forValues values: [String: String]) -> Bool {
+        guard let rule = field.visibleWhen else { return true }
+        let defaultValue = first { $0.id == rule.fieldId }?.defaultValue ?? ""
+        let currentValue = values[rule.fieldId] ?? defaultValue
+        return rule.values.contains(currentValue)
     }
 }
 
 extension PluginManager {
     func hidesPassword(for connection: DatabaseConnection) -> Bool {
-        additionalConnectionFields(for: connection.type)
+        if PluginMetadataRegistry.shared.snapshot(forTypeId: connection.type.pluginTypeId)?
+            .connection.hidesBuiltInPassword == true {
+            return true
+        }
+        return additionalConnectionFields(for: connection.type)
             .hidesPassword(forValues: connection.additionalFields)
     }
 }
