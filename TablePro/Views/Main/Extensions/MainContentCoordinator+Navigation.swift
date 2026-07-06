@@ -128,7 +128,7 @@ extension MainContentCoordinator {
                         tabManager.mutate(at: tabIndex) { $0.pagination.reset() }
                         toolbarState.isTableTab = true
                     }
-                    restoreLastHiddenColumnsForTable(tableName)
+                    restoreLastHiddenColumnsForTable()
                     restoreFiltersForTable(tableName)
                     if let dbIndex = Int(currentDatabase) {
                         selectRedisDatabaseAndQuery(dbIndex)
@@ -249,7 +249,7 @@ extension MainContentCoordinator {
             }
             toolbarState.isTableTab = true
         }
-        restoreLastHiddenColumnsForTable(tableName)
+        restoreLastHiddenColumnsForTable()
         restoreFiltersForTable(tableName)
         if isInPlace, let dbIndex = Int(currentDatabase) {
             selectRedisDatabaseAndQuery(dbIndex)
@@ -291,7 +291,7 @@ extension MainContentCoordinator {
             }
             toolbarState.isTableTab = true
         }
-        restoreLastHiddenColumnsForTable(tableName)
+        restoreLastHiddenColumnsForTable()
         restoreFiltersForTable(tableName)
         if let tabId = tabManager.selectedTab?.id {
             cancelTableLoad(for: tabId)

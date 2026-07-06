@@ -6,9 +6,9 @@ import Testing
 
 @MainActor
 private final class StubColumnLayoutPersister: ColumnLayoutPersisting {
-    func load(for tableName: String, connectionId: UUID) -> ColumnLayoutState? { nil }
-    func save(_ layout: ColumnLayoutState, for tableName: String, connectionId: UUID) {}
-    func clear(for tableName: String, connectionId: UUID) {}
+    func load(for key: ColumnLayoutTableKey) -> ColumnLayoutState? { nil }
+    func save(_ layout: ColumnLayoutState, for key: ColumnLayoutTableKey) {}
+    func clear(for key: ColumnLayoutTableKey) {}
 }
 
 @Suite("TableViewCoordinator column index cache")

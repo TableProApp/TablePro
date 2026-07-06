@@ -321,6 +321,17 @@ struct ColumnLayoutState: Equatable {
     var columnWidths: [String: CGFloat] = [:]
     var columnOrder: [String]?
     var hiddenColumns: Set<String> = []
+
+    mutating func applyGeometry(from other: ColumnLayoutState) {
+        columnWidths = other.columnWidths
+        columnOrder = other.columnOrder
+    }
+
+    func mergingWidths(_ liveWidths: [String: CGFloat]) -> ColumnLayoutState {
+        var result = self
+        result.columnWidths.merge(liveWidths) { _, live in live }
+        return result
+    }
 }
 
 struct TabExecutionState: Equatable {

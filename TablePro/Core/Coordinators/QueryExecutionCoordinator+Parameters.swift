@@ -462,12 +462,6 @@ extension QueryExecutionCoordinator {
                 wasSuccessful: false,
                 errorMessage: error.localizedDescription
             )
-
-            AlertHelper.showErrorSheet(
-                title: String(localized: "Query Execution Failed"),
-                message: contextMsg,
-                window: parent.contentWindow
-            )
         }
     }
 }

@@ -488,8 +488,7 @@ extension QueryExecutionCoordinator {
         _ error: Error,
         sql: String,
         tabId: UUID,
-        connection conn: DatabaseConnection,
-        trigger: TableLoadTrigger = .userInitiated
+        connection conn: DatabaseConnection
     ) {
         parent.currentQueryTask = nil
         parent.tabManager.mutate(tabId: tabId) { tab in
@@ -508,31 +507,6 @@ extension QueryExecutionCoordinator {
             wasSuccessful: false,
             errorMessage: error.localizedDescription
         )
-
-        guard !trigger.suppressesFailureModal else { return }
-
-        let errorMessage = error.localizedDescription
-        let queryCopy = sql
-        Task { [weak self, parent] in
-            guard let self else { return }
-            if AppSettingsManager.shared.ai.enabled {
-                let wantsAIFix = await AlertHelper.showQueryErrorWithAIOption(
-                    title: String(localized: "Query Execution Failed"),
-                    message: errorMessage,
-                    window: parent.contentWindow
-                )
-                if wantsAIFix {
-                    parent.showAIChatPanel()
-                    parent.aiViewModel?.handleFixError(query: queryCopy, error: errorMessage)
-                }
-            } else {
-                AlertHelper.showErrorSheet(
-                    title: String(localized: "Query Execution Failed"),
-                    message: errorMessage,
-                    window: parent.contentWindow
-                )
-            }
-        }
     }
 
     func restoreSchemaAndRunQuery(_ schema: String, trigger: TableLoadTrigger = .userInitiated) async {

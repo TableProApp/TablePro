@@ -149,9 +149,9 @@ struct TableViewCoordinatorRowCountCacheTests {
 
 @MainActor
 private final class FakeRowCountPersister: ColumnLayoutPersisting {
-    func load(for tableName: String, connectionId: UUID) -> ColumnLayoutState? { nil }
+    func load(for key: ColumnLayoutTableKey) -> ColumnLayoutState? { nil }
 
-    func save(_ layout: ColumnLayoutState, for tableName: String, connectionId: UUID) {}
+    func save(_ layout: ColumnLayoutState, for key: ColumnLayoutTableKey) {}
 
-    func clear(for tableName: String, connectionId: UUID) {}
+    func clear(for key: ColumnLayoutTableKey) {}
 }

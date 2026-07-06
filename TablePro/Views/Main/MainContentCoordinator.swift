@@ -1292,7 +1292,7 @@ final class MainContentCoordinator {
                         pendingLoadTrigger = trigger
                         return
                     }
-                    handleQueryExecutionError(error, sql: plan.executedSQL, tabId: tabId, connection: conn, trigger: trigger)
+                    handleQueryExecutionError(error, sql: plan.executedSQL, tabId: tabId, connection: conn)
                 }
             }
         }

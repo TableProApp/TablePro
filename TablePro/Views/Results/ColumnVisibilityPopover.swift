@@ -11,6 +11,7 @@ struct ColumnVisibilityPopover: View {
     let onToggleColumn: (String) -> Void
     let onShowAll: () -> Void
     let onHideAll: ([String]) -> Void
+    let onReset: () -> Void
 
     @State private var searchText = ""
 
@@ -33,8 +34,24 @@ struct ColumnVisibilityPopover: View {
             }
 
             columnList
+
+            Divider()
+
+            footer
         }
         .frame(width: 260)
+    }
+
+    private var footer: some View {
+        HStack {
+            Spacer()
+            Button("Reset Columns") { onReset() }
+                .buttonStyle(.link)
+                .controlSize(.small)
+                .help(String(localized: "Reset column widths, order, and visibility to defaults"))
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
     }
 
     private var headerTitle: String {

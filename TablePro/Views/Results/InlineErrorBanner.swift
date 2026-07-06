@@ -10,17 +10,24 @@ import SwiftUI
 
 struct InlineErrorBanner: View {
     let message: String
+    var onFixWithAI: (() -> Void)?
     var onDismiss: (() -> Void)?
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(alignment: .top, spacing: 8) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundStyle(.red)
-            Text(message)
-                .font(.subheadline)
-                .lineLimit(3)
-                .textSelection(.enabled)
-            Spacer()
+            ScrollView(.vertical) {
+                Text(message)
+                    .font(.subheadline)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .frame(maxHeight: 96)
+            if let onFixWithAI {
+                Button(String(localized: "Fix with AI")) { onFixWithAI() }
+                    .controlSize(.small)
+            }
             Button {
                 ClipboardService.shared.writeText(message)
             } label: {
