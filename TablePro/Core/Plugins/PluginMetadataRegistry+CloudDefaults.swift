@@ -149,7 +149,8 @@ extension PluginMetadataRegistry {
                         ),
                     ],
                     category: .cloud,
-                    tagline: String(localized: "AWS managed key-value/document store")
+                    tagline: String(localized: "AWS managed key-value/document store"),
+                    hidesBuiltInPassword: true
                 )
             )),
             ("BigQuery", PluginMetadataSnapshot(
@@ -339,7 +340,8 @@ extension PluginMetadataRegistry {
                         )
                     ],
                     category: .analytical,
-                    tagline: String(localized: "Google Cloud serverless data warehouse")
+                    tagline: String(localized: "Google Cloud serverless data warehouse"),
+                    hidesBuiltInPassword: true
                 )
             )),
             ("Snowflake", PluginMetadataSnapshot(
@@ -549,7 +551,8 @@ extension PluginMetadataRegistry {
                 connection: PluginMetadataSnapshot.ConnectionConfig(
                     additionalConnectionFields: snowflakeConnectionFields(),
                     category: .analytical,
-                    tagline: String(localized: "Cloud data warehouse")
+                    tagline: String(localized: "Cloud data warehouse"),
+                    hidesBuiltInPassword: true
                 )
             ))
         ]

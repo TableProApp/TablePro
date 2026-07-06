@@ -40,8 +40,19 @@ final class AuthPaneViewModel {
             .filter { $0.section == .authentication }
     }
 
+    var hidesBuiltInPassword: Bool {
+        guard let type = coordinator?.value?.network.type else { return false }
+        return PluginMetadataRegistry.shared.snapshot(forTypeId: type.pluginTypeId)?
+            .connection.hidesBuiltInPassword ?? false
+    }
+
     var hidesPassword: Bool {
-        authFields.hidesPassword(forValues: additionalFieldValues)
+        if hidesBuiltInPassword { return true }
+        guard let type = coordinator?.value?.network.type else {
+            return authFields.hidesPassword(forValues: additionalFieldValues)
+        }
+        return PluginManager.shared.additionalConnectionFields(for: type)
+            .hidesPassword(forValues: additionalFieldValues)
     }
 
     var effectivePromptForPassword: Bool {
@@ -66,12 +77,9 @@ final class AuthPaneViewModel {
     }
 
     func isFieldVisible(_ field: ConnectionField) -> Bool {
-        guard let rule = field.visibleWhen else { return true }
         let type = coordinator?.value?.network.type ?? .mysql
-        let registry = PluginManager.shared.additionalConnectionFields(for: type)
-        let defaultValue = registry.first { $0.id == rule.fieldId }?.defaultValue ?? ""
-        let currentValue = additionalFieldValues[rule.fieldId] ?? defaultValue
-        return rule.values.contains(currentValue)
+        return PluginManager.shared.additionalConnectionFields(for: type)
+            .isVisible(field, forValues: additionalFieldValues)
     }
 
     func resetForType(_ newType: DatabaseType) {

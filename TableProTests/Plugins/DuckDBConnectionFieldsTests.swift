@@ -69,12 +69,11 @@ struct DuckDBConnectionFieldsTests {
         #expect(token.hidesPassword)
     }
 
-    @Test("Main password row stays hidden in both local and remote modes")
-    func passwordAlwaysHidden() throws {
-        let fields = try duckdbFields()
-        #expect(fields.hidesPassword(forValues: [:]))
-        #expect(fields.hidesPassword(forValues: ["duckdbMode": "local"]))
-        #expect(fields.hidesPassword(forValues: ["duckdbMode": "remote"]))
+    @Test("Registry marks DuckDB as never using the built-in password")
+    func hidesBuiltInPassword() throws {
+        let defaults = PluginMetadataRegistry.shared.registryPluginDefaults()
+        let entry = try #require(defaults.first { $0.typeId == "DuckDB" })
+        #expect(entry.snapshot.connection.hidesBuiltInPassword)
     }
 
     @Test("Port defaults to 9494")
