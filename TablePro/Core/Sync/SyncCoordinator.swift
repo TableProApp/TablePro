@@ -186,7 +186,8 @@ final class SyncCoordinator {
             changeTracker.markDirty(.tableFavorite, id: FavoriteTablesStorage.syncId(for: entry))
         }
 
-        for category in ["general", "appearance", "editor", "dataGrid", "history", "tabs", "keyboard", "ai"] {
+        for category in ["general", "appearance", "editor", "dataGrid", "history", "tabs", "keyboard", "ai",
+                         CustomSlashCommandStorage.syncCategory] {
             changeTracker.markDirty(.settings, id: category)
         }
 
@@ -861,6 +862,8 @@ final class SyncCoordinator {
             case "tabs": return try encoder.encode(storage.loadTabs())
             case "keyboard": return try encoder.encode(storage.loadKeyboard())
             case "ai": return try encoder.encode(storage.loadAI())
+            case CustomSlashCommandStorage.syncCategory:
+                return try encoder.encode(CustomSlashCommandStorage.shared.commands)
             default: return nil
             }
         } catch {
@@ -883,6 +886,8 @@ final class SyncCoordinator {
             case "tabs": manager.tabs = try decoder.decode(TabSettings.self, from: data)
             case "keyboard": manager.keyboard = try decoder.decode(KeyboardSettings.self, from: data)
             case "ai": manager.ai = try decoder.decode(AISettings.self, from: data)
+            case CustomSlashCommandStorage.syncCategory:
+                CustomSlashCommandStorage.shared.applyRemote(try decoder.decode([CustomSlashCommand].self, from: data))
             default: return
             }
         } catch {

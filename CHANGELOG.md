@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Custom AI slash commands now sync across your Macs with iCloud Sync, alongside your other settings.
 - Join a team from the activation window: paste the invite code your team owner sent instead of a license key. Owners manage members and seats from their account on tablepro.app.
 - Connections can take their password from 1Password (op://), HashiCorp Vault, or AWS Secrets Manager, resolved at connect time so the secret is never stored in TablePro.
 - Team plan: publish connections to a shared folder your team reads from, without sending passwords. Right-click a connection, then Share > Publish to Team Catalog. Teammates add the folder under Settings > Linked Folders.
