@@ -12,9 +12,12 @@ struct ColumnLayoutTableKey: Hashable {
     let tableName: String
 
     var storageKey: String {
-        [connectionId.uuidString, databaseName, schemaName ?? "", tableName]
-            .map { $0.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? $0 }
-            .joined(separator: ".")
+        CompositeStorageKey.make(
+            connectionId: connectionId,
+            databaseName: databaseName,
+            schemaName: schemaName,
+            tableName: tableName
+        )
     }
 }
 
