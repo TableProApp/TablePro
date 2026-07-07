@@ -143,11 +143,20 @@ final class QueryTabManager {
         }
     }
 
+    var onTableOpened: ((_ tableName: String, _ schemaName: String?, _ databaseName: String, _ isView: Bool, _ isPreview: Bool) -> Void)?
+
+    private func notifyTableOpened(
+        tableName: String, schemaName: String?, databaseName: String, isView: Bool, isPreview: Bool
+    ) {
+        onTableOpened?(tableName, schemaName, databaseName, isView, isPreview)
+    }
+
     func addTableTab(
         tableName: String,
         databaseType: DatabaseType = .mysql,
         databaseName: String = "",
         schemaName: String? = nil,
+        isView: Bool = false,
         quoteIdentifier: ((String) -> String)? = nil
     ) throws {
         if let existingTab = tabs.first(where: {
@@ -157,6 +166,10 @@ final class QueryTabManager {
                 && $0.tableContext.schemaName == schemaName
         }) {
             selectedTabId = existingTab.id
+            notifyTableOpened(
+                tableName: tableName, schemaName: schemaName, databaseName: databaseName,
+                isView: isView, isPreview: false
+            )
             return
         }
 
@@ -178,6 +191,10 @@ final class QueryTabManager {
         newTab.tableContext.schemaName = schemaName
         tabs.append(newTab)
         selectedTabId = newTab.id
+        notifyTableOpened(
+            tableName: tableName, schemaName: schemaName, databaseName: databaseName,
+            isView: isView, isPreview: false
+        )
     }
 
     static func tabTitle(name: String, schema: String?, databaseType: DatabaseType) -> String {
@@ -227,6 +244,7 @@ final class QueryTabManager {
         databaseType: DatabaseType = .mysql,
         databaseName: String = "",
         schemaName: String? = nil,
+        isView: Bool = false,
         quoteIdentifier: ((String) -> String)? = nil
     ) throws {
         if let existing = tabs.first(where: {
@@ -236,6 +254,10 @@ final class QueryTabManager {
                 && $0.tableContext.schemaName == schemaName
         }) {
             selectedTabId = existing.id
+            notifyTableOpened(
+                tableName: tableName, schemaName: schemaName, databaseName: databaseName,
+                isView: isView, isPreview: true
+            )
             return
         }
 
@@ -258,6 +280,10 @@ final class QueryTabManager {
         newTab.isPreview = true
         tabs.append(newTab)
         selectedTabId = newTab.id
+        notifyTableOpened(
+            tableName: tableName, schemaName: schemaName, databaseName: databaseName,
+            isView: isView, isPreview: true
+        )
     }
 
     /// Replace the currently selected tab's content with a new table.
@@ -309,6 +335,10 @@ final class QueryTabManager {
         tab.isPreview = isPreview
         tabs[selectedIndex] = tab
         tabStructureVersion += 1
+        notifyTableOpened(
+            tableName: tableName, schemaName: schemaName, databaseName: databaseName,
+            isView: isView, isPreview: isPreview
+        )
         return true
     }
 

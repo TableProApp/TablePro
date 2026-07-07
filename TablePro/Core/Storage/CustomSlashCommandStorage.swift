@@ -26,15 +26,25 @@ enum CustomSlashCommandError: LocalizedError, Equatable {
 final class CustomSlashCommandStorage {
     static let shared = CustomSlashCommandStorage()
 
+    static let syncCategory = "customSlashCommands"
+
     private static let logger = Logger(subsystem: "com.TablePro", category: "CustomSlashCommandStorage")
     private static let defaultsKey = "ai.customSlashCommands.v1"
     private let defaults: UserDefaults
+    private let syncTracker: SyncChangeTracker
 
     private(set) var commands: [CustomSlashCommand] = []
 
-    init(defaults: UserDefaults = .standard) {
+    init(defaults: UserDefaults = .standard, syncTracker: SyncChangeTracker = .shared) {
         self.defaults = defaults
+        self.syncTracker = syncTracker
         self.commands = Self.load(from: defaults)
+    }
+
+    /// Replaces all commands from a remote sync without re-marking them dirty.
+    func applyRemote(_ commands: [CustomSlashCommand]) {
+        self.commands = commands
+        persist(markDirty: false)
     }
 
     func isDuplicate(_ name: String, excluding id: UUID? = nil) -> Bool {
@@ -70,10 +80,13 @@ final class CustomSlashCommandStorage {
         commands.first { $0.name.caseInsensitiveCompare(name) == .orderedSame }
     }
 
-    private func persist() {
+    private func persist(markDirty: Bool = true) {
         do {
             let data = try JSONEncoder().encode(commands)
             defaults.set(data, forKey: Self.defaultsKey)
+            if markDirty {
+                syncTracker.markDirty(.settings, id: Self.syncCategory)
+            }
         } catch {
             Self.logger.warning("Failed to persist custom slash commands: \(error.localizedDescription, privacy: .public)")
         }

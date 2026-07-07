@@ -56,6 +56,9 @@ struct GeneralSettingsView: View {
             }
 
             Section("Sidebar") {
+                Toggle("Show recent tables", isOn: $settings.showRecentTables)
+                    .help("Adds a Recent section at the top of the Tables sidebar with the last tables you opened per connection and database.")
+
                 Picker("Default layout for new connections:", selection: $defaultSidebarLayout) {
                     Text("List").tag(SidebarLayout.flat)
                     Text("Tree").tag(SidebarLayout.tree)

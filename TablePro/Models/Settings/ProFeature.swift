@@ -13,6 +13,7 @@ internal enum ProFeature: String, CaseIterable {
     case encryptedExport
     case envVarReferences
     case linkedFolders
+    case teamCatalog
 
     var displayName: String {
         switch self {
@@ -24,6 +25,8 @@ internal enum ProFeature: String, CaseIterable {
             return String(localized: "Environment Variables")
         case .linkedFolders:
             return String(localized: "Linked Folders")
+        case .teamCatalog:
+            return String(localized: "Team Catalog")
         }
     }
 
@@ -37,6 +40,8 @@ internal enum ProFeature: String, CaseIterable {
             return "dollarsign.square"
         case .linkedFolders:
             return "folder.badge.gearshape"
+        case .teamCatalog:
+            return "person.2.fill"
         }
     }
 
@@ -50,14 +55,27 @@ internal enum ProFeature: String, CaseIterable {
             return String(localized: "Use environment variables in connection fields.")
         case .linkedFolders:
             return String(localized: "Watch shared folders for connection files.")
+        case .teamCatalog:
+            return String(localized: "Publish connections to a shared folder your team reads from. Passwords are never included.")
+        }
+    }
+
+    /// The lowest license tier that unlocks this feature.
+    var requiredTier: LicenseTier {
+        switch self {
+        case .iCloudSync, .encryptedExport, .envVarReferences, .linkedFolders:
+            return .starter
+        case .teamCatalog:
+            return .team
         }
     }
 }
 
 /// Result of checking Pro feature availability
-internal enum ProFeatureAccess {
+internal enum ProFeatureAccess: Equatable {
     case available
     case unlicensed
     case expired
     case validationFailed
+    case requiresUpgrade(LicenseTier)
 }

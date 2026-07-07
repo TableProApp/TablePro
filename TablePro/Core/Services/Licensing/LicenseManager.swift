@@ -153,6 +153,53 @@ final class LicenseManager {
         }
     }
 
+    /// Join a team by accepting an invitation, activating this machine as a member
+    func activate(inviteCode: String) async throws {
+        let trimmedCode = inviteCode.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedCode.isEmpty else {
+            throw LicenseError.invalidKey
+        }
+
+        isValidating = true
+        lastError = nil
+        defer { isValidating = false }
+
+        let request = LicenseAcceptInviteRequest(
+            token: trimmedCode,
+            machineId: storage.machineId,
+            machineName: storage.machineName,
+            appVersion: Bundle.main.appVersion,
+            osVersion: ProcessInfo.processInfo.operatingSystemVersionString
+        )
+
+        do {
+            let signedPayload = try await apiClient.acceptInvite(request: request)
+
+            let payloadData = try verifier.verify(payload: signedPayload)
+
+            let newLicense = License.from(
+                payload: payloadData,
+                signedPayload: signedPayload,
+                machineId: storage.machineId
+            )
+
+            storage.saveLicenseKey(newLicense.key)
+            storage.saveLicense(newLicense)
+
+            license = newLicense
+            evaluateStatus()
+
+            Self.logger.info("Joined team via invitation for \(payloadData.email)")
+        } catch let error as LicenseError {
+            lastError = error
+            throw error
+        } catch {
+            let licenseError = LicenseError.networkError(error)
+            lastError = licenseError
+            throw licenseError
+        }
+    }
+
     // MARK: - Deactivation
 
     /// Deactivate the license on this machine

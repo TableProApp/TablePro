@@ -139,8 +139,22 @@ final class SyncCoordinator {
             evaluateStatus()
 
             if syncStatus.isEnabled {
+                await markSQLFavoritesDirty()
                 await syncNow()
             }
+        }
+    }
+
+    /// Marks existing SQL favorites and folders dirty. Separate from `markAllLocalDataDirty`
+    /// because the favorite store is an actor and must be read asynchronously.
+    private func markSQLFavoritesDirty() async {
+        let favorites = await services.sqlFavoriteManager.fetchFavorites()
+        for favorite in favorites {
+            changeTracker.markDirty(.favorite, id: favorite.id.uuidString)
+        }
+        let folders = await services.sqlFavoriteManager.fetchFolders()
+        for folder in folders {
+            changeTracker.markDirty(.favoriteFolder, id: folder.id.uuidString)
         }
     }
 
@@ -172,7 +186,8 @@ final class SyncCoordinator {
             changeTracker.markDirty(.tableFavorite, id: FavoriteTablesStorage.syncId(for: entry))
         }
 
-        for category in ["general", "appearance", "editor", "dataGrid", "history", "tabs", "keyboard", "ai"] {
+        for category in ["general", "appearance", "editor", "dataGrid", "history", "tabs", "keyboard", "ai",
+                         CustomSlashCommandStorage.syncCategory] {
             changeTracker.markDirty(.settings, id: category)
         }
 
@@ -300,6 +315,10 @@ final class SyncCoordinator {
             collectDirtyTableFavorites(into: &recordsToSave, deletions: &recordIDsToDelete, zoneID: zoneID)
         }
 
+        if settings.syncSQLFavorites {
+            await collectDirtySQLFavorites(into: &recordsToSave, deletions: &recordIDsToDelete, zoneID: zoneID)
+        }
+
         // Deduplicate deletion IDs to prevent CloudKit "can't delete same record twice" error
         let uniqueDeletions = Array(Set(recordIDsToDelete))
 
@@ -323,6 +342,10 @@ final class SyncCoordinator {
             }
             if settings.syncTableFavorites {
                 changeTracker.clearAllDirty(.tableFavorite)
+            }
+            if settings.syncSQLFavorites {
+                changeTracker.clearAllDirty(.favorite)
+                changeTracker.clearAllDirty(.favoriteFolder)
             }
 
             // Clear tombstones only for types that were actually pushed
@@ -352,6 +375,14 @@ final class SyncCoordinator {
             if settings.syncTableFavorites {
                 for tombstone in metadataStorage.tombstones(for: .tableFavorite) {
                     metadataStorage.removeTombstone(type: .tableFavorite, id: tombstone.id)
+                }
+            }
+            if settings.syncSQLFavorites {
+                for tombstone in metadataStorage.tombstones(for: .favorite) {
+                    metadataStorage.removeTombstone(type: .favorite, id: tombstone.id)
+                }
+                for tombstone in metadataStorage.tombstones(for: .favoriteFolder) {
+                    metadataStorage.removeTombstone(type: .favoriteFolder, id: tombstone.id)
                 }
             }
 
@@ -421,6 +452,10 @@ final class SyncCoordinator {
         let tagTombstoneIds = Set(metadataStorage.tombstones(for: .tag).map(\.id))
         let sshTombstoneIds = Set(metadataStorage.tombstones(for: .sshProfile).map(\.id))
         let tableFavoriteTombstoneIds = Set(metadataStorage.tombstones(for: .tableFavorite).map(\.id))
+        let sqlFavoriteTombstoneIds = Set(metadataStorage.tombstones(for: .favorite).map(\.id))
+        let sqlFolderTombstoneIds = Set(metadataStorage.tombstones(for: .favoriteFolder).map(\.id))
+        var remoteFavorites: [SQLFavorite] = []
+        var remoteFolders: [SQLFavoriteFolder] = []
 
         for record in result.changedRecords {
             switch record.recordType {
@@ -442,6 +477,16 @@ final class SyncCoordinator {
                 applyRemoteSettings(record)
             case SyncRecordType.tableFavorite.rawValue where settings.syncTableFavorites:
                 applyRemoteTableFavorite(record, tombstoneIds: tableFavoriteTombstoneIds)
+            case SyncRecordType.favorite.rawValue where settings.syncSQLFavorites:
+                if let favorite = try? SyncRecordMapper.sqlFavorite(from: record),
+                   !sqlFavoriteTombstoneIds.contains(favorite.id.uuidString) {
+                    remoteFavorites.append(favorite)
+                }
+            case SyncRecordType.favoriteFolder.rawValue where settings.syncSQLFavorites:
+                if let folder = try? SyncRecordMapper.sqlFavoriteFolder(from: record),
+                   !sqlFolderTombstoneIds.contains(folder.id.uuidString) {
+                    remoteFolders.append(folder)
+                }
             default:
                 break
             }
@@ -452,6 +497,8 @@ final class SyncCoordinator {
         var tagIdsToDelete: Set<UUID> = []
         var sshProfileIdsToDelete: Set<UUID> = []
         var tableFavoriteIdsToDelete: Set<String> = []
+        var sqlFavoriteIdsToDelete: Set<UUID> = []
+        var sqlFolderIdsToDelete: Set<UUID> = []
 
         for recordID in result.deletedRecordIDs {
             let name = recordID.recordName
@@ -472,6 +519,12 @@ final class SyncCoordinator {
                 sshProfileIdsToDelete.insert(uuid)
             } else if name.hasPrefix("FavoriteTable_") {
                 tableFavoriteIdsToDelete.insert(String(name.dropFirst("FavoriteTable_".count)))
+            } else if settings.syncSQLFavorites, name.hasPrefix("FavoriteFolder_"),
+                      let uuid = UUID(uuidString: String(name.dropFirst("FavoriteFolder_".count))) {
+                sqlFolderIdsToDelete.insert(uuid)
+            } else if settings.syncSQLFavorites, name.hasPrefix("Favorite_"),
+                      let uuid = UUID(uuidString: String(name.dropFirst("Favorite_".count))) {
+                sqlFavoriteIdsToDelete.insert(uuid)
             }
         }
 
@@ -507,6 +560,29 @@ final class SyncCoordinator {
         }
         for id in tableFavoriteIdsToDelete {
             services.favoriteTablesStorage.removeFavoriteWithoutSync(id: id)
+        }
+
+        if !remoteFolders.isEmpty || !remoteFavorites.isEmpty
+            || !sqlFolderIdsToDelete.isEmpty || !sqlFavoriteIdsToDelete.isEmpty {
+            let manager = services.sqlFavoriteManager
+            let folders = remoteFolders
+            let favorites = remoteFavorites
+            let folderDeletes = sqlFolderIdsToDelete
+            let favoriteDeletes = sqlFavoriteIdsToDelete
+            Task {
+                for folder in folders {
+                    await manager.applyRemoteFolder(folder)
+                }
+                for favorite in favorites {
+                    await manager.applyRemoteFavorite(favorite)
+                }
+                for id in favoriteDeletes {
+                    await manager.applyRemoteDeleteFavorite(id: id)
+                }
+                for id in folderDeletes {
+                    await manager.applyRemoteDeleteFolder(id: id)
+                }
+            }
         }
 
         if actualConnectionChanges || groupsOrTagsChanged {
@@ -786,6 +862,8 @@ final class SyncCoordinator {
             case "tabs": return try encoder.encode(storage.loadTabs())
             case "keyboard": return try encoder.encode(storage.loadKeyboard())
             case "ai": return try encoder.encode(storage.loadAI())
+            case CustomSlashCommandStorage.syncCategory:
+                return try encoder.encode(CustomSlashCommandStorage.shared.commands)
             default: return nil
             }
         } catch {
@@ -808,6 +886,8 @@ final class SyncCoordinator {
             case "tabs": manager.tabs = try decoder.decode(TabSettings.self, from: data)
             case "keyboard": manager.keyboard = try decoder.decode(KeyboardSettings.self, from: data)
             case "ai": manager.ai = try decoder.decode(AISettings.self, from: data)
+            case CustomSlashCommandStorage.syncCategory:
+                CustomSlashCommandStorage.shared.applyRemote(try decoder.decode([CustomSlashCommand].self, from: data))
             default: return
             }
         } catch {
@@ -879,6 +959,44 @@ final class SyncCoordinator {
         for tombstone in metadataStorage.tombstones(for: .sshProfile) {
             deletions.append(
                 SyncRecordMapper.recordID(type: .sshProfile, id: tombstone.id, in: zoneID)
+            )
+        }
+    }
+
+    private func collectDirtySQLFavorites(
+        into records: inout [CKRecord],
+        deletions: inout [CKRecord.ID],
+        zoneID: CKRecordZone.ID
+    ) async {
+        let dirtyFavoriteIds = changeTracker.dirtyRecords(for: .favorite)
+        if !dirtyFavoriteIds.isEmpty {
+            let favorites = await services.sqlFavoriteManager.fetchFavorites()
+            let favoritesById = Dictionary(favorites.map { ($0.id.uuidString, $0) }, uniquingKeysWith: { first, _ in first })
+            for id in dirtyFavoriteIds {
+                if let favorite = favoritesById[id] {
+                    records.append(SyncRecordMapper.toCKRecord(sqlFavorite: favorite, in: zoneID))
+                }
+            }
+        }
+        for tombstone in metadataStorage.tombstones(for: .favorite) {
+            deletions.append(
+                SyncRecordMapper.recordID(type: .favorite, id: tombstone.id, in: zoneID)
+            )
+        }
+
+        let dirtyFolderIds = changeTracker.dirtyRecords(for: .favoriteFolder)
+        if !dirtyFolderIds.isEmpty {
+            let folders = await services.sqlFavoriteManager.fetchFolders()
+            let foldersById = Dictionary(folders.map { ($0.id.uuidString, $0) }, uniquingKeysWith: { first, _ in first })
+            for id in dirtyFolderIds {
+                if let folder = foldersById[id] {
+                    records.append(SyncRecordMapper.toCKRecord(sqlFavoriteFolder: folder, in: zoneID))
+                }
+            }
+        }
+        for tombstone in metadataStorage.tombstones(for: .favoriteFolder) {
+            deletions.append(
+                SyncRecordMapper.recordID(type: .favoriteFolder, id: tombstone.id, in: zoneID)
             )
         }
     }

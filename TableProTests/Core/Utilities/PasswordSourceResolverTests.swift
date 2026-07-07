@@ -4,8 +4,8 @@
 //
 
 import Foundation
-import Testing
 @testable import TablePro
+import Testing
 
 @Suite("PasswordSourceResolver", .serialized)
 struct PasswordSourceResolverTests {
@@ -185,6 +185,82 @@ struct PasswordSourceResolverTests {
         } catch {
             Issue.record("Unexpected error: \(error)")
         }
+    }
+
+    // MARK: - Secret manager references
+
+    @Test("Local sources have no external command")
+    func localSourcesHaveNoCommand() {
+        #expect(PasswordSourceResolver.externalCommand(for: .file(path: "~/x")) == nil)
+        #expect(PasswordSourceResolver.externalCommand(for: .env(variable: "X")) == nil)
+        #expect(PasswordSourceResolver.externalCommand(for: .command(shell: "echo hi")) == nil)
+    }
+
+    @Test("1Password reference builds an op read command")
+    func onePasswordCommand() {
+        let command = PasswordSourceResolver.externalCommand(for: .onePassword(reference: "op://vault/db/password"))
+        #expect(command == "op read --no-newline 'op://vault/db/password'")
+    }
+
+    @Test("Vault reference builds a vault kv get command")
+    func vaultCommand() {
+        let command = PasswordSourceResolver.externalCommand(for: .vault(path: "secret/data/db", field: "password"))
+        #expect(command == "vault kv get -field='password' 'secret/data/db'")
+    }
+
+    @Test("AWS Secrets Manager reference builds an aws command")
+    func awsCommand() {
+        let command = PasswordSourceResolver.externalCommand(
+            for: .awsSecretsManager(secretId: "prod/db", jsonKey: "password")
+        )
+        #expect(command == "aws secretsmanager get-secret-value --secret-id 'prod/db' --query SecretString --output text")
+    }
+
+    @Test("Shell quoting neutralizes injection attempts")
+    func shellQuotingIsInjectionSafe() {
+        let malicious = "x'; rm -rf ~ #"
+        #expect(PasswordSourceResolver.shellQuote(malicious) == "'x'\\''; rm -rf ~ #'")
+
+        let command = PasswordSourceResolver.externalCommand(for: .onePassword(reference: malicious))
+        #expect(command == "op read --no-newline 'x'\\''; rm -rf ~ #'")
+    }
+
+    @Test("Extracts a JSON field from a secret string")
+    func extractsJsonField() throws {
+        let value = try PasswordSourceResolver.extractJsonField(
+            "password", from: #"{"username":"admin","password":"s3cret"}"#
+        )
+        #expect(value == "s3cret")
+    }
+
+    @Test("Throws when the JSON key is missing")
+    func throwsWhenJsonKeyMissing() {
+        #expect(throws: PasswordSourceResolver.ResolutionError.self) {
+            _ = try PasswordSourceResolver.extractJsonField("password", from: #"{"username":"admin"}"#)
+        }
+    }
+
+    @Test("Throws when the secret is not valid JSON")
+    func throwsOnInvalidJson() {
+        #expect(throws: PasswordSourceResolver.ResolutionError.self) {
+            _ = try PasswordSourceResolver.extractJsonField("password", from: "not json")
+        }
+    }
+
+    @Test("Throws when the JSON value is null or a container, not a usable secret")
+    func throwsOnNonStringJsonValue() {
+        #expect(throws: PasswordSourceResolver.ResolutionError.self) {
+            _ = try PasswordSourceResolver.extractJsonField("password", from: #"{"password":null}"#)
+        }
+        #expect(throws: PasswordSourceResolver.ResolutionError.self) {
+            _ = try PasswordSourceResolver.extractJsonField("password", from: #"{"password":{"nested":1}}"#)
+        }
+    }
+
+    @Test("Extracts a numeric JSON value as its string form")
+    func extractsNumericJsonValue() throws {
+        let value = try PasswordSourceResolver.extractJsonField("secret", from: #"{"secret":5432}"#)
+        #expect(value == "5432")
     }
 
     private func makeTempFile(contents: String) throws -> URL {

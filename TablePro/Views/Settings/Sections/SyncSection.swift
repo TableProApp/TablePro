@@ -121,6 +121,7 @@ struct SyncSection: View {
             Toggle("SSH Profiles:", isOn: $settingsManager.sync.syncSSHProfiles)
             Toggle("Settings:", isOn: $settingsManager.sync.syncSettings)
             Toggle("Table Favorites:", isOn: $settingsManager.sync.syncTableFavorites)
+            Toggle("Saved Queries:", isOn: $settingsManager.sync.syncSQLFavorites)
         }
     }
 

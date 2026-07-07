@@ -285,8 +285,6 @@ extension PluginMetadataRegistry {
             "Enum": ["ENUM"]
         ]
 
-        let duckdbConnectionFields = Self.duckdbConnectionFields
-
         let cassandraDialect = SQLDialectDescriptor(
             identifierQuote: "\"",
             keywords: [
@@ -859,9 +857,10 @@ extension PluginMetadataRegistry {
                     columnTypesByCategory: duckdbColumnTypes
                 ),
                 connection: PluginMetadataSnapshot.ConnectionConfig(
-                    additionalConnectionFields: duckdbConnectionFields,
+                    additionalConnectionFields: Self.duckdbConnectionFields,
                     category: .analytical,
-                    tagline: String(localized: "Embedded and remote analytical SQL")
+                    tagline: String(localized: "Embedded and remote analytical SQL"),
+                    hidesBuiltInPassword: true
                 )
             )),
             ("Cassandra", PluginMetadataSnapshot(

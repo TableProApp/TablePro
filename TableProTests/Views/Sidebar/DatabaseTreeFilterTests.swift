@@ -20,14 +20,21 @@ struct DatabaseTreeFilterTests {
         #expect(result.map(\.name) == ["users", "orders"])
     }
 
-    @Test("filteredTables keeps only fuzzy matches when searching")
+    @Test("filteredTables keeps only substring matches when searching")
     func filteredTablesSearch() {
         let tables = [table("users"), table("orders"), table("invoices")]
         let result = DatabaseTreeFilter.filteredTables(tables, searchText: "ord")
         #expect(result.map(\.name) == ["orders"])
     }
 
-    @Test("filteredRoutines deduplicates and fuzzy matches")
+    @Test("filteredTables ranks prefix matches above interior-substring matches")
+    func filteredTablesRanksPrefixFirst() {
+        let tables = [table("audit_user"), table("users"), table("user_log")]
+        let result = DatabaseTreeFilter.filteredTables(tables, searchText: "user")
+        #expect(result.map(\.name) == ["users", "user_log", "audit_user"])
+    }
+
+    @Test("filteredRoutines deduplicates and substring matches")
     func filteredRoutinesSearch() {
         let routines = [routine("calc_total"), routine("audit_log"), routine("calc_total")]
         #expect(DatabaseTreeFilter.filteredRoutines(routines, searchText: "").count == 2)
@@ -58,9 +65,11 @@ struct DatabaseTreeFilterTests {
         #expect(result == ["sales"])
     }
 
-    @Test("matches is a fuzzy subsequence test")
-    func matchesFuzzy() {
-        #expect(DatabaseTreeFilter.matches("usr", "users"))
+    @Test("matches is a case-insensitive substring test, not a subsequence test")
+    func matchesSubstring() {
+        #expect(DatabaseTreeFilter.matches("ser", "users"))
+        #expect(DatabaseTreeFilter.matches("USER", "users"))
+        #expect(!DatabaseTreeFilter.matches("usr", "users"))
         #expect(!DatabaseTreeFilter.matches("zzz", "users"))
     }
 }

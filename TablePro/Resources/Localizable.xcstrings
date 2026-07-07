@@ -7316,6 +7316,9 @@
         }
       }
     },
+    "Adds a Recent section at the top of the Tables sidebar with the last tables you opened per connection and database." : {
+
+    },
     "admin" : {
       "localizations" : {
         "tr" : {
@@ -15204,6 +15207,9 @@
           }
         }
       }
+    },
+    "Clear Recent Tables" : {
+
     },
     "Clear Recents" : {
       "localizations" : {
@@ -63389,6 +63395,9 @@
         }
       }
     },
+    "Remove from Recent" : {
+
+    },
     "Remove from Sidebar" : {
       "localizations" : {
         "tr" : {
@@ -70821,6 +70830,9 @@
         }
       }
     },
+    "Show recent tables" : {
+
+    },
     "Show row numbers" : {
       "localizations" : {
         "tr" : {
@@ -75879,6 +75891,9 @@
         }
       }
     },
+    "Switching to schema '%@' timed out." : {
+
+    },
     "Sync" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -78130,6 +78145,9 @@
           }
         }
       }
+    },
+    "The connection is not available. Reconnect and try again." : {
+
     },
     "The Cursor CLI is not installed." : {
       "localizations" : {

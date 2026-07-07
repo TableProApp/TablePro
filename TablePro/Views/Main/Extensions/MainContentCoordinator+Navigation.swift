@@ -84,7 +84,8 @@ extension MainContentCoordinator {
                         tableName: tableName,
                         databaseType: connection.type,
                         databaseName: currentDatabase,
-                        schemaName: resolvedSchema
+                        schemaName: resolvedSchema,
+                        isView: isView
                     )
                 } catch {
                     navigationLogger.error("openTableTab addTableTab failed: \(error.localizedDescription, privacy: .public)")
@@ -223,14 +224,16 @@ extension MainContentCoordinator {
                     tableName: tableName,
                     databaseType: connection.type,
                     databaseName: currentDatabase,
-                    schemaName: resolvedSchema
+                    schemaName: resolvedSchema,
+                    isView: isView
                 )
             } else {
                 try tabManager.addTableTab(
                     tableName: tableName,
                     databaseType: connection.type,
                     databaseName: currentDatabase,
-                    schemaName: resolvedSchema
+                    schemaName: resolvedSchema,
+                    isView: isView
                 )
             }
         } catch {

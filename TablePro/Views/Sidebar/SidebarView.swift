@@ -11,6 +11,7 @@ import TableProPluginKit
 struct SidebarView: View {
     @State private var viewModel: SidebarViewModel
     @State private var favoriteTables: Set<FavoriteTablesStorage.FavoriteEntry> = []
+    @State private var settingsManager = AppSettingsManager.shared
     @State private var showDatabaseFilter: Bool = false
 
     private var schemaService: SchemaService { SchemaService.shared }
@@ -260,6 +261,7 @@ struct SidebarView: View {
                 connectionId: connectionId,
                 viewModel: viewModel,
                 windowState: windowState,
+                sidebarState: sidebarState,
                 pendingTruncates: $pendingTruncates,
                 pendingDeletes: $pendingDeletes,
                 onDoubleClick: onDoubleClick,
@@ -333,6 +335,12 @@ struct SidebarView: View {
 
     // MARK: - Table List
 
+    private var recentRows: [RecentTableRow] {
+        guard settingsManager.general.showRecentTables else { return [] }
+        let infos = sidebarState.recentEntries(inDatabase: activeDatabase).map(\.tableInfo)
+        return viewModel.filteredRecentTables(infos).map(RecentTableRow.init)
+    }
+
     private var activeDatabase: String? {
         let name = coordinator?.activeDatabaseName ?? ""
         return name.isEmpty ? nil : name
@@ -356,8 +364,60 @@ struct SidebarView: View {
         )
     }
 
+    @ViewBuilder
+    private func tableSelectionMenu(clicked: TableInfo?, selected: Set<TableInfo>) -> some View {
+        SidebarContextMenu(
+            clickedTable: clicked,
+            selectedTables: selected,
+            isReadOnly: coordinator?.safeModeLevel.blocksAllWrites ?? false,
+            onBatchToggleTruncate: { viewModel.batchToggleTruncate(tableNames: $0) },
+            onBatchToggleDelete: { viewModel.batchToggleDelete(tableNames: $0) },
+            coordinator: coordinator
+        )
+    }
+
+    @ViewBuilder
+    private var recentSection: some View {
+        let rows = recentRows
+        if !rows.isEmpty {
+            Section(isExpanded: $viewModel.isRecentsExpanded) {
+                ForEach(rows) { row in
+                    let table = row.table
+                    TableRow(
+                        table: table,
+                        isPendingTruncate: pendingTruncates.contains(table.name),
+                        isPendingDelete: pendingDeletes.contains(table.name),
+                        isFavorite: isFavorite(table),
+                        onToggleFavorite: { toggleFavorite(table) }
+                    )
+                    .selectionDisabled()
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        onDoubleClick?(table)
+                    }
+                    .contextMenu {
+                        tableSelectionMenu(clicked: table, selected: [table])
+                        Divider()
+                        Button(String(localized: "Remove from Recent")) {
+                            sidebarState.removeRecentTable(
+                                database: activeDatabase, schema: table.schema, name: table.name
+                            )
+                        }
+                        Button(String(localized: "Clear Recent Tables")) {
+                            sidebarState.clearRecentTables(inDatabase: activeDatabase)
+                        }
+                    }
+                }
+            } header: {
+                Text(String(localized: "Recent"))
+            }
+        }
+    }
+
     private var tableList: some View {
         List(selection: selectedTablesBinding) {
+            recentSection
+
             ForEach(SidebarObjectKind.allCases, id: \.self) { kind in
                 sectionView(for: kind)
             }
@@ -399,6 +459,9 @@ struct SidebarView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .favoriteTablesDidChange)) { _ in
             favoriteTables = FavoriteTablesStorage.shared.favorites(for: connectionId)
+        }
+        .onChange(of: settingsManager.general.showRecentTables) { _, _ in
+            sidebarState.reloadRecentTablesFromStore()
         }
         .onAppear {
             favoriteTables = FavoriteTablesStorage.shared.favorites(for: connectionId)

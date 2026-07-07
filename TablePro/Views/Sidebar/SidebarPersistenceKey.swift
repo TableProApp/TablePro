@@ -12,6 +12,10 @@ enum SidebarPersistenceKey {
         "sidebar.\(connectionId.uuidString).redisKeys.expanded"
     }
 
+    static func recentsExpanded(connectionId: UUID) -> String {
+        "sidebar.\(connectionId.uuidString).recents.expanded"
+    }
+
     static func selectedTab(connectionId: UUID) -> String {
         "sidebar.selectedTab.\(connectionId.uuidString)"
     }

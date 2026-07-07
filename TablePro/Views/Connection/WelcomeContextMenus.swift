@@ -53,6 +53,17 @@ extension WelcomeWindowView {
                     systemImage: "square.and.arrow.up"
                 )
             }
+
+            if LicenseManager.shared.isFeatureAvailable(.teamCatalog) {
+                Button {
+                    vm.publishToTeamCatalog(connections)
+                } label: {
+                    Label(
+                        String(format: String(localized: "Publish %d Connections to Team Catalog..."), connections.count),
+                        systemImage: "person.2.fill"
+                    )
+                }
+            }
         }
 
         Divider()
@@ -175,6 +186,14 @@ extension WelcomeWindowView {
                 vm.exportConnections([connection])
             } label: {
                 Label(String(localized: "Export to File..."), systemImage: "square.and.arrow.up")
+            }
+
+            if LicenseManager.shared.isFeatureAvailable(.teamCatalog) {
+                Button {
+                    vm.publishToTeamCatalog([connection])
+                } label: {
+                    Label(String(localized: "Publish to Team Catalog..."), systemImage: "person.2.fill")
+                }
             }
         }
 

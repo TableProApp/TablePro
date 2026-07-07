@@ -17,7 +17,7 @@ final class ElasticsearchPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let databaseTypeId = "Elasticsearch"
     static let databaseDisplayName = "Elasticsearch"
     static let iconName = "elasticsearch-icon"
-    static let defaultPort = 9200
+    static let defaultPort = 9_200
     static let isDownloadable = true
 
     static let navigationModel: NavigationModel = .standard
@@ -70,7 +70,8 @@ final class ElasticsearchPlugin: NSObject, TableProPlugin, DriverPlugin {
                 .init(value: "apiKey", label: "API Key"),
                 .init(value: "none", label: "None"),
             ]),
-            section: .authentication
+            section: .authentication,
+            hidesPassword: true
         ),
         ConnectionField(
             id: "esApiKey",
@@ -78,7 +79,6 @@ final class ElasticsearchPlugin: NSObject, TableProPlugin, DriverPlugin {
             placeholder: "Base64-encoded API key",
             fieldType: .secure,
             section: .authentication,
-            hidesPassword: true,
             visibleWhen: FieldVisibilityRule(fieldId: "esAuthMethod", values: ["apiKey"])
         ),
         ConnectionField(

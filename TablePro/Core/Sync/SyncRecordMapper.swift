@@ -379,6 +379,97 @@ struct SyncRecordMapper {
         )
     }
 
+    // MARK: - SQL Favorite
+
+    static func toCKRecord(sqlFavorite favorite: SQLFavorite, in zone: CKRecordZone.ID) -> CKRecord {
+        let recordID = recordID(type: .favorite, id: favorite.id.uuidString, in: zone)
+        let record = CKRecord(recordType: SyncRecordType.favorite.rawValue, recordID: recordID)
+
+        record["favoriteId"] = favorite.id.uuidString as CKRecordValue
+        record["name"] = favorite.name as CKRecordValue
+        record["query"] = favorite.query as CKRecordValue
+        if let keyword = favorite.keyword {
+            record["keyword"] = keyword as CKRecordValue
+        }
+        if let folderId = favorite.folderId {
+            record["folderId"] = folderId.uuidString as CKRecordValue
+        }
+        if let connectionId = favorite.connectionId {
+            record["connectionId"] = connectionId.uuidString as CKRecordValue
+        }
+        record["sortOrder"] = Int64(favorite.sortOrder) as CKRecordValue
+        record["createdAt"] = favorite.createdAt as CKRecordValue
+        record["updatedAt"] = favorite.updatedAt as CKRecordValue
+        record["modifiedAtLocal"] = Date() as CKRecordValue
+        record["schemaVersion"] = schemaVersion as CKRecordValue
+
+        return record
+    }
+
+    static func sqlFavorite(from record: CKRecord) throws -> SQLFavorite {
+        guard let idString = record["favoriteId"] as? String, let id = UUID(uuidString: idString) else {
+            throw SyncDecodeError.missingRequiredField("favoriteId")
+        }
+        guard let name = record["name"] as? String else {
+            throw SyncDecodeError.missingRequiredField("name")
+        }
+        guard let query = record["query"] as? String else {
+            throw SyncDecodeError.missingRequiredField("query")
+        }
+        return SQLFavorite(
+            id: id,
+            name: name,
+            query: query,
+            keyword: record["keyword"] as? String,
+            folderId: (record["folderId"] as? String).flatMap(UUID.init(uuidString:)),
+            connectionId: (record["connectionId"] as? String).flatMap(UUID.init(uuidString:)),
+            sortOrder: Int(record["sortOrder"] as? Int64 ?? 0),
+            createdAt: record["createdAt"] as? Date,
+            updatedAt: record["updatedAt"] as? Date
+        )
+    }
+
+    // MARK: - SQL Favorite Folder
+
+    static func toCKRecord(sqlFavoriteFolder folder: SQLFavoriteFolder, in zone: CKRecordZone.ID) -> CKRecord {
+        let recordID = recordID(type: .favoriteFolder, id: folder.id.uuidString, in: zone)
+        let record = CKRecord(recordType: SyncRecordType.favoriteFolder.rawValue, recordID: recordID)
+
+        record["folderId"] = folder.id.uuidString as CKRecordValue
+        record["name"] = folder.name as CKRecordValue
+        if let parentId = folder.parentId {
+            record["parentId"] = parentId.uuidString as CKRecordValue
+        }
+        if let connectionId = folder.connectionId {
+            record["connectionId"] = connectionId.uuidString as CKRecordValue
+        }
+        record["sortOrder"] = Int64(folder.sortOrder) as CKRecordValue
+        record["createdAt"] = folder.createdAt as CKRecordValue
+        record["updatedAt"] = folder.updatedAt as CKRecordValue
+        record["modifiedAtLocal"] = Date() as CKRecordValue
+        record["schemaVersion"] = schemaVersion as CKRecordValue
+
+        return record
+    }
+
+    static func sqlFavoriteFolder(from record: CKRecord) throws -> SQLFavoriteFolder {
+        guard let idString = record["folderId"] as? String, let id = UUID(uuidString: idString) else {
+            throw SyncDecodeError.missingRequiredField("folderId")
+        }
+        guard let name = record["name"] as? String else {
+            throw SyncDecodeError.missingRequiredField("name")
+        }
+        return SQLFavoriteFolder(
+            id: id,
+            name: name,
+            parentId: (record["parentId"] as? String).flatMap(UUID.init(uuidString:)),
+            connectionId: (record["connectionId"] as? String).flatMap(UUID.init(uuidString:)),
+            sortOrder: Int(record["sortOrder"] as? Int64 ?? 0),
+            createdAt: record["createdAt"] as? Date,
+            updatedAt: record["updatedAt"] as? Date
+        )
+    }
+
     // MARK: - SSH Profile
 
     static func toCKRecord(_ profile: SSHProfile, in zone: CKRecordZone.ID) -> CKRecord {

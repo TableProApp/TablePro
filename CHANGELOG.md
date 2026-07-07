@@ -7,9 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Custom AI slash commands now sync across your Macs with iCloud Sync, alongside your other settings.
+- Join a team from the activation window: paste the invite code your team owner sent instead of a license key. Owners manage members and seats from their account on tablepro.app.
+- Connections can take their password from 1Password (op://), HashiCorp Vault, or AWS Secrets Manager, resolved at connect time so the secret is never stored in TablePro.
+- Team plan: publish connections to a shared folder your team reads from, without sending passwords. Right-click a connection, then Share > Publish to Team Catalog. Teammates add the folder under Settings > Linked Folders.
+- Saved SQL queries and their folders now sync across your Macs when iCloud Sync is on. Toggle "Saved Queries" under Settings > Sync.
+- Recent section at the top of the sidebar tracks the last 10 tables you opened per connection and database, in every sidebar layout, and remembers them between launches. It records a table when you open it, not while you arrow through previews. Click a recent table to reopen it, or right-click to remove one or clear the list. Off by default, turn it on in Settings > General > Sidebar. (#1352)
+
+### Changed
+
+- The sidebar filter now matches table and view names by substring and prefix instead of fuzzy matching, so typing the start of a name narrows the list instead of keeping every loose match. Names that start with what you typed sort to the top. (#1822)
+
 ### Fixed
 
 - MongoDB filters and generated edit statements now quote numeric-looking values that would not round-trip, such as `.5`, `1.`, `+7`, `01`, and integers larger than 64 bits, instead of emitting invalid or lossy JSON.
+- Elasticsearch connections using Username & Password now show a Password field, so basic auth on a secured cluster can be set up. It was hidden before, leaving only the Username field. Update the Elasticsearch plugin to get the fix. (#1816)
 - Switching schemas on an Oracle connection no longer hangs on an infinite loading spinner. Oracle now switches by schema like BigQuery, the sidebar lists every schema with its tables loading on expand, Oracle queries respect the query timeout setting and reconnect automatically after a timeout, and a schema load that fails shows an error with a Retry button instead of spinning forever. Works with an already-installed Oracle plugin; updating the plugin adds the query timeout enforcement. (#1807)
 
 ## [0.55.0] - 2026-07-04

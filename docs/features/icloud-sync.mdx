@@ -5,7 +5,7 @@ description: Sync connections, table favorites, settings, and SSH profiles acros
 
 # iCloud Sync
 
-TablePro syncs your connections, groups, table favorites, settings, and SSH profiles across all your Macs via CloudKit. iCloud Sync is a Pro feature that requires an active license.
+TablePro syncs your connections, groups, table favorites, saved queries, settings, and SSH profiles across all your Macs via CloudKit. iCloud Sync is a Pro feature that requires an active license.
 
 ## What syncs (and what doesn't)
 
@@ -15,7 +15,8 @@ TablePro syncs your connections, groups, table favorites, settings, and SSH prof
 | **Passwords** | Optional | Opt-in via iCloud Keychain (end-to-end encrypted) |
 | **Groups & Tags** | Yes | Full connection organization, including nested group hierarchy (parent-child relationships and sort order) |
 | **Table Favorites** | Yes | Favorited table names shown in the Favorites tab and pinned in table lists |
-| **App Settings** | Yes | All settings categories (General, Appearance, Editor, Keyboard, AI, Terminal) |
+| **Saved Queries** | Yes | Saved SQL queries and their folders. Has its own toggle. |
+| **App Settings** | Yes | All settings categories (General, Appearance, Editor, Keyboard, AI, Terminal), including your custom AI slash commands |
 | **Linked SQL Folders** | No | Folder paths are per-Mac. Link the same Git repo on each Mac after cloning. Cached file metadata (`linked_sql_index.db`) is also local. |
 
 <Note>
@@ -40,7 +41,7 @@ Open **Settings** (`Cmd+,`) > **Account**, toggle iCloud Sync on, choose which c
   />
 </Frame>
 
-Connections, Groups & Tags, SSH Profiles, and App Settings each have their own toggle. Table favorites sync when iCloud Sync is enabled.
+Connections, Groups & Tags, SSH Profiles, App Settings, Table Favorites, and Saved Queries each have their own toggle. Custom AI slash commands ride along with the App Settings toggle.
 
 ## Excluding individual connections
 
