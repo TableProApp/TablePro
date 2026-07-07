@@ -48,6 +48,7 @@ final class DataChangeManager: ChangeManaging {
     var changes: [RowChange] { pending.changes }
     var rowChanges: [RowChange] { pending.changes }
     var insertedRowIndices: Set<Int> { pending.insertedRowIndices }
+    var deletedRowIndices: Set<Int> { pending.deletedRowIndices }
 
     var tableName: String = ""
     var schemaName: String?

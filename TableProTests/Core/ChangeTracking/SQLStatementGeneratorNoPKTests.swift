@@ -6,9 +6,9 @@
 //
 
 import Foundation
+@testable import TablePro
 import TableProPluginKit
 import Testing
-@testable import TablePro
 
 @Suite("SQL Statement Generator — No Primary Key")
 struct SQLStatementGeneratorNoPKTests {
@@ -145,7 +145,7 @@ struct SQLStatementGeneratorNoPKTests {
 
     // MARK: - DELETE without PK
 
-    @Test("Delete without PK — multiple rows generate individual DELETEs")
+    @Test("Delete without PK: multiple rows batch into one OR'd full-column DELETE")
     func testDeleteNoPKMultipleRows() throws {
         let generator = try makeGenerator()
         let changes: [RowChange] = [
@@ -160,11 +160,14 @@ struct SQLStatementGeneratorNoPKTests {
             insertedRowIndices: []
         )
 
-        #expect(statements.count == 2)
-        #expect(statements[0].sql.contains("DELETE"))
-        #expect(statements[1].sql.contains("DELETE"))
-        #expect(statements[0].parameters[0] as? String == "1")
-        #expect(statements[1].parameters[0] as? String == "2")
+        #expect(statements.count == 1)
+        let stmt = statements[0]
+        #expect(stmt.sql.contains("DELETE FROM `users` WHERE "))
+        #expect(stmt.sql.contains("(`id` = ? AND `name` = ? AND `email` = ?)"))
+        #expect(stmt.sql.contains(") OR ("))
+        #expect(stmt.parameters.count == 6)
+        #expect(stmt.parameters[0] as? String == "1")
+        #expect(stmt.parameters[3] as? String == "2")
     }
 
     @Test("Delete without PK — all NULL originalRow uses IS NULL")

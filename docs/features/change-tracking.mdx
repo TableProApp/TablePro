@@ -78,7 +78,7 @@ Edits to cells in a new row are folded into the insertion, not tracked as separa
 
 ### Deleting Rows
 
-Select rows and press `Delete`. Deleted rows show a strikethrough indicator and stay visible until commit or discard.
+Select rows and press `Delete`. Deleted rows show a strikethrough indicator and stay visible until commit or discard. When you commit, TablePro asks you to confirm before it permanently deletes the rows.
 
 {/* Screenshot: Deleted row with deletion indicator */}
 <Frame caption="Deleted row">
@@ -97,6 +97,10 @@ Select rows and press `Delete`. Deleted rows show a strikethrough indicator and 
 <Warning>
 Batch deletion of multiple rows is tracked as a single undo action. Undoing a batch deletion restores all rows at once.
 </Warning>
+
+<Note>
+Deleting many rows commits as one batched statement, not one query per row, so a large selection stays fast. Very large selections are split into a few statements to stay within the database's parameter limits.
+</Note>
 
 ## Commit & Discard
 
