@@ -381,7 +381,11 @@ struct SQLStatementGenerator {
         for (index, columnName) in columns.enumerated() {
             guard index < originalRow.count else { continue }
             let value = originalRow[index]
-            matches.append(DeleteColumnMatch(column: columnName, boundValue: value.isNull ? nil : value))
+            if value.isNull {
+                matches.append(DeleteColumnMatch(column: columnName, boundValue: nil))
+            } else {
+                matches.append(DeleteColumnMatch(column: columnName, boundValue: value))
+            }
         }
         return matches.isEmpty ? nil : matches
     }
