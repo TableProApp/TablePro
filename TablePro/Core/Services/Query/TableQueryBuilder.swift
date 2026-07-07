@@ -219,35 +219,6 @@ struct TableQueryBuilder {
         return query
     }
 
-    func buildMultiSortQuery(
-        baseQuery: String,
-        sortState: SortState,
-        columns: [String]
-    ) -> String {
-        var query = removeOrderBy(from: baseQuery)
-
-        if let orderBy = buildOrderByClause(sortState: sortState, columns: columns) {
-            if let limitRange = query.range(of: "LIMIT", options: .caseInsensitive) {
-                let beforeLimit = query[..<limitRange.lowerBound].trimmingCharacters(in: .whitespaces)
-                let limitClause = query[limitRange.lowerBound...]
-                query = "\(beforeLimit) \(orderBy) \(limitClause)"
-            } else if let offsetRange = query.range(of: "OFFSET", options: .caseInsensitive) {
-                let beforeOffset = query[..<offsetRange.lowerBound].trimmingCharacters(in: .whitespaces)
-                let offsetClause = query[offsetRange.lowerBound...]
-                query = "\(beforeOffset) \(orderBy) \(offsetClause)"
-            } else {
-                let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-                if trimmed.hasSuffix(";") {
-                    query = String(trimmed.dropLast()) + " \(orderBy);"
-                } else {
-                    query = "\(trimmed) \(orderBy)"
-                }
-            }
-        }
-
-        return query
-    }
-
     // MARK: - Private Helpers
 
     private func selectClause(_ selectColumns: [String]?) -> String {

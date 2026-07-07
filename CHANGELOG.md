@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Sorting a table column no longer discards your rows-per-page setting. Clicking a column header to sort, or clicking again to clear the sort, now keeps the page size and returns to page 1 instead of loading the whole table. (#1826)
 - Elasticsearch connections using Username & Password now show a Password field, so basic auth on a secured cluster can be set up. It was hidden before, leaving only the Username field. Update the Elasticsearch plugin to get the fix. (#1816)
 - Switching schemas on an Oracle connection no longer hangs on an infinite loading spinner. Oracle now switches by schema like BigQuery, the sidebar lists every schema with its tables loading on expand, Oracle queries respect the query timeout setting and reconnect automatically after a timeout, and a schema load that fails shows an error with a Retry button instead of spinning forever. Works with an already-installed Oracle plugin; updating the plugin adds the query timeout enforcement. (#1807)
 
