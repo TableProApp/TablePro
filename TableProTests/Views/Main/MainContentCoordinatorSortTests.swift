@@ -207,7 +207,10 @@ struct MainContentCoordinatorSortTests {
         #expect(tabManager.tabs[idx].pagination.currentOffset == 0)
     }
 
-    private func makeTableCoordinator(pageSize: Int) -> (MainContentCoordinator, QueryTabManager, UUID) {
+    private func makeTableCoordinator(
+        pageSize: Int,
+        tableName: String = "users"
+    ) -> (MainContentCoordinator, QueryTabManager, UUID) {
         let tabManager = QueryTabManager()
         let coordinator = MainContentCoordinator(
             connection: TestFixtures.makeConnection(),
@@ -215,8 +218,8 @@ struct MainContentCoordinatorSortTests {
             changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
-        var tab = QueryTab(title: "users", query: "SELECT * FROM users", tabType: .table)
-        tab.tableContext.tableName = "users"
+        var tab = QueryTab(title: tableName, query: "SELECT * FROM \(tableName)", tabType: .table)
+        tab.tableContext.tableName = tableName
         tab.pagination = PaginationState(totalRowCount: 100, pageSize: pageSize, currentPage: 1)
         tab.execution.lastExecutedAt = Date()
         tabManager.tabs.append(tab)
@@ -253,5 +256,18 @@ struct MainContentCoordinatorSortTests {
         #expect(!query().localizedCaseInsensitiveContains("ORDER BY"))
         #expect(pagination()?.pageSize == 10)
         #expect(pagination()?.currentOffset == 0)
+    }
+
+    @Test("Sorting a table whose name contains a SQL keyword keeps the identifier intact")
+    func tableTabSortDoesNotSplitKeywordTableName() {
+        let (coordinator, tabManager, tabId) = makeTableCoordinator(pageSize: 10, tableName: "user_rate_limits")
+
+        coordinator.handleSortStateChanged(sortState([(0, .descending)]))
+
+        let sql = tabManager.tabs.first { $0.id == tabId }?.content.query ?? ""
+        #expect(sql.contains("user_rate_limits"))
+        #expect(!sql.contains("user_rate_ "))
+        #expect(sql.localizedCaseInsensitiveContains("ORDER BY"))
+        #expect(sql.contains("LIMIT 10 OFFSET 0"))
     }
 }

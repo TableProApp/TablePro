@@ -189,36 +189,6 @@ struct TableQueryBuilder {
         return "SELECT COUNT(*) FROM \(quotedTable) \(whereClause)"
     }
 
-    func buildSortedQuery(
-        baseQuery: String,
-        columnName: String,
-        ascending: Bool
-    ) -> String {
-        var query = removeOrderBy(from: baseQuery)
-        let direction = ascending ? "ASC" : "DESC"
-        let quotedColumn = quote(columnName)
-        let orderByClause = "ORDER BY \(quotedColumn) \(direction)"
-
-        if let limitRange = query.range(of: "LIMIT", options: .caseInsensitive) {
-            let beforeLimit = query[..<limitRange.lowerBound].trimmingCharacters(in: .whitespaces)
-            let limitClause = query[limitRange.lowerBound...]
-            query = "\(beforeLimit) \(orderByClause) \(limitClause)"
-        } else if let offsetRange = query.range(of: "OFFSET", options: .caseInsensitive) {
-            let beforeOffset = query[..<offsetRange.lowerBound].trimmingCharacters(in: .whitespaces)
-            let offsetClause = query[offsetRange.lowerBound...]
-            query = "\(beforeOffset) \(orderByClause) \(offsetClause)"
-        } else {
-            let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-            if trimmed.hasSuffix(";") {
-                query = String(trimmed.dropLast()) + " \(orderByClause);"
-            } else {
-                query = "\(trimmed) \(orderByClause)"
-            }
-        }
-
-        return query
-    }
-
     // MARK: - Private Helpers
 
     private func selectClause(_ selectColumns: [String]?) -> String {
@@ -261,31 +231,5 @@ struct TableQueryBuilder {
 
         guard !parts.isEmpty else { return nil }
         return "ORDER BY " + parts.joined(separator: ", ")
-    }
-
-    private func removeOrderBy(from query: String) -> String {
-        var result = query
-
-        guard let orderByRange = result.range(of: "ORDER BY", options: [.caseInsensitive, .backwards]) else {
-            return result
-        }
-
-        let afterOrderBy = result[orderByRange.upperBound...]
-
-        if let limitRange = afterOrderBy.range(of: "LIMIT", options: .caseInsensitive) {
-            let beforeOrderBy = result[..<orderByRange.lowerBound]
-            let limitClause = result[limitRange.lowerBound...]
-            result = String(beforeOrderBy) + String(limitClause)
-        } else if let offsetRange = afterOrderBy.range(of: "OFFSET", options: .caseInsensitive) {
-            let beforeOrderBy = result[..<orderByRange.lowerBound]
-            let offsetClause = result[offsetRange.lowerBound...]
-            result = String(beforeOrderBy) + String(offsetClause)
-        } else if afterOrderBy.range(of: ";") != nil {
-            result = String(result[..<orderByRange.lowerBound]) + ";"
-        } else {
-            result = String(result[..<orderByRange.lowerBound])
-        }
-
-        return result.trimmingCharacters(in: .whitespaces)
     }
 }
