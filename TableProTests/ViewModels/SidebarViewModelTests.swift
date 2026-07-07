@@ -354,9 +354,9 @@ struct SidebarViewModelMultiSectionTests {
         #expect(funcs.map(\.name) == ["calculate_age"])
     }
 
-    @Test("Sidebar filter matches fuzzy abbreviations like Xcode's navigator")
+    @Test("Sidebar filter uses substring matching, not fuzzy abbreviations")
     @MainActor
-    func sidebarFilterMatchesAbbreviation() {
+    func sidebarFilterUsesSubstringNotAbbreviation() {
         let vm = makeViewModel()
         let userProfileView = TestFixtures.makeTableInfo(name: "user_profile_view", type: .view)
         let orders = TestFixtures.makeTableInfo(name: "orders", type: .view)
@@ -364,7 +364,21 @@ struct SidebarViewModelMultiSectionTests {
 
         let matches = vm.filteredTables(of: .view, from: [userProfileView, orders])
 
-        #expect(matches.map(\.name) == ["user_profile_view"])
+        #expect(matches.isEmpty)
+    }
+
+    @Test("Sidebar filter ranks prefix matches above interior-substring matches")
+    @MainActor
+    func sidebarFilterRanksPrefixFirst() {
+        let vm = makeViewModel()
+        let auditUser = TestFixtures.makeTableInfo(name: "audit_user", type: .table)
+        let users = TestFixtures.makeTableInfo(name: "users", type: .table)
+        let userLog = TestFixtures.makeTableInfo(name: "user_log", type: .table)
+        vm.searchText = "user"
+
+        let matches = vm.filteredTables(of: .table, from: [auditUser, users, userLog])
+
+        #expect(matches.map(\.name) == ["users", "user_log", "audit_user"])
     }
 
     @Test("filteredRoutines search matches name case insensitively")

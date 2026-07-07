@@ -16,6 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Saved SQL queries and their folders now sync across your Macs when iCloud Sync is on. Toggle "Saved Queries" under Settings > Sync.
 - Recent section at the top of the sidebar tracks the last 10 tables you opened per connection and database, in every sidebar layout, and remembers them between launches. It records a table when you open it, not while you arrow through previews. Click a recent table to reopen it, or right-click to remove one or clear the list. Off by default, turn it on in Settings > General > Sidebar. (#1352)
 
+### Changed
+
+- The sidebar filter now matches table and view names by substring and prefix instead of fuzzy matching, so typing the start of a name narrows the list instead of keeping every loose match. Names that start with what you typed sort to the top. (#1822)
+
 ### Fixed
 
 - Elasticsearch connections using Username & Password now show a Password field, so basic auth on a secured cluster can be set up. It was hidden before, leaving only the Username field. Update the Elasticsearch plugin to get the fix. (#1816)

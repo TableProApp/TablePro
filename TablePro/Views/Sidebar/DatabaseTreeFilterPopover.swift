@@ -22,7 +22,7 @@ struct DatabaseTreeFilterPopover: View {
 
     private var matchingDatabases: [DatabaseMetadata] {
         guard !searchText.isEmpty else { return selectableDatabases }
-        return selectableDatabases.filter { FuzzyMatcher.matches(query: searchText, candidate: $0.name) }
+        return selectableDatabases.filter { SidebarNameFilter.matches(query: searchText, candidate: $0.name) }
     }
 
     private var shownCount: Int {

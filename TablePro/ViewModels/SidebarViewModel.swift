@@ -332,9 +332,6 @@ final class SidebarViewModel {
 
     // MARK: - Filtering
 
-    @ObservationIgnored private var cachedFilteredTables: [TableInfo]?
-    @ObservationIgnored private var cachedFilterInputs: (count: Int, generation: Int, query: String)?
-
     @ObservationIgnored private var cachedKindBuckets: [SidebarObjectKind: [TableInfo]] = [:]
     @ObservationIgnored private var cachedKindFingerprint: (count: Int, generation: Int)?
 
@@ -346,25 +343,6 @@ final class SidebarViewModel {
 
     private var schemaGeneration: Int {
         SchemaService.shared.generationToken(for: connectionId)
-    }
-
-    func filteredTables(from tables: [TableInfo]) -> [TableInfo] {
-        let query = filterQuery
-        let fingerprint = (count: tables.count, generation: schemaGeneration, query: query)
-        if let cache = cachedFilteredTables,
-           let inputs = cachedFilterInputs,
-           inputs == fingerprint {
-            return cache
-        }
-        let result: [TableInfo]
-        if query.isEmpty {
-            result = tables
-        } else {
-            result = tables.filter { FuzzyMatcher.matches(query: query, candidate: $0.name) }
-        }
-        cachedFilteredTables = result
-        cachedFilterInputs = fingerprint
-        return result
     }
 
     func tables(of kind: SidebarObjectKind, from tables: [TableInfo]) -> [TableInfo] {
@@ -398,7 +376,9 @@ final class SidebarViewModel {
     }
 
     func filteredRecentTables(_ tables: [TableInfo]) -> [TableInfo] {
-        applyQuery(filterQuery, to: tables)
+        let query = filterQuery
+        guard !query.isEmpty else { return tables }
+        return tables.filter { SidebarNameFilter.matches(query: query, candidate: $0.name) }
     }
 
     func filteredRoutines(of kind: SidebarObjectKind, from routines: [RoutineInfo]) -> [RoutineInfo] {
@@ -422,13 +402,11 @@ final class SidebarViewModel {
     }
 
     private func applyQuery(_ query: String, to tables: [TableInfo]) -> [TableInfo] {
-        guard !query.isEmpty else { return tables }
-        return tables.filter { FuzzyMatcher.matches(query: query, candidate: $0.name) }
+        SidebarNameFilter.ranked(tables, query: query, name: { $0.name })
     }
 
     private func applyRoutineQuery(_ query: String, to routines: [RoutineInfo]) -> [RoutineInfo] {
-        guard !query.isEmpty else { return routines }
-        return routines.filter { FuzzyMatcher.matches(query: query, candidate: $0.name) }
+        SidebarNameFilter.ranked(routines, query: query, name: { $0.name })
     }
 
     private func rebuildKindBuckets(from tables: [TableInfo]) {
@@ -453,8 +431,6 @@ final class SidebarViewModel {
     }
 
     private func invalidateFilterCaches() {
-        cachedFilteredTables = nil
-        cachedFilterInputs = nil
         cachedFilteredByKind = [:]
         cachedFilteredByKindFingerprint = nil
         cachedFilteredRoutines = [:]
