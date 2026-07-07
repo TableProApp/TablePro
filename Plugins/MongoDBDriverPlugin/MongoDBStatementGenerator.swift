@@ -169,7 +169,7 @@ struct MongoDBStatementGenerator {
             }
             if isObjectIdString(idValue) {
                 idValues.append("{\"$oid\": \"\(idValue)\"}")
-            } else if MongoDBJsonNumber.isValid(idValue) {
+            } else if Int64(idValue) != nil {
                 idValues.append(idValue)
             } else {
                 idValues.append("\"\(escapeJsonString(idValue))\"")
@@ -218,7 +218,7 @@ struct MongoDBStatementGenerator {
         if isObjectIdString(idValue) {
             return "{\"_id\": {\"$oid\": \"\(idValue)\"}}"
         }
-        if MongoDBJsonNumber.isValid(idValue) {
+        if Int64(idValue) != nil {
             return "{\"_id\": \(idValue)}"
         }
         return "{\"_id\": \"\(escapeJsonString(idValue))\"}"

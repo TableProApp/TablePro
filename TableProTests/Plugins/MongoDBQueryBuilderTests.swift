@@ -396,6 +396,17 @@ struct MongoDBQueryBuilderTests {
         #expect(parsed?["code"] as? String == "12345678901234567890")
     }
 
+    @Test("Filter document quotes exponents that overflow Double instead of emitting Infinity")
+    func filterDocumentQuotesOutOfRangeExponent() {
+        for value in ["1e400", "-1e400", "1.5e400"] {
+            let doc = builder.buildFilterDocument(
+                from: [(column: "score", op: "=", value: value)]
+            )
+            let parsed = parseFilter(doc)
+            #expect(parsed?["score"] as? String == value)
+        }
+    }
+
     @Test("Filter document emits the largest Int64 integer unquoted")
     func filterDocumentEmitsMaxInt64() {
         let doc = builder.buildFilterDocument(

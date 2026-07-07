@@ -23,7 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- MongoDB filters and generated edit statements now quote numeric-looking values that would not round-trip, such as `.5`, `1.`, `+7`, `01`, and integers larger than 64 bits, instead of emitting invalid or lossy JSON.
+- MongoDB filters and generated edit statements now quote numeric-looking values that would not round-trip, such as `.5`, `1.`, `+7`, `01`, integers larger than 64 bits, and exponents that overflow a double like `1e400`, instead of emitting invalid or lossy JSON. A row whose `_id` is a decimal or exponent string is matched as that string, so delete and update target the right document. (#1813)
 - Deleting many rows at once no longer freezes the app or the machine. Multi-row deletes now run as one batched statement, chunked to stay within the database's limits, instead of one query per row. (#1823)
 - Deleting rows from a table without a primary key now matches on every column instead of treating the first column as a key, so it won't remove other rows that happen to share that value. (#1823)
 - Sorting a table column no longer discards your rows-per-page setting. Clicking a column header to sort, or clicking again to clear the sort, now keeps the page size and returns to page 1 instead of loading the whole table. (#1826)

@@ -620,6 +620,32 @@ struct MongoDBStatementGeneratorTests {
         #expect(results[0].statement.contains("{\"_id\": \"12345678901234567890\"}"))
     }
 
+    @Test("Delete keeps a decimal or exponent _id quoted so a string _id still matches")
+    func deleteQuotesNonIntegerId() {
+        let gen = MongoDBStatementGenerator(
+            collectionName: "users",
+            columns: ["_id", "name"]
+        )
+
+        for id in ["1.5", "1e3"] {
+            let change = PluginRowChange(
+                rowIndex: 0,
+                type: .delete,
+                cellChanges: [],
+                originalRow: [PluginCellValue.text(id), "Alice"]
+            )
+
+            let results = gen.generateStatements(
+                from: [change],
+                insertedRowData: [:],
+                deletedRowIndices: [0],
+                insertedRowIndices: []
+            )
+
+            #expect(results[0].statement.contains("{\"_id\": \"\(id)\"}"))
+        }
+    }
+
     @Test("Single delete without _id falls back to all-field match")
     func singleDeleteNoIdFallback() {
         let gen = MongoDBStatementGenerator(

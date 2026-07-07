@@ -20,7 +20,7 @@ enum MongoDBJsonNumber {
         if isPlainInteger(value) {
             return Int64(value) != nil
         }
-        return true
+        return Double(value)?.isFinite ?? false
     }
 
     private static func isPlainInteger(_ value: String) -> Bool {
