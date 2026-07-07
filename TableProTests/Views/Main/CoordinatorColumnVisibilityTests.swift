@@ -58,19 +58,46 @@ struct CoordinatorColumnVisibilityTests {
     func hideColumnPersistsForReopen() {
         let (coordinator, tabManager) = makeCoordinator()
         _ = addTableTab(to: tabManager, tableName: "users")
-        let storageKey = ColumnVisibilityPersistence.key(
-            tableName: "users",
-            connectionId: coordinator.connectionId
+        guard let tab = tabManager.selectedTab else {
+            Issue.record("Expected selected tab")
+            return
+        }
+        let key = ColumnLayoutTableKey(
+            connectionId: coordinator.connectionId,
+            databaseName: tab.tableContext.databaseName,
+            schemaName: tab.tableContext.schemaName,
+            tableName: "users"
         )
-        defer { UserDefaults.standard.removeObject(forKey: storageKey) }
+        defer { UserDefaults.standard.removeObject(forKey: ColumnVisibilityPersistence.key(for: key)) }
 
         coordinator.hideColumn("email")
 
-        let persisted = ColumnVisibilityPersistence.loadHiddenColumns(
-            for: "users",
-            connectionId: coordinator.connectionId
-        )
-        #expect(persisted == ["email"])
+        #expect(ColumnVisibilityPersistence.loadHiddenColumns(for: key) == ["email"])
+    }
+
+    @Test("Applying column geometry after hiding columns keeps the hidden set and syncs the session")
+    func applyColumnGeometryPreservesHiddenColumns() {
+        let (coordinator, tabManager) = makeCoordinator()
+        let tabId = addTableTab(to: tabManager, tableName: "users")
+        coordinator.hideColumn("email")
+
+        var geometry = ColumnLayoutState()
+        geometry.columnWidths = ["id": 80, "name": 220]
+        geometry.columnOrder = ["id", "name"]
+        coordinator.applyColumnGeometry(from: geometry, toTabId: tabId)
+
+        guard let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else {
+            Issue.record("Expected tab to exist")
+            return
+        }
+        let layout = tabManager.tabs[index].columnLayout
+        #expect(layout.hiddenColumns == ["email"])
+        #expect(layout.columnWidths == ["id": 80, "name": 220])
+        #expect(layout.columnOrder == ["id", "name"])
+
+        let session = coordinator.tabSessionRegistry.session(for: tabId)
+        #expect(session?.columnLayout.hiddenColumns == ["email"])
+        #expect(session?.columnLayout.columnWidths == ["id": 80, "name": 220])
     }
 
     @Test("showColumn removes from the active tab's hidden set")
@@ -163,27 +190,29 @@ struct CoordinatorColumnVisibilityTests {
         )
         let state = SessionStateFactory.create(connection: connection, payload: payload)
         let coordinator = state.coordinator
-        let storageKey = ColumnVisibilityPersistence.key(
-            tableName: "users",
-            connectionId: connection.id
+        guard let createdTab = state.tabManager.selectedTab else {
+            Issue.record("Expected payload-created table tab")
+            return
+        }
+        let key = ColumnLayoutTableKey(
+            connectionId: connection.id,
+            databaseName: createdTab.tableContext.databaseName,
+            schemaName: createdTab.tableContext.schemaName,
+            tableName: "users"
         )
 
         defer {
-            UserDefaults.standard.removeObject(forKey: storageKey)
+            UserDefaults.standard.removeObject(forKey: ColumnVisibilityPersistence.key(for: key))
             coordinator.teardown()
         }
 
-        ColumnVisibilityPersistence.saveHiddenColumns(
-            ["email"],
-            for: "users",
-            connectionId: connection.id
-        )
+        ColumnVisibilityPersistence.saveHiddenColumns(["email"], for: key)
         coordinator.schemaColumns.store(
             (columns: ["id", "name", "email"], primaryKeys: ["id"]),
             for: coordinator.schemaColumnsKey("users", schema: nil)
         )
 
-        coordinator.restoreLastHiddenColumnsForTable("users")
+        coordinator.restoreLastHiddenColumnsForTable()
         await coordinator.rebuildSelectedTableQueryForHiddenColumnsIfNeeded()
 
         guard let tab = state.tabManager.selectedTab else {

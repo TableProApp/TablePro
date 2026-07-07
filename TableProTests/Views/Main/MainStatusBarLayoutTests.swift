@@ -34,7 +34,8 @@ struct MainStatusBarLayoutTests {
                 all: [],
                 onToggle: { _ in },
                 onShowAll: {},
-                onHideAll: { _ in }
+                onHideAll: { _ in },
+                onReset: {}
             ),
             structureState: StatusBarStructureState(
                 footer: StructureFooterState(),

@@ -52,7 +52,6 @@ struct TableStructureView: View {
     @State var selectedRows: Set<Int> = []
     @State var sortState = SortState()
     @State var structureColumnLayouts: [StructureTab: ColumnLayoutState] = [:]
-    @State var columnLayoutPersister: any ColumnLayoutPersisting = FileColumnLayoutPersister()
     @State var actionHandler = StructureViewActionHandler()
     @State var gridDelegate: StructureGridDelegate
     @State private var footerOwnerId = UUID()
@@ -380,7 +379,7 @@ struct TableStructureView: View {
                         await loadColumns()
                         loadSchemaForEditing()
                         isReloadingAfterSave = false
-                        columnLayoutPersister.clear(for: tableName, connectionId: connection.id)
+                        coordinator?.clearColumnLayoutForSelectedTable()
                         AppCommands.shared.refreshData.send(connection.id)
                     } catch {
                         AlertHelper.showErrorSheet(
@@ -423,7 +422,6 @@ struct TableStructureView: View {
                 databaseType: connection.type
             ),
             delegate: gridDelegate,
-            layoutPersister: columnLayoutPersister,
             selectedRowIndices: $selectedRows,
             sortState: $sortState,
             columnLayout: columnLayoutBinding(for: selectedTab)

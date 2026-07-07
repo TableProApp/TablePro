@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Team plan: publish connections to a shared folder your team reads from, without sending passwords. Right-click a connection, then Share > Publish to Team Catalog. Teammates add the folder under Settings > Linked Folders.
 - Saved SQL queries and their folders now sync across your Macs when iCloud Sync is on. Toggle "Saved Queries" under Settings > Sync.
 - Recent section at the top of the sidebar tracks the last 10 tables you opened per connection and database, in every sidebar layout, and remembers them between launches. It records a table when you open it, not while you arrow through previews. Click a recent table to reopen it, or right-click to remove one or clear the list. Off by default, turn it on in Settings > General > Sidebar. (#1352)
+- Saving now asks you to confirm before it permanently deletes rows, so a bulk delete can't be committed by accident. (#1823)
 
 ### Changed
 
@@ -23,8 +24,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - MongoDB filters and generated edit statements now quote numeric-looking values that would not round-trip, such as `.5`, `1.`, `+7`, `01`, and integers larger than 64 bits, instead of emitting invalid or lossy JSON.
+- Deleting many rows at once no longer freezes the app or the machine. Multi-row deletes now run as one batched statement, chunked to stay within the database's limits, instead of one query per row. (#1823)
+- Deleting rows from a table without a primary key now matches on every column instead of treating the first column as a key, so it won't remove other rows that happen to share that value. (#1823)
+- Sorting a table column no longer discards your rows-per-page setting. Clicking a column header to sort, or clicking again to clear the sort, now keeps the page size and returns to page 1 instead of loading the whole table. (#1826)
+- Sorting a column no longer fails with a SQL error on tables whose name contains a word like limit or offset, for example user_rate_limits. (#1825)
 - Elasticsearch connections using Username & Password now show a Password field, so basic auth on a secured cluster can be set up. It was hidden before, leaving only the Username field. Update the Elasticsearch plugin to get the fix. (#1816)
 - Switching schemas on an Oracle connection no longer hangs on an infinite loading spinner. Oracle now switches by schema like BigQuery, the sidebar lists every schema with its tables loading on expand, Oracle queries respect the query timeout setting and reconnect automatically after a timeout, and a schema load that fails shows an error with a Retry button instead of spinning forever. Works with an already-installed Oracle plugin; updating the plugin adds the query timeout enforcement. (#1807)
+- Resizing a data grid column no longer triggers a sort. Dragging a column edge only resizes it; clicking the header still sorts. (#1815)
+- Hidden columns stay hidden. The columns you choose to show are remembered per table across sessions, and resizing a column no longer brings the hidden ones back. Column widths and order are remembered per table too, now kept separately for each connection, database, and schema so two tables with the same name no longer overwrite each other's layout. A Reset Columns button in the Columns popover puts widths, order, and visibility back to defaults. Existing saved column layouts (widths, order, and which columns are hidden) reset once as part of this change. (#1815)
+- Query and filter errors now appear in a scrollable banner you can read, select, and copy, with a Fix with AI button, instead of a small dialog that cut the message off. (#1815)
+- The filter autocomplete no longer pops up on empty input, and pressing Escape to close it no longer also closes the filter bar. (#1815)
+- The editor autocomplete popup no longer draws over the status bar or the Columns and Add buttons, and clicking outside it now dismisses it. This fixes the bottom-right buttons and the editor mouse going dead after the popup had appeared. (#1815)
 
 ## [0.55.0] - 2026-07-04
 

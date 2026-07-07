@@ -53,7 +53,8 @@ final class FindPanelHostingView: NSHostingView<FindPanelView> {
     // MARK: - Event Monitor Management
 
     func addEventMonitor() {
-        eventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event -> NSEvent? in
+        eventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event -> NSEvent? in
+            guard let self else { return event }
             if event.keyCode == 53 { // if esc pressed
                 self.viewModel?.dismiss?()
                 return nil // do not play "beep" sound

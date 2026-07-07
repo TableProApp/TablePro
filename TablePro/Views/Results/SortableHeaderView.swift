@@ -100,13 +100,7 @@ final class SortableHeaderView: NSTableHeaderView {
             return
         }
         let point = convert(event.locationInWindow, from: nil)
-        let zone = Self.resizeZoneWidth
-        let inResizeZone = tableView.tableColumns.enumerated().contains { index, column in
-            guard column.resizingMask.contains(.userResizingMask) else { return false }
-            let edge = headerRect(ofColumn: index).maxX
-            return abs(point.x - edge) <= zone
-        }
-        if inResizeZone {
+        if isInResizeZone(point: point) {
             NSCursor.resizeLeftRight.set()
             updateFunnelHover(column: nil)
         } else {
@@ -118,6 +112,16 @@ final class SortableHeaderView: NSTableHeaderView {
     override func mouseExited(with event: NSEvent) {
         super.mouseExited(with: event)
         updateFunnelHover(column: nil)
+    }
+
+    private func isInResizeZone(point: NSPoint) -> Bool {
+        guard let tableView else { return false }
+        let zone = Self.resizeZoneWidth
+        return tableView.tableColumns.enumerated().contains { index, column in
+            guard column.resizingMask.contains(.userResizingMask) else { return false }
+            let edge = headerRect(ofColumn: index).maxX
+            return abs(point.x - edge) <= zone
+        }
     }
 
     private func hoverableColumn(at point: NSPoint) -> Int? {
@@ -213,6 +217,11 @@ final class SortableHeaderView: NSTableHeaderView {
         }
 
         let pointInHeader = convert(event.locationInWindow, from: nil)
+        if isInResizeZone(point: pointInHeader) {
+            super.mouseDown(with: event)
+            return
+        }
+
         let columnIndex = column(at: pointInHeader)
         guard columnIndex >= 0, columnIndex < tableView.numberOfColumns else {
             super.mouseDown(with: event)

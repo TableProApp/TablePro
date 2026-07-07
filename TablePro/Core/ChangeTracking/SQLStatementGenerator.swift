@@ -104,18 +104,8 @@ struct SQLStatementGenerator {
             }
         }
 
-        // Try batched DELETE first (uses PK if available), fall back to individual DELETEs
         if !deleteChanges.isEmpty {
-            if let stmt = generateBatchDeleteSQL(for: deleteChanges) {
-                statements.append(stmt)
-            } else {
-                // No PK - generate individual DELETE statements matching all columns
-                for change in deleteChanges {
-                    if let stmt = generateDeleteSQL(for: change) {
-                        statements.append(stmt)
-                    }
-                }
-            }
+            statements.append(contentsOf: generateDeleteStatements(for: deleteChanges))
         }
 
         return statements
@@ -340,72 +330,82 @@ struct SQLStatementGenerator {
 
     // MARK: - DELETE Generation
 
-    /// Generate a batched DELETE statement combining multiple rows
-    private func generateBatchDeleteSQL(for changes: [RowChange]) -> ParameterizedStatement? {
-        guard !changes.isEmpty else { return nil }
-
-        // If we have primary key(s), use them for efficient deletion
-        if !primaryKeyColumns.isEmpty {
-            let pkIndices: [(column: String, index: Int)] = primaryKeyColumns.compactMap { col in
-                guard let idx = columns.firstIndex(of: col) else { return nil }
-                return (col, idx)
-            }
-            guard !pkIndices.isEmpty else { return nil }
-
-            var parameters: [Any?] = []
-            let rowConditions = changes.compactMap { change -> String? in
-                guard let originalRow = change.originalRow else { return nil }
-
-                var pkConditions: [String] = []
-                for pk in pkIndices {
-                    guard pk.index < originalRow.count else { return nil }
-                    parameters.append(originalRow[pk.index].asAny)
-                    pkConditions.append(
-                        "\(quoteIdentifierFn(pk.column)) = \(placeholder(at: parameters.count - 1))"
-                    )
-                }
-                return pkIndices.count > 1
-                    ? "(\(pkConditions.joined(separator: " AND ")))"
-                    : pkConditions.joined()
-            }
-
-            guard !rowConditions.isEmpty else { return nil }
-
-            let whereClause = rowConditions.joined(separator: " OR ")
-            let sql = "DELETE FROM \(quoteIdentifierFn(tableName)) WHERE \(whereClause)"
-
-            return ParameterizedStatement(sql: sql, parameters: parameters)
-        }
-
-        // Fallback: No primary key - generate individual DELETE statements
-        return nil
+    private struct DeleteColumnMatch {
+        let column: String
+        let boundValue: PluginCellValue?
     }
 
-    private func generateDeleteSQL(for change: RowChange) -> ParameterizedStatement? {
-        guard let originalRow = change.originalRow else { return nil }
+    private func generateDeleteStatements(for changes: [RowChange]) -> [ParameterizedStatement] {
+        let rowMatches = changes.compactMap { deleteRowMatches(for: $0) }
+        guard !rowMatches.isEmpty else { return [] }
 
-        var parameters: [Any?] = []
-        var conditions: [String] = []
+        var statements: [ParameterizedStatement] = []
+        var chunk: [[DeleteColumnMatch]] = []
+        var chunkParameterCount = 0
 
-        for (index, columnName) in columns.enumerated() {
-            guard index < originalRow.count else { continue }
-
-            let value = originalRow[index]
-            let quotedColumn = quoteIdentifierFn(columnName)
-
-            if value.isNull {
-                conditions.append("\(quotedColumn) IS NULL")
-            } else {
-                parameters.append(value.asAny)
-                conditions.append("\(quotedColumn) = \(placeholder(at: parameters.count - 1))")
+        for matches in rowMatches {
+            let rowParameterCount = matches.count(where: { $0.boundValue != nil })
+            if !chunk.isEmpty, chunkParameterCount + rowParameterCount > maxBindParameters {
+                statements.append(deleteStatement(for: chunk))
+                chunk = []
+                chunkParameterCount = 0
             }
+            chunk.append(matches)
+            chunkParameterCount += rowParameterCount
         }
 
-        guard !conditions.isEmpty else { return nil }
+        if !chunk.isEmpty {
+            statements.append(deleteStatement(for: chunk))
+        }
 
-        let whereClause = conditions.joined(separator: " AND ")
+        return statements
+    }
+
+    private func deleteRowMatches(for change: RowChange) -> [DeleteColumnMatch]? {
+        guard let originalRow = change.originalRow else { return nil }
+
+        if !primaryKeyColumns.isEmpty {
+            var matches: [DeleteColumnMatch] = []
+            for pkColumn in primaryKeyColumns {
+                guard let pkIndex = columns.firstIndex(of: pkColumn), pkIndex < originalRow.count else {
+                    return nil
+                }
+                let value = originalRow[pkIndex]
+                guard !value.isNull else { return nil }
+                matches.append(DeleteColumnMatch(column: pkColumn, boundValue: value))
+            }
+            return matches.isEmpty ? nil : matches
+        }
+
+        var matches: [DeleteColumnMatch] = []
+        for (index, columnName) in columns.enumerated() {
+            guard index < originalRow.count else { continue }
+            let value = originalRow[index]
+            if value.isNull {
+                matches.append(DeleteColumnMatch(column: columnName, boundValue: nil))
+            } else {
+                matches.append(DeleteColumnMatch(column: columnName, boundValue: value))
+            }
+        }
+        return matches.isEmpty ? nil : matches
+    }
+
+    private func deleteStatement(for rows: [[DeleteColumnMatch]]) -> ParameterizedStatement {
+        var parameters: [Any?] = []
+        let rowClauses = rows.map { matches -> String in
+            let conditions = matches.map { match -> String in
+                guard let value = match.boundValue else {
+                    return "\(quoteIdentifierFn(match.column)) IS NULL"
+                }
+                parameters.append(value.asAny)
+                return "\(quoteIdentifierFn(match.column)) = \(placeholder(at: parameters.count - 1))"
+            }
+            let joined = conditions.joined(separator: " AND ")
+            return matches.count > 1 ? "(\(joined))" : joined
+        }
+
+        let whereClause = rowClauses.joined(separator: " OR ")
         let sql = "DELETE FROM \(quoteIdentifierFn(tableName)) WHERE \(whereClause)"
-
         return ParameterizedStatement(sql: sql, parameters: parameters)
     }
 

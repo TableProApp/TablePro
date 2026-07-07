@@ -128,6 +128,8 @@ struct DataGridView: NSViewRepresentable {
         context.coordinator.connectionId = configuration.connectionId
         context.coordinator.databaseType = configuration.databaseType
         context.coordinator.tableName = configuration.tableName
+        context.coordinator.databaseName = configuration.databaseName
+        context.coordinator.schemaName = configuration.schemaName
         context.coordinator.primaryKeyColumns = configuration.primaryKeyColumns
         context.coordinator.tabType = configuration.tabType
 
@@ -235,6 +237,8 @@ struct DataGridView: NSViewRepresentable {
         let oldColumnCount = coordinator.cachedColumnCount
         let structureChanged = oldRowCount != rowDisplayCount || oldColumnCount != columnCount
 
+        let previousColumnKey = coordinator.columnLayoutKey
+        let liveColumnWidths = latestRows.columns.isEmpty ? [:] : coordinator.currentColumnWidths()
         let schemaChanged = coordinator.rebuildColumnMetadataCache(from: latestRows)
         let needsFullReload = structureChanged || schemaChanged || contentChanged
         if contentChanged {
@@ -258,6 +262,8 @@ struct DataGridView: NSViewRepresentable {
         coordinator.connectionId = configuration.connectionId
         coordinator.databaseType = configuration.databaseType
         coordinator.tableName = configuration.tableName
+        coordinator.databaseName = configuration.databaseName
+        coordinator.schemaName = configuration.schemaName
         coordinator.primaryKeyColumns = configuration.primaryKeyColumns
         coordinator.tabType = configuration.tabType
 
@@ -267,7 +273,12 @@ struct DataGridView: NSViewRepresentable {
 
         if !latestRows.columns.isEmpty {
             coordinator.isRebuildingColumns = true
-            let savedLayout = coordinator.savedColumnLayout(binding: columnLayout)
+            let sameTableLiveWidths = TableViewCoordinator.liveWidthsForSameTable(
+                previous: previousColumnKey,
+                current: coordinator.columnLayoutKey,
+                liveWidths: liveColumnWidths
+            )
+            let savedLayout = coordinator.resolvedColumnLayout(binding: columnLayout, liveWidths: sameTableLiveWidths)
             reconcileColumnPool(
                 tableView: tableView,
                 coordinator: coordinator,
@@ -435,7 +446,7 @@ struct DataGridView: NSViewRepresentable {
             isEditable: isEditable,
             selectedRowIndices: $selectedRowIndices,
             delegate: delegate,
-            layoutPersister: layoutPersister ?? FileColumnLayoutPersister()
+            layoutPersister: layoutPersister ?? FileColumnLayoutPersister.shared
         )
         let columnLayoutBinding = $columnLayout
         coordinator.onColumnLayoutDidChange = { layout in

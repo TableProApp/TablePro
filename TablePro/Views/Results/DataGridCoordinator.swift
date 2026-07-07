@@ -34,6 +34,8 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     var connectionId: UUID?
     var databaseType: DatabaseType?
     var tableName: String?
+    var databaseName: String?
+    var schemaName: String?
     var primaryKeyColumns: [String] = []
     var primaryKeyColumn: String? { primaryKeyColumns.first }
     var tabType: TabType?
@@ -78,6 +80,16 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             .compactMap { dataColumnIndex(from: $0.identifier) }
     }
 
+    var columnLayoutKey: ColumnLayoutTableKey? {
+        guard let connectionId, let tableName, !tableName.isEmpty else { return nil }
+        return ColumnLayoutTableKey(
+            connectionId: connectionId,
+            databaseName: databaseName ?? "",
+            schemaName: schemaName,
+            tableName: tableName
+        )
+    }
+
     func savedColumnLayout(binding: ColumnLayoutState) -> ColumnLayoutState? {
         guard tabType == .table else {
             guard !binding.columnWidths.isEmpty else { return nil }
@@ -86,16 +98,39 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             return layout
         }
 
-        if let connectionId,
-           let tableName,
-           !tableName.isEmpty,
-           let stored = layoutPersister.load(for: tableName, connectionId: connectionId) {
+        if let columnLayoutKey, let stored = layoutPersister.load(for: columnLayoutKey) {
             return stored
         }
         if binding.columnWidths.isEmpty && binding.columnOrder == nil {
             return nil
         }
         return binding
+    }
+
+    func resolvedColumnLayout(binding: ColumnLayoutState, liveWidths: [String: CGFloat]) -> ColumnLayoutState? {
+        let saved = savedColumnLayout(binding: binding)
+        guard let saved, !liveWidths.isEmpty else { return saved }
+        return saved.mergingWidths(liveWidths)
+    }
+
+    static func liveWidthsForSameTable(
+        previous: ColumnLayoutTableKey?,
+        current: ColumnLayoutTableKey?,
+        liveWidths: [String: CGFloat]
+    ) -> [String: CGFloat] {
+        previous == current ? liveWidths : [:]
+    }
+
+    func currentColumnWidths() -> [String: CGFloat] {
+        guard let tableView else { return [:] }
+        var widths: [String: CGFloat] = [:]
+        for column in tableView.tableColumns
+        where column.identifier != ColumnIdentitySchema.rowNumberIdentifier {
+            guard let dataIndex = dataColumnIndex(from: column.identifier),
+                  let name = identitySchema.columnName(for: dataIndex) else { continue }
+            widths[name] = column.width
+        }
+        return widths
     }
 
     func captureColumnLayout() -> ColumnLayoutState? {
@@ -125,8 +160,8 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         guard let layout = captureColumnLayout() else { return }
         onColumnLayoutDidChange?(layout)
 
-        if tabType == .table, let connectionId, let tableName, !tableName.isEmpty {
-            layoutPersister.save(layout, for: tableName, connectionId: connectionId)
+        if tabType == .table, let columnLayoutKey {
+            layoutPersister.save(layout, for: columnLayoutKey)
         }
     }
 
