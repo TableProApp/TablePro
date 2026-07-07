@@ -228,14 +228,14 @@ struct SidebarTreeView: View {
 
     private func tablesToShow(for schema: String) -> [TableInfo] {
         let tables = schemaService.tables(for: connectionId, schema: schema)
-        guard !searchText.isEmpty, !FuzzyMatcher.matches(query: searchText, candidate: schema) else {
+        guard !searchText.isEmpty, !SidebarNameFilter.matches(query: searchText, candidate: schema) else {
             return tables
         }
-        return tables.filter { FuzzyMatcher.matches(query: searchText, candidate: $0.name) }
+        return SidebarNameFilter.ranked(tables, query: searchText, name: { $0.name })
     }
 
     private func schemaIsVisibleDuringSearch(_ schema: String) -> Bool {
-        if FuzzyMatcher.matches(query: searchText, candidate: schema) { return true }
+        if SidebarNameFilter.matches(query: searchText, candidate: schema) { return true }
         switch schemaService.schemaState(for: connectionId, schema: schema) {
         case .loaded:
             return !tablesToShow(for: schema).isEmpty

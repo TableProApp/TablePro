@@ -17,10 +17,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Recent section at the top of the sidebar tracks the last 10 tables you opened per connection and database, in every sidebar layout, and remembers them between launches. It records a table when you open it, not while you arrow through previews. Click a recent table to reopen it, or right-click to remove one or clear the list. Off by default, turn it on in Settings > General > Sidebar. (#1352)
 - Saving now asks you to confirm before it permanently deletes rows, so a bulk delete can't be committed by accident. (#1823)
 
+### Changed
+
+- The sidebar filter now matches table and view names by substring and prefix instead of fuzzy matching, so typing the start of a name narrows the list instead of keeping every loose match. Names that start with what you typed sort to the top. (#1822)
+
 ### Fixed
 
 - Deleting many rows at once no longer freezes the app or the machine. Multi-row deletes now run as one batched statement, chunked to stay within the database's limits, instead of one query per row. (#1823)
 - Deleting rows from a table without a primary key now matches on every column instead of treating the first column as a key, so it won't remove other rows that happen to share that value. (#1823)
+- Sorting a table column no longer discards your rows-per-page setting. Clicking a column header to sort, or clicking again to clear the sort, now keeps the page size and returns to page 1 instead of loading the whole table. (#1826)
 - Elasticsearch connections using Username & Password now show a Password field, so basic auth on a secured cluster can be set up. It was hidden before, leaving only the Username field. Update the Elasticsearch plugin to get the fix. (#1816)
 - Switching schemas on an Oracle connection no longer hangs on an infinite loading spinner. Oracle now switches by schema like BigQuery, the sidebar lists every schema with its tables loading on expand, Oracle queries respect the query timeout setting and reconnect automatically after a timeout, and a schema load that fails shows an error with a Retry button instead of spinning forever. Works with an already-installed Oracle plugin; updating the plugin adds the query timeout enforcement. (#1807)
 

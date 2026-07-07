@@ -206,4 +206,52 @@ struct MainContentCoordinatorSortTests {
         #expect(tabManager.tabs[idx].pagination.currentPage == 1)
         #expect(tabManager.tabs[idx].pagination.currentOffset == 0)
     }
+
+    private func makeTableCoordinator(pageSize: Int) -> (MainContentCoordinator, QueryTabManager, UUID) {
+        let tabManager = QueryTabManager()
+        let coordinator = MainContentCoordinator(
+            connection: TestFixtures.makeConnection(),
+            tabManager: tabManager,
+            changeManager: DataChangeManager(),
+            toolbarState: ConnectionToolbarState()
+        )
+        var tab = QueryTab(title: "users", query: "SELECT * FROM users", tabType: .table)
+        tab.tableContext.tableName = "users"
+        tab.pagination = PaginationState(totalRowCount: 100, pageSize: pageSize, currentPage: 1)
+        tab.execution.lastExecutedAt = Date()
+        tabManager.tabs.append(tab)
+        tabManager.selectedTabId = tab.id
+
+        let columns = ["id", "name"]
+        let rows = (0..<pageSize).map { i in columns.map { "\($0)_\(i)" as String? } }
+        let columnTypes: [ColumnType] = Array(repeating: .text(rawType: nil), count: columns.count)
+        let tableRows = TableRows.from(
+            queryRows: rows.map { row in row.map(PluginCellValue.fromOptional) },
+            columns: columns,
+            columnTypes: columnTypes
+        )
+        coordinator.setActiveTableRows(tableRows, for: tab.id)
+        return (coordinator, tabManager, tab.id)
+    }
+
+    @Test("Table tab keeps the rows-per-page LIMIT through ascending, descending, and cleared sort")
+    func tableTabSortPreservesPageSize() {
+        let (coordinator, tabManager, tabId) = makeTableCoordinator(pageSize: 10)
+        func query() -> String { tabManager.tabs.first { $0.id == tabId }?.content.query ?? "" }
+        func pagination() -> PaginationState? { tabManager.tabs.first { $0.id == tabId }?.pagination }
+
+        coordinator.handleSortStateChanged(sortState([(0, .ascending)]))
+        #expect(query().contains("LIMIT 10 OFFSET 0"))
+        #expect(query().localizedCaseInsensitiveContains("ORDER BY"))
+
+        coordinator.handleSortStateChanged(sortState([(0, .descending)]))
+        #expect(query().contains("LIMIT 10 OFFSET 0"))
+        #expect(query().localizedCaseInsensitiveContains("ORDER BY"))
+
+        coordinator.handleSortStateChanged(SortState())
+        #expect(query().contains("LIMIT 10 OFFSET 0"))
+        #expect(!query().localizedCaseInsensitiveContains("ORDER BY"))
+        #expect(pagination()?.pageSize == 10)
+        #expect(pagination()?.currentOffset == 0)
+    }
 }
