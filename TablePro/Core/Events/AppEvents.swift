@@ -61,6 +61,8 @@ final class AppEvents {
 
     let linkedFoldersDidUpdate = PassthroughSubject<Void, Never>()
 
+    let teamLibraryDidUpdate = PassthroughSubject<Void, Never>()
+
     /// Linked SQL folder rescan completed; cached file index changed.
     /// Senders are bulk rescans across all enabled folders, so payload is always `nil`.
     /// The shape is kept consistent with `sqlFavoritesDidUpdate` so subscribers can

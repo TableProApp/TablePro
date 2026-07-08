@@ -7,6 +7,7 @@
 //  and credentials are injected so the coordinator is unit-testable without the license singleton.
 //
 
+import Combine
 import Foundation
 import os
 import TableProImport
@@ -46,6 +47,7 @@ final class TeamLibrarySyncCoordinator {
         Task {
             if let cached = await store.load() {
                 library = cached
+                AppEvents.shared.teamLibraryDidUpdate.send()
             }
             await pullIfNeeded()
         }
@@ -63,6 +65,7 @@ final class TeamLibrarySyncCoordinator {
             await store.replace(response)
             library = response
             TeamLibraryMetadataStorage.recordPull()
+            AppEvents.shared.teamLibraryDidUpdate.send()
         } catch {
             Self.logger.warning("Team library pull failed: \(error.localizedDescription)")
         }
