@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Typing in the SQL editor no longer crashes the app, and the autocomplete popup appears again as you type. A hidden background view kept reading a character position past the end of the text during each edit, which raised an error that both quit the app and stopped the keystroke before autocomplete could open. (#1835)
 - Deleting many rows at once no longer freezes the app or the machine. Multi-row deletes now run as one batched statement, chunked to stay within the database's limits, instead of one query per row. (#1823)
 - Deleting rows from a table without a primary key now matches on every column instead of treating the first column as a key, so it won't remove other rows that happen to share that value. (#1823)
 - Sorting a table column no longer discards your rows-per-page setting. Clicking a column header to sort, or clicking again to clear the sort, now keeps the page size and returns to page 1 instead of loading the whole table. (#1826)
@@ -34,7 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Hidden columns stay hidden. The columns you choose to show are remembered per table across sessions, and resizing a column no longer brings the hidden ones back. Column widths and order are remembered per table too, now kept separately for each connection, database, and schema so two tables with the same name no longer overwrite each other's layout. A Reset Columns button in the Columns popover puts widths, order, and visibility back to defaults. Existing saved column layouts (widths, order, and which columns are hidden) reset once as part of this change. (#1815)
 - Query and filter errors now appear in a banner you can read, select, and copy, with a Fix with AI button, instead of a small dialog that cut the message off. The banner sizes to the message, staying a single line for short errors and scrolling only when the message is long. (#1815)
 - The filter autocomplete no longer pops up on empty input, and pressing Escape to close it no longer also closes the filter bar. (#1815)
-- The editor autocomplete popup no longer draws over the status bar, the Columns and Add buttons, or the editor's sides as it grows. Clicking anywhere on the popup that isn't a suggestion now dismisses it, instead of doing nothing and leaving the editor mouse dead. (#1815, #1831)
+- The editor autocomplete popup drops below the line you're typing instead of covering it, no longer overlaps the Columns and Add buttons on the right, and dismisses when you click anywhere on it that isn't a suggestion. (#1815, #1831)
 
 ## [0.55.0] - 2026-07-04
 

@@ -14,10 +14,11 @@ internal final class SuggestionPanel: NSPanel {
 }
 
 extension SuggestionController {
-    /// Anchors the window to `cursorRect` and constrains it within the visible screen and, when provided,
-    /// the editor's bounds. The anchor is retained and re-applied on every later resize (see
-    /// ``applyPlacement(windowSize:)``), so the panel never drifts past the editor edges as its content
-    /// grows or shrinks during the same session.
+    /// Anchors the window to `cursorRect`. The horizontal position is constrained to the editor's bounds when
+    /// provided (so the panel never covers the right-side toolbar); the vertical position is constrained to the
+    /// screen, so the panel drops below the caret and may overflow the editor into the results area rather than
+    /// flipping up and covering the current line. The anchor is retained and re-applied on every later resize (see
+    /// ``applyPlacement(windowSize:)``), so the panel re-derives its position as its content grows or shrinks.
     public func constrainWindowToScreenEdges(cursorRect: NSRect, font: NSFont, editorFrame: NSRect? = nil) {
         guard let window = self.window else { return }
         placementAnchor = SuggestionPlacementAnchor(cursorRect: cursorRect, font: font, editorFrame: editorFrame)

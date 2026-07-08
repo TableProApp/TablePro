@@ -49,34 +49,50 @@ final class SuggestionWindowPlacementTests: XCTestCase {
         XCTAssertEqual(placement.origin.x, narrowEditorFrame.minX + SuggestionWindowPlacement.edgePadding)
     }
 
-    func test_compute_flipsAboveCursorWhenBelowSpaceIsInsufficient() {
-        let cursorRect = NSRect(x: 300, y: 200, width: 6, height: 16)
+    func test_compute_flipsAboveCursorWhenBelowScreenSpaceIsInsufficient() {
+        // Caret near the screen bottom: not enough room below on the screen, so the panel flips above.
+        let cursorRect = NSRect(x: 300, y: 40, width: 6, height: 16)
 
         let placement = SuggestionWindowPlacement.compute(
-            windowSize: NSSize(width: 280, height: 100), cursorRect: cursorRect, font: font,
+            windowSize: NSSize(width: 280, height: 200), cursorRect: cursorRect, font: font,
             screenFrame: screenFrame, editorFrame: editorFrame
         )
 
         XCTAssertTrue(placement.isAboveCursor)
-        XCTAssertGreaterThanOrEqual(placement.origin.y, editorFrame.minY)
+        XCTAssertGreaterThanOrEqual(placement.origin.y, screenFrame.minY)
     }
 
-    func test_compute_growingHeightAcrossResizesStaysWithinEditorMaxY() {
-        let cursorRect = NSRect(x: 300, y: 200, width: 6, height: 16)
+    func test_compute_tallPanelNearEditorTopStaysBelowCaretAndOverflowsEditor() {
+        // The reported bug: a tall panel with the caret near the top of a short editor must drop below the caret
+        // (overflowing the editor into the results area) instead of flipping up and covering the current line.
+        let shortEditor = NSRect(x: 100, y: 300, width: 900, height: 300)
+        let caretNearEditorTop = NSRect(x: 300, y: 560, width: 6, height: 16)
 
-        let mid = SuggestionWindowPlacement.compute(
-            windowSize: NSSize(width: 280, height: 400), cursorRect: cursorRect, font: font,
+        let placement = SuggestionWindowPlacement.compute(
+            windowSize: NSSize(width: 280, height: 500), cursorRect: caretNearEditorTop, font: font,
+            screenFrame: screenFrame, editorFrame: shortEditor
+        )
+
+        XCTAssertFalse(placement.isAboveCursor)
+        // The panel's top sits at the caret's baseline, so the current line stays visible above it.
+        XCTAssertLessThanOrEqual(placement.origin.y + 500, caretNearEditorTop.origin.y)
+        // And it is allowed to overflow the editor's bottom, constrained only by the screen.
+        XCTAssertLessThan(placement.origin.y, shortEditor.minY)
+    }
+
+    func test_compute_staysAnchoredBelowCaretEvenWithMoreRoomAbove() {
+        // Regression for the panel vanishing: with the caret lower on screen (more room above) but still enough
+        // room below, the panel must stay anchored to the caret, not get pinned to the screen top.
+        let cursorRect = NSRect(x: 300, y: 250, width: 6, height: 16)
+
+        let placement = SuggestionWindowPlacement.compute(
+            windowSize: NSSize(width: 280, height: 500), cursorRect: cursorRect, font: font,
             screenFrame: screenFrame, editorFrame: editorFrame
         )
-        let grown = SuggestionWindowPlacement.compute(
-            windowSize: NSSize(width: 280, height: 560), cursorRect: cursorRect, font: font,
-            screenFrame: screenFrame, editorFrame: editorFrame
-        )
 
-        XCTAssertTrue(mid.isAboveCursor)
-        XCTAssertTrue(grown.isAboveCursor)
-        XCTAssertLessThanOrEqual(mid.origin.y + 400, editorFrame.maxY)
-        XCTAssertEqual(grown.origin.y + 560, editorFrame.maxY, accuracy: 0.001)
+        XCTAssertFalse(placement.isAboveCursor)
+        // The panel's top sits exactly at the caret's baseline, next to the caret, not up at the screen edge.
+        XCTAssertEqual(placement.origin.y + 500, cursorRect.origin.y, accuracy: 0.001)
     }
 
     func test_compute_fallsBackToScreenFrameWhenEditorFrameIsNil() {
