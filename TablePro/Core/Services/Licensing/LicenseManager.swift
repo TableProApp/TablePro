@@ -275,6 +275,8 @@ final class LicenseManager {
             self.license = updatedLicense
             evaluateStatus()
 
+            await TeamLibrarySyncCoordinator.shared.pullIfNeeded()
+
             Self.logger.trace("License re-validated successfully")
         } catch {
             // Network failure — use grace period
