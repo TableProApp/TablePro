@@ -115,15 +115,15 @@ struct LicenseTierTests {
 
     @Test("A dashed license key is recognized as a license key, not an invite code")
     func recognizesLicenseKeyFormat() {
-        #expect(LicenseActivationSheet.isLicenseKey("ABCDE-FGHIJ-KLMNO-PQRST-UVWXY") == true)
-        #expect(LicenseActivationSheet.isLicenseKey("abcde-fghij-klmno-pqrst-uvwxy") == true)
+        #expect(LicenseManager.isLicenseKey("ABCDE-FGHIJ-KLMNO-PQRST-UVWXY") == true)
+        #expect(LicenseManager.isLicenseKey("abcde-fghij-klmno-pqrst-uvwxy") == true)
     }
 
     @Test("A random invite token is not treated as a license key")
     func recognizesInviteCode() {
-        #expect(LicenseActivationSheet.isLicenseKey("aB3xZ9qK7mN2pL5rT8wY1cV4dF6gH0jS") == false)
-        #expect(LicenseActivationSheet.isLicenseKey("ABCDE-FGHIJ") == false)
-        #expect(LicenseActivationSheet.isLicenseKey("") == false)
+        #expect(LicenseManager.isLicenseKey("aB3xZ9qK7mN2pL5rT8wY1cV4dF6gH0jS") == false)
+        #expect(LicenseManager.isLicenseKey("ABCDE-FGHIJ") == false)
+        #expect(LicenseManager.isLicenseKey("") == false)
     }
 
     @Test("Pro features require the starter tier; Team features require the team tier")

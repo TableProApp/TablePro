@@ -104,6 +104,24 @@ final class LicenseManager {
     // MARK: - Activation
 
     /// Activate a license key on this machine
+    /// Activates from either a license key or a team invite code, auto-detecting which was entered.
+    /// Every activation entry point routes through here so the settings pane and the standalone sheet
+    /// behave identically.
+    func activate(codeOrKey: String) async throws {
+        let trimmed = codeOrKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        if Self.isLicenseKey(trimmed) {
+            try await activate(licenseKey: trimmed)
+        } else {
+            try await activate(inviteCode: trimmed)
+        }
+    }
+
+    /// A license key looks like XXXXX-XXXXX-XXXXX-XXXXX-XXXXX; anything else is treated as an invite code.
+    nonisolated static func isLicenseKey(_ value: String) -> Bool {
+        let pattern = "^[A-Z0-9]{5}-[A-Z0-9]{5}-[A-Z0-9]{5}-[A-Z0-9]{5}-[A-Z0-9]{5}$"
+        return value.uppercased().range(of: pattern, options: .regularExpression) != nil
+    }
+
     func activate(licenseKey: String) async throws {
         let trimmedKey = licenseKey.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
         guard !trimmedKey.isEmpty else {

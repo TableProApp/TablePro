@@ -215,7 +215,7 @@ struct LicenseSection: View {
         defer { isActivating = false }
 
         do {
-            try await licenseManager.activate(licenseKey: licenseKeyInput)
+            try await licenseManager.activate(codeOrKey: licenseKeyInput)
             licenseKeyInput = ""
         } catch {
             AlertHelper.showErrorSheet(
