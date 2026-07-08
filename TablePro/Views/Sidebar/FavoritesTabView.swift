@@ -209,7 +209,7 @@ internal struct FavoritesTabView: View {
     }
 
     private func publishSavedQueriesToTeam() {
-        Task {
+        Task { @MainActor in
             let favorites = await SQLFavoriteManager.shared.fetchFavorites()
             let folders = await SQLFavoriteManager.shared.fetchFolders()
             guard !favorites.isEmpty else {

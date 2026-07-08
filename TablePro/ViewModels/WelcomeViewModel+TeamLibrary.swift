@@ -12,7 +12,7 @@ extension WelcomeViewModel {
     func publishConnectionsToTeamLibrary(_ connectionsToPublish: [DatabaseConnection]) {
         guard LicenseManager.shared.isFeatureAvailable(.teamLibrary), !connectionsToPublish.isEmpty else { return }
 
-        Task {
+        Task { @MainActor in
             do {
                 let response = try await TeamLibrarySyncCoordinator.shared.publish(
                     connections: connectionsToPublish,
