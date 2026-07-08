@@ -29,6 +29,11 @@ final class SuggestionViewModel: ObservableObject {
     /// directly leaves the local key monitor installed.
     var onApply: (() -> Void)?
 
+    /// Invoked when a click lands on a non-interactive part of the panel (background,
+    /// padding, rounded corners, divider, preview, or the "No Completions" label).
+    /// The owning controller dismisses the window so the click is not swallowed.
+    var onBackgroundTap: (() -> Void)?
+
     private var cursorPosition: CursorPosition?
     private var syntaxHighlightedCache: [Int: NSAttributedString] = [:]
 
