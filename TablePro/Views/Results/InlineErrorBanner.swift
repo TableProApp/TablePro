@@ -13,6 +13,11 @@ struct InlineErrorBanner: View {
     var onFixWithAI: (() -> Void)?
     var onDismiss: (() -> Void)?
 
+    private let maxMessageHeight: CGFloat = 96
+    @State private var messageHeight: CGFloat = 0
+
+    private var messageFits: Bool { messageHeight <= maxMessageHeight }
+
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
             Image(systemName: "exclamationmark.triangle.fill")
@@ -22,8 +27,15 @@ struct InlineErrorBanner: View {
                     .font(.subheadline)
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .onGeometryChange(for: CGFloat.self) { proxy in
+                        proxy.size.height
+                    } action: { height in
+                        messageHeight = height
+                    }
             }
-            .frame(maxHeight: 96)
+            .frame(height: min(messageHeight, maxMessageHeight))
+            .scrollDisabled(messageFits)
+            .scrollBounceBehavior(.basedOnSize)
             if let onFixWithAI {
                 Button(String(localized: "Fix with AI")) { onFixWithAI() }
                     .controlSize(.small)
@@ -55,9 +67,17 @@ struct InlineErrorBanner: View {
 }
 
 #Preview {
-    InlineErrorBanner(
-        message: "ERROR 1064 (42000): You have an error in your SQL syntax",
-        onDismiss: {}
-    )
+    VStack(spacing: 0) {
+        InlineErrorBanner(message: "near \"Album\": syntax error", onDismiss: {})
+        Divider()
+        InlineErrorBanner(
+            message: String(
+                repeating: "ERROR 1064 (42000): You have an error in your SQL syntax near this token. ",
+                count: 8
+            ),
+            onFixWithAI: {},
+            onDismiss: {}
+        )
+    }
     .frame(width: 600)
 }
