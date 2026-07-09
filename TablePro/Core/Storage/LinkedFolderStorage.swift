@@ -2,11 +2,8 @@
 //  LinkedFolderStorage.swift
 //  TablePro
 //
-//  UserDefaults persistence for linked folder paths.
-//
 
 import Foundation
-import os
 import TableProImport
 
 struct LinkedFolder: Codable, Identifiable, Hashable {
@@ -26,39 +23,26 @@ struct LinkedFolder: Codable, Identifiable, Hashable {
 
 final class LinkedFolderStorage {
     static let shared = LinkedFolderStorage()
-    private static let logger = Logger(subsystem: "com.TablePro", category: "LinkedFolderStorage")
-    private let key = "com.TablePro.linkedFolders"
 
-    private init() {}
+    private let store: CodableListPreferenceStore<LinkedFolder>
+
+    init(defaults: KeyValueStore = UserDefaults.standard) {
+        store = CodableListPreferenceStore(key: PreferenceKeys.linkedFolders, store: defaults)
+    }
 
     func loadFolders() -> [LinkedFolder] {
-        guard let data = UserDefaults.standard.data(forKey: key) else { return [] }
-        do {
-            return try JSONDecoder().decode([LinkedFolder].self, from: data)
-        } catch {
-            Self.logger.error("Failed to decode linked folders: \(error.localizedDescription, privacy: .public)")
-            return []
-        }
+        store.load()
     }
 
     func saveFolders(_ folders: [LinkedFolder]) {
-        do {
-            let data = try JSONEncoder().encode(folders)
-            UserDefaults.standard.set(data, forKey: key)
-        } catch {
-            Self.logger.error("Failed to encode linked folders: \(error.localizedDescription, privacy: .public)")
-        }
+        store.save(folders)
     }
 
     func addFolder(_ folder: LinkedFolder) {
-        var folders = loadFolders()
-        folders.append(folder)
-        saveFolders(folders)
+        store.add(folder)
     }
 
     func removeFolder(_ folder: LinkedFolder) {
-        var folders = loadFolders()
-        folders.removeAll { $0.id == folder.id }
-        saveFolders(folders)
+        store.remove(id: folder.id)
     }
 }
