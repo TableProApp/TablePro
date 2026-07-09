@@ -90,7 +90,7 @@ final class MainContentCoordinator {
     let toolbarState: ConnectionToolbarState
     let tabSessionRegistry: TabSessionRegistry
     let queryExecutor: QueryExecutor
-    let windowSidebarState = WindowSidebarState()
+    let windowSidebarState: WindowSidebarState
 
     // MARK: - Services
 
@@ -428,6 +428,7 @@ final class MainContentCoordinator {
         let initStart = Date()
         self.services = services
         self.connection = connection
+        self.windowSidebarState = WindowSidebarState(connectionId: connection.id)
         self.tabManager = tabManager
         self.changeManager = changeManager
         self.toolbarState = toolbarState
