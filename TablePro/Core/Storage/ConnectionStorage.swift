@@ -527,26 +527,8 @@ final class ConnectionStorage {
     }
 
     private func resolveString(_ context: SecretContext, forKey key: String) -> String? {
-        let label = context.label
-        let connId = context.connectionId.uuidString
-        switch keychain.readStringResult(forKey: key) {
-        case .found(let value):
-            return value
-        case .notFound:
-            return nil
-        case .locked:
-            Self.logger.warning("\(label, privacy: .public) unavailable: Keychain locked (connId=\(connId, privacy: .public))")
-            return nil
-        case .userCancelled:
-            Self.logger.notice("\(label, privacy: .public) prompt cancelled (connId=\(connId, privacy: .public))")
-            return nil
-        case .authFailed:
-            Self.logger.warning("\(label, privacy: .public) auth failed (connId=\(connId, privacy: .public))")
-            return nil
-        case .error(let status):
-            Self.logger.error("\(label, privacy: .public) read error \(status) (connId=\(connId, privacy: .public))")
-            return nil
-        }
+        keychain.readStringResult(forKey: key)
+            .value(label: "\(context.label) (connId=\(context.connectionId.uuidString))", logger: Self.logger)
     }
 
     // MARK: - Plugin Secure Field Migration
