@@ -68,11 +68,11 @@ struct CoordinatorColumnVisibilityTests {
             schemaName: tab.tableContext.schemaName,
             tableName: "users"
         )
-        defer { UserDefaults.standard.removeObject(forKey: ColumnVisibilityPersistence.key(for: key)) }
+        defer { FileColumnLayoutPersister.shared.clear(for: key) }
 
         coordinator.hideColumn("email")
 
-        #expect(ColumnVisibilityPersistence.loadHiddenColumns(for: key) == ["email"])
+        #expect(FileColumnLayoutPersister.shared.loadHiddenColumns(for: key) == ["email"])
     }
 
     @Test("Applying column geometry after hiding columns keeps the hidden set and syncs the session")
@@ -202,11 +202,11 @@ struct CoordinatorColumnVisibilityTests {
         )
 
         defer {
-            UserDefaults.standard.removeObject(forKey: ColumnVisibilityPersistence.key(for: key))
+            FileColumnLayoutPersister.shared.clear(for: key)
             coordinator.teardown()
         }
 
-        ColumnVisibilityPersistence.saveHiddenColumns(["email"], for: key)
+        FileColumnLayoutPersister.shared.saveHiddenColumns(["email"], for: key)
         coordinator.schemaColumns.store(
             (columns: ["id", "name", "email"], primaryKeys: ["id"]),
             for: coordinator.schemaColumnsKey("users", schema: nil)

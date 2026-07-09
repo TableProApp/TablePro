@@ -22,16 +22,19 @@ final class FileColumnLayoutPersister: ColumnLayoutPersisting {
     private struct PersistedColumnLayout: Codable {
         var columnWidths: [String: CGFloat]
         var columnOrder: [String]?
+        var hiddenColumns: [String]?
     }
 
     private let storageDirectory: URL
+    private let defaults: UserDefaults
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
 
     private var cache: [UUID: [String: PersistedColumnLayout]] = [:]
 
-    init(storageDirectory: URL? = nil) {
+    init(storageDirectory: URL? = nil, defaults: UserDefaults = .standard) {
         self.storageDirectory = storageDirectory ?? Self.resolvedStorageDirectory()
+        self.defaults = defaults
 
         do {
             try FileManager.default.createDirectory(
@@ -46,20 +49,19 @@ final class FileColumnLayoutPersister: ColumnLayoutPersisting {
     func save(_ layout: ColumnLayoutState, for key: ColumnLayoutTableKey) {
         guard !layout.columnWidths.isEmpty else { return }
 
-        let persisted = PersistedColumnLayout(
-            columnWidths: layout.columnWidths,
-            columnOrder: layout.columnOrder
-        )
-
         var entries = loadEntries(for: key.connectionId)
-        entries[key.storageKey] = persisted
+        var entry = entries[key.storageKey] ?? PersistedColumnLayout(columnWidths: [:], columnOrder: nil, hiddenColumns: nil)
+        entry.columnWidths = layout.columnWidths
+        entry.columnOrder = layout.columnOrder
+        entries[key.storageKey] = entry
         cache[key.connectionId] = entries
         writeEntries(entries, for: key.connectionId)
     }
 
     func load(for key: ColumnLayoutTableKey) -> ColumnLayoutState? {
         let entries = loadEntries(for: key.connectionId)
-        guard let persisted = entries[key.storageKey] else { return nil }
+        guard let persisted = entries[key.storageKey],
+              !persisted.columnWidths.isEmpty || persisted.columnOrder != nil else { return nil }
 
         var state = ColumnLayoutState()
         state.columnWidths = persisted.columnWidths
@@ -67,7 +69,34 @@ final class FileColumnLayoutPersister: ColumnLayoutPersisting {
         return state
     }
 
+    func loadHiddenColumns(for key: ColumnLayoutTableKey) -> Set<String> {
+        let entries = loadEntries(for: key.connectionId)
+        if let hidden = entries[key.storageKey]?.hiddenColumns {
+            return Set(hidden)
+        }
+        return migrateLegacyHidden(for: key)
+    }
+
+    func saveHiddenColumns(_ hidden: Set<String>, for key: ColumnLayoutTableKey) {
+        removeLegacyHidden(for: key)
+
+        var entries = loadEntries(for: key.connectionId)
+        var entry = entries[key.storageKey] ?? PersistedColumnLayout(columnWidths: [:], columnOrder: nil, hiddenColumns: nil)
+        entry.hiddenColumns = hidden.isEmpty ? nil : Array(hidden)
+
+        if entry.columnWidths.isEmpty, entry.columnOrder == nil, entry.hiddenColumns == nil {
+            clear(for: key)
+            return
+        }
+
+        entries[key.storageKey] = entry
+        cache[key.connectionId] = entries
+        writeEntries(entries, for: key.connectionId)
+    }
+
     func clear(for key: ColumnLayoutTableKey) {
+        removeLegacyHidden(for: key)
+
         var entries = loadEntries(for: key.connectionId)
         guard entries.removeValue(forKey: key.storageKey) != nil else { return }
 
@@ -78,6 +107,18 @@ final class FileColumnLayoutPersister: ColumnLayoutPersisting {
             cache[key.connectionId] = entries
             writeEntries(entries, for: key.connectionId)
         }
+    }
+
+    private func migrateLegacyHidden(for key: ColumnLayoutTableKey) -> Set<String> {
+        guard let array = defaults.stringArray(forKey: Self.legacyVisibilityPrefix + key.storageKey),
+              !array.isEmpty else { return [] }
+        let hidden = Set(array)
+        saveHiddenColumns(hidden, for: key)
+        return hidden
+    }
+
+    private func removeLegacyHidden(for key: ColumnLayoutTableKey) {
+        defaults.removeObject(forKey: Self.legacyVisibilityPrefix + key.storageKey)
     }
 
     private func loadEntries(for connectionId: UUID) -> [String: PersistedColumnLayout] {
@@ -142,7 +183,6 @@ final class FileColumnLayoutPersister: ColumnLayoutPersisting {
     }
 
     private func performScopeMigration() {
-        let defaults = UserDefaults.standard
         guard !defaults.bool(forKey: Self.scopeMigrationKey) else { return }
 
         if let files = try? FileManager.default.contentsOfDirectory(

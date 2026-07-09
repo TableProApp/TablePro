@@ -313,4 +313,120 @@ struct FileColumnLayoutPersisterTests {
         let persister = FileColumnLayoutPersister(storageDirectory: directory)
         #expect(persister.load(for: key("anything", connectionId)) == nil)
     }
+
+    @Test("Hidden columns round-trip and default to empty")
+    func hiddenColumnsRoundTrip() {
+        let (persister, dir) = makeIsolatedPersister()
+        defer { cleanup(dir) }
+
+        let tableKey = key("users", UUID())
+        #expect(persister.loadHiddenColumns(for: tableKey).isEmpty)
+        persister.saveHiddenColumns(["a", "b"], for: tableKey)
+        #expect(persister.loadHiddenColumns(for: tableKey) == ["a", "b"])
+    }
+
+    @Test("Saving geometry preserves previously hidden columns (#1815)")
+    func saveGeometryPreservesHiddenColumns() {
+        let (persister, dir) = makeIsolatedPersister()
+        defer { cleanup(dir) }
+
+        let tableKey = key("users", UUID())
+        persister.saveHiddenColumns(["email"], for: tableKey)
+
+        var geometry = ColumnLayoutState()
+        geometry.columnWidths = ["id": 80, "name": 200]
+        geometry.columnOrder = ["id", "name"]
+        persister.save(geometry, for: tableKey)
+
+        #expect(persister.loadHiddenColumns(for: tableKey) == ["email"])
+        #expect(persister.load(for: tableKey)?.columnWidths == ["id": 80, "name": 200])
+    }
+
+    @Test("Saving hidden columns preserves stored geometry")
+    func saveHiddenPreservesGeometry() {
+        let (persister, dir) = makeIsolatedPersister()
+        defer { cleanup(dir) }
+
+        let tableKey = key("users", UUID())
+        var geometry = ColumnLayoutState()
+        geometry.columnWidths = ["id": 80]
+        geometry.columnOrder = ["id"]
+        persister.save(geometry, for: tableKey)
+        persister.saveHiddenColumns(["email"], for: tableKey)
+
+        #expect(persister.load(for: tableKey)?.columnWidths == ["id": 80])
+        #expect(persister.load(for: tableKey)?.columnOrder == ["id"])
+        #expect(persister.loadHiddenColumns(for: tableKey) == ["email"])
+    }
+
+    @Test("A hidden-only entry loads as nil geometry")
+    func hiddenOnlyEntryLoadsAsNilGeometry() {
+        let (persister, dir) = makeIsolatedPersister()
+        defer { cleanup(dir) }
+
+        let tableKey = key("users", UUID())
+        persister.saveHiddenColumns(["email"], for: tableKey)
+        #expect(persister.load(for: tableKey) == nil)
+        #expect(persister.loadHiddenColumns(for: tableKey) == ["email"])
+    }
+
+    @Test("Saving an empty hidden set clears hidden but keeps geometry")
+    func savingEmptyHiddenClears() {
+        let (persister, dir) = makeIsolatedPersister()
+        defer { cleanup(dir) }
+
+        let tableKey = key("users", UUID())
+        var geometry = ColumnLayoutState()
+        geometry.columnWidths = ["id": 80]
+        persister.save(geometry, for: tableKey)
+        persister.saveHiddenColumns(["email"], for: tableKey)
+        persister.saveHiddenColumns([], for: tableKey)
+
+        #expect(persister.loadHiddenColumns(for: tableKey).isEmpty)
+        #expect(persister.load(for: tableKey)?.columnWidths == ["id": 80])
+    }
+
+    @Test("Hidden columns are scoped by schema")
+    func hiddenColumnsScopedBySchema() {
+        let (persister, dir) = makeIsolatedPersister()
+        defer { cleanup(dir) }
+
+        let connectionId = UUID()
+        let publicKey = key("users", connectionId, database: "app", schema: "public")
+        let authKey = key("users", connectionId, database: "app", schema: "auth")
+        persister.saveHiddenColumns(["a"], for: publicKey)
+        persister.saveHiddenColumns(["b"], for: authKey)
+
+        #expect(persister.loadHiddenColumns(for: publicKey) == ["a"])
+        #expect(persister.loadHiddenColumns(for: authKey) == ["b"])
+    }
+
+    @Test("Clear removes hidden columns too")
+    func clearRemovesHidden() {
+        let (persister, dir) = makeIsolatedPersister()
+        defer { cleanup(dir) }
+
+        let tableKey = key("users", UUID())
+        persister.saveHiddenColumns(["email"], for: tableKey)
+        persister.clear(for: tableKey)
+        #expect(persister.loadHiddenColumns(for: tableKey).isEmpty)
+    }
+
+    @Test("Legacy hidden-columns UserDefaults key migrates into the store on first load")
+    func migratesLegacyVisibilityKey() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("TableProTests-\(UUID().uuidString)", isDirectory: true)
+        defer { cleanup(directory) }
+        let defaults = try #require(UserDefaults(suiteName: "colvis-\(UUID().uuidString)"))
+        let tableKey = key("users", UUID())
+        let legacyKey = "com.TablePro.columns.hiddenColumns." + tableKey.storageKey
+        defaults.set(["email", "phone"], forKey: legacyKey)
+
+        let persister = FileColumnLayoutPersister(storageDirectory: directory, defaults: defaults)
+        #expect(persister.loadHiddenColumns(for: tableKey) == ["email", "phone"])
+        #expect(defaults.stringArray(forKey: legacyKey) == nil)
+
+        let fresh = FileColumnLayoutPersister(storageDirectory: directory, defaults: defaults)
+        #expect(fresh.loadHiddenColumns(for: tableKey) == ["email", "phone"])
+    }
 }

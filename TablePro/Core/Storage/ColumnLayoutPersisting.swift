@@ -26,4 +26,11 @@ protocol ColumnLayoutPersisting: AnyObject {
     func load(for key: ColumnLayoutTableKey) -> ColumnLayoutState?
     func save(_ layout: ColumnLayoutState, for key: ColumnLayoutTableKey)
     func clear(for key: ColumnLayoutTableKey)
+    func loadHiddenColumns(for key: ColumnLayoutTableKey) -> Set<String>
+    func saveHiddenColumns(_ hidden: Set<String>, for key: ColumnLayoutTableKey)
+}
+
+extension ColumnLayoutPersisting {
+    func loadHiddenColumns(for key: ColumnLayoutTableKey) -> Set<String> { [] }
+    func saveHiddenColumns(_ hidden: Set<String>, for key: ColumnLayoutTableKey) {}
 }

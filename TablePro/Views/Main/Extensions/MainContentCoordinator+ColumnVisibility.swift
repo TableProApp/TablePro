@@ -55,7 +55,7 @@ extension MainContentCoordinator {
 
     func restoreLastHiddenColumnsForTable() {
         guard let tab = tabManager.selectedTab, let key = columnLayoutTableKey(for: tab) else { return }
-        let restored = ColumnVisibilityPersistence.loadHiddenColumns(for: key)
+        let restored = FileColumnLayoutPersister.shared.loadHiddenColumns(for: key)
         mutateSelectedTabHiddenColumns(persist: false) { $0 = restored }
     }
 
@@ -75,7 +75,6 @@ extension MainContentCoordinator {
         let tab = tabManager.tabs[index]
         if let key = columnLayoutTableKey(for: tab) {
             FileColumnLayoutPersister.shared.clear(for: key)
-            ColumnVisibilityPersistence.saveHiddenColumns([], for: key)
         }
         tabManager.mutate(at: index) { $0.columnLayout = ColumnLayoutState() }
         tabSessionRegistry.session(for: tab.id)?.columnLayout = ColumnLayoutState()
@@ -102,7 +101,7 @@ extension MainContentCoordinator {
 
     private func persistTabHiddenColumns(_ tab: QueryTab) {
         guard tab.tabType == .table, let key = columnLayoutTableKey(for: tab) else { return }
-        ColumnVisibilityPersistence.saveHiddenColumns(tab.columnLayout.hiddenColumns, for: key)
+        FileColumnLayoutPersister.shared.saveHiddenColumns(tab.columnLayout.hiddenColumns, for: key)
     }
 
     private func mutateSelectedTabHiddenColumns(persist: Bool = true, _ mutate: (inout Set<String>) -> Void) {
