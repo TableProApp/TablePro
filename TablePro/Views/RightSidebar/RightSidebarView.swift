@@ -18,8 +18,8 @@ struct RightSidebarView: View {
     let databaseType: DatabaseType
 
     @State private var searchText: String = ""
-    @State private var expandedJsonFieldId: UUID?
-    @State private var expandedPhpFieldId: UUID?
+    @State private var expandedJsonColumnIndex: Int?
+    @State private var expandedPhpColumnIndex: Int?
 
     // MARK: - Inspector Mode
 
@@ -141,14 +141,23 @@ struct RightSidebarView: View {
     private func rowDetailForm(
         _ rowData: [(column: String, value: String?, type: String)]
     ) -> some View {
-        if let expandedId = expandedJsonFieldId,
-           let field = editState.fields.first(where: { $0.id == expandedId }) {
+        rowDetailContent(rowData)
+            .onChange(of: rowData.map(\.column)) {
+                expandedJsonColumnIndex = nil
+                expandedPhpColumnIndex = nil
+            }
+    }
+
+    @ViewBuilder
+    private func rowDetailContent(
+        _ rowData: [(column: String, value: String?, type: String)]
+    ) -> some View {
+        if let columnIndex = expandedJsonColumnIndex,
+           let field = editState.fields.first(where: { $0.columnIndex == columnIndex }) {
             expandedJsonViewer(field: field, isEditable: contentMode == .editRow)
-                .onChange(of: selectedRowData?.count) { expandedJsonFieldId = nil }
-        } else if let expandedId = expandedPhpFieldId,
-                  let field = editState.fields.first(where: { $0.id == expandedId }) {
+        } else if let columnIndex = expandedPhpColumnIndex,
+                  let field = editState.fields.first(where: { $0.columnIndex == columnIndex }) {
             expandedPhpViewer(field: field)
-                .onChange(of: selectedRowData?.count) { expandedPhpFieldId = nil }
         } else {
             fieldListForm(rowData)
         }
@@ -159,7 +168,7 @@ struct RightSidebarView: View {
     private func expandedJsonViewer(field: FieldEditState, isEditable: Bool) -> some View {
         VStack(spacing: 0) {
             HStack {
-                Button { expandedJsonFieldId = nil } label: {
+                Button { expandedJsonColumnIndex = nil } label: {
                     HStack(spacing: 4) {
                         Image(systemName: "chevron.left")
                         Text("Fields")
@@ -218,7 +227,7 @@ struct RightSidebarView: View {
     private func expandedPhpViewer(field: FieldEditState) -> some View {
         VStack(spacing: 0) {
             HStack {
-                Button { expandedPhpFieldId = nil } label: {
+                Button { expandedPhpColumnIndex = nil } label: {
                     HStack(spacing: 4) {
                         Image(systemName: "chevron.left")
                         Text("Fields")
@@ -342,9 +351,9 @@ struct RightSidebarView: View {
             isForeignKey: field.isForeignKey,
             onExpand: isStructuredField ? {
                 if isJsonField {
-                    expandedJsonFieldId = field.id
+                    expandedJsonColumnIndex = field.columnIndex
                 } else {
-                    expandedPhpFieldId = field.id
+                    expandedPhpColumnIndex = field.columnIndex
                 }
             } : nil,
             onPopOut: isStructuredField ? { currentText in

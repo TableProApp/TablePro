@@ -162,6 +162,8 @@ Missing a case produces a wrong "{Language} Query" title on the first frame.
 
 **Schema loading**: `SQLSchemaProvider` (actor) stores an in-flight `loadTask: Task<Void, Never>?`. Concurrent callers `await` the same Task instead of firing duplicate `fetchTables()` queries. Never use a boolean `isLoading` guard that returns without data — callers need to await the result.
 
+**Selection indices are display positions**: `GridSelectionState.indices` come from `NSTableView.selectedRowIndexes` and are display-row positions, not indices into `TableRows.rows`. They match array indices only when `displayIDs` (`valueFilteredIDs ?? sortedIDs`) is nil; a per-column value filter makes them diverge. Resolve any selected index through `DisplayRowMapping` (or `TableViewCoordinator.displayRow(at:)` / `tableRowsIndex(forDisplayRow:)`) before reading or mutating a row; never index `TableRows.rows` with a display position. The row details inspector shipped this bug (#1837).
+
 ### Main Coordinator Pattern
 
 `MainContentCoordinator` is the central coordinator, split across 7+ extension files in `Views/Main/Extensions/` (e.g., `+Alerts`, `+Filtering`, `+Pagination`, `+RowOperations`). When adding coordinator functionality, add a new extension file rather than growing the main file.
