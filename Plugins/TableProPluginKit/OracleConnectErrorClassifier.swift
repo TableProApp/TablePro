@@ -5,6 +5,7 @@ public enum OracleConnectFailure: Sendable, Equatable {
     case versionNotSupported
     case connectionDropped
     case connectionFailed
+    case advancedNegotiationFailed
 }
 
 public enum OracleConnectErrorClassifier {
@@ -17,6 +18,8 @@ public enum OracleConnectErrorClassifier {
             return .connectionDropped
         case "serverVersionNotSupported":
             return .versionNotSupported
+        case "advancedNegotiationFailed":
+            return .advancedNegotiationFailed
         default:
             return .connectionFailed
         }
@@ -28,10 +31,11 @@ public enum OracleConnectErrorClassifier {
         timedOut: Bool
     ) -> Bool {
         guard nativeNetworkEncryptionEnabled else { return false }
-        if timedOut { return true }
         switch failure {
-        case .connectionDropped, .connectionFailed:
+        case .advancedNegotiationFailed:
             return true
+        case .connectionDropped, .connectionFailed:
+            return timedOut
         case .verifierUnsupported, .versionNotSupported:
             return false
         }

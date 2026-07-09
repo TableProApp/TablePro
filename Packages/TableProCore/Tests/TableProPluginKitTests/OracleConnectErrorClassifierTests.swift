@@ -5,11 +5,18 @@ final class OracleConnectErrorClassifierTests: XCTestCase {
     func testClassifyKnownCodes() {
         XCTAssertEqual(OracleConnectErrorClassifier.classify("uncleanShutdown"), .connectionDropped)
         XCTAssertEqual(OracleConnectErrorClassifier.classify("serverVersionNotSupported"), .versionNotSupported)
+        XCTAssertEqual(OracleConnectErrorClassifier.classify("advancedNegotiationFailed"), .advancedNegotiationFailed)
         XCTAssertEqual(OracleConnectErrorClassifier.classify("somethingElse"), .connectionFailed)
         XCTAssertEqual(
             OracleConnectErrorClassifier.classify("unsupportedVerifierType(0x12)"),
             .verifierUnsupported(flag: "unsupportedVerifierType(0x12)")
         )
+    }
+
+    func testAdvancedNegotiationFailureIsEncryptionFailure() {
+        XCTAssertTrue(OracleConnectErrorClassifier.isLikelyNativeEncryptionFailure(
+            failure: .advancedNegotiationFailed, nativeNetworkEncryptionEnabled: true, timedOut: false
+        ))
     }
 
     func testEncryptionFailureRequiresEncryptionEnabled() {
@@ -27,11 +34,15 @@ final class OracleConnectErrorClassifierTests: XCTestCase {
         ))
     }
 
-    func testHandshakeDropWithEncryptionIsEncryptionFailure() {
-        XCTAssertTrue(OracleConnectErrorClassifier.isLikelyNativeEncryptionFailure(
+    func testHandshakeDropWithoutTimeoutIsNotEncryptionFailure() {
+        // With encryption always offered at ACCEPTED, a plain handshake drop is
+        // ambiguous (firewall, required-encryption server that RSTs, etc.), so it is
+        // not auto-classified. Only a stalled (timed out) handshake or an explicit
+        // advancedNegotiationFailed counts.
+        XCTAssertFalse(OracleConnectErrorClassifier.isLikelyNativeEncryptionFailure(
             failure: .connectionDropped, nativeNetworkEncryptionEnabled: true, timedOut: false
         ))
-        XCTAssertTrue(OracleConnectErrorClassifier.isLikelyNativeEncryptionFailure(
+        XCTAssertFalse(OracleConnectErrorClassifier.isLikelyNativeEncryptionFailure(
             failure: .connectionFailed, nativeNetworkEncryptionEnabled: true, timedOut: false
         ))
     }
