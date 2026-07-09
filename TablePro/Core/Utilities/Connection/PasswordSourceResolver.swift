@@ -156,26 +156,20 @@ enum PasswordSourceResolver {
 
             let stdoutCollector = PipeDataCollector(maxBytes: maxOutputBytes)
             let stderrCollector = PipeDataCollector(maxBytes: maxOutputBytes)
-            try process.run()
-
-            let drainGroup = DispatchGroup()
-            let drainQueue = DispatchQueue(label: "com.TablePro.PasswordSourceResolver.pipe-drain", attributes: .concurrent)
-            drainPipe(
-                stdoutPipe.fileHandleForReading,
-                into: stdoutCollector,
-                using: drainGroup,
-                queue: drainQueue
-            ) {
-                if process.isRunning {
+            stdoutPipe.fileHandleForReading.readabilityHandler = { handle in
+                let chunk = handle.availableData
+                guard !chunk.isEmpty else { return }
+                stdoutCollector.append(chunk)
+                if stdoutCollector.overflowed, process.isRunning {
                     process.terminate()
                 }
             }
-            drainPipe(
-                stderrPipe.fileHandleForReading,
-                into: stderrCollector,
-                using: drainGroup,
-                queue: drainQueue
-            )
+            stderrPipe.fileHandleForReading.readabilityHandler = { handle in
+                let chunk = handle.availableData
+                if !chunk.isEmpty { stderrCollector.append(chunk) }
+            }
+
+            try process.run()
 
             let didTimeout = AtomicFlag()
             let timeoutTask = Task.detached {
@@ -188,7 +182,14 @@ enum PasswordSourceResolver {
 
             process.waitUntilExit()
             timeoutTask.cancel()
-            drainGroup.wait()
+
+            stdoutPipe.fileHandleForReading.readabilityHandler = nil
+            stderrPipe.fileHandleForReading.readabilityHandler = nil
+
+            let remainingStdout = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
+            if !remainingStdout.isEmpty { stdoutCollector.append(remainingStdout) }
+            let remainingStderr = stderrPipe.fileHandleForReading.readDataToEndOfFile()
+            if !remainingStderr.isEmpty { stderrCollector.append(remainingStderr) }
 
             if stdoutCollector.overflowed {
                 throw ResolutionError.outputTooLarge
@@ -209,27 +210,6 @@ enum PasswordSourceResolver {
             throw ResolutionError.emptyPassword
         }
         return try nonEmpty(output.trimmingCharacters(in: .whitespacesAndNewlines))
-    }
-
-    private static func drainPipe(
-        _ handle: FileHandle,
-        into collector: PipeDataCollector,
-        using group: DispatchGroup,
-        queue: DispatchQueue,
-        onOverflow: (() -> Void)? = nil
-    ) {
-        group.enter()
-        queue.async {
-            defer { group.leave() }
-            while true {
-                let chunk = handle.readData(ofLength: 8_192)
-                guard !chunk.isEmpty else { return }
-                collector.append(chunk)
-                if collector.overflowed {
-                    onOverflow?()
-                }
-            }
-        }
     }
 
     private static func augmentedEnvironment() -> [String: String] {
