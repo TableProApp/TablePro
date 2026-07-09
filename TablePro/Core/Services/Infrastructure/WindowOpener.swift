@@ -29,9 +29,9 @@ internal final class WindowOpener {
         run { $0.openWelcomeAction?() }
     }
 
-    internal func openSettings(tab: SettingsTab? = nil) {
+    internal func openSettings(tab: SettingsPane? = nil) {
         if let tab {
-            UserDefaults.standard.set(tab.rawValue, forKey: "selectedSettingsTab")
+            UserDefaults.standard.set(tab.rawValue, forKey: PreferenceKeys.selectedSettingsPane.name)
         }
         run { $0.openSettingsAction?() }
     }

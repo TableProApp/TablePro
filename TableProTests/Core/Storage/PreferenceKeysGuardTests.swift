@@ -36,12 +36,10 @@ struct PreferenceKeysGuardTests {
         "AppleLanguages": "Apple system default written when switching app language",
         "blink": "CALayer animation key in VimCursorManager, not a preference",
         "preConnectScript": "additionalFields dictionary key in ConnectionFormCoordinator, not a preference",
-        "selectedSettingsTab": "legacy Settings tab selection, migrates to PreferenceKeys in Phase 4",
     ]
 
     private static let grandfatheredAppStorage: [String: String] = [
         "hideExportSuccessDialog": "legacy export flag, migrates to PreferenceKeys in a later phase",
-        "selectedSettingsTab": "legacy Settings tab selection, migrates to PreferenceKeys in Phase 4",
         "skipSchemaPreview": "legacy schema-preview flag, migrates to PreferenceKeys in a later phase",
         "structureCodeFontSize": "legacy structure font size, migrates to PreferenceKeys in a later phase",
     ]

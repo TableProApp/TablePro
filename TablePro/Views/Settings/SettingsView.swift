@@ -5,14 +5,46 @@
 
 import SwiftUI
 
-enum SettingsTab: String {
+enum SettingsPane: String, CaseIterable, Identifiable {
     case general, appearance, editor, data, sidebar, keyboard, ai, mcp, plugins, account
+
+    var id: String { rawValue }
+
+    var title: LocalizedStringKey {
+        switch self {
+        case .general: "General"
+        case .appearance: "Appearance"
+        case .editor: "Editor"
+        case .data: "Data & Results"
+        case .sidebar: "Sidebar"
+        case .keyboard: "Keyboard"
+        case .ai: "AI"
+        case .mcp: "Integrations"
+        case .plugins: "Plugins"
+        case .account: "Account"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .general: "gearshape"
+        case .appearance: "paintbrush"
+        case .editor: "doc.text"
+        case .data: "tablecells"
+        case .sidebar: "sidebar.left"
+        case .keyboard: "keyboard"
+        case .ai: "sparkles"
+        case .mcp: "network"
+        case .plugins: "puzzlepiece.extension"
+        case .account: "person.crop.circle"
+        }
+    }
 }
 
 struct SettingsView: View {
     @Bindable private var settingsManager = AppSettingsManager.shared
     @Environment(UpdaterBridge.self) var updaterBridge
-    @AppStorage("selectedSettingsTab") private var selectedTab: String = SettingsTab.general.rawValue
+    @AppStorage(PreferenceKeys.selectedSettingsPane.name) private var selectedPane = SettingsPane.general.rawValue
     private let pluginManager = PluginManager.shared
 
     private var pluginAttentionCount: Int {
@@ -20,58 +52,64 @@ struct SettingsView: View {
     }
 
     var body: some View {
-        TabView(selection: $selectedTab) {
-            GeneralSettingsView(
-                settings: $settingsManager.general,
-                tabSettings: $settingsManager.tabs,
-                updaterBridge: updaterBridge,
-                onResetAll: { settingsManager.resetToDefaults() }
-            )
-            .tabItem { Label("General", systemImage: "gearshape") }
-            .tag(SettingsTab.general.rawValue)
+        TabView(selection: $selectedPane) {
+            pane(.general) {
+                GeneralSettingsView(
+                    settings: $settingsManager.general,
+                    tabSettings: $settingsManager.tabs,
+                    updaterBridge: updaterBridge,
+                    onResetAll: { settingsManager.resetToDefaults() }
+                )
+            }
 
-            AppearanceSettingsView(settings: $settingsManager.appearance)
-                .tabItem { Label("Appearance", systemImage: "paintbrush") }
-                .tag(SettingsTab.appearance.rawValue)
+            pane(.appearance) {
+                AppearanceSettingsView(settings: $settingsManager.appearance)
+            }
 
-            EditorSettingsView(settings: $settingsManager.editor)
-                .tabItem { Label("Editor", systemImage: "doc.text") }
-                .tag(SettingsTab.editor.rawValue)
+            pane(.editor) {
+                EditorSettingsView(settings: $settingsManager.editor)
+            }
 
-            DataResultsSettingsView(
-                dataGrid: $settingsManager.dataGrid,
-                history: $settingsManager.history,
-                editor: $settingsManager.editor
-            )
-            .tabItem { Label("Data & Results", systemImage: "tablecells") }
-            .tag(SettingsTab.data.rawValue)
+            pane(.data) {
+                DataResultsSettingsView(
+                    dataGrid: $settingsManager.dataGrid,
+                    history: $settingsManager.history,
+                    editor: $settingsManager.editor
+                )
+            }
 
-            SidebarSettingsView(general: $settingsManager.general)
-                .tabItem { Label("Sidebar", systemImage: "sidebar.left") }
-                .tag(SettingsTab.sidebar.rawValue)
+            pane(.sidebar) {
+                SidebarSettingsView(general: $settingsManager.general)
+            }
 
-            KeyboardSettingsView(settings: $settingsManager.keyboard)
-                .tabItem { Label("Keyboard", systemImage: "keyboard") }
-                .tag(SettingsTab.keyboard.rawValue)
+            pane(.keyboard) {
+                KeyboardSettingsView(settings: $settingsManager.keyboard)
+            }
 
-            AISettingsView(settings: $settingsManager.ai)
-                .tabItem { Label("AI", systemImage: "sparkles") }
-                .tag(SettingsTab.ai.rawValue)
+            pane(.ai) {
+                AISettingsView(settings: $settingsManager.ai)
+            }
 
-            MCPSettingsView(settings: $settingsManager.mcp)
-                .tabItem { Label("Integrations", systemImage: "network") }
-                .tag(SettingsTab.mcp.rawValue)
+            pane(.mcp) {
+                MCPSettingsView(settings: $settingsManager.mcp)
+            }
 
-            PluginsSettingsView()
-                .tabItem { Label("Plugins", systemImage: "puzzlepiece.extension") }
-                .badge(pluginAttentionCount)
-                .tag(SettingsTab.plugins.rawValue)
+            pane(.plugins) {
+                PluginsSettingsView()
+            }
+            .badge(pluginAttentionCount)
 
-            AccountSettingsView()
-                .tabItem { Label("Account", systemImage: "person.crop.circle") }
-                .tag(SettingsTab.account.rawValue)
+            pane(.account) {
+                AccountSettingsView()
+            }
         }
         .frame(width: 720, height: 500)
+    }
+
+    private func pane<Content: View>(_ pane: SettingsPane, @ViewBuilder content: () -> Content) -> some View {
+        content()
+            .tabItem { Label(pane.title, systemImage: pane.symbol) }
+            .tag(pane.rawValue)
     }
 }
 
