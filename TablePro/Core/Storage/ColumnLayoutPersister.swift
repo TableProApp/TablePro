@@ -25,16 +25,20 @@ final class FileColumnLayoutPersister: ColumnLayoutPersisting {
         var hiddenColumns: [String]?
     }
 
+    static let syncCategoryPrefix = "columnLayout."
+
     private let storageDirectory: URL
     private let defaults: UserDefaults
+    private let syncTracker: SyncChangeTracker
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
 
     private var cache: [UUID: [String: PersistedColumnLayout]] = [:]
 
-    init(storageDirectory: URL? = nil, defaults: UserDefaults = .standard) {
+    init(storageDirectory: URL? = nil, defaults: UserDefaults = .standard, syncTracker: SyncChangeTracker = .shared) {
         self.storageDirectory = storageDirectory ?? Self.resolvedStorageDirectory()
         self.defaults = defaults
+        self.syncTracker = syncTracker
 
         do {
             try FileManager.default.createDirectory(
@@ -56,6 +60,7 @@ final class FileColumnLayoutPersister: ColumnLayoutPersisting {
         entries[key.storageKey] = entry
         cache[key.connectionId] = entries
         writeEntries(entries, for: key.connectionId)
+        syncTracker.markDirty(.settings, id: Self.syncCategory(for: key.storageKey))
     }
 
     func load(for key: ColumnLayoutTableKey) -> ColumnLayoutState? {
@@ -92,6 +97,7 @@ final class FileColumnLayoutPersister: ColumnLayoutPersisting {
         entries[key.storageKey] = entry
         cache[key.connectionId] = entries
         writeEntries(entries, for: key.connectionId)
+        syncTracker.markDirty(.settings, id: Self.syncCategory(for: key.storageKey))
     }
 
     func clear(for key: ColumnLayoutTableKey) {
@@ -107,6 +113,26 @@ final class FileColumnLayoutPersister: ColumnLayoutPersisting {
             cache[key.connectionId] = entries
             writeEntries(entries, for: key.connectionId)
         }
+        syncTracker.markDeleted(.settings, id: Self.syncCategory(for: key.storageKey))
+    }
+
+    static func syncCategory(for storageKey: String) -> String {
+        syncCategoryPrefix + storageKey
+    }
+
+    func rawData(forStorageKey storageKey: String) -> Data? {
+        guard let scope = TableScope(storageComponent: storageKey),
+              let entry = loadEntries(for: scope.connectionId)[storageKey] else { return nil }
+        return try? encoder.encode(entry)
+    }
+
+    func applyRemote(storageKey: String, data: Data) {
+        guard let scope = TableScope(storageComponent: storageKey),
+              let entry = try? decoder.decode(PersistedColumnLayout.self, from: data) else { return }
+        var entries = loadEntries(for: scope.connectionId)
+        entries[storageKey] = entry
+        cache[scope.connectionId] = entries
+        writeEntries(entries, for: scope.connectionId)
     }
 
     func customizedStorageKeys() -> [String] {

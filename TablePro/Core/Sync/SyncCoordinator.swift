@@ -191,6 +191,10 @@ final class SyncCoordinator {
             changeTracker.markDirty(.settings, id: category)
         }
 
+        for storageKey in FileColumnLayoutPersister.shared.customizedStorageKeys() {
+            changeTracker.markDirty(.settings, id: FileColumnLayoutPersister.syncCategory(for: storageKey))
+        }
+
         let summary = [
             "connections=\(connections.count)",
             "groups=\(groups.count)",
@@ -864,6 +868,10 @@ final class SyncCoordinator {
             case "ai": return try encoder.encode(storage.loadAI())
             case CustomSlashCommandStorage.syncCategory:
                 return try encoder.encode(CustomSlashCommandStorage.shared.commands)
+            case let category where category.hasPrefix(FileColumnLayoutPersister.syncCategoryPrefix):
+                return FileColumnLayoutPersister.shared.rawData(
+                    forStorageKey: String(category.dropFirst(FileColumnLayoutPersister.syncCategoryPrefix.count))
+                )
             default: return nil
             }
         } catch {
@@ -888,6 +896,11 @@ final class SyncCoordinator {
             case "ai": manager.ai = try decoder.decode(AISettings.self, from: data)
             case CustomSlashCommandStorage.syncCategory:
                 CustomSlashCommandStorage.shared.applyRemote(try decoder.decode([CustomSlashCommand].self, from: data))
+            case let category where category.hasPrefix(FileColumnLayoutPersister.syncCategoryPrefix):
+                FileColumnLayoutPersister.shared.applyRemote(
+                    storageKey: String(category.dropFirst(FileColumnLayoutPersister.syncCategoryPrefix.count)),
+                    data: data
+                )
             default: return
             }
         } catch {
