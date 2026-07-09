@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- MongoDB filters and generated edit statements now quote numeric-looking values that would not round-trip, such as `.5`, `1.`, `+7`, `01`, integers larger than 64 bits, and exponents that overflow a double like `1e400`, instead of emitting invalid or lossy JSON. A row whose `_id` is a decimal or exponent string is matched as that string, so delete and update target the right document. Update the MongoDB plugin to get the fix. (#1813)
+
 ## [0.56.0] - 2026-07-09
 
 ### Added
@@ -26,14 +30,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- MongoDB filters and generated edit statements now quote numeric-looking values that would not round-trip, such as `.5`, `1.`, `+7`, `01`, integers larger than 64 bits, and exponents that overflow a double like `1e400`, instead of emitting invalid or lossy JSON. A row whose `_id` is a decimal or exponent string is matched as that string, so delete and update target the right document. (#1813)
 - Typing in the SQL editor no longer crashes the app, and the autocomplete popup appears again as you type. (#1835)
-- Deleting many rows at once no longer freezes the app or the machine. Multi-row deletes now run as one batched statement, chunked to stay within the database's limits, instead of one query per row. (#1823)
-- Deleting rows from a table without a primary key now matches on every column instead of treating the first column as a key, so it won't remove other rows that happen to share that value. (#1823)
-- Sorting a table column no longer discards your rows-per-page setting. Clicking a column header to sort, or clicking again to clear the sort, now keeps the page size and returns to page 1 instead of loading the whole table. (#1826)
-- Sorting a column no longer fails with a SQL error on tables whose name contains a word like limit or offset, for example user_rate_limits. (#1825)
-- Elasticsearch connections using Username & Password now show a Password field, so basic auth on a secured cluster can be set up. It was hidden before, leaving only the Username field. Update the Elasticsearch plugin to get the fix. (#1816)
-- Switching schemas on an Oracle connection no longer hangs on an infinite loading spinner. Oracle now switches by schema like BigQuery, the sidebar lists every schema with its tables loading on expand, Oracle queries respect the query timeout setting and reconnect automatically after a timeout, and a schema load that fails shows an error with a Retry button instead of spinning forever. Works with an already-installed Oracle plugin; updating the plugin adds the query timeout enforcement. (#1807)
+- Deleting many rows at once no longer freezes the app. Multi-row deletes now run as one batched statement instead of one query per row. (#1823)
+- Deleting rows from a table without a primary key now matches on every column, so it won't remove other rows that share the first column's value. (#1823)
+- Sorting a table column no longer discards your rows-per-page setting. It keeps the page size and returns to page 1 instead of loading the whole table. (#1826)
+- Sorting a column no longer fails with a SQL error on tables whose name contains a word like limit or offset. (#1825)
+- Elasticsearch connections using Username & Password now show a Password field, so you can set up basic auth on a secured cluster. Update the Elasticsearch plugin to get the fix. (#1816)
+- Switching schemas on an Oracle connection no longer hangs on an infinite spinner. Oracle now switches by schema, loads each schema's tables on expand, respects the query timeout with automatic reconnect, and shows an error with a Retry button when a schema fails to load. Update the plugin to get query timeout enforcement. (#1807)
 - Resizing a data grid column no longer triggers a sort. Dragging a column edge only resizes it; clicking the header still sorts. (#1815)
 - Hidden columns stay hidden, and resizing a column no longer brings them back. Column widths, order, and visibility are remembered per table, kept separately for each connection, database, and schema so tables with the same name don't overwrite each other. A new Reset Columns button in the Columns popover restores defaults. Existing saved column layouts reset once with this change. (#1815)
 - Query and filter errors now appear in a banner you can select and copy, with a Fix with AI button, instead of a dialog that cut the message off. The banner sizes to the message. (#1815)
