@@ -9,12 +9,6 @@ import os
 final class AppSettingsManager {
     static let shared = AppSettingsManager()
 
-    deinit {
-        if let observer = accessibilityTextSizeObserver {
-            NSWorkspace.shared.notificationCenter.removeObserver(observer)
-        }
-    }
-
     var general: GeneralSettings {
         didSet {
             general.language.apply()
@@ -187,8 +181,6 @@ final class AppSettingsManager {
     @ObservationIgnored private let mcpServerManager: MCPServerManager
     @ObservationIgnored private let copilotService: CopilotService
     @ObservationIgnored private var isValidating = false
-    @ObservationIgnored private var accessibilityTextSizeObserver: NSObjectProtocol?
-    @ObservationIgnored private var lastAccessibilityScale: CGFloat = 1.0
 
     init(
         storage: AppSettingsStorage = .shared,
@@ -237,8 +229,6 @@ final class AppSettingsManager {
 
         dateFormattingService.updateFormat(dataGrid.dateFormat)
 
-        observeAccessibilityTextSizeChanges()
-
         if ai.enabled, ai.providers.contains(where: { $0.type == .copilot }) {
             Task { [copilotService] in await copilotService.start() }
         }
@@ -258,25 +248,6 @@ final class AppSettingsManager {
     }
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "AppSettingsManager")
-
-    private func observeAccessibilityTextSizeChanges() {
-        lastAccessibilityScale = EditorFontCache.computeAccessibilityScale()
-        accessibilityTextSizeObserver = NSWorkspace.shared.notificationCenter.addObserver(
-            forName: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                let newScale = EditorFontCache.computeAccessibilityScale()
-                guard abs(newScale - lastAccessibilityScale) > 0.01 else { return }
-                lastAccessibilityScale = newScale
-                Self.logger.debug("Accessibility text size changed, scale: \(newScale, format: .fixed(precision: 2))")
-                themeEngine.reloadFontCaches()
-                appEvents.accessibilityTextSizeChanged.send(())
-            }
-        }
-    }
 
     private func applyHistorySettingsImmediately() async {
         await queryHistoryManager.applySettingsChange()
