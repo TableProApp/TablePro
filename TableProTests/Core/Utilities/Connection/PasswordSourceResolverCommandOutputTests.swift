@@ -1,5 +1,5 @@
 //
-//  PasswordSourceResolverTests.swift
+//  PasswordSourceResolverCommandOutputTests.swift
 //  TableProTests
 //
 
@@ -9,7 +9,7 @@ import Testing
 @testable import TablePro
 
 @Suite("PasswordSourceResolver command output")
-struct PasswordSourceResolverTests {
+struct PasswordSourceResolverCommandOutputTests {
     @Test("Command stdout is returned trimmed")
     func returnsTrimmedStdout() async throws {
         let output = try await PasswordSourceResolver.resolveCommand(
