@@ -179,8 +179,7 @@ struct MongoDBQueryBuilder {
     private func jsonValue(_ value: String) -> String {
         if value == "true" || value == "false" { return value }
         if value == "null" { return value }
-        if Int64(value) != nil { return value }
-        if Double(value) != nil, value.contains(".") { return value }
+        if MongoDBJsonNumber.isValid(value) { return value }
         return "\"\(Self.escapeJsonString(value))\""
     }
 
