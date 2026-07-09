@@ -53,6 +53,33 @@ extension DatabaseManager {
         )
     }
 
+    func activeTunnelManager(for connection: DatabaseConnection) -> (any TunnelManaging)? {
+        switch connection.activeTunnelKind {
+        case .ssh: return SSHTunnelManager.shared
+        case .cloudflare: return CloudflareTunnelManager.shared
+        case .cloudSQLProxy: return CloudSQLProxyManager.shared
+        case .none: return nil
+        }
+    }
+
+    func closeActiveTunnel(for connection: DatabaseConnection) {
+        guard let manager = activeTunnelManager(for: connection) else { return }
+        let connectionId = connection.id
+        let connectionName = connection.name
+        Task {
+            do {
+                try await manager.closeTunnel(connectionId: connectionId)
+            } catch {
+                Self.logger.warning("Tunnel cleanup failed for \(connectionName): \(error.localizedDescription)")
+            }
+        }
+    }
+
+    func hasActiveTunnel(for connection: DatabaseConnection) async -> Bool {
+        guard let manager = activeTunnelManager(for: connection) else { return false }
+        return await manager.hasTunnel(connectionId: connection.id)
+    }
+
     /// Reconnect a session whose tunnel died, with exponential backoff. Guarded by
     /// `recoveringConnectionIds` so the keepalive death callback and the wake-from-sleep
     /// handler don't recover the same connection twice. Shared by both tunnel types.

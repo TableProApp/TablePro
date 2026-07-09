@@ -47,6 +47,10 @@ final class CloudflareTunnelPaneViewModel {
             issues.append(String(localized: "Cannot use SSH Tunnel and Cloudflare Tunnel at the same time"))
         }
 
+        if coordinator?.value?.cloudSQLProxy.state.enabled == true {
+            issues.append(String(localized: "Cannot use Cloud SQL Auth Proxy and Cloudflare Tunnel at the same time"))
+        }
+
         return issues
     }
 

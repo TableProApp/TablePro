@@ -38,18 +38,18 @@ extension DatabaseManager {
     /// for the next 30-second health monitor ping.
     private func validateTunneledSessions() async {
         for (connectionId, session) in activeSessions where session.isConnected {
-            if session.connection.resolvedSSHConfig.enabled {
-                let tunnelAlive = await SSHTunnelManager.shared.hasTunnel(connectionId: connectionId)
-                if !tunnelAlive {
-                    Self.logger.warning("SSH tunnel missing after wake for: \(session.connection.name)")
-                    await handleSSHTunnelDied(connectionId: connectionId)
-                }
-            } else if session.connection.isCloudflareEnabled {
-                let tunnelAlive = await CloudflareTunnelManager.shared.hasTunnel(connectionId: connectionId)
-                if !tunnelAlive {
-                    Self.logger.warning("Cloudflare tunnel missing after wake for: \(session.connection.name)")
-                    await handleCloudflareTunnelDied(connectionId: connectionId)
-                }
+            guard let kind = session.connection.activeTunnelKind,
+                  let manager = activeTunnelManager(for: session.connection) else { continue }
+            let tunnelAlive = await manager.hasTunnel(connectionId: connectionId)
+            guard !tunnelAlive else { continue }
+            Self.logger.warning("\(kind.displayName) missing after wake for: \(session.connection.name)")
+            switch kind {
+            case .ssh:
+                await handleSSHTunnelDied(connectionId: connectionId)
+            case .cloudflare:
+                await handleCloudflareTunnelDied(connectionId: connectionId)
+            case .cloudSQLProxy:
+                await handleCloudSQLProxyTunnelDied(connectionId: connectionId)
             }
         }
     }

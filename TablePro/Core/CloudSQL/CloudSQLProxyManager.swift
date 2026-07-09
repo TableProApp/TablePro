@@ -1,92 +1,100 @@
 //
-//  CloudflareTunnelManager.swift
+//  CloudSQLProxyManager.swift
 //  TablePro
-//
-//  Manages cloudflared Access TCP tunnel lifecycle for database connections.
 //
 
 import Darwin
 import Foundation
 import os
 
-actor CloudflareTunnelManager: TunnelManaging {
-    static let shared = CloudflareTunnelManager()
-    private static let logger = Logger(subsystem: "com.TablePro", category: "CloudflareTunnelManager")
+actor CloudSQLProxyManager: TunnelManaging {
+    static let shared = CloudSQLProxyManager()
+    private static let logger = Logger(subsystem: "com.TablePro", category: "CloudSQLProxyManager")
 
     private static let readinessTimeout: TimeInterval = 30
     private static let readinessPollInterval: UInt64 = 250_000_000
     private static let portRetryCount = 5
-    private static let stalePidsDefaultsKey = "cloudflaredStalePids"
+    private static let stalePidsDefaultsKey = "cloudSQLProxyStalePids"
+    private static let credentialsFilePrefix = "com.TablePro.cloudsqlproxy."
 
     private struct TunnelState {
         let runner: any SupervisedProcessRunner
         let localPort: Int
+        let credentialsFilePath: String?
     }
 
     private var tunnels: [UUID: TunnelState] = [:]
-    private var pidRecords: [UUID: CloudflaredPidRecord] = [:]
+    private var pidRecords: [UUID: CloudSQLProxyPidRecord] = [:]
     private let runnerFactory: () -> any SupervisedProcessRunner
 
-    /// Static registry for synchronous termination during app shutdown.
     private static let runnerRegistry = OSAllocatedUnfairLock(initialState: [UUID: any SupervisedProcessRunner]())
 
-    /// Prevents App Nap from throttling the supervised process while tunnels are active.
     private var appNapActivity: NSObjectProtocol?
 
     init(runnerFactory: @escaping () -> any SupervisedProcessRunner = { ProcessSupervisedRunner() }) {
         self.runnerFactory = runnerFactory
     }
 
-    /// Create a Cloudflare Access TCP tunnel for a database connection.
-    /// Returns the local loopback port the database driver should connect to.
     func createTunnel(
         connectionId: UUID,
-        config: CloudflareConfiguration,
-        tokenId: String? = nil,
-        tokenSecret: String? = nil
+        config: CloudSQLProxyConfiguration,
+        serviceAccountKeyJSON: String? = nil
     ) async throws -> Int {
+        guard config.isValid else { throw CloudSQLProxyError.invalidInstanceConnectionName }
+
         if tunnels[connectionId] != nil {
             try await closeTunnel(connectionId: connectionId)
         }
 
-        let binaryPath = try resolveBinaryPath(config: config)
-        let environment = Self.buildEnvironment(config: config, tokenId: tokenId, tokenSecret: tokenSecret)
-        let listenHost = config.exposeToLAN ? "0.0.0.0" : "127.0.0.1"
+        let binaryPath = try await resolveBinaryPath(config: config)
+        let credentialsFilePath = try writeCredentialsFileIfNeeded(
+            connectionId: connectionId,
+            config: config,
+            serviceAccountKeyJSON: serviceAccountKeyJSON
+        )
+        let environment = ProcessInfo.processInfo.environment
         let attempts = config.localPort != nil ? 1 : Self.portRetryCount
 
-        var lastError: Error = CloudflareTunnelError.noAvailablePort
+        var lastError: Error = CloudSQLProxyError.noAvailablePort
         for _ in 0..<attempts {
-            let port = try config.localPort ?? allocateFreePort()
+            guard let port = config.localPort ?? LoopbackPort.allocateFree() else {
+                throw CloudSQLProxyError.noAvailablePort
+            }
             let runner = runnerFactory()
-            let arguments = [
-                "access", "tcp",
-                "--hostname", config.accessHostname,
-                "--url", "\(listenHost):\(port)"
-            ]
+            let arguments = Self.buildArguments(config: config, port: port, credentialsFilePath: credentialsFilePath)
 
             do {
                 try runner.start(binaryPath: binaryPath, arguments: arguments, environment: environment)
             } catch {
-                throw CloudflareTunnelError.binaryNotFound
+                deleteCredentialsFile(at: credentialsFilePath)
+                throw CloudSQLProxyError.binaryNotFound
             }
 
             do {
                 try await awaitReadiness(runner: runner, port: port)
-            } catch let error as CloudflareTunnelError {
+            } catch let error as CloudSQLProxyError {
                 runner.stop()
                 if case .startupFailed(let tail) = error, config.localPort == nil, Self.isPortInUse(tail) {
-                    Self.logger.notice("cloudflared port \(port) in use, retrying with another")
-                    lastError = CloudflareTunnelError.noAvailablePort
+                    Self.logger.notice("cloud-sql-proxy port \(port) in use, retrying with another")
+                    lastError = CloudSQLProxyError.noAvailablePort
                     continue
                 }
+                deleteCredentialsFile(at: credentialsFilePath)
                 throw error
             }
 
-            register(connectionId: connectionId, runner: runner, port: port, binaryPath: binaryPath)
-            Self.logger.info("Cloudflare tunnel ready for \(connectionId.uuidString, privacy: .public) on 127.0.0.1:\(port)")
+            register(
+                connectionId: connectionId,
+                runner: runner,
+                port: port,
+                binaryPath: binaryPath,
+                credentialsFilePath: credentialsFilePath
+            )
+            Self.logger.info("Cloud SQL Auth Proxy ready for \(connectionId.uuidString, privacy: .public) on 127.0.0.1:\(port)")
             return port
         }
 
+        deleteCredentialsFile(at: credentialsFilePath)
         throw lastError
     }
 
@@ -97,6 +105,7 @@ actor CloudflareTunnelManager: TunnelManaging {
         persistPidRecords()
         updateAppNapState()
         state.runner.stop()
+        deleteCredentialsFile(at: state.credentialsFilePath)
     }
 
     func closeAllTunnels() async {
@@ -108,11 +117,10 @@ actor CloudflareTunnelManager: TunnelManaging {
         updateAppNapState()
         for (_, state) in current {
             state.runner.stop()
+            deleteCredentialsFile(at: state.credentialsFilePath)
         }
     }
 
-    /// Synchronously terminate all cloudflared processes.
-    /// Called from `applicationWillTerminate` where async is not available.
     nonisolated func terminateAllProcessesSync() {
         let runners = Self.runnerRegistry.withLock { dict -> [any SupervisedProcessRunner] in
             let values = Array(dict.values)
@@ -122,6 +130,7 @@ actor CloudflareTunnelManager: TunnelManaging {
         for runner in runners {
             runner.stop()
         }
+        Self.purgeCredentialsFiles()
     }
 
     func hasTunnel(connectionId: UUID) -> Bool {
@@ -132,28 +141,32 @@ actor CloudflareTunnelManager: TunnelManaging {
         tunnels[connectionId]?.localPort
     }
 
-    /// Reap cloudflared processes left running by a previous session that crashed
-    /// or was force-quit. Verifies each recorded PID still points at cloudflared
-    /// before signalling it, so a recycled PID is never killed.
     func sweepStalePidsIfNeeded() {
+        Self.purgeCredentialsFiles()
         defer { UserDefaults.standard.removeObject(forKey: Self.stalePidsDefaultsKey) }
         guard let data = UserDefaults.standard.data(forKey: Self.stalePidsDefaultsKey),
-              let records = try? JSONDecoder().decode([CloudflaredPidRecord].self, from: data) else {
+              let records = try? JSONDecoder().decode([CloudSQLProxyPidRecord].self, from: data) else {
             return
         }
-        for record in records where Self.isLiveCloudflared(record) {
+        for record in records where Self.isLiveCloudSQLProxy(record) {
             kill(record.pid, SIGTERM)
-            Self.logger.notice("Reaped stale cloudflared pid \(record.pid)")
+            Self.logger.notice("Reaped stale cloud-sql-proxy pid \(record.pid)")
         }
     }
 
     // MARK: - Private: lifecycle
 
-    private func register(connectionId: UUID, runner: any SupervisedProcessRunner, port: Int, binaryPath: String) {
-        tunnels[connectionId] = TunnelState(runner: runner, localPort: port)
+    private func register(
+        connectionId: UUID,
+        runner: any SupervisedProcessRunner,
+        port: Int,
+        binaryPath: String,
+        credentialsFilePath: String?
+    ) {
+        tunnels[connectionId] = TunnelState(runner: runner, localPort: port, credentialsFilePath: credentialsFilePath)
         Self.runnerRegistry.withLock { $0[connectionId] = runner }
         if let pid = runner.processIdentifier {
-            pidRecords[connectionId] = CloudflaredPidRecord(pid: pid, binaryPath: binaryPath)
+            pidRecords[connectionId] = CloudSQLProxyPidRecord(pid: pid, binaryPath: binaryPath)
             persistPidRecords()
         }
         updateAppNapState()
@@ -168,20 +181,21 @@ actor CloudflareTunnelManager: TunnelManaging {
     }
 
     private func handleTermination(connectionId: UUID, result: SubprocessTermination) async {
-        guard tunnels.removeValue(forKey: connectionId) != nil else { return }
+        guard let state = tunnels.removeValue(forKey: connectionId) else { return }
         Self.runnerRegistry.withLock { $0[connectionId] = nil }
         pidRecords.removeValue(forKey: connectionId)
         persistPidRecords()
         updateAppNapState()
+        deleteCredentialsFile(at: state.credentialsFilePath)
         guard !result.wasRequested else { return }
-        Self.logger.warning("Cloudflare tunnel died for connection \(connectionId.uuidString, privacy: .public)")
-        await DatabaseManager.shared.handleCloudflareTunnelDied(connectionId: connectionId)
+        Self.logger.warning("Cloud SQL Auth Proxy died for connection \(connectionId.uuidString, privacy: .public)")
+        await DatabaseManager.shared.handleCloudSQLProxyTunnelDied(connectionId: connectionId)
     }
 
     // MARK: - Private: readiness
 
     private func awaitReadiness(runner: any SupervisedProcessRunner, port: Int) async throws {
-        let monitor = CloudflaredStartupMonitor()
+        let monitor = CloudSQLProxyStartupMonitor()
         let stderrTask = Task {
             for await line in runner.stderrLines {
                 await monitor.append(line)
@@ -190,63 +204,93 @@ actor CloudflareTunnelManager: TunnelManaging {
         }
         defer { stderrTask.cancel() }
 
-        // The stderr scan is load-bearing: cloudflared may accept the local port
-        // before it has authenticated, so a passing TCP probe alone can't tell a
-        // ready tunnel from one waiting on browser sign-in. Keep checking both.
         let deadline = Date().addingTimeInterval(Self.readinessTimeout)
         while Date() < deadline {
-            if let url = await monitor.browserAuthURL {
-                throw CloudflareTunnelError.browserAuthRequired(url: url)
-            }
             if await monitor.streamEnded {
-                throw CloudflareTunnelError.startupFailed(stderrTail: await monitor.tail)
+                throw CloudSQLProxyError.startupFailed(stderrTail: await monitor.tail)
             }
             if await LoopbackPort.isReachable(host: "127.0.0.1", port: port) {
-                if let url = await monitor.browserAuthURL {
-                    throw CloudflareTunnelError.browserAuthRequired(url: url)
-                }
                 return
             }
             try await Task.sleep(nanoseconds: Self.readinessPollInterval)
         }
-        throw CloudflareTunnelError.readinessTimeout(stderrTail: await monitor.tail)
+        throw CloudSQLProxyError.readinessTimeout(stderrTail: await monitor.tail)
     }
 
-    // MARK: - Private: binary, environment, port
+    // MARK: - Private: binary, arguments, credentials
 
-    private func resolveBinaryPath(config: CloudflareConfiguration) throws -> String {
+    private func resolveBinaryPath(config: CloudSQLProxyConfiguration) async throws -> String {
         if !config.binaryPath.isEmpty {
             let expandedPath = (config.binaryPath as NSString).expandingTildeInPath
             guard FileManager.default.isExecutableFile(atPath: expandedPath) else {
-                throw CloudflareTunnelError.binaryNotFound
+                throw CloudSQLProxyError.binaryNotFound
             }
             return expandedPath
         }
-        guard let resolved = CLIExecutableFinder.findExecutable("cloudflared") else {
-            throw CloudflareTunnelError.binaryNotFound
+        if let resolved = CLIExecutableFinder.findExecutable("cloud-sql-proxy") {
+            return resolved
         }
-        return resolved
+        if let cached = await CloudSQLProxyBinaryManager.shared.cachedBinaryPath {
+            return cached
+        }
+        throw CloudSQLProxyError.binaryNotFound
     }
 
-    private static func buildEnvironment(
-        config: CloudflareConfiguration,
-        tokenId: String?,
-        tokenSecret: String?
-    ) -> [String: String] {
-        var environment = ProcessInfo.processInfo.environment
-        guard config.authMethod == .serviceToken else { return environment }
-        if let tokenId, !tokenId.isEmpty {
-            environment["TUNNEL_SERVICE_TOKEN_ID"] = tokenId
+    private static func buildArguments(
+        config: CloudSQLProxyConfiguration,
+        port: Int,
+        credentialsFilePath: String?
+    ) -> [String] {
+        var arguments = ["--port", "\(port)", "--address", "127.0.0.1"]
+        if let credentialsFilePath {
+            arguments += ["--credentials-file", credentialsFilePath]
         }
-        if let tokenSecret, !tokenSecret.isEmpty {
-            environment["TUNNEL_SERVICE_TOKEN_SECRET"] = tokenSecret
+        if config.useIAMAuth {
+            arguments.append("--auto-iam-authn")
         }
-        return environment
+        if config.usePrivateIP {
+            arguments.append("--private-ip")
+        }
+        arguments.append(config.instanceConnectionName)
+        return arguments
     }
 
-    private func allocateFreePort() throws -> Int {
-        guard let port = LoopbackPort.allocateFree() else { throw CloudflareTunnelError.noAvailablePort }
-        return port
+    private func writeCredentialsFileIfNeeded(
+        connectionId: UUID,
+        config: CloudSQLProxyConfiguration,
+        serviceAccountKeyJSON: String?
+    ) throws -> String? {
+        guard config.authMode == .serviceAccountKey else { return nil }
+        guard let json = serviceAccountKeyJSON, !json.isEmpty, let data = json.data(using: .utf8) else {
+            throw CloudSQLProxyError.credentialsWriteFailed
+        }
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("\(Self.credentialsFilePrefix)\(connectionId.uuidString).json")
+        do {
+            try data.write(to: url, options: .atomic)
+            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+        } catch {
+            throw CloudSQLProxyError.credentialsWriteFailed
+        }
+        return url.path
+    }
+
+    private func deleteCredentialsFile(at path: String?) {
+        guard let path else { return }
+        try? FileManager.default.removeItem(atPath: path)
+    }
+
+    private static func purgeCredentialsFiles() {
+        let tempDir = FileManager.default.temporaryDirectory
+        guard let entries = try? FileManager.default.contentsOfDirectory(
+            at: tempDir, includingPropertiesForKeys: nil
+        ) else {
+            return
+        }
+        for url in entries
+        where url.lastPathComponent.hasPrefix(credentialsFilePrefix) && url.pathExtension == "json" {
+            try? FileManager.default.removeItem(at: url)
+        }
     }
 
     // MARK: - Private: stale PID persistence
@@ -261,11 +305,11 @@ actor CloudflareTunnelManager: TunnelManaging {
             let data = try JSONEncoder().encode(records)
             UserDefaults.standard.set(data, forKey: Self.stalePidsDefaultsKey)
         } catch {
-            Self.logger.error("Failed to persist cloudflared PID records, leaked processes may survive to next launch: \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("Failed to persist cloud-sql-proxy PID records: \(error.localizedDescription, privacy: .public)")
         }
     }
 
-    private static func isLiveCloudflared(_ record: CloudflaredPidRecord) -> Bool {
+    private static func isLiveCloudSQLProxy(_ record: CloudSQLProxyPidRecord) -> Bool {
         guard record.pid > 0 else { return false }
         let pathBufferSize = 4 * Int(PATH_MAX)
         var buffer = [CChar](repeating: 0, count: pathBufferSize)
@@ -273,7 +317,7 @@ actor CloudflareTunnelManager: TunnelManaging {
         guard length > 0 else { return false }
         let path = String(cString: buffer)
         if !record.binaryPath.isEmpty, path == record.binaryPath { return true }
-        return (path as NSString).lastPathComponent == "cloudflared"
+        return (path as NSString).lastPathComponent == "cloud-sql-proxy"
     }
 
     private static func isPortInUse(_ stderrTail: String) -> Bool {
@@ -286,7 +330,7 @@ actor CloudflareTunnelManager: TunnelManaging {
         if !tunnels.isEmpty, appNapActivity == nil {
             appNapActivity = ProcessInfo.processInfo.beginActivity(
                 options: .userInitiatedAllowingIdleSystemSleep,
-                reason: "Cloudflare tunnel process requires timely execution"
+                reason: "Cloud SQL Auth Proxy process requires timely execution"
             )
         } else if tunnels.isEmpty, let activity = appNapActivity {
             ProcessInfo.processInfo.endActivity(activity)
@@ -297,25 +341,19 @@ actor CloudflareTunnelManager: TunnelManaging {
 
 // MARK: - PID record
 
-struct CloudflaredPidRecord: Codable, Sendable, Equatable {
+struct CloudSQLProxyPidRecord: Codable, Sendable, Equatable {
     let pid: Int32
     let binaryPath: String
 }
 
 // MARK: - Startup monitor
 
-/// Accumulates cloudflared stderr during startup so the manager can detect a
-/// browser sign-in prompt, surface an error tail, and notice an early exit.
-private actor CloudflaredStartupMonitor {
+private actor CloudSQLProxyStartupMonitor {
     private(set) var tail = ""
-    private(set) var browserAuthURL: String?
     private(set) var streamEnded = false
     private let tailCap = 2_000
 
     func append(_ line: String) {
-        if browserAuthURL == nil, let url = Self.extractBrowserAuthURL(from: line) {
-            browserAuthURL = url
-        }
         tail += line + "\n"
         if tail.count > tailCap {
             tail = String(tail.suffix(tailCap))
@@ -324,15 +362,5 @@ private actor CloudflaredStartupMonitor {
 
     func markStreamEnded() {
         streamEnded = true
-    }
-
-    private static func extractBrowserAuthURL(from line: String) -> String? {
-        let lowercased = line.lowercased()
-        guard lowercased.contains("/cdn-cgi/access/") || lowercased.contains("browser window should have opened") else {
-            return nil
-        }
-        guard let range = line.range(of: "https://") else { return nil }
-        let token = line[range.lowerBound...].split { $0 == " " || $0 == "\"" || $0 == "\t" }.first
-        return token.map(String.init)
     }
 }

@@ -68,6 +68,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         DatabaseManager.shared.startObservingSystemEvents()
 
         Task { await CloudflareTunnelManager.shared.sweepStalePidsIfNeeded() }
+        Task { await CloudSQLProxyManager.shared.sweepStalePidsIfNeeded() }
 
         MemoryPressureAdvisor.startMonitoring()
         UNUserNotificationCenter.current().delegate = self
@@ -150,6 +151,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         SQLFolderWatcher.shared.stop()
         SSHTunnelManager.shared.terminateAllProcessesSync()
         CloudflareTunnelManager.shared.terminateAllProcessesSync()
+        CloudSQLProxyManager.shared.terminateAllProcessesSync()
     }
 
     private func persistOpenConnectionsForRecovery() {

@@ -115,7 +115,7 @@ extension DatabaseManager {
 
         // Rebuild the tunnel if needed; otherwise reuse effective connection
         let connectionForDriver: DatabaseConnection
-        if session.connection.resolvedSSHConfig.enabled || session.connection.isCloudflareEnabled {
+        if session.connection.activeTunnelKind != nil {
             connectionForDriver = try await buildEffectiveConnection(for: session.connection)
         } else {
             connectionForDriver = session.effectiveConnection ?? session.connection
@@ -131,18 +131,11 @@ extension DatabaseManager {
             try await driver.connect()
         } catch {
             driver.disconnect()
-            if session.connection.resolvedSSHConfig.enabled {
+            if let tunnelManager = activeTunnelManager(for: session.connection) {
                 do {
-                    try await SSHTunnelManager.shared.closeTunnel(connectionId: session.connection.id)
+                    try await tunnelManager.closeTunnel(connectionId: session.connection.id)
                 } catch {
-                    Self.logger.warning("Failed to close SSH tunnel during reconnect: \(error.localizedDescription)")
-                }
-            }
-            if session.connection.isCloudflareEnabled {
-                do {
-                    try await CloudflareTunnelManager.shared.closeTunnel(connectionId: session.connection.id)
-                } catch {
-                    Self.logger.warning("Failed to close Cloudflare tunnel during reconnect: \(error.localizedDescription)")
+                    Self.logger.warning("Failed to close tunnel during reconnect: \(error.localizedDescription)")
                 }
             }
             throw error

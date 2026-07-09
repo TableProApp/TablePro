@@ -15,7 +15,8 @@ enum CLIExecutableFinder {
             "/opt/homebrew/bin/\(name)",
             "/usr/local/bin/\(name)",
             "/usr/local/mysql/bin/\(name)",
-            "/Applications/Postgres.app/Contents/Versions/latest/bin/\(name)"
+            "/Applications/Postgres.app/Contents/Versions/latest/bin/\(name)",
+            (NSHomeDirectory() as NSString).appendingPathComponent("google-cloud-sdk/bin/\(name)")
         ]
 
         for path in commonPaths where FileManager.default.isExecutableFile(atPath: path) {

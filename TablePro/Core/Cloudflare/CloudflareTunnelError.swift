@@ -12,7 +12,6 @@ enum CloudflareTunnelError: Error, LocalizedError, Equatable {
     case startupFailed(stderrTail: String)
     case readinessTimeout(stderrTail: String)
     case browserAuthRequired(url: String)
-    case mutualExclusivityViolation
     case tunnelAlreadyExists(UUID)
 
     var errorDescription: String? {
@@ -31,8 +30,6 @@ enum CloudflareTunnelError: Error, LocalizedError, Equatable {
                 : String(format: String(localized: "The Cloudflare tunnel did not become ready in time: %@"), stderrTail)
         case .browserAuthRequired(let url):
             return String(format: String(localized: "Cloudflare Access needs a browser sign-in. Sign in at %@, then reconnect."), url)
-        case .mutualExclusivityViolation:
-            return String(localized: "A connection cannot use SSH and Cloudflare tunnels at the same time.")
         case .tunnelAlreadyExists(let id):
             return String(format: String(localized: "A Cloudflare tunnel already exists for connection: %@"), id.uuidString)
         }

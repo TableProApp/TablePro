@@ -1,5 +1,5 @@
 //
-//  CloudflareTunnelManagerTests.swift
+//  CloudSQLProxyManagerTests.swift
 //  TableProTests
 //
 
@@ -9,13 +9,9 @@ import Testing
 
 @testable import TablePro
 
-/// Fake cloudflared process. Depending on `behavior` it either opens a real
-/// loopback listener (so the manager's readiness probe succeeds), prints a
-/// browser sign-in line, or exits during startup.
-final class FakeCloudflaredRunner: SupervisedProcessRunner, @unchecked Sendable {
+final class FakeCloudSQLProxyRunner: SupervisedProcessRunner, @unchecked Sendable {
     enum Behavior {
         case ready
-        case browserAuth
         case startupFailure
     }
 
@@ -46,12 +42,8 @@ final class FakeCloudflaredRunner: SupervisedProcessRunner, @unchecked Sendable 
             if let port = Self.parsePort(arguments) {
                 listenerFd = Self.openListener(port: port)
             }
-        case .browserAuth:
-            stderrContinuation.yield(
-                "INF A browser window should have opened at the following URL: https://team.cloudflareaccess.com/cdn-cgi/access/cli?redirect_url=tcp"
-            )
         case .startupFailure:
-            stderrContinuation.yield("ERR failed to dial origin: connection refused")
+            stderrContinuation.yield("failed to connect to instance: permission denied")
             finish(exitCode: 1)
         }
     }
@@ -99,8 +91,8 @@ final class FakeCloudflaredRunner: SupervisedProcessRunner, @unchecked Sendable 
     }
 
     private static func parsePort(_ arguments: [String]) -> Int? {
-        guard let index = arguments.firstIndex(of: "--url"), index + 1 < arguments.count else { return nil }
-        return arguments[index + 1].split(separator: ":").last.flatMap { Int($0) }
+        guard let index = arguments.firstIndex(of: "--port"), index + 1 < arguments.count else { return nil }
+        return Int(arguments[index + 1])
     }
 
     private static func openListener(port: Int) -> Int32? {
@@ -125,16 +117,16 @@ final class FakeCloudflaredRunner: SupervisedProcessRunner, @unchecked Sendable 
     }
 }
 
-@Suite("Cloudflare tunnel manager", .serialized)
-struct CloudflareTunnelManagerTests {
-    private func config(hostname: String = "db.example.com", localPort: Int? = nil) -> CloudflareConfiguration {
-        CloudflareConfiguration(accessHostname: hostname, localPort: localPort, binaryPath: "/bin/echo")
+@Suite("Cloud SQL Auth Proxy manager", .serialized)
+struct CloudSQLProxyManagerTests {
+    private func config(instance: String = "proj:region:inst", localPort: Int? = nil) -> CloudSQLProxyConfiguration {
+        CloudSQLProxyConfiguration(instanceConnectionName: instance, localPort: localPort, binaryPath: "/bin/echo")
     }
 
-    @Test("createTunnel returns the allocated port once cloudflared is listening")
+    @Test("createTunnel returns the allocated port once the proxy is listening")
     func readinessSucceeds() async throws {
-        let fake = FakeCloudflaredRunner(behavior: .ready)
-        let manager = CloudflareTunnelManager(runnerFactory: { fake })
+        let fake = FakeCloudSQLProxyRunner(behavior: .ready)
+        let manager = CloudSQLProxyManager(runnerFactory: { fake })
         let id = UUID()
 
         let port = try await manager.createTunnel(connectionId: id, config: config())
@@ -148,57 +140,83 @@ struct CloudflareTunnelManagerTests {
         #expect(!(await manager.hasTunnel(connectionId: id)))
     }
 
-    @Test("createTunnel surfaces a browser sign-in prompt")
-    func browserAuthDetected() async {
-        let fake = FakeCloudflaredRunner(behavior: .browserAuth)
-        let manager = CloudflareTunnelManager(runnerFactory: { fake })
+    @Test("createTunnel fails when the proxy exits during startup")
+    func startupFailure() async {
+        let fake = FakeCloudSQLProxyRunner(behavior: .startupFailure)
+        let manager = CloudSQLProxyManager(runnerFactory: { fake })
 
-        await #expect(throws: CloudflareTunnelError.self) {
-            _ = try await manager.createTunnel(connectionId: UUID(), config: self.config())
+        await #expect(throws: CloudSQLProxyError.self) {
+            _ = try await manager.createTunnel(connectionId: UUID(), config: self.config(localPort: 59_997))
         }
     }
 
-    @Test("createTunnel fails when cloudflared exits during startup")
-    func startupFailure() async {
-        let fake = FakeCloudflaredRunner(behavior: .startupFailure)
-        let manager = CloudflareTunnelManager(runnerFactory: { fake })
+    @Test("an invalid instance connection name is rejected before launching")
+    func invalidInstance() async {
+        let manager = CloudSQLProxyManager(runnerFactory: { FakeCloudSQLProxyRunner(behavior: .ready) })
 
-        await #expect(throws: CloudflareTunnelError.self) {
-            _ = try await manager.createTunnel(connectionId: UUID(), config: self.config(localPort: 59_998))
+        await #expect(throws: CloudSQLProxyError.invalidInstanceConnectionName) {
+            _ = try await manager.createTunnel(connectionId: UUID(), config: self.config(instance: "not-valid"))
         }
     }
 
     @Test("missing binary throws binaryNotFound")
     func missingBinary() async {
-        let manager = CloudflareTunnelManager(runnerFactory: { FakeCloudflaredRunner(behavior: .ready) })
-        let badConfig = CloudflareConfiguration(accessHostname: "db.example.com", binaryPath: "/nonexistent/cloudflared")
+        let manager = CloudSQLProxyManager(runnerFactory: { FakeCloudSQLProxyRunner(behavior: .ready) })
+        let badConfig = CloudSQLProxyConfiguration(instanceConnectionName: "p:r:i", binaryPath: "/nonexistent/cloud-sql-proxy")
 
-        await #expect(throws: CloudflareTunnelError.binaryNotFound) {
+        await #expect(throws: CloudSQLProxyError.binaryNotFound) {
             _ = try await manager.createTunnel(connectionId: UUID(), config: badConfig)
         }
     }
 
-    @Test("terminateAllProcessesSync stops the running tunnel")
+    @Test("service account key is written 0600 and removed on close")
+    func credentialsFileLifecycle() async throws {
+        let fake = FakeCloudSQLProxyRunner(behavior: .ready)
+        let manager = CloudSQLProxyManager(runnerFactory: { fake })
+        let id = UUID()
+        let keyConfig = CloudSQLProxyConfiguration(
+            instanceConnectionName: "proj:region:inst",
+            authMode: .serviceAccountKey,
+            binaryPath: "/bin/echo"
+        )
+
+        _ = try await manager.createTunnel(
+            connectionId: id,
+            config: keyConfig,
+            serviceAccountKeyJSON: "{\"type\":\"service_account\"}"
+        )
+
+        let path = FileManager.default.temporaryDirectory
+            .appendingPathComponent("com.TablePro.cloudsqlproxy.\(id.uuidString).json")
+        #expect(FileManager.default.fileExists(atPath: path.path))
+        let perms = try FileManager.default.attributesOfItem(atPath: path.path)[.posixPermissions] as? Int
+        #expect(perms == 0o600)
+
+        try await manager.closeTunnel(connectionId: id)
+        #expect(!FileManager.default.fileExists(atPath: path.path))
+    }
+
+    @Test("terminateAllProcessesSync stops the running proxy")
     func terminateAllStops() async throws {
-        let fake = FakeCloudflaredRunner(behavior: .ready)
-        let manager = CloudflareTunnelManager(runnerFactory: { fake })
+        let fake = FakeCloudSQLProxyRunner(behavior: .ready)
+        let manager = CloudSQLProxyManager(runnerFactory: { fake })
         _ = try await manager.createTunnel(connectionId: UUID(), config: config())
 
         manager.terminateAllProcessesSync()
         #expect(fake.stopCallCount >= 1)
 
         await manager.closeAllTunnels()
-        #expect(UserDefaults.standard.data(forKey: "cloudflaredStalePids") == nil)
+        #expect(UserDefaults.standard.data(forKey: "cloudSQLProxyStalePids") == nil)
     }
 
     @Test("sweepStalePidsIfNeeded clears the persisted records")
     func sweepClearsRecords() async {
-        let records = [CloudflaredPidRecord(pid: -1, binaryPath: "/nonexistent")]
-        UserDefaults.standard.set(try? JSONEncoder().encode(records), forKey: "cloudflaredStalePids")
+        let records = [CloudSQLProxyPidRecord(pid: -1, binaryPath: "/nonexistent")]
+        UserDefaults.standard.set(try? JSONEncoder().encode(records), forKey: "cloudSQLProxyStalePids")
 
-        let manager = CloudflareTunnelManager(runnerFactory: { FakeCloudflaredRunner(behavior: .ready) })
+        let manager = CloudSQLProxyManager(runnerFactory: { FakeCloudSQLProxyRunner(behavior: .ready) })
         await manager.sweepStalePidsIfNeeded()
 
-        #expect(UserDefaults.standard.data(forKey: "cloudflaredStalePids") == nil)
+        #expect(UserDefaults.standard.data(forKey: "cloudSQLProxyStalePids") == nil)
     }
 }

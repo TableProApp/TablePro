@@ -13,8 +13,15 @@ final class SSHPaneViewModel {
     var coordinator: WeakCoordinatorRef?
 
     var validationIssues: [String] {
-        guard state.enabled, state.profileId == nil else { return [] }
+        guard state.enabled else { return [] }
         var issues: [String] = []
+        if coordinator?.value?.cloudflareTunnel.state.enabled == true {
+            issues.append(String(localized: "Cannot use Cloudflare Tunnel and SSH Tunnel at the same time"))
+        }
+        if coordinator?.value?.cloudSQLProxy.state.enabled == true {
+            issues.append(String(localized: "Cannot use Cloud SQL Auth Proxy and SSH Tunnel at the same time"))
+        }
+        guard state.profileId == nil else { return issues }
         if state.host.trimmingCharacters(in: .whitespaces).isEmpty {
             issues.append(String(localized: "SSH host is required"))
         }
