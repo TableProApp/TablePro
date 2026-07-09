@@ -6,7 +6,7 @@
 import SwiftUI
 
 enum SettingsPane: String, CaseIterable, Identifiable {
-    case general, appearance, editor, data, sidebar, keyboard, ai, mcp, plugins, account
+    case general, appearance, editor, data, sidebar, savedCustomizations, keyboard, ai, mcp, plugins, account
 
     var id: String { rawValue }
 
@@ -17,6 +17,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .editor: String(localized: "Editor")
         case .data: String(localized: "Data & Results")
         case .sidebar: String(localized: "Sidebar")
+        case .savedCustomizations: String(localized: "Saved Customizations")
         case .keyboard: String(localized: "Keyboard")
         case .ai: String(localized: "AI")
         case .mcp: String(localized: "Integrations")
@@ -32,6 +33,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .editor: "doc.text"
         case .data: "tablecells"
         case .sidebar: "sidebar.left"
+        case .savedCustomizations: "slider.horizontal.3"
         case .keyboard: "keyboard"
         case .ai: "sparkles"
         case .mcp: "network"
@@ -47,6 +49,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .editor: ["sql", "vim", "line numbers", "word wrap", "tab width", "uppercase", "parameters"]
         case .data: ["grid", "pagination", "row height", "date", "null", "json viewer", "history", "page size", "sort", "result cap"]
         case .sidebar: ["recent tables", "layout", "tree", "list", "object comments", "navigator"]
+        case .savedCustomizations: ["saved", "customizations", "column layout", "widths", "reset", "per table"]
         case .keyboard: ["shortcuts", "keys", "bindings"]
         case .ai: ["assistant", "copilot", "model", "provider", "chat", "openai", "anthropic"]
         case .mcp: ["mcp", "server", "token", "integration"]
@@ -127,6 +130,8 @@ struct SettingsView: View {
             )
         case .sidebar:
             SidebarSettingsView(general: $settingsManager.general)
+        case .savedCustomizations:
+            SavedCustomizationsSettingsView()
         case .keyboard:
             KeyboardSettingsView(settings: $settingsManager.keyboard)
         case .ai:

@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - The sidebar database tree now remembers which databases and schemas you had expanded, per connection, so reopening a window keeps them open.
+- A Saved Customizations section in Settings lists the tables where you set column layouts or filters, and lets you reset any one of them, or all.
 
 ### Changed
 

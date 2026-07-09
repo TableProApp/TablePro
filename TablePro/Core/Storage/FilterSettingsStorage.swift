@@ -395,6 +395,18 @@ final class FilterSettingsStorage {
         }
     }
 
+    func customizedStorageKeys() -> [String] {
+        guard let files = try? FileManager.default.contentsOfDirectory(
+            at: filterStateDirectory,
+            includingPropertiesForKeys: nil
+        ) else { return [] }
+
+        return files
+            .filter { $0.pathExtension == "json" }
+            .map { $0.deletingPathExtension().lastPathComponent }
+            .filter { !$0.hasSuffix(".browse") }
+    }
+
     private func fileURL(forKey key: String) -> URL {
         filterStateDirectory.appendingPathComponent("\(key).json")
     }

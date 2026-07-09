@@ -109,6 +109,20 @@ final class FileColumnLayoutPersister: ColumnLayoutPersisting {
         }
     }
 
+    func customizedStorageKeys() -> [String] {
+        guard let files = try? FileManager.default.contentsOfDirectory(
+            at: storageDirectory,
+            includingPropertiesForKeys: nil
+        ) else { return [] }
+
+        var keys: [String] = []
+        for file in files where file.pathExtension == "json" {
+            guard let connectionId = UUID(uuidString: file.deletingPathExtension().lastPathComponent) else { continue }
+            keys.append(contentsOf: loadEntries(for: connectionId).keys)
+        }
+        return keys
+    }
+
     private func migrateLegacyHidden(for key: ColumnLayoutTableKey) -> Set<String> {
         guard let array = defaults.stringArray(forKey: Self.legacyVisibilityPrefix + key.storageKey),
               !array.isEmpty else { return [] }
