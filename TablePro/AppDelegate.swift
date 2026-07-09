@@ -112,6 +112,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         AnalyticsService.shared.startPeriodicHeartbeat()
         SyncCoordinator.shared.start()
         LinkedFolderWatcher.shared.start()
+        TeamLibrarySyncCoordinator.shared.start()
 
         Task {
             LicenseManager.shared.startPeriodicValidation()

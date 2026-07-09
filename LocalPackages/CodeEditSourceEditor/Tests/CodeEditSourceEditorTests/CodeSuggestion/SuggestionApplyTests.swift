@@ -122,6 +122,22 @@ final class SuggestionApplyTests: XCTestCase {
         XCTAssertNil(controller.model.activeTextView)
         XCTAssertTrue(controller.model.items.isEmpty)
     }
+
+    @MainActor
+    func test_onBackgroundTap_closesControllerAndClearsModelState() throws {
+        let controller = SuggestionController()
+        let textViewController = Mock.textViewController(theme: Mock.theme())
+
+        controller.model.activeTextView = textViewController
+        controller.model.delegate = StubSuggestionDelegate()
+        controller.model.items = [StubSuggestionEntry(label: "users")]
+        controller.model.selectedIndex = 0
+
+        controller.model.onBackgroundTap?()
+
+        XCTAssertNil(controller.model.activeTextView)
+        XCTAssertTrue(controller.model.items.isEmpty)
+    }
 }
 
 private final class StubSuggestionDelegate: CodeSuggestionDelegate {

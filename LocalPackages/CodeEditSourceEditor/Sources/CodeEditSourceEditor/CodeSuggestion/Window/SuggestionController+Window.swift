@@ -14,66 +14,15 @@ internal final class SuggestionPanel: NSPanel {
 }
 
 extension SuggestionController {
-    /// Will constrain the window's frame to be within the visible screen and, when provided, the editor's bounds.
-    ///
-    /// `editorFrame` is the editor pane in screen coordinates. The panel flips above the cursor when it would
-    /// extend past the editor's bottom edge, so it never overlaps sibling chrome below the editor.
+    /// Anchors the window to `cursorRect`. The horizontal position is constrained to the editor's bounds when
+    /// provided (so the panel never covers the right-side toolbar); the vertical position is constrained to the
+    /// screen, so the panel drops below the caret and may overflow the editor into the results area rather than
+    /// flipping up and covering the current line. The anchor is retained and re-applied on every later resize (see
+    /// ``applyPlacement(windowSize:)``), so the panel re-derives its position as its content grows or shrinks.
     public func constrainWindowToScreenEdges(cursorRect: NSRect, font: NSFont, editorFrame: NSRect? = nil) {
-        guard let window = self.window,
-              let screenFrame = window.screen?.visibleFrame else {
-            return
-        }
-
-        let windowSize = window.frame.size
-        let padding: CGFloat = 22
-        var newWindowOrigin = NSPoint(
-            x: cursorRect.origin.x - Self.WINDOW_PADDING
-            - CodeSuggestionLabelView.HORIZONTAL_PADDING - font.pointSize,
-            y: cursorRect.origin.y
-        )
-
-        // Keep the horizontal position within the screen and some padding
-        let minX = screenFrame.minX + padding
-        let maxX = screenFrame.maxX - windowSize.width - padding
-
-        if newWindowOrigin.x < minX {
-            newWindowOrigin.x = minX
-        } else if newWindowOrigin.x > maxX {
-            newWindowOrigin.x = maxX
-        }
-
-        let lowerLimit = max(screenFrame.minY, editorFrame?.minY ?? screenFrame.minY)
-        let upperLimit = min(screenFrame.maxY, editorFrame?.maxY ?? screenFrame.maxY)
-
-        // Check if the window will drop below the editor (or screen) bottom.
-        // We determine whether the window drops down or upwards by choosing which
-        // corner of the window we will position: `setFrameOrigin` or `setFrameTopLeftPoint`
-        if newWindowOrigin.y - windowSize.height < lowerLimit {
-            // If the cursor itself is below the lower limit, pin the window there with some padding
-            if newWindowOrigin.y < lowerLimit {
-                newWindowOrigin.y = lowerLimit + padding
-            } else {
-                // Place above the cursor
-                newWindowOrigin.y += cursorRect.height
-            }
-
-            // Keep the top edge within the upper limit so the panel never overlaps chrome above the editor
-            if newWindowOrigin.y + windowSize.height > upperLimit {
-                newWindowOrigin.y = max(lowerLimit, upperLimit - windowSize.height)
-            }
-
-            isWindowAboveCursor = true
-            window.setFrameOrigin(newWindowOrigin)
-        } else {
-            // If the window goes above the upper limit, pin it there with padding
-            let maxY = upperLimit - padding
-            if newWindowOrigin.y > maxY {
-                newWindowOrigin.y = maxY
-            }
-
-            isWindowAboveCursor = false
-            window.setFrameTopLeftPoint(newWindowOrigin)
-        }
+        guard let window = self.window else { return }
+        placementAnchor = SuggestionPlacementAnchor(cursorRect: cursorRect, font: font, editorFrame: editorFrame)
+        applyPlacement(windowSize: window.frame.size)
     }
 
     func updateWindowSize(newSize: NSSize) {
@@ -83,16 +32,31 @@ extension SuggestionController {
         }
 
         guard let window else { return }
-        let oldFrame = window.frame
 
         window.minSize = newSize
         window.maxSize = NSSize(width: CGFloat.infinity, height: newSize.height)
-
         window.setContentSize(newSize)
 
-        if isWindowAboveCursor && oldFrame.size.height != newSize.height {
-            window.setFrameOrigin(oldFrame.origin)
+        applyPlacement(windowSize: newSize)
+    }
+
+    private func applyPlacement(windowSize: NSSize) {
+        guard let anchor = placementAnchor,
+              let window = self.window,
+              let screenFrame = window.screen?.visibleFrame else {
+            return
         }
+
+        let placement = SuggestionWindowPlacement.compute(
+            windowSize: windowSize,
+            cursorRect: anchor.cursorRect,
+            font: anchor.font,
+            screenFrame: screenFrame,
+            editorFrame: anchor.editorFrame
+        )
+
+        isWindowAboveCursor = placement.isAboveCursor
+        window.setFrameOrigin(placement.origin)
     }
 
     func updateWindowSizeFromContent() {

@@ -1914,6 +1914,16 @@
         }
       }
     },
+    "%@ requires the %@ plan" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ requires the %2$@ plan"
+          }
+        }
+      }
+    },
     "%@ rows" : {
       "localizations" : {
         "tr" : {
@@ -5928,6 +5938,9 @@
           }
         }
       }
+    },
+    "Activate a Team license to publish to the team library." : {
+
     },
     "Activate License" : {
       "localizations" : {
@@ -10539,6 +10552,7 @@
       }
     },
     "Ask AI to Fix" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -14559,6 +14573,9 @@
         }
       }
     },
+    "Choose a shared folder for your team's connection catalog. Teammates add this folder under Settings > Linked Folders to see published connections." : {
+
+    },
     "Choose AI provider and model" : {
       "localizations" : {
         "tr" : {
@@ -14670,6 +14687,9 @@
           }
         }
       }
+    },
+    "Choose Folder" : {
+
     },
     "Choose port automatically" : {
       "localizations" : {
@@ -21388,6 +21408,12 @@
         }
       }
     },
+    "Couldn't publish to the team catalog" : {
+
+    },
+    "Couldn't publish to the team library" : {
+
+    },
     "Couldn't reach the plugin registry. Check your connection and try again." : {
 
     },
@@ -25156,6 +25182,9 @@
         }
       }
     },
+    "Delete %lld rows?" : {
+
+    },
     "Delete Check Constraint" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -25644,6 +25673,9 @@
           }
         }
       }
+    },
+    "Delete this row?" : {
+
     },
     "Delete token?" : {
       "localizations" : {
@@ -30202,6 +30234,7 @@
       }
     },
     "Enter your license key to unlock Pro features." : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -30228,6 +30261,9 @@
           }
         }
       }
+    },
+    "Enter your license key, or a team invite code to join a team." : {
+
     },
     "Enterprise SQL with PL/SQL" : {
       "localizations" : {
@@ -36074,6 +36110,9 @@
           }
         }
       }
+    },
+    "Fix with AI" : {
+
     },
     "Focus an already-open tab by id (returned from list_recent_tabs)." : {
       "localizations" : {
@@ -42568,6 +42607,9 @@
           }
         }
       }
+    },
+    "Key %@ was not found in the secret JSON." : {
+
     },
     "Key File" : {
       "localizations" : {
@@ -60112,6 +60154,36 @@
         }
       }
     },
+    "Publish" : {
+
+    },
+    "Publish %d Connections to Team Catalog..." : {
+
+    },
+    "Publish %d Connections to Team Library..." : {
+
+    },
+    "Publish connections to a shared folder your team reads from. Passwords are never included." : {
+
+    },
+    "Publish Saved Queries to Team..." : {
+
+    },
+    "Publish saved queries to your team?" : {
+
+    },
+    "Publish to Team Catalog..." : {
+
+    },
+    "Publish to Team Library..." : {
+
+    },
+    "Published %d saved queries to your team." : {
+
+    },
+    "Published to the team library" : {
+
+    },
     "Purchase License" : {
       "localizations" : {
         "en" : {
@@ -64337,6 +64409,12 @@
         }
       }
     },
+    "Reset column widths, order, and visibility to defaults" : {
+
+    },
+    "Reset Columns" : {
+
+    },
     "Reset Layout" : {
       "localizations" : {
         "tr" : {
@@ -67232,6 +67310,9 @@
           }
         }
       }
+    },
+    "Saved Queries:" : {
+
     },
     "Saved Query" : {
       "localizations" : {
@@ -70235,6 +70316,9 @@
           }
         }
       }
+    },
+    "Share connections and saved queries with your team through your account. Passwords are never included." : {
+
     },
     "Shell script to run before connecting. Non-zero exit aborts connection." : {
       "localizations" : {
@@ -74125,6 +74209,9 @@
         }
       }
     },
+    "Starter" : {
+
+    },
     "Starting service…" : {
       "localizations" : {
         "tr" : {
@@ -77321,6 +77408,15 @@
     "Tags: %@" : {
 
     },
+    "Team" : {
+
+    },
+    "Team Catalog" : {
+
+    },
+    "Team Library" : {
+
+    },
     "Template" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -77949,6 +78045,9 @@
           }
         }
       }
+    },
+    "The catalog location is not a folder: %@" : {
+
     },
     "The ChatGPT account could not be identified." : {
       "localizations" : {
@@ -78672,6 +78771,9 @@
         }
       }
     },
+    "The secret manager did not return valid JSON." : {
+
+    },
     "The selected backup file is not readable." : {
       "localizations" : {
         "tr" : {
@@ -79069,6 +79171,9 @@
           }
         }
       }
+    },
+    "There are no connections to publish." : {
+
     },
     "This %1$@ has no %2$@ yet." : {
       "localizations" : {
@@ -79892,6 +79997,9 @@
           }
         }
       }
+    },
+    "This permanently deletes the selected rows from the database and can't be undone." : {
+
     },
     "This plugin is not in the registry, so it can't be updated automatically." : {
       "localizations" : {
@@ -84190,6 +84298,9 @@
         }
       }
     },
+    "Upgrade Plan" : {
+
+    },
     "Uptime" : {
       "localizations" : {
         "tr" : {
@@ -86921,6 +87032,9 @@
         }
       }
     },
+    "You have no saved queries to publish." : {
+
+    },
     "You have unsaved changes" : {
       "localizations" : {
         "tr" : {
@@ -87172,6 +87286,12 @@
           }
         }
       }
+    },
+    "Your team can now see %d shared connections. Passwords were not included." : {
+
+    },
+    "Your team will see the names and SQL of %d saved queries. This replaces what you previously published." : {
+
     },
     "Zed" : {
       "localizations" : {

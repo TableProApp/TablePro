@@ -4,6 +4,36 @@ description: "Product updates and announcements for TablePro"
 rss: true
 ---
 
+<Update label="July 9, 2026" description="v0.56.0">
+  ### New Features
+
+  - **Secret manager passwords**: A connection can pull its password from 1Password, HashiCorp Vault, or AWS Secrets Manager at connect time, so the secret is never stored in TablePro.
+  - **Team Library**: Share connections and saved queries with your team through your account. Right-click a connection or use the Favorites sidebar to Publish to Team Library, and teammates see them in their own list and sidebar. Passwords are never included.
+  - **Team Catalog**: On the Team plan, publish connections to a shared folder your team reads from, without passwords. Teammates add the folder under Settings > Linked Folders.
+  - **Join a team with an invite code**: Paste your invite code where a license key goes, in Settings > Account. Owners manage members and seats on tablepro.app.
+  - **Saved queries and slash commands sync**: Saved SQL queries and their folders, and custom AI slash commands, now sync across your Macs with iCloud Sync.
+  - **Recent tables**: A Recent section at the top of the sidebar lists the last 10 tables you opened per connection and database, and remembers them between launches. Off by default; turn it on in Settings > General > Sidebar (#1352)
+  - **Delete confirmation**: Saving now asks you to confirm before it permanently deletes rows (#1823)
+
+  ### Improvements
+
+  - The sidebar filter matches table and view names by substring instead of fuzzy matching, and sorts names that start with what you typed to the top (#1822)
+
+  ### Bug Fixes
+
+  - Typing in the SQL editor no longer crashes the app, and the autocomplete popup appears again as you type (#1835)
+  - Deleting many rows at once no longer freezes the app; multi-row deletes run as one batched statement instead of one query per row (#1823)
+  - Deleting rows from a table without a primary key now matches on every column, so it won't remove other rows that share the first column's value (#1823)
+  - Sorting a table column keeps your rows-per-page setting and returns to page 1 instead of loading the whole table (#1826)
+  - Sorting a column no longer fails with a SQL error on tables whose name contains a word like limit or offset (#1825)
+  - Elasticsearch connections using Username & Password now show a Password field, so you can set up basic auth on a secured cluster. Update the Elasticsearch plugin to get the fix (#1816)
+  - Switching schemas on an Oracle connection no longer hangs on an infinite spinner. Oracle switches by schema, loads each schema's tables on expand, respects the query timeout with automatic reconnect, and shows an error with a Retry button when a schema fails to load (#1807)
+  - Resizing a data grid column no longer triggers a sort. Dragging a column edge only resizes it; clicking the header still sorts (#1815)
+  - Hidden columns stay hidden, and resizing a column no longer brings them back. Column widths, order, and visibility are remembered per table, kept separately for each connection, database, and schema. A new Reset Columns button in the Columns popover restores defaults (#1815)
+  - Query and filter errors now appear in a banner you can select and copy, with a Fix with AI button, instead of a dialog that cut the message off (#1815)
+  - The editor autocomplete popup drops below the line you're typing instead of covering it, no longer overlaps the Columns and Add buttons, and dismisses when you click anywhere on it that isn't a suggestion (#1815, #1831)
+</Update>
+
 <Update label="July 4, 2026" description="v0.55.0">
   ### New Features
 

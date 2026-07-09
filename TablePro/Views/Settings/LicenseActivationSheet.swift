@@ -87,23 +87,11 @@ struct LicenseActivationSheet: View {
         isActivating = true
         defer { isActivating = false }
 
-        let trimmed = licenseKeyInput.trimmingCharacters(in: .whitespacesAndNewlines)
-
         do {
-            if Self.isLicenseKey(trimmed) {
-                try await LicenseManager.shared.activate(licenseKey: trimmed)
-            } else {
-                try await LicenseManager.shared.activate(inviteCode: trimmed)
-            }
+            try await LicenseManager.shared.activate(codeOrKey: licenseKeyInput)
             dismiss()
         } catch {
             errorMessage = (error as? LicenseError)?.friendlyDescription ?? error.localizedDescription
         }
-    }
-
-    /// A license key looks like XXXXX-XXXXX-XXXXX-XXXXX-XXXXX; anything else is treated as an invite code.
-    static func isLicenseKey(_ value: String) -> Bool {
-        let pattern = "^[A-Z0-9]{5}-[A-Z0-9]{5}-[A-Z0-9]{5}-[A-Z0-9]{5}-[A-Z0-9]{5}$"
-        return value.uppercased().range(of: pattern, options: .regularExpression) != nil
     }
 }

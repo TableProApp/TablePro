@@ -32,6 +32,10 @@ struct SuggestionContentView: View {
         .frame(width: contentWidth)
         .background(Color(nsColor: model.themeBackground))
         .clipShape(RoundedRectangle(cornerRadius: 8.5))
+        .contentShape(Rectangle())
+        .onTapGesture {
+            model.onBackgroundTap?()
+        }
     }
 
     private var suggestionList: some View {

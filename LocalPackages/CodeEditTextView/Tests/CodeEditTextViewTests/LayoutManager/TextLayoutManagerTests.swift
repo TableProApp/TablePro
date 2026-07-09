@@ -243,6 +243,36 @@ struct TextLayoutManagerTests {
     }
 
     @Test
+    func rectForOffsetDoesNotThrowWhenLineStorageIsLongerThanText() throws {
+        // Reproduces the minimap desync: a layout manager whose line storage is transiently longer than the shared
+        // text storage. An offset that is valid for the line storage but past the string end must not raise, or
+        // rectForOffset breaks its optional contract and crashes AppKit when it runs inside drawRect.
+        let storage = NSTextStorage(string: "SELECT")
+        let manager = TextLayoutManager(
+            textStorage: storage,
+            lineHeightMultiplier: 1.0,
+            wrapLines: false,
+            textView: NSView(),
+            delegate: nil
+        )
+        manager.layoutLines(in: NSRect(x: 0, y: 0, width: 1000, height: 1000))
+
+        // Shrink the text without notifying the standalone manager, leaving its line storage stale and longer.
+        storage.mutableString.setString("S")
+
+        #expect(manager.lineStorage.length > storage.length)
+        for offset in 0..<manager.lineStorage.length {
+            #expect(manager.rectForOffset(offset) != nil, "rectForOffset failed at offset \(offset)")
+        }
+
+        // The range-based path (selection fill/highlight rects) must be safe against the same desync.
+        for length in 1...manager.lineStorage.length {
+            _ = manager.rectsFor(range: NSRange(location: 0, length: length))
+            _ = manager.roundedPathForRange(NSRange(location: 0, length: length))
+        }
+    }
+
+    @Test
     func textOffsetForPointReturnsValuesEverywhere() throws {
         layoutManager.layoutLines(in: NSRect(x: 0, y: 0, width: 1000, height: 1000))
 

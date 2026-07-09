@@ -58,9 +58,9 @@ internal struct FavoritesTabView: View {
                 if !viewModel.isInitialLoadComplete && viewModel.nodes.isEmpty && filteredTables.isEmpty {
                     ProgressView()
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if viewModel.nodes.isEmpty && filteredTables.isEmpty && searchText.isEmpty {
+                } else if viewModel.nodes.isEmpty && filteredTables.isEmpty && teamLibraryQueries.isEmpty && searchText.isEmpty {
                     emptyState
-                } else if items.isEmpty && filteredTables.isEmpty {
+                } else if items.isEmpty && filteredTables.isEmpty && teamLibraryQueries.isEmpty {
                     noMatchState
                 } else {
                     favoritesList(items, filteredTables: filteredTables)
@@ -158,6 +158,93 @@ internal struct FavoritesTabView: View {
 
     // MARK: - List
 
+    private var teamLibraryQueries: [TeamLibraryPullResponse.Query] {
+        guard LicenseManager.shared.isFeatureAvailable(.teamLibrary) else { return [] }
+        let all = TeamLibrarySyncCoordinator.shared.library.queries
+        guard !searchText.isEmpty else { return all }
+        return all.filter {
+            $0.name.localizedCaseInsensitiveContains(searchText) || $0.query.localizedCaseInsensitiveContains(searchText)
+        }
+    }
+
+    private func teamFavorite(from query: TeamLibraryPullResponse.Query) -> SQLFavorite {
+        SQLFavorite(
+            id: UUID(),
+            name: query.name,
+            query: query.query,
+            keyword: nil,
+            folderId: nil,
+            connectionId: nil,
+            sortOrder: 0,
+            createdAt: Date(),
+            updatedAt: Date()
+        )
+    }
+
+    @ViewBuilder
+    private func teamLibrarySection() -> some View {
+        if !teamLibraryQueries.isEmpty {
+            Section(String(localized: "Team Library")) {
+                ForEach(teamLibraryQueries) { query in
+                    Button {
+                        coordinator?.runFavoriteInNewTab(teamFavorite(from: query))
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "books.vertical")
+                                .foregroundStyle(.secondary)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(query.name)
+                                if let publishedBy = query.publishedBy {
+                                    Text(publishedBy)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
+    private func publishSavedQueriesToTeam() {
+        Task { @MainActor in
+            let favorites = await SQLFavoriteManager.shared.fetchFavorites()
+            let folders = await SQLFavoriteManager.shared.fetchFolders()
+            guard !favorites.isEmpty else {
+                presentTeamLibraryInfo(String(localized: "You have no saved queries to publish."))
+                return
+            }
+            guard confirmPublishSavedQueries(count: favorites.count) else { return }
+            do {
+                _ = try await TeamLibrarySyncCoordinator.shared.publish(connections: [], favorites: favorites, folders: folders)
+                presentTeamLibraryInfo(String(format: String(localized: "Published %d saved queries to your team."), favorites.count))
+            } catch {
+                presentTeamLibraryInfo(error.localizedDescription)
+            }
+        }
+    }
+
+    private func confirmPublishSavedQueries(count: Int) -> Bool {
+        let alert = NSAlert()
+        alert.messageText = String(localized: "Publish saved queries to your team?")
+        alert.informativeText = String(
+            format: String(localized: "Your team will see the names and SQL of %d saved queries. This replaces what you previously published."),
+            count
+        )
+        alert.addButton(withTitle: String(localized: "Publish"))
+        alert.addButton(withTitle: String(localized: "Cancel"))
+        return alert.runModal() == .alertFirstButtonReturn
+    }
+
+    private func presentTeamLibraryInfo(_ message: String) {
+        let alert = NSAlert()
+        alert.messageText = String(localized: "Team Library")
+        alert.informativeText = message
+        alert.runModal()
+    }
+
     private func favoritesList(
         _ items: [FavoriteNode],
         filteredTables: [TableInfo]
@@ -182,6 +269,7 @@ internal struct FavoritesTabView: View {
                     }
                 }
             }
+            teamLibrarySection()
         }
         .sidebarListLayout()
         .onDeleteCommand {
@@ -498,6 +586,12 @@ internal struct FavoritesTabView: View {
                 Divider()
                 Button(String(localized: "Add Linked SQL Folder...")) {
                     addLinkedFolder()
+                }
+                if LicenseManager.shared.isFeatureAvailable(.teamLibrary) {
+                    Divider()
+                    Button(String(localized: "Publish Saved Queries to Team...")) {
+                        publishSavedQueriesToTeam()
+                    }
                 }
             } label: {
                 Image(systemName: "plus")
