@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Settings are reorganized: a new Data & Results tab groups the data grid, pagination, result limits, formatting, JSON viewer, and query history; a new Sidebar tab groups recent tables, default layout, and object comments.
+- The Settings window is reorganized into a searchable sidebar: a Data & Results section groups the data grid, pagination, result limits, formatting, JSON viewer, and query history; a Sidebar section groups recent tables, default layout, and object comments.
 
 ### Fixed
 
