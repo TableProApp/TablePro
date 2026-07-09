@@ -42,6 +42,7 @@ struct DataGridView: NSViewRepresentable {
     @Binding var selectedRowIndices: Set<Int>
     @Binding var sortState: SortState
     @Binding var columnLayout: ColumnLayoutState
+    var contentRevision: Int = 0
 
     // MARK: - NSViewRepresentable
 
@@ -169,11 +170,13 @@ struct DataGridView: NSViewRepresentable {
             rowHeight: rowHeight,
             alternatingRows: alternatingRows,
             reloadVersion: changeManager.reloadVersion,
+            contentRevision: contentRevision,
             showObjectComments: AppSettingsManager.shared.general.showObjectComments
         )
 
         if snapshot != coordinator.lastUpdateSnapshot {
             let contentChanged = snapshot.reloadVersion != coordinator.lastUpdateSnapshot?.reloadVersion
+                || snapshot.contentRevision != coordinator.lastUpdateSnapshot?.contentRevision
             applyStructuralUpdate(
                 tableView: tableView,
                 coordinator: coordinator,

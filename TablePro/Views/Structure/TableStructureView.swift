@@ -424,7 +424,8 @@ struct TableStructureView: View {
             delegate: gridDelegate,
             selectedRowIndices: $selectedRows,
             sortState: $sortState,
-            columnLayout: columnLayoutBinding(for: selectedTab)
+            columnLayout: columnLayoutBinding(for: selectedTab),
+            contentRevision: displayVersion
         )
         .safeAreaInset(edge: .top, spacing: 0) {
             VStack(spacing: 0) {

@@ -134,6 +134,10 @@ final class MainContentCoordinator {
     /// dispatch insertRows/removeRows directly to the NSTableView via DataGridViewDelegate.
     @ObservationIgnored weak var dataTabDelegate: DataTabGridDelegate?
 
+    var activeGridDisplayIDs: [RowID]? {
+        dataTabDelegate?.tableViewCoordinator?.displayIDs
+    }
+
     /// One-shot intent set when the user explicitly opens a table (Return/double-click),
     /// consumed by the grid as it appears to move focus into it. Never set on mere selection.
     @ObservationIgnored var pendingGridFocusOnOpen = false

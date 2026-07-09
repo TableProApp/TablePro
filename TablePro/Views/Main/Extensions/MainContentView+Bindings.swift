@@ -16,11 +16,13 @@ extension MainContentView {
     var selectedRowDataForSidebar: [(column: String, value: String?, type: String)]? {
         guard let tab = coordinator.tabManager.selectedTab,
               !coordinator.selectionState.indices.isEmpty,
-              let firstIndex = coordinator.selectionState.indices.min() else { return nil }
+              let firstDisplayIndex = coordinator.selectionState.indices.min() else { return nil }
         let tableRows = coordinator.tabSessionRegistry.tableRows(for: tab.id)
-        guard firstIndex < tableRows.rows.count else { return nil }
-
-        let row = tableRows.rows[firstIndex].values
+        guard let row = DisplayRowMapping.row(
+            forDisplay: firstDisplayIndex,
+            displayIDs: coordinator.activeGridDisplayIDs,
+            in: tableRows
+        )?.values else { return nil }
         var data: [(column: String, value: String?, type: String)] = []
 
         let service = ValueDisplayFormatService.shared

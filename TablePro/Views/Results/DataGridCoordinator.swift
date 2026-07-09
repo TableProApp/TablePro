@@ -367,22 +367,11 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     }
 
     func displayRow(at displayIndex: Int, in tableRows: TableRows) -> Row? {
-        if let displayIDs {
-            guard displayIndex >= 0, displayIndex < displayIDs.count else { return nil }
-            return tableRows.row(withID: displayIDs[displayIndex])
-        }
-        guard displayIndex >= 0, displayIndex < tableRows.count else { return nil }
-        return tableRows.rows[displayIndex]
+        DisplayRowMapping.row(forDisplay: displayIndex, displayIDs: displayIDs, in: tableRows)
     }
 
     func tableRowsIndex(forDisplayRow displayIndex: Int) -> Int? {
-        if let displayIDs {
-            guard displayIndex >= 0, displayIndex < displayIDs.count else { return nil }
-            return tableRowsProvider().index(of: displayIDs[displayIndex])
-        }
-        let count = tableRowsProvider().count
-        guard displayIndex >= 0, displayIndex < count else { return nil }
-        return displayIndex
+        DisplayRowMapping.rowIndex(forDisplay: displayIndex, displayIDs: displayIDs, in: tableRowsProvider())
     }
 
     func displayValue(forID id: RowID, column: Int, rawValue: PluginCellValue, columnType: ColumnType?) -> String? {

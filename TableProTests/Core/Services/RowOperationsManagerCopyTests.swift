@@ -299,4 +299,49 @@ struct RowOperationsManagerCopyTests {
         #expect(clipboard.lastWrittenGridRows?.columns == ["email", "id"])
         #expect(clipboard.lastWrittenGridRows?.rows == [[.text("alice@test.com"), .text("1")]])
     }
+
+    @Test("Copy under a display filter reads the underlying row, not the raw position")
+    func copyResolvesDisplayIndexUnderFilter() {
+        let (manager, _) = makeManager()
+        let rows: [[String?]] = [
+            ["1", "Alice", "a@test.com"],
+            ["2", "Bob", "b@test.com"],
+            ["3", "Carol", "c@test.com"],
+            ["4", "Dave", "d@test.com"],
+        ]
+        let clipboard = MockClipboardProvider()
+        ClipboardService.shared = clipboard
+        let tableRows = makeTableRows(rows: rows)
+        let displayIDs: [RowID] = [.existing(0), .existing(2), .existing(3)]
+
+        manager.copySelectedRowsToClipboard(
+            selectedIndices: [1],
+            tableRows: tableRows,
+            displayIDs: displayIDs
+        )
+
+        #expect(clipboard.lastWrittenText == "3\tCarol\tc@test.com")
+    }
+
+    @Test("Copy under a display filter emits rows in display order")
+    func copyEmitsDisplayOrderUnderFilter() {
+        let (manager, _) = makeManager()
+        let rows: [[String?]] = [
+            ["1", "Alice", "a@test.com"],
+            ["2", "Bob", "b@test.com"],
+            ["3", "Carol", "c@test.com"],
+        ]
+        let clipboard = MockClipboardProvider()
+        ClipboardService.shared = clipboard
+        let tableRows = makeTableRows(rows: rows)
+        let displayIDs: [RowID] = [.existing(2), .existing(0)]
+
+        manager.copySelectedRowsToClipboard(
+            selectedIndices: [0, 1],
+            tableRows: tableRows,
+            displayIDs: displayIDs
+        )
+
+        #expect(clipboard.lastWrittenText == "3\tCarol\tc@test.com\n1\tAlice\ta@test.com")
+    }
 }
