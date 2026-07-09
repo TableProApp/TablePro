@@ -123,7 +123,6 @@ final class OracleConnectionWrapper: @unchecked Sendable {
     private let serviceName: String
     private let useSID: Bool
     private let sslConfig: SSLConfiguration
-    private let nativeNetworkEncryption: Bool
 
     private struct LockedState: Sendable {
         var isConnected = false
@@ -150,8 +149,7 @@ final class OracleConnectionWrapper: @unchecked Sendable {
         database: String,
         serviceName: String = "",
         useSID: Bool = false,
-        sslConfig: SSLConfiguration = SSLConfiguration(),
-        nativeNetworkEncryption: Bool = false
+        sslConfig: SSLConfiguration = SSLConfiguration()
     ) {
         self.host = host
         self.port = port
@@ -161,7 +159,6 @@ final class OracleConnectionWrapper: @unchecked Sendable {
         self.serviceName = serviceName
         self.useSID = useSID
         self.sslConfig = sslConfig
-        self.nativeNetworkEncryption = nativeNetworkEncryption
     }
 
     // MARK: - Connection
@@ -178,7 +175,6 @@ final class OracleConnectionWrapper: @unchecked Sendable {
             password: password,
             tls: tls
         )
-        config.nativeNetworkEncryption = nativeNetworkEncryption
         let connectConfig = config
         let connectLogger = nioLogger
 
@@ -205,7 +201,7 @@ final class OracleConnectionWrapper: @unchecked Sendable {
             let target = useSID ? "\(self.host):\(self.port):\(identifier)" : "\(self.host):\(self.port)/\(identifier)"
             osLogger.debug("Connected to Oracle \(target)")
         } catch is TimeoutError {
-            osLogger.error("Oracle login handshake timed out after \(Self.loginTimeoutSeconds, privacy: .public)s (nativeEncryption=\(self.nativeNetworkEncryption, privacy: .public))")
+            osLogger.error("Oracle login handshake timed out after \(Self.loginTimeoutSeconds, privacy: .public)s")
             throw makeConnectError(failure: .connectionFailed, detail: "", timedOut: true, phase: nil)
         } catch let sqlError as OracleSQLError {
             let detail = Self.connectFailureDetail(sqlError)
@@ -238,15 +234,19 @@ final class OracleConnectionWrapper: @unchecked Sendable {
         timedOut: Bool,
         phase: String?
     ) -> OracleError {
-        if OracleConnectErrorClassifier.isLikelyNativeEncryptionFailure(
-            failure: failure,
-            nativeNetworkEncryptionEnabled: nativeNetworkEncryption,
-            timedOut: timedOut
-        ) {
-            return OracleError(message: Self.nativeEncryptionFailureMessage, category: .nativeEncryptionFailed)
-        }
         if timedOut {
             return OracleError(message: Self.loginTimeoutMessage, category: .loginTimedOut)
+        }
+        // Native network encryption is always offered at ACCEPTED, so a non-timeout
+        // advanced-negotiation failure is the one definitive encryption signal.
+        if OracleConnectErrorClassifier.isLikelyNativeEncryptionFailure(
+            failure: failure,
+            nativeNetworkEncryptionEnabled: true,
+            timedOut: false
+        ) {
+            let base = Self.nativeEncryptionFailureMessage
+            let message = detail.isEmpty ? base : "\(base) (\(detail))"
+            return OracleError(message: message, category: .nativeEncryptionFailed)
         }
         let category = Self.category(for: failure, phase: phase)
         return OracleError(
@@ -265,6 +265,8 @@ final class OracleConnectionWrapper: @unchecked Sendable {
             return .authConnectionDropped(phase: phase)
         case .connectionFailed:
             return .connectionFailed
+        case .advancedNegotiationFailed:
+            return .nativeEncryptionFailed
         @unknown default:
             return .connectionFailed
         }
@@ -276,9 +278,8 @@ final class OracleConnectionWrapper: @unchecked Sendable {
 
     private static let nativeEncryptionFailureMessage = String(
         localized: """
-        Could not finish logging in with native network encryption enabled. \
-        This Oracle server may not support it, which is common with Oracle 11g. \
-        Turn off the Native network encryption option in this connection's settings and try again.
+        Could not complete Oracle native network encryption with this server. It may \
+        require an encryption or checksum algorithm the driver does not support.
         """
     )
 
@@ -286,7 +287,13 @@ final class OracleConnectionWrapper: @unchecked Sendable {
         if let refused = error.underlying as? OracleListenerRefusedError {
             return OracleListenerRefusal.detail(code: refused.code)
         }
-        return error.serverInfo?.message ?? error.description
+        if let serverMessage = error.serverInfo?.message {
+            return serverMessage
+        }
+        if let underlying = error.underlying {
+            return String(describing: underlying)
+        }
+        return error.description
     }
 
     private static func connectErrorMessage(

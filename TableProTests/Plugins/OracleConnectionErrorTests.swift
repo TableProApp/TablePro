@@ -38,6 +38,14 @@ struct OracleConnectErrorClassifierTests {
         )
     }
 
+    @Test("A failed advanced negotiation is a native encryption failure")
+    func advancedNegotiationIsEncryptionFailure() {
+        #expect(OracleConnectErrorClassifier.classify("advancedNegotiationFailed") == .advancedNegotiationFailed)
+        #expect(OracleConnectErrorClassifier.isLikelyNativeEncryptionFailure(
+            failure: .advancedNegotiationFailed, nativeNetworkEncryptionEnabled: true, timedOut: false
+        ))
+    }
+
     @Test("Any other code falls back to a generic connection failure")
     func unknownIsConnectionFailed() {
         #expect(OracleConnectErrorClassifier.classify("connectionError") == .connectionFailed)
