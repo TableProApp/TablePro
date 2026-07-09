@@ -7,7 +7,6 @@ import SwiftUI
 
 struct EditorSettingsView: View {
     @Binding var settings: EditorSettings
-    @Binding var dataGridSettings: DataGridSettings
 
     var body: some View {
         Form {
@@ -24,15 +23,6 @@ struct EditorSettingsView: View {
                 Toggle("Query parameters (:name syntax)", isOn: $settings.queryParametersEnabled)
                 Toggle("Vim mode", isOn: $settings.vimModeEnabled)
             }
-
-            Section("JSON Viewer") {
-                Picker("Default view:", selection: $settings.jsonViewerPreferredMode) {
-                    Text("Text").tag(JSONViewMode.text)
-                    Text("Tree").tag(JSONViewMode.tree)
-                }
-            }
-
-            DataGridSection(settings: $dataGridSettings)
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
@@ -40,6 +30,6 @@ struct EditorSettingsView: View {
 }
 
 #Preview {
-    EditorSettingsView(settings: .constant(.default), dataGridSettings: .constant(.default))
+    EditorSettingsView(settings: .constant(.default))
         .frame(width: 450, height: 500)
 }

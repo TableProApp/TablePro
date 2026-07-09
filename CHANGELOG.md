@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Settings are reorganized: a new Data & Results tab groups the data grid, pagination, result limits, formatting, JSON viewer, and query history; a new Sidebar tab groups recent tables, default layout, and object comments.
+
 ### Fixed
 
 - Per-column display formats (Display As) are now kept per table, so two tables with the same name in different databases or schemas no longer share formatting.
