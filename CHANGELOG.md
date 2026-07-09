@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Data grid column comments now appear directly in column headers when object comments are enabled, instead of only being available from the header tooltip. (#1789)
+
 ### Fixed
 
 - MongoDB filters and generated edit statements now quote numeric-looking values that would not round-trip, such as `.5`, `1.`, `+7`, `01`, integers larger than 64 bits, and exponents that overflow a double like `1e400`, instead of emitting invalid or lossy JSON. A row whose `_id` is a decimal or exponent string is matched as that string, so delete and update target the right document. Update the MongoDB plugin to get the fix. (#1813)
