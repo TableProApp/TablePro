@@ -205,6 +205,8 @@ final class AppSettingsStorage {
         saveAI(.default)
         saveSync(.default)
         saveMCP(.default)
+        defaults.removeObject(forKey: PreferenceKeys.selectedSettingsPane.name)
+        defaults.removeObject(forKey: SidebarPersistenceKey.defaultLayout)
     }
 
     // MARK: - Helpers
