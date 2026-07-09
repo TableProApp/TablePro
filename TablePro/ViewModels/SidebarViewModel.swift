@@ -78,8 +78,13 @@ final class SidebarViewModel {
 
     // MARK: - Published State
 
-    var searchText = "" {
-        didSet { scheduleFilterQueryUpdate(oldValue: oldValue) }
+    var searchText: String {
+        get { sharedState.searchText }
+        set {
+            let oldValue = sharedState.searchText
+            sharedState.searchText = newValue
+            scheduleFilterQueryUpdate(oldValue: oldValue)
+        }
     }
 
     private(set) var filterQuery = "" {
@@ -107,7 +112,10 @@ final class SidebarViewModel {
             )
         }
     }
-    var redisKeyTreeViewModel: RedisKeyTreeViewModel?
+    var redisKeyTreeViewModel: RedisKeyTreeViewModel? {
+        get { sharedState.redisKeyTreeViewModel }
+        set { sharedState.redisKeyTreeViewModel = newValue }
+    }
     var showOperationDialog = false
     var pendingOperationType: TableOperationType?
     var pendingOperationTables: [String] = []
@@ -123,6 +131,10 @@ final class SidebarViewModel {
     // MARK: - Dependencies
 
     private let connectionId: UUID
+
+    /// The single connection-scoped state holder. Search text and the Redis key
+    /// tree live here so this view model and the sidebar views share one source.
+    @ObservationIgnored let sharedState: SharedSidebarState
 
     // MARK: - Convenience Accessors
 
@@ -167,6 +179,7 @@ final class SidebarViewModel {
         self.tableOperationOptionsBinding = tableOperationOptions
         self.databaseType = databaseType
         self.connectionId = connectionId
+        self.sharedState = SharedSidebarState.forConnection(connectionId)
         self.expanded = Self.loadInitialExpansion(connectionId: connectionId)
         self.isRedisKeysExpanded = Self.loadExpansion(
             perConnectionKey: SidebarPersistenceKey.redisKeysExpanded(connectionId: connectionId),
