@@ -13,4 +13,12 @@ enum PreferenceKeys {
         linkedFolders.name,
         linkedSQLFolders.name,
     ]
+
+    static func columnDisplayFormats(_ scope: TableScope) -> DefaultsKey<[String: ValueDisplayFormat]> {
+        DefaultsKey("com.TablePro.columns.displayFormat." + scope.storageComponent)
+    }
+
+    static func recentTables(connectionId: UUID) -> DefaultsKey<[RecentTableEntry]> {
+        DefaultsKey("com.TablePro.recentTables." + connectionId.uuidString)
+    }
 }

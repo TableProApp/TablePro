@@ -700,22 +700,19 @@ struct MainEditorContentView: View {
                     autoMap[columns[i]] = format
                 }
             }
-            service.setAutoDetectedFormats(autoMap, connectionId: connectionId, tableName: tab.tableContext.tableName)
+            service.setAutoDetectedFormats(autoMap, scope: tab.tableContext.scope(connectionId: connectionId))
         } else {
-            service.clearAutoDetectedFormats(connectionId: connectionId, tableName: tab.tableContext.tableName)
+            service.clearAutoDetectedFormats(scope: tab.tableContext.scope(connectionId: connectionId))
         }
 
-        let connId = connectionId
-        let tblName = tab.tableContext.tableName
         var merged = detected
 
-        if let tblName {
-            if let overrides = ValueDisplayFormatStorage.shared.load(for: tblName, connectionId: connId) {
-                for (i, colName) in columns.enumerated() {
-                    if let overrideFormat = overrides[colName] {
-                        while merged.count <= i { merged.append(nil) }
-                        merged[i] = overrideFormat
-                    }
+        if let scope = tab.tableContext.scope(connectionId: connectionId),
+           let overrides = ValueDisplayFormatStorage.shared.load(for: scope) {
+            for (i, colName) in columns.enumerated() {
+                if let overrideFormat = overrides[colName] {
+                    while merged.count <= i { merged.append(nil) }
+                    merged[i] = overrideFormat
                 }
             }
         }

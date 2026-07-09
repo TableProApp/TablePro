@@ -15,7 +15,6 @@ final class ValueDisplayFormatService {
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "ValueDisplayFormat")
 
-    /// Auto-detected formats keyed by "connectionId.tableName.columnName" for per-connection isolation.
     private var autoDetectedFormats: [String: ValueDisplayFormat] = [:]
 
     private(set) var overridesVersion: Int = 0
@@ -41,48 +40,42 @@ final class ValueDisplayFormatService {
 
     // MARK: - Effective Format Resolution
 
-    func effectiveFormat(columnName: String, connectionId: UUID?, tableName: String?) -> ValueDisplayFormat {
-        // Stored overrides take priority
-        if let connId = connectionId, let table = tableName {
-            if let overrides = ValueDisplayFormatStorage.shared.load(for: table, connectionId: connId),
-               let format = overrides[columnName] {
-                return format
-            }
+    func effectiveFormat(columnName: String, scope: TableScope?) -> ValueDisplayFormat {
+        if let scope,
+           let overrides = ValueDisplayFormatStorage.shared.load(for: scope),
+           let format = overrides[columnName] {
+            return format
         }
 
-        // Then auto-detected (scoped by connection + table)
-        let key = scopedKey(columnName: columnName, connectionId: connectionId, tableName: tableName)
-        if let format = autoDetectedFormats[key] {
+        if let format = autoDetectedFormats[scopedKey(columnName: columnName, scope: scope)] {
             return format
         }
 
         return .raw
     }
 
-    func setAutoDetectedFormats(_ formats: [String: ValueDisplayFormat], connectionId: UUID?, tableName: String?) {
-        // Clear previous entries for this scope
-        let prefix = scopePrefix(connectionId: connectionId, tableName: tableName)
+    func setAutoDetectedFormats(_ formats: [String: ValueDisplayFormat], scope: TableScope?) {
+        let prefix = scopePrefix(scope: scope)
         autoDetectedFormats = autoDetectedFormats.filter { !$0.key.hasPrefix(prefix) }
 
         for (columnName, format) in formats {
-            let key = scopedKey(columnName: columnName, connectionId: connectionId, tableName: tableName)
-            autoDetectedFormats[key] = format
+            autoDetectedFormats[scopedKey(columnName: columnName, scope: scope)] = format
         }
     }
 
-    func clearAutoDetectedFormats(connectionId: UUID?, tableName: String?) {
-        let prefix = scopePrefix(connectionId: connectionId, tableName: tableName)
+    func clearAutoDetectedFormats(scope: TableScope?) {
+        let prefix = scopePrefix(scope: scope)
         autoDetectedFormats = autoDetectedFormats.filter { !$0.key.hasPrefix(prefix) }
     }
 
     // MARK: - Scoping
 
-    private func scopePrefix(connectionId: UUID?, tableName: String?) -> String {
-        "\(connectionId?.uuidString ?? "_").\(tableName ?? "_")."
+    private func scopePrefix(scope: TableScope?) -> String {
+        "\(scope?.storageComponent ?? "_")."
     }
 
-    private func scopedKey(columnName: String, connectionId: UUID?, tableName: String?) -> String {
-        "\(connectionId?.uuidString ?? "_").\(tableName ?? "_").\(columnName)"
+    private func scopedKey(columnName: String, scope: TableScope?) -> String {
+        "\(scope?.storageComponent ?? "_").\(columnName)"
     }
 
     // MARK: - Override Management
@@ -90,10 +83,9 @@ final class ValueDisplayFormatService {
     func setOverride(
         _ format: ValueDisplayFormat?,
         columnName: String,
-        connectionId: UUID,
-        tableName: String
+        scope: TableScope
     ) {
-        var overrides = ValueDisplayFormatStorage.shared.load(for: tableName, connectionId: connectionId) ?? [:]
+        var overrides = ValueDisplayFormatStorage.shared.load(for: scope) ?? [:]
 
         if let format, format != .raw {
             overrides[columnName] = format
@@ -102,9 +94,9 @@ final class ValueDisplayFormatService {
         }
 
         if overrides.isEmpty {
-            ValueDisplayFormatStorage.shared.clear(for: tableName, connectionId: connectionId)
+            ValueDisplayFormatStorage.shared.clear(for: scope)
         } else {
-            ValueDisplayFormatStorage.shared.save(overrides, for: tableName, connectionId: connectionId)
+            ValueDisplayFormatStorage.shared.save(overrides, for: scope)
         }
 
         overridesVersion &+= 1

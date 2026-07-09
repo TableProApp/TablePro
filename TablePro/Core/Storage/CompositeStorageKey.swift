@@ -12,8 +12,11 @@ enum CompositeStorageKey {
         schemaName: String?,
         tableName: String
     ) -> String {
-        [connectionId.uuidString, databaseName, schemaName ?? "", tableName]
-            .map { $0.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? $0 }
-            .joined(separator: ".")
+        TableScope(
+            connectionId: connectionId,
+            database: databaseName,
+            schema: schemaName,
+            table: tableName
+        ).storageComponent
     }
 }

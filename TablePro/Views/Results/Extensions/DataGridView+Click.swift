@@ -44,8 +44,7 @@ extension TableViewCoordinator {
         let immutable = databaseType.map { PluginManager.shared.immutableColumns(for: $0) } ?? []
         let override = ValueDisplayFormatService.shared.effectiveFormat(
             columnName: columnName,
-            connectionId: connectionId,
-            tableName: tableName
+            scope: tableScope
         )
 
         return CellContext(

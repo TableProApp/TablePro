@@ -36,15 +36,28 @@ final class RecentTablesStore {
     static let perDatabaseCap = 10
 
     private let defaults: UserDefaults
-    private let keyPrefix = "RecentTables.v1."
+    private let legacyKeyPrefix = "RecentTables.v1."
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
     }
 
     func entries(connectionId: UUID) -> [RecentTableEntry] {
-        guard let data = defaults.data(forKey: storageKey(connectionId)) else { return [] }
-        return (try? JSONDecoder().decode([RecentTableEntry].self, from: data)) ?? []
+        if let data = defaults.data(forKey: PreferenceKeys.recentTables(connectionId: connectionId).name) {
+            return (try? JSONDecoder().decode([RecentTableEntry].self, from: data)) ?? []
+        }
+        return migrateLegacy(connectionId: connectionId)
+    }
+
+    private func migrateLegacy(connectionId: UUID) -> [RecentTableEntry] {
+        let legacyKey = legacyKeyPrefix + connectionId.uuidString
+        guard let data = defaults.data(forKey: legacyKey),
+              let entries = try? JSONDecoder().decode([RecentTableEntry].self, from: data) else {
+            return []
+        }
+        persist(entries, connectionId: connectionId)
+        defaults.removeObject(forKey: legacyKey)
+        return entries
     }
 
     @discardableResult
@@ -86,10 +99,6 @@ final class RecentTablesStore {
 
     private func persist(_ entries: [RecentTableEntry], connectionId: UUID) {
         guard let data = try? JSONEncoder().encode(entries) else { return }
-        defaults.set(data, forKey: storageKey(connectionId))
-    }
-
-    private func storageKey(_ connectionId: UUID) -> String {
-        keyPrefix + connectionId.uuidString
+        defaults.set(data, forKey: PreferenceKeys.recentTables(connectionId: connectionId).name)
     }
 }

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Per-column display formats (Display As) are now kept per table, so two tables with the same name in different databases or schemas no longer share formatting.
+
 ## [0.56.1] - 2026-07-09
 
 ### Removed

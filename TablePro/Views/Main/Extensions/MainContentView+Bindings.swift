@@ -27,7 +27,6 @@ extension MainContentView {
 
         let service = ValueDisplayFormatService.shared
         let connId = coordinator.connection.id
-        let tblName = tab.tableContext.tableName
 
         for (i, col) in tableRows.columns.enumerated() {
             var value: String?
@@ -44,7 +43,7 @@ extension MainContentView {
             let type = i < tableRows.columnTypes.count ? tableRows.columnTypes[i].displayName : "string"
 
             if let rawValue = value {
-                let format = service.effectiveFormat(columnName: col, connectionId: connId, tableName: tblName)
+                let format = service.effectiveFormat(columnName: col, scope: tab.tableContext.scope(connectionId: connId))
                 if format != .raw {
                     value = ValueDisplayFormatService.applyFormat(rawValue, format: format)
                 }
