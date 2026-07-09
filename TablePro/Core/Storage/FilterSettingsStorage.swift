@@ -93,7 +93,7 @@ final class FilterSettingsStorage {
     private let ioQueue = DispatchQueue(label: "com.TablePro.FilterSettingsStorage.io", qos: .utility)
 
     private var cachedSettings: FilterSettings?
-    private var lastFiltersCache: [String: [TableFilter]] = [:]
+    private var lastFiltersCache: [String: PersistedFilterState] = [:]
     private var browseSearchCache: [String: BrowseSearchState] = [:]
 
     private convenience init() {
@@ -154,6 +154,20 @@ final class FilterSettingsStorage {
         databaseName: String,
         schemaName: String?
     ) -> [TableFilter] {
+        loadLastFilterState(
+            for: tableName,
+            connectionId: connectionId,
+            databaseName: databaseName,
+            schemaName: schemaName
+        ).filters
+    }
+
+    func loadLastFilterState(
+        for tableName: String,
+        connectionId: UUID,
+        databaseName: String,
+        schemaName: String?
+    ) -> PersistedFilterState {
         let key = compositeKey(
             tableName: tableName,
             connectionId: connectionId,
@@ -164,24 +178,27 @@ final class FilterSettingsStorage {
 
         let fileURL = fileURL(forKey: key)
         guard FileManager.default.fileExists(atPath: fileURL.path) else {
-            lastFiltersCache[key] = []
-            return []
+            let empty = PersistedFilterState(filters: [])
+            lastFiltersCache[key] = empty
+            return empty
         }
 
         do {
             let data = try Data(contentsOf: fileURL)
-            let filters = try decoder.decode([TableFilter].self, from: data)
-            lastFiltersCache[key] = filters
-            return filters
+            let state = try decoder.decode(PersistedFilterState.self, from: data)
+            lastFiltersCache[key] = state
+            return state
         } catch {
             Self.logger.error("Failed to load last filters for \(tableName): \(error)")
-            lastFiltersCache[key] = []
-            return []
+            let empty = PersistedFilterState(filters: [])
+            lastFiltersCache[key] = empty
+            return empty
         }
     }
 
     func saveLastFilters(
         _ filters: [TableFilter],
+        logicMode: FilterLogicMode = .and,
         for tableName: String,
         connectionId: UUID,
         databaseName: String,
@@ -203,9 +220,10 @@ final class FilterSettingsStorage {
             return
         }
 
-        lastFiltersCache[key] = filters
+        let state = PersistedFilterState(filters: filters, logicMode: logicMode)
+        lastFiltersCache[key] = state
         do {
-            let data = try encoder.encode(filters)
+            let data = try encoder.encode(state)
             ioQueue.async {
                 do {
                     try data.write(to: fileURL, options: .atomic)

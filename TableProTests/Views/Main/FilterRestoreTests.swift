@@ -25,6 +25,23 @@ struct FilterRestoreTests {
         #expect(result.isVisible)
     }
 
+    @Test("Restore Last restores the saved logic mode instead of defaulting to AND")
+    func restoreLastRestoresLogicMode() {
+        let saved = [
+            TestFixtures.makeTableFilter(column: "a"),
+            TestFixtures.makeTableFilter(column: "b"),
+        ]
+
+        let result = FilterCoordinator.resolvedRestoredState(
+            panelState: .restoreLast,
+            saved: saved,
+            savedLogicMode: .or,
+            current: TabFilterState()
+        )
+
+        #expect(result.filterLogicMode == .or)
+    }
+
     @Test("Restore keeps disabled filters in the panel but out of the applied set")
     func restoreKeepsDisabledFilterInactive() {
         let active = TestFixtures.makeTableFilter(column: "email", value: "a@b.com")

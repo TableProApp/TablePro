@@ -38,6 +38,7 @@ extension MainContentCoordinator {
             if let tableName = tabManager.tabs[oldIndex].tableContext.tableName {
                 FilterSettingsStorage.shared.saveLastFilters(
                     tabManager.tabs[oldIndex].filterState.appliedFilters,
+                    logicMode: tabManager.tabs[oldIndex].filterState.filterLogicMode,
                     for: tableName,
                     connectionId: connectionId,
                     databaseName: tabManager.tabs[oldIndex].tableContext.databaseName,

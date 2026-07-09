@@ -302,4 +302,74 @@ struct FilterSettingsStorageTests {
                 .isActive
         )
     }
+
+    @Test("The filter logic mode round-trips alongside the filters")
+    func logicModeRoundTrips() {
+        let (storage, directory) = makeStorage()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let connectionId = UUID()
+        let filters = [
+            TestFixtures.makeTableFilter(column: "a"),
+            TestFixtures.makeTableFilter(column: "b"),
+        ]
+
+        storage.saveLastFilters(
+            filters, logicMode: .or, for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil
+        )
+
+        let state = storage.loadLastFilterState(
+            for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil
+        )
+        #expect(state.filters == filters)
+        #expect(state.logicMode == .or)
+    }
+
+    @Test("The logic mode survives a fresh storage instance")
+    func logicModePersistsAcrossInstances() throws {
+        let defaults = try #require(UserDefaults(suiteName: "FilterSettingsStorageTests-\(UUID().uuidString)"))
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("FilterSettingsStorageTests-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let connectionId = UUID()
+
+        let writer = FilterSettingsStorage(filterStateDirectory: directory, defaults: defaults)
+        writer.saveLastFilters(
+            [TestFixtures.makeTableFilter(column: "a")],
+            logicMode: .or, for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil
+        )
+        writer.waitForPendingDiskWrites()
+
+        let reader = FilterSettingsStorage(filterStateDirectory: directory, defaults: defaults)
+        #expect(
+            reader.loadLastFilterState(
+                for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil
+            ).logicMode == .or
+        )
+    }
+
+    @Test("A legacy bare-array filter file loads with the default AND logic mode")
+    func legacyArrayFileLoadsWithAndMode() throws {
+        let defaults = try #require(UserDefaults(suiteName: "FilterSettingsStorageTests-\(UUID().uuidString)"))
+        defaults.set(true, forKey: "com.TablePro.filterStateMigrationComplete")
+        defaults.set(true, forKey: "com.TablePro.filterStateCompositeKeyMigrationComplete")
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("FilterSettingsStorageTests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let connectionId = UUID()
+        let filters = [TestFixtures.makeTableFilter(column: "email", value: "a@b.com")]
+
+        let storage = FilterSettingsStorage(filterStateDirectory: directory, defaults: defaults)
+        let compositeKey = CompositeStorageKey.make(
+            connectionId: connectionId, databaseName: "db", schemaName: nil, tableName: "users"
+        )
+        let fileURL = directory.appendingPathComponent("\(compositeKey).json")
+        try JSONEncoder().encode(filters).write(to: fileURL)
+
+        let state = storage.loadLastFilterState(
+            for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil
+        )
+        #expect(state.filters == filters)
+        #expect(state.logicMode == .and)
+    }
 }

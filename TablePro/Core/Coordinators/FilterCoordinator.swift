@@ -427,6 +427,7 @@ final class FilterCoordinator {
               let tableName = tab.tableContext.tableName else { return }
         FilterSettingsStorage.shared.saveLastFilters(
             tab.filterState.filters.filter(\.isValid),
+            logicMode: tab.filterState.filterLogicMode,
             for: tableName,
             connectionId: parent.connectionId,
             databaseName: tab.tableContext.databaseName,
@@ -438,6 +439,7 @@ final class FilterCoordinator {
         guard let tab = parent.tabManager.selectedTab else { return }
         FilterSettingsStorage.shared.saveLastFilters(
             tab.filterState.filters.filter(\.isValid),
+            logicMode: tab.filterState.filterLogicMode,
             for: tableName,
             connectionId: parent.connectionId,
             databaseName: tab.tableContext.databaseName,
@@ -459,11 +461,11 @@ final class FilterCoordinator {
         let settings = FilterSettingsStorage.shared.loadSettings()
         guard let tab = parent.tabManager.selectedTab else { return }
 
-        let restored: [TableFilter]
+        let saved: PersistedFilterState
         if settings.panelState == .alwaysHide {
-            restored = []
+            saved = PersistedFilterState(filters: [])
         } else {
-            restored = FilterSettingsStorage.shared.loadLastFilters(
+            saved = FilterSettingsStorage.shared.loadLastFilterState(
                 for: tableName,
                 connectionId: parent.connectionId,
                 databaseName: tab.tableContext.databaseName,
@@ -471,13 +473,19 @@ final class FilterCoordinator {
             )
         }
         mutateSelectedTabFilterState { state in
-            state = Self.resolvedRestoredState(panelState: settings.panelState, saved: restored, current: state)
+            state = Self.resolvedRestoredState(
+                panelState: settings.panelState,
+                saved: saved.filters,
+                savedLogicMode: saved.logicMode,
+                current: state
+            )
         }
     }
 
     static func resolvedRestoredState(
         panelState: FilterPanelDefaultState,
         saved: [TableFilter],
+        savedLogicMode: FilterLogicMode = .and,
         current: TabFilterState
     ) -> TabFilterState {
         var state = current
@@ -490,10 +498,12 @@ final class FilterCoordinator {
             state.filters = saved
             state.commit = .all
             state.isVisible = true
+            state.filterLogicMode = savedLogicMode
         case .restoreLast:
             state.filters = saved
             state.commit = .all
             state.isVisible = !saved.isEmpty
+            state.filterLogicMode = savedLogicMode
         }
         return state
     }

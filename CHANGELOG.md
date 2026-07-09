@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Per-column display formats (Display As) are now kept per table, so two tables with the same name in different databases or schemas no longer share formatting.
+- Reopening a table now restores a saved filter's AND/OR match mode, instead of always resetting it to AND.
 
 ## [0.56.1] - 2026-07-09
 
