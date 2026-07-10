@@ -458,13 +458,43 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
         }
     }
 
-    // MARK: - Vim External Escape Routing
+    // MARK: - Menu Escape Routing
 
-    /// Called by the menu's "Clear Selection" (Esc) shortcut so a SwiftUI key
-    /// equivalent that preempts the local event monitor still flips Vim back to
-    /// normal mode instead of getting silently swallowed.
-    func handleVimEscapeFromMenu() -> Bool {
+    /// Called by `EditorEventRouter.handleEscapeFromMenu()` when the "Clear Selection"
+    /// menu item's bare-Escape key equivalent fires. That key equivalent preempts the
+    /// editor's local event monitors, so the completion popup, Vim, and first-responder
+    /// handling that would normally run on Escape never do. Dismisses an open completion
+    /// popup, hands the keystroke to Vim when it is mid-command, and restores first
+    /// responder and the caret when this editor was the focused surface. Returns whether
+    /// the editor consumed the escape so the menu skips its cancelOperation fallback.
+    @discardableResult
+    func handleEscapeFromMenu() -> Bool {
+        let wasFocused = wasEditorFocused
+        controller?.dismissCompletions()
+        let vimHandled = handleVimEscapeFromMenu()
+
+        if wasFocused {
+            reclaimFirstResponder()
+        }
+
+        return wasFocused || vimHandled
+    }
+
+    private func handleVimEscapeFromMenu() -> Bool {
         vimKeyInterceptor?.handleEscapeFromExternalSource() ?? false
+    }
+
+    /// `TextView.resignFirstResponder()` calls `removeCursors()`, destroying the caret
+    /// subview, and `makeFirstResponder` alone does not recreate it (only a window-level
+    /// `didBecomeKeyNotification` does, which does not fire for an in-window first
+    /// responder change). Re-applying `cursorPositions` rebuilds the cursor views now
+    /// that the text view is first responder again.
+    private func reclaimFirstResponder() {
+        guard let controller, let textView = controller.textView, let window = textView.window,
+              window.firstResponder !== textView else { return }
+        guard window.makeFirstResponder(textView) else { return }
+        guard !controller.cursorPositions.isEmpty else { return }
+        controller.setCursorPositions(controller.cursorPositions)
     }
 
     // MARK: - First Responder Tracking

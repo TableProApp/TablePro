@@ -109,14 +109,17 @@ internal final class EditorEventRouter {
         coordinator.performFormatSQL()
     }
 
-    /// Called by the SwiftUI "Clear Selection" menu when its Esc key equivalent fires.
-    /// Routes the keystroke to the active editor's Vim engine if it is in a non-normal
-    /// mode. Returns true when Vim consumed the escape — caller should suppress its
-    /// normal cancelOperation fallback in that case.
+    /// Called by the SwiftUI "Clear Selection" menu when its bare-Escape key equivalent
+    /// fires. A bare-key menu equivalent preempts every local event monitor in the key
+    /// window, so the focused editor's completion popup, Vim interceptor, and
+    /// first-responder handling never see the keystroke. Routes it to the key window's
+    /// editor so it can dismiss its completion popup, hand the escape to Vim, and restore
+    /// first responder. Returns whether the editor consumed the escape so the caller
+    /// skips its cancelOperation fallback (the data grid's Clear Selection).
     @discardableResult
-    internal func handleVimEscapeFromMenu() -> Bool {
+    internal func handleEscapeFromMenu() -> Bool {
         guard let (coordinator, _) = editor(for: NSApp.keyWindow) else { return false }
-        return coordinator.handleVimEscapeFromMenu()
+        return coordinator.handleEscapeFromMenu()
     }
 
     // MARK: - Lookup

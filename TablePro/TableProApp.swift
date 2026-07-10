@@ -92,10 +92,12 @@ struct PasteboardCommands: Commands {
             .optionalKeyboardShortcut(shortcut(for: .selectAll))
 
             Button("Clear Selection") {
-                // Route the Esc key equivalent to Vim first when the active editor is
-                // in a non-normal mode — the menu shortcut otherwise preempts the
-                // local event monitor and Vim never sees the keystroke.
-                if !EditorEventRouter.shared.handleVimEscapeFromMenu() {
+                // The bare-Escape key equivalent preempts the editor's local event
+                // monitors. Route it to the focused editor first so it dismisses the
+                // autocomplete popup, exits Vim insert mode, and keeps the caret in the
+                // editor. Fall back to clearing the data-grid selection only when no
+                // editor handled it.
+                if !EditorEventRouter.shared.handleEscapeFromMenu() {
                     NSApp.sendAction(#selector(NSResponder.cancelOperation(_:)), to: nil, from: nil)
                 }
             }
