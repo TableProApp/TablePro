@@ -23,8 +23,6 @@ final class SortableHeaderCell: NSTableHeaderCell {
     private static let defaultIndicatorSize = NSSize(width: 9, height: 6)
     private static let funnelSize = NSSize(width: 13, height: 13)
     private static let funnelPointSize: CGFloat = 11
-    static let compactHeaderHeight: CGFloat = 24
-    static let commentHeaderHeight: CGFloat = 36
 
     override init(textCell string: String) {
         super.init(textCell: string)

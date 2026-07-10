@@ -367,8 +367,9 @@ struct DataGridColumnPoolTests {
     func reconcile_updatesHeaderHeightForVisibleComments() {
         let pool = DataGridColumnPool()
         let tableView = makeTableView()
+        let naturalHeight: CGFloat = 28
         tableView.headerView = SortableHeaderView(
-            frame: NSRect(x: 0, y: 0, width: 200, height: SortableHeaderCell.compactHeaderHeight)
+            frame: NSRect(x: 0, y: 0, width: 200, height: naturalHeight)
         )
         let schema = ColumnIdentitySchema(columns: ["id", "email"])
 
@@ -383,7 +384,7 @@ struct DataGridColumnPoolTests {
             widthCalculator: defaultWidthCalculator
         )
 
-        #expect(tableView.headerView?.frame.height == SortableHeaderCell.commentHeaderHeight)
+        #expect(tableView.headerView?.frame.height == SortableHeaderView.commentHeaderHeight)
 
         pool.reconcile(
             tableView: tableView,
@@ -396,7 +397,7 @@ struct DataGridColumnPoolTests {
             widthCalculator: defaultWidthCalculator
         )
 
-        #expect(tableView.headerView?.frame.height == SortableHeaderCell.compactHeaderHeight)
+        #expect(tableView.headerView?.frame.height == naturalHeight)
     }
 
     @Test("reconcile is idempotent for equivalent inputs")

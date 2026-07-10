@@ -236,13 +236,6 @@ final class DataGridColumnPool {
     }
 
     private func updateHeaderHeight(in tableView: NSTableView, showsComments: Bool) {
-        guard let headerView = tableView.headerView else { return }
-        let targetHeight = showsComments
-            ? SortableHeaderCell.commentHeaderHeight
-            : SortableHeaderCell.compactHeaderHeight
-        guard headerView.frame.height != targetHeight else { return }
-        var frame = headerView.frame
-        frame.size.height = targetHeight
-        headerView.frame = frame
+        (tableView.headerView as? SortableHeaderView)?.showsComments = showsComments
     }
 }
