@@ -50,6 +50,15 @@ struct FilterValueTextField: NSViewRepresentable {
         return matches
     }
 
+    static func shouldOfferTokenCompletion(fieldText: String, cursor: Int) -> Bool {
+        let nsText = fieldText as NSString
+        guard nsText.length > 0 else { return false }
+        let clamped = min(max(cursor, 0), nsText.length)
+        guard clamped > 0 else { return false }
+        guard let scalar = Unicode.Scalar(nsText.character(at: clamped - 1)) else { return true }
+        return !CharacterSet.whitespaces.contains(scalar)
+    }
+
     static func splice(into current: String, range: NSRange, insertText: String) -> (text: String, caret: Int)? {
         let ns = current as NSString
         guard range.location >= 0, range.location + range.length <= ns.length else { return nil }
@@ -73,6 +82,18 @@ struct FilterValueTextField: NSViewRepresentable {
         case .escape: return .dismiss
         default: return .passThrough
         }
+    }
+
+    enum EscapeOutcome: Equatable {
+        case dismissPopup
+        case consume
+        case closeBar
+    }
+
+    static func escapeOutcome(popupVisible: Bool, recentlyDismissedPopup: Bool) -> EscapeOutcome {
+        if popupVisible { return .dismissPopup }
+        if recentlyDismissedPopup { return .consume }
+        return .closeBar
     }
 
     func makeNSView(context: Context) -> NSTextField {
@@ -154,6 +175,7 @@ struct FilterValueTextField: NSViewRepresentable {
         private var windowKeyObserver: NSObjectProtocol?
         private var latestReplacementRange: NSRange?
         private var completionGeneration = 0
+        private var escapeDismissedPopup = false
         private static let completionDebounce: UInt64 = 50_000_000
 
         private var submitsOnAccept: Bool {
@@ -230,6 +252,7 @@ struct FilterValueTextField: NSViewRepresentable {
 
         func controlTextDidChange(_ notification: Notification) {
             guard let textField = notification.object as? NSTextField else { return }
+            escapeDismissedPopup = false
             text.wrappedValue = textField.stringValue
             updateSuggestions(for: textField)
         }
@@ -243,6 +266,9 @@ struct FilterValueTextField: NSViewRepresentable {
             textView: NSTextView,
             doCommandBy commandSelector: Selector
         ) -> Bool {
+            if commandSelector != #selector(NSResponder.cancelOperation(_:)) {
+                escapeDismissedPopup = false
+            }
             if commandSelector == #selector(NSResponder.insertNewline(_:)) {
                 if suggestionPopover != nil {
                     acceptCurrentSelection(submitting: submitsOnAccept)
@@ -257,11 +283,18 @@ struct FilterValueTextField: NSViewRepresentable {
                 return true
             }
             if commandSelector == #selector(NSResponder.cancelOperation(_:)) {
-                if suggestionPopover != nil {
+                switch FilterValueTextField.escapeOutcome(
+                    popupVisible: suggestionPopover != nil,
+                    recentlyDismissedPopup: escapeDismissedPopup
+                ) {
+                case .dismissPopup:
+                    escapeDismissedPopup = true
                     dismissSuggestions()
-                    return true
+                case .consume:
+                    escapeDismissedPopup = false
+                case .closeBar:
+                    onCancel()
                 }
-                onCancel()
                 return true
             }
             return false
@@ -306,8 +339,13 @@ struct FilterValueTextField: NSViewRepresentable {
                 dismissSuggestions()
                 return
             }
+            let nsText = fieldText as NSString
             let editor = textField.currentEditor() as? NSTextView
-            let cursor = editor?.selectedRange().location ?? (fieldText as NSString).length
+            let cursor = min(editor?.selectedRange().location ?? nsText.length, nsText.length)
+            guard FilterValueTextField.shouldOfferTokenCompletion(fieldText: fieldText, cursor: cursor) else {
+                dismissSuggestions()
+                return
+            }
 
             completionGeneration &+= 1
             let generation = completionGeneration
@@ -388,6 +426,7 @@ struct FilterValueTextField: NSViewRepresentable {
                     case .accept(let submitting):
                         self.acceptCurrentSelection(submitting: submitting)
                     case .dismiss:
+                        self.escapeDismissedPopup = true
                         self.dismissSuggestions()
                     case .passThrough:
                         return nsEvent

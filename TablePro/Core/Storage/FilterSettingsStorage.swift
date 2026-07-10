@@ -387,9 +387,12 @@ final class FilterSettingsStorage {
         databaseName: String,
         schemaName: String?
     ) -> String {
-        [connectionId.uuidString, databaseName, schemaName ?? "", tableName]
-            .map { $0.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? $0 }
-            .joined(separator: ".")
+        CompositeStorageKey.make(
+            connectionId: connectionId,
+            databaseName: databaseName,
+            schemaName: schemaName,
+            tableName: tableName
+        )
     }
 
     private static func resolvedFilterStateDirectory() -> URL {

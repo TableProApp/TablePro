@@ -147,6 +147,10 @@
                 ]
               },
               {
+                "group": "Team",
+                "pages": ["features/team"]
+              },
+              {
                 "group": "Extensibility",
                 "pages": ["features/plugins"]
               }

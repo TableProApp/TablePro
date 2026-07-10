@@ -53,12 +53,43 @@ extension MainContentCoordinator {
         mutateSelectedTabHiddenColumns { $0 = pruned }
     }
 
-    func restoreLastHiddenColumnsForTable(_ tableName: String) {
-        let restored = ColumnVisibilityPersistence.loadHiddenColumns(
-            for: tableName,
-            connectionId: connectionId
-        )
+    func restoreLastHiddenColumnsForTable() {
+        guard let tab = tabManager.selectedTab, let key = columnLayoutTableKey(for: tab) else { return }
+        let restored = ColumnVisibilityPersistence.loadHiddenColumns(for: key)
         mutateSelectedTabHiddenColumns(persist: false) { $0 = restored }
+    }
+
+    func applyColumnGeometry(from geometry: ColumnLayoutState, toTabId tabId: UUID) {
+        guard let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
+        tabManager.mutate(at: index) { $0.columnLayout.applyGeometry(from: geometry) }
+        tabSessionRegistry.session(for: tabId)?.columnLayout.applyGeometry(from: geometry)
+    }
+
+    func clearColumnLayoutForSelectedTable() {
+        guard let tab = tabManager.selectedTab, let key = columnLayoutTableKey(for: tab) else { return }
+        FileColumnLayoutPersister.shared.clear(for: key)
+    }
+
+    func resetColumns() {
+        guard let index = tabManager.selectedTabIndex else { return }
+        let tab = tabManager.tabs[index]
+        if let key = columnLayoutTableKey(for: tab) {
+            FileColumnLayoutPersister.shared.clear(for: key)
+            ColumnVisibilityPersistence.saveHiddenColumns([], for: key)
+        }
+        tabManager.mutate(at: index) { $0.columnLayout = ColumnLayoutState() }
+        tabSessionRegistry.session(for: tab.id)?.columnLayout = ColumnLayoutState()
+        requeryWithColumnScope(debounced: false)
+    }
+
+    private func columnLayoutTableKey(for tab: QueryTab) -> ColumnLayoutTableKey? {
+        guard let tableName = tab.tableContext.tableName, !tableName.isEmpty else { return nil }
+        return ColumnLayoutTableKey(
+            connectionId: connectionId,
+            databaseName: tab.tableContext.databaseName,
+            schemaName: tab.tableContext.schemaName,
+            tableName: tableName
+        )
     }
 
     func rebuildSelectedTableQueryForHiddenColumnsIfNeeded() async {
@@ -70,14 +101,8 @@ extension MainContentCoordinator {
     }
 
     private func persistTabHiddenColumns(_ tab: QueryTab) {
-        guard tab.tabType == .table,
-              let tableName = tab.tableContext.tableName,
-              !tableName.isEmpty else { return }
-        ColumnVisibilityPersistence.saveHiddenColumns(
-            tab.columnLayout.hiddenColumns,
-            for: tableName,
-            connectionId: connectionId
-        )
+        guard tab.tabType == .table, let key = columnLayoutTableKey(for: tab) else { return }
+        ColumnVisibilityPersistence.saveHiddenColumns(tab.columnLayout.hiddenColumns, for: key)
     }
 
     private func mutateSelectedTabHiddenColumns(persist: Bool = true, _ mutate: (inout Set<String>) -> Void) {

@@ -1,7 +1,8 @@
 import AppKit
 import TableProPluginKit
-@testable import TablePro
 import Testing
+
+@testable import TablePro
 
 @MainActor
 @Suite("SortableHeaderCell")
@@ -56,6 +57,15 @@ struct SortableHeaderCellTests {
         let prioritizedWidth = prioritized.titleRect(forBounds: bounds).width
 
         #expect(prioritizedWidth < sortedWidth)
+    }
+
+    @Test("Accessibility label includes the visible header comment")
+    func accessibilityLabelIncludesHeaderComment() {
+        let cell = SortableHeaderCell(textCell: "email")
+        cell.headerComment = "Primary contact address"
+        cell.setAccessibilityLabel("Column: email")
+
+        #expect(cell.accessibilityLabel() == "Column: email, Primary contact address")
     }
 }
 

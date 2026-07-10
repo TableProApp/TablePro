@@ -38,12 +38,6 @@ final class OraclePlugin: NSObject, TableProPlugin, DriverPlugin, PluginDiagnost
             label: "SID",
             placeholder: "XE",
             visibleWhen: FieldVisibilityRule(fieldId: "oracleConnectionType", values: ["sid"])
-        ),
-        ConnectionField(
-            id: "oracleNativeEncryption",
-            label: "Native network encryption",
-            defaultValue: "false",
-            fieldType: .toggle
         )
     ]
 
@@ -187,9 +181,9 @@ final class OraclePlugin: NSObject, TableProPlugin, DriverPlugin, PluginDiagnost
                 title: String(localized: "Native Network Encryption Not Completed"),
                 message: oracleError.message,
                 suggestedActions: [
-                    String(localized: "Turn off the Native network encryption option in this connection's settings, then connect again."),
-                    String(localized: "Some servers, including Oracle 11g, accept but never complete native network encryption. Plain connections to such servers still work."),
-                    String(localized: "If you need encryption in transit, use TLS instead by setting an SSL mode in the connection's SSL settings.")
+                    String(localized: "The server requires Oracle native network encryption, and negotiating it with this server did not complete."),
+                    String(localized: "Ask the DBA which encryption and checksum algorithms the server requires. The driver supports AES with a SHA-2 checksum."),
+                    String(localized: "File an issue with your Oracle version and the details below so the driver can add support.")
                 ],
                 supportURL: issuesURL
             )
@@ -199,8 +193,7 @@ final class OraclePlugin: NSObject, TableProPlugin, DriverPlugin, PluginDiagnost
                 message: oracleError.message,
                 suggestedActions: [
                     String(localized: "Check for a firewall, VPN, or proxy between you and the server that stalls connections after the TCP handshake."),
-                    String(localized: "Confirm the host and port reach the database listener directly."),
-                    String(localized: "If you enabled the Native network encryption option, turn it off; some servers stall instead of completing it.")
+                    String(localized: "Confirm the host and port reach the database listener directly.")
                 ],
                 supportURL: issuesURL
             )
@@ -272,8 +265,7 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             database: config.database,
             serviceName: identifier,
             useSID: useSID,
-            sslConfig: config.ssl,
-            nativeNetworkEncryption: config.additionalFields["oracleNativeEncryption"] == "true"
+            sslConfig: config.ssl
         )
         try await conn.connect()
         self.oracleConn = conn

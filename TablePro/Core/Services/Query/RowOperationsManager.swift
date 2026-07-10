@@ -151,6 +151,32 @@ final class RowOperationsManager {
         )
     }
 
+    func deleteRows(
+        existingRows: [(displayIndex: Int, originalRow: [PluginCellValue])],
+        insertedStorageIndices: [Int],
+        tableRows: inout TableRows
+    ) -> DeleteRowsResult {
+        let sortedInsertedRows = insertedStorageIndices.sorted(by: >)
+
+        var delta: Delta = .none
+        if !sortedInsertedRows.isEmpty {
+            delta = tableRows.remove(at: IndexSet(sortedInsertedRows))
+            changeManager.undoBatchRowInsertion(rowIndices: sortedInsertedRows)
+        }
+
+        if !existingRows.isEmpty {
+            changeManager.recordBatchRowDeletion(
+                rows: existingRows.map { (rowIndex: $0.displayIndex, originalRow: $0.originalRow) }
+            )
+        }
+
+        return DeleteRowsResult(
+            nextRowToSelect: -1,
+            physicallyRemovedIndices: sortedInsertedRows,
+            delta: delta
+        )
+    }
+
     func applyUndoResult(_ result: UndoResult, tableRows: inout TableRows) -> UndoApplicationResult {
         switch result.action {
         case .cellEdit(let rowIndex, let columnIndex, _, let previousValue, _, _):
@@ -231,6 +257,7 @@ final class RowOperationsManager {
     func copySelectedRowsToClipboard(
         selectedIndices: Set<Int>,
         tableRows: TableRows,
+        displayIDs: [RowID]? = nil,
         includeHeaders: Bool = false,
         visibleColumnIndices: [Int]? = nil
     ) {
@@ -263,10 +290,11 @@ final class RowOperationsManager {
             }
         }
 
-        for rowIndex in indicesToCopy {
-            guard rowIndex < tableRows.count else { continue }
+        for displayIndex in indicesToCopy {
+            guard let row = DisplayRowMapping.row(forDisplay: displayIndex, displayIDs: displayIDs, in: tableRows)
+            else { continue }
             if !result.isEmpty { result.append("\n") }
-            let cells = projection.values(Array(tableRows.rows[rowIndex].values))
+            let cells = projection.values(Array(row.values))
             structuredRows.append(cells)
             for (colIdx, cell) in cells.enumerated() {
                 if colIdx > 0 { result.append("\t") }

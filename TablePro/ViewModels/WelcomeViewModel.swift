@@ -46,6 +46,7 @@ final class WelcomeViewModel {
     var selectedConnectionIds: Set<UUID> = []
     var groups: [ConnectionGroup] = []
     var linkedConnections: [LinkedConnection] = []
+    var teamLibraryConnections: [LinkedConnection] = []
     var showOnboarding: Bool
     var connectionsToDelete: [DatabaseConnection] = []
     var showDeleteConfirmation = false
@@ -90,6 +91,7 @@ final class WelcomeViewModel {
 
     @ObservationIgnored private var connectionUpdatedCancellable: AnyCancellable?
     @ObservationIgnored private var linkedFoldersCancellable: AnyCancellable?
+    @ObservationIgnored private var teamLibraryCancellable: AnyCancellable?
     @ObservationIgnored private var exportConnectionsCancellable: AnyCancellable?
     @ObservationIgnored private var importConnectionsCancellable: AnyCancellable?
     @ObservationIgnored private var importFromAppCancellable: AnyCancellable?
@@ -216,8 +218,15 @@ final class WelcomeViewModel {
                 self.linkedConnections = self.services.linkedFolderWatcher.linkedConnections
             }
 
+        teamLibraryCancellable = services.appEvents.teamLibraryDidUpdate
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                self?.teamLibraryConnections = Self.buildTeamLibraryConnections()
+            }
+
         loadConnections()
         linkedConnections = services.linkedFolderWatcher.linkedConnections
+        teamLibraryConnections = Self.buildTeamLibraryConnections()
 
         consumePendingRouterActions()
         startWelcomeRouterObservation()
@@ -335,6 +344,21 @@ final class WelcomeViewModel {
             type: DatabaseType(rawValue: linked.connection.type)
         )
         connectToDatabase(connection)
+    }
+
+    private static let teamLibraryFolderId = UUID(uuidString: "00000000-0000-0000-0000-000000000000") ?? UUID()
+
+    private static func buildTeamLibraryConnections() -> [LinkedConnection] {
+        guard LicenseManager.shared.isFeatureAvailable(.teamLibrary) else { return [] }
+        let placeholderURL = URL(fileURLWithPath: "/")
+        return TeamLibrarySyncCoordinator.shared.library.connections.map { connection in
+            LinkedConnection(
+                id: UUID(uuidString: connection.sourceConnectionId ?? "") ?? UUID(),
+                connection: connection.payload,
+                folderId: teamLibraryFolderId,
+                sourceFileURL: placeholderURL
+            )
+        }
     }
 
     func duplicateConnection(_ connection: DatabaseConnection) {

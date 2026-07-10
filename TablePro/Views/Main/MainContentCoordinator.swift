@@ -134,6 +134,10 @@ final class MainContentCoordinator {
     /// dispatch insertRows/removeRows directly to the NSTableView via DataGridViewDelegate.
     @ObservationIgnored weak var dataTabDelegate: DataTabGridDelegate?
 
+    var activeGridDisplayIDs: [RowID]? {
+        dataTabDelegate?.tableViewCoordinator?.displayIDs
+    }
+
     /// One-shot intent set when the user explicitly opens a table (Return/double-click),
     /// consumed by the grid as it appears to move focus into it. Never set on mere selection.
     @ObservationIgnored var pendingGridFocusOnOpen = false
@@ -1292,7 +1296,7 @@ final class MainContentCoordinator {
                         pendingLoadTrigger = trigger
                         return
                     }
-                    handleQueryExecutionError(error, sql: plan.executedSQL, tabId: tabId, connection: conn, trigger: trigger)
+                    handleQueryExecutionError(error, sql: plan.executedSQL, tabId: tabId, connection: conn)
                 }
             }
         }
@@ -1417,26 +1421,15 @@ final class MainContentCoordinator {
 
         let tabId = tab.id
         let capturedSort = newState
-        let capturedQuery = tab.content.query
-        let capturedColumns = tableRows.columns
         confirmDiscardChangesIfNeeded(action: .sort) { [weak self] confirmed in
             guard let self, confirmed else { return }
-            let newQuery: String
-            if capturedSort.columns.isEmpty {
-                newQuery = Self.stripTrailingOrderBy(from: capturedQuery)
-            } else {
-                newQuery = self.queryBuilder.buildMultiSortQuery(
-                    baseQuery: capturedQuery,
-                    sortState: capturedSort,
-                    columns: capturedColumns
-                )
-            }
             guard self.tabManager.mutate(tabId: tabId, { tab in
                 tab.sortState = capturedSort
                 tab.hasUserInteraction = true
                 tab.pagination.reset()
-                tab.content.query = newQuery
             }) else { return }
+            guard let tabIndex = self.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
+            self.rebuildTableQuery(at: tabIndex)
             self.runQuery()
         }
     }

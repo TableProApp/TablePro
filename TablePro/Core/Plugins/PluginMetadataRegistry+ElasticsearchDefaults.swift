@@ -99,7 +99,8 @@ func elasticsearchConnectionFields() -> [ConnectionField] {
                 .init(value: "apiKey", label: "API Key"),
                 .init(value: "none", label: "None"),
             ]),
-            section: .authentication
+            section: .authentication,
+            hidesPassword: true
         ),
         ConnectionField(
             id: "esApiKey",
@@ -107,7 +108,6 @@ func elasticsearchConnectionFields() -> [ConnectionField] {
             placeholder: "Base64-encoded API key",
             fieldType: .secure,
             section: .authentication,
-            hidesPassword: true,
             visibleWhen: FieldVisibilityRule(fieldId: "esAuthMethod", values: ["apiKey"])
         ),
         ConnectionField(

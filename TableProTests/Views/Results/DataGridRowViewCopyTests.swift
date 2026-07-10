@@ -21,9 +21,9 @@ private final class DataGridRowViewCopyClipboard: ClipboardProvider {
 
 @MainActor
 private final class DataGridRowViewCopyLayoutPersister: ColumnLayoutPersisting {
-    func load(for tableName: String, connectionId: UUID) -> ColumnLayoutState? { nil }
-    func save(_ layout: ColumnLayoutState, for tableName: String, connectionId: UUID) {}
-    func clear(for tableName: String, connectionId: UUID) {}
+    func load(for key: ColumnLayoutTableKey) -> ColumnLayoutState? { nil }
+    func save(_ layout: ColumnLayoutState, for key: ColumnLayoutTableKey) {}
+    func clear(for key: ColumnLayoutTableKey) {}
 }
 
 @MainActor

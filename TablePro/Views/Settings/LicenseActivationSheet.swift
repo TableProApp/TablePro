@@ -26,9 +26,10 @@ struct LicenseActivationSheet: View {
                     .font(.title2)
                     .fontWeight(.semibold)
 
-                Text("Enter your license key to unlock Pro features.")
+                Text("Enter your license key, or a team invite code to join a team.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
             }
             .padding(.top, 24)
             .padding(.bottom, 20)
@@ -87,7 +88,7 @@ struct LicenseActivationSheet: View {
         defer { isActivating = false }
 
         do {
-            try await LicenseManager.shared.activate(licenseKey: licenseKeyInput)
+            try await LicenseManager.shared.activate(codeOrKey: licenseKeyInput)
             dismiss()
         } catch {
             errorMessage = (error as? LicenseError)?.friendlyDescription ?? error.localizedDescription

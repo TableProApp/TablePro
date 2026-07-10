@@ -14,6 +14,8 @@ final class DatabaseTreeNode {
     }
 
     enum Kind {
+        case recentSection
+        case recentTable(DatabaseTreeTableRef)
         case database(DatabaseMetadata)
         case schema(database: String, schema: String)
         case table(DatabaseTreeTableRef)
@@ -31,8 +33,8 @@ final class DatabaseTreeNode {
 
     var isExpandable: Bool {
         switch kind {
-        case .database, .schema: return true
-        case .table, .routine, .status: return false
+        case .recentSection, .database, .schema: return true
+        case .recentTable, .table, .routine, .status: return false
         }
     }
 
@@ -41,9 +43,16 @@ final class DatabaseTreeNode {
         return nil
     }
 
+    var recentTableRef: DatabaseTreeTableRef? {
+        if case .recentTable(let ref) = kind { return ref }
+        return nil
+    }
+
+    static let recentSectionId = "recent-section"
     static func databaseId(_ database: String) -> String { "db\u{1}\(database)" }
     static func schemaId(database: String, schema: String) -> String { "schema\u{1}\(database)\u{1}\(schema)" }
     static func tableId(_ ref: DatabaseTreeTableRef) -> String { "table\u{1}\(ref.id)" }
+    static func recentTableId(_ ref: DatabaseTreeTableRef) -> String { "recent\u{1}table\u{1}\(ref.id)" }
     static func routineId(_ ref: DatabaseTreeRoutineRef) -> String { "routine\u{1}\(ref.id)" }
     static func statusId(parentId: String, status: Status) -> String {
         switch status {

@@ -80,9 +80,7 @@ extension MainContentCoordinator {
                     tableName: newTab.tableContext.tableName ?? "",
                     schemaName: newTab.tableContext.schemaName,
                     columns: newRows.columns,
-                    primaryKeyColumns: newTab.tableContext.primaryKeyColumns.isEmpty
-                        ? newRows.columns.prefix(1).map { $0 }
-                        : newTab.tableContext.primaryKeyColumns,
+                    primaryKeyColumns: newTab.tableContext.primaryKeyColumns,
                     databaseType: connection.type,
                     triggerReload: false
                 )

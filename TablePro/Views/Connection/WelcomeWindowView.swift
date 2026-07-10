@@ -228,7 +228,7 @@ struct WelcomeWindowView: View {
                 Divider()
             }
             ZStack {
-                if vm.treeItems.isEmpty && vm.linkedConnections.isEmpty && vm.favoriteConnections.isEmpty {
+                if vm.treeItems.isEmpty && vm.linkedConnections.isEmpty && vm.teamLibraryConnections.isEmpty && vm.favoriteConnections.isEmpty {
                     emptyState
                 } else {
                     connectionList
@@ -303,6 +303,8 @@ struct WelcomeWindowView: View {
                 let showsFavoritesSection = vm.searchText.isEmpty && !vm.favoriteConnections.isEmpty
                 let showsLinkedSection = !vm.linkedConnections.isEmpty
                     && LicenseManager.shared.isFeatureAvailable(.linkedFolders)
+                let showsTeamLibrarySection = !vm.teamLibraryConnections.isEmpty
+                    && LicenseManager.shared.isFeatureAvailable(.teamLibrary)
                 let treeHasGroups = vm.treeItems.contains { item in
                     if case .group = item { return true }
                     return false
@@ -340,6 +342,16 @@ struct WelcomeWindowView: View {
                         }
                     } header: {
                         sourceListSectionHeader(String(localized: "Linked"))
+                    }
+                }
+
+                if showsTeamLibrarySection {
+                    Section {
+                        ForEach(vm.teamLibraryConnections) { linked in
+                            teamLibraryConnectionRow(for: linked)
+                        }
+                    } header: {
+                        sourceListSectionHeader(String(localized: "Team Library"))
                     }
                 }
             }
@@ -442,12 +454,39 @@ struct WelcomeWindowView: View {
         .listRowSeparator(.hidden)
     }
 
+    private func teamLibraryConnectionRow(for linked: LinkedConnection) -> some View {
+        HStack(spacing: 12) {
+            ZStack(alignment: .bottomTrailing) {
+                DatabaseType(rawValue: linked.connection.type).iconImage
+                    .frame(width: 28, height: 28)
+                Image(systemName: "person.2.fill")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .offset(x: 2, y: 2)
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(linked.connection.name)
+                    .lineLimit(1)
+                Text(verbatim: linked.connection.displaySubtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+        }
+        .tag(linked.id)
+        .contentShape(Rectangle())
+        .listRowSeparator(.hidden)
+    }
+
     func primaryAction(for ids: Set<UUID>) {
         guard !ids.isEmpty else { return }
         for connection in vm.connections where ids.contains(connection.id) {
             vm.connectToDatabase(connection)
         }
         for linked in vm.linkedConnections where ids.contains(linked.id) {
+            vm.connectToLinkedConnection(linked)
+        }
+        for linked in vm.teamLibraryConnections where ids.contains(linked.id) {
             vm.connectToLinkedConnection(linked)
         }
     }

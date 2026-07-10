@@ -23,6 +23,8 @@ enum PasswordSourceResolver {
         case commandTimedOut
         case outputTooLarge
         case emptyPassword
+        case invalidSecretJson
+        case jsonKeyNotFound(key: String)
 
         var errorDescription: String? {
             switch self {
@@ -51,6 +53,10 @@ enum PasswordSourceResolver {
                 return String(localized: "Password command produced too much output")
             case .emptyPassword:
                 return String(localized: "The password source produced an empty password")
+            case .invalidSecretJson:
+                return String(localized: "The secret manager did not return valid JSON.")
+            case let .jsonKeyNotFound(key):
+                return String(format: String(localized: "Key %@ was not found in the secret JSON."), key)
             }
         }
     }
@@ -63,7 +69,57 @@ enum PasswordSourceResolver {
             return try resolveEnvironment(variable: variable)
         case let .command(shell):
             return try await resolveCommand(shell: shell, timeoutSeconds: commandTimeoutSeconds)
+        case .onePassword, .vault:
+            return try await resolveExternalTool(source)
+        case let .awsSecretsManager(_, jsonKey):
+            let secret = try await resolveExternalTool(source)
+            guard let jsonKey, !jsonKey.isEmpty else { return secret }
+            return try extractJsonField(jsonKey, from: secret)
         }
+    }
+
+    /// The shell command that fetches a secret for CLI-backed sources, or nil for the local sources.
+    /// Arguments are single-quoted so a reference can never break out into shell injection.
+    static func externalCommand(for source: PasswordSource) -> String? {
+        switch source {
+        case .file, .env, .command:
+            return nil
+        case let .onePassword(reference):
+            return "op read --no-newline \(shellQuote(reference))"
+        case let .vault(path, field):
+            return "vault kv get -field=\(shellQuote(field)) \(shellQuote(path))"
+        case let .awsSecretsManager(secretId, _):
+            return "aws secretsmanager get-secret-value --secret-id \(shellQuote(secretId)) "
+                + "--query SecretString --output text"
+        }
+    }
+
+    static func shellQuote(_ value: String) -> String {
+        "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'"
+    }
+
+    static func extractJsonField(_ key: String, from json: String) throws -> String {
+        guard let data = json.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw ResolutionError.invalidSecretJson
+        }
+        guard let value = object[key] else {
+            throw ResolutionError.jsonKeyNotFound(key: key)
+        }
+        if let stringValue = value as? String {
+            return try nonEmpty(stringValue.trimmingCharacters(in: .whitespacesAndNewlines))
+        }
+        if let number = value as? NSNumber {
+            return try nonEmpty(number.stringValue)
+        }
+        throw ResolutionError.invalidSecretJson
+    }
+
+    private static func resolveExternalTool(_ source: PasswordSource) async throws -> String {
+        guard let command = externalCommand(for: source) else {
+            throw ResolutionError.emptyPassword
+        }
+        return try await resolveCommand(shell: command, timeoutSeconds: commandTimeoutSeconds)
     }
 
     private static func resolveFile(path: String) throws -> String {
@@ -100,20 +156,26 @@ enum PasswordSourceResolver {
 
             let stdoutCollector = PipeDataCollector(maxBytes: maxOutputBytes)
             let stderrCollector = PipeDataCollector(maxBytes: maxOutputBytes)
-            stdoutPipe.fileHandleForReading.readabilityHandler = { handle in
-                let chunk = handle.availableData
-                guard !chunk.isEmpty else { return }
-                stdoutCollector.append(chunk)
-                if stdoutCollector.overflowed, process.isRunning {
+            try process.run()
+
+            let drainGroup = DispatchGroup()
+            let drainQueue = DispatchQueue(label: "com.TablePro.PasswordSourceResolver.pipe-drain", attributes: .concurrent)
+            drainPipe(
+                stdoutPipe.fileHandleForReading,
+                into: stdoutCollector,
+                using: drainGroup,
+                queue: drainQueue
+            ) {
+                if process.isRunning {
                     process.terminate()
                 }
             }
-            stderrPipe.fileHandleForReading.readabilityHandler = { handle in
-                let chunk = handle.availableData
-                if !chunk.isEmpty { stderrCollector.append(chunk) }
-            }
-
-            try process.run()
+            drainPipe(
+                stderrPipe.fileHandleForReading,
+                into: stderrCollector,
+                using: drainGroup,
+                queue: drainQueue
+            )
 
             let didTimeout = AtomicFlag()
             let timeoutTask = Task.detached {
@@ -126,14 +188,7 @@ enum PasswordSourceResolver {
 
             process.waitUntilExit()
             timeoutTask.cancel()
-
-            stdoutPipe.fileHandleForReading.readabilityHandler = nil
-            stderrPipe.fileHandleForReading.readabilityHandler = nil
-
-            let remainingStdout = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
-            if !remainingStdout.isEmpty { stdoutCollector.append(remainingStdout) }
-            let remainingStderr = stderrPipe.fileHandleForReading.readDataToEndOfFile()
-            if !remainingStderr.isEmpty { stderrCollector.append(remainingStderr) }
+            drainGroup.wait()
 
             if stdoutCollector.overflowed {
                 throw ResolutionError.outputTooLarge
@@ -154,6 +209,27 @@ enum PasswordSourceResolver {
             throw ResolutionError.emptyPassword
         }
         return try nonEmpty(output.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
+    private static func drainPipe(
+        _ handle: FileHandle,
+        into collector: PipeDataCollector,
+        using group: DispatchGroup,
+        queue: DispatchQueue,
+        onOverflow: (() -> Void)? = nil
+    ) {
+        group.enter()
+        queue.async {
+            defer { group.leave() }
+            while true {
+                let chunk = handle.readData(ofLength: 8_192)
+                guard !chunk.isEmpty else { return }
+                collector.append(chunk)
+                if collector.overflowed {
+                    onOverflow?()
+                }
+            }
+        }
     }
 
     private static func augmentedEnvironment() -> [String: String] {

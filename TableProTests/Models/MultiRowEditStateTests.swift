@@ -312,6 +312,27 @@ struct MultiRowEditStateTests {
             #expect(sut.fields[0].pendingValue == nil)
         }
 
+        @Test("Reconfigure to a new row keeps a stable columnIndex resolving to the new value")
+        func reconfigureNewRowResolvesByColumnIndex() {
+            let sut = makeSUT(
+                columns: ["id", "payload"],
+                rows: [["1", "{\"reached\":\"07:53\"}"]],
+                selectedIndices: [0]
+            )
+            #expect(sut.fields.first(where: { $0.columnIndex == 1 })?.originalValue == "{\"reached\":\"07:53\"}")
+
+            sut.configure(
+                selectedRowIndices: [1],
+                allRows: [["2", "{\"reached\":\"08:40\"}"]],
+                columns: ["id", "payload"],
+                columnTypes: [.text(rawType: nil), .text(rawType: nil)]
+            )
+
+            let payloadField = sut.fields.first(where: { $0.columnIndex == 1 })
+            #expect(payloadField != nil)
+            #expect(payloadField?.originalValue == "{\"reached\":\"08:40\"}")
+        }
+
         @Test("Reconfigure with added column clears all edits")
         func reconfigureWithAddedColumnClearsAllEdits() {
             let sut = makeSUT(

@@ -159,10 +159,11 @@ extension MainContentView {
         }
         let tableRows = coordinator.tabSessionRegistry.tableRows(for: tab.id)
 
+        let displayIDs = coordinator.activeGridDisplayIDs
         var allRows: [[PluginCellValue]] = []
-        for index in selectedIndices.sorted() {
-            if index < tableRows.rows.count {
-                allRows.append(Array(tableRows.rows[index].values))
+        for displayIndex in selectedIndices.sorted() {
+            if let row = DisplayRowMapping.row(forDisplay: displayIndex, displayIDs: displayIDs, in: tableRows) {
+                allRows.append(Array(row.values))
             }
         }
 
@@ -222,9 +223,14 @@ extension MainContentView {
             let columnName =
                 columnIndex < tableRows.columns.count ? tableRows.columns[columnIndex] : ""
 
+            let displayIDs = capturedCoordinator.activeGridDisplayIDs
             for rowIndex in capturedEditState.selectedRowIndices {
-                guard rowIndex < tableRows.rows.count else { continue }
-                let originalRow = Array(tableRows.rows[rowIndex].values)
+                guard let resolvedRow = DisplayRowMapping.row(
+                    forDisplay: rowIndex,
+                    displayIDs: displayIDs,
+                    in: tableRows
+                ) else { continue }
+                let originalRow = Array(resolvedRow.values)
 
                 let oldValue: PluginCellValue
                 if columnIndex < capturedEditState.fields.count {

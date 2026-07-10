@@ -63,20 +63,56 @@ enum HeaderSortCycle {
 final class SortableHeaderView: NSTableHeaderView {
     weak var coordinator: TableViewCoordinator?
 
+    static let commentHeaderHeight: CGFloat = 40
     private static let clickDragThreshold: CGFloat = 4
     private static let resizeZoneWidth: CGFloat = 4
+    private static let fallbackHeight: CGFloat = 28
 
     private var pendingClickStartLocation: NSPoint?
     private var dragOccurredDuringClick = false
     private var mouseMovedTrackingArea: NSTrackingArea?
     private var hoveredColumnIndex: Int?
 
+    /// Header height when no visible column carries a comment. Captured from the
+    /// height AppKit gave the header at creation so the compact layout keeps the
+    /// platform default instead of a hardcoded value.
+    private let naturalHeight: CGFloat
+
+    /// Grows the header to `commentHeaderHeight` so each cell can draw its comment
+    /// on a second line. Enforced through `setFrameSize` so `NSScrollView.tile()`
+    /// cannot shrink it back on scroll, live resize, or column drag.
+    var showsComments = false {
+        didSet {
+            guard showsComments != oldValue else { return }
+            applyHeaderHeight()
+        }
+    }
+
     override init(frame frameRect: NSRect) {
+        naturalHeight = frameRect.height > 0 ? frameRect.height : Self.fallbackHeight
         super.init(frame: frameRect)
     }
 
     required init?(coder: NSCoder) {
+        naturalHeight = Self.fallbackHeight
         super.init(coder: coder)
+    }
+
+    override func setFrameSize(_ newSize: NSSize) {
+        var size = newSize
+        if showsComments {
+            size.height = Self.commentHeaderHeight
+        }
+        super.setFrameSize(size)
+    }
+
+    private func applyHeaderHeight() {
+        let targetHeight = showsComments ? Self.commentHeaderHeight : naturalHeight
+        if frame.height != targetHeight {
+            setFrameSize(NSSize(width: frame.width, height: targetHeight))
+        }
+        enclosingScrollView?.tile()
+        needsDisplay = true
     }
 
     override func updateTrackingAreas() {
@@ -100,13 +136,7 @@ final class SortableHeaderView: NSTableHeaderView {
             return
         }
         let point = convert(event.locationInWindow, from: nil)
-        let zone = Self.resizeZoneWidth
-        let inResizeZone = tableView.tableColumns.enumerated().contains { index, column in
-            guard column.resizingMask.contains(.userResizingMask) else { return false }
-            let edge = headerRect(ofColumn: index).maxX
-            return abs(point.x - edge) <= zone
-        }
-        if inResizeZone {
+        if isInResizeZone(point: point) {
             NSCursor.resizeLeftRight.set()
             updateFunnelHover(column: nil)
         } else {
@@ -118,6 +148,16 @@ final class SortableHeaderView: NSTableHeaderView {
     override func mouseExited(with event: NSEvent) {
         super.mouseExited(with: event)
         updateFunnelHover(column: nil)
+    }
+
+    private func isInResizeZone(point: NSPoint) -> Bool {
+        guard let tableView else { return false }
+        let zone = Self.resizeZoneWidth
+        return tableView.tableColumns.enumerated().contains { index, column in
+            guard column.resizingMask.contains(.userResizingMask) else { return false }
+            let edge = headerRect(ofColumn: index).maxX
+            return abs(point.x - edge) <= zone
+        }
     }
 
     private func hoverableColumn(at point: NSPoint) -> Int? {
@@ -213,6 +253,11 @@ final class SortableHeaderView: NSTableHeaderView {
         }
 
         let pointInHeader = convert(event.locationInWindow, from: nil)
+        if isInResizeZone(point: pointInHeader) {
+            super.mouseDown(with: event)
+            return
+        }
+
         let columnIndex = column(at: pointInHeader)
         guard columnIndex >= 0, columnIndex < tableView.numberOfColumns else {
             super.mouseDown(with: event)

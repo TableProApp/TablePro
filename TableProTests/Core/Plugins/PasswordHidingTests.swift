@@ -43,6 +43,29 @@ struct PasswordHidingTests {
         hidesPassword: true
     )
 
+    private func gatedSecretFields() -> [ConnectionField] {
+        [
+            ConnectionField(
+                id: "authMode",
+                label: "Auth",
+                defaultValue: "password",
+                fieldType: .dropdown(options: [
+                    .init(value: "password", label: "password"),
+                    .init(value: "token", label: "token"),
+                ]),
+                section: .authentication
+            ),
+            ConnectionField(
+                id: "token",
+                label: "Token",
+                fieldType: .secure,
+                section: .authentication,
+                hidesPassword: true,
+                visibleWhen: FieldVisibilityRule(fieldId: "authMode", values: ["token"])
+            ),
+        ]
+    }
+
     @Test("A dropdown hides the password only when set off its default")
     func dropdownAwayFromDefault() {
         let fields = [dropdown(default: "off", ["off", "accessKey", "profile"])]
@@ -60,9 +83,17 @@ struct PasswordHidingTests {
         #expect(fields.hidesPassword(forValues: ["usePgpass": "true"]) == true)
     }
 
-    @Test("A secure field that always replaces the password hides it unconditionally")
+    @Test("A secure field with no visibility rule always hides the password")
     func secureFieldAlwaysHides() {
         #expect([secretField].hidesPassword(forValues: [:]) == true)
+    }
+
+    @Test("A secure field hidden by its visibility rule does not hide the password")
+    func hiddenSecureFieldDoesNotHide() {
+        let fields = gatedSecretFields()
+        #expect(fields.hidesPassword(forValues: [:]) == false)
+        #expect(fields.hidesPassword(forValues: ["authMode": "password"]) == false)
+        #expect(fields.hidesPassword(forValues: ["authMode": "token"]) == true)
     }
 
     @Test("Fields without the hidesPassword flag never hide the password")
@@ -95,6 +126,10 @@ struct PluginManagerPasswordHidingTests {
         return connection
     }
 
+    private func hides(_ typeId: String, _ fields: [String: String]) -> Bool {
+        PluginManager.shared.hidesPassword(for: connection(type: DatabaseType(rawValue: typeId), fields: fields))
+    }
+
     @Test("AWS IAM modes hide the password for relational types")
     func iamHidesPassword() {
         let manager = PluginManager.shared
@@ -107,5 +142,14 @@ struct PluginManagerPasswordHidingTests {
         let manager = PluginManager.shared
         #expect(!manager.hidesPassword(for: connection(type: .mysql, fields: ["awsAuth": "off"])))
         #expect(!manager.hidesPassword(for: connection(type: .mysql, fields: [:])))
+    }
+
+    @Test("Plugins that never use the built-in password hide it in every mode")
+    func cloudPluginsHideBuiltInPassword() {
+        #expect(hides("DuckDB", ["duckdbMode": "local"]))
+        #expect(hides("DuckDB", ["duckdbMode": "remote"]))
+        #expect(hides("DynamoDB", ["awsAuthMethod": "profile"]))
+        #expect(hides("BigQuery", ["bqAuthMethod": "adc"]))
+        #expect(hides("Snowflake", ["snowflakeAuthMethod": "externalBrowser"]))
     }
 }

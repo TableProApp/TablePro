@@ -432,9 +432,10 @@ extension QueryExecutionCoordinator {
             + error.localizedDescription
 
         let errorRS = ResultSet(label: "Error \(failedStmtIndex)")
-        errorRS.errorMessage = error.localizedDescription
+        errorRS.errorMessage = contextMsg
         resultSets.append(errorRS)
 
+        let failedStatement = failedSQL ?? statements[min(executedCount, totalCount - 1)]
         let capturedResultSets = resultSets
         await MainActor.run { [weak self] in
             guard let self else { return }
@@ -443,6 +444,7 @@ extension QueryExecutionCoordinator {
 
             parent.tabManager.mutate(tabId: tabId) { tab in
                 tab.execution.errorMessage = contextMsg
+                tab.execution.errorQuery = failedStatement
                 tab.execution.isExecuting = false
                 tab.execution.executionTime = cumulativeTime
 
@@ -451,7 +453,7 @@ extension QueryExecutionCoordinator {
                 tab.display.activeResultSetId = capturedResultSets.last?.id
             }
 
-            let rawSQL = failedSQL ?? statements[min(executedCount, totalCount - 1)]
+            let rawSQL = failedStatement
             let recordSQL = rawSQL.hasSuffix(";") ? rawSQL : rawSQL + ";"
             QueryHistoryManager.shared.recordQuery(
                 query: recordSQL,
@@ -461,12 +463,6 @@ extension QueryExecutionCoordinator {
                 rowCount: 0,
                 wasSuccessful: false,
                 errorMessage: error.localizedDescription
-            )
-
-            AlertHelper.showErrorSheet(
-                title: String(localized: "Query Execution Failed"),
-                message: contextMsg,
-                window: parent.contentWindow
             )
         }
     }

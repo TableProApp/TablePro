@@ -133,4 +133,51 @@ struct FilterValueTextFieldTests {
         #expect(FilterValueTextField.suggestionKeyOutcome(for: .space, submitsOnAccept: true) == .passThrough)
         #expect(FilterValueTextField.suggestionKeyOutcome(for: nil, submitsOnAccept: true) == .passThrough)
     }
+
+    @Test("Token completion is offered while typing a partial token")
+    func testTokenCompletion_offeredForPartialToken() {
+        #expect(FilterValueTextField.shouldOfferTokenCompletion(fieldText: "cre", cursor: 3))
+        #expect(FilterValueTextField.shouldOfferTokenCompletion(fieldText: "id = 1 AND cre", cursor: 14))
+    }
+
+    @Test("Token completion is suppressed when the cursor follows whitespace")
+    func testTokenCompletion_suppressedAfterWhitespace() {
+        #expect(!FilterValueTextField.shouldOfferTokenCompletion(fieldText: " ", cursor: 1))
+        #expect(!FilterValueTextField.shouldOfferTokenCompletion(fieldText: "id = ", cursor: 5))
+        #expect(!FilterValueTextField.shouldOfferTokenCompletion(fieldText: "name AND ", cursor: 9))
+    }
+
+    @Test("Token completion is suppressed for an empty field or a leading cursor")
+    func testTokenCompletion_suppressedForEmptyOrLeadingCursor() {
+        #expect(!FilterValueTextField.shouldOfferTokenCompletion(fieldText: "", cursor: 0))
+        #expect(!FilterValueTextField.shouldOfferTokenCompletion(fieldText: "name", cursor: 0))
+    }
+
+    @Test("Token completion clamps an out-of-range cursor to the field length")
+    func testTokenCompletion_clampsCursor() {
+        #expect(FilterValueTextField.shouldOfferTokenCompletion(fieldText: "name", cursor: 99))
+        #expect(!FilterValueTextField.shouldOfferTokenCompletion(fieldText: "name ", cursor: 99))
+    }
+
+    @Test("A trailing non-BMP character counts as non-whitespace and still offers completion")
+    func testTokenCompletion_trailingAstralCharacter() {
+        let text = "name😀"
+        #expect(FilterValueTextField.shouldOfferTokenCompletion(fieldText: text, cursor: (text as NSString).length))
+    }
+
+    @Test("Escape dismisses the popup when one is visible")
+    func testEscapeOutcome_dismissesVisiblePopup() {
+        #expect(FilterValueTextField.escapeOutcome(popupVisible: true, recentlyDismissedPopup: false) == .dismissPopup)
+        #expect(FilterValueTextField.escapeOutcome(popupVisible: true, recentlyDismissedPopup: true) == .dismissPopup)
+    }
+
+    @Test("The Escape right after dismissing the popup is consumed, keeping the filter bar open")
+    func testEscapeOutcome_consumesGraceEscape() {
+        #expect(FilterValueTextField.escapeOutcome(popupVisible: false, recentlyDismissedPopup: true) == .consume)
+    }
+
+    @Test("A clean Escape with no popup closes the filter bar")
+    func testEscapeOutcome_closesBar() {
+        #expect(FilterValueTextField.escapeOutcome(popupVisible: false, recentlyDismissedPopup: false) == .closeBar)
+    }
 }

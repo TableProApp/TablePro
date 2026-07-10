@@ -32,6 +32,11 @@ public final class SuggestionController: NSWindowController {
     /// Tracks when the window is placed above the cursor
     var isWindowAboveCursor = false
 
+    /// Anchor for the current completion session. Re-applied by ``applyPlacement(windowSize:)``
+    /// on every resize so the panel re-derives its position from the cursor instead of drifting
+    /// from its previous frame as the list grows.
+    var placementAnchor: SuggestionPlacementAnchor?
+
     var popover: NSPopover?
 
     /// Holds the observer for the window resign notifications
@@ -39,6 +44,7 @@ public final class SuggestionController: NSWindowController {
     /// Closes autocomplete when first responder changes away from the active text view
     private var firstResponderKVO: NSKeyValueObservation?
     private var localEventMonitor: Any?
+    private var mouseEventMonitor: Any?
     private var sizeObservers: Set<AnyCancellable> = []
 
     // MARK: - Initialization
@@ -52,6 +58,7 @@ public final class SuggestionController: NSWindowController {
         window.contentView = hostingView
 
         model.onApply = { [weak self] in self?.close() }
+        model.onBackgroundTap = { [weak self] in self?.close() }
 
         NotificationCenter.default.addObserver(
             self,
@@ -124,7 +131,14 @@ public final class SuggestionController: NSWindowController {
                 self.popover = popover
             } else {
                 self.showWindow(attachedTo: parentWindow)
-                self.constrainWindowToScreenEdges(cursorRect: cursorRect, font: textView.font)
+                let editorFrame = textView.view.window.map { window in
+                    window.convertToScreen(textView.view.convert(textView.view.bounds, to: nil))
+                }
+                self.constrainWindowToScreenEdges(
+                    cursorRect: cursorRect,
+                    font: textView.font,
+                    editorFrame: editorFrame
+                )
             }
         }
     }
@@ -197,6 +211,7 @@ public final class SuggestionController: NSWindowController {
 
         firstResponderKVO?.invalidate()
         firstResponderKVO = nil
+        placementAnchor = nil
     }
 
     // MARK: - Cursors Updated
@@ -230,6 +245,19 @@ public final class SuggestionController: NSWindowController {
 
     private func setupEventMonitors() {
         removeEventMonitors()
+        mouseEventMonitor = NSEvent.addLocalMonitorForEvents(
+            matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]
+        ) { [weak self] event in
+            guard let self else { return event }
+            if let panel = self.window, event.window === panel {
+                if event.type != .leftMouseDown {
+                    self.close()
+                }
+                return event
+            }
+            self.close()
+            return event
+        }
         localEventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self else { return event }
 
@@ -264,6 +292,10 @@ public final class SuggestionController: NSWindowController {
         if let monitor = localEventMonitor {
             NSEvent.removeMonitor(monitor)
             localEventMonitor = nil
+        }
+        if let monitor = mouseEventMonitor {
+            NSEvent.removeMonitor(monitor)
+            mouseEventMonitor = nil
         }
     }
 }

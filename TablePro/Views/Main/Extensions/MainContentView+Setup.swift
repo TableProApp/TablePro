@@ -44,7 +44,7 @@ extension MainContentView {
                 selectedTab.tabType == .table,
                 let tableName = selectedTab.tableContext.tableName
             {
-                coordinator.restoreLastHiddenColumnsForTable(tableName)
+                coordinator.restoreLastHiddenColumnsForTable()
                 if selectedTab.filterState.appliedFilters.isEmpty {
                     coordinator.restoreFiltersForTable(tableName)
                 } else if let tabIndex = tabManager.selectedTabIndex {
@@ -182,7 +182,7 @@ extension MainContentView {
         if selected.tabType == .table, let tableName = selected.tableContext.tableName,
             !selected.content.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         {
-            coordinator.restoreLastHiddenColumnsForTable(tableName)
+            coordinator.restoreLastHiddenColumnsForTable()
             coordinator.restoreFiltersForTable(tableName)
         }
 

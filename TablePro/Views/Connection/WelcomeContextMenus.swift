@@ -53,6 +53,28 @@ extension WelcomeWindowView {
                     systemImage: "square.and.arrow.up"
                 )
             }
+
+            if LicenseManager.shared.isFeatureAvailable(.teamCatalog) {
+                Button {
+                    vm.publishToTeamCatalog(connections)
+                } label: {
+                    Label(
+                        String(format: String(localized: "Publish %d Connections to Team Catalog..."), connections.count),
+                        systemImage: "person.2.fill"
+                    )
+                }
+            }
+
+            if LicenseManager.shared.isFeatureAvailable(.teamLibrary) {
+                Button {
+                    vm.publishConnectionsToTeamLibrary(connections)
+                } label: {
+                    Label(
+                        String(format: String(localized: "Publish %d Connections to Team Library..."), connections.count),
+                        systemImage: "books.vertical.fill"
+                    )
+                }
+            }
         }
 
         Divider()
@@ -175,6 +197,22 @@ extension WelcomeWindowView {
                 vm.exportConnections([connection])
             } label: {
                 Label(String(localized: "Export to File..."), systemImage: "square.and.arrow.up")
+            }
+
+            if LicenseManager.shared.isFeatureAvailable(.teamCatalog) {
+                Button {
+                    vm.publishToTeamCatalog([connection])
+                } label: {
+                    Label(String(localized: "Publish to Team Catalog..."), systemImage: "person.2.fill")
+                }
+            }
+
+            if LicenseManager.shared.isFeatureAvailable(.teamLibrary) {
+                Button {
+                    vm.publishConnectionsToTeamLibrary([connection])
+                } label: {
+                    Label(String(localized: "Publish to Team Library..."), systemImage: "books.vertical.fill")
+                }
             }
         }
 

@@ -8,6 +8,11 @@ import os
 import TableProPluginKit
 
 extension MainContentCoordinator {
+    func fixErrorWithAI(query: String, error: String) {
+        showAIChatPanel()
+        aiViewModel?.handleFixError(query: query, error: error)
+    }
+
     func switchDatabaseBeforeExecution(to database: String, connectionId: UUID) async {
         do {
             try await DatabaseManager.shared.switchDatabase(to: database, for: connectionId, persist: false)
@@ -105,15 +110,13 @@ extension MainContentCoordinator {
         _ error: Error,
         sql: String,
         tabId: UUID,
-        connection conn: DatabaseConnection,
-        trigger: TableLoadTrigger = .userInitiated
+        connection conn: DatabaseConnection
     ) {
         queryExecutionCoordinator.handleQueryExecutionError(
             error,
             sql: sql,
             tabId: tabId,
-            connection: conn,
-            trigger: trigger
+            connection: conn
         )
     }
 

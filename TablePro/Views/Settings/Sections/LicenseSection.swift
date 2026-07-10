@@ -64,7 +64,7 @@ struct LicenseSection: View {
                 LabeledContent("Expires:", value: String(localized: "Lifetime"))
             }
 
-            LabeledContent("Tier:", value: license.tier.capitalized)
+            LabeledContent("Tier:", value: LicenseTier(rawValue: license.tier).displayName)
 
             if let billingCycle = license.billingCycle {
                 LabeledContent("Billing:", value: billingCycle.capitalized)
@@ -215,7 +215,7 @@ struct LicenseSection: View {
         defer { isActivating = false }
 
         do {
-            try await licenseManager.activate(licenseKey: licenseKeyInput)
+            try await licenseManager.activate(codeOrKey: licenseKeyInput)
             licenseKeyInput = ""
         } catch {
             AlertHelper.showErrorSheet(

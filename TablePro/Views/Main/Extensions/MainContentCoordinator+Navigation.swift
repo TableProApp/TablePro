@@ -84,7 +84,8 @@ extension MainContentCoordinator {
                         tableName: tableName,
                         databaseType: connection.type,
                         databaseName: currentDatabase,
-                        schemaName: resolvedSchema
+                        schemaName: resolvedSchema,
+                        isView: isView
                     )
                 } catch {
                     navigationLogger.error("openTableTab addTableTab failed: \(error.localizedDescription, privacy: .public)")
@@ -127,7 +128,7 @@ extension MainContentCoordinator {
                         tabManager.mutate(at: tabIndex) { $0.pagination.reset() }
                         toolbarState.isTableTab = true
                     }
-                    restoreLastHiddenColumnsForTable(tableName)
+                    restoreLastHiddenColumnsForTable()
                     restoreFiltersForTable(tableName)
                     if let dbIndex = Int(currentDatabase) {
                         selectRedisDatabaseAndQuery(dbIndex)
@@ -223,14 +224,16 @@ extension MainContentCoordinator {
                     tableName: tableName,
                     databaseType: connection.type,
                     databaseName: currentDatabase,
-                    schemaName: resolvedSchema
+                    schemaName: resolvedSchema,
+                    isView: isView
                 )
             } else {
                 try tabManager.addTableTab(
                     tableName: tableName,
                     databaseType: connection.type,
                     databaseName: currentDatabase,
-                    schemaName: resolvedSchema
+                    schemaName: resolvedSchema,
+                    isView: isView
                 )
             }
         } catch {
@@ -246,7 +249,7 @@ extension MainContentCoordinator {
             }
             toolbarState.isTableTab = true
         }
-        restoreLastHiddenColumnsForTable(tableName)
+        restoreLastHiddenColumnsForTable()
         restoreFiltersForTable(tableName)
         if isInPlace, let dbIndex = Int(currentDatabase) {
             selectRedisDatabaseAndQuery(dbIndex)
@@ -288,7 +291,7 @@ extension MainContentCoordinator {
             }
             toolbarState.isTableTab = true
         }
-        restoreLastHiddenColumnsForTable(tableName)
+        restoreLastHiddenColumnsForTable()
         restoreFiltersForTable(tableName)
         if let tabId = tabManager.selectedTab?.id {
             cancelTableLoad(for: tabId)

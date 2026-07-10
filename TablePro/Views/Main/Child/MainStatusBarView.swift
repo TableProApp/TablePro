@@ -23,6 +23,7 @@ struct StatusBarColumnState {
     let onToggle: (String) -> Void
     let onShowAll: () -> Void
     let onHideAll: ([String]) -> Void
+    let onReset: () -> Void
 }
 
 struct StatusBarStructureState {
@@ -187,7 +188,8 @@ struct MainStatusBarView: View {
                                 hiddenColumns: columnState.hidden,
                                 onToggleColumn: columnState.onToggle,
                                 onShowAll: columnState.onShowAll,
-                                onHideAll: columnState.onHideAll
+                                onHideAll: columnState.onHideAll,
+                                onReset: columnState.onReset
                             )
                         }
                     }

@@ -65,6 +65,7 @@ final class DataGridColumnPool {
                 column.isHidden = true
             }
         }
+        updateHeaderHeight(in: tableView, showsComments: hasVisibleComments(visibleCount: visibleCount))
 
         let targetOrder = computeTargetOrder(
             visibleCount: visibleCount,
@@ -189,6 +190,9 @@ final class DataGridColumnPool {
             cell.alignment = column.headerCell.alignment
             column.headerCell = cell
         }
+        if let headerCell = column.headerCell as? SortableHeaderCell {
+            headerCell.headerComment = comment
+        }
 
         var tooltip: String
         if let typeName = columnType?.rawType ?? columnType?.displayName {
@@ -217,5 +221,21 @@ final class DataGridColumnPool {
         if column.sortDescriptorPrototype?.key != name {
             column.sortDescriptorPrototype = NSSortDescriptor(key: name, ascending: true)
         }
+    }
+
+    private func hasVisibleComments(visibleCount: Int) -> Bool {
+        pooledColumns.enumerated().contains { slot, column in
+            guard slot < visibleCount,
+                  !column.isHidden,
+                  let cell = column.headerCell as? SortableHeaderCell,
+                  let comment = cell.headerComment else {
+                return false
+            }
+            return !comment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+    }
+
+    private func updateHeaderHeight(in tableView: NSTableView, showsComments: Bool) {
+        (tableView.headerView as? SortableHeaderView)?.showsComments = showsComments
     }
 }

@@ -50,9 +50,11 @@ This filter runs on the rows already loaded, so it covers the current page only.
 
 ### Resize and Hide
 
-Drag a column border to resize, or double-click it to fit the content. Widths are saved per table.
+Drag a column border to resize, or double-click it to fit the content. Dragging the border only resizes; it never triggers a sort.
 
 Hide columns from the columns button in the status bar or the header menu. A hidden column isn't fetched, so hiding a large column makes the table load faster. The primary key is always fetched, so editing still works.
+
+Column widths, order, and which columns are hidden are remembered per table and restored the next time you open it. Each table keeps its own layout per connection, database, and schema, so two tables with the same name in different databases don't share one. Click **Reset Columns** in the columns popover to put everything back to defaults.
 
 ### Display Format
 
@@ -110,6 +112,8 @@ See [Change Tracking](/features/change-tracking) for details.
 ## Cell Inspector
 
 Toggle the inspector with `Cmd+Shift+B`. With a row selected, it lists every column value with a full editor for long text and JSON. With no row selected, it shows table metadata: row count, size, engine, charset, and collation.
+
+Drag the handle below a JSON field to make it taller and see more content without leaving the inspector. The height is remembered across rows and app restarts. For very large values, use **Expand in Sidebar** or **Open in Window**.
 
 <Frame caption="Cell Inspector">
   <img className="block dark:hidden" src="/images/cell-inspector.png" alt="Cell Inspector" />

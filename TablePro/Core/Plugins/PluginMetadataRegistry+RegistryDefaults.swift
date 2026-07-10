@@ -369,7 +369,8 @@ extension PluginMetadataRegistry {
                 connection: PluginMetadataSnapshot.ConnectionConfig(
                     additionalConnectionFields: Self.duckdbConnectionFields,
                     category: .analytical,
-                    tagline: String(localized: "Embedded and remote analytical SQL")
+                    tagline: String(localized: "Embedded and remote analytical SQL"),
+                    hidesBuiltInPassword: true
                 )
             )),
             ("Beancount", PluginMetadataSnapshot(

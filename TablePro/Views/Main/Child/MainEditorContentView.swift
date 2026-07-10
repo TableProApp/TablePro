@@ -475,8 +475,29 @@ struct MainEditorContentView: View {
     // MARK: - Results Section
 
     @ViewBuilder
+    private func executionErrorBanner(tab: QueryTab) -> some View {
+        if let error = tab.display.activeResultSet?.errorMessage ?? tab.execution.errorMessage {
+            InlineErrorBanner(
+                message: error,
+                onFixWithAI: AppSettingsManager.shared.ai.enabled && tab.tabType == .query
+                    ? { coordinator.fixErrorWithAI(query: tab.execution.errorQuery ?? tab.content.query, error: error) }
+                    : nil,
+                onDismiss: {
+                    tabManager.mutate(tabId: tab.id) {
+                        $0.display.activeResultSet?.errorMessage = nil
+                        $0.execution.errorMessage = nil
+                        $0.execution.errorQuery = nil
+                    }
+                }
+            )
+            Divider()
+        }
+    }
+
+    @ViewBuilder
     private func resultsSection(tab: QueryTab) -> some View {
         VStack(spacing: 0) {
+            executionErrorBanner(tab: tab)
             switch tab.display.resultsViewMode {
             case .structure:
                 if let tableName = tab.tableContext.tableName {
@@ -502,14 +523,6 @@ struct MainEditorContentView: View {
                 } else {
                     if tab.display.resultSets.count > 1 {
                         resultTabBar(tab: tab)
-                        Divider()
-                    }
-
-                    if let error = tab.display.activeResultSet?.errorMessage {
-                        InlineErrorBanner(
-                            message: error,
-                            onDismiss: { tab.display.activeResultSet?.errorMessage = nil }
-                        )
                         Divider()
                     }
 
@@ -627,6 +640,8 @@ struct MainEditorContentView: View {
                 connectionId: connection.id,
                 databaseType: connection.type,
                 tableName: tab.tableContext.tableName,
+                databaseName: tab.tableContext.databaseName,
+                schemaName: tab.tableContext.schemaName,
                 primaryKeyColumns: changeManager.primaryKeyColumns,
                 tabType: tab.tabType,
                 showRowNumbers: AppSettingsManager.shared.dataGrid.showRowNumbers,
@@ -727,13 +742,12 @@ struct MainEditorContentView: View {
     }
 
     private func columnLayoutBinding(for tab: QueryTab) -> Binding<ColumnLayoutState> {
-        Binding(
+        let tabId = tab.id
+        return Binding(
             get: { tab.columnLayout },
             set: { newValue in
                 coordinator.isUpdatingColumnLayout = true
-                if let index = tabManager.selectedTabIndex {
-                    tabManager.mutate(at: index) { $0.columnLayout = newValue }
-                }
+                coordinator.applyColumnGeometry(from: newValue, toTabId: tabId)
                 Task { @MainActor in
                     coordinator.isUpdatingColumnLayout = false
                 }
@@ -764,7 +778,8 @@ struct MainEditorContentView: View {
                 all: coordinator.columnsForVisibilityPicker(for: tab, resultColumns: resolvedRows.columns),
                 onToggle: { coordinator.toggleColumnVisibility($0) },
                 onShowAll: { coordinator.showAllColumns() },
-                onHideAll: { coordinator.hideAllColumns($0) }
+                onHideAll: { coordinator.hideAllColumns($0) },
+                onReset: { coordinator.resetColumns() }
             ),
             structureState: StatusBarStructureState(
                 footer: coordinator.structureFooterState,

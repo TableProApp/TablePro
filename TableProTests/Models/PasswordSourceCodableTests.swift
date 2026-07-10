@@ -4,8 +4,8 @@
 //
 
 import Foundation
-import Testing
 @testable import TablePro
+import Testing
 
 @Suite("PasswordSource Codable")
 struct PasswordSourceCodableTests {
@@ -17,18 +17,27 @@ struct PasswordSourceCodableTests {
         #expect(try shape(.file(path: "p")) == ["kind": "file", "path": "p"])
         #expect(try shape(.env(variable: "V")) == ["kind": "env", "variable": "V"])
         #expect(try shape(.command(shell: "s")) == ["kind": "command", "shell": "s"])
+        #expect(try shape(.onePassword(reference: "op://v/i/f")) == ["kind": "onePassword", "reference": "op://v/i/f"])
+        #expect(try shape(.vault(path: "secret/db", field: "password"))
+            == ["kind": "vault", "path": "secret/db", "field": "password"])
+        #expect(try shape(.awsSecretsManager(secretId: "prod/db", jsonKey: "password"))
+            == ["kind": "awsSecretsManager", "secretId": "prod/db", "jsonKey": "password"])
     }
 
     private func shape(_ source: PasswordSource) throws -> [String: String] {
         try decoder.decode([String: String].self, from: encoder.encode(source))
     }
 
-    @Test("Round-trips all three kinds")
+    @Test("Round-trips every kind")
     func roundTrips() throws {
         let sources: [PasswordSource] = [
             .file(path: "~/db.pw"),
             .env(variable: "DB_PASS"),
             .command(shell: "op read op://vault/db/password"),
+            .onePassword(reference: "op://vault/db/password"),
+            .vault(path: "secret/data/db", field: "password"),
+            .awsSecretsManager(secretId: "prod/db", jsonKey: "password"),
+            .awsSecretsManager(secretId: "prod/db", jsonKey: nil),
         ]
         for source in sources {
             let decoded = try decoder.decode(PasswordSource.self, from: encoder.encode(source))
@@ -46,7 +55,7 @@ struct PasswordSourceCodableTests {
 
     @Test("Throws on an unknown kind")
     func throwsOnUnknownKind() throws {
-        let json = #"{"kind":"vault","path":"x"}"#
+        let json = #"{"kind":"azureKeyVault","reference":"x"}"#
         let data = try #require(json.data(using: .utf8))
         #expect(throws: DecodingError.self) {
             _ = try decoder.decode(PasswordSource.self, from: data)

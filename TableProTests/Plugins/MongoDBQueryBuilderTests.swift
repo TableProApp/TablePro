@@ -6,8 +6,8 @@
 //
 
 import Foundation
-import Testing
 import TableProPluginKit
+import Testing
 
 @Suite("MongoDB Query Builder")
 struct MongoDBQueryBuilderTests {
@@ -364,6 +364,55 @@ struct MongoDBQueryBuilderTests {
             from: [(column: "price", op: "=", value: "19.99")]
         )
         #expect(doc.contains("\"price\": 19.99"))
+    }
+
+    @Test("Filter document emits JSON-valid scientific numbers")
+    func filterDocumentScientificNumber() {
+        let doc = builder.buildFilterDocument(
+            from: [(column: "score", op: "=", value: "1.5e-3")]
+        )
+        let parsed = parseFilter(doc)
+        #expect(parsed?["score"] as? Double == 0.0015)
+    }
+
+    @Test("Filter document quotes non-JSON numeric spellings")
+    func filterDocumentQuotesNonJsonNumericSpellings() {
+        let values = [".5", "1.", "+7", "01", "NaN", "Infinity"]
+        for value in values {
+            let doc = builder.buildFilterDocument(
+                from: [(column: "score", op: "=", value: value)]
+            )
+            let parsed = parseFilter(doc)
+            #expect(parsed?["score"] as? String == value)
+        }
+    }
+
+    @Test("Filter document quotes integers that overflow Int64 to preserve precision")
+    func filterDocumentQuotesInt64Overflow() {
+        let doc = builder.buildFilterDocument(
+            from: [(column: "code", op: "=", value: "12345678901234567890")]
+        )
+        let parsed = parseFilter(doc)
+        #expect(parsed?["code"] as? String == "12345678901234567890")
+    }
+
+    @Test("Filter document quotes exponents that overflow Double instead of emitting Infinity")
+    func filterDocumentQuotesOutOfRangeExponent() {
+        for value in ["1e400", "-1e400", "1.5e400"] {
+            let doc = builder.buildFilterDocument(
+                from: [(column: "score", op: "=", value: value)]
+            )
+            let parsed = parseFilter(doc)
+            #expect(parsed?["score"] as? String == value)
+        }
+    }
+
+    @Test("Filter document emits the largest Int64 integer unquoted")
+    func filterDocumentEmitsMaxInt64() {
+        let doc = builder.buildFilterDocument(
+            from: [(column: "code", op: "=", value: "9223372036854775807")]
+        )
+        #expect(doc.contains("\"code\": 9223372036854775807"))
     }
 
     @Test("Filter document with null literal")

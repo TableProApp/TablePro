@@ -4,6 +4,62 @@ description: "Product updates and announcements for TablePro"
 rss: true
 ---
 
+<Update label="July 10, 2026" description="v0.56.2">
+  ### New Features
+
+  - **Resizable JSON field**: Drag the handle below a JSON value in the row details inspector to make it taller and read more in place. The height is remembered across rows and app restarts (#1849)
+
+  ### Improvements
+
+  - Column comments now appear directly in data grid column headers when object comments are enabled, instead of only in the header tooltip (#1789)
+
+  ### Bug Fixes
+
+  - MySQL and MariaDB connections that prompt for a password now ask for a fresh one after an authentication failure on reconnect, instead of looping in Connecting with the expired password
+  - Pressing Escape to dismiss the SQL autocomplete popup no longer moves focus out of the editor, so you can keep typing (#1845)
+</Update>
+
+<Update label="July 9, 2026" description="v0.56.1">
+  ### Bug Fixes
+
+  - Oracle now connects to servers that require native network encryption (`SQLNET.ENCRYPTION_SERVER = REQUIRED`), negotiating AES with a SHA checksum automatically like SQL Developer and DBeaver. The separate encryption option is gone; encryption is offered to every server and used only when the server asks for it (#483)
+  - Reading a connection password from a command, 1Password, Vault, or AWS Secrets Manager no longer occasionally returns corrupted output from a race while reading the output (#1841)
+  - MongoDB filters and generated edit statements now quote numeric-looking values that would not round-trip, such as `.5`, `1.`, `+7`, `01`, and very large integers, instead of emitting invalid or lossy JSON. Update the MongoDB plugin to get the fix (#1813)
+  - The Structure tab filter and column sort now update the grid instead of leaving stale rows on screen
+  - The row details inspector now shows the selected row's values, including JSON, when a column value filter is active, and an open value follows the selected row as you move between rows (#1837)
+  - Copying, duplicating, and deleting rows now act on the rows you selected when a column value filter is active, instead of the rows sitting at those positions in the unfiltered result (#1837)
+</Update>
+
+<Update label="July 9, 2026" description="v0.56.0">
+  ### New Features
+
+  - **Secret manager passwords**: A connection can pull its password from 1Password, HashiCorp Vault, or AWS Secrets Manager at connect time, so the secret is never stored in TablePro.
+  - **Team Library**: Share connections and saved queries with your team through your account. Right-click a connection or use the Favorites sidebar to Publish to Team Library, and teammates see them in their own list and sidebar. Passwords are never included.
+  - **Team Catalog**: On the Team plan, publish connections to a shared folder your team reads from, without passwords. Teammates add the folder under Settings > Linked Folders.
+  - **Join a team with an invite code**: Paste your invite code where a license key goes, in Settings > Account. Owners manage members and seats on tablepro.app.
+  - **Saved queries and slash commands sync**: Saved SQL queries and their folders, and custom AI slash commands, now sync across your Macs with iCloud Sync.
+  - **Recent tables**: A Recent section at the top of the sidebar lists the last 10 tables you opened per connection and database, and remembers them between launches. Off by default; turn it on in Settings > General > Sidebar (#1352)
+  - **Delete confirmation**: Saving now asks you to confirm before it permanently deletes rows (#1823)
+
+  ### Improvements
+
+  - The sidebar filter matches table and view names by substring instead of fuzzy matching, and sorts names that start with what you typed to the top (#1822)
+
+  ### Bug Fixes
+
+  - Typing in the SQL editor no longer crashes the app, and the autocomplete popup appears again as you type (#1835)
+  - Deleting many rows at once no longer freezes the app; multi-row deletes run as one batched statement instead of one query per row (#1823)
+  - Deleting rows from a table without a primary key now matches on every column, so it won't remove other rows that share the first column's value (#1823)
+  - Sorting a table column keeps your rows-per-page setting and returns to page 1 instead of loading the whole table (#1826)
+  - Sorting a column no longer fails with a SQL error on tables whose name contains a word like limit or offset (#1825)
+  - Elasticsearch connections using Username & Password now show a Password field, so you can set up basic auth on a secured cluster. Update the Elasticsearch plugin to get the fix (#1816)
+  - Switching schemas on an Oracle connection no longer hangs on an infinite spinner. Oracle switches by schema, loads each schema's tables on expand, respects the query timeout with automatic reconnect, and shows an error with a Retry button when a schema fails to load (#1807)
+  - Resizing a data grid column no longer triggers a sort. Dragging a column edge only resizes it; clicking the header still sorts (#1815)
+  - Hidden columns stay hidden, and resizing a column no longer brings them back. Column widths, order, and visibility are remembered per table, kept separately for each connection, database, and schema. A new Reset Columns button in the Columns popover restores defaults (#1815)
+  - Query and filter errors now appear in a banner you can select and copy, with a Fix with AI button, instead of a dialog that cut the message off (#1815)
+  - The editor autocomplete popup drops below the line you're typing instead of covering it, no longer overlaps the Columns and Add buttons, and dismisses when you click anywhere on it that isn't a suggestion (#1815, #1831)
+</Update>
+
 <Update label="July 4, 2026" description="v0.55.0">
   ### New Features
 

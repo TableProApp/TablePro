@@ -64,8 +64,33 @@ extension RowEditingCoordinator {
         }
         let connId = parent.connection.id
         let kind: OperationKind = hasPendingTableOps ? .destructiveQuery : .writeQuery
+        let deleteConfirmation = BulkDeleteConfirmation(deletedRowCount: parent.changeManager.deletedRowIndices.count)
         Task { [weak self, parent] in
             guard let self else { return }
+
+            if deleteConfirmation.isRequired {
+                let confirmed = await AlertHelper.confirmDestructive(
+                    title: deleteConfirmation.title,
+                    message: deleteConfirmation.message,
+                    confirmButton: deleteConfirmation.confirmButtonTitle,
+                    window: parent.contentWindow
+                )
+                guard confirmed else {
+                    if hasPendingTableOps {
+                        DatabaseManager.shared.updateSession(connId) { session in
+                            session.pendingTruncates = snapshotTruncates
+                            session.pendingDeletes = snapshotDeletes
+                            for (table, opts) in snapshotOptions {
+                                session.tableOperationOptions[table] = opts
+                            }
+                        }
+                    }
+                    parent.saveCompletionContinuation?.resume(returning: false)
+                    parent.saveCompletionContinuation = nil
+                    return
+                }
+            }
+
             let decision = await ExecutionGateProvider.shared.authorize(
                 OperationRequest(
                     connectionId: connId,

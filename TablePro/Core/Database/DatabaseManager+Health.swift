@@ -14,6 +14,12 @@ import TableProPluginKit
 // MARK: - Health Monitoring
 
 extension DatabaseManager {
+    internal enum ReconnectCredentialResolution: Equatable {
+        case fail
+        case retry(String)
+        case abort
+    }
+
     /// Start health monitoring for a connection
     internal func startHealthMonitor(for connectionId: UUID) async {
         Self.logger.info("startHealthMonitor called for \(connectionId) (existing monitors: \(self.healthMonitors.count))")
@@ -49,13 +55,18 @@ extension DatabaseManager {
                 }
             },
             reconnectHandler: { [weak self] in
-                guard let self else { return false }
-                guard let session = await self.activeSessions[connectionId] else { return false }
+                guard let self else { return .abort }
+                guard let session = await self.activeSessions[connectionId] else { return .abort }
                 await SchemaService.shared.invalidate(connectionId: connectionId)
                 await DatabaseTreeMetadataService.shared.handleReconnect(connectionId: connectionId)
                 do {
-                    let result = try await self.trackOperation(sessionId: connectionId) {
+                    guard let result = try await self.trackOperation(sessionId: connectionId, operation: {
                         try await self.reconnectDriver(for: session)
+                    }) else {
+                        await self.updateSession(connectionId) { session in
+                            session.status = .disconnected
+                        }
+                        return .abort
                     }
                     await self.updateSession(connectionId) { session in
                         session.driver = result.driver
@@ -64,11 +75,26 @@ extension DatabaseManager {
                         if let schemaDriver = result.driver as? SchemaSwitchable {
                             session.currentSchema = schemaDriver.currentSchema
                         }
+                        if let cachedPassword = result.cachedPassword,
+                           !session.connection.usesAWSIAM
+                        {
+                            session.cachedPassword = cachedPassword
+                        }
                     }
-                    return true
+                    return .success
                 } catch {
                     Self.logger.debug("Reconnect failed: \(error.localizedDescription)")
-                    return false
+                    // Auth failures are not transient. Retrying with the same expired
+                    // credential just re-prompts on every attempt, so stop the loop.
+                    if await self.isAuthenticationFailure(error) {
+                        await self.updateSession(connectionId) { session in
+                            session.status = .error(
+                                String(format: String(localized: "Reconnect failed: %@"), error.localizedDescription)
+                            )
+                        }
+                        return .abort
+                    }
+                    return .retry
                 }
             },
             onStateChanged: { [weak self] id, state in
@@ -106,11 +132,12 @@ extension DatabaseManager {
     internal struct ReconnectResult {
         let driver: DatabaseDriver
         let effectiveConnection: DatabaseConnection
+        let cachedPassword: String?
     }
 
     /// Creates a fresh driver, connects, and applies timeout for the given session.
     /// For SSH-tunneled sessions, rebuilds the tunnel before connecting the driver.
-    internal func reconnectDriver(for session: ConnectionSession) async throws -> ReconnectResult {
+    internal func reconnectDriver(for session: ConnectionSession) async throws -> ReconnectResult? {
         session.driver?.disconnect()
 
         // Rebuild the tunnel if needed; otherwise reuse effective connection
@@ -121,32 +148,14 @@ extension DatabaseManager {
             connectionForDriver = session.effectiveConnection ?? session.connection
         }
 
-        let driver = try await DatabaseDriverFactory.createDriver(
-            for: connectionForDriver,
-            passwordOverride: session.cachedPassword,
-            awaitPlugins: true
-        )
-
-        do {
-            try await driver.connect()
-        } catch {
-            driver.disconnect()
-            if session.connection.resolvedSSHConfig.enabled {
-                do {
-                    try await SSHTunnelManager.shared.closeTunnel(connectionId: session.connection.id)
-                } catch {
-                    Self.logger.warning("Failed to close SSH tunnel during reconnect: \(error.localizedDescription)")
-                }
-            }
-            if session.connection.isCloudflareEnabled {
-                do {
-                    try await CloudflareTunnelManager.shared.closeTunnel(connectionId: session.connection.id)
-                } catch {
-                    Self.logger.warning("Failed to close Cloudflare tunnel during reconnect: \(error.localizedDescription)")
-                }
-            }
-            throw error
+        guard let connectResult = try await connectReconnectDriver(
+            for: session,
+            effectiveConnection: connectionForDriver,
+            passwordOverride: session.cachedPassword
+        ) else {
+            return nil
         }
+        let driver = connectResult.driver
 
         await applyTimeoutAndStartupCommands(
             on: driver,
@@ -159,7 +168,11 @@ extension DatabaseManager {
             savedDatabase: databaseSwitchRequiresReconnect(session.connection) ? nil : session.currentDatabase
         )
 
-        return ReconnectResult(driver: driver, effectiveConnection: connectionForDriver)
+        return ReconnectResult(
+            driver: driver,
+            effectiveConnection: connectionForDriver,
+            cachedPassword: connectResult.cachedPassword
+        )
     }
 
     func applyTimeoutAndStartupCommands(
@@ -260,12 +273,15 @@ extension DatabaseManager {
                 passwordOverride = prompted
             }
 
-            let driver = try await DatabaseDriverFactory.createDriver(
-                for: effectiveConnection,
-                passwordOverride: passwordOverride,
-                awaitPlugins: true
-            )
-            try await driver.connect()
+            guard let connectResult = try await connectReconnectDriver(
+                for: session,
+                effectiveConnection: effectiveConnection,
+                passwordOverride: passwordOverride
+            ) else {
+                updateSession(sessionId) { $0.status = .disconnected }
+                return
+            }
+            let driver = connectResult.driver
 
             await applyTimeoutAndStartupCommands(
                 on: driver,
@@ -285,8 +301,10 @@ extension DatabaseManager {
                 if let schemaDriver = driver as? SchemaSwitchable {
                     session.currentSchema = schemaDriver.currentSchema
                 }
-                if let passwordOverride, !session.connection.usesAWSIAM {
-                    session.cachedPassword = passwordOverride
+                if let cachedPassword = connectResult.cachedPassword,
+                   !session.connection.usesAWSIAM
+                {
+                    session.cachedPassword = cachedPassword
                 }
             }
 
@@ -308,6 +326,113 @@ extension DatabaseManager {
                 session.status = .error(
                     String(format: String(localized: "Reconnect failed: %@"), error.localizedDescription))
                 session.clearCachedData()
+            }
+        }
+    }
+
+    internal func connectReconnectDriver(
+        for session: ConnectionSession,
+        effectiveConnection: DatabaseConnection,
+        passwordOverride initialPasswordOverride: String?
+    ) async throws -> (driver: DatabaseDriver, cachedPassword: String?)? {
+        var passwordOverride = initialPasswordOverride
+
+        while true {
+            let driver = try await DatabaseDriverFactory.createDriver(
+                for: effectiveConnection,
+                passwordOverride: passwordOverride,
+                awaitPlugins: true
+            )
+
+            do {
+                try await driver.connect()
+                return (driver, passwordOverride)
+            } catch {
+                driver.disconnect()
+
+                switch await reconnectCredentialResolution(
+                    for: session,
+                    error: error,
+                    currentPassword: passwordOverride
+                ) {
+                case .retry(let newPassword):
+                    passwordOverride = newPassword
+                case .abort:
+                    await closeReconnectTunnels(for: session.connection)
+                    return nil
+                case .fail:
+                    await closeReconnectTunnels(for: session.connection)
+                    throw error
+                }
+            }
+        }
+    }
+
+    internal func reconnectCredentialResolution(
+        for session: ConnectionSession,
+        error: Error,
+        currentPassword: String?,
+        prompt: @escaping @MainActor (_ connectionName: String, _ isAPIToken: Bool, _ window: NSWindow?) async -> String? = PasswordPromptHelper.prompt
+    ) async -> ReconnectCredentialResolution {
+        guard session.connection.promptForPassword,
+              !pluginManager.hidesPassword(for: session.connection),
+              isAuthenticationFailure(error)
+        else {
+            return .fail
+        }
+
+        let isApiOnly = pluginManager.connectionMode(for: session.connection.type) == .apiOnly
+        guard let prompted = await prompt(
+            session.connection.name,
+            isApiOnly,
+            NSApp.keyWindow
+        ) else {
+            return .abort
+        }
+
+        if prompted == currentPassword {
+            return .fail
+        }
+
+        return .retry(prompted)
+    }
+
+    private static let invalidAuthorizationSQLState = "28000"
+    private static let mysqlAccessDeniedErrorCode = 1_045
+
+    internal func isAuthenticationFailure(_ error: Error) -> Bool {
+        if let pluginError = error as? any PluginDriverError {
+            if pluginError.pluginSqlState == Self.invalidAuthorizationSQLState {
+                return true
+            }
+            if pluginError.pluginErrorCode == Self.mysqlAccessDeniedErrorCode {
+                return true
+            }
+            return messageIndicatesAuthenticationFailure(pluginError.pluginErrorMessage)
+        }
+        return messageIndicatesAuthenticationFailure(error.localizedDescription)
+    }
+
+    private func messageIndicatesAuthenticationFailure(_ message: String) -> Bool {
+        let lowered = message.lowercased()
+        return lowered.contains("access denied")
+            || lowered.contains("authentication failed")
+            || lowered.contains("invalid credentials")
+    }
+
+    private func closeReconnectTunnels(for connection: DatabaseConnection) async {
+        if connection.resolvedSSHConfig.enabled {
+            do {
+                try await SSHTunnelManager.shared.closeTunnel(connectionId: connection.id)
+            } catch {
+                Self.logger.warning("Failed to close SSH tunnel during reconnect: \(error.localizedDescription)")
+            }
+        }
+        if connection.isCloudflareEnabled {
+            do {
+                try await CloudflareTunnelManager.shared.closeTunnel(connectionId: connection.id)
+            } catch {
+                Self.logger.warning("Failed to close Cloudflare tunnel during reconnect: \(error.localizedDescription)")
             }
         }
     }

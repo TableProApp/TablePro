@@ -10,10 +10,69 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Beancount ledger support as a downloadable, read-only file-based driver. Transactions, postings (with resolved cost basis), accounts, prices, computed balances, and balance assertions project to SQL tables through user-provided `rledger` or Python Beancount, and BQL runs with a `BQL:` prefix when `rledger` is available. (#1474)
+- The Favorites sidebar **+** menu now includes **New Query**, which opens an empty SQL query tab.
+
+## [0.56.2] - 2026-07-10
+
+### Added
+
+- The JSON field in the row details inspector can now be resized by dragging the handle below it. The height is remembered across rows and app restarts. (#1849)
+
+### Changed
+
+- Data grid column comments now appear directly in column headers when object comments are enabled, instead of only being available from the header tooltip. (#1789)
 
 ### Fixed
 
-- Switching schemas on an Oracle connection no longer hangs on an infinite loading spinner. Oracle now switches by schema like BigQuery, the sidebar lists every schema with its tables loading on expand, Oracle queries respect the query timeout setting and reconnect automatically after a timeout, and a schema load that fails shows an error with a Retry button instead of spinning forever. Works with an already-installed Oracle plugin; updating the plugin adds the query timeout enforcement. (#1807)
+- MySQL and MariaDB connections that prompt for a password at connect time now ask for a fresh password after an auto-reconnect hits an authentication failure such as `1045` / `SQLSTATE 28000`, instead of looping forever in Connecting with the expired session password.
+- Pressing Escape to dismiss the SQL autocomplete popup no longer moves focus out of the editor, so you can keep typing. (#1845)
+
+## [0.56.1] - 2026-07-09
+
+### Removed
+
+- The Oracle Native network encryption connection option. Encryption is now offered to every server and used only when the server requires it, so the option is no longer needed. (#483)
+
+### Fixed
+
+- Oracle now connects to servers that require native network encryption (`SQLNET.ENCRYPTION_SERVER = REQUIRED`), negotiating AES with a SHA checksum automatically like SQL Developer and DBeaver. (#483)
+- MongoDB filters and generated edit statements now quote numeric-looking values that would not round-trip, such as `.5`, `1.`, `+7`, `01`, integers larger than 64 bits, and exponents that overflow a double like `1e400`, instead of emitting invalid or lossy JSON. A row whose `_id` is a decimal or exponent string is matched as that string, so delete and update target the right document. Update the MongoDB plugin to get the fix. (#1813)
+- Reading a connection password from a command, 1Password, Vault, or AWS Secrets Manager no longer occasionally returns corrupted output from a race while reading the command's output. (#1841)
+- The Structure tab filter and column sort now update the grid instead of leaving stale rows on screen.
+- The row details inspector now shows the selected row's values, including JSON, when a column value filter is active, and a JSON or serialized value you open now follows the selected row as you move between rows. (#1837)
+- Copying, duplicating, and deleting rows now act on the rows you selected when a column value filter is active, instead of the rows sitting at those positions in the unfiltered result. (#1837)
+
+## [0.56.0] - 2026-07-09
+
+### Added
+
+- Custom AI slash commands now sync across your Macs with iCloud Sync.
+- Join a team by pasting your invite code where a license key goes, in Settings > Account. Owners manage members and seats on tablepro.app.
+- Connections can pull their password from 1Password, HashiCorp Vault, or AWS Secrets Manager at connect time, so the secret is never stored in TablePro.
+- Team plan: publish connections to a shared folder for your team, without passwords. Right-click a connection, then Share > Publish to Team Catalog; teammates add the folder under Settings > Linked Folders.
+- Team Library: share connections and saved queries with your team through your account. Right-click a connection or use the Favorites sidebar to Publish to Team Library. Teammates see them in their list and sidebar; you manage the library on tablepro.app. Passwords are never included.
+- Saved SQL queries and their folders now sync across your Macs. Turn on Saved Queries under Settings > Sync.
+- A Recent section at the top of the sidebar lists the last 10 tables you opened per connection and database, and remembers them between launches. Click one to reopen it, or right-click to remove or clear. Off by default; turn it on in Settings > General > Sidebar. (#1352)
+- Saving now asks you to confirm before it permanently deletes rows. (#1823)
+
+### Changed
+
+- The sidebar filter now matches table and view names by substring instead of fuzzy matching, and sorts names that start with what you typed to the top. (#1822)
+
+### Fixed
+
+- Typing in the SQL editor no longer crashes the app, and the autocomplete popup appears again as you type. (#1835)
+- Deleting many rows at once no longer freezes the app. Multi-row deletes now run as one batched statement instead of one query per row. (#1823)
+- Deleting rows from a table without a primary key now matches on every column, so it won't remove other rows that share the first column's value. (#1823)
+- Sorting a table column no longer discards your rows-per-page setting. It keeps the page size and returns to page 1 instead of loading the whole table. (#1826)
+- Sorting a column no longer fails with a SQL error on tables whose name contains a word like limit or offset. (#1825)
+- Elasticsearch connections using Username & Password now show a Password field, so you can set up basic auth on a secured cluster. Update the Elasticsearch plugin to get the fix. (#1816)
+- Switching schemas on an Oracle connection no longer hangs on an infinite spinner. Oracle now switches by schema, loads each schema's tables on expand, respects the query timeout with automatic reconnect, and shows an error with a Retry button when a schema fails to load. Update the plugin to get query timeout enforcement. (#1807)
+- Resizing a data grid column no longer triggers a sort. Dragging a column edge only resizes it; clicking the header still sorts. (#1815)
+- Hidden columns stay hidden, and resizing a column no longer brings them back. Column widths, order, and visibility are remembered per table, kept separately for each connection, database, and schema so tables with the same name don't overwrite each other. A new Reset Columns button in the Columns popover restores defaults. Existing saved column layouts reset once with this change. (#1815)
+- Query and filter errors now appear in a banner you can select and copy, with a Fix with AI button, instead of a dialog that cut the message off. The banner sizes to the message. (#1815)
+- The filter autocomplete no longer pops up on empty input, and pressing Escape to close it no longer also closes the filter bar. (#1815)
+- The editor autocomplete popup drops below the line you're typing instead of covering it, no longer overlaps the Columns and Add buttons, and dismisses when you click anywhere on it that isn't a suggestion. (#1815, #1831)
 
 ## [0.55.0] - 2026-07-04
 
@@ -2430,7 +2489,10 @@ TablePro is a native macOS database client built with SwiftUI and AppKit, design
     - Custom SQL query templates
     - Performance optimized for large datasets
 
-[Unreleased]: https://github.com/TableProApp/TablePro/compare/v0.55.0...HEAD
+[Unreleased]: https://github.com/TableProApp/TablePro/compare/v0.56.2...HEAD
+[0.56.2]: https://github.com/TableProApp/TablePro/compare/v0.56.1...v0.56.2
+[0.56.1]: https://github.com/TableProApp/TablePro/compare/v0.56.0...v0.56.1
+[0.56.0]: https://github.com/TableProApp/TablePro/compare/v0.55.0...v0.56.0
 [0.55.0]: https://github.com/TableProApp/TablePro/compare/v0.54.0...v0.55.0
 [0.54.0]: https://github.com/TableProApp/TablePro/compare/v0.53.0...v0.54.0
 [0.53.0]: https://github.com/TableProApp/TablePro/compare/v0.52.1...v0.53.0
