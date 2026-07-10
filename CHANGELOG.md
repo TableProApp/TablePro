@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Pressing Escape to dismiss the SQL autocomplete popup no longer moves focus out of the editor, so you can keep typing. (#1845)
+
 ## [0.56.1] - 2026-07-09
 
 ### Removed
