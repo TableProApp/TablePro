@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- The JSON field in the row details inspector can now be resized by dragging the handle below it. The height is remembered across rows and app restarts. (#1849)
+
 ### Changed
 
 - Data grid column comments now appear directly in column headers when object comments are enabled, instead of only being available from the header tooltip. (#1789)
