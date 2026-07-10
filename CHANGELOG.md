@@ -11,6 +11,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Data grid column comments now appear directly in column headers when object comments are enabled, instead of only being available from the header tooltip. (#1789)
 
+### Fixed
+
+- MySQL and MariaDB connections that prompt for a password at connect time now ask for a fresh password after an auto-reconnect hits an authentication failure such as `1045` / `SQLSTATE 28000`, instead of looping forever in Connecting with the expired session password.
+- Pressing Escape to dismiss the SQL autocomplete popup no longer moves focus out of the editor, so you can keep typing. (#1845)
+
+## [0.56.1] - 2026-07-09
+
 ### Removed
 
 - The Oracle Native network encryption connection option. Encryption is now offered to every server and used only when the server requires it, so the option is no longer needed. (#483)
@@ -2471,7 +2478,8 @@ TablePro is a native macOS database client built with SwiftUI and AppKit, design
     - Custom SQL query templates
     - Performance optimized for large datasets
 
-[Unreleased]: https://github.com/TableProApp/TablePro/compare/v0.56.0...HEAD
+[Unreleased]: https://github.com/TableProApp/TablePro/compare/v0.56.1...HEAD
+[0.56.1]: https://github.com/TableProApp/TablePro/compare/v0.56.0...v0.56.1
 [0.56.0]: https://github.com/TableProApp/TablePro/compare/v0.55.0...v0.56.0
 [0.55.0]: https://github.com/TableProApp/TablePro/compare/v0.54.0...v0.55.0
 [0.54.0]: https://github.com/TableProApp/TablePro/compare/v0.53.0...v0.54.0

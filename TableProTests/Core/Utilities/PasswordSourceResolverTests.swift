@@ -187,6 +187,17 @@ struct PasswordSourceResolverTests {
         }
     }
 
+    @Test("Large stdout drains in full while stderr is also draining")
+    func drainsLargeStdoutWithoutTruncation() async throws {
+        let shell = """
+        head -c 300000 /dev/zero | tr '\\0' 'a'
+        head -c 300000 /dev/zero | tr '\\0' 'b' >&2
+        """
+        let output = try await PasswordSourceResolver.resolveCommand(shell: shell, timeoutSeconds: 30)
+        #expect(output.count == 300_000)
+        #expect(output.allSatisfy { $0 == "a" })
+    }
+
     // MARK: - Secret manager references
 
     @Test("Local sources have no external command")

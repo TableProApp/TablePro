@@ -3,6 +3,51 @@
     <channel>
         <title>TablePro</title>
         <item>
+            <title>0.56.1</title>
+            <pubDate>Thu, 09 Jul 2026 08:15:28 +0000</pubDate>
+            <sparkle:version>106</sparkle:version>
+            <sparkle:shortVersionString>0.56.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <description><![CDATA[<h3>Removed</h3>
+<ul>
+<li>The Oracle Native network encryption connection option. Encryption is now offered to every server and used only when the server requires it, so the option is no longer needed. (#483)</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Oracle now connects to servers that require native network encryption (`SQLNET.ENCRYPTION_SERVER = REQUIRED`), negotiating AES with a SHA checksum automatically like SQL Developer and DBeaver. (#483)</li>
+<li>MongoDB filters and generated edit statements now quote numeric-looking values that would not round-trip, such as `.5`, `1.`, `+7`, `01`, integers larger than 64 bits, and exponents that overflow a double like `1e400`, instead of emitting invalid or lossy JSON. A row whose `_id` is a decimal or exponent string is matched as that string, so delete and update target the right document. Update the MongoDB plugin to get the fix. (#1813)</li>
+<li>Reading a connection password from a command, 1Password, Vault, or AWS Secrets Manager no longer occasionally returns corrupted output from a race while reading the command's output. (#1841)</li>
+<li>The Structure tab filter and column sort now update the grid instead of leaving stale rows on screen.</li>
+<li>The row details inspector now shows the selected row's values, including JSON, when a column value filter is active, and a JSON or serialized value you open now follows the selected row as you move between rows. (#1837)</li>
+<li>Copying, duplicating, and deleting rows now act on the rows you selected when a column value filter is active, instead of the rows sitting at those positions in the unfiltered result. (#1837)</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.56.1/TablePro-0.56.1-arm64.zip" length="19896760" type="application/octet-stream" sparkle:edSignature="c5vjEbCVXq7fuMnV+pcZkJhj1AQlgjpc5Z8fkY5XyFBBYOv51kDyRxrVs0IeCWgJc9SKQZU5+iYHJ613RdBgDw=="/>
+        </item>
+        <item>
+            <title>0.56.1</title>
+            <pubDate>Thu, 09 Jul 2026 08:15:29 +0000</pubDate>
+            <sparkle:version>106</sparkle:version>
+            <sparkle:shortVersionString>0.56.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[<h3>Removed</h3>
+<ul>
+<li>The Oracle Native network encryption connection option. Encryption is now offered to every server and used only when the server requires it, so the option is no longer needed. (#483)</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Oracle now connects to servers that require native network encryption (`SQLNET.ENCRYPTION_SERVER = REQUIRED`), negotiating AES with a SHA checksum automatically like SQL Developer and DBeaver. (#483)</li>
+<li>MongoDB filters and generated edit statements now quote numeric-looking values that would not round-trip, such as `.5`, `1.`, `+7`, `01`, integers larger than 64 bits, and exponents that overflow a double like `1e400`, instead of emitting invalid or lossy JSON. A row whose `_id` is a decimal or exponent string is matched as that string, so delete and update target the right document. Update the MongoDB plugin to get the fix. (#1813)</li>
+<li>Reading a connection password from a command, 1Password, Vault, or AWS Secrets Manager no longer occasionally returns corrupted output from a race while reading the command's output. (#1841)</li>
+<li>The Structure tab filter and column sort now update the grid instead of leaving stale rows on screen.</li>
+<li>The row details inspector now shows the selected row's values, including JSON, when a column value filter is active, and a JSON or serialized value you open now follows the selected row as you move between rows. (#1837)</li>
+<li>Copying, duplicating, and deleting rows now act on the rows you selected when a column value filter is active, instead of the rows sitting at those positions in the unfiltered result. (#1837)</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.56.1/TablePro-0.56.1-x86_64.zip" length="21033608" type="application/octet-stream" sparkle:edSignature="85Nt521LPdCO7QoMIqoKapX50kBc/ZEeYpoUZvfjTfoOrOdcg3EyIsWlZPkKx0peKHL651w4+O+QnghykCysBw=="/>
+        </item>
+        <item>
             <title>0.56.0</title>
             <pubDate>Wed, 08 Jul 2026 19:24:37 +0000</pubDate>
             <sparkle:version>105</sparkle:version>

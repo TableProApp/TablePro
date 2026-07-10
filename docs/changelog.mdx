@@ -4,6 +4,17 @@ description: "Product updates and announcements for TablePro"
 rss: true
 ---
 
+<Update label="July 9, 2026" description="v0.56.1">
+  ### Bug Fixes
+
+  - Oracle now connects to servers that require native network encryption (`SQLNET.ENCRYPTION_SERVER = REQUIRED`), negotiating AES with a SHA checksum automatically like SQL Developer and DBeaver. The separate encryption option is gone; encryption is offered to every server and used only when the server asks for it (#483)
+  - Reading a connection password from a command, 1Password, Vault, or AWS Secrets Manager no longer occasionally returns corrupted output from a race while reading the output (#1841)
+  - MongoDB filters and generated edit statements now quote numeric-looking values that would not round-trip, such as `.5`, `1.`, `+7`, `01`, and very large integers, instead of emitting invalid or lossy JSON. Update the MongoDB plugin to get the fix (#1813)
+  - The Structure tab filter and column sort now update the grid instead of leaving stale rows on screen
+  - The row details inspector now shows the selected row's values, including JSON, when a column value filter is active, and an open value follows the selected row as you move between rows (#1837)
+  - Copying, duplicating, and deleting rows now act on the rows you selected when a column value filter is active, instead of the rows sitting at those positions in the unfiltered result (#1837)
+</Update>
+
 <Update label="July 9, 2026" description="v0.56.0">
   ### New Features
 
