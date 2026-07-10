@@ -110,10 +110,11 @@ struct ReconnectCredentialRecoveryTests {
     }
 }
 
-private struct FakePluginAuthError: Error {
+private struct FakePluginAuthError: Error, LocalizedError {
     let pluginErrorMessage: String
     let pluginErrorCode: Int?
     let pluginSqlState: String?
+    var errorDescription: String? { pluginErrorMessage }
 }
 
 extension FakePluginAuthError: PluginDriverError {}
