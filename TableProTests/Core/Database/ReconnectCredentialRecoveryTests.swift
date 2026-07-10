@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import TablePro
 import TableProPluginKit
@@ -110,11 +111,8 @@ struct ReconnectCredentialRecoveryTests {
     }
 }
 
-private struct FakePluginAuthError: Error, LocalizedError {
+private struct FakePluginAuthError: PluginDriverError {
     let pluginErrorMessage: String
     let pluginErrorCode: Int?
     let pluginSqlState: String?
-    var errorDescription: String? { pluginErrorMessage }
 }
-
-extension FakePluginAuthError: PluginDriverError {}
