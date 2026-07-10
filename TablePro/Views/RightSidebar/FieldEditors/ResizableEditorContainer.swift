@@ -34,7 +34,7 @@ internal struct ResizableEditorContainer<Content: View>: View {
             .frame(maxWidth: .infinity, minHeight: 11)
             .contentShape(Rectangle())
             .gesture(
-                DragGesture(minimumDistance: 1)
+                DragGesture(minimumDistance: 1, coordinateSpace: .global)
                     .updating($liveDelta) { value, state, _ in
                         state = value.translation.height
                     }
