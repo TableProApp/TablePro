@@ -60,15 +60,15 @@ extension DatabaseManager {
                 await SchemaService.shared.invalidate(connectionId: connectionId)
                 await DatabaseTreeMetadataService.shared.handleReconnect(connectionId: connectionId)
                 do {
-                    guard let result = try await self.trackOperation(sessionId: connectionId) {
+                    guard let result = try await self.trackOperation(sessionId: connectionId, operation: {
                         try await self.reconnectDriver(for: session)
-                    } else {
-                        self.updateSession(connectionId) { session in
-                            session.status = .error(String(localized: "Reconnect cancelled"))
+                    }) else {
+                        await self.updateSession(connectionId) { session in
+                            session.status = .disconnected
                         }
                         return .abort
                     }
-                    self.updateSession(connectionId) { session in
+                    await self.updateSession(connectionId) { session in
                         session.driver = result.driver
                         session.effectiveConnection = result.effectiveConnection
                         session.status = .connected
@@ -84,6 +84,16 @@ extension DatabaseManager {
                     return .success
                 } catch {
                     Self.logger.debug("Reconnect failed: \(error.localizedDescription)")
+                    // Auth failures are not transient. Retrying with the same expired
+                    // credential just re-prompts on every attempt, so stop the loop.
+                    if await self.isAuthenticationFailure(error) {
+                        await self.updateSession(connectionId) { session in
+                            session.status = .error(
+                                String(format: String(localized: "Reconnect failed: %@"), error.localizedDescription)
+                            )
+                        }
+                        return .abort
+                    }
                     return .retry
                 }
             },
@@ -253,9 +263,9 @@ extension DatabaseManager {
             {
                 let isApiOnly = pluginManager.connectionMode(for: session.connection.type) == .apiOnly
                 guard let prompted = await PasswordPromptHelper.prompt(
-                    session.connection.name,
-                    isApiOnly,
-                    NSApp.keyWindow
+                    connectionName: session.connection.name,
+                    isAPIToken: isApiOnly,
+                    window: NSApp.keyWindow
                 ) else {
                     updateSession(sessionId) { $0.status = .disconnected }
                     return
@@ -348,6 +358,7 @@ extension DatabaseManager {
                 case .retry(let newPassword):
                     passwordOverride = newPassword
                 case .abort:
+                    await closeReconnectTunnels(for: session.connection)
                     return nil
                 case .fail:
                     await closeReconnectTunnels(for: session.connection)
@@ -386,24 +397,27 @@ extension DatabaseManager {
         return .retry(prompted)
     }
 
+    private static let invalidAuthorizationSQLState = "28000"
+    private static let mysqlAccessDeniedErrorCode = 1_045
+
     internal func isAuthenticationFailure(_ error: Error) -> Bool {
         if let pluginError = error as? any PluginDriverError {
-            if pluginError.pluginSqlState == "28000" {
+            if pluginError.pluginSqlState == Self.invalidAuthorizationSQLState {
                 return true
             }
-            if let code = pluginError.pluginErrorCode, code == 1045 {
+            if pluginError.pluginErrorCode == Self.mysqlAccessDeniedErrorCode {
                 return true
             }
-            let message = pluginError.pluginErrorMessage.lowercased()
-            return message.contains("access denied")
-                || message.contains("authentication failed")
-                || message.contains("invalid credentials")
+            return messageIndicatesAuthenticationFailure(pluginError.pluginErrorMessage)
         }
+        return messageIndicatesAuthenticationFailure(error.localizedDescription)
+    }
 
-        let message = error.localizedDescription.lowercased()
-        return message.contains("access denied")
-            || message.contains("authentication failed")
-            || message.contains("invalid credentials")
+    private func messageIndicatesAuthenticationFailure(_ message: String) -> Bool {
+        let lowered = message.lowercased()
+        return lowered.contains("access denied")
+            || lowered.contains("authentication failed")
+            || lowered.contains("invalid credentials")
     }
 
     private func closeReconnectTunnels(for connection: DatabaseConnection) async {
