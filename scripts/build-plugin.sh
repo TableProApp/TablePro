@@ -125,16 +125,6 @@ build_plugin() {
         done
     fi
 
-    # Sign executable helper resources when a plugin ships them.
-    if [ -d "$plugin_bundle/Contents/Resources" ]; then
-        find "$plugin_bundle/Contents/Resources" -type f -perm -111 | sort | while read -r nested; do
-            if file "$nested" | grep -q "Mach-O"; then
-                echo "  Signing executable resource: $(basename "$nested")" >&2
-                codesign -fs "$SIGN_IDENTITY" --force --options runtime --timestamp "$nested"
-            fi
-        done
-    fi
-
     # Sign the main binary
     if [ -f "$plugin_binary" ]; then
         codesign -fs "$SIGN_IDENTITY" --force --options runtime --timestamp "$plugin_binary"

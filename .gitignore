@@ -151,7 +151,6 @@ Libs/*.a
 Libs/.downloaded
 Libs/dylibs/
 Libs/ios/
-Libs/rustledger/
 fix-1322-plugin-abi-and-registry-overhaul.diff
 
 # Issue analysis blueprints (local only)
@@ -159,9 +158,3 @@ fix-1322-plugin-abi-and-registry-overhaul.diff
 .docs/
 Local.xcconfig
 /plans/reports
-
-# Local planning and assistant history
-.specstory/
-.planning/
-.plans/
-planning/

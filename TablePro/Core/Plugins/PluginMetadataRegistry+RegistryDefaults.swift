@@ -411,7 +411,8 @@ extension PluginMetadataRegistry {
                     defaultPrimaryKeyColumn: nil,
                     immutableColumns: [
                         "id", "transaction_id", "date", "flag", "payee", "narration",
-                        "account", "amount", "commodity", "currency", "source_file", "line"
+                        "account", "amount", "commodity", "cost_number", "cost_currency",
+                        "currency", "currencies", "name", "open_date", "path"
                     ],
                     systemDatabaseNames: [],
                     systemSchemaNames: [],
