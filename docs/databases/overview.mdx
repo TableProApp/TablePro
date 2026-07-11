@@ -49,6 +49,9 @@ Natively supported:
   <Card title="DuckDB" icon="database">
     DuckDB embedded OLAP database. File-based, no server required
   </Card>
+  <Card title="Beancount" icon="file">
+    Plain-text accounting ledgers. File-based, read-only
+  </Card>
   <Card title="DynamoDB" icon="database">
     Amazon DynamoDB via AWS SDK. NoSQL key-value and document database
   </Card>
@@ -501,4 +504,3 @@ Right-click a connection to edit or delete it. Changes take effect on the next c
 ## Backup and Restore
 
 Connections are stored in `~/Library/Preferences/com.TablePro.plist`. Passwords are in the macOS Keychain. Copy the `.plist` file to back up. You'll need to re-enter passwords after restoring since Keychain entries don't transfer.
-

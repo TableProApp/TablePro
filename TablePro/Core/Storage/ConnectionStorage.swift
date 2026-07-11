@@ -258,6 +258,7 @@ final class ConnectionStorage {
         deleteTOTPSecret(for: connection.id)
         deleteCloudflareTokenId(for: connection.id)
         deleteCloudflareTokenSecret(for: connection.id)
+        deleteCloudSQLProxyServiceAccountKey(for: connection.id)
 
         let secureFieldIds = Self.secureFieldIds(for: connection.type)
         deleteAllPluginSecureFields(for: connection.id, fieldIds: secureFieldIds)
@@ -295,6 +296,7 @@ final class ConnectionStorage {
             deleteTOTPSecret(for: conn.id)
             deleteCloudflareTokenId(for: conn.id)
             deleteCloudflareTokenSecret(for: conn.id)
+            deleteCloudSQLProxyServiceAccountKey(for: conn.id)
             let fields = Self.secureFieldIds(for: conn.type)
             deleteAllPluginSecureFields(for: conn.id, fieldIds: fields)
             let appSettings = appSettingsProvider()
@@ -519,6 +521,23 @@ final class ConnectionStorage {
     func deleteCloudflareTokenSecret(for connectionId: UUID) {
         let key = "com.TablePro.cloudflaretokensecret.\(connectionId.uuidString)"
         keychain.delete(forKey: key)
+    }
+
+    // MARK: - Cloud SQL Auth Proxy Credential Storage
+
+    func saveCloudSQLProxyServiceAccountKey(_ key: String, for connectionId: UUID) {
+        let storageKey = "com.TablePro.cloudsqlproxyserviceaccountkey.\(connectionId.uuidString)"
+        keychain.writeString(key, forKey: storageKey)
+    }
+
+    func loadCloudSQLProxyServiceAccountKey(for connectionId: UUID) -> String? {
+        let storageKey = "com.TablePro.cloudsqlproxyserviceaccountkey.\(connectionId.uuidString)"
+        return resolveString(.init(label: "Cloud SQL service account key", connectionId: connectionId), forKey: storageKey)
+    }
+
+    func deleteCloudSQLProxyServiceAccountKey(for connectionId: UUID) {
+        let storageKey = "com.TablePro.cloudsqlproxyserviceaccountkey.\(connectionId.uuidString)"
+        keychain.delete(forKey: storageKey)
     }
 
     private struct SecretContext {

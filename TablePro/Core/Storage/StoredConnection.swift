@@ -78,6 +78,9 @@ struct StoredConnection: Codable {
     // Cloudflare Access TCP tunnel mode (JSON blob)
     let cloudflareTunnelModeJson: Data?
 
+    // Cloud SQL Auth Proxy mode (JSON blob)
+    let cloudSQLProxyModeJson: Data?
+
     // Plugin-driven additional fields
     let additionalFields: [String: String]?
 
@@ -155,6 +158,11 @@ struct StoredConnection: Codable {
             ? (try? JSONEncoder().encode(connection.cloudflareTunnelMode))
             : nil
 
+        // Cloud SQL Auth Proxy mode (only persisted when enabled)
+        self.cloudSQLProxyModeJson = connection.isCloudSQLProxyEnabled
+            ? (try? JSONEncoder().encode(connection.cloudSQLProxyMode))
+            : nil
+
         self.additionalFields = connection.additionalFields.isEmpty ? nil : connection.additionalFields
 
         // Password source (not synced to iCloud; see SyncRecordMapper)
@@ -178,6 +186,7 @@ struct StoredConnection: Codable {
         case mssqlSchema, oracleServiceName, startupCommands, sortOrder
         case sshTunnelModeJson
         case cloudflareTunnelModeJson
+        case cloudSQLProxyModeJson
         case additionalFields
         case localOnly
         case isSample
@@ -224,6 +233,7 @@ struct StoredConnection: Codable {
         try container.encode(sortOrder, forKey: .sortOrder)
         try container.encodeIfPresent(sshTunnelModeJson, forKey: .sshTunnelModeJson)
         try container.encodeIfPresent(cloudflareTunnelModeJson, forKey: .cloudflareTunnelModeJson)
+        try container.encodeIfPresent(cloudSQLProxyModeJson, forKey: .cloudSQLProxyModeJson)
         try container.encodeIfPresent(additionalFields, forKey: .additionalFields)
         try container.encode(localOnly, forKey: .localOnly)
         try container.encode(isSample, forKey: .isSample)
@@ -298,6 +308,7 @@ struct StoredConnection: Codable {
         sortOrder = try container.decodeIfPresent(Int.self, forKey: .sortOrder) ?? 0
         sshTunnelModeJson = try container.decodeIfPresent(Data.self, forKey: .sshTunnelModeJson)
         cloudflareTunnelModeJson = try container.decodeIfPresent(Data.self, forKey: .cloudflareTunnelModeJson)
+        cloudSQLProxyModeJson = try container.decodeIfPresent(Data.self, forKey: .cloudSQLProxyModeJson)
         additionalFields = try container.decodeIfPresent([String: String].self, forKey: .additionalFields)
         passwordSource = PasswordSource.resilientlyDecoded(from: container, forKey: .passwordSource)
         localOnly = try container.decodeIfPresent(Bool.self, forKey: .localOnly) ?? false
@@ -343,6 +354,14 @@ struct StoredConnection: Codable {
             resolvedCloudflareMode = decoded
         } else {
             resolvedCloudflareMode = .disabled
+        }
+
+        let resolvedCloudSQLProxyMode: CloudSQLProxyMode
+        if let json = cloudSQLProxyModeJson,
+           let decoded = try? JSONDecoder().decode(CloudSQLProxyMode.self, from: json) {
+            resolvedCloudSQLProxyMode = decoded
+        } else {
+            resolvedCloudSQLProxyMode = .disabled
         }
 
         var resolvedSSLCaPath = sslCaCertificatePath
@@ -404,6 +423,7 @@ struct StoredConnection: Codable {
             sshProfileId: parsedSSHProfileId,
             sshTunnelMode: resolvedTunnelMode,
             cloudflareTunnelMode: resolvedCloudflareMode,
+            cloudSQLProxyMode: resolvedCloudSQLProxyMode,
             safeModeLevel: SafeModeLevel(rawValue: safeModeLevel) ?? .silent,
             aiPolicy: parsedAIPolicy,
             aiRules: aiRules,

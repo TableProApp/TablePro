@@ -13,10 +13,13 @@ final class SortableHeaderCell: NSTableHeaderCell {
     var isValueFiltered: Bool = false
     var isFunnelVisible: Bool = false
     var supportsValueFilter: Bool = true
+    var headerComment: String?
 
     private static let indicatorPadding: CGFloat = 4
     private static let indicatorSpacing: CGFloat = 2
     private static let priorityFontSize: CGFloat = 9
+    private static let commentFontSize: CGFloat = 10
+    private static let commentLineSpacing: CGFloat = 1
     private static let defaultIndicatorSize = NSSize(width: 9, height: 6)
     private static let funnelSize = NSSize(width: 13, height: 13)
     private static let funnelPointSize: CGFloat = 11
@@ -45,7 +48,9 @@ final class SortableHeaderCell: NSTableHeaderCell {
         drawTitle(
             in: titleRect(forBounds: cellFrame),
             font: titleFont(isSorted: sortDirection != nil),
-            color: foreground
+            color: foreground,
+            comment: visibleComment,
+            commentColor: commentColor(emphasized: isColumnSelected)
         )
 
         var trailingCursorX = cellFrame.maxX - Self.indicatorPadding
@@ -152,30 +157,75 @@ final class SortableHeaderCell: NSTableHeaderCell {
         return NSFontManager.shared.convert(baseFont, toHaveTrait: .boldFontMask)
     }
 
+    private var visibleComment: String? {
+        guard let headerComment else { return nil }
+        let trimmed = headerComment.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
     private func foregroundColor(emphasized: Bool) -> NSColor {
         emphasized ? .alternateSelectedControlTextColor : .headerTextColor
     }
 
-    private func drawTitle(in rect: NSRect, font titleFont: NSFont, color: NSColor) {
+    private func commentColor(emphasized: Bool) -> NSColor {
+        emphasized ? .alternateSelectedControlTextColor : .secondaryLabelColor
+    }
+
+    private func drawTitle(
+        in rect: NSRect,
+        font titleFont: NSFont,
+        color: NSColor,
+        comment: String?,
+        commentColor: NSColor
+    ) {
         let paragraph = NSMutableParagraphStyle()
         paragraph.alignment = alignment
         paragraph.lineBreakMode = .byTruncatingTail
 
-        let attributes: [NSAttributedString.Key: Any] = [
+        let titleAttributes: [NSAttributedString.Key: Any] = [
             .font: titleFont,
             .foregroundColor: color,
             .paragraphStyle: paragraph
         ]
 
-        let title = NSAttributedString(string: stringValue, attributes: attributes)
+        let title = NSAttributedString(string: stringValue, attributes: titleAttributes)
         let textHeight = title.size().height
+        guard let comment else {
+            let drawRect = NSRect(
+                x: rect.minX,
+                y: rect.midY - textHeight / 2,
+                width: rect.width,
+                height: textHeight
+            )
+            title.draw(in: drawRect)
+            return
+        }
+
+        let commentAttributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: Self.commentFontSize),
+            .foregroundColor: commentColor,
+            .paragraphStyle: paragraph
+        ]
+        let commentText = NSAttributedString(string: comment, attributes: commentAttributes)
+        let commentHeight = commentText.size().height
+        let stackHeight = textHeight + Self.commentLineSpacing + commentHeight
+        let stackMinY = rect.midY - stackHeight / 2
+
         let drawRect = NSRect(
             x: rect.minX,
-            y: rect.midY - textHeight / 2,
+            y: stackMinY,
             width: rect.width,
             height: textHeight
         )
         title.draw(in: drawRect)
+
+        let commentRect = NSRect(
+            x: rect.minX,
+            y: stackMinY + textHeight + Self.commentLineSpacing,
+            width: rect.width,
+            height: commentHeight
+        )
+        commentText.draw(in: commentRect)
     }
 
     override func drawSortIndicator(
@@ -200,6 +250,9 @@ final class SortableHeaderCell: NSTableHeaderCell {
         }
         if isValueFiltered {
             components.append(String(localized: "Filtered"))
+        }
+        if let visibleComment {
+            components.append(visibleComment)
         }
         return components.joined(separator: ", ")
     }

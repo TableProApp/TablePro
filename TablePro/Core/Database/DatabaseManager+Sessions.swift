@@ -90,23 +90,8 @@ extension DatabaseManager {
                 awaitPlugins: true
             )
         } catch {
-            if !Task.isCancelled, connection.resolvedSSHConfig.enabled {
-                Task {
-                    do {
-                        try await SSHTunnelManager.shared.closeTunnel(connectionId: connection.id)
-                    } catch {
-                        Self.logger.warning("SSH tunnel cleanup failed for \(connection.name): \(error.localizedDescription)")
-                    }
-                }
-            }
-            if !Task.isCancelled, connection.isCloudflareEnabled {
-                Task {
-                    do {
-                        try await CloudflareTunnelManager.shared.closeTunnel(connectionId: connection.id)
-                    } catch {
-                        Self.logger.warning("Cloudflare tunnel cleanup failed for \(connection.name): \(error.localizedDescription)")
-                    }
-                }
+            if !Task.isCancelled {
+                closeActiveTunnel(for: connection)
             }
             finalizeConnectionFailure(for: connection.id, cancelled: Task.isCancelled)
             throw error
@@ -157,22 +142,8 @@ extension DatabaseManager {
             let cancelled = Task.isCancelled
             if cancelled {
                 driver.disconnect()
-            } else if connection.resolvedSSHConfig.enabled {
-                Task {
-                    do {
-                        try await SSHTunnelManager.shared.closeTunnel(connectionId: connection.id)
-                    } catch {
-                        Self.logger.warning("SSH tunnel cleanup failed for \(connection.name): \(error.localizedDescription)")
-                    }
-                }
-            } else if connection.isCloudflareEnabled {
-                Task {
-                    do {
-                        try await CloudflareTunnelManager.shared.closeTunnel(connectionId: connection.id)
-                    } catch {
-                        Self.logger.warning("Cloudflare tunnel cleanup failed for \(connection.name): \(error.localizedDescription)")
-                    }
-                }
+            } else {
+                closeActiveTunnel(for: connection)
             }
 
             finalizeConnectionFailure(for: connection.id, cancelled: cancelled)
@@ -325,24 +296,16 @@ extension DatabaseManager {
             "[close] disconnectSession start connId=\(sessionId, privacy: .public) name=\(session.connection.name, privacy: .public) hasSSH=\(session.connection.resolvedSSHConfig.enabled)"
         )
 
-        if session.connection.resolvedSSHConfig.enabled {
-            let sshStart = Date()
+        if let tunnelManager = activeTunnelManager(for: session.connection) {
+            let tunnelStart = Date()
             do {
-                try await SSHTunnelManager.shared.closeTunnel(connectionId: session.connection.id)
+                try await tunnelManager.closeTunnel(connectionId: session.connection.id)
             } catch {
-                Self.logger.warning("SSH tunnel cleanup failed for \(session.connection.name): \(error.localizedDescription)")
+                Self.logger.warning("Tunnel cleanup failed for \(session.connection.name): \(error.localizedDescription)")
             }
             lifecycleLogger.info(
-                "[close] disconnectSession SSH tunnel close done connId=\(sessionId, privacy: .public) elapsedMs=\(Int(Date().timeIntervalSince(sshStart) * 1_000))"
+                "[close] disconnectSession tunnel close done connId=\(sessionId, privacy: .public) elapsedMs=\(Int(Date().timeIntervalSince(tunnelStart) * 1_000))"
             )
-        }
-
-        if session.connection.isCloudflareEnabled {
-            do {
-                try await CloudflareTunnelManager.shared.closeTunnel(connectionId: session.connection.id)
-            } catch {
-                Self.logger.warning("Cloudflare tunnel cleanup failed for \(session.connection.name): \(error.localizedDescription)")
-            }
         }
 
         let hmStart = Date()

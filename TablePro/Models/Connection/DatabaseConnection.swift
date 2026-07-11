@@ -45,6 +45,7 @@ extension DatabaseType {
     static let bigQuery = DatabaseType(rawValue: "BigQuery")
     static let libsql = DatabaseType(rawValue: "libSQL")
     static let turso = DatabaseType(rawValue: "Turso")
+    static let beancount = DatabaseType(rawValue: "Beancount")
     static let elasticsearch = DatabaseType(rawValue: "Elasticsearch")
 }
 
@@ -113,6 +114,15 @@ extension DatabaseType {
 
     var supportsClientKeyPassphrase: Bool {
         PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.capabilities.supportsClientKeyPassphrase ?? false
+    }
+
+    var supportsCloudSQLProxy: Bool {
+        switch rawValue {
+        case "MySQL", "PostgreSQL", "SQL Server":
+            return true
+        default:
+            return false
+        }
     }
 
     var sslPaneTooltip: String {
@@ -185,6 +195,7 @@ extension DatabaseType {
         case "libSQL", "Turso": Color(hex: "4FF8D2")
         case "DynamoDB": Color(hex: "4053D6")
         case "BigQuery": Color(hex: "4285F4")
+        case "Beancount": Color(hex: "3F7D20")
         default: Color.accentColor
         }
     }
@@ -336,6 +347,7 @@ struct DatabaseConnection: Identifiable, Hashable {
     var sshProfileId: UUID?
     var sshTunnelMode: SSHTunnelMode
     var cloudflareTunnelMode: CloudflareTunnelMode = .disabled
+    var cloudSQLProxyMode: CloudSQLProxyMode = .disabled
     var safeModeLevel: SafeModeLevel
     var aiPolicy: AIConnectionPolicy?
     var aiRules: String?
@@ -434,6 +446,7 @@ struct DatabaseConnection: Identifiable, Hashable {
         sshProfileId: UUID? = nil,
         sshTunnelMode: SSHTunnelMode = .disabled,
         cloudflareTunnelMode: CloudflareTunnelMode = .disabled,
+        cloudSQLProxyMode: CloudSQLProxyMode = .disabled,
         safeModeLevel: SafeModeLevel = .silent,
         aiPolicy: AIConnectionPolicy? = nil,
         aiRules: String? = nil,
@@ -486,6 +499,7 @@ struct DatabaseConnection: Identifiable, Hashable {
             self.sshTunnelMode = sshTunnelMode
         }
         self.cloudflareTunnelMode = cloudflareTunnelMode
+        self.cloudSQLProxyMode = cloudSQLProxyMode
         self.aiPolicy = aiPolicy
         self.aiRules = aiRules
         self.aiAlwaysAllowedTools = aiAlwaysAllowedTools
@@ -543,7 +557,7 @@ extension DatabaseConnection: Codable {
     private enum CodingKeys: String, CodingKey {
         case id, name, host, port, database, username, type
         case sshConfig, sslConfig, color, tagId, tagIds, groupId, sshProfileId
-        case sshTunnelMode, cloudflareTunnelMode, safeModeLevel, aiPolicy, aiRules, aiAlwaysAllowedTools, externalAccess, additionalFields
+        case sshTunnelMode, cloudflareTunnelMode, cloudSQLProxyMode, safeModeLevel, aiPolicy, aiRules, aiAlwaysAllowedTools, externalAccess, additionalFields
         case redisDatabase, startupCommands, sortOrder, localOnly, isSample, isFavorite
         case passwordSource
     }
@@ -582,6 +596,7 @@ extension DatabaseConnection: Codable {
         isFavorite = try container.decodeIfPresent(Bool.self, forKey: .isFavorite) ?? false
         passwordSource = PasswordSource.resilientlyDecoded(from: container, forKey: .passwordSource)
         cloudflareTunnelMode = try container.decodeIfPresent(CloudflareTunnelMode.self, forKey: .cloudflareTunnelMode) ?? .disabled
+        cloudSQLProxyMode = try container.decodeIfPresent(CloudSQLProxyMode.self, forKey: .cloudSQLProxyMode) ?? .disabled
 
         // Migrate from legacy fields if sshTunnelMode is not present
         if let tunnelMode = try container.decodeIfPresent(SSHTunnelMode.self, forKey: .sshTunnelMode) {
@@ -620,6 +635,9 @@ extension DatabaseConnection: Codable {
         try container.encode(sshTunnelMode, forKey: .sshTunnelMode)
         if case .inline = cloudflareTunnelMode {
             try container.encode(cloudflareTunnelMode, forKey: .cloudflareTunnelMode)
+        }
+        if case .inline = cloudSQLProxyMode {
+            try container.encode(cloudSQLProxyMode, forKey: .cloudSQLProxyMode)
         }
         try container.encode(safeModeLevel, forKey: .safeModeLevel)
         try container.encodeIfPresent(aiPolicy, forKey: .aiPolicy)

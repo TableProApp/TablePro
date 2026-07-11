@@ -33,6 +33,7 @@
 		5A868000A00000000 /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
 		5A868000D00000000 /* PostgreSQLDriver.tableplugin in Copy Plug-Ins (12 items) */ = {isa = PBXBuildFile; fileRef = 5A868000100000000 /* PostgreSQLDriver.tableplugin */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		5A869000A00000000 /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
+		5ABC147400000000000001 /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
 		5A86A000A00000000 /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
 		5A86A000D00000000 /* CSVExport.tableplugin in Copy Plug-Ins (12 items) */ = {isa = PBXBuildFile; fileRef = 5A86A000100000000 /* CSVExport.tableplugin */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		5A86B000A00000000 /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
@@ -176,6 +177,13 @@
 			proxyType = 1;
 			remoteGlobalIDString = 5A869000000000000;
 			remoteInfo = DuckDBDriver;
+		};
+		5ABC14740000000000000F /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 5A1091BF2EF17EDC0055EA7C /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 5A860000000000000;
+			remoteInfo = TableProPluginKit;
 		};
 		5A86A000B00000000 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -359,6 +367,8 @@
 		5A866000100000000 /* MongoDBDriver.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MongoDBDriver.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
 		5A867000100000000 /* RedisDriver.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RedisDriver.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
 		5A868000100000000 /* PostgreSQLDriver.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PostgreSQLDriver.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
+		5A869000100000000 /* DuckDBDriver.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = DuckDBDriver.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
+		5ABC147400000000000003 /* BeancountDriver.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BeancountDriver.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
 		5A86A000100000000 /* CSVExport.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CSVExport.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
 		5A86B000100000000 /* JSONExport.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = JSONExport.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
 		5A86C000100000000 /* SQLExport.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SQLExport.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -533,6 +543,13 @@
 				Info.plist,
 			);
 			target = 5A869000000000000 /* DuckDBDriver */;
+		};
+		5ABC147400000000000006 /* Exceptions for "Plugins/BeancountDriverPlugin" folder in "BeancountDriver" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 5ABC147400000000000005 /* BeancountDriver */;
 		};
 		5A86A000900000000 /* Exceptions for "Plugins/CSVExportPlugin" folder in "CSVExport" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
@@ -741,6 +758,14 @@
 				5A869000900000000 /* Exceptions for "Plugins/DuckDBDriverPlugin" folder in "DuckDBDriver" target */,
 			);
 			path = Plugins/DuckDBDriverPlugin;
+			sourceTree = "<group>";
+		};
+		5ABC147400000000000007 /* Plugins/BeancountDriverPlugin */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				5ABC147400000000000006 /* Exceptions for "Plugins/BeancountDriverPlugin" folder in "BeancountDriver" target */,
+			);
+			path = Plugins/BeancountDriverPlugin;
 			sourceTree = "<group>";
 		};
 		5A86A000500000000 /* Plugins/CSVExportPlugin */ = {
@@ -956,6 +981,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		5ABC147400000000000008 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5ABC147400000000000001 /* TableProPluginKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		5A86A000300000000 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -1129,6 +1162,7 @@
 				5A867000500000000 /* Plugins/RedisDriverPlugin */,
 				5A868000500000000 /* Plugins/PostgreSQLDriverPlugin */,
 				5A869000500000000 /* Plugins/DuckDBDriverPlugin */,
+				5ABC147400000000000007 /* Plugins/BeancountDriverPlugin */,
 				5A87A000500000000 /* Plugins/CassandraDriverPlugin */,
 				5A86A000500000000 /* Plugins/CSVExportPlugin */,
 				5ABBED7C2FB55E1400A78382 /* Plugins/CSVInspectorPlugin */,
@@ -1162,6 +1196,8 @@
 				5A866000100000000 /* MongoDBDriver.tableplugin */,
 				5A867000100000000 /* RedisDriver.tableplugin */,
 				5A868000100000000 /* PostgreSQLDriver.tableplugin */,
+				5A869000100000000 /* DuckDBDriver.tableplugin */,
+				5ABC147400000000000003 /* BeancountDriver.tableplugin */,
 				5A87A000100000000 /* CassandraDriver.tableplugin */,
 				5A86A000100000000 /* CSVExport.tableplugin */,
 				5A86B000100000000 /* JSONExport.tableplugin */,
@@ -1594,6 +1630,27 @@
 			productReference = 5A2A9AE12FF52C7D0082A7AC /* DuckDBDriver.tableplugin */;
 			productType = "com.apple.product-type.bundle";
 		};
+		5ABC147400000000000005 /* BeancountDriver */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 5ABC147400000000000009 /* Build configuration list for PBXNativeTarget "BeancountDriver" */;
+			buildPhases = (
+				5ABC14740000000000000A /* Sources */,
+				5ABC147400000000000008 /* Frameworks */,
+				5ABC14740000000000000B /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				5ABC147400000000000010 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				5ABC147400000000000007 /* Plugins/BeancountDriverPlugin */,
+			);
+			name = BeancountDriver;
+			productName = BeancountDriver;
+			productReference = 5ABC147400000000000003 /* BeancountDriver.tableplugin */;
+			productType = "com.apple.product-type.bundle";
+		};
 		5A86A000000000000 /* CSVExport */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 5A86A000800000000 /* Build configuration list for PBXNativeTarget "CSVExport" */;
@@ -2000,6 +2057,9 @@
 					5A869000000000000 = {
 						CreatedOnToolsVersion = 26.2;
 					};
+					5ABC147400000000000005 = {
+						CreatedOnToolsVersion = 26.5;
+					};
 					5A86A000000000000 = {
 						CreatedOnToolsVersion = 26.2;
 					};
@@ -2070,6 +2130,7 @@
 				5A867000000000000 /* RedisDriver */,
 				5A868000000000000 /* PostgreSQLDriver */,
 				5A869000000000000 /* DuckDBDriver */,
+				5ABC147400000000000005 /* BeancountDriver */,
 				5A87A000000000000 /* CassandraDriver */,
 				5A86A000000000000 /* CSVExport */,
 				5A86B000000000000 /* JSONExport */,
@@ -2180,6 +2241,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		5A869000400000000 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5ABC14740000000000000B /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -2307,6 +2375,9 @@
 		};
 /* End PBXResourcesBuildPhase section */
 
+/* Begin PBXShellScriptBuildPhase section */
+/* End PBXShellScriptBuildPhase section */
+
 /* Begin PBXSourcesBuildPhase section */
 		329606C9C47DD1FA4F8F5350 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
@@ -2417,6 +2488,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		5A869000200000000 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5ABC14740000000000000A /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -2623,6 +2701,11 @@
 			isa = PBXTargetDependency;
 			target = 5A869000000000000 /* DuckDBDriver */;
 			targetProxy = 5A869000B00000000 /* PBXContainerItemProxy */;
+		};
+		5ABC147400000000000010 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 5A860000000000000 /* TableProPluginKit */;
+			targetProxy = 5ABC14740000000000000F /* PBXContainerItemProxy */;
 		};
 		5A86A000C00000000 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -2882,7 +2965,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 106;
+				CURRENT_PROJECT_VERSION = 107;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = D7HJ5TFYCU;
 				ENABLE_APP_SANDBOX = NO;
@@ -2914,7 +2997,7 @@
 				);
 				LIBRARY_SEARCH_PATHS = "$(PROJECT_DIR)/Libs/dylibs";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.56.1;
+				MARKETING_VERSION = 0.56.2;
 				OTHER_LDFLAGS = (
 					"-Wl,-w",
 					"-force_load",
@@ -2959,7 +3042,7 @@
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = YES;
-				CURRENT_PROJECT_VERSION = 106;
+				CURRENT_PROJECT_VERSION = 107;
 				DEAD_CODE_STRIPPING = YES;
 				DEPLOYMENT_POSTPROCESSING = YES;
 				DEVELOPMENT_TEAM = D7HJ5TFYCU;
@@ -2992,7 +3075,7 @@
 				);
 				LIBRARY_SEARCH_PATHS = "$(PROJECT_DIR)/Libs/dylibs";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.56.1;
+				MARKETING_VERSION = 0.56.2;
 				OTHER_LDFLAGS = (
 					"-Wl,-w",
 					"-force_load",
@@ -3773,6 +3856,56 @@
 				SKIP_INSTALL = YES;
 				SUPPORTED_PLATFORMS = macosx;
 				SWIFT_INCLUDE_PATHS = "$(SRCROOT)/Plugins/DuckDBDriverPlugin/CDuckDB";
+				SWIFT_VERSION = 5.9;
+				WRAPPER_EXTENSION = tableplugin;
+			};
+			name = Release;
+		};
+		5ABC14740000000000000D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Plugins/BeancountDriverPlugin/Info.plist;
+				INFOPLIST_KEY_NSPrincipalClass = "$(PRODUCT_MODULE_NAME).BeancountPlugin";
+				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = "-lsqlite3";
+				PRODUCT_BUNDLE_IDENTIFIER = com.TablePro.BeancountDriver;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = macosx;
+				SWIFT_VERSION = 5.9;
+				WRAPPER_EXTENSION = tableplugin;
+			};
+			name = Debug;
+		};
+		5ABC14740000000000000E /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Plugins/BeancountDriverPlugin/Info.plist;
+				INFOPLIST_KEY_NSPrincipalClass = "$(PRODUCT_MODULE_NAME).BeancountPlugin";
+				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = "-lsqlite3";
+				PRODUCT_BUNDLE_IDENTIFIER = com.TablePro.BeancountDriver;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = macosx;
 				SWIFT_VERSION = 5.9;
 				WRAPPER_EXTENSION = tableplugin;
 			};
@@ -4748,6 +4881,15 @@
 			buildConfigurations = (
 				5A869000600000000 /* Debug */,
 				5A869000700000000 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		5ABC147400000000000009 /* Build configuration list for PBXNativeTarget "BeancountDriver" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5ABC14740000000000000D /* Debug */,
+				5ABC14740000000000000E /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

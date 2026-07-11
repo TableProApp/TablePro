@@ -5,7 +5,6 @@
 //  Created by Ngo Quoc Dat on 16/12/25.
 //
 
-import AppKit
 import Foundation
 import Observation
 import os

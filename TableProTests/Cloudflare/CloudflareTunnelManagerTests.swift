@@ -12,7 +12,7 @@ import Testing
 /// Fake cloudflared process. Depending on `behavior` it either opens a real
 /// loopback listener (so the manager's readiness probe succeeds), prints a
 /// browser sign-in line, or exits during startup.
-final class FakeCloudflaredRunner: CloudflaredRunner, @unchecked Sendable {
+final class FakeCloudflaredRunner: SupervisedProcessRunner, @unchecked Sendable {
     enum Behavior {
         case ready
         case browserAuth
@@ -28,8 +28,8 @@ final class FakeCloudflaredRunner: CloudflaredRunner, @unchecked Sendable {
 
     private let lock = NSLock()
     private var requested = false
-    private var terminationResult: CloudflaredTermination?
-    private var terminationContinuation: CheckedContinuation<CloudflaredTermination, Never>?
+    private var terminationResult: SubprocessTermination?
+    private var terminationContinuation: CheckedContinuation<SubprocessTermination, Never>?
 
     init(behavior: Behavior) {
         self.behavior = behavior
@@ -68,7 +68,7 @@ final class FakeCloudflaredRunner: CloudflaredRunner, @unchecked Sendable {
         finish(exitCode: 0)
     }
 
-    var termination: CloudflaredTermination {
+    var termination: SubprocessTermination {
         get async {
             await withCheckedContinuation { continuation in
                 lock.lock()
@@ -89,7 +89,7 @@ final class FakeCloudflaredRunner: CloudflaredRunner, @unchecked Sendable {
             lock.unlock()
             return
         }
-        let result = CloudflaredTermination(exitCode: exitCode, wasRequested: requested)
+        let result = SubprocessTermination(exitCode: exitCode, wasRequested: requested)
         terminationResult = result
         let pending = terminationContinuation
         terminationContinuation = nil

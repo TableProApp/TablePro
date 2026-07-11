@@ -577,6 +577,10 @@ internal struct FavoritesTabView: View {
     private var bottomToolbar: some View {
         HStack(spacing: 8) {
             Menu {
+                Button(String(localized: "New Query")) {
+                    coordinator?.commandActions?.newTab()
+                }
+                Divider()
                 Button(String(localized: "New Favorite")) {
                     viewModel.createFavorite()
                 }
@@ -599,7 +603,7 @@ internal struct FavoritesTabView: View {
             .menuStyle(.borderlessButton)
             .menuIndicator(.hidden)
             .fixedSize()
-            .help(String(localized: "Add"))
+            .help(String(localized: "New Query, favorite, or folder"))
 
             Spacer()
         }

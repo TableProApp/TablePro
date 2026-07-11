@@ -30,6 +30,7 @@ final class ConnectionFormCoordinator {
     var auth: AuthPaneViewModel
     var ssh: SSHPaneViewModel
     var cloudflareTunnel: CloudflareTunnelPaneViewModel
+    var cloudSQLProxy: CloudSQLProxyPaneViewModel
     var ssl: SSLPaneViewModel
     var customization: CustomizationPaneViewModel
     var advanced: AdvancedPaneViewModel
@@ -69,6 +70,9 @@ final class ConnectionFormCoordinator {
         if services.pluginManager.supportsCloudflareTunnel(for: network.type) {
             panes.append(.cloudflareTunnel)
         }
+        if network.type.supportsCloudSQLProxy {
+            panes.append(.cloudSQLProxy)
+        }
         if services.pluginManager.supportsSSL(for: network.type) {
             panes.append(.ssl)
         }
@@ -83,6 +87,7 @@ final class ConnectionFormCoordinator {
             && auth.validationIssues.isEmpty
             && ssh.validationIssues.isEmpty
             && cloudflareTunnel.validationIssues.isEmpty
+            && cloudSQLProxy.validationIssues.isEmpty
             && ssl.validationIssues.isEmpty
             && customization.validationIssues.isEmpty
             && advanced.validationIssues.isEmpty
@@ -105,6 +110,7 @@ final class ConnectionFormCoordinator {
         self.auth = AuthPaneViewModel()
         self.ssh = SSHPaneViewModel()
         self.cloudflareTunnel = CloudflareTunnelPaneViewModel()
+        self.cloudSQLProxy = CloudSQLProxyPaneViewModel()
         self.ssl = SSLPaneViewModel()
         self.customization = CustomizationPaneViewModel()
         self.advanced = AdvancedPaneViewModel()
@@ -115,6 +121,7 @@ final class ConnectionFormCoordinator {
         auth.coordinator = ref
         ssh.coordinator = ref
         cloudflareTunnel.coordinator = ref
+        cloudSQLProxy.coordinator = ref
         ssl.coordinator = ref
         customization.coordinator = ref
         advanced.coordinator = ref
@@ -160,6 +167,7 @@ final class ConnectionFormCoordinator {
             auth.load(from: existing, storage: storage)
             ssh.load(from: existing, storage: storage)
             cloudflareTunnel.load(from: existing, storage: storage)
+            cloudSQLProxy.load(from: existing, storage: storage)
             ssl.load(from: existing)
             customization.load(from: existing)
             advanced.load(from: existing)
@@ -264,6 +272,7 @@ final class ConnectionFormCoordinator {
 
         let sshTunnelMode = ssh.state.buildTunnelMode()
         let cloudflareTunnelMode = cloudflareTunnel.state.buildTunnelMode()
+        let cloudSQLProxyMode = cloudSQLProxy.state.buildTunnelMode()
         let connectionToSave = DatabaseConnection(
             id: finalId,
             name: network.name,
@@ -280,6 +289,7 @@ final class ConnectionFormCoordinator {
             sshProfileId: ssh.state.enabled ? ssh.state.profileId : nil,
             sshTunnelMode: sshTunnelMode,
             cloudflareTunnelMode: cloudflareTunnelMode,
+            cloudSQLProxyMode: cloudSQLProxyMode,
             safeModeLevel: customization.safeModeLevel,
             aiPolicy: advanced.aiPolicy,
             aiRules: aiRules.trimmedRules,
@@ -325,6 +335,7 @@ final class ConnectionFormCoordinator {
         }
 
         cloudflareTunnel.save(to: connectionToSave.id, storage: storage)
+        cloudSQLProxy.save(to: connectionToSave.id, storage: storage)
 
         var savedConnections = storage.loadConnections()
         if isNew {
@@ -448,6 +459,7 @@ final class ConnectionFormCoordinator {
 
         let testTunnelMode = ssh.state.buildTunnelMode()
         let testCloudflareMode = cloudflareTunnel.state.buildTunnelMode()
+        let testCloudSQLProxyMode = cloudSQLProxy.state.buildTunnelMode()
         let testConn = DatabaseConnection(
             name: network.name,
             host: testHost,
@@ -463,6 +475,7 @@ final class ConnectionFormCoordinator {
             sshProfileId: ssh.state.enabled ? ssh.state.profileId : nil,
             sshTunnelMode: testTunnelMode,
             cloudflareTunnelMode: testCloudflareMode,
+            cloudSQLProxyMode: testCloudSQLProxyMode,
             redisDatabase: advanced.additionalFieldValues["redisDatabase"].map { Int($0) ?? 0 },
             startupCommands: advanced.startupCommands.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 ? nil : advanced.startupCommands,
@@ -477,6 +490,7 @@ final class ConnectionFormCoordinator {
         let displayName = network.name.isEmpty ? network.host : network.name
         let sshState = ssh.state
         let cloudflareState = cloudflareTunnel.state
+        let cloudSQLProxyState = cloudSQLProxy.state
         let sslClientKeyPassphrase = ssl.clientKeyPassphrase
         let sslClientKeyPath = ssl.clientKeyPath
         let additionalFieldValues = finalAdditionalFields
@@ -489,6 +503,7 @@ final class ConnectionFormCoordinator {
             sslClientKeyPassphrase: sslClientKeyPassphrase,
             sslClientKeyPath: sslClientKeyPath,
             cloudflareState: cloudflareState,
+            cloudSQLProxyState: cloudSQLProxyState,
             connectionType: connectionType,
             additionalFieldValues: additionalFieldValues
         )
@@ -605,6 +620,7 @@ final class ConnectionFormCoordinator {
         sslClientKeyPassphrase: String,
         sslClientKeyPath: String,
         cloudflareState: CloudflareTunnelFormState,
+        cloudSQLProxyState: CloudSQLProxyFormState,
         connectionType: DatabaseType,
         additionalFieldValues: [String: String]
     ) {
@@ -636,6 +652,13 @@ final class ConnectionFormCoordinator {
             services.connectionStorage.saveCloudflareTokenSecret(cloudflareState.serviceTokenSecret, for: testId)
         }
 
+        if cloudSQLProxyState.enabled && cloudSQLProxyState.authMode == .serviceAccountKey
+            && !cloudSQLProxyState.serviceAccountKeyJSON.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            services.connectionStorage.saveCloudSQLProxyServiceAccountKey(
+                cloudSQLProxyState.serviceAccountKeyJSON, for: testId
+            )
+        }
+
         for field in services.pluginManager.additionalConnectionFields(for: connectionType)
             where field.isSecure
         {
@@ -653,6 +676,7 @@ final class ConnectionFormCoordinator {
         services.connectionStorage.deleteTOTPSecret(for: testId)
         services.connectionStorage.deleteCloudflareTokenId(for: testId)
         services.connectionStorage.deleteCloudflareTokenSecret(for: testId)
+        services.connectionStorage.deleteCloudSQLProxyServiceAccountKey(for: testId)
         let secureFieldIds = services.pluginManager.additionalConnectionFields(for: network.type)
             .filter(\.isSecure).map(\.id)
         services.connectionStorage.deleteAllPluginSecureFields(for: testId, fieldIds: secureFieldIds)

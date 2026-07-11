@@ -9,9 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Connect to Google Cloud SQL through the Cloud SQL Auth Proxy without starting it yourself. Enable it on a MySQL, PostgreSQL, or SQL Server connection, set the instance connection name, and TablePro runs and stops the proxy with the connection. Supports Application Default Credentials, a service account key, and IAM database authentication, and can download the proxy or use one already on your Mac. (#1728)
+- Beancount ledger support as a downloadable, read-only file-based driver. Transactions, postings (with resolved cost basis), accounts, prices, computed balances, and balance assertions project to SQL tables through user-provided `rledger` or Python Beancount, and BQL runs with a `BQL:` prefix when `rledger` is available. (#1474)
 - The sidebar database tree now remembers which databases and schemas you had expanded, per connection, so reopening a window keeps them open.
 - A Saved Customizations section in Settings lists the tables where you set column layouts or filters, and lets you reset any one of them, or all.
 - Per-table column layouts (widths, order, and hidden columns) now sync across your Macs with iCloud when Settings sync is on.
+- The Favorites sidebar **+** menu now includes **New Query**, which opens an empty SQL query tab.
 
 ### Changed
 
@@ -19,8 +22,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A failed or cancelled connection that uses a Cloudflare tunnel no longer leaves the `cloudflared` process running in the background.
 - Per-column display formats (Display As) are now kept per table, so two tables with the same name in different databases or schemas no longer share formatting.
 - Reopening a table now restores a saved filter's AND/OR match mode, instead of always resetting it to AND.
+
+## [0.56.2] - 2026-07-10
+
+### Added
+
+- The JSON field in the row details inspector can now be resized by dragging the handle below it. The height is remembered across rows and app restarts. (#1849)
+
+### Changed
+
+- Data grid column comments now appear directly in column headers when object comments are enabled, instead of only being available from the header tooltip. (#1789)
+
+### Fixed
+
+- MySQL and MariaDB connections that prompt for a password at connect time now ask for a fresh password after an auto-reconnect hits an authentication failure such as `1045` / `SQLSTATE 28000`, instead of looping forever in Connecting with the expired session password.
+- Pressing Escape to dismiss the SQL autocomplete popup no longer moves focus out of the editor, so you can keep typing. (#1845)
 
 ## [0.56.1] - 2026-07-09
 
@@ -2484,7 +2503,8 @@ TablePro is a native macOS database client built with SwiftUI and AppKit, design
     - Custom SQL query templates
     - Performance optimized for large datasets
 
-[Unreleased]: https://github.com/TableProApp/TablePro/compare/v0.56.1...HEAD
+[Unreleased]: https://github.com/TableProApp/TablePro/compare/v0.56.2...HEAD
+[0.56.2]: https://github.com/TableProApp/TablePro/compare/v0.56.1...v0.56.2
 [0.56.1]: https://github.com/TableProApp/TablePro/compare/v0.56.0...v0.56.1
 [0.56.0]: https://github.com/TableProApp/TablePro/compare/v0.55.0...v0.56.0
 [0.55.0]: https://github.com/TableProApp/TablePro/compare/v0.54.0...v0.55.0

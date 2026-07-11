@@ -7,10 +7,9 @@
 
 import Darwin
 import Foundation
-import Network
 import os
 
-actor CloudflareTunnelManager {
+actor CloudflareTunnelManager: TunnelManaging {
     static let shared = CloudflareTunnelManager()
     private static let logger = Logger(subsystem: "com.TablePro", category: "CloudflareTunnelManager")
 
@@ -20,21 +19,21 @@ actor CloudflareTunnelManager {
     private static let stalePidsDefaultsKey = "cloudflaredStalePids"
 
     private struct TunnelState {
-        let runner: any CloudflaredRunner
+        let runner: any SupervisedProcessRunner
         let localPort: Int
     }
 
     private var tunnels: [UUID: TunnelState] = [:]
     private var pidRecords: [UUID: CloudflaredPidRecord] = [:]
-    private let runnerFactory: () -> any CloudflaredRunner
+    private let runnerFactory: () -> any SupervisedProcessRunner
 
     /// Static registry for synchronous termination during app shutdown.
-    private static let runnerRegistry = OSAllocatedUnfairLock(initialState: [UUID: any CloudflaredRunner]())
+    private static let runnerRegistry = OSAllocatedUnfairLock(initialState: [UUID: any SupervisedProcessRunner]())
 
     /// Prevents App Nap from throttling the supervised process while tunnels are active.
     private var appNapActivity: NSObjectProtocol?
 
-    init(runnerFactory: @escaping () -> any CloudflaredRunner = { ProcessCloudflaredRunner() }) {
+    init(runnerFactory: @escaping () -> any SupervisedProcessRunner = { ProcessSupervisedRunner() }) {
         self.runnerFactory = runnerFactory
     }
 
@@ -115,7 +114,7 @@ actor CloudflareTunnelManager {
     /// Synchronously terminate all cloudflared processes.
     /// Called from `applicationWillTerminate` where async is not available.
     nonisolated func terminateAllProcessesSync() {
-        let runners = Self.runnerRegistry.withLock { dict -> [any CloudflaredRunner] in
+        let runners = Self.runnerRegistry.withLock { dict -> [any SupervisedProcessRunner] in
             let values = Array(dict.values)
             dict.removeAll()
             return values
@@ -150,7 +149,7 @@ actor CloudflareTunnelManager {
 
     // MARK: - Private: lifecycle
 
-    private func register(connectionId: UUID, runner: any CloudflaredRunner, port: Int, binaryPath: String) {
+    private func register(connectionId: UUID, runner: any SupervisedProcessRunner, port: Int, binaryPath: String) {
         tunnels[connectionId] = TunnelState(runner: runner, localPort: port)
         Self.runnerRegistry.withLock { $0[connectionId] = runner }
         if let pid = runner.processIdentifier {
@@ -161,14 +160,14 @@ actor CloudflareTunnelManager {
         startDeathWatch(connectionId: connectionId, runner: runner)
     }
 
-    private func startDeathWatch(connectionId: UUID, runner: any CloudflaredRunner) {
+    private func startDeathWatch(connectionId: UUID, runner: any SupervisedProcessRunner) {
         Task { [weak self] in
             let result = await runner.termination
             await self?.handleTermination(connectionId: connectionId, result: result)
         }
     }
 
-    private func handleTermination(connectionId: UUID, result: CloudflaredTermination) async {
+    private func handleTermination(connectionId: UUID, result: SubprocessTermination) async {
         guard tunnels.removeValue(forKey: connectionId) != nil else { return }
         Self.runnerRegistry.withLock { $0[connectionId] = nil }
         pidRecords.removeValue(forKey: connectionId)
@@ -181,7 +180,7 @@ actor CloudflareTunnelManager {
 
     // MARK: - Private: readiness
 
-    private func awaitReadiness(runner: any CloudflaredRunner, port: Int) async throws {
+    private func awaitReadiness(runner: any SupervisedProcessRunner, port: Int) async throws {
         let monitor = CloudflaredStartupMonitor()
         let stderrTask = Task {
             for await line in runner.stderrLines {
@@ -202,7 +201,7 @@ actor CloudflareTunnelManager {
             if await monitor.streamEnded {
                 throw CloudflareTunnelError.startupFailed(stderrTail: await monitor.tail)
             }
-            if await Self.canConnect(host: "127.0.0.1", port: port) {
+            if await LoopbackPort.isReachable(host: "127.0.0.1", port: port) {
                 if let url = await monitor.browserAuthURL {
                     throw CloudflareTunnelError.browserAuthRequired(url: url)
                 }
@@ -211,35 +210,6 @@ actor CloudflareTunnelManager {
             try await Task.sleep(nanoseconds: Self.readinessPollInterval)
         }
         throw CloudflareTunnelError.readinessTimeout(stderrTail: await monitor.tail)
-    }
-
-    private static func canConnect(host: String, port: Int) async -> Bool {
-        guard let nwPort = NWEndpoint.Port(rawValue: UInt16(port)) else { return false }
-        return await withCheckedContinuation { continuation in
-            let connection = NWConnection(host: NWEndpoint.Host(host), port: nwPort, using: .tcp)
-            let resumed = OSAllocatedUnfairLock(initialState: false)
-            let complete: (Bool) -> Void = { value in
-                let shouldResume = resumed.withLock { done -> Bool in
-                    guard !done else { return false }
-                    done = true
-                    return true
-                }
-                guard shouldResume else { return }
-                connection.cancel()
-                continuation.resume(returning: value)
-            }
-            connection.stateUpdateHandler = { state in
-                switch state {
-                case .ready:
-                    complete(true)
-                case .failed, .cancelled, .waiting:
-                    complete(false)
-                default:
-                    break
-                }
-            }
-            connection.start(queue: .global(qos: .utility))
-        }
     }
 
     // MARK: - Private: binary, environment, port
@@ -275,31 +245,8 @@ actor CloudflareTunnelManager {
     }
 
     private func allocateFreePort() throws -> Int {
-        let descriptor = socket(AF_INET, SOCK_STREAM, 0)
-        guard descriptor >= 0 else { throw CloudflareTunnelError.noAvailablePort }
-        defer { close(descriptor) }
-
-        var address = sockaddr_in()
-        address.sin_family = sa_family_t(AF_INET)
-        address.sin_port = 0
-        address.sin_addr.s_addr = inet_addr("127.0.0.1")
-
-        let bound = withUnsafePointer(to: &address) {
-            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
-                bind(descriptor, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
-            }
-        }
-        guard bound == 0 else { throw CloudflareTunnelError.noAvailablePort }
-
-        var boundAddress = sockaddr_in()
-        var length = socklen_t(MemoryLayout<sockaddr_in>.size)
-        let named = withUnsafeMutablePointer(to: &boundAddress) {
-            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
-                getsockname(descriptor, $0, &length)
-            }
-        }
-        guard named == 0 else { throw CloudflareTunnelError.noAvailablePort }
-        return Int(UInt16(bigEndian: boundAddress.sin_port))
+        guard let port = LoopbackPort.allocateFree() else { throw CloudflareTunnelError.noAvailablePort }
+        return port
     }
 
     // MARK: - Private: stale PID persistence

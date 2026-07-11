@@ -194,11 +194,6 @@ final class VimKeyInterceptor {
     }
 
     private func closeSuggestionPopup() {
-        guard let window = controller?.textView.window else { return }
-        for childWindow in window.childWindows ?? [] {
-            if childWindow.windowController is SuggestionController {
-                childWindow.windowController?.close()
-            }
-        }
+        controller?.dismissCompletions()
     }
 }

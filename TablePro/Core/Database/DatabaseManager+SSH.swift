@@ -22,11 +22,17 @@ extension DatabaseManager {
         for connection: DatabaseConnection,
         sshPasswordOverride: String? = nil
     ) async throws -> DatabaseConnection {
-        if connection.isCloudflareEnabled {
-            guard !connection.resolvedSSHConfig.enabled else {
-                throw CloudflareTunnelError.mutualExclusivityViolation
-            }
+        let enabledKinds = connection.enabledTunnelKinds
+        guard enabledKinds.count <= 1 else {
+            throw ConnectionTunnelError.mutualExclusivityViolation(enabledKinds)
+        }
+        switch enabledKinds.first {
+        case .cloudflare:
             return try await buildCloudflareEffectiveConnection(for: connection)
+        case .cloudSQLProxy:
+            return try await buildCloudSQLProxyEffectiveConnection(for: connection)
+        case .ssh, .none:
+            break
         }
 
         let sshConfig = connection.resolvedSSHConfig

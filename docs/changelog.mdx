@@ -4,6 +4,21 @@ description: "Product updates and announcements for TablePro"
 rss: true
 ---
 
+<Update label="July 10, 2026" description="v0.56.2">
+  ### New Features
+
+  - **Resizable JSON field**: Drag the handle below a JSON value in the row details inspector to make it taller and read more in place. The height is remembered across rows and app restarts (#1849)
+
+  ### Improvements
+
+  - Column comments now appear directly in data grid column headers when object comments are enabled, instead of only in the header tooltip (#1789)
+
+  ### Bug Fixes
+
+  - MySQL and MariaDB connections that prompt for a password now ask for a fresh one after an authentication failure on reconnect, instead of looping in Connecting with the expired password
+  - Pressing Escape to dismiss the SQL autocomplete popup no longer moves focus out of the editor, so you can keep typing (#1845)
+</Update>
+
 <Update label="July 9, 2026" description="v0.56.1">
   ### Bug Fixes
 

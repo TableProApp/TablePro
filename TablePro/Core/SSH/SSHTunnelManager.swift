@@ -61,7 +61,7 @@ enum SSHTunnelError: Error, LocalizedError, Equatable {
 }
 
 /// Manages SSH tunnels for database connections using libssh2
-actor SSHTunnelManager {
+actor SSHTunnelManager: TunnelManaging {
     static let shared = SSHTunnelManager()
     private static let logger = Logger(subsystem: "com.TablePro", category: "SSHTunnelManager")
 

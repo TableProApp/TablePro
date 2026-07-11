@@ -27,6 +27,7 @@ public struct DatabaseType: Hashable, Codable, Sendable, RawRepresentable {
     public static let bigquery = DatabaseType(rawValue: "BigQuery")
     public static let snowflake = DatabaseType(rawValue: "Snowflake")
     public static let libsql = DatabaseType(rawValue: "libSQL")
+    public static let beancount = DatabaseType(rawValue: "Beancount")
     public static let cockroachdb = DatabaseType(rawValue: "CockroachDB")
     public static let scylladb = DatabaseType(rawValue: "ScyllaDB")
     public static let turso = DatabaseType(rawValue: "Turso")
@@ -34,7 +35,7 @@ public struct DatabaseType: Hashable, Codable, Sendable, RawRepresentable {
     public static let allKnownTypes: [DatabaseType] = [
         .mysql, .mariadb, .postgresql, .sqlite, .redis, .mongodb,
         .clickhouse, .mssql, .oracle, .duckdb, .cassandra, .redshift,
-        .etcd, .cloudflareD1, .dynamodb, .bigquery, .snowflake, .libsql
+        .etcd, .cloudflareD1, .dynamodb, .bigquery, .snowflake, .libsql, .beancount
     ]
 
     /// Icon name for this database type — asset catalog name (e.g. "mysql-icon") or SF Symbol fallback
@@ -58,6 +59,7 @@ public struct DatabaseType: Hashable, Codable, Sendable, RawRepresentable {
         case .bigquery: return "bigquery-icon"
         case .snowflake: return "snowflake-icon"
         case .libsql: return "libsql-icon"
+        case .beancount: return "beancount-icon"
         default: return "externaldrive"
         }
     }

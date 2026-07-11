@@ -158,6 +158,11 @@ jobs:
               DISPLAY_NAME="DuckDB Driver"; SUMMARY="DuckDB analytical database driver"
               DB_TYPE_IDS='["DuckDB"]'; ICON="bird"; BUNDLE_NAME="DuckDBDriver"
               CATEGORY="database-driver"; HOMEPAGE="https://docs.tablepro.app/databases/duckdb" ;;
+            beancount)
+              TARGET="BeancountDriver"; BUNDLE_ID="com.TablePro.BeancountDriver"
+              DISPLAY_NAME="Beancount Driver"; SUMMARY="Read-only Beancount ledger driver using user-provided rledger or Python Beancount"
+              DB_TYPE_IDS='["Beancount"]'; ICON="beancount-icon"; BUNDLE_NAME="BeancountDriver"
+              CATEGORY="database-driver"; HOMEPAGE="https://docs.tablepro.app/databases/beancount" ;;
             cassandra)
               TARGET="CassandraDriver"; BUNDLE_ID="com.TablePro.CassandraDriver"
               DISPLAY_NAME="Cassandra Driver"; SUMMARY="Apache Cassandra and ScyllaDB driver via DataStax C driver"

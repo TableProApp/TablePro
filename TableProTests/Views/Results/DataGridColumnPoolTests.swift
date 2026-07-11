@@ -318,12 +318,86 @@ struct DataGridColumnPoolTests {
             savedLayout: layout,
             isEditable: true,
             hiddenColumnNames: [],
-            widthCalculator: { _, _ in 9999 }
+            widthCalculator: { _, _ in 9_999 }
         )
 
         let widthsByName = Dictionary(uniqueKeysWithValues: dataColumns(in: tableView).map { ($0.headerCell.stringValue, $0.width) })
         #expect(widthsByName["id"] == 75)
         #expect(widthsByName["name"] == 250)
+    }
+
+    @Test("reconcile assigns column comments to sortable header cells")
+    func reconcile_assignsColumnCommentsToHeaderCells() throws {
+        let pool = DataGridColumnPool()
+        let tableView = makeTableView()
+        let schema = ColumnIdentitySchema(columns: ["id", "email"])
+
+        pool.reconcile(
+            tableView: tableView,
+            schema: schema,
+            columnTypes: makeColumnTypes(count: 2),
+            columnComments: ["email": "Primary contact address"],
+            savedLayout: nil,
+            isEditable: true,
+            hiddenColumnNames: [],
+            widthCalculator: defaultWidthCalculator
+        )
+
+        let emailColumn = try #require(dataColumns(in: tableView).first { $0.headerCell.stringValue == "email" })
+        let headerCell = try #require(emailColumn.headerCell as? SortableHeaderCell)
+        #expect(headerCell.headerComment == "Primary contact address")
+        #expect(emailColumn.headerToolTip == "email (Text)\nPrimary contact address")
+
+        pool.reconcile(
+            tableView: tableView,
+            schema: schema,
+            columnTypes: makeColumnTypes(count: 2),
+            columnComments: [:],
+            savedLayout: nil,
+            isEditable: true,
+            hiddenColumnNames: [],
+            widthCalculator: defaultWidthCalculator
+        )
+
+        #expect(headerCell.headerComment == nil)
+        #expect(emailColumn.headerToolTip == "email (Text)")
+    }
+
+    @Test("reconcile expands and restores header height based on visible comments")
+    func reconcile_updatesHeaderHeightForVisibleComments() {
+        let pool = DataGridColumnPool()
+        let tableView = makeTableView()
+        let naturalHeight: CGFloat = 28
+        tableView.headerView = SortableHeaderView(
+            frame: NSRect(x: 0, y: 0, width: 200, height: naturalHeight)
+        )
+        let schema = ColumnIdentitySchema(columns: ["id", "email"])
+
+        pool.reconcile(
+            tableView: tableView,
+            schema: schema,
+            columnTypes: makeColumnTypes(count: 2),
+            columnComments: ["email": "Primary contact address"],
+            savedLayout: nil,
+            isEditable: true,
+            hiddenColumnNames: [],
+            widthCalculator: defaultWidthCalculator
+        )
+
+        #expect(tableView.headerView?.frame.height == SortableHeaderView.commentHeaderHeight)
+
+        pool.reconcile(
+            tableView: tableView,
+            schema: schema,
+            columnTypes: makeColumnTypes(count: 2),
+            columnComments: ["email": "Primary contact address"],
+            savedLayout: nil,
+            isEditable: true,
+            hiddenColumnNames: ["email"],
+            widthCalculator: defaultWidthCalculator
+        )
+
+        #expect(tableView.headerView?.frame.height == naturalHeight)
     }
 
     @Test("reconcile is idempotent for equivalent inputs")
@@ -384,7 +458,7 @@ struct DataGridColumnPoolTests {
         #expect(dataColumns(in: tableView).count == 3)
 
         pool.detachFromTableView()
-        #expect(dataColumns(in: tableView).count == 0)
+        #expect(dataColumns(in: tableView).isEmpty)
         #expect(pool.totalSlots == 3)
 
         pool.reconcile(
