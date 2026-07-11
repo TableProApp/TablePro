@@ -18,7 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- The Settings window is reorganized into a searchable sidebar: a Data & Results section groups the data grid, pagination, result limits, formatting, JSON viewer, and query history; a Sidebar section groups recent tables, default layout, and object comments.
+- The Settings window is reorganized into a searchable sidebar styled like macOS System Settings, with colored section icons, a fixed sidebar, the section name in the title bar, and each section's content held in a centered column. A Data & Results section groups the data grid, pagination, result limits, formatting, JSON viewer, and query history; a Sidebar section groups recent tables, default layout, and object comments.
 
 ### Fixed
 

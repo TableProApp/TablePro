@@ -42,6 +42,29 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         }
     }
 
+    var tint: Color {
+        switch self {
+        case .general: .gray
+        case .appearance: .indigo
+        case .editor: .purple
+        case .data: .green
+        case .sidebar: .teal
+        case .savedCustomizations: .orange
+        case .keyboard: .blue
+        case .ai: .pink
+        case .mcp: .cyan
+        case .plugins: .brown
+        case .account: Color(nsColor: .systemGray)
+        }
+    }
+
+    var contentMaxWidth: CGFloat {
+        switch self {
+        case .general, .editor, .data, .sidebar, .savedCustomizations, .account: 620
+        case .appearance, .keyboard, .ai, .mcp, .plugins: .infinity
+        }
+    }
+
     var keywords: [String] {
         switch self {
         case .general: ["language", "startup", "updates", "sparkle", "privacy", "analytics", "query timeout", "tabs", "preview"]
@@ -82,9 +105,13 @@ struct SettingsView: View {
         return SettingsPane.allCases.filter { $0.matches(query) }
     }
 
+    private var currentPane: SettingsPane {
+        SettingsPane(rawValue: selectedRaw) ?? .general
+    }
+
     private var selection: Binding<SettingsPane?> {
         Binding(
-            get: { SettingsPane(rawValue: selectedRaw) ?? .general },
+            get: { currentPane },
             set: { newValue in
                 if let newValue { selectedRaw = newValue.rawValue }
             }
@@ -94,18 +121,21 @@ struct SettingsView: View {
     var body: some View {
         NavigationSplitView {
             List(visiblePanes, selection: selection) { pane in
-                Label(pane.title, systemImage: pane.symbol)
+                SettingsSidebarLabel(pane: pane)
                     .badge(pane == .plugins && pluginAttentionCount > 0 ? Text(pluginAttentionCount.formatted()) : nil)
                     .tag(pane)
             }
             .navigationTitle("Settings")
             .searchable(text: $searchText, placement: .sidebar, prompt: Text("Search settings"))
-            .navigationSplitViewColumnWidth(min: 200, ideal: 216, max: 260)
+            .navigationSplitViewColumnWidth(215)
         } detail: {
-            detail(for: SettingsPane(rawValue: selectedRaw) ?? .general)
-                .frame(minWidth: 480, minHeight: 460)
+            detail(for: currentPane)
+                .frame(maxWidth: currentPane.contentMaxWidth)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                .navigationTitle(currentPane.title)
         }
-        .frame(minWidth: 740, minHeight: 520)
+        .hidingSidebarToggle()
+        .frame(minWidth: 820, minHeight: 520)
     }
 
     @ViewBuilder
@@ -142,6 +172,33 @@ struct SettingsView: View {
             PluginsSettingsView()
         case .account:
             AccountSettingsView()
+        }
+    }
+}
+
+private struct SettingsSidebarLabel: View {
+    let pane: SettingsPane
+
+    var body: some View {
+        Label {
+            Text(pane.title)
+        } icon: {
+            Image(systemName: pane.symbol)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 20, height: 20)
+                .background(pane.tint, in: RoundedRectangle(cornerRadius: 5))
+        }
+    }
+}
+
+private extension View {
+    @ViewBuilder
+    func hidingSidebarToggle() -> some View {
+        if #available(macOS 14.5, *) {
+            toolbar(removing: .sidebarToggle)
+        } else {
+            self
         }
     }
 }
