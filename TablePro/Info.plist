@@ -108,6 +108,22 @@
 			</array>
 		</dict>
 		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Beancount Ledger</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Owner</string>
+			<key>CFBundleTypeExtensions</key>
+			<array>
+				<string>beancount</string>
+			</array>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>com.tablepro.beancount</string>
+			</array>
+		</dict>
+		<dict>
 			<key>CFBundleTypeExtensions</key>
 			<array>
 				<string>csv</string>
@@ -207,6 +223,24 @@
 	</array>
 	<key>UTExportedTypeDeclarations</key>
 	<array>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>com.tablepro.beancount</string>
+			<key>UTTypeDescription</key>
+			<string>Beancount Ledger</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.plain-text</string>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>beancount</string>
+				</array>
+			</dict>
+		</dict>
 		<dict>
 			<key>UTTypeIdentifier</key>
 			<string>com.tablepro.connection-share</string>

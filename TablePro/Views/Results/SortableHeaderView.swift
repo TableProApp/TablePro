@@ -63,20 +63,56 @@ enum HeaderSortCycle {
 final class SortableHeaderView: NSTableHeaderView {
     weak var coordinator: TableViewCoordinator?
 
+    static let commentHeaderHeight: CGFloat = 40
     private static let clickDragThreshold: CGFloat = 4
     private static let resizeZoneWidth: CGFloat = 4
+    private static let fallbackHeight: CGFloat = 28
 
     private var pendingClickStartLocation: NSPoint?
     private var dragOccurredDuringClick = false
     private var mouseMovedTrackingArea: NSTrackingArea?
     private var hoveredColumnIndex: Int?
 
+    /// Header height when no visible column carries a comment. Captured from the
+    /// height AppKit gave the header at creation so the compact layout keeps the
+    /// platform default instead of a hardcoded value.
+    private let naturalHeight: CGFloat
+
+    /// Grows the header to `commentHeaderHeight` so each cell can draw its comment
+    /// on a second line. Enforced through `setFrameSize` so `NSScrollView.tile()`
+    /// cannot shrink it back on scroll, live resize, or column drag.
+    var showsComments = false {
+        didSet {
+            guard showsComments != oldValue else { return }
+            applyHeaderHeight()
+        }
+    }
+
     override init(frame frameRect: NSRect) {
+        naturalHeight = frameRect.height > 0 ? frameRect.height : Self.fallbackHeight
         super.init(frame: frameRect)
     }
 
     required init?(coder: NSCoder) {
+        naturalHeight = Self.fallbackHeight
         super.init(coder: coder)
+    }
+
+    override func setFrameSize(_ newSize: NSSize) {
+        var size = newSize
+        if showsComments {
+            size.height = Self.commentHeaderHeight
+        }
+        super.setFrameSize(size)
+    }
+
+    private func applyHeaderHeight() {
+        let targetHeight = showsComments ? Self.commentHeaderHeight : naturalHeight
+        if frame.height != targetHeight {
+            setFrameSize(NSSize(width: frame.width, height: targetHeight))
+        }
+        enclosingScrollView?.tile()
+        needsDisplay = true
     }
 
     override func updateTrackingAreas() {

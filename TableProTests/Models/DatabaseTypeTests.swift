@@ -60,7 +60,8 @@ struct DatabaseTypeTests {
         (DatabaseType.clickhouse, "ClickHouse"),
         (DatabaseType.duckdb, "DuckDB"),
         (DatabaseType.cassandra, "Cassandra"),
-        (DatabaseType.scylladb, "ScyllaDB")
+        (DatabaseType.scylladb, "ScyllaDB"),
+        (DatabaseType.beancount, "Beancount")
     ])
     func testRawValueMatchesDisplayName(dbType: DatabaseType, expectedRawValue: String) {
         #expect(dbType.rawValue == expectedRawValue)
