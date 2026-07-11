@@ -783,6 +783,7 @@ struct TableProApp: App {
 
     init() {
         AppSettingsStorage.shared.migrateStartupBehaviorToReopenLastIfNeeded()
+        AppSettingsStorage.shared.migrateJsonFieldHeightKeyIfNeeded()
         AIProviderRegistration.registerAll()
 
         // Perform startup cleanup of query history if auto-cleanup is enabled

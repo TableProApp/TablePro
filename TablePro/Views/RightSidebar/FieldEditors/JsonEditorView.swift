@@ -11,7 +11,8 @@ internal struct JsonEditorView: View {
     var onPopOut: ((String) -> Void)?
 
     @State private var displayText: String
-    @AppStorage("rightSidebar.jsonFieldHeight") private var fieldHeight = ResizableFieldMetrics.defaultJsonHeight
+    @AppStorage(PreferenceKeys.rowInspectorJsonFieldHeight.name) private var fieldHeight = ResizableFieldMetrics
+        .defaultJsonHeight
 
     init(context: FieldEditorContext, onExpand: (() -> Void)? = nil, onPopOut: ((String) -> Void)? = nil) {
         self.context = context

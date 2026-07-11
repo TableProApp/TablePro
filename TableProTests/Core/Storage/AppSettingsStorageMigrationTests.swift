@@ -64,4 +64,40 @@ struct AppSettingsStorageMigrationTests {
         storage.migrateStartupBehaviorToReopenLastIfNeeded()
         #expect(storage.loadGeneral().startupBehavior == .showWelcome)
     }
+
+    private let legacyJsonHeightKey = "rightSidebar.jsonFieldHeight"
+
+    @Test("A saved legacy JSON field height moves to the namespaced key")
+    func migratesLegacyJsonFieldHeight() {
+        let (storage, defaults, suite) = makeStorage()
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        defaults.set(320.0, forKey: legacyJsonHeightKey)
+        storage.migrateJsonFieldHeightKeyIfNeeded()
+
+        #expect(defaults.double(forKey: PreferenceKeys.rowInspectorJsonFieldHeight.name) == 320.0)
+        #expect(defaults.object(forKey: legacyJsonHeightKey) == nil)
+    }
+
+    @Test("A fresh install writes no JSON field height key")
+    func skipsJsonFieldHeightOnFreshInstall() {
+        let (storage, defaults, suite) = makeStorage()
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        storage.migrateJsonFieldHeightKeyIfNeeded()
+
+        #expect(defaults.object(forKey: PreferenceKeys.rowInspectorJsonFieldHeight.name) == nil)
+    }
+
+    @Test("An existing namespaced JSON field height is not overwritten")
+    func leavesNamespacedJsonFieldHeight() {
+        let (storage, defaults, suite) = makeStorage()
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        defaults.set(200.0, forKey: PreferenceKeys.rowInspectorJsonFieldHeight.name)
+        defaults.set(320.0, forKey: legacyJsonHeightKey)
+        storage.migrateJsonFieldHeightKeyIfNeeded()
+
+        #expect(defaults.double(forKey: PreferenceKeys.rowInspectorJsonFieldHeight.name) == 200.0)
+    }
 }
