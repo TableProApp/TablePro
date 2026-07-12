@@ -26,6 +26,13 @@ struct PrincipalInspectorView: View {
         return (catalog.serverPrivileges + catalog.databasePrivileges).filter { seen.insert($0.name).inserted }
     }
 
+    private var gridHeight: CGFloat {
+        let rowHeight: CGFloat = 24
+        let headerHeight: CGFloat = 28
+        let contentHeight = CGFloat(scopes.count) * rowHeight + headerHeight
+        return min(max(contentHeight, rowHeight + headerHeight), 360)
+    }
+
     var body: some View {
         Form {
             Section("Identity") {
@@ -85,7 +92,7 @@ struct PrincipalInspectorView: View {
                             )
                         }
                     )
-                    .frame(minHeight: 240)
+                    .frame(height: gridHeight)
                 }
             }
 

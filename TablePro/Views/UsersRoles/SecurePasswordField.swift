@@ -42,10 +42,10 @@ struct SecurePasswordField: NSViewRepresentable {
 
 enum GeneratedPassword {
     static func suggest() -> String {
-        if let suggestion = SecCreateSharedWebCredentialPassword() as String? {
-            return suggestion
+        guard let suggestion = SecCreateSharedWebCredentialPassword() else {
+            return random(length: 20)
         }
-        return random(length: 20)
+        return suggestion as String
     }
 
     static func random(length: Int) -> String {
