@@ -109,6 +109,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
     // Navigation
     case newTab
     case closeTab
+    case reopenClosedTab
     case quickSwitcher
     case toggleTableBrowser
     case toggleInspector
@@ -140,8 +141,8 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
              .truncateTable, .previewFKReference, .saveAsFavorite, .previousPage,
              .nextPage, .firstPage, .lastPage, .refresh, .export, .importData:
             return .dataGrid
-        case .newTab, .closeTab, .quickSwitcher, .toggleTableBrowser, .toggleInspector,
-             .toggleFilters, .toggleHistory, .toggleResults, .previousResultTab,
+        case .newTab, .closeTab, .reopenClosedTab, .quickSwitcher, .toggleTableBrowser,
+             .toggleInspector, .toggleFilters, .toggleHistory, .toggleResults, .previousResultTab,
              .nextResultTab, .pinResultTab, .closeResultTab, .focusSidebarSearch,
              .showSidebarTables, .showSidebarFavorites, .showPreviousTab, .showNextTab:
             return .navigation
@@ -188,6 +189,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
         case .saveAs: return String(localized: "Save As")
         case .previewSQL: return String(localized: "Preview SQL")
         case .closeTab: return String(localized: "Close Tab")
+        case .reopenClosedTab: return String(localized: "Reopen Closed Tab")
         case .refresh: return String(localized: "Refresh")
         case .explainQuery: return String(localized: "Explain Query")
         case .formatQuery: return String(localized: "Format Query")
@@ -442,6 +444,7 @@ struct KeyboardSettings: Codable, Equatable {
         // Navigation
         .newTab: .character("t", command: true),
         .closeTab: .character("w", command: true),
+        .reopenClosedTab: .character("t", command: true, shift: true),
         .quickSwitcher: .character("o", command: true, shift: true),
         .toggleTableBrowser: .character("0", command: true),
         .toggleInspector: .character("i", command: true, option: true),

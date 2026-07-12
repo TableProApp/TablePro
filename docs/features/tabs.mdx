@@ -82,9 +82,16 @@ Disable preview tabs in **Settings** > **Tabs** if you prefer every click to ope
 | Close specific tab | Hover and click **x** |
 | Close other tabs | Right-click > **Close Other Tabs** |
 
-<Warning>
-Closing a tab with unsaved changes discards those changes. TablePro warns you before closing if there are pending data modifications.
-</Warning>
+Closing a query tab does not throw away the SQL in it, so closing one by accident costs you nothing. TablePro still asks before closing a tab whose changes it cannot bring back: pending data edits, table structure changes, and unsaved edits to a `.sql` file on disk.
+
+### Reopening Closed Tabs
+
+| Action | How |
+|--------|-----|
+| Reopen the last closed tab | `Cmd+Shift+T` or **File** > **Reopen Closed Tab** |
+| Reopen an older tab | **File** > **Recently Closed** |
+
+The last 20 closed query and table tabs are kept for 30 days. A reopened tab comes back with its SQL, cursor position, and database context. Deleting a connection also deletes its closed tabs.
 
 ### Switching Tabs
 

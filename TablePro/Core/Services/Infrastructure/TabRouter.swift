@@ -62,9 +62,26 @@ internal final class TabRouter {
         case .openSQLFile(let url):
             try await openSQLFile(url)
 
+        case .reopenClosedTab(let entry):
+            try await reopenClosedTab(entry)
+
         default:
             throw TabRouterError.unsupportedIntent(String(describing: intent))
         }
+    }
+
+    // MARK: - Recently Closed
+
+    private func reopenClosedTab(_ entry: RecentlyClosedTabEntry) async throws {
+        guard let connection = ConnectionStorage.shared.loadConnections()
+            .first(where: { $0.id == entry.connectionId }) else {
+            throw TabRouterError.connectionNotFound(entry.connectionId)
+        }
+        try await runPreConnectScriptIfNeeded(connection)
+        try await DatabaseManager.shared.ensureConnected(connection)
+        RecentlyClosedTabReopener.openWindowTab(for: entry)
+        NSApp.activate(ignoringOtherApps: true)
+        closeWelcomeWindows()
     }
 
     // MARK: - Connection

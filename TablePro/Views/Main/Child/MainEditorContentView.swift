@@ -459,14 +459,15 @@ struct MainEditorContentView: View {
                 // selectedTabIndex would overwrite the new tab's query.
                 guard tabManager.mutate(tabId: tabId, { $0.content.query = newValue }) else { return }
 
-                if let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }),
-                   tabManager.tabs[index].content.sourceFileURL != nil {
-                    let isDirty = tabManager.tabs[index].content.isFileDirty
-                    Task { @MainActor in
-                        if let window = NSApp.keyWindow {
-                            window.isDocumentEdited = isDirty
-                        }
-                    }
+                // Typing into a scratch tab dirties it too: the text lives nowhere but this tab.
+                // The dot belongs to this tab's own window, not whichever window happens to be
+                // key, because a background window tab's editor stays mounted and can fire here.
+                guard tabId == tabManager.selectedTabId,
+                      let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }),
+                      let window = coordinator.contentWindow else { return }
+                let showsIndicator = tabManager.tabs[index].showsUnsavedIndicator
+                Task { @MainActor in
+                    window.isDocumentEdited = showsIndicator
                 }
             }
         )

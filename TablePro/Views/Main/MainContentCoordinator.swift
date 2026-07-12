@@ -312,7 +312,7 @@ final class MainContentCoordinator {
 
     /// Resolve transient view state that only the live coordinator knows about
     /// (sort column names, editor cursor offset) onto the tab before it is serialized.
-    private func enrichedForPersistence(_ tab: QueryTab) -> QueryTab {
+    func enrichedForPersistence(_ tab: QueryTab) -> QueryTab {
         var enriched = tab
         if enriched.sortState.isSorting {
             let columns = columnsForPersistence(of: tab)

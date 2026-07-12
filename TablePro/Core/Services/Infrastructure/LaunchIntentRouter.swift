@@ -23,7 +23,8 @@ internal final class LaunchIntentRouter {
                  .openQuery,
                  .openDatabaseURL,
                  .openDatabaseFile,
-                 .openSQLFile:
+                 .openSQLFile,
+                 .reopenClosedTab:
                 try await TabRouter.shared.route(intent)
 
             case .openInspectorFile(let url):
@@ -87,7 +88,8 @@ internal final class LaunchIntentRouter {
             title = String(localized: "Pairing Failed")
         case .installPlugin:
             title = String(localized: "Plugin Installation Failed")
-        case .openConnection, .openTable, .openQuery, .openDatabaseURL, .openDatabaseFile:
+        case .openConnection, .openTable, .openQuery, .openDatabaseURL, .openDatabaseFile,
+             .reopenClosedTab:
             title = String(localized: "Connection Failed")
         case .openSQLFile, .openInspectorFile:
             title = String(localized: "Could Not Open File")

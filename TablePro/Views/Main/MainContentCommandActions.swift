@@ -311,15 +311,7 @@ final class MainContentCommandActions {
     // MARK: - Unsaved Changes Check
 
     private var hasUnsavedChanges: Bool {
-        if isUsersRolesTab {
-            return coordinator?.usersRolesActions?.hasChanges() ?? false
-        }
-        let hasEditedCells = coordinator?.changeManager.hasChanges ?? false
-        let hasPendingTableOps = !pendingTruncates.wrappedValue.isEmpty
-            || !pendingDeletes.wrappedValue.isEmpty
-        let hasSidebarEdits = rightPanelState.editState.hasEdits
-        let hasFileDirty = coordinator?.tabManager.selectedTab?.content.isFileDirty ?? false
-        return hasEditedCells || hasPendingTableOps || hasSidebarEdits || hasFileDirty
+        coordinator?.hasUnsavedWorkInSelectedTab() ?? false
     }
 
     private var isUsersRolesTab: Bool {
@@ -353,11 +345,9 @@ final class MainContentCommandActions {
     // MARK: - Tab Operations (Group A — Called Directly)
 
     func newTab(initialQuery: String? = nil) {
-        let resolvedQuery = initialQuery
-            ?? ClosedTabDraftStorage.shared.consumeQuery(connectionId: connection.id)
         if let coordinator, coordinator.tabManager.tabs.isEmpty {
             coordinator.tabManager.addTab(
-                initialQuery: resolvedQuery,
+                initialQuery: initialQuery,
                 databaseName: coordinator.activeDatabaseName,
                 claimFocus: true
             )
@@ -365,7 +355,7 @@ final class MainContentCommandActions {
         }
         let payload = EditorTabPayload(
             connectionId: connection.id,
-            initialQuery: resolvedQuery,
+            initialQuery: initialQuery,
             intent: .newEmptyTab
         )
         WindowManager.shared.openTab(payload: payload)
@@ -396,9 +386,20 @@ final class MainContentCommandActions {
         }
     }
 
+    /// Every close gesture funnels here, so this is the one place that can guarantee a closing
+    /// tab's content outlives the window. It runs before the branch dispatch below because two of
+    /// the three branches tear the window down without another chance to capture anything.
+    private func captureClosingTabsForRecovery() {
+        guard let coordinator else { return }
+        for tab in coordinator.tabsForRecoveryCapture() {
+            RecentlyClosedTabStore.shared.push(tab: tab, connection: connection)
+        }
+    }
+
     private func performClose() {
         let t0 = Date()
         guard let window = coordinator?.contentWindow ?? NSApp.keyWindow else { return }
+        captureClosingTabsForRecovery()
         let visibleTabbedWindows = (window.tabbedWindows ?? [window]).filter(\.isVisible)
         Self.logger.info("[close] performClose visibleTabs=\(visibleTabbedWindows.count) tabManagerTabs=\(self.coordinator?.tabManager.tabs.count ?? 0)")
 
@@ -408,12 +409,6 @@ final class MainContentCommandActions {
             window.close()
         } else {
             if let coordinator {
-                if let draft = ClosedTabDraftStorage.draftCandidate(
-                    from: coordinator.tabManager.tabs,
-                    selectedTabId: coordinator.tabManager.selectedTabId
-                ) {
-                    ClosedTabDraftStorage.shared.saveQuery(draft, connectionId: connection.id)
-                }
                 for tab in coordinator.tabManager.tabs {
                     coordinator.tabSessionRegistry.removeTableRows(for: tab.id)
                     if let url = tab.content.sourceFileURL {

@@ -303,7 +303,9 @@ Files open in a new tab. If not connected to a database, they're queued and open
 - **`Cmd+Shift+S`** opens a **Save As** dialog to save as a new `.sql` file
 - For untitled query tabs (no file), `Cmd+S` triggers Save As automatically
 
-The title bar shows the filename for file-backed tabs. A dot appears on the close button when there are unsaved changes (standard macOS behavior). `Cmd+click` the filename in the title bar to reveal the file in Finder.
+The title bar shows the filename for file-backed tabs. A dot appears on the close button when there are unsaved changes (standard macOS behavior), including on a query tab you have typed into but never saved to a file. `Cmd+click` the filename in the title bar to reveal the file in Finder.
+
+Closing a query tab keeps its SQL: reopen it with `Cmd+Shift+T` or from **File** > **Recently Closed**. See [Tabs](/features/tabs) for details.
 
 <Note>
 When a tab has both unsaved file changes and pending data grid edits, `Cmd+S` saves the data grid changes first. Save the file after the grid save completes.

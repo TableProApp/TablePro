@@ -25,7 +25,7 @@ enum TabType: Equatable, Codable, Hashable {
 struct PersistedTab: Codable {
     let id: UUID
     let title: String
-    let query: String
+    var query: String
     let tabType: TabType
     let tableName: String?
     var isView: Bool = false

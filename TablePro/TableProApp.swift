@@ -138,6 +138,10 @@ struct AppMenuCommands: Commands {
     /// scene focus instead of MainContentView's).
     @Bindable var commandRegistry: CommandActionsRegistry
 
+    /// Reopen Closed Tab must stay reachable with no editor window focused, so the menu reads the
+    /// store directly rather than routing through `actions`.
+    @Bindable var recentlyClosedStore: RecentlyClosedTabStore
+
     /// Effective actions used by every menu item. Prefers @FocusedValue when
     /// it resolves (correct for in-content focus); falls back to the registry
     /// otherwise (covers toolbar-click + welcome→connect race scenarios).
@@ -332,6 +336,21 @@ struct AppMenuCommands: Commands {
                 }
             }
             .optionalKeyboardShortcut(shortcut(for: .closeTab))
+
+            Button(String(localized: "Reopen Closed Tab")) {
+                RecentlyClosedTabReopener.reopenMostRecent()
+            }
+            .optionalKeyboardShortcut(shortcut(for: .reopenClosedTab))
+            .disabled(recentlyClosedStore.entries.isEmpty)
+
+            Menu(String(localized: "Recently Closed")) {
+                ForEach(recentlyClosedStore.entries) { entry in
+                    Button(entry.displayTitle) {
+                        RecentlyClosedTabReopener.reopen(id: entry.id)
+                    }
+                }
+            }
+            .disabled(recentlyClosedStore.entries.isEmpty)
 
             Divider()
 
@@ -848,7 +867,8 @@ struct TableProApp: App {
             AppMenuCommands(
                 settingsManager: AppSettingsManager.shared,
                 updaterBridge: updaterBridge,
-                commandRegistry: commandRegistry
+                commandRegistry: commandRegistry,
+                recentlyClosedStore: RecentlyClosedTabStore.shared
             )
         }
 

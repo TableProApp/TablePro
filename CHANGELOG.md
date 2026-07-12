@@ -13,15 +13,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Beancount ledger support as a downloadable, read-only file-based driver. Transactions, postings (with resolved cost basis), accounts, prices, computed balances, and balance assertions project to SQL tables through user-provided `rledger` or Python Beancount, and BQL runs with a `BQL:` prefix when `rledger` is available. (#1474)
 - The Favorites sidebar **+** menu now includes **New Query**, which opens an empty SQL query tab.
 - Manage database users, roles, and privileges on MySQL and PostgreSQL connections. Open **View > Users & Roles** to see the accounts on the server, pick an object from the server down through databases, schemas, tables, and columns, and grant or revoke privileges on it. The privilege list shows where access actually comes from, including privileges inherited from a role or from a parent object. Changes are staged, undoable with ⌘Z, and shown as the exact SQL before they run. (#1413)
+- Bring back a tab you closed by mistake with **File > Reopen Closed Tab** (`Cmd+Shift+T`), or pick an older one from **File > Recently Closed**. The last 20 closed query and table tabs are kept for 30 days, with their SQL, cursor position, and database context. (#1854)
 
 ### Changed
 
 - Query results now always show a result tab, so a single result can be pinned before the next query replaces it. Pinning was previously only reachable after running several statements at once. Pin from the tab's context menu or with `Cmd+Option+P`, and hover a tab to see the query that produced it. (#1855)
+- Closing a query tab no longer throws away the SQL in it. Every closed tab goes to **Recently Closed** instead, so closing stays quiet and stays undoable. The close button now also shows the unsaved dot for a query tab you have typed into, and a new tab no longer silently inherits the last closed tab's query. (#1854)
 
 ### Fixed
 
 - A failed or cancelled connection that uses a Cloudflare tunnel no longer leaves the `cloudflared` process running in the background.
 - Pinned results are no longer discarded by **Clear Results**, and a tab holding one is no longer reused to browse a different table. (#1855)
+- Quitting now warns about unsaved changes in any tab, not just the visible one. Unsaved edits to a `.sql` file, table structure changes, and pending truncates and deletes were all missed before. (#1854)
 
 ## [0.56.2] - 2026-07-10
 

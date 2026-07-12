@@ -311,11 +311,7 @@ extension MainContentCoordinator {
         }
         if tab.tabType == .createTable { return !toolbarState.hasCreateTablePending }
         if tab.isPreview { return true }
-        if tab.tabType == .query,
-           tab.execution.lastExecutedAt == nil,
-           tab.content.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return true
-        }
+        if tab.tabType == .query, !tab.holdsQueryWork { return true }
         return false
     }
 
