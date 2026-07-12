@@ -9,8 +9,8 @@
 
 import Foundation
 
-enum MySQLGrantPatternEscaping {
-    static func escapeDatabasePattern(_ value: String) -> String {
+public enum MySQLGrantPatternEscaping {
+    public static func escapeDatabasePattern(_ value: String) -> String {
         var result = ""
         result.reserveCapacity(value.count)
         for character in value {
@@ -25,7 +25,7 @@ enum MySQLGrantPatternEscaping {
         return result
     }
 
-    static func unescapeDatabasePattern(_ value: String) -> String {
+    public static func unescapeDatabasePattern(_ value: String) -> String {
         var result = ""
         result.reserveCapacity(value.count)
         var isEscaped = false

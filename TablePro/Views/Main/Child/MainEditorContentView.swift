@@ -56,6 +56,7 @@ struct MainEditorContentView: View {
     @State private var cachedChangeManager: AnyChangeManager?
     @State private var erDiagramViewModels: [UUID: ERDiagramViewModel] = [:]
     @State private var serverDashboardViewModels: [UUID: ServerDashboardViewModel] = [:]
+    @State private var usersRolesViewModels: [UUID: UsersRolesViewModel] = [:]
     @State private var dataTabDelegate = DataTabGridDelegate()
 
     @Bindable private var treeService = DatabaseTreeMetadataService.shared
@@ -137,6 +138,7 @@ struct MainEditorContentView: View {
             coordinator.cleanupTabCaches(openTabIds: openTabIds)
             erDiagramViewModels = erDiagramViewModels.filter { openTabIds.contains($0.key) }
             serverDashboardViewModels = serverDashboardViewModels.filter { openTabIds.contains($0.key) }
+            usersRolesViewModels = usersRolesViewModels.filter { openTabIds.contains($0.key) }
         }
         .onChange(of: tabManager.selectedTabId) { _, _ in
             updateHasQueryText()
@@ -214,7 +216,32 @@ struct MainEditorContentView: View {
             erDiagramContent(tab: tab)
         case .serverDashboard:
             serverDashboardContent(tab: tab)
+        case .usersRoles:
+            usersRolesContent(tab: tab)
         }
+    }
+
+    // MARK: - Users & Roles Tab Content
+
+    @ViewBuilder
+    private func usersRolesContent(tab: QueryTab) -> some View {
+        Group {
+            if let vm = usersRolesViewModels[tab.id] {
+                UsersRolesView(viewModel: vm)
+            } else {
+                ProgressView(String(localized: "Loading users and roles..."))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .onAppear {
+                        guard usersRolesViewModels[tab.id] == nil else { return }
+                        let vm = UsersRolesViewModel(
+                            connectionId: connection.id,
+                            databaseType: connection.type
+                        )
+                        usersRolesViewModels[tab.id] = vm
+                    }
+            }
+        }
+        .id(tab.id)
     }
 
     // MARK: - Server Dashboard Tab Content

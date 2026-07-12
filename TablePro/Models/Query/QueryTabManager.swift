@@ -239,6 +239,19 @@ final class QueryTabManager {
         selectedTabId = newTab.id
     }
 
+    func addUsersRolesTab() {
+        if let existing = tabs.first(where: { $0.tabType == .usersRoles }) {
+            selectedTabId = existing.id
+            return
+        }
+        let tabTitle = String(localized: "Users & Roles")
+        var newTab = QueryTab(title: tabTitle, tabType: .usersRoles)
+        newTab.tableContext.isEditable = false
+        newTab.hasUserInteraction = true
+        tabs.append(newTab)
+        selectedTabId = newTab.id
+    }
+
     func addPreviewTableTab(
         tableName: String,
         databaseType: DatabaseType = .mysql,

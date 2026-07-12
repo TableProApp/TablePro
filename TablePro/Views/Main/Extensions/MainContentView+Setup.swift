@@ -288,6 +288,8 @@ extension MainContentView {
         let selectedTab = tabManager.selectedTab
         if selectedTab?.tabType == .serverDashboard {
             windowTitle = String(localized: "Server Dashboard")
+        } else if selectedTab?.tabType == .usersRoles {
+            windowTitle = String(localized: "Users & Roles")
         } else if selectedTab?.tabType == .createTable {
             windowTitle = String(localized: "Create Table")
         } else if selectedTab?.tabType == .erDiagram {

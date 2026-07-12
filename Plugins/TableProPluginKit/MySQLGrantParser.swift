@@ -7,19 +7,18 @@
 //
 
 import Foundation
-import TableProPluginKit
 
-struct MySQLParsedGrant: Equatable {
-    let privileges: [String]
-    let scope: PluginPrivilegeScope
-    let isGrantable: Bool
-    let isColumnScoped: Bool
+public struct MySQLParsedGrant: Equatable, Sendable {
+    public let privileges: [String]
+    public let scope: PluginPrivilegeScope
+    public let isGrantable: Bool
+    public let isColumnScoped: Bool
 }
 
-enum MySQLGrantParser {
-    static let allPrivileges = "ALL PRIVILEGES"
+public enum MySQLGrantParser {
+    public static let allPrivileges = "ALL PRIVILEGES"
 
-    static func parseGrant(_ line: String) -> MySQLParsedGrant? {
+    public static func parseGrant(_ line: String) -> MySQLParsedGrant? {
         let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let afterGrant = dropKeyword("GRANT", from: trimmed) else { return nil }
         guard let onRange = rangeOfKeyword("ON", in: afterGrant) else { return nil }
@@ -48,7 +47,7 @@ enum MySQLGrantParser {
         )
     }
 
-    static func parseRoleGrant(_ line: String) -> [String]? {
+    public static func parseRoleGrant(_ line: String) -> [String]? {
         let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let afterGrant = dropKeyword("GRANT", from: trimmed) else { return nil }
         guard rangeOfKeyword("ON", in: afterGrant) == nil else { return nil }
@@ -102,7 +101,7 @@ enum MySQLGrantParser {
         granteeText.uppercased().contains("WITH GRANT OPTION")
     }
 
-    static func unquoteIdentifier(_ value: String) -> String {
+    public static func unquoteIdentifier(_ value: String) -> String {
         guard let first = value.first, let last = value.last, value.count >= 2 else { return value }
         guard first == last, first == "`" || first == "'" || first == "\"" else { return value }
 

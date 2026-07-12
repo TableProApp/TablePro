@@ -1,0 +1,61 @@
+---
+title: "Users & Roles"
+description: "Manage database users, roles, and privileges without writing GRANT statements by hand."
+---
+
+TablePro can manage the users and roles on a server, and the privileges they hold, from a dedicated tab. Every change is shown as the SQL it will run before it runs.
+
+Available on **MySQL**, **MariaDB**, and **PostgreSQL** connections. The **Users & Roles** entry appears in the sidebar only when the connected driver supports it.
+
+## Opening the tab
+
+Click **Users & Roles** at the top of the sidebar. The tab lists every account on the server, with the selected account's details in the inspector on the right.
+
+PostgreSQL roles are cluster-level, so the list is the same whichever database you are connected to. MySQL accounts are identified by user and host, so they appear as `name@host`.
+
+## Privileges
+
+The inspector shows a privilege grid: one row per scope, one column per privilege.
+
+- **Server** covers every database (`*.*` on MySQL). PostgreSQL has no server-level grants; its equivalents are role attributes, shown in the **Attributes** section.
+- **One row per database** for database-level grants.
+
+The privilege columns come from the server itself, so a privilege your server version supports is offered even if it is newer than TablePro. A privilege that cannot be granted at a given scope is disabled in that row.
+
+Toggling a checkbox stages a change. Nothing is sent to the server until you apply.
+
+### Table and column privileges
+
+If an account already holds table-level or column-level privileges, they are listed read-only under **Table and Column Privileges**. TablePro does not edit them in this version, and shows them so that a database-level change does not silently hide privileges the account still has.
+
+## Applying changes
+
+Click **Review SQL** to see the statements TablePro generated from your changes. Statements that remove access are marked. You can copy the SQL, run it, or cancel.
+
+Changes are always sent as a diff. Unchecking a box you just checked cancels out instead of generating a redundant `REVOKE`.
+
+Changes run through the same safeguards as any other write: a read-only connection blocks them, and Safe Mode asks for confirmation or authentication as configured.
+
+<Warning>
+If a change would remove access for the account your connection is using, TablePro warns you before the SQL runs. It does not block the change, since revoking your own admin privileges can be deliberate.
+</Warning>
+
+## Creating an account
+
+Click **+**. Enter a name, and a host if the database uses host-scoped accounts. The **Generate** button suggests a strong password. Passwords are never pre-filled when editing an existing account, so leaving the field untouched leaves the password unchanged.
+
+## Dropping an account
+
+Select the account and click **-**, or use the context menu. TablePro asks for confirmation, then shows the SQL before it runs.
+
+On PostgreSQL, a role that owns objects cannot simply be dropped. TablePro detects this and offers to reassign the owned objects to another role, or to drop them, generating `REASSIGN OWNED` or `DROP OWNED` alongside the `DROP ROLE`.
+
+<Note>
+`REASSIGN OWNED` and `DROP OWNED` only affect the database you are connected to, plus shared objects. A role that owns objects in several databases needs the same step run in each of them. This is a PostgreSQL behaviour, not a TablePro limitation.
+</Note>
+
+## What is not covered
+
+- Editing table-level and column-level privileges (they are shown, not edited).
+- Role membership editing on MySQL. PostgreSQL role membership is shown in the inspector.
+- PostgreSQL `ALTER ROLE ... SET` parameters and security labels.

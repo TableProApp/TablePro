@@ -1,6 +1,6 @@
 import Foundation
 
-public protocol PluginPrincipalManagement {
+public protocol PluginPrincipalManagement: AnyObject, Sendable {
     var supportsPrincipalHostScoping: Bool { get }
     var supportsOwnedObjectReassignment: Bool { get }
     var supportsRoleMembership: Bool { get }

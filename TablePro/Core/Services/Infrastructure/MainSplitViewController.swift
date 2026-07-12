@@ -67,6 +67,8 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         switch payload?.tabType {
         case .serverDashboard:
             return String(localized: "Server Dashboard")
+        case .usersRoles:
+            return String(localized: "Users & Roles")
         case .erDiagram:
             return String(localized: "ER Diagram")
         case .createTable:
