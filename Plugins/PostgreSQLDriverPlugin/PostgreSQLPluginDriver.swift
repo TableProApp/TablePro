@@ -36,7 +36,8 @@ final class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
             .materializedViews,
             .foreignTables,
             .storedProcedures,
-            .userFunctions
+            .userFunctions,
+            .userManagement
         ]
     }
 

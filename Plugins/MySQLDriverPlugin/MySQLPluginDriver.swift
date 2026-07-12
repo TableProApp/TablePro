@@ -35,6 +35,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             .cancelQuery,
             .storedProcedures,
             .userFunctions,
+            .userManagement,
         ]
     }
 

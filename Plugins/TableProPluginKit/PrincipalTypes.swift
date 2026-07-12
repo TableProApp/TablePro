@@ -149,6 +149,16 @@ public struct PluginGrantInfo: Hashable, Sendable {
     }
 }
 
+public enum PluginPrivilegeName {
+    private static let allowed = Set("ABCDEFGHIJKLMNOPQRSTUVWXYZ _")
+
+    public static func sanitized(_ raw: String) -> String? {
+        let normalized = raw.uppercased()
+        guard !normalized.isEmpty, normalized.allSatisfy({ allowed.contains($0) }) else { return nil }
+        return normalized
+    }
+}
+
 public struct PluginPrincipalChangeSet: Sendable {
     public let principal: PluginPrincipalRef
     public let grantsToAdd: [PluginGrantInfo]
