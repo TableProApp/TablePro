@@ -22,11 +22,13 @@ private final class MockPrincipalDriver: PluginPrincipalManagement, @unchecked S
         ["CREATE ROLE \(definition.ref.name)"]
     }
 
+    var alterResult: [String]? = ["ALTER ROLE alice"]
+
     func generateAlterPrincipalSQL(
         old: PluginPrincipalDefinition,
         new: PluginPrincipalDefinition
     ) -> [String]? {
-        ["ALTER ROLE \(old.ref.name)"]
+        alterResult
     }
 
     func generateSetPasswordSQL(principal: PluginPrincipalRef, password: String) -> [String]? {
@@ -100,5 +102,34 @@ struct PrincipalStatementGeneratorTests {
         ])
 
         #expect(statements.map(\.sql) == ["DROP OWNED BY alice", "DROP ROLE alice"])
+    }
+
+    @Test("A driver returning no statements for an alter is not an error")
+    func emptyAlterYieldsNoStatements() throws {
+        let driver = MockPrincipalDriver()
+        driver.alterResult = []
+
+        let statements = try PrincipalStatementGenerator(driver: driver).generate(changes: [
+            .alter(
+                old: PluginPrincipalDefinition(ref: alice),
+                new: PluginPrincipalDefinition(ref: alice, canLogin: false)
+            )
+        ])
+        #expect(statements.isEmpty)
+    }
+
+    @Test("A driver that cannot alter at all still throws")
+    func unsupportedAlterThrows() {
+        let driver = MockPrincipalDriver()
+        driver.alterResult = nil
+
+        #expect(throws: DatabaseError.self) {
+            try PrincipalStatementGenerator(driver: driver).generate(changes: [
+                .alter(
+                    old: PluginPrincipalDefinition(ref: alice),
+                    new: PluginPrincipalDefinition(ref: alice, canLogin: false)
+                )
+            ])
+        }
     }
 }

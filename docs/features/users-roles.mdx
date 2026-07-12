@@ -3,65 +3,66 @@ title: "Users & Roles"
 description: "Manage database users, roles, and privileges without writing GRANT statements by hand."
 ---
 
-TablePro can manage the users and roles on a server, and the privileges they hold, from a dedicated tab. Every change is shown as the SQL it will run before it runs.
+TablePro can manage the users and roles on a server and the privileges they hold. Changes are staged, so nothing reaches the server until you review the SQL and apply it.
 
-Available on **MySQL**, **MariaDB**, and **PostgreSQL** connections. The **Users & Roles** entry appears in the sidebar only when the connected driver supports it.
+Available on **MySQL**, **MariaDB**, and **PostgreSQL** connections. Open it from **View > Users & Roles**. The command is disabled on connections whose driver does not support it.
 
-## Opening the tab
+## The layout
 
-Click **Users & Roles** at the top of the sidebar. The tab lists every account on the server, with the selected account's details in the inspector on the right.
+The tab has three panes:
 
-PostgreSQL roles are cluster-level, so the list is the same whichever database you are connected to. MySQL accounts are identified by user and host, so they appear as `name@host`.
+- **Users and roles** on the left. Filter, sort, and select an account. **+** and **-** below the list create and drop accounts.
+- **Objects** in the middle: the server, its databases, and, as you expand them, schemas, tables, and columns. The **Privileges** column tells you what the selected account has on each object without having to click it.
+- **Privileges** on the right: the privileges that can actually be granted on the object you selected, grouped into Data, Structure, Administration, and Dynamic.
 
-## Privileges
+Select several objects of the same kind to grant a privilege on all of them at once.
 
-The inspector shows a privilege tree: the object hierarchy down the first column, one checkbox column per privilege.
+## Effective privileges
 
-Expand a database to reach its schemas, tables, and columns. Every level is editable:
+A checkbox tells you what is granted **directly** on that object. The **Effective** column tells you where access actually comes from:
 
-- **Server** covers every database (`*.*` on MySQL). PostgreSQL has no server-level grants; its equivalents are role attributes, shown in the **Attributes** section.
-- **Database**
-- **Schema** (PostgreSQL; MySQL has no separate schema level)
-- **Table**
-- **Column**
+- **Inherited from `role`** means the account holds the privilege through a role it is a member of. PostgreSQL roles are followed transitively. If the account has `NOINHERIT`, the privilege only applies after `SET ROLE`, and TablePro says so.
+- **Granted on `object`** means a privilege on a parent object already covers this one. This is engine-specific: on MySQL a database-level grant covers the tables inside it, while on PostgreSQL it does not. TablePro asks the driver rather than guessing.
 
-The privilege columns come from the server itself, so a privilege your server version supports is offered even if it is newer than TablePro. A privilege that cannot be granted at a given level is disabled in that row: `TRUNCATE` is offered on a table, not on a column.
+This is the difference between "this box is unchecked" and "this user cannot do this". They are not the same thing, and the column exists to keep them apart.
 
-A checkbox shows a dash when the account does not hold the privilege on that object, but does hold it on something inside it. Clicking always grants or revokes on the row you clicked; the dash is an indicator, not a control.
+## Granting and revoking
 
-Toggling a checkbox stages a change. Nothing is sent to the server until you apply.
+Toggling a checkbox stages a change. The account, the object, and the privilege each show that they have unsaved edits, so a change is findable even in a server with hundreds of tables.
 
-<Note>
-PostgreSQL stores table and column privileges per database, and cannot read them for a database it is not connected to. Schemas, tables, and columns therefore expand only under the database the connection is using. Database-level grants work for every database. MySQL has no such restriction.
-</Note>
+**Review & Apply** shows the exact statements. Statements that remove access are listed too. You can copy the SQL, open it in a query editor, or run it.
 
-## Applying changes
-
-Click **Review SQL** to see the statements TablePro generated from your changes. Statements that remove access are marked. You can copy the SQL, run it, or cancel.
-
-Changes are always sent as a diff. Unchecking a box you just checked cancels out instead of generating a redundant `REVOKE`.
+Changes are always a diff. Unchecking a box you just checked cancels out instead of generating a redundant `REVOKE`, and a privilege that was grantable to others stays grantable.
 
 Changes run through the same safeguards as any other write: a read-only connection blocks them, and Safe Mode asks for confirmation or authentication as configured.
 
 <Warning>
-If a change would remove access for the account your connection is using, TablePro warns you before the SQL runs. It does not block the change, since revoking your own admin privileges can be deliberate.
+If a change would remove access for the account your connection is using, TablePro warns you in the review sheet before the SQL runs. It does not block the change, since revoking your own admin privileges can be deliberate.
 </Warning>
 
-## Creating an account
+## Refreshing while you have unsaved changes
 
-Click **+**. Enter a name, and a host if the database uses host-scoped accounts. The **Generate** button suggests a strong password. Passwords are never pre-filled when editing an existing account, so leaving the field untouched leaves the password unchanged.
+Press ⌘R at any time. TablePro re-reads the server and keeps your staged changes on top of it. If another DBA already made a change you had staged, that change quietly disappears from your diff because there is nothing left to do.
 
 ## Dropping an account
 
-Select the account and click **-**, or use the context menu. TablePro asks for confirmation, then shows the SQL before it runs.
+Select it and press ⌫, or use **-**, or the context menu. The drop is staged and struck through, and ⌘Z undoes it. Nothing runs until you apply.
 
-On PostgreSQL, a role that owns objects cannot simply be dropped. TablePro detects this and offers to reassign the owned objects to another role, or to drop them, generating `REASSIGN OWNED` or `DROP OWNED` alongside the `DROP ROLE`.
+On PostgreSQL, a role that owns objects cannot simply be dropped. TablePro detects this and asks whether to reassign the owned objects to another role or drop them, generating `REASSIGN OWNED` or `DROP OWNED` alongside the `DROP ROLE`.
 
 <Note>
-`REASSIGN OWNED` and `DROP OWNED` only affect the database you are connected to, plus shared objects. A role that owns objects in several databases needs the same step run in each of them. This is a PostgreSQL behaviour, not a TablePro limitation.
+`REASSIGN OWNED` and `DROP OWNED` only affect the database you are connected to, plus shared objects. A role that owns objects in several databases needs the same step run in each. This is a PostgreSQL behaviour, not a TablePro limitation.
 </Note>
+
+## What PostgreSQL cannot show you
+
+PostgreSQL stores schema, table, and column privileges per database and cannot read them for a database it is not connected to. Those databases still appear, still show their cluster-wide database-level grants, and are marked as not browsable. They are never shown as though the account had no privileges there.
+
+MySQL has no such restriction.
 
 ## What is not covered
 
-- Role membership editing on MySQL. PostgreSQL role membership is shown in the inspector.
-- PostgreSQL `ALTER ROLE ... SET` parameters and security labels.
+- Editing `WITH GRANT OPTION`. It is displayed, and never silently removed, but it is not editable.
+- `ALTER DEFAULT PRIVILEGES` and `GRANT ... ON ALL TABLES IN SCHEMA`.
+- MySQL 8 roles. MySQL accounts are managed as users.
+- Renaming an account.

@@ -103,9 +103,6 @@ struct SidebarView: View {
             switch sidebarState.selectedSidebarTab {
             case .tables:
                 VStack(spacing: 0) {
-                    if pluginCapabilities.contains(.userManagement), let coordinator {
-                        UsersRolesSidebarRow { coordinator.showUsersAndRoles() }
-                    }
                     tablesContent
                     tablesBottomBar
                 }

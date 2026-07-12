@@ -227,7 +227,7 @@ struct MainEditorContentView: View {
     private func usersRolesContent(tab: QueryTab) -> some View {
         Group {
             if let vm = usersRolesViewModels[tab.id] {
-                UsersRolesView(viewModel: vm)
+                UsersRolesTabView(viewModel: vm, coordinator: coordinator)
             } else {
                 ProgressView(String(localized: "Loading users and roles..."))
                     .frame(maxWidth: .infinity, maxHeight: .infinity)

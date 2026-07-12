@@ -244,29 +244,13 @@ struct MainStatusBarView: View {
 
     @ViewBuilder
     private func structureFooterControls(state: StructureFooterState) -> some View {
-        ControlGroup {
-            Button {
-                structureState.onAdd()
-            } label: {
-                Label(state.addLabel, systemImage: "plus")
-                    .labelStyle(.iconOnly)
-            }
-            .help(state.addLabel)
-            .accessibilityLabel(state.addLabel)
-            .disabled(!state.canAdd)
-
-            Button {
-                structureState.onRemove()
-            } label: {
-                Label(state.removeLabel, systemImage: "minus")
-                    .labelStyle(.iconOnly)
-            }
-            .help(state.removeLabel)
-            .accessibilityLabel(state.removeLabel)
-            .disabled(!state.canRemove)
-        }
-        .controlGroupStyle(.navigation)
-        .controlSize(.small)
-        .fixedSize()
+        AddRemoveControlGroup(
+            addLabel: state.addLabel,
+            removeLabel: state.removeLabel,
+            canAdd: state.canAdd,
+            canRemove: state.canRemove,
+            onAdd: { structureState.onAdd() },
+            onRemove: { structureState.onRemove() }
+        )
     }
 }

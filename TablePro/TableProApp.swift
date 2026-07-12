@@ -692,6 +692,11 @@ struct AppMenuCommands: Commands {
             }
             .disabled(!(actions?.isConnected ?? false) || !(actions?.supportsServerDashboard ?? false))
 
+            Button(String(localized: "Users & Roles")) {
+                actions?.showUsersAndRoles()
+            }
+            .disabled(!(actions?.isConnected ?? false) || !(actions?.supportsUserManagement ?? false))
+
             Divider()
 
             Button("Increase Text Size") {

@@ -121,6 +121,8 @@ final class MainContentCoordinator {
     /// (Cmd+S) routes to table creation. Set by `CreateTableView` on appear.
     weak var createTableActions: CreateTableActionHandler?
 
+    weak var usersRolesActions: UsersRolesActionHandler?
+
     /// Published capability/labels for the structure-mode footer in the bottom status bar.
     /// `TableStructureView` writes to this; `MainStatusBarView` reads from it.
     let structureFooterState = StructureFooterState()

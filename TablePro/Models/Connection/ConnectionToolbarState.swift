@@ -159,6 +159,8 @@ final class ConnectionToolbarState {
     /// Whether the Create Table tab has a committable definition (name + valid column)
     var hasCreateTablePending: Bool = false
 
+    var hasPrincipalChanges: Bool = false
+
     /// Whether the current editor has non-empty query text
     var hasQueryText: Bool = false
 
