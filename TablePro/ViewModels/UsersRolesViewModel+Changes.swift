@@ -38,10 +38,15 @@ extension UsersRolesViewModel {
     }
 
     func setGranted(_ isGranted: Bool, section: PrivilegeSection) {
-        guard let principal = selection, !selectedScopes.isEmpty, !isMixedScopeSelection else { return }
+        setGranted(isGranted, privileges: section.rows.compactMap(\.descriptor).map(\.name))
+    }
 
-        let privileges = section.rows.compactMap(\.descriptor).map(\.name)
-        guard !privileges.isEmpty else { return }
+    /// One manager call, so a bulk action is a single undo group.
+    func setGranted(_ isGranted: Bool, privileges: [String]) {
+        guard let principal = selection,
+              !selectedScopes.isEmpty,
+              !isMixedScopeSelection,
+              !privileges.isEmpty else { return }
 
         changeManager.setGranted(
             isGranted,

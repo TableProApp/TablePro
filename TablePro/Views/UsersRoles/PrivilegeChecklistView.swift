@@ -273,9 +273,11 @@ struct PrivilegeChecklistView: View {
     }
 
     private func setAll(_ isGranted: Bool) {
-        for section in viewModel.privilegeSections {
-            viewModel.setGranted(isGranted, section: section)
-        }
+        let privileges = viewModel.privilegeSections
+            .flatMap(\.rows)
+            .compactMap(\.descriptor)
+            .map(\.name)
+        viewModel.setGranted(isGranted, privileges: privileges)
     }
 
     private func reloadGrants() async {

@@ -182,6 +182,38 @@ struct PrincipalChangeManagerTests {
         #expect(manager.pendingChanges().isEmpty)
     }
 
+    @Test("Each mutation is its own undo group, independent of run-loop timing")
+    func undoIsPerMutation() {
+        let manager = makeManager()
+        manager.setGranted(true, privilege: "CREATE", scope: app, for: alice)
+        manager.stageDrop(PluginPrincipalRef(name: "bob"), options: PluginPrincipalDropOptions())
+        #expect(manager.changeCount == 2)
+
+        // With NSUndoManager's default groupsByEvent, both registrations would coalesce into one
+        // run-loop group and a single undo would reverse both.
+        manager.undoManager.undo()
+        #expect(manager.changeCount == 1)
+        #expect(manager.isGranted("CREATE", scope: app, for: alice))
+
+        manager.undoManager.undo()
+        #expect(manager.changeCount == 0)
+    }
+
+    @Test("A bulk grant is a single undo group")
+    func bulkGrantIsOneUndoGroup() {
+        let manager = makeManager()
+        manager.setGranted(
+            true,
+            privileges: ["CONNECT", "CREATE"],
+            scopes: [app, .database("other")],
+            for: alice
+        )
+        #expect(manager.changeCount > 1)
+
+        manager.undoManager.undo()
+        #expect(manager.changeCount == 0)
+    }
+
     @Test("Undoing the removal of a staged create restores its grants")
     func undoUnstageCreateRestoresGrants() {
         let carol = PluginPrincipalRef(name: "carol")

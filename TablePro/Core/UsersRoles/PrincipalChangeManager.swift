@@ -19,8 +19,16 @@ final class PrincipalChangeManager {
     private(set) var changeCount = 0
     private(set) var grantClosureVersion = 0
 
+    /// `groupsByEvent` is off: with it on, NSUndoManager coalesces every registration made in the
+    /// same run-loop event into one group, so undo granularity would depend on how fast the user
+    /// clicked. Each mutation opens and closes its own group instead.
     @ObservationIgnored
-    let undoManager = UndoManager()
+    let undoManager: UndoManager = {
+        let manager = UndoManager()
+        manager.groupsByEvent = false
+        manager.levelsOfUndo = 100
+        return manager
+    }()
 
     @ObservationIgnored
     private var baselineKeys: [PluginPrincipalRef: Set<PrincipalGrantKey>] = [:]
@@ -223,10 +231,7 @@ final class PrincipalChangeManager {
         invalidateClosures()
         recomputeChangeCount()
 
-        if let actionName {
-            undoManager.setActionName(actionName)
-        }
-        undoManager.registerUndo(withTarget: self) { manager in
+        registerUndo(actionName: actionName) { manager in
             manager.applyDelta(
                 previous,
                 for: principal,
@@ -267,10 +272,9 @@ final class PrincipalChangeManager {
         invalidateClosures()
         recomputeChangeCount()
 
-        undoManager.setActionName(
-            String(format: String(localized: "Create %@"), definition.ref.displayName)
-        )
-        undoManager.registerUndo(withTarget: self) { manager in
+        registerUndo(
+            actionName: String(format: String(localized: "Create %@"), definition.ref.displayName)
+        ) { manager in
             manager.unstageCreate(definition.ref)
         }
     }
@@ -290,10 +294,9 @@ final class PrincipalChangeManager {
         invalidateClosures()
         recomputeChangeCount()
 
-        undoManager.setActionName(
-            String(format: String(localized: "Remove %@"), ref.displayName)
-        )
-        undoManager.registerUndo(withTarget: self) { manager in
+        registerUndo(
+            actionName: String(format: String(localized: "Remove %@"), ref.displayName)
+        ) { manager in
             manager.restoreCreate(definition, delta: delta, password: password)
         }
     }
@@ -319,10 +322,9 @@ final class PrincipalChangeManager {
         pendingDrops[ref] = options
         recomputeChangeCount()
 
-        undoManager.setActionName(
-            String(format: String(localized: "Drop %@"), ref.displayName)
-        )
-        undoManager.registerUndo(withTarget: self) { manager in
+        registerUndo(
+            actionName: String(format: String(localized: "Drop %@"), ref.displayName)
+        ) { manager in
             manager.unstageDrop(ref)
         }
     }
@@ -331,7 +333,7 @@ final class PrincipalChangeManager {
         guard let options = pendingDrops.removeValue(forKey: ref) else { return }
         recomputeChangeCount()
 
-        undoManager.registerUndo(withTarget: self) { manager in
+        registerUndo { manager in
             manager.stageDrop(ref, options: options)
         }
     }
@@ -341,10 +343,12 @@ final class PrincipalChangeManager {
         pendingPasswords[ref] = password
         recomputeChangeCount()
 
-        undoManager.setActionName(
-            String(format: String(localized: "Change Password for %@"), ref.displayName)
-        )
-        undoManager.registerUndo(withTarget: self) { manager in
+        registerUndo(
+            actionName: String(
+                format: String(localized: "Change Password for %@"),
+                ref.displayName
+            )
+        ) { manager in
             if let previous {
                 manager.stageSetPassword(previous, for: ref)
             } else {
@@ -357,7 +361,7 @@ final class PrincipalChangeManager {
         guard let previous = pendingPasswords.removeValue(forKey: ref) else { return }
         recomputeChangeCount()
 
-        undoManager.registerUndo(withTarget: self) { manager in
+        registerUndo { manager in
             manager.stageSetPassword(previous, for: ref)
         }
     }
@@ -372,8 +376,7 @@ final class PrincipalChangeManager {
             pendingCreates[index] = definition
             recomputeChangeCount()
 
-            undoManager.setActionName(String(localized: "Change Attributes"))
-            undoManager.registerUndo(withTarget: self) { manager in
+            registerUndo(actionName: String(localized: "Change Attributes")) { manager in
                 manager.stageAlter(previous, for: ref)
             }
             return
@@ -390,8 +393,7 @@ final class PrincipalChangeManager {
         guard pendingAlters[ref] != previous else { return }
         recomputeChangeCount()
 
-        undoManager.setActionName(String(localized: "Change Attributes"))
-        undoManager.registerUndo(withTarget: self) { manager in
+        registerUndo(actionName: String(localized: "Change Attributes")) { manager in
             if let previous {
                 manager.stageAlter(previous, for: ref)
             } else {
@@ -404,7 +406,7 @@ final class PrincipalChangeManager {
         guard let previous = pendingAlters.removeValue(forKey: ref) else { return }
         recomputeChangeCount()
 
-        undoManager.registerUndo(withTarget: self) { manager in
+        registerUndo { manager in
             manager.stageAlter(previous, for: ref)
         }
     }
@@ -500,6 +502,25 @@ final class PrincipalChangeManager {
     }
 
     // MARK: - Bookkeeping
+
+    /// While the manager is undoing or redoing, NSUndoManager has already opened a group for the
+    /// inverse registration, so opening another would nest a group inside it.
+    private func registerUndo(
+        actionName: String? = nil,
+        _ body: @escaping (PrincipalChangeManager) -> Void
+    ) {
+        let opensGroup = !undoManager.isUndoing && !undoManager.isRedoing
+        if opensGroup {
+            undoManager.beginUndoGrouping()
+        }
+        if let actionName {
+            undoManager.setActionName(actionName)
+        }
+        undoManager.registerUndo(withTarget: self, handler: body)
+        if opensGroup {
+            undoManager.endUndoGrouping()
+        }
+    }
 
     private func recomputeChangeCount() {
         let grantChanges = grantDeltas.values.reduce(0) { $0 + $1.count }
