@@ -12,8 +12,8 @@ struct UsersRolesTabView: View {
         VStack(spacing: 0) {
             AutosavingSplitView(
                 autosaveName: "com.TablePro.usersRoles.mainSplit",
-                primaryMinimum: 220,
-                primaryMaximum: 380,
+                primaryMinimum: 200,
+                primaryMaximum: 520,
                 secondaryMinimum: 560
             ) {
                 PrincipalListPane(viewModel: viewModel)

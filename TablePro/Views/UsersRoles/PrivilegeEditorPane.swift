@@ -8,7 +8,7 @@ struct PrivilegeEditorPane: View {
         AutosavingSplitView(
             autosaveName: "com.TablePro.usersRoles.privilegeSplit",
             primaryMinimum: 240,
-            primaryMaximum: 480,
+            primaryMaximum: 640,
             secondaryMinimum: 300
         ) {
             scopePane
