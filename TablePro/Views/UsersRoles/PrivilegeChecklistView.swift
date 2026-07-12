@@ -90,7 +90,7 @@ struct PrivilegeChecklistView: View {
             EmptyStateView(
                 icon: "exclamationmark.triangle",
                 title: String(localized: "Unable to Load Privileges"),
-                message: error,
+                description: error,
                 actionTitle: String(localized: "Retry"),
                 action: { Task { await reloadGrants() } }
             )
@@ -136,7 +136,7 @@ struct PrivilegeChecklistView: View {
                     section.headerRow,
                     isExpanded: expansionBinding(for: section)
                 ) {
-                    ForEach(section.rows) { TableRow($0) }
+                    ForEach(section.rows) { SwiftUI.TableRow($0) }
                 }
             }
         }

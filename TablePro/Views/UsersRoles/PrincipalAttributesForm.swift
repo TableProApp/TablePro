@@ -19,13 +19,15 @@ struct PrincipalAttributesForm: View {
                 }
             }
 
-            Section(String(localized: "Authentication")) {
+            Section {
                 Toggle(String(localized: "Can log in"), isOn: canLoginBinding)
                     .disabled(!viewModel.capabilities.roleMembership)
 
                 Button(String(localized: "Change Password…")) {
                     viewModel.activeSheet = .changePassword(principal.ref)
                 }
+            } header: {
+                Text("Authentication")
             } footer: {
                 if viewModel.changeManager.pendingPasswords[principal.ref] != nil {
                     Text("A new password will be set when you apply changes.")
@@ -33,10 +35,12 @@ struct PrincipalAttributesForm: View {
             }
 
             if !principal.attributes.isEmpty {
-                Section(String(localized: "Role Attributes")) {
+                Section {
                     ForEach(principal.attributes, id: \.key) { attribute in
                         Toggle(attribute.label, isOn: attributeBinding(attribute))
                     }
+                } header: {
+                    Text("Role Attributes")
                 } footer: {
                     if isSuperuser {
                         Text("A superuser bypasses all permission checks.")

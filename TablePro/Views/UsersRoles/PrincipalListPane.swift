@@ -58,7 +58,7 @@ struct PrincipalListPane: View {
             EmptyStateView(
                 icon: "exclamationmark.triangle",
                 title: String(localized: "Unable to Load Users and Roles"),
-                message: error,
+                description: error,
                 actionTitle: String(localized: "Retry"),
                 action: { Task { await viewModel.load(forceReload: true) } }
             )
@@ -68,7 +68,7 @@ struct PrincipalListPane: View {
             EmptyStateView(
                 icon: "person.2",
                 title: String(localized: "No Users or Roles"),
-                message: String(localized: "This server has no users or roles you can manage."),
+                description: String(localized: "This server has no users or roles you can manage."),
                 actionTitle: String(localized: "New User or Role"),
                 action: { viewModel.activeSheet = .create }
             )
@@ -78,39 +78,48 @@ struct PrincipalListPane: View {
     }
 
     private var table: some View {
+        principalTable
+            .tableStyle(.inset)
+            .alternatingRowBackgrounds(.enabled)
+            .accessibilityIdentifier("usersroles-principal-list")
+            .contextMenu(forSelectionType: PluginPrincipalRef.self) { refs in
+                rowMenu(refs)
+            }
+            .onDeleteCommand {
+                Task { await viewModel.requestDrop(viewModel.selectedRefs) }
+            }
+            .onChange(of: viewModel.selectedRefs) { _, refs in
+                viewModel.selection = refs.count == 1 ? refs.first : nil
+            }
+            .task(id: viewModel.selection) {
+                guard let selection = viewModel.selection else { return }
+                await viewModel.loadGrants(for: selection)
+            }
+    }
+
+    private var principalTable: some View {
         Table(rows, selection: $viewModel.selectedRefs, sortOrder: $sortOrder) {
-            TableColumn(String(localized: "Name"), value: \.sortName) { row in
+            TableColumn(String(localized: "Name"), value: \PrincipalRow.sortName) { row in
                 nameCell(row)
             }
 
-            if viewModel.capabilities.roleMembership {
-                TableColumn(String(localized: "Kind")) { row in
-                    Text(row.kindTitle)
-                        .foregroundStyle(.secondary)
-                }
-                .width(60)
+            TableColumn(String(localized: "Kind")) { (row: PrincipalRow) in
+                kindCell(row)
             }
+            .width(60)
 
-            TableColumn(String(localized: "Status")) { row in
+            TableColumn(String(localized: "Status")) { (row: PrincipalRow) in
                 statusCell(row)
             }
             .width(50)
         }
-        .tableStyle(.inset)
-        .alternatingRowBackgrounds(.enabled)
-        .accessibilityIdentifier("usersroles-principal-list")
-        .contextMenu(forSelectionType: PluginPrincipalRef.self) { refs in
-            rowMenu(refs)
-        }
-        .onDeleteCommand {
-            Task { await viewModel.requestDrop(viewModel.selectedRefs) }
-        }
-        .onChange(of: viewModel.selectedRefs) { _, refs in
-            viewModel.selection = refs.count == 1 ? refs.first : nil
-        }
-        .task(id: viewModel.selection) {
-            guard let selection = viewModel.selection else { return }
-            await viewModel.loadGrants(for: selection)
+    }
+
+    @ViewBuilder
+    private func kindCell(_ row: PrincipalRow) -> some View {
+        if viewModel.capabilities.roleMembership {
+            Text(row.kindTitle)
+                .foregroundStyle(.secondary)
         }
     }
 
