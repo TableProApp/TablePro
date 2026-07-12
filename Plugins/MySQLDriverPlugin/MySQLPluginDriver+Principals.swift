@@ -124,8 +124,7 @@ extension MySQLPluginDriver: PluginPrincipalManagement {
     }
 
     private func tables(in database: String) async throws -> [PluginPrivilegeScope] {
-        let query = "SHOW TABLES FROM \(quotedDatabaseIdentifier(database))"
-        let result = try await execute(query: query)
+        let result = try await execute(query: "SHOW TABLES FROM \(quoteIdentifier(database))")
         return result.rows.compactMap { row in
             guard let table = row[safe: 0]?.asText else { return nil }
             return .table(database: database, schema: nil, table: table)
@@ -133,7 +132,7 @@ extension MySQLPluginDriver: PluginPrincipalManagement {
     }
 
     private func columns(in database: String, table: String) async throws -> [PluginPrivilegeScope] {
-        let target = "\(quotedDatabaseIdentifier(database)).\(quoteIdentifier(table))"
+        let target = "\(quoteIdentifier(database)).\(quoteIdentifier(table))"
         let result = try await execute(query: "SHOW COLUMNS FROM \(target)")
         return result.rows.compactMap { row in
             guard let column = row[safe: 0]?.asText else { return nil }
@@ -147,7 +146,7 @@ extension MySQLPluginDriver: PluginPrincipalManagement {
     ) -> [PluginGrantInfo] {
         parsed.privileges.flatMap { privilege -> [PluginGrantInfo] in
             guard privilege.columns.isEmpty else {
-                return columnGrants(privilege: privilege, scope: parsed.scope, parsed: parsed)
+                return columnGrants(privilege, in: parsed)
             }
             let names = privilege.name == MySQLGrantParser.allPrivileges
                 ? catalog.privileges(for: parsed.scope).map(\.name)
@@ -160,20 +159,16 @@ extension MySQLPluginDriver: PluginPrincipalManagement {
     }
 
     private func columnGrants(
-        privilege: MySQLParsedPrivilege,
-        scope: PluginPrivilegeScope,
-        parsed: MySQLParsedGrant
+        _ privilege: MySQLParsedPrivilege,
+        in parsed: MySQLParsedGrant
     ) -> [PluginGrantInfo] {
-        guard let database = scope.databaseName, let table = scope.tableName else { return [] }
+        guard let database = parsed.scope.databaseName,
+              let table = parsed.scope.tableName else { return [] }
+
         return privilege.columns.map { column in
             PluginGrantInfo(
                 privilege: privilege.name,
-                scope: .column(
-                    database: database,
-                    schema: nil,
-                    table: table,
-                    column: column
-                ),
+                scope: .column(database: database, schema: nil, table: table, column: column),
                 isGrantable: parsed.isGrantable
             )
         }
@@ -202,9 +197,5 @@ extension MySQLPluginDriver: PluginPrincipalManagement {
 
     func quotedDatabasePattern(_ name: String) -> String {
         quoteIdentifier(MySQLGrantPatternEscaping.escapeDatabasePattern(name))
-    }
-
-    private func quotedDatabaseIdentifier(_ name: String) -> String {
-        quoteIdentifier(name)
     }
 }

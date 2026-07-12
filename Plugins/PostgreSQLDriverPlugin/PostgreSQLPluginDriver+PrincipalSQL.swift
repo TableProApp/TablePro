@@ -85,35 +85,19 @@ extension PostgreSQLPluginDriver {
     }
 
     func generateGrantSQL(changeSet: PluginPrincipalChangeSet) -> [String]? {
-        let role = quoteIdentifier(changeSet.principal.name)
-        return PluginGrantGrouping.group(changeSet.grantsToAdd).compactMap { group in
-            guard let target = grantTarget(for: group.scope),
-                  let clause = privilegeClause(for: group) else { return nil }
-            let grantOption = group.isGrantable ? " WITH GRANT OPTION" : ""
-            return "GRANT \(clause) ON \(target) TO \(role)\(grantOption)"
-        }
+        grantBuilder(for: changeSet.principal).grantStatements(changeSet.grantsToAdd)
     }
 
     func generateRevokeSQL(changeSet: PluginPrincipalChangeSet) -> [String]? {
-        let role = quoteIdentifier(changeSet.principal.name)
-        return PluginGrantGrouping.group(changeSet.grantsToRemove).compactMap { group in
-            guard let target = grantTarget(for: group.scope),
-                  let clause = privilegeClause(for: group) else { return nil }
-            return "REVOKE \(clause) ON \(target) FROM \(role)"
-        }
+        grantBuilder(for: changeSet.principal).revokeStatements(changeSet.grantsToRemove)
     }
 
-    private func privilegeClause(for group: PluginGrantGroup) -> String? {
-        var parts = group.privileges.compactMap(PluginPrivilegeName.sanitized)
-
-        parts += group.columnPrivileges.compactMap { entry -> String? in
-            guard let privilege = PluginPrivilegeName.sanitized(entry.privilege),
-                  !entry.columns.isEmpty else { return nil }
-            let columns = entry.columns.map { quoteIdentifier($0) }.joined(separator: ", ")
-            return "\(privilege) (\(columns))"
-        }
-
-        return parts.isEmpty ? nil : parts.joined(separator: ", ")
+    private func grantBuilder(for principal: PluginPrincipalRef) -> PluginGrantSQLBuilder {
+        PluginGrantSQLBuilder(
+            grantee: quoteIdentifier(principal.name),
+            quoteIdentifier: { self.quoteIdentifier($0) },
+            target: { self.grantTarget(for: $0) }
+        )
     }
 
     private func grantTarget(for scope: PluginPrivilegeScope) -> String? {

@@ -12,50 +12,55 @@ final class UsersRolesViewModel {
         case dropOwned
     }
 
-    private static let logger = Logger(subsystem: "com.TablePro", category: "UsersRolesViewModel")
+    struct Capabilities {
+        var hostScoping = false
+        var roleMembership = false
+        var ownedObjectReassignment = false
+    }
+
+    static let logger = Logger(subsystem: "com.TablePro", category: "UsersRolesViewModel")
 
     let connectionId: UUID
     let databaseType: DatabaseType
 
     let changeManager = PrincipalChangeManager()
+    let privilegeTree = PrivilegeTreeModel()
 
     private(set) var databases: [String] = []
-    private(set) var privilegeRoots: [PrivilegeNode] = []
-    private(set) var treeVersion = 0
-    private(set) var isLoading = false
-    private(set) var errorMessage: String?
+    private(set) var capabilities = Capabilities()
     private(set) var connectedPrincipal: PluginPrincipalRef?
 
+    internal var isLoading = false
+    internal var previewStatements: [SchemaStatement] = []
+
+    var errorMessage: String?
     var selection: PluginPrincipalRef?
 
     var isCreateSheetPresented = false
     var isPasswordSheetPresented = false
-    var principalPendingDrop: PluginPrincipalInfo?
+    var isReviewPresented = false
     var isOwnedObjectDialogPresented = false
+    var principalPendingDrop: PluginPrincipalInfo?
     var lockoutWarning: String?
 
-    private(set) var previewStatements: [SchemaStatement] = []
-    var isReviewPresented = false
-
-    private var loader: PrincipalListLoader?
-
-    var supportsHostScoping: Bool { capabilities?.supportsPrincipalHostScoping ?? false }
-    var supportsRoleMembership: Bool { capabilities?.supportsRoleMembership ?? false }
-    var supportsOwnedObjectReassignment: Bool { capabilities?.supportsOwnedObjectReassignment ?? false }
-
-    private var capabilities: (any PluginPrincipalManagement)? {
-        DatabaseManager.shared.principalDriver(for: connectionId)
-    }
+    @ObservationIgnored
+    private(set) var loader: PrincipalListLoader?
 
     var selectedPrincipal: PluginPrincipalInfo? {
         guard let selection else { return nil }
         return changeManager.principals.first { $0.ref == selection }
     }
 
+    var assignableRoles: [String] {
+        changeManager.principals.filter(\.isRole).map(\.ref.name)
+    }
+
     init(connectionId: UUID, databaseType: DatabaseType) {
         self.connectionId = connectionId
         self.databaseType = databaseType
     }
+
+    // MARK: - Loading
 
     func load(forceReload: Bool = false) async {
         guard let driver = DatabaseManager.shared.principalDriver(for: connectionId) else {
@@ -67,6 +72,12 @@ final class UsersRolesViewModel {
         }
         guard let loader else { return }
 
+        capabilities = Capabilities(
+            hostScoping: driver.supportsPrincipalHostScoping,
+            roleMembership: driver.supportsRoleMembership,
+            ownedObjectReassignment: driver.supportsOwnedObjectReassignment
+        )
+
         isLoading = true
         errorMessage = nil
         defer { isLoading = false }
@@ -75,8 +86,13 @@ final class UsersRolesViewModel {
             let snapshot = try await loader.load(forceReload: forceReload)
             databases = try await loader.databases()
             connectedPrincipal = try await loader.currentPrincipal()
+
             changeManager.load(principals: snapshot.principals, catalog: snapshot.catalog)
-            rebuildPrivilegeTree(catalog: snapshot.catalog)
+            privilegeTree.rebuild(
+                databases: databases,
+                catalog: snapshot.catalog,
+                loader: loader
+            )
 
             if let selection, !snapshot.principals.contains(where: { $0.ref == selection }) {
                 self.selection = nil
@@ -85,8 +101,7 @@ final class UsersRolesViewModel {
                 await loadGrants(for: selection)
             }
         } catch {
-            errorMessage = error.localizedDescription
-            Self.logger.error("Failed to load principals: \(error.localizedDescription)")
+            report(error, context: "load principals")
         }
     }
 
@@ -96,145 +111,27 @@ final class UsersRolesViewModel {
         await loadGrants(for: ref)
     }
 
-    private func loadGrants(for ref: PluginPrincipalRef) async {
-        guard let loader else { return }
-        do {
-            let grants = try await loader.grants(for: ref)
-            changeManager.loadGrants(grants, for: ref)
-        } catch {
-            errorMessage = error.localizedDescription
-            Self.logger.error("Failed to load grants: \(error.localizedDescription)")
-        }
-    }
-
-    private func rebuildPrivilegeTree(catalog: PluginPrivilegeCatalog) {
-        var roots: [PrivilegeNode] = []
-        if !catalog.serverPrivileges.isEmpty {
-            roots.append(PrivilegeNode.make(for: .server))
-        }
-        roots.append(contentsOf: databases.map { PrivilegeNode.make(for: .database($0)) })
-        privilegeRoots = roots
-        treeVersion += 1
-    }
-
     func expand(_ node: PrivilegeNode) {
-        guard !node.hasLoadedChildren, let loader else { return }
-        node.beginLoading()
-
         Task {
             do {
-                let children = try await loader.grantableChildren(of: node.scope)
-                node.setChildren(children.map { PrivilegeNode.make(for: $0) })
-                treeVersion += 1
+                try await privilegeTree.expand(node)
             } catch {
-                node.setChildren([])
-                errorMessage = error.localizedDescription
-                Self.logger.error("Failed to expand privilege scope: \(error.localizedDescription)")
+                report(error, context: "expand privilege scope")
             }
         }
     }
 
-    func createPrincipal(_ definition: PluginPrincipalDefinition) {
-        changeManager.stageCreate(definition)
-        selection = definition.ref
-    }
-
-    func setPassword(_ password: String, for ref: PluginPrincipalRef) {
-        changeManager.stageSetPassword(password, for: ref)
-    }
-
-    func requestDrop(_ principal: PluginPrincipalInfo) async {
-        principalPendingDrop = principal
-
-        guard supportsOwnedObjectReassignment, let loader else { return }
+    private func loadGrants(for ref: PluginPrincipalRef) async {
+        guard let loader else { return }
         do {
-            isOwnedObjectDialogPresented = try await loader.ownsObjects(principal.ref)
+            changeManager.loadGrants(try await loader.grants(for: ref), for: ref)
         } catch {
-            Self.logger.error("Ownership probe failed: \(error.localizedDescription)")
-            isOwnedObjectDialogPresented = false
+            report(error, context: "load grants")
         }
     }
 
-    func confirmDrop(_ disposition: DropDisposition) {
-        guard let principal = principalPendingDrop else { return }
-        principalPendingDrop = nil
-        isOwnedObjectDialogPresented = false
-
-        let options = switch disposition {
-        case .plain:
-            PluginPrincipalDropOptions()
-        case let .reassignOwned(target):
-            PluginPrincipalDropOptions(reassignOwnedTo: target)
-        case .dropOwned:
-            PluginPrincipalDropOptions(dropOwned: true)
-        }
-        changeManager.stageDrop(principal.ref, options: options)
-    }
-
-    func requestApply() {
-        let changes = changeManager.pendingChanges()
-        guard !changes.isEmpty else { return }
-
-        guard let driver = DatabaseManager.shared.principalDriver(for: connectionId) else {
-            errorMessage = String(localized: "This connection does not support user and role management.")
-            return
-        }
-
-        do {
-            previewStatements = try PrincipalStatementGenerator(driver: driver).generate(changes: changes)
-        } catch {
-            errorMessage = error.localizedDescription
-            return
-        }
-
-        lockoutWarning = selfLockoutWarning()
-        isReviewPresented = true
-    }
-
-    func executePendingChanges() async {
-        let changes = changeManager.pendingChanges()
-        guard !changes.isEmpty else { return }
-
-        isReviewPresented = false
-        isLoading = true
-        defer { isLoading = false }
-
-        do {
-            try await DatabaseManager.shared.executePrincipalChanges(
-                changes: changes,
-                databaseType: databaseType,
-                connectionId: connectionId
-            )
-            await load(forceReload: true)
-        } catch {
-            errorMessage = error.localizedDescription
-            Self.logger.error("Failed to apply principal changes: \(error.localizedDescription)")
-        }
-    }
-
-    func discardChanges() {
-        changeManager.discardChanges()
-        previewStatements = []
-        lockoutWarning = nil
-    }
-
-    private func selfLockoutWarning() -> String? {
-        guard let connectedPrincipal else { return nil }
-
-        let affected = changeManager.principalsLosingAllAccess()
-        let matches = affected.contains {
-            $0.name.compare(connectedPrincipal.name, options: .caseInsensitive) == .orderedSame
-        }
-        guard matches else { return nil }
-
-        return String(
-            format: String(
-                localized: """
-                    These changes remove access for %@, the account this connection uses. \
-                    You may lose access to this server.
-                    """
-            ),
-            connectedPrincipal.name
-        )
+    func report(_ error: Error, context: String) {
+        errorMessage = error.localizedDescription
+        Self.logger.error("Failed to \(context, privacy: .public): \(error.localizedDescription)")
     }
 }

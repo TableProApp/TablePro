@@ -38,7 +38,7 @@ struct PrincipalInspectorView: View {
                 }
             }
 
-            if viewModel.supportsRoleMembership, !principal.memberOf.isEmpty {
+            if viewModel.capabilities.roleMembership, !principal.memberOf.isEmpty {
                 Section("Member of") {
                     ForEach(principal.memberOf, id: \.self) { role in
                         Text(role)
@@ -58,8 +58,8 @@ struct PrincipalInspectorView: View {
         if let catalog, !catalog.allPrivileges.isEmpty {
             VStack(alignment: .leading, spacing: 6) {
                 PrivilegeTreeView(
-                    roots: viewModel.privilegeRoots,
-                    version: viewModel.treeVersion,
+                    roots: viewModel.privilegeTree.roots,
+                    version: viewModel.privilegeTree.version,
                     privileges: catalog.allPrivileges,
                     catalog: catalog,
                     isGranted: { privilege, scope in
@@ -69,7 +69,7 @@ struct PrincipalInspectorView: View {
                         changeManager.hasDescendantGrant(privilege, under: scope, for: principal.ref)
                     },
                     onToggle: { privilege, scope, isGranted in
-                        changeManager.setGranted(
+                        viewModel.toggleGrant(
                             isGranted,
                             privilege: privilege,
                             scope: scope,

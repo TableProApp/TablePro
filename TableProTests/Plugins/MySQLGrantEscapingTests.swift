@@ -110,6 +110,101 @@ struct MySQLGrantParserTests {
     }
 }
 
+@Suite("Grant SQL builder")
+struct PluginGrantSQLBuilderTests {
+    private func mysqlQuote(_ value: String) -> String {
+        "`" + value.replacingOccurrences(of: "`", with: "``") + "`"
+    }
+
+    private func mysqlTarget(_ scope: PluginPrivilegeScope) -> String? {
+        func database(_ name: String) -> String {
+            mysqlQuote(MySQLGrantPatternEscaping.escapeDatabasePattern(name))
+        }
+        switch scope {
+        case .server:
+            return "*.*"
+        case let .database(name):
+            return "\(database(name)).*"
+        case let .schema(db, _):
+            return "\(database(db)).*"
+        case let .table(db, _, table), let .column(db, _, table, _):
+            return "\(database(db)).\(mysqlQuote(table))"
+        }
+    }
+
+    private var builder: PluginGrantSQLBuilder {
+        PluginGrantSQLBuilder(
+            grantee: "`u`@`h`",
+            quoteIdentifier: mysqlQuote,
+            target: mysqlTarget
+        )
+    }
+
+    @Test("A table grant and its column grants become one statement with a wildcard-escaped database")
+    func buildsSingleStatementPerObject() {
+        let table = PluginPrivilegeScope.table(database: "prod_forums", schema: nil, table: "orders")
+        let statements = builder.grantStatements([
+            PluginGrantInfo(privilege: "SELECT", scope: table),
+            PluginGrantInfo(
+                privilege: "UPDATE",
+                scope: .column(database: "prod_forums", schema: nil, table: "orders", column: "total")
+            ),
+            PluginGrantInfo(
+                privilege: "UPDATE",
+                scope: .column(database: "prod_forums", schema: nil, table: "orders", column: "status")
+            )
+        ])
+
+        #expect(statements == [
+            #"GRANT SELECT, UPDATE (`total`, `status`) ON `prod\_forums`.`orders` TO `u`@`h`"#
+        ])
+    }
+
+    @Test("WITH GRANT OPTION is emitted only when the grant carries it")
+    func emitsGrantOption() {
+        let grantable = builder.grantStatements([
+            PluginGrantInfo(privilege: "SELECT", scope: .database("app"), isGrantable: true)
+        ])
+        let plain = builder.grantStatements([
+            PluginGrantInfo(privilege: "SELECT", scope: .database("app"))
+        ])
+
+        #expect(grantable == ["GRANT SELECT ON `app`.* TO `u`@`h` WITH GRANT OPTION"])
+        #expect(plain == ["GRANT SELECT ON `app`.* TO `u`@`h`"])
+    }
+
+    @Test("Revoke uses FROM and never carries a grant option")
+    func buildsRevoke() {
+        let statements = builder.revokeStatements([
+            PluginGrantInfo(privilege: "SELECT", scope: .database("app"), isGrantable: true)
+        ])
+        #expect(statements == ["REVOKE SELECT ON `app`.* FROM `u`@`h`"])
+    }
+
+    @Test("A privilege name that is not a keyword is never interpolated into SQL")
+    func dropsHostilePrivilegeNames() {
+        let statements = builder.grantStatements([
+            PluginGrantInfo(privilege: "SELECT; DROP DATABASE x; --", scope: .database("app"))
+        ])
+        #expect(statements.isEmpty)
+    }
+
+    @Test("A scope with no target in this dialect produces no statement")
+    func dropsUntargetableScopes() {
+        let noTarget = PluginGrantSQLBuilder(
+            grantee: "\"analytics\"",
+            quoteIdentifier: { "\"\($0)\"" },
+            target: { scope in
+                if case .server = scope { return nil }
+                return "DATABASE \"x\""
+            }
+        )
+        #expect(noTarget.grantStatements([
+            PluginGrantInfo(privilege: "SELECT", scope: .server)
+        ]).isEmpty)
+    }
+}
+
 @Suite("Grant grouping")
 struct PluginGrantGroupingTests {
     private let table = PluginPrivilegeScope.table(database: "app", schema: "public", table: "orders")

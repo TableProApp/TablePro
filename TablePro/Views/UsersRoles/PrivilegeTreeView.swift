@@ -49,7 +49,7 @@ struct PrivilegeTreeView: NSViewRepresentable {
 
     @MainActor
     final class Coordinator: NSObject, NSOutlineViewDataSource, NSOutlineViewDelegate {
-        private static let scopeColumnIdentifier = NSUserInterfaceItemIdentifier("scope")
+        static let scopeColumnIdentifier = NSUserInterfaceItemIdentifier("scope")
 
         var parent: PrivilegeTreeView
         weak var outlineView: NSOutlineView?
@@ -107,107 +107,6 @@ struct PrivilegeTreeView: NSViewRepresentable {
             guard let node = notification.userInfo?["NSObject"] as? PrivilegeNode,
                   !node.hasLoadedChildren else { return }
             parent.onExpand(node)
-        }
-
-        // MARK: - Delegate
-
-        func outlineView(
-            _ outlineView: NSOutlineView,
-            viewFor tableColumn: NSTableColumn?,
-            item: Any
-        ) -> NSView? {
-            guard let tableColumn, let node = item as? PrivilegeNode else { return nil }
-
-            if tableColumn.identifier == Self.scopeColumnIdentifier {
-                return label(for: node, outlineView: outlineView, column: tableColumn)
-            }
-            return checkbox(
-                privilege: tableColumn.identifier.rawValue,
-                node: node,
-                outlineView: outlineView,
-                column: tableColumn
-            )
-        }
-
-        private func label(
-            for node: PrivilegeNode,
-            outlineView: NSOutlineView,
-            column: NSTableColumn
-        ) -> NSView {
-            let field: NSTextField
-            if let reused = outlineView.makeView(withIdentifier: column.identifier, owner: self) as? NSTextField {
-                field = reused
-            } else {
-                field = NSTextField(labelWithString: "")
-                field.identifier = column.identifier
-                field.lineBreakMode = .byTruncatingMiddle
-            }
-            field.stringValue = node.title
-            return field
-        }
-
-        private func checkbox(
-            privilege: String,
-            node: PrivilegeNode,
-            outlineView: NSOutlineView,
-            column: NSTableColumn
-        ) -> NSView {
-            let button: NSButton
-            if let reused = outlineView.makeView(withIdentifier: column.identifier, owner: self) as? NSButton {
-                button = reused
-            } else {
-                button = NSButton(checkboxWithTitle: "", target: self, action: #selector(toggle(_:)))
-                button.identifier = column.identifier
-                button.alignment = .center
-            }
-
-            button.target = self
-            button.action = #selector(toggle(_:))
-            button.allowsMixedState = true
-
-            let applicable = parent.catalog
-                .privileges(for: node.scope)
-                .contains { $0.name == privilege }
-            button.isEnabled = applicable
-
-            if !applicable {
-                button.allowsMixedState = false
-                button.state = .off
-                button.toolTip = String(localized: "Not grantable at this level")
-                return button
-            }
-
-            if parent.isGranted(privilege, node.scope) {
-                button.state = .on
-                button.toolTip = nil
-            } else if parent.hasDescendantGrant(privilege, node.scope) {
-                button.state = .mixed
-                button.toolTip = String(localized: "Granted on one or more objects inside this one")
-            } else {
-                button.state = .off
-                button.toolTip = nil
-            }
-            return button
-        }
-
-        @objc
-        private func toggle(_ sender: NSButton) {
-            guard let outlineView else { return }
-            let row = outlineView.row(for: sender)
-            guard row >= 0, let node = outlineView.item(atRow: row) as? PrivilegeNode else { return }
-
-            let privilege = sender.identifier?.rawValue ?? ""
-            guard !privilege.isEmpty else { return }
-
-            let wasGranted = parent.isGranted(privilege, node.scope)
-            let shouldGrant = !wasGranted
-
-            if shouldGrant {
-                sender.state = .on
-            } else {
-                sender.state = parent.hasDescendantGrant(privilege, node.scope) ? .mixed : .off
-            }
-            parent.onToggle(privilege, node.scope, shouldGrant)
         }
     }
 }

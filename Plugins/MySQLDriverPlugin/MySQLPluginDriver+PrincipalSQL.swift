@@ -50,32 +50,18 @@ extension MySQLPluginDriver {
     }
 
     func generateGrantSQL(changeSet: PluginPrincipalChangeSet) -> [String]? {
-        PluginGrantGrouping.group(changeSet.grantsToAdd).compactMap { group in
-            guard let target = grantTarget(for: group.scope),
-                  let clause = privilegeClause(for: group) else { return nil }
-            let grantOption = group.isGrantable ? " WITH GRANT OPTION" : ""
-            return "GRANT \(clause) ON \(target) TO \(grantAccount(changeSet.principal))\(grantOption)"
-        }
+        grantBuilder(for: changeSet.principal).grantStatements(changeSet.grantsToAdd)
     }
 
     func generateRevokeSQL(changeSet: PluginPrincipalChangeSet) -> [String]? {
-        PluginGrantGrouping.group(changeSet.grantsToRemove).compactMap { group in
-            guard let target = grantTarget(for: group.scope),
-                  let clause = privilegeClause(for: group) else { return nil }
-            return "REVOKE \(clause) ON \(target) FROM \(grantAccount(changeSet.principal))"
-        }
+        grantBuilder(for: changeSet.principal).revokeStatements(changeSet.grantsToRemove)
     }
 
-    private func privilegeClause(for group: PluginGrantGroup) -> String? {
-        var parts = group.privileges.compactMap(PluginPrivilegeName.sanitized)
-
-        parts += group.columnPrivileges.compactMap { entry -> String? in
-            guard let privilege = PluginPrivilegeName.sanitized(entry.privilege),
-                  !entry.columns.isEmpty else { return nil }
-            let columns = entry.columns.map { quoteIdentifier($0) }.joined(separator: ", ")
-            return "\(privilege) (\(columns))"
-        }
-
-        return parts.isEmpty ? nil : parts.joined(separator: ", ")
+    private func grantBuilder(for principal: PluginPrincipalRef) -> PluginGrantSQLBuilder {
+        PluginGrantSQLBuilder(
+            grantee: grantAccount(principal),
+            quoteIdentifier: { self.quoteIdentifier($0) },
+            target: { self.grantTarget(for: $0) }
+        )
     }
 }

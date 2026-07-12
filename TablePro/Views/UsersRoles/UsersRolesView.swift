@@ -6,15 +6,14 @@ struct UsersRolesView: View {
     @Bindable var viewModel: UsersRolesViewModel
 
     @State private var isInspectorPresented = true
-    @State private var reassignTarget: PluginPrincipalRef?
 
-    private var changeManager: PrincipalChangeManager { viewModel.changeManager }
+    var changeManager: PrincipalChangeManager { viewModel.changeManager }
 
     var body: some View {
         principalList
             .inspector(isPresented: $isInspectorPresented) {
-                inspectorContent
-                    .inspectorColumnWidth(min: 360, ideal: 460, max: 720)
+                inspector
+                    .inspectorColumnWidth(min: 380, ideal: 520, max: 900)
             }
             .toolbar { toolbarContent }
             .task { await viewModel.load() }
@@ -22,32 +21,7 @@ struct UsersRolesView: View {
                 guard connectionId == viewModel.connectionId else { return }
                 Task { await viewModel.load(forceReload: true) }
             }
-            .sheet(isPresented: $viewModel.isCreateSheetPresented) { createSheet }
-            .sheet(isPresented: $viewModel.isPasswordSheetPresented) { passwordSheet }
-            .sheet(isPresented: $viewModel.isReviewPresented) { reviewSheet }
-            .alert(
-                dropAlertTitle,
-                isPresented: isDropAlertPresented,
-                presenting: viewModel.principalPendingDrop
-            ) { _ in
-                Button("Drop", role: .destructive) {
-                    viewModel.confirmDrop(.plain)
-                }
-                Button("Cancel", role: .cancel) {
-                    viewModel.principalPendingDrop = nil
-                }
-            } message: { _ in
-                Text("The statement is shown for review before it runs.")
-            }
-            .confirmationDialog(
-                ownedObjectsTitle,
-                isPresented: $viewModel.isOwnedObjectDialogPresented,
-                titleVisibility: .visible
-            ) {
-                ownedObjectsActions
-            } message: {
-                Text("This role owns objects in the database. Choose what happens to them.")
-            }
+            .modifier(UsersRolesPresentation(viewModel: viewModel))
             .overlay { statusOverlay }
     }
 
@@ -62,16 +36,38 @@ struct UsersRolesView: View {
         }
         .listStyle(.inset)
         .contextMenu(forSelectionType: PluginPrincipalRef.self) { refs in
-            if let ref = refs.first, let principal = principal(for: ref) {
-                Button("Change Password…") {
-                    Task {
-                        await viewModel.select(ref)
-                        viewModel.isPasswordSheetPresented = true
-                    }
+            rowMenu(for: refs)
+        }
+    }
+
+    private func principalRow(_ principal: PluginPrincipalInfo) -> some View {
+        let isDropped = changeManager.pendingDrops[principal.ref] != nil
+
+        return HStack(spacing: 6) {
+            Image(systemName: principal.canLogin ? "person.fill" : "person.2.fill")
+                .foregroundStyle(.secondary)
+            Text(principal.ref.displayName)
+                .strikethrough(isDropped)
+            Spacer(minLength: 0)
+            if isDropped {
+                Text("Drop")
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func rowMenu(for refs: Set<PluginPrincipalRef>) -> some View {
+        if let ref = refs.first, let principal = principal(for: ref) {
+            Button("Change Password…") {
+                Task {
+                    await viewModel.select(ref)
+                    viewModel.isPasswordSheetPresented = true
                 }
-                Button("Drop…", role: .destructive) {
-                    Task { await viewModel.requestDrop(principal) }
-                }
+            }
+            Button("Drop…", role: .destructive) {
+                Task { await viewModel.requestDrop(principal) }
             }
         }
     }
@@ -80,25 +76,10 @@ struct UsersRolesView: View {
         changeManager.principals.first { $0.ref == ref }
     }
 
-    private func principalRow(_ principal: PluginPrincipalInfo) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: principal.canLogin ? "person.fill" : "person.2.fill")
-                .foregroundStyle(.secondary)
-            Text(principal.ref.displayName)
-                .strikethrough(changeManager.pendingDrops[principal.ref] != nil)
-            Spacer(minLength: 0)
-            if changeManager.pendingDrops[principal.ref] != nil {
-                Text("Drop")
-                    .font(.caption)
-                    .foregroundStyle(.red)
-            }
-        }
-    }
-
     // MARK: - Inspector
 
     @ViewBuilder
-    private var inspectorContent: some View {
+    private var inspector: some View {
         if let principal = viewModel.selectedPrincipal {
             PrincipalInspectorView(viewModel: viewModel, principal: principal)
         } else {
@@ -143,105 +124,13 @@ struct UsersRolesView: View {
         }
     }
 
-    // MARK: - Sheets
-
-    @ViewBuilder
-    private var createSheet: some View {
-        CreatePrincipalSheet(
-            supportsHostScoping: viewModel.supportsHostScoping,
-            supportsRoleMembership: viewModel.supportsRoleMembership,
-            availableRoles: changeManager.principals.filter(\.isRole).map(\.ref.name),
-            onCreate: { viewModel.createPrincipal($0) }
-        )
-    }
-
-    @ViewBuilder
-    private var passwordSheet: some View {
-        if let principal = viewModel.selectedPrincipal {
-            ChangePasswordSheet(principal: principal.ref) { password in
-                viewModel.setPassword(password, for: principal.ref)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var reviewSheet: some View {
-        PrincipalChangeReviewSheet(
-            statements: viewModel.previewStatements,
-            lockoutWarning: viewModel.lockoutWarning,
-            onExecute: {
-                Task { await viewModel.executePendingChanges() }
-            }
-        )
-    }
-
-    // MARK: - Drop
-
-    private var isDropAlertPresented: Binding<Bool> {
-        Binding(
-            get: {
-                viewModel.principalPendingDrop != nil && !viewModel.isOwnedObjectDialogPresented
-            },
-            set: { isPresented in
-                guard !isPresented else { return }
-                viewModel.principalPendingDrop = nil
-            }
-        )
-    }
-
-    private var dropAlertTitle: String {
-        guard let principal = viewModel.principalPendingDrop else {
-            return String(localized: "Drop")
-        }
-        return String(
-            format: String(localized: "Are you sure you want to drop “%@”?"),
-            principal.ref.displayName
-        )
-    }
-
-    private var ownedObjectsTitle: String {
-        guard let principal = viewModel.principalPendingDrop else {
-            return String(localized: "Drop Role")
-        }
-        return String(
-            format: String(localized: "“%@” owns database objects"),
-            principal.ref.displayName
-        )
-    }
-
-    @ViewBuilder
-    private var ownedObjectsActions: some View {
-        ForEach(reassignCandidates, id: \.self) { candidate in
-            Button(
-                String(
-                    format: String(localized: "Reassign objects to %@"),
-                    candidate.displayName
-                )
-            ) {
-                viewModel.confirmDrop(.reassignOwned(to: candidate))
-            }
-        }
-        Button("Drop Owned Objects", role: .destructive) {
-            viewModel.confirmDrop(.dropOwned)
-        }
-        Button("Cancel", role: .cancel) {
-            viewModel.principalPendingDrop = nil
-        }
-    }
-
-    private var reassignCandidates: [PluginPrincipalRef] {
-        guard let pending = viewModel.principalPendingDrop else { return [] }
-        guard let connected = viewModel.connectedPrincipal, connected != pending.ref else { return [] }
-        return [connected]
-    }
-
     // MARK: - Status
 
     @ViewBuilder
     private var statusOverlay: some View {
         if viewModel.isLoading, changeManager.principals.isEmpty {
             ProgressView()
-        } else if let errorMessage = viewModel.errorMessage {
+        } else if let errorMessage = viewModel.errorMessage, changeManager.principals.isEmpty {
             ContentUnavailableView(
                 "Unable to Load Users and Roles",
                 systemImage: "exclamationmark.triangle",
