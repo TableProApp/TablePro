@@ -15,6 +15,7 @@ struct PrivilegeEditorPane: View {
         } secondary: {
             PrivilegeChecklistView(viewModel: viewModel)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var scopePane: some View {
@@ -45,7 +46,9 @@ struct PrivilegeEditorPane: View {
                 structureVersion: viewModel.privilegeTree.structureVersion,
                 grantVersion: viewModel.changeManager.grantClosureVersion
             )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(nsColor: .controlBackgroundColor))
         .onChange(of: viewModel.scopeMode) { _, _ in
             viewModel.applyScopeMode()

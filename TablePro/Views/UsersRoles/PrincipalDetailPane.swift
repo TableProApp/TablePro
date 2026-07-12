@@ -18,6 +18,7 @@ struct PrincipalDetailPane: View {
                 )
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private func header(_ principal: PluginPrincipalInfo) -> some View {

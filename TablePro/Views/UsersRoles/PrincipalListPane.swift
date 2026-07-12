@@ -14,6 +14,7 @@ struct PrincipalListPane: View {
         VStack(spacing: 0) {
             content
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .safeAreaInset(edge: .top, spacing: 0) {
             VStack(spacing: 0) {
                 NativeSearchField(

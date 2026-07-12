@@ -20,10 +20,12 @@ struct UsersRolesTabView: View {
             } secondary: {
                 PrincipalDetailPane(viewModel: viewModel)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             Divider()
             PendingChangesBar(viewModel: viewModel)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .task { await viewModel.load() }
         .onReceive(AppCommands.shared.refreshPrincipals) { connectionId in
             guard connectionId == viewModel.connectionId else { return }

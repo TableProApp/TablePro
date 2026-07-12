@@ -29,6 +29,13 @@ struct AutosavingSplitView<Primary: View, Secondary: View>: NSViewControllerRepr
 
         let primaryController = NSHostingController(rootView: primary())
         let secondaryController = NSHostingController(rootView: secondary())
+
+        // Without this the hosting controllers report their SwiftUI content's ideal size as a
+        // preferredContentSize, which an enclosing NSSplitViewController forwards to the window:
+        // the window shrinks to fit the content and stops being resizable.
+        primaryController.sizingOptions = []
+        secondaryController.sizingOptions = []
+
         context.coordinator.primaryController = primaryController
         context.coordinator.secondaryController = secondaryController
 

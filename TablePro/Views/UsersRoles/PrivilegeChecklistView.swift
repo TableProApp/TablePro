@@ -11,7 +11,9 @@ struct PrivilegeChecklistView: View {
             header
             Divider()
             content
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(nsColor: .controlBackgroundColor))
     }
 
