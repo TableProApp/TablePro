@@ -22,17 +22,22 @@ final class PrivilegeScopeOutlineCoordinator: NSObject, NSOutlineViewDataSource,
     func configureColumns(on outlineView: NSOutlineView) {
         guard outlineView.tableColumns.isEmpty else { return }
 
+        // The pane's minimum thickness is 240pt, so the two columns must fit inside that or the
+        // summary is clipped away entirely.
         let scope = NSTableColumn(identifier: Self.scopeColumn)
         scope.title = String(localized: "Object")
-        scope.width = 260
-        scope.minWidth = 160
+        scope.width = 150
+        scope.minWidth = 110
         outlineView.addTableColumn(scope)
 
         let summary = NSTableColumn(identifier: Self.summaryColumn)
         summary.title = String(localized: "Privileges")
-        summary.width = 200
-        summary.minWidth = 120
+        summary.width = 130
+        summary.minWidth = 90
         outlineView.addTableColumn(summary)
+
+        outlineView.columnAutoresizingStyle = .lastColumnOnlyAutoresizingStyle
+        outlineView.sizeLastColumnToFit()
     }
 
     // MARK: - Data source

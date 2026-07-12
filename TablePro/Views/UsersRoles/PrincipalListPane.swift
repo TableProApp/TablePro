@@ -107,12 +107,7 @@ struct PrincipalListPane: View {
             TableColumn(String(localized: "Kind")) { (row: PrincipalRow) in
                 kindCell(row)
             }
-            .width(60)
-
-            TableColumn(String(localized: "Status")) { (row: PrincipalRow) in
-                statusCell(row)
-            }
-            .width(50)
+            .width(min: 44, ideal: 52, max: 64)
         }
     }
 
@@ -125,23 +120,30 @@ struct PrincipalListPane: View {
     }
 
     private func nameCell(_ row: PrincipalRow) -> some View {
-        VStack(alignment: .leading, spacing: 1) {
-            Label(row.displayName, systemImage: row.symbolName)
-                .strikethrough(row.stage == .dropped)
-                .foregroundStyle(row.stage == .dropped ? .secondary : .primary)
-                .lineLimit(1)
-
-            if !row.attributeSummary.isEmpty {
-                Text(row.attributeSummary)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+        HStack(spacing: 6) {
+            VStack(alignment: .leading, spacing: 1) {
+                Label(row.displayName, systemImage: row.symbolName)
+                    .strikethrough(row.stage == .dropped)
+                    .foregroundStyle(row.stage == .dropped ? .secondary : .primary)
                     .lineLimit(1)
+                    .truncationMode(.middle)
+
+                if !row.attributeSummary.isEmpty {
+                    Text(row.attributeSummary)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
             }
+
+            Spacer(minLength: 0)
+            statusGlyph(row)
         }
     }
 
     @ViewBuilder
-    private func statusCell(_ row: PrincipalRow) -> some View {
+    private func statusGlyph(_ row: PrincipalRow) -> some View {
         if let symbol = row.statusSymbol, let description = row.statusDescription {
             Image(systemName: symbol)
                 .foregroundStyle(.secondary)

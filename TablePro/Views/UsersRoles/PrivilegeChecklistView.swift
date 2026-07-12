@@ -6,10 +6,18 @@ struct PrivilegeChecklistView: View {
 
     @State private var expansion: [String: Bool] = [:]
 
+    private var hasEditableScope: Bool {
+        viewModel.selection != nil
+            && !viewModel.selectedScopes.isEmpty
+            && !viewModel.isMixedScopeSelection
+    }
+
     var body: some View {
         VStack(spacing: 0) {
-            header
-            Divider()
+            if hasEditableScope {
+                header
+                Divider()
+            }
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
