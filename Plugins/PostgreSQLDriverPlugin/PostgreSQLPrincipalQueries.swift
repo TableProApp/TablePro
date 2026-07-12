@@ -44,33 +44,50 @@ enum PostgreSQLRoleAttribute: String, CaseIterable {
 }
 
 enum PostgreSQLPrincipalQueries {
+    private static let data = PluginPrivilegeCategoryKey.data
+    private static let structure = PluginPrivilegeCategoryKey.structure
+    private static let administration = PluginPrivilegeCategoryKey.administration
+
     static let databasePrivileges = [
-        PluginPrivilegeDescriptor(name: "CONNECT", label: "Connect"),
-        PluginPrivilegeDescriptor(name: "CREATE", label: "Create"),
-        PluginPrivilegeDescriptor(name: "TEMPORARY", label: "Temporary tables")
+        PluginPrivilegeDescriptor(name: "CONNECT", label: "Connect", category: administration),
+        PluginPrivilegeDescriptor(name: "CREATE", label: "Create", category: structure),
+        PluginPrivilegeDescriptor(name: "TEMPORARY", label: "Temporary tables", category: structure)
     ]
 
     static let schemaPrivileges = [
-        PluginPrivilegeDescriptor(name: "USAGE", label: "Usage"),
-        PluginPrivilegeDescriptor(name: "CREATE", label: "Create")
+        PluginPrivilegeDescriptor(name: "USAGE", label: "Usage", category: administration),
+        PluginPrivilegeDescriptor(name: "CREATE", label: "Create", category: structure)
     ]
 
     static let tablePrivileges = [
-        PluginPrivilegeDescriptor(name: "SELECT", label: "Select"),
-        PluginPrivilegeDescriptor(name: "INSERT", label: "Insert"),
-        PluginPrivilegeDescriptor(name: "UPDATE", label: "Update"),
-        PluginPrivilegeDescriptor(name: "DELETE", label: "Delete"),
-        PluginPrivilegeDescriptor(name: "TRUNCATE", label: "Truncate"),
-        PluginPrivilegeDescriptor(name: "REFERENCES", label: "References"),
-        PluginPrivilegeDescriptor(name: "TRIGGER", label: "Trigger")
+        PluginPrivilegeDescriptor(name: "SELECT", label: "Select", category: data),
+        PluginPrivilegeDescriptor(name: "INSERT", label: "Insert", category: data),
+        PluginPrivilegeDescriptor(name: "UPDATE", label: "Update", category: data),
+        PluginPrivilegeDescriptor(name: "DELETE", label: "Delete", category: data),
+        PluginPrivilegeDescriptor(name: "TRUNCATE", label: "Truncate", category: structure),
+        PluginPrivilegeDescriptor(name: "REFERENCES", label: "References", category: structure),
+        PluginPrivilegeDescriptor(name: "TRIGGER", label: "Trigger", category: structure)
     ]
 
     static let columnPrivileges = [
-        PluginPrivilegeDescriptor(name: "SELECT", label: "Select"),
-        PluginPrivilegeDescriptor(name: "INSERT", label: "Insert"),
-        PluginPrivilegeDescriptor(name: "UPDATE", label: "Update"),
-        PluginPrivilegeDescriptor(name: "REFERENCES", label: "References")
+        PluginPrivilegeDescriptor(name: "SELECT", label: "Select", category: data),
+        PluginPrivilegeDescriptor(name: "INSERT", label: "Insert", category: data),
+        PluginPrivilegeDescriptor(name: "UPDATE", label: "Update", category: data),
+        PluginPrivilegeDescriptor(name: "REFERENCES", label: "References", category: structure)
     ]
+
+    static func searchObjects(patternLiteral: String, limit: Int) -> String {
+        """
+        SELECT n.nspname, c.relname
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE c.relkind IN ('r', 'v', 'm', 'p', 'f')
+          AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+          AND c.relname ILIKE '%\(patternLiteral)%'
+        ORDER BY n.nspname, c.relname
+        LIMIT \(max(1, limit))
+        """
+    }
 
     static let schemas = """
         SELECT n.nspname

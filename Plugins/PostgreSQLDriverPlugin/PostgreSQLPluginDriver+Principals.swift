@@ -10,6 +10,34 @@ extension PostgreSQLPluginDriver: PluginPrincipalManagement {
     var supportsPrincipalHostScoping: Bool { false }
     var supportsOwnedObjectReassignment: Bool { true }
     var supportsRoleMembership: Bool { true }
+    var restrictsGrantBrowsingToCurrentDatabase: Bool { true }
+    var supportsGrantableScopeSearch: Bool { true }
+
+    func privilegeCascades(
+        from ancestor: PluginPrivilegeScope,
+        to descendant: PluginPrivilegeScope
+    ) -> Bool {
+        guard case .table = ancestor, case .column = descendant else { return false }
+        return ancestor.contains(descendant)
+    }
+
+    func searchGrantableScopes(
+        matching query: String,
+        limit: Int
+    ) async throws -> [PluginPrivilegeScope] {
+        let database = try await currentDatabaseName()
+        let sql = PostgreSQLPrincipalQueries.searchObjects(
+            patternLiteral: escapeStringLiteral(query),
+            limit: limit
+        )
+        let result = try await execute(query: sql)
+
+        return result.rows.compactMap { row in
+            guard let schema = row[safe: 0]?.asText,
+                  let table = row[safe: 1]?.asText else { return nil }
+            return .table(database: database, schema: schema, table: table)
+        }
+    }
 
     func fetchPrincipals() async throws -> [PluginPrincipalInfo] {
         let memberships = try await fetchMemberships()

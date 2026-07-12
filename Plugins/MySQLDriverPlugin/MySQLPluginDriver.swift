@@ -15,6 +15,8 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private var _serverVersion: String?
     private var _activeDatabase: String
 
+    internal var cachedPrivilegeCatalog: PluginPrivilegeCatalog?
+
     /// Detected server type from version string after connecting
     private var isMariaDB = false
 

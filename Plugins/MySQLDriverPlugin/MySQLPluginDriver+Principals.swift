@@ -10,6 +10,8 @@ extension MySQLPluginDriver: PluginPrincipalManagement {
     var supportsPrincipalHostScoping: Bool { true }
     var supportsOwnedObjectReassignment: Bool { false }
     var supportsRoleMembership: Bool { false }
+    var restrictsGrantBrowsingToCurrentDatabase: Bool { false }
+    var supportsGrantableScopeSearch: Bool { true }
 
     static let defaultHost = "%"
 
@@ -22,6 +24,13 @@ extension MySQLPluginDriver: PluginPrincipalManagement {
     private static let columnGrantablePrivileges: Set<String> = [
         "SELECT", "INSERT", "UPDATE", "REFERENCES"
     ]
+
+    func privilegeCascades(
+        from ancestor: PluginPrivilegeScope,
+        to descendant: PluginPrivilegeScope
+    ) -> Bool {
+        ancestor.contains(descendant)
+    }
 
     func fetchPrincipals() async throws -> [PluginPrincipalInfo] {
         let query = "SELECT User, Host, max_user_connections FROM mysql.user ORDER BY User, Host"
@@ -42,6 +51,15 @@ extension MySQLPluginDriver: PluginPrincipalManagement {
     }
 
     func fetchPrivilegeCatalog() async throws -> PluginPrivilegeCatalog {
+        if let cached = cachedPrivilegeCatalog {
+            return cached
+        }
+        let catalog = try await loadPrivilegeCatalog()
+        cachedPrivilegeCatalog = catalog
+        return catalog
+    }
+
+    private func loadPrivilegeCatalog() async throws -> PluginPrivilegeCatalog {
         let result = try await execute(query: "SHOW PRIVILEGES")
 
         var server: [PluginPrivilegeDescriptor] = []
@@ -55,14 +73,19 @@ extension MySQLPluginDriver: PluginPrincipalManagement {
                   let name = PluginPrivilegeName.sanitized(rawName),
                   !Self.excludedPrivileges.contains(name) else { continue }
 
-            let context = (row[safe: 1]?.asText ?? "").uppercased()
+            let isDynamic = MySQLPrivilegeCatalog.isDynamic(name)
+            hasDynamicPrivileges = hasDynamicPrivileges || isDynamic
+
             let descriptor = PluginPrivilegeDescriptor(
                 name: name,
                 label: rawName,
-                category: row[safe: 1]?.asText
+                category: MySQLPrivilegeCatalog.category(for: name)
             )
-
             server.append(descriptor)
+
+            guard !isDynamic else { continue }
+            let context = (row[safe: 1]?.asText ?? "").uppercased()
+
             if Self.databaseContextMarkers.contains(where: { context.contains($0) }) {
                 database.append(descriptor)
             }
@@ -71,9 +94,6 @@ extension MySQLPluginDriver: PluginPrincipalManagement {
             }
             if Self.columnGrantablePrivileges.contains(name) {
                 column.append(descriptor)
-            }
-            if name.contains("_") {
-                hasDynamicPrivileges = true
             }
         }
 
@@ -88,8 +108,8 @@ extension MySQLPluginDriver: PluginPrincipalManagement {
     }
 
     func fetchGrants(for principal: PluginPrincipalRef) async throws -> [PluginGrantInfo] {
-        let result = try await execute(query: "SHOW GRANTS FOR \(grantAccount(principal))")
         let catalog = try await fetchPrivilegeCatalog()
+        let result = try await execute(query: "SHOW GRANTS FOR \(grantAccount(principal))")
 
         return result.rows.flatMap { row -> [PluginGrantInfo] in
             guard let line = row[safe: 0]?.asText,
@@ -106,6 +126,28 @@ extension MySQLPluginDriver: PluginPrincipalManagement {
             try await columns(in: database, table: table)
         case .server, .schema, .column:
             []
+        }
+    }
+
+    func searchGrantableScopes(
+        matching query: String,
+        limit: Int
+    ) async throws -> [PluginPrivilegeScope] {
+        let pattern = escapeStringLiteral(MySQLGrantPatternEscaping.escapeDatabasePattern(query))
+        let sql = """
+            SELECT TABLE_SCHEMA, TABLE_NAME
+            FROM information_schema.TABLES
+            WHERE TABLE_SCHEMA NOT IN ('mysql', 'information_schema', 'performance_schema', 'sys')
+              AND TABLE_NAME LIKE '%\(pattern)%'
+            ORDER BY TABLE_SCHEMA, TABLE_NAME
+            LIMIT \(max(1, limit))
+            """
+        let result = try await execute(query: sql)
+
+        return result.rows.compactMap { row in
+            guard let database = row[safe: 0]?.asText,
+                  let table = row[safe: 1]?.asText else { return nil }
+            return .table(database: database, schema: nil, table: table)
         }
     }
 

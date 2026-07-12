@@ -160,6 +160,13 @@ public extension PluginPrivilegeScope {
     }
 }
 
+public enum PluginPrivilegeCategoryKey {
+    public static let data = "data"
+    public static let structure = "structure"
+    public static let administration = "administration"
+    public static let dynamic = "dynamic"
+}
+
 public struct PluginPrivilegeDescriptor: Hashable, Sendable {
     public let name: String
     public let label: String
