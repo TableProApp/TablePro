@@ -86,23 +86,34 @@ extension PostgreSQLPluginDriver {
 
     func generateGrantSQL(changeSet: PluginPrincipalChangeSet) -> [String]? {
         let role = quoteIdentifier(changeSet.principal.name)
-        return groupedByScope(changeSet.grantsToAdd).compactMap { scope, grants in
-            guard let target = grantTarget(for: scope) else { return nil }
-            let privileges = grants.compactMap { PluginPrivilegeName.sanitized($0.privilege) }
-            guard !privileges.isEmpty else { return nil }
-            let grantOption = grants.contains(where: \.isGrantable) ? " WITH GRANT OPTION" : ""
-            return "GRANT \(privileges.joined(separator: ", ")) ON \(target) TO \(role)\(grantOption)"
+        return PluginGrantGrouping.group(changeSet.grantsToAdd).compactMap { group in
+            guard let target = grantTarget(for: group.scope),
+                  let clause = privilegeClause(for: group) else { return nil }
+            let grantOption = group.isGrantable ? " WITH GRANT OPTION" : ""
+            return "GRANT \(clause) ON \(target) TO \(role)\(grantOption)"
         }
     }
 
     func generateRevokeSQL(changeSet: PluginPrincipalChangeSet) -> [String]? {
         let role = quoteIdentifier(changeSet.principal.name)
-        return groupedByScope(changeSet.grantsToRemove).compactMap { scope, grants in
-            guard let target = grantTarget(for: scope) else { return nil }
-            let privileges = grants.compactMap { PluginPrivilegeName.sanitized($0.privilege) }
-            guard !privileges.isEmpty else { return nil }
-            return "REVOKE \(privileges.joined(separator: ", ")) ON \(target) FROM \(role)"
+        return PluginGrantGrouping.group(changeSet.grantsToRemove).compactMap { group in
+            guard let target = grantTarget(for: group.scope),
+                  let clause = privilegeClause(for: group) else { return nil }
+            return "REVOKE \(clause) ON \(target) FROM \(role)"
         }
+    }
+
+    private func privilegeClause(for group: PluginGrantGroup) -> String? {
+        var parts = group.privileges.compactMap(PluginPrivilegeName.sanitized)
+
+        parts += group.columnPrivileges.compactMap { entry -> String? in
+            guard let privilege = PluginPrivilegeName.sanitized(entry.privilege),
+                  !entry.columns.isEmpty else { return nil }
+            let columns = entry.columns.map { quoteIdentifier($0) }.joined(separator: ", ")
+            return "\(privilege) (\(columns))"
+        }
+
+        return parts.isEmpty ? nil : parts.joined(separator: ", ")
     }
 
     private func grantTarget(for scope: PluginPrivilegeScope) -> String? {
@@ -113,29 +124,12 @@ extension PostgreSQLPluginDriver {
             "DATABASE \(quoteIdentifier(name))"
         case let .schema(_, schema):
             "SCHEMA \(quoteIdentifier(schema))"
-        case let .table(_, schema, table):
+        case let .table(_, schema, table), let .column(_, schema, table, _):
             if let schema {
                 "TABLE \(quoteIdentifier(schema)).\(quoteIdentifier(table))"
             } else {
                 "TABLE \(quoteIdentifier(table))"
             }
-        }
-    }
-
-    private func groupedByScope(
-        _ grants: [PluginGrantInfo]
-    ) -> [(scope: PluginPrivilegeScope, grants: [PluginGrantInfo])] {
-        var order: [PluginPrivilegeScope] = []
-        var buckets: [PluginPrivilegeScope: [PluginGrantInfo]] = [:]
-        for grant in grants {
-            if buckets[grant.scope] == nil {
-                order.append(grant.scope)
-            }
-            buckets[grant.scope, default: []].append(grant)
-        }
-        return order.compactMap { scope in
-            guard let grants = buckets[scope] else { return nil }
-            return (scope, grants)
         }
     }
 

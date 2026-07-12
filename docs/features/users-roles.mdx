@@ -15,18 +15,25 @@ PostgreSQL roles are cluster-level, so the list is the same whichever database y
 
 ## Privileges
 
-The inspector shows a privilege grid: one row per scope, one column per privilege.
+The inspector shows a privilege tree: the object hierarchy down the first column, one checkbox column per privilege.
+
+Expand a database to reach its schemas, tables, and columns. Every level is editable:
 
 - **Server** covers every database (`*.*` on MySQL). PostgreSQL has no server-level grants; its equivalents are role attributes, shown in the **Attributes** section.
-- **One row per database** for database-level grants.
+- **Database**
+- **Schema** (PostgreSQL; MySQL has no separate schema level)
+- **Table**
+- **Column**
 
-The privilege columns come from the server itself, so a privilege your server version supports is offered even if it is newer than TablePro. A privilege that cannot be granted at a given scope is disabled in that row.
+The privilege columns come from the server itself, so a privilege your server version supports is offered even if it is newer than TablePro. A privilege that cannot be granted at a given level is disabled in that row: `TRUNCATE` is offered on a table, not on a column.
+
+A checkbox shows a dash when the account does not hold the privilege on that object, but does hold it on something inside it. Clicking always grants or revokes on the row you clicked; the dash is an indicator, not a control.
 
 Toggling a checkbox stages a change. Nothing is sent to the server until you apply.
 
-### Table and column privileges
-
-If an account already holds table-level or column-level privileges, they are listed read-only under **Table and Column Privileges**. TablePro does not edit them in this version, and shows them so that a database-level change does not silently hide privileges the account still has.
+<Note>
+PostgreSQL stores table and column privileges per database, and cannot read them for a database it is not connected to. Schemas, tables, and columns therefore expand only under the database the connection is using. Database-level grants work for every database. MySQL has no such restriction.
+</Note>
 
 ## Applying changes
 
@@ -56,6 +63,5 @@ On PostgreSQL, a role that owns objects cannot simply be dropped. TablePro detec
 
 ## What is not covered
 
-- Editing table-level and column-level privileges (they are shown, not edited).
 - Role membership editing on MySQL. PostgreSQL role membership is shown in the inspector.
 - PostgreSQL `ALTER ROLE ... SET` parameters and security labels.

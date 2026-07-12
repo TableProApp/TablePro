@@ -79,26 +79,65 @@ struct PrincipalChangeManagerTests {
         #expect(manager.isGranted("CONNECT", scope: .database("app"), for: alice) == true)
     }
 
-    @Test("Table and column grants are never editable and never diffed away")
-    func keepsFinerGrainedGrantsOutOfTheDiff() {
+    @Test("Existing table and column grants round-trip without producing a spurious diff")
+    func finerGrainedGrantsRoundTrip() {
         let manager = PrincipalChangeManager()
+        let table = PluginPrivilegeScope.table(database: "app", schema: "public", table: "orders")
+        let column = PluginPrivilegeScope.column(
+            database: "app",
+            schema: "public",
+            table: "orders",
+            column: "total"
+        )
         manager.load(
             principals: [PluginPrincipalInfo(ref: alice)],
-            catalog: PluginPrivilegeCatalog(serverPrivileges: [], databasePrivileges: [])
+            catalog: PluginPrivilegeCatalog()
         )
         manager.loadGrants(
             [
                 PluginGrantInfo(privilege: "CONNECT", scope: .database("app")),
-                PluginGrantInfo(
-                    privilege: "SELECT",
-                    scope: .table(database: "app", schema: "public", table: "orders")
-                )
+                PluginGrantInfo(privilege: "SELECT", scope: table),
+                PluginGrantInfo(privilege: "UPDATE", scope: column)
             ],
             for: alice
         )
 
         #expect(manager.grantChangeSets().isEmpty)
-        #expect(manager.readOnlyGrants(for: alice).map(\.privilege) == ["SELECT"])
+        #expect(manager.isGranted("SELECT", scope: table, for: alice))
+        #expect(manager.isGranted("UPDATE", scope: column, for: alice))
+    }
+
+    @Test("Table and column privileges are editable and diff correctly")
+    func editsFinerGrainedGrants() {
+        let manager = makeManager()
+        let column = PluginPrivilegeScope.column(
+            database: "app",
+            schema: "public",
+            table: "orders",
+            column: "total"
+        )
+        manager.setGranted(true, privilege: "UPDATE", scope: column, for: alice)
+
+        let changeSets = manager.grantChangeSets()
+        #expect(changeSets.count == 1)
+        #expect(changeSets[0].grantsToAdd.map(\.scope) == [column])
+    }
+
+    @Test("A parent scope reports a privilege granted on a descendant")
+    func reportsDescendantGrants() {
+        let manager = makeManager()
+        let column = PluginPrivilegeScope.column(
+            database: "app",
+            schema: "public",
+            table: "orders",
+            column: "total"
+        )
+        manager.setGranted(true, privilege: "UPDATE", scope: column, for: alice)
+
+        #expect(manager.hasDescendantGrant("UPDATE", under: .database("app"), for: alice))
+        #expect(manager.hasDescendantGrant("UPDATE", under: .server, for: alice))
+        #expect(manager.isGranted("UPDATE", scope: .database("app"), for: alice) == false)
+        #expect(manager.hasDescendantGrant("SELECT", under: .database("app"), for: alice) == false)
     }
 
     @Test("Dropping a principal reports it as losing all access")

@@ -51,7 +51,7 @@ struct MySQLGrantParserTests {
     func parsesServerScope() {
         let grant = MySQLGrantParser.parseGrant("GRANT SELECT, INSERT ON *.* TO `u`@`h`")
         #expect(grant?.scope == .server)
-        #expect(grant?.privileges == ["SELECT", "INSERT"])
+        #expect(grant?.privilegeNames == ["SELECT", "INSERT"])
     }
 
     @Test("Escaped database name is unescaped back to its literal form")
@@ -74,11 +74,15 @@ struct MySQLGrantParserTests {
         #expect(withoutOption?.isGrantable == false)
     }
 
-    @Test("Column-scoped privileges do not split on their inner comma")
+    @Test("Column-scoped privileges keep their column list and do not split on the inner comma")
     func parsesColumnScopedPrivileges() {
-        let grant = MySQLGrantParser.parseGrant("GRANT SELECT (id, name), INSERT ON `db`.`t` TO `u`@`h`")
-        #expect(grant?.privileges == ["SELECT", "INSERT"])
+        let grant = MySQLGrantParser.parseGrant(
+            "GRANT SELECT (`id`, `name`), INSERT ON `db`.`t` TO `u`@`h`"
+        )
+        #expect(grant?.privilegeNames == ["SELECT", "INSERT"])
         #expect(grant?.isColumnScoped == true)
+        #expect(grant?.privileges.first?.columns == ["id", "name"])
+        #expect(grant?.privileges.last?.columns.isEmpty == true)
     }
 
     @Test("Multi-word and dynamic privileges survive")
@@ -86,10 +90,16 @@ struct MySQLGrantParserTests {
         let multiWord = MySQLGrantParser.parseGrant(
             "GRANT CREATE TEMPORARY TABLES, REPLICATION SLAVE ON *.* TO `u`@`h`"
         )
-        #expect(multiWord?.privileges == ["CREATE TEMPORARY TABLES", "REPLICATION SLAVE"])
+        #expect(multiWord?.privilegeNames == ["CREATE TEMPORARY TABLES", "REPLICATION SLAVE"])
 
         let dynamic = MySQLGrantParser.parseGrant("GRANT BACKUP_ADMIN ON *.* TO `u`@`h`")
-        #expect(dynamic?.privileges == ["BACKUP_ADMIN"])
+        #expect(dynamic?.privilegeNames == ["BACKUP_ADMIN"])
+    }
+
+    @Test("ALL PRIVILEGES is kept as a sentinel for the driver to expand")
+    func parsesAllPrivileges() {
+        let grant = MySQLGrantParser.parseGrant("GRANT ALL PRIVILEGES ON `db`.* TO `u`@`h`")
+        #expect(grant?.privilegeNames == [MySQLGrantParser.allPrivileges])
     }
 
     @Test("Role grants are not privilege grants")
@@ -97,6 +107,52 @@ struct MySQLGrantParserTests {
         let line = "GRANT `dev`@`%` TO `alice`@`localhost`"
         #expect(MySQLGrantParser.parseGrant(line) == nil)
         #expect(MySQLGrantParser.parseRoleGrant(line) == ["dev"])
+    }
+}
+
+@Suite("Grant grouping")
+struct PluginGrantGroupingTests {
+    private let table = PluginPrivilegeScope.table(database: "app", schema: "public", table: "orders")
+
+    private func column(_ name: String) -> PluginPrivilegeScope {
+        .column(database: "app", schema: "public", table: "orders", column: name)
+    }
+
+    @Test("Column grants fold onto their parent table so one statement covers the object")
+    func foldsColumnsOntoTable() {
+        let groups = PluginGrantGrouping.group([
+            PluginGrantInfo(privilege: "SELECT", scope: table),
+            PluginGrantInfo(privilege: "UPDATE", scope: column("total")),
+            PluginGrantInfo(privilege: "UPDATE", scope: column("status")),
+            PluginGrantInfo(privilege: "SELECT", scope: column("total"))
+        ])
+
+        #expect(groups.count == 1)
+        #expect(groups[0].scope == table)
+        #expect(groups[0].privileges == ["SELECT"])
+        #expect(groups[0].columnPrivileges == [
+            PluginColumnPrivilege(privilege: "SELECT", columns: ["total"]),
+            PluginColumnPrivilege(privilege: "UPDATE", columns: ["total", "status"])
+        ])
+    }
+
+    @Test("Distinct scopes stay in distinct groups")
+    func keepsScopesSeparate() {
+        let groups = PluginGrantGrouping.group([
+            PluginGrantInfo(privilege: "CONNECT", scope: .database("app")),
+            PluginGrantInfo(privilege: "SELECT", scope: table)
+        ])
+
+        #expect(groups.count == 2)
+        #expect(groups.map(\.scope) == [.database("app"), table])
+    }
+
+    @Test("Grant option on any grant marks the whole group grantable")
+    func propagatesGrantOption() {
+        let groups = PluginGrantGrouping.group([
+            PluginGrantInfo(privilege: "SELECT", scope: table, isGrantable: true)
+        ])
+        #expect(groups[0].isGrantable)
     }
 }
 

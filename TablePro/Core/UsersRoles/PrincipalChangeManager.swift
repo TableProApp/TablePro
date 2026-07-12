@@ -38,19 +38,24 @@ final class PrincipalChangeManager {
     func loadGrants(_ grants: [PluginGrantInfo], for principal: PluginPrincipalRef) {
         currentGrants[principal] = grants
         guard workingGrants[principal] == nil else { return }
-        workingGrants[principal] = Self.editableKeys(from: grants)
+        workingGrants[principal] = Self.grantKeys(from: grants)
     }
 
     func hasLoadedGrants(for principal: PluginPrincipalRef) -> Bool {
         currentGrants[principal] != nil
     }
 
-    func readOnlyGrants(for principal: PluginPrincipalRef) -> [PluginGrantInfo] {
-        (currentGrants[principal] ?? []).filter { !$0.scope.isEditableInPrivilegeGrid }
-    }
-
     func isGranted(_ privilege: String, scope: PluginPrivilegeScope, for principal: PluginPrincipalRef) -> Bool {
         workingGrants[principal]?.contains(PrincipalGrantKey(privilege: privilege, scope: scope)) ?? false
+    }
+
+    func hasDescendantGrant(
+        _ privilege: String,
+        under scope: PluginPrivilegeScope,
+        for principal: PluginPrincipalRef
+    ) -> Bool {
+        guard let keys = workingGrants[principal] else { return false }
+        return keys.contains { $0.privilege == privilege && scope.contains($0.scope) }
     }
 
     func setGranted(
@@ -126,7 +131,7 @@ final class PrincipalChangeManager {
         pendingDrops.removeAll()
         pendingPasswords.removeAll()
         for (principal, grants) in currentGrants {
-            workingGrants[principal] = Self.editableKeys(from: grants)
+            workingGrants[principal] = Self.grantKeys(from: grants)
         }
         undoManager.removeAllActions()
     }
@@ -143,7 +148,7 @@ final class PrincipalChangeManager {
         workingGrants.compactMap { principal, working in
             guard pendingDrops[principal] == nil else { return nil }
 
-            let baseline = Self.editableKeys(from: currentGrants[principal] ?? [])
+            let baseline = Self.grantKeys(from: currentGrants[principal] ?? [])
             let added = working.subtracting(baseline)
             let removed = baseline.subtracting(working)
             guard !added.isEmpty || !removed.isEmpty else { return nil }
@@ -160,18 +165,14 @@ final class PrincipalChangeManager {
         let dropped = Array(pendingDrops.keys)
         let fullyRevoked = grantChangeSets().compactMap { changeSet -> PluginPrincipalRef? in
             let remaining = workingGrants[changeSet.principal] ?? []
-            let baseline = Self.editableKeys(from: currentGrants[changeSet.principal] ?? [])
+            let baseline = Self.grantKeys(from: currentGrants[changeSet.principal] ?? [])
             guard remaining.isEmpty, !baseline.isEmpty else { return nil }
             return changeSet.principal
         }
         return dropped + fullyRevoked
     }
 
-    private static func editableKeys(from grants: [PluginGrantInfo]) -> Set<PrincipalGrantKey> {
-        Set(
-            grants
-                .filter { $0.scope.isEditableInPrivilegeGrid }
-                .map { PrincipalGrantKey(privilege: $0.privilege, scope: $0.scope) }
-        )
+    private static func grantKeys(from grants: [PluginGrantInfo]) -> Set<PrincipalGrantKey> {
+        Set(grants.map { PrincipalGrantKey(privilege: $0.privilege, scope: $0.scope) })
     }
 }

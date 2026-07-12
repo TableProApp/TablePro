@@ -83,18 +83,10 @@ public enum PluginPrivilegeScope: Hashable, Sendable {
     case database(String)
     case schema(database: String, schema: String)
     case table(database: String, schema: String?, table: String)
+    case column(database: String, schema: String?, table: String, column: String)
 }
 
 public extension PluginPrivilegeScope {
-    var isEditableInPrivilegeGrid: Bool {
-        switch self {
-        case .server, .database:
-            true
-        case .schema, .table:
-            false
-        }
-    }
-
     var databaseName: String? {
         switch self {
         case .server:
@@ -105,7 +97,66 @@ public extension PluginPrivilegeScope {
             database
         case let .table(database, _, _):
             database
+        case let .column(database, _, _, _):
+            database
         }
+    }
+
+    var schemaName: String? {
+        switch self {
+        case .server, .database:
+            nil
+        case let .schema(_, schema):
+            schema
+        case let .table(_, schema, _):
+            schema
+        case let .column(_, schema, _, _):
+            schema
+        }
+    }
+
+    var tableName: String? {
+        switch self {
+        case .server, .database, .schema:
+            nil
+        case let .table(_, _, table):
+            table
+        case let .column(_, _, table, _):
+            table
+        }
+    }
+
+    var columnName: String? {
+        guard case let .column(_, _, _, column) = self else { return nil }
+        return column
+    }
+
+    var parent: PluginPrivilegeScope? {
+        switch self {
+        case .server:
+            nil
+        case .database:
+            .server
+        case let .schema(database, _):
+            .database(database)
+        case let .table(database, schema, _):
+            if let schema {
+                .schema(database: database, schema: schema)
+            } else {
+                .database(database)
+            }
+        case let .column(database, schema, table, _):
+            .table(database: database, schema: schema, table: table)
+        }
+    }
+
+    func contains(_ other: PluginPrivilegeScope) -> Bool {
+        var candidate = other.parent
+        while let scope = candidate {
+            if scope == self { return true }
+            candidate = scope.parent
+        }
+        return false
     }
 }
 
@@ -124,16 +175,43 @@ public struct PluginPrivilegeDescriptor: Hashable, Sendable {
 public struct PluginPrivilegeCatalog: Sendable {
     public let serverPrivileges: [PluginPrivilegeDescriptor]
     public let databasePrivileges: [PluginPrivilegeDescriptor]
+    public let schemaPrivileges: [PluginPrivilegeDescriptor]
+    public let tablePrivileges: [PluginPrivilegeDescriptor]
+    public let columnPrivileges: [PluginPrivilegeDescriptor]
     public let supportsDynamicPrivileges: Bool
 
     public init(
-        serverPrivileges: [PluginPrivilegeDescriptor],
-        databasePrivileges: [PluginPrivilegeDescriptor],
+        serverPrivileges: [PluginPrivilegeDescriptor] = [],
+        databasePrivileges: [PluginPrivilegeDescriptor] = [],
+        schemaPrivileges: [PluginPrivilegeDescriptor] = [],
+        tablePrivileges: [PluginPrivilegeDescriptor] = [],
+        columnPrivileges: [PluginPrivilegeDescriptor] = [],
         supportsDynamicPrivileges: Bool = false
     ) {
         self.serverPrivileges = serverPrivileges
         self.databasePrivileges = databasePrivileges
+        self.schemaPrivileges = schemaPrivileges
+        self.tablePrivileges = tablePrivileges
+        self.columnPrivileges = columnPrivileges
         self.supportsDynamicPrivileges = supportsDynamicPrivileges
+    }
+
+    public func privileges(for scope: PluginPrivilegeScope) -> [PluginPrivilegeDescriptor] {
+        switch scope {
+        case .server: serverPrivileges
+        case .database: databasePrivileges
+        case .schema: schemaPrivileges
+        case .table: tablePrivileges
+        case .column: columnPrivileges
+        }
+    }
+
+    public var allPrivileges: [PluginPrivilegeDescriptor] {
+        var seen = Set<String>()
+        return (
+            serverPrivileges + databasePrivileges + schemaPrivileges
+                + tablePrivileges + columnPrivileges
+        ).filter { seen.insert($0.name).inserted }
     }
 }
 

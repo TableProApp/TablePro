@@ -15,10 +15,7 @@ private final class MockPrincipalDriver: PluginPrincipalManagement, @unchecked S
     var supportsRoleMembership = true
 
     func fetchPrincipals() async throws -> [PluginPrincipalInfo] { [] }
-    func fetchPrivilegeCatalog() async throws -> PluginPrivilegeCatalog {
-        PluginPrivilegeCatalog(serverPrivileges: [], databasePrivileges: [])
-    }
-
+    func fetchPrivilegeCatalog() async throws -> PluginPrivilegeCatalog { PluginPrivilegeCatalog() }
     func fetchGrants(for principal: PluginPrincipalRef) async throws -> [PluginGrantInfo] { [] }
 
     func generateCreatePrincipalSQL(definition: PluginPrincipalDefinition) -> [String]? {

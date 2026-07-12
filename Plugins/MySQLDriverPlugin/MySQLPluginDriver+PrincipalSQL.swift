@@ -28,7 +28,9 @@ extension MySQLPluginDriver {
         let account = grantAccount(old.ref)
 
         if old.connectionLimit != new.connectionLimit {
-            statements.append("ALTER USER \(account) WITH MAX_USER_CONNECTIONS \(new.connectionLimit ?? 0)")
+            statements.append(
+                "ALTER USER \(account) WITH MAX_USER_CONNECTIONS \(new.connectionLimit ?? 0)"
+            )
         }
         if old.ref != new.ref {
             statements.append("RENAME USER \(account) TO \(grantAccount(new.ref))")
@@ -37,8 +39,7 @@ extension MySQLPluginDriver {
     }
 
     func generateSetPasswordSQL(principal: PluginPrincipalRef, password: String) -> [String]? {
-        let account = grantAccount(principal)
-        return ["ALTER USER \(account) IDENTIFIED BY '\(escapeStringLiteral(password))'"]
+        ["ALTER USER \(grantAccount(principal)) IDENTIFIED BY '\(escapeStringLiteral(password))'"]
     }
 
     func generateDropPrincipalSQL(
@@ -49,40 +50,32 @@ extension MySQLPluginDriver {
     }
 
     func generateGrantSQL(changeSet: PluginPrincipalChangeSet) -> [String]? {
-        let account = grantAccount(changeSet.principal)
-        return groupedByScope(changeSet.grantsToAdd).compactMap { scope, grants in
-            guard let target = grantTarget(for: scope) else { return nil }
-            let privileges = grants.compactMap { PluginPrivilegeName.sanitized($0.privilege) }
-            guard !privileges.isEmpty else { return nil }
-            let grantOption = grants.contains(where: \.isGrantable) ? " WITH GRANT OPTION" : ""
-            return "GRANT \(privileges.joined(separator: ", ")) ON \(target) TO \(account)\(grantOption)"
+        PluginGrantGrouping.group(changeSet.grantsToAdd).compactMap { group in
+            guard let target = grantTarget(for: group.scope),
+                  let clause = privilegeClause(for: group) else { return nil }
+            let grantOption = group.isGrantable ? " WITH GRANT OPTION" : ""
+            return "GRANT \(clause) ON \(target) TO \(grantAccount(changeSet.principal))\(grantOption)"
         }
     }
 
     func generateRevokeSQL(changeSet: PluginPrincipalChangeSet) -> [String]? {
-        let account = grantAccount(changeSet.principal)
-        return groupedByScope(changeSet.grantsToRemove).compactMap { scope, grants in
-            guard let target = grantTarget(for: scope) else { return nil }
-            let privileges = grants.compactMap { PluginPrivilegeName.sanitized($0.privilege) }
-            guard !privileges.isEmpty else { return nil }
-            return "REVOKE \(privileges.joined(separator: ", ")) ON \(target) FROM \(account)"
+        PluginGrantGrouping.group(changeSet.grantsToRemove).compactMap { group in
+            guard let target = grantTarget(for: group.scope),
+                  let clause = privilegeClause(for: group) else { return nil }
+            return "REVOKE \(clause) ON \(target) FROM \(grantAccount(changeSet.principal))"
         }
     }
 
-    private func groupedByScope(
-        _ grants: [PluginGrantInfo]
-    ) -> [(scope: PluginPrivilegeScope, grants: [PluginGrantInfo])] {
-        var order: [PluginPrivilegeScope] = []
-        var buckets: [PluginPrivilegeScope: [PluginGrantInfo]] = [:]
-        for grant in grants {
-            if buckets[grant.scope] == nil {
-                order.append(grant.scope)
-            }
-            buckets[grant.scope, default: []].append(grant)
+    private func privilegeClause(for group: PluginGrantGroup) -> String? {
+        var parts = group.privileges.compactMap(PluginPrivilegeName.sanitized)
+
+        parts += group.columnPrivileges.compactMap { entry -> String? in
+            guard let privilege = PluginPrivilegeName.sanitized(entry.privilege),
+                  !entry.columns.isEmpty else { return nil }
+            let columns = entry.columns.map { quoteIdentifier($0) }.joined(separator: ", ")
+            return "\(privilege) (\(columns))"
         }
-        return order.compactMap { scope in
-            guard let grants = buckets[scope] else { return nil }
-            return (scope, grants)
-        }
+
+        return parts.isEmpty ? nil : parts.joined(separator: ", ")
     }
 }

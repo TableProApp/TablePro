@@ -40,6 +40,9 @@ extension PostgreSQLPluginDriver: PluginPrincipalManagement {
         PluginPrivilegeCatalog(
             serverPrivileges: [],
             databasePrivileges: PostgreSQLPrincipalQueries.databasePrivileges,
+            schemaPrivileges: PostgreSQLPrincipalQueries.schemaPrivileges,
+            tablePrivileges: PostgreSQLPrincipalQueries.tablePrivileges,
+            columnPrivileges: PostgreSQLPrincipalQueries.columnPrivileges,
             supportsDynamicPrivileges: false
         )
     }
@@ -51,8 +54,76 @@ extension PostgreSQLPluginDriver: PluginPrincipalManagement {
         let databaseGrants = try await fetchDatabaseGrants(roleLiteral: roleLiteral)
         let schemaGrants = try await fetchSchemaGrants(roleLiteral: roleLiteral, database: database)
         let tableGrants = try await fetchTableGrants(roleLiteral: roleLiteral, database: database)
+        let columnGrants = try await fetchColumnGrants(roleLiteral: roleLiteral, database: database)
 
-        return databaseGrants + schemaGrants + tableGrants
+        return databaseGrants + schemaGrants + tableGrants + columnGrants
+    }
+
+    func fetchGrantableChildren(of scope: PluginPrivilegeScope) async throws -> [PluginPrivilegeScope] {
+        let currentDatabase = try await currentDatabaseName()
+
+        switch scope {
+        case let .database(database):
+            guard database == currentDatabase else { return [] }
+            return try await schemas(in: database)
+        case let .schema(database, schema):
+            guard database == currentDatabase else { return [] }
+            return try await tables(in: database, schema: schema)
+        case let .table(database, schema, table):
+            guard database == currentDatabase, let schema else { return [] }
+            return try await columns(in: database, schema: schema, table: table)
+        case .server, .column:
+            return []
+        }
+    }
+
+    private func schemas(in database: String) async throws -> [PluginPrivilegeScope] {
+        let result = try await execute(query: PostgreSQLPrincipalQueries.schemas)
+        return result.rows.compactMap { row in
+            guard let schema = row[safe: 0]?.asText else { return nil }
+            return .schema(database: database, schema: schema)
+        }
+    }
+
+    private func tables(in database: String, schema: String) async throws -> [PluginPrivilegeScope] {
+        let query = PostgreSQLPrincipalQueries.tables(schemaLiteral: escapeStringLiteral(schema))
+        let result = try await execute(query: query)
+        return result.rows.compactMap { row in
+            guard let table = row[safe: 0]?.asText else { return nil }
+            return .table(database: database, schema: schema, table: table)
+        }
+    }
+
+    private func columns(
+        in database: String,
+        schema: String,
+        table: String
+    ) async throws -> [PluginPrivilegeScope] {
+        let query = PostgreSQLPrincipalQueries.columns(
+            schemaLiteral: escapeStringLiteral(schema),
+            tableLiteral: escapeStringLiteral(table)
+        )
+        let result = try await execute(query: query)
+        return result.rows.compactMap { row in
+            guard let column = row[safe: 0]?.asText else { return nil }
+            return .column(database: database, schema: schema, table: table, column: column)
+        }
+    }
+
+    private func fetchColumnGrants(roleLiteral: String, database: String) async throws -> [PluginGrantInfo] {
+        let query = PostgreSQLPrincipalQueries.columnGrants(roleLiteral: roleLiteral)
+        let result = try await execute(query: query)
+        return result.rows.compactMap { row -> PluginGrantInfo? in
+            guard let schema = row[safe: 0]?.asText,
+                  let table = row[safe: 1]?.asText,
+                  let column = row[safe: 2]?.asText,
+                  let privilege = row[safe: 3]?.asText else { return nil }
+            return PluginGrantInfo(
+                privilege: privilege,
+                scope: .column(database: database, schema: schema, table: table, column: column),
+                isGrantable: Self.decodeBoolean(row[safe: 4]?.asText)
+            )
+        }
     }
 
     func currentPrincipalRef() async throws -> PluginPrincipalRef? {

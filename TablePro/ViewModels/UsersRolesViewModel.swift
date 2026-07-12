@@ -20,6 +20,8 @@ final class UsersRolesViewModel {
     let changeManager = PrincipalChangeManager()
 
     private(set) var databases: [String] = []
+    private(set) var privilegeRoots: [PrivilegeNode] = []
+    private(set) var treeVersion = 0
     private(set) var isLoading = false
     private(set) var errorMessage: String?
     private(set) var connectedPrincipal: PluginPrincipalRef?
@@ -74,6 +76,7 @@ final class UsersRolesViewModel {
             databases = try await loader.databases()
             connectedPrincipal = try await loader.currentPrincipal()
             changeManager.load(principals: snapshot.principals, catalog: snapshot.catalog)
+            rebuildPrivilegeTree(catalog: snapshot.catalog)
 
             if let selection, !snapshot.principals.contains(where: { $0.ref == selection }) {
                 self.selection = nil
@@ -101,6 +104,33 @@ final class UsersRolesViewModel {
         } catch {
             errorMessage = error.localizedDescription
             Self.logger.error("Failed to load grants: \(error.localizedDescription)")
+        }
+    }
+
+    private func rebuildPrivilegeTree(catalog: PluginPrivilegeCatalog) {
+        var roots: [PrivilegeNode] = []
+        if !catalog.serverPrivileges.isEmpty {
+            roots.append(PrivilegeNode.make(for: .server))
+        }
+        roots.append(contentsOf: databases.map { PrivilegeNode.make(for: .database($0)) })
+        privilegeRoots = roots
+        treeVersion += 1
+    }
+
+    func expand(_ node: PrivilegeNode) {
+        guard !node.hasLoadedChildren, let loader else { return }
+        node.beginLoading()
+
+        Task {
+            do {
+                let children = try await loader.grantableChildren(of: node.scope)
+                node.setChildren(children.map { PrivilegeNode.make(for: $0) })
+                treeVersion += 1
+            } catch {
+                node.setChildren([])
+                errorMessage = error.localizedDescription
+                Self.logger.error("Failed to expand privilege scope: \(error.localizedDescription)")
+            }
         }
     }
 

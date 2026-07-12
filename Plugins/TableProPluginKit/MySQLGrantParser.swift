@@ -8,11 +8,23 @@
 
 import Foundation
 
+public struct MySQLParsedPrivilege: Equatable, Sendable {
+    public let name: String
+    public let columns: [String]
+
+    public init(name: String, columns: [String] = []) {
+        self.name = name
+        self.columns = columns
+    }
+}
+
 public struct MySQLParsedGrant: Equatable, Sendable {
-    public let privileges: [String]
+    public let privileges: [MySQLParsedPrivilege]
     public let scope: PluginPrivilegeScope
     public let isGrantable: Bool
-    public let isColumnScoped: Bool
+
+    public var privilegeNames: [String] { privileges.map(\.name) }
+    public var isColumnScoped: Bool { privileges.contains { !$0.columns.isEmpty } }
 }
 
 public enum MySQLGrantParser {
@@ -33,17 +45,15 @@ public enum MySQLGrantParser {
 
         guard let scope = parseScope(targetText) else { return nil }
 
-        let parsedPrivileges = splitTopLevel(privilegeText, separator: ",")
+        let privileges = splitTopLevel(privilegeText, separator: ",")
             .map { $0.trimmingCharacters(in: .whitespaces) }
-        let isColumnScoped = parsedPrivileges.contains { $0.contains("(") }
-        let privileges = parsedPrivileges.compactMap(normalizePrivilege)
+            .compactMap(normalizePrivilege)
         guard !privileges.isEmpty else { return nil }
 
         return MySQLParsedGrant(
             privileges: privileges,
             scope: scope,
-            isGrantable: hasGrantOption(granteeText),
-            isColumnScoped: isColumnScoped
+            isGrantable: hasGrantOption(granteeText)
         )
     }
 
@@ -63,13 +73,25 @@ public enum MySQLGrantParser {
         return roles.isEmpty ? nil : roles
     }
 
-    private static func normalizePrivilege(_ raw: String) -> String? {
-        let withoutColumns = raw.prefix { $0 != "(" }
-        let collapsed = withoutColumns
+    private static func normalizePrivilege(_ raw: String) -> MySQLParsedPrivilege? {
+        let collapsed = raw.prefix { $0 != "(" }
             .trimmingCharacters(in: .whitespaces)
             .split(separator: " ", omittingEmptySubsequences: true)
             .joined(separator: " ")
-        return PluginPrivilegeName.sanitized(collapsed)
+        guard let name = PluginPrivilegeName.sanitized(collapsed) else { return nil }
+
+        return MySQLParsedPrivilege(name: name, columns: parseColumnList(raw))
+    }
+
+    private static func parseColumnList(_ raw: String) -> [String] {
+        guard let open = raw.firstIndex(of: "("), let close = raw.lastIndex(of: ")"), open < close else {
+            return []
+        }
+        let inner = String(raw[raw.index(after: open)..<close])
+        return splitTopLevel(inner, separator: ",").map {
+            unquoteIdentifier($0.trimmingCharacters(in: .whitespaces))
+        }
+        .filter { !$0.isEmpty }
     }
 
     private static func parseScope(_ target: String) -> PluginPrivilegeScope? {

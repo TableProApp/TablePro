@@ -8,6 +8,7 @@ public protocol PluginPrincipalManagement: AnyObject, Sendable {
     func fetchPrincipals() async throws -> [PluginPrincipalInfo]
     func fetchPrivilegeCatalog() async throws -> PluginPrivilegeCatalog
     func fetchGrants(for principal: PluginPrincipalRef) async throws -> [PluginGrantInfo]
+    func fetchGrantableChildren(of scope: PluginPrivilegeScope) async throws -> [PluginPrivilegeScope]
     func currentPrincipalRef() async throws -> PluginPrincipalRef?
     func principalOwnsObjects(_ principal: PluginPrincipalRef) async throws -> Bool
 
@@ -32,4 +33,8 @@ public extension PluginPrincipalManagement {
 
     func currentPrincipalRef() async throws -> PluginPrincipalRef? { nil }
     func principalOwnsObjects(_ principal: PluginPrincipalRef) async throws -> Bool { false }
+
+    func fetchGrantableChildren(
+        of scope: PluginPrivilegeScope
+    ) async throws -> [PluginPrivilegeScope] { [] }
 }

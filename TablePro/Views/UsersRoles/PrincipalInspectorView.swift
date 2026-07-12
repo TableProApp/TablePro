@@ -7,31 +7,7 @@ struct PrincipalInspectorView: View {
 
     private var changeManager: PrincipalChangeManager { viewModel.changeManager }
 
-    private var readOnlyGrants: [PluginGrantInfo] {
-        changeManager.readOnlyGrants(for: principal.ref)
-    }
-
-    private var scopes: [PluginPrivilegeScope] {
-        var scopes: [PluginPrivilegeScope] = []
-        if let catalog = changeManager.catalog, !catalog.serverPrivileges.isEmpty {
-            scopes.append(.server)
-        }
-        scopes.append(contentsOf: viewModel.databases.map { .database($0) })
-        return scopes
-    }
-
-    private var privileges: [PluginPrivilegeDescriptor] {
-        guard let catalog = changeManager.catalog else { return [] }
-        var seen = Set<String>()
-        return (catalog.serverPrivileges + catalog.databasePrivileges).filter { seen.insert($0.name).inserted }
-    }
-
-    private var gridHeight: CGFloat {
-        let rowHeight: CGFloat = 24
-        let headerHeight: CGFloat = 28
-        let contentHeight = CGFloat(scopes.count) * rowHeight + headerHeight
-        return min(max(contentHeight, rowHeight + headerHeight), 360)
-    }
+    private var catalog: PluginPrivilegeCatalog? { changeManager.catalog }
 
     var body: some View {
         Form {
@@ -71,55 +47,46 @@ struct PrincipalInspectorView: View {
             }
 
             Section("Privileges") {
-                if privileges.isEmpty {
-                    Text("No privileges reported by the server.")
-                        .foregroundStyle(.secondary)
-                } else {
-                    PrivilegeGridView(
-                        scopes: scopes,
-                        privileges: privileges,
-                        databasePrivileges: Set((changeManager.catalog?.databasePrivileges ?? []).map(\.name)),
-                        serverPrivileges: Set((changeManager.catalog?.serverPrivileges ?? []).map(\.name)),
-                        isGranted: { privilege, scope in
-                            changeManager.isGranted(privilege, scope: scope, for: principal.ref)
-                        },
-                        onToggle: { privilege, scope, isGranted in
-                            changeManager.setGranted(
-                                isGranted,
-                                privilege: privilege,
-                                scope: scope,
-                                for: principal.ref
-                            )
-                        }
-                    )
-                    .frame(height: gridHeight)
-                }
-            }
-
-            if !readOnlyGrants.isEmpty {
-                Section("Table and Column Privileges") {
-                    Text("Managed outside TablePro in this version. Shown so a database-level change does not hide them.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    ForEach(Array(readOnlyGrants.enumerated()), id: \.offset) { _, grant in
-                        LabeledContent(Self.scopeLabel(grant.scope), value: grant.privilege)
-                    }
-                }
+                privilegeTree
             }
         }
         .formStyle(.grouped)
     }
 
-    private static func scopeLabel(_ scope: PluginPrivilegeScope) -> String {
-        switch scope {
-        case .server:
-            String(localized: "Server")
-        case let .database(name):
-            name
-        case let .schema(_, schema):
-            schema
-        case let .table(_, schema, table):
-            schema.map { "\($0).\(table)" } ?? table
+    @ViewBuilder
+    private var privilegeTree: some View {
+        if let catalog, !catalog.allPrivileges.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                PrivilegeTreeView(
+                    roots: viewModel.privilegeRoots,
+                    version: viewModel.treeVersion,
+                    privileges: catalog.allPrivileges,
+                    catalog: catalog,
+                    isGranted: { privilege, scope in
+                        changeManager.isGranted(privilege, scope: scope, for: principal.ref)
+                    },
+                    hasDescendantGrant: { privilege, scope in
+                        changeManager.hasDescendantGrant(privilege, under: scope, for: principal.ref)
+                    },
+                    onToggle: { privilege, scope, isGranted in
+                        changeManager.setGranted(
+                            isGranted,
+                            privilege: privilege,
+                            scope: scope,
+                            for: principal.ref
+                        )
+                    },
+                    onExpand: { viewModel.expand($0) }
+                )
+                .frame(height: 360)
+
+                Text("Expand a database to grant on its schemas, tables, and columns. A dash means the privilege is granted somewhere inside.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        } else {
+            Text("No privileges reported by the server.")
+                .foregroundStyle(.secondary)
         }
     }
 }

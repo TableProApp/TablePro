@@ -45,6 +45,10 @@ actor PrincipalListLoader {
         try await driver.fetchGrants(for: principal)
     }
 
+    func grantableChildren(of scope: PluginPrivilegeScope) async throws -> [PluginPrivilegeScope] {
+        try await driver.fetchGrantableChildren(of: scope)
+    }
+
     func ownsObjects(_ principal: PluginPrincipalRef) async throws -> Bool {
         try await driver.principalOwnsObjects(principal)
     }

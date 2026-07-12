@@ -11,11 +11,16 @@ extension MySQLPluginDriver: PluginPrincipalManagement {
     var supportsOwnedObjectReassignment: Bool { false }
     var supportsRoleMembership: Bool { false }
 
-    private static let defaultHost = "%"
+    static let defaultHost = "%"
+
     private static let excludedPrivileges: Set<String> = ["GRANT OPTION", "PROXY"]
 
+    private static let tableContextMarkers = ["TABLE", "INDEX", "VIEW", "TRIGGER"]
     private static let databaseContextMarkers = [
         "DATABASE", "TABLE", "INDEX", "VIEW", "TRIGGER", "EVENT", "FUNCTION", "PROCEDURE"
+    ]
+    private static let columnGrantablePrivileges: Set<String> = [
+        "SELECT", "INSERT", "UPDATE", "REFERENCES"
     ]
 
     func fetchPrincipals() async throws -> [PluginPrincipalInfo] {
@@ -31,8 +36,6 @@ extension MySQLPluginDriver: PluginPrincipalManagement {
                 ref: PluginPrincipalRef(name: name, host: host),
                 isRole: false,
                 canLogin: true,
-                attributes: [],
-                memberOf: [],
                 connectionLimit: (limit ?? 0) == 0 ? nil : limit
             )
         }
@@ -41,8 +44,10 @@ extension MySQLPluginDriver: PluginPrincipalManagement {
     func fetchPrivilegeCatalog() async throws -> PluginPrivilegeCatalog {
         let result = try await execute(query: "SHOW PRIVILEGES")
 
-        var serverPrivileges: [PluginPrivilegeDescriptor] = []
-        var databasePrivileges: [PluginPrivilegeDescriptor] = []
+        var server: [PluginPrivilegeDescriptor] = []
+        var database: [PluginPrivilegeDescriptor] = []
+        var table: [PluginPrivilegeDescriptor] = []
+        var column: [PluginPrivilegeDescriptor] = []
         var hasDynamicPrivileges = false
 
         for row in result.rows {
@@ -57,9 +62,15 @@ extension MySQLPluginDriver: PluginPrincipalManagement {
                 category: row[safe: 1]?.asText
             )
 
-            serverPrivileges.append(descriptor)
+            server.append(descriptor)
             if Self.databaseContextMarkers.contains(where: { context.contains($0) }) {
-                databasePrivileges.append(descriptor)
+                database.append(descriptor)
+            }
+            if Self.tableContextMarkers.contains(where: { context.contains($0) }) {
+                table.append(descriptor)
+            }
+            if Self.columnGrantablePrivileges.contains(name) {
+                column.append(descriptor)
             }
             if name.contains("_") {
                 hasDynamicPrivileges = true
@@ -67,29 +78,34 @@ extension MySQLPluginDriver: PluginPrincipalManagement {
         }
 
         return PluginPrivilegeCatalog(
-            serverPrivileges: serverPrivileges,
-            databasePrivileges: databasePrivileges,
+            serverPrivileges: server,
+            databasePrivileges: database,
+            schemaPrivileges: [],
+            tablePrivileges: table,
+            columnPrivileges: column,
             supportsDynamicPrivileges: hasDynamicPrivileges
         )
     }
 
     func fetchGrants(for principal: PluginPrincipalRef) async throws -> [PluginGrantInfo] {
-        let account = grantAccount(principal)
-        let result = try await execute(query: "SHOW GRANTS FOR \(account)")
+        let result = try await execute(query: "SHOW GRANTS FOR \(grantAccount(principal))")
         let catalog = try await fetchPrivilegeCatalog()
 
         return result.rows.flatMap { row -> [PluginGrantInfo] in
             guard let line = row[safe: 0]?.asText,
                   let parsed = MySQLGrantParser.parseGrant(line) else { return [] }
+            return grants(from: parsed, catalog: catalog)
+        }
+    }
 
-            let privileges = expandAllPrivileges(parsed, catalog: catalog)
-            return privileges.map { privilege in
-                PluginGrantInfo(
-                    privilege: privilege,
-                    scope: parsed.scope,
-                    isGrantable: parsed.isGrantable
-                )
-            }
+    func fetchGrantableChildren(of scope: PluginPrivilegeScope) async throws -> [PluginPrivilegeScope] {
+        switch scope {
+        case let .database(database):
+            try await tables(in: database)
+        case let .table(database, _, table):
+            try await columns(in: database, table: table)
+        case .server, .schema, .column:
+            []
         }
     }
 
@@ -107,20 +123,59 @@ extension MySQLPluginDriver: PluginPrincipalManagement {
         )
     }
 
-    private func expandAllPrivileges(
-        _ parsed: MySQLParsedGrant,
-        catalog: PluginPrivilegeCatalog
-    ) -> [String] {
-        guard parsed.privileges.contains(MySQLGrantParser.allPrivileges) else {
-            return parsed.privileges
+    private func tables(in database: String) async throws -> [PluginPrivilegeScope] {
+        let query = "SHOW TABLES FROM \(quotedDatabaseIdentifier(database))"
+        let result = try await execute(query: query)
+        return result.rows.compactMap { row in
+            guard let table = row[safe: 0]?.asText else { return nil }
+            return .table(database: database, schema: nil, table: table)
         }
-        switch parsed.scope {
-        case .server:
-            return catalog.serverPrivileges.map(\.name)
-        case .database:
-            return catalog.databasePrivileges.map(\.name)
-        case .schema, .table:
-            return catalog.databasePrivileges.map(\.name)
+    }
+
+    private func columns(in database: String, table: String) async throws -> [PluginPrivilegeScope] {
+        let target = "\(quotedDatabaseIdentifier(database)).\(quoteIdentifier(table))"
+        let result = try await execute(query: "SHOW COLUMNS FROM \(target)")
+        return result.rows.compactMap { row in
+            guard let column = row[safe: 0]?.asText else { return nil }
+            return .column(database: database, schema: nil, table: table, column: column)
+        }
+    }
+
+    private func grants(
+        from parsed: MySQLParsedGrant,
+        catalog: PluginPrivilegeCatalog
+    ) -> [PluginGrantInfo] {
+        parsed.privileges.flatMap { privilege -> [PluginGrantInfo] in
+            guard privilege.columns.isEmpty else {
+                return columnGrants(privilege: privilege, scope: parsed.scope, parsed: parsed)
+            }
+            let names = privilege.name == MySQLGrantParser.allPrivileges
+                ? catalog.privileges(for: parsed.scope).map(\.name)
+                : [privilege.name]
+
+            return names.map {
+                PluginGrantInfo(privilege: $0, scope: parsed.scope, isGrantable: parsed.isGrantable)
+            }
+        }
+    }
+
+    private func columnGrants(
+        privilege: MySQLParsedPrivilege,
+        scope: PluginPrivilegeScope,
+        parsed: MySQLParsedGrant
+    ) -> [PluginGrantInfo] {
+        guard let database = scope.databaseName, let table = scope.tableName else { return [] }
+        return privilege.columns.map { column in
+            PluginGrantInfo(
+                privilege: privilege.name,
+                scope: .column(
+                    database: database,
+                    schema: nil,
+                    table: table,
+                    column: column
+                ),
+                isGrantable: parsed.isGrantable
+            )
         }
     }
 
@@ -133,17 +188,23 @@ extension MySQLPluginDriver: PluginPrincipalManagement {
     func grantTarget(for scope: PluginPrivilegeScope) -> String? {
         switch scope {
         case .server:
-            return "*.*"
+            "*.*"
         case let .database(name):
-            return "\(quotedDatabasePattern(name)).*"
+            "\(quotedDatabasePattern(name)).*"
         case let .schema(database, _):
-            return "\(quotedDatabasePattern(database)).*"
+            "\(quotedDatabasePattern(database)).*"
         case let .table(database, _, table):
-            return "\(quotedDatabasePattern(database)).\(quoteIdentifier(table))"
+            "\(quotedDatabasePattern(database)).\(quoteIdentifier(table))"
+        case let .column(database, _, table, _):
+            "\(quotedDatabasePattern(database)).\(quoteIdentifier(table))"
         }
     }
 
-    private func quotedDatabasePattern(_ name: String) -> String {
+    func quotedDatabasePattern(_ name: String) -> String {
         quoteIdentifier(MySQLGrantPatternEscaping.escapeDatabasePattern(name))
+    }
+
+    private func quotedDatabaseIdentifier(_ name: String) -> String {
+        quoteIdentifier(name)
     }
 }

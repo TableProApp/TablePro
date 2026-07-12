@@ -50,6 +50,77 @@ enum PostgreSQLPrincipalQueries {
         PluginPrivilegeDescriptor(name: "TEMPORARY", label: "Temporary tables")
     ]
 
+    static let schemaPrivileges = [
+        PluginPrivilegeDescriptor(name: "USAGE", label: "Usage"),
+        PluginPrivilegeDescriptor(name: "CREATE", label: "Create")
+    ]
+
+    static let tablePrivileges = [
+        PluginPrivilegeDescriptor(name: "SELECT", label: "Select"),
+        PluginPrivilegeDescriptor(name: "INSERT", label: "Insert"),
+        PluginPrivilegeDescriptor(name: "UPDATE", label: "Update"),
+        PluginPrivilegeDescriptor(name: "DELETE", label: "Delete"),
+        PluginPrivilegeDescriptor(name: "TRUNCATE", label: "Truncate"),
+        PluginPrivilegeDescriptor(name: "REFERENCES", label: "References"),
+        PluginPrivilegeDescriptor(name: "TRIGGER", label: "Trigger")
+    ]
+
+    static let columnPrivileges = [
+        PluginPrivilegeDescriptor(name: "SELECT", label: "Select"),
+        PluginPrivilegeDescriptor(name: "INSERT", label: "Insert"),
+        PluginPrivilegeDescriptor(name: "UPDATE", label: "Update"),
+        PluginPrivilegeDescriptor(name: "REFERENCES", label: "References")
+    ]
+
+    static let schemas = """
+        SELECT n.nspname
+        FROM pg_namespace n
+        WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
+          AND n.nspname NOT LIKE 'pg\\_%'
+        ORDER BY n.nspname
+        """
+
+    static func tables(schemaLiteral: String) -> String {
+        """
+        SELECT c.relname
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = '\(schemaLiteral)'
+          AND c.relkind IN ('r', 'v', 'm', 'p', 'f')
+        ORDER BY c.relname
+        """
+    }
+
+    static func columns(schemaLiteral: String, tableLiteral: String) -> String {
+        """
+        SELECT a.attname
+        FROM pg_attribute a
+        JOIN pg_class c ON c.oid = a.attrelid
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = '\(schemaLiteral)'
+          AND c.relname = '\(tableLiteral)'
+          AND a.attnum > 0
+          AND NOT a.attisdropped
+        ORDER BY a.attnum
+        """
+    }
+
+    static func columnGrants(roleLiteral: String) -> String {
+        """
+        SELECT n.nspname, c.relname, a.attname, acl.privilege_type, acl.is_grantable
+        FROM pg_attribute a
+        JOIN pg_class c ON c.oid = a.attrelid
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        CROSS JOIN LATERAL aclexplode(a.attacl) AS acl
+        JOIN pg_roles r ON r.oid = acl.grantee
+        WHERE r.rolname = '\(roleLiteral)'
+          AND a.attnum > 0
+          AND NOT a.attisdropped
+          AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+        ORDER BY n.nspname, c.relname, a.attname, acl.privilege_type
+        """
+    }
+
     static func principals(includeBypassRLS: Bool) -> String {
         let bypassColumn = includeBypassRLS ? "r.rolbypassrls" : "false AS rolbypassrls"
         return """
