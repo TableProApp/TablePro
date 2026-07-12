@@ -143,6 +143,17 @@ final class QueryTabManager {
         }
     }
 
+    /// Take an already-built tab, such as one rebuilt from the recently closed history, rather than
+    /// minting a fresh one. Selecting it drives the window title, toolbar, and persistence through
+    /// the usual `selectedTabId` observation.
+    func adoptTab(_ tab: QueryTab, claimFocus: Bool = false) {
+        tabs.append(tab)
+        selectedTabId = tab.id
+        if claimFocus {
+            pendingFocusTabId = tab.id
+        }
+    }
+
     var onTableOpened: ((_ tableName: String, _ schemaName: String?, _ databaseName: String, _ isView: Bool, _ isPreview: Bool) -> Void)?
 
     private func notifyTableOpened(
