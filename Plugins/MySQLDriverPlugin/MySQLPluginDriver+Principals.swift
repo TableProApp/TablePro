@@ -12,6 +12,7 @@ extension MySQLPluginDriver: PluginPrincipalManagement {
     var supportsRoleMembership: Bool { false }
     var restrictsGrantBrowsingToCurrentDatabase: Bool { false }
     var supportsGrantableScopeSearch: Bool { true }
+    var rollsBackPrincipalStatements: Bool { false }
 
     static let defaultHost = "%"
 

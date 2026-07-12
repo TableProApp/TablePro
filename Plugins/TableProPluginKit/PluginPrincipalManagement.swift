@@ -6,6 +6,7 @@ public protocol PluginPrincipalManagement: AnyObject, Sendable {
     var supportsRoleMembership: Bool { get }
     var restrictsGrantBrowsingToCurrentDatabase: Bool { get }
     var supportsGrantableScopeSearch: Bool { get }
+    var rollsBackPrincipalStatements: Bool { get }
 
     func fetchPrincipals() async throws -> [PluginPrincipalInfo]
     func fetchPrivilegeCatalog() async throws -> PluginPrivilegeCatalog
@@ -40,6 +41,7 @@ public extension PluginPrincipalManagement {
     var supportsRoleMembership: Bool { false }
     var restrictsGrantBrowsingToCurrentDatabase: Bool { false }
     var supportsGrantableScopeSearch: Bool { false }
+    var rollsBackPrincipalStatements: Bool { false }
 
     func currentPrincipalRef() async throws -> PluginPrincipalRef? { nil }
     func principalOwnsObjects(_ principal: PluginPrincipalRef) async throws -> Bool { false }

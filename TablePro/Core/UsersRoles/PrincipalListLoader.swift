@@ -49,6 +49,23 @@ actor PrincipalListLoader {
         try await driver.fetchGrantableChildren(of: scope)
     }
 
+    func searchScopes(matching query: String, limit: Int) async throws -> [PluginPrivilegeScope] {
+        try await driver.searchGrantableScopes(matching: query, limit: limit)
+    }
+
+    var supportsScopeSearch: Bool {
+        driver.supportsGrantableScopeSearch
+    }
+
+    var restrictsBrowsingToCurrentDatabase: Bool {
+        driver.restrictsGrantBrowsingToCurrentDatabase
+    }
+
+    func cascadeRule() -> @Sendable (PluginPrivilegeScope, PluginPrivilegeScope) -> Bool {
+        let driver = driver
+        return { driver.privilegeCascades(from: $0, to: $1) }
+    }
+
     func ownsObjects(_ principal: PluginPrincipalRef) async throws -> Bool {
         try await driver.principalOwnsObjects(principal)
     }

@@ -2,60 +2,92 @@ import Foundation
 import TableProPluginKit
 
 @MainActor
-final class PrivilegeNode {
+final class PrivilegeNode: NSObject {
+    enum ChildrenAvailability {
+        case available
+        case restrictedToCurrentDatabase
+        case none
+    }
+
     let scope: PluginPrivilegeScope
-    let title: String
-    let isExpandable: Bool
+    let childrenAvailability: ChildrenAvailability
 
     private(set) var children: [PrivilegeNode]?
     private(set) var isLoading = false
+    private(set) var loadError: String?
 
-    init(scope: PluginPrivilegeScope, title: String, isExpandable: Bool) {
+    init(scope: PluginPrivilegeScope, childrenAvailability: ChildrenAvailability) {
         self.scope = scope
-        self.title = title
-        self.isExpandable = isExpandable
+        self.childrenAvailability = childrenAvailability
+        super.init()
     }
 
+    var title: String { scope.displayName }
+    var symbolName: String { scope.symbolName }
+    var persistentKey: String { scope.persistentKey }
     var hasLoadedChildren: Bool { children != nil }
+
+    var isExpandable: Bool {
+        guard childrenAvailability == .available else { return false }
+        guard let children else { return true }
+        return !children.isEmpty
+    }
 
     func beginLoading() {
         isLoading = true
+        loadError = nil
     }
 
     func setChildren(_ children: [PrivilegeNode]) {
         self.children = children
         isLoading = false
+        loadError = nil
     }
 
-    static func make(for scope: PluginPrivilegeScope) -> PrivilegeNode {
+    func failLoading(_ error: String) {
+        children = []
+        isLoading = false
+        loadError = error
+    }
+
+    override func isEqual(_ object: Any?) -> Bool {
+        guard let other = object as? PrivilegeNode else { return false }
+        return scope == other.scope
+    }
+
+    override var hash: Int {
+        scope.hashValue
+    }
+
+    static func make(
+        for scope: PluginPrivilegeScope,
+        restrictsBrowsing: Bool,
+        currentDatabase: String?
+    ) -> PrivilegeNode {
         PrivilegeNode(
             scope: scope,
-            title: title(for: scope),
-            isExpandable: isExpandable(scope)
+            childrenAvailability: availability(
+                for: scope,
+                restrictsBrowsing: restrictsBrowsing,
+                currentDatabase: currentDatabase
+            )
         )
     }
 
-    private static func isExpandable(_ scope: PluginPrivilegeScope) -> Bool {
+    private static func availability(
+        for scope: PluginPrivilegeScope,
+        restrictsBrowsing: Bool,
+        currentDatabase: String?
+    ) -> ChildrenAvailability {
         switch scope {
         case .server, .column:
-            false
+            .none
         case .database, .schema, .table:
-            true
-        }
-    }
-
-    private static func title(for scope: PluginPrivilegeScope) -> String {
-        switch scope {
-        case .server:
-            String(localized: "Server (all databases)")
-        case let .database(name):
-            name
-        case let .schema(_, schema):
-            schema
-        case let .table(_, _, table):
-            table
-        case let .column(_, _, _, column):
-            column
+            if restrictsBrowsing, let database = scope.databaseName, database != currentDatabase {
+                .restrictedToCurrentDatabase
+            } else {
+                .available
+            }
         }
     }
 }

@@ -12,6 +12,7 @@ extension PostgreSQLPluginDriver: PluginPrincipalManagement {
     var supportsRoleMembership: Bool { true }
     var restrictsGrantBrowsingToCurrentDatabase: Bool { true }
     var supportsGrantableScopeSearch: Bool { true }
+    var rollsBackPrincipalStatements: Bool { true }
 
     func privilegeCascades(
         from ancestor: PluginPrivilegeScope,

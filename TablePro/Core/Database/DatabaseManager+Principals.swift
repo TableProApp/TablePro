@@ -54,6 +54,7 @@ extension DatabaseManager {
             try await runPrincipalStatements(
                 statements,
                 driver: driver,
+                rollsBack: principalDriver.rollsBackPrincipalStatements,
                 connectionId: connectionId
             )
         }
@@ -62,35 +63,41 @@ extension DatabaseManager {
     private func runPrincipalStatements(
         _ statements: [SchemaStatement],
         driver: any DatabaseDriver,
+        rollsBack: Bool,
         connectionId: UUID
     ) async throws {
-        let useTransaction = driver.supportsTransactions
+        let useTransaction = driver.supportsTransactions && rollsBack
         if useTransaction {
             try await driver.beginTransaction()
         }
 
+        var appliedCount = 0
         do {
             for statement in statements {
                 _ = try await driver.execute(query: statement.sql)
+                appliedCount += 1
             }
             if useTransaction {
                 try await driver.commitTransaction()
             }
         } catch {
+            var rolledBack = false
             if useTransaction {
                 do {
                     try await driver.rollbackTransaction()
+                    rolledBack = true
                 } catch {
                     Self.logger.error(
                         "Rollback failed after principal change error: \(error.localizedDescription)"
                     )
                 }
             }
-            throw DatabaseError.queryFailed(
-                String(
-                    format: String(localized: "User and role change failed: %@"),
-                    error.localizedDescription
-                )
+            throw PrincipalApplyError(
+                failedStatement: statements[min(appliedCount, statements.count - 1)],
+                appliedCount: appliedCount,
+                totalCount: statements.count,
+                rolledBack: rolledBack,
+                underlying: error
             )
         }
 

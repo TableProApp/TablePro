@@ -92,7 +92,7 @@ struct PrincipalStatementGenerator {
         description: String,
         isDestructive: Bool
     ) throws -> [SchemaStatement] {
-        guard let sql, !sql.isEmpty else {
+        guard let sql else {
             throw DatabaseError.unsupportedOperation
         }
         return sql.map {
