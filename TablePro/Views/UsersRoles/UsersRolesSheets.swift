@@ -353,6 +353,11 @@ struct CopyPrivilegesSheet: View {
         return rows.filter { $0.displayName.localizedCaseInsensitiveContains(filter) }
     }
 
+    private var isSourceLoaded: Bool {
+        guard let source else { return false }
+        return viewModel.changeManager.hasLoadedGrants(for: source)
+    }
+
     var body: some View {
         SheetChrome(
             title: String(localized: "Copy Privileges"),
@@ -374,13 +379,16 @@ struct CopyPrivilegesSheet: View {
         } footer: {
             Button(String(localized: "Cancel"), role: .cancel) { dismiss() }
                 .keyboardShortcut(.cancelAction)
+            if source != nil, !isSourceLoaded {
+                ProgressView().controlSize(.small)
+            }
             Button(String(localized: "Copy")) {
                 guard let source else { return }
                 viewModel.copyPrivileges(from: source, to: target)
                 dismiss()
             }
             .keyboardShortcut(.defaultAction)
-            .disabled(source == nil)
+            .disabled(source == nil || !isSourceLoaded)
         }
         .frame(minWidth: 420, idealWidth: 440, minHeight: 320, idealHeight: 380)
         .task(id: source) {

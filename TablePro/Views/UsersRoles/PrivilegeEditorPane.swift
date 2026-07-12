@@ -44,7 +44,8 @@ struct PrivilegeEditorPane: View {
             PrivilegeScopeOutlineView(
                 viewModel: viewModel,
                 structureVersion: viewModel.privilegeTree.structureVersion,
-                grantVersion: viewModel.changeManager.grantClosureVersion
+                grantVersion: viewModel.changeManager.grantClosureVersion,
+                principal: viewModel.selection
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }

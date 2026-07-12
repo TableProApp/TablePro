@@ -434,6 +434,14 @@ final class MainContentCommandActions {
             return
         }
 
+        // User and role changes can only be applied after the SQL is reviewed, so Save opens the
+        // review sheet and cancels the close. Falling through here would close the window and
+        // destroy every staged change.
+        if isUsersRolesTab, coordinator.usersRolesActions?.hasChanges() == true {
+            coordinator.usersRolesActions?.reviewAndApply()
+            return
+        }
+
         // Structure view saves via direct coordinator call
         if coordinator.tabManager.selectedTab?.display.resultsViewMode == .structure {
             coordinator.structureActions?.saveChanges?()

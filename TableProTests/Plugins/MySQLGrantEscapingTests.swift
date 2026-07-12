@@ -66,6 +66,14 @@ struct MySQLGrantParserTests {
         #expect(grant?.scope == .table(database: "shop", schema: nil, table: "orders"))
     }
 
+    @Test("A table-level database name is a literal identifier, not a LIKE pattern")
+    func doesNotUnescapeTableLevelDatabase() {
+        // MySQL only treats _ and % as wildcards in the database position of a global or
+        // database-level grant. Unescaping here would rewrite a name containing a backslash.
+        let grant = MySQLGrantParser.parseGrant(#"GRANT SELECT ON `a\_b`.`orders` TO `u`@`h`"#)
+        #expect(grant?.scope == .table(database: #"a\_b"#, schema: nil, table: "orders"))
+    }
+
     @Test("WITH GRANT OPTION is detected")
     func parsesGrantOption() {
         let withOption = MySQLGrantParser.parseGrant("GRANT SELECT ON `db`.* TO `u`@`h` WITH GRANT OPTION")

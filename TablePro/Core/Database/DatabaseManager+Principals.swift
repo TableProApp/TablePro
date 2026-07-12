@@ -102,7 +102,9 @@ extension DatabaseManager {
         }
 
         let databaseName = activeSessions[connectionId]?.activeDatabase ?? ""
-        for statement in statements {
+        // Query history is stored unencrypted on disk. A CREATE USER / ALTER USER statement embeds
+        // the plaintext password, so it is never recorded.
+        for statement in statements where !statement.carriesCredentials {
             QueryHistoryManager.shared.recordQuery(
                 query: statement.sql.hasSuffix(";") ? statement.sql : statement.sql + ";",
                 connectionId: connectionId,

@@ -265,7 +265,8 @@ extension UsersRolesViewModel {
             )
             activeSheet = nil
             changeManager.discardChanges()
-            await load(forceReload: true)
+            // The reload is driven by AppCommands.refreshPrincipals, which executePrincipalChanges
+            // posts on success. Reloading here as well would run the whole fetch twice.
         } catch let error as PrincipalApplyError {
             applyFailure = [error.localizedDescription, error.partialApplicationMessage]
                 .compactMap { $0 }

@@ -223,6 +223,9 @@ extension MySQLPluginDriver: PluginPrincipalManagement {
         return "\(name)@\(host)"
     }
 
+    // MySQL treats `_` and `%` in the database position as LIKE wildcards only for global and
+    // database-level grants. In a table-level target the database name is a literal identifier, so
+    // escaping it there would grant on a database whose name contains a backslash.
     func grantTarget(for scope: PluginPrivilegeScope) -> String? {
         switch scope {
         case .server:
@@ -232,9 +235,9 @@ extension MySQLPluginDriver: PluginPrincipalManagement {
         case let .schema(database, _):
             "\(quotedDatabasePattern(database)).*"
         case let .table(database, _, table):
-            "\(quotedDatabasePattern(database)).\(quoteIdentifier(table))"
+            "\(quoteIdentifier(database)).\(quoteIdentifier(table))"
         case let .column(database, _, table, _):
-            "\(quotedDatabasePattern(database)).\(quoteIdentifier(table))"
+            "\(quoteIdentifier(database)).\(quoteIdentifier(table))"
         }
     }
 

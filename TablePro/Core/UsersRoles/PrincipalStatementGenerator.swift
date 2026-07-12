@@ -23,7 +23,8 @@ struct PrincipalStatementGenerator {
                     format: String(localized: "Create %@"),
                     definition.ref.displayName
                 ),
-                isDestructive: false
+                isDestructive: false,
+                carriesCredentials: !(definition.password ?? "").isEmpty
             )
 
         case let .alter(old, new):
@@ -33,7 +34,8 @@ struct PrincipalStatementGenerator {
                     format: String(localized: "Update %@"),
                     old.ref.displayName
                 ),
-                isDestructive: false
+                isDestructive: false,
+                carriesCredentials: !(new.password ?? "").isEmpty
             )
 
         case let .setPassword(ref, password):
@@ -43,7 +45,8 @@ struct PrincipalStatementGenerator {
                     format: String(localized: "Change password for %@"),
                     ref.displayName
                 ),
-                isDestructive: false
+                isDestructive: false,
+                carriesCredentials: true
             )
 
         case let .modifyGrants(changeSet):
@@ -90,13 +93,19 @@ struct PrincipalStatementGenerator {
     private func wrap(
         _ sql: [String]?,
         description: String,
-        isDestructive: Bool
+        isDestructive: Bool,
+        carriesCredentials: Bool = false
     ) throws -> [SchemaStatement] {
         guard let sql else {
             throw DatabaseError.unsupportedOperation
         }
         return sql.map {
-            SchemaStatement(sql: $0, description: description, isDestructive: isDestructive)
+            SchemaStatement(
+                sql: $0,
+                description: description,
+                isDestructive: isDestructive,
+                carriesCredentials: carriesCredentials
+            )
         }
     }
 }

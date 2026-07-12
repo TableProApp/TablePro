@@ -106,6 +106,96 @@ struct PrincipalChangeManagerTests {
         #expect(manager.isGranted("CREATE", scope: app, for: alice))
     }
 
+    @Test("Reload drops the stale grant baseline so it is refetched from the server")
+    func reloadInvalidatesGrantBaseline() {
+        let manager = makeManager()
+        #expect(manager.hasLoadedGrants(for: alice))
+
+        manager.reload(
+            principals: [PluginPrincipalInfo(ref: alice)],
+            catalog: PluginPrivilegeCatalog()
+        )
+
+        // If the baseline survived, loadGrants would skip the refetch and a privilege applied this
+        // session would render unchecked and could never be revoked.
+        #expect(manager.hasLoadedGrants(for: alice) == false)
+    }
+
+    @Test("Reload keeps the seeded baseline of a staged create, which has nothing to fetch")
+    func reloadKeepsStagedCreateBaseline() {
+        let carol = PluginPrincipalRef(name: "carol")
+        let manager = makeManager()
+        manager.stageCreate(PluginPrincipalDefinition(ref: carol))
+
+        manager.reload(
+            principals: [PluginPrincipalInfo(ref: alice)],
+            catalog: PluginPrivilegeCatalog()
+        )
+
+        #expect(manager.hasLoadedGrants(for: carol))
+        #expect(manager.stage(of: carol) == .created)
+    }
+
+    @Test("Reload drops a delta for a principal that no longer exists on the server")
+    func reloadDropsDeadDeltas() {
+        let manager = makeManager()
+        manager.setGranted(true, privilege: "CREATE", scope: app, for: alice)
+        #expect(manager.changeCount == 1)
+
+        manager.reload(principals: [], catalog: PluginPrivilegeCatalog())
+
+        #expect(manager.changeCount == 0)
+        #expect(manager.grantChangeSets().isEmpty)
+    }
+
+    @Test("An attribute edit on a staged create folds into the CREATE instead of a dropped ALTER")
+    func foldsAlterIntoStagedCreate() {
+        let carol = PluginPrincipalRef(name: "carol")
+        let manager = makeManager()
+        manager.stageCreate(PluginPrincipalDefinition(ref: carol, canLogin: true))
+
+        manager.stageAlter(
+            PluginPrincipalDefinition(ref: carol, canLogin: false),
+            for: carol
+        )
+
+        let changes = manager.pendingChanges()
+        #expect(changes.count == 1)
+        guard case let .create(definition) = changes[0] else {
+            Issue.record("expected a single create carrying the edit")
+            return
+        }
+        #expect(definition.canLogin == false)
+    }
+
+    @Test("Removing a staged create takes its password and grants with it")
+    func unstageCreateClearsEverything() {
+        let carol = PluginPrincipalRef(name: "carol")
+        let manager = makeManager()
+        manager.stageCreate(PluginPrincipalDefinition(ref: carol))
+        manager.stageSetPassword("secret", for: carol)
+        manager.setGranted(true, privilege: "CONNECT", scope: app, for: carol)
+
+        manager.unstageCreate(carol)
+
+        #expect(manager.changeCount == 0)
+        #expect(manager.pendingChanges().isEmpty)
+    }
+
+    @Test("Undoing the removal of a staged create restores its grants")
+    func undoUnstageCreateRestoresGrants() {
+        let carol = PluginPrincipalRef(name: "carol")
+        let manager = makeManager()
+        manager.stageCreate(PluginPrincipalDefinition(ref: carol))
+        manager.setGranted(true, privilege: "CONNECT", scope: app, for: carol)
+
+        manager.unstageCreate(carol)
+        manager.undoManager.undo()
+
+        #expect(manager.stage(of: carol) == .created)
+        #expect(manager.isGranted("CONNECT", scope: app, for: carol))
+    }
+
     @Test("Reload preserves intent the server has not satisfied")
     func reloadPreservesIntent() {
         let manager = makeManager()

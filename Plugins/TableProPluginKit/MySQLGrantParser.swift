@@ -105,18 +105,21 @@ public enum MySQLGrantParser {
             return objectPart == "*" ? .server : nil
         }
 
-        let database = MySQLGrantPatternEscaping.unescapeDatabasePattern(
-            unquoteIdentifier(databasePart)
-        )
-        guard !database.isEmpty else { return nil }
+        let quotedDatabase = unquoteIdentifier(databasePart)
+        guard !quotedDatabase.isEmpty else { return nil }
 
+        // Only a database-level target carries a LIKE pattern. A table-level target's database name
+        // is a literal identifier and must not be unescaped, or a name containing a backslash is
+        // silently rewritten.
         if objectPart == "*" {
-            return .database(database)
+            return .database(
+                MySQLGrantPatternEscaping.unescapeDatabasePattern(quotedDatabase)
+            )
         }
 
         let table = unquoteIdentifier(objectPart)
         guard !table.isEmpty else { return nil }
-        return .table(database: database, schema: nil, table: table)
+        return .table(database: quotedDatabase, schema: nil, table: table)
     }
 
     private static func hasGrantOption(_ granteeText: String) -> Bool {

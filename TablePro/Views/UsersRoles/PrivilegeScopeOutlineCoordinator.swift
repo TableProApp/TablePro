@@ -12,8 +12,10 @@ final class PrivilegeScopeOutlineCoordinator: NSObject, NSOutlineViewDataSource,
 
     var structureVersion = -1
     var grantVersion = -1
+    var principal: PluginPrincipalRef?
 
     private var isRestoringExpansion = false
+    private var pendingExpansions: Set<String> = []
 
     init(viewModel: UsersRolesViewModel) {
         self.viewModel = viewModel
@@ -67,9 +69,18 @@ final class PrivilegeScopeOutlineCoordinator: NSObject, NSOutlineViewDataSource,
               !node.hasLoadedChildren,
               !node.isLoading else { return }
 
+        pendingExpansions.insert(node.persistentKey)
+
         Task { @MainActor in
             await viewModel.expand(node)
             guard let outlineView else { return }
+
+            // The user can collapse the node again while its children are loading. Honour that
+            // instead of re-expanding underneath them.
+            guard pendingExpansions.remove(node.persistentKey) != nil else {
+                outlineView.reloadItem(node, reloadChildren: true)
+                return
+            }
             outlineView.reloadItem(node, reloadChildren: true)
             outlineView.expandItem(node)
         }
@@ -84,6 +95,7 @@ final class PrivilegeScopeOutlineCoordinator: NSObject, NSOutlineViewDataSource,
     func outlineViewItemDidCollapse(_ notification: Notification) {
         guard !isRestoringExpansion,
               let node = notification.userInfo?["NSObject"] as? PrivilegeNode else { return }
+        pendingExpansions.remove(node.persistentKey)
         viewModel.expansionStore.remove(node.persistentKey)
     }
 

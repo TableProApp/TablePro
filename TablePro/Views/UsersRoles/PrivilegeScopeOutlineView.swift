@@ -7,6 +7,7 @@ struct PrivilegeScopeOutlineView: NSViewRepresentable {
 
     let structureVersion: Int
     let grantVersion: Int
+    let principal: PluginPrincipalRef?
 
     func makeCoordinator() -> PrivilegeScopeOutlineCoordinator {
         PrivilegeScopeOutlineCoordinator(viewModel: viewModel)
@@ -51,10 +52,15 @@ struct PrivilegeScopeOutlineView: NSViewRepresentable {
 
         if coordinator.structureVersion != structureVersion {
             coordinator.structureVersion = structureVersion
+            coordinator.grantVersion = grantVersion
+            coordinator.principal = principal
             outlineView.reloadData()
             coordinator.restoreExpansion()
-        } else if coordinator.grantVersion != grantVersion {
+        } else if coordinator.grantVersion != grantVersion || coordinator.principal != principal {
+            // The summary column renders the selected principal's grants, so a change of principal
+            // must refresh it even when the tree structure and the grant closure are unchanged.
             coordinator.grantVersion = grantVersion
+            coordinator.principal = principal
             coordinator.refreshVisibleSummaries()
         }
     }

@@ -232,6 +232,7 @@ final class UsersRolesViewModel {
             if let selection {
                 await loadGrants(for: selection)
             }
+            restoreScopePresentation()
         } catch {
             loadError = error.localizedDescription
             Self.logger.error("Failed to load principals: \(error.localizedDescription)")
@@ -247,10 +248,25 @@ final class UsersRolesViewModel {
                 changeManager.loadGrants(try await loader.grants(for: ref), for: ref)
             }
             await loadRoleGrants(for: ref)
+
+            if ref == selection, scopeMode == .granted, scopeFilter.isEmpty {
+                applyScopeMode()
+            }
         } catch {
             grantsError = error.localizedDescription
             Self.logger.error("Failed to load grants: \(error.localizedDescription)")
         }
+    }
+
+    /// A reload rebuilds the tree in hierarchy mode. Put back whatever the user was actually
+    /// looking at, so the mode picker and the search field do not lie about what is on screen.
+    private func restoreScopePresentation() {
+        guard scopeFilter.isEmpty else {
+            searchScopes()
+            return
+        }
+        guard scopeMode != .all else { return }
+        applyScopeMode()
     }
 
     private func loadRoleGrants(for ref: PluginPrincipalRef) async {

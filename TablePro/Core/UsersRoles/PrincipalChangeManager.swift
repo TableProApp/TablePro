@@ -55,17 +55,22 @@ final class PrincipalChangeManager {
         self.catalog = catalog
 
         let liveRefs = Set(principals.map(\.ref))
-        baselineGrants = baselineGrants.filter { liveRefs.contains($0.key) }
-        baselineKeys = baselineKeys.filter { liveRefs.contains($0.key) }
-
-        for (ref, keys) in baselineKeys {
-            grantDeltas[ref]?.rebase(onto: keys)
-        }
-        grantDeltas = grantDeltas.filter { !$0.value.isEmpty }
-        pendingDrops = pendingDrops.filter { liveRefs.contains($0.key) }
-        pendingPasswords = pendingPasswords.filter { liveRefs.contains($0.key) }
-        pendingAlters = pendingAlters.filter { liveRefs.contains($0.key) }
         pendingCreates = pendingCreates.filter { !liveRefs.contains($0.ref) }
+
+        let createdRefs = Set(pendingCreates.map(\.ref))
+        let retained = liveRefs.union(createdRefs)
+
+        // Server truth is stale after a reload. Drop it for everything that exists on the server so
+        // the next loadGrants refetches; a staged create keeps its seeded empty baseline because
+        // there is nothing on the server to fetch for it yet. Deltas are rebased when the fresh
+        // baseline lands, not here.
+        baselineGrants = baselineGrants.filter { createdRefs.contains($0.key) }
+        baselineKeys = baselineKeys.filter { createdRefs.contains($0.key) }
+
+        grantDeltas = grantDeltas.filter { retained.contains($0.key) && !$0.value.isEmpty }
+        pendingDrops = pendingDrops.filter { liveRefs.contains($0.key) }
+        pendingPasswords = pendingPasswords.filter { retained.contains($0.key) }
+        pendingAlters = pendingAlters.filter { liveRefs.contains($0.key) }
 
         invalidateClosures()
         recomputeChangeCount()
@@ -272,16 +277,41 @@ final class PrincipalChangeManager {
 
     func unstageCreate(_ ref: PluginPrincipalRef) {
         guard let definition = pendingCreates.first(where: { $0.ref == ref }) else { return }
+
+        let delta = grantDeltas[ref]
+        let password = pendingPasswords[ref]
+
         pendingCreates.removeAll { $0.ref == ref }
         baselineGrants.removeValue(forKey: ref)
         baselineKeys.removeValue(forKey: ref)
         grantDeltas.removeValue(forKey: ref)
+        pendingPasswords.removeValue(forKey: ref)
+        pendingAlters.removeValue(forKey: ref)
         invalidateClosures()
         recomputeChangeCount()
 
+        undoManager.setActionName(
+            String(format: String(localized: "Remove %@"), ref.displayName)
+        )
         undoManager.registerUndo(withTarget: self) { manager in
-            manager.stageCreate(definition)
+            manager.restoreCreate(definition, delta: delta, password: password)
         }
+    }
+
+    private func restoreCreate(
+        _ definition: PluginPrincipalDefinition,
+        delta: PrincipalGrantDelta?,
+        password: String?
+    ) {
+        stageCreate(definition)
+        if let delta {
+            grantDeltas[definition.ref] = delta
+        }
+        if let password {
+            pendingPasswords[definition.ref] = password
+        }
+        invalidateClosures()
+        recomputeChangeCount()
     }
 
     func stageDrop(_ ref: PluginPrincipalRef, options: PluginPrincipalDropOptions) {
@@ -333,6 +363,22 @@ final class PrincipalChangeManager {
     }
 
     func stageAlter(_ definition: PluginPrincipalDefinition, for ref: PluginPrincipalRef) {
+        // A principal that only exists as a staged create has nothing to ALTER. Fold the edit into
+        // the CREATE instead, or it would be counted as a change and then silently dropped.
+        if let index = pendingCreates.firstIndex(where: { $0.ref == ref }) {
+            let previous = pendingCreates[index]
+            guard previous != definition else { return }
+
+            pendingCreates[index] = definition
+            recomputeChangeCount()
+
+            undoManager.setActionName(String(localized: "Change Attributes"))
+            undoManager.registerUndo(withTarget: self) { manager in
+                manager.stageAlter(previous, for: ref)
+            }
+            return
+        }
+
         let previous = pendingAlters[ref]
 
         if let original = principals.first(where: { $0.ref == ref }),
@@ -344,7 +390,7 @@ final class PrincipalChangeManager {
         guard pendingAlters[ref] != previous else { return }
         recomputeChangeCount()
 
-        undoManager.setActionName(String(localized: "Change Role Attributes"))
+        undoManager.setActionName(String(localized: "Change Attributes"))
         undoManager.registerUndo(withTarget: self) { manager in
             if let previous {
                 manager.stageAlter(previous, for: ref)
