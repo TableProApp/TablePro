@@ -13,6 +13,22 @@ import UniformTypeIdentifiers
 extension MainContentCoordinator {
     // MARK: - Result Set Operations
 
+    var canPinActiveResultSet: Bool {
+        guard let tab = tabManager.selectedTab, tab.tabType == .query else { return false }
+        return tab.display.activeResultSet != nil
+    }
+
+    var isActiveResultSetPinned: Bool {
+        tabManager.selectedTab?.display.activeResultSet?.isPinned == true
+    }
+
+    func togglePinResultSet(id: UUID) {
+        guard let tabIdx = tabManager.selectedTabIndex,
+              let resultSet = tabManager.tabs[tabIdx].display.resultSets.first(where: { $0.id == id })
+        else { return }
+        resultSet.isPinned.toggle()
+    }
+
     func closeResultSet(id: UUID) {
         guard let tabIdx = tabManager.selectedTabIndex else { return }
         let rs = tabManager.tabs[tabIdx].display.resultSets.first { $0.id == id }
@@ -45,10 +61,16 @@ extension MainContentCoordinator {
     func clearActiveQueryResults() {
         guard let tabIdx = tabManager.selectedTabIndex else { return }
         let tabId = tabManager.tabs[tabIdx].id
+
+        if let lastPinned = tabManager.tabs[tabIdx].display.resultSets.last(where: \.isPinned) {
+            switchActiveResultSet(to: lastPinned.id, in: tabId)
+            tabManager.mutate(at: tabIdx) { $0.display.removeUnpinnedResults() }
+            return
+        }
+
         setActiveTableRows(TableRows(), for: tabId)
         tabManager.mutate(at: tabIdx) { tab in
-            tab.display.resultSets = []
-            tab.display.activeResultSetId = nil
+            tab.display.removeUnpinnedResults()
             tab.execution.errorMessage = nil
             tab.execution.rowsAffected = 0
             tab.execution.executionTime = nil

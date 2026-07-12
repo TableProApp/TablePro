@@ -152,9 +152,7 @@ extension QueryExecutionCoordinator {
             rs.isTruncated = isTruncated
             rs.baseQuery = sql
 
-            let pinned = tab.display.resultSets.filter(\.isPinned)
-            tab.display.resultSets = pinned + [rs]
-            tab.display.activeResultSetId = rs.id
+            tab.display.replaceUnpinnedResults(with: [rs])
 
             if isTruncated {
                 tab.pagination.hasMoreRows = true

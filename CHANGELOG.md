@@ -14,9 +14,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The Favorites sidebar **+** menu now includes **New Query**, which opens an empty SQL query tab.
 - Manage database users, roles, and privileges on MySQL and PostgreSQL connections. Open **View > Users & Roles** to see the accounts on the server, pick an object from the server down through databases, schemas, tables, and columns, and grant or revoke privileges on it. The privilege list shows where access actually comes from, including privileges inherited from a role or from a parent object. Changes are staged, undoable with ⌘Z, and shown as the exact SQL before they run. (#1413)
 
+### Changed
+
+- Query results now always show a result tab, so a single result can be pinned before the next query replaces it. Pinning was previously only reachable after running several statements at once. Pin from the tab's context menu or with `Cmd+Option+P`, and hover a tab to see the query that produced it. (#1855)
+
 ### Fixed
 
 - A failed or cancelled connection that uses a Cloudflare tunnel no longer leaves the `cloudflared` process running in the background.
+- Pinned results are no longer discarded by **Clear Results**, and a tab holding one is no longer reused to browse a different table. (#1855)
 
 ## [0.56.2] - 2026-07-10
 

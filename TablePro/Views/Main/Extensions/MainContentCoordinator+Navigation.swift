@@ -305,7 +305,8 @@ extension MainContentCoordinator {
         guard let tab = tabManager.selectedTab else { return false }
         if changeManager.hasChanges
             || selectedTabFilterState.hasAppliedFilters
-            || tab.hasUserActiveSort {
+            || tab.hasUserActiveSort
+            || tab.display.hasPinnedResults {
             return false
         }
         if tab.tabType == .createTable { return !toolbarState.hasCreateTablePending }

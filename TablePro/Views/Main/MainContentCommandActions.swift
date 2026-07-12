@@ -882,6 +882,20 @@ final class MainContentCommandActions {
         coordinator.switchActiveResultSet(to: tab.display.resultSets[currentIndex + 1].id, in: tab.id)
     }
 
+    var canPinResultTab: Bool {
+        coordinator?.canPinActiveResultSet ?? false
+    }
+
+    var isResultTabPinned: Bool {
+        coordinator?.isActiveResultSetPinned ?? false
+    }
+
+    func pinResultTab() {
+        guard let coordinator,
+              let activeId = coordinator.tabManager.selectedTab?.display.activeResultSet?.id else { return }
+        coordinator.togglePinResultSet(id: activeId)
+    }
+
     func closeResultTab() {
         guard let coordinator else { return }
         let tab = coordinator.tabManager.selectedTab

@@ -334,6 +334,8 @@ final class QueryTabManager {
         tab.execution.errorMessage = nil
         tab.execution.lastExecutedAt = nil
         tab.display.resultsViewMode = .data
+        tab.display.resultSets = []
+        tab.display.activeResultSetId = nil
         tab.sortState = SortState()
         tab.selectedRowIndices = []
         tab.pendingChanges = TabChangeSnapshot()

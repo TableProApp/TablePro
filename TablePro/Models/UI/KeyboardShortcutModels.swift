@@ -117,6 +117,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
     case toggleResults
     case previousResultTab
     case nextResultTab
+    case pinResultTab
     case closeResultTab
     case focusSidebarSearch
     case showSidebarTables
@@ -141,8 +142,8 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
             return .dataGrid
         case .newTab, .closeTab, .quickSwitcher, .toggleTableBrowser, .toggleInspector,
              .toggleFilters, .toggleHistory, .toggleResults, .previousResultTab,
-             .nextResultTab, .closeResultTab, .focusSidebarSearch, .showSidebarTables,
-             .showSidebarFavorites, .showPreviousTab, .showNextTab:
+             .nextResultTab, .pinResultTab, .closeResultTab, .focusSidebarSearch,
+             .showSidebarTables, .showSidebarFavorites, .showPreviousTab, .showNextTab:
             return .navigation
         }
     }
@@ -222,6 +223,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
         case .toggleResults: return String(localized: "Toggle Results")
         case .previousResultTab: return String(localized: "Previous Result")
         case .nextResultTab: return String(localized: "Next Result")
+        case .pinResultTab: return String(localized: "Pin Result")
         case .closeResultTab: return String(localized: "Close Result Tab")
         case .focusSidebarSearch: return String(localized: "Focus Sidebar Filter")
         case .showSidebarTables: return String(localized: "Show Tables Sidebar")
@@ -448,6 +450,7 @@ struct KeyboardSettings: Codable, Equatable {
         .toggleResults: .character("r", command: true, option: true),
         .previousResultTab: .character("[", command: true, option: true),
         .nextResultTab: .character("]", command: true, option: true),
+        .pinResultTab: .character("p", command: true, option: true),
         .closeResultTab: .character("w", command: true, shift: true),
         .focusSidebarSearch: .character("f", command: true, option: true),
         .showSidebarTables: .character("1", command: true, option: true),

@@ -548,7 +548,7 @@ struct MainEditorContentView: View {
                     ExplainResultView(text: explainText, executionTime: tab.display.explainExecutionTime, plan: tab.display.explainPlan)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
-                    if tab.display.resultSets.count > 1 {
+                    if showsResultTabBar(for: tab) {
                         resultTabBar(tab: tab)
                         Divider()
                     }
@@ -612,6 +612,11 @@ struct MainEditorContentView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
+    private func showsResultTabBar(for tab: QueryTab) -> Bool {
+        if tab.display.resultSets.count > 1 { return true }
+        return tab.tabType == .query && !tab.display.resultSets.isEmpty
+    }
+
     private func resultTabBar(tab: QueryTab) -> some View {
         ResultTabBar(
             resultSets: tab.display.resultSets,
@@ -625,8 +630,7 @@ struct MainEditorContentView: View {
                 coordinator.closeResultSet(id: id)
             },
             onPin: { id in
-                guard let tabIdx = coordinator.tabManager.selectedTabIndex else { return }
-                coordinator.tabManager.tabs[tabIdx].display.resultSets.first { $0.id == id }?.isPinned.toggle()
+                coordinator.togglePinResultSet(id: id)
             }
         )
     }

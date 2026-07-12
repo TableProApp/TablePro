@@ -146,13 +146,13 @@ The trash button in the editor toolbar clears the query and its results together
 
 Toggle the results panel with `Cmd+Opt+R` or the toolbar button to give the editor full height. The panel auto-expands when a new query executes.
 
-#### Multiple Result Tabs
+#### Result Tabs
 
-When running multiple statements separated by `;`, each statement produces its own result tab. Switch between tabs by clicking or with `Cmd+Opt+[` / `Cmd+Opt+]`. Close a result tab with `Cmd+Shift+W`.
+Every query result gets a tab above the grid. Running multiple statements separated by `;` produces one tab per statement. Switch between tabs by clicking or with `Cmd+Opt+[` / `Cmd+Opt+]`. Close a result tab with `Cmd+Shift+W`. Hover a tab to see the query that produced it.
 
 #### Pinning Results
 
-Right-click a result tab and select **Pin Result** to preserve it from being overwritten on the next query execution. Pinned tabs stay until explicitly unpinned or closed.
+Right-click a result tab and select **Pin Result**, or press `Cmd+Opt+P`, to keep it. The next query lands in a new tab instead of overwriting the pinned one, so you can compare an old result against a new one. Pinned tabs cannot be closed or cleared until you unpin them, and a tab holding a pinned result is never reused to browse another table.
 
 #### Inline Errors
 

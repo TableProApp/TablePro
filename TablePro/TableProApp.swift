@@ -674,6 +674,15 @@ struct AppMenuCommands: Commands {
             .optionalKeyboardShortcut(shortcut(for: .nextResultTab))
             .disabled(!(actions?.isConnected ?? false))
 
+            Button(actions?.isResultTabPinned == true
+                ? String(localized: "Unpin Result")
+                : String(localized: "Pin Result"))
+            {
+                actions?.pinResultTab()
+            }
+            .optionalKeyboardShortcut(shortcut(for: .pinResultTab))
+            .disabled(!(actions?.canPinResultTab ?? false))
+
             Button("Close Result Tab") {
                 actions?.closeResultTab()
             }
