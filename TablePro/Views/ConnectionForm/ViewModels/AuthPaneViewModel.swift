@@ -40,6 +40,10 @@ final class AuthPaneViewModel {
             .filter { $0.section == .authentication }
     }
 
+    var resolvedUsername: String {
+        username.trimmingCharacters(in: .whitespaces)
+    }
+
     var hidesBuiltInPassword: Bool {
         guard let type = coordinator?.value?.network.type else { return false }
         return PluginMetadataRegistry.shared.snapshot(forTypeId: type.pluginTypeId)?
@@ -138,10 +142,11 @@ final class AuthPaneViewModel {
             pgpassStatus = .notChecked
             return
         }
-        let host = coordinator.network.host.isEmpty ? "localhost" : coordinator.network.host
-        let port = Int(coordinator.network.port) ?? coordinator.network.type.defaultPort
-        let database = coordinator.network.database
-        let username = self.username.isEmpty ? "root" : self.username
-        pgpassStatus = PgpassStatus.check(host: host, port: port, database: database, username: username)
+        pgpassStatus = PgpassStatus.check(
+            host: coordinator.network.resolvedHost,
+            port: coordinator.network.resolvedPort,
+            database: coordinator.network.database,
+            username: PgpassReader.effectiveUsername(resolvedUsername)
+        )
     }
 }

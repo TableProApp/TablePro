@@ -225,13 +225,9 @@ final class ConnectionFormCoordinator {
         let sshConfig = ssh.state.buildSSHConfig()
         let sslConfig = ssl.buildConfig()
 
-        var finalHost = network.host.trimmingCharacters(in: .whitespaces).isEmpty
-            ? "localhost" : network.host
-        var finalPort = Int(network.port) ?? network.type.defaultPort
-        let trimmedUsername = auth.username.trimmingCharacters(in: .whitespaces)
-        let finalUsername =
-            trimmedUsername.isEmpty && services.pluginManager.requiresAuthentication(for: network.type)
-                ? "root" : trimmedUsername
+        var finalHost = network.resolvedHost
+        var finalPort = network.resolvedPort
+        let finalUsername = auth.resolvedUsername
 
         let finalId = connectionId ?? UUID()
 
@@ -427,13 +423,9 @@ final class ConnectionFormCoordinator {
         let sshConfig = ssh.state.buildSSHConfig()
         let sslConfig = ssl.buildConfig()
 
-        var testHost = network.host.trimmingCharacters(in: .whitespaces).isEmpty
-            ? "localhost" : network.host
-        var testPort = Int(network.port) ?? network.type.defaultPort
-        let trimmedUsername = auth.username.trimmingCharacters(in: .whitespaces)
-        let finalUsername =
-            trimmedUsername.isEmpty && services.pluginManager.requiresAuthentication(for: network.type)
-                ? "root" : trimmedUsername
+        var testHost = network.resolvedHost
+        var testPort = network.resolvedPort
+        let finalUsername = auth.resolvedUsername
 
         var finalAdditionalFields: [String: String] = [:]
         network.write(into: &finalAdditionalFields)

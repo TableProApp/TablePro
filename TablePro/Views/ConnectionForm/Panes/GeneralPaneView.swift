@@ -158,8 +158,7 @@ struct GeneralPaneView: View {
                 if connectionMode == .network {
                     TextField(
                         String(localized: "Username"),
-                        text: $coordinator.auth.username,
-                        prompt: Text("root")
+                        text: $coordinator.auth.username
                     )
                 }
                 if !coordinator.auth.hidesPassword {
