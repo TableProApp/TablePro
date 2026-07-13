@@ -3,11 +3,37 @@ import Foundation
 import Testing
 
 @MainActor
+private final class ExecutingShell: PrivilegedShellRunning {
+    private(set) var commands: [String] = []
+
+    func run(_ command: String) throws {
+        commands.append(command)
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/sh")
+        process.arguments = ["-c", command]
+        try process.run()
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 else {
+            throw PrivilegedShellError.failed("exit \(process.terminationStatus)")
+        }
+    }
+}
+
+@MainActor
+private final class CancellingShell: PrivilegedShellRunning {
+    private(set) var callCount = 0
+
+    func run(_ command: String) throws {
+        callCount += 1
+        throw PrivilegedShellError.cancelled
+    }
+}
+
+@MainActor
 @Suite("CommandLineToolInstaller")
 struct CommandLineToolInstallerTests {
-    private func makeDirectory() throws -> String {
-        let path = NSTemporaryDirectory()
-            .appending("CommandLineToolInstallerTests.\(UUID().uuidString)")
+    private func makeDirectory(named name: String = UUID().uuidString) throws -> String {
+        let path = NSTemporaryDirectory().appending("CommandLineToolInstallerTests.\(name)")
         try FileManager.default.createDirectory(atPath: path, withIntermediateDirectories: true)
         return path
     }
@@ -27,11 +53,22 @@ struct CommandLineToolInstallerTests {
 
         #expect(installer.status == .installed)
         let contents = try String(contentsOfFile: installer.toolPath, encoding: .utf8)
-        #expect(contents.contains("open -b com.TablePro"))
+        #expect(contents.contains("exec open -b com.TablePro"))
 
         let attributes = try FileManager.default.attributesOfItem(atPath: installer.toolPath)
         let permissions = try #require(attributes[.posixPermissions] as? NSNumber)
         #expect(permissions.int16Value == 0o755)
+    }
+
+    @Test("A writable directory never asks for an administrator password")
+    func writableDirectoryDoesNotEscalate() throws {
+        let shell = CancellingShell()
+        let installer = CommandLineToolInstaller(directory: try makeDirectory(), privilegedShell: shell)
+
+        try installer.install()
+
+        #expect(installer.status == .installed)
+        #expect(shell.callCount == 0)
     }
 
     @Test("Uninstall removes the shim")
@@ -54,8 +91,7 @@ struct CommandLineToolInstallerTests {
 
     @Test("A foreign file at the same path is reported as a conflict and never overwritten")
     func foreignFileConflicts() throws {
-        let directory = try makeDirectory()
-        let installer = CommandLineToolInstaller(directory: directory)
+        let installer = CommandLineToolInstaller(directory: try makeDirectory())
         try "#!/bin/sh\necho not ours\n".write(toFile: installer.toolPath, atomically: true, encoding: .utf8)
 
         #expect(installer.status == .conflict)
@@ -78,60 +114,77 @@ struct CommandLineToolInstallerTests {
         #expect(FileManager.default.fileExists(atPath: installer.toolPath))
     }
 
-    @Test("A read-only directory reports as not writable, which is what /usr/local/bin does without sudo")
-    func readOnlyDirectoryIsNotWritable() throws {
-        let directory = try makeDirectory()
-        try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: directory)
-        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: directory) }
+    @Test("A missing directory escalates to an administrator prompt")
+    func missingDirectoryEscalates() throws {
+        let missing = NSTemporaryDirectory().appending("missing.\(UUID().uuidString)/bin")
+        let shell = ExecutingShell()
+        let installer = CommandLineToolInstaller(directory: missing, privilegedShell: shell)
 
-        let installer = CommandLineToolInstaller(directory: directory)
+        try installer.install()
 
-        #expect(throws: CommandLineToolError.directoryNotWritable(directory)) {
+        #expect(shell.commands.count == 1)
+        #expect(installer.status == .installed)
+    }
+
+    @Test("Cancelling the password prompt cancels the install and writes nothing")
+    func cancellingThePromptCancelsInstall() throws {
+        let missing = NSTemporaryDirectory().appending("missing.\(UUID().uuidString)/bin")
+        let shell = CancellingShell()
+        let installer = CommandLineToolInstaller(directory: missing, privilegedShell: shell)
+
+        #expect(throws: CommandLineToolError.cancelled) {
             try installer.install()
         }
+        #expect(shell.callCount == 1)
         #expect(installer.status == .notInstalled)
     }
 
-    @Test("A missing directory reports as not writable instead of crashing")
-    func missingDirectoryIsNotWritable() throws {
-        let missing = NSTemporaryDirectory().appending("missing.\(UUID().uuidString)")
-        let installer = CommandLineToolInstaller(directory: missing)
-
-        #expect(throws: CommandLineToolError.directoryNotWritable(missing)) {
-            try installer.install()
-        }
-    }
-
-    @Test("The manual command installs the same shim the app would write")
-    func manualCommandMatchesShim() throws {
-        let installer = CommandLineToolInstaller(directory: try makeDirectory())
-        let command = installer.manualInstallCommand
-
-        #expect(command.contains("sudo"))
-        #expect(command.contains(installer.toolPath))
-        #expect(command.contains("open -b com.TablePro"))
-    }
-
-    @Test("Both manual commands quote the path they touch")
-    func manualCommandsQuoteThePath() throws {
-        let installer = CommandLineToolInstaller(directory: try makeDirectory())
-
-        #expect(installer.manualInstallCommand.contains("\"\(installer.toolPath)\""))
-        #expect(installer.manualUninstallCommand == "sudo rm \"\(installer.toolPath)\"")
-    }
-
-    @Test("Uninstalling a shim the app cannot remove fails loudly instead of silently")
-    func uninstallFromReadOnlyDirectoryThrows() throws {
-        let directory = try makeDirectory()
+    @Test("The privileged install command builds a working shim, even in a path with spaces and quotes")
+    func privilegedCommandSurvivesHostileDirectoryNames() throws {
+        let directory = try makeDirectory(named: "we ird's dir")
         let installer = CommandLineToolInstaller(directory: directory)
-        try installer.install()
+        let shell = ExecutingShell()
 
-        try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: directory)
-        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: directory) }
+        try shell.run(installer.installCommand)
 
-        #expect(throws: (any Error).self) {
-            try installer.uninstall()
-        }
-        #expect(FileManager.default.fileExists(atPath: installer.toolPath))
+        #expect(installer.status == .installed)
+        let contents = try String(contentsOfFile: installer.toolPath, encoding: .utf8)
+        #expect(contents.hasPrefix("#!/bin/sh\n"))
+        #expect(contents.contains("exec open -b com.TablePro \"$@\""))
+
+        try shell.run(installer.uninstallCommand)
+        #expect(installer.status == .notInstalled)
+    }
+
+    @Test("A directory name cannot inject a second command into the privileged shell")
+    func directoryNameCannotInjectCommands() throws {
+        let canary = NSTemporaryDirectory().appending("canary.\(UUID().uuidString)")
+        let hostile = try makeDirectory(named: "x'; touch \(canary); echo '")
+        let installer = CommandLineToolInstaller(directory: hostile)
+        let shell = ExecutingShell()
+
+        try shell.run(installer.installCommand)
+
+        #expect(FileManager.default.fileExists(atPath: canary) == false)
+        #expect(installer.status == .installed)
+    }
+
+    @Test("The AppleScript wrapper escapes quotes and backslashes")
+    func appleScriptEscaping() {
+        let script = OSAScriptPrivilegedShell.appleScript(for: #"printf 'a"b\c' > 'x'"#)
+
+        #expect(script.hasPrefix("do shell script \""))
+        #expect(script.hasSuffix("\" with administrator privileges"))
+        #expect(script.contains(#"a\"b\\c"#))
+    }
+
+    @Test("Both manual commands run the same thing the app would run")
+    func manualCommandsMirrorTheAppCommands() throws {
+        let installer = CommandLineToolInstaller(directory: try makeDirectory())
+
+        #expect(installer.manualInstallCommand.hasPrefix("sudo sh -c "))
+        #expect(installer.manualInstallCommand.contains("open -b com.TablePro"))
+        #expect(installer.manualUninstallCommand.hasPrefix("sudo sh -c "))
+        #expect(installer.manualUninstallCommand.contains(installer.toolPath))
     }
 }

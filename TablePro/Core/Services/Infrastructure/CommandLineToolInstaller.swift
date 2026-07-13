@@ -13,16 +13,16 @@ internal enum CommandLineToolStatus: Equatable, Sendable {
 }
 
 internal enum CommandLineToolError: Error, LocalizedError, Equatable {
-    case directoryNotWritable(String)
     case conflict(String)
+    case cancelled
     case writeFailed(String)
 
     internal var errorDescription: String? {
         switch self {
-        case .directoryNotWritable(let path):
-            return String(format: String(localized: "%@ is not writable."), path)
         case .conflict(let path):
             return String(format: String(localized: "A different file already exists at %@."), path)
+        case .cancelled:
+            return String(localized: "Cancelled by user.")
         case .writeFailed(let reason):
             return reason
         }
@@ -55,10 +55,16 @@ internal final class CommandLineToolInstaller: CommandLineToolInstalling {
 
     private let directory: String
     private let fileManager: FileManager
+    private let privilegedShell: PrivilegedShellRunning
 
-    internal init(directory: String = "/usr/local/bin", fileManager: FileManager = .default) {
+    internal init(
+        directory: String = "/usr/local/bin",
+        fileManager: FileManager = .default,
+        privilegedShell: PrivilegedShellRunning? = nil
+    ) {
         self.directory = directory
         self.fileManager = fileManager
+        self.privilegedShell = privilegedShell ?? OSAScriptPrivilegedShell()
     }
 
     internal var toolPath: String {
@@ -73,30 +79,42 @@ internal final class CommandLineToolInstaller: CommandLineToolInstalling {
         return .installed
     }
 
+    internal var installCommand: String {
+        let script = Self.scriptContents.replacingOccurrences(of: "\n", with: "\\n")
+        let quotedDirectory = OSAScriptPrivilegedShell.quote(directory)
+        let quotedPath = OSAScriptPrivilegedShell.quote(toolPath)
+        return "mkdir -p \(quotedDirectory)"
+            + " && printf \(OSAScriptPrivilegedShell.quote(script)) > \(quotedPath)"
+            + " && chmod 755 \(quotedPath)"
+    }
+
+    internal var uninstallCommand: String {
+        "rm -f \(OSAScriptPrivilegedShell.quote(toolPath))"
+    }
+
     internal var manualInstallCommand: String {
-        let escaped = Self.scriptContents.replacingOccurrences(of: "\n", with: "\\n")
-        return "sudo mkdir -p \"\(directory)\" && printf '\(escaped)' | sudo tee \"\(toolPath)\" > /dev/null"
-            + " && sudo chmod 755 \"\(toolPath)\""
+        "sudo sh -c \(OSAScriptPrivilegedShell.quote(installCommand))"
     }
 
     internal var manualUninstallCommand: String {
-        "sudo rm \"\(toolPath)\""
+        "sudo sh -c \(OSAScriptPrivilegedShell.quote(uninstallCommand))"
     }
 
     internal func install() throws {
         guard status != .conflict else { throw CommandLineToolError.conflict(toolPath) }
-        guard fileManager.fileExists(atPath: directory), fileManager.isWritableFile(atPath: directory) else {
-            throw CommandLineToolError.directoryNotWritable(directory)
+
+        if canWriteDirectly, writeShimDirectly() {
+            Self.logger.info("Installed command line tool at \(self.toolPath, privacy: .public)")
+            return
         }
 
-        do {
-            try Self.scriptContents.write(toFile: toolPath, atomically: true, encoding: .utf8)
-            try fileManager.setAttributes([.posixPermissions: 0o755], ofItemAtPath: toolPath)
-        } catch {
-            Self.logger.error("Failed to install command line tool: \(error.localizedDescription, privacy: .public)")
-            throw CommandLineToolError.writeFailed(error.localizedDescription)
+        try runPrivileged(installCommand)
+        guard status == .installed else {
+            throw CommandLineToolError.writeFailed(
+                String(format: String(localized: "Could not write %@."), toolPath)
+            )
         }
-        Self.logger.info("Installed command line tool at \(self.toolPath, privacy: .public)")
+        Self.logger.info("Installed command line tool with administrator rights")
     }
 
     internal func uninstall() throws {
@@ -106,12 +124,41 @@ internal final class CommandLineToolInstaller: CommandLineToolInstalling {
         case .conflict:
             throw CommandLineToolError.conflict(toolPath)
         case .installed:
-            do {
-                try fileManager.removeItem(atPath: toolPath)
-            } catch {
-                throw CommandLineToolError.writeFailed(error.localizedDescription)
+            if (try? fileManager.removeItem(atPath: toolPath)) != nil {
+                Self.logger.info("Removed command line tool at \(self.toolPath, privacy: .public)")
+                return
             }
-            Self.logger.info("Removed command line tool at \(self.toolPath, privacy: .public)")
+            try runPrivileged(uninstallCommand)
+            guard status == .notInstalled else {
+                throw CommandLineToolError.writeFailed(
+                    String(format: String(localized: "Could not remove %@."), toolPath)
+                )
+            }
+        }
+    }
+
+    private var canWriteDirectly: Bool {
+        fileManager.fileExists(atPath: directory) && fileManager.isWritableFile(atPath: directory)
+    }
+
+    private func writeShimDirectly() -> Bool {
+        do {
+            try Self.scriptContents.write(toFile: toolPath, atomically: true, encoding: .utf8)
+            try fileManager.setAttributes([.posixPermissions: 0o755], ofItemAtPath: toolPath)
+            return true
+        } catch {
+            Self.logger.debug("Direct write failed, escalating: \(error.localizedDescription, privacy: .public)")
+            return false
+        }
+    }
+
+    private func runPrivileged(_ command: String) throws {
+        do {
+            try privilegedShell.run(command)
+        } catch PrivilegedShellError.cancelled {
+            throw CommandLineToolError.cancelled
+        } catch {
+            throw CommandLineToolError.writeFailed(error.localizedDescription)
         }
     }
 }

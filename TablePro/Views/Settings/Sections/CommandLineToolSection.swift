@@ -37,7 +37,7 @@ struct CommandLineToolSection: View {
 
             if let manualCommand {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("This folder needs administrator access. Run this in Terminal:")
+                    Text("TablePro could not do this for you. Run this in Terminal instead:")
                         .font(.caption)
                         .foregroundStyle(.secondary)
 
@@ -74,11 +74,14 @@ struct CommandLineToolSection: View {
             try installer.install()
             manualCommand = nil
             errorMessage = nil
-        } catch CommandLineToolError.directoryNotWritable {
-            manualCommand = installer.manualInstallCommand
-            errorMessage = nil
-        } catch {
+        } catch CommandLineToolError.cancelled {
             manualCommand = nil
+            errorMessage = nil
+        } catch CommandLineToolError.conflict(let path) {
+            manualCommand = nil
+            errorMessage = CommandLineToolError.conflict(path).localizedDescription
+        } catch {
+            manualCommand = installer.manualInstallCommand
             errorMessage = error.localizedDescription
         }
         status = installer.status
@@ -87,6 +90,9 @@ struct CommandLineToolSection: View {
     private func uninstall() {
         do {
             try installer.uninstall()
+            manualCommand = nil
+            errorMessage = nil
+        } catch CommandLineToolError.cancelled {
             manualCommand = nil
             errorMessage = nil
         } catch {
