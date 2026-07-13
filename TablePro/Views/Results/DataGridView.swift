@@ -80,6 +80,15 @@ struct DataGridView: NSViewRepresentable {
         tableView.addTableColumn(rowNumberColumn)
         rowNumberColumn.isHidden = !configuration.showRowNumbers
 
+        let sortableHeader = SortableHeaderView(frame: tableView.headerView?.frame ?? .zero)
+        sortableHeader.coordinator = context.coordinator
+        let headerMenu = NSMenu()
+        headerMenu.delegate = context.coordinator
+        sortableHeader.menu = headerMenu
+        tableView.headerView = sortableHeader
+
+        scrollView.documentView = tableView
+
         let initialRows = tableRowsProvider()
         context.coordinator.rebuildColumnMetadataCache(from: initialRows)
 
@@ -89,16 +98,10 @@ struct DataGridView: NSViewRepresentable {
             tableView: tableView,
             coordinator: context.coordinator,
             tableRows: initialRows,
+            columnComments: Self.effectiveColumnComments(for: initialRows),
             savedLayout: initialLayout
         )
         context.coordinator.isRebuildingColumns = false
-
-        let sortableHeader = SortableHeaderView(frame: tableView.headerView?.frame ?? .zero)
-        sortableHeader.coordinator = context.coordinator
-        let headerMenu = NSMenu()
-        headerMenu.delegate = context.coordinator
-        sortableHeader.menu = headerMenu
-        tableView.headerView = sortableHeader
 
         let hasMoveRow = delegate != nil
         if hasMoveRow {
@@ -106,7 +109,6 @@ struct DataGridView: NSViewRepresentable {
             tableView.draggingDestinationFeedbackStyle = .gap
         }
 
-        scrollView.documentView = tableView
         context.coordinator.tableView = tableView
         installSelectionOverlay(tableView: tableView, coordinator: context.coordinator)
         context.coordinator.attachScrollObservers(scrollView: scrollView)
@@ -156,6 +158,7 @@ struct DataGridView: NSViewRepresentable {
         let settings = AppSettingsManager.shared.dataGrid
         let rowHeight = CGFloat(settings.rowHeight.rawValue)
         let alternatingRows = settings.showAlternateRows
+        let columnComments = Self.effectiveColumnComments(for: latestRows)
 
         let snapshot = DataGridUpdateSnapshot(
             rowDisplayCount: rowDisplayCount,
@@ -171,7 +174,7 @@ struct DataGridView: NSViewRepresentable {
             alternatingRows: alternatingRows,
             reloadVersion: changeManager.reloadVersion,
             contentRevision: contentRevision,
-            showObjectComments: AppSettingsManager.shared.general.showObjectComments
+            columnComments: columnComments
         )
 
         if snapshot != coordinator.lastUpdateSnapshot {
@@ -186,7 +189,8 @@ struct DataGridView: NSViewRepresentable {
                 rowHeight: rowHeight,
                 alternatingRows: alternatingRows,
                 hasMoveDelegate: snapshot.hasMoveDelegate,
-                contentChanged: contentChanged
+                contentChanged: contentChanged,
+                columnComments: columnComments
             )
             coordinator.lastUpdateSnapshot = snapshot
         }
@@ -204,7 +208,8 @@ struct DataGridView: NSViewRepresentable {
         rowHeight: CGFloat,
         alternatingRows: Bool,
         hasMoveDelegate: Bool,
-        contentChanged: Bool
+        contentChanged: Bool,
+        columnComments: [String: String]
     ) {
         if let rowNumCol = tableView.tableColumns.first(where: { $0.identifier == ColumnIdentitySchema.rowNumberIdentifier }) {
             let shouldHide = !configuration.showRowNumbers
@@ -286,6 +291,7 @@ struct DataGridView: NSViewRepresentable {
                 tableView: tableView,
                 coordinator: coordinator,
                 tableRows: latestRows,
+                columnComments: columnComments,
                 savedLayout: savedLayout
             )
             coordinator.isRebuildingColumns = false
@@ -314,15 +320,18 @@ struct DataGridView: NSViewRepresentable {
         coordinator.isApplyingProgrammaticRowSelection = false
     }
 
+    private static func effectiveColumnComments(for tableRows: TableRows) -> [String: String] {
+        guard AppSettingsManager.shared.general.showObjectComments else { return [:] }
+        return tableRows.columnComments
+    }
+
     private func reconcileColumnPool(
         tableView: NSTableView,
         coordinator: TableViewCoordinator,
         tableRows: TableRows,
+        columnComments: [String: String],
         savedLayout: ColumnLayoutState?
     ) {
-        let columnComments = AppSettingsManager.shared.general.showObjectComments
-            ? tableRows.columnComments
-            : [:]
         coordinator.columnPool.reconcile(
             tableView: tableView,
             schema: coordinator.identitySchema,

@@ -41,6 +41,7 @@ final class DataGridColumnPool {
 
         let willRestoreWidths = !(savedLayout?.columnWidths.isEmpty ?? true)
         let hiddenFromLayout = savedLayout?.hiddenColumns ?? []
+        var commentsChanged = false
 
         for slot in 0..<pooledColumns.count {
             let column = pooledColumns[slot]
@@ -49,14 +50,16 @@ final class DataGridColumnPool {
                 let resolvedWidth = willRestoreWidths
                     ? (savedLayout?.columnWidths[columnName] ?? widthCalculator(columnName, slot))
                     : widthCalculator(columnName, slot)
-                configureColumn(
+                if configureColumn(
                     column,
                     name: columnName,
                     columnType: slot < columnTypes.count ? columnTypes[slot] : nil,
                     comment: columnComments[columnName],
                     width: resolvedWidth,
                     isEditable: isEditable
-                )
+                ) {
+                    commentsChanged = true
+                }
                 let hidden = hiddenFromLayout.contains(columnName) || hiddenColumnNames.contains(columnName)
                 if column.isHidden != hidden {
                     column.isHidden = hidden
@@ -66,6 +69,9 @@ final class DataGridColumnPool {
             }
         }
         updateHeaderHeight(in: tableView, showsComments: hasVisibleComments(visibleCount: visibleCount))
+        if commentsChanged {
+            tableView.headerView?.needsDisplay = true
+        }
 
         let targetOrder = computeTargetOrder(
             visibleCount: visibleCount,
@@ -184,15 +190,17 @@ final class DataGridColumnPool {
         comment: String?,
         width: CGFloat,
         isEditable: Bool
-    ) {
+    ) -> Bool {
         if !(column.headerCell is SortableHeaderCell) || column.headerCell.stringValue != name {
             let cell = SortableHeaderCell(textCell: name)
             cell.font = column.headerCell.font
             cell.alignment = column.headerCell.alignment
             column.headerCell = cell
         }
-        if let headerCell = column.headerCell as? SortableHeaderCell {
+        var commentChanged = false
+        if let headerCell = column.headerCell as? SortableHeaderCell, headerCell.headerComment != comment {
             headerCell.headerComment = comment
+            commentChanged = true
         }
 
         var tooltip: String
@@ -222,6 +230,8 @@ final class DataGridColumnPool {
         if column.sortDescriptorPrototype?.key != name {
             column.sortDescriptorPrototype = NSSortDescriptor(key: name, ascending: true)
         }
+
+        return commentChanged
     }
 
     private func hasVisibleComments(visibleCount: Int) -> Bool {

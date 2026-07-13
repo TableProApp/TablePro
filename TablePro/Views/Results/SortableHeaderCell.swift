@@ -24,6 +24,16 @@ final class SortableHeaderCell: NSTableHeaderCell {
     private static let funnelSize = NSSize(width: 13, height: 13)
     private static let funnelPointSize: CGFloat = 11
 
+    private static let commentFont = NSFont.systemFont(ofSize: commentFontSize)
+
+    static let commentLineHeight: CGFloat = {
+        let lineHeight = NSAttributedString(
+            string: "X",
+            attributes: [.font: commentFont]
+        ).size().height
+        return (lineHeight + commentLineSpacing).rounded(.up)
+    }()
+
     override init(textCell string: String) {
         super.init(textCell: string)
         lineBreakMode = .byTruncatingTail
@@ -202,7 +212,7 @@ final class SortableHeaderCell: NSTableHeaderCell {
         }
 
         let commentAttributes: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: Self.commentFontSize),
+            .font: Self.commentFont,
             .foregroundColor: commentColor,
             .paragraphStyle: paragraph
         ]

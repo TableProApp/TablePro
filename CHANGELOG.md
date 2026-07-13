@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Column comments now show in the data grid header as soon as the table opens, instead of only after the query was run again. The header also grows to fit the comment line, so it is no longer cut off until a column is resized. (#1861)
 - **Size to Fit** and **Size All Columns to Fit** no longer stretch a column with long text far past the window. A fitted column now stops at half the visible grid, and every column has a maximum width, so a column left oversized before is brought back in range the next time you open the table.
 - The username is now optional. Leaving it empty, or importing a connection URL that has no user in it, no longer fills in `root`. An empty username lets the database use its own default, the same as `psql` and `mysql` do: your Mac login name on MySQL/MariaDB and PostgreSQL, and `default` on ClickHouse. The `~/.pgpass` lookup now matches on that same user.
 - A failed or cancelled connection that uses a Cloudflare tunnel no longer leaves the `cloudflared` process running in the background.
