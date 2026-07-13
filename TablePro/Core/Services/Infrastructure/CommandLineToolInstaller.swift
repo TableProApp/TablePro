@@ -34,6 +34,7 @@ internal protocol CommandLineToolInstalling {
     var toolPath: String { get }
     var status: CommandLineToolStatus { get }
     var manualInstallCommand: String { get }
+    var manualUninstallCommand: String { get }
     func install() throws
     func uninstall() throws
 }
@@ -74,8 +75,12 @@ internal final class CommandLineToolInstaller: CommandLineToolInstalling {
 
     internal var manualInstallCommand: String {
         let escaped = Self.scriptContents.replacingOccurrences(of: "\n", with: "\\n")
-        return "sudo mkdir -p \(directory) && printf '\(escaped)' | sudo tee \(toolPath) > /dev/null"
-            + " && sudo chmod 755 \(toolPath)"
+        return "sudo mkdir -p \"\(directory)\" && printf '\(escaped)' | sudo tee \"\(toolPath)\" > /dev/null"
+            + " && sudo chmod 755 \"\(toolPath)\""
+    }
+
+    internal var manualUninstallCommand: String {
+        "sudo rm \"\(toolPath)\""
     }
 
     internal func install() throws {

@@ -111,4 +111,27 @@ struct CommandLineToolInstallerTests {
         #expect(command.contains(installer.toolPath))
         #expect(command.contains("open -b com.TablePro"))
     }
+
+    @Test("Both manual commands quote the path they touch")
+    func manualCommandsQuoteThePath() throws {
+        let installer = CommandLineToolInstaller(directory: try makeDirectory())
+
+        #expect(installer.manualInstallCommand.contains("\"\(installer.toolPath)\""))
+        #expect(installer.manualUninstallCommand == "sudo rm \"\(installer.toolPath)\"")
+    }
+
+    @Test("Uninstalling a shim the app cannot remove fails loudly instead of silently")
+    func uninstallFromReadOnlyDirectoryThrows() throws {
+        let directory = try makeDirectory()
+        let installer = CommandLineToolInstaller(directory: directory)
+        try installer.install()
+
+        try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: directory)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: directory) }
+
+        #expect(throws: (any Error).self) {
+            try installer.uninstall()
+        }
+        #expect(FileManager.default.fileExists(atPath: installer.toolPath))
+    }
 }

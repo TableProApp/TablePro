@@ -3,6 +3,7 @@
 //  TablePro
 //
 
+import AppKit
 import SwiftUI
 
 struct CommandLineToolSection: View {
@@ -10,6 +11,7 @@ struct CommandLineToolSection: View {
 
     @State private var status: CommandLineToolStatus = .notInstalled
     @State private var manualCommand: String?
+    @State private var errorMessage: String?
 
     init(installer: CommandLineToolInstalling = CommandLineToolInstaller.shared) {
         self.installer = installer
@@ -17,63 +19,80 @@ struct CommandLineToolSection: View {
 
     var body: some View {
         Section {
-            LabeledContent(installer.toolPath) {
+            LabeledContent {
                 switch status {
                 case .notInstalled:
                     Button("Install") { install() }
                 case .installed:
                     Button("Uninstall") { uninstall() }
                 case .conflict:
-                    Text("A different file already exists here.")
-                        .foregroundStyle(.secondary)
+                    Button("Install") { install() }
+                        .disabled(true)
                 }
+            } label: {
+                Text("tablepro command")
+                Text(installer.toolPath)
+                    .font(.system(.caption, design: .monospaced))
             }
 
             if let manualCommand {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("This folder is not writable. Run this command in Terminal, then reopen Settings.")
+                    Text("This folder needs administrator access. Run this in Terminal:")
                         .font(.caption)
                         .foregroundStyle(.secondary)
 
-                    HStack(alignment: .top, spacing: 8) {
-                        Text(manualCommand)
-                            .font(.system(.caption, design: .monospaced))
-                            .textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-
-                        Button("Copy") {
-                            ClipboardService.shared.writeText(manualCommand)
-                        }
-                    }
+                    CopyableCodeBlock(text: manualCommand)
                 }
+            }
+
+            if let errorMessage {
+                Text(errorMessage)
+                    .font(.caption)
+                    .foregroundStyle(.red)
             }
         } header: {
             Text("Command Line")
         } footer: {
-            Text("Adds a tablepro command that opens database URLs from the terminal, such as a DDEV project database.")
+            Text("Opens database URLs from the terminal, such as a DDEV project database.")
         }
-        .onAppear(perform: refresh)
+        .onAppear(perform: syncStatus)
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            syncStatus()
+        }
     }
 
-    private func refresh() {
-        status = installer.status
+    private func syncStatus() {
+        let updated = installer.status
+        guard updated != status else { return }
+        status = updated
+        manualCommand = nil
+        errorMessage = nil
     }
 
     private func install() {
         do {
             try installer.install()
             manualCommand = nil
-        } catch CommandLineToolError.conflict {
-            manualCommand = nil
-        } catch {
+            errorMessage = nil
+        } catch CommandLineToolError.directoryNotWritable {
             manualCommand = installer.manualInstallCommand
+            errorMessage = nil
+        } catch {
+            manualCommand = nil
+            errorMessage = error.localizedDescription
         }
-        refresh()
+        status = installer.status
     }
 
     private func uninstall() {
-        try? installer.uninstall()
-        manualCommand = nil
-        refresh()
+        do {
+            try installer.uninstall()
+            manualCommand = nil
+            errorMessage = nil
+        } catch {
+            manualCommand = installer.manualUninstallCommand
+            errorMessage = error.localizedDescription
+        }
+        status = installer.status
     }
 }
