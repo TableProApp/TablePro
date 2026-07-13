@@ -186,6 +186,7 @@ Missing a case produces a wrong "{Language} Query" title on the first frame.
 | Favorite tables      | UserDefaults     | `FavoriteTablesStorage` (per connection + database + schema; iCloud-synced) |
 | Tree database filter | UserDefaults     | `DatabaseTreeFilterStorage` (per connection; selected database set, empty = show all; device-local). Live value held in `SharedSidebarState`. |
 | Recent tables        | UserDefaults     | `RecentTablesStore` (per connection, keyed by database, last 10 each; device-local). Live value held in `SharedSidebarState`, recorded at the `QueryTabManager` open chokepoint. |
+| Trusted external links | UserDefaults   | `ExternalConnectionTrustStore` (keyed by database type + host + database + username + URL `name`, never the port; loopback hosts only, enforced on read and write). Consulted by `ExternalConnectionGate` before the external-URL confirmation alert. |
 
 ### Logging & Debugging
 

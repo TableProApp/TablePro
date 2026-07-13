@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The Favorites sidebar **+** menu now includes **New Query**, which opens an empty SQL query tab.
 - Manage database users, roles, and privileges on MySQL and PostgreSQL connections. Open **View > Users & Roles** to see the accounts on the server, pick an object from the server down through databases, schemas, tables, and columns, and grant or revoke privileges on it. The privilege list shows where access actually comes from, including privileges inherited from a role or from a parent object. Changes are staged, undoable with ⌘Z, and shown as the exact SQL before they run. (#1413)
 - Bring back a tab you closed by mistake with **File > Reopen Closed Tab** (`Cmd+Shift+T`), or pick an older one from **File > Recently Closed**. The last 20 closed query and table tabs are kept for 30 days, with their SQL, cursor position, and database context. (#1854)
+- Open a database from the terminal. Install a `tablepro` command from **Settings > General**, and run `ddev tablepro` in a DDEV project to open its database. A link to a database on your own machine can now be trusted with **Always Allow**, so it stops asking every time; review trusted links in **Settings > General**. (#1486)
 
 ### Changed
 

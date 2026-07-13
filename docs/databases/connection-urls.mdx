@@ -254,3 +254,7 @@ open "postgresql+ssh://ubuntu@bastion/user:pass@10.0.0.5/mydb?usePrivateKey=true
 ```
 
 Uses a saved connection if it matches, otherwise creates a temporary session. To save permanently, click **New Connection** on the welcome screen and pick **Import from URL...** in the chooser footer.
+
+<Tip>
+To force TablePro when another client also handles the scheme, use `open -b com.TablePro "mysql://..."`. See [Terminal and DDEV](/external-api/terminal) for the `tablepro` command and a `ddev tablepro` host command.
+</Tip>

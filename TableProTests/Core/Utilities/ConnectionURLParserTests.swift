@@ -754,6 +754,25 @@ struct ConnectionURLParserTests {
         #expect(parsed.envTag == "production")
     }
 
+    @Test("Parse the Enviroment parameter that TablePlus and DDEV emit")
+    func testEnviromentParameterAlias() {
+        let result = ConnectionURLParser.parse("mysql://db:db@127.0.0.1:32770/db?Enviroment=local&Name=ddev-shop")
+        guard case .success(let parsed) = result else {
+            Issue.record("Expected success"); return
+        }
+        #expect(parsed.envTag == "local")
+        #expect(parsed.connectionName == "ddev-shop")
+    }
+
+    @Test("Parse the correctly spelled environment parameter")
+    func testEnvironmentParameterAlias() {
+        let result = ConnectionURLParser.parse("postgresql://user@host/db?environment=staging")
+        guard case .success(let parsed) = result else {
+            Issue.record("Expected success"); return
+        }
+        #expect(parsed.envTag == "staging")
+    }
+
     @Test("Parse schema parameter")
     func testSchemaParameter() {
         let result = ConnectionURLParser.parse("postgresql://user@host/db?schema=public")

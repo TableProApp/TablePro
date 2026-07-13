@@ -595,7 +595,7 @@ struct ConnectionURLParser {
             ext.authSource = value
         case "statuscolor":
             ext.statusColor = value
-        case "env":
+        case "env", "enviroment", "environment":
             ext.envTag = value.removingPercentEncoding ?? value
         case "schema":
             ext.schema = value

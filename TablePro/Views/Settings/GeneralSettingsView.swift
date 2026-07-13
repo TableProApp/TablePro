@@ -78,6 +78,10 @@ struct GeneralSettingsView: View {
 
             HistorySection(settings: $historySettings)
 
+            CommandLineToolSection()
+
+            TrustedExternalConnectionsSection()
+
             Section("Software Update") {
                 Toggle("Automatically check for updates", isOn: $settings.automaticallyCheckForUpdates)
                     .onChange(of: settings.automaticallyCheckForUpdates) { _, newValue in

@@ -40,6 +40,22 @@ Maximum seconds a query runs before cancellation. Default 60, range 0-600 (0 mea
 
 Enforced at the database level where supported: `statement_timeout` (PostgreSQL), `max_execution_time` (MySQL, ClickHouse), `max_statement_time` (MariaDB), `sqlite3_busy_timeout` (SQLite). HTTP-based drivers (ClickHouse, BigQuery, CloudflareD1, LibSQL, Etcd, DynamoDB) also bound the HTTP request timeout to the configured value plus a 30-second grace, so the server-side error fires first. Setting "No limit" raises the HTTP transport ceiling to 1 hour. Oracle enforces the timeout client-side: a query that exceeds it is stopped by closing the connection, and the next query reconnects and restores the current schema automatically. Applies on new connections; change requires reconnect.
 
+### Command Line
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| **Install** | Not installed | Writes a `tablepro` command to `/usr/local/bin` that opens database URLs in TablePro |
+
+If `/usr/local/bin` is not writable, a `sudo` command is shown for you to run. See [Terminal and DDEV](/external-api/terminal).
+
+### Trusted Links
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| **Forget** | Empty | Removes a link you chose to always allow |
+
+Only databases on your own machine can be trusted. Remote links ask for confirmation every time.
+
 ### Software Update
 
 | Setting | Default | Description |

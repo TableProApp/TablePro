@@ -37,7 +37,11 @@ internal final class TabRouter {
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "TabRouter")
 
-    private init() {}
+    private let externalConnectionGate: ExternalConnectionGate
+
+    private init(externalConnectionGate: ExternalConnectionGate? = nil) {
+        self.externalConnectionGate = externalConnectionGate ?? ExternalConnectionGate()
+    }
 
     internal func route(_ intent: LaunchIntent) async throws {
         switch intent {
@@ -269,7 +273,7 @@ internal final class TabRouter {
             isTransient = true
         }
 
-        guard await confirmExternalDatabaseConnection(connection) else {
+        guard await externalConnectionGate.authorize(connection, scopeName: parsed.connectionName) else {
             throw TabRouterError.userCancelled
         }
 
@@ -307,46 +311,6 @@ internal final class TabRouter {
         if let schema = parsed.schema {
             await switchSchemaOrDatabase(connectionId: connection.id, target: schema)
         }
-    }
-
-    private func confirmExternalDatabaseConnection(_ connection: DatabaseConnection) async -> Bool {
-        var details: [String] = [
-            String(format: String(localized: "Host: %@"), "\(connection.host):\(connection.port)")
-        ]
-        if !connection.username.isEmpty {
-            details.append(String(format: String(localized: "User: %@"), connection.username))
-        }
-        if !connection.database.isEmpty {
-            details.append(String(format: String(localized: "Database: %@"), connection.database))
-        }
-
-        let alert = NSAlert()
-        alert.messageText = String(localized: "Open External Database Connection?")
-        alert.informativeText = String(
-            format: String(localized: """
-                An external link wants to connect to a %@ database:
-
-                %@
-
-                Connect only if you trust the source of this link.
-                """),
-            connection.type.rawValue,
-            details.joined(separator: "\n")
-        )
-        alert.alertStyle = .warning
-        alert.addButton(withTitle: String(localized: "Connect"))
-        alert.addButton(withTitle: String(localized: "Cancel"))
-        alert.buttons[1].keyEquivalent = "\r"
-        alert.buttons[0].keyEquivalent = ""
-
-        if let window = AlertHelper.resolveWindow(NSApp.keyWindow) {
-            return await withCheckedContinuation { continuation in
-                alert.beginSheetModal(for: window) { response in
-                    continuation.resume(returning: response == .alertFirstButtonReturn)
-                }
-            }
-        }
-        return alert.runModal() == .alertFirstButtonReturn
     }
 
     // MARK: - Database File
