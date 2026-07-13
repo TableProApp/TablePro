@@ -145,5 +145,14 @@ private final class ConcurrentStubPluginDriver: PluginDatabaseDriver, @unchecked
     func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] { [] }
     func fetchTableDDL(table: String, schema: String?) async throws -> String { "" }
     func fetchViewDefinition(view: String, schema: String?) async throws -> String { "" }
+
+    func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
+        PluginTableMetadata(tableName: table)
+    }
+
     func fetchDatabases() async throws -> [String] { [] }
+
+    func fetchDatabaseMetadata(_ database: String) async throws -> PluginDatabaseMetadata {
+        PluginDatabaseMetadata(name: database)
+    }
 }
