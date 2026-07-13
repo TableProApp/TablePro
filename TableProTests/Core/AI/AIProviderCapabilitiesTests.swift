@@ -40,11 +40,18 @@ struct AIProviderCapabilitiesTests {
 
     @Test("HTTP API-key providers accept max output tokens, a configurable endpoint, and model fetch")
     func standardHTTPProviders() {
-        for type in [AIProviderType.openAI, .claude, .gemini, .openRouter, .ollama] {
+        for type in [AIProviderType.openAI, .claude, .gemini, .xai, .openRouter, .ollama] {
             let provider = descriptor(type)
             #expect(provider?.allowsMaxOutputTokens == true, "\(type.rawValue) should accept max output tokens")
             #expect(provider?.allowsEndpointConfiguration == true, "\(type.rawValue) should allow endpoint config")
             #expect(provider?.fetchesModelList == true, "\(type.rawValue) should fetch a model list")
+        }
+    }
+
+    @Test("Every provider type has a registered descriptor")
+    func everyTypeHasDescriptor() {
+        for type in AIProviderType.allCases {
+            #expect(descriptor(type) != nil, "\(type.rawValue) must have a registered descriptor")
         }
     }
 
@@ -57,7 +64,7 @@ struct AIProviderCapabilitiesTests {
 
     @Test("Telemetry toggle is exclusive to Copilot")
     func telemetryToggleOnlyForCopilot() {
-        for type in [AIProviderType.openAI, .claude, .gemini, .chatgptCodex, .custom, .ollama] {
+        for type in [AIProviderType.openAI, .claude, .gemini, .xai, .chatgptCodex, .custom, .ollama] {
             #expect(descriptor(type)?.showsTelemetryToggle == false, "\(type.rawValue) must not show telemetry")
         }
     }

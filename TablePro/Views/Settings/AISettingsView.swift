@@ -16,6 +16,7 @@ struct AISettingsView: View {
     @State private var pendingDeleteID: UUID?
     @State private var chatGPTCodexService = ChatGPTCodexService.shared
     @State private var cursorAgentService = CursorAgentService.shared
+    @State private var xaiService = XAIService.shared
     @State private var providersWithKey: Set<UUID> = []
 
     var body: some View {
@@ -34,6 +35,7 @@ struct AISettingsView: View {
         .task { refreshKeyAvailability() }
         .task { await chatGPTCodexService.refreshAuthState() }
         .task { await cursorAgentService.refreshStatus() }
+        .task { await xaiService.refreshAuthState() }
         .onChange(of: settings.providers.map(\.id)) {
             refreshKeyAvailability()
         }
@@ -324,6 +326,9 @@ struct AISettingsView: View {
             if provider.type == .cursor {
                 return cursorStatusText(for: provider)
             }
+            if provider.type == .xai {
+                return xaiStatusText(for: provider)
+            }
             return providersWithKey.contains(provider.id)
                 ? String(localized: "API key set")
                 : String(localized: "Not configured")
@@ -360,6 +365,16 @@ struct AISettingsView: View {
         }
         if cursorAgentService.authState.isSignedIn {
             return String(localized: "Signed in with Cursor")
+        }
+        return String(localized: "Not configured")
+    }
+
+    private func xaiStatusText(for provider: AIProviderConfig) -> String {
+        if providersWithKey.contains(provider.id) {
+            return String(localized: "API key set")
+        }
+        if xaiService.authState.isSignedIn {
+            return String(localized: "Signed in with xAI")
         }
         return String(localized: "Not configured")
     }

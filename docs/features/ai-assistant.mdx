@@ -1,6 +1,6 @@
 ---
 title: AI Assistant
-description: "Built-in AI for SQL: chat with tool calling, inline suggestions, explain, optimize, fix-error. 10 providers."
+description: "Built-in AI for SQL: chat with tool calling, inline suggestions, explain, optimize, fix-error. 11 providers."
 ---
 
 # AI Assistant
@@ -28,7 +28,7 @@ Open **Settings** (`Cmd+,`) > **AI**. The tab is modeled on Xcode's Intelligence
 
 ### Add a Provider
 
-1. Click **Add Provider...** and pick a type: GitHub Copilot, ChatGPT, Cursor, Claude, OpenAI, OpenRouter, OpenCode Zen, Gemini, Ollama, or a custom OpenAI-compatible endpoint.
+1. Click **Add Provider...** and pick a type: GitHub Copilot, ChatGPT, Cursor, Claude, OpenAI, OpenRouter, OpenCode Zen, Gemini, xAI, Ollama, or a custom OpenAI-compatible endpoint.
 2. Enter the API key, or sign in for Copilot and ChatGPT.
 3. Enter a model name, or pick one from the fetched list. Click **Reload** if needed.
 4. Click **Test Connection**.
@@ -61,6 +61,15 @@ Use your Cursor subscription for AI chat and inline suggestions, two ways:
 Pick a model such as Composer 2, or one of the frontier models Cursor proxies.
 
 Cursor runs as an agent rather than a chat-completions endpoint. Two limits follow: the AI cannot call TablePro's database tools (chat answers from the schema context TablePro sends, but Edit and Agent modes do not run queries through Cursor), and responses can be slower than the other providers. Using the API or CLI in your own app is permitted by Cursor's terms.
+
+### xAI
+
+Use Grok two ways:
+
+- **API key:** paste a key from the xAI Console. Stored in the macOS Keychain. Calls `api.x.ai` and bills xAI API credits. Pick Grok 4.5 (500k context) or Grok 4.3 (1M context, cheaper). Grok 4.5 always reasons; the effort level sets depth, not on or off.
+- **Sign in with xAI:** leave the key blank and click **Sign in with xAI** to use a SuperGrok or X Premium+ subscription with no key. The browser shows a Grok Build consent screen, since sign-in reuses xAI's Grok Build client. This path is unofficial and may change.
+
+Grok 4.3 is the cheaper pick for inline suggestions.
 
 ## Chat
 
@@ -194,7 +203,7 @@ The cap is 10 tool round trips per turn. If you hit it, send a follow-up to cont
 | `execute_query` | Run `SELECT` / `INSERT` / `UPDATE` / `DELETE`. Multi-statement input rejected. Destructive DDL blocked. | Edit, Agent |
 | `confirm_destructive_operation` | Run destructive DDL after the model passes the verbatim phrase `I understand this is irreversible` | Agent |
 
-Provider support: Claude, OpenAI, OpenRouter, OpenCode Zen, Gemini, Ollama (model-dependent), GitHub Copilot, and custom OpenAI-compatible endpoints.
+Provider support: Claude, OpenAI, OpenRouter, OpenCode Zen, Gemini, xAI, Ollama (model-dependent), GitHub Copilot, and custom OpenAI-compatible endpoints.
 
 ### Attach Context with `@`
 

@@ -15,6 +15,7 @@ enum AIProviderType: String, Codable, CaseIterable, Identifiable, Sendable {
     case openAI
     case openRouter
     case gemini
+    case xai
     case ollama
     case openCode
     case custom
@@ -30,6 +31,7 @@ enum AIProviderType: String, Codable, CaseIterable, Identifiable, Sendable {
         case .openAI:       return "OpenAI"
         case .openRouter:   return "OpenRouter"
         case .gemini:       return "Gemini"
+        case .xai:          return "xAI"
         case .ollama:       return "Ollama"
         case .openCode:     return "OpenCode Zen"
         case .custom:       return String(localized: "Custom")
@@ -45,6 +47,7 @@ enum AIProviderType: String, Codable, CaseIterable, Identifiable, Sendable {
         case .openAI:       return "https://api.openai.com"
         case .openRouter:   return "https://openrouter.ai/api"
         case .gemini:       return "https://generativelanguage.googleapis.com"
+        case .xai:          return "https://api.x.ai"
         case .ollama:       return "http://localhost:11434"
         case .openCode:     return "https://opencode.ai/zen"
         case .custom:       return ""
@@ -62,6 +65,7 @@ enum AIProviderType: String, Codable, CaseIterable, Identifiable, Sendable {
         case .copilot:      return .oauth
         case .chatgptCodex: return .oauth
         case .cursor:       return .optionalApiKey
+        case .xai:          return .optionalApiKey
         case .ollama:       return .none
         case .openCode:     return .optionalApiKey
         default:            return .apiKey
@@ -77,6 +81,7 @@ enum AIProviderType: String, Codable, CaseIterable, Identifiable, Sendable {
         case .openAI:       return "cpu"
         case .openRouter:   return "globe"
         case .gemini:       return "wand.and.stars"
+        case .xai:          return "x.circle"
         case .ollama:       return "desktopcomputer"
         case .openCode:     return "sparkles"
         case .custom:       return "server.rack"

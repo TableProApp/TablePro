@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- xAI (Grok) as an AI provider. Paste a key from the xAI Console to use Grok 4.5 or Grok 4.3 on API credits, or click **Sign in with xAI** to use a SuperGrok or X Premium+ subscription with no key. Supports reasoning effort and image attachments.
 - Connect to Google Cloud SQL through the Cloud SQL Auth Proxy without starting it yourself. Enable it on a MySQL, PostgreSQL, or SQL Server connection, set the instance connection name, and TablePro runs and stops the proxy with the connection. Supports Application Default Credentials, a service account key, and IAM database authentication, and can download the proxy or use one already on your Mac. (#1728)
 - Beancount ledger support as a downloadable, read-only file-based driver. Transactions, postings (with resolved cost basis), accounts, prices, computed balances, and balance assertions project to SQL tables through user-provided `rledger` or Python Beancount, and BQL runs with a `BQL:` prefix when `rledger` is available. (#1474)
 - The Favorites sidebar **+** menu now includes **New Query**, which opens an empty SQL query tab.
