@@ -18,13 +18,25 @@ extension TableViewCoordinator {
             return column.width
         }
 
-        let tableRows = tableRowsProvider()
-        let width = cellFactory.calculateFitToContentWidth(
+        return fitToContentWidth(for: column, dataColumnIndex: dataColumnIndex, tableRows: tableRowsProvider())
+    }
+
+    private var visibleGridWidth: CGFloat {
+        guard let tableView else { return 0 }
+        return tableView.enclosingScrollView?.contentView.bounds.width ?? tableView.visibleRect.width
+    }
+
+    private func fitToContentWidth(
+        for column: NSTableColumn,
+        dataColumnIndex: Int,
+        tableRows: TableRows
+    ) -> CGFloat {
+        cellFactory.calculateFitToContentWidth(
             for: dataColumnIndex < tableRows.columns.count ? tableRows.columns[dataColumnIndex] : column.title,
             columnIndex: dataColumnIndex,
-            tableRows: tableRows
+            tableRows: tableRows,
+            availableWidth: visibleGridWidth
         )
-        return width
     }
 
     // MARK: - NSMenuDelegate (Header Context Menu)
@@ -294,13 +306,11 @@ extension TableViewCoordinator {
         let column = tableView.tableColumns[columnIndex]
         guard let dataColumnIndex = dataColumnIndex(from: column.identifier) else { return }
 
-        let tableRows = tableRowsProvider()
-        let width = cellFactory.calculateFitToContentWidth(
-            for: dataColumnIndex < tableRows.columns.count ? tableRows.columns[dataColumnIndex] : column.title,
-            columnIndex: dataColumnIndex,
-            tableRows: tableRows
+        column.width = fitToContentWidth(
+            for: column,
+            dataColumnIndex: dataColumnIndex,
+            tableRows: tableRowsProvider()
         )
-        column.width = width
     }
 
     @objc func sizeAllColumnsToFit(_ sender: NSMenuItem) {
@@ -308,15 +318,16 @@ extension TableViewCoordinator {
 
         let tableRows = tableRowsProvider()
         for column in tableView.tableColumns {
-            guard column.identifier != ColumnIdentitySchema.rowNumberIdentifier,
-                  let dataColumnIndex = dataColumnIndex(from: column.identifier) else { continue }
+            guard !column.isHidden,
+                  column.identifier != ColumnIdentitySchema.rowNumberIdentifier,
+                  let dataColumnIndex = dataColumnIndex(from: column.identifier),
+                  dataColumnIndex < tableRows.columns.count else { continue }
 
-            let width = cellFactory.calculateFitToContentWidth(
-                for: dataColumnIndex < tableRows.columns.count ? tableRows.columns[dataColumnIndex] : column.title,
-                columnIndex: dataColumnIndex,
+            column.width = fitToContentWidth(
+                for: column,
+                dataColumnIndex: dataColumnIndex,
                 tableRows: tableRows
             )
-            column.width = width
         }
     }
 

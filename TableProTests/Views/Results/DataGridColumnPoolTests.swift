@@ -326,6 +326,51 @@ struct DataGridColumnPoolTests {
         #expect(widthsByName["name"] == 250)
     }
 
+    @Test("An oversized saved width is clamped to the column ceiling")
+    func reconcile_clampsOversizedSavedWidthToColumnCeiling() {
+        let pool = DataGridColumnPool()
+        let tableView = makeTableView()
+        let schema = ColumnIdentitySchema(columns: ["id", "payload"])
+
+        var layout = ColumnLayoutState()
+        layout.columnWidths = ["id": 75, "payload": 28_000]
+
+        pool.reconcile(
+            tableView: tableView,
+            schema: schema,
+            columnTypes: makeColumnTypes(count: 2),
+            savedLayout: layout,
+            isEditable: true,
+            hiddenColumnNames: [],
+            widthCalculator: defaultWidthCalculator
+        )
+
+        let widthsByName = Dictionary(uniqueKeysWithValues: dataColumns(in: tableView).map { ($0.headerCell.stringValue, $0.width) })
+        #expect(widthsByName["id"] == 75)
+        #expect(widthsByName["payload"] == DataGridMetrics.dataColumnMaxWidth)
+    }
+
+    @Test("Data columns carry the min and max width bounds")
+    func reconcile_dataColumnsCarryWidthBounds() {
+        let pool = DataGridColumnPool()
+        let tableView = makeTableView()
+
+        pool.reconcile(
+            tableView: tableView,
+            schema: ColumnIdentitySchema(columns: ["id", "name"]),
+            columnTypes: makeColumnTypes(count: 2),
+            savedLayout: nil,
+            isEditable: true,
+            hiddenColumnNames: [],
+            widthCalculator: defaultWidthCalculator
+        )
+
+        for column in dataColumns(in: tableView) {
+            #expect(column.minWidth == DataGridMetrics.dataColumnMinWidth)
+            #expect(column.maxWidth == DataGridMetrics.dataColumnMaxWidth)
+        }
+    }
+
     @Test("reconcile assigns column comments to sortable header cells")
     func reconcile_assignsColumnCommentsToHeaderCells() throws {
         let pool = DataGridColumnPool()

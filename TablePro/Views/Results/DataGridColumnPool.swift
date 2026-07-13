@@ -84,7 +84,8 @@ final class DataGridColumnPool {
         while pooledColumns.count < count {
             let slot = pooledColumns.count
             let column = NSTableColumn(identifier: ColumnIdentitySchema.slotIdentifier(slot))
-            column.minWidth = 30
+            column.minWidth = DataGridMetrics.dataColumnMinWidth
+            column.maxWidth = DataGridMetrics.dataColumnMaxWidth
             column.resizingMask = .userResizingMask
             column.isEditable = true
             column.isHidden = true

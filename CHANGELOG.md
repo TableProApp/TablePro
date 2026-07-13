@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Size to Fit** and **Size All Columns to Fit** no longer stretch a column with long text far past the window. A fitted column now stops at half the visible grid, and every column has a maximum width, so a column left oversized before is brought back in range the next time you open the table.
 - A failed or cancelled connection that uses a Cloudflare tunnel no longer leaves the `cloudflared` process running in the background.
 - Pinned results are no longer discarded by **Clear Results**, and a tab holding one is no longer reused to browse a different table. (#1855)
 - Quitting now warns about unsaved changes in any tab, not just the visible one. Unsaved edits to a `.sql` file, table structure changes, and pending truncates and deletes were all missed before. (#1854)
