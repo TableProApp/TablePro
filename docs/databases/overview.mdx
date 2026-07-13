@@ -213,7 +213,7 @@ A red triangle on a sidebar item marks panes with missing required fields.
 | **Host** | Server address. Defaults to `localhost` |
 | **Port** | Server port. Pre-filled per database type |
 | **Database** | Default database. Optional for MySQL/MariaDB; leave empty for service-level access |
-| **Username** | Database username. Defaults to `root` (MySQL), `postgres` (PostgreSQL) |
+| **Username** | Database username. Optional: leave it empty and the database uses its own default, which is your Mac login name for MySQL/MariaDB and PostgreSQL, and `default` for ClickHouse |
 | **Password** | Stored in Keychain |
 | **Prompt for password** | Skip saving the password. TablePro asks for it on every connect |
 | **Use Password File** | PostgreSQL only. Reads credentials from `~/.pgpass` |

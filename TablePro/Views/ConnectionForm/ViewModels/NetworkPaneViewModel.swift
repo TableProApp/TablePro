@@ -39,6 +39,14 @@ final class NetworkPaneViewModel {
         return port == 0 ? "" : String(port)
     }
 
+    var resolvedHost: String {
+        host.trimmingCharacters(in: .whitespaces).isEmpty ? "localhost" : host
+    }
+
+    var resolvedPort: Int {
+        Int(port) ?? type.defaultPort
+    }
+
     var supportsDatabaseField: Bool {
         let mode = connectionMode
         return mode == .fileBased

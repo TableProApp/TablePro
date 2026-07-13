@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The username is now optional. Leaving it empty, or importing a connection URL that has no user in it, no longer fills in `root`. An empty username lets the database use its own default, the same as `psql` and `mysql` do: your Mac login name on MySQL/MariaDB and PostgreSQL, and `default` on ClickHouse. The `~/.pgpass` lookup now matches on that same user.
 - A failed or cancelled connection that uses a Cloudflare tunnel no longer leaves the `cloudflared` process running in the background.
 - Pinned results are no longer discarded by **Clear Results**, and a tab holding one is no longer reused to browse a different table. (#1855)
 - Quitting now warns about unsaved changes in any tab, not just the visible one. Unsaved edits to a `.sql` file, table structure changes, and pending truncates and deletes were all missed before. (#1854)
