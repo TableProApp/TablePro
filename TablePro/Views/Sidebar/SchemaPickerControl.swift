@@ -22,6 +22,10 @@ struct SchemaPickerControl: View {
         Set(PluginManager.shared.systemSchemaNames(for: databaseType))
     }
 
+    private var entityName: String {
+        PluginManager.shared.schemaEntityName(for: databaseType)
+    }
+
     private var userSchemas: [String] {
         allSchemas.filter { !systemSchemas.contains($0) }
     }
@@ -47,7 +51,7 @@ struct SchemaPickerControl: View {
     var body: some View {
         if Self.shouldShow(schemaCount: allSchemas.count) {
             Menu {
-                Picker(String(localized: "Schema"), selection: selectedSchema) {
+                Picker(entityName, selection: selectedSchema) {
                     ForEach(userSchemas, id: \.self) { schema in
                         Text(schema).tag(schema)
                     }
@@ -62,7 +66,10 @@ struct SchemaPickerControl: View {
 
                 if !visibleSystemSchemas.isEmpty {
                     Divider()
-                    Toggle(String(localized: "Show System Schemas"), isOn: $showSystemSchemas)
+                    Toggle(
+                        String(format: String(localized: "Show System %@s"), entityName),
+                        isOn: $showSystemSchemas
+                    )
                 }
 
                 Divider()
@@ -70,11 +77,11 @@ struct SchemaPickerControl: View {
                     Task { await schemaService.refresh(connectionId: connectionId) }
                 }
             } label: {
-                Text(currentSchema ?? String(localized: "Select schema"))
+                Text(currentSchema ?? String(format: String(localized: "Select %@"), entityName.lowercased()))
             }
             .menuStyle(.borderlessButton)
             .fixedSize()
-            .accessibilityLabel(String(localized: "Current schema"))
+            .accessibilityLabel(String(format: String(localized: "Current %@"), entityName.lowercased()))
         }
     }
 }

@@ -47,6 +47,7 @@ extension DatabaseType {
     static let turso = DatabaseType(rawValue: "Turso")
     static let beancount = DatabaseType(rawValue: "Beancount")
     static let elasticsearch = DatabaseType(rawValue: "Elasticsearch")
+    static let surrealdb = DatabaseType(rawValue: "SurrealDB")
 }
 
 extension DatabaseType: Codable {

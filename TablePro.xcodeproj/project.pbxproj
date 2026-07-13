@@ -13,6 +13,7 @@
 		3DD7311CA07CFCA8A996058F /* SnowflakeAuth.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9D129A56E1AB45F7D82AC58 /* SnowflakeAuth.swift */; };
 		4355C825A7554BBCB978E1E4 /* SnowflakeSchemaQueries.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C399209C2D14499870FBD49 /* SnowflakeSchemaQueries.swift */; };
 		4CA0E909166145AAB6B6CDD7 /* SnowflakeHTTPRetry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55F1B63541C24A10BF4AF873 /* SnowflakeHTTPRetry.swift */; };
+		5A1862000000000000000008 /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
 		5A1MPORT000000000000A011 /* TableProImport in Frameworks */ = {isa = PBXBuildFile; productRef = 5A1MPORT000000000000A010 /* TableProImport */; };
 		5A32BBFB2F9D5EAB00BAEB5F /* X509 in Frameworks */ = {isa = PBXBuildFile; productRef = 5A32BBFA2F9D5EAB00BAEB5F /* X509 */; };
 		5A32BC0B2F9D659100BAEB5F /* tablepro-mcp in Copy Files */ = {isa = PBXBuildFile; fileRef = 5A32BC002F9D5F1300BAEB5F /* tablepro-mcp */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
@@ -33,7 +34,6 @@
 		5A868000A00000000 /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
 		5A868000D00000000 /* PostgreSQLDriver.tableplugin in Copy Plug-Ins (12 items) */ = {isa = PBXBuildFile; fileRef = 5A868000100000000 /* PostgreSQLDriver.tableplugin */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		5A869000A00000000 /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
-		5ABC147400000000000001 /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
 		5A86A000A00000000 /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
 		5A86A000D00000000 /* CSVExport.tableplugin in Copy Plug-Ins (12 items) */ = {isa = PBXBuildFile; fileRef = 5A86A000100000000 /* CSVExport.tableplugin */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		5A86B000A00000000 /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
@@ -53,6 +53,7 @@
 		5A87A000A00000000 /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
 		5ABBED742FB55E1400A78382 /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
 		5ABBED802FB55E1400A78382 /* CSVInspectorPlugin.tableplugin in Copy Plug-Ins (12 items) */ = {isa = PBXBuildFile; fileRef = 5ABBED792FB55E1400A78382 /* CSVInspectorPlugin.tableplugin */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		5ABC147400000000000001 /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
 		5ABQR00100000000000000A1 /* BigQueryAuth.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5ABQR00200000000000000A1 /* BigQueryAuth.swift */; };
 		5ABQR00100000000000000A2 /* BigQueryConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5ABQR00200000000000000A2 /* BigQueryConnection.swift */; };
 		5ABQR00100000000000000A3 /* BigQueryPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5ABQR00200000000000000A3 /* BigQueryPlugin.swift */; };
@@ -178,13 +179,6 @@
 			remoteGlobalIDString = 5A869000000000000;
 			remoteInfo = DuckDBDriver;
 		};
-		5ABC14740000000000000F /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 5A1091BF2EF17EDC0055EA7C /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = 5A860000000000000;
-			remoteInfo = TableProPluginKit;
-		};
 		5A86A000B00000000 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 5A1091BF2EF17EDC0055EA7C /* Project object */;
@@ -247,6 +241,13 @@
 			proxyType = 1;
 			remoteGlobalIDString = 5ABBED712FB55E1400A78382;
 			remoteInfo = CSVInspectorPlugin;
+		};
+		5ABC14740000000000000F /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 5A1091BF2EF17EDC0055EA7C /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 5A860000000000000;
+			remoteInfo = TableProPluginKit;
 		};
 		5ABCC5AB2F43856700EAF3FC /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -354,6 +355,7 @@
 		53DF2F4A15214F2AA1DE95CF /* SnowflakeDDLGenerator.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SnowflakeDDLGenerator.swift; sourceTree = "<group>"; };
 		55F1B63541C24A10BF4AF873 /* SnowflakeHTTPRetry.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SnowflakeHTTPRetry.swift; sourceTree = "<group>"; };
 		5A1091C72EF17EDC0055EA7C /* TablePro.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TablePro.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		5A1862000000000000000002 /* SurrealDBDriverPlugin.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SurrealDBDriverPlugin.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
 		5A2A9AE12FF52C7D0082A7AC /* DuckDBDriver.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = DuckDBDriver.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
 		5A2A9AE22FF52C7D0082A7AC /* ElasticsearchDriverPlugin.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ElasticsearchDriverPlugin.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
 		5A32BC002F9D5F1300BAEB5F /* tablepro-mcp */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = "tablepro-mcp"; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -368,7 +370,6 @@
 		5A867000100000000 /* RedisDriver.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RedisDriver.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
 		5A868000100000000 /* PostgreSQLDriver.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PostgreSQLDriver.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
 		5A869000100000000 /* DuckDBDriver.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = DuckDBDriver.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
-		5ABC147400000000000003 /* BeancountDriver.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BeancountDriver.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
 		5A86A000100000000 /* CSVExport.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CSVExport.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
 		5A86B000100000000 /* JSONExport.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = JSONExport.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
 		5A86C000100000000 /* SQLExport.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SQLExport.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -379,6 +380,7 @@
 		5A86F003100000000 /* CSVImport.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CSVImport.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
 		5A87A000100000000 /* CassandraDriver.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CassandraDriver.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
 		5ABBED792FB55E1400A78382 /* CSVInspectorPlugin.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CSVInspectorPlugin.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
+		5ABC147400000000000003 /* BeancountDriver.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BeancountDriver.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
 		5ABCC5A72F43856700EAF3FC /* TableProTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TableProTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		5ABQR00200000000000000A1 /* BigQueryAuth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BigQueryAuth.swift; sourceTree = "<group>"; };
 		5ABQR00200000000000000A2 /* BigQueryConnection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BigQueryConnection.swift; sourceTree = "<group>"; };
@@ -427,6 +429,13 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		5A1862000000000000000003 /* Exceptions for "Plugins/SurrealDBDriverPlugin" folder in "SurrealDBDriverPlugin" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 5A1862000000000000000001 /* SurrealDBDriverPlugin */;
+		};
 		5A32BC082F9D5FC900BAEB5F /* Exceptions for "TablePro" folder in "mcp-server" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
@@ -545,13 +554,6 @@
 			);
 			target = 5A869000000000000 /* DuckDBDriver */;
 		};
-		5ABC147400000000000006 /* Exceptions for "Plugins/BeancountDriverPlugin" folder in "BeancountDriver" target */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-				Info.plist,
-			);
-			target = 5ABC147400000000000005 /* BeancountDriver */;
-		};
 		5A86A000900000000 /* Exceptions for "Plugins/CSVExportPlugin" folder in "CSVExport" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
@@ -637,6 +639,13 @@
 			);
 			target = 5ABBED712FB55E1400A78382 /* CSVInspectorPlugin */;
 		};
+		5ABC147400000000000006 /* Exceptions for "Plugins/BeancountDriverPlugin" folder in "BeancountDriver" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 5ABC147400000000000005 /* BeancountDriver */;
+		};
 		5AE4F4802F6BC0640097AC5B /* Exceptions for "Plugins/CloudflareD1DriverPlugin" folder in "CloudflareD1DriverPlugin" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
@@ -664,6 +673,14 @@
 				5A32BC082F9D5FC900BAEB5F /* Exceptions for "TablePro" folder in "mcp-server" target */,
 			);
 			path = TablePro;
+			sourceTree = "<group>";
+		};
+		5A1862000000000000000004 /* Plugins/SurrealDBDriverPlugin */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				5A1862000000000000000003 /* Exceptions for "Plugins/SurrealDBDriverPlugin" folder in "SurrealDBDriverPlugin" target */,
+			);
+			path = Plugins/SurrealDBDriverPlugin;
 			sourceTree = "<group>";
 		};
 		5A32BC012F9D5F1300BAEB5F /* mcp-server */ = {
@@ -761,14 +778,6 @@
 			path = Plugins/DuckDBDriverPlugin;
 			sourceTree = "<group>";
 		};
-		5ABC147400000000000007 /* Plugins/BeancountDriverPlugin */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-				5ABC147400000000000006 /* Exceptions for "Plugins/BeancountDriverPlugin" folder in "BeancountDriver" target */,
-			);
-			path = Plugins/BeancountDriverPlugin;
-			sourceTree = "<group>";
-		};
 		5A86A000500000000 /* Plugins/CSVExportPlugin */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
@@ -851,6 +860,14 @@
 			path = Plugins/CSVInspectorPlugin;
 			sourceTree = "<group>";
 		};
+		5ABC147400000000000007 /* Plugins/BeancountDriverPlugin */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				5ABC147400000000000006 /* Exceptions for "Plugins/BeancountDriverPlugin" folder in "BeancountDriver" target */,
+			);
+			path = Plugins/BeancountDriverPlugin;
+			sourceTree = "<group>";
+		};
 		5ABCC5A82F43856700EAF3FC /* TableProTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = TableProTests;
@@ -883,6 +900,14 @@
 				5A32BBFB2F9D5EAB00BAEB5F /* X509 in Frameworks */,
 				5ACE00012F4F000000000006 /* CodeEditTextView in Frameworks */,
 				5ACE00012F4F00000000000A /* Sparkle in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5A1862000000000000000006 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5A1862000000000000000008 /* TableProPluginKit.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -982,14 +1007,6 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		5ABC147400000000000008 /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				5ABC147400000000000001 /* TableProPluginKit.framework in Frameworks */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 		5A86A000300000000 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -1067,6 +1084,14 @@
 			buildActionMask = 2147483647;
 			files = (
 				5ABBED742FB55E1400A78382 /* TableProPluginKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5ABC147400000000000008 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5ABC147400000000000001 /* TableProPluginKit.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1151,6 +1176,7 @@
 				5ABQR00500000000000000B0 /* Plugins/BigQueryDriverPlugin */,
 				5AEA8B412F6808CA0040461A /* Plugins/EtcdDriverPlugin */,
 				5AE4F4812F6BC0640097AC5B /* Plugins/CloudflareD1DriverPlugin */,
+				5A1862000000000000000004 /* Plugins/SurrealDBDriverPlugin */,
 				5A3BE6FE2F97DB0100611C1F /* Plugins/LibSQLDriverPlugin */,
 				5A1091C92EF17EDC0055EA7C /* TablePro */,
 				5A860000500000000 /* Plugins/TableProPluginKit */,
@@ -1214,6 +1240,7 @@
 				5ADDB00300000000000000A0 /* DynamoDBDriverPlugin.tableplugin */,
 				5ABQR00300000000000000A0 /* BigQueryDriverPlugin.tableplugin */,
 				5AE4F4742F6BC0640097AC5B /* CloudflareD1DriverPlugin.tableplugin */,
+				5A1862000000000000000002 /* SurrealDBDriverPlugin.tableplugin */,
 				5A3BE6F82F97DA8100611C1F /* LibSQLDriverPlugin.tableplugin */,
 				5A32BC002F9D5F1300BAEB5F /* tablepro-mcp */,
 				5ABBED792FB55E1400A78382 /* CSVInspectorPlugin.tableplugin */,
@@ -1379,6 +1406,28 @@
 			productName = TablePro;
 			productReference = 5A1091C72EF17EDC0055EA7C /* TablePro.app */;
 			productType = "com.apple.product-type.application";
+		};
+		5A1862000000000000000001 /* SurrealDBDriverPlugin */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 5A186200000000000000000B /* Build configuration list for PBXNativeTarget "SurrealDBDriverPlugin" */;
+			buildPhases = (
+				5A1862000000000000000005 /* Sources */,
+				5A1862000000000000000006 /* Frameworks */,
+				5A1862000000000000000007 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				5A1862000000000000000004 /* Plugins/SurrealDBDriverPlugin */,
+			);
+			name = SurrealDBDriverPlugin;
+			packageProductDependencies = (
+			);
+			productName = SurrealDBDriverPlugin;
+			productReference = 5A1862000000000000000002 /* SurrealDBDriverPlugin.tableplugin */;
+			productType = "com.apple.product-type.bundle";
 		};
 		5A32BBFF2F9D5F1300BAEB5F /* mcp-server */ = {
 			isa = PBXNativeTarget;
@@ -1631,27 +1680,6 @@
 			productReference = 5A2A9AE12FF52C7D0082A7AC /* DuckDBDriver.tableplugin */;
 			productType = "com.apple.product-type.bundle";
 		};
-		5ABC147400000000000005 /* BeancountDriver */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = 5ABC147400000000000009 /* Build configuration list for PBXNativeTarget "BeancountDriver" */;
-			buildPhases = (
-				5ABC14740000000000000A /* Sources */,
-				5ABC147400000000000008 /* Frameworks */,
-				5ABC14740000000000000B /* Resources */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-				5ABC147400000000000010 /* PBXTargetDependency */,
-			);
-			fileSystemSynchronizedGroups = (
-				5ABC147400000000000007 /* Plugins/BeancountDriverPlugin */,
-			);
-			name = BeancountDriver;
-			productName = BeancountDriver;
-			productReference = 5ABC147400000000000003 /* BeancountDriver.tableplugin */;
-			productType = "com.apple.product-type.bundle";
-		};
 		5A86A000000000000 /* CSVExport */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 5A86A000800000000 /* Build configuration list for PBXNativeTarget "CSVExport" */;
@@ -1850,6 +1878,27 @@
 			name = CSVInspectorPlugin;
 			productName = CSVInspectorPlugin;
 			productReference = 5ABBED792FB55E1400A78382 /* CSVInspectorPlugin.tableplugin */;
+			productType = "com.apple.product-type.bundle";
+		};
+		5ABC147400000000000005 /* BeancountDriver */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 5ABC147400000000000009 /* Build configuration list for PBXNativeTarget "BeancountDriver" */;
+			buildPhases = (
+				5ABC14740000000000000A /* Sources */,
+				5ABC147400000000000008 /* Frameworks */,
+				5ABC14740000000000000B /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				5ABC147400000000000010 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				5ABC147400000000000007 /* Plugins/BeancountDriverPlugin */,
+			);
+			name = BeancountDriver;
+			productName = BeancountDriver;
+			productReference = 5ABC147400000000000003 /* BeancountDriver.tableplugin */;
 			productType = "com.apple.product-type.bundle";
 		};
 		5ABCC5A62F43856700EAF3FC /* TableProTests */ = {
@@ -2058,9 +2107,6 @@
 					5A869000000000000 = {
 						CreatedOnToolsVersion = 26.2;
 					};
-					5ABC147400000000000005 = {
-						CreatedOnToolsVersion = 26.5;
-					};
 					5A86A000000000000 = {
 						CreatedOnToolsVersion = 26.2;
 					};
@@ -2075,6 +2121,9 @@
 					};
 					5A86E000000000000 = {
 						CreatedOnToolsVersion = 26.2;
+					};
+					5ABC147400000000000005 = {
+						CreatedOnToolsVersion = 26.5;
 					};
 					5ABCC5A62F43856700EAF3FC = {
 						CreatedOnToolsVersion = 26.2;
@@ -2145,6 +2194,7 @@
 				5AF00A142FB9000000000001 /* TableProUITests */,
 				5AEA8B292F6808270040461A /* EtcdDriverPlugin */,
 				5AE4F4732F6BC0640097AC5B /* CloudflareD1DriverPlugin */,
+				5A1862000000000000000001 /* SurrealDBDriverPlugin */,
 				5ADDB00600000000000000B0 /* DynamoDBDriverPlugin */,
 				5E1A500600000000000000B0 /* ElasticsearchDriverPlugin */,
 				5ABQR00600000000000000B0 /* BigQueryDriverPlugin */,
@@ -2165,6 +2215,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		5A1091C52EF17EDC0055EA7C /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5A1862000000000000000007 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -2248,13 +2305,6 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		5ABC14740000000000000B /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 		5A86A000400000000 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -2325,6 +2375,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		5ABC14740000000000000B /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		5ABCC5A52F43856700EAF3FC /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -2376,9 +2433,6 @@
 		};
 /* End PBXResourcesBuildPhase section */
 
-/* Begin PBXShellScriptBuildPhase section */
-/* End PBXShellScriptBuildPhase section */
-
 /* Begin PBXSourcesBuildPhase section */
 		329606C9C47DD1FA4F8F5350 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
@@ -2405,6 +2459,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		5A1091C32EF17EDC0055EA7C /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5A1862000000000000000005 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -2495,13 +2556,6 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		5ABC14740000000000000A /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 		5A86A000200000000 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -2566,6 +2620,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		5ABBED722FB55E1400A78382 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5ABC14740000000000000A /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -2703,11 +2764,6 @@
 			target = 5A869000000000000 /* DuckDBDriver */;
 			targetProxy = 5A869000B00000000 /* PBXContainerItemProxy */;
 		};
-		5ABC147400000000000010 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = 5A860000000000000 /* TableProPluginKit */;
-			targetProxy = 5ABC14740000000000000F /* PBXContainerItemProxy */;
-		};
 		5A86A000C00000000 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = 5A86A000000000000 /* CSVExport */;
@@ -2752,6 +2808,11 @@
 			isa = PBXTargetDependency;
 			target = 5ABBED712FB55E1400A78382 /* CSVInspectorPlugin */;
 			targetProxy = 5ABBED7E2FB55E1400A78382 /* PBXContainerItemProxy */;
+		};
+		5ABC147400000000000010 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 5A860000000000000 /* TableProPluginKit */;
+			targetProxy = 5ABC14740000000000000F /* PBXContainerItemProxy */;
 		};
 		5ABCC5AC2F43856700EAF3FC /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -3105,6 +3166,52 @@
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.9;
 				XROS_DEPLOYMENT_TARGET = 26.2;
+			};
+			name = Release;
+		};
+		5A1862000000000000000009 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Plugins/SurrealDBDriverPlugin/Info.plist;
+				INFOPLIST_KEY_NSPrincipalClass = "$(PRODUCT_MODULE_NAME).SurrealDBPlugin";
+				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.TablePro.SurrealDBDriverPlugin;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = macosx;
+				SWIFT_VERSION = 5.9;
+				WRAPPER_EXTENSION = tableplugin;
+			};
+			name = Debug;
+		};
+		5A186200000000000000000A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Plugins/SurrealDBDriverPlugin/Info.plist;
+				INFOPLIST_KEY_NSPrincipalClass = "$(PRODUCT_MODULE_NAME).SurrealDBPlugin";
+				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.TablePro.SurrealDBDriverPlugin;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = macosx;
+				SWIFT_VERSION = 5.9;
+				WRAPPER_EXTENSION = tableplugin;
 			};
 			name = Release;
 		};
@@ -3862,56 +3969,6 @@
 			};
 			name = Release;
 		};
-		5ABC14740000000000000D /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CODE_SIGN_STYLE = Automatic;
-				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = "";
-				ENABLE_USER_SCRIPT_SANDBOXING = NO;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = Plugins/BeancountDriverPlugin/Info.plist;
-				INFOPLIST_KEY_NSPrincipalClass = "$(PRODUCT_MODULE_NAME).BeancountPlugin";
-				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
-				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.0;
-				OTHER_LDFLAGS = "-lsqlite3";
-				PRODUCT_BUNDLE_IDENTIFIER = com.TablePro.BeancountDriver;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SDKROOT = macosx;
-				SKIP_INSTALL = YES;
-				SUPPORTED_PLATFORMS = macosx;
-				SWIFT_VERSION = 5.9;
-				WRAPPER_EXTENSION = tableplugin;
-			};
-			name = Debug;
-		};
-		5ABC14740000000000000E /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CODE_SIGN_STYLE = Automatic;
-				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = "";
-				ENABLE_USER_SCRIPT_SANDBOXING = NO;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = Plugins/BeancountDriverPlugin/Info.plist;
-				INFOPLIST_KEY_NSPrincipalClass = "$(PRODUCT_MODULE_NAME).BeancountPlugin";
-				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
-				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.0;
-				OTHER_LDFLAGS = "-lsqlite3";
-				PRODUCT_BUNDLE_IDENTIFIER = com.TablePro.BeancountDriver;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SDKROOT = macosx;
-				SKIP_INSTALL = YES;
-				SUPPORTED_PLATFORMS = macosx;
-				SWIFT_VERSION = 5.9;
-				WRAPPER_EXTENSION = tableplugin;
-			};
-			name = Release;
-		};
 		5A86A000600000000 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -4410,6 +4467,56 @@
 			};
 			name = Release;
 		};
+		5ABC14740000000000000D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Plugins/BeancountDriverPlugin/Info.plist;
+				INFOPLIST_KEY_NSPrincipalClass = "$(PRODUCT_MODULE_NAME).BeancountPlugin";
+				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = "-lsqlite3";
+				PRODUCT_BUNDLE_IDENTIFIER = com.TablePro.BeancountDriver;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = macosx;
+				SWIFT_VERSION = 5.9;
+				WRAPPER_EXTENSION = tableplugin;
+			};
+			name = Debug;
+		};
+		5ABC14740000000000000E /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Plugins/BeancountDriverPlugin/Info.plist;
+				INFOPLIST_KEY_NSPrincipalClass = "$(PRODUCT_MODULE_NAME).BeancountPlugin";
+				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = "-lsqlite3";
+				PRODUCT_BUNDLE_IDENTIFIER = com.TablePro.BeancountDriver;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = macosx;
+				SWIFT_VERSION = 5.9;
+				WRAPPER_EXTENSION = tableplugin;
+			};
+			name = Release;
+		};
 		5ABCC5AE2F43856700EAF3FC /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -4778,6 +4885,15 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
+		5A186200000000000000000B /* Build configuration list for PBXNativeTarget "SurrealDBDriverPlugin" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5A1862000000000000000009 /* Debug */,
+				5A186200000000000000000A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		5A32BC042F9D5F1300BAEB5F /* Build configuration list for PBXNativeTarget "mcp-server" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
@@ -4886,15 +5002,6 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		5ABC147400000000000009 /* Build configuration list for PBXNativeTarget "BeancountDriver" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				5ABC14740000000000000D /* Debug */,
-				5ABC14740000000000000E /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
 		5A86A000800000000 /* Build configuration list for PBXNativeTarget "CSVExport" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
@@ -4981,6 +5088,15 @@
 			buildConfigurations = (
 				5ABBED772FB55E1400A78382 /* Debug */,
 				5ABBED782FB55E1400A78382 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		5ABC147400000000000009 /* Build configuration list for PBXNativeTarget "BeancountDriver" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5ABC14740000000000000D /* Debug */,
+				5ABC14740000000000000E /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

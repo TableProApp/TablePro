@@ -23,6 +23,7 @@ struct DatabaseTreeRowActions {
 }
 
 struct DatabaseTreeRowContext {
+    let databaseType: DatabaseType
     let activeDatabase: String?
     let activeSchema: String?
     let systemSchemas: Set<String>
@@ -35,6 +36,14 @@ struct DatabaseTreeRowView: View {
     let isEmphasized: Bool
     let context: DatabaseTreeRowContext
     let actions: DatabaseTreeRowActions
+
+    private var containerEntityName: String {
+        PluginManager.shared.containerEntityName(for: context.databaseType)
+    }
+
+    private var schemaEntityName: String {
+        PluginManager.shared.schemaEntityName(for: context.databaseType)
+    }
 
     var body: some View {
         if hasContextMenu {
@@ -159,7 +168,7 @@ struct DatabaseTreeRowView: View {
                 actions.clearRecents()
             }
         case .database(let metadata):
-            Button(String(localized: "Use as Active Database")) {
+            Button(String(format: String(localized: "Use as Active %@"), containerEntityName)) {
                 actions.setActiveDatabase(metadata.name)
             }
             .disabled(metadata.name == context.activeDatabase)
@@ -167,7 +176,7 @@ struct DatabaseTreeRowView: View {
                 actions.refreshDatabase(metadata.name)
             }
         case .schema(let database, let schema):
-            Button(String(localized: "Use as Active Schema")) {
+            Button(String(format: String(localized: "Use as Active %@"), schemaEntityName)) {
                 actions.setActiveSchema(database, schema)
             }
             .disabled(database == context.activeDatabase && schema == context.activeSchema)

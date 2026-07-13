@@ -92,6 +92,7 @@ struct PluginMetadataSnapshot: Sendable {
         let defaultGroupName: String
         let tableEntityName: String
         let containerEntityName: String
+        let schemaEntityName: String
         let defaultPrimaryKeyColumn: String?
         let immutableColumns: [String]
         let systemDatabaseNames: [String]
@@ -99,6 +100,34 @@ struct PluginMetadataSnapshot: Sendable {
         let fileExtensions: [String]
         let databaseGroupingStrategy: GroupingStrategy
         let structureColumnFields: [StructureColumnField]
+
+        init(
+            defaultSchemaName: String,
+            defaultGroupName: String,
+            tableEntityName: String,
+            containerEntityName: String,
+            schemaEntityName: String = "Schema",
+            defaultPrimaryKeyColumn: String?,
+            immutableColumns: [String],
+            systemDatabaseNames: [String],
+            systemSchemaNames: [String],
+            fileExtensions: [String],
+            databaseGroupingStrategy: GroupingStrategy,
+            structureColumnFields: [StructureColumnField]
+        ) {
+            self.defaultSchemaName = defaultSchemaName
+            self.defaultGroupName = defaultGroupName
+            self.tableEntityName = tableEntityName
+            self.containerEntityName = containerEntityName
+            self.schemaEntityName = schemaEntityName
+            self.defaultPrimaryKeyColumn = defaultPrimaryKeyColumn
+            self.immutableColumns = immutableColumns
+            self.systemDatabaseNames = systemDatabaseNames
+            self.systemSchemaNames = systemSchemaNames
+            self.fileExtensions = fileExtensions
+            self.databaseGroupingStrategy = databaseGroupingStrategy
+            self.structureColumnFields = structureColumnFields
+        }
 
         static let defaults = SchemaInfo(
             defaultSchemaName: "public",
@@ -243,6 +272,7 @@ struct PluginMetadataSnapshot: Sendable {
                 defaultGroupName: schema.defaultGroupName,
                 tableEntityName: schema.tableEntityName,
                 containerEntityName: source.schema.containerEntityName,
+                schemaEntityName: source.schema.schemaEntityName,
                 defaultPrimaryKeyColumn: schema.defaultPrimaryKeyColumn,
                 immutableColumns: schema.immutableColumns,
                 systemDatabaseNames: schema.systemDatabaseNames,
@@ -971,6 +1001,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                 defaultGroupName: driverType.defaultGroupName,
                 tableEntityName: driverType.tableEntityName,
                 containerEntityName: driverType.containerEntityName,
+                schemaEntityName: driverType.schemaEntityName,
                 defaultPrimaryKeyColumn: driverType.defaultPrimaryKeyColumn,
                 immutableColumns: driverType.immutableColumns,
                 systemDatabaseNames: driverType.systemDatabaseNames,
@@ -1005,7 +1036,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
             return .relational
         case "Redshift", "ClickHouse", "DuckDB", "BigQuery":
             return .analytical
-        case "MongoDB", "Elasticsearch":
+        case "MongoDB", "Elasticsearch", "SurrealDB":
             return .document
         case "Redis":
             return .keyValue
@@ -1041,6 +1072,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
         case "libSQL":         return String(localized: "Distributed SQLite by Turso")
         case "DynamoDB":       return String(localized: "AWS managed key-value/document store")
         case "BigQuery":       return String(localized: "Google Cloud serverless data warehouse")
+        case "SurrealDB":      return String(localized: "Multi-model database with SurrealQL")
         default:               return ""
         }
     }

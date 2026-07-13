@@ -468,6 +468,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
 
     private func rowContext() -> DatabaseTreeRowContext {
         DatabaseTreeRowContext(
+            databaseType: databaseType,
             activeDatabase: activeDatabase,
             activeSchema: activeSchema,
             systemSchemas: systemSchemas,

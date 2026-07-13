@@ -53,7 +53,8 @@
                   "databases/redis",
                   "databases/cassandra",
                   "databases/etcd",
-                  "databases/elasticsearch"
+                  "databases/elasticsearch",
+                  "databases/surrealdb"
                 ]
               },
               {
