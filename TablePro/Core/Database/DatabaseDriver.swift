@@ -10,7 +10,7 @@ import OSLog
 import TableProPluginKit
 
 /// Protocol defining database driver operations
-protocol DatabaseDriver: AnyObject {
+protocol DatabaseDriver: AnyObject, Sendable {
     // MARK: - Properties
 
     /// The connection configuration

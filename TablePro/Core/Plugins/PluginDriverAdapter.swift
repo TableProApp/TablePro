@@ -8,11 +8,19 @@ import os
 import TableProPluginKit
 
 final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
+    private struct State {
+        var status: ConnectionStatus = .disconnected
+        var columnTypeCache: [String: ColumnType] = [:]
+    }
+
     let connection: DatabaseConnection
-    private(set) var status: ConnectionStatus = .disconnected
     private let pluginDriver: any PluginDatabaseDriver
-    private var columnTypeCache: [String: ColumnType] = [:]
     private let classifier = ColumnTypeClassifier()
+    private let state = OSAllocatedUnfairLock(initialState: State())
+
+    var status: ConnectionStatus {
+        state.withLock { $0.status }
+    }
 
     var serverVersion: String? { pluginDriver.serverVersion }
     var parameterStyle: ParameterStyle { pluginDriver.parameterStyle }
@@ -101,19 +109,19 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
     // MARK: - Connection Management
 
     func connect() async throws {
-        status = .connecting
+        state.withLock { $0.status = .connecting }
         do {
             try await pluginDriver.connect()
-            status = .connected
+            state.withLock { $0.status = .connected }
         } catch {
-            status = .error(error.localizedDescription)
+            state.withLock { $0.status = .error(error.localizedDescription) }
             throw error
         }
     }
 
     func disconnect() {
         pluginDriver.disconnect()
-        status = .disconnected
+        state.withLock { $0.status = .disconnected }
     }
 
     func ping() async throws {
@@ -660,7 +668,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
     // MARK: - Result Mapping
 
     private func mapQueryResult(_ pluginResult: PluginQueryResult) -> QueryResult {
-        let columnTypes = pluginResult.columnTypeNames.map { mapColumnType(rawTypeName: $0) }
+        let columnTypes = mapColumnTypes(rawTypeNames: pluginResult.columnTypeNames)
         var result = QueryResult(
             columns: pluginResult.columns,
             columnTypes: columnTypes,
@@ -677,11 +685,15 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
         return result
     }
 
-    private func mapColumnType(rawTypeName: String) -> ColumnType {
-        if let cached = columnTypeCache[rawTypeName] { return cached }
-        let result = classifier.classify(rawTypeName: rawTypeName)
-        columnTypeCache[rawTypeName] = result
-        return result
+    private func mapColumnTypes(rawTypeNames: [String]) -> [ColumnType] {
+        state.withLock { state in
+            rawTypeNames.map { rawTypeName in
+                if let cached = state.columnTypeCache[rawTypeName] { return cached }
+                let mapped = classifier.classify(rawTypeName: rawTypeName)
+                state.columnTypeCache[rawTypeName] = mapped
+                return mapped
+            }
+        }
     }
 }
 
