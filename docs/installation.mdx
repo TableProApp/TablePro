@@ -9,10 +9,8 @@ description: Install TablePro via Homebrew or DMG on macOS 14.0+
 
 - **macOS**: 14.0 (Sonoma) or later
 - **Processor**: Apple Silicon (M1+) or Intel x86_64
-- **Memory**: 4 GB minimum (8 GB recommended)
-- **Storage**: ~200 MB free disk space
 
-TablePro uses native Apple frameworks only. No Java, .NET, or other runtimes needed.
+TablePro uses native Apple frameworks only. No Java, .NET, or other runtimes needed. The download is about 20 MB.
 
 ## Install via Homebrew
 
@@ -21,10 +19,6 @@ The fastest option:
 ```bash
 brew install --cask tablepro
 ```
-
-<Tip>
-Homebrew handles installation and updates in one place.
-</Tip>
 
 To update:
 
@@ -41,19 +35,17 @@ brew uninstall tablepro
 To also remove application data:
 
 ```bash
-brew zap tablepro
+brew uninstall --zap tablepro
 ```
 
-## Download
-
-### From GitHub Releases
+## Download from GitHub Releases
 
 1. Go to [GitHub Releases](https://github.com/TableProApp/TablePro/releases)
-2. Download the DMG for your Mac:
-   - **Apple Silicon (M1+)**: `TablePro-arm64.dmg`
-   - **Intel**: `TablePro-x86_64.dmg`
+2. Download the DMG for your Mac. Asset names include the version, for example `TablePro-0.57.0-arm64.dmg`:
+   - **Apple Silicon (M1+)**: the `arm64` DMG
+   - **Intel**: the `x86_64` DMG
 
-Check your architecture: **Apple menu > About This Mac** → look for Chip (Apple Silicon) or Processor (Intel).
+Check your architecture: **Apple menu > About This Mac**, then look for Chip (Apple Silicon) or Processor (Intel).
 
 ## Installation Steps
 
@@ -88,16 +80,21 @@ Connections and settings persist across updates.
 1. Quit TablePro
 2. Drag **TablePro** from **Finder > Applications** to Trash
 
-To delete all data (connections and history):
+To delete local data (connections, query history, downloaded driver plugins):
+
 ```bash
 rm -rf ~/Library/Application\ Support/TablePro
 rm ~/Library/Preferences/com.TablePro.plist
 ```
 
+<Note>
+Connection passwords are stored in the macOS Keychain and are not removed by these commands. Delete them in Keychain Access by searching for `com.TablePro`. Data synced through iCloud stays in your iCloud account.
+</Note>
+
 ## Troubleshooting
 
 **Crashes on launch**: Verify correct architecture, macOS 14.0+, and check Console.app for logs.
 
-**Connection issues**: Confirm database server is running and not blocked by firewall.
+**Connection issues**: Confirm the database server is running and not blocked by a firewall.
 
 See [Development Setup](/development/setup) for building from source.

@@ -1,40 +1,33 @@
 ---
 title: MariaDB
-description: Connect to MariaDB through TablePro's MySQL driver, which uses the MariaDB Connector/C client.
+description: Connect to MariaDB 10.x and later through the bundled MySQL driver
 ---
 
 # MariaDB
 
-TablePro's MySQL plugin handles MariaDB. The driver links against MariaDB Connector/C (libmariadb), so MariaDB-specific extended metadata (for example LONGTEXT-stored JSON detection) is recognised on connect.
-
-## Connect
-
-In the connection form choose **MySQL** or **MariaDB**. Both selections route to the same plugin.
-
-## Default port
-
-3306.
+TablePro supports MariaDB 10.x and later. MariaDB connections use the bundled MySQL driver, built on MariaDB Connector/C 3.4.8. Pick **MySQL** or **MariaDB** in the connection form; both route to the same driver. Connection fields, [AWS IAM](/databases/aws-iam), SSL/TLS, and every feature match MySQL, so [MySQL](/databases/mysql) covers them.
 
 ## Connection URL
 
+Both schemes open a connection; `mariadb://` creates a MariaDB connection, `mysql://` a MySQL one:
+
 ```
-mysql://user:password@host:3306/database
+mariadb://user:password@host:3306/database
 ```
 
 See [Connection URL Reference](/databases/connection-urls).
 
 ## Differences from MySQL
 
-- Default authentication plugin is `mysql_native_password` (MySQL 8.0 defaults to `caching_sha2_password`).
-- TablePro reads MariaDB extended field attributes (`MARIADB_FIELD_ATTR_FORMAT_NAME`) to detect JSON values stored in LONGTEXT columns and render them with the JSON cell editor.
+- The default authentication plugin is `mysql_native_password`; MySQL 8 defaults to `caching_sha2_password`. Both work.
+- MariaDB stores JSON columns as LONGTEXT. TablePro reads MariaDB's extended field attributes (`MARIADB_FIELD_ATTR_FORMAT_NAME`) to recognize those columns as JSON, so values open in the JSON editor instead of plain text.
 
-Everything else (SSH tunnels, SSL/TLS, schema browsing, table operations) matches MySQL.
+<Frame caption="JSON stored in a MariaDB LONGTEXT column opens in the JSON editor">
+  <img className="block dark:hidden" src="/images/json-editor-popover.png" alt="JSON cell editor popover" />
+  <img className="hidden dark:block" src="/images/json-editor-popover-dark.png" alt="JSON cell editor popover" />
+</Frame>
 
-## SSL / TLS
+## See Also
 
-Same as MySQL. See [MySQL & MariaDB](/databases/mysql) for SSL configuration.
-
-## See also
-
-- [MySQL & MariaDB](/databases/mysql)
+- [MySQL](/databases/mysql): setup, connection fields, SSL/TLS, troubleshooting
 - [SSH Tunneling](/databases/ssh-tunneling)

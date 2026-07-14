@@ -1,47 +1,40 @@
 ---
 title: iCloud Sync
-description: Sync connections, table favorites, settings, and SSH profiles across Macs via iCloud (Pro feature)
+description: Sync connections, table favorites, settings, and SSH profiles across Macs via iCloud
 ---
 
 # iCloud Sync
 
-TablePro syncs your connections, groups, table favorites, saved queries, settings, and SSH profiles across all your Macs via CloudKit. iCloud Sync is a Pro feature that requires an active license.
+TablePro syncs your connections, groups, table favorites, saved queries, settings, and SSH profiles across all your Macs via CloudKit. iCloud Sync requires an active license (Starter or Team, see [Licensing](/features/licensing)).
 
 ## What syncs (and what doesn't)
 
 | Data | Synced | Notes |
 |------|--------|-------|
 | **Connections** | Yes | Host, port, username, database type, SSH/SSL config |
-| **Passwords** | Optional | Opt-in via iCloud Keychain (end-to-end encrypted) |
-| **Groups & Tags** | Yes | Full connection organization, including nested group hierarchy (parent-child relationships and sort order) |
+| **Passwords** | Opt-in | Via iCloud Keychain (end-to-end encrypted), nested under the Connections toggle |
+| **Groups & Tags** | Yes | Full connection organization, including nested group hierarchy and sort order |
+| **SSH Profiles** | Yes | Named [SSH profiles](/features/ssh-profiles). Has its own toggle. |
 | **Table Favorites** | Yes | Favorited table names shown in the Favorites tab and pinned in table lists |
 | **Saved Queries** | Yes | Saved SQL queries and their folders. Has its own toggle. |
-| **App Settings** | Yes | All settings categories (General, Appearance, Editor, Keyboard, AI, Terminal), including your custom AI slash commands |
+| **Settings** | Yes | General, Appearance, Editor, Data Grid, History, Tabs, Keyboard, and AI settings, plus custom AI slash commands |
 | **Linked SQL Folders** | No | Folder paths are per-Mac. Link the same Git repo on each Mac after cloning. Cached file metadata (`linked_sql_index.db`) is also local. |
+| **Sidebar state** | No | The sidebar's database filter and recent tables lists stay on each Mac |
 
 <Note>
-Passwords are not synced by default. Enable **Password sync** under the Connections toggle to sync passwords via Apple's iCloud Keychain (end-to-end encrypted). With password sync off, you need to enter the password once on each new Mac.
+Passwords are not synced by default. Enable the **Passwords** toggle under Connections to sync them via Apple's iCloud Keychain. Enabling it only affects new saves: re-save a password to update its sync. With password sync off, enter the password once on each new Mac.
 </Note>
 
 ## Enabling iCloud Sync
 
 Open **Settings** (`Cmd+,`) > **Account**, toggle iCloud Sync on, choose which categories to sync, and click **Sync Now**. Sync is off by default.
 
-{/* Screenshot: Sync settings tab */}
 <Frame caption="iCloud Sync settings">
-  <img
-    className="block dark:hidden"
-    src="/images/settings-sync.png"
-    alt="iCloud Sync settings"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/settings-sync-dark.png"
-    alt="iCloud Sync settings"
-  />
+  <img className="block dark:hidden" src="/images/settings-sync.png" alt="iCloud Sync settings" />
+  <img className="hidden dark:block" src="/images/settings-sync-dark.png" alt="iCloud Sync settings" />
 </Frame>
 
-Connections, Groups & Tags, SSH Profiles, App Settings, Table Favorites, and Saved Queries each have their own toggle. Custom AI slash commands ride along with the App Settings toggle.
+Connections (with a nested Passwords opt-in), Groups & Tags, SSH Profiles, Settings, Table Favorites, and Saved Queries each have their own toggle. Custom AI slash commands ride along with the Settings toggle.
 
 ## Excluding individual connections
 
@@ -56,7 +49,7 @@ TablePro auto-syncs on app launch, when you switch back to it, and 2 seconds aft
 
 When the same record changes on two Macs, you choose to keep the local or remote version. Conflicts are per-record, not per-category.
 
-iCloud Sync requires a Pro license. When a license expires, sync stops but local data remains. Re-activate your license to resume.
+When a license expires, sync stops but local data remains. Re-activate to resume.
 
 ## Troubleshooting
 

@@ -1,64 +1,94 @@
 ---
 title: Plugins & Themes
-description: Extend TablePro with database driver plugins and editor themes from the plugin registry
+description: Install database drivers, import and export formats, and themes from the plugin registry, and keep them updated.
 ---
 
-# Plugins & Themes
+TablePro loads database drivers, import/export formats, and themes as `.tableplugin` bundles. Five driver plugins ship inside the app; the rest download on demand from the plugin registry.
 
-TablePro uses a plugin system for database drivers and export formats. Each plugin is a `.tableplugin` bundle loaded at runtime.
+## Bundled plugins
 
-## Built-in Plugins
+These ship with the app, update with app releases, and cannot be uninstalled:
 
-These ship with the app and are always available:
-
-| Plugin | Databases |
-|--------|-----------|
+| Plugin | Provides |
+|--------|----------|
 | MySQL | MySQL, MariaDB |
-| PostgreSQL | PostgreSQL, Redshift, CockroachDB |
+| PostgreSQL | PostgreSQL, Amazon Redshift, CockroachDB |
 | SQLite | SQLite |
 | ClickHouse | ClickHouse |
-| SQL Server | SQL Server |
 | Redis | Redis |
+| Export formats | CSV, JSON, SQL, XLSX, MQL |
+| Import formats | SQL, JSON, CSV |
+| CSV Inspector | [CSV/TSV file editing](/features/csv-inspector) |
 
-Export plugins (CSV, JSON, SQL, MQL) are also built-in.
+## Registry plugins
 
-## Registry Plugins
+These install from the registry when you need them:
 
-Additional drivers are distributed separately through the plugin registry:
-
-| Plugin | Databases |
-|--------|-----------|
+| Plugin | Provides |
+|--------|----------|
 | MongoDB | MongoDB |
-| Oracle | Oracle |
+| Oracle | Oracle Database |
+| Microsoft SQL Server | SQL Server |
 | DuckDB | DuckDB |
 | Cassandra | Cassandra, ScyllaDB |
 | Etcd | etcd |
 | Cloudflare D1 | Cloudflare D1 |
 | DynamoDB | DynamoDB |
 | BigQuery | BigQuery |
+| Snowflake | Snowflake |
 | libSQL | libSQL, Turso |
+| Elasticsearch | Elasticsearch |
+| SurrealDB | SurrealDB |
+| Beancount | Beancount ledger files |
 
-## Installing Plugins
+## Installing plugins
 
-Open **Settings** > **Plugins** > **Browse** to see available plugins. Click **Install** next to the plugin you need.
+You usually don't install drivers by hand. The database type chooser marks registry drivers you don't have with a **Not Installed** badge; pick one anyway and TablePro downloads the plugin before connecting. No restart needed.
 
-If you select a database type that requires an uninstalled plugin, TablePro shows an install prompt automatically. The plugin downloads, installs, and is ready to use without restarting the app.
+To browse the full catalog, open **Settings** > **Plugins** > **Browse**. Search, filter by category (Database Drivers, Export Formats, Import Formats, Themes, Other), and click **Install**.
 
-The install prompt only fires for separately-distributed plugins (MongoDB, Oracle, DuckDB, and the rest of the registry list above). Built-in drivers like MySQL, PostgreSQL, and SQLite ship inside the app bundle and load on demand, so picking them never asks you to install anything.
+<Frame caption="Browse and install plugins from the registry">
+  <img className="block dark:hidden" src="/images/settings-plugins-browse.png" alt="Plugin registry browser in Settings" />
+  <img className="hidden dark:block" src="/images/settings-plugins-browse-dark.png" alt="Plugin registry browser in Settings" />
+</Frame>
 
-## Managing Plugins
+To install from a file, drag a `.tableplugin` or `.zip` onto **Settings** > **Plugins** > **Installed**, or click the **+** button there. User-installed plugins live in `~/Library/Application Support/TablePro/Plugins`.
 
-In **Settings** > **Plugins** > **Installed**, you can:
+Every plugin is verified before it loads: registry downloads must match the SHA-256 checksum in the registry manifest, and the bundle's code signature must match TablePro's signing team.
 
-- **Disable** a plugin to unload it without deleting
-- **Enable** a disabled plugin to reload it
-- **Delete** a plugin to remove it from disk
-- **Check for Updates** to see if newer versions are available
+## Updates
 
-Disabling a plugin disconnects any active connections using it.
+TablePro compares installed plugin versions against the registry and shows a badge on the Plugins settings tab counting pending updates and plugins that failed to load. Select the plugin under **Installed** and click **Update**.
+
+If a driver has open connections, the update is staged instead of applied. The staged version activates when the last connection using the driver closes, or click **Activate Now** after closing them. Quit before it activates and the update is offered again on next launch.
+
+## After an app update
+
+An app update can raise the plugin interface version. Plugins built against the old version are rejected at load instead of crashing, and TablePro repairs them on its own: at launch it fetches the registry and reinstalls a compatible build of each outdated plugin, retrying after 30 seconds, then 5 and 10 minutes (up to five attempts), when the registry is unreachable or a download fails. It tries again when the network comes back, and connecting to a database whose plugin is outdated updates that plugin first.
+
+Until a plugin is repaired, it appears in a banner in **Settings** > **Plugins** > **Installed** with the reason and an action:
+
+| Action | Meaning |
+|--------|---------|
+| **Update Now** | A compatible build is in the registry. One click installs it. |
+| **Update TablePro** | The plugin requires a newer app version. |
+| No button | No compatible build is published yet. TablePro retries automatically. |
+| **Remove** | Deletes the rejected plugin from disk. |
+
+## Managing plugins
+
+In **Settings** > **Plugins** > **Installed**:
+
+- Toggle a plugin off to unload its drivers and formats without deleting it; toggle it back on to reload.
+- Click **Uninstall** to remove a user-installed plugin from disk. Bundled plugins can't be uninstalled.
+- The detail pane shows version, bundle ID, capabilities, database type, and default port. Plugins with their own settings show them here.
+
+macOS can't fully unload a plugin's code until relaunch, so after removing one a banner offers **Quit & Reopen**.
 
 ## Themes
 
-Open **Settings** > **Appearance** to choose a theme. TablePro ships with built-in light and dark themes. Additional themes are available from the theme registry in **Settings** > **Appearance** > **Browse Themes**.
+Themes are plugins too: install registry themes from **Settings** > **Plugins** > **Browse** under the Themes category. Choose, create, duplicate, import, and export themes in **Settings** > **Appearance**. See [Appearance](/customization/appearance).
 
-Themes control the editor syntax colors, grid styling, and sidebar appearance. The app follows macOS system appearance (light/dark) by default, or you can pin a specific mode.
+## Writing plugins
+
+Want to build your own driver, format, or theme? See [Plugin Development](/development/plugin-development).

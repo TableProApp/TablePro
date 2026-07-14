@@ -1,64 +1,52 @@
 ---
 title: CSV Inspector
-description: Open, view, and edit CSV and TSV files natively without importing into a database first.
+description: Open, view, and edit CSV and TSV files without importing them into a database.
 ---
 
 TablePro opens `.csv` and `.tsv` files directly as documents. No scratch database, no import step. The file is the source of truth; Save writes back to it.
 
 <Frame caption="CSV inspector window with toolbar, header row, and paginated data">
-  <img
-    className="block dark:hidden"
-    src="/images/csv-inspector.png"
-    alt="CSV Inspector"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/csv-inspector-dark.png"
-    alt="CSV Inspector"
-  />
+  <img className="block dark:hidden" src="/images/csv-inspector.png" alt="CSV Inspector" />
+  <img className="hidden dark:block" src="/images/csv-inspector-dark.png" alt="CSV Inspector" />
 </Frame>
 
 ## Opening a file
 
-- Double-click a `.csv` or `.tsv` in Finder.
-- Drag a file onto the TablePro Dock icon or an open TablePro window.
-- File > Open... and pick a CSV or TSV.
-- File > Open Recent lists previously opened CSV documents alongside saved connections.
+- Double-click a `.csv` or `.tsv` in Finder, or right-click and choose Open With > TablePro.
+- Drag a file onto the TablePro Dock icon.
+
+File > Open File... opens SQL files only, so it is not a path into the inspector.
 
 ## Auto-detection
 
-When a file opens, TablePro reads the first 8 KB to detect:
+When a file opens, TablePro detects:
 
-- **Delimiter**: comma, tab, semicolon, or pipe, chosen by which appears most often outside quoted regions.
-- **Encoding**: UTF-8 (with or without BOM), UTF-16 BE, UTF-16 LE. Files without a BOM are read as UTF-8 with Latin-1 fallback for stray bytes.
-- **Line ending**: CRLF, LF, or CR. Whichever appears first.
-- **Header row**: TablePro treats row one as headers when every value is non-numeric and unique. Otherwise it generates `Column 1`, `Column 2`, ... and treats every row as data.
+- **Delimiter**: comma, tab, semicolon, or pipe, whichever appears most often outside quoted regions in the first 64 KB. `.tsv` files always use tab.
+- **Encoding**: a BOM selects UTF-8, UTF-16 BE, or UTF-16 LE. Without a BOM, TablePro probes up to the first 256 KB: valid UTF-8 reads as UTF-8, anything else reads the whole file as Windows-1252.
+- **Line ending**: CRLF, LF, or CR, whichever appears first in the first 64 KB.
+- **Header row**: row one is treated as headers when at least half of its cells are non-empty and not numbers. Otherwise TablePro generates `Column 1`, `Column 2`, ... and treats every row as data.
+
+## Pagination
+
+Rows load in pages. The page size comes from the Default page size setting in [Settings > Data Grid](/customization/settings), 1,000 rows by default. The status bar shows row and column counts, and previous/next page controls when the file spans more than one page.
 
 ## Editing
 
-- Double-click a cell to edit. Tab or Return commits and moves to the next cell.
-- The toolbar `Add Row` button appends a new row, scrolls to it, and selects it for editing.
-- Select rows and press `Delete` (or the toolbar `−` button) to remove them. The next row takes selection so arrow keys keep working from where you were.
+- Double-click a cell (or press Return on it) to edit. Return commits and closes the editor. Tab commits and moves to the next cell, wrapping to the next row.
+- The toolbar `Add Row` button appends a new row, scrolls to it, and selects it.
+- Select rows and press `Delete` (or the toolbar `Delete` button) to remove them. The next row takes selection so arrow keys keep working from where you were.
 - Cmd+Z and Cmd+Shift+Z undo and redo every change. A bulk delete or a paste is a single undo step.
 
 ## Column operations
 
 <Frame caption="Columns toolbar menu with per-column submenu for rename, insert, type override, and delete">
-  <img
-    className="block dark:hidden"
-    src="/images/csv-inspector-columns-menu.png"
-    alt="CSV Inspector Columns Menu"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/csv-inspector-columns-menu-dark.png"
-    alt="CSV Inspector Columns Menu"
-  />
+  <img className="block dark:hidden" src="/images/csv-inspector-columns-menu.png" alt="CSV Inspector Columns Menu" />
+  <img className="hidden dark:block" src="/images/csv-inspector-columns-menu-dark.png" alt="CSV Inspector Columns Menu" />
 </Frame>
 
-The toolbar `Columns` button opens a menu listing every column with its current type. Each column has a submenu for:
+The toolbar `Columns` button opens a menu. **Add Column…** at the top appends a new column at the end. Below it, every column is listed with its current type, each with a submenu:
 
-- **Rename…** opens a sheet to enter a new name; the column stays in place.
+- **Rename…** prompts for a new name; the column stays in place.
 - **Insert Column Before / After** inserts a new column at the chosen position with a name you supply.
 - **Type ▸** overrides the inferred type as Text, Integer, Real, Boolean, or Date. **Reset to Inferred** drops the override.
 - **Delete** removes the column (undoable).
@@ -66,16 +54,8 @@ The toolbar `Columns` button opens a menu listing every column with its current 
 ## Filter and sort
 
 <Frame caption="Filter bar with multiple conditions (AND) above the data grid">
-  <img
-    className="block dark:hidden"
-    src="/images/csv-inspector-filter.png"
-    alt="CSV Inspector Filter Bar"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/csv-inspector-filter-dark.png"
-    alt="CSV Inspector Filter Bar"
-  />
+  <img className="block dark:hidden" src="/images/csv-inspector-filter.png" alt="CSV Inspector Filter Bar" />
+  <img className="hidden dark:block" src="/images/csv-inspector-filter-dark.png" alt="CSV Inspector Filter Bar" />
 </Frame>
 
 - `Cmd+F` toggles the filter bar. Each row is one condition: column, operator (`contains`, `equals`, `does not equal`, `starts with`, `ends with`, `is empty`, `is not empty`), and value.
@@ -87,29 +67,26 @@ The toolbar `Columns` button opens a menu listing every column with its current 
 
 ## Copy and paste
 
-- `Cmd+C` copies selected rows to the pasteboard as TSV (tab-separated values).
-- `Cmd+V` parses TSV from the pasteboard and appends each line as a new row. A whole paste is one undo step.
+- `Cmd+C` copies the focused cell's value, or whole selected rows as TSV (tab-separated values).
+- `Cmd+V` parses TSV from the pasteboard and appends each line as a new row. A block narrower than the table pastes into cells at the focused cell instead. A whole paste is one undo step.
 
 ## Type inference
 
-TablePro samples the first 200 non-empty values per column and infers `Integer`, `Real`, `Boolean`, `Date`, or `Text`. The inferred type controls numeric sort and right-alignment. Inferred types do not modify the stored data: every cell is still a string on disk. Override per-column from the `Columns` menu.
+TablePro samples the first 200 rows of the file and infers `Integer`, `Real`, `Boolean`, `Date`, or `Text` per column, skipping empty values. The inferred type controls numeric sorting. Inferred types do not modify the stored data: every cell is still a string on disk. Override per-column from the `Columns` menu.
 
 ## Saving
 
-- Cmd+S saves to the original path, preserving the detected delimiter, encoding, line ending, and BOM byte-for-byte.
+- Cmd+S saves to the original path, preserving the detected delimiter, encoding, line ending, and BOM. Unedited rows are written back byte-for-byte.
 - Cmd+Shift+S brings up Save As, where you can re-pick the destination.
-- File > Revert To > Last Saved restores the last saved version. File > Revert To > Browse All Versions opens the macOS document version browser.
-- The window title shows "Edited" until you save.
+- The window close button shows the standard unsaved-changes dot until you save.
 
 ## External changes
 
 If another application writes the file while you have it open in TablePro:
 
 - If you have no unsaved edits, TablePro reloads the file.
-- If you have unsaved edits, TablePro asks whether to keep your version or revert to the version on disk.
-
-This is the standard macOS document behavior, the same as TextEdit and Pages.
+- If you have unsaved edits, TablePro asks whether to reload or keep your changes.
 
 ## Window tabbing
 
-CSV windows form their own native window tab group (separate from connection windows). Cmd+T inside a CSV window creates a new CSV inspector tab. Drag a CSV tab out of the window to detach it into its own window, or drop one back in to re-attach.
+CSV windows form their own native window tab group, separate from connection windows. Drag a tab out to detach it into its own window, or drop one back in to re-attach.

@@ -1,30 +1,34 @@
 ---
 title: Tokens
-description: Token model, scopes, per-connection allowlists, expiry, and revocation
+description: Token model, scopes, connection allowlists, expiry, revocation, and the audit log
 ---
 
 # Tokens
 
-Every external request needs a bearer token. Tokens carry a scope, an optional connection allowlist, and an optional expiry. Tokens are stored hashed (SHA-256 + salt) at `~/Library/Application Support/TablePro/mcp-tokens.json` with `0600` permissions. The plaintext is shown once at creation and never again.
+Bearer tokens authenticate external requests to the MCP server. Each token carries a scope, an optional connection allowlist, and an optional expiry. TablePro stores only the SHA-256 hash plus a per-token salt at `~/Library/Application Support/TablePro/mcp-tokens.json` with `0600` permissions. The plaintext is shown once at creation and never again.
 
-## Token shape
+## Require authentication
 
-```swift
-struct MCPAuthToken {
-    let id: UUID
-    var name: String
-    let prefix: String                // First 8 chars of plaintext, e.g. "tp_a1b2c3"
-    let hashedToken: String           // SHA-256 + salt of the plaintext
-    var permissions: TokenPermissions // readOnly, readWrite, fullAccess
-    var allowedConnectionIds: Set<UUID>?  // nil means all connections
-    var expiresAt: Date?              // nil means never
-    var isActive: Bool
-    let createdAt: Date
-    var lastUsedAt: Date?
-}
-```
+**Settings > Integrations > Authentication > Require authentication** is on by default. With the toggle off, requests from your own machine (loopback) are accepted without any token and run with full scopes and access to all connections. Remote clients need a bearer token regardless of the toggle. Turning it on for the first time with no tokens yet mints a full-access "Default token" and reveals the plaintext once.
 
-The `prefix` is shown in the token list so the user can identify a token without revealing the secret.
+<Warning>
+With Require authentication off, any local process can call the MCP server with full scopes. Leave it on.
+</Warning>
+
+## Stored fields
+
+| Field | Purpose |
+|-------|---------|
+| `name` | Label in the token list. Pairing uses the client name. |
+| `prefix` | First 8 characters of the plaintext, e.g. `tp_a1b2c`, for identifying a token without revealing it. |
+| `tokenHash`, `salt` | SHA-256 of salt + plaintext. The plaintext is never persisted. |
+| `permissions` | `readOnly`, `readWrite`, or `fullAccess`. |
+| `connectionAccess` | All connections, or a limited set of connection UUIDs. |
+| `expiresAt` | Optional. Absent means never. |
+| `isActive` | `false` after revocation. |
+| `createdAt`, `lastUsedAt` | Shown in the token list. |
+
+The plaintext format is `tp_` followed by 32 base64url-encoded random bytes.
 
 ## Scopes
 
@@ -46,16 +50,11 @@ What each token can do:
 
 Navigation tools (`open_connection_window`, `open_table_tab`, `focus_query_tab`, `list_recent_tabs`) need only `tools:read`. They surface UI but never bypass the connection allowlist or `externalAccess: blocked`.
 
-DROP and TRUNCATE always require an explicit confirmation phrase via `confirm_destructive_operation`, plus a token with `tools:write` (i.e. `readWrite` or `fullAccess`). There is no token permission that bypasses the phrase.
+DROP and TRUNCATE always require an explicit confirmation phrase via `confirm_destructive_operation`, plus a token with `tools:write`. No token permission bypasses the phrase.
 
 ## Connection allowlist
 
-Each token can be limited to a subset of connections.
-
-- `allowedConnectionIds = nil` means all connections.
-- `allowedConnectionIds = { uuid1, uuid2 }` means only those.
-
-A request that targets a connection outside the allowlist returns `403 forbidden` before any per-connection check runs.
+Each token grants access to all connections or a limited set. A request that targets a connection outside the allowlist returns `403 Forbidden` before any per-connection check runs.
 
 ## External access combination
 
@@ -67,60 +66,50 @@ The effective permission is `MIN(token.scope, connection.externalAccess)`.
 | `readWrite` | `readOnly` | `readOnly` |
 | `fullAccess` | `readOnly` | `readOnly` |
 | `fullAccess` | `readWrite` | `readWrite` |
-| `fullAccess` | `blocked` | denied |
 | any | `blocked` | denied |
 
-A `fullAccess` or `readWrite` token cannot mutate data on a `readOnly` connection. A token's reach is bounded by both itself and the connection's `externalAccess`.
+A token's reach is bounded by both itself and the connection's `externalAccess`.
+
+## The stdio bridge token
+
+Every MCP server start mints a `fullAccess` token named `__stdio_bridge__` and writes its plaintext to the handshake file for the bundled stdio bridge. It is hidden from the Settings token list, deleted when the server stops, and stale copies are removed the next time the store loads. Its name can appear in the activity log. To give an AI agent less than full access, skip the bridge and connect over [HTTP with a scoped token](/external-api/mcp-clients#http-transport).
 
 ## Creation
 
-Tokens are created in three ways:
-
-1. **Pairing flow** (most common). See [Pairing](/external-api/pairing).
-2. **Settings UI**. **Settings > Integrations > Authentication**, then **Generate Token**. Pick name, scope, allowlist, expiry. The plaintext is shown once in a reveal sheet.
-3. **AppleScript-style URL** is not supported. Tokens are not exposed as a URL scheme action.
-
-The plaintext format is `tp_<base64url(32 bytes)>`. The first 8 chars are the prefix.
+1. **Pairing flow** (most common). See [Pairing](/external-api/pairing). Approving a pairing request first revokes any active token with the same client name.
+2. **Settings UI**: **Settings > Integrations > Authentication > Generate Token**. Pick name, scope, allowlist, and expiry. The plaintext is shown once in a reveal sheet.
 
 ## Expiry
 
-Optional. If set, the token stops authenticating at the expiry time. Expired requests return `401 unauthorized` with `message: "Token expired"`.
-
-Recommended values:
-
-- `readWrite` and `fullAccess` for human-driven extensions: 90 days.
-- `readOnly` for personal use: never.
-- CI or automation: 30 days, rotated.
+Optional. An expired token stops authenticating and requests return `401 Unauthorized`. Prefer short expiries for anything with write access.
 
 ## Revocation
 
 **Settings > Integrations > Authentication** lists all tokens with prefix, name, scope, allowlist, last-used time, and expiry. Each row has:
 
-- **Revoke**: marks the token inactive. Stays in the list with status `Revoked`. Cannot be reactivated.
+- **Revoke**: marks the token inactive. It stays in the list and cannot be reactivated.
 - **Delete**: removes the row entirely.
 
-A revoked token returns `401 unauthorized` immediately. The MCP server invalidates any cached session for the token within one second.
-
-After revoking a token used by an extension, the extension shows an "unauthorized" state on the next call. The user runs the pairing command again to mint a new token.
+A revoked token returns `401 Unauthorized` and the server terminates its active sessions immediately. The extension shows an unauthorized state on its next call; run the pairing command again to mint a new token.
 
 ## Audit log
 
-Every authentication, every tool call, every resource read is recorded in `~/Library/Application Support/TablePro/mcp-audit.db` with the token id (not the plaintext). The activity log view in **Settings > Integrations > Activity Log** shows:
+Every authentication, tool call, and resource read is recorded in `~/Library/Application Support/TablePro/mcp-audit.db` with the token id, never the plaintext. View it via **Settings > Integrations > View Activity**:
 
-| Field | Example |
-|-------|---------|
+| Field | Values |
+|-------|--------|
 | Timestamp | 2026-04-26 10:14:22 |
-| Token | Raycast on macbook-pro (`tp_a1b2c3`) |
-| Category | `query`, `auth`, `access`, `admin` |
-| Action | `execute_query`, `pair`, `revoke` |
+| Token | Raycast on macbook-pro (`tp_a1b2c`) |
+| Category | `auth`, `access`, `admin`, `query`, `tool`, `resource` |
+| Action | `auth.success`, `pairing.exchange`, `token.revoked`, `query.executed`, `tool.<name>`, `resource.read` |
 | Connection | Production (or `-`) |
-| Outcome | `success`, `denied`, `error` |
+| Outcome | `success`, `denied`, `error`, `rateLimited` |
 
-Entries are kept for 90 days, auto-pruned on app launch.
+Entries older than 90 days are pruned when the audit store opens.
 
 ## Rate limits
 
-The MCP authenticator throttles failed token attempts. The bucket key is `(client_address, principal_fingerprint)`, so a misbehaving bridge cannot lock out other principals on the same loopback address.
+The authenticator throttles failed token attempts. The bucket key is `(client_address, principal_fingerprint)`, so a misbehaving bridge cannot lock out other principals on the same loopback address.
 
 | Setting | Value |
 |---------|-------|
@@ -128,7 +117,7 @@ The MCP authenticator throttles failed token attempts. The bucket key is `(clien
 | Max failures in window | 5 |
 | Lockout after threshold | 5 minutes |
 
-A successful auth clears the bucket. During lockout the server returns HTTP `429 Too Many Requests` with JSON-RPC `code: -32000, message: "Rate limited"`.
+A successful auth clears the bucket. During lockout the server returns HTTP `429 Too Many Requests`.
 
 ## What tokens cannot do
 
@@ -143,4 +132,4 @@ A successful auth clears the bucket. During lockout the server returns HTTP `429
 | Mutate other tokens | no |
 | Mutate connection records | no |
 
-The token surface is the MCP tool catalog and the URL scheme. Anything not on those lists is not reachable.
+The token surface is the [MCP tool catalog](/external-api/mcp-tools), [resources](/external-api/mcp-resources), and the [URL scheme](/external-api/url-scheme). Anything not on those lists is not reachable.

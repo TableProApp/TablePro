@@ -5,7 +5,7 @@ description: Browse keys by namespace, manage TTLs, and run Redis commands direc
 
 # Redis Connections
 
-TablePro supports Redis 6.0 and later. Keys are grouped by colon-separated namespaces in the sidebar. Values display with type-aware formatting in the data grid (strings, hashes, lists, sets, sorted sets, JSON).
+TablePro connects to standalone Redis servers with hiredis. Keys are grouped by colon-separated namespaces in the sidebar. Values display with type-aware formatting in the data grid (strings, hashes, lists, sets, sorted sets, JSON).
 
 ## Quick Setup
 
@@ -24,20 +24,14 @@ TablePro supports Redis 6.0 and later. Keys are grouped by colon-separated names
 |-------|---------|-------|
 | **Host** | `localhost` | |
 | **Port** | `6379` | |
+| **Username** | - | Redis 6 ACL user, sent as `AUTH username password`. Leave empty for `requirepass` auth |
 | **Password** | - | Leave empty for local dev |
-| **Database** | `0` | 0-15 |
-| **Key Separator** | `:` | Groups keys by prefix in sidebar |
+| **Database Index** | `0` | 0-15 stepper, in the Advanced section |
+| **Key Separator** | `:` | Groups keys by prefix in sidebar (Advanced) |
 
 <Tip>
 Open URLs like `redis://:password@host:6379/0` or `rediss://` (TLS) from your browser. See [Connection URL Reference](/databases/connection-urls#redis).
 </Tip>
-
-## Example Configurations
-
-**Local**: host `localhost:6379`, no password
-**Docker**: host `localhost:6379` (or mapped port), password from `REDIS_PASSWORD` env
-**Redis Cloud**: Requires SSL/TLS, enable in connection form
-**Remote**: Use [SSH tunneling](/databases/ssh-tunneling) for production
 
 ## Amazon ElastiCache (IAM)
 
@@ -53,13 +47,18 @@ Configure in the **SSL/TLS** pane of the connection form. Managed services like 
 | **Preferred** | TLS, do not verify peer | Same as Required on Redis (there is no fallback) |
 | **Required (skip verify)** | TLS, do not verify peer | Self-signed certs, Upstash, untrusted CAs |
 | **Verify CA** | TLS, verify peer with your CA cert | Private PKI; supply CA path |
-| **Verify Identity** | TLS, verify peer and hostname (SNI) | Strict prod |
+| **Verify Identity** | Same as Verify CA | No separate hostname check on Redis |
 
-For untrusted-CA endpoints (Upstash, internal load balancers), pick **Required (skip verify)**. For private CA setups, pick **Verify CA** or **Verify Identity** and provide the CA certificate path.
+For untrusted-CA endpoints (Upstash, internal load balancers), pick **Required (skip verify)**. For private CA setups, pick **Verify CA** and provide the CA certificate path. SNI is sent for every TLS mode; Verify Identity adds nothing over Verify CA on Redis.
 
 ## Features
 
 **Namespace Browsing**: Keys grouped by separator (default `:`) in sidebar tree. `user:1`, `user:2` appear under `user` folder. Multi-level nesting supported (e.g., `app:cache:session:1`). Change separator in Advanced settings.
+
+<Frame caption="Keys grouped by namespace with type-aware values">
+  <img className="block dark:hidden" src="/images/redis-key-browser.png" alt="Redis keys grouped by namespace in the sidebar with values in the data grid" />
+  <img className="hidden dark:block" src="/images/redis-key-browser-dark.png" alt="Redis keys grouped by namespace in the sidebar with values in the data grid" />
+</Frame>
 
 **Key-Value Viewing**: String (plain text), Hash (key-value rows), List (with index), Set (individual rows), Sorted Set (with scores), JSON (syntax-highlighted).
 
@@ -105,7 +104,7 @@ INFO
 DBSIZE
 ```
 
-**Supported Commands**: String (GET, SET, INCR, DECR), Hash (HGET, HSET, HGETALL), List (LPUSH, RPUSH, LRANGE), Set (SADD, SMEMBERS), Sorted Set (ZADD, ZRANGE), Key (DEL, EXPIRE, SCAN), Server (PING, INFO). All commands sent to server.
+Every command passes through to the server as-is, including ones TablePro does not recognize; only the result formatting is type-aware.
 
 ## Troubleshooting
 

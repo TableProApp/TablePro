@@ -1,11 +1,11 @@
 ---
 title: iOS Shortcuts
-description: Add rows to a table from the Shortcuts app on iPhone and iPad
+description: Add rows to a table or open a connection from the Shortcuts app on iPhone and iPad
 ---
 
 # iOS Shortcuts
 
-TablePro for iOS exposes App Intents, so you can add data to a database table from the Shortcuts app, the Share Sheet, or by voice. The actions connect to a saved connection and insert the rows in the background, without opening the app.
+TablePro for iOS exposes App Intents, so you can add data to a database table from the Shortcuts app, the Share Sheet, or by voice. The insert actions connect to a saved connection and insert the rows in the background, without opening the app.
 
 This is iOS only. On macOS, use the [URL scheme](/external-api/url-scheme) and [MCP](/external-api/mcp-tools).
 
@@ -15,16 +15,27 @@ This is iOS only. On macOS, use the [URL scheme](/external-api/url-scheme) and [
 | --- | --- |
 | **Add Row to Table** | Insert a single row. |
 | **Add Rows to Table** | Insert many rows from a JSON array, CSV text, or a file. |
+| **Open Connection** | Open a saved connection in the TablePro app. |
 
-Both actions share the same pickers:
+Open Connection launches the app on the chosen connection. The two insert actions run in the background and share the same pickers:
 
 - **Connection**: one of your saved connections. Relational databases only (MySQL, MariaDB, PostgreSQL, Redshift, SQL Server, SQLite, DuckDB).
 - **Database or Schema**: optional. Leave it empty to use the connection's configured database. On schema databases like PostgreSQL it lists schemas; on others it lists databases.
 - **Table**: the table to insert into. The list is read from the chosen connection.
 
+## Siri
+
+The actions register these phrases, with the connection name spoken in place of the brackets:
+
+- "Open [connection] in TablePro" or "Connect to [connection] in TablePro"
+- "Add a row in TablePro"
+- "Add rows in TablePro"
+
 ## Data formats
 
-The row data is matched to the table's columns by name. A column you don't include is left out of the insert, so the database applies its default (an auto-increment primary key, for example).
+The row data is matched to the table's columns by name. A column you don't include is left out of the insert, so the database applies its default (an auto-increment primary key, for example). A key that matches no column in the table fails the whole action with an error naming the unknown keys; nothing is inserted.
+
+An empty or `null` value for a primary key column is dropped from the insert, so auto-increment still applies even when the key appears in the data.
 
 ### JSON
 
@@ -67,7 +78,7 @@ Each action returns the number of rows inserted, so you can show it or use it in
 
 ## Notes
 
-- The action requires the device to be unlocked, since it reads the connection password from the Keychain.
+- The action fails while the device is locked, since it reads the connection password from the Keychain.
 - A read-only connection refuses the insert with an error. A connection set to Confirm Writes asks you to confirm before the rows are added.
 - Add Rows to Table runs the batch in one transaction on databases that support it, so a row that fails rolls the whole batch back instead of leaving a partial insert.
 - Data that maps to no columns (an empty object, for example) returns an error rather than reporting that it added nothing.

@@ -1,17 +1,17 @@
 ---
 title: MongoDB
-description: Connect to MongoDB 5.0+ with MQL shell queries, collection browsing, and BSON type display
+description: Connect to MongoDB with MQL shell queries, collection browsing, and automatic Atlas SRV setup
 ---
 
 # MongoDB Connections
 
-TablePro supports MongoDB 5.0 and later. Collections appear as tables in the sidebar. Documents display with fields as columns, and nested objects render as formatted JSON.
+Collections appear as tables in the sidebar. Documents display with top-level fields as columns and nested objects as formatted JSON. MongoDB is a registry plugin: it auto-installs when you create a MongoDB connection, or install it from **Settings** > **Plugins** > **Browse** > **MongoDB Driver**.
 
 ## Quick Setup
 
 <Steps>
   <Step title="Create Connection">
-    Click **New Connection**, select **MongoDB**, enter host/port/username/password/database, and click **Create**
+    Click **New Connection**, select **MongoDB**, enter hosts and credentials, and click **Create**
   </Step>
   <Step title="Test Connection">
     Click **Test Connection** to verify
@@ -22,33 +22,26 @@ TablePro supports MongoDB 5.0 and later. Collections appear as tables in the sid
 
 | Field | Default | Notes |
 |-------|---------|-------|
-| **Hosts** | `localhost:27017` | Add multiple hosts for replica sets |
+| **Hosts** | `localhost:27017` | Add multiple `host:port` pairs for replica sets |
 | **Database** | - | Optional. Leave empty to browse all databases. Switch with **Cmd+K** |
 | **Username** | - | Leave empty for local dev without auth |
 | **Password** | - | |
-| **Auth Database** | `admin` | Database to authenticate against |
+| **Auth Mechanism** | Default | SCRAM-SHA-1, SCRAM-SHA-256, X.509, or AWS IAM. In the Authentication section |
 
-**Advanced** (Optional): Configure **Read Preference** (primary, secondary, nearest) and **Write Concern** (majority for stronger durability) for replica sets.
+**Advanced**: **Auth Database** (usually `admin`), **Read Preference**, **Write Concern**, **Use SRV Record**, and **Replica Set** name.
 
-{/* Screenshot: MongoDB connection form */}
 <Frame caption="MongoDB connection form">
-  <img
-    className="block dark:hidden"
-    src="/images/mongodb-connection-form.png"
-    alt="MongoDB connection form"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/mongodb-connection-form-dark.png"
-    alt="MongoDB connection form"
-  />
+  <img className="block dark:hidden" src="/images/mongodb-connection-form.png" alt="MongoDB connection form with the multi-host Hosts editor" />
+  <img className="hidden dark:block" src="/images/mongodb-connection-form-dark.png" alt="MongoDB connection form with the multi-host Hosts editor" />
 </Frame>
+
+## MongoDB Atlas (SRV)
+
+The **Use SRV Record** toggle in Advanced connects with the `mongodb+srv://` scheme. For hosts ending in `.mongodb.net`, TablePro enables SRV automatically and turns TLS on if the SSL mode is Disabled, since Atlas requires both. An Atlas connection needs only the cluster hostname, username, and password.
 
 ## Replica Sets
 
-The **Hosts** field accepts multiple `host:port` pairs separated by commas (for example `host1:27017,host2:27017,host3:27017`). TablePro discovers the primary automatically and routes writes there.
-
-Set the replica set name in the **Advanced** tab.
+The **Hosts** field accepts multiple `host:port` pairs separated by commas (for example `host1:27017,host2:27017,host3:27017`). TablePro discovers the primary automatically and routes writes there. Set the replica set name in **Advanced**.
 
 You can also paste a multi-host URI directly:
 
@@ -60,16 +53,9 @@ mongodb://user:pass@host1:27017,host2:27017,host3:27017/db?replicaSet=rs0
 SSH tunneling only forwards the first host. Other members must be reachable from the SSH server.
 </Note>
 
-## Example Configurations
-
-**Local**: host `localhost:27017`, no auth, database `myapp`
-**Docker**: host `localhost:27017` (or mapped port), password from `MONGO_INITDB_ROOT_PASSWORD` env, auth DB `admin`
-**MongoDB Atlas**: Enable SSL/TLS in connection form
-**Remote**: Use [SSH tunneling](/databases/ssh-tunneling) for secure access
-
 ## SSL/TLS
 
-The MongoDB driver has no TLS fallback. **Preferred** behaves the same as **Required** (the SSL pane shows a warning). MongoDB Atlas requires TLS, so use **Required** or **Verify CA**. For unencrypted local instances, use **Disabled** or [SSH tunneling](/databases/ssh-tunneling). See [SSL/TLS](/features/ssl) for details.
+The MongoDB driver has no TLS fallback. **Preferred** behaves the same as **Required** (the SSL pane shows a warning). For unencrypted local instances, use **Disabled** or [SSH tunneling](/databases/ssh-tunneling). See [SSL/TLS](/features/ssl) for details.
 
 ## Connection URL
 
@@ -84,13 +70,13 @@ See [Connection URL Reference](/databases/connection-urls) for all parameters.
 
 ## Features
 
-**Collection Browsing**: Sidebar shows all collections. Click to view documents in data grid.
+**Collection Browsing**: Sidebar shows all collections. Click to view documents in the data grid. Top-level fields render as columns, nested objects and arrays as formatted JSON, ObjectIds as strings. The grid schema is inferred by sampling documents.
 
-**Document Viewing**: Top-level fields as columns, nested objects as formatted JSON, arrays as JSON arrays, ObjectIds as strings, BSON types formatted appropriately. Schema inferred by sampling.
+**Views**: **New View** in the sidebar opens a query tab with a `db.createView("view_name", "source_collection", [pipeline])` template. Editing a view definition pre-fills a `db.runCommand({"collMod": ...})` command.
 
-**Collection Duplication**: Open **Create Table**, click **Duplicate**, select source collection. Uses `aggregate` with `$out`, recreates indexes. Result named `originalName_copy`.
+**Explain**: Press `Cmd+Option+E` on an MQL statement. TablePro converts `find`, `aggregate`, `countDocuments`, update, delete, and `findOneAnd*` calls into `db.runCommand({"explain": ..., "verbosity": "executionStats"})`.
 
-**MongoDB Shell Queries** (MQL syntax):
+**MQL Shell Queries**:
 
 ```javascript
 // Find documents with filtering
@@ -102,31 +88,28 @@ db.orders.find(
   { customerId: 1, total: 1, date: 1 }
 ).sort({ date: -1 }).limit(20)
 
-// Aggregation pipeline
+// Aggregation pipeline (dates use Extended JSON)
 db.sales.aggregate([
-  { $match: { date: { $gte: ISODate("2025-01-01") } } },
-  { $group: { _id: "$product", totalSales: { $sum: "$amount" } } },
-  { $sort: { totalSales: -1 } },
-  { $limit: 10 }
+  { "$match": { "date": { "$gte": { "$date": "2025-01-01T00:00:00Z" } } } },
+  { "$group": { "_id": "$product", "totalSales": { "$sum": "$amount" } } },
+  { "$sort": { "totalSales": -1 } },
+  { "$limit": 10 }
 ])
 
 // Count documents
 db.users.countDocuments({ role: "admin" })
-
-// Distinct values
-db.products.distinct("category")
 ```
 
-**CRUD**: Insert with `insertOne()`/`insertMany()`, update with `updateOne()`/`updateMany()`, delete with `deleteOne()`/`deleteMany()`.
+Filters and pipelines are parsed as JSON/Extended JSON, not JavaScript. mongosh helpers like `ISODate("2025-01-01")` fail to parse; write `{"$date": "2025-01-01T00:00:00Z"}` instead.
+
+**Supported methods**: collection-level `find`, `findOne`, `aggregate`, `countDocuments`/`count`, `insertOne`/`insertMany`, `updateOne`/`updateMany`, `replaceOne`, `deleteOne`/`deleteMany`, `findOneAndUpdate`/`findOneAndReplace`/`findOneAndDelete`, `createIndex`, `dropIndex`, `drop`; database-level `getCollectionNames`/`listCollections`, `createCollection`, `dropDatabase`, `version`, `stats`. Anything else goes through `db.runCommand({...})` or `db.adminCommand({...})`. Unlisted shell methods (for example `distinct` or `getUsers`) return an unsupported-method error.
 
 ## Troubleshooting
 
 **Connection refused**: Check MongoDB is running (`brew services start mongodb-community`), verify host/port in `mongod.conf`, check `bindIp` setting.
 
-**Auth failed**: Verify username/password/auth database. Check user roles with `db.getUsers();` Create user with `db.createUser({user:"appuser", pwd:"password", roles:[{role:"readWrite", db:"myapp"}]})`
+**Auth failed**: Verify username, password, auth database, and auth mechanism. The MQL editor does not parse `db.getUsers()` or `db.createUser()`; inspect users with `db.runCommand({"usersInfo": 1})` or manage them in mongosh.
 
-**Timeout**: Verify host/port, check network and firewall, whitelist IP in MongoDB Atlas.
+**Timeout**: Verify host/port, check network and firewall, whitelist your IP in MongoDB Atlas.
 
-**Limitations**: Transactions need replica set/sharded cluster, schema inferred by sampling, capped collections restricted, GridFS not browsable, change streams unsupported.
-
-**Performance**: Use filters, `limit()`, pagination, indexes. Analyze with `explain("executionStats")`.
+**Limitations**: Transactions are not exposed (statements always run standalone, on any topology), schema is inferred by sampling, GridFS is not browsable, change streams are unsupported.

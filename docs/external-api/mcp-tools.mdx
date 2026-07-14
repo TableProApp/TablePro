@@ -16,31 +16,20 @@ The same tool catalog is available over two transports:
 
 The server accepts `2025-03-26`, `2025-06-18`, and `2025-11-25`. On `initialize` it echoes whichever version the client requested. If the client asks for something else, the server returns `2025-11-25`. See [Versioning](/external-api/versioning).
 
-## What 2025-11-25 adds
+## Scopes and access
 
-Clients on the latest spec see three things that older clients don't:
+Each tool entry below lists its minimum token scope. The effective permission is `MIN(token.scope, connection.externalAccess)`; see [Tokens](/external-api/tokens) for the full scope table.
 
-- **Structured tool output**. Every tool that returns data fills `structuredContent` next to `content[]`. Older clients keep parsing the JSON text in `content[0].text`. Newer clients can read the typed object directly. Applies to `list_*`, `describe_table`, `get_table_ddl`, `get_connection_status`, `list_recent_tabs`, `search_query_history`, `execute_query`, and `confirm_destructive_operation`.
-- **Tool annotations**. `tools/list` returns `title`, `readOnlyHint`, `destructiveHint`, `idempotentHint`, and `openWorldHint` per tool. Read tools advertise `readOnlyHint=true`. `confirm_destructive_operation` advertises `destructiveHint=true`. `execute_query` and `export_data` advertise `openWorldHint=true`.
-- **Streaming progress**. Long-running tool calls emit `notifications/progress` events when the client passes a `_meta.progressToken` in the request. Today this fires on `execute_query` at four stages: Connecting, Executing, Formatting result, Done.
+Two per-connection settings gate every call on top of the token:
 
-## Scope and access matrix
-
-Every tool requires one of these scopes. The scope is the token's; the connection's `externalAccess` setting can downgrade it further.
-
-| Scope | Read schema | Run SELECT | Run INSERT/UPDATE/DELETE | Confirm DROP/TRUNCATE |
-|-------|:-----------:|:----------:|:------------------------:|:--------------------:|
-| `readOnly` | yes | yes | no | no |
-| `readWrite` | yes | yes | yes | no |
-| `fullAccess` | yes | yes | yes | yes (with phrase) |
-
-If `connection.externalAccess` is `blocked`, every tool that targets that connection returns `403 forbidden`. If `readOnly`, write tools return `403` even with a `readWrite` token.
+- **External access**. `blocked` hides the connection entirely: `list_connections` omits it, `list_recent_tabs` filters its tabs, and any tool that targets it returns `403 forbidden`. `readOnly` makes write tools return `403` even with a `readWrite` token.
+- **AI policy `askEachTime`**. The first tool call per session that targets the connection shows an in-app approval dialog. TablePro waits up to 30 seconds. Deny returns `403 forbidden` with message "User denied MCP access to this connection"; no answer fails the call with a timeout error. An approval covers that connection for the rest of the session.
 
 ## Connection tools
 
 ### `list_connections`
 
-List all saved connections.
+List saved connections. Connections with `externalAccess: blocked` are silently omitted.
 
 **Input**: none.
 
@@ -252,7 +241,7 @@ Execute a SQL query. All queries are subject to the connection's safe mode polic
 }
 ```
 
-Defaults for `max_rows` and `timeout_seconds` come from **Settings > Integrations > MCP Configuration** (default row limit, query timeout). `max_rows` is clamped to the configured maximum (default 10,000). `timeout_seconds` is clamped to 1-300. Single-statement queries only. Query size cap is 100 KB. `database` and `schema` are optional; when present, the tool calls `switch_database` and/or `switch_schema` before executing.
+Defaults for `max_rows` and `timeout_seconds` come from **Settings > Integrations > Server Configuration** (default row limit, query timeout). `max_rows` is clamped to the configured maximum (default 10,000). `timeout_seconds` is clamped to 1-300. Single-statement queries only. Query size cap is 100 KB. `database` and `schema` are optional; when present, the tool calls `switch_database` and/or `switch_schema` before executing.
 
 **Output**:
 
@@ -293,7 +282,7 @@ Run a DROP, TRUNCATE, or ALTER...DROP after a typed confirmation.
 }
 ```
 
-The confirmation phrase is fixed: `I understand this is irreversible`. Anything else returns `400 invalid confirmation`.
+The confirmation phrase is fixed: `I understand this is irreversible`. Anything else returns JSON-RPC `-32602` over HTTP 200 with message `Invalid params: confirmation_phrase must be exactly: I understand this is irreversible`.
 
 **Output**: same shape as `execute_query`.
 
@@ -428,7 +417,7 @@ Read the cross-window tab registry. Tabs from connections with `externalAccess: 
 }
 ```
 
-`tab_type` is one of `query`, `table`, `createTable`, `erDiagram`, `serverDashboard`, `terminal`. `table_name`, `database_name`, `schema_name`, and `window_id` are present when known.
+`tab_type` is one of `query`, `table`, `createTable`, `erDiagram`, `serverDashboard`, `usersRoles`. `table_name`, `database_name`, `schema_name`, and `window_id` are present when known.
 
 **Scope**: `readOnly`.
 
@@ -484,15 +473,17 @@ Tool failures come back as JSON-RPC error envelopes. Codes follow the JSON-RPC s
 | `-32700` | 400 | Parse error (malformed JSON body) |
 | `-32600` | 400 | Invalid request (bad envelope, missing `Mcp-Session-Id`) |
 | `-32601` | 200 / 404 | Method or resource URI not found |
-| `-32602` | 200 | Invalid params (bad input, unknown tab id, unknown connection) |
+| `-32602` | 200 | Invalid params (bad input, unknown tab id, unknown connection, wrong confirmation phrase) |
 | `-32603` | 500 | Internal error |
-| `-32001` | 404 / 401 | Session not found, or unauthenticated |
+| `-32001` | 404 | Session not found |
 | `-32002` | 200 | Request cancelled |
 | `-32003` | 200 | Request timeout (e.g. query timeout) |
 | `-32004` | 404 | Resource not found |
 | `-32005` | 413 | Payload too large |
-| `-32007` | 403 | Forbidden (token scope, allowlist, or `externalAccess` rejects) |
+| `-32006` | - | Server disabled (reserved, not currently returned) |
+| `-32007` | 403 / 401 | Forbidden (token scope, allowlist, or `externalAccess` rejects); 401 when the token is unknown or revoked |
 | `-32008` | 401 | Token expired |
+| `-32009` | 401 | Unauthenticated (missing bearer token) |
 | `-32000` | 429 / 503 | Server error (rate limited, service unavailable) |
 
 Error responses include a `message`. Example:
@@ -503,11 +494,11 @@ Error responses include a `message`. Example:
   "id": 7,
   "error": {
     "code": -32007,
-    "message": "Forbidden: Connection is read-only for external clients"
+    "message": "Forbidden: Connection is read only for external clients"
   }
 }
 ```
 
 A `404` from `GET/POST/DELETE /mcp` with a stale `Mcp-Session-Id` returns the JSON-RPC envelope with `code: -32001, message: "Session not found"`. Per the [MCP spec](https://modelcontextprotocol.io), clients MUST treat that response as a signal to start a new `initialize` handshake before retrying.
 
-`401` responses include a `WWW-Authenticate: Bearer realm="TablePro MCP"` header. When the token has expired, the challenge adds `error="invalid_token", error_description="token_expired"`.
+`401` responses carry a `WWW-Authenticate` challenge. A missing token returns `Bearer realm="TablePro"`. An unknown or revoked token returns `Bearer error="invalid_token"`. An expired token returns `Bearer error="invalid_token", error_description="token expired"`.

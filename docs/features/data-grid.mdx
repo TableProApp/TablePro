@@ -22,43 +22,41 @@ JSON mode shows the rows as a JSON array, with **Text** and **Tree** views. Sele
 
 ### Sort
 
-Click a header to cycle through ascending, descending, and off. Sort re-runs the query with `ORDER BY` appended, replacing any existing one.
+Click a header to cycle through ascending, descending, and off. `Shift`-click another header to add it to the sort, so you can order by several columns at once. Sort re-runs the query with `ORDER BY` appended, replacing any existing one.
 
-To sort on open, set **Settings > Data Grid > Default row sort** to **Primary key** or **First column** (default is **No sorting**). A click on any header still overrides it.
+To sort on open, set **Settings > Editor > Default row sort** to **Primary key** or **First column** (default is **No sorting**). A click on any header still overrides it.
 
 <Note>
 If the sort column can't be ordered on the server (a `BLOB`, `JSON`, or spatial column), the query fails. Pick another column or set the default back to No sorting.
 </Note>
 
-### Filter by Value
+### Filter
 
-Filter the loaded rows by picking values, without re-querying. Hover a header and click the funnel icon, or right-click the header and choose **Filter Values…**.
+The header gives you two filters:
 
-The popover lists each value in the column with its count. Search to narrow the list, check the values to keep, and click **Apply**. NULL and empty values appear as their own entries. `Return` applies, `Escape` cancels.
+- **Filter Values…** (or the funnel icon on hover) filters the loaded rows by picking values, without re-querying. The popover lists each value with its count; search to narrow, check the values to keep, and click **Apply**. NULL and empty values appear as their own entries. `Return` applies, `Escape` cancels. Filter several columns at once and rows must match every filter. Clear from the header menu (**Clear Value Filter**, **Clear All Value Filters**).
+- **Filter with column** adds a filter row for that column to the [Filter Panel](/features/filtering) and opens it. Use this to filter the whole table on the server.
 
-Filter several columns at once and the grid shows rows that match every filter. Clear from the header menu (**Clear Value Filter**, **Clear All Value Filters**) or check **Select All** in the popover.
-
-{/* Screenshot: column value filter popover (placeholder, replace later) */}
 <Frame caption="Filter a column by its values">
   <img className="block dark:hidden" src="/images/value-filter-popover.png" alt="Value filter popover" />
   <img className="hidden dark:block" src="/images/value-filter-popover-dark.png" alt="Value filter popover" />
 </Frame>
 
 <Note>
-This filter runs on the rows already loaded, so it covers the current page only. To filter the whole table on the server, use the [Filter Panel](/features/filtering).
+Value filters run on the rows already loaded, so they cover the current page only.
 </Note>
 
 ### Resize and Hide
 
-Drag a column border to resize, or double-click it to fit the content. Dragging the border only resizes; it never triggers a sort.
+Drag a column border to resize, or double-click it to fit the content. The header menu has **Size to Fit** for one column and **Size All Columns to Fit** for all of them. Fitted columns stop at half the visible grid width, so one long-text column can't push the rest off screen.
 
 Hide columns from the columns button in the status bar or the header menu. A hidden column isn't fetched, so hiding a large column makes the table load faster. The primary key is always fetched, so editing still works.
 
-Column widths, order, and which columns are hidden are remembered per table and restored the next time you open it. Each table keeps its own layout per connection, database, and schema, so two tables with the same name in different databases don't share one. Click **Reset Columns** in the columns popover to put everything back to defaults.
+Column widths, order, and which columns are hidden are remembered per table, scoped to the connection, database, and schema. Click **Reset Columns** in the columns popover to put everything back to defaults.
 
 ### Display Format
 
-UUIDs and Unix timestamps render in a readable form when the column type and name match (for example a `BINARY(16)` column named `uuid`, or a `BIGINT` named `created_at`). Right-click a header and choose **Display As** to set the format per column. Toggle the automatic behavior in **Settings > Editor > Smart value detection**.
+UUIDs and Unix timestamps render in a readable form when the column type and name match (for example a `BINARY(16)` column named `uuid`). Right-click a header and choose **Display As** to set the format per column: Raw Value, UUID, Unix Timestamp (seconds or milliseconds), JSON, or PHP Serialized. See [Cell and Row Viewers](/features/json-viewer) for what each format does. Toggle the automatic detection in **Settings > Editor > Smart value detection**.
 
 ## Editing
 
@@ -75,13 +73,14 @@ Double-click a cell to edit it. Press `Enter` to confirm or `Escape` to cancel. 
 | Boolean, `BIT`, `TINYINT(1)` | Checkbox, with a third state for nullable columns |
 | `ENUM` | Searchable value list |
 | `SET` (MySQL/MariaDB) | Multi-select checkboxes |
-| `JSON`, `JSONB` | Text and Tree viewer |
-| `BLOB`, binary | Hex editor (read-only over 10 KB) |
+| `JSON`, `JSONB`, `BLOB`, binary | [Cell viewers](/features/json-viewer); hex editor is read-only over 10 KB |
 
 <Frame caption="Type-specific cell editor">
   <img className="block dark:hidden" src="/images/date-picker-editor.png" alt="Cell editor" />
   <img className="hidden dark:block" src="/images/date-picker-editor-dark.png" alt="Cell editor" />
 </Frame>
+
+Right-click an editable cell and open **Set Value** for common values without typing: **Empty**, **NULL** (nullable columns), **Default** (columns with a default), and date functions like `NOW()` or `CURRENT_DATE` on date columns.
 
 ### Foreign Keys
 
@@ -92,32 +91,33 @@ Foreign key cells show an arrow on the right edge. Click it to open the referenc
   <img className="hidden dark:block" src="/images/fk-lookup-popover-dark.png" alt="Foreign key lookup" />
 </Frame>
 
-### Add, Delete, and Fill
+### Row Operations
 
-- **Add a row**: click **+** in the status bar.
-- **Delete rows**: select rows by their row number (`Shift`-click for a range, `Cmd`-click for separate rows) and press `Delete`.
-- **Fill a column**: right-click a header and choose **Fill Column** to set one value across all loaded rows. It skips primary key columns.
+- **Add** (`Cmd+Shift+N`): click **+** in the status bar or use the shortcut.
+- **Duplicate** (`Cmd+Shift+D`): right-click a row and choose **Duplicate**. The primary key resets to `DEFAULT` so the database assigns a new one.
+- **Delete**: select rows by their row number (`Shift`-click for a range, `Cmd`-click for separate rows) and press `Delete`.
+- **Paste**: copy rows, then right-click and choose **Paste** to insert them as new rows.
+- **Fill Column**: right-click a header to set one value across all loaded rows. It skips primary key columns.
 
 ### Saving Changes
 
 Edits are queued, not applied right away. The toolbar shows the pending count, modified cells are highlighted, and new and deleted rows are marked.
 
 - **Preview SQL** (`Cmd+Shift+P`): review the statements before applying.
-- **Commit** (`Cmd+S`): apply all pending changes.
-- **Discard**: drop all pending changes.
-- **Undo / Redo** (`Cmd+Z` / `Cmd+Shift+Z`): step through edits before committing.
+- **Save Changes** (`Cmd+S`): apply all pending changes.
+- **Undo / Redo** (`Cmd+Z` / `Cmd+Shift+Z`): step through edits before saving.
 
-See [Change Tracking](/features/change-tracking) for details.
+There is no discard button. Undo your edits, or let the confirmation prompt drop them when you refresh, re-sort, change filters, or close the tab. See [Change Tracking](/features/change-tracking) for how the queue works.
 
-## Cell Inspector
+## Inspector
 
-Toggle the inspector with `Cmd+Shift+B`. With a row selected, it lists every column value with a full editor for long text and JSON. With no row selected, it shows table metadata: row count, size, engine, charset, and collation.
+Toggle the inspector with `Cmd+Option+I`. With a row selected, it lists every column value with full editors for long text and JSON; see [Cell and Row Viewers](/features/json-viewer) for details. Turn on **Settings > Editor > Auto-show inspector on row select** to open it automatically.
 
-Drag the handle below a JSON field to make it taller and see more content without leaving the inspector. The height is remembered across rows and app restarts. For very large values, use **Expand in Sidebar** or **Open in Window**.
+With no row selected, it shows table statistics: data, index, and total size, row count, average row size, engine, collation, and created and updated dates (fields vary by database).
 
-<Frame caption="Cell Inspector">
-  <img className="block dark:hidden" src="/images/cell-inspector.png" alt="Cell Inspector" />
-  <img className="hidden dark:block" src="/images/cell-inspector-dark.png" alt="Cell Inspector" />
+<Frame caption="Row inspector">
+  <img className="block dark:hidden" src="/images/cell-inspector.png" alt="Row inspector" />
+  <img className="hidden dark:block" src="/images/cell-inspector-dark.png" alt="Row inspector" />
 </Frame>
 
 ## Select and Copy
@@ -141,30 +141,22 @@ Right-click a row and choose **Copy as** for more formats:
 
 Copies follow the grid as shown: hidden columns are left out and columns keep their current order. **Copy as UPDATE** always includes the primary key. Right-click a header and choose **Copy Column Values** to copy a whole column, one value per line.
 
-<Frame caption="Copy options">
-  <img className="block dark:hidden" src="/images/copy-context-menu.png" alt="Copy options" />
-  <img className="hidden dark:block" src="/images/copy-context-menu-dark.png" alt="Copy options" />
-</Frame>
-
 ## Pagination and Limits
 
-**Table tabs** page through data. The status bar has a rows-per-page menu (5 to 1,000, a custom size, or **All rows**) and First / Previous / Next / Last controls. Set the default in **Settings > Editor**. Smaller pages load faster.
+**Table tabs** page through data. The status bar has a rows-per-page menu (5 to 1,000, a custom size, or **All rows**) and First / Previous / Next / Last controls. Click the page indicator (for example `3 / 12`) to type a page number and jump to it. Set the default page size in **Settings > Editor**.
 
-<Frame caption="Pagination controls">
-  <img className="block dark:hidden" src="/images/pagination-controls.png" alt="Pagination controls" />
-  <img className="hidden dark:block" src="/images/pagination-controls-dark.png" alt="Pagination controls" />
-</Frame>
+Large tables show an estimated total instead of running a slow `COUNT(*)`. **Settings > Editor > Count rows if estimate less than** sets the threshold below which TablePro counts exactly.
 
-**Query tabs** cap results at 10,000 rows by default to stay responsive. For databases with `LIMIT` syntax, TablePro appends the cap to the statement it sends to the server, so the database stops early; the query text in the editor never changes. A query with its own `LIMIT` or `FETCH FIRST` is sent as written and not capped. When the cap trims a result, the status bar shows **Fetch All** to load the rest (with a confirmation, since large results use a lot of memory); in a multi-statement run, each result tab remembers its own truncation state. Run one query without the cap via **Execute Without Limit** (`Option+Cmd+Enter`). Adjust the cap in **Settings > Editor** (**Truncate query results**, **Row cap**).
+**Query tabs** cap results at 10,000 rows by default. For databases with `LIMIT` syntax, TablePro appends the cap to the statement it sends, so the server stops early; the query text in the editor never changes. A query with its own `LIMIT` or `FETCH FIRST` is sent as written and not capped. When the cap trims a result, the status bar shows **Fetch All** to load the rest (with a confirmation, since large results use a lot of memory). Run one query without the cap via **Execute Without Limit** (`Option+Cmd+Enter`). Adjust the cap in **Settings > Editor** (**Truncate query results**, **Row cap**).
 
 Press `Cmd+.` to cancel a running query or a Fetch All.
 
 ## Display Settings
 
-NULL shows as styled `NULL` text. Set the NULL display, date format, row height, and alternate row colors in **Settings > Editor**.
+NULL shows as styled `NULL` text. Set the NULL display, date format, row height, row numbers, and alternate row backgrounds in **Settings > Editor**.
 
 ## MongoDB Collections
 
-MongoDB has no fixed schema, so TablePro infers columns by sampling up to 500 documents. Missing fields show as NULL, and the `_id` column is read-only (delete and re-insert to change it). BSON values display as `ObjectId("...")`, ISO 8601 dates, `BinData(...)`, decimal strings, and `DBRef(...)`.
+MongoDB has no fixed schema, so TablePro infers columns by sampling up to 50 documents. Missing fields show as NULL, and the `_id` column is read-only (delete and re-insert to change it). BSON values display as `ObjectId("...")`, ISO 8601 dates, `BinData(...)`, decimal strings, and `DBRef(...)`.
 
 Changes preview as shell commands: `insertMany`, `updateOne` with `$set`, and `deleteMany`.

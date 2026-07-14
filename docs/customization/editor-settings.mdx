@@ -1,203 +1,68 @@
 ---
 title: Editor Settings
-description: SQL editor font, size, line numbers, word wrap, indentation, and Vim mode configuration
+description: SQL editor, Vim mode, JSON viewer, data grid, pagination, and query result cap settings.
 ---
 
 # Editor Settings
 
-Configure the SQL editor in **Settings** > **Editor**.
+Open **Settings** > **Editor** (`Cmd+,`). This tab holds the SQL editor toggles plus the Data Grid, Pagination, and Query Result Row Cap sections.
 
-{/* Screenshot: Editor settings panel */}
+Editor and data grid fonts are per-theme. Edit them on the theme's Fonts tab under [Appearance](/customization/appearance).
+
 <Frame caption="Editor settings">
-  <img
-    className="block dark:hidden"
-    src="/images/settings-editor.png"
-    alt="Editor settings"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/settings-editor-dark.png"
-    alt="Editor settings"
-  />
+  <img className="block dark:hidden" src="/images/settings-editor.png" alt="Editor settings" />
+  <img className="hidden dark:block" src="/images/settings-editor-dark.png" alt="Editor settings" />
 </Frame>
 
-## Font Settings
+## SQL Editor
 
-### Font Family
+| Setting | Default | Notes |
+|---------|---------|-------|
+| Show line numbers | On | |
+| Highlight current line | On | |
+| Word wrap | Off | Off means long lines scroll horizontally |
+| Tab width | 4 spaces | 2, 4, or 8 |
+| Auto-uppercase keywords | Off | Uppercases SQL keywords on word boundaries. Strings, comments, and quoted identifiers are untouched |
+| Query parameters (`:name` syntax) | On | Detects `:name` placeholders and shows the parameter panel. See [Query Parameters](/features/query-parameters) |
+| Vim mode | Off | Modal editing in the SQL editor. See [Vim Mode](/features/vim-mode) |
 
-The font picker shows installed monospaced families on your Mac.
-
-| Font | Description |
-|------|-------------|
-| **System Mono** | macOS default monospace (recommended) |
-| **SF Mono** | San Francisco Mono |
-| **Menlo** | Classic macOS monospace |
-| **Monaco** | Traditional Mac programming font |
-| **Courier New** | Cross-platform standard |
-
-Falls back to System Mono if a saved font is unavailable.
-
-{/* Screenshot: Font family selector */}
-<Frame caption="Font family selector with available fonts">
-  <img
-    className="block dark:hidden"
-    src="/images/editor-font-family.png"
-    alt="Font family selector"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/editor-font-family-dark.png"
-    alt="Font family selector"
-  />
-</Frame>
-
-### Font Size
-
-| Setting | Range | Default |
-|---------|-------|---------|
-| Font Size | 11-18 pt | 13 pt |
-
-{/* Screenshot: Editor with different font sizes */}
-<Frame caption="Font size comparison">
-  <img
-    className="block dark:hidden"
-    src="/images/font-size-comparison.png"
-    alt="Font sizes"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/font-size-comparison-dark.png"
-    alt="Font sizes"
-  />
-</Frame>
-
-## Display Settings
-
-### Line Numbers
-
-| Option | Description |
-|--------|-------------|
-| **On** | Show line numbers (default) |
-| **Off** | Hide for a minimal look |
-
-{/* Screenshot: Editor with and without line numbers */}
-<Frame caption="Line numbers on/off">
-  <img
-    className="block dark:hidden"
-    src="/images/line-numbers.png"
-    alt="Line numbers"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/line-numbers-dark.png"
-    alt="Line numbers"
-  />
-</Frame>
-
-### Current Line Highlight
-
-| Option | Description |
-|--------|-------------|
-| **On** | Highlight the line with cursor (default) |
-| **Off** | No highlight |
-
-{/* Screenshot: Current line highlight */}
-<Frame caption="Current line highlighting in the editor">
-  <img
-    className="block dark:hidden"
-    src="/images/current-line-highlight.png"
-    alt="Current line highlighting"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/current-line-highlight-dark.png"
-    alt="Current line highlighting"
-  />
-</Frame>
-
-### Word Wrap
-
-| Option | Description |
-|--------|-------------|
-| **Off** | Long lines scroll horizontally (default) |
-| **On** | Long lines wrap to next line |
-
-{/* Screenshot: Word wrap */}
-<Frame caption="Word wrap: wrapped vs horizontal scrolling">
-  <img
-    className="block dark:hidden"
-    src="/images/editor-word-wrap.png"
-    alt="Word wrap comparison"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/editor-word-wrap-dark.png"
-    alt="Word wrap comparison"
-  />
-</Frame>
-
-## Indentation Settings
-
-### Tab Width
-
-| Setting | Options | Default |
-|---------|---------|---------|
-| Tab Width | 1-16 spaces | 4 |
-
-{/* Screenshot: Tab width setting */}
-<Frame caption="Tab width setting for indentation">
-  <img
-    className="block dark:hidden"
-    src="/images/editor-tab-width.png"
-    alt="Tab width setting"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/editor-tab-width-dark.png"
-    alt="Tab width setting"
-  />
-</Frame>
-
-## Editor Behavior
-
-### Auto-Uppercase Keywords
-
-| Option | Description |
-|--------|-------------|
-| **Off** | Keywords stay as typed (default) |
-| **On** | SQL keywords auto-uppercase when you type a space or delimiter |
-
-SQL keywords auto-uppercase on word boundaries. Keywords inside strings, comments, and quoted identifiers are unaffected.
-
-### Query Parameters
-
-| Option | Description |
-|--------|-------------|
-| **On** | Detect `:name` placeholders and show the parameter panel (default) |
-| **Off** | Send `:name` tokens to the database as-is |
-
-When on, queries with `:name` placeholders show an inline panel for entering values. See [Query Parameters](/features/query-parameters) for details.
-
-### Autocomplete
-
-Autocomplete is always on. Dismiss with `Escape`. See [Autocomplete](/features/autocomplete) for details.
+Autocomplete is always on; see [Autocomplete](/features/autocomplete). Editor shortcuts are listed and customized on [Keyboard Shortcuts](/features/keyboard-shortcuts).
 
 ## JSON Viewer
 
-| Setting | Options | Default |
+| Setting | Default | Options |
 |---------|---------|---------|
-| Default view | Text, Tree | Text |
+| Default view | Text | Text, Tree |
 
-Pick which mode the JSON viewer starts in. You can switch anytime with the toggle in the viewer. Your last choice is remembered.
+The mode the JSON viewer opens in. Switching modes inside the viewer writes the choice back to this setting. See [JSON Viewer](/features/json-viewer).
 
-## Keyboard Shortcuts
+## Data Grid
 
-| Action | Shortcut |
-|--------|----------|
-| Execute query | `Cmd+Enter` |
-| Undo | `Cmd+Z` |
-| Redo | `Cmd+Shift+Z` |
-| Find | `Cmd+F` |
-| Replace | `Cmd+Option+F` |
-| Select All | `Cmd+A` |
-| Go to Line | `Cmd+G` |
+| Setting | Default | Notes |
+|---------|---------|-------|
+| Row height | Normal | Compact, Normal, Comfortable, Spacious |
+| Date format | ISO 8601 | ISO 8601, ISO Date, US Long, US Short, EU Long, EU Short |
+| NULL display | `NULL` | Text shown for NULL cells, up to 20 characters |
+| Show alternate row backgrounds | On | |
+| Show row numbers | On | |
+| Auto-show inspector on row select | Off | Opens the row details inspector when you select a row |
+| Smart value detection | On | Renders UUID, Unix timestamp, JSON, and PHP serialized columns in readable form. Override per column with Display As, see [Data Grid](/features/data-grid) |
+| Default row sort | No sorting (engine order) | Or Primary key, First column. Applied when a table first opens; clicking a column header overrides it |
+
+## Pagination
+
+| Setting | Default | Options |
+|---------|---------|---------|
+| Default page size | 1,000 rows | 100, 500, 1,000, 5,000, 10,000 |
+| Count rows if estimate less than | 100,000 | 1,000; 10,000; 100,000; 1,000,000; Always count |
+
+Tables with more estimated rows than the threshold show an approximate count instead of running a slow `COUNT(*)`.
+
+## Query Result Row Cap
+
+| Setting | Default | Options |
+|---------|---------|---------|
+| Truncate query results | On | |
+| Row cap | 10,000 | 100; 1,000; 5,000; 10,000; 50,000; 100,000; 500,000 |
+
+When on, `SELECT` queries without their own `LIMIT` run with the cap applied. The query text in the editor never changes. Capped results show a **Fetch All** button, and **Execute Without Limit** skips the cap for one run.

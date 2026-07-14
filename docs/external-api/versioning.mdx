@@ -23,8 +23,10 @@ There is no `elicitation` capability. The server does not ask clients for input.
 
 ### What changed in 2025-11-25
 
-- `tools/call` results now include `structuredContent` next to `content[]`. Older clients keep reading the text content. Newer clients can read the typed object directly. Tools that return data use both: `list_*`, `describe_table`, `get_table_ddl`, `get_connection_status`, `list_recent_tabs`, `search_query_history`, `execute_query`, `confirm_destructive_operation`.
-- `tools/list` returns annotations per tool. `readOnlyHint` and `idempotentHint` mark read tools. `destructiveHint` marks `confirm_destructive_operation`. `openWorldHint` marks `execute_query` and `export_data`.
+`2025-11-25` is the spec version that defines `structuredContent` and tool annotations. TablePro emits both regardless of the negotiated version; clients on older versions ignore the extra fields.
+
+- Every `tools/call` result includes `structuredContent` next to `content[]`. Clients on older versions keep reading the text content; newer clients read the typed object directly.
+- `tools/list` returns annotations per tool. `readOnlyHint` and `idempotentHint` mark read tools. `destructiveHint` marks `confirm_destructive_operation`. `openWorldHint` marks tools that reach a live database, such as `execute_query` and `export_data`.
 - `serverInfo` includes `title: "TablePro"`.
 
 ## Stability rules
@@ -50,19 +52,11 @@ Within a major version, none of the following will happen:
 
 Breaking changes ship only at major TablePro version bumps (e.g. 1.x to 2.x). The 0.x series is pre-1.0; we treat minor versions as the release boundary, but only break with explicit notice.
 
-When a breaking change ships:
-
-- The next previous version emits a deprecation warning in the activity log on every use of the affected surface.
-- The release notes call it out under the `BREAKING` heading in CHANGELOG.
-- The deprecated surface continues to work for at least one minor version after the warning is introduced.
-
 ## Deprecation lifecycle
 
-1. **Announce.** A `Deprecated` note is added to the docs. CHANGELOG mentions the affected surface.
-2. **Warn.** The next version logs a deprecation warning to the activity log when the surface is used. The warning names the replacement.
-3. **Remove.** A later version removes the surface. CHANGELOG marks it `BREAKING`.
-
-The warn-to-remove gap is at least one minor version.
+1. **Announce.** The docs mark the surface deprecated and name the replacement. CHANGELOG mentions the affected surface.
+2. **Grace.** The deprecated surface keeps working for at least one minor version after the announcement.
+3. **Remove.** A later release removes the surface. CHANGELOG marks it `BREAKING`.
 
 ## What is not under the contract
 

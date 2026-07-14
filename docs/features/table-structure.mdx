@@ -1,350 +1,125 @@
 ---
 title: Table Structure
-description: Browse column definitions, indexes, foreign keys, triggers, and DDL with a visual structure editor
+description: Browse and edit columns, indexes, foreign keys, triggers, and DDL with a visual structure editor
 ---
 
 # Table Structure
 
-Browse columns, indexes, foreign keys, triggers, and DDL for any table. Edit structure visually or with SQL.
+Browse and edit columns, indexes, foreign keys, triggers, and DDL for any table.
 
-{/* Screenshot: Table structure view showing columns tab */}
 <Frame caption="Table structure view">
-  <img
-    className="block dark:hidden"
-    src="/images/table-structure.png"
-    alt="Table Structure"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/table-structure-dark.png"
-    alt="Table Structure"
-  />
+  <img className="block dark:hidden" src="/images/table-structure.png" alt="Table Structure" />
+  <img className="hidden dark:block" src="/images/table-structure-dark.png" alt="Table Structure" />
 </Frame>
 
-Click a table in the sidebar, then click the **Structure** tab. Or right-click a table > **Show Structure**.
+Open a table, then pick **Structure** in the Data / Structure / JSON control at the bottom of the tab. Or right-click a table in the sidebar and choose **Show Structure**.
+
+Tabs: **Columns**, **Indexes**, **Foreign Keys**, **Triggers**, **DDL**, and **Parts** (ClickHouse only). The Columns, Indexes, Foreign Keys, and Triggers labels show item counts. Tabs the database cannot support are hidden, such as Foreign Keys on ClickHouse or Triggers on Redshift. A filter field above the grid narrows rows by name; click a column header to sort.
 
 ## Columns Tab
 
-{/* Screenshot: Columns tab with column list */}
-<Frame caption="Column definitions">
-  <img
-    className="block dark:hidden"
-    src="/images/structure-columns.png"
-    alt="Columns tab"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/structure-columns-dark.png"
-    alt="Columns tab"
-  />
-</Frame>
+Columns are edited inline in the grid:
 
-| Property | Description |
-|----------|-------------|
-| **Name** | Column name |
-| **Type** | Data type (VARCHAR, INT, etc.) |
-| **Nullable** | Whether NULL values are allowed |
-| **Default** | Default value if none specified |
-| **Primary Key** | Whether the column is part of the primary key |
-| **Auto Inc** | AUTO_INCREMENT / SERIAL |
-| **Comment** | Column comment |
-| **Charset** | Character set (MySQL/MariaDB only) |
-| **Collation** | Collation (MySQL/MariaDB only) |
+- **Nullable**, **Primary Key**, and **Auto Inc** are YES/NO dropdowns.
+- **Type** opens a picker with the database's types grouped by category. Search to filter, or type a parametric value such as `VARCHAR(255)` or `DECIMAL(10,2)` and press Return to use it as written.
+- **Charset** and **Collation** columns appear for MySQL and MariaDB.
 
-Use the filter field at the top to search columns by name. Click any column header to sort.
-
-## Indexes Tab
-
-{/* Screenshot: Indexes tab showing index list */}
-<Frame caption="Table indexes">
-  <img
-    className="block dark:hidden"
-    src="/images/structure-indexes.png"
-    alt="Indexes tab"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/structure-indexes-dark.png"
-    alt="Indexes tab"
-  />
-</Frame>
-
-| Property | Description |
-|----------|-------------|
-| **Name** | Index name |
-| **Columns** | Columns included in the index. MySQL prefix lengths shown as `col(10)` |
-| **Type** | BTREE, HASH, FULLTEXT, GIN, GIST, BRIN, etc. |
-| **Unique** | Whether the index enforces uniqueness |
-| **Condition** | WHERE clause for partial indexes (PostgreSQL) |
-
-### Add and Drop Indexes
-
-Click **+** to add a new index, **-** or `Delete` to mark an index for removal. Multi-column indexes are supported by adding multiple column entries to one index row.
-
-- **Partial indexes (PostgreSQL)**: enter a `WHERE` predicate in the **Condition** field. The generated DDL emits `CREATE INDEX ... WHERE ...`.
-- **Prefix length (MySQL/MariaDB)**: append `(N)` to the column entry, for example `email(20)`. Useful for `TEXT` and long `VARCHAR` columns.
-- **Index type**: pick from the type dropdown. Available types depend on the database (BTREE everywhere, GIN/GIST/BRIN on PostgreSQL, FULLTEXT/SPATIAL on MySQL).
-
-Changes are queued. Click **Apply** to preview the `CREATE INDEX` / `DROP INDEX` statements before executing.
-
-## Foreign Keys Tab
-
-{/* Screenshot: Foreign keys tab */}
-<Frame caption="Foreign key relationships">
-  <img
-    className="block dark:hidden"
-    src="/images/structure-fk.png"
-    alt="Foreign Keys tab"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/structure-fk-dark.png"
-    alt="Foreign Keys tab"
-  />
-</Frame>
-
-| Property | Description |
-|----------|-------------|
-| **Name** | Constraint name |
-| **Columns** | Local column(s) |
-| **Ref Table** | Referenced table |
-| **Ref Columns** | Referenced column(s) |
-| **Ref Schema** | Referenced schema (for cross-schema references) |
-| **On Delete** | Action when referenced row is deleted (NO ACTION, CASCADE, SET NULL, SET DEFAULT, RESTRICT) |
-| **On Update** | Action when referenced row is updated |
-
-On Delete and On Update use dropdown pickers with all standard referential actions.
-
-### Add and Drop Foreign Keys
-
-Click **+** to add a new foreign key, **-** or `Delete` to remove one. The local and referenced columns use dropdowns populated from the live schema, so typos surface as missing entries rather than runtime errors.
-
-- **Cross-schema references**: pick a different schema in the **Ref Schema** column for PostgreSQL or MySQL. The generated DDL qualifies the referenced table (`other_schema.other_table`).
-- **Composite foreign keys**: add multiple column pairs to a single FK entry.
-- **Referential actions**: configure `ON DELETE` and `ON UPDATE` per FK.
-
-Changes are queued. Apply to preview the generated `ALTER TABLE ... ADD CONSTRAINT` / `DROP CONSTRAINT` SQL.
-
-## Primary Keys
-
-Mark one or more columns as primary key in the **Columns** tab by toggling the **Primary Key** flag. Multiple flagged columns produce a composite primary key. The generated DDL emits a single `PRIMARY KEY (col1, col2)` clause.
-
-Changing a primary key on an existing table executes as a drop-and-add sequence. SQLite and ClickHouse do not support modifying primary keys without recreating the table: TablePro disables the action on those databases.
-
-## Table Options (MySQL/MariaDB)
-
-The Columns tab toolbar exposes table-level **Charset** and **Collation** pickers for MySQL and MariaDB. Changes generate `ALTER TABLE ... CONVERT TO CHARACTER SET ...` and update the table's default collation. Per-column overrides remain available in the column detail panel.
-
-## DDL Tab
-
-{/* Screenshot: DDL tab showing CREATE TABLE statement */}
-<Frame caption="DDL (CREATE TABLE) statement">
-  <img
-    className="block dark:hidden"
-    src="/images/structure-ddl.png"
-    alt="DDL tab"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/structure-ddl-dark.png"
-    alt="DDL tab"
-  />
-</Frame>
-
-The DDL view uses tree-sitter syntax highlighting with line numbers. Use the toolbar buttons to:
-
-- **Copy** the DDL to clipboard
-- **Export** as a `.sql` file
-- **Open in Editor** to send the DDL to a new query tab for editing
-
-## Triggers Tab
-
-The Triggers tab lists the table's triggers and shows the full definition of the selected one. Use the filter field to narrow the list, and click a column header to sort.
-
-| Property | Description |
-|----------|-------------|
-| **Name** | Trigger name |
-| **Timing** | BEFORE, AFTER, or INSTEAD OF |
-| **Event** | INSERT, UPDATE, DELETE (PostgreSQL can combine events, such as INSERT OR UPDATE) |
-| **Enabled** | Whether the trigger is enabled (PostgreSQL, SQL Server, Oracle) |
-
-Select a trigger to see its full definition in a syntax-highlighted viewer with **Copy** and **Open in Editor** buttons. The definition is the `CREATE TRIGGER` statement, which includes the orientation (FOR EACH ROW/STATEMENT) and any WHEN condition. MySQL and MariaDB reconstruct it from the body; PostgreSQL uses `pg_get_triggerdef`; SQLite, libSQL, and Cloudflare D1 read the stored statement; SQL Server uses `OBJECT_DEFINITION`.
-
-### Editing Triggers
-
-Use **New Trigger**, **Edit**, and **Delete** in the Triggers tab toolbar to manage triggers. The editor opens the trigger's actual DDL so the whole definition round-trips without losing any clause. For PostgreSQL it shows both the trigger function and the trigger so you can edit the logic. Saving runs the correct statements for the engine (`CREATE OR REPLACE` / `CREATE OR ALTER`, or drop-and-recreate), wrapped in a transaction where the engine supports transactional DDL, and goes through the same confirmation and safe-mode checks as other schema changes. Oracle creates and drops triggers, but its body is not retrieved, so editing starts from the trigger header.
-
-<Note>
-Available for MySQL, MariaDB, PostgreSQL, SQLite, SQL Server, Oracle, libSQL, and Cloudflare D1. The tab is hidden for databases that do not expose triggers. Oracle shows trigger metadata only; the body is not retrieved.
-</Note>
-
-## Creating a New Table
-
-Right-click in the sidebar and select **Create New Table...**. A visual editor opens with:
-
-- **Table Name** field and database-specific options (Engine, Charset, Collation for MySQL/MariaDB)
-- **Columns tab** - define columns with name, type, nullable, default, primary key, auto increment, and comment
-- **Indexes tab** - add indexes with type (BTREE, HASH, FULLTEXT, SPATIAL) and uniqueness
-- **Foreign Keys tab** - define relationships with referenced tables, ON DELETE/ON UPDATE actions
-- **SQL Preview tab** - live-generated CREATE TABLE DDL with syntax highlighting
-
-Click **Create Table** (or press `Cmd+S` or `Cmd+Return`) to execute. The tab becomes the new table's data view and the table appears in the sidebar immediately.
-
-<Note>
-Supported databases: MySQL, MariaDB, PostgreSQL, SQLite, SQL Server, ClickHouse, and DuckDB. Each generates database-specific DDL syntax.
-</Note>
-
-## Modifying Structure
-
-<Warning>
-Structure modifications alter your database schema. Always backup important data before making changes.
-</Warning>
-
-### Database Support
-
-Not all databases support every ALTER TABLE operation. TablePro disables unsupported actions in the UI.
-
-| Operation | MySQL / MariaDB | PostgreSQL | SQLite | ClickHouse | SQL Server | DuckDB | Oracle |
-|-----------|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
-| Add column | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
-| Modify column | Yes | Yes | Rename only | Yes | Yes | Yes | Yes |
-| Drop column | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
-| Add / drop index | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
-| Add / drop FK | Yes | Yes | - | - | Yes | Yes | Yes |
-| Modify PK | Yes | Yes | - | - | Yes | Yes | Yes |
-| Reorder columns | Yes | - | - | - | - | - | - |
-
-Cassandra supports add and drop column only. MongoDB structure is read-only. Redis, Etcd, and DynamoDB do not have table schemas.
-
-### Visual Structure Editor
-
-#### Adding Columns
-
-1. Open **Structure** > **Columns**, click **+**
-2. Set properties: name, type, nullable, default, auto-increment, comment
-3. Click the **Type** cell to open the type picker. Browse by category or search. For parametric types (`VARCHAR(255)`, `DECIMAL(10,2)`), type directly in the freeform field.
-4. Click **Apply** to preview and execute
-
-{/* Screenshot: Adding a new column in Structure editor */}
-<Frame caption="Adding a column">
-  <img
-    className="block dark:hidden"
-    src="/images/structure-add-column.png"
-    alt="Adding a new column in Structure editor"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/structure-add-column-dark.png"
-    alt="Adding a new column in Structure editor"
-  />
-</Frame>
-
-#### Modifying Columns
-
-Click a column, edit properties in the detail panel, then **Apply** to preview the ALTER TABLE SQL. Changes support undo/redo.
-
-#### Removing Columns
-
-Select the column, click **-** or press Delete, confirm, then apply.
-
-{/* Screenshot: Type picker popover in Structure editor */}
 <Frame caption="Type picker popover">
-  <img
-    className="block dark:hidden"
-    src="/images/structure-type-picker.png"
-    alt="Type picker popover"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/structure-type-picker-dark.png"
-    alt="Type picker popover"
-  />
+  <img className="block dark:hidden" src="/images/structure-type-picker.png" alt="Type picker popover" />
+  <img className="hidden dark:block" src="/images/structure-type-picker-dark.png" alt="Type picker popover" />
 </Frame>
 
-### Context Menu
+Add a column with the **Add Column** button in the status bar or `Cmd+Shift+N`. Select rows and click **Remove Column** or press `Delete` to mark them for removal.
 
-Right-click any row in the Columns, Indexes, or Foreign Keys tabs:
+### Primary Keys
 
-| Action | Description |
-|--------|-------------|
-| **Copy Name** | Copy the item name to clipboard |
-| **Copy Definition** | Copy the SQL definition |
-| **Copy As** | Copy as CSV, JSON, or SQL INSERT |
-| **Open [table]** | (Foreign Keys tab) Navigate to the referenced table |
-| **Duplicate** | Duplicate selected items |
-| **Delete** | Mark items for deletion (apply to execute) |
-
-Multi-select rows to copy or delete multiple items at once.
-
-### Schema Change Preview
-
-Before applying, TablePro shows the generated ALTER TABLE SQL for review.
-
-{/* Screenshot: Schema change preview with ALTER TABLE statements */}
-<Frame caption="Schema change preview">
-  <img
-    className="block dark:hidden"
-    src="/images/schema-change-preview.png"
-    alt="Schema change preview with ALTER TABLE statements"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/schema-change-preview-dark.png"
-    alt="Schema change preview with ALTER TABLE statements"
-  />
-</Frame>
-
-Destructive changes (dropping columns, changing data types) show a confirmation dialog before executing.
-
-`Cmd+Z` to undo, `Cmd+Shift+Z` to redo structure changes before applying. Schema changes are recorded in query history.
-
-{/* Screenshot: Undo and redo for structure changes */}
-<Frame caption="Undo and redo for structure changes">
-  <img
-    className="block dark:hidden"
-    src="/images/structure-undo-redo.png"
-    alt="Undo and redo for structure changes"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/structure-undo-redo-dark.png"
-    alt="Undo and redo for structure changes"
-  />
-</Frame>
+Toggle the **Primary Key** flag on one or more columns; multiple flagged columns produce a composite key in a single `PRIMARY KEY (col1, col2)` clause. Changing the key on an existing table runs a drop-and-add sequence. Primary key changes are disabled on SQLite, ClickHouse, CockroachDB, Cassandra, and ScyllaDB.
 
 ### Reordering Columns
 
-Drag a column row up or down in the Columns tab to change its position. The reorder executes immediately as an `ALTER TABLE ... MODIFY COLUMN ... AFTER` statement.
+Drag a column row to a new position (MySQL and MariaDB only). The reorder executes immediately as `ALTER TABLE ... MODIFY COLUMN ... AFTER` and is recorded in query history. Dragging is disabled while unsaved structure changes exist.
+
+## Indexes Tab
+
+| Field | Description |
+|-------|-------------|
+| **Columns** | Indexed columns. Multi-column indexes list several columns in one row. MySQL prefix lengths are written as `email(20)` |
+| **Type** | BTREE, HASH, FULLTEXT, SPATIAL (MySQL), GIN, GIST, BRIN (PostgreSQL) |
+| **Unique** | Whether the index enforces uniqueness |
+| **Condition** | `WHERE` predicate for partial indexes (PostgreSQL) |
+
+## Foreign Keys Tab
+
+| Field | Description |
+|-------|-------------|
+| **Columns** | Local column(s) |
+| **Ref Table / Ref Columns** | Referenced table and column(s) |
+| **Ref Schema** | Referenced schema, for cross-schema references |
+| **On Delete / On Update** | Dropdowns: NO ACTION, RESTRICT, CASCADE, SET NULL, SET DEFAULT |
+
+Right-click a foreign key and choose **Open [table]** to jump to the referenced table.
+
+## Saving Changes
+
+Structure edits queue locally; nothing runs until you save. See [Change Tracking](/features/change-tracking) for how the queue, undo (`Cmd+Z`), and redo (`Cmd+Shift+Z`) work.
+
+- **Save Changes** (`Cmd+S` or the toolbar checkmark) applies the queued changes. Changes that can lose data (dropping a column, changing a type, adding NOT NULL, changing the primary key) first show a confirmation that lists each risky change.
+- **Preview SQL** (`Cmd+Shift+P`) shows the generated DDL statements without executing them.
+
+<Frame caption="Generated DDL preview">
+  <img className="block dark:hidden" src="/images/schema-change-preview.png" alt="Schema change preview with ALTER TABLE statements" />
+  <img className="hidden dark:block" src="/images/schema-change-preview-dark.png" alt="Schema change preview with ALTER TABLE statements" />
+</Frame>
+
+### Row Context Menu
+
+Right-click rows in the Columns, Indexes, or Foreign Keys tabs for **Copy Name**, **Copy Definition**, **Copy As** (CSV, JSON, SQL), **Duplicate** (`Cmd+D`), and **Delete**. Rows already marked for deletion offer **Undo Delete** instead. Multi-select to act on several rows at once.
+
+## Triggers Tab
+
+Lists the table's triggers with **Name**, **Timing** (BEFORE, AFTER, INSTEAD OF), **Event** (INSERT, UPDATE, DELETE), and **Enabled** where the database reports it. Select a trigger to see its full `CREATE TRIGGER` statement, fetched from the engine's catalog, in a syntax-highlighted viewer with **Copy** and **Open in Editor**.
+
+**New Trigger**, **Edit**, and **Delete** in the tab's toolbar manage triggers. The editor opens the trigger's actual DDL so the whole definition round-trips; for PostgreSQL it includes the trigger function so you can edit the logic. Saving runs the right statements for the engine, wrapped in a transaction where the engine supports transactional DDL. Deleting asks for confirmation.
 
 <Note>
-Column reordering is only available for MySQL and MariaDB. Other databases do not support changing column order without recreating the table.
+Triggers are available for MySQL, MariaDB, PostgreSQL, SQLite, SQL Server, Oracle, libSQL, and Cloudflare D1; the tab is hidden elsewhere. Oracle does not return the trigger body, so editing starts from the trigger header.
 </Note>
 
-Drag is disabled when you have unsaved structure changes. Apply or discard pending changes first.
+## DDL Tab
 
-For changes unsupported by the visual editor, use the SQL editor directly.
+Read-only `CREATE TABLE` statement with syntax highlighting and font size controls. Toolbar buttons: **Copy**, **Export** as a `.sql` file, and **Open in Editor** to send the DDL to a new query tab.
 
-## Refreshing Structure
+## Parts Tab (ClickHouse)
 
-Right-click the table > **Refresh**, or use **View** > **Refresh**. Changes made in TablePro refresh automatically.
+Lists the table's partitions and parts from `system.parts`. Toolbar actions: **Optimize** (merge parts), **Drop Partition**, and **Detach Partition** for the selected partition.
+
+## Creating a New Table
+
+Click the **+** button at the bottom of the sidebar and choose **New Table**. The editor opens as a tab with:
+
+- **Table Name** field, plus Engine, Charset, and Collation pickers for MySQL and MariaDB
+- **Columns**, **Indexes**, and **Foreign Keys** tabs using the same grid editing as the structure view
+- **SQL Preview** tab with the live-generated `CREATE TABLE` DDL
+
+Click **Create Table** (`Cmd+Return` or `Cmd+S`) to execute. TablePro opens the new table and refreshes the sidebar.
+
+<Note>
+Visual table creation is supported for MySQL, MariaDB, PostgreSQL, SQLite, SQL Server, ClickHouse, DuckDB, Oracle, Snowflake, libSQL, and Cloudflare D1.
+</Note>
+
+## Database Limits
+
+TablePro disables operations the database cannot perform:
+
+- **SQLite**: columns can be renamed but not otherwise modified.
+- **Cassandra / ScyllaDB**: add and drop column only; no index editing.
+- **Redshift, CockroachDB, Beancount**: structure is read-only.
+- **Redis, etcd, DynamoDB**: no table schema to edit.
 
 ## MongoDB Collections
 
-The structure tab for MongoDB is **read-only**. TablePro infers the schema by sampling documents. Three columns are shown:
+MongoDB structure is read-only. TablePro infers the schema from the first 50 documents of the collection: it unions the top-level field names across the sample and picks each field's most common BSON type. `_id` is listed first and marked as the primary key. The DDL tab shows indexes as `createIndex()` commands you can run in `mongosh`, plus the collection's validator and capped-collection options when present. Edit documents in the data grid instead.
 
-- **Name**: Field name (including nested paths with dot notation)
-- **Type**: BSON type (ObjectId, String, Int32, Int64, Double, Boolean, Date, Array, Object, etc.)
-- **Nullable**: Whether the field is present in all sampled documents
+## Refreshing
 
-### Indexes
-
-MongoDB indexes are shown as `createIndex()` commands that can be copied and run in `mongosh`.
-
-### DDL Tab
-
-Shows index definitions as `db.collection.createIndex()` statements, collection validators as `db.runCommand({collMod: ...})`, and collection options (capped, size, max) if applicable.
-
-<Note>
-MongoDB is schema-less, so structure modification is not available. Edit documents directly in the data grid.
-</Note>
-
+Use **Query > Refresh** (`Cmd+R`) or the toolbar refresh button to reload structure from the database. Changes made through TablePro refresh automatically.

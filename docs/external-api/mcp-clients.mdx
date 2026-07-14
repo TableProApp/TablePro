@@ -5,7 +5,7 @@ description: Connect Claude Desktop, Claude Code, Cursor, VS Code, Cline, Contin
 
 # MCP Clients
 
-Any MCP client that supports the stdio transport and lets you point it at a command on disk can connect to TablePro. The pattern is the same across every client:
+Any MCP client that supports the stdio transport and can run a command on disk can connect to TablePro. The pattern is the same across every client:
 
 ```json
 {
@@ -17,57 +17,39 @@ Any MCP client that supports the stdio transport and lets you point it at a comm
 }
 ```
 
-The `tablepro-mcp` CLI ships inside the app bundle. It reads `~/Library/Application Support/TablePro/mcp-handshake.json` for the local port and a bridge token, then forwards stdio JSON-RPC to the running app's HTTP MCP server. If the handshake file is missing, the CLI fires `tablepro://integrations/start-mcp` to lazy-start the server and waits up to 10 seconds for the handshake to appear. The TablePro app must be running; you can keep it minimized.
+The `tablepro-mcp` CLI ships inside the app bundle. It reads `~/Library/Application Support/TablePro/mcp-handshake.json` for the local port and a bridge token, then forwards stdio JSON-RPC to the app's HTTP MCP server. If the handshake file is missing or points at a dead process, the bridge launches TablePro itself (`open -g tablepro://integrations/start-mcp`) and polls up to 10 seconds for a fresh handshake. You do not need to start TablePro first.
 
-You do not pass a token in the client config. The bridge reuses the in-app handshake, so the token issued during pairing stays inside TablePro. The Raycast extension or any `tablepro://integrations/pair?...` link triggers the one-time pairing flow that puts a token on disk; clients launched via stdio inherit that trust automatically.
+You never put a token in the client config. At every server start TablePro mints a full-access bridge token named `__stdio_bridge__` and writes it to the handshake file; the bridge picks it up from there. Pairing and manually created tokens apply only to HTTP clients.
 
-If TablePro is installed somewhere other than `/Applications` (for example, Setapp or a custom path), replace the `command` value with the absolute path to your bundle's `tablepro-mcp` binary.
+<Note>
+The bridge token is full access. To give an AI agent a narrower scope or a connection allowlist, use the [HTTP transport](#http-transport) with a token you mint yourself.
+</Note>
 
-## Claude Desktop
+If TablePro is installed outside `/Applications` (Setapp, custom path), replace the `command` value with the absolute path to your bundle's `tablepro-mcp` binary.
 
-Edit `~/Library/Application Support/Claude/claude_desktop_config.json`:
+## Clients using the standard shape
 
-```json
-{
-  "mcpServers": {
-    "tablepro": {
-      "command": "/Applications/TablePro.app/Contents/MacOS/tablepro-mcp"
-    }
-  }
-}
-```
+These clients take the exact JSON above; only the config file differs.
 
-Restart Claude Desktop. Open a new chat, click the connectors icon below the input, and confirm `tablepro` is listed with its tools enabled.
+| Client | Config file | How to open it |
+|--------|-------------|----------------|
+| Claude Desktop | `~/Library/Application Support/Claude/claude_desktop_config.json` | **Settings > Developer > Edit Config**, then restart Claude Desktop |
+| Cursor | `~/.cursor/mcp.json` (global) or `.cursor/mcp.json` (project) | **Settings > MCP > + Add new global MCP server**, then restart Cursor |
+| Cline | `cline_mcp_settings.json` | Cline panel > MCP Servers icon > **Configure MCP Servers** |
+| Windsurf | `~/.codeium/windsurf/mcp_config.json` | MCP icon in the Cascade panel > **Configure**, then restart Cascade |
+| Antigravity | `~/.gemini/antigravity/mcp_config.json` | Chat panel `...` menu > **MCP Servers > Manage MCP Servers > View raw config**, then **Refresh** |
 
 ## Claude Code
-
-Use the `claude mcp add` CLI:
 
 ```bash
 claude mcp add tablepro -- /Applications/TablePro.app/Contents/MacOS/tablepro-mcp
 ```
 
-The double dash separates Claude Code's flags from the command it runs. stdio is the default transport, so no `--transport` flag is needed. Verify with `claude mcp list`.
-
-## Cursor
-
-Edit `~/.cursor/mcp.json` for global access, or `.cursor/mcp.json` in the project root for per-project access:
-
-```json
-{
-  "mcpServers": {
-    "tablepro": {
-      "command": "/Applications/TablePro.app/Contents/MacOS/tablepro-mcp"
-    }
-  }
-}
-```
-
-Restart Cursor. The TablePro tools appear under `@mcp` in chat.
+The double dash separates Claude Code's flags from the command it runs. stdio is the default transport. Verify with `claude mcp list`.
 
 ## VS Code
 
-VS Code has native MCP support (1.99+). Open the Command Palette and run **MCP: Open User Configuration** to edit the user-level `mcp.json`, or create `.vscode/mcp.json` in your workspace for project-scoped access. Note: the top-level key is `servers`, not `mcpServers`:
+VS Code has native MCP support (1.99+). Run **MCP: Open User Configuration** from the Command Palette, or create `.vscode/mcp.json` in the workspace. The top-level key is `servers`, not `mcpServers`:
 
 ```json
 {
@@ -80,29 +62,11 @@ VS Code has native MCP support (1.99+). Open the Command Palette and run **MCP: 
 }
 ```
 
-Save the file. Open Copilot Chat in agent mode and confirm the TablePro tools appear in the tools picker.
-
-## Cline
-
-Cline is a VS Code extension. Open the Cline panel, click the MCP Servers icon in its top nav, and choose **Configure MCP Servers** to open `cline_mcp_settings.json`:
-
-```json
-{
-  "mcpServers": {
-    "tablepro": {
-      "command": "/Applications/TablePro.app/Contents/MacOS/tablepro-mcp",
-      "disabled": false,
-      "alwaysAllow": []
-    }
-  }
-}
-```
-
-Reload the Cline panel. The server status indicator should turn green.
+Open Copilot Chat in agent mode and confirm the TablePro tools appear in the tools picker.
 
 ## Continue
 
-Continue (`continue.dev`) reads MCP configs from `.continue/mcpServers/` in your workspace. Create `.continue/mcpServers/tablepro.yaml`:
+Continue reads MCP configs from `.continue/mcpServers/` in your workspace. Create `.continue/mcpServers/tablepro.yaml`:
 
 ```yaml
 mcpServers:
@@ -111,26 +75,11 @@ mcpServers:
     command: /Applications/TablePro.app/Contents/MacOS/tablepro-mcp
 ```
 
-If you prefer JSON, drop the same shape into `.continue/mcpServers/tablepro.json` using the standard `mcpServers` object form. Reload Continue's config from the gear menu.
+Reload Continue's config from the gear menu.
 
 ## Zed
 
-Two paths, pick one.
-
-**Add Custom Server (Agent Panel UI).** Open the Agent Panel, click the menu in its header, choose **Settings**, then under **MCP Servers** click **+ Add Custom Server** and select the **Local** tab. Paste:
-
-```json
-{
-  "tablepro": {
-    "command": "/Applications/TablePro.app/Contents/MacOS/tablepro-mcp",
-    "args": []
-  }
-}
-```
-
-Click **Add Server**. The dialog's Local schema requires `args` even though Zed's documented schema treats it as optional, so include the empty array.
-
-**Edit settings.json directly.** Open `~/.config/zed/settings.json` (or **Zed > Settings**) and add the entry under `context_servers` (Zed's key for MCP servers, not `mcpServers`):
+Zed keys MCP servers under `context_servers` (not `mcpServers`) in `~/.config/zed/settings.json`:
 
 ```json
 {
@@ -142,74 +91,39 @@ Click **Add Server**. The dialog's Local schema requires `args` even though Zed'
 }
 ```
 
-Here `args` and `env` are optional. Reload the Agent Panel; the TablePro entry should show a green status dot.
-
-## Windsurf
-
-Edit `~/.codeium/windsurf/mcp_config.json`. From inside Windsurf, click the MCP icon in the Cascade panel and choose **Configure** to open this file:
-
-```json
-{
-  "mcpServers": {
-    "tablepro": {
-      "command": "/Applications/TablePro.app/Contents/MacOS/tablepro-mcp"
-    }
-  }
-}
-```
-
-Restart the Cascade panel. TablePro's tools appear in the tool picker.
-
-## Antigravity
-
-Antigravity is Google's agentic IDE. Open a chat, click the `...` menu in the top-right of the chat panel, choose **MCP Servers > Manage MCP Servers**, then click **View raw config**. That opens `~/.gemini/antigravity/mcp_config.json`:
-
-```json
-{
-  "mcpServers": {
-    "tablepro": {
-      "command": "/Applications/TablePro.app/Contents/MacOS/tablepro-mcp"
-    }
-  }
-}
-```
-
-Save the file, return to **Manage MCP Servers**, and click **Refresh**. The TablePro entry should turn green with its tools listed.
+Or use the Agent Panel: header menu > **Settings** > **MCP Servers** > **+ Add Custom Server** > **Local** tab. That dialog requires an `"args": []` field even though the settings-file form treats it as optional.
 
 ## Goose
 
-Goose is the Block CLI agent (now hosted at the Agentic AI Foundation). Run `goose configure`, choose **Add Extension > Command-line Extension**, and enter:
-
-- **Name**: `tablepro`
-- **Command**: `/Applications/TablePro.app/Contents/MacOS/tablepro-mcp`
-- **Timeout**: `300`
-
-The wizard writes the entry to `~/.config/goose/config.yaml`. To edit by hand, add an entry under `extensions`:
+Run `goose configure`, choose **Add Extension > Command-line Extension**, name it `tablepro`, and enter the binary path as the command. Or add to `~/.config/goose/config.yaml` by hand:
 
 ```yaml
 extensions:
   tablepro:
     type: stdio
     cmd: /Applications/TablePro.app/Contents/MacOS/tablepro-mcp
-    args: []
     enabled: true
     timeout: 300
 ```
 
 Run `goose session` and ask for the tool list to confirm.
 
+## Setup snippets in TablePro
+
+Click **Connect a Client…** in **Settings > Integrations**. The sheet covers Claude Desktop, Claude Code, Cursor, and Zed, with numbered steps and copyable snippets that already contain the correct binary path for your install.
+
 ## Generic or custom client
 
-If you are building a client against the [MCP specification](https://modelcontextprotocol.io), TablePro speaks two transports:
+If you are building against the [MCP specification](https://modelcontextprotocol.io), TablePro speaks two transports:
 
-- **stdio**: spawn `/Applications/TablePro.app/Contents/MacOS/tablepro-mcp` with no arguments. The CLI handles the handshake and forwards JSON-RPC over its stdin and stdout. No token, no environment variables.
-- **HTTP**: connect to `http://127.0.0.1:<port>/mcp` using the port from `~/Library/Application Support/TablePro/mcp-handshake.json` and a bearer token issued via [Pairing](/external-api/pairing). See [Tokens](/external-api/tokens) for scope rules.
+- **stdio**: spawn the `tablepro-mcp` binary with no arguments. It handles the handshake and forwards JSON-RPC over stdin and stdout. No token, no environment variables, full access.
+- **HTTP**: `http://127.0.0.1:<port>/mcp` with the port from the handshake file and a bearer token from [Pairing](/external-api/pairing) or the Settings UI. See [Tokens](/external-api/tokens) for scope rules.
 
-For most desktop clients, stdio is the right default. Use HTTP when the client lives on a different machine, when you need a tighter token scope than the bridge token, or when the client cannot spawn a local process. See [MCP Server](/features/mcp#remote-access) for remote setup.
+Use HTTP when the client runs on another machine, cannot spawn a local process, or needs a tighter scope than the bridge token. See [MCP Server](/features/mcp#remote-access) for remote setup.
 
 ## HTTP transport
 
-If your client cannot use stdio, mint a token in **Settings > Integrations > Authentication** and configure HTTP directly. The shape varies by client; here is the Cursor form:
+Mint a token in **Settings > Integrations > Authentication** and point the client at the server directly. Cursor's form:
 
 ```json
 {
@@ -224,41 +138,35 @@ If your client cannot use stdio, mint a token in **Settings > Integrations > Aut
 }
 ```
 
-Replace `23508` with the port shown in **Settings > Integrations > MCP Configuration**. Other clients use the same `url` plus `headers` shape, sometimes under `type: streamable-http`. Check the client's docs.
-
-## Setup snippets in TablePro
-
-Open **Settings > Integrations > MCP Setup** and pick a client. TablePro shows the exact JSON or shell command to paste into the client's config, with the correct paths for your install.
+Replace `23508` with the port shown in **Settings > Integrations**. Other clients use the same `url` plus `headers` shape, sometimes under `type: streamable-http`. Check the client's docs.
 
 ## What the AI sees
 
-AI clients see the full [tool catalog](/external-api/mcp-tools). For an unfamiliar schema, the AI is expected to call `describe_table` before generating SQL. For mutating SQL, the AI must request user confirmation through the host's tool-confirmation mechanism. Hosts like Cursor, Claude Desktop, Claude Code, Cline, and Windsurf each surface this with their own UI.
-
-The connection's `externalAccess` setting and the token scope still apply. A read-only connection rejects writes regardless of what the AI tries.
+AI clients see the full [tool catalog](/external-api/mcp-tools). For an unfamiliar schema the AI is expected to call `describe_table` before generating SQL, and mutating SQL goes through the host's tool-confirmation UI. The connection's `externalAccess` setting and the token scope still apply: a read-only connection rejects writes regardless of what the AI tries.
 
 ## Verify the connection
 
-After configuring a client, the fastest check is to ask it to list TablePro tools or call `list_connections`. Success looks like:
+Ask the client to list TablePro tools or call `list_connections`. Success looks like:
 
 - The client lists tools such as `list_connections`, `list_tables`, `describe_table`, and `execute_query`.
-- A `list_connections` call returns the connections you have saved in TablePro (id, name, type).
+- A `list_connections` call returns the connections you have saved in TablePro.
 
-If the call fails, the response code tells you which layer rejected it:
+If the call fails, the response tells you which layer rejected it:
 
-- **stdio process exits immediately**: TablePro is not running, or you are on a build older than 0.37. Open TablePro and re-launch the client.
-- **`401 Unauthorized`** (`WWW-Authenticate: Bearer ...`): the bridge token is stale. Quit and reopen TablePro to regenerate the handshake.
-- **`403 Forbidden`**: the connection's `externalAccess` is `blocked` or `readOnly`, or the token's allowlist excludes it. Open the connection editor in TablePro and adjust under **External Access**.
-- **`404 Session not found`** (JSON-RPC code `-32001`): the session expired (idle timeout is 15 minutes) or the server restarted. Per the MCP spec, drop the cached `Mcp-Session-Id` and start a new `initialize` handshake. Compliant clients (Claude Desktop 0.7+, Cursor, Cline) do this automatically.
-- **`429 Too Many Requests`**: 5 failed auth attempts within 60 seconds against the same `(client_address, principal)` pair triggered a 5-minute lockout. Wait it out or restart TablePro to clear the bucket.
+- **stdio process exits immediately**: the bridge could not launch TablePro or got no handshake within 10 seconds. Open TablePro manually and check that **Settings > Integrations** shows the server running.
+- **`401 Unauthorized`**: the bridge token is stale. Quit and reopen TablePro to regenerate the handshake.
+- **`403 Forbidden`**: the connection's `externalAccess` is `blocked` or `readOnly`, or the token's allowlist excludes it. Adjust **External Access** in TablePro's connection editor.
+- **`404 Session not found`** (JSON-RPC code `-32001`): the session hit the 15-minute idle timeout or the server restarted. Drop the cached `Mcp-Session-Id` and start a new `initialize` handshake; most clients do this automatically.
+- **`429 Too Many Requests`**: 5 failed auth attempts within 60 seconds against the same `(client_address, principal)` pair triggered a 5-minute lockout. Wait it out or restart TablePro.
 
 ## Troubleshooting
 
-**Handshake timeout.** TablePro launched but did not respond to `tablepro://integrations/start-mcp` within 10 seconds. Open **Settings > Integrations** and toggle **Enable MCP Server** off and on, then re-launch the client.
+**Handshake timeout.** TablePro launched but did not respond to `tablepro://integrations/start-mcp` within 10 seconds. Open **Settings > Integrations**, toggle **Enable MCP Server** off and on, then re-launch the client.
 
-**Stale handshake file.** Delete `~/Library/Application Support/TablePro/mcp-handshake.json` and reopen TablePro. The app rewrites the file on launch.
+**Stale handshake file.** The bridge detects a handshake from a dead process and relaunches TablePro on its own. If connections still fail, delete `~/Library/Application Support/TablePro/mcp-handshake.json` and reopen TablePro; the app rewrites it.
 
-**Setapp or non-default install path.** Replace `/Applications/TablePro.app` in the `command` with the absolute path to your install. For Setapp the bundle lives under `~/Applications/Setapp/TablePro.app`.
+**Setapp or non-default install path.** Replace `/Applications/TablePro.app` in the `command` with your install path. For Setapp the bundle lives under `~/Applications/Setapp/TablePro.app`.
 
-**Port conflict.** TablePro picks a different free port from the `51000-52000` range on next launch and rewrites the handshake file. The stdio bridge re-reads it automatically.
+**Port conflict.** If the configured port (default 23508) is taken, TablePro falls back to a free port in the 51000-52000 range and rewrites the handshake file. The stdio bridge re-reads it automatically.
 
-**Tool calls return `403 Connection is read-only for external clients`.** The connection's external access is `readOnly` and the SQL is a write. Either change external access in TablePro, or run the query in TablePro's editor.
+**Tool calls return `403 Connection is read-only for external clients`.** The connection's external access is `readOnly` and the SQL is a write. Change external access in TablePro, or run the query in TablePro's editor.

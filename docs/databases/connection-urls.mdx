@@ -21,10 +21,13 @@ TablePro parses standard database connection URLs for importing connections, ope
 | `redis://` | Redis |
 | `rediss://` | Redis with TLS |
 | `redshift://` | Amazon Redshift |
+| `cockroachdb://` | CockroachDB |
+| `cockroach://` | CockroachDB (alias) |
 | `mssql://` | Microsoft SQL Server |
 | `sqlserver://` | Microsoft SQL Server (alias) |
+| `jdbc:sqlserver://` | Microsoft SQL Server (JDBC) |
 | `oracle://` | Oracle Database |
-| `jdbc:oracle:thin:@//` | Oracle Database (JDBC thin) |
+| `jdbc:oracle:thin://` | Oracle Database (JDBC thin) |
 | `cassandra://` | Cassandra |
 | `cql://` | Cassandra (alias) |
 | `scylladb://` | ScyllaDB |
@@ -36,6 +39,7 @@ TablePro parses standard database connection URLs for importing connections, ope
 | `etcds://` | etcd with TLS |
 | `d1://` | Cloudflare D1 |
 | `libsql://` | libSQL / Turso |
+| `surrealdb://` | SurrealDB |
 
 Append `+ssh` to any scheme (except SQLite) to use an SSH tunnel:
 
@@ -85,18 +89,20 @@ If `db_host` is omitted, it defaults to `127.0.0.1`.
 
 ## Query Parameters
 
-### Connection Identity
+### Connection
 
 | Parameter | Description | Example |
 |-----------|-------------|---------|
 | `name` | Override the connection name shown in the sidebar | `?name=Production+DB` |
+| `safeModeLevel` | Set [Safe Mode](/features/safe-mode) for the connection: 0=silent, 1=alert, 2=read-only | `?safeModeLevel=2` |
 
 ### SSL / TLS
 
 | Parameter | Values | Description |
 |-----------|--------|-------------|
 | `sslmode` | `disable`, `prefer`, `require`, `verify-ca`, `verify-full` | SSL mode (standard PostgreSQL names) |
-| `tlsmode` | `0`--`4` | SSL mode as integer: 0=disable, 1=prefer, 2=require, 3=verify-ca, 4=verify-full |
+| `tlsmode` | `0`-`4` | SSL mode as integer: 0=disable, 1=prefer, 2=require, 3=verify-ca, 4=verify-full |
+| `tls` / `ssl` | `true` | Sets SSL mode to Required |
 
 **Example:**
 
@@ -113,7 +119,9 @@ These parameters open a specific table, view, or schema immediately after connec
 |-----------|-------------|---------|
 | `table` | Open the named table | `?table=users` |
 | `view` | Open the named view | `?view=active_orders` |
-| `schema` | Switch to this schema before opening (PostgreSQL/Redshift only) | `?schema=reporting` |
+| `schema` | Switch to this schema before opening | `?schema=reporting` |
+
+On databases that support schema switching (PostgreSQL, Redshift, SQL Server, Oracle), `schema` switches the schema. On databases that don't, the value is treated as a database name and switches the database instead.
 
 **Example:**
 
@@ -132,7 +140,7 @@ Apply a filter to the opened table automatically.
 | `value` | Filter value | `?value=active` |
 | `condition` | Raw SQL WHERE condition (overrides column/operation/value) | `?condition=status%3D'active'+AND+role%3D'admin'` |
 
-`raw` and `query` are accepted as aliases for `condition`.
+`operator` is accepted as an alias for `operation`. `raw` and `query` are accepted as aliases for `condition`.
 
 **Example:**
 
@@ -146,7 +154,7 @@ postgresql://user:pass@host/mydb?table=orders&condition=total%3E1000
 | Parameter | Description | Example |
 |-----------|-------------|---------|
 | `statusColor` | Assign a color to the connection (hex, matched to nearest palette color) | `?statusColor=FF3B30` |
-| `env` | Assign an existing tag by name | `?env=production` |
+| `env` | Assign an existing tag by name (`environment` also accepted) | `?env=production` |
 
 **Example:**
 
@@ -162,15 +170,18 @@ postgresql://user:pass@host/db?statusColor=FF3B30&env=production
 | `authMechanism` | Authentication mechanism (e.g. `SCRAM-SHA-256`) |
 | `replicaSet` | Replica set name |
 
+Any other query parameter on a MongoDB URL passes through to the driver unchanged. Multi-host URIs with comma-separated hosts are supported.
+
 **Example:**
 
 ```
 mongodb://user:pass@host:27017/mydb?authSource=admin
+mongodb://user:pass@host1:27017,host2:27017,host3:27017/mydb?replicaSet=rs0
 ```
 
 ### Redis
 
-The path component sets the database index (0--15). The `rediss://` scheme automatically enables TLS.
+The path component sets the database index (0-15). The `rediss://` scheme automatically enables TLS.
 
 ```
 redis://:password@host:6379/2       # database index 2
@@ -246,15 +257,30 @@ postgresql+ssh://ubuntu@bastion/dbuser@10.0.0.5/mydb?usePrivateKey=true
 
 ## Opening URLs from Browser or Terminal
 
-Launch and connect from browser/terminal:
+Launch and connect from a browser or terminal:
+
 ```bash
 open "postgresql://user:pass@localhost:5432/mydb"
 open "mysql://root@localhost/shop?table=products"
-open "postgresql+ssh://ubuntu@bastion/user:pass@10.0.0.5/mydb?usePrivateKey=true"
 ```
 
 Uses a saved connection if it matches, otherwise creates a temporary session. To save permanently, click **New Connection** on the welcome screen and pick **Import from URL...** in the chooser footer.
 
+<Frame caption="The Import from URL sheet accepts every scheme in this reference">
+  <img className="block dark:hidden" src="/images/import-from-url.png" alt="Import from URL sheet with a pasted connection URL" />
+  <img className="hidden dark:block" src="/images/import-from-url-dark.png" alt="Import from URL sheet with a pasted connection URL" />
+</Frame>
+
+`+ssh` schemes are not registered with macOS, so `open` and browser links cannot route them to TablePro. Use the **Import from URL...** sheet for SSH tunnel URLs.
+
 <Tip>
 To force TablePro when another client also handles the scheme, use `open -b com.TablePro "mysql://..."`. See [Terminal and DDEV](/external-api/terminal) for the `tablepro` command and a `ddev tablepro` host command.
 </Tip>
+
+## Confirmation and Trusted Links
+
+Every URL opened from outside the app shows a confirmation alert with the database type, host, user, and database before TablePro connects. Connect only if you trust the source of the link.
+
+For connections to this machine (`localhost`, `127.x.x.x`, `::1`) the alert also offers **Always Allow**. A trusted link is matched by database type, host, database, username, and the URL's `name` parameter, never the port. Only loopback hosts can be trusted; remote hosts always prompt.
+
+Review trusted links under **Settings > General > Trusted Links**, where you can forget them one at a time or all at once.

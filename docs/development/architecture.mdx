@@ -1,6 +1,6 @@
 ---
 title: Architecture
-description: App structure, plugin system, data flow, and key components
+description: How the app, plugin system, and core services fit together
 ---
 
 # Architecture
@@ -10,14 +10,14 @@ TablePro is built with:
 - **SwiftUI** for the UI layer
 - **AppKit** for low-level macOS integration (windows, menus, native tabs)
 - **Swift Concurrency** (async/await, actors) for all async work
-- **Native C libraries** for database connectivity (linked as static `.a` files)
+- **Native C libraries** for database connectivity, linked as static `.a` files
 
 ## Design Patterns
 
 ### MVVM
 
 - **Models**: structs (value types, Codable)
-- **ViewModels**: `@Observable` classes (Swift 5.9+)
+- **ViewModels**: `@Observable` classes
 - **Views**: SwiftUI, with AppKit bridging where needed
 
 ### Protocol-Oriented Drivers
@@ -34,7 +34,7 @@ protocol DatabaseDriver: AnyObject {
 }
 ```
 
-No switch statements on database type. No hardcoded driver list. Plugins register themselves, and the factory resolves them by `DatabaseType.pluginTypeId`.
+No switch statements on database type. No hardcoded driver list. Plugins register themselves, and the factory resolves them by `DatabaseType.pluginTypeId`. `DatabaseType` is a string-based struct, not an enum, so unknown types from future plugins stay valid.
 
 ### Actor Isolation
 
@@ -49,21 +49,15 @@ actor SSHTunnelManager {
 
 ## Dependencies
 
-| Package | Purpose |
-|---------|---------|
-| CodeEditSourceEditor | Tree-sitter SQL editor |
-| Sparkle (2.8.1) | Auto-update with EdDSA signing |
-| OracleNIO | Oracle driver (SPM, used by OracleDriverPlugin) |
-
-<Note>
-CodeEditSourceEditor bundles a SwiftLint plugin, which is why `-skipPackagePluginValidation` is required for CLI builds.
-</Note>
+| Package | Source | Purpose |
+|---------|--------|---------|
+| CodeEditSourceEditor | Vendored in `LocalPackages/` (with CodeEditTextView, CodeEditLanguages) | Tree-sitter code editor |
+| Sparkle | SPM, 2.9.0 | Auto-update with EdDSA signing |
+| OracleNIO | SPM, TablePro fork pinned by revision | Oracle wire protocol for OracleDriverPlugin |
 
 ## Plugin System
 
 All database drivers are `.tableplugin` bundles loaded at runtime. This keeps the app binary small and makes adding new databases a matter of dropping in a bundle.
-
-**Key files:**
 
 | Component | Location | Role |
 |-----------|----------|------|
@@ -74,42 +68,52 @@ All database drivers are `.tableplugin` bundles loaded at runtime. This keeps th
 
 ### Driver Plugins
 
-| Plugin | Database Types | C Bridge | Distribution |
-|--------|---------------|----------|--------------|
-| MySQLDriverPlugin | MySQL, MariaDB | CMariaDB (libmariadb) | Built-in |
-| PostgreSQLDriverPlugin | PostgreSQL, Redshift, CockroachDB | CLibPQ (libpq) | Built-in |
-| SQLiteDriverPlugin | SQLite | Foundation sqlite3 | Built-in |
-| ClickHouseDriverPlugin | ClickHouse | URLSession HTTP | Built-in |
-| MSSQLDriverPlugin | SQL Server | CFreeTDS | Built-in |
-| RedisDriverPlugin | Redis | CRedis | Built-in |
-| MongoDBDriverPlugin | MongoDB | CLibMongoc | Registry |
-| DuckDBDriverPlugin | DuckDB | CDuckDB | Registry |
-| OracleDriverPlugin | Oracle | OracleNIO (SPM) | Registry |
-| CassandraDriverPlugin | Cassandra, ScyllaDB | CCassandra | Registry |
-| EtcdDriverPlugin | Etcd | gRPC/HTTP | Registry |
-| CloudflareD1Plugin | Cloudflare D1 | URLSession HTTP | Registry |
-| DynamoDBDriverPlugin | DynamoDB | AWS SDK | Registry |
-| BigQueryDriverPlugin | BigQuery | URLSession REST | Registry |
+Five driver plugins ship inside the app bundle:
 
-Built-in plugins ship inside the app bundle. Registry plugins are downloaded on demand from the [plugin registry](/development/plugin-registry).
+| Plugin | Database types | Connectivity |
+|--------|---------------|--------------|
+| MySQLDriverPlugin | MySQL, MariaDB | CMariaDB (libmariadb) |
+| PostgreSQLDriverPlugin | PostgreSQL, Redshift, CockroachDB | CLibPQ (libpq) |
+| SQLiteDriverPlugin | SQLite | System sqlite3 |
+| ClickHouseDriverPlugin | ClickHouse | HTTP (URLSession) |
+| RedisDriverPlugin | Redis | CRedis |
+
+The app bundle also carries non-driver plugins: CSVInspectorPlugin, export plugins (CSV, JSON, SQL, XLSX, MQL), and import plugins (CSV, JSON, SQL).
+
+The remaining 14 driver plugins are downloaded on demand from the [plugin registry](/development/plugin-registry):
+
+| Plugin | Database types | Connectivity |
+|--------|---------------|--------------|
+| MongoDBDriverPlugin | MongoDB | CLibMongoc |
+| OracleDriverPlugin | Oracle | OracleNIO (SPM fork) |
+| DuckDBDriverPlugin | DuckDB | CDuckDB |
+| MSSQLDriverPlugin | SQL Server | CFreeTDS |
+| CassandraDriverPlugin | Cassandra, ScyllaDB | CCassandra |
+| EtcdDriverPlugin | Etcd | HTTP (gRPC-gateway JSON) |
+| CloudflareD1DriverPlugin | Cloudflare D1 | HTTP (URLSession) |
+| DynamoDBDriverPlugin | DynamoDB | HTTP with hand-rolled SigV4 request signing |
+| BigQueryDriverPlugin | BigQuery | REST (URLSession) |
+| SnowflakeDriverPlugin | Snowflake | REST (URLSession) |
+| LibSQLDriverPlugin | LibSQL, Turso | Hrana over HTTP, plus a local SQLite backend |
+| ElasticsearchDriverPlugin | Elasticsearch | REST (URLSession) |
+| SurrealDBDriverPlugin | SurrealDB | HTTP RPC with CBOR encoding |
+| BeancountDriverPlugin | Beancount | Ledger file parsing, optional Python projection |
+
+### PluginKit ABI
+
+TableProPluginKit builds with Swift Library Evolution (`BUILD_LIBRARY_FOR_DISTRIBUTION = YES`), so its public ABI is resilient. Plugins built against an older PluginKit keep loading under a newer app: the runtime fills unimplemented protocol requirements from their defaults.
+
+Additive changes (a new requirement with a default implementation, a new field added through a new initializer overload) need no version bump. Breaking changes bump `currentPluginKitVersion` (18 as of 0.57.0) in `PluginManager.swift`, and the loader then rejects mismatched plugins cleanly. Run `scripts/check-pluginkit-abi.sh` before merging any change under `Plugins/TableProPluginKit/`. See [Plugin Development](/development/plugin-development) for the full rules.
 
 ### Opt-in Plugin Protocols
 
-Plugins can adopt additional protocols beyond `PluginDatabaseDriver` to expose extra capabilities. These are runtime-cast (`as?`) by `PluginManager`, so existing plugins that do not conform keep working without an ABI bump.
+Plugins can adopt protocols beyond `PluginDatabaseDriver` to expose extra capabilities. These are runtime-cast (`as?`), so plugins that do not conform keep working without an ABI bump.
 
-| Protocol | Purpose | Lookup |
-|----------|---------|--------|
-| `PluginDiagnosticProvider` | Provide a user-facing diagnostic for driver errors | `PluginManager.diagnose(error:for:)` |
-| `PluginProcedureFunctionSupport` | Expose stored procedures and functions in the structure tab | `PluginDriverAdapter` |
-| `PluginDefaultSortProvider` | Override the app default-sort behavior for opened tables | `PluginManager.defaultSortHint(for:table:)` |
-
-A `PluginDefaultSortProvider` returns one of:
-
-- `.useAppDefault` (default if the plugin does not conform): apply the user setting (Primary key, First column, or No sorting).
-- `.suppress`: never auto-sort tables opened with this plugin (useful for NoSQL engines where ORDER BY is not meaningful).
-- `.forceColumns([String])`: ignore the user setting and sort by the supplied column names (for example MongoDB could force `_id`).
-
-The hint receives the table name, so plugins can vary the answer per table.
+| Protocol | Purpose |
+|----------|---------|
+| `PluginDiagnosticProvider` | Provide a user-facing diagnostic for driver errors |
+| `PluginProcedureFunctionSupport` | Expose stored procedures and functions in the structure tab |
+| `PluginDefaultSortProvider` | Override default-sort behavior per table: `.useAppDefault`, `.suppress`, or `.forceColumns([String])` |
 
 ## Key Components
 
@@ -120,6 +124,17 @@ Connection pool and lifecycle management. Primary interface between UI and drive
 ### ConnectionHealthMonitor
 
 Pings active connections every 30 seconds. Auto-reconnects with exponential backoff on failure.
+
+### Change Tracking
+
+1. A cell edit is recorded by `DataChangeManager` as a pending change
+2. Save runs `SQLStatementGenerator`, which turns pending changes into INSERT, UPDATE, and DELETE statements
+3. Undo/redo goes through the window's `UndoManager`, registered by `DataChangeManager`
+4. `AnyChangeManager` wraps the concrete manager behind the `ChangeManaging` protocol
+
+### MainContentCoordinator
+
+The central coordinator for the main window. It is split across extension files in `Views/Main/Extensions/` (`MainContentCoordinator+Alerts`, `+Filtering`, `+Pagination`, and so on). New coordinator functionality goes in a new extension file, not the main file.
 
 ### Autocomplete Engine
 
@@ -136,35 +151,9 @@ flowchart LR
 - **SQLContextAnalyzer**: parses cursor position context (table ref, column ref, keyword)
 - **SQLSchemaProvider**: actor that caches and serves schema data
 
-### MCP Layer
+### MCP Server
 
-The MCP server lives under `Core/MCP/` and is split into five horizontal layers. Each layer talks only to the layer below it.
-
-```mermaid
-flowchart TD
-    Wire["Wire (Codable values)<br/>JsonRpcMessage, JsonRpcCodec, HttpRequestParser, SseDecoder"]
-    Transport["Transport (NWListener, URLSession, FileHandle)<br/>MCPHttpServerTransport, MCPStdioMessageTransport, MCPStreamableHttpClientTransport"]
-    Session["Session / Auth / RateLimit (actors)<br/>MCPSessionStore, MCPBearerTokenAuthenticator, MCPRateLimiter"]
-    Protocol["Protocol (dispatcher + handlers)<br/>MCPProtocolDispatcher, 19 tools, MCPProgressEmitter"]
-    Bridge["Bridge (tablepro-mcp CLI)<br/>BridgeProxy: stdio &lt;-&gt; HTTP"]
-
-    Bridge --> Wire
-    Transport --> Wire
-    Session --> Transport
-    Protocol --> Session
-```
-
-**Wire**: pure Codable types, no I/O. JSON-RPC 2.0, strict-CRLF HTTP, SSE encoder/decoder.
-
-**Transport**: HTTP server uses `NWListener` and binds to `127.0.0.1:<port>` by default. The stream endpoints (`exchanges`, `listenerState`) are bounded `AsyncStream`s consumed by `MCPServerManager`. The bridge's client-side transport uses `URLSession.bytes(for:)` for incremental SSE.
-
-**Session**: `MCPSessionStore` is an actor that owns session lifecycle. Idle timeout is 15 minutes. Token revocation marks sessions with `.tokenRevoked` and the SSE stream emits a typed terminate comment so clients can distinguish revoke from network blip.
-
-**Protocol**: `MCPProtocolDispatcher` spawns a child `Task` per inbound exchange, so two concurrent tool calls run in parallel instead of queueing on the dispatcher actor. Per-request cancellation flows through `MCPInflightRegistry`. Long-running tools emit `notifications/progress` to clients that pass `_meta.progressToken`.
-
-**Bridge**: `tablepro-mcp` is a 50-line composition root. `MCPStdioMessageTransport` host-side, `MCPStreamableHttpClientTransport` upstream. Errors land in os_log and stderr. The host-facing transport writes only validated `JsonRpcMessage` bytes to stdout.
-
-The server accepts protocol versions `2025-03-26`, `2025-06-18`, and `2025-11-25`. See [Versioning](/external-api/versioning) for the negotiation rules and the additive-within-major-version stability policy.
+The MCP server lives under `Core/MCP/`, layered from wire types up: Codable JSON-RPC 2.0 and SSE types, transports (an `NWListener` HTTP server bound to `127.0.0.1` plus a stdio bridge for the `tablepro-mcp` CLI), actor-based session, auth, and rate-limit stores, and a protocol dispatcher that runs each inbound request in its own task. Sessions expire after 15 minutes idle. The dispatcher serves 19 tools and accepts protocol versions `2025-03-26`, `2025-06-18`, and `2025-11-25`. See the [tool catalog](/external-api/mcp-tools) and [Versioning](/external-api/versioning).
 
 ## Data Flow
 
@@ -202,73 +191,4 @@ flowchart TD
 | SQLite FTS5 | Query history (full-text search) | QueryHistoryStorage |
 | JSON files | Tab state persistence | TabStateStorage |
 
-## Directory Structure
-
-<Tree>
-  <Tree.Folder name="TablePro" defaultOpen>
-    <Tree.Folder name="Core" defaultOpen>
-      <Tree.Folder name="Database">
-        <Tree.File name="DatabaseDriver.swift" />
-        <Tree.File name="DatabaseManager.swift" />
-      </Tree.Folder>
-      <Tree.Folder name="Plugins">
-        <Tree.File name="PluginManager.swift" />
-        <Tree.File name="PluginDriverAdapter.swift" />
-      </Tree.Folder>
-      <Tree.Folder name="Services">
-        <Tree.Folder name="Export" />
-        <Tree.Folder name="Formatting" />
-        <Tree.Folder name="Infrastructure" />
-        <Tree.Folder name="Licensing" />
-        <Tree.Folder name="Query" />
-      </Tree.Folder>
-      <Tree.Folder name="Utilities">
-        <Tree.Folder name="Connection" />
-        <Tree.Folder name="SQL" />
-        <Tree.Folder name="File" />
-        <Tree.Folder name="UI" />
-      </Tree.Folder>
-      <Tree.Folder name="Autocomplete" />
-      <Tree.Folder name="SSH" />
-      <Tree.Folder name="QuerySupport">
-        <Tree.Folder name="MongoDB" />
-        <Tree.Folder name="Redis" />
-      </Tree.Folder>
-    </Tree.Folder>
-    <Tree.Folder name="Views">
-      <Tree.Folder name="Connection" />
-      <Tree.Folder name="Editor" />
-      <Tree.Folder name="Main" />
-      <Tree.Folder name="Results" />
-      <Tree.Folder name="Settings" />
-      <Tree.Folder name="Sidebar" />
-    </Tree.Folder>
-    <Tree.Folder name="Models">
-      <Tree.Folder name="AI" />
-      <Tree.Folder name="Connection" />
-      <Tree.Folder name="Database" />
-      <Tree.Folder name="Export" />
-      <Tree.Folder name="Query" />
-      <Tree.Folder name="Settings" />
-      <Tree.Folder name="UI" />
-      <Tree.Folder name="Schema" />
-    </Tree.Folder>
-    <Tree.Folder name="ViewModels" />
-    <Tree.Folder name="Extensions" />
-    <Tree.Folder name="Theme" />
-    <Tree.Folder name="Resources" />
-  </Tree.Folder>
-  <Tree.Folder name="Plugins" defaultOpen>
-    <Tree.Folder name="TableProPluginKit" />
-    <Tree.Folder name="MySQLDriverPlugin" />
-    <Tree.Folder name="PostgreSQLDriverPlugin" />
-    <Tree.Folder name="SQLiteDriverPlugin" />
-    <Tree.Folder name="ClickHouseDriverPlugin" />
-    <Tree.Folder name="MSSQLDriverPlugin" />
-    <Tree.Folder name="RedisDriverPlugin" />
-    <Tree.File name="..." />
-  </Tree.Folder>
-  <Tree.Folder name="Libs" />
-  <Tree.Folder name="TableProTests" />
-  <Tree.Folder name="scripts" />
-</Tree>
+For the repository layout, see [Project Structure](/development/setup#project-structure).

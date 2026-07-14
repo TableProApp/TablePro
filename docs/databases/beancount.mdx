@@ -7,7 +7,7 @@ description: Open Beancount ledgers with TablePro
 
 TablePro opens `.beancount` ledgers as read-only, file-based connections. If the Beancount plugin is not installed yet, TablePro prompts you to download it before opening the ledger. The driver projects transactions, postings, accounts, prices, computed balances, balance assertions, and source files into SQL tables for browsing and exports.
 
-The plugin uses either `rledger` or Python Beancount to parse ledgers. Install one of those backends separately. When both are available, TablePro uses `rledger`; Python Beancount is used as a fallback for browsing projected SQL tables.
+The plugin uses either `rledger` (the rustledger project) or Python Beancount to parse ledgers. Install one of those backends separately. When both are available, TablePro uses `rledger`; Python Beancount is used as a fallback for browsing projected SQL tables.
 
 The plugin also supports BQL queries through `rledger`. BQL requires the `rledger` executable even when the ledger was opened through Python Beancount.
 
@@ -49,7 +49,7 @@ launchctl setenv TABLEPRO_BEANCOUNT_BACKEND python
 
 <Steps>
   <Step title="Create a new connection">
-    Open TablePro and click **New Connection** or press <kbd>⌘N</kbd>.
+    Open TablePro and click **New Connection** or press **Cmd+N**.
   </Step>
   <Step title="Select Beancount">
     Choose **Beancount** from the database type list.
@@ -58,9 +58,14 @@ launchctl setenv TABLEPRO_BEANCOUNT_BACKEND python
     Click **Browse** and select a `.beancount` file.
   </Step>
   <Step title="Connect">
-    Click **Connect** to open the ledger.
+    Click **Save & Connect** to open the ledger.
   </Step>
 </Steps>
+
+<Frame caption="A Beancount ledger projected into SQL tables">
+  <img className="block dark:hidden" src="/images/beancount-ledger-tables.png" alt="Beancount ledger open in TablePro with projected tables in the sidebar" />
+  <img className="hidden dark:block" src="/images/beancount-ledger-tables-dark.png" alt="Beancount ledger open in TablePro with projected tables in the sidebar" />
+</Frame>
 
 ## Connection URL
 

@@ -1,60 +1,91 @@
 ---
 title: Settings
-description: All settings categories with their purpose and where to find each tab.
+description: Every settings tab, its controls, and their defaults.
 ---
 
 # Settings
 
-Open with `Cmd+,`. Settings are grouped into tabs.
+Open with `Cmd+,`. Settings are grouped into eight tabs.
 
 <CardGroup cols={2}>
-  <Card title="General" icon="gear" href="/customization/settings#general">Language, updates, query timeout, restore session.</Card>
-  <Card title="Appearance" icon="palette" href="/customization/appearance">Theme, accent colour, sidebar.</Card>
-  <Card title="Editor" icon="code" href="/customization/editor-settings">Font, Vim mode, line numbers, JSON viewer.</Card>
+  <Card title="General" icon="gear" href="/customization/settings#general">Language, startup, tabs, sidebar, query timeout, history, updates, reset.</Card>
+  <Card title="Appearance" icon="palette" href="/customization/appearance">Appearance mode, themes, per-theme fonts and colors.</Card>
+  <Card title="Editor" icon="code" href="/customization/editor-settings">SQL editor, Vim mode, JSON viewer, data grid, pagination.</Card>
   <Card title="Keyboard" icon="keyboard" href="/features/keyboard-shortcuts#customizing-shortcuts">Custom shortcuts.</Card>
-  <Card title="AI" icon="sparkles" href="/customization/settings#ai">Providers, chat modes, custom slash commands, context, per-connection rules.</Card>
-  <Card title="Terminal" icon="terminal" href="/features/terminal#settings">Font, theme, CLI paths.</Card>
-  <Card title="MCP" icon="network-wired" href="/features/mcp#enabling-the-server">Server config, tokens, activity log, connected clients.</Card>
-  <Card title="Plugins" icon="puzzle-piece" href="/customization/settings#plugins">Manage drivers and exporters.</Card>
-  <Card title="Account" icon="user" href="/features/icloud-sync">License, iCloud sync, linked folders.</Card>
+  <Card title="AI" icon="sparkles" href="/customization/settings#ai">Providers, inline suggestions, context, slash commands.</Card>
+  <Card title="Integrations" icon="network-wired" href="/customization/settings#integrations">MCP server, tokens, remote access, activity.</Card>
+  <Card title="Plugins" icon="puzzle-piece" href="/customization/settings#plugins">Manage drivers, exporters, and themes.</Card>
+  <Card title="Account" icon="user" href="/customization/settings#account">License, iCloud sync, linked folders.</Card>
 </CardGroup>
+
+<Frame caption="The General tab">
+  <img className="block dark:hidden" src="/images/settings-general.png" alt="General settings tab" />
+  <img className="hidden dark:block" src="/images/settings-general-dark.png" alt="General settings tab" />
+</Frame>
 
 ## General
 
 ### Language
 
-System (default), English, Tiếng Việt, Türkçe, 简体中文, 繁體中文. Changing the language requires restarting TablePro.
+System (default), English, Tiếng Việt, 简体中文, 繁體中文, Türkçe. Changing the language requires restarting TablePro.
 
 ### Startup Behavior
 
 | Option | Description |
 |--------|-------------|
-| **Reopen Last Session** (default) | Restore the windows, tabs, and view state from your last session on launch |
-| **Show Welcome Screen** | Display the welcome screen with recent connections |
+| **Reopen Last Session** (default) | Restore the windows, tabs, and view state from your last session |
+| **Show Welcome Screen** | Show the welcome screen with saved connections |
 
-Reopened tabs restore their SQL, cursor position, applied sort, filters, page, and column widths. Connections reconnect lazily on first interaction, so a missing or unreachable database does not block launch. See [Tab Persistence](/features/tabs#tab-persistence) for the full list of restored state.
+Reopened tabs restore their SQL, cursor position, sort, filters, page, and column widths. Connections reconnect lazily on first interaction, so an unreachable database does not block launch. See [Tabs](/features/tabs).
 
-### Query Execution Timeout
+### Tabs
 
-Maximum seconds a query runs before cancellation. Default 60, range 0-600 (0 means no limit).
+| Setting | Default | Description |
+|---------|---------|-------------|
+| **Enable preview tabs** | On | Single-click opens a temporary tab that the next click replaces; double-click or interaction makes it permanent |
+| **Group all connections in one window** | Off | Tabs from different connections share one window instead of opening separate windows |
 
-Enforced at the database level where supported: `statement_timeout` (PostgreSQL), `max_execution_time` (MySQL, ClickHouse), `max_statement_time` (MariaDB), `sqlite3_busy_timeout` (SQLite). HTTP-based drivers (ClickHouse, BigQuery, CloudflareD1, LibSQL, Etcd, DynamoDB) also bound the HTTP request timeout to the configured value plus a 30-second grace, so the server-side error fires first. Setting "No limit" raises the HTTP transport ceiling to 1 hour. Oracle enforces the timeout client-side: a query that exceeds it is stopped by closing the connection, and the next query reconnects and restores the current schema automatically. Applies on new connections; change requires reconnect.
+### Sidebar
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| **Show recent tables** | Off | Adds a Recent section at the top of the sidebar with the last 10 tables opened per connection and database |
+| **Default layout for new connections** | List | List or Tree, for servers that support a database tree. Switch the current connection from the **View** menu |
+
+### Query Execution
+
+**Query timeout** sets the maximum seconds a query runs before cancellation. Default 60; choices from 10 to 600 seconds, plus **No limit**. Applies to new connections, so a change requires a reconnect.
+
+Enforcement happens at the database level where supported:
+
+| Database | Enforcement |
+|----------|-------------|
+| PostgreSQL | `statement_timeout` |
+| MySQL | `max_execution_time` |
+| MariaDB | `max_statement_time` |
+| ClickHouse | `max_execution_time`, plus the HTTP bound below |
+| SQLite | `sqlite3_busy_timeout` |
+| BigQuery, Cloudflare D1, LibSQL, Etcd, DynamoDB, Elasticsearch | HTTP request timeout set to the query timeout plus a 30-second grace |
+| Oracle | Client-side: the connection is closed, and the next query reconnects and restores the current schema |
+
+**No limit** raises the HTTP transport ceiling to 1 hour.
+
+### Query History
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| **Maximum entries** | 10,000 | 100 to 10,000, or Unlimited |
+| **Keep entries for** | 90 days | 7 days to 1 year, or Forever |
+| **Auto cleanup on startup** | On | Remove old entries automatically |
+| **Clear History...** | - | Wipe all history after confirmation |
 
 ### Command Line
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| **Install** | Not installed | Writes a `tablepro` command to `/usr/local/bin` that opens database URLs in TablePro |
-
-If `/usr/local/bin` is not writable, a `sudo` command is shown for you to run. See [Terminal and DDEV](/external-api/terminal).
+**Install** writes a `tablepro` command to `/usr/local/bin` that opens database URLs in TablePro. If TablePro cannot write there, it shows a command for you to run in Terminal. See [Terminal and DDEV](/external-api/terminal).
 
 ### Trusted Links
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| **Forget** | Empty | Removes a link you chose to always allow |
-
-Only databases on your own machine can be trusted. Remote links ask for confirmation every time.
+Lists external links you chose to always allow, with **Forget** per entry and **Forget All**. Only databases on this machine can be trusted; remote links ask for confirmation every time.
 
 ### Software Update
 
@@ -69,147 +100,96 @@ Powered by [Sparkle](https://sparkle-project.org/). Also available from the **Ta
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| **Share anonymous usage data** | On | OS version, architecture, locale, database types every 24 hours |
+| **Share anonymous usage data** | On | Anonymous usage statistics, no personal data or queries |
 
-No queries or database content is transmitted.
+### Reset
 
-### Query History
-
-| Setting | Default | Description |
-|---------|---------|-------------|
-| **Max Entries** | 10,000 | `0` = unlimited |
-| **Max Days** | 90 | `0` = keep forever |
-| **Auto Cleanup** | On | Remove old entries automatically |
-| **Clear All History** | - | One-click wipe |
-
-### Tabs
-
-| Setting | Default | Description |
-|---------|---------|-------------|
-| **Reuse clean table tab** | Off | Click a new table to replace the current tab if untouched |
-| **Enable preview tabs** | On | Single-click opens a preview tab; double-click or interaction makes it permanent |
-| **Group all connections in one window** | Off | Force all tabs into one window regardless of connection |
-
-A tab is "clean" when it's a table tab (not query/create), unpinned, no unsaved changes, and no interactions (sort, filter, selection).
-
-### Sidebar
-
-| Setting | Default | Description |
-|---------|---------|-------------|
-| **Show recent tables** | Off | Adds a Recent section at the top of the sidebar with the last 10 tables opened per connection and database. Works in every sidebar layout and persists between launches |
+**Reset All Settings to Defaults** resets every settings tab after a confirmation. Saved connections and query history are not affected.
 
 ## AI
 
-The **AI** tab configures providers and chat behavior. See [AI Assistant](/features/ai-assistant) for usage. The tab has these sections.
+**Enable AI Features** is the master switch; turning it off hides the other AI sections and disables chat, inline suggestions, and editor actions. **Active Provider** picks the default provider; the chat composer's model picker can override it per turn.
 
-### Enable AI Features
+**Add Provider…** offers GitHub Copilot, ChatGPT, Cursor, Claude, OpenAI, OpenRouter, OpenCode Zen, Gemini, xAI, Ollama, and a custom OpenAI-compatible endpoint. Click a provider row to open its detail sheet:
 
-Master switch. Turning it off hides every other AI section in this tab and disables chat, inline suggestions, and editor actions.
+- **Test Connection** verifies the key, sign-in, or endpoint.
+- **Model** lists curated models plus models fetched from the provider; pick **Other…** to type a custom model ID.
+- **Reasoning** sets the effort level on models that support it, or **Off**.
 
-### Active Provider
-
-The provider used by default. Override it per turn from the model picker in the chat composer.
-
-### Providers
-
-List of configured providers. Click a row to open its detail sheet, or pick **Add Provider…** to add one. The choices are GitHub Copilot (OAuth device flow), ChatGPT (sign in with your subscription), Cursor, Claude, OpenAI, OpenRouter, OpenCode Zen, Gemini, xAI (API key or sign in with a subscription), Ollama (no auth, local), and a custom OpenAI-compatible endpoint.
-
-API keys and ChatGPT tokens are stored in the macOS Keychain. Removing a provider deletes its key.
+API keys are stored in the macOS Keychain; removing a provider deletes its key.
 
 ### Inline Suggestions
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| **Enable inline suggestions while typing** | Off | Show ghost-text completions in the SQL editor. Requires an active provider. |
-
-With Copilot active, suggestions come from Copilot's inline-completion model. With any other provider, they come from chat completions.
+| **Enable inline suggestions while typing** | Off | Ghost-text SQL completions. Requires an active provider. Tab accepts, Escape dismisses |
+| **Debounce** | 500 ms | Pause after typing before requesting a suggestion, 100 to 3,000 ms in 50 ms steps |
 
 ### Context
 
-Controls what the AI sees automatically each turn. New installs default all three toggles to **off**, so the AI sees only what you attach with `@` mentions or what tools pull in.
-
 | Setting | Default | Description |
 |---------|---------|-------------|
-| **Include database schema** | Off | Auto-attach the active connection's schema |
-| **Include current query** | Off | Auto-attach the active editor tab's text |
+| **Include database schema** | On | Auto-attach the active connection's schema |
+| **Include current query** | On | Auto-attach the active editor tab's text |
 | **Include query results** | Off | Auto-attach the most recent query result snapshot |
-| **Max schema tables** | 20 | Cap on tables formatted into the schema attachment, range 1-100 |
+| **Max schema tables** | 20 | Cap on tables in the schema attachment, 1 to 100 |
 
-Existing installs keep their previous values.
+The Privacy section sets the default **Connection policy** (Ask Each Time) applied to new connections. For custom slash commands, chat modes, and per-connection AI rules, see [AI Assistant](/features/ai-assistant).
 
-### Custom Slash Commands
+## Integrations
 
-Add, edit, or delete user-defined slash commands. Each command has a name, an optional description, and a prompt template.
+The **Integrations** tab runs the MCP server. **Enable MCP Server** (default off) starts it and shows a live status. See [MCP Server](/features/mcp) for a walkthrough and the [External API](/external-api/index) reference for the tool catalog.
 
-Templates support these placeholders, substituted at send time:
+<Frame caption="Integrations tab with the MCP server enabled">
+  <img className="block dark:hidden" src="/images/mcp-settings.png" alt="Integrations settings" />
+  <img className="hidden dark:block" src="/images/mcp-settings-dark.png" alt="Integrations settings" />
+</Frame>
 
-- `{{query}}`: the current editor query.
-- `{{schema}}`: the formatted schema for the active connection (capped by **Max schema tables**).
-- `{{database}}`: the active database name.
-- `{{body}}`: text typed after the command in the composer (e.g. `/review WHERE clauses` passes `WHERE clauses`).
-
-Save needs a name and a non-empty template.
-
-### Privacy
+### Server Configuration
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| **Connection policy** | Ask Each Time | Default AI policy applied to new connections. Per-connection overrides live in the connection form. |
+| **Port** | 23508 | TCP port the server listens on |
+| **Default row limit** | 500 | Rows returned when a tool call sets no limit |
+| **Maximum row limit** | 10,000 | Hard cap on rows per tool call |
+| **Query timeout** | 30 seconds | Per-query limit for MCP-issued queries |
+| **Log MCP queries in history** | On | Record MCP queries in [query history](/features/query-history) |
 
-For per-connection AI rules (system-prompt additions tied to a specific database), see [Per-connection AI rules](/features/ai-assistant#per-connection-ai-rules). Those are configured in the connection form, not here.
+### Authentication
 
-## MCP
+**Require authentication** defaults to on. Turning it on with no tokens generates a full-access token named "Default token" and reveals it once; copy it then. Generate, revoke, and delete tokens in the list below the toggle. See [Tokens](/external-api/tokens).
 
-The **MCP** tab covers the [External API](/external-api/index) surface. The server lazy-starts on first use and exposes the following sections:
+### Network
 
-- **MCP Server**: enable toggle and live status. The server runs on a free port in the `51000-52000` range. See [MCP Server](/features/mcp).
-- **MCP Configuration**: row limit defaults, query timeout, "log MCP queries in history".
-- **Authentication**: list, create, and revoke bearer tokens. Issued by the [pairing flow](/external-api/pairing) or generated manually. See [Tokens](/external-api/tokens).
-- **Activity Log**: every authentication, tool call, and resource read with token, category, action, connection, and outcome. 90-day retention. Backed by `~/Library/Application Support/TablePro/mcp-audit.db`.
-- **Network**: remote access toggle, TLS certificate, fingerprint, and PEM export.
-- **MCP Setup**: one-click config snippets for Claude Code, Claude Desktop, and Cursor.
-- **Connected Clients**: live list of MCP clients connected to the server.
+**Allow remote connections** defaults to off. Enabling it makes the server reachable from other devices and turns on authentication and TLS automatically.
+
+### Clients and activity
+
+**Connect a Client…** shows setup steps and config snippets for Claude Code, Claude Desktop, Cursor, and Zed. **View Activity…** opens the Integrations Activity window with authentication events, tool calls, and connected clients.
 
 ## Plugins
 
-Manage database driver and exporter plugins from **Settings** > **Plugins**. Split-view: list on the left, details on the right.
+Split view: plugin list on the left, details on the right.
 
-- **Installed**: built-in (MySQL, PostgreSQL, SQLite, ClickHouse, SQL Server, Redis, CSV, JSON, SQL) plus user-installed plugins. Toggle on/off in the detail pane.
-- **Browse**: install drivers from the registry (MongoDB, DuckDB, Oracle, Cassandra, Etcd, Cloudflare D1, DynamoDB, BigQuery, libSQL).
+- **Installed**: bundled plugins (MySQL, PostgreSQL, SQLite, ClickHouse, and Redis drivers; CSV, JSON, SQL, XLSX, and MQL exporters; SQL, JSON, and CSV importers; CSV Inspector) plus anything you installed. Toggle a plugin on or off in the detail pane. Bundled plugins can be disabled but not uninstalled.
+- **Browse**: install from the registry, with search and a category filter (Database Drivers, Export Formats, Import Formats, Themes, Other). Registry drivers: MongoDB, Oracle, DuckDB, SQL Server, Cassandra, Etcd, Cloudflare D1, DynamoDB, BigQuery, Snowflake, Elasticsearch, LibSQL, SurrealDB, and Beancount.
 - **Sideload**: click **+** or drag a `.tableplugin` / `.zip` onto the view. TablePro verifies the code signature.
 
-Built-in plugins can be disabled but not uninstalled.
+See [Plugins & Themes](/features/plugins) for installing, updating, and managing plugins.
 
 <Warning>
 Only install plugins from sources you trust. Code-signature checks do not guarantee plugin behavior.
 </Warning>
 
-## License & Account
+## Account
 
-Activate, deactivate, or view your license under **Settings** > **Account**. Validation is local (cryptographic signature) and re-checks every 7 days. On a Team plan, paste an invite code in the same activation field to join a team instead of entering a license key. See the [Team plan](/features/team). iCloud sync, linked folders, and account info live on the same tab. See [iCloud Sync](/features/icloud-sync).
+Activate, deactivate, or view your license here. TablePro checks the license signature locally, re-validates with the server every 7 days, and allows 30 days offline before validation fails. On a Team plan, paste an invite code in the activation field to join a team instead of entering a key. See [Team plan](/features/team) and [Licensing](/features/licensing).
 
-## Data Grid
-
-Data grid font, row height, date format, NULL display, page size, row count estimation, and default row sort live on the **Editor** tab. See [Data Grid](/features/data-grid) for usage and behavior.
+iCloud sync and linked folders live on the same tab. See [iCloud Sync](/features/icloud-sync).
 
 ## Settings Storage
 
-```
-~/Library/Preferences/com.TablePro.plist
-```
-
-Reset to defaults:
-
-```bash
-rm ~/Library/Preferences/com.TablePro.plist
-rm -rf ~/Library/Caches/com.TablePro
-```
-
-<Warning>
-Resetting preferences does not affect saved connections or query history.
-</Warning>
-
-## Defaults via `defaults write`
+Settings live in `~/Library/Preferences/com.TablePro.plist`. Use **Reset All Settings to Defaults** on the General tab to reset them.
 
 Advanced flags not exposed in the UI:
 

@@ -1,215 +1,102 @@
 ---
 title: SQL Editor
-description: Tree-sitter syntax highlighting, multi-statement execution, Vim mode, and built-in SQL formatting
+description: Write and run SQL with syntax highlighting, multi-statement execution, find and replace, and a built-in formatter
 ---
 
 # SQL Editor
 
-Write and run SQL with tree-sitter-powered syntax highlighting, schema-aware autocomplete, and multi-statement execution in a single editor pane.
+Write and run SQL with tree-sitter syntax highlighting, schema-aware autocomplete, and multi-statement execution in a single editor pane.
 
-{/* Screenshot: SQL editor with syntax highlighting and autocomplete popup */}
 <Frame caption="SQL Editor with syntax highlighting">
-  <img
-    className="block dark:hidden"
-    src="/images/sql-editor.png"
-    alt="SQL Editor"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/sql-editor-dark.png"
-    alt="SQL Editor"
-  />
+  <img className="block dark:hidden" src="/images/sql-editor.png" alt="SQL Editor" />
+  <img className="hidden dark:block" src="/images/sql-editor-dark.png" alt="SQL Editor" />
 </Frame>
-
 
 ## Writing Queries
 
-### Multiple Queries
-
-Separate multiple queries with semicolons:
+Separate statements with semicolons. Place the cursor in any statement and press `Cmd+Enter` to run just that one.
 
 ```sql
 SELECT * FROM users LIMIT 10;
 SELECT COUNT(*) FROM orders;
-SELECT name, email FROM customers WHERE country = 'US';
 ```
 
-Place your cursor in any statement and press `Cmd+Enter` to execute just that one.
+Select text and press `Cmd+Enter` to run only the selection. Multiple statements in a selection run sequentially:
 
-### Selecting and Executing
+- On databases with transaction support, the batch runs in a transaction: if a statement fails, execution stops and all changes roll back. Databases without transactions run each statement as-is, with no rollback.
+- The error names the failing statement ("Statement 3/5 failed: ...").
+- The last `SELECT` result appears in the data grid.
+- Each statement is recorded individually in query history.
 
-Select text and press `Cmd+Enter` to run only the selection. Multiple statements in the selection run sequentially in a transaction:
+The editor supports multiple cursors for editing several places at once.
 
-- If any statement fails, execution stops and all changes roll back
-- The error identifies which statement failed (e.g., "Statement 3/5 failed: ...")
-- The last `SELECT` result appears in the data grid
-- Each statement is recorded individually in query history
+Autocomplete suggests tables, columns, and keywords as you type, and resolves aliases. See [Autocomplete](/features/autocomplete).
 
-```sql
-DROP TABLE IF EXISTS users;
-CREATE TABLE users (id INT PRIMARY KEY, name VARCHAR(100));
-INSERT INTO users VALUES (1, 'Alice'), (2, 'Bob');
-SELECT * FROM users;
-```
+Use `:name` placeholders instead of hardcoding values; they bind via prepared statements. See [Query Parameters](/features/query-parameters).
 
-{/* Screenshot: Multiple queries in editor with execution results */}
-<Frame caption="Executing multiple SQL statements">
-  <img
-    className="block dark:hidden"
-    src="/images/multi-statement-execution.png"
-    alt="Multi-statement execution"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/multi-statement-execution-dark.png"
-    alt="Multi-statement execution"
-  />
-</Frame>
+## Per-Tab Database Picker
 
-## Autocomplete
+The editor toolbar shows a database picker (or schema picker, depending on the engine). Each SQL tab binds to its own database:
 
-Autocomplete appears as you type. See [Autocomplete](/features/autocomplete) for details.
+- Changing the picker affects only that tab. Switching the active database elsewhere keeps existing tabs on their bound database.
+- The picker lists the databases visible in the sidebar, so it follows the sidebar database filter.
+- Databases whose driver reconnects the session to switch show a lock instead of a menu; those tabs follow the connection's active database.
 
-{/* Screenshot: Autocomplete popup showing table and column suggestions */}
-<Frame caption="SQL autocomplete">
-  <img
-    className="block dark:hidden"
-    src="/images/autocomplete-popup.png"
-    alt="Autocomplete"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/autocomplete-popup-dark.png"
-    alt="Autocomplete"
-  />
-</Frame>
+## Find and Replace
 
-### Context-Aware Suggestions
+Press `Cmd+F` in a query tab to open the find panel. Switch the panel to Replace mode to replace the current match or all matches.
 
-| Context | Suggestions |
-|---------|-------------|
-| After `SELECT` | Column names, `*`, functions |
-| After `FROM` / `JOIN` | Table names, schema names |
-| After `WHERE` | Column names from selected tables |
-| After `.` (dot) | Columns from the specified table/alias |
-| Start of statement | SQL keywords |
+| Action | Shortcut |
+|--------|----------|
+| Find | `Cmd+F` |
+| Find next | `Cmd+G` |
+| Find previous | `Cmd+Shift+G` |
 
-Table aliases are resolved automatically: typing `u.` after `FROM users u` shows columns from `users`.
-
-### Keyword Suggestions
-
-Keywords are context-sensitive:
-
-- After `SELECT`: `DISTINCT`, `TOP`, `ALL`
-- After `FROM`: `JOIN`, `LEFT JOIN`, `INNER JOIN`, `WHERE`
-- After `WHERE`: `AND`, `OR`, `NOT`, `IN`, `LIKE`, `BETWEEN`
-
-## Query Parameters
-
-Use `:name` placeholders instead of hardcoding values. Press `Cmd+Enter`, fill in the parameter panel, execute again. Values are bound via prepared statements.
-
-```sql
-SELECT * FROM users WHERE id = :user_id AND status = :status;
-```
-
-See [Query Parameters](/features/query-parameters) for details.
+Match modes: contains, matches word, starts with, ends with, or regular expression, plus match case and wrap around toggles.
 
 ## Query Execution
-
-### Running Queries
 
 | Action | Shortcut | Description |
 |--------|----------|-------------|
 | Execute query | `Cmd+Enter` | Runs query at cursor, or all selected statements |
-| Execute without limit | `Option+Cmd+Enter` | Runs the query at cursor without the row cap |
+| Execute without limit | `Cmd+Option+Enter` | Runs the query at cursor without the row cap |
 | Cancel query | `Cmd+.` | Stops the running query |
-| Explain query | `Option+Cmd+E` | Show the execution plan for the query at cursor |
-| Format query | `Cmd+Shift+L` | Format the current query for readability |
+| Explain query | `Cmd+Option+E` | Shows the execution plan for the query at cursor as a tree or diagram (see [Explain Visualization](/features/explain-visualization)) |
+| Format query | `Cmd+Shift+L` | Formats the current query |
 
 ### Automatic Row Limit
 
-SELECT and WITH queries that have no `LIMIT` or `FETCH FIRST` of their own run with the configured row cap applied. For MySQL, PostgreSQL, SQLite, ClickHouse, DuckDB, Cassandra, Cloudflare D1, and libSQL, TablePro appends a `LIMIT` to the statement it sends to the server, so the database stops early instead of returning millions of rows. The query text in the editor never changes, and query history records your query text, not the rewritten statement.
+SELECT and WITH queries without their own `LIMIT` or `FETCH FIRST` run with the configured row cap:
 
-Your own `LIMIT` or `FETCH FIRST` always wins: the query is sent as written and the row cap does not apply to that run. Statements like `EXPLAIN`, `SHOW`, writes, and DDL are never limited. Statements ending in clauses that must follow `LIMIT` (such as `FOR UPDATE` or CQL's `ALLOW FILTERING`) are sent as written, with the cap enforced after the query runs. SQL Server and Oracle also keep the row cap applied after the query runs.
+- The default cap is 10,000 rows. Pick 100 to 500,000 in **Settings > Editor** (**Row cap**), or turn off **Truncate query results** to disable it.
+- On databases whose SQL uses `LIMIT`, TablePro appends a `LIMIT` to the statement it sends, so the server stops early instead of returning millions of rows. The editor text and query history keep the query as you wrote it.
+- Your own `LIMIT` or `FETCH FIRST` always wins: the query is sent as written and not capped for that run.
+- `EXPLAIN`, `SHOW`, writes, and DDL are never limited.
+- Statements ending in clauses that must follow `LIMIT` (such as `FOR UPDATE` or CQL's `ALLOW FILTERING`) are sent as written, and SQL Server and Oracle queries run unmodified; in these cases the cap is enforced on the result after the query runs.
 
-When the cap trims a result, the status bar shows **truncated** with a **Fetch All** link. To run one query without the cap, use the Execute button's menu (**Execute Without Limit**), the Query menu, or `Option+Cmd+Enter`. Configure or disable the cap in **Settings > Editor** (**Truncate query results**, **Row cap**).
+When the cap trims a result, the status bar shows **truncated** with a **Fetch All** link. To skip the cap for one run, press `Cmd+Option+Enter` or use the Execute button's menu or the Query menu.
 
-### Query Results
+### Results
 
 Results appear in the data grid below the editor with row count and execution time. Large result sets are paginated.
 
-#### Clearing Results
-
-The trash button in the editor toolbar clears the query and its results together. To clear results but keep the query, right-click the results and choose **Clear Results**. Running a query again repopulates the panel.
-
-#### Collapsible Results Panel
-
-Toggle the results panel with `Cmd+Opt+R` or the toolbar button to give the editor full height. The panel auto-expands when a new query executes.
-
-#### Result Tabs
-
-Every query result gets a tab above the grid. Running multiple statements separated by `;` produces one tab per statement. Switch between tabs by clicking or with `Cmd+Opt+[` / `Cmd+Opt+]`. Close a result tab with `Cmd+Shift+W`. Hover a tab to see the query that produced it.
-
-#### Pinning Results
-
-Right-click a result tab and select **Pin Result**, or press `Cmd+Opt+P`, to keep it. The next query lands in a new tab instead of overwriting the pinned one, so you can compare an old result against a new one. Pinned tabs cannot be closed or cleared until you unpin them, and a tab holding a pinned result is never reused to browse another table.
-
-#### Inline Errors
-
-Query errors display as a red banner directly above the results area, showing the database error message. Dismiss with the close button.
-
-#### Non-SELECT Queries
-
-INSERT, UPDATE, DELETE, and DDL statements show a compact success view with affected row count and execution time instead of an empty grid.
-
-### Explain Query
-
-Press `Option+Cmd+E` to view the execution plan. Shows index usage, join strategies, and estimated row counts. TablePro uses the correct syntax per database (`EXPLAIN` for MySQL/PostgreSQL, `EXPLAIN QUERY PLAN` for SQLite).
-
-<Tip>
-Run Explain before expensive queries to verify index usage.
-</Tip>
-
-{/* Screenshot: EXPLAIN output displayed in data grid */}
-<Frame caption="EXPLAIN query execution plan">
-  <img
-    className="block dark:hidden"
-    src="/images/explain-query-result.png"
-    alt="EXPLAIN query execution plan"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/explain-query-result-dark.png"
-    alt="EXPLAIN query execution plan"
-  />
-</Frame>
+- **Result tabs**: every result gets a tab above the grid; multi-statement runs produce one tab per statement. Switch with `Cmd+Option+[` / `Cmd+Option+]`, close with `Cmd+Shift+W`. Hover a tab to see its query.
+- **Pinning**: right-click a tab and choose **Pin Result**, or press `Cmd+Option+P`. The next query lands in a new tab instead of overwriting the pinned one. Pinned tabs cannot be closed or cleared until unpinned.
+- **Panel**: toggle the results panel with `Cmd+Option+R` or the toolbar button; it auto-expands when a query executes. The toolbar trash button clears the query and results together; to keep the query, right-click the results and choose **Clear Results**.
+- **Errors**: a red banner above the results shows the database error message with a **Fix with AI** button.
+- **Non-SELECT statements** (INSERT, UPDATE, DELETE, DDL) show a success view with affected row count and execution time.
 
 ## SQL Formatting
 
-Press `Cmd+Shift+L` to format the current query. You can also click **Format** in the toolbar or use **Query** > **Format Query**. The shortcut is rebindable in **Settings** > **Keyboard**.
+Press `Cmd+Shift+L` to format the current query. You can also click **Format** in the toolbar or use **Query** > **Format Query**; the shortcut is rebindable in **Settings** > **Keyboard**. The token-based formatter:
 
-TablePro ships a token-based formatter (rewritten in v0.34.0). It parses the query into tokens before reflowing, so it handles:
+- Breaks lines per clause (`SELECT`, `FROM`, `WHERE`, `JOIN`) and indents 2 spaces
+- Uppercases keywords
+- Preserves comments, string literals, and your cursor position
+- Keeps dialect identifier quoting (MySQL backticks, PostgreSQL double quotes)
+- Handles JOINs, subqueries, CASE expressions, CTEs (including recursive), window functions, and set operations
 
-- JOINs (INNER, LEFT, RIGHT, FULL, CROSS, LATERAL)
-- Subqueries and derived tables
-- CASE expressions
-- Common Table Expressions (CTEs), including recursive
-- Window functions (`OVER (...)`)
-- 15+ other SQL constructs (UNION, INTERSECT, EXCEPT, GROUP BY, HAVING, etc.)
-
-The formatter also:
-
-- Adds line breaks per clause (`SELECT`, `FROM`, `WHERE`, `JOIN`)
-- Indents logically with consistent spacing
-- Preserves comments, string literals, and cursor position
-- Detects your database dialect and preserves backtick (MySQL) or double-quote (PostgreSQL) identifiers
-- Preserves the original keyword case by default. Toggle uppercase/lowercase keyword output in **Settings** > **Editor**
-
-### Limitations
-
-The formatter handles pure SQL only. Procedural extensions (PL/pgSQL `DO` blocks, MySQL stored procedures, T-SQL `BEGIN`/`END` blocks) are passed through with minimal changes.
-
-### Example
+Procedural blocks (PL/pgSQL `DO`, stored procedures, T-SQL `BEGIN`/`END`) pass through with minimal changes.
 
 **Before**:
 ```sql
@@ -219,9 +106,9 @@ select u.id,u.name,count(o.id) as order_count from users u left join orders o on
 **After**:
 ```sql
 SELECT
-    u.id,
-    u.name,
-    COUNT(o.id) AS order_count
+  u.id,
+  u.name,
+  COUNT(o.id) AS order_count
 FROM users u
 LEFT JOIN orders o ON u.id = o.user_id
 WHERE u.status = 'active'
@@ -230,97 +117,45 @@ HAVING COUNT(o.id) > 5
 ORDER BY order_count DESC;
 ```
 
-{/* Screenshot: SQL query before and after formatting */}
-<Frame caption="SQL query before and after formatting">
-  <img
-    className="block dark:hidden"
-    src="/images/sql-format-result.png"
-    alt="SQL query before and after formatting"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/sql-format-result-dark.png"
-    alt="SQL query before and after formatting"
-  />
-</Frame>
-
 ## Vim Mode
 
-Enable Vim keybindings in **Settings** > **Editor** > **Vim mode**. Supports Normal, Insert, Visual, and Command-line modes.
-
-Key mappings:
-
-| Action | Keys |
-|--------|------|
-| Execute query | `:w` |
-| Close tab | `:q` |
-| Enter Insert mode | `i`, `a`, `o`, `O` |
-| Return to Normal mode | `Escape` |
-| Delete word | `dw` |
-| Delete line | `dd` |
-| Yank (copy) line | `yy` |
-| Paste | `p` |
-| Visual select | `v` + motion |
-| Go to line 10 | `:10` |
-| Search forward | `/pattern` |
-| Search backward | `?pattern` |
-| Next match | `n` |
-| Previous match | `N` |
-| Undo | `u` |
-| Redo | `Ctrl+R` |
-
-Standard motions (`h/j/k/l`, `w/b/e`, `0/$`, `gg/G`), operators (`d`, `c`, `y`), and count prefixes (`3dd`, `5j`) all work as expected. Text objects like `ciw` (change inner word) and `di"` (delete inside quotes) are supported.
-
-<Tip>
-Use `:w` to execute queries.
-</Tip>
+Enable Vim keybindings in **Settings** > **Editor** > **Vim mode**. Normal, Insert, Visual, and Command-line modes are supported, with standard motions, operators, count prefixes, and text objects. `:w` executes the query and `:q` closes the tab. Jump to a line with `10G` or `10gg` (`:10` is not supported). Full key reference: [Vim Mode](/features/vim-mode).
 
 ## Editor Settings
 
-Customize font, line numbers, word wrap, Vim mode, and indentation in **Settings** > **Editor**.
+**Settings > Editor** covers line numbers, current-line highlight, word wrap, tab width, auto-uppercase keywords as you type, query parameters, and Vim mode. Editor font family and size are set per theme in **Settings > Appearance**.
 
-Editor windows remember their size, position, and zoom state between launches. See [Query Tabs](/features/tabs#window-size-position-and-zoom) for details.
+Editor windows remember their size, position, and font zoom between launches. See [Query Tabs](/features/tabs#windows-and-connections).
 
 ## AI Assistance
 
-Use **Explain with AI** (`Cmd+L`) to understand queries, **Optimize with AI** (`Cmd+Option+L`) for performance suggestions, or click "Ask AI to Fix" in error dialogs. See [AI Assistant](/features/ai-assistant) for configuration.
+**Explain with AI** (`Cmd+L`) explains the query at cursor, **Optimize with AI** (`Cmd+Option+L`) suggests performance improvements, and **Fix with AI** in the error banner rewrites a failing query. Inline AI suggestions (ghost text) complete your SQL as you type: Tab accepts, Escape dismisses. See [AI Assistant](/features/ai-assistant) for setup.
 
 ## SQL Files
 
-### Opening Files
+TablePro opens `.sql`, `.psql`, and `.pgsql` files:
 
-Open `.sql` files in three ways:
+- Double-click in Finder (or **Open With** > **TablePro**)
+- **File** > **Open File...** (`Cmd+O`)
+- Drag files onto the dock icon
 
-- Double-click a `.sql` file in Finder (or **Open With** > **TablePro**)
-- **File** > **Open File...** (`Cmd+O`) to pick files via a dialog
-- Drag `.sql` files onto the TablePro dock icon
+Files open in a new tab. Without a connection they queue and open on connect. Opening the same file twice focuses the existing tab.
 
-Files open in a new tab. If not connected to a database, they're queued and open automatically on connect. Opening the same file twice focuses the existing tab instead of creating a duplicate.
+### Saving
 
-### Saving Files
+- `Cmd+S` saves back to the source file. Untitled tabs trigger Save As.
+- `Cmd+Shift+S` opens Save As.
 
-- **`Cmd+S`** saves the current query back to the source file
-- **`Cmd+Shift+S`** opens a **Save As** dialog to save as a new `.sql` file
-- For untitled query tabs (no file), `Cmd+S` triggers Save As automatically
-
-The title bar shows the filename for file-backed tabs. A dot appears on the close button when there are unsaved changes (standard macOS behavior), including on a query tab you have typed into but never saved to a file. `Cmd+click` the filename in the title bar to reveal the file in Finder.
-
-Closing a query tab keeps its SQL: reopen it with `Cmd+Shift+T` or from **File** > **Recently Closed**. See [Tabs](/features/tabs) for details.
+The title bar shows the filename for file-backed tabs, with the standard macOS unsaved-changes dot on the close button. `Cmd+click` the title for the standard path menu, then pick a folder to open it in Finder. Closing a query tab keeps its SQL: reopen with `Cmd+Shift+T` or **File** > **Recently Closed**. See [Tabs](/features/tabs).
 
 <Note>
-When a tab has both unsaved file changes and pending data grid edits, `Cmd+S` saves the data grid changes first. Save the file after the grid save completes.
+When a tab has both unsaved file changes and pending data grid edits, `Cmd+S` saves the grid changes first. Save the file after the grid save completes.
 </Note>
 
-### External modifications
+### External Modifications
 
-If a file changes on disk while it's open in TablePro (a `git pull`, an edit in VS Code, etc.), a yellow banner appears above the editor with a one-click **Reload from Disk**. Reload pulls the new content in and discards your tab edits.
+If a file changes on disk while open (a `git pull`, an edit in another editor), a yellow banner offers **Reload from Disk**, which replaces your tab edits with the new content. Saving over an externally changed file shows a side-by-side diff with three actions: **Keep My Changes**, **Reload from Disk**, or **Cancel**.
 
-If you save (`Cmd+S`) while the file has changed externally, TablePro shows a side-by-side diff sheet with line-level highlighting and three actions:
+### Linked Folders
 
-- **Keep My Changes** writes your tab content back, overwriting the external edits.
-- **Reload from Disk** drops your edits and loads the external version.
-- **Cancel** closes the sheet without saving so you can copy parts out manually.
-
-### Linked folders
-
-For watching a whole folder of `.sql` files (e.g., a Git repo of team queries), use [Linked SQL Folders](/features/favorites#linked-sql-folders) instead of opening each file by hand. Linked folders update the sidebar within a second of any on-disk change.
+To watch a whole folder of `.sql` files, use [Linked SQL Folders](/features/favorites#linked-sql-folders) instead of opening files one by one.

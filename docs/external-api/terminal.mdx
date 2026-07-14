@@ -1,11 +1,11 @@
 ---
 title: Terminal and DDEV
-description: Open a database in TablePro from the shell, and add a ddev tablepro command to your DDEV projects
+description: Open a database or a file in TablePro from the shell, and add a ddev tablepro command to your DDEV projects
 ---
 
 # Terminal and DDEV
 
-TablePro opens any database URL passed to it by the operating system. That makes it scriptable from the shell, and it is how the DDEV integration below works.
+TablePro opens any database URL or file passed to it by the operating system. That makes it scriptable from the shell, and it is how the DDEV integration below works.
 
 ## Open a database from the shell
 
@@ -35,9 +35,26 @@ tablepro "mysql://root@127.0.0.1:3306/shop"
 tablepro
 ```
 
+<Frame caption="The Command Line section in Settings > General">
+  <img className="block dark:hidden" src="/images/command-line-install.png" alt="Command Line install section in TablePro settings" />
+  <img className="hidden dark:block" src="/images/command-line-install-dark.png" alt="Command Line install section in TablePro settings" />
+</Frame>
+
 `/usr/local/bin` is owned by root on a stock macOS install, and may not exist at all. When TablePro cannot write there itself, macOS asks for your administrator password, and TablePro then creates the folder and the command. Cancel the password prompt and nothing is written.
 
 If that fails too, Settings falls back to showing the exact `sudo` command to run in Terminal. Run it and switch back to TablePro, and Settings picks up the change on its own.
+
+## Open a file
+
+Files route the same way, whether double-clicked in Finder or passed on the command line:
+
+```bash
+tablepro schema.sql
+tablepro app.db
+```
+
+- `.sql`, `.psql`, and `.pgsql` files open in a query tab on the current connection. If a window already has the file open, that window comes to front. With no connection open, the file waits and opens once you connect.
+- Database files open a connection to the file itself, nothing is saved: `.db`, `.db3`, `.s3db`, `.sl3`, `.sqlite`, `.sqlite3`, and `.sqlitedb` open with SQLite; `.duckdb` and `.ddb` open with the DuckDB plugin. A window already connected to the same file comes to front instead of opening twice.
 
 ## DDEV
 
@@ -48,7 +65,7 @@ cd my-project
 ddev tablepro
 ```
 
-DDEV adds the command automatically when TablePro is installed in `/Applications`. If `ddev tablepro` is not found, update DDEV.
+If `ddev tablepro` is not found, update DDEV.
 
 This is the right way to open a DDEV database, because DDEV gives the project a new host port on every `ddev start`. A saved connection goes stale; the command reads the current port each time. It works with both MySQL/MariaDB and PostgreSQL projects. DDEV's database, user, and password are all `db`.
 
@@ -58,8 +75,13 @@ The first time a link connects, TablePro asks you to confirm it. This stops a we
 
 For a database on your own machine (`localhost`, `127.0.0.1`, or `::1`), the alert also offers **Always Allow**. Choose it and TablePro stops asking for that database, so `ddev tablepro` connects straight away. Trust is keyed on the database type, host, database name, user, and the `name` parameter, but not the port, because DDEV changes the port on every start.
 
+<Frame caption="The confirmation alert for an external database link">
+  <img className="block dark:hidden" src="/images/link-trust-alert.png" alt="Alert asking to confirm an external database link, with Always Allow for local databases" />
+  <img className="hidden dark:block" src="/images/link-trust-alert-dark.png" alt="Alert asking to confirm an external database link, with Always Allow for local databases" />
+</Frame>
+
 <Note>
 Only databases on your own machine can be trusted. A link to a remote host always asks, every time.
 </Note>
 
-Review and remove trusted links in **Settings > General > Trusted Links**. A link that carries SQL (`?query=`), a filter (`?condition=`), or a pre-connect script still asks for confirmation, even when the connection is trusted.
+Review and remove trusted links in **Settings > General > Trusted Links**. A link that carries a filter condition (`?query=` or `?condition=`) or a pre-connect script still asks for confirmation, even when the connection is trusted.

@@ -7,6 +7,20 @@ description: Modal editing in the SQL editor.
 
 Turn on vim mode in **Settings > Editor > Vim mode**. A badge next to the editor shows the current mode.
 
+{/* Screenshot: SQL editor with the vim mode badge visible */}
+<Frame caption="Mode badge in the SQL editor">
+  <img
+    className="block dark:hidden"
+    src="/images/vim-mode-badge.png"
+    alt="Vim mode badge"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/vim-mode-badge-dark.png"
+    alt="Vim mode badge"
+  />
+</Frame>
+
 ## Modes
 
 | Mode | How to enter |
@@ -156,7 +170,7 @@ Marks shift when you insert or delete text before them.
 | `n` `N` | Next, previous match |
 | `*` `#` | Search word under cursor, forward or back |
 
-Searches wrap around.
+The pattern is a literal, case-sensitive substring, not a regex. Searches wrap around.
 
 ## Repeat and undo
 
@@ -189,7 +203,7 @@ Recursion is capped at 50 to keep self-calling macros safe.
 | `Ctrl+F` `Ctrl+B` | Full page down, up |
 | `Ctrl+E` `Ctrl+Y` | One line down, up |
 | `zt` `zz` `zb` | Put current line at top, middle, bottom |
-| `gj` `gk` | Down, up by visual line |
+| `gj` `gk` | Same as `j` `k` (logical lines, not wrapped display lines) |
 
 ## Visual mode
 
@@ -203,10 +217,11 @@ Motions extend the selection. Then:
 | `J` `gJ` | Join lines |
 | `~` `u` `U` | Toggle, lower, upper case |
 | `r{c}` | Replace each char with `{c}` |
-| `>` `<` | Indent, outdent |
 | `o` | Move cursor to the other end |
 | `I` `A` | Insert at start, end of selection |
 | `gv` | Reselect the last visual selection |
+
+Indent and outdent work in normal mode only (`>>`, `<<`, `>{m}`, `<{m}`).
 
 ## Insert mode shortcuts
 
@@ -221,7 +236,7 @@ Motions extend the selection. Then:
 
 ## Numbers
 
-`Ctrl+A` adds one to the next number on the line. `Ctrl+X` subtracts one. Both honour a count (`5 Ctrl+A`), negative numbers, and `0x` hex.
+`Ctrl+A` adds one to the next number on the line. `Ctrl+X` subtracts one. Both honor a count (`5 Ctrl+A`), negative numbers, and `0x` hex.
 
 ## Command line
 
@@ -229,6 +244,5 @@ Motions extend the selection. Then:
 |---------|--------|
 | `:w` | Run the current query |
 | `:q` | Close the tab |
-| `:wq` `:x` | Both |
 
-`/` and `?` are search. Other `:` commands are parsed and ignored.
+`/` and `?` are search. Other `:` commands, including `:wq` and `:x`, are parsed and ignored.

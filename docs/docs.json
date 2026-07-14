@@ -17,6 +17,16 @@
     "twitter:card": "summary_large_image",
     "twitter:image": "https://tablepro.app/og.png"
   },
+  "redirects": [
+    {
+      "source": "/features/php-viewer",
+      "destination": "/features/json-viewer"
+    },
+    {
+      "source": "/customization/overview",
+      "destination": "/customization/settings"
+    }
+  ],
   "navigation": {
     "tabs": [
       {
@@ -34,6 +44,7 @@
               "databases/ssh-tunneling",
               "databases/cloudflare-tunnel",
               "databases/cloud-sql-proxy",
+              "databases/aws-iam",
               {
                 "group": "SQL",
                 "pages": [
@@ -128,6 +139,7 @@
                 "group": "Workflow",
                 "pages": [
                   "features/tabs",
+                  "features/quick-switcher",
                   "features/query-history",
                   "features/favorites",
                   "features/keyboard-shortcuts"
@@ -150,8 +162,8 @@
                 ]
               },
               {
-                "group": "Team",
-                "pages": ["features/team"]
+                "group": "Team & Licensing",
+                "pages": ["features/team", "features/licensing"]
               },
               {
                 "group": "Extensibility",
@@ -162,7 +174,6 @@
           {
             "group": "Customization",
             "pages": [
-              "customization/overview",
               "customization/settings",
               "customization/appearance",
               "customization/editor-settings"
@@ -197,6 +208,7 @@
               "development/architecture",
               "development/building",
               "development/code-style",
+              "development/plugin-development",
               "development/plugin-registry",
               "development/testing-plugins"
             ]

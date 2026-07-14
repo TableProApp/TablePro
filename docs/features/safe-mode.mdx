@@ -1,6 +1,6 @@
 ---
 title: Safe Mode
-description: Per-connection query execution controls, from no restrictions to full read only lockdown
+description: Per-connection query execution controls, from no restrictions to full read-only lockdown
 ---
 
 # Safe Mode
@@ -13,14 +13,14 @@ Set the Safe Mode level in the **Customization** pane of the connection form.
 
 TablePro provides 6 graduated Safe Mode levels:
 
-| Level | Icon | Write Queries | Read Queries | Authentication |
-|-------|------|--------------|--------------|----------------|
-| **Silent** | `lock.open` | Execute immediately | Execute immediately | None |
-| **Alert** | `exclamationmark.triangle` | Confirmation dialog | Execute immediately | None |
-| **Alert (Full)** | `exclamationmark.triangle.fill` | Confirmation dialog | Confirmation dialog | None |
-| **Safe Mode** | `lock.shield` | Confirmation + Touch ID | Execute immediately | Touch ID / password |
-| **Safe Mode (Full)** | `lock.shield.fill` | Confirmation + Touch ID | Confirmation + Touch ID | Touch ID / password |
-| **Read Only** | `lock.fill` | Blocked entirely | Execute immediately | None |
+| Level | Write Queries | Read Queries | Authentication |
+|-------|--------------|--------------|----------------|
+| **Silent** | Execute immediately | Execute immediately | None |
+| **Alert** | Confirmation dialog | Execute immediately | None |
+| **Alert (Full)** | Confirmation dialog | Confirmation dialog | None |
+| **Safe Mode** | Confirmation + Touch ID | Execute immediately | Touch ID / password |
+| **Safe Mode (Full)** | Confirmation + Touch ID | Confirmation + Touch ID | Touch ID / password |
+| **Read-Only** | Blocked entirely | Execute immediately | None |
 
 New connections default to **Silent**.
 
@@ -40,13 +40,13 @@ Same as Alert, but the confirmation dialog appears for ALL queries, including SE
 
 ### Safe Mode
 
-Like Alert, but after confirming the dialog, you must also authenticate with Touch ID or your macOS password. Falls back to system password if Touch ID is unavailable.
+Like Alert, but after confirming the dialog, you must also authenticate with Touch ID. Falls back to your macOS password if Touch ID is unavailable.
 
 ### Safe Mode (Full)
 
 Combines Alert (Full) and Safe Mode: every query requires both a confirmation dialog and Touch ID/password authentication.
 
-### Read Only
+### Read-Only
 
 All write operations are blocked. The UI disables:
 
@@ -57,13 +57,18 @@ All write operations are blocked. The UI disables:
 
 Read queries (SELECT) execute normally.
 
-## NoSQL Databases
+## Drivers Without Read-Only Support
 
-MongoDB, Redis, and other NoSQL databases can't be parsed for read vs. write operations. All operations are treated as writes. In Alert/Safe Mode, every query triggers a confirmation. Read Only blocks everything.
+The Redis, MongoDB, and etcd drivers do not support read-only mode, so Safe Mode treats every query on these connections as a write. Alert and Safe Mode levels confirm every query; Read-Only blocks everything. Other non-SQL drivers (Cassandra, Elasticsearch, DynamoDB) classify reads and writes normally.
 
 ## Toolbar Badge
 
-The current Safe Mode level appears as a badge in the toolbar (orange for Alert levels, red for Safe Mode/Read Only). Click it to change levels.
+The current Safe Mode level appears as a badge in the toolbar (orange for Alert levels, red for Safe Mode and Read-Only). Click it to change levels.
+
+<Frame caption="Safe Mode badge in the toolbar">
+  <img className="block dark:hidden" src="/images/safe-mode-toolbar-badge.png" alt="Safe Mode level badge and picker in the toolbar" />
+  <img className="hidden dark:block" src="/images/safe-mode-toolbar-badge-dark.png" alt="Safe Mode level badge and picker in the toolbar" />
+</Frame>
 
 Changing the level from the badge applies to the whole connection and stays set as you open other tables and tabs. The saved default in the Customization pane is the level a connection starts at.
 
@@ -80,4 +85,3 @@ A write request from an external client clears three locks in this order:
 3. **Safe Mode** (per-query). The same rules on this page apply once the request has been routed to the connection. Touch ID prompts and confirmation dialogs still appear, even for queries originating from an external client.
 
 DROP and TRUNCATE always need an explicit confirmation phrase via the `confirm_destructive_operation` tool, regardless of token scope. See [External API security model](/external-api/index#security-model).
-

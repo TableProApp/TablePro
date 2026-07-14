@@ -7,6 +7,11 @@ TablePro can manage the users and roles on a server and the privileges they hold
 
 Available on **MySQL**, **MariaDB**, and **PostgreSQL** connections. Open it from **View > Users & Roles**. The command is disabled on connections whose driver does not support it.
 
+<Frame caption="Users & Roles: accounts on the left, objects in the middle, privileges on the right">
+  <img className="block dark:hidden" src="/images/users-roles.png" alt="Users and Roles tab with the account list, object tree, and privilege checklist" />
+  <img className="hidden dark:block" src="/images/users-roles-dark.png" alt="Users and Roles tab with the account list, object tree, and privilege checklist" />
+</Frame>
+
 ## The layout
 
 The tab has three panes:
@@ -24,34 +29,53 @@ A checkbox tells you what is granted **directly** on that object. The **Effectiv
 - **Inherited from `role`** means the account holds the privilege through a role it is a member of. PostgreSQL roles are followed transitively. If the account has `NOINHERIT`, the privilege only applies after `SET ROLE`, and TablePro says so.
 - **Granted on `object`** means a privilege on a parent object already covers this one. This is engine-specific: on MySQL a database-level grant covers the tables inside it, while on PostgreSQL it does not. TablePro asks the driver rather than guessing.
 
-This is the difference between "this box is unchecked" and "this user cannot do this". They are not the same thing, and the column exists to keep them apart.
-
 ## Granting and revoking
 
 Toggling a checkbox stages a change. The account, the object, and the privilege each show that they have unsaved edits, so a change is findable even in a server with hundreds of tables.
 
-**Review & Apply** shows the exact statements. Statements that remove access are listed too. You can copy the SQL, open it in a query editor, or run it.
-
 Changes are always a diff. Unchecking a box you just checked cancels out instead of generating a redundant `REVOKE`, and a privilege that was grantable to others stays grantable.
 
-Changes run through the same safeguards as any other write: a read-only connection blocks them, and Safe Mode asks for confirmation or authentication as configured.
+To give an account the same privileges as another, choose **Copy Privileges From** in the account's context menu. The copied grants are staged like any other change.
+
+## Account attributes
+
+The detail pane has a **Privileges / Attributes** switch. The Attributes form edits the account itself:
+
+- Whether the account can log in.
+- Role attributes such as `SUPERUSER` or `CREATEDB` on PostgreSQL.
+- Role membership, where the engine has roles: **Member of** lists the account's roles, and **Edit** opens a checklist.
+- The connection limit.
+
+Attribute edits are staged and applied with everything else.
+
+## Passwords
+
+**Change Password**, in the account's context menu and on the Attributes form, sets a new password. The sheet has a **Generate** button that produces a random 20-character password and reveals it so you can copy it somewhere safe.
+
+The password is staged until you apply. Statements that carry a password, such as `CREATE USER` and `ALTER USER`, are never written to [query history](/features/query-history), which is stored unencrypted on disk.
+
+## Applying changes
+
+The bar at the bottom counts staged changes. **Discard** throws the whole staged set away. **Review & Apply** shows the exact statements, including the ones that remove access. From the review sheet you can **Copy All**, open the SQL in a query editor, or **Execute** it.
+
+On PostgreSQL the statements run in a single transaction and roll back together if one fails. MySQL commits user management statements implicitly, so a transaction cannot undo them; if one fails, TablePro shows the error and how many statements had already been applied.
+
+After a successful apply, TablePro re-reads the server so the tab reflects what is actually granted.
+
+Changes run through the same safeguards as any other write: a read-only connection blocks them, and [Safe Mode](/features/safe-mode) asks for confirmation or authentication as configured.
 
 <Warning>
 If a change would remove access for the account your connection is using, TablePro warns you in the review sheet before the SQL runs. It does not block the change, since revoking your own admin privileges can be deliberate.
 </Warning>
 
-## Refreshing while you have unsaved changes
-
-Press ⌘R at any time. TablePro re-reads the server and keeps your staged changes on top of it. If another DBA already made a change you had staged, that change quietly disappears from your diff because there is nothing left to do.
-
 ## Dropping an account
 
-Select it and press ⌫, or use **-**, or the context menu. The drop is staged and struck through, and ⌘Z undoes it. Nothing runs until you apply.
+Select it and press Delete, or use **-**, or the context menu. The drop is staged and struck through, and Cmd+Z undoes it. Nothing runs until you apply.
 
 On PostgreSQL, a role that owns objects cannot simply be dropped. TablePro detects this and asks whether to reassign the owned objects to another role or drop them, generating `REASSIGN OWNED` or `DROP OWNED` alongside the `DROP ROLE`.
 
 <Note>
-`REASSIGN OWNED` and `DROP OWNED` only affect the database you are connected to, plus shared objects. A role that owns objects in several databases needs the same step run in each. This is a PostgreSQL behaviour, not a TablePro limitation.
+`REASSIGN OWNED` and `DROP OWNED` only affect the database you are connected to, plus shared objects. A role that owns objects in several databases needs the same step run in each. This is PostgreSQL behavior, not a TablePro limitation.
 </Note>
 
 ## What PostgreSQL cannot show you

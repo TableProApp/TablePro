@@ -1,0 +1,82 @@
+---
+title: AWS IAM Authentication
+description: Connect to Amazon RDS and Aurora with IAM database authentication instead of a static password
+---
+
+# AWS IAM Authentication
+
+Connect to Amazon RDS and Aurora using your AWS identity instead of a database password. On every connect, TablePro signs a short-lived authentication token with your AWS credentials and uses it as the password. Available for MySQL, MariaDB, and PostgreSQL connections.
+
+## Setting up
+
+In the connection form, set **Authentication** to one of the AWS IAM options. The password field disappears and the AWS fields appear.
+
+<Frame caption="AWS IAM options in the connection form">
+  <img className="block dark:hidden" src="/images/aws-iam-authentication-fields.png" alt="Connection form with Authentication set to AWS IAM (Profile)" />
+  <img className="hidden dark:block" src="/images/aws-iam-authentication-fields-dark.png" alt="Connection form with Authentication set to AWS IAM (Profile)" />
+</Frame>
+
+| Option | Credentials come from |
+|--------|----------------------|
+| **AWS IAM (Access Key)** | An access key ID, secret access key, and optional session token entered in the form |
+| **AWS IAM (Profile)** | A named profile in `~/.aws/credentials` and `~/.aws/config` |
+| **AWS IAM (SSO)** | A profile backed by IAM Identity Center, using the token cache in `~/.aws/sso/cache` |
+
+**AWS Region** is detected from `*.rds.amazonaws.com` hostnames. Fill it in only for a custom endpoint (a CNAME, a proxy, or an SSH tunnel), or to override the detected region.
+
+Set **Username** to the database user created for IAM auth (see per-engine setup below).
+
+### Profiles
+
+**Profile Name** defaults to `default`. TablePro reads the profile the same way the AWS CLI does:
+
+- Static `aws_access_key_id` / `aws_secret_access_key` pairs.
+- `credential_process` commands, so a profile can be backed by SSO, 1Password, or any external credential helper.
+- `role_arn` assume-role profiles, resolved through STS. The base credentials come from `source_profile` (chains up to 5 profiles deep) or `credential_source = Environment`. Profiles with `mfa_serial` are not supported.
+
+### SSO
+
+Sign in first with `aws sso login --profile <name>`. If the SSO session has expired when you click **Test Connection**, TablePro offers to run the browser sign-in for you.
+
+## Token lifetime and refresh
+
+Each token is valid for 15 minutes and is never stored. TablePro generates a fresh one on every connect, and again on every automatic reconnect, so you never paste or refresh an expiring token yourself.
+
+SSL is required for IAM. If the connection's SSL mode is Disabled or Preferred, TablePro raises it to Required for the connection.
+
+## Per-engine setup
+
+IAM database authentication must be enabled on the RDS instance or Aurora cluster, and the database user must be created for it.
+
+<Tabs>
+  <Tab title="MySQL / MariaDB">
+    Create the user with the AWS authentication plugin:
+
+    ```sql
+    CREATE USER 'app_user' IDENTIFIED WITH AWSAuthenticationPlugin AS 'RDS';
+    ```
+  </Tab>
+  <Tab title="PostgreSQL">
+    Grant the `rds_iam` role:
+
+    ```sql
+    GRANT rds_iam TO "app_user";
+    ```
+  </Tab>
+</Tabs>
+
+<Warning>
+Connecting fails if the user only has a password. A user is either password-authenticated or IAM-authenticated, not both.
+</Warning>
+
+## Troubleshooting
+
+**Region could not be determined**: the hostname is not a standard RDS endpoint. Fill in **AWS Region**.
+
+**SSO session expired**: run `aws sso login --profile <name>`, or accept the sign-in prompt after a failed **Test Connection**.
+
+**Profile incomplete**: the profile has no static keys, no `credential_process`, and no `role_arn`. Check the profile name and the files in `~/.aws/`.
+
+## Other AWS services
+
+The same Authentication options connect to Amazon ElastiCache ([Redis](/databases/redis)) and Amazon Keyspaces ([Cassandra](/databases/cassandra)). Those pages cover the service-specific fields.

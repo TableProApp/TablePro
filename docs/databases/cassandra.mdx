@@ -5,11 +5,11 @@ description: Connect to Cassandra and ScyllaDB clusters, browse keyspaces, and r
 
 # Cassandra / ScyllaDB Connections
 
-TablePro supports Apache Cassandra 3.11+ and ScyllaDB 4.0+ via the CQL native protocol. Browse keyspaces, inspect table structures, view materialized views, and run CQL queries from the editor.
+TablePro supports Apache Cassandra 3.0+ and ScyllaDB via the CQL native protocol. The driver requires the `system_schema` keyspace, introduced in Cassandra 3.0. Browse keyspaces and tables, inspect table structure, and run CQL in the editor.
 
 ## Quick setup
 
-Click **New Connection**, select **Cassandra** or **ScyllaDB**, enter host/port/credentials/keyspace, and click **Create**.
+Click **New Connection**, select **Cassandra** or **ScyllaDB** (both entries use the same driver), enter host, port, credentials, and keyspace, and connect. The plugin auto-installs from the registry, or use **Settings** > **Plugins** > **Browse** > **Cassandra Driver**.
 
 ## Connection settings
 
@@ -18,61 +18,55 @@ Click **New Connection**, select **Cassandra** or **ScyllaDB**, enter host/port/
 | **Host** | `localhost` | CQL contact point |
 | **Port** | `9042` | CQL native port |
 | **Keyspace** | - | Leave empty for local dev |
-| **Username** | - | Disable auth for local dev |
+| **Username** | - | Only if authentication is enabled |
 | **Password** | - | |
 
-## Connection URL
+## Connection URLs
 
 ```text
 cassandra://user:password@host:9042/keyspace
+scylladb://user:password@host:9042/keyspace
 ```
 
-See [Connection URL Reference](/databases/connection-urls#cassandra--scylladb) for all parameters.
+`cql://` and `scylla://` work too. See [Connection URL Reference](/databases/connection-urls#cassandra--scylladb).
 
 ## Example configurations
 
 **Local**: host `localhost:9042`, no auth
 **Docker**: `cassandra:latest`, user/pass `cassandra:cassandra`
-**DataStax Astra DB**: Port 29042, use Client ID/Secret, needs Secure Connect Bundle (SSL/TLS)
-**Remote**: Use [SSH tunneling](/databases/ssh-tunneling) for production
+**Remote**: use [SSH tunneling](/databases/ssh-tunneling) for production clusters
 
 ## Amazon Keyspaces (IAM)
 
 Set **Authentication** to an AWS IAM mode (Access Key, Profile, or SSO) to connect to Amazon Keyspaces with SigV4 signing instead of a password. Enter the AWS region and enable TLS, which Keyspaces requires (use the `cassandra.{region}.amazonaws.com` endpoint on port 9142). Profiles resolve from `~/.aws/config` and `~/.aws/credentials`, including `credential_process`, SSO, and assumed roles.
 
-**SSL/TLS**: The Cassandra driver has no TLS fallback. **Preferred** behaves the same as **Required** (the SSL pane shows a warning). Use **Required** for AstraDB, **Verify CA** with a CA certificate path for private PKI. For mutual TLS, set the client certificate and key paths; if the key is encrypted, enter its passphrase in the **Key Passphrase** field (stored in the Keychain). See [SSL/TLS](/features/ssl) for details.
+**SSL/TLS**: The Cassandra driver has no TLS fallback. **Preferred** behaves the same as **Required** (the SSL pane shows a warning). Use **Verify CA** with a CA certificate path for private PKI. For mutual TLS, set the client certificate and key paths; if the key is encrypted, enter its passphrase in the **Key Passphrase** field (stored in the Keychain). See [SSL/TLS](/features/ssl) for details.
 
 ## Features
 
-**Keyspace Browsing**: Sidebar lists keyspaces with tables, materialized views, UDTs, secondary indexes. Click to view data.
+**Keyspace browsing**: The sidebar lists keyspaces, and each keyspace lists its tables. Click a table to view its data.
 
-**Table Structure**: Columns (name, type, clustering order), partition key, clustering columns, secondary indexes, table options (compaction, compression, TTL, gc_grace_seconds).
+**Table structure**: The structure view shows each column's name, CQL type, and a primary key flag (set for both partition key and clustering columns), plus the table's secondary indexes. Structure editing supports adding and dropping columns; make other schema changes in the CQL editor.
 
-**Materialized Views**: Browse alongside tables. Shows definition, base table, column mappings.
+**Data grid**: Paginated, with type-aware formatting: uuid/timeuuid formatted, timestamps configurable, map/set/list/tuple as formatted collections, blob as hex.
 
-**Data Grid**: Pagination. Type-aware formatting: text (plain), int/bigint/varint (numbers), uuid/timeuuid (formatted), timestamp (configurable), map/set/list/tuple (formatted collections), blob (hex).
+<Frame caption="Keyspace tables in the sidebar with the data grid">
+  <img className="block dark:hidden" src="/images/cassandra-keyspace-browser.png" alt="Cassandra keyspace and tables in the sidebar with table data in the grid" />
+  <img className="hidden dark:block" src="/images/cassandra-keyspace-browser-dark.png" alt="Cassandra keyspace and tables in the sidebar with table data in the grid" />
+</Frame>
 
 ### CQL editor
 
-Execute CQL statements directly in the editor tab:
-
 ```sql
--- Select with partition key restriction
 SELECT * FROM users WHERE user_id = 123e4567-e89b-12d3-a456-426614174000;
 
--- Insert data
 INSERT INTO users (user_id, name, email, created_at)
 VALUES (uuid(), 'Alice', 'alice@example.com', toTimestamp(now()));
 
--- Update with TTL
 UPDATE users USING TTL 86400
 SET email = 'new@example.com'
 WHERE user_id = 123e4567-e89b-12d3-a456-426614174000;
 
--- Delete
-DELETE FROM users WHERE user_id = 123e4567-e89b-12d3-a456-426614174000;
-
--- Create table
 CREATE TABLE IF NOT EXISTS events (
     event_id timeuuid,
     user_id uuid,
@@ -81,37 +75,30 @@ CREATE TABLE IF NOT EXISTS events (
     PRIMARY KEY ((user_id), event_id)
 ) WITH CLUSTERING ORDER BY (event_id DESC);
 
--- Create index
 CREATE INDEX ON users (email);
-
--- Describe table
-DESCRIBE TABLE users;
 ```
 
-## CQL-specific notes
+## CQL notes
 
-**No JOINs**: Denormalize data across multiple tables instead.
-
-**No subqueries**: Break into multiple sequential statements.
-
-**Partition Key Requirement**: Every SELECT must include full partition key in WHERE, or use `ALLOW FILTERING` (cluster scan, slow in prod).
-
-**ALLOW FILTERING Warning**: Full cluster scan. OK for dev, not for production. TablePro shows warning.
-
-**Lightweight Transactions**: Conditional writes with `IF`: `INSERT INTO users (...) IF NOT EXISTS;` `UPDATE users SET email = 'new' WHERE user_id = ? IF email = 'old';`
-
-**TTL and Writetime**: `INSERT INTO cache (...) USING TTL 3600;` `SELECT TTL(value), WRITETIME(value) FROM cache WHERE key = 'k1';`
+- No JOINs or subqueries: denormalize, or run sequential statements.
+- Every SELECT needs the full partition key in WHERE, or `ALLOW FILTERING` (a cluster scan, slow in production).
+- Lightweight transactions: conditional writes with `IF`, e.g. `INSERT INTO users (...) IF NOT EXISTS;`.
+- TTL and writetime: `USING TTL 3600`; `SELECT TTL(value), WRITETIME(value) FROM cache WHERE key = 'k1';`.
 
 ## Troubleshooting
 
-**Connection refused**: Check Cassandra running (`nodetool status`), verify port 9042 in `cassandra.yaml`, check `rpc_address` and `listen_address`.
+**Connection refused**: Check Cassandra is running (`nodetool status`), verify port 9042 in `cassandra.yaml`, check `rpc_address` and `listen_address`.
 
-**Auth failed**: Verify credentials, check `authenticator: PasswordAuthenticator` in `cassandra.yaml`. Default superuser: `cassandra:cassandra`
+**Auth failed**: Verify credentials, check `authenticator: PasswordAuthenticator` in `cassandra.yaml`. Default superuser: `cassandra:cassandra`.
 
-**Timeout**: Verify host/port, check network/firewall (port 9042), whitelist IP for cloud-hosted, increase timeout in Advanced.
+**Timeout**: The driver uses a fixed 10 second connect timeout and 30 second request timeout. Neither is configurable, and the app-wide query timeout setting does not apply to Cassandra. Check host, port, firewall rules, and cloud IP allowlists.
 
-**Read timeout**: Include full partition key in WHERE, remove `ALLOW FILTERING`, check cluster health with `nodetool`, use `LIMIT`.
+**Read timeout**: Include the full partition key in WHERE, add a `LIMIT`, check cluster health with `nodetool`.
 
-**Limitations**: Multi-DC not configurable, UDFs/UDAs in CQL but not sidebar, counter columns read-only (use editor), large partitions paginated. Structure editing supports add and drop column. Other schema changes (modify column type, indexes, primary key) require the CQL editor.
+## Limitations
 
-**Performance**: Include partition key, avoid `ALLOW FILTERING` in prod, use `LIMIT`, use `TOKEN()` for range scans.
+- Materialized views, UDTs, UDFs, and UDAs do not appear in the sidebar. Query `system_schema` tables in the CQL editor instead.
+- Table options (compaction, compression, gc_grace_seconds) and clustering order are not shown in the structure view.
+- DataStax Astra DB is not supported: the driver cannot load a Secure Connect Bundle.
+- Counter columns are read-only in the grid; update them in the editor.
+- Multi-DC settings are not configurable.

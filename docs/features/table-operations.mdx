@@ -1,72 +1,41 @@
 ---
 title: Table Operations
-description: Drop, truncate, maintenance, create views, and switch databases from the sidebar
+description: Drop, truncate, run maintenance, manage views, and switch databases from the sidebar
 ---
 
 # Table Operations
 
-Right-click tables in the sidebar to drop, truncate, run maintenance, or manage views. Switch between databases on the same connection.
+Right-click tables in the sidebar to drop, truncate, run maintenance, or manage views. Switch between databases on the same connection with Cmd+K.
 
-## Create Table
+## Create Table or View
 
-Click the plus button in the bottom-left of the Tables sidebar and choose **New Table** (or **New View**) to open a create tab. The button is disabled while safe mode blocks writes.
+Click the plus button in the bottom-left of the sidebar and choose **New Table** or **New View**. New Table opens the visual structure editor (see [Table Structure](/features/table-structure)). New View opens a SQL editor tab with a CREATE VIEW template for your database type. The button is disabled while [safe mode](/features/safe-mode) blocks writes.
 
-## Drop Table
+## Drop and Truncate
 
-Permanently deletes a table and all its data.
+Right-click a table and choose **Delete** to drop it, or **Truncate** to remove all rows while keeping the structure. Hold Cmd and click to select multiple tables; the same options apply to all of them.
 
-Right-click the table (or select multiple) > **Delete**, confirm in the dialog, click **OK**. Irreversible - back up first.
+A confirmation dialog shows two checkboxes:
 
-{/* Screenshot: Drop table confirmation dialog */}
+| Option | Effect |
+|--------|--------|
+| Ignore foreign key checks | Skips foreign key constraint checks. Grayed out on engines without it (PostgreSQL suggests Cascade instead). |
+| Cascade | Drops or truncates tables linked by foreign keys. Only enabled on engines that support it, such as PostgreSQL. |
+
+Click **Drop** or **Truncate** to execute, or **Cancel**.
+
 <Frame caption="Drop table confirmation with options">
-  <img
-    className="block dark:hidden"
-    src="/images/drop-table-dialog.png"
-    alt="Drop table dialog"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/drop-table-dialog-dark.png"
-    alt="Drop table dialog"
-  />
+  <img className="block dark:hidden" src="/images/drop-table-dialog.png" alt="Drop table dialog" />
+  <img className="hidden dark:block" src="/images/drop-table-dialog-dark.png" alt="Drop table dialog" />
 </Frame>
-
 
 <Warning>
-Dropping a table is irreversible. Always backup important data before dropping tables.
+Dropping is irreversible. On MySQL and MariaDB, truncate also resets the auto-increment counter. Back up important data first.
 </Warning>
-
-## Truncate Table
-
-Removes all rows while keeping the table structure.
-
-1. Right-click the table (or select multiple tables)
-2. Select **Truncate**
-3. Configure options in the confirmation dialog
-4. Click **OK** to execute
-
-
-<Note>
-Truncate is faster than `DELETE FROM table` because it skips per-row delete logs. It also resets auto-increment counters.
-</Note>
-
-{/* Screenshot: Truncate table confirmation with options */}
-<Frame caption="Truncate table confirmation with options">
-  <img
-    className="block dark:hidden"
-    src="/images/truncate-table-dialog.png"
-    alt="Truncate table confirmation with options"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/truncate-table-dialog-dark.png"
-    alt="Truncate table confirmation with options"
-  />
-</Frame>
 
 ## Maintenance
 
-Right-click a table > **Maintenance** to run database maintenance operations. A confirmation sheet shows operation options and a SQL preview before executing.
+Right-click a table > **Maintenance** and pick an operation. A sheet shows the operation's options and a SQL preview before executing.
 
 | Database | Operations |
 |----------|-----------|
@@ -74,61 +43,15 @@ Right-click a table > **Maintenance** to run database maintenance operations. A 
 | MySQL/MariaDB | OPTIMIZE TABLE, ANALYZE TABLE, CHECK TABLE, REPAIR TABLE |
 | SQLite | VACUUM, ANALYZE, REINDEX, Integrity Check |
 
-PostgreSQL VACUUM has options for FULL (rewrites the table, blocks access), ANALYZE (updates statistics), and VERBOSE (prints progress).
-
-MySQL CHECK TABLE supports check modes: QUICK, FAST, MEDIUM, EXTENDED, CHANGED.
+PostgreSQL VACUUM has FULL (rewrites the table, blocks access), ANALYZE (updates statistics), and VERBOSE (prints progress) toggles. MySQL CHECK TABLE offers QUICK, FAST, MEDIUM, EXTENDED, and CHANGED modes.
 
 <Note>
-Maintenance is disabled in Read-Only Safe Mode. Databases without maintenance support (Redis, MongoDB, etc.) do not show this submenu.
+The Maintenance submenu is hidden in read-only safe mode and on databases with no maintenance operations.
 </Note>
 
-## Batch Operations
+## Views
 
-Hold `Cmd` and click to select multiple tables, then right-click and choose **Delete** or **Truncate**. The same options apply to all selected tables.
-
-## View Management
-
-Views appear in the sidebar with an eye icon and purple color.
-
-### Create View
-
-1. Right-click in the sidebar > **Create New View...** (or **File** > **New View...**)
-2. A SQL editor tab opens with a CREATE VIEW template adapted to your database type
-3. Modify the view name and SELECT query
-4. Execute to create
-
-{/* Screenshot: Create View with SQL template */}
-<Frame caption="Create View with SQL template">
-  <img
-    className="block dark:hidden"
-    src="/images/create-view-editor.png"
-    alt="Create View with SQL template"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/create-view-editor-dark.png"
-    alt="Create View with SQL template"
-  />
-</Frame>
-
-### Edit View Definition
-
-Modify an existing view's SQL definition:
-
-1. Right-click the view in the sidebar
-2. Select **Edit View Definition**
-3. The current view definition opens in a new SQL editor tab
-4. Modify the query and execute to update the view
-
-<Note>
-For MySQL/MariaDB, use `ALTER VIEW` to modify a view. For PostgreSQL, use `CREATE OR REPLACE VIEW`. SQLite does not support ALTER VIEW. Drop and recreate the view instead.
-</Note>
-
-### Drop View
-
-Right-click the view > **Drop View** > confirm. Dropping a view only removes the definition; underlying table data stays intact.
-
-### Context Menu Differences
+Views appear in the sidebar with an eye icon in your accent color. Materialized views and foreign tables get their own icons. All three are read-only kinds: their context menus hide **Truncate** and **Import**, and the drop item is labeled **Drop View**, **Drop Materialized View**, or **Drop Foreign Table**.
 
 | Action | Tables | Views |
 |--------|--------|-------|
@@ -136,97 +59,32 @@ Right-click the view > **Drop View** > confirm. Dropping a view only removes the
 | Export | Yes | Yes |
 | Import | Yes | No |
 | Truncate | Yes | No |
-| Edit Definition | No | Yes |
-| Delete / Drop | Yes | Yes |
+| Edit View Definition | No | Yes |
+| Delete / Drop View | Yes | Yes |
 
-{/* Screenshot: View-specific context menu options */}
-<Frame caption="View-specific context menu options">
-  <img
-    className="block dark:hidden"
-    src="/images/view-context-menu.png"
-    alt="View-specific context menu options"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/view-context-menu-dark.png"
-    alt="View-specific context menu options"
-  />
-</Frame>
+- **Create**: right-click in the sidebar > **Create New View...** (or **File** > **New View...**). A SQL editor opens with a CREATE VIEW template; edit the name and SELECT, then execute.
+- **Edit**: right-click a view > **Edit View Definition**. The current definition opens in a SQL editor tab; modify and execute to update.
+- **Drop**: right-click a view > **Drop View**. Only the definition is removed; underlying table data stays intact.
 
 ## Database Operations
 
-Create a new database (MySQL/MariaDB): click the database name in the toolbar or press `Cmd+K`, click **Create**, enter a name, character set, and collation.
+### Switch Databases
 
-{/* Screenshot: Create database dialog */}
-<Frame caption="Create database dialog">
-  <img
-    className="block dark:hidden"
-    src="/images/create-database.png"
-    alt="Create Database"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/create-database-dark.png"
-    alt="Create Database"
-  />
+Click the database name in the toolbar or press `Cmd+K`. Type to filter, move with the arrow keys, then press Return or double-click to switch. `Cmd+R` refreshes the list. The switcher adapts to the engine's vocabulary: Schema on Oracle, Keyspace on Cassandra, Dataset on BigQuery, Namespace on SurrealDB. SQLite is file-based, so the switcher points you to the Welcome window to open a different file.
+
+<Frame caption="Database switcher with search">
+  <img className="block dark:hidden" src="/images/database-switcher.png" alt="Database switcher popover" />
+  <img className="hidden dark:block" src="/images/database-switcher-dark.png" alt="Database switcher popover" />
 </Frame>
 
+### Create Database
 
-### Database Switcher
-
-Click the database name in the toolbar to browse databases on the current connection. Search by name, view recent databases, or double-click to switch.
-
-{/* Screenshot: Database switcher with search and recent databases */}
-<Frame caption="Database switcher with search and recent databases">
-  <img
-    className="block dark:hidden"
-    src="/images/database-switcher.png"
-    alt="Database switcher with search and recent databases"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/database-switcher-dark.png"
-    alt="Database switcher with search and recent databases"
-  />
-</Frame>
+Click **New Database...** at the bottom of the switcher. The form fields come from the driver: MySQL/MariaDB ask for a name, character set, and collation; PostgreSQL, ClickHouse, MongoDB, and others show their own fields. The button only appears on engines that support creating databases.
 
 ### Drop Database
 
-Drop a database from the database switcher (shipped v0.33.0). Three entry points:
-
-- Right-click a database and select **Drop Database**
-- Select a database and click the trash icon in the switcher toolbar
-- Select a database and press `Delete`
-
-A confirmation dialog appears with a destructive (red) action button and the database name typed in the prompt. The current database cannot be dropped: switch to another one first.
+Right-click a database in the switcher and choose **Drop Database...**. The item is hidden for system databases and for the database you are currently connected to; switch to another one first. A confirmation dialog shows the database name in its title with a red **Drop Database** button.
 
 <Warning>
-Dropping a database is irreversible. Whether the action succeeds depends on the connected user's privileges (`DROP` on MySQL/MariaDB, `DROPDB` or owner on PostgreSQL). Permission errors surface inline.
+Dropping a database permanently deletes all its tables and data. The server rejects the drop if your account lacks the required privilege.
 </Warning>
-
-## MongoDB Collections
-
-### Create Collection
-
-Use the MQL editor. For collections with specific options (capped, validator):
-
-```javascript
-db.createCollection("myCollection", {
-  capped: true,
-  size: 1048576,
-  max: 1000
-})
-```
-
-### Drop Collection
-
-Right-click a collection in the sidebar and select **Drop Table**. This executes `db.collection.drop()` and removes all documents and indexes.
-
-### Show All Collections
-
-Select **Show All Tables** from the sidebar to list all collections in the current database.
-
-<Note>
-Truncate is not available for MongoDB. To remove all documents while keeping the collection, use `db.collection.deleteMany({})` in the MQL editor.
-</Note>
-

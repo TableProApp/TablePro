@@ -1,60 +1,53 @@
 ---
 title: Amazon Redshift
-description: Connect to Redshift clusters and Serverless via the PostgreSQL wire protocol, with DISTKEY/SORTKEY metadata display
+description: Connect to Redshift clusters and Serverless over the PostgreSQL wire protocol, with DISTKEY and SORTKEY metadata display
 ---
 
 # Amazon Redshift Connections
 
-TablePro connects to Amazon Redshift, AWS's columnar data warehouse based on PostgreSQL 8.0.2. Connections use the same libpq driver as PostgreSQL, with Redshift-specific metadata queries for distribution style, sort keys, and table size.
-
-## Quick Setup
-
-<Steps>
-  <Step title="Create Connection">
-    Click **New Connection**, select **Amazon Redshift**, enter cluster endpoint/port/credentials/database, and click **Create**
-  </Step>
-</Steps>
+TablePro connects to Amazon Redshift using the same libpq driver as [PostgreSQL](/databases/postgresql), plus Redshift-specific metadata queries for distribution style, sort keys, and table size. The PostgreSQL page applies unless noted here.
 
 ## Connection Settings
 
 | Field | Default | Notes |
 |-------|---------|-------|
-| **Host** | - | Cluster endpoint (find in AWS Console) |
-| **Port** | `5439` | Redshift port |
-| **Database** | `dev` | **Required** (default database in every cluster) |
+| **Host** | - | Cluster endpoint, e.g. `my-cluster.abc123xyz.us-east-1.redshift.amazonaws.com` |
+| **Port** | `5439` | |
+| **Database** | `dev` | **Required**; every cluster has a `dev` database |
 
-Example: `my-cluster.abc123xyz.us-east-1.redshift.amazonaws.com:5439`
+Fill in the form and click **Save & Connect**. Connection URLs use the `redshift://` scheme, see [Connection URL Reference](/databases/connection-urls).
 
-## Connection URL
-
-```text
-redshift://user:password@cluster.region.redshift.amazonaws.com:5439/database
-```
-
-See [Connection URL Reference](/databases/connection-urls) for all parameters.
+<Note>
+AWS IAM authentication is not available for Redshift connections (unlike MySQL and PostgreSQL). Use the cluster's database username and password.
+</Note>
 
 ## Features
 
-**Schemas**: Like PostgreSQL. Switch with **Cmd+K**. Default schema is `public`. Tables show metadata from `svv_table_info`: distribution style, sort keys, table size.
+**Schemas**: like PostgreSQL, default schema `public`. Table metadata comes from `svv_table_info`: distribution style, sort keys, and table size.
 
-**Query Execution**: Full Redshift SQL support with COPY/UNLOAD for S3, window functions, ANALYZE COMPRESSION. Export to CSV/JSON/SQL/XLSX. Import from CSV/JSON/SQL/XLSX.
+**DDL**: table definitions include DISTKEY, SORTKEY, DISTSTYLE, and ENCODE directives. Foreign keys display as informational; Redshift does not enforce them.
 
-**DDL**: Shows DISTKEY, SORTKEY, DISTSTYLE, ENCODE directives. Foreign keys (informational only, not enforced).
+<Frame caption="Distribution style and sort keys in table info">
+  <img className="block dark:hidden" src="/images/redshift-table-info-sortkeys.png" alt="Redshift table info showing distribution style and sort keys" />
+  <img className="hidden dark:block" src="/images/redshift-table-info-sortkeys-dark.png" alt="Redshift table info showing distribution style and sort keys" />
+</Frame>
 
-**SSL/TLS**: Use **Required** or **Verify CA** for production.
+**Backup & Maintenance**: **Backup Dump** and **Restore Dump** (via `pg_dump`) work for Redshift, and the maintenance panel offers **VACUUM** with FULL, ANALYZE, and VERBOSE options. See [Backup & Restore](/features/backup-restore).
 
-**SSH Tunnels**: Supported for private VPC clusters.
+**Import & Export**: export to CSV, JSON, SQL, or XLSX. Import from CSV, JSON, or SQL. See [Import & Export](/features/import-export).
 
-## Limitations
+## Structure Editing
 
-Columnar warehouse (not general-purpose RDBMS): No traditional indexes (uses DISTKEY/SORTKEY), limited ALTER TABLE (no column rename), no enums/sequences/triggers, foreign keys informational only, restricted PL/pgSQL.
+TablePro disables the structure-editing UI for Redshift: no column, index, or key changes from the structure tab. Run `ALTER TABLE` statements in the SQL editor instead.
+
+## Redshift Limitations
+
+Columnar warehouse, not a general-purpose RDBMS: no traditional indexes (DISTKEY/SORTKEY instead), no enums, sequences, or triggers, and foreign keys are informational only.
 
 ## Troubleshooting
 
-**Connection refused**: Check security group allows port 5439, verify cluster is publicly accessible (or use SSH tunnel), ensure cluster isn't paused.
+**Connection refused**: check the security group allows port 5439, the cluster is publicly accessible (or use an [SSH tunnel](/databases/ssh-tunneling)), and the cluster is not paused.
 
-**Auth failed**: Verify master username/password in AWS Console, check IAM credentials, verify database access.
+**Auth failed**: verify the master username and password in the AWS Console.
 
-**Slow queries**: Check distribution style with `SELECT * FROM svv_table_info WHERE "table" = 'your_table'`, run `ANALYZE` to update stats, use `EXPLAIN`, match SORTKEY to WHERE/JOIN predicates.
-
-**PostgreSQL differences**: Port 5439, use `IDENTITY(seed, step)` not `SERIAL`, no arrays/rich types, query activity via `stv_recents`/`svl_qlog` not `pg_stat_activity`.
+**Slow queries**: check distribution with `SELECT * FROM svv_table_info WHERE "table" = 'your_table'`, run `ANALYZE` to update stats, and match SORTKEY to your WHERE/JOIN predicates.

@@ -1,0 +1,57 @@
+---
+title: Licensing
+description: Activate and deactivate a license key, what each tier includes, and how offline validation works
+---
+
+# Licensing
+
+TablePro works without a license and has no trial countdown. A license adds the Pro features below. Purchase, renewal, and billing are managed on [tablepro.app](https://tablepro.app/#pricing), not in the app.
+
+## Tiers
+
+There are two tiers, Starter and Team. Team includes everything in Starter.
+
+| Feature | Required tier |
+|---------|---------------|
+| [iCloud Sync](/features/icloud-sync) | Starter |
+| [Encrypted connection export](/features/connection-sharing) | Starter |
+| [Environment variables in connection fields](/features/connection-sharing) | Starter |
+| [Linked Folders](/features/connection-sharing) | Starter |
+| [Team Catalog](/features/connection-sharing) | Team |
+| [Team Library](/features/team) | Team |
+
+Without a license, these screens show an overlay with **Activate License...** and a purchase link. On a Starter license, Team features show an **Upgrade Plan** link instead. Everything else in the app works.
+
+## Activate
+
+1. Open **Settings** (`Cmd+,`) > **Account**.
+2. Paste your license key (`XXXXX-XXXXX-XXXXX-XXXXX-XXXXX`) and click **Activate**.
+
+The welcome window has an **Activate License** link that opens an activation dialog, and shows a green **Pro** badge once a license is active. The activation field also accepts a team invite code; TablePro detects which one you entered. See [Team Plan](/features/team).
+
+<Frame caption="License section in Settings > Account">
+  <img className="block dark:hidden" src="/images/license-settings.png" alt="License settings showing email, masked key, status, tier, and activations" />
+  <img className="hidden dark:block" src="/images/license-settings-dark.png" alt="License settings showing email, masked key, status, tier, and activations" />
+</Frame>
+
+Once active, the Account tab shows your email, a masked license key, status, expiry date (or Lifetime), tier, and billing cycle.
+
+## Activations
+
+A license is bound to each Mac it is activated on, using a hashed hardware ID. The **Activations** section lists every activated Mac with its app and macOS version, marks this Mac, and shows the count against your plan's limit (for example "Activations (2 of 3)"). The limit comes from your plan on tablepro.app.
+
+To move the license to another Mac, click **Deactivate...** in Settings > Account first. This frees the activation slot. If the license server can't be reached, the license is still removed from this Mac, but the slot may stay occupied until it expires on the server.
+
+## Validation and offline use
+
+Activation stores a signed license on your Mac. The license key goes in the macOS Keychain.
+
+- On every launch, TablePro re-verifies the license signature offline. No network needed.
+- Every 7 days, the app re-validates with the license server in the background.
+- If the server is unreachable, the license keeps working for 30 days after the last successful validation. After that, the status changes to Validation Failed and Pro features pause until a validation succeeds.
+
+**Check Status** in Settings > Account re-validates on demand, and gated screens offer **Retry Validation**. When a license expires within 7 days, the Account tab shows a renewal warning with a link to tablepro.app.
+
+## What syncs
+
+Activations never sync. Each Mac takes its own slot, and a license restored from another Mac's backup is cleared on launch. Team seats, invites, and member roles are managed on tablepro.app; see [Team Plan](/features/team).

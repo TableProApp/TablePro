@@ -1,148 +1,53 @@
 ---
 title: Query History
-description: Every executed query is saved to a local SQLite database with FTS5 full-text search
+description: Every executed query is saved to a local SQLite database with full-text search
 ---
 
 # Query History
 
-Every query you execute is automatically saved to a local SQLite database. Search with full-text search, filter by connection or time range, and re-run past queries. History persists across sessions.
+Every query you run is saved automatically, whether it succeeded or failed. History persists across sessions and is searchable with full-text search.
 
-{/* Screenshot: Query history panel showing list of past queries */}
-<Frame caption="Query history panel">
-  <img
-    className="block dark:hidden"
-    src="/images/query-history.png"
-    alt="Query History"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/query-history-dark.png"
-    alt="Query History"
-  />
+Open the panel with `Cmd+Y`, **View** > **Toggle History**, or the **History** button in the toolbar.
+
+<Frame caption="Query history panel: entry list on the left, preview on the right">
+  <img className="block dark:hidden" src="/images/query-history.png" alt="Query history panel" />
+  <img className="hidden dark:block" src="/images/query-history-dark.png" alt="Query history panel" />
 </Frame>
 
-Click **View** > **Query History**, press `Cmd+Y`, or click the **History** icon in the toolbar. Recent queries also appear in the sidebar.
+## The Panel
 
-The history panel shows your executed queries with execution time, status, and database. Sort by time (most recent first), duration, or query text. Filter by connection, status (success/error), or time range (today, week, month, all time).
+The left pane lists entries, newest first. Each row shows a green checkmark or red error icon, the query text, the database, when it ran, and how long it took. The right pane shows the selected query with syntax highlighting, plus its database, execution time, row count, timestamp, and the error message for failed queries.
 
-{/* Screenshot: History panel with filter controls */}
-<Frame caption="History panel with filter controls">
-  <img
-    className="block dark:hidden"
-    src="/images/history-filters.png"
-    alt="History panel with filter controls"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/history-filters-dark.png"
-    alt="History panel with filter controls"
-  />
-</Frame>
+Narrow the list with the date picker (Today, This Week, This Month, All Time) or type in the search field for full-text search across query text. The date filter persists across sessions. The list shows the 500 most recent matches.
 
-## Searching History
+Recent queries also appear in the [Quick Switcher](/features/quick-switcher).
 
-### Full-Text Search
+## Working With Entries
 
-Type in the search box to find queries containing specific text:
+| Action | How |
+|--------|-----|
+| Load into the editor | Select an entry, then click **Load in Editor** or press `Return` |
+| Run again | Right-click > **Run in New Tab** |
+| Copy the query | `Cmd+C`, the **Copy Query** button, or right-click > **Copy Query** |
+| Save as favorite | Right-click > **Save as Favorite** (see [Favorites](/features/favorites)) |
+| Delete one entry | `Delete` key or right-click > **Delete** |
+| Clear all entries | Trash button in the panel header, then confirm |
 
-```
-SELECT users  -- Find all queries containing "SELECT" and "users"
-```
+Loading a query into the editor lets you edit it before running. The original history entry stays unchanged.
 
-{/* Screenshot: Search results in history */}
-<Frame caption="Searching query history">
-  <img
-    className="block dark:hidden"
-    src="/images/history-search.png"
-    alt="History search"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/history-search-dark.png"
-    alt="History search"
-  />
-</Frame>
+## Storage and Retention
 
+History lives in `~/Library/Application Support/TablePro/query_history.db`, a local SQLite database with an FTS5 full-text index.
 
-## Using History
+Configure retention in **Settings** > **General** > **Query History**:
 
-### Re-running Queries
+| Setting | Default | Options |
+|---------|---------|---------|
+| Maximum entries | 10,000 | 100 to 10,000, or Unlimited |
+| Keep entries for | 90 days | 7 days to 1 year, or Forever |
+| Auto cleanup on startup | On | Removes entries past the limits at launch |
 
-Double-click a query to load it into the editor, then press `Cmd+Enter`. Or right-click > **Run Query**.
-
-### Copying Queries
-
-Select a query and press `Cmd+C`, or right-click > **Copy Query**.
-
-{/* Screenshot: Query history context menu */}
-<Frame caption="Query history context menu">
-  <img
-    className="block dark:hidden"
-    src="/images/history-context-menu.png"
-    alt="Query history context menu"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/history-context-menu-dark.png"
-    alt="Query history context menu"
-  />
-</Frame>
-
-### Editing Before Running
-
-Double-click to load into the editor, modify, and execute. The original history entry is preserved.
-
-
-## Query Details
-
-### Viewing Full Query
-
-For long queries, click to expand and see the full text:
-
-{/* Screenshot: Expanded query detail view */}
-<Frame caption="Full query view">
-  <img
-    className="block dark:hidden"
-    src="/images/history-detail.png"
-    alt="Query detail"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/history-detail-dark.png"
-    alt="Query detail"
-  />
-</Frame>
-
-
-Failed queries show the error message, the query that failed, and the timestamp. Load a failed query into the editor to fix and re-run.
-
-{/* Screenshot: Failed query entry with error message */}
-<Frame caption="Failed query entry with error message">
-  <img
-    className="block dark:hidden"
-    src="/images/history-failed-query.png"
-    alt="Failed query entry with error message"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/history-failed-query-dark.png"
-    alt="Failed query entry with error message"
-  />
-</Frame>
-
-## Storage
-
-Query history is stored in `~/Library/Application Support/TablePro/query_history.db` (a local SQLite database with FTS5 full-text search).
-
-Configure retention in **Settings** > **General**:
-
-| Setting | Default | Description |
-|---------|---------|-------------|
-| **Max Entries** | 10,000 | Maximum queries to store |
-| **Max Days** | 90 | Delete queries older than this |
-| **Auto Cleanup** | On | Automatically remove old entries |
-
-To clear all history, open **Settings** > **General** and click **Clear All History**. For a specific connection, right-click it in the sidebar and select **Clear History**.
+The **Clear History...** button in the same section deletes all entries after a confirmation. There is no per-connection clear.
 
 ## Search From External Clients
 

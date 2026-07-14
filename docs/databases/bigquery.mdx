@@ -31,7 +31,7 @@ gcloud auth application-default login --project=my-project
 6. After approving, TablePro receives the token automatically
 
 <Warning>
-OAuth tokens are session-only. You'll need to re-authorize after disconnecting. For persistent auth, use Application Default Credentials instead.
+Without a saved refresh token, the browser authorization repeats on every connect. Paste a refresh token into the **OAuth Refresh Token** field and TablePro mints access tokens from it instead of opening the browser. Application Default Credentials also persist.
 </Warning>
 
 ## Connection Settings
@@ -43,6 +43,7 @@ OAuth tokens are session-only. You'll need to re-authorize after disconnecting. 
 | **Service Account Key** | SA only | Path to `.json` key file, or raw JSON content |
 | **OAuth Client ID** | OAuth only | From GCP Console > APIs & Services > Credentials |
 | **OAuth Client Secret** | OAuth only | From GCP Console > APIs & Services > Credentials |
+| **OAuth Refresh Token** | No | Optional. When set, access tokens are minted from it and the browser flow is skipped |
 | **Location** | No | Processing location: `US`, `EU`, `us-central1`, etc. |
 | **Max Bytes Billed** | No | Cost cap per query in bytes (Advanced tab). Queries exceeding this limit will fail instead of billing. |
 
@@ -57,12 +58,6 @@ OAuth tokens are session-only. You'll need to re-authorize after disconnecting. 
 **GoogleSQL Queries** ([docs](https://cloud.google.com/bigquery/docs/reference/standard-sql/query-syntax)):
 
 ```sql
-SELECT * FROM `my_dataset.my_table` LIMIT 100
-
-SELECT country, COUNT(*) as cnt
-FROM `my_dataset.users`
-GROUP BY country
-
 -- UNNEST arrays
 SELECT id, tag
 FROM `my_dataset.items`, UNNEST(tags) AS tag
@@ -77,15 +72,14 @@ Backtick-quote table names: `` `dataset.table` ``. Single-quote strings: `'value
 
 **Query Cost**: After running a query in the SQL editor, the status bar shows bytes processed, bytes billed, and estimated cost (e.g., `Processed: 1.5 MB | Billed: 10 MB | ~$0.0001`). Use the **Dry Run** option (Explain dropdown > "Dry Run (Cost)") to check cost before executing.
 
+<Frame caption="Query cost in the status bar after execution">
+  <img className="block dark:hidden" src="/images/bigquery-query-cost.png" alt="Status bar showing bytes processed, bytes billed, and estimated query cost" />
+  <img className="hidden dark:block" src="/images/bigquery-query-cost-dark.png" alt="Status bar showing bytes processed, bytes billed, and estimated query cost" />
+</Frame>
+
 **Data Types**: INT64, FLOAT64, NUMERIC, BIGNUMERIC, BOOL, STRING, BYTES, DATE, TIME, DATETIME, TIMESTAMP, GEOGRAPHY, JSON, STRUCT, ARRAY, RANGE. Complex types (STRUCT/ARRAY) display as JSON.
 
-**Data Editing**: Edit cells, insert/delete rows. DML example:
-
-```sql
-INSERT INTO `project.dataset.table` (col1, col2) VALUES ('val1', 42)
-UPDATE `project.dataset.table` SET col1 = 'new' WHERE col2 = 42
-DELETE FROM `project.dataset.table` WHERE col2 = 42
-```
+**Data Editing**: Edit cells, insert rows, and delete rows in the data grid.
 
 <Warning>
 Partitioned tables require a partition filter for UPDATE/DELETE. Every query costs money (billed per bytes scanned). Set **Max Bytes Billed** in Advanced settings to cap costs.
@@ -124,4 +118,4 @@ Minimum roles:
 - STRUCT/ARRAY columns excluded from UPDATE/DELETE WHERE clauses
 - Deep pagination (large OFFSET) scans from start. Use filters to narrow results
 - No streaming inserts
-- OAuth tokens are session-only (re-authorize after disconnect)
+- Browser OAuth re-authorizes on each connect unless a refresh token is saved in the connection
