@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Fixed a crash when clicking a column header on a table whose columns have comments. Sorting such a table quit the app immediately. (#1869)
+
 ## [0.57.0] - 2026-07-14
 
 ### Added

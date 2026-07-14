@@ -371,10 +371,12 @@ struct DataGridColumnPoolTests {
         }
     }
 
-    @Test("reconcile assigns column comments to sortable header cells")
-    func reconcile_assignsColumnCommentsToHeaderCells() throws {
+    @Test("reconcile publishes column comments to the header view")
+    func reconcile_publishesColumnCommentsToHeaderView() throws {
         let pool = DataGridColumnPool()
         let tableView = makeTableView()
+        let headerView = SortableHeaderView(frame: NSRect(x: 0, y: 0, width: 200, height: 28))
+        tableView.headerView = headerView
         let schema = ColumnIdentitySchema(columns: ["id", "email"])
 
         pool.reconcile(
@@ -390,8 +392,9 @@ struct DataGridColumnPoolTests {
 
         let emailColumn = try #require(dataColumns(in: tableView).first { $0.headerCell.stringValue == "email" })
         let headerCell = try #require(emailColumn.headerCell as? SortableHeaderCell)
-        #expect(headerCell.headerComment == "Primary contact address")
+        #expect(headerView.comment(for: headerCell) == "Primary contact address")
         #expect(emailColumn.headerToolTip == "email (Text)\nPrimary contact address")
+        #expect(headerCell.accessibilityLabel() == "Column: email, Primary contact address")
 
         pool.reconcile(
             tableView: tableView,
@@ -404,8 +407,9 @@ struct DataGridColumnPoolTests {
             widthCalculator: defaultWidthCalculator
         )
 
-        #expect(headerCell.headerComment == nil)
+        #expect(headerView.comment(for: headerCell) == nil)
         #expect(emailColumn.headerToolTip == "email (Text)")
+        #expect(headerCell.accessibilityLabel() == "Column: email")
     }
 
     @Test("reconcile expands and restores header height based on visible comments")
@@ -485,7 +489,7 @@ struct DataGridColumnPoolTests {
 
         let emailColumn = try #require(dataColumns(in: tableView).first { $0.headerCell.stringValue == "email" })
         let headerCell = try #require(emailColumn.headerCell as? SortableHeaderCell)
-        #expect(headerCell.headerComment == "Primary contact address")
+        #expect(headerView.comment(for: headerCell) == "Primary contact address")
         #expect(headerView.frame.height == headerView.commentHeaderHeight)
     }
 
@@ -523,7 +527,7 @@ struct DataGridColumnPoolTests {
 
         let emailColumn = try #require(dataColumns(in: tableView).first { $0.headerCell.stringValue == "email" })
         let headerCell = try #require(emailColumn.headerCell as? SortableHeaderCell)
-        #expect(headerCell.headerComment == "Work address")
+        #expect(headerView.comment(for: headerCell) == "Work address")
         #expect(emailColumn.headerToolTip == "email (Text)\nWork address")
         #expect(headerView.frame.height == heightAfterFirstReconcile)
     }

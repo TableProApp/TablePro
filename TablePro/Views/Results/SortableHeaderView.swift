@@ -73,6 +73,7 @@ final class SortableHeaderView: NSTableHeaderView {
     private var hoveredColumnIndex: Int?
 
     private let naturalHeight: CGFloat
+    private var commentsByColumn: [NSUserInterfaceItemIdentifier: String] = [:]
 
     var commentHeaderHeight: CGFloat {
         naturalHeight + SortableHeaderCell.commentLineHeight
@@ -83,6 +84,20 @@ final class SortableHeaderView: NSTableHeaderView {
             guard showsComments != oldValue else { return }
             applyHeaderHeight()
         }
+    }
+
+    func updateComments(_ comments: [NSUserInterfaceItemIdentifier: String]) {
+        guard commentsByColumn != comments else { return }
+        commentsByColumn = comments
+        needsDisplay = true
+    }
+
+    func comment(for cell: NSCell) -> String? {
+        guard let tableView,
+              let column = tableView.tableColumns.first(where: { $0.headerCell === cell }) else {
+            return nil
+        }
+        return commentsByColumn[column.identifier]
     }
 
     override init(frame frameRect: NSRect) {
