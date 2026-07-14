@@ -5742,6 +5742,9 @@
         }
       }
     },
+    "Access Method" : {
+
+    },
     "Access uses your ChatGPT subscription (Plus, Pro, Business, or Enterprise) and follows OpenAI's terms. This is an unofficial interface that may change." : {
       "localizations" : {
         "tr" : {
@@ -10854,6 +10857,9 @@
           }
         }
       }
+    },
+    "Auth Level" : {
+
     },
     "Auth Method" : {
       "localizations" : {
@@ -22486,6 +22492,9 @@
         }
       }
     },
+    "Current %@" : {
+
+    },
     "Current %@: %@ (⌘K to %@)" : {
       "localizations" : {
         "en" : {
@@ -22669,6 +22678,7 @@
       }
     },
     "Current schema" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -48524,6 +48534,9 @@
         }
       }
     },
+    "Multi-model database with SurrealQL" : {
+
+    },
     "Multiple statements are not permitted for this client" : {
       "localizations" : {
         "tr" : {
@@ -48753,6 +48766,9 @@
           }
         }
       }
+    },
+    "Namespace" : {
+
     },
     "Navigate to referenced row" : {
       "extractionState" : "stale",
@@ -55626,6 +55642,9 @@
           }
         }
       }
+    },
+    "Optional, pick one after connecting" : {
+
     },
     "Optional. A key from the Cursor dashboard is used instead of signing in." : {
       "localizations" : {
@@ -62632,6 +62651,9 @@
         }
       }
     },
+    "Record Access" : {
+
+    },
     "Recording shortcut" : {
       "localizations" : {
         "tr" : {
@@ -66056,6 +66078,9 @@
         }
       }
     },
+    "Root" : {
+
+    },
     "Root Level" : {
       "localizations" : {
         "tr" : {
@@ -69099,6 +69124,9 @@
         }
       }
     },
+    "Select %@" : {
+
+    },
     "Select %@ file to import" : {
       "localizations" : {
         "tr" : {
@@ -69591,6 +69619,7 @@
 
     },
     "Select schema" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -71435,7 +71464,11 @@
         }
       }
     },
+    "Show System %@s" : {
+
+    },
     "Show System Schemas" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -85008,7 +85041,11 @@
         }
       }
     },
+    "Use as Active %@" : {
+
+    },
     "Use as Active Database" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -85037,6 +85074,7 @@
       }
     },
     "Use as Active Schema" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {

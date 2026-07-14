@@ -6,6 +6,19 @@
 import Foundation
 import os
 
+private final class TaskBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var task: URLSessionTask?
+
+    func set(_ task: URLSessionTask) {
+        lock.withLock { self.task = task }
+    }
+
+    func cancel() {
+        lock.withLock { task }?.cancel()
+    }
+}
+
 public struct SurrealStatementResult: Sendable {
     public let status: String
     public let value: SurrealValue
@@ -140,7 +153,7 @@ public final class SurrealRPCClient: NSObject, @unchecked Sendable {
     }
 
     public func probeVersion() async throws {
-        var request = try makeRequest(path: "/version")
+        var request = try makeRequest(path: "/version", authenticated: false)
         request.httpMethod = "GET"
         let (data, response) = try await send(request)
 
@@ -156,7 +169,7 @@ public final class SurrealRPCClient: NSObject, @unchecked Sendable {
 
     // MARK: - Request plumbing
 
-    private func makeRequest(path: String) throws -> URLRequest {
+    private func makeRequest(path: String, authenticated: Bool = true) throws -> URLRequest {
         guard let base = config.baseURL, let url = URL(string: path, relativeTo: base) else {
             throw SurrealDBError.invalidEndpoint(config.host)
         }
@@ -165,6 +178,7 @@ public final class SurrealRPCClient: NSObject, @unchecked Sendable {
         if let timeout = lock.withLock({ timeoutSeconds }) {
             request.timeoutInterval = TimeInterval(timeout)
         }
+        guard authenticated else { return request }
 
         let token = lock.withLock { bearerToken }
         if let token, !token.isEmpty {
@@ -198,27 +212,37 @@ public final class SurrealRPCClient: NSObject, @unchecked Sendable {
     }
 
     private func send(_ request: URLRequest) async throws -> (Data, URLResponse) {
-        guard let session = lock.withLock({ session }) else { throw SurrealDBError.notConnected }
-
-        return try await withCheckedThrowingContinuation { continuation in
-            let task = session.dataTask(with: request) { [weak self] data, response, error in
-                self?.finish(task: nil)
-                if let error {
-                    continuation.resume(throwing: error)
-                    return
+        let box = TaskBox()
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                lock.withLock {
+                    guard let session else {
+                        continuation.resume(throwing: SurrealDBError.notConnected)
+                        return
+                    }
+                    let task = session.dataTask(with: request) { [weak self] data, response, error in
+                        self?.finish()
+                        if let error {
+                            continuation.resume(throwing: error)
+                            return
+                        }
+                        guard let data, let response else {
+                            continuation.resume(throwing: SurrealDBError.decodingFailed(String(localized: "Empty response")))
+                            return
+                        }
+                        continuation.resume(returning: (data, response))
+                    }
+                    inFlight.append(task)
+                    box.set(task)
+                    task.resume()
                 }
-                guard let data, let response else {
-                    continuation.resume(throwing: SurrealDBError.decodingFailed(String(localized: "Empty response")))
-                    return
-                }
-                continuation.resume(returning: (data, response))
             }
-            lock.withLock { inFlight.append(task) }
-            task.resume()
+        } onCancel: {
+            box.cancel()
         }
     }
 
-    private func finish(task: URLSessionTask?) {
+    private func finish() {
         lock.withLock {
             inFlight.removeAll { $0.state == .completed || $0.state == .canceling }
         }

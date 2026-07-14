@@ -12,9 +12,10 @@ extension SurrealDBPluginDriver {
     // MARK: - Namespaces and databases
 
     func fetchDatabases() async throws -> [String] {
-        let value = try await info("INFO FOR ROOT;", scope: SurrealScope(namespace: nil, database: nil))
-        let namespaces = SurrealInfoParser.names(from: value, key: "namespaces")
-        guard namespaces.isEmpty else { return namespaces }
+        if let value = try? await info("INFO FOR ROOT;", scope: SurrealScope(namespace: nil, database: nil)) {
+            let namespaces = SurrealInfoParser.names(from: value, key: "namespaces")
+            if !namespaces.isEmpty { return namespaces }
+        }
         return settings.namespace.isEmpty ? [] : [settings.namespace]
     }
 
@@ -24,8 +25,11 @@ extension SurrealDBPluginDriver {
 
     func fetchSchemas() async throws -> [String] {
         let scope = SurrealScope(namespace: currentNamespace, database: nil)
-        let value = try await info("INFO FOR NS;", scope: scope)
-        return SurrealInfoParser.names(from: value, key: "databases")
+        if let value = try? await info("INFO FOR NS;", scope: scope) {
+            let databases = SurrealInfoParser.names(from: value, key: "databases")
+            if !databases.isEmpty { return databases }
+        }
+        return settings.database.isEmpty ? [] : [settings.database]
     }
 
     func createDatabase(_ request: PluginCreateDatabaseRequest) async throws {
@@ -60,7 +64,7 @@ extension SurrealDBPluginDriver {
             columns = try await sampledColumns(table: table, scope: scope, declared: columns)
         }
 
-        cacheKinds(Self.kinds(from: columns), for: table)
+        mergeKinds(Self.kinds(from: columns), for: table)
         return columns
     }
 

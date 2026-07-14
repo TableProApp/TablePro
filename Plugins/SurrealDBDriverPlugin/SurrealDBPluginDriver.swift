@@ -47,10 +47,14 @@ final class SurrealDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     func connect() async throws {
         try settings.validate()
         client.start()
-        try await client.probeVersion()
-        try await client.authenticate()
-        _ = try await client.query("INFO FOR ROOT;", namespace: nil, database: nil)
-            .isEmpty
+        do {
+            try await client.probeVersion()
+            try await client.authenticate()
+            _ = try await client.query("RETURN 1;", namespace: currentScope().namespace, database: currentScope().database)
+        } catch {
+            client.stop()
+            throw error
+        }
     }
 
     func disconnect() {
@@ -117,8 +121,37 @@ final class SurrealDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         lock.withLock { kindCache[table] ?? [:] }
     }
 
-    func cacheKinds(_ kinds: [String: SurrealFieldKind], for table: String) {
-        lock.withLock { kindCache[table] = kinds }
+    func mergeKinds(_ kinds: [String: SurrealFieldKind], for table: String) {
+        guard !kinds.isEmpty else { return }
+        lock.withLock {
+            kindCache[table, default: [:]].merge(kinds) { current, _ in current }
+        }
+    }
+
+    func learnKinds(from value: SurrealValue) {
+        let rows: [SurrealValue]
+        switch value {
+        case let .array(items):
+            rows = items
+        case .object:
+            rows = [value]
+        default:
+            return
+        }
+
+        var learned: [String: [String: SurrealFieldKind]] = [:]
+        for row in rows {
+            guard let pairs = row.objectPairs,
+                  case let .recordId(record)? = row[SurrealInfoParser.recordIdColumn] else { continue }
+            for pair in pairs where !SurrealInfoParser.isReservedColumn(pair.key) {
+                guard learned[record.table]?[pair.key] == nil,
+                      let kind = SurrealFieldKind.infer(from: pair.value) else { continue }
+                learned[record.table, default: [:]][pair.key] = kind
+            }
+        }
+        for (table, kinds) in learned {
+            mergeKinds(kinds, for: table)
+        }
     }
 
     // MARK: - Execution
@@ -130,6 +163,7 @@ final class SurrealDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         if let failure = SurrealRPCClient.firstFailure(results) {
             throw failure
         }
+        results.forEach { learnKinds(from: $0.value) }
         return Self.result(from: results, elapsed: Date().timeIntervalSince(started))
     }
 
@@ -150,6 +184,7 @@ final class SurrealDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         if let failure = SurrealRPCClient.firstFailure(results) {
             throw failure
         }
+        results.forEach { learnKinds(from: $0.value) }
         return Self.result(from: results, elapsed: Date().timeIntervalSince(started))
     }
 

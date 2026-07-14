@@ -45,6 +45,41 @@ public struct SurrealFieldKind: Equatable, Sendable {
         base == .object || base == .array || base == .set
     }
 
+    public static func infer(from value: SurrealValue) -> SurrealFieldKind? {
+        let base: Base
+        switch value {
+        case .bool:
+            base = .bool
+        case .int:
+            base = .int
+        case .double:
+            base = .float
+        case .decimal:
+            base = .decimal
+        case .string:
+            base = .string
+        case .bytes:
+            base = .bytes
+        case .uuid:
+            base = .uuid
+        case .datetime:
+            base = .datetime
+        case .duration:
+            base = .duration
+        case .recordId:
+            base = .record
+        case .array:
+            base = .array
+        case .object:
+            base = .object
+        case .tagged, .range:
+            base = .any
+        case .null, .none, .table:
+            return nil
+        }
+        return SurrealFieldKind(base: base, isOptional: false, raw: value.typeName)
+    }
+
     public static func parse(_ raw: String) -> SurrealFieldKind {
         let trimmed = raw.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else {

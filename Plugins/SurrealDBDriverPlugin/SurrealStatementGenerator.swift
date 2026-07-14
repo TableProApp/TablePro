@@ -9,6 +9,13 @@ import TableProPluginKit
 public typealias SurrealStatement = (statement: String, parameters: [PluginCellValue])
 
 public enum SurrealStatementGenerator {
+    static let autoIdMarker = "__DEFAULT__"
+
+    static func isAutoDefault(_ value: PluginCellValue) -> Bool {
+        guard case let .text(text) = value else { return false }
+        return text.trimmingCharacters(in: .whitespaces) == autoIdMarker
+    }
+
     public static func statements(
         table: String,
         scope: SurrealScope,
@@ -55,7 +62,9 @@ public enum SurrealStatementGenerator {
         change: PluginRowChange
     ) -> SurrealStatement? {
         guard let record = recordId(table: table, columns: columns, originalRow: change.originalRow) else { return nil }
-        let editable = change.cellChanges.filter { !SurrealInfoParser.isReservedColumn($0.columnName) }
+        let editable = change.cellChanges.filter {
+            !SurrealInfoParser.isReservedColumn($0.columnName) && !Self.isAutoDefault($0.newValue)
+        }
         guard !editable.isEmpty else { return nil }
 
         var parameters: [PluginCellValue] = [SurrealCellCoder.parameter(.recordId(record))]
@@ -87,7 +96,9 @@ public enum SurrealStatementGenerator {
             let cell = values[index]
 
             if column == SurrealInfoParser.recordIdColumn {
-                guard case let .text(text) = cell, !text.trimmingCharacters(in: .whitespaces).isEmpty else { continue }
+                guard case let .text(text) = cell else { continue }
+                let trimmed = text.trimmingCharacters(in: .whitespaces)
+                guard !trimmed.isEmpty, trimmed != Self.autoIdMarker else { continue }
                 guard let record = SurrealQL.parseRecordId(text, fallbackTable: table) else { continue }
                 parameters.append(SurrealCellCoder.parameter(.recordId(record)))
                 target = "$p\(parameters.count - 1)"
@@ -95,6 +106,7 @@ public enum SurrealStatementGenerator {
             }
 
             if case .null = cell { continue }
+            if Self.isAutoDefault(cell) { continue }
             let value = SurrealCellCoder.value(from: cell, kind: kinds[column])
             parameters.append(SurrealCellCoder.parameter(value))
             assignments.append(SurrealQL.quoteIdentifier(column) + " = $p\(parameters.count - 1)")

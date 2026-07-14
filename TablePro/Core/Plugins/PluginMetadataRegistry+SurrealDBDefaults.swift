@@ -18,7 +18,7 @@ extension PluginMetadataRegistry {
                 supportsHealthMonitor: true, urlSchemes: ["surrealdb"],
                 postConnectActions: [.selectSchemaFromLastSession],
                 brandColorHex: "#FF00A0",
-                queryLanguageName: "SurrealQL", editorLanguage: .sql,
+                queryLanguageName: "SurrealQL", editorLanguage: .custom("surrealql"),
                 connectionMode: .network, supportsDatabaseSwitching: true,
                 supportsColumnReorder: false,
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(

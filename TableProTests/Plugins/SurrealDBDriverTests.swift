@@ -35,6 +35,37 @@ struct SurrealQLTests {
             == SurrealRecordID(table: "person", id: .string("alice")))
         #expect(SurrealQL.parseRecordId("") == nil)
     }
+
+    @Test("A backticked string id is not re-inferred as an int")
+    func quotedStringIdStaysString() {
+        #expect(SurrealQL.parseRecordId("person:`10`") == SurrealRecordID(table: "person", id: .string("10")))
+        #expect(SurrealQL.parseRecordId("person:\u{27E8}10\u{27E9}") == SurrealRecordID(table: "person", id: .string("10")))
+        #expect(SurrealQL.parseRecordId("person:10") == SurrealRecordID(table: "person", id: .int(10)))
+    }
+
+    @Test("Record ids round-trip through their display literal")
+    func recordIdRoundTrip() {
+        let ids: [SurrealValue] = [
+            .string("alice"),
+            .int(10),
+            .string("10"),
+            .string("a:b"),
+            .string("has space"),
+        ]
+        for id in ids {
+            let record = SurrealRecordID(table: "person", id: id)
+            let literal = SurrealValue.recordId(record).displayText
+            #expect(SurrealQL.parseRecordId(literal) == record, "\(literal) did not round-trip")
+        }
+    }
+
+    @Test("A record id whose table needs quoting round-trips without changing table")
+    func oddTableRoundTrip() {
+        let record = SurrealRecordID(table: "a:b", id: .int(1))
+        let literal = SurrealValue.recordId(record).displayText
+        #expect(literal == "`a:b`:1")
+        #expect(SurrealQL.parseRecordId(literal) == record)
+    }
 }
 
 @Suite("SurrealDB - query builder")
@@ -92,6 +123,35 @@ struct SurrealQueryBuilderTests {
         #expect(clause("IN", "1, 2") == "c INSIDE [1, 2]")
     }
 
+    @Test("Only a real table:id shape becomes a record literal; look-alikes stay strings")
+    func literalRecordDisambiguation() {
+        func clause(_ value: String) -> String {
+            SurrealQueryBuilder.whereClause(
+                filters: [(column: "c", op: "=", value: value)], logicMode: "and"
+            ) ?? ""
+        }
+        #expect(clause("person:tobie") == "c = person:tobie")
+        #expect(clause("12:30") == "c = '12:30'", "a time-shaped value is a string, not a record")
+        #expect(clause("1e5") == "c = 1e5")
+        #expect(clause("null") == "c = NULL")
+        #expect(clause("none") == "c = NONE")
+        #expect(clause("plain") == "c = 'plain'")
+    }
+
+    @Test("A hostile filter value cannot escape its literal in any branch")
+    func literalBranchesContainPayloads() {
+        func clause(_ value: String) -> String {
+            SurrealQueryBuilder.whereClause(
+                filters: [(column: "c", op: "=", value: value)], logicMode: "and"
+            ) ?? ""
+        }
+        // String branch: the closing quote is escaped.
+        #expect(clause("x'; REMOVE TABLE person; --") == "c = 'x\\'; REMOVE TABLE person; --'")
+        // Record branch: the id part is backtick-quoted, so ; stays inside the identifier.
+        let recordish = clause("person:a;REMOVE")
+        #expect(recordish.hasPrefix("c = person:`") && recordish.hasSuffix("`"))
+    }
+
     @Test("Count uses GROUP ALL")
     func count() {
         let query = SurrealQueryBuilder.count(table: "person", scope: scope, filters: [], logicMode: "and")
@@ -130,6 +190,18 @@ struct SurrealFieldKindTests {
         #expect(SurrealFieldKind.parse("decimal").base == .decimal)
         #expect(SurrealFieldKind.parse("geometry<point>").base == .geometry)
         #expect(SurrealFieldKind.parse("").base == .any)
+    }
+
+    @Test("A kind can be inferred from a typed value read back from the server")
+    func inferFromValue() {
+        #expect(SurrealFieldKind.infer(from: .int(1))?.base == .int)
+        #expect(SurrealFieldKind.infer(from: .bool(true))?.base == .bool)
+        #expect(SurrealFieldKind.infer(from: .decimal("1.5"))?.base == .decimal)
+        #expect(SurrealFieldKind.infer(from: .datetime(seconds: 0, nanoseconds: 0))?.base == .datetime)
+        #expect(SurrealFieldKind.infer(from: .recordId(SurrealRecordID(table: "t", id: .int(1))))?.base == .record)
+        // NULL/NONE carry no type, so they must not overwrite a learned kind.
+        #expect(SurrealFieldKind.infer(from: .null) == nil)
+        #expect(SurrealFieldKind.infer(from: .none) == nil)
     }
 }
 
@@ -351,6 +423,34 @@ struct SurrealStatementGeneratorTests {
         #expect(statement.parameters.count == 1)
     }
 
+    @Test("The auto-id marker on insert lets the server mint the id")
+    func autoDefaultInsertId() throws {
+        let statements = SurrealStatementGenerator.statements(
+            table: "person", scope: scope, columns: columns, kinds: kinds,
+            changes: [], insertedRowData: [0: [.text("__DEFAULT__"), .text("Carol"), .text("22")]],
+            deletedRowIndices: [], insertedRowIndices: [0]
+        )
+        let statement = try #require(statements.first)
+        #expect(statement.statement.contains("CREATE person SET"))
+        #expect(!statement.statement.contains("__DEFAULT__"))
+        #expect(!statement.statement.contains("person:__DEFAULT__"))
+    }
+
+    @Test("The auto-id marker on an updated field is skipped, never written literally")
+    func autoDefaultUpdateField() {
+        let change = PluginRowChange(
+            rowIndex: 0,
+            type: .update,
+            cellChanges: [(columnIndex: 1, columnName: "name", oldValue: .text("Alice"), newValue: .text("__DEFAULT__"))],
+            originalRow: [.text("person:alice"), .text("Alice"), .text("30")]
+        )
+        let statements = SurrealStatementGenerator.statements(
+            table: "person", scope: scope, columns: columns, kinds: kinds,
+            changes: [change], insertedRowData: [:], deletedRowIndices: [], insertedRowIndices: []
+        )
+        #expect(statements.isEmpty, "an all-default update produces no statement, not a literal write")
+    }
+
     @Test("The id column is never written")
     func immutableId() {
         let change = PluginRowChange(
@@ -385,6 +485,20 @@ struct SurrealCellCoderTests {
         #expect(value("2024-09-15T12:34:56.789Z", "datetime")
             == .datetime(seconds: 1_726_403_696, nanoseconds: 789_000_000))
         #expect(value("1h30m", "duration") == .duration(seconds: 5400, nanoseconds: 0))
+    }
+
+    @Test("With no known kind, numeric and bool text is typed, not left a string")
+    func fallbackInference() {
+        func value(_ text: String) -> SurrealValue {
+            SurrealCellCoder.value(from: .text(text), kind: nil)
+        }
+        #expect(value("31") == .int(31))
+        #expect(value("true") == .bool(true))
+        #expect(value("false") == .bool(false))
+        #expect(value("hello") == .string("hello"))
+        #expect(value(#"{"a":1}"#) == .object([(key: "a", value: .int(1))]))
+        // A leading-zero string is not an int, so it stays a string.
+        #expect(value("007") == .string("007"))
     }
 
     @Test("An empty cell in an optional column becomes NONE")

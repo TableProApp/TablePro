@@ -192,9 +192,19 @@ public enum SurrealQueryBuilder {
     }
 
     private static func recordLiteral(_ value: String) -> String? {
-        guard value.contains(":"), !value.contains(" ") else { return nil }
+        guard !value.contains(" "), looksLikeRecordId(value) else { return nil }
         guard let record = SurrealQL.parseRecordId(value) else { return nil }
         return SurrealQL.recordLiteral(record)
+    }
+
+    private static func looksLikeRecordId(_ value: String) -> Bool {
+        guard let colon = value.firstIndex(of: ":"), colon != value.startIndex else { return false }
+        let table = value[value.startIndex..<colon]
+        guard let first = table.unicodeScalars.first,
+              CharacterSet.letters.contains(first) || first == "_" else { return false }
+        return table.unicodeScalars.allSatisfy {
+            CharacterSet.alphanumerics.contains($0) || $0 == "_"
+        } && value.index(after: colon) < value.endIndex
     }
 
     private static func isNumeric(_ value: String) -> Bool {

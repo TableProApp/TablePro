@@ -45,7 +45,7 @@ public extension SurrealValue {
 
     var jsonText: String {
         let text = Self.jsonFragment(self)
-        guard text.count > Self.maxSerializedLength else { return text }
+        guard (text as NSString).length > Self.maxSerializedLength else { return text }
         return String(text.prefix(Self.maxSerializedLength)) + "..."
     }
 
@@ -253,6 +253,6 @@ public extension SurrealValue {
 
 public extension SurrealRecordID {
     var literal: String {
-        table + ":" + SurrealQL.recordIdPart(id)
+        SurrealQL.recordLiteral(self)
     }
 }

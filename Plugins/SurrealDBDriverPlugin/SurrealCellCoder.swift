@@ -100,7 +100,17 @@ public enum SurrealCellCoder {
         if trimmed.hasPrefix("{") || trimmed.hasPrefix("[") {
             if let value = json(from: trimmed) { return value }
         }
-        return .string(text)
+        if let integer = Int64(trimmed), String(integer) == trimmed {
+            return .int(integer)
+        }
+        switch trimmed.lowercased() {
+        case "true":
+            return .bool(true)
+        case "false":
+            return .bool(false)
+        default:
+            return .string(text)
+        }
     }
 
     public static func json(from text: String) -> SurrealValue? {

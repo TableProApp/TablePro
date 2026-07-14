@@ -29,6 +29,8 @@ final class SurrealDBPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let brandColorHex = "#FF00A0"
     static let urlSchemes: [String] = ["surrealdb"]
     static let queryLanguageName = "SurrealQL"
+    static let editorLanguage: EditorLanguage = .custom("surrealql")
+    static let parameterStyle: ParameterStyle = .dollar
 
     static let supportsDatabaseSwitching = true
     static let supportsSchemaSwitching = true

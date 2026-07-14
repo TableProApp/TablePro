@@ -98,6 +98,30 @@ struct SurrealDBCBORTests {
         #expect(throws: SurrealCBORError.self) { try SurrealCBOR.decode(Data([0x9F, 0x01])) }
     }
 
+    @Test("A length header near Int max throws instead of overflowing")
+    func lengthOverflow() {
+        // byte string (major 2) claiming an 8-byte length of Int64.max
+        #expect(throws: SurrealCBORError.self) {
+            try SurrealCBOR.decode(Data([0x5B, 0x7F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF]))
+        }
+        // text string (major 3) claiming the same
+        #expect(throws: SurrealCBORError.self) {
+            try SurrealCBOR.decode(Data([0x7B, 0x7F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF]))
+        }
+    }
+
+    @Test("Deeply nested input throws nestingTooDeep instead of overflowing the stack")
+    func nestingDepth() {
+        var deep = Data(repeating: 0x81, count: 100_000)
+        deep.append(0xF6)
+        #expect(throws: SurrealCBORError.nestingTooDeep) { try SurrealCBOR.decode(deep) }
+
+        // A legitimately deep-but-bounded value still decodes.
+        var shallow = Data(repeating: 0x81, count: 10)
+        shallow.append(0x01)
+        #expect(throws: Never.self) { try SurrealCBOR.decode(shallow) }
+    }
+
     @Test("Unknown tags fall back to the wrapped value")
     func unknownTag() throws {
         let unknown = Data([0xD8, 0x63, 0x01])

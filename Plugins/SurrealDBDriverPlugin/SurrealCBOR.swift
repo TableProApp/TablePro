@@ -12,6 +12,7 @@ public enum SurrealCBORError: Error, Equatable {
     case invalidUTF8
     case malformedTag(UInt64)
     case lengthOverflow
+    case nestingTooDeep
 }
 
 public enum SurrealCBORTag {
@@ -33,9 +34,11 @@ public enum SurrealCBORTag {
 }
 
 public enum SurrealCBOR {
+    private static let maxNestingDepth = 256
+
     public static func decode(_ data: Data) throws -> SurrealValue {
         var cursor = Cursor(data)
-        return try decodeItem(&cursor)
+        return try decodeItem(&cursor, depth: 0)
     }
 
     public static func encode(_ value: SurrealValue) -> Data {
@@ -61,7 +64,7 @@ public enum SurrealCBOR {
         }
 
         mutating func next(_ count: Int) throws -> [UInt8] {
-            guard count >= 0, index + count <= bytes.count else { throw SurrealCBORError.truncatedInput }
+            guard count >= 0, count <= bytes.count - index else { throw SurrealCBORError.truncatedInput }
             defer { index += count }
             return Array(bytes[index..<(index + count)])
         }
@@ -98,7 +101,8 @@ public enum SurrealCBOR {
         return count
     }
 
-    private static func decodeItem(_ cursor: inout Cursor) throws -> SurrealValue {
+    private static func decodeItem(_ cursor: inout Cursor, depth: Int) throws -> SurrealValue {
+        guard depth < maxNestingDepth else { throw SurrealCBORError.nestingTooDeep }
         let initial = try cursor.nextByte()
         let major = initial >> 5
         let info = initial & 0x1F
@@ -126,7 +130,7 @@ public enum SurrealCBOR {
             var items: [SurrealValue] = []
             items.reserveCapacity(min(count, 1024))
             for _ in 0..<count {
-                items.append(try decodeItem(&cursor))
+                items.append(try decodeItem(&cursor, depth: depth + 1))
             }
             return .array(items)
         case 5:
@@ -134,14 +138,14 @@ public enum SurrealCBOR {
             var pairs: [(key: String, value: SurrealValue)] = []
             pairs.reserveCapacity(min(count, 1024))
             for _ in 0..<count {
-                let key = try decodeItem(&cursor)
-                let value = try decodeItem(&cursor)
+                let key = try decodeItem(&cursor, depth: depth + 1)
+                let value = try decodeItem(&cursor, depth: depth + 1)
                 pairs.append((key: key.stringValue ?? Self.fallbackKey(key), value: value))
             }
             return .object(pairs)
         case 6:
             let tag = try readArgument(&cursor, info: info)
-            let inner = try decodeItem(&cursor)
+            let inner = try decodeItem(&cursor, depth: depth + 1)
             return try interpret(tag: tag, inner: inner)
         case 7:
             return try decodeSimple(&cursor, info: info)
