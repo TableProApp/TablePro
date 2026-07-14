@@ -30224,6 +30224,9 @@
         }
       }
     },
+    "Enter an absolute path, as it appears on the SSH server." : {
+
+    },
     "Enter database name" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -55675,6 +55678,9 @@
         }
       }
     },
+    "Optional. Set this to reach a database that only listens on a Unix socket." : {
+
+    },
     "Options" : {
       "localizations" : {
         "tr" : {
@@ -58343,6 +58349,9 @@
           }
         }
       }
+    },
+    "Point at the socket file itself, not the directory holding it." : {
+
     },
     "Port" : {
       "localizations" : {
@@ -72830,6 +72839,9 @@
         }
       }
     },
+    "Socket Path" : {
+
+    },
     "Software Update" : {
       "localizations" : {
         "tr" : {
@@ -79364,6 +79376,19 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "伺服器將可由網路上的其他裝置存取。驗證與 TLS 會自動啟用。"
+          }
+        }
+      }
+    },
+    "The SSH server connects to this socket instead of Host and Port. A database on a socket cannot negotiate TLS, so TablePro turns it off; the SSH tunnel still encrypts the whole path." : {
+
+    },
+    "The SSH server would not forward the socket %@. Check that the path exists on the server and that sshd allows socket forwarding (AllowStreamLocalForwarding). (%@)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "The SSH server would not forward the socket %1$@. Check that the path exists on the server and that sshd allows socket forwarding (AllowStreamLocalForwarding). (%2$@)"
           }
         }
       }
