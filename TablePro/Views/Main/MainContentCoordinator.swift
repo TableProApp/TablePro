@@ -282,6 +282,10 @@ final class MainContentCoordinator {
         Self.activeCoordinators.removeValue(forKey: instanceId)
     }
 
+    var isActivated: Bool {
+        _didActivate.withLock { $0 }
+    }
+
     /// Collect tabs across all of a connection's windows for persistence, tagged with
     /// the index of the native window group they belong to so tab order restores intact.
     static func aggregatedTabs(for connectionId: UUID) -> [(tab: QueryTab, windowGroupIndex: Int)] {
@@ -533,6 +537,7 @@ final class MainContentCoordinator {
             services.schemaProviderRegistry.retain(for: connection.id)
         }
         registerForPersistence()
+        SessionRecoveryTracker.sync()
         startPeriodicSave()
         setupPluginDriver()
         startFileWatcherIfNeeded()
@@ -724,6 +729,7 @@ final class MainContentCoordinator {
         _didTeardown.withLock { $0 = true }
 
         unregisterFromPersistence()
+        SessionRecoveryTracker.sync()
         if let observer = terminationObserver {
             NotificationCenter.default.removeObserver(observer)
             terminationObserver = nil
@@ -787,6 +793,7 @@ final class MainContentCoordinator {
             let id = instanceId
             Task { @MainActor in
                 Self.activeCoordinators.removeValue(forKey: id)
+                SessionRecoveryTracker.sync()
             }
             return
         }

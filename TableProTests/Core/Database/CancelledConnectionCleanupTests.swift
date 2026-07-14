@@ -78,6 +78,22 @@ struct CancelledConnectionCleanupTests {
         #expect(DatabaseManager.shared.currentSessionId != id)
     }
 
+    @Test("Cancelling a pending connection invalidates the attempt still in flight")
+    func cancelInvalidatesInFlightAttempt() async {
+        let id = UUID()
+        let attempt = DatabaseManager.shared.connectionAttempts.begin(for: id)
+        DatabaseManager.shared.injectSession(
+            ConnectionSession(connection: TestFixtures.makeConnection(id: id, name: "Pending")),
+            for: id
+        )
+        defer { DatabaseManager.shared.removeSession(for: id) }
+
+        await DatabaseManager.shared.cancelEnsureConnected(id)
+
+        #expect(!DatabaseManager.shared.connectionAttempts.isCurrent(attempt, for: id))
+        #expect(DatabaseManager.shared.activeSessions[id] == nil)
+    }
+
     @Test("Genuine failure moves currentSessionId to a remaining session")
     func genuineFailureSwitchesToRemainingSession() {
         let failedId = UUID()

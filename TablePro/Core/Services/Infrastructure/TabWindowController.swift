@@ -173,6 +173,7 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
         let connectionId = payload.connectionId
         let session = DatabaseManager.shared.activeSessions[connectionId]
         guard session?.driver == nil else { return }
+        SessionRecoveryTracker.sync()
         Task {
             await DatabaseManager.shared.cancelEnsureConnected(connectionId)
         }

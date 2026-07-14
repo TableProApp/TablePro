@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Cancel now stops a connection attempt right away instead of letting it run on in the background. A cancelled connection is also dropped from the last session, so restarting no longer reconnects to a host you gave up on, and it can no longer interrupt a later successful connection. (#1358)
 - Fixed a crash when clicking a column header on a table whose columns have comments. Sorting such a table quit the app immediately. (#1869)
 
 ## [0.57.0] - 2026-07-14

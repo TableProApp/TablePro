@@ -431,6 +431,9 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
     }
 
     private func cancelConnectionAttempt() {
+        if let connectionId = payload?.connectionId {
+            Task { await DatabaseManager.shared.cancelEnsureConnected(connectionId) }
+        }
         view.window?.performClose(nil)
     }
 
