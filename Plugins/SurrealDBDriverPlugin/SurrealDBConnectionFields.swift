@@ -40,8 +40,9 @@ func surrealDBPluginConnectionFields() -> [ConnectionField] {
         ConnectionField(
             id: SurrealDBConnectionConfig.databaseField,
             label: String(localized: "Database"),
-            placeholder: String(localized: "Optional, pick one after connecting"),
-            section: .connection
+            placeholder: String(localized: "The database this user belongs to"),
+            section: .authentication,
+            visibleWhen: FieldVisibilityRule(fieldId: SurrealDBConnectionConfig.authLevelField, values: ["database", "record"])
         ),
         ConnectionField(
             id: SurrealDBConnectionConfig.skipTLSVerifyField,

@@ -2071,6 +2071,9 @@
         }
       }
     },
+    "%@_name" : {
+
+    },
     "%@, %@" : {
       "localizations" : {
         "en" : {
@@ -24197,6 +24200,7 @@
       }
     },
     "database_name" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -55643,9 +55647,6 @@
         }
       }
     },
-    "Optional, pick one after connecting" : {
-
-    },
     "Optional. A key from the Cursor dashboard is used instead of signing in." : {
       "localizations" : {
         "tr" : {
@@ -78859,6 +78860,9 @@
           }
         }
       }
+    },
+    "The database this user belongs to" : {
+
     },
     "The destructive query to execute" : {
       "localizations" : {

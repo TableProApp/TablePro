@@ -70,4 +70,15 @@ struct SurrealDBMetadataTests {
         #expect(token?.visibleWhen?.values == ["token"])
         #expect(fields.filter(\.hidesPassword).count == 1)
     }
+
+    @Test("The built-in database field is relabeled to Namespace, so there is no duplicate Database field")
+    func namespaceIsTheBuiltInField() throws {
+        // The top container is the namespace; the built-in database field carries it and is labeled from here.
+        #expect(try #require(snapshot).schema.containerEntityName == "Namespace")
+
+        // The custom Database field must not sit in the Connection section, or it collides with the built-in field.
+        let database = try #require(surrealDBPluginConnectionFields().first { $0.id == "sdbDatabase" })
+        #expect(database.section == .authentication)
+        #expect(database.visibleWhen?.values == ["database", "record"])
+    }
 }

@@ -130,8 +130,9 @@ func surrealDBConnectionFields() -> [ConnectionField] {
         ConnectionField(
             id: "sdbDatabase",
             label: String(localized: "Database"),
-            placeholder: String(localized: "Optional, pick one after connecting"),
-            section: .connection
+            placeholder: String(localized: "The database this user belongs to"),
+            section: .authentication,
+            visibleWhen: FieldVisibilityRule(fieldId: "sdbAuthLevel", values: ["database", "record"])
         ),
         ConnectionField(
             id: "sdbSkipTLSVerify",

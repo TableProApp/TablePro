@@ -79,9 +79,9 @@ struct GeneralPaneView: View {
             if PluginManager.shared.supportsDatabaseSwitching(for: type) {
                 Section(String(localized: "Connection")) {
                     TextField(
-                        String(localized: "Database"),
+                        containerEntityName,
                         text: $coordinator.network.database,
-                        prompt: Text(String(localized: "database_name"))
+                        prompt: Text(containerEntityPlaceholder)
                     )
                 }
             } else {
@@ -92,9 +92,9 @@ struct GeneralPaneView: View {
                 hostFieldsView
                 if PluginManager.shared.requiresAuthentication(for: type) {
                     TextField(
-                        String(localized: "Database"),
+                        containerEntityName,
                         text: $coordinator.network.database,
-                        prompt: Text(String(localized: "database_name"))
+                        prompt: Text(containerEntityPlaceholder)
                     )
                 }
             }
@@ -113,6 +113,14 @@ struct GeneralPaneView: View {
                 }
             }
         }
+    }
+
+    private var containerEntityName: String {
+        PluginManager.shared.containerEntityName(for: type)
+    }
+
+    private var containerEntityPlaceholder: String {
+        String(format: String(localized: "%@_name"), containerEntityName.lowercased())
     }
 
     @ViewBuilder
