@@ -28,7 +28,7 @@ flowchart LR
 </Frame>
 
 <Note>
-The database **Host** and **Port** on the General pane are what the SSH server uses to reach the database, not what your Mac would use. Use `localhost` if the database runs on the SSH server itself, or the internal hostname (for example an RDS endpoint reached through a bastion) if it runs elsewhere.
+The database **Host** and **Port** on the General pane are what the SSH server uses to reach the database, not what your Mac would use. Use `localhost` if the database runs on the SSH server itself, or the internal hostname (for example an RDS endpoint reached through a bastion) if it runs elsewhere. If the database listens on a Unix socket rather than a port, use [Socket Path](#forwarding-to-a-unix-socket) instead.
 </Note>
 
 To reuse one SSH config across several connections, save it as a profile with **Save Current as Profile...** or pick one from the **Profile** picker. See [SSH Profiles](/features/ssh-profiles).
@@ -94,6 +94,28 @@ When the database sits behind one or more bastions, expand the **Jump Hosts** se
 | **Key File** | Path to private key (Private Key auth only) |
 
 Password auth is not available for jump hosts. If the jump host list is empty and the SSH host matches a config entry with a `ProxyJump` directive, TablePro follows it.
+
+## Forwarding to a Unix Socket
+
+Some servers only listen on a Unix socket, with no TCP port open at all. A PostgreSQL box configured for `local` connections in `pg_hba.conf` is the common case. Fill in **Socket Path** on the General pane and TablePro forwards to that socket instead of a host and port, the same thing `ssh -L 5434:/var/run/postgresql/.s.PGSQL.5432 server` does by hand. **Host** and **Port** are ignored while a socket path is set.
+
+Give the path to the socket **file**, not the directory holding it:
+
+| Database | Typical socket path |
+|----------|---------------------|
+| PostgreSQL | `/var/run/postgresql/.s.PGSQL.5432` |
+| MySQL / MariaDB | `/var/run/mysqld/mysqld.sock` |
+| Redis | `/var/run/redis/redis.sock` |
+
+This works through jump hosts: the hops get you to the SSH server, and the socket is opened from there.
+
+<Note>
+A database listening on a Unix socket cannot negotiate TLS, so TablePro turns SSL off for the connection. Nothing is exposed by this: the whole path still runs inside the encrypted SSH tunnel.
+</Note>
+
+`peer` authentication works, because the connection to the socket is made by the SSH server as your SSH login user. So a `local all all peer` line authenticates you as the PostgreSQL role matching your SSH username.
+
+The SSH server has to allow socket forwarding. It is on by default, but if `sshd_config` sets `AllowStreamLocalForwarding no`, TablePro says so instead of failing with a dropped connection. Note this is a separate setting from `AllowTcpForwarding`.
 
 ## Import from URL
 

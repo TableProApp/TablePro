@@ -431,6 +431,11 @@ struct DatabaseConnection: Identifiable, Hashable {
         set { additionalFields["preConnectScript"] = newValue ?? "" }
     }
 
+    var sshForwardUnixSocketPath: String? {
+        get { additionalFields[DatabaseConnection.sshForwardUnixSocketPathKey]?.nilIfEmpty }
+        set { additionalFields[DatabaseConnection.sshForwardUnixSocketPathKey] = newValue ?? "" }
+    }
+
     init(
         id: UUID = UUID(),
         name: String,

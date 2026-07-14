@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- SSH tunnels can now forward to a Unix socket on the remote server, for databases that only listen on a socket. Set the socket path on the General pane, and TablePro forwards to it instead of a host and port, through jump hosts if you use them. (#1871)
+
 ### Fixed
 
 - Fixed the right sidebar refusing to resize while a Users & Roles tab was open. The user list now collapses on its own when the tab gets too narrow to hold it. (#1872)

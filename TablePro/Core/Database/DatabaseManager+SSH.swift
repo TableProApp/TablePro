@@ -56,6 +56,7 @@ extension DatabaseManager {
         }
 
         let sshPassword = sshPasswordOverride ?? storedSshPassword
+        let destination = connection.sshForwardDestination
 
         let tunnelPort = try await SSHTunnelManager.shared.createTunnel(
             connectionId: connection.id,
@@ -67,8 +68,7 @@ extension DatabaseManager {
             keyPassphrase: keyPassphrase,
             sshPassword: sshPassword,
             agentSocketPath: sshConfig.agentSocketPath,
-            remoteHost: connection.host,
-            remotePort: connection.port,
+            destination: destination,
             jumpHosts: sshConfig.jumpHosts,
             totpMode: sshConfig.totpMode,
             totpSecret: totpSecret,
@@ -77,7 +77,11 @@ extension DatabaseManager {
             totpPeriod: sshConfig.totpPeriod
         )
 
-        return tunneledConnection(from: connection, localPort: tunnelPort)
+        return tunneledConnection(
+            from: connection,
+            localPort: tunnelPort,
+            forwardsToUnixSocket: destination.isUnixSocket
+        )
     }
 
     // MARK: - SSH Tunnel Recovery

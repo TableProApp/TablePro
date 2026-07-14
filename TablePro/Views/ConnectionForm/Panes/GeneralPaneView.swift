@@ -143,11 +143,16 @@ struct GeneralPaneView: View {
                 text: $coordinator.network.host,
                 prompt: Text("localhost")
             )
+            .disabled(usesForwardSocket)
             TextField(
                 String(localized: "Port"),
                 text: $coordinator.network.port,
                 prompt: Text(defaultPortString)
             )
+            .disabled(usesForwardSocket)
+        }
+        if coordinator.ssh.state.enabled {
+            sshForwardSocketField
         }
         ForEach(connectionFields, id: \.id) { field in
             if !isHostListField(field) && coordinator.network.isFieldVisible(field) {
@@ -157,6 +162,61 @@ struct GeneralPaneView: View {
                 )
             }
         }
+    }
+
+    private var usesForwardSocket: Bool {
+        coordinator.ssh.state.enabled && coordinator.network.forwardsToUnixSocket
+    }
+
+    @ViewBuilder
+    private var sshForwardSocketField: some View {
+        TextField(
+            String(localized: "Socket Path"),
+            text: $coordinator.network.sshForwardUnixSocketPath,
+            prompt: Text(verbatim: "/var/run/postgresql/.s.PGSQL.5432")
+        )
+        switch coordinator.network.socketPathIssue {
+        case .notAbsolute:
+            socketPathCaption(
+                String(localized: "Enter an absolute path, as it appears on the SSH server."),
+                systemImage: "exclamationmark.triangle",
+                tint: .orange
+            )
+        case .looksLikeDirectory:
+            socketPathCaption(
+                String(localized: "Point at the socket file itself, not the directory holding it."),
+                systemImage: "exclamationmark.triangle",
+                tint: .orange
+            )
+        case .none:
+            if usesForwardSocket {
+                socketPathCaption(
+                    String(localized: """
+                    The SSH server connects to this socket instead of Host and Port. \
+                    A database on a socket cannot negotiate TLS, so TablePro turns it off; \
+                    the SSH tunnel still encrypts the whole path.
+                    """),
+                    systemImage: "info.circle",
+                    tint: .secondary
+                )
+            } else {
+                socketPathCaption(
+                    String(localized: "Optional. Set this to reach a database that only listens on a Unix socket."),
+                    systemImage: "info.circle",
+                    tint: .secondary
+                )
+            }
+        }
+    }
+
+    private func socketPathCaption(
+        _ message: String,
+        systemImage: String,
+        tint: Color
+    ) -> some View {
+        Label(message, systemImage: systemImage)
+            .font(.caption)
+            .foregroundStyle(tint)
     }
 
     @ViewBuilder

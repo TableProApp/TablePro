@@ -59,4 +59,16 @@ struct SSHTunnelErrorTests {
         let error = SSHTunnelError.connectionTimeout
         #expect(error.errorDescription != nil)
     }
+
+    @Test("SSHTunnelError.socketForwardingRefused names the socket and the sshd setting")
+    func socketForwardingRefusedDescription() {
+        let error = SSHTunnelError.socketForwardingRefused(
+            path: "/var/run/postgresql/.s.PGSQL.5432",
+            detail: "channel open failed"
+        )
+
+        #expect(error.errorDescription?.contains("/var/run/postgresql/.s.PGSQL.5432") == true)
+        #expect(error.errorDescription?.contains("AllowStreamLocalForwarding") == true)
+        #expect(error.errorDescription?.contains("channel open failed") == true)
+    }
 }
