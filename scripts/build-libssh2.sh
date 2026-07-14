@@ -111,6 +111,24 @@ build_openssl() {
     echo "✅ OpenSSL $arch: $(ls -lh "$prefix/lib/libssl.a" | awk '{print $5}') (libssl) $(ls -lh "$prefix/lib/libcrypto.a" | awk '{print $5}') (libcrypto)"
 }
 
+# libssh2 1.11.1 is the newest release and is still vulnerable to CVE-2026-55200 (CVSS 9.2):
+# ssh2_transport_read() enforces no upper bound on packet_length, so a malicious server can
+# overflow the heap before authentication. Upstream fixed it in 97acf3df with no release cut
+# since, so the fix rides as a patch on top of the pinned release tarball. Drop the patch once
+# a release contains it.
+apply_patches() {
+    local source_dir=$1
+    local patch_dir="$SCRIPT_DIR/patches"
+
+    [ -d "$patch_dir" ] || return 0
+
+    for patch in "$patch_dir"/*.patch; do
+        [ -e "$patch" ] || continue
+        echo "🩹 Applying $(basename "$patch")"
+        patch -p1 -d "$source_dir" -i "$patch"
+    done
+}
+
 build_libssh2() {
     local arch=$1
     local openssl_prefix="$BUILD_DIR/install-openssl-$arch"
@@ -123,6 +141,8 @@ build_libssh2() {
     rm -rf "$BUILD_DIR/libssh2-$LIBSSH2_VERSION-$arch"
     mkdir -p "$BUILD_DIR/libssh2-$LIBSSH2_VERSION-$arch"
     tar xzf "$BUILD_DIR/libssh2-$LIBSSH2_VERSION.tar.gz" -C "$BUILD_DIR/libssh2-$LIBSSH2_VERSION-$arch" --strip-components=1
+
+    apply_patches "$BUILD_DIR/libssh2-$LIBSSH2_VERSION-$arch"
 
     local build_dir="$BUILD_DIR/libssh2-$LIBSSH2_VERSION-$arch/cmake-build"
     mkdir -p "$build_dir"
