@@ -17,13 +17,15 @@ struct AutosavingSplitView<Primary: View, Secondary: View>: NSViewControllerRepr
     var primaryMaximum: CGFloat?
     var secondaryMinimum: CGFloat
     var primaryHoldingPriority: NSLayoutConstraint.Priority = .defaultHigh
+    var collapsesPrimaryWhenTight = false
     @ViewBuilder let primary: () -> Primary
     @ViewBuilder let secondary: () -> Secondary
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
-    func makeNSViewController(context: Context) -> NSSplitViewController {
-        let controller = NSSplitViewController()
+    func makeNSViewController(context: Context) -> CollapsingSplitViewController {
+        let controller = CollapsingSplitViewController()
+        controller.collapsesPrimaryWhenTight = collapsesPrimaryWhenTight
         controller.splitView.isVertical = isVertical
         controller.splitView.dividerStyle = .thin
 
@@ -41,7 +43,7 @@ struct AutosavingSplitView<Primary: View, Secondary: View>: NSViewControllerRepr
 
         let primaryItem = NSSplitViewItem(viewController: primaryController)
         primaryItem.minimumThickness = primaryMinimum
-        primaryItem.canCollapse = false
+        primaryItem.canCollapse = collapsesPrimaryWhenTight
         primaryItem.holdingPriority = primaryHoldingPriority
         if let primaryMaximum {
             primaryItem.maximumThickness = primaryMaximum
@@ -58,13 +60,65 @@ struct AutosavingSplitView<Primary: View, Secondary: View>: NSViewControllerRepr
         return controller
     }
 
-    func updateNSViewController(_ controller: NSSplitViewController, context: Context) {
+    func updateNSViewController(_ controller: CollapsingSplitViewController, context: Context) {
+        controller.collapsesPrimaryWhenTight = collapsesPrimaryWhenTight
         context.coordinator.primaryController?.rootView = primary()
         context.coordinator.secondaryController?.rootView = secondary()
+    }
+
+    func sizeThatFits(
+        _ proposal: ProposedViewSize,
+        nsViewController: CollapsingSplitViewController,
+        context: Context
+    ) -> CGSize? {
+        let natural = primaryMinimum + secondaryMinimum
+        let resolved = proposal.replacingUnspecifiedDimensions(
+            by: CGSize(width: natural, height: natural)
+        )
+        guard resolved.width.isFinite, resolved.height.isFinite else { return nil }
+        return resolved
     }
 
     final class Coordinator {
         var primaryController: NSHostingController<Primary>?
         var secondaryController: NSHostingController<Secondary>?
+    }
+}
+
+@MainActor
+internal final class CollapsingSplitViewController: NSSplitViewController {
+    var collapsesPrimaryWhenTight = false
+
+    private var didAutoCollapsePrimary = false
+
+    override func viewDidLayout() {
+        super.viewDidLayout()
+        applyAutomaticCollapse()
+    }
+
+    private func applyAutomaticCollapse() {
+        guard collapsesPrimaryWhenTight, splitView.isVertical else { return }
+        guard splitViewItems.count == 2 else { return }
+
+        let primaryItem = splitViewItems[0]
+        let secondaryItem = splitViewItems[1]
+
+        let available = splitView.bounds.width
+        guard available > 0 else { return }
+
+        let required = primaryItem.minimumThickness
+            + secondaryItem.minimumThickness
+            + splitView.dividerThickness
+
+        guard available >= required else {
+            guard !primaryItem.isCollapsed else { return }
+            primaryItem.isCollapsed = true
+            didAutoCollapsePrimary = true
+            return
+        }
+
+        guard didAutoCollapsePrimary, primaryItem.isCollapsed else { return }
+        primaryItem.isCollapsed = false
+        didAutoCollapsePrimary = false
     }
 }

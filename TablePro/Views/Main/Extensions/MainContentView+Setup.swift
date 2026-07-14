@@ -307,6 +307,7 @@ extension MainContentView {
             tab: selectedTab,
             connection: connection
         )
+        coordinator.splitViewController?.updateDetailMinimumThickness(for: selectedTab?.tabType)
         viewWindow?.representedURL = selectedTab?.content.sourceFileURL
         viewWindow?.isDocumentEdited = selectedTab?.showsUnsavedIndicator ?? false
     }

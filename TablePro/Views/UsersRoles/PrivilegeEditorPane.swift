@@ -7,9 +7,9 @@ struct PrivilegeEditorPane: View {
     var body: some View {
         AutosavingSplitView(
             autosaveName: "com.TablePro.usersRoles.privilegeSplit",
-            primaryMinimum: 240,
-            primaryMaximum: 640,
-            secondaryMinimum: 300
+            primaryMinimum: UsersRolesLayoutMetrics.privilegeScopeMinimumWidth,
+            primaryMaximum: UsersRolesLayoutMetrics.privilegeScopeMaximumWidth,
+            secondaryMinimum: UsersRolesLayoutMetrics.privilegeChecklistMinimumWidth
         ) {
             scopePane
         } secondary: {

@@ -203,12 +203,14 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         addSplitViewItem(sidebarSplitItem)
 
         detailHosting = NSHostingController(rootView: AnyView(Color.clear))
+        detailHosting.sizingOptions = []
         detailSplitItem = NSSplitViewItem(viewController: detailHosting)
-        detailSplitItem.minimumThickness = Self.detailMinThickness
+        detailSplitItem.minimumThickness = Self.resolveDetailMinimumThickness(for: payload?.tabType)
         detailSplitItem.holdingPriority = .defaultLow
         addSplitViewItem(detailSplitItem)
 
         inspectorHosting = NSHostingController(rootView: AnyView(Color.clear))
+        inspectorHosting.sizingOptions = []
         inspectorSplitItem = NSSplitViewItem(inspectorWithViewController: inspectorHosting)
         inspectorSplitItem.canCollapse = true
         inspectorSplitItem.minimumThickness = Self.inspectorMinThickness
@@ -549,32 +551,57 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
 
     // MARK: - Dynamic Window Minimum Size
 
-    private static let baseWindowMinWidth: CGFloat = 720
-    private static let baseWindowMinHeight: CGFloat = 480
-    private static let sidebarMinThickness: CGFloat = 280
+    static let baseWindowMinWidth: CGFloat = 720
+    static let baseWindowMinHeight: CGFloat = 480
+    static let sidebarMinThickness: CGFloat = 280
+    static let defaultDetailMinThickness: CGFloat = 400
+    static let inspectorMinThickness: CGFloat = 270
     private static let sidebarMaxThickness: CGFloat = 600
-    private static let detailMinThickness: CGFloat = 400
-    private static let inspectorMinThickness: CGFloat = 270
+
+    static func resolveDetailMinimumThickness(for tabType: TabType?) -> CGFloat {
+        guard let tabType else { return defaultDetailMinThickness }
+        switch tabType {
+        case .usersRoles:
+            return UsersRolesLayoutMetrics.tabMinimumWidth
+        case .query, .table, .createTable, .erDiagram, .serverDashboard:
+            return defaultDetailMinThickness
+        }
+    }
+
+    static func resolveWindowMinWidth(
+        detailMinimum: CGFloat,
+        sidebarVisible: Bool,
+        inspectorVisible: Bool,
+        dividerThickness: CGFloat
+    ) -> CGFloat {
+        var width = detailMinimum
+        if sidebarVisible {
+            width += sidebarMinThickness + dividerThickness
+        }
+        if inspectorVisible {
+            width += inspectorMinThickness + dividerThickness
+        }
+        return max(baseWindowMinWidth, width)
+    }
+
+    func updateDetailMinimumThickness(for tabType: TabType?) {
+        let resolved = Self.resolveDetailMinimumThickness(for: tabType)
+        guard let detailSplitItem, detailSplitItem.minimumThickness != resolved else { return }
+        detailSplitItem.minimumThickness = resolved
+        recomputeWindowMinSize()
+    }
 
     private func recomputeWindowMinSize() {
         guard let window = view.window else { return }
         let sidebarVisible = !(sidebarSplitItem?.isCollapsed ?? true)
         let inspectorVisible = !(inspectorSplitItem?.isCollapsed ?? true)
 
-        let detailMin = Self.detailMinThickness
-        let sidebarMin = Self.sidebarMinThickness
-        let inspectorMin = Self.inspectorMinThickness
-        let dividerThickness = splitView.dividerThickness
-
-        var width: CGFloat = detailMin
-        if sidebarVisible {
-            width += sidebarMin + dividerThickness
-        }
-        if inspectorVisible {
-            width += inspectorMin + dividerThickness
-        }
-
-        let resolvedWidth = max(Self.baseWindowMinWidth, width)
+        let resolvedWidth = Self.resolveWindowMinWidth(
+            detailMinimum: detailSplitItem?.minimumThickness ?? Self.defaultDetailMinThickness,
+            sidebarVisible: sidebarVisible,
+            inspectorVisible: inspectorVisible,
+            dividerThickness: splitView.dividerThickness
+        )
         let newMinSize = NSSize(width: resolvedWidth, height: Self.baseWindowMinHeight)
 
         guard window.minSize != newMinSize else { return }
