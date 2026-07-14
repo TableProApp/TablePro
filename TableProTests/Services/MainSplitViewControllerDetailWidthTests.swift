@@ -1,6 +1,33 @@
+import AppKit
 import Foundation
 @testable import TablePro
 import Testing
+
+@Suite("Split pane holding priority")
+@MainActor
+struct SplitPaneHoldingPriorityTests {
+    private static let dragThatCannotResizeWindow: Float = 490
+
+    @Test("A held pane still yields to a divider drag")
+    func heldPaneYieldsToDivider() {
+        #expect(NSLayoutConstraint.Priority.splitPaneHolding.rawValue < Self.dragThatCannotResizeWindow)
+    }
+
+    @Test("A held pane still outranks its sibling when the container resizes")
+    func heldPaneOutranksSibling() {
+        #expect(
+            NSLayoutConstraint.Priority.splitPaneHolding.rawValue
+                > NSLayoutConstraint.Priority.defaultLow.rawValue
+        )
+    }
+
+    @Test("Privilege editor keeps room to drag at the tab's minimum width")
+    func privilegeEditorKeepsDragRoom() {
+        let required = UsersRolesLayoutMetrics.privilegeScopeMinimumWidth
+            + UsersRolesLayoutMetrics.privilegeChecklistMinimumWidth
+        #expect(UsersRolesLayoutMetrics.tabMinimumWidth - required >= 50)
+    }
+}
 
 @Suite("MainSplitViewController detail width")
 @MainActor

@@ -60,7 +60,7 @@ struct ServerDashboardSplitView: NSViewControllerRepresentable {
             let item = NSSplitViewItem(viewController: controller)
             item.minimumThickness = 76
             item.maximumThickness = 200
-            item.holdingPriority = .defaultHigh
+            item.holdingPriority = .splitPaneHolding
             coordinator.metricsController = controller
             return item
 
@@ -74,7 +74,7 @@ struct ServerDashboardSplitView: NSViewControllerRepresentable {
             let item = NSSplitViewItem(viewController: controller)
             item.minimumThickness = 100
             item.canCollapse = true
-            item.holdingPriority = .defaultHigh
+            item.holdingPriority = .splitPaneHolding
             coordinator.slowQueriesController = controller
             return item
         }

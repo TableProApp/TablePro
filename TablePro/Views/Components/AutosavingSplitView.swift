@@ -16,7 +16,7 @@ struct AutosavingSplitView<Primary: View, Secondary: View>: NSViewControllerRepr
     var primaryMinimum: CGFloat
     var primaryMaximum: CGFloat?
     var secondaryMinimum: CGFloat
-    var primaryHoldingPriority: NSLayoutConstraint.Priority = .defaultHigh
+    var primaryHoldingPriority: NSLayoutConstraint.Priority = .splitPaneHolding
     var collapsesPrimaryWhenTight = false
     @ViewBuilder let primary: () -> Primary
     @ViewBuilder let secondary: () -> Secondary
