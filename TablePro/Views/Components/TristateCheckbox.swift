@@ -20,6 +20,8 @@ struct TristateCheckbox: NSViewRepresentable {
     }
 
     let state: State
+    var accessibilityLabel: String?
+    var accessibilityValue: String?
     let action: () -> Void
 
     func makeNSView(context: Context) -> NSButton {
@@ -35,6 +37,12 @@ struct TristateCheckbox: NSViewRepresentable {
         case .unchecked: button.state = .off
         case .checked: button.state = .on
         case .mixed: button.state = .mixed
+        }
+        if let accessibilityLabel {
+            button.setAccessibilityLabel(accessibilityLabel)
+        }
+        if let accessibilityValue {
+            button.setAccessibilityValue(accessibilityValue)
         }
         context.coordinator.action = action
     }

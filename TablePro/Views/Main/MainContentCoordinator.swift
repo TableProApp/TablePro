@@ -121,6 +121,8 @@ final class MainContentCoordinator {
     /// (Cmd+S) routes to table creation. Set by `CreateTableView` on appear.
     weak var createTableActions: CreateTableActionHandler?
 
+    weak var usersRolesActions: UsersRolesActionHandler?
+
     /// Published capability/labels for the structure-mode footer in the bottom status bar.
     /// `TableStructureView` writes to this; `MainStatusBarView` reads from it.
     let structureFooterState = StructureFooterState()
@@ -280,6 +282,10 @@ final class MainContentCoordinator {
         Self.activeCoordinators.removeValue(forKey: instanceId)
     }
 
+    var isActivated: Bool {
+        _didActivate.withLock { $0 }
+    }
+
     /// Collect tabs across all of a connection's windows for persistence, tagged with
     /// the index of the native window group they belong to so tab order restores intact.
     static func aggregatedTabs(for connectionId: UUID) -> [(tab: QueryTab, windowGroupIndex: Int)] {
@@ -310,7 +316,7 @@ final class MainContentCoordinator {
 
     /// Resolve transient view state that only the live coordinator knows about
     /// (sort column names, editor cursor offset) onto the tab before it is serialized.
-    private func enrichedForPersistence(_ tab: QueryTab) -> QueryTab {
+    func enrichedForPersistence(_ tab: QueryTab) -> QueryTab {
         var enriched = tab
         if enriched.sortState.isSorting {
             let columns = columnsForPersistence(of: tab)
@@ -532,6 +538,7 @@ final class MainContentCoordinator {
             services.schemaProviderRegistry.retain(for: connection.id)
         }
         registerForPersistence()
+        SessionRecoveryTracker.sync()
         startPeriodicSave()
         setupPluginDriver()
         startFileWatcherIfNeeded()
@@ -723,6 +730,7 @@ final class MainContentCoordinator {
         _didTeardown.withLock { $0 = true }
 
         unregisterFromPersistence()
+        SessionRecoveryTracker.sync()
         if let observer = terminationObserver {
             NotificationCenter.default.removeObserver(observer)
             terminationObserver = nil
@@ -786,6 +794,7 @@ final class MainContentCoordinator {
             let id = instanceId
             Task { @MainActor in
                 Self.activeCoordinators.removeValue(forKey: id)
+                SessionRecoveryTracker.sync()
             }
             return
         }

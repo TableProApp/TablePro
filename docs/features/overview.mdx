@@ -1,13 +1,13 @@
 ---
 title: Features Overview
-description: Index of TablePro features grouped by editor, AI, views, data management, workflow, security, sync, team, and extensibility.
+description: Index of TablePro features grouped by editor, AI, views, data management, workflow, security, sync, team and licensing, and extensibility.
 ---
 
 # Features
 
 Every feature in TablePro, grouped so you can jump straight to what you need.
 
-TablePro opens with a sidebar-style welcome window, in the style of the Xcode launcher. Saved connections and groups sit in the sidebar. Search is in the window toolbar (`Cmd+F` to focus). A bundled Chinook sample database opens with one click on first launch. Reset it any time from **File > Reset Sample Database**.
+TablePro opens with a welcome window: an actions panel on the left (Create Connection, Import from App, Try Sample Database) and your saved connections on the right. Search sits in the connections panel header; press `Cmd+F` to focus it. The sample is a bundled Chinook SQLite database. Reset it any time from **File > Reset Sample Database**.
 
 ## Editor & Data
 
@@ -15,11 +15,17 @@ TablePro opens with a sidebar-style welcome window, in the style of the Xcode la
   <Card title="SQL Editor" icon="code" href="/features/sql-editor">
     Tree-sitter highlighting, multi-statement execution, formatting.
   </Card>
+  <Card title="Query Parameters" icon="sliders" href="/features/query-parameters">
+    `:name` placeholders filled in a panel, run as prepared statements.
+  </Card>
   <Card title="Data Grid" icon="table" href="/features/data-grid">
     Inline editing, sorting, filtering, change tracking with undo.
   </Card>
   <Card title="Table Structure" icon="layer-group" href="/features/table-structure">
     Alter columns, indexes, foreign keys, primary keys.
+  </Card>
+  <Card title="Table Operations" icon="table-cells" href="/features/table-operations">
+    Truncate, drop, rename, duplicate, copy DDL.
   </Card>
   <Card title="Autocomplete" icon="wand-magic-sparkles" href="/features/autocomplete">
     Schema-aware completions backed by cached column metadata.
@@ -46,7 +52,7 @@ TablePro opens with a sidebar-style welcome window, in the style of the Xcode la
   </Card>
 </CardGroup>
 
-## Views
+## Views & Visualization
 
 <CardGroup cols={2}>
   <Card title="ER Diagram" icon="diagram-project" href="/features/er-diagram">
@@ -55,17 +61,23 @@ TablePro opens with a sidebar-style welcome window, in the style of the Xcode la
   <Card title="EXPLAIN Visualization" icon="chart-network" href="/features/explain-visualization">
     Inspect query plans as a tree.
   </Card>
-  <Card title="JSON Viewer" icon="brackets-curly" href="/features/json-viewer">
-    Text and tree views for JSON cells, with pop-out window.
+  <Card title="Cell & Row Viewers" icon="brackets-curly" href="/features/json-viewer">
+    JSON, PHP serialized, and binary viewers, per-column display formats, row details inspector.
   </Card>
   <Card title="Server Dashboard" icon="gauge" href="/features/server-dashboard">
     Live server stats and activity.
+  </Card>
+  <Card title="Users & Roles" icon="user-shield" href="/features/users-roles">
+    Manage users, roles, and privileges on MySQL and PostgreSQL.
   </Card>
 </CardGroup>
 
 ## Data Management
 
 <CardGroup cols={2}>
+  <Card title="CSV Inspector" icon="file-csv" href="/features/csv-inspector">
+    Open and edit CSV and TSV files without importing them.
+  </Card>
   <Card title="Import & Export" icon="file-export" href="/features/import-export">
     CSV, JSON, SQL dumps in and out.
   </Card>
@@ -78,9 +90,6 @@ TablePro opens with a sidebar-style welcome window, in the style of the Xcode la
   <Card title="Filtering" icon="filter" href="/features/filtering">
     Per-column filters, presets, persisted per table.
   </Card>
-  <Card title="Table Operations" icon="table-cells" href="/features/table-operations">
-    Truncate, drop, rename, duplicate, copy DDL.
-  </Card>
 </CardGroup>
 
 ## Workflow
@@ -88,6 +97,9 @@ TablePro opens with a sidebar-style welcome window, in the style of the Xcode la
 <CardGroup cols={2}>
   <Card title="Tabs" icon="window-restore" href="/features/tabs">
     Native macOS window tabs per connection.
+  </Card>
+  <Card title="Quick Switcher" icon="compass" href="/features/quick-switcher">
+    Cmd+Shift+O fuzzy search across tables, databases, and saved queries.
   </Card>
   <Card title="Query History" icon="clock-rotate-left" href="/features/query-history">
     SQLite FTS5-backed history with full-text search.
@@ -112,6 +124,9 @@ TablePro opens with a sidebar-style welcome window, in the style of the Xcode la
   <Card title="SSH Profiles" icon="user-lock" href="/features/ssh-profiles">
     Reusable SSH tunnel configurations.
   </Card>
+  <Card title="SSL/TLS" icon="certificate" href="/features/ssl">
+    Encrypted connections, per-engine defaults, certificate verification.
+  </Card>
   <Card title="Connection Sharing" icon="share-nodes" href="/features/connection-sharing">
     Export and import connection definitions.
   </Card>
@@ -128,11 +143,14 @@ TablePro opens with a sidebar-style welcome window, in the style of the Xcode la
   </Card>
 </CardGroup>
 
-## Team
+## Team & Licensing
 
 <CardGroup cols={2}>
   <Card title="Team Plan" icon="users" href="/features/team">
     Share one license, manage seats on the web, join with an invite code.
+  </Card>
+  <Card title="Licensing" icon="key" href="/features/licensing">
+    Activate a license key, tier comparison, offline validation.
   </Card>
 </CardGroup>
 

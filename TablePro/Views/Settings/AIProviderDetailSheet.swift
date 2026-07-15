@@ -32,6 +32,8 @@ struct AIProviderDetailSheet: View {
 
     @State private var cursorAgentService = CursorAgentService.shared
 
+    @State private var xaiService = XAIService.shared
+
     @State private var showRemoveConfirmation = false
 
     enum TestResult: Equatable {
@@ -98,6 +100,9 @@ struct AIProviderDetailSheet: View {
                     if draft.type == .cursor {
                         Task { await cursorAgentService.refreshStatus() }
                     }
+                    if draft.type == .xai {
+                        Task { await xaiService.refreshAuthState() }
+                    }
                     fetchModels()
                 }
             }
@@ -150,6 +155,8 @@ struct AIProviderDetailSheet: View {
         case .apiKey, .optionalApiKey:
             if draft.type == .cursor {
                 cursorAuthSection
+            } else if draft.type == .xai {
+                xaiAuthSection
             } else {
                 apiKeyAuthSection
             }
@@ -326,6 +333,105 @@ struct AIProviderDetailSheet: View {
                     account.isEmpty
                         ? String(localized: "Signed in")
                         : String(format: String(localized: "Signed in as %@"), account),
+                    systemImage: "checkmark.circle.fill"
+                )
+                .foregroundStyle(.green)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var xaiAuthSection: some View {
+        xaiAPIKeySection
+        xaiSignInSection
+    }
+
+    private var xaiAPIKeySection: some View {
+        Section {
+            SecureField(String(localized: "API Key"), text: $apiKey)
+                .onChange(of: apiKey) { testResult = nil }
+            HStack {
+                Spacer()
+                Button {
+                    testProvider()
+                } label: {
+                    HStack(spacing: 6) {
+                        if isTesting { ProgressView().controlSize(.small) }
+                        Text("Test Connection")
+                    }
+                }
+                .disabled(isTesting || apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+            if case .success = testResult {
+                Label(String(localized: "Connection successful"), systemImage: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+                    .font(.caption)
+            } else if case .failure(let message) = testResult {
+                Label(message, systemImage: "xmark.circle.fill")
+                    .foregroundStyle(.red)
+                    .font(.caption)
+                    .lineLimit(3)
+            }
+        } header: {
+            Text("API Key")
+        } footer: {
+            Text("A key from the xAI Console bills xAI API credits. Grok 4.5 and Grok 4.3 are available.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder
+    private var xaiSignInSection: some View {
+        Section {
+            xaiSignInContent
+            if let message = xaiService.errorMessage {
+                Label(message, systemImage: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
+                    .font(.caption)
+                    .lineLimit(3)
+            }
+        } header: {
+            Text("Sign in with xAI")
+        } footer: {
+            Text("Use your SuperGrok or X Premium+ subscription with no API key. Sign-in opens the Grok Build consent screen. This is an unofficial interface that may change.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder
+    private var xaiSignInContent: some View {
+        switch xaiService.authState {
+        case .signedOut:
+            HStack {
+                Text("Not signed in")
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button(String(localized: "Sign in with xAI")) {
+                    Task { await xaiService.signIn() }
+                }
+                .buttonStyle(.borderedProminent)
+            }
+
+        case .signingIn:
+            HStack(spacing: 8) {
+                ProgressView().controlSize(.small)
+                Text("Opening your browser to sign in…")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+        case .signedIn(let email):
+            LabeledContent {
+                Button(String(localized: "Sign Out")) {
+                    Task { await xaiService.signOut() }
+                }
+            } label: {
+                Label(
+                    email.isEmpty
+                        ? String(localized: "Signed in")
+                        : String(format: String(localized: "Signed in as %@"), email),
                     systemImage: "checkmark.circle.fill"
                 )
                 .foregroundStyle(.green)

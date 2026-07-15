@@ -615,9 +615,11 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
 
-        let credentials = "\(config.username):\(config.password)"
-        if let credData = credentials.data(using: .utf8) {
-            request.setValue("Basic \(credData.base64EncodedString())", forHTTPHeaderField: "Authorization")
+        if let authorization = ClickHouseCredentials.basicAuthorizationHeader(
+            username: config.username,
+            password: config.password
+        ) {
+            request.setValue(authorization, forHTTPHeaderField: "Authorization")
         }
 
         request.httpBody = (query + " FORMAT JSONEachRow").data(using: .utf8)

@@ -1,11 +1,11 @@
 ---
 title: ER Diagram
-description: Visualize table relationships with an interactive entity-relationship diagram
+description: View table relationships as an interactive entity-relationship diagram
 ---
 
 # ER Diagram
 
-View all tables and foreign key relationships in your schema as an interactive diagram. Right-click a database in the sidebar and select **View ER Diagram**, or use the menu bar **View > ER Diagram**.
+View all tables and foreign key relationships in a schema as an interactive diagram. Right-click a table in the sidebar and select **View ER Diagram**, or use the menu bar **View > View ER Diagram**.
 
 <Frame caption="ER diagram showing tables and foreign key relationships">
   <img
@@ -22,9 +22,9 @@ View all tables and foreign key relationships in your schema as an interactive d
 
 ## Layout
 
-Tables are arranged automatically so the diagram fills the canvas in both directions instead of stacking into one tall column. TablePro finds groups of tables connected by foreign keys, places each group together, then packs the groups across the available width. Tables with no relationships sit in a grid at the bottom.
+Tables are arranged automatically so the diagram fills the canvas in both directions instead of stacking into one tall column. TablePro finds groups of tables connected by foreign keys, places each group together, and packs the groups across the plane. Tables with no relationships are collected into their own grid block.
 
-Each group of connected tables gets its own header color, so you can tell related tables apart at a glance in a large schema. Single tables and tables without foreign keys stay uncolored. When the system **Differentiate Without Color** accessibility setting is on, the color tint is dropped and grouping is shown by position alone.
+Each group of connected tables gets its own header color. Single tables and tables without foreign keys stay uncolored. When the system **Differentiate Without Color** accessibility setting is on, the tint is dropped and grouping is shown by position alone.
 
 Each table node shows:
 
@@ -38,22 +38,20 @@ Each table node shows:
 |--------|-------|
 | Pan | Click and drag on empty space, or scroll wheel / trackpad |
 | Zoom | Pinch on trackpad, or Cmd + scroll wheel |
-| Zoom in | Click **+** or press `Cmd =` |
-| Zoom out | Click **-** or press `Cmd -` |
-| Fit to window | Click fit button or press `Cmd Shift 0` |
-| Reset to 100% | Click the zoom percentage label or press `Cmd 0` |
+| Zoom in / out | **+** and **-** toolbar buttons |
+| Fit to window | Fit toolbar button |
+| Reset to 100% | Click the zoom percentage label |
+| Copy diagram | `Cmd+C` |
 
 ## Moving Tables
 
-Click and drag any table node to reposition it. Positions are saved automatically and persist across sessions.
-
-Drag a table toward the edge of the viewport to auto-scroll the canvas in that direction.
+Click and drag any table node to reposition it. Positions are saved automatically and persist across sessions. Drag a table toward the edge of the viewport to auto-scroll the canvas in that direction.
 
 Click **Reset Layout** (the circular arrow button) to return all tables to their computed positions.
 
 ## Compact Mode
 
-Toggle compact mode with the filter button in the toolbar. In compact mode, each table shows only primary key and foreign key columns.
+Toggle compact mode with the compress button in the toolbar. In compact mode, each table shows only primary key and foreign key columns.
 
 ## Edge Notation
 
@@ -66,37 +64,37 @@ Edges use crow's foot notation. The referenced table always carries a single **b
 | Not unique, NOT NULL | fork + bar | One-to-many |
 | Not unique, nullable | fork + circle | Zero-or-many-to-one |
 
-A **fork** (three lines) marks the "many" side, a **bar** marks "one", and a **circle** marks an optional (nullable) side. For example, an edge from `orders.user_id` to `users.id` shows a fork at `orders` and a bar at `users`.
+A **fork** (three lines) marks the "many" side, a **bar** marks "one", and a **circle** marks an optional (nullable) side. An edge from `orders.user_id` to `users.id` shows a fork at `orders` and a bar at `users`.
 
 ## Junction Tables
 
-When a table's primary key is made of two foreign keys (a junction or associative table, like `user_roles`), TablePro treats it as a many-to-many relationship. By default the junction table is hidden and a single many-to-many edge is drawn between the two related tables, with a fork at each end.
+When a table's primary key is made of two foreign keys (a junction table like `user_roles`), TablePro treats it as a many-to-many relationship. By default the junction table is hidden and a single many-to-many edge is drawn between the two related tables, with a fork at each end.
 
 Use the **junction toggle** in the toolbar (shown only when the schema has junction tables) to expand them back to the underlying table and its two one-to-many edges. Junction tables carry a distinct header icon when expanded.
 
 ## Export
 
-Click the **export button** in the toolbar to save the diagram as a PNG image. You can also press `Cmd C` to copy the diagram to the clipboard.
-
-Click the **Export as SQL** button to open a new query tab with `CREATE TABLE` and foreign key statements for the diagram's tables, written in the connection's SQL dialect. SQLite inlines foreign keys in each `CREATE TABLE`; other databases add them with `ALTER TABLE ... ADD CONSTRAINT` after the tables are created, so the script handles circular references.
+- **Export as PNG**: saves the diagram as an image. `Cmd+C` copies it to the clipboard instead.
+- **Export as SQL**: opens a new query tab with `CREATE TABLE` and foreign key statements for the diagram's tables, written in the connection's SQL dialect. SQLite inlines foreign keys in each `CREATE TABLE`; other databases add them with `ALTER TABLE ... ADD CONSTRAINT` after the tables are created, so the script handles circular references.
 
 ## Database Support
 
-ER diagrams work with any database that supports foreign key introspection:
+ER diagrams work with any database whose driver reports foreign keys:
 
 | Database | Support |
 |----------|---------|
 | MySQL / MariaDB | Full |
-| PostgreSQL / Redshift | Full |
+| PostgreSQL / Redshift / CockroachDB | Full |
 | SQLite | Full |
 | SQL Server | Full |
 | Oracle | Full |
 | DuckDB | Full |
-| Cassandra / ScyllaDB | Limited (no FK metadata) |
-| MongoDB | Not supported (no relational schema) |
-| Redis | Not supported |
+| LibSQL / Turso | Full |
+| Cloudflare D1 | Full |
+| Cassandra / ScyllaDB | Limited (no FK metadata, tables show unconnected) |
+
+Non-relational databases (MongoDB, Redis, and similar) have no diagram.
 
 <Note>
-The diagram shows foreign keys defined in the current schema. Cross-schema foreign keys are included if the referenced table is in the same schema.
+The diagram loads columns and foreign keys for the current schema. Foreign keys that reference a table outside the loaded schema are not drawn.
 </Note>
-

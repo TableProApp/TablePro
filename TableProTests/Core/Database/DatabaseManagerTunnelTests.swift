@@ -75,4 +75,60 @@ struct DatabaseManagerTunnelTests {
 
         #expect(tunneled.additionalFields["mongoParam_directConnection"] == nil)
     }
+
+    @Test("A socket forward drops TLS, which the destination cannot negotiate")
+    func socketForwardDisablesTLS() {
+        var connection = DatabaseConnection(
+            name: "socket",
+            host: "db.internal",
+            port: 5_432,
+            type: .postgresql,
+            sslConfig: SSLConfiguration(mode: .required)
+        )
+        connection.sshForwardUnixSocketPath = "/var/run/postgresql/.s.PGSQL.5432"
+
+        let tunneled = DatabaseManager.shared.tunneledConnection(
+            from: connection,
+            localPort: 62_000,
+            forwardsToUnixSocket: true
+        )
+
+        #expect(tunneled.sslConfig.mode == .disabled)
+    }
+
+    @Test("A TCP forward keeps encryption on")
+    func tcpForwardKeepsTLS() {
+        let connection = DatabaseConnection(
+            name: "pg",
+            host: "db.internal",
+            port: 5_432,
+            type: .postgresql,
+            sslConfig: SSLConfiguration(mode: .verifyIdentity)
+        )
+
+        let tunneled = DatabaseManager.shared.tunneledConnection(from: connection, localPort: 62_000)
+
+        #expect(tunneled.sslConfig.mode == .required)
+    }
+
+    @Test("The socket path never reaches the driver")
+    func socketPathIsStrippedFromDriverFields() {
+        var connection = DatabaseConnection(
+            name: "socket",
+            host: "db.internal",
+            port: 5_432,
+            type: .postgresql
+        )
+        connection.sshForwardUnixSocketPath = "/var/run/postgresql/.s.PGSQL.5432"
+
+        let tunneled = DatabaseManager.shared.tunneledConnection(
+            from: connection,
+            localPort: 62_000,
+            forwardsToUnixSocket: true
+        )
+
+        #expect(tunneled.host == "127.0.0.1")
+        #expect(tunneled.port == 62_000)
+        #expect(tunneled.additionalFields[DatabaseConnection.sshForwardUnixSocketPathKey] == nil)
+    }
 }

@@ -311,12 +311,25 @@ final class MainContentCommandActions {
     // MARK: - Unsaved Changes Check
 
     private var hasUnsavedChanges: Bool {
-        let hasEditedCells = coordinator?.changeManager.hasChanges ?? false
-        let hasPendingTableOps = !pendingTruncates.wrappedValue.isEmpty
-            || !pendingDeletes.wrappedValue.isEmpty
-        let hasSidebarEdits = rightPanelState.editState.hasEdits
-        let hasFileDirty = coordinator?.tabManager.selectedTab?.content.isFileDirty ?? false
-        return hasEditedCells || hasPendingTableOps || hasSidebarEdits || hasFileDirty
+        coordinator?.hasUnsavedWorkInSelectedTab() ?? false
+    }
+
+    private var isUsersRolesTab: Bool {
+        coordinator?.tabManager.selectedTab?.tabType == .usersRoles
+    }
+
+    var undoMenuTitle: String {
+        guard isUsersRolesTab, let actions = coordinator?.usersRolesActions, actions.canUndo() else {
+            return String(localized: "Undo")
+        }
+        return actions.undoMenuTitle()
+    }
+
+    var redoMenuTitle: String {
+        guard isUsersRolesTab, let actions = coordinator?.usersRolesActions, actions.canRedo() else {
+            return String(localized: "Redo")
+        }
+        return actions.redoMenuTitle()
     }
 
     // MARK: - Editor Query Loading (Group A — Called Directly)
@@ -332,11 +345,9 @@ final class MainContentCommandActions {
     // MARK: - Tab Operations (Group A — Called Directly)
 
     func newTab(initialQuery: String? = nil) {
-        let resolvedQuery = initialQuery
-            ?? ClosedTabDraftStorage.shared.consumeQuery(connectionId: connection.id)
         if let coordinator, coordinator.tabManager.tabs.isEmpty {
             coordinator.tabManager.addTab(
-                initialQuery: resolvedQuery,
+                initialQuery: initialQuery,
                 databaseName: coordinator.activeDatabaseName,
                 claimFocus: true
             )
@@ -344,7 +355,7 @@ final class MainContentCommandActions {
         }
         let payload = EditorTabPayload(
             connectionId: connection.id,
-            initialQuery: resolvedQuery,
+            initialQuery: initialQuery,
             intent: .newEmptyTab
         )
         WindowManager.shared.openTab(payload: payload)
@@ -375,9 +386,20 @@ final class MainContentCommandActions {
         }
     }
 
+    /// Every close gesture funnels here, so this is the one place that can guarantee a closing
+    /// tab's content outlives the window. It runs before the branch dispatch below because two of
+    /// the three branches tear the window down without another chance to capture anything.
+    private func captureClosingTabsForRecovery() {
+        guard let coordinator else { return }
+        for tab in coordinator.tabsForRecoveryCapture() {
+            RecentlyClosedTabStore.shared.push(tab: tab, connection: connection)
+        }
+    }
+
     private func performClose() {
         let t0 = Date()
         guard let window = coordinator?.contentWindow ?? NSApp.keyWindow else { return }
+        captureClosingTabsForRecovery()
         let visibleTabbedWindows = (window.tabbedWindows ?? [window]).filter(\.isVisible)
         Self.logger.info("[close] performClose visibleTabs=\(visibleTabbedWindows.count) tabManagerTabs=\(self.coordinator?.tabManager.tabs.count ?? 0)")
 
@@ -387,12 +409,6 @@ final class MainContentCommandActions {
             window.close()
         } else {
             if let coordinator {
-                if let draft = ClosedTabDraftStorage.draftCandidate(
-                    from: coordinator.tabManager.tabs,
-                    selectedTabId: coordinator.tabManager.selectedTabId
-                ) {
-                    ClosedTabDraftStorage.shared.saveQuery(draft, connectionId: connection.id)
-                }
                 for tab in coordinator.tabManager.tabs {
                     coordinator.tabSessionRegistry.removeTableRows(for: tab.id)
                     if let url = tab.content.sourceFileURL {
@@ -410,6 +426,14 @@ final class MainContentCommandActions {
     private func saveAndClose() async {
         guard let coordinator = coordinator else {
             performClose()
+            return
+        }
+
+        // User and role changes can only be applied after the SQL is reviewed, so Save opens the
+        // review sheet and cancels the close. Falling through here would close the window and
+        // destroy every staged change.
+        if isUsersRolesTab, coordinator.usersRolesActions?.hasChanges() == true {
+            coordinator.usersRolesActions?.reviewAndApply()
             return
         }
 
@@ -559,6 +583,17 @@ final class MainContentCommandActions {
         return ServerDashboardQueryProviderFactory.provider(for: type) != nil
     }
 
+    func showUsersAndRoles() {
+        coordinator?.showUsersAndRoles()
+    }
+
+    var supportsUserManagement: Bool {
+        guard let connectionId = coordinator?.connectionId,
+              let adapter = DatabaseManager.shared.driver(for: connectionId) as? PluginDriverAdapter
+        else { return false }
+        return adapter.schemaPluginDriver.capabilities.contains(.userManagement)
+    }
+
     // MARK: - Tab Navigation (Group A — Called Directly)
 
     /// Selects the Nth native window tab. Wrapping the `selectedWindow`
@@ -593,6 +628,10 @@ final class MainContentCommandActions {
     // MARK: - Data Operations (Group A — Called Directly)
 
     func saveChanges() {
+        if isUsersRolesTab {
+            coordinator?.usersRolesActions?.reviewAndApply()
+            return
+        }
         if coordinator?.tabManager.selectedTab?.tabType == .createTable {
             coordinator?.createTableActions?.createTable?()
             return
@@ -838,6 +877,20 @@ final class MainContentCommandActions {
         coordinator.switchActiveResultSet(to: tab.display.resultSets[currentIndex + 1].id, in: tab.id)
     }
 
+    var canPinResultTab: Bool {
+        coordinator?.canPinActiveResultSet ?? false
+    }
+
+    var isResultTabPinned: Bool {
+        coordinator?.isActiveResultSetPinned ?? false
+    }
+
+    func pinResultTab() {
+        guard let coordinator,
+              let activeId = coordinator.tabManager.selectedTab?.display.activeResultSet?.id else { return }
+        coordinator.togglePinResultSet(id: activeId)
+    }
+
     func closeResultTab() {
         guard let coordinator else { return }
         let tab = coordinator.tabManager.selectedTab
@@ -868,6 +921,10 @@ final class MainContentCommandActions {
     // MARK: - Undo/Redo (Group A — Called Directly)
 
     func undoChange() {
+        if isUsersRolesTab {
+            coordinator?.usersRolesActions?.undo()
+            return
+        }
         if coordinator?.tabManager.selectedTab?.display.resultsViewMode == .structure {
             coordinator?.structureActions?.undo?()
             return
@@ -879,6 +936,10 @@ final class MainContentCommandActions {
     }
 
     func redoChange() {
+        if isUsersRolesTab {
+            coordinator?.usersRolesActions?.redo()
+            return
+        }
         if coordinator?.tabManager.selectedTab?.display.resultsViewMode == .structure {
             coordinator?.structureActions?.redo?()
             return

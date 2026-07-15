@@ -19,6 +19,9 @@ extension DatabaseConnection {
     }
 
     private var endpointDescription: String {
+        if let socketPath = sshForwardUnixSocketPath, resolvedSSHConfig.enabled {
+            return (socketPath as NSString).abbreviatingWithTildeInPath
+        }
         if host.isEmpty {
             let trimmed = database.trimmingCharacters(in: .whitespaces)
             return trimmed.isEmpty ? type.rawValue : (trimmed as NSString).abbreviatingWithTildeInPath

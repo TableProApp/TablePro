@@ -57,7 +57,7 @@ A connection uses one connection method at a time. If an SSH or Cloudflare tunne
 
 | Option | Description |
 |--------|-------------|
-| **Application Default Credentials** | Uses the credentials already set up on your Mac. Run `gcloud auth application-default login`, or set `GOOGLE_APPLICATION_CREDENTIALS`, before connecting. |
+| **Application Default Credentials** | Uses the credentials already set up on your Mac. Run `gcloud auth application-default login` before connecting. Setting `GOOGLE_APPLICATION_CREDENTIALS` also works, but only if the variable is visible to TablePro: the proxy inherits the app's environment, and a GUI app doesn't see variables exported in your shell profile. |
 | **Service account key** | Paste a service account key in JSON. TablePro stores it in the macOS Keychain and writes it to a temporary file, readable only by you, while the proxy runs. It is never passed on the command line. |
 | **Use IAM database authentication** | Signs in to the database as an IAM principal instead of with a database password. Set the connection's username to the IAM principal (a user email, or `name@project.iam` for a service account). The database password is not used. |
 
@@ -76,7 +76,9 @@ A connection uses one connection method at a time. If an SSH or Cloudflare tunne
 
 ### cloud-sql-proxy binary
 
-Leave the path blank to auto-detect. TablePro looks on your `PATH`, in the common Homebrew locations, and in the Google Cloud SDK's `bin` directory. If it isn't found, use **Download cloud-sql-proxy** to fetch a verified copy, or **Choose** to point at a specific binary.
+Leave the path blank to auto-detect. TablePro looks on your `PATH`, in the common Homebrew locations, and in the Google Cloud SDK's `bin` directory. If it isn't found, use **Download cloud-sql-proxy** or **Choose** to point at a specific binary.
+
+The in-app download fetches cloud-sql-proxy 2.23.0 and verifies its SHA-256 checksum for your CPU architecture before installing it, so you always know which version you are running.
 
 ## Troubleshooting
 

@@ -35,8 +35,7 @@ internal enum LibSSH2TunnelFactory {
         connectionId: UUID,
         config: SSHConfiguration,
         credentials: SSHTunnelCredentials,
-        remoteHost: String,
-        remotePort: Int,
+        destination: SSHForwardDestination,
         localPort: Int
     ) async throws -> LibSSH2Tunnel {
         _ = initialized
@@ -48,6 +47,8 @@ internal enum LibSSH2TunnelFactory {
         )
 
         do {
+            try verifyUnixSocketDestination(session: chain.session, destination: destination)
+
             let listenFD = try bindListenSocket(port: localPort)
 
             let tunnel = LibSSH2Tunnel(
@@ -67,7 +68,7 @@ internal enum LibSSH2TunnelFactory {
             )
 
             logger.info(
-                "Tunnel created: \(config.host) -> 127.0.0.1:\(localPort) -> \(remoteHost):\(remotePort)"
+                "Tunnel created: \(config.host) -> 127.0.0.1:\(localPort) -> \(destination.logDescription)"
             )
 
             return tunnel
@@ -695,6 +696,37 @@ internal enum LibSSH2TunnelFactory {
     }
 
     // MARK: - Channel Operations
+
+    /// A refused streamlocal forward is otherwise invisible until the database driver dials
+    /// the local port, where it surfaces as an unexplained dropped connection. `sshd` gates
+    /// socket forwarding behind `AllowStreamLocalForwarding`, separately from TCP forwarding,
+    /// so probing once at connect time turns that into an actionable error. TCP destinations
+    /// keep their existing behaviour: probing them would open and drop a real database
+    /// connection on every connect.
+    private static func verifyUnixSocketDestination(
+        session: OpaquePointer,
+        destination: SSHForwardDestination
+    ) throws {
+        guard case .unixSocket(let path) = destination else { return }
+
+        libssh2_session_set_blocking(session, 1)
+        defer { libssh2_session_set_blocking(session, 0) }
+
+        guard let channel = LibSSH2ForwardChannel.open(
+            session: session,
+            destination: destination,
+            originPort: 0
+        ) else {
+            var msgPtr: UnsafeMutablePointer<CChar>?
+            var msgLen: Int32 = 0
+            libssh2_session_last_error(session, &msgPtr, &msgLen, 0)
+            let detail = msgPtr.map { String(cString: $0) } ?? "Unknown error"
+            throw SSHTunnelError.socketForwardingRefused(path: path, detail: detail)
+        }
+
+        libssh2_channel_close(channel)
+        libssh2_channel_free(channel)
+    }
 
     private static func openChannel(
         session: OpaquePointer,

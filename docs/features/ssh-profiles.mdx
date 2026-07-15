@@ -5,69 +5,33 @@ description: Save SSH tunnel configurations as reusable profiles shared across c
 
 # SSH Profiles
 
-Define an SSH tunnel config once, then reuse it across multiple connections.
+Define an SSH tunnel config once, then reuse it across multiple connections. A profile stores the server (host, port, username), the authentication method, optional two-factor (TOTP) settings, and jump hosts. For tunnel mechanics (auth methods, TOTP modes, jump hosts, `~/.ssh/config` resolution, troubleshooting), see [SSH Tunneling](/databases/ssh-tunneling).
 
 ## Creating a Profile
 
-1. Open any connection's **SSH Tunnel** tab
+1. Open any connection's **SSH Tunnel** pane
 2. Click **Create New Profile...**
-3. Fill in host, port, username, and auth method
-4. Save
+3. Fill in the server and authentication fields
+4. Click **Create**
 
-Select the profile from the **Profile** picker in other connections. Changes to a profile apply to all connections using it.
+Select the profile from the **Profile** picker in other connections. A **Profile Details** disclosure shows the selected profile's settings. Changes to a profile apply to all connections using it.
 
-{/* Screenshot: SSH profile creation */}
 <Frame caption="Creating an SSH profile">
-  <img
-    className="block dark:hidden"
-    src="/images/ssh-profile-create.png"
-    alt="Creating an SSH profile"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/ssh-profile-create-dark.png"
-    alt="Creating an SSH profile"
-  />
+  <img className="block dark:hidden" src="/images/ssh-profile-create.png" alt="Creating an SSH profile" />
+  <img className="hidden dark:block" src="/images/ssh-profile-create-dark.png" alt="Creating an SSH profile" />
 </Frame>
 
-You can also save an existing inline SSH config as a profile: click **Save Current as Profile...**.
+To convert an existing inline SSH config into a profile, click **Save Current as Profile...**.
 
 ## Profiles vs Inline Config
 
 Each connection can use either a shared profile or an inline (one-off) SSH config. Inline configs are stored with the connection and don't affect other connections. Profiles are stored globally and shared.
 
-When to use profiles: multiple connections through the same bastion host. When to use inline: a one-off tunnel specific to a single connection.
-
-## Authentication Methods
-
-TablePro supports four SSH auth methods:
-
-| Method | Description |
-|--------|-------------|
-| **Password** | Username/password auth. Password stored in Keychain. |
-| **Private Key** | RSA, Ed25519, or ECDSA key file. Supports passphrase-protected keys. |
-| **SSH Agent** | Delegates auth to a running SSH agent (system agent, 1Password, or custom socket path). |
-| **Keyboard-Interactive** | Server-driven challenge/response. Used by some PAM and MFA setups. |
-
-## TOTP Two-Factor Authentication
-
-For servers that require TOTP codes after SSH auth, enable **Two-Factor (TOTP)** in the profile. Enter the TOTP secret, and TablePro generates and submits the 6-digit code automatically during connection.
-
-Configure algorithm (SHA1, SHA256, SHA512), digit count, and time period if your server uses non-default settings.
-
-## Multi-Jump Hosts (ProxyJump)
-
-Chain multiple SSH hops to reach a database behind nested bastions. Click **Add Jump Host** in the profile editor to add intermediate hosts. Each hop authenticates independently (password, key, or agent).
-
-The chain executes in order: client connects to jump host 1, then tunnels through to jump host 2, and so on until reaching the final SSH host.
-
-## SSH Config File Integration
-
-Toggle **Use SSH Config** to read settings from `~/.ssh/config`. TablePro applies matching Host entries for hostname, port, identity file, proxy settings, and other directives. This works alongside profile settings. Explicit profile values override SSH config values.
+Use a profile when multiple connections go through the same bastion host. Use inline for a one-off tunnel specific to a single connection.
 
 ## Editing and Deleting
 
-Select a profile and click **Edit Profile...** to modify it. To delete, click **Edit Profile...** then **Delete Profile**.
+Select a profile and click **Edit Profile...** to modify it. **Delete Profile** is at the bottom of the editor.
 
 ## Testing a Profile
 
@@ -75,4 +39,4 @@ Click **Test Connection** in the profile editor to verify SSH settings without c
 
 ## iCloud Sync
 
-SSH profiles sync across Macs when iCloud Sync is enabled with the **SSH Profiles** toggle on in **Settings > Account**. Passwords and key passphrases stay local by default. Turn on **Password sync** to sync credentials via iCloud Keychain.
+SSH profiles sync across Macs when iCloud Sync is enabled with the **SSH Profiles** toggle on in **Settings > Account**. Passwords, key passphrases, and TOTP secrets stay in the local Keychain by default. Turning on the **Passwords** toggle (nested under **Connections**) syncs newly saved credentials via iCloud Keychain; re-save an existing password to include it.

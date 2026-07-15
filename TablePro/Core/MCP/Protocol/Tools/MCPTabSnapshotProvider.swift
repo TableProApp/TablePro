@@ -60,6 +60,7 @@ private extension TabType {
         case .createTable: "createTable"
         case .erDiagram: "erDiagram"
         case .serverDashboard: "serverDashboard"
+        case .usersRoles: "usersRoles"
         }
     }
 }

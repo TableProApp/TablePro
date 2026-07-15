@@ -1,0 +1,93 @@
+---
+title: Plugin Development
+description: Write a database driver plugin, implement the PluginKit protocols, and package it as a .tableplugin bundle
+---
+
+# Plugin Development
+
+A TablePro database driver is a `.tableplugin` bundle built against **TableProPluginKit** (`Plugins/TableProPluginKit/`). You implement two protocols: `DriverPlugin` describes the database (name, port, capabilities, SQL dialect) and creates driver instances; `PluginDatabaseDriver` is the connection itself (connect, query, fetch schema). The app bridges your driver to its internal `DatabaseDriver` protocol through `PluginDriverAdapter` and resolves it by database type ID, so a working plugin gets the full UI: connection form, sidebar, data grid, editor, import and export.
+
+The best starting point is an existing plugin. `Plugins/SurrealDBDriverPlugin/` is a compact reference with no C bridge: it talks HTTP, implements the schema-aware query-building hooks, and ships a custom editor language.
+
+## Bundle layout
+
+A plugin is a macOS loadable bundle target with `WRAPPER_EXTENSION = tableplugin`, linking TableProPluginKit. The principal class (set via `INFOPLIST_KEY_NSPrincipalClass`) must be your `DriverPlugin` class. `Info.plist` keys:
+
+| Key | Type | Required | Purpose |
+|-----|------|----------|---------|
+| `TableProPluginKitVersion` | integer | Yes | PluginKit ABI version the plugin was built against (18 as of 0.57.0) |
+| `TableProProvidesDatabaseTypeIds` | array of strings | Recommended | Database type IDs the plugin serves. Enables lazy loading. |
+| `TableProMinAppVersion` | string | No | Loader rejects the plugin on older app versions |
+| `CFBundleShortVersionString` | string | Yes | Plugin version, used for registry update checks |
+
+Without `TableProProvidesDatabaseTypeIds`, the plugin loads eagerly at app startup and `PluginManager` logs a warning. With it, the app registers the metadata from `Info.plist` and loads the binary on first use.
+
+## Implementing DriverPlugin
+
+Your principal class conforms to `TableProPlugin` and `DriverPlugin`. Only a handful of members have no default:
+
+```swift
+final class SurrealDBPlugin: NSObject, TableProPlugin, DriverPlugin {
+    static let pluginName = "SurrealDB Driver"
+    static let pluginVersion = "1.0.0"
+    static let pluginDescription = "SurrealDB driver over the HTTP RPC protocol with SurrealQL"
+    static let capabilities: [PluginCapability] = [.databaseDriver]
+
+    static let databaseTypeId = "SurrealDB"
+    static let databaseDisplayName = "SurrealDB"
+    static let iconName = "surrealdb-icon"
+    static let defaultPort = 8000
+
+    func createDriver(config: DriverConnectionConfig) -> any PluginDatabaseDriver {
+        SurrealDBPluginDriver(config: config)
+    }
+}
+```
+
+`DriverConnectionConfig` carries host, port, username, password, database, SSL configuration, and an `additionalFields` dictionary populated from your `additionalConnectionFields` declarations.
+
+Everything else on `DriverPlugin` is an optional static with a default: connection mode, URL schemes, brand color, editor language, `sqlDialect` (keywords, functions, completions), capability flags (`supportsSSH`, `supportsSchemaEditing`, `supportsTriggers`, and about forty more), navigation model, and system database names. Override what differs from the defaults; see `Plugins/TableProPluginKit/DriverPlugin.swift` for the full list.
+
+## Implementing PluginDatabaseDriver
+
+The driver protocol has around 80 requirements, but most have default implementations. You must implement:
+
+| Group | Methods |
+|-------|---------|
+| Lifecycle | `connect()`, `disconnect()` |
+| Queries | `execute(query:)` |
+| Schema | `fetchTables(schema:)`, `fetchColumns(table:schema:)`, `fetchIndexes(table:schema:)`, `fetchForeignKeys(table:schema:)`, `fetchTableDDL(table:schema:)`, `fetchViewDefinition(view:schema:)`, `fetchTableMetadata(table:schema:)` |
+| Databases | `fetchDatabases()`, `fetchDatabaseMetadata(_:)` |
+
+Notable defaults you may want to override:
+
+- `ping()` runs `SELECT 1`; transactions run `BEGIN` / `COMMIT` / `ROLLBACK` via `execute(query:)`.
+- `fetchAllColumns(schema:)` and `fetchAllForeignKeys(schema:)` loop per table (N+1 round-trips). SQL drivers should replace them with one bulk query.
+- `quoteIdentifier`, `escapeStringLiteral`, `executeParameterized`, and `streamRows` have generic SQL defaults.
+- Non-SQL databases implement the query-building hooks (`buildBrowseQuery`, `buildFilteredQuery`, `generateStatements`) so browsing and editing work without SQL. Implement the `schema:`-aware overloads if your database has schemas; the schema-less defaults drop the schema.
+
+## How loading works
+
+`PluginManager` loads plugins from two places: the app's `PlugIns/` directory (built-in, no signature check) and `~/Library/Application Support/TablePro/Plugins` (user-installed, must be signed by TablePro's signing team).
+
+Before loading any bundle, `validateBundleVersions` checks `TableProPluginKitVersion` against the app's compatible range, `[minimumCompatiblePluginKitVersion, currentPluginKitVersion]` in `PluginManager.swift`. A missing key, a version above the range, or a version below it all reject the plugin with a clear error instead of a crash. `TableProMinAppVersion` is checked next, then the bundle's principal class must conform to `TableProPlugin`.
+
+## ABI compatibility
+
+TableProPluginKit builds with Swift Library Evolution, so its public ABI is resilient: a plugin built against an older PluginKit keeps loading under a newer app, and the runtime fills protocol requirements the plugin does not implement from their defaults.
+
+If you change PluginKit itself, the rules are:
+
+- **Additive, no version bump**: a new protocol requirement with a default implementation, a new field on a non-frozen struct added through a new initializer overload, removing a requirement that defaulted to `nil`.
+- **Breaking, bump required**: changing or removing an existing requirement's signature, adding a requirement without a default, changing a `@frozen` type's layout. Bump `currentPluginKitVersion` and every plugin's `TableProPluginKitVersion`, then re-release all registry plugins.
+- **Never add a parameter to an existing public initializer or function, even with a default value.** It replaces the mangled symbol and every already-built plugin fails to load. Add a new overload and mark the old one `@_disfavoredOverload`.
+
+Run `scripts/check-pluginkit-abi.sh` before merging any change under `Plugins/TableProPluginKit/`. It builds the public interface at your tree and at the base ref and diffs them.
+
+## Test locally
+
+A locally built plugin is not signed by TablePro, so installing it like a registry plugin fails. Add it to the **Copy Plug-Ins** build phase instead, or allow unsigned plugins in a debug build. See [Testing a Custom Plugin](/development/testing-plugins).
+
+## Distribute
+
+Registry plugins are published through CI: tag `plugin-<name>-v<version>`, and the workflow builds both architectures, signs, notarizes, and updates `plugins.json`. See [Plugin Registry](/development/plugin-registry) for the manifest format, the self-describing `metadata` block, and the publishing flow.

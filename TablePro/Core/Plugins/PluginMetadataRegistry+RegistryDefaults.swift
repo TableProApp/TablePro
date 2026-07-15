@@ -807,7 +807,7 @@ extension PluginMetadataRegistry {
                     tagline: String(localized: "Distributed SQLite by Turso")
                 )
             )),
-        ] + cloudPluginDefaults() + elasticsearchPluginDefaults()
+        ] + cloudPluginDefaults() + elasticsearchPluginDefaults() + surrealDBPluginDefaults()
     }
     // swiftlint:enable function_body_length
 }

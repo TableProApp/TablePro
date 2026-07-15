@@ -7,13 +7,27 @@ description: Filter table data with 18 operators, raw SQL, and saved presets
 
 Press `Cmd+F` while viewing a table to open the filter panel. Type a raw SQL WHERE clause and press `Enter` to filter. Raw SQL is the default mode.
 
-Each row has a checkbox, a column picker, operator, value field, and **+**/**−** buttons. Multiple rows combine with **AND** or **OR** (toggle in the header). Click **Apply**, press `Enter` in a value field, or press `Cmd+Return` to run all active filters. Click **Unset** to clear all.
+<Frame caption="Filter panel with column and raw SQL conditions">
+  <img className="block dark:hidden" src="/images/filter-panel.png" alt="Filter panel above the data grid" />
+  <img className="hidden dark:block" src="/images/filter-panel-dark.png" alt="Filter panel above the data grid" />
+</Frame>
 
-Uncheck a row to turn that filter off without deleting it. The header **Apply** runs only the checked filters; unchecked ones stay dimmed in the panel so you can switch them back on later. Toggling a checkbox does not re-run the query on its own, press **Apply** when you are ready.
+Each row has a checkbox, a column picker, operator, value field, and **+**/**−** buttons. The **Match all** / **Match any** picker in the header combines rows with AND or OR. You can also right-click a column header in the data grid and choose **Filter with column** to pre-fill a filter row for that column.
 
-Each row also has its own **Apply** button. It filters the table by just that row, without changing any checkbox. The checkboxes stay as they are, so you can test one condition on its own and then go back to the checked set with the header **Apply**.
+| Control | What it does |
+|---------|--------------|
+| Header **Apply** (or `Enter` in a value field, or `Cmd+Return`) | Runs all checked filter rows |
+| Row checkbox | Turns that filter off without deleting it; unchecked rows stay dimmed. Toggling does not re-run the query, press **Apply** when ready |
+| Row **Apply** | Filters by just that row, leaving all checkboxes as they are, so you can test one condition and return to the checked set with the header **Apply** |
+| **Clear** | Removes the applied filter without deleting the filter rows |
 
-When you reopen a table, TablePro restores the filters you last applied to it, including the ones you left unchecked, after you quit and relaunch. If you clear the filter with **Unset** or remove its conditions with **−**, reopening the table shows it unfiltered. Filters are remembered per connection. Tables with active filters open in a new tab when you click another table.
+When you reopen a table, TablePro restores the filters you last applied to it, including the ones you left unchecked, after you quit and relaunch. Filters are saved per connection, database, schema, and table, so two tables on the same connection keep independent filters. If you cleared the filter with **Clear** or removed its rows with **−**, the table reopens unfiltered. Tables with active filters open in a new tab when you click another table.
+
+The filter panel queries the database. To narrow rows already loaded in the grid without re-querying, use the column value filter in the [Data Grid](/features/data-grid).
+
+<Note>
+Redis shows a key-pattern search bar (for example `user:*`) with a key-type picker instead of the filter panel.
+</Note>
 
 ## Operators
 

@@ -1,6 +1,6 @@
 ---
 title: Building
-description: Development builds, release builds, DMG packaging, code signing, and CI/CD
+description: Development builds, release builds, static libraries, DMG packaging, and CI/CD
 ---
 
 # Building TablePro
@@ -16,126 +16,82 @@ description: Development builds, release builds, DMG packaging, code signing, an
 ### Command Line
 
 ```bash
-xcodebuild -project TablePro.xcodeproj \
-    -scheme TablePro \
-    -configuration Debug \
-    build \
-    -skipPackagePluginValidation
+xcodebuild -project TablePro.xcodeproj -scheme TablePro -configuration Debug build -skipPackagePluginValidation
 ```
 
 Build and run:
 
 ```bash
-xcodebuild -project TablePro.xcodeproj \
-    -scheme TablePro \
-    -configuration Debug \
-    build \
-    -skipPackagePluginValidation && open build/Debug/TablePro.app
+xcodebuild -project TablePro.xcodeproj -scheme TablePro -configuration Debug build -skipPackagePluginValidation && open build/Debug/TablePro.app
 ```
 
 <Note>
 `-skipPackagePluginValidation` is required. CodeEditSourceEditor bundles a SwiftLint plugin that triggers Xcode's plugin validation on CLI builds.
 </Note>
 
+Debug builds use automatic signing with an Apple Development identity. Switch the **Team** in Signing & Capabilities to your own Apple Developer account (a free account works), see [Development Setup](/development/setup). Signing matters even locally: plugin signature verification derives the required team from the running app's signature.
+
 ## Release Builds
 
 ```bash
-# Apple Silicon
-scripts/build-release.sh arm64
-
-# Intel
-scripts/build-release.sh x86_64
-
-# Both architectures
-scripts/build-release.sh both
+scripts/build-release.sh arm64      # Apple Silicon
+scripts/build-release.sh x86_64     # Intel
+scripts/build-release.sh both       # Both architectures
 ```
 
-Output:
+Output: `build/Release/TablePro-arm64.app` and `build/Release/TablePro-x86_64.app`.
 
-```
-build/Release/TablePro-arm64.app
-build/Release/TablePro-x86_64.app
-```
+The script extracts the right slice from the universal static libraries, strips the main binary, helpers, PluginKit framework, and plugin binaries, then signs each binary individually and the app bundle last with hardened runtime and entitlements. Environment variables control signing:
 
-The build script handles architecture slicing from universal static libraries automatically.
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `SIGN_IDENTITY` | Maintainer's Developer ID | Codesign identity for every binary |
+| `NOTARIZE` | `false` | Set `true` to notarize and staple after building |
+| `APPLE_ID` | Maintainer's Apple ID | Account for notarization |
 
-## Native Libraries
+Notarization uses a `notarytool` keychain profile named `TablePro`. Create it once with `xcrun notarytool store-credentials "TablePro" --apple-id ... --team-id ... --password ...`. Do not sign or notarize by hand; the script already does it per binary, which is what Apple's guidance requires.
 
-Static `.a` files (libmariadb, libpq, libfreetds, etc.) are hosted on a GitHub Release (tag `libs-v1`). They are not in git.
+## Static Libraries
+
+Static `.a` files (libmariadb, libpq, libsybdb, and others) are hosted on the `libs-v1` GitHub Release, not in git.
 
 ```bash
-# Download (skips if already present)
-scripts/download-libs.sh
-
-# Force re-download
-scripts/download-libs.sh --force
+scripts/download-libs.sh          # Download (skips if already present)
+scripts/download-libs.sh --force  # Re-download and overwrite
 ```
 
-### Updating Libraries (Maintainers)
+### Publishing Libraries (Maintainers)
 
-When updating a static library:
+After rebuilding a library, publish it with `scripts/publish-libs.sh`, naming every lib you rebuilt:
 
 ```bash
-# Regenerate checksums
-shasum -a 256 Libs/*.a > Libs/checksums.sha256
-
-# Create and upload archive
-tar czf /tmp/tablepro-libs-v1.tar.gz -C Libs .
-gh release upload libs-v1 /tmp/tablepro-libs-v1.tar.gz --clobber --repo TableProApp/TablePro
-
-# Commit checksum changes
+scripts/publish-libs.sh libmongoc_arm64.a libmongoc_x86_64.a libmongoc_universal.a libmongoc.a
 git add Libs/checksums.sha256 && git commit -m "build: update static library checksums"
 ```
 
-## Creating DMG
+The script verifies all libraries you did not name against the checksums committed at HEAD, regenerates `Libs/checksums.sha256`, and uploads the archive with `--clobber`.
 
-Build the release first, then package:
+<Warning>
+Never run `shasum -a 256 Libs/*.a > Libs/checksums.sha256` by hand. Regenerating from a stale `Libs/` directory silently reverts other libraries; this shipped a broken libmongoc and rolled back DuckDB once.
+</Warning>
+
+iOS xcframeworks (`Libs/ios/*.xcframework`) upload to the same release:
+
+```bash
+tar czf /tmp/tablepro-libs-ios-v1.tar.gz -C Libs/ios .
+gh release upload libs-v1 /tmp/tablepro-libs-ios-v1.tar.gz --clobber --repo TableProApp/TablePro
+```
+
+## Creating a DMG
+
+`scripts/create-dmg.sh` takes the version, the architecture (default `universal`), and the source app (default `build/Release/TablePro.app`):
 
 ```bash
 scripts/build-release.sh arm64
-scripts/create-dmg.sh arm64
+scripts/create-dmg.sh 0.57.0 arm64 build/Release/TablePro-arm64.app
 ```
 
-Output:
-
-```
-build/Release/TablePro-arm64.dmg
-build/Release/TablePro-x86_64.dmg
-```
-
-## Code Signing
-
-### Development
-
-Unsigned by default. No certificate needed for local testing.
-
-### Distribution
-
-```bash
-# Sign
-codesign --force --deep --sign "Developer ID Application: Your Name (TEAM_ID)" \
-    build/Release/TablePro-arm64.app
-
-# Verify
-codesign --verify --verbose build/Release/TablePro-arm64.app
-```
-
-### Notarization
-
-```bash
-# Create ZIP
-ditto -c -k --keepParent build/Release/TablePro-arm64.app TablePro.zip
-
-# Submit
-xcrun notarytool submit TablePro.zip \
-    --apple-id "your@email.com" \
-    --team-id "TEAM_ID" \
-    --password "app-specific-password" \
-    --wait
-
-# Staple
-xcrun stapler staple build/Release/TablePro-arm64.app
-```
+Output: `build/Release/TablePro-0.57.0-arm64.dmg`.
 
 ## Clean Build
 
@@ -149,28 +105,22 @@ xcrun stapler staple build/Release/TablePro-arm64.app
 
 ### App Releases
 
-GitHub Actions workflow: `.github/workflows/build.yml`
+`.github/workflows/build.yml`, triggered by `v*` tags (e.g. `v0.57.0`).
 
-Triggered by `v*` tags (e.g., `v0.18.0`).
-
-Pipeline: lint -> build arm64 -> build x86_64 -> release (DMG + ZIP + Sparkle signatures)
-
-Release notes are auto-extracted from `CHANGELOG.md`.
+Jobs: SwiftLint, macOS Tests, Build ARM64, Build x86_64, Registry Readiness. The release job needs all five, so failing tests block the release. It produces DMGs, ZIPs, and Sparkle signatures, with release notes extracted from `CHANGELOG.md`.
 
 ### Plugin Releases
 
-Workflow: `.github/workflows/build-plugin.yml`
+`.github/workflows/build-plugin.yml`, triggered by `plugin-*-v*` tags (e.g. `plugin-oracle-v1.0.0`) or by `workflow_dispatch`. The dispatch input takes comma-separated `tag:pluginKitVersion` pairs, e.g. `plugin-mongodb-v1.0.25:13`. Omit `:pluginKitVersion` and the workflow reads `currentPluginKitVersion` from `PluginManager.swift`.
 
-Triggered by `plugin-*-v*` tags (e.g., `plugin-oracle-v1.0.0`).
+After a PluginKit ABI bump, re-release every registry plugin in one parallel matrix run:
+
+```bash
+scripts/release-all-plugins.sh <pluginKitVersion>
+```
+
+See [Plugin Registry](/development/plugin-registry) for how published binaries reach users.
 
 <Warning>
-GitHub only fires one workflow per multi-tag push. Push plugin tags individually, or use `workflow_dispatch` with comma-separated tags for bulk releases.
+Pushing more than 3 tags in one push creates no push events at all, so zero workflows fire. Push plugin tags one at a time, or use `workflow_dispatch`.
 </Warning>
-
-## Build Sizes
-
-| Build | Size |
-|-------|------|
-| Debug app | ~15 MB |
-| Release app | ~10 MB |
-| DMG (per arch) | ~3.5 MB |

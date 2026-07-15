@@ -40,6 +40,7 @@ PLUGINS=(
     snowflake
     libsql
     elasticsearch
+    surrealdb
 )
 
 BUNDLED_PLUGINS=(

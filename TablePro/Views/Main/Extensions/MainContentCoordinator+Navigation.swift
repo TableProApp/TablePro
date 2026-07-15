@@ -305,16 +305,13 @@ extension MainContentCoordinator {
         guard let tab = tabManager.selectedTab else { return false }
         if changeManager.hasChanges
             || selectedTabFilterState.hasAppliedFilters
-            || tab.hasUserActiveSort {
+            || tab.hasUserActiveSort
+            || tab.display.hasPinnedResults {
             return false
         }
         if tab.tabType == .createTable { return !toolbarState.hasCreateTablePending }
         if tab.isPreview { return true }
-        if tab.tabType == .query,
-           tab.execution.lastExecutedAt == nil,
-           tab.content.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return true
-        }
+        if tab.tabType == .query, !tab.holdsQueryWork { return true }
         return false
     }
 

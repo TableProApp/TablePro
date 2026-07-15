@@ -83,7 +83,7 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
 
     // MARK: - Forwarding
 
-    func startForwarding(remoteHost: String, remotePort: Int) {
+    func startForwarding(destination: SSHForwardDestination) {
         sessionQueue.sync { libssh2_session_set_blocking(session, 0) }
 
         forwardingTask = Task.detached { [weak self] in
@@ -94,8 +94,10 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
                     defer { continuation.resume() }
                     guard let self else { return }
 
+                    let target = destination.logDescription
+
                     Self.logger.info(
-                        "Forwarding started on port \(self.localPort) -> \(remoteHost):\(remotePort)"
+                        "Forwarding started on port \(self.localPort) -> \(target)"
                     )
 
                     while self.isRunning {
@@ -110,21 +112,16 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
                         // Open channel on sessionQueue (serialized libssh2 call),
                         // then hand off relay to relayQueue (concurrent I/O).
                         let channel: OpaquePointer? = self.sessionQueue.sync {
-                            self.openDirectTcpipChannel(
-                                remoteHost: remoteHost,
-                                remotePort: remotePort
-                            )
+                            self.openForwardChannel(destination: destination)
                         }
 
                         guard let channel else {
-                            Self.logger.error("Failed to open direct-tcpip channel")
+                            Self.logger.error("Failed to open forwarding channel to \(target)")
                             Darwin.close(clientFD)
                             continue
                         }
 
-                        Self.logger.debug(
-                            "Client connected, relaying to \(remoteHost):\(remotePort)"
-                        )
+                        Self.logger.debug("Client connected, relaying to \(target)")
                         self.spawnRelay(clientFD: clientFD, channel: channel)
                     }
 
@@ -288,16 +285,14 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
         return clientFD
     }
 
-    /// Open a direct-tcpip channel, handling EAGAIN with select().
+    /// Open the forwarding channel to the destination, handling EAGAIN with select().
     /// Must be called on `sessionQueue`.
-    private func openDirectTcpipChannel(remoteHost: String, remotePort: Int) -> OpaquePointer? {
+    private func openForwardChannel(destination: SSHForwardDestination) -> OpaquePointer? {
         while isRunning {
-            let channel = libssh2_channel_direct_tcpip_ex(
-                session,
-                remoteHost,
-                Int32(remotePort),
-                "127.0.0.1",
-                Int32(localPort)
+            let channel = LibSSH2ForwardChannel.open(
+                session: session,
+                destination: destination,
+                originPort: localPort
             )
 
             if let channel {

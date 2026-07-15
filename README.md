@@ -157,9 +157,9 @@ Thanks to these amazing people for supporting TablePro:
 
 <a href="https://www.star-history.com/?repos=TableProApp%2FTablePro&type=date&legend=top-left">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/image?repos=TableProApp/TablePro&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/image?repos=TableProApp/TablePro&type=date&legend=top-left" />
-   <img alt="Star History Chart" src="https://api.star-history.com/image?repos=TableProApp/TablePro&type=date&legend=top-left" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=TableProApp/TablePro&type=date&theme=dark&legend=top-left&sealed_token=z_8BUG_QiaPNiKmaeuB4TbNUzFzi7Sb2UdMZLGWjDEGLHl0NB0DnQJtO3jV-bnBlKg2Oh7WaoeVdnOajcEmwVnmQpjZ0lNXWkCk7oZHwqqopO1FbEvvzZunUK7fR-AGZrVziaegZPsCMvtW6KjFZbdGny5sOj6-pFDtwA1Df-h-4Wcj90Dg1wIUeFKls" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=TableProApp/TablePro&type=date&legend=top-left&sealed_token=z_8BUG_QiaPNiKmaeuB4TbNUzFzi7Sb2UdMZLGWjDEGLHl0NB0DnQJtO3jV-bnBlKg2Oh7WaoeVdnOajcEmwVnmQpjZ0lNXWkCk7oZHwqqopO1FbEvvzZunUK7fR-AGZrVziaegZPsCMvtW6KjFZbdGny5sOj6-pFDtwA1Df-h-4Wcj90Dg1wIUeFKls" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=TableProApp/TablePro&type=date&legend=top-left&sealed_token=z_8BUG_QiaPNiKmaeuB4TbNUzFzi7Sb2UdMZLGWjDEGLHl0NB0DnQJtO3jV-bnBlKg2Oh7WaoeVdnOajcEmwVnmQpjZ0lNXWkCk7oZHwqqopO1FbEvvzZunUK7fR-AGZrVziaegZPsCMvtW6KjFZbdGny5sOj6-pFDtwA1Df-h-4Wcj90Dg1wIUeFKls" />
  </picture>
 </a>
 

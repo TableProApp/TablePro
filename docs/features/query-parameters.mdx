@@ -48,7 +48,11 @@ Each row has:
 | **Type** | String, Integer, Decimal, Date, or Boolean |
 | **NULL** | Check this to bind NULL |
 
+Rows appear in the order the names first appear in your SQL.
+
 **Clear All** empties all value fields. The X button hides the panel. It comes back on the next execute if the query still has parameters.
+
+Every parameter needs a value or the NULL checkbox. Executing with an empty value shows "Missing value for parameter: :name" instead of running.
 
 ## What Gets Detected
 

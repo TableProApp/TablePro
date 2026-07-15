@@ -155,11 +155,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func persistOpenConnectionsForRecovery() {
-        var seen = Set<UUID>()
-        let connectionIds = MainContentCoordinator.activeCoordinators.values
-            .map(\.connectionId)
-            .filter { seen.insert($0).inserted }
-        LastOpenConnectionsStorage.shared.save(connectionIds: connectionIds)
+        LastOpenConnectionsStorage.shared.save(connectionIds: SessionRecoveryTracker.connectionIds())
     }
 
     @objc func handleSystemDidWake(_ notification: Notification) {

@@ -22,6 +22,8 @@ struct DataResultsSettingsView: View {
             }
 
             HistorySection(settings: $history)
+
+            SavedCustomizationsSection()
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)

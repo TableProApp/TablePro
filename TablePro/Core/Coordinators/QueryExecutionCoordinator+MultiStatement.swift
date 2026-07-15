@@ -131,9 +131,7 @@ extension QueryExecutionCoordinator {
             tab.execution.lastExecutedAt = Date()
             tab.execution.errorMessage = nil
 
-            let pinnedResults = tab.display.resultSets.filter(\.isPinned)
-            tab.display.resultSets = pinnedResults + newResultSets
-            tab.display.activeResultSetId = newResultSets.last?.id
+            tab.display.replaceUnpinnedResults(with: newResultSets)
             if tab.display.isResultsCollapsed {
                 tab.display.isResultsCollapsed = false
             }

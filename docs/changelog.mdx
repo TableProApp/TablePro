@@ -4,6 +4,52 @@ description: "Product updates and announcements for TablePro"
 rss: true
 ---
 
+<Update label="July 15, 2026" description="v0.57.1">
+  ### New Features
+
+  - **SSH to a Unix socket**: SSH tunnels can forward to a Unix socket on the remote server, for databases that only listen on a socket. Set the socket path on the General pane and TablePro forwards to it through your jump hosts (#1871)
+
+  ### Bug Fixes
+
+  - Fixed a crash that could quit the app when opening or sorting a table whose columns have comments (#1869, #1880)
+  - The right sidebar resizes again while a Users & Roles tab is open, and the user list collapses on its own when the tab gets too narrow (#1872)
+  - Fixed dividers that could not be dragged at all in Users & Roles, the Structure trigger list, and the Server Dashboard metrics and slow query panes (#1872)
+  - Cancel now stops a connection attempt right away, drops the cancelled connection from the last session, and no longer interrupts a later successful connection (#1358)
+  - MCP tools keep working after the server sits idle for 15 minutes or is restarted from Settings, so agents like Claude Code and Cursor no longer need to be turned off and on again (#1881)
+
+  ### Security
+
+  - Patched CVE-2026-55200 in libssh2, a critical out-of-bounds write that let a malicious SSH server corrupt memory and run code before authentication finished. It affected every SSH tunnel and jump host
+</Update>
+
+<Update label="July 14, 2026" description="v0.57.0">
+  ### New Features
+
+  - **SurrealDB**: SurrealDB 2.x and 3.x as a downloadable driver. Browse namespaces and databases, run SurrealQL, and edit records in the grid (#1862)
+  - **Beancount**: Beancount ledgers as a downloadable, read-only driver. Transactions, postings, accounts, prices, and balances read as SQL tables, and BQL runs with a `BQL:` prefix (#1474)
+  - **Users & Roles**: Manage database users, roles, and privileges on MySQL and PostgreSQL from View > Users & Roles. Pick any object from the server down to a single column, see where each privilege comes from, and grant or revoke it. Changes are staged, undoable, and shown as SQL before they run (#1413)
+  - **Cloud SQL Auth Proxy**: Connect to Google Cloud SQL without starting the proxy yourself. Turn it on for a MySQL, PostgreSQL, or SQL Server connection, set the instance connection name, and TablePro starts and stops the proxy for you (#1728)
+  - **xAI (Grok)**: Grok as an AI provider. Paste a key from the xAI Console, or sign in with a SuperGrok or X Premium+ subscription and use no key at all
+  - **Reopen Closed Tab**: `Cmd+Shift+T` brings back the tab you just closed, and File > Recently Closed lists the last 20, kept for 30 days (#1854)
+  - **Open from the terminal**: Install the `tablepro` command from Settings > General, then run `ddev tablepro` in a DDEV project. Links to a database on your own Mac can be trusted with Always Allow and reviewed in Settings > General (#1486)
+  - New Query in the Favorites sidebar + menu, which opens an empty SQL query tab
+
+  ### Improvements
+
+  - Query results always open in a result tab, so a single result can be pinned before the next query replaces it. Pin from the tab's context menu or with `Cmd+Option+P` (#1855)
+  - Closing a query tab keeps its SQL in Recently Closed instead of throwing it away, and the close button shows the unsaved dot for a query you typed into (#1854)
+
+  ### Bug Fixes
+
+  - Fixed a crash when several tables on the same connection ran queries at the same time
+  - Column comments now show in the data grid header as soon as the table opens, and the header grows to fit them (#1861)
+  - Size to Fit no longer stretches a column of long text past the window. Fitted columns stop at half the visible grid, and every column has a maximum width
+  - The username is now optional. Leaving it empty no longer fills in `root`, and lets the database pick its own default the way `psql` and `mysql` do
+  - A failed or cancelled connection that uses a Cloudflare tunnel no longer leaves the `cloudflared` process running in the background
+  - Pinned results are no longer discarded by Clear Results, and a tab holding one is no longer reused to browse a different table (#1855)
+  - Quitting now warns about unsaved changes in any tab, not just the visible one (#1854)
+</Update>
+
 <Update label="July 10, 2026" description="v0.56.2">
   ### New Features
 

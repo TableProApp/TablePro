@@ -1,6 +1,6 @@
 ---
 title: Development Setup
-description: Get TablePro building on your machine in under 5 minutes
+description: Clone, configure signing, and build TablePro in Xcode
 ---
 
 # Development Setup
@@ -63,13 +63,21 @@ Optional but recommended:
 
   <Step title="Configure signing">
     1. Select the **TablePro** target
-    2. Go to **Signing & Capabilities**
-    3. Change **Team** to your Apple Developer account (free account works)
+    2. Go to **Signing & Capabilities**, **Debug** sub-tab
+    3. Change **Team** to your Apple Developer account (a free personal team works)
+    4. Change the **Bundle Identifier** from `com.TablePro` to something unique, for example `com.yourhandle.TablePro`
 
-    The Debug build leaves out the iCloud capability, so a free personal team
-    signs it without a paid Apple Developer Program membership. If you build a
-    target that still shows a team error (a driver plugin or the MCP server),
-    set its **Team** the same way.
+    The Debug configuration signs with `TablePro.Debug.entitlements`, which drops
+    the iCloud capability, so a free personal team can sign it without a paid
+    Apple Developer Program membership. If another target still shows a team
+    error (a driver plugin or the MCP server), set its **Team** the same way.
+
+    Do not commit the resulting `project.pbxproj` changes; they break official
+    Release signing. Hide them locally:
+
+    ```bash
+    git update-index --skip-worktree TablePro.xcodeproj/project.pbxproj
+    ```
   </Step>
 
   <Step title="Build and run">
@@ -80,19 +88,15 @@ Optional but recommended:
     ```bash
     xcodebuild -project TablePro.xcodeproj -scheme TablePro -configuration Debug build -skipPackagePluginValidation
     ```
-  </Step>
 
-  <Step title="Test a plugin you built">
-    The app only loads plugins signed by the same team as the app, so a plugin
-    you built separately will not install into a release build. To try one in
-    your local build, add it to the **Copy Plug-Ins** build phase of the
-    **TablePro** target and run, or set `TABLEPRO_ALLOW_UNSIGNED_PLUGINS=1` in
-    the scheme's environment to skip the signature check. Once it works, open a
-    PR so the official CI signs and ships it through the registry.
+    Xcode writes the built app to DerivedData
+    (`~/Library/Developer/Xcode/DerivedData/TablePro-*/Build/Products/Debug`).
   </Step>
 </Steps>
 
-{/* Screenshot: Xcode with scheme selected */}
+Writing a driver plugin? See [Plugin Development](/development/plugin-development) to build one and [Testing a Custom Plugin](/development/testing-plugins) to run it in your local build.
+
+{/* Screenshot: Xcode Signing & Capabilities pane with Team highlighted */}
 <Frame caption="Xcode project setup">
   <img
     className="block dark:hidden"
@@ -140,36 +144,21 @@ Optional but recommended:
 ## Running Tests
 
 ```bash
-# All tests
 xcodebuild -project TablePro.xcodeproj -scheme TablePro test -skipPackagePluginValidation
-
-# Specific test class
-xcodebuild -project TablePro.xcodeproj -scheme TablePro test -skipPackagePluginValidation \
-    -only-testing:TableProTests/TestClassName
-
-# Specific test method
-xcodebuild -project TablePro.xcodeproj -scheme TablePro test -skipPackagePluginValidation \
-    -only-testing:TableProTests/TestClassName/testMethodName
 ```
 
-Or in Xcode: `Cmd+U`.
+Or in Xcode: `Cmd+U`. To run a single class or method, pass `-only-testing:TableProTests/TestClassName` or `-only-testing:TableProTests/TestClassName/testMethodName`.
 
 ## Linting and Formatting
 
+Before committing:
+
 ```bash
-# Check for issues
-swiftlint lint
-
-# Auto-fix
-swiftlint --fix
-
-# Format all code
+swiftlint lint --strict
 swiftformat .
 ```
 
-<Tip>
-Run `swiftlint --fix && swiftformat .` before committing.
-</Tip>
+CI rejects warnings, so plain `swiftlint lint` is not enough. Full tooling reference: [Code Style](/development/code-style).
 
 ## Troubleshooting
 

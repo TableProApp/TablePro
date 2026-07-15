@@ -28,6 +28,8 @@ extension DatabaseManager {
 
         MacAnalyticsProvider.shared.markConnectionAttempted()
 
+        let attempt = connectionAttempts.begin(for: connection.id)
+
         let resolvedConnection: DatabaseConnection
         if LicenseManager.shared.isFeatureAvailable(.envVarReferences) {
             resolvedConnection = EnvVarResolver.resolveConnection(connection)
@@ -49,7 +51,10 @@ extension DatabaseManager {
                 sshPasswordOverride: sshPasswordOverride
             )
         } catch {
-            finalizeConnectionFailure(for: connection.id, cancelled: Task.isCancelled)
+            finalizeConnectionFailure(
+                for: connection.id,
+                cancelled: isAttemptCancelled(attempt, for: connection.id)
+            )
             throw error
         }
 
@@ -59,7 +64,10 @@ extension DatabaseManager {
             do {
                 try await PreConnectHookRunner.run(script: script)
             } catch {
-                finalizeConnectionFailure(for: connection.id, cancelled: Task.isCancelled)
+                finalizeConnectionFailure(
+                    for: connection.id,
+                    cancelled: isAttemptCancelled(attempt, for: connection.id)
+                )
                 throw error
             }
         }
@@ -75,7 +83,10 @@ extension DatabaseManager {
                     isAPIToken: isApiOnly,
                     window: NSApp.keyWindow
                 ) else {
-                    finalizeConnectionFailure(for: connection.id, cancelled: Task.isCancelled)
+                    finalizeConnectionFailure(
+                        for: connection.id,
+                        cancelled: isAttemptCancelled(attempt, for: connection.id)
+                    )
                     throw CancellationError()
                 }
                 passwordOverride = prompted
@@ -90,16 +101,18 @@ extension DatabaseManager {
                 awaitPlugins: true
             )
         } catch {
-            if !Task.isCancelled {
+            let cancelled = isAttemptCancelled(attempt, for: connection.id)
+            if !cancelled {
                 closeActiveTunnel(for: connection)
             }
-            finalizeConnectionFailure(for: connection.id, cancelled: Task.isCancelled)
+            finalizeConnectionFailure(for: connection.id, cancelled: cancelled)
             throw error
         }
 
         do {
             try await driver.connect()
             try Task.checkCancellation()
+            try ensureAttemptIsCurrent(attempt, for: connection.id, driver: driver)
 
             await applyTimeoutAndStartupCommands(
                 on: driver,
@@ -116,6 +129,7 @@ extension DatabaseManager {
             )
 
             try Task.checkCancellation()
+            try ensureAttemptIsCurrent(attempt, for: connection.id, driver: driver)
 
             // Batch all session mutations into a single write to fire objectWillChange once.
             if var session = activeSessions[connection.id] {
@@ -128,6 +142,8 @@ extension DatabaseManager {
                 setSession(session, for: connection.id)
             }
 
+            connectionAttempts.finish(attempt, for: connection.id)
+
             MacAnalyticsProvider.shared.markConnectionSucceeded()
             AppEvents.shared.databaseDidConnect.send(DatabaseDidConnect(connectionId: connection.id))
 
@@ -139,7 +155,7 @@ extension DatabaseManager {
                 await startHealthMonitor(for: connection.id)
             }
         } catch {
-            let cancelled = Task.isCancelled
+            let cancelled = isAttemptCancelled(attempt, for: connection.id)
             if cancelled {
                 driver.disconnect()
             } else {
@@ -148,6 +164,21 @@ extension DatabaseManager {
 
             finalizeConnectionFailure(for: connection.id, cancelled: cancelled)
             throw error
+        }
+    }
+
+    private func isAttemptCancelled(_ attempt: Int, for connectionId: UUID) -> Bool {
+        Task.isCancelled || !connectionAttempts.isCurrent(attempt, for: connectionId)
+    }
+
+    private func ensureAttemptIsCurrent(
+        _ attempt: Int,
+        for connectionId: UUID,
+        driver: DatabaseDriver
+    ) throws {
+        guard !isAttemptCancelled(attempt, for: connectionId) else {
+            driver.disconnect()
+            throw CancellationError()
         }
     }
 

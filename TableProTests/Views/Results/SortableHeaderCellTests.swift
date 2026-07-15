@@ -59,13 +59,62 @@ struct SortableHeaderCellTests {
         #expect(prioritizedWidth < sortedWidth)
     }
 
-    @Test("Accessibility label includes the visible header comment")
-    func accessibilityLabelIncludesHeaderComment() {
+    @Test("Accessibility label appends the sort and filter state to the column label")
+    func accessibilityLabelAppendsSortAndFilterState() {
         let cell = SortableHeaderCell(textCell: "email")
-        cell.headerComment = "Primary contact address"
-        cell.setAccessibilityLabel("Column: email")
+        cell.setAccessibilityLabel("Column: email, Primary contact address")
+        cell.sortDirection = .ascending
+        cell.isValueFiltered = true
 
-        #expect(cell.accessibilityLabel() == "Column: email, Primary contact address")
+        #expect(cell.accessibilityLabel() == "Column: email, Primary contact address, Sorted ascending, Filtered")
+    }
+
+    @Test("Header comment is resolved from the header view, not stored on the cell")
+    func headerCommentIsResolvedFromHeaderView() {
+        let comment = heapAllocatedComment()
+        let header = makeHeader(comment: comment)
+
+        #expect(header.view.comment(for: header.cell) == comment)
+    }
+
+    @Test("A copied header cell resolves no comment, so the overflow filler draws none")
+    func copiedHeaderCellResolvesNoComment() throws {
+        let header = makeHeader(comment: heapAllocatedComment())
+        let copy = try #require(header.cell.copy() as? SortableHeaderCell)
+
+        #expect(header.view.comment(for: copy) == nil)
+    }
+
+    @Test("Header cell survives the shallow copies AppKit makes while drawing the header")
+    func headerCellSurvivesShallowCopies() {
+        let comment = heapAllocatedComment()
+        let header = makeHeader(comment: comment)
+
+        for _ in 0..<3 {
+            autoreleasepool {
+                _ = header.cell.copy()
+            }
+        }
+
+        #expect(header.view.comment(for: header.cell) == comment)
+    }
+
+    private func heapAllocatedComment() -> String {
+        String(repeating: "Primary contact address", count: 1)
+    }
+
+    private func makeHeader(comment: String) -> (view: SortableHeaderView, cell: SortableHeaderCell) {
+        let tableView = NSTableView()
+        let cell = SortableHeaderCell(textCell: "email")
+        let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("email"))
+        column.headerCell = cell
+        tableView.addTableColumn(column)
+
+        let headerView = SortableHeaderView(frame: NSRect(x: 0, y: 0, width: 200, height: 28))
+        tableView.headerView = headerView
+        headerView.updateComments([column.identifier: comment])
+
+        return (headerView, cell)
     }
 }
 

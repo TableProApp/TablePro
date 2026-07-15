@@ -1,103 +1,85 @@
 ---
 title: Microsoft SQL Server
-description: Connect to SQL Server 2017+ and Azure SQL Database via FreeTDS with T-SQL query support
+description: Connect to SQL Server and Azure SQL Database with the FreeTDS-based driver plugin
 ---
 
 # Microsoft SQL Server Connections
 
-TablePro connects to SQL Server 2017 and later via FreeTDS. This covers instances on Windows, Linux, Docker, and Azure SQL Database.
+TablePro connects over TDS 7.4 via FreeTDS, which SQL Server 2012 and later speak. This covers instances on Windows, Linux, and Docker, plus Azure SQL Database. FreeTDS is statically linked into the plugin, so there is nothing to build or install besides the plugin itself.
 
-<Warning>
-FreeTDS must be built before connecting to SQL Server. Run `scripts/build-freetds.sh` once to compile the required library.
-</Warning>
+## Install Plugin
 
-## Quick Setup
+The SQL Server driver is a downloadable plugin. When you select SQL Server in the connection form, TablePro prompts to install it. To install manually:
 
-Run `scripts/build-freetds.sh` first. Click **New Connection**, select **SQL Server**, enter host/port/credentials/database, and click **Create**.
+1. Open **Settings** > **Plugins** > **Browse**
+2. Find **MSSQL Driver** and click **Install**
+3. The plugin downloads and loads immediately, no restart needed
+
+See [Plugins](/features/plugins) for how plugin installs and updates work.
 
 ## Connection Settings
 
+Click **New Connection**, select **SQL Server**, fill in the fields, and click **Save & Connect**.
+
 | Field | Default | Notes |
 |-------|---------|-------|
-| **Host** | `localhost` | |
+| **Host** | `localhost` | Named instances are not supported; use the host and TCP port |
 | **Port** | `1433` | |
-| **Username** | `sa` | SQL Server Authentication only (no Windows Auth) |
-| **Database** | - | Optional. Leave empty to browse all databases. Switch with **Cmd+K**. Required for logins scoped to a single database, such as Azure SQL contained users |
+| **Username** | - | SQL Server Authentication only, no Windows Auth |
+| **Database** | - | Optional. Sent during login when set, which is required for logins scoped to one database, such as Azure SQL contained users |
+| **Schema** | `dbo` | Active schema after connecting. Clear it to use the login's default schema, which the driver reads with `SELECT SCHEMA_NAME()` |
 
-## Example Configurations
+<Frame caption="SQL Server connection form">
+  <img className="block dark:hidden" src="/images/mssql-connection-form.png" alt="SQL Server connection form with host, port, credentials, database, and schema fields" />
+  <img className="hidden dark:block" src="/images/mssql-connection-form-dark.png" alt="SQL Server connection form with host, port, credentials, database, and schema fields" />
+</Frame>
 
-**Local**: host `localhost:1433`, user `sa`, database `master`
-**Docker**: `mcr.microsoft.com/mssql/server:2022-latest`, env `ACCEPT_EULA=Y`, `SA_PASSWORD` must have uppercase/lowercase/digits/symbols
-**Remote**: Standard credentials
-**Azure SQL**: Host `server.database.windows.net`, user may need `user@servername` suffix
+For Azure SQL Database, set the host to `yourserver.database.windows.net` and pick SSL mode **Required** or stricter.
 
 ## Connection URL
 
 ```text
-mssql://user:password@host:1433/database
 sqlserver://user:password@host:1433/database
+mssql://user:password@host:1433/database
 ```
 
 See [Connection URL Reference](/databases/connection-urls) for all parameters.
 
+## Databases and Schemas
+
+The sidebar groups tables by schema and hides the built-in role schemas (`db_owner`, `guest`, and the rest). Switch the active database with **Cmd+K**; switches happen in place, no reconnect. Pick the active schema from the schema menu in the sidebar. `master`, `tempdb`, `model`, and `msdb` are marked as system databases.
+
 ## Features
 
-**Schema Selection**: Default schema is `dbo`. Switch with **Cmd+K**. Shows accessible schemas and tables.
-
-**Table Info**: Columns (types, nullability, defaults), indexes (clustered/non-clustered), foreign keys, DDL with constraints.
-
-**Query Editor** (T-SQL, pagination with OFFSET/FETCH):
-
-```sql
--- Paginated results
-SELECT *
-FROM dbo.orders
-ORDER BY order_id
-OFFSET 0 ROWS FETCH NEXT 50 ROWS ONLY;
-
--- Row count estimate (fast, uses statistics)
-SELECT SUM(p.rows) AS row_count
-FROM sys.partitions p
-JOIN sys.tables t ON p.object_id = t.object_id
-WHERE p.index_id IN (0, 1)
-  AND t.name = 'orders';
-
--- View definition
-SELECT OBJECT_DEFINITION(OBJECT_ID('dbo.my_view'));
-
--- List all tables in the current database
-SELECT TABLE_SCHEMA, TABLE_NAME
-FROM INFORMATION_SCHEMA.TABLES
-WHERE TABLE_TYPE = 'BASE TABLE'
-ORDER BY TABLE_SCHEMA, TABLE_NAME;
-```
-
-**Schema Editing** (T-SQL with bracket notation): `ALTER TABLE [dbo].[users] ADD [col] TYPE;` `EXEC sp_rename 'dbo.table.old', 'new', 'COLUMN';` `DROP COLUMN [field];` `CREATE INDEX [IX_name] ON [dbo].[table] ([col]);`
-
-**Foreign Keys**: Displayed in structure. Manual query: `SELECT fk.name FROM sys.foreign_keys fk...`
-
-**Authentication**: SQL Server Authentication only (username/password). No Windows Auth. Create login: `CREATE LOGIN user WITH PASSWORD = 'StrongPassword1!'; CREATE USER user FOR LOGIN user; ALTER ROLE db_datareader ADD MEMBER user;`
+- **Table structure**: columns, indexes, foreign keys, triggers, and generated CREATE TABLE DDL.
+- **IDENTITY columns**: INSERTs generated by the data grid omit IDENTITY columns, so the server assigns the value.
+- **Pagination**: browse queries use `OFFSET ... FETCH`.
+- **Large text**: `TEXTSIZE` is raised at connect, so `nvarchar(max)` and `text` values are not truncated to the 2048-byte FreeTDS default.
+- **Query control**: running queries can be cancelled; the query timeout maps to `SET LOCK_TIMEOUT`.
+- **View templates**: use `CREATE OR ALTER VIEW` on SQL Server 2016 and later, plain `CREATE VIEW` (drop first when editing) on older versions.
 
 ## SSL/TLS
 
-TablePro maps the SSL/TLS pane to FreeTDS `DBSETENCRYPT`. FreeTDS dblib accepts four encryption strings; verification beyond the system trust store is configured in `freetds.conf`, not per connection.
+TablePro maps the SSL mode to FreeTDS `DBSETENCRYPT`. New connections default to **Preferred**.
 
 | Mode | FreeTDS value | Behavior |
 |---|---|---|
 | **Disabled** | `off` | Plain TCP |
 | **Preferred** | `request` | Try TLS, fall back to plain if the server cannot |
-| **Required (skip verify)** | `require` | TLS required; cert validated against system trust store |
-| **Verify CA** | `require` | Same as Required; CA path is not passed through dblib |
+| **Required** | `require` | TLS required |
+| **Verify CA** | `require` | Same as Required; dblib does not accept a CA path per connection |
 | **Verify Identity** | `require` | Same as Required |
 
-For Azure SQL Database, pick **Required** or stricter. For SQL Server 2017+ on a self-signed cert, the system trust store will reject the handshake. To skip verification per connection, override via `freetds.conf` (`tds_check_certificate = no` under the relevant section) or import the server certificate into the macOS keychain.
+Certificate verification beyond the system trust store is configured machine-wide in `freetds.conf`, not per connection. See [SSL/TLS](/features/ssl) for concepts.
+
+## Google Cloud SQL
+
+SQL Server connections can run through the Cloud SQL Auth Proxy; TablePro starts and stops the proxy for you. See [Cloud SQL Auth Proxy](/databases/cloud-sql-proxy).
 
 ## Troubleshooting
 
-**Connection refused**: Enable TCP/IP in SQL Server Configuration Manager, verify SQL Server service running, check firewall port 1433, ensure Docker started.
+**Connection refused**: enable TCP/IP in SQL Server Configuration Manager, confirm the service is running, check firewall port 1433, and if using Docker confirm the container is up.
 
-**Login failed**: Verify credentials, check mixed-mode authentication enabled: `SELECT SERVERPROPERTY('IsIntegratedSecurityOnly');` Set to 2 for mixed mode. If the login only has access to one database (an Azure SQL contained user), set the **Database** field. TablePro sends it during login; without it the server authenticates against `master` and rejects the login.
+**Login failed**: verify credentials, then check the server allows SQL Server Authentication: `SELECT SERVERPROPERTY('IsIntegratedSecurityOnly')` returns `1` when only Windows Authentication is allowed. Enable mixed mode in SSMS under Server Properties > Security, then restart the service. If the login only has access to one database (an Azure SQL contained user), set the **Database** field; TablePro sends it during login. Without it the server authenticates against `master` and rejects the login.
 
-**FreeTDS not found**: Run `scripts/build-freetds.sh` to compile and place library.
-
-**Limitations**: SQL Server Auth only, no Windows Auth, named instances unsupported (use IP:port), NTEXT/TEXT/IMAGE deprecated (use *MAX types).
+**Limitations**: SQL Server Authentication only (no Windows or Entra ID auth), named instances unsupported (use host and port), Verify CA and Verify Identity behave like Required.

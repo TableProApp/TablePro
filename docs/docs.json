@@ -17,6 +17,16 @@
     "twitter:card": "summary_large_image",
     "twitter:image": "https://tablepro.app/og.png"
   },
+  "redirects": [
+    {
+      "source": "/features/php-viewer",
+      "destination": "/features/json-viewer"
+    },
+    {
+      "source": "/customization/overview",
+      "destination": "/customization/settings"
+    }
+  ],
   "navigation": {
     "tabs": [
       {
@@ -34,6 +44,7 @@
               "databases/ssh-tunneling",
               "databases/cloudflare-tunnel",
               "databases/cloud-sql-proxy",
+              "databases/aws-iam",
               {
                 "group": "SQL",
                 "pages": [
@@ -53,7 +64,8 @@
                   "databases/redis",
                   "databases/cassandra",
                   "databases/etcd",
-                  "databases/elasticsearch"
+                  "databases/elasticsearch",
+                  "databases/surrealdb"
                 ]
               },
               {
@@ -109,7 +121,8 @@
                   "features/er-diagram",
                   "features/explain-visualization",
                   "features/json-viewer",
-                  "features/server-dashboard"
+                  "features/server-dashboard",
+                  "features/users-roles"
                 ]
               },
               {
@@ -126,6 +139,7 @@
                 "group": "Workflow",
                 "pages": [
                   "features/tabs",
+                  "features/quick-switcher",
                   "features/query-history",
                   "features/favorites",
                   "features/keyboard-shortcuts"
@@ -148,8 +162,8 @@
                 ]
               },
               {
-                "group": "Team",
-                "pages": ["features/team"]
+                "group": "Team & Licensing",
+                "pages": ["features/team", "features/licensing"]
               },
               {
                 "group": "Extensibility",
@@ -160,10 +174,10 @@
           {
             "group": "Customization",
             "pages": [
-              "customization/overview",
               "customization/settings",
               "customization/appearance",
-              "customization/editor-settings"
+              "customization/editor-settings",
+              "customization/data-settings"
             ]
           },
           {
@@ -171,6 +185,7 @@
             "pages": [
               "external-api/index",
               "external-api/url-scheme",
+              "external-api/terminal",
               "external-api/ios-shortcuts",
               "external-api/mcp-tools",
               "external-api/mcp-resources",
@@ -194,6 +209,7 @@
               "development/architecture",
               "development/building",
               "development/code-style",
+              "development/plugin-development",
               "development/plugin-registry",
               "development/testing-plugins"
             ]

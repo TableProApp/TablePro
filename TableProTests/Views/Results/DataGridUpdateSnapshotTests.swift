@@ -14,7 +14,8 @@ struct DataGridUpdateSnapshotTests {
         rowDisplayCount: Int = 3,
         columns: [String] = ["name", "type"],
         reloadVersion: Int = 0,
-        contentRevision: Int = 0
+        contentRevision: Int = 0,
+        columnComments: [String: String] = [:]
     ) -> DataGridUpdateSnapshot {
         DataGridUpdateSnapshot(
             rowDisplayCount: rowDisplayCount,
@@ -30,7 +31,7 @@ struct DataGridUpdateSnapshotTests {
             alternatingRows: true,
             reloadVersion: reloadVersion,
             contentRevision: contentRevision,
-            showObjectComments: false
+            columnComments: columnComments
         )
     }
 
@@ -54,5 +55,19 @@ struct DataGridUpdateSnapshotTests {
         #expect(base != makeSnapshot(rowDisplayCount: 5, reloadVersion: 2, contentRevision: 5))
         #expect(base != makeSnapshot(rowDisplayCount: 6, reloadVersion: 2, contentRevision: 4))
         #expect(base != makeSnapshot(rowDisplayCount: 5, reloadVersion: 3, contentRevision: 4))
+    }
+
+    @Test("Column comments arriving after the rows still change the snapshot")
+    func columnCommentsArrivingLaterChangeSnapshot() {
+        let beforeMetadata = makeSnapshot(columnComments: [:])
+        let afterMetadata = makeSnapshot(columnComments: ["name": "Display name"])
+        #expect(beforeMetadata != afterMetadata)
+    }
+
+    @Test("An edited column comment changes the snapshot at the same row and column count")
+    func editedColumnCommentChangesSnapshot() {
+        let before = makeSnapshot(columnComments: ["name": "Display name"])
+        let after = makeSnapshot(columnComments: ["name": "Full name"])
+        #expect(before != after)
     }
 }

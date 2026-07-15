@@ -18,13 +18,14 @@ enum TabType: Equatable, Codable, Hashable {
     case createTable
     case erDiagram
     case serverDashboard
+    case usersRoles
 }
 
 /// Minimal representation of a tab for persistence
 struct PersistedTab: Codable {
     let id: UUID
     let title: String
-    let query: String
+    var query: String
     let tabType: TabType
     let tableName: String?
     var isView: Bool = false
@@ -453,6 +454,20 @@ struct TabDisplayState: Equatable {
     var activeResultSet: ResultSet? {
         guard let id = activeResultSetId else { return resultSets.last }
         return resultSets.first { $0.id == id }
+    }
+
+    var hasPinnedResults: Bool {
+        resultSets.contains(where: \.isPinned)
+    }
+
+    mutating func replaceUnpinnedResults(with newResults: [ResultSet]) {
+        resultSets = resultSets.filter(\.isPinned) + newResults
+        activeResultSetId = newResults.last?.id ?? resultSets.last?.id
+    }
+
+    mutating func removeUnpinnedResults() {
+        resultSets = resultSets.filter(\.isPinned)
+        activeResultSetId = resultSets.last?.id
     }
 
     static func == (lhs: TabDisplayState, rhs: TabDisplayState) -> Bool {

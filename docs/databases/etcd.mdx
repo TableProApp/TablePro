@@ -1,53 +1,37 @@
 ---
 title: etcd
-description: Connect to etcd key-value stores with TablePro
+description: Connect to etcd v3 clusters with prefix-based key browsing and an etcdctl-style command editor
 ---
 
 # etcd Connections
 
-TablePro supports etcd, a distributed key-value store used for shared configuration and service discovery. TablePro connects via the gRPC/HTTP API.
-
-## Install Plugin
-
-The etcd driver is available as a downloadable plugin. When you select etcd in the connection form, TablePro will prompt you to install it automatically. You can also install it manually:
-
-1. Open **Settings** > **Plugins** > **Browse**
-2. Find **etcd Driver** and click **Install**
-3. The plugin downloads and loads immediately - no restart needed
+TablePro connects to etcd v3 over the HTTP/JSON gRPC-gateway (it never speaks raw gRPC). On connect it probes the `/v3/`, `/v3beta/`, and `/v3alpha/` gateway prefixes in order, so etcd 3.2 through current releases work without configuration. Browse keys grouped by prefix, edit values in the grid, and run etcdctl-style commands in the editor.
 
 ## Quick Setup
 
-<Steps>
-  <Step title="Open Connection Form">
-    Click **New Connection** from the Welcome screen or **File** > **New Connection**
-  </Step>
-  <Step title="Select etcd">
-    Choose **etcd** from the database type selector
-  </Step>
-  <Step title="Enter Connection Details">
-    Fill in the host (default `127.0.0.1`) and port (default `2379`)
-  </Step>
-  <Step title="Test and Connect">
-    Click **Test Connection**, then **Create**
-  </Step>
-</Steps>
+Click **New Connection**, select **etcd**, enter host (default `localhost`) and port (default `2379`), and connect. The plugin auto-installs, or use **Settings** > **Plugins** > **Browse** > **etcd Driver**.
 
 ## Connection Settings
 
-### Required Fields
+| Field | Description |
+|-------|-------------|
+| **Host** | etcd server hostname or IP (default `localhost`) |
+| **Port** | Client port, default `2379` |
+| **Username / Password** | Only if etcd authentication is enabled |
+
+With a username set, TablePro exchanges the credentials for a gateway token via the gateway's `auth/authenticate` endpoint and retries once with a fresh token when a request returns 401.
+
+### Advanced Fields
 
 | Field | Description |
 |-------|-------------|
-| **Name** | Connection identifier |
-| **Host** | etcd server hostname or IP (default `127.0.0.1`) |
-| **Port** | etcd client port (default `2379`) |
+| **Key Prefix Root** | Scope browsing to a subtree (e.g. `/app`). Empty browses the whole keyspace |
+| **TLS Mode** | Disabled, Required (skip verify), Verify CA, or Verify Identity |
+| **CA Certificate** | Path to the CA certificate (`ca.pem`) for Verify CA and Verify Identity |
+| **Client Certificate** | Path to the client certificate for mutual TLS |
+| **Client Key** | Path to the client private key for mutual TLS |
 
-### Optional Fields
-
-| Field | Description |
-|-------|-------------|
-| **Username** | For authentication (if enabled) |
-| **Password** | For authentication (if enabled) |
+For self-signed certificates, pick **Required (skip verify)** or set the **CA Certificate** path.
 
 ## Connection URL
 
@@ -56,24 +40,69 @@ etcd://127.0.0.1:2379
 etcds://127.0.0.1:2379
 ```
 
-Use `etcds://` for TLS-encrypted connections.
+Both schemes are accepted when importing a URL. The scheme alone does not switch TLS on; set **TLS Mode** in the Advanced fields.
+
+## Browsing Keys
+
+The sidebar groups keys by their first path segment under the Key Prefix Root; keys without a segment appear under **(root)**. The grid shows one row per key with the columns **Key**, **Value**, **Version**, **ModRevision**, **CreateRevision**, and **Lease**. Key is the primary key. Saving grid edits generates `put` and `del` commands.
+
+## Command Editor
+
+The editor accepts etcdctl-style commands with autocomplete for commands and flags.
+
+<Frame caption="etcdctl-style commands in the editor">
+  <img className="block dark:hidden" src="/images/etcd-command-editor.png" alt="etcd command editor with a get --prefix result grid" />
+  <img className="hidden dark:block" src="/images/etcd-command-editor-dark.png" alt="etcd command editor with a get --prefix result grid" />
+</Frame>
+
+```bash
+get /app/config --prefix --limit=50 --keys-only
+put /app/config/timeout 30
+put /app/session/abc hello --lease=694d77aa1e775e08
+del /app/cache --prefix
+watch /app/config --prefix --timeout=60
+```
+
+`get` supports `--prefix`, `--limit=N`, `--keys-only`, `--order` (ASCEND or DESCEND), and `--sort-by` (KEY, VERSION, CREATE, MOD, or VALUE). `watch` collects events for `--timeout` seconds (default 30), then returns them as a grid.
+
+Lease, cluster, and maintenance commands:
+
+```bash
+lease grant 300
+lease timetolive 694d77aa1e775e08 --keys
+lease revoke 694d77aa1e775e08
+lease list
+member list
+endpoint status
+endpoint health
+compaction 1000 --physical
+```
+
+Lease IDs accept decimal or hex (`0x` prefix optional).
+
+Auth, user, and role management:
+
+```bash
+auth enable
+user add alice secretpw
+user grant-role alice readonly
+role add readonly
+user list
+role list
+```
 
 ## SSH Tunnel
 
-etcd connections support [SSH tunneling](/databases/ssh-tunneling) for accessing remote clusters through a bastion host.
-
-## Features
-
-- Browse keys with prefix-based navigation
-- View and edit key values
-- Key metadata (version, create/mod revision, lease)
-- Put, delete, and watch keys
-- Range queries with prefix and limit
+etcd connections support [SSH tunneling](/databases/ssh-tunneling) for reaching remote clusters through a bastion host.
 
 ## Troubleshooting
 
-**Connection refused**: Verify etcd is running and the client port (default 2379) is accessible. Check firewall rules.
+**Connection refused**: Verify etcd is running and the client port (default 2379) is reachable.
 
-**Authentication failed**: If etcd has authentication enabled, provide the correct username and password. Check that the user has the required roles.
+**No supported etcd API found**: TablePro requires the HTTP/JSON gateway, which etcd 3.x serves on the client port by default. Point the connection at the client port, not the peer port (2380).
 
-**TLS errors**: Use `etcds://` scheme and ensure your certificates are valid. For self-signed certificates, you may need to add them to your macOS Keychain.
+**Authentication failed**: Check the username and password, and that the user has the required roles.
+
+**TLS errors**: Set **TLS Mode** and the certificate paths in the Advanced fields. For self-signed certificates use **Required (skip verify)** or provide the CA certificate.
+
+**Limitations**: No transactions, no schema editing, and no import.

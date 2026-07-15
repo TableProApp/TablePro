@@ -25,6 +25,8 @@ struct LibPQPluginError: Error {
         message: String(localized: "Not connected to database"), sqlState: nil, detail: nil)
     static let connectionFailed = LibPQPluginError(
         message: String(localized: "Failed to establish connection"), sqlState: nil, detail: nil)
+    static let connectionTimedOut = LibPQPluginError(
+        message: String(localized: "Timed out while connecting to the server"), sqlState: nil, detail: nil)
 }
 
 // MARK: - Query Result
@@ -84,6 +86,9 @@ private func pgOidToTypeName(_ oid: UInt32) -> String {
 // MARK: - Connection Class
 
 final class LibPQPluginConnection: @unchecked Sendable {
+    private static let connectTimeoutMicroseconds: Int64 = 10_000_000
+    private static let pollSliceMicroseconds: Int64 = 100_000
+
     private var conn: OpaquePointer?
     private let queue = DispatchQueue(label: "com.TablePro.libpq.plugin", qos: .userInitiated)
 
@@ -101,6 +106,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
     private var _cachedServerVersion: String?
     private var _cachedServerVersionNumber: Int32 = 0
     private var _isCancelled: Bool = false
+    private var _isConnectCancelled: Bool = false
     private var _postgisOidMap: [UInt32: String] = [:]
 
     var isConnected: Bool {
@@ -154,79 +160,160 @@ final class LibPQPluginConnection: @unchecked Sendable {
     // MARK: - Connection Management
 
     func connect() async throws {
-        try await pluginDispatchAsyncCancellable(on: queue) { [self] in
-            func escapeConnParam(_ value: String) -> String {
-                value.replacingOccurrences(of: "\\", with: "\\\\")
-                     .replacingOccurrences(of: "'", with: "\\'")
-            }
+        stateLock.lock()
+        _isConnectCancelled = false
+        stateLock.unlock()
 
-            var connStr = "host='\(escapeConnParam(host))' port='\(port)' dbname='\(escapeConnParam(database))' connect_timeout='10'"
-
-            if !user.isEmpty {
-                connStr += " user='\(escapeConnParam(user))'"
+        try await withTaskCancellationHandler {
+            try await pluginDispatchAsyncCancellable(
+                on: queue,
+                cancellationCheck: { [weak self] in self?.isConnectCancelled ?? true }
+            ) { [self] in
+                try performConnect()
             }
-
-            if let password = password, !password.isEmpty {
-                connStr += " password='\(escapeConnParam(password))'"
-            }
-
-            connStr += " sslmode='\(LibPQSSLMapping.sslmode(for: sslConfig.mode))'"
-
-            if sslConfig.verifiesCertificate, !sslConfig.caCertificatePath.isEmpty {
-                connStr += " sslrootcert='\(escapeConnParam(sslConfig.caCertificatePath))'"
-            }
-            if !sslConfig.clientCertificatePath.isEmpty {
-                connStr += " sslcert='\(escapeConnParam(sslConfig.clientCertificatePath))'"
-            }
-            if !sslConfig.clientKeyPath.isEmpty {
-                connStr += " sslkey='\(escapeConnParam(sslConfig.clientKeyPath))'"
-            }
-
-            if let options, !options.isEmpty {
-                connStr += " options='\(escapeConnParam(options))'"
-            }
-
-            let connection = connStr.withCString { cStr in
-                PQconnectdb(cStr)
-            }
-
-            guard let connection = connection else {
-                throw LibPQPluginError.connectionFailed
-            }
-
-            if PQstatus(connection) != CONNECTION_OK {
-                let error = self.getError(from: connection)
-                PQfinish(connection)
-                if let sslError = LibPQSSLClassifier.classifySSLError(error.message) {
-                    throw sslError
-                }
-                throw error
-            }
-
-            "SET client_encoding TO 'UTF8'".withCString { cStr in
-                let result = PQexec(connection, cStr)
-                PQclear(result)
-            }
-
-            let version = PQserverVersion(connection)
-            if version > 0 {
-                self._cachedServerVersionNumber = version
-                let major = version / 10_000
-                if major >= 10 {
-                    let minor = version % 10_000
-                    self._cachedServerVersion = "\(major).\(minor)"
-                } else {
-                    let minor = (version / 100) % 100
-                    let revision = version % 100
-                    self._cachedServerVersion = "\(major).\(minor).\(revision)"
-                }
-            }
-
-            self.stateLock.lock()
-            self.conn = connection
-            self._isConnected = true
-            self.stateLock.unlock()
+        } onCancel: {
+            cancelConnect()
         }
+    }
+
+    func cancelConnect() {
+        stateLock.lock()
+        _isConnectCancelled = true
+        stateLock.unlock()
+    }
+
+    private var isConnectCancelled: Bool {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return _isConnectCancelled
+    }
+
+    private func performConnect() throws {
+        guard let connection = buildConnectionString().withCString({ PQconnectStart($0) }) else {
+            throw LibPQPluginError.connectionFailed
+        }
+
+        var adopted = false
+        defer {
+            if !adopted { PQfinish(connection) }
+        }
+
+        guard PQstatus(connection) != CONNECTION_BAD else {
+            throw connectionError(from: connection)
+        }
+
+        try pollUntilConnected(connection)
+        configureEstablishedConnection(connection)
+
+        stateLock.lock()
+        conn = connection
+        _isConnected = true
+        stateLock.unlock()
+        adopted = true
+    }
+
+    private func pollUntilConnected(_ connection: OpaquePointer) throws {
+        let deadline = PQgetCurrentTimeUSec() + Self.connectTimeoutMicroseconds
+        var status = PGRES_POLLING_WRITING
+
+        while true {
+            try checkConnectCancellation()
+
+            switch status {
+            case PGRES_POLLING_OK:
+                return
+            case PGRES_POLLING_FAILED:
+                throw connectionError(from: connection)
+            case PGRES_POLLING_READING, PGRES_POLLING_WRITING:
+                let socket = PQsocket(connection)
+                guard socket >= 0 else { throw connectionError(from: connection) }
+
+                let now = PQgetCurrentTimeUSec()
+                guard now < deadline else { throw LibPQPluginError.connectionTimedOut }
+
+                let ready = PQsocketPoll(
+                    socket,
+                    status == PGRES_POLLING_READING ? 1 : 0,
+                    status == PGRES_POLLING_WRITING ? 1 : 0,
+                    min(deadline, now + Self.pollSliceMicroseconds)
+                )
+                guard ready >= 0 else { throw LibPQPluginError.connectionFailed }
+                guard ready > 0 else { continue }
+
+                status = PQconnectPoll(connection)
+            default:
+                status = PQconnectPoll(connection)
+            }
+        }
+    }
+
+    private func checkConnectCancellation() throws {
+        guard isConnectCancelled else { return }
+        throw CancellationError()
+    }
+
+    private func connectionError(from connection: OpaquePointer) -> Error {
+        let error = getError(from: connection)
+        if let sslError = LibPQSSLClassifier.classifySSLError(error.message) {
+            return sslError
+        }
+        return error
+    }
+
+    private func configureEstablishedConnection(_ connection: OpaquePointer) {
+        "SET client_encoding TO 'UTF8'".withCString { cStr in
+            let result = PQexec(connection, cStr)
+            PQclear(result)
+        }
+
+        let version = PQserverVersion(connection)
+        guard version > 0 else { return }
+
+        _cachedServerVersionNumber = version
+        let major = version / 10_000
+        if major >= 10 {
+            let minor = version % 10_000
+            _cachedServerVersion = "\(major).\(minor)"
+        } else {
+            let minor = (version / 100) % 100
+            let revision = version % 100
+            _cachedServerVersion = "\(major).\(minor).\(revision)"
+        }
+    }
+
+    private func buildConnectionString() -> String {
+        func escapeConnParam(_ value: String) -> String {
+            value.replacingOccurrences(of: "\\", with: "\\\\")
+                 .replacingOccurrences(of: "'", with: "\\'")
+        }
+
+        var connStr = "host='\(escapeConnParam(host))' port='\(port)' dbname='\(escapeConnParam(database))'"
+
+        if !user.isEmpty {
+            connStr += " user='\(escapeConnParam(user))'"
+        }
+
+        if let password, !password.isEmpty {
+            connStr += " password='\(escapeConnParam(password))'"
+        }
+
+        connStr += " sslmode='\(LibPQSSLMapping.sslmode(for: sslConfig.mode))'"
+
+        if sslConfig.verifiesCertificate, !sslConfig.caCertificatePath.isEmpty {
+            connStr += " sslrootcert='\(escapeConnParam(sslConfig.caCertificatePath))'"
+        }
+        if !sslConfig.clientCertificatePath.isEmpty {
+            connStr += " sslcert='\(escapeConnParam(sslConfig.clientCertificatePath))'"
+        }
+        if !sslConfig.clientKeyPath.isEmpty {
+            connStr += " sslkey='\(escapeConnParam(sslConfig.clientKeyPath))'"
+        }
+
+        if let options, !options.isEmpty {
+            connStr += " options='\(escapeConnParam(options))'"
+        }
+
+        return connStr
     }
 
     func disconnect() {
@@ -234,6 +321,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
 
         stateLock.lock()
         _isConnected = false
+        _isConnectCancelled = true
         let handle = conn
         conn = nil
         stateLock.unlock()

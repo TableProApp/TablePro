@@ -34,6 +34,8 @@ enum OAuthProviderRegistry {
             return CopilotService.shared
         case .chatgptCodex:
             return ChatGPTCodexService.shared
+        case .xai:
+            return XAIService.shared
         default:
             return nil
         }
@@ -61,6 +63,19 @@ extension ChatGPTCodexService: OAuthProviderService {
         case .signingIn:
             return .signingIn
         case .signedIn(let email, _):
+            return .signedIn(identity: email)
+        }
+    }
+}
+
+extension XAIService: OAuthProviderService {
+    var oauthState: OAuthAuthState {
+        switch authState {
+        case .signedOut:
+            return .signedOut
+        case .signingIn:
+            return .signingIn
+        case .signedIn(let email):
             return .signedIn(identity: email)
         }
     }

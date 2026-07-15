@@ -56,6 +56,7 @@ struct MainEditorContentView: View {
     @State private var cachedChangeManager: AnyChangeManager?
     @State private var erDiagramViewModels: [UUID: ERDiagramViewModel] = [:]
     @State private var serverDashboardViewModels: [UUID: ServerDashboardViewModel] = [:]
+    @State private var usersRolesViewModels: [UUID: UsersRolesViewModel] = [:]
     @State private var dataTabDelegate = DataTabGridDelegate()
 
     @Bindable private var treeService = DatabaseTreeMetadataService.shared
@@ -137,6 +138,7 @@ struct MainEditorContentView: View {
             coordinator.cleanupTabCaches(openTabIds: openTabIds)
             erDiagramViewModels = erDiagramViewModels.filter { openTabIds.contains($0.key) }
             serverDashboardViewModels = serverDashboardViewModels.filter { openTabIds.contains($0.key) }
+            usersRolesViewModels = usersRolesViewModels.filter { openTabIds.contains($0.key) }
         }
         .onChange(of: tabManager.selectedTabId) { _, _ in
             updateHasQueryText()
@@ -214,7 +216,32 @@ struct MainEditorContentView: View {
             erDiagramContent(tab: tab)
         case .serverDashboard:
             serverDashboardContent(tab: tab)
+        case .usersRoles:
+            usersRolesContent(tab: tab)
         }
+    }
+
+    // MARK: - Users & Roles Tab Content
+
+    @ViewBuilder
+    private func usersRolesContent(tab: QueryTab) -> some View {
+        Group {
+            if let vm = usersRolesViewModels[tab.id] {
+                UsersRolesTabView(viewModel: vm, coordinator: coordinator)
+            } else {
+                ProgressView(String(localized: "Loading users and roles..."))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .onAppear {
+                        guard usersRolesViewModels[tab.id] == nil else { return }
+                        let vm = UsersRolesViewModel(
+                            connectionId: connection.id,
+                            databaseType: connection.type
+                        )
+                        usersRolesViewModels[tab.id] = vm
+                    }
+            }
+        }
+        .id(tab.id)
     }
 
     // MARK: - Server Dashboard Tab Content
@@ -432,14 +459,15 @@ struct MainEditorContentView: View {
                 // selectedTabIndex would overwrite the new tab's query.
                 guard tabManager.mutate(tabId: tabId, { $0.content.query = newValue }) else { return }
 
-                if let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }),
-                   tabManager.tabs[index].content.sourceFileURL != nil {
-                    let isDirty = tabManager.tabs[index].content.isFileDirty
-                    Task { @MainActor in
-                        if let window = NSApp.keyWindow {
-                            window.isDocumentEdited = isDirty
-                        }
-                    }
+                // Typing into a scratch tab dirties it too: the text lives nowhere but this tab.
+                // The dot belongs to this tab's own window, not whichever window happens to be
+                // key, because a background window tab's editor stays mounted and can fire here.
+                guard tabId == tabManager.selectedTabId,
+                      let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }),
+                      let window = coordinator.contentWindow else { return }
+                let showsIndicator = tabManager.tabs[index].showsUnsavedIndicator
+                Task { @MainActor in
+                    window.isDocumentEdited = showsIndicator
                 }
             }
         )
@@ -521,7 +549,7 @@ struct MainEditorContentView: View {
                     ExplainResultView(text: explainText, executionTime: tab.display.explainExecutionTime, plan: tab.display.explainPlan)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
-                    if tab.display.resultSets.count > 1 {
+                    if showsResultTabBar(for: tab) {
                         resultTabBar(tab: tab)
                         Divider()
                     }
@@ -585,6 +613,11 @@ struct MainEditorContentView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
+    private func showsResultTabBar(for tab: QueryTab) -> Bool {
+        if tab.display.resultSets.count > 1 { return true }
+        return tab.tabType == .query && !tab.display.resultSets.isEmpty
+    }
+
     private func resultTabBar(tab: QueryTab) -> some View {
         ResultTabBar(
             resultSets: tab.display.resultSets,
@@ -598,8 +631,7 @@ struct MainEditorContentView: View {
                 coordinator.closeResultSet(id: id)
             },
             onPin: { id in
-                guard let tabIdx = coordinator.tabManager.selectedTabIndex else { return }
-                coordinator.tabManager.tabs[tabIdx].display.resultSets.first { $0.id == id }?.isPinned.toggle()
+                coordinator.togglePinResultSet(id: id)
             }
         )
     }

@@ -13,7 +13,6 @@ final class SortableHeaderCell: NSTableHeaderCell {
     var isValueFiltered: Bool = false
     var isFunnelVisible: Bool = false
     var supportsValueFilter: Bool = true
-    var headerComment: String?
 
     private static let indicatorPadding: CGFloat = 4
     private static let indicatorSpacing: CGFloat = 2
@@ -23,6 +22,16 @@ final class SortableHeaderCell: NSTableHeaderCell {
     private static let defaultIndicatorSize = NSSize(width: 9, height: 6)
     private static let funnelSize = NSSize(width: 13, height: 13)
     private static let funnelPointSize: CGFloat = 11
+
+    private static let commentFont = NSFont.systemFont(ofSize: commentFontSize)
+
+    static let commentLineHeight: CGFloat = {
+        let lineHeight = NSAttributedString(
+            string: "X",
+            attributes: [.font: commentFont]
+        ).size().height
+        return (lineHeight + commentLineSpacing).rounded(.up)
+    }()
 
     override init(textCell string: String) {
         super.init(textCell: string)
@@ -49,7 +58,7 @@ final class SortableHeaderCell: NSTableHeaderCell {
             in: titleRect(forBounds: cellFrame),
             font: titleFont(isSorted: sortDirection != nil),
             color: foreground,
-            comment: visibleComment,
+            comment: visibleComment(in: controlView),
             commentColor: commentColor(emphasized: isColumnSelected)
         )
 
@@ -157,10 +166,9 @@ final class SortableHeaderCell: NSTableHeaderCell {
         return NSFontManager.shared.convert(baseFont, toHaveTrait: .boldFontMask)
     }
 
-    private var visibleComment: String? {
-        guard let headerComment else { return nil }
-        let trimmed = headerComment.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : trimmed
+    private func visibleComment(in controlView: NSView?) -> String? {
+        guard let headerView = controlView as? SortableHeaderView else { return nil }
+        return headerView.comment(for: self)
     }
 
     private func foregroundColor(emphasized: Bool) -> NSColor {
@@ -202,7 +210,7 @@ final class SortableHeaderCell: NSTableHeaderCell {
         }
 
         let commentAttributes: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: Self.commentFontSize),
+            .font: Self.commentFont,
             .foregroundColor: commentColor,
             .paragraphStyle: paragraph
         ]
@@ -250,9 +258,6 @@ final class SortableHeaderCell: NSTableHeaderCell {
         }
         if isValueFiltered {
             components.append(String(localized: "Filtered"))
-        }
-        if let visibleComment {
-            components.append(visibleComment)
         }
         return components.joined(separator: ", ")
     }

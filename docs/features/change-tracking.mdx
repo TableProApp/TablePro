@@ -1,150 +1,46 @@
 ---
 title: Change Tracking
-description: Queue cell edits, row inserts, and deletions locally before committing to the database
+description: Queue cell edits, row inserts, and deletions locally, review the SQL, then save
 ---
 
 # Change Tracking
 
-Changes in TablePro are queued in memory, not applied immediately. Edit cells, insert rows, delete rows, then review everything before committing. Nothing touches the database until you say so.
+Changes are queued in memory, not applied immediately. Edit cells, insert rows, delete rows, then review everything before saving. Nothing touches the database until you click **Save Changes**. The queue is per-tab; switching tabs preserves your edits.
 
-{/* Screenshot: Data grid with pending changes highlighted */}
 <Frame caption="Data grid with pending changes highlighted">
-  <img
-    className="block dark:hidden"
-    src="/images/change-tracking.png"
-    alt="Change Tracking"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/change-tracking-dark.png"
-    alt="Change Tracking"
-  />
+  <img className="block dark:hidden" src="/images/change-tracking.png" alt="Pending edits, inserts, and deletions highlighted in the data grid" />
+  <img className="hidden dark:block" src="/images/change-tracking-dark.png" alt="Pending edits, inserts, and deletions highlighted in the data grid" />
 </Frame>
-
-<Tip>
-Change tracking is per-tab. Switching tabs preserves your edits.
-</Tip>
 
 ## Data Changes
 
-TablePro tracks three types of data changes: cell edits, row insertions, and row deletions.
+**Edit cells**: double-click a cell to edit (see [Data Grid](/features/data-grid)). Changes queue immediately. Changing a value back to its original removes it from the queue. Columns the driver marks immutable, such as MongoDB's `_id`, cannot be edited.
 
-### Editing Cells
+**Add rows**: click **+ Add** in the status bar or press `Cmd+Shift+N`. A new row appears at the bottom of the grid; columns with default values are pre-filled with `DEFAULT`. Edits to cells in a new row fold into the INSERT, not tracked as separate updates.
 
-Double-click any cell to edit (see [Data Grid](/features/data-grid)). Changes queue immediately.
-
-{/* Screenshot: Modified cell highlighted in the data grid */}
-<Frame caption="Modified cells are highlighted">
-  <img
-    className="block dark:hidden"
-    src="/images/change-tracking-modified.png"
-    alt="Modified cells"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/change-tracking-modified-dark.png"
-    alt="Modified cells"
-  />
-</Frame>
+**Delete rows**: select rows and press `Delete`. Deleted rows show a strikethrough and stay visible until you save. Saving asks you to confirm before the rows are permanently deleted.
 
 <Note>
-Changing a value back to its original automatically removes it from the queue.
+Deleting many rows saves as one batched DELETE with OR-combined conditions, not one query per row. Very large selections are split into a few statements to stay within the engine's bind-parameter limit.
 </Note>
 
-### Adding Rows
+## Saving
 
-To insert a new row:
+Click **Save Changes** (the toolbar checkmark) or press `Cmd+S`. TablePro generates parameterized SQL, executes it, clears the queue, and refreshes the grid.
 
-1. Click the **+** button in the toolbar or use the keyboard shortcut
-2. A new row appears at the bottom of the data grid, marked with an insertion indicator
-3. Fill in the values for each column
-4. Columns with default values are pre-filled with `DEFAULT`
-
-Edits to cells in a new row are folded into the insertion, not tracked as separate updates.
-
-{/* Screenshot: Newly added row with insertion indicator */}
-<Frame caption="Newly added row">
-  <img
-    className="block dark:hidden"
-    src="/images/change-new-row.png"
-    alt="Newly added row with insertion indicator"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/change-new-row-dark.png"
-    alt="Newly added row with insertion indicator"
-  />
-</Frame>
-
-### Deleting Rows
-
-Select rows and press `Delete`. Deleted rows show a strikethrough indicator and stay visible until commit or discard. When you commit, TablePro asks you to confirm before it permanently deletes the rows.
-
-{/* Screenshot: Deleted row with deletion indicator */}
-<Frame caption="Deleted row">
-  <img
-    className="block dark:hidden"
-    src="/images/change-deleted-row.png"
-    alt="Deleted row with deletion indicator"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/change-deleted-row-dark.png"
-    alt="Deleted row with deletion indicator"
-  />
-</Frame>
-
-<Warning>
-Batch deletion of multiple rows is tracked as a single undo action. Undoing a batch deletion restores all rows at once.
-</Warning>
-
-<Note>
-Deleting many rows commits as one batched statement, not one query per row, so a large selection stays fast. Very large selections are split into a few statements to stay within the database's parameter limits.
-</Note>
-
-## Commit & Discard
-
-### Committing Changes
-
-Click **Commit** or press `Cmd+S`. TablePro generates parameterized SQL, executes it, clears the queue, and refreshes the grid.
-
-Generated SQL:
-
-| Change Type | SQL Generated |
-|-------------|--------------|
+| Change | Generated SQL |
+|--------|--------------|
 | Cell edit | `UPDATE ... SET column = ? WHERE pk = ?` |
-| Row insertion | `INSERT INTO ... (columns) VALUES (?)` |
-| Row deletion | `DELETE FROM ... WHERE pk = ?` |
+| Row insertion | `INSERT INTO ... (columns) VALUES (?, ...)` |
+| Row deletion | `DELETE FROM ... WHERE pk = ? OR pk = ?` |
 
-<Note>
-UPDATE statements require a primary key on the table. If no primary key is defined, TablePro shows an error when you try to commit updates. DELETE statements can work without a primary key by matching all column values.
-</Note>
+Tables without a primary key are updated and deleted by matching every original column value; NULL values match with `IS NULL`. Saving fails with an error only when a row cannot be identified.
 
-### Discarding Changes
+There is no discard button. To drop pending changes, undo them, or accept the **Discard Unsaved Changes?** prompt that appears when you refresh, sort, filter, change pages, or close the tab with edits pending.
 
-Click **Discard** to revert all pending changes and clear the undo/redo stack.
+## Previewing SQL
 
-### Previewing Data SQL
-
-Click the **Preview SQL** button (eye icon) or press `Cmd+Shift+P` to see the exact SQL before committing. Use **Copy All** to copy to clipboard.
-
-<Tip>
-The preview inlines parameter values so you can verify exactly what will run. Destructive operations are highlighted with a warning banner.
-</Tip>
-
-{/* Screenshot: Commit and Discard buttons with pending changes count */}
-<Frame caption="Commit and Discard buttons with pending changes count">
-  <img
-    className="block dark:hidden"
-    src="/images/commit-discard-buttons.png"
-    alt="Commit and Discard buttons with pending changes count"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/commit-discard-buttons-dark.png"
-    alt="Commit and Discard buttons with pending changes count"
-  />
-</Frame>
+Click the eye icon in the toolbar or press `Cmd+Shift+P` to see the exact SQL before saving. The preview inlines parameter values so you can verify what will run, and **Copy All** copies every statement.
 
 ## Undo & Redo
 
@@ -153,113 +49,8 @@ The preview inlines parameter values so you can verify exactly what will run. De
 | Undo | `Cmd+Z` |
 | Redo | `Cmd+Shift+Z` |
 
-<Tip>
-Context-aware: `Cmd+Z` undoes text edits when the SQL editor is focused, data changes when the grid is focused.
-</Tip>
-
-Stacks are per-tab. Committing or discarding clears both stacks.
+`Cmd+Z` is context-aware: it undoes text edits when the SQL editor is focused and data changes when the grid is focused. Deleting multiple rows is a single undo action; undoing restores them all at once. Stacks are per-tab, and saving clears them.
 
 ## Schema Changes
 
-Table structure changes (columns, indexes, foreign keys) use the same queue-based approach.
-
-### Tracked Schema Operations
-
-| Operation | What Is Tracked |
-|-----------|----------------|
-| **Add column** | New column definition (name, type, nullable, default, etc.) |
-| **Modify column** | Old and new column definitions |
-| **Delete column** | Column marked for removal |
-| **Add index** | New index definition (name, columns, type, uniqueness) |
-| **Modify index** | Old and new index definitions |
-| **Delete index** | Index marked for removal |
-| **Add foreign key** | New FK definition (columns, references, actions) |
-| **Modify foreign key** | Old and new FK definitions |
-| **Delete foreign key** | FK marked for removal |
-| **Modify primary key** | Old and new primary key columns |
-
-### Visual Indicators
-
-- **New items**: highlighted with an insertion color
-- **Modified items**: changed fields are marked
-- **Deleted items**: shown with a deletion indicator
-
-{/* Screenshot: Schema changes highlighted in Structure tab */}
-<Frame caption="Schema changes highlighted in Structure tab">
-  <img
-    className="block dark:hidden"
-    src="/images/schema-change-indicators.png"
-    alt="Schema changes highlighted in Structure tab"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/schema-change-indicators-dark.png"
-    alt="Schema changes highlighted in Structure tab"
-  />
-</Frame>
-
-## Previewing Schema SQL
-
-Before applying schema changes, preview the generated SQL:
-
-Make your changes in the Structure tab, then click **Commit** (`Cmd+S`). A preview sheet shows the ALTER TABLE statements. Click **Apply Changes** to execute or **Cancel** to go back.
-
-{/* Screenshot: Schema preview sheet showing ALTER TABLE statements */}
-<Frame caption="Schema change preview with generated SQL">
-  <img
-    className="block dark:hidden"
-    src="/images/schema-preview.png"
-    alt="Schema Preview"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/schema-preview-dark.png"
-    alt="Schema Preview"
-  />
-</Frame>
-
-<Tip>
-Copy individual SQL statements from the preview sheet using the copy button next to each statement.
-</Tip>
-
-## SQL Generation
-
-Data changes use parameterized statements. Schema changes produce database-specific ALTER TABLE statements:
-
-<Tabs>
-  <Tab title="MySQL/MariaDB">
-    ```sql
-    UPDATE `users` SET `name` = ? WHERE `id` = ? LIMIT 1
-    INSERT INTO `users` (`name`, `email`) VALUES (?, ?)
-    DELETE FROM `users` WHERE `id` = ? OR `id` = ?
-
-    ALTER TABLE `users` ADD COLUMN `phone` VARCHAR(20) NOT NULL
-    ALTER TABLE `users` MODIFY COLUMN `name` VARCHAR(200) NOT NULL
-    ```
-  </Tab>
-  <Tab title="PostgreSQL">
-    ```sql
-    UPDATE "users" SET "name" = $1 WHERE "id" = $2
-    INSERT INTO "users" ("name", "email") VALUES ($1, $2)
-    DELETE FROM "users" WHERE "id" = $1 OR "id" = $2
-
-    ALTER TABLE "users" ADD COLUMN "phone" VARCHAR(20) NOT NULL
-    ALTER TABLE "users" ALTER COLUMN "name" TYPE VARCHAR(200)
-    ```
-  </Tab>
-  <Tab title="SQLite">
-    ```sql
-    UPDATE "users" SET "name" = ? WHERE "id" = ?
-    INSERT INTO "users" ("name", "email") VALUES (?, ?)
-    DELETE FROM "users" WHERE "id" = ?
-
-    ALTER TABLE "users" ADD COLUMN "phone" TEXT
-    CREATE INDEX "idx_email" ON "users" ("email")
-    ```
-
-    <Warning>
-    SQLite has limited ALTER TABLE support. Use the SQL editor for modifications that require table recreation.
-    </Warning>
-  </Tab>
-</Tabs>
-
+Structure edits (columns, indexes, foreign keys, primary key) use the same queue: changes are tracked locally with visual indicators, previewable as DDL, and applied with **Save Changes**. See [Table Structure](/features/table-structure).

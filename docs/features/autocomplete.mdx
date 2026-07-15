@@ -1,6 +1,6 @@
 ---
 title: Autocomplete
-description: Schema-aware SQL autocomplete with alias resolution, 50ms debounce, and support for 500KB+ files
+description: Schema-aware SQL autocomplete for keywords, tables, columns, and functions
 ---
 
 # SQL Autocomplete
@@ -21,33 +21,24 @@ Autocomplete suggests keywords, tables, columns, and functions based on where yo
   />
 </Frame>
 
-Suggestions appear after 2 characters, after `.`, or after keywords like SELECT/FROM/JOIN. 50ms debounce. Press `Escape` to dismiss and keep typing.
+Suggestions appear as you type, from the first character, and after `.` or a space, with a 50ms debounce. There is no minimum prefix. With nothing typed yet, the popup stays hidden in clauses where listing everything is noise (for example after a comma in a SELECT list); it still opens automatically after FROM, JOIN, ON, and other clauses where browsing helps.
+
+| Key | Action |
+|-----|--------|
+| `Ctrl+Space` | Open the popup anywhere, even with an empty prefix |
+| `Up` `Down` | Move through suggestions |
+| `Return` / `Tab` | Accept the selected suggestion |
+| `Escape` | Dismiss and keep typing |
 
 ## Completion Types
 
 ### SQL Keywords
-
-Context-aware keyword suggestions:
 
 ```sql
 SEL|  -- SELECT
 FROM users WH|  -- WHERE
 SELECT * FROM users WHERE name LIKE '%test%' ORD|  -- ORDER BY
 ```
-
-{/* Screenshot: Keyword suggestions */}
-<Frame caption="SQL keyword suggestions">
-  <img
-    className="block dark:hidden"
-    src="/images/autocomplete-keywords.png"
-    alt="Keyword suggestions"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/autocomplete-keywords-dark.png"
-    alt="Keyword suggestions"
-  />
-</Frame>
 
 ### Table Names
 
@@ -56,31 +47,16 @@ Tables appear after FROM, JOIN, INSERT INTO, and similar keywords:
 ```sql
 SELECT * FROM |  -- All tables
 SELECT * FROM us|  -- Tables starting with "us": users, user_roles
-SELECT * FROM users JOIN |  -- All tables
 SELECT * FROM a JOIN b ON a.id = b.id JOIN |  -- All tables, even after an ON condition
 ```
 
 The clause is detected at the cursor, so a second or third JOIN suggests tables even when an ON condition comes before it. In a table position, tables lead the list ahead of keywords.
 
-{/* Screenshot: Table name suggestions */}
-<Frame caption="Table name suggestions">
-  <img
-    className="block dark:hidden"
-    src="/images/autocomplete-tables.png"
-    alt="Table suggestions"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/autocomplete-tables-dark.png"
-    alt="Table suggestions"
-  />
-</Frame>
-
 ### Column Names
 
 Columns are suggested in SELECT, WHERE, ORDER BY, GROUP BY, and other column contexts.
 
-If a FROM clause exists anywhere in the statement (even after the cursor), columns come from those tables. If no FROM clause exists yet, columns from all cached tables appear as fallback.
+If a FROM clause exists anywhere in the statement (even after the cursor), columns come from those tables. If no FROM clause exists yet, columns from all cached tables appear as fallback; ambiguous names are qualified: `users.id`, `orders.id`.
 
 ```sql
 SELECT na|  -- Columns matching "na" from all cached tables
@@ -88,8 +64,6 @@ SELECT | FROM users  -- Columns from users
 SELECT u.| FROM users u  -- Columns from users via alias
 SELECT * FROM users WHERE |  -- Columns from users
 ```
-
-If the same column name exists in multiple tables, the fallback qualifies them: `users.id`, `orders.id`.
 
 #### Alias Resolution
 
@@ -123,20 +97,6 @@ SELECT t.| FROM totals t  -- region, total
 
 Explicit (`AS name`), bare (`country`), and qualified (`t.col`) columns resolve. A `SELECT *` subquery and unaliased expressions like `AVG(score)` have no name to suggest, so they are skipped.
 
-{/* Screenshot: Column suggestions after alias */}
-<Frame caption="Column suggestions for aliased table">
-  <img
-    className="block dark:hidden"
-    src="/images/autocomplete-alias.png"
-    alt="Alias suggestions"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/autocomplete-alias-dark.png"
-    alt="Alias suggestions"
-  />
-</Frame>
-
 ### Functions
 
 SQL functions appear in SELECT, WHERE, and expression contexts:
@@ -147,19 +107,7 @@ SELECT COUNT(|  -- Columns and *
 WHERE date_column > |  -- NOW(), CURRENT_DATE, etc.
 ```
 
-{/* Screenshot: SQL function suggestions */}
-<Frame caption="SQL function suggestions">
-  <img
-    className="block dark:hidden"
-    src="/images/autocomplete-functions.png"
-    alt="SQL function suggestions"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/autocomplete-functions-dark.png"
-    alt="SQL function suggestions"
-  />
-</Frame>
+Functions from the connection's SQL dialect (e.g. `CONVERT_TIMEZONE` on Snowflake, `SAFE_CAST` on BigQuery) appear alongside the common SQL functions.
 
 ### Favorite Keywords
 
@@ -174,9 +122,9 @@ SELECT * FROM |  -- public, schema1, schema2
 SELECT * FROM public.|  -- Tables in public schema
 ```
 
-Schema-qualified names like `public.users` resolve correctly in FROM, JOIN, UPDATE, INSERT INTO, and CREATE INDEX.
+Schema-qualified names like `public.users` resolve in FROM, JOIN, UPDATE, INSERT INTO, and CREATE INDEX.
 
-For databases organized as database → schema → table (Snowflake, BigQuery), every segment completes — including tables of schemas you haven't opened in the sidebar, which are fetched on demand:
+For databases organized as database, schema, table (Snowflake, BigQuery), every segment completes. Tables of schemas you haven't opened in the sidebar are fetched on demand:
 
 ```sql
 SELECT * FROM ANALYTICS_|                      -- databases
@@ -185,39 +133,12 @@ SELECT * FROM ANALYTICS_PROD.DBT_MARTS.|       -- tables in that schema
 SELECT * FROM ANALYTICS_PROD.DBT_MARTS.ORDERS o WHERE o.|  -- columns
 ```
 
-Functions from the connection's SQL dialect (e.g. `CONVERT_TIMEZONE` on Snowflake, `SAFE_CAST` on BigQuery) appear in the popup alongside the common SQL functions.
+## Schema Cache
 
-## Context-Aware Suggestions
+On connection, TablePro fetches table names and loads columns in the background. The column cache holds up to 50 tables with LRU eviction. There is no time-based expiry: cached columns stay until you switch databases or refresh the connection. A failed schema load waits 30 seconds before retrying, to avoid hammering the server.
 
-What appears depends on where your cursor is:
-
-| Context | Suggestions |
-|---------|-------------|
-| After SELECT | Columns, `*`, aggregate functions |
-| After FROM / JOIN | Table names |
-| After WHERE | Columns, operators, AND/OR |
-| After ON (JOIN) | Columns from both tables |
-| After GROUP BY / ORDER BY | Columns, ASC/DESC |
-
-## Schema-Aware Completions
-
-Suggestions use the actual tables and columns from the connected database, not heuristics or static keyword lists.
-
-- Table names come from the live schema (per database, per schema for PostgreSQL)
-- Column names come from each table's column metadata
-- Schema-qualified table names resolve correctly: `public.users`, `app.orders`, `analytics.events`
-- Aliases are resolved against the live schema (`u.` after `FROM users u` shows `users` columns)
-
-### Pre-FROM Column Suggestions
-
-You don't need a FROM clause to get column completions. If you start typing a column name before writing FROM, TablePro suggests columns from all cached tables. Once you add `FROM users`, suggestions narrow to that table's columns. If a name is ambiguous across tables (`id`, `name`), the fallback qualifies it: `users.id`, `orders.id`.
-
-### Schema Cache
-
-On connection, TablePro fetches table names and loads columns for up to 50 tables in the background. Cached metadata has a short TTL: stale entries are refreshed on next access, and a failed schema load has a 30 second retry cooldown to avoid hammering the server.
-
-After external schema changes (migrations, CLI work), right-click the connection and select **Refresh** to force a reload.
+After external schema changes (migrations, CLI work), right-click the connection and select **Refresh** to reload.
 
 ## Performance
 
-Works on files of any size, including multi-megabyte dumps. For files over 500 KB, only a ~10 KB window around the cursor is analyzed. The column cache holds up to 50 tables with LRU eviction.
+Works on files of any size, including multi-megabyte dumps. For files over 500 KB, only a ~10 KB window around the cursor is analyzed.

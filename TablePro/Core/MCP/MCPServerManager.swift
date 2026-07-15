@@ -143,7 +143,11 @@ final class MCPServerManager {
 
         startDispatchLoop(transport: newTransport, dispatcher: newDispatcher, generation: generation)
         startStateLoop(transport: newTransport, generation: generation)
-        startSessionEventsLoop(sessionStore: newSessionStore, generation: generation)
+        startSessionEventsLoop(
+            sessionStore: newSessionStore,
+            authPolicy: services.authPolicy,
+            generation: generation
+        )
         await registerRevocationObserver(
             tokenStore: newTokenStore,
             sessionStore: newSessionStore,
@@ -273,7 +277,11 @@ final class MCPServerManager {
         }
     }
 
-    private func startSessionEventsLoop(sessionStore: MCPSessionStore, generation: Int) {
+    private func startSessionEventsLoop(
+        sessionStore: MCPSessionStore,
+        authPolicy: MCPAuthPolicy,
+        generation: Int
+    ) {
         sessionEventsTask?.cancel()
         sessionEventsTask = Task { [weak self] in
             let stream = await sessionStore.events
@@ -281,6 +289,9 @@ final class MCPServerManager {
                 guard let self else { return }
                 guard await self.isCurrentGeneration(generation) else { return }
                 Self.logger.debug("Session event: \(String(describing: event), privacy: .public)")
+                if case .terminated(let sessionId, _) = event {
+                    await authPolicy.clearSession(sessionId.rawValue)
+                }
                 await self.refreshClients()
             }
         }

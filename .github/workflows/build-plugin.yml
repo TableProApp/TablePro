@@ -208,6 +208,11 @@ jobs:
               DISPLAY_NAME="Elasticsearch Driver"; SUMMARY="Elasticsearch driver via the REST API with a Query DSL console"
               DB_TYPE_IDS='["Elasticsearch"]'; ICON="elasticsearch-icon"; BUNDLE_NAME="ElasticsearchDriverPlugin"
               CATEGORY="database-driver"; HOMEPAGE="https://docs.tablepro.app/databases/elasticsearch" ;;
+            surrealdb)
+              TARGET="SurrealDBDriverPlugin"; BUNDLE_ID="com.TablePro.SurrealDBDriverPlugin"
+              DISPLAY_NAME="SurrealDB Driver"; SUMMARY="SurrealDB driver over the HTTP RPC protocol with SurrealQL"
+              DB_TYPE_IDS='["SurrealDB"]'; ICON="surrealdb-icon"; BUNDLE_NAME="SurrealDBDriverPlugin"
+              CATEGORY="database-driver"; HOMEPAGE="https://docs.tablepro.app/databases/surrealdb" ;;
             bigquery)
               TARGET="BigQueryDriverPlugin"; BUNDLE_ID="com.TablePro.BigQueryDriverPlugin"
               DISPLAY_NAME="BigQuery Driver"; SUMMARY="Google BigQuery analytics database driver via REST API"

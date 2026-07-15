@@ -3,6 +3,128 @@
     <channel>
         <title>TablePro</title>
         <item>
+            <title>0.57.1</title>
+            <pubDate>Wed, 15 Jul 2026 08:19:05 +0000</pubDate>
+            <sparkle:version>109</sparkle:version>
+            <sparkle:shortVersionString>0.57.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <description><![CDATA[<h3>Added</h3>
+<ul>
+<li>SSH tunnels can now forward to a Unix socket on the remote server, for databases that only listen on a socket. Set the socket path on the General pane, and TablePro forwards to it instead of a host and port, through jump hosts if you use them. (#1871)</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Fixed the right sidebar refusing to resize while a Users & Roles tab was open. The user list now collapses on its own when the tab gets too narrow to hold it. (#1872)</li>
+<li>Fixed dividers that could not be dragged at all: the user list and privilege panes in Users & Roles, the trigger list in Structure, and the metrics and slow query panes in Server Dashboard. (#1872)</li>
+<li>Cancel now stops a connection attempt right away instead of letting it run on in the background. A cancelled connection is also dropped from the last session, so restarting no longer reconnects to a host you gave up on, and it can no longer interrupt a later successful connection. (#1358)</li>
+<li>Fixed a crash that could quit the app when opening or sorting a table whose columns have comments. (#1869, #1880)</li>
+<li>MCP tools no longer stop working after the server sits idle for 15 minutes, or after the MCP server is restarted from Settings. TablePro's bridge now starts a new session by itself instead of reusing a dead one, so agents like Claude Code and Cursor keep working without being turned off and on again. (#1881)</li>
+</ul>
+<h3>Security</h3>
+<ul>
+<li>Patched CVE-2026-55200 in libssh2, a critical out-of-bounds write that let a malicious SSH server corrupt memory and run code before authentication finished. It affected every SSH tunnel and jump host.</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.57.1/TablePro-0.57.1-arm64.zip" length="20508373" type="application/octet-stream" sparkle:edSignature="lN8ctEUkJO4uc1Xj1IK3g/ZnSc2EazB8UxxSP89lFs36hNIOmZuMh9tO49cZYrIpElZi6eh9lg/dmhRA18MmAg=="/>
+        </item>
+        <item>
+            <title>0.57.1</title>
+            <pubDate>Wed, 15 Jul 2026 08:19:05 +0000</pubDate>
+            <sparkle:version>109</sparkle:version>
+            <sparkle:shortVersionString>0.57.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[<h3>Added</h3>
+<ul>
+<li>SSH tunnels can now forward to a Unix socket on the remote server, for databases that only listen on a socket. Set the socket path on the General pane, and TablePro forwards to it instead of a host and port, through jump hosts if you use them. (#1871)</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Fixed the right sidebar refusing to resize while a Users & Roles tab was open. The user list now collapses on its own when the tab gets too narrow to hold it. (#1872)</li>
+<li>Fixed dividers that could not be dragged at all: the user list and privilege panes in Users & Roles, the trigger list in Structure, and the metrics and slow query panes in Server Dashboard. (#1872)</li>
+<li>Cancel now stops a connection attempt right away instead of letting it run on in the background. A cancelled connection is also dropped from the last session, so restarting no longer reconnects to a host you gave up on, and it can no longer interrupt a later successful connection. (#1358)</li>
+<li>Fixed a crash that could quit the app when opening or sorting a table whose columns have comments. (#1869, #1880)</li>
+<li>MCP tools no longer stop working after the server sits idle for 15 minutes, or after the MCP server is restarted from Settings. TablePro's bridge now starts a new session by itself instead of reusing a dead one, so agents like Claude Code and Cursor keep working without being turned off and on again. (#1881)</li>
+</ul>
+<h3>Security</h3>
+<ul>
+<li>Patched CVE-2026-55200 in libssh2, a critical out-of-bounds write that let a malicious SSH server corrupt memory and run code before authentication finished. It affected every SSH tunnel and jump host.</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.57.1/TablePro-0.57.1-x86_64.zip" length="21702343" type="application/octet-stream" sparkle:edSignature="bxgNPE4nzUUQ4gyQFsQ4TSIdLIdZQrZyJ5emyhK5I/YPAFhlrZnUWgFUC6X7SFCs6vS2NGewnGgWjscVel5mAQ=="/>
+        </item>
+        <item>
+            <title>0.57.0</title>
+            <pubDate>Tue, 14 Jul 2026 07:23:31 +0000</pubDate>
+            <sparkle:version>108</sparkle:version>
+            <sparkle:shortVersionString>0.57.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <description><![CDATA[<h3>Added</h3>
+<ul>
+<li>SurrealDB 2.x and 3.x support as a downloadable driver. Browse namespaces and databases, run SurrealQL, and edit records in the grid. (#1862)</li>
+<li>xAI (Grok) as an AI provider. Paste a key from the xAI Console, or sign in with a SuperGrok or X Premium+ subscription and use no key at all.</li>
+<li>Google Cloud SQL connections through the Cloud SQL Auth Proxy. Turn it on for a MySQL, PostgreSQL, or SQL Server connection, set the instance connection name, and TablePro starts and stops the proxy for you. (#1728)</li>
+<li>Beancount ledger support as a downloadable, read-only driver. Transactions, postings, accounts, prices, and balances read as SQL tables, and BQL runs with a `BQL:` prefix. (#1474)</li>
+<li>**New Query** in the Favorites sidebar **+** menu, which opens an empty SQL query tab.</li>
+<li>Database users, roles, and privileges on MySQL and PostgreSQL, under **View > Users & Roles**. Pick any object from the server down to a single column, see where each privilege comes from, and grant or revoke it. Changes are staged, undoable, and shown as SQL before they run. (#1413)</li>
+<li>**File > Reopen Closed Tab** (`Cmd+Shift+T`) brings back the tab you just closed, and **File > Recently Closed** lists the last 20, kept for 30 days. (#1854)</li>
+<li>Open a database from the terminal. Install the `tablepro` command from **Settings > General**, then run `ddev tablepro` in a DDEV project. Links to a database on your own Mac can be trusted with **Always Allow** and reviewed in **Settings > General**. (#1486)</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>Query results always open in a result tab, so a single result can be pinned before the next query replaces it. Pin from the tab's context menu or with `Cmd+Option+P`. (#1855)</li>
+<li>Closing a query tab keeps its SQL in **Recently Closed** instead of throwing it away, and the close button shows the unsaved dot for a query you typed into. (#1854)</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Fixed a crash when several tables on the same connection ran queries at the same time.</li>
+<li>Column comments now show in the data grid header as soon as the table opens, and the header grows to fit them. (#1861)</li>
+<li>**Size to Fit** no longer stretches a column of long text past the window. Fitted columns stop at half the visible grid, and every column has a maximum width.</li>
+<li>The username is now optional. Leaving it empty no longer fills in `root`, and lets the database pick its own default the way `psql` and `mysql` do.</li>
+<li>A failed or cancelled connection that uses a Cloudflare tunnel no longer leaves the `cloudflared` process running in the background.</li>
+<li>Pinned results are no longer discarded by **Clear Results**, and a tab holding one is no longer reused to browse a different table. (#1855)</li>
+<li>Quitting now warns about unsaved changes in any tab, not just the visible one. (#1854)</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.57.0/TablePro-0.57.0-arm64.zip" length="20439741" type="application/octet-stream" sparkle:edSignature="PZOszTUlsJ7SE/kJH8s96kPydXoVo807m4XMmZCjYNM80l7tA6Cy42uvQXmZ+IWIBkTG9VHCx4VE+Ns6Ly+iCg=="/>
+        </item>
+        <item>
+            <title>0.57.0</title>
+            <pubDate>Tue, 14 Jul 2026 07:23:32 +0000</pubDate>
+            <sparkle:version>108</sparkle:version>
+            <sparkle:shortVersionString>0.57.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[<h3>Added</h3>
+<ul>
+<li>SurrealDB 2.x and 3.x support as a downloadable driver. Browse namespaces and databases, run SurrealQL, and edit records in the grid. (#1862)</li>
+<li>xAI (Grok) as an AI provider. Paste a key from the xAI Console, or sign in with a SuperGrok or X Premium+ subscription and use no key at all.</li>
+<li>Google Cloud SQL connections through the Cloud SQL Auth Proxy. Turn it on for a MySQL, PostgreSQL, or SQL Server connection, set the instance connection name, and TablePro starts and stops the proxy for you. (#1728)</li>
+<li>Beancount ledger support as a downloadable, read-only driver. Transactions, postings, accounts, prices, and balances read as SQL tables, and BQL runs with a `BQL:` prefix. (#1474)</li>
+<li>**New Query** in the Favorites sidebar **+** menu, which opens an empty SQL query tab.</li>
+<li>Database users, roles, and privileges on MySQL and PostgreSQL, under **View > Users & Roles**. Pick any object from the server down to a single column, see where each privilege comes from, and grant or revoke it. Changes are staged, undoable, and shown as SQL before they run. (#1413)</li>
+<li>**File > Reopen Closed Tab** (`Cmd+Shift+T`) brings back the tab you just closed, and **File > Recently Closed** lists the last 20, kept for 30 days. (#1854)</li>
+<li>Open a database from the terminal. Install the `tablepro` command from **Settings > General**, then run `ddev tablepro` in a DDEV project. Links to a database on your own Mac can be trusted with **Always Allow** and reviewed in **Settings > General**. (#1486)</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>Query results always open in a result tab, so a single result can be pinned before the next query replaces it. Pin from the tab's context menu or with `Cmd+Option+P`. (#1855)</li>
+<li>Closing a query tab keeps its SQL in **Recently Closed** instead of throwing it away, and the close button shows the unsaved dot for a query you typed into. (#1854)</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Fixed a crash when several tables on the same connection ran queries at the same time.</li>
+<li>Column comments now show in the data grid header as soon as the table opens, and the header grows to fit them. (#1861)</li>
+<li>**Size to Fit** no longer stretches a column of long text past the window. Fitted columns stop at half the visible grid, and every column has a maximum width.</li>
+<li>The username is now optional. Leaving it empty no longer fills in `root`, and lets the database pick its own default the way `psql` and `mysql` do.</li>
+<li>A failed or cancelled connection that uses a Cloudflare tunnel no longer leaves the `cloudflared` process running in the background.</li>
+<li>Pinned results are no longer discarded by **Clear Results**, and a tab holding one is no longer reused to browse a different table. (#1855)</li>
+<li>Quitting now warns about unsaved changes in any tab, not just the visible one. (#1854)</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.57.0/TablePro-0.57.0-x86_64.zip" length="21640649" type="application/octet-stream" sparkle:edSignature="QB96ZUGgVinyMcOou+pPtJWnd3+a5VDt2ssD8n4cVvWW0qSMSZx/z0aEMN4PqJeaHq/Bi2QE3e0uK+9rsgxFCA=="/>
+        </item>
+        <item>
             <title>0.56.2</title>
             <pubDate>Fri, 10 Jul 2026 09:39:54 +0000</pubDate>
             <sparkle:version>107</sparkle:version>

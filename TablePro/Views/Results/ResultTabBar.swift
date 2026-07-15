@@ -2,8 +2,9 @@
 //  ResultTabBar.swift
 //  TablePro
 //
-//  Horizontal tab bar for switching between multiple result sets.
-//  Only shown when a query produces 2+ result sets.
+//  Horizontal tab bar for switching between result sets.
+//  Shown for every query result so a single result can be pinned before the
+//  next execution replaces it. Pinned results are never an execution target.
 //
 
 import SwiftUI
@@ -36,8 +37,9 @@ struct ResultTabBar: View {
             onActivate: { activeResultSetId = rs.id },
             onClose: rs.isPinned ? nil : { onClose?(rs.id) }
         )
+        .help(provenance(of: rs))
         .contextMenu {
-            Button(rs.isPinned ? String(localized: "Unpin") : String(localized: "Pin Result")) {
+            Button(rs.isPinned ? String(localized: "Unpin Result") : String(localized: "Pin Result")) {
                 onPin?(rs.id)
             }
             Divider()
@@ -50,6 +52,24 @@ struct ResultTabBar: View {
             }
         }
     }
+
+    private func provenance(of rs: ResultSet) -> String {
+        if let query = rs.baseQuery?.trimmingCharacters(in: .whitespacesAndNewlines), !query.isEmpty {
+            return Self.truncated(query)
+        }
+        if let errorMessage = rs.errorMessage {
+            return Self.truncated(errorMessage)
+        }
+        return rs.label
+    }
+
+    private static func truncated(_ text: String) -> String {
+        let value = text as NSString
+        guard value.length > tooltipCharacterLimit else { return text }
+        return value.substring(to: tooltipCharacterLimit) + "…"
+    }
+
+    private static let tooltipCharacterLimit = 300
 }
 
 private struct ResultTab: View {
@@ -68,6 +88,7 @@ private struct ResultTab: View {
                     Image(systemName: "pin.fill")
                         .font(.caption2)
                         .foregroundStyle(isActive ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
+                        .accessibilityHidden(true)
                 }
                 Text(label)
                     .font(.callout)
@@ -90,6 +111,13 @@ private struct ResultTab: View {
         }
         .buttonStyle(.plain)
         .onHover { isHovering = $0 }
+        .accessibilityLabel(accessibilityLabel)
+        .accessibilityAddTraits(isActive ? [.isSelected] : [])
+    }
+
+    private var accessibilityLabel: String {
+        guard isPinned else { return label }
+        return String(format: String(localized: "%@, pinned"), label)
     }
 
     private var background: AnyShapeStyle {

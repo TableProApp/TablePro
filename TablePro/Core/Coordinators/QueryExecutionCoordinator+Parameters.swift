@@ -448,9 +448,7 @@ extension QueryExecutionCoordinator {
                 tab.execution.isExecuting = false
                 tab.execution.executionTime = cumulativeTime
 
-                let pinnedResults = tab.display.resultSets.filter(\.isPinned)
-                tab.display.resultSets = pinnedResults + capturedResultSets
-                tab.display.activeResultSetId = capturedResultSets.last?.id
+                tab.display.replaceUnpinnedResults(with: capturedResultSets)
             }
 
             let rawSQL = failedStatement

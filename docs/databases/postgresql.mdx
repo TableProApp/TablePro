@@ -1,22 +1,11 @@
 ---
 title: PostgreSQL
-description: Connect to PostgreSQL 12+ with schema browsing, JSONB display, and full libpq driver support
+description: Connect to PostgreSQL 12 and later with the libpq driver, including PostGIS display, AWS IAM auth, and pg_dump backups
 ---
 
 # PostgreSQL Connections
 
-TablePro supports PostgreSQL 12 and later via the libpq C connector. Schema browsing, rich type display (JSONB, arrays, UUID, inet), and all standard PostgreSQL query features work out of the box.
-
-## Quick Setup
-
-<Steps>
-  <Step title="Create Connection">
-    Click **New Connection**, pick **PostgreSQL** in the chooser sheet, fill in host/port/username/password/database, and click **Save & Connect**
-  </Step>
-  <Step title="Test Connection">
-    Click **Test Connection** to verify
-  </Step>
-</Steps>
+TablePro supports PostgreSQL 12 and later via the libpq C connector. The same driver powers [Amazon Redshift](/databases/redshift) and [CockroachDB](/databases/cockroachdb) connections.
 
 ## Connection Settings
 
@@ -24,125 +13,46 @@ TablePro supports PostgreSQL 12 and later via the libpq C connector. Schema brow
 |-------|---------|-------|
 | **Host** | `localhost` | |
 | **Port** | `5432` | |
-| **Username** | `postgres` | |
+| **Username** | - | Not pre-filled; most servers use `postgres` |
 | **Database** | - | **Required** (unlike MySQL) |
 
-<Tip>
-Open URLs like `postgresql://user:pass@host/db` directly to connect. See [Connection URL Reference](/databases/connection-urls).
-</Tip>
+Fill in the form and click **Save & Connect**. Open URLs like `postgresql://user:pass@host/db` to connect directly, see [Connection URL Reference](/databases/connection-urls). For remote servers use [SSH tunneling](/databases/ssh-tunneling); Google Cloud SQL instances can connect through the [Cloud SQL Auth Proxy](/databases/cloud-sql-proxy).
 
-{/* Screenshot: PostgreSQL connection form */}
 <Frame caption="PostgreSQL connection form">
-  <img
-    className="block dark:hidden"
-    src="/images/postgresql-connection-form.png"
-    alt="PostgreSQL connection form"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/postgresql-connection-form-dark.png"
-    alt="PostgreSQL connection form"
-  />
+  <img className="block dark:hidden" src="/images/postgresql-connection-form.png" alt="PostgreSQL connection form" />
+  <img className="hidden dark:block" src="/images/postgresql-connection-form-dark.png" alt="PostgreSQL connection form" />
 </Frame>
-
-## Example Configurations
-
-**Local**: host `localhost:5432`, user `postgres`, "trust" auth (no password) with Homebrew
-**Docker**: host `localhost:5432`, password from `POSTGRES_PASSWORD` env
-**AWS RDS**: Use the endpoint hostname with a password or AWS IAM (see below)
-**Heroku**: Parse `DATABASE_URL` for credentials
-**Remote**: Use [SSH tunneling](/databases/ssh-tunneling) for secure access
 
 ## AWS IAM Authentication
 
-Connect to RDS or Aurora with IAM database authentication instead of a static password. Set **Authentication** in the connection form to one of the AWS IAM options:
-
-- **AWS IAM (Access Key)**: enter an access key ID, secret access key, and optional session token.
-- **AWS IAM (Profile)**: use a named profile from `~/.aws/credentials` or `~/.aws/config`. Profiles that use `credential_process` work too, so you can back the profile with SSO or assume-role via `aws configure export-credentials`.
-- **AWS IAM (SSO)**: use a profile backed by IAM Identity Center. Run `aws sso login --profile <name>` first.
-
-Set **Username** to a database role granted `rds_iam`. The **AWS Region** is detected from the RDS hostname and can be overridden.
-
-TablePro generates a fresh 15-minute login token on every connect and reconnect, so you never paste an expiring token. SSL is required for IAM and is turned on automatically.
-
-<Warning>
-The database role must be set up for IAM auth (`GRANT rds_iam TO "user"`). Connecting fails if the role only has a password.
-</Warning>
+Connect to RDS or Aurora with your AWS identity instead of a static password: set **Authentication** to an AWS IAM option and set **Username** to a database role granted `rds_iam`. See [AWS IAM Authentication](/databases/aws-iam) for setup, credential sources, and troubleshooting.
 
 ## Features
 
-Sidebar displays all accessible schemas and tables. Switch databases/schemas with **Cmd+K**. Table info shows structure (columns, indexes, constraints) and DDL.
+**Schemas**: The sidebar shows all accessible schemas and tables. Switch databases and schemas with Cmd+K. Table info shows columns, indexes, constraints, and DDL.
 
-Table and column comments are shown in the UI: the sidebar shows a table's comment in dimmed text after its name (full text on hover), and the data grid column header tooltip includes the column comment. Turn this off from **View > Show Object Comments**.
+**Types**: `jsonb` renders as formatted JSON. `array`, `uuid`, `inet`, `timestamp with time zone`, `interval`, and `bytea` display natively.
 
-Full PostgreSQL syntax support:
+**PostGIS**: `geometry` and `geography` columns render as EWKT with the SRID preserved (`SRID=4326;POINT(-73 40.7237)`) instead of the raw EWKB hex libpq returns. TablePro detects spatial columns from a one-time `pg_type` lookup at connect time and converts fetched values with `ST_AsEWKT(...)`. Your query is never re-run, so parameterized and multi-statement queries render EWKT too. If conversion fails, the raw hex is kept without an error.
 
-```sql
--- JSONB queries
-SELECT data->>'name' as name, data->'address'->>'city' as city
-FROM customers
-WHERE data @> '{"active": true}'::jsonb;
+**Users & Roles**: Manage database users, roles, and privileges under **View > Users & Roles**: see where each privilege comes from, then grant or revoke it. See [Users & Roles](/features/users-roles).
 
--- Array operations
-SELECT name, tags
-FROM products
-WHERE 'electronics' = ANY(tags);
+**Backup & Restore**: **Backup Dump** and **Restore Dump** run `pg_dump` and `pg_restore`. Among TablePro's databases this is available for PostgreSQL and Redshift only. See [Backup & Restore](/features/backup-restore).
 
--- Window functions
-SELECT
-    department,
-    employee,
-    salary,
-    salary - LAG(salary) OVER (PARTITION BY department ORDER BY hire_date) as salary_change
-FROM employees;
+## Advanced
 
--- CTEs with RETURNING
-WITH inserted AS (
-    INSERT INTO orders (customer_id, total)
-    VALUES (1, 99.99)
-    RETURNING *
-)
-SELECT * FROM inserted;
+**~/.pgpass**: format `hostname:port:database:username:password`, wildcards (`*`) allowed. libpq silently ignores the file unless its permissions are `0600`.
 
--- Full-text search
-SELECT title, ts_rank(search_vector, query) as rank
-FROM articles, to_tsquery('english', 'database & performance') query
-WHERE search_vector @@ query
-ORDER BY rank DESC;
-```
+**Startup Commands** (Advanced tab): SQL that runs on every connect, e.g. `SET timezone = 'UTC'; SET search_path TO myschema, public;`.
 
-### PostgreSQL-Specific Types
-
-Supports `jsonb` (formatted JSON), `array`, `uuid`, `inet` (IP), `timestamp with time zone`, `interval`, `bytea` (binary).
-
-### PostGIS
-
-If the PostGIS extension is installed, `geometry` and `geography` columns render as EWKT with the SRID preserved (`SRID=4326;POINT(-73 40.7237)`) instead of the raw EWKB hex libpq returns. TablePro detects spatial columns from a one-time `pg_type` lookup at connect time, then converts the fetched values with `ST_AsEWKT(...)`. Your query is never re-run, so parameterized, multi-statement, and any other query shape all render EWKT. NULL stays NULL and `POINT EMPTY` round-trips. If the conversion fails, the raw hex is kept without an error.
+**Pre-Connect Script** (Advanced tab): a shell script that runs before connecting, e.g. to refresh credentials from a secrets manager. 10-second timeout.
 
 ## Troubleshooting
 
-**Connection refused**: Check server is running (`brew services start postgresql@16`), verify `listen_addresses` in `postgresql.conf`, ensure firewall allows port 5432.
+**Connection refused**: check the server is running, `listen_addresses` in `postgresql.conf` allows remote connections, and the firewall allows port 5432.
 
-**Auth failed**: Check `pg_hba.conf` for correct auth method (`md5`/`scram-sha-256` for passwords, `trust` for local dev). Reset password with `ALTER USER postgres WITH PASSWORD 'newpassword';`
+**Auth failed**: check `pg_hba.conf` for the auth method (`scram-sha-256` or `md5` for passwords, `trust` for local dev).
 
-**Database doesn't exist**: Connect to `postgres` database and create it with `CREATE DATABASE myapp;`
+**SSL/TLS**: new connections default to **Preferred** (libpq `sslmode=prefer`), which tries TLS first and falls back to plain. Pick **Verify CA** to validate the server certificate. See [SSL/TLS](/features/ssl).
 
-**Permission denied**: Grant access with `GRANT ALL ON DATABASE/SCHEMA/TABLES TO username;`
-
-**SSL/TLS**: New connections default to **Preferred** (libpq `sslmode=prefer`), which tries TLS first and falls back to plain. Works for both local Postgres and hosted providers (AWS RDS, Cloud SQL, Heroku, Supabase, Neon). Pick **Verify CA** when you need to validate the server certificate. See [SSL/TLS](/features/ssl) for details.
-
-**Postgres-compatible engines**: Connect wire-compatible engines (such as db9.ai) using the PostgreSQL type. TablePro checks which system catalogs each server actually provides, so engines that omit catalogs like `pg_matviews` still load their tables; materialized views or foreign tables just won't appear if the server doesn't expose them.
-
-## Advanced Configuration
-
-**Startup Commands** (Advanced tab): Set session variables like `SET timezone = 'UTC'; SET search_path TO myschema, public;` to apply automatically on connect.
-
-**~/.pgpass Support**: Use format `hostname:port:database:username:password` with wildcards (`*`). Must have `chmod 0600` permissions.
-
-**Pre-Connect Script** (Advanced tab): Run a shell script before connecting (e.g., to refresh credentials from a secrets manager). 10-second timeout.
-
-**PostgreSQL Extensions**: PostGIS, hstore, ltree work out of the box. Check with `SELECT * FROM pg_extension;`
-
-**Performance**: Use `EXPLAIN ANALYZE` for query optimization. `LIMIT` large exploratory queries, create indexes, enable pagination.
-
-**MySQL Migration Notes**: Use `SERIAL` (not `AUTO_INCREMENT`), `LIMIT y OFFSET x` syntax, double quotes for identifiers, `GENERATED AS IDENTITY` for new schemas.
+**Postgres-compatible engines**: connect wire-compatible engines using the PostgreSQL type. TablePro probes which system catalogs the server provides, so engines that omit catalogs like `pg_matviews` still load their tables; object kinds the server does not expose just won't appear.

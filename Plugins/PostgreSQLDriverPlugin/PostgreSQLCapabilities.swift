@@ -13,6 +13,7 @@ struct PostgreSQLCapabilities: Sendable, Equatable {
     var hasMaterializedViewsCatalog: Bool { serverVersion >= 90_300 }
     var hasForeignTablesCatalog: Bool { serverVersion >= 90_100 }
     var hasSequencesCatalog: Bool { serverVersion >= 90_500 }
+    var hasBypassRLS: Bool { serverVersion >= 90_500 }
 
     var hasIdentityColumns: Bool { serverVersion >= 100_000 }
     var hasGeneratedColumns: Bool { serverVersion >= 120_000 }

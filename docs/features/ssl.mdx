@@ -1,6 +1,6 @@
 ---
 title: SSL/TLS
-description: Configure encrypted database connections, per-engine defaults, and certificate verification
+description: Configure encrypted database connections, per-driver defaults, and certificate verification
 ---
 
 # SSL/TLS
@@ -17,31 +17,36 @@ TablePro supports five SSL modes that map to each driver's native TLS capabiliti
 | Verify CA | Force TLS and validate the server certificate against the trust store. Hostname not checked. |
 | Verify Identity | Force TLS, validate the certificate, and require the hostname to match the certificate subject |
 
-## Per-engine defaults
+<Frame caption="SSL tab in the connection form">
+  <img className="block dark:hidden" src="/images/connection-ssl-settings.png" alt="SSL mode and certificate settings in the connection form" />
+  <img className="hidden dark:block" src="/images/connection-ssl-settings-dark.png" alt="SSL mode and certificate settings in the connection form" />
+</Frame>
 
-New connections pick the mode that matches each driver's native behavior. Open the SSL tab on any connection to see the engine-specific guidance.
+## Per-driver defaults
 
-| Engine | Default | Notes |
+New connections pick the mode that matches each driver's native behavior. Open the SSL tab on any connection to see the driver-specific guidance.
+
+| Driver | Default | Notes |
 |---|---|---|
 | PostgreSQL, Redshift, CockroachDB | Preferred | libpq `sslmode=prefer`. Matches `psql` and DataGrip. |
 | MySQL, MariaDB | Preferred | 2-pass connect: try TLS first, fall back to plain on SSL handshake error |
-| SQL Server | Preferred | FreeTDS `encryption=request`. SQL Server 2022 enforces TLS. |
-| MongoDB, Redis, Cassandra, ClickHouse, Oracle, etcd | Disabled | Drivers have no TLS fallback. Pick Required for hosted services. |
-| SQLite, DuckDB | N/A | No network protocol |
+| SQL Server | Preferred | FreeTDS `encryption=request`. Uses the system trust store; per-connection certificate paths are not supported. |
+| MongoDB, Redis, Cassandra, ClickHouse, etcd, Elasticsearch, SurrealDB | Disabled | No TLS fallback: Preferred forces TLS, same as Required |
+| Oracle | Disabled | Preferred connects in plain TCP. Use Required to enforce TCPS. |
+| Snowflake, BigQuery, DynamoDB, Cloudflare D1, libSQL / Turso | Always encrypted | HTTPS-based drivers manage TLS themselves; no SSL tab |
+| SQLite, DuckDB, Beancount | N/A | Local files, no network protocol |
 
-## Required for hosted services
+Managed services (AWS RDS and Aurora, Google Cloud SQL, Azure, Heroku, Supabase, Neon, PlanetScale, MongoDB Atlas, Redis Cloud, Upstash, ElastiCache, DataStax Astra, Oracle Autonomous Database, ClickHouse Cloud) require TLS out of the box. Pick **Required**, or **Preferred** where the driver falls back.
 
-These services require TLS out of the box. Pick Preferred or Required for these:
+## Preferred fallback behavior
 
-- AWS RDS (PostgreSQL, MySQL, MariaDB), Aurora
-- Google Cloud SQL (PostgreSQL, MySQL, SQL Server)
-- Azure SQL Database, Azure Database for PostgreSQL/MySQL
-- Heroku Postgres, Supabase, Neon, PlanetScale
-- MongoDB Atlas (uses `mongodb+srv://` which enables TLS automatically)
-- Redis Cloud, Upstash, AWS ElastiCache encrypted endpoints
-- AstraDB / DataStax Astra (Cassandra)
-- Oracle Autonomous Database (TCPS on port 1522/2484)
-- ClickHouse Cloud
+Preferred mode tries TLS first. What happens if the server doesn't support TLS depends on the driver:
+
+- **PostgreSQL, Redshift, CockroachDB**: libpq falls back to plain TCP natively
+- **SQL Server**: FreeTDS `encryption=request` falls back to plain
+- **MySQL, MariaDB**: 2-pass connect tries TLS, then plain on SSL-specific handshake errors (CR_SSL_CONNECTION_ERROR, CR_SERVER_HANDSHAKE_ERR, ER_HANDSHAKE_ERROR). Auth and network errors are not retried.
+- **MongoDB, Redis, Cassandra, ClickHouse, etcd, Elasticsearch, SurrealDB**: no fallback. Preferred forces TLS, same as Required. The SSL pane shows a warning when you pick Preferred.
+- **Oracle**: no opportunistic TLS. Preferred connects in plain TCP, so it behaves like Disabled. The SSL pane shows a red warning; use Required to enforce TCPS.
 
 ## Troubleshooting
 
@@ -72,15 +77,6 @@ Server requires mutual TLS. Fill in the **Client Certificate** and **Client Key*
 ### "client private key is encrypted" / "passphrase is incorrect"
 
 The client key is password-protected. Enter the **Key Passphrase** in the SSL tab. The field appears once a client key path is set, and the passphrase is stored in the Keychain. Currently supported by the Cassandra driver.
-
-## Preferred fallback behavior
-
-Preferred mode tries TLS first. What happens if the server doesn't support TLS depends on the driver:
-
-- **PostgreSQL, Redshift, CockroachDB**: libpq falls back to plain TCP natively
-- **SQL Server**: FreeTDS `encryption=request` falls back to plain
-- **MySQL, MariaDB**: 2-pass connect tries TLS, then plain on SSL-specific handshake errors (CR_SSL_CONNECTION_ERROR, CR_SERVER_HANDSHAKE_ERR, ER_HANDSHAKE_ERROR). Auth and network errors are not retried.
-- **MongoDB, Redis, Cassandra, ClickHouse, Oracle, etcd**: Drivers have no fallback. Preferred behaves the same as Required. The SSL pane shows a warning when you pick Preferred for these engines.
 
 ## Connection failures
 

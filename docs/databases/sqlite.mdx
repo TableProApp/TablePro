@@ -1,88 +1,57 @@
 ---
 title: SQLite
-description: Open and query .sqlite, .db, and .sqlite3 files directly - no server needed
+description: Open and query SQLite database files directly, no server needed
 ---
 
 # SQLite Databases
 
-SQLite is a self-contained, file-based database engine. No server required. The entire database lives in a single file on your Mac.
+SQLite is a file-based database engine. The whole database is one file on your Mac. The driver ships with TablePro, nothing to install.
 
 ## Quick Setup
 
-<Steps>
-  <Step title="Create Connection">
-    Click **New Connection**, select **SQLite**, browse for your `.sqlite`/`.db`/`.sqlite3` file, and click **Create**
-  </Step>
-</Steps>
+Click **New Connection**, select **SQLite**, browse for the database file, and click **Save & Connect**. No host, port, or credentials.
 
-File-based database, no server/auth required. Double-click `.sqlite`/`.db`/`.sqlite3` files in Finder to open directly.
+Point the path at a file that does not exist and TablePro creates the database on connect.
+
+TablePro registers as a handler for `.db`, `.db3`, `.s3db`, `.sl3`, `.sqlite`, `.sqlite3`, and `.sqlitedb` files, so double-clicking one in Finder opens it directly.
+
+<Frame caption="SQLite connection form">
+  <img className="block dark:hidden" src="/images/sqlite-connection-form.png" alt="SQLite connection form with file path field" />
+  <img className="hidden dark:block" src="/images/sqlite-connection-form-dark.png" alt="SQLite connection form with file path field" />
+</Frame>
 
 ## Common Locations
 
-**macOS apps**: Safari (`~/Library/Safari/History.db`), Photos (`~/Pictures/Photos Library.photoslibrary/database/Photos.sqlite`), Messages (`~/Library/Messages/chat.db`)
-
-**Development**: Rails (`./db/development.sqlite3`), Django (`./db.sqlite3`), iOS Simulator (`~/Library/Developer/CoreSimulator/...`), Core Data
-
-**Create new**: Point to a non-existent file path and TablePro creates it on connect. Or use `sqlite3 ~/path/to/new.db "SELECT 1;"`
+| Source | Path |
+|--------|------|
+| Safari history | `~/Library/Safari/History.db` |
+| Photos | `~/Pictures/Photos Library.photoslibrary/database/Photos.sqlite` |
+| Messages | `~/Library/Messages/chat.db` |
+| Rails | `./db/development.sqlite3` |
+| Django | `./db.sqlite3` |
+| iOS Simulator | `~/Library/Developer/CoreSimulator/...` |
 
 <Warning>
 System databases may be locked. Quit their parent app before opening.
 </Warning>
 
-## Features
+## Connection URL
 
-Sidebar shows tables, views, and system tables (`sqlite_master`, `sqlite_sequence`). Table info displays structure (columns, constraints), indexes, and DDL. Full SQLite syntax support:
-
-```sql
--- JSON functions (SQLite 3.38+)
-SELECT json_extract(data, '$.name') as name
-FROM users
-WHERE json_extract(data, '$.active') = true;
-
--- Window functions
-SELECT
-    category,
-    product,
-    price,
-    rank() OVER (PARTITION BY category ORDER BY price DESC) as rank
-FROM products;
-
--- CTEs
-WITH RECURSIVE
-    cnt(x) AS (
-        SELECT 1
-        UNION ALL
-        SELECT x+1 FROM cnt WHERE x < 10
-    )
-SELECT x FROM cnt;
-
--- Full-text search (if FTS enabled)
-SELECT * FROM documents WHERE documents MATCH 'sqlite AND database';
-
--- UPSERT (INSERT OR REPLACE)
-INSERT INTO settings (key, value)
-VALUES ('theme', 'dark')
-ON CONFLICT(key) DO UPDATE SET value = excluded.value;
+```text
+sqlite:///path/to/database.db
 ```
 
-## Type System
+See [Connection URL Reference](/databases/connection-urls) for all parameters.
 
-SQLite uses dynamic typing with affinity: TEXT (strings), INTEGER (ints), REAL (floats), NUMERIC (flexible), BLOB (binary). Types are hints, not strict constraints.
+## Features
 
-## Performance
-
-Enable pagination for large tables, add indexes on frequently queried columns, use `LIMIT` in exploratory queries. Compact with `VACUUM;` and update stats with `ANALYZE;`.
+- The sidebar lists tables and views. Internal `sqlite_*` tables are hidden.
+- Table info shows columns, constraints, indexes, foreign keys, and DDL.
+- Triggers can be viewed and edited.
+- External changes to the file are picked up by a file watcher, no manual refresh needed.
 
 ## Troubleshooting
 
-**Locked database**: Close other apps using it, wait for queries to finish, or check for WAL files (`database.sqlite-wal`, `database.sqlite-shm`).
+**Locked database**: Close other apps using the file, or check for WAL files (`database.sqlite-wal`, `database.sqlite-shm`) left by a crashed process.
 
-**Can't open**: Verify path exists, check permissions (`chmod 644`), avoid special characters in paths.
-
-**Corrupt database**: Run `PRAGMA integrity_check;` to check, try `.recover` to repair: `sqlite3 corrupt.sqlite ".recover" | sqlite3 recovered.sqlite`
-
-**Changes not visible**: Right-click connection and select **Refresh**, or disconnect/reconnect.
-
-**PRAGMA commands**: Check version (`SELECT sqlite_version();`), table info (`PRAGMA table_info(users);`), enable foreign keys (`PRAGMA foreign_keys = ON;`), switch to WAL mode (`PRAGMA journal_mode = WAL;`)
-
-**Backup**: Copy file directly, use `sqlite3 db.sqlite ".backup backup.sqlite"` to handle locks safely, or `sqlite3 db.sqlite .dump > backup.sql` for SQL export.
+**Can't open**: Verify the path exists and you have read permission on the file.

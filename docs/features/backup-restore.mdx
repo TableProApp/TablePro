@@ -8,7 +8,7 @@ description: Dump and restore PostgreSQL or Redshift databases with pg_dump and 
 Dump a PostgreSQL or Redshift database to a `.dump` file with `pg_dump`, and restore one back with `pg_restore`. Both live in the **File** menu on any connected PostgreSQL or Redshift session.
 
 <Note>
-PostgreSQL and Redshift only. Restore is disabled on read-only Safe Mode. Backup stays available on read-only connections because it does not write to the database.
+PostgreSQL and Redshift only. Restore is disabled on read-only [Safe Mode](/features/safe-mode). Backup stays available on read-only connections because it does not write to the database.
 </Note>
 
 ## Requirements
@@ -31,20 +31,6 @@ TablePro finds `pg_dump` and `pg_restore` on `PATH` and the standard Homebrew an
 
 The default filename is `<database>-<yyyy-MM-dd-HHmmss>.dump`. Dumps use the custom archive format (`pg_dump -Fc`) so they round-trip through `pg_restore`.
 
-{/* Screenshot: Backup progress sheet showing live byte counter and Cancel button */}
-<Frame caption="Backup in progress">
-  <img
-    className="block dark:hidden"
-    src="/images/backup-progress.png"
-    alt="Backup progress sheet"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/backup-progress-dark.png"
-    alt="Backup progress sheet"
-  />
-</Frame>
-
 When the dump finishes, the result sheet shows the file size and a **Show in Finder** button.
 
 ## Restore Dump
@@ -54,11 +40,13 @@ When the dump finishes, the result sheet shows the file size and a **Show in Fin
 3. Pick the target database.
 4. Watch progress. Click **Cancel** to stop. The target database is not rolled back; review and clean up as needed.
 
+Restore progress is indeterminate: the live byte counter runs only during backups, so long restores show activity without a percentage.
+
 `pg_restore` runs with `--no-owner --no-acl`, so the connection user owns the restored objects. TablePro does not pass `--clean`; restoring on top of an existing schema with conflicting objects produces stderr errors that show in the result sheet.
 
-## SSH Tunnels
+## SSH Tunnels and SSL
 
-Both flows reuse the connection's active SSH tunnel. No second port forward is opened.
+Both flows reuse the connection's active SSH tunnel. No second port forward is opened. SSL connections pass their mode to the tools via `PGSSLMODE`, including `verify-ca` and `verify-full`.
 
 ## Cancelling
 

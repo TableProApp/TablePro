@@ -7,7 +7,7 @@ description: Monitor active sessions, server metrics, and slow queries in real t
 
 The dashboard shows active sessions, key server metrics, and slow-running queries with configurable auto-refresh.
 
-Open it from the menu bar **View > Server Dashboard** or click the **Dashboard** button in the toolbar overflow menu.
+Open it from the menu bar **View > Server Dashboard**. A Dashboard toolbar button is also available: right-click the toolbar, choose **Customize Toolbar**, and drag it in.
 
 <Frame caption="Server Dashboard showing active sessions, metrics, and slow queries">
   <img
@@ -37,23 +37,23 @@ A sortable table of all connections to the server, showing:
 
 Each session row has action buttons:
 
-- **Cancel Query** (stop icon) - cancels the running query without terminating the connection
+- **Cancel Query** (stop icon) - cancels the running query without terminating the connection (`pg_cancel_backend` on PostgreSQL, `KILL QUERY` on MySQL)
 - **Terminate Session** (x icon) - kills the entire connection
 
-Both actions show a confirmation alert before executing.
+Both actions show a confirmation alert before executing. If the server rejects the action, an Action Failed alert shows the error.
 
 ## Server Metrics
 
-A horizontal strip of key metrics displayed as cards:
+A horizontal strip of metric cards. What is shown depends on the database:
 
 | Database | Metrics shown |
 |----------|--------------|
-| PostgreSQL | Active connections, cache hit ratio, database size, uptime, active queries |
-| MySQL/MariaDB | Threads connected, threads running, uptime, total queries, slow queries, max connections |
-| MSSQL | Active connections, uptime, database size |
-| ClickHouse | Active queries, merges, disk usage |
-| DuckDB | Database size, memory limit, threads |
-| SQLite | Database size, journal mode, cache size |
+| PostgreSQL / Redshift / CockroachDB | Connections, cache hit ratio, database size, uptime, active queries |
+| MySQL / MariaDB | Connected threads, running threads, uptime, total queries, slow queries, max connections, bytes received, bytes sent |
+| MSSQL | User sessions, uptime, database size |
+| ClickHouse | Active queries, active merges, part mutations, disk usage |
+| DuckDB | Database size, block size, total blocks, memory limit, threads |
+| SQLite | Database size, page count, page size, journal mode, cache size |
 
 ## Slow Queries
 
@@ -66,18 +66,19 @@ The dashboard panels sit in a vertical split. Drag the dividers between Active S
 The dashboard toolbar provides refresh controls:
 
 - **Interval picker** - choose 1s, 2s, 5s (default), 10s, 30s, or Off
-- **Pause/Resume** - temporarily stop refreshing without changing the interval
-- **Manual refresh** - click or press **Cmd+R**
+- **Pause/Resume** - temporarily stop refreshing without changing the interval (disabled when the interval is Off)
+- **Refresh Now** - runs a manual refresh
 - **Last refresh time** - shown on the right
 
 ## Database Support
 
-| Feature | PostgreSQL | MySQL | MSSQL | ClickHouse | DuckDB | SQLite |
-|---------|:----------:|:-----:|:-----:|:----------:|:------:|:------:|
-| Active Sessions | Yes | Yes | Yes | Yes | - | - |
-| Server Metrics | Yes | Yes | Yes | Yes | Yes | Yes |
-| Slow Queries | Yes | Yes | Yes | Yes | - | - |
-| Kill Session | Yes | Yes | Yes | Yes | - | - |
-| Cancel Query | Yes | Yes | - | - | - | - |
+| Database | Sessions | Metrics | Slow Queries | Kill | Cancel |
+|----------|:--------:|:-------:|:------------:|:----:|:------:|
+| PostgreSQL / Redshift / CockroachDB | Yes | Yes | Yes | Yes | Yes |
+| MySQL / MariaDB | Yes | Yes | Yes | Yes | Yes |
+| MSSQL | Yes | Yes | Yes | Yes | - |
+| ClickHouse | Yes | Yes | Yes | Yes | - |
+| DuckDB | - | Yes | - | - | - |
+| SQLite | - | Yes | - | - | - |
 
-NoSQL databases (Redis, MongoDB, etc.) do not support the dashboard. The menu item and toolbar button are hidden for these connections.
+For databases without a dashboard provider (Redis, MongoDB, and others), the menu item and toolbar button are disabled.

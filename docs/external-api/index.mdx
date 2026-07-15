@@ -1,11 +1,11 @@
 ---
 title: External API
-description: URL scheme, MCP server, and pairing flow for Raycast, Cursor, Claude Desktop, and other external clients
+description: URL scheme, MCP server, pairing flow, terminal, and iOS Shortcuts for driving TablePro from other apps
 ---
 
 # External API
 
-The TablePro External API is the public contract that lets other apps drive TablePro. Raycast, Cursor, Claude Desktop, and custom scripts all use the same surface. This page is the entry point. Pick the subpage that matches what you want to do.
+The TablePro External API is the public contract that lets other apps drive TablePro. Raycast, Cursor, Claude Desktop, shell scripts, and DDEV all use the same surface. This page is the entry point. Pick the subpage that matches what you want to do.
 
 ## Three pillars
 
@@ -23,29 +23,27 @@ The External API has three independent layers. Most clients use a mix of all thr
   </Card>
 </CardGroup>
 
+Two more surfaces build on these. TablePro also opens plain database URLs (`mysql://...`) handed to it by macOS, which is what [Terminal and DDEV](/external-api/terminal) uses. On iPhone and iPad, TablePro exposes App Intents for [iOS Shortcuts](/external-api/ios-shortcuts).
+
 ## When to use which
 
 | Goal | Use |
 |------|-----|
 | Open a connection from a script or other app | URL scheme |
+| Open a database from the shell or a DDEV project | [Terminal and DDEV](/external-api/terminal) |
 | Run a query and read rows back | MCP `execute_query` |
 | Browse schema for an AI model | MCP `list_tables`, `describe_table` |
 | Issue a token to a Raycast or Cursor extension | Pairing |
 | Navigate to a tab the user already has open | MCP `list_recent_tabs` + `focus_query_tab` |
+| Insert rows from iPhone or iPad | [iOS Shortcuts](/external-api/ios-shortcuts) |
 
 URL scheme drives the GUI. MCP exchanges data. Pairing bootstraps trust.
 
 ## Security model
 
-The External API is gated by three independent layers. A request must clear all three.
+Every request must clear three independent gates: the connection's external access level (`blocked`, `readOnly` by default, or `readWrite`), the token's scope, and the connection's AI policy plus Safe Mode. The effective permission is the lower of token scope and connection access. See [Tokens](/external-api/tokens) for the full model.
 
-1. **Per-connection external access.** Each connection has an `externalAccess` setting: `blocked`, `readOnly` (default), or `readWrite`. Set per connection in the connection editor. Tokens cannot exceed this level.
-2. **Token scope.** Tokens are issued with `readOnly`, `readWrite`, or `fullAccess` scope and an optional per-connection allowlist. See [Tokens](/external-api/tokens).
-3. **AI policy and Safe Mode.** The connection's AI policy (`alwaysAllow` / `askEachTime` / `never`) and Safe Mode rules apply on top. Destructive operations require an explicit confirmation phrase.
-
-The effective permission for any request is `MIN(token.scope, connection.externalAccess)`. A token with `fullAccess` against a connection with `readOnly` cannot mutate.
-
-Every request is recorded in the activity log. Open **Settings > Integrations > Activity Log** to inspect.
+Every request is recorded in the activity log. Open **Settings > Integrations** and click **View Activity** to inspect.
 
 ## Quick start
 
@@ -64,6 +62,8 @@ The External API follows TablePro's semver. Paths and tools are additive within 
 ## Subpages
 
 - [URL Scheme](/external-api/url-scheme): every `tablepro://` action and parameter.
+- [Terminal and DDEV](/external-api/terminal): open databases and files from the shell, `ddev tablepro`, trusted links.
+- [iOS Shortcuts](/external-api/ios-shortcuts): App Intents for adding rows and opening connections.
 - [MCP Tools](/external-api/mcp-tools): JSON-RPC tool catalog with input and output schemas.
 - [MCP Resources](/external-api/mcp-resources): resources you can read.
 - [Pairing](/external-api/pairing): sequence diagram and PKCE flow.

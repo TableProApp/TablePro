@@ -45,6 +45,11 @@ Click **New Connection**, select **Elasticsearch**, enter host and port (default
 
 **Query DSL Console**: The editor is a Kibana Dev Tools-style console. Write a method, a path, and an optional JSON body:
 
+<Frame caption="Query DSL console with a search result grid">
+  <img className="block dark:hidden" src="/images/elasticsearch-query-console.png" alt="Elasticsearch Query DSL console with a search result rendered as a grid" />
+  <img className="hidden dark:block" src="/images/elasticsearch-query-console-dark.png" alt="Elasticsearch Query DSL console with a search result rendered as a grid" />
+</Frame>
+
 ```json
 GET /my-index/_search
 {
@@ -72,7 +77,7 @@ Search responses render as a grid; `_cat` and other array responses tabularize; 
 
 **Data Editing**: Edit cells, insert documents, and delete documents. Edits map to REST operations keyed by `_id`: `POST /index/_update/{id}`, `PUT /index/_doc/{id}`, and `DELETE /index/_doc/{id}`. The `_id`, `_index`, and `_score` columns are read-only.
 
-**Pagination**: The grid pages with `from`/`size` up to the index `max_result_window` (default 10,000). Past that window, TablePro pages with `search_after` and a point-in-time (PIT) for deeper browsing.
+**Pagination**: The grid pages with `from`/`size` for the first 10,000 documents, then switches to `search_after` with a point-in-time (PIT) for deeper browsing. The 10,000 threshold is fixed in the driver, matching Elasticsearch's default `max_result_window`; the index's own setting is not read, so an index with a lowered window errors before the switch.
 
 ## Example Configurations
 
@@ -90,4 +95,4 @@ Search responses render as a grid; `_cat` and other array responses tabularize; 
 
 **Sort not allowed on a text field**: Sort on the field's `.keyword` subfield, or add one to the mapping.
 
-**Limitations**: Read-only `_sql` is not exposed; use the Query DSL console. No schema editing, no transactions. Deep paging past `max_result_window` uses `search_after` and can drift under concurrent writes. Elasticsearch only (OpenSearch is not yet supported).
+**Limitations**: The SQL endpoint (`_sql`) is not supported; use the Query DSL console. No schema editing, no transactions. [SSH tunneling](/databases/ssh-tunneling) is not available for Elasticsearch connections. Deep paging past 10,000 documents uses `search_after` and can drift under concurrent writes. Elasticsearch only (OpenSearch is not yet supported).

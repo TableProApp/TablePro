@@ -17,9 +17,26 @@ extension DatabaseManager {
     /// seed list is collapsed to that endpoint and a direct connection is forced,
     /// stopping replica set discovery from reaching members behind the tunnel.
     /// Shared by the SSH and Cloudflare tunnel paths.
-    func tunneledConnection(from connection: DatabaseConnection, localPort: Int) -> DatabaseConnection {
+    ///
+    /// A server listening on a Unix socket answers every TLS request with a refusal, because
+    /// it decides from its own listening socket family and never consults `pg_hba`. Encryption
+    /// modes are therefore dropped for a socket forward, which costs nothing: the whole path
+    /// already runs inside the SSH transport.
+    func tunneledConnection(
+        from connection: DatabaseConnection,
+        localPort: Int,
+        forwardsToUnixSocket: Bool = false
+    ) -> DatabaseConnection {
         var tunnelSSL = connection.sslConfig
-        if tunnelSSL.isEnabled {
+        if forwardsToUnixSocket {
+            if tunnelSSL.isEnabled {
+                Self.logger.notice("Socket forward: disabling TLS, the destination cannot negotiate it")
+            }
+            tunnelSSL.mode = .disabled
+            tunnelSSL.caCertificatePath = ""
+            tunnelSSL.clientCertificatePath = ""
+            tunnelSSL.clientKeyPath = ""
+        } else if tunnelSSL.isEnabled {
             if tunnelSSL.verifiesCertificate {
                 tunnelSSL.mode = .required
             }
@@ -29,6 +46,7 @@ extension DatabaseManager {
         }
 
         var effectiveFields = connection.additionalFields
+        effectiveFields[DatabaseConnection.sshForwardUnixSocketPathKey] = nil
         if connection.usePgpass {
             effectiveFields["pgpassOriginalHost"] = connection.host
             effectiveFields["pgpassOriginalPort"] = String(connection.port)

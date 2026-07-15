@@ -9,22 +9,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Connect to Google Cloud SQL through the Cloud SQL Auth Proxy without starting it yourself. Enable it on a MySQL, PostgreSQL, or SQL Server connection, set the instance connection name, and TablePro runs and stops the proxy with the connection. Supports Application Default Credentials, a service account key, and IAM database authentication, and can download the proxy or use one already on your Mac. (#1728)
-- Beancount ledger support as a downloadable, read-only file-based driver. Transactions, postings (with resolved cost basis), accounts, prices, computed balances, and balance assertions project to SQL tables through user-provided `rledger` or Python Beancount, and BQL runs with a `BQL:` prefix when `rledger` is available. (#1474)
 - The sidebar database tree now remembers which databases and schemas you had expanded, per connection, so reopening a window keeps them open.
 - A Saved Customizations section in Settings lists the tables where you set column layouts or filters, and lets you reset any one of them, or all.
 - Per-table column layouts (widths, order, and hidden columns) now sync across your Macs with iCloud when Settings sync is on.
-- The Favorites sidebar **+** menu now includes **New Query**, which opens an empty SQL query tab.
 
 ### Changed
 
-- The Settings window is reorganized into a searchable sidebar styled like macOS System Settings, with colored section icons, a fixed sidebar, the section name in the title bar, and each section's content held in a centered column. A Data & Results section groups the data grid, pagination, result limits, formatting, JSON viewer, and query history; a Sidebar section groups recent tables, default layout, and object comments.
+- The Settings window groups the data grid, pagination, result formatting, JSON viewer, query history, and saved per-table customizations under a new Data tab, and moves recent tables, object comments, and default sidebar layout under the General tab.
 
 ### Fixed
 
-- A failed or cancelled connection that uses a Cloudflare tunnel no longer leaves the `cloudflared` process running in the background.
 - Per-column display formats (Display As) are now kept per table, so two tables with the same name in different databases or schemas no longer share formatting.
 - Reopening a table now restores a saved filter's AND/OR match mode, instead of always resetting it to AND.
+
+## [0.57.1] - 2026-07-15
+
+### Added
+
+- SSH tunnels can now forward to a Unix socket on the remote server, for databases that only listen on a socket. Set the socket path on the General pane, and TablePro forwards to it instead of a host and port, through jump hosts if you use them. (#1871)
+
+### Fixed
+
+- Fixed the right sidebar refusing to resize while a Users & Roles tab was open. The user list now collapses on its own when the tab gets too narrow to hold it. (#1872)
+- Fixed dividers that could not be dragged at all: the user list and privilege panes in Users & Roles, the trigger list in Structure, and the metrics and slow query panes in Server Dashboard. (#1872)
+- Cancel now stops a connection attempt right away instead of letting it run on in the background. A cancelled connection is also dropped from the last session, so restarting no longer reconnects to a host you gave up on, and it can no longer interrupt a later successful connection. (#1358)
+- Fixed a crash that could quit the app when opening or sorting a table whose columns have comments. (#1869, #1880)
+- MCP tools no longer stop working after the server sits idle for 15 minutes, or after the MCP server is restarted from Settings. TablePro's bridge now starts a new session by itself instead of reusing a dead one, so agents like Claude Code and Cursor keep working without being turned off and on again. (#1881)
+
+### Security
+
+- Patched CVE-2026-55200 in libssh2, a critical out-of-bounds write that let a malicious SSH server corrupt memory and run code before authentication finished. It affected every SSH tunnel and jump host.
+
+## [0.57.0] - 2026-07-14
+
+### Added
+
+- SurrealDB 2.x and 3.x support as a downloadable driver. Browse namespaces and databases, run SurrealQL, and edit records in the grid. (#1862)
+- xAI (Grok) as an AI provider. Paste a key from the xAI Console, or sign in with a SuperGrok or X Premium+ subscription and use no key at all.
+- Google Cloud SQL connections through the Cloud SQL Auth Proxy. Turn it on for a MySQL, PostgreSQL, or SQL Server connection, set the instance connection name, and TablePro starts and stops the proxy for you. (#1728)
+- Beancount ledger support as a downloadable, read-only driver. Transactions, postings, accounts, prices, and balances read as SQL tables, and BQL runs with a `BQL:` prefix. (#1474)
+- **New Query** in the Favorites sidebar **+** menu, which opens an empty SQL query tab.
+- Database users, roles, and privileges on MySQL and PostgreSQL, under **View > Users & Roles**. Pick any object from the server down to a single column, see where each privilege comes from, and grant or revoke it. Changes are staged, undoable, and shown as SQL before they run. (#1413)
+- **File > Reopen Closed Tab** (`Cmd+Shift+T`) brings back the tab you just closed, and **File > Recently Closed** lists the last 20, kept for 30 days. (#1854)
+- Open a database from the terminal. Install the `tablepro` command from **Settings > General**, then run `ddev tablepro` in a DDEV project. Links to a database on your own Mac can be trusted with **Always Allow** and reviewed in **Settings > General**. (#1486)
+
+### Changed
+
+- Query results always open in a result tab, so a single result can be pinned before the next query replaces it. Pin from the tab's context menu or with `Cmd+Option+P`. (#1855)
+- Closing a query tab keeps its SQL in **Recently Closed** instead of throwing it away, and the close button shows the unsaved dot for a query you typed into. (#1854)
+
+### Fixed
+
+- Fixed a crash when several tables on the same connection ran queries at the same time.
+- Column comments now show in the data grid header as soon as the table opens, and the header grows to fit them. (#1861)
+- **Size to Fit** no longer stretches a column of long text past the window. Fitted columns stop at half the visible grid, and every column has a maximum width.
+- The username is now optional. Leaving it empty no longer fills in `root`, and lets the database pick its own default the way `psql` and `mysql` do.
+- A failed or cancelled connection that uses a Cloudflare tunnel no longer leaves the `cloudflared` process running in the background.
+- Pinned results are no longer discarded by **Clear Results**, and a tab holding one is no longer reused to browse a different table. (#1855)
+- Quitting now warns about unsaved changes in any tab, not just the visible one. (#1854)
 
 ## [0.56.2] - 2026-07-10
 
@@ -2503,7 +2545,9 @@ TablePro is a native macOS database client built with SwiftUI and AppKit, design
     - Custom SQL query templates
     - Performance optimized for large datasets
 
-[Unreleased]: https://github.com/TableProApp/TablePro/compare/v0.56.2...HEAD
+[Unreleased]: https://github.com/TableProApp/TablePro/compare/v0.57.1...HEAD
+[0.57.1]: https://github.com/TableProApp/TablePro/compare/v0.57.0...v0.57.1
+[0.57.0]: https://github.com/TableProApp/TablePro/compare/v0.56.2...v0.57.0
 [0.56.2]: https://github.com/TableProApp/TablePro/compare/v0.56.1...v0.56.2
 [0.56.1]: https://github.com/TableProApp/TablePro/compare/v0.56.0...v0.56.1
 [0.56.0]: https://github.com/TableProApp/TablePro/compare/v0.55.0...v0.56.0

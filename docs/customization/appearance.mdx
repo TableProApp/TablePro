@@ -1,177 +1,86 @@
 ---
 title: Appearance
-description: Theme engine with built-in presets, custom themes, color and font customization, import/export
+description: Themes, per-theme fonts, color customization, and connection colors.
 ---
 
 # Appearance Settings
 
-Configure how TablePro looks in **Settings** > **Appearance**.
+Configure how TablePro looks in **Settings** > **Appearance** (`Cmd+,`).
 
-{/* Screenshot: Appearance settings panel */}
-<Frame caption="Appearance settings with theme editor">
-  <img
-    className="block dark:hidden"
-    src="/images/settings-appearance.png"
-    alt="Appearance settings"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/settings-appearance-dark.png"
-    alt="Appearance settings"
-  />
+<Frame caption="Appearance settings with theme list and editor">
+  <img className="block dark:hidden" src="/images/settings-appearance.png" alt="Appearance settings" />
+  <img className="hidden dark:block" src="/images/settings-appearance-dark.png" alt="Appearance settings" />
 </Frame>
 
-## Theme Engine
+## Themes
 
-TablePro ships with 9 built-in themes and supports custom themes. Community themes are available from the plugin registry. Each theme controls editor syntax colors, data grid colors, sidebar/toolbar styling, and fonts. UI colors use native macOS semantic colors by default, adapting automatically to system appearance, accent color, and high contrast settings.
+Four themes ship with the app: Default Light, Default Dark, Dracula (dark), and Nord (dark). A theme controls editor and syntax colors, data grid colors, interface colors, and the editor and data grid fonts. Interface colors default to macOS system colors, so they follow the system appearance and accent color unless a theme overrides them.
 
-### Theme Editor Layout
+The tab is a split view:
 
-The Appearance tab is a split view with two panels:
+- **Left**: theme list grouped into Built-in, Registry, and Custom. Each row shows a preview thumbnail, name, and source. Selecting a theme activates it.
+- **Right**: the editor for the selected theme, with **Fonts** and **Colors** tabs.
 
-- **Left panel**: Sections for "Built-in", "Registry", and "Custom". Each row shows a color thumbnail, theme name, and source label. Select a theme to activate and edit it.
-- **Right panel**: Two tabs: Fonts and Colors.
-
-At the bottom of the sidebar, an action bar provides:
+The action bar below the list:
 
 | Button | Action |
 |--------|--------|
-| **+** menu | New Theme, Import... |
-| **-** button | Delete selected theme (disabled for built-in and registry themes) |
+| **+** menu | New Theme (duplicates the active theme), Import... |
+| **-** button | Delete the selected theme. Enabled only for custom themes. |
 | **Gear** menu | Duplicate, Export..., Uninstall (registry themes only) |
-
-### Built-in Themes
-
-| Theme | Appearance | Based On |
-|-------|------------|----------|
-| **Default Light** | Light | macOS system colors |
-| **Default Dark** | Dark | macOS system colors |
-| **Dracula** | Dark | Dracula color scheme |
-| **Solarized Light** | Light | Ethan Schoonover's Solarized |
-| **Solarized Dark** | Dark | Ethan Schoonover's Solarized |
-| **One Dark** | Dark | Atom One Dark |
-| **GitHub Light** | Light | GitHub UI |
-| **GitHub Dark** | Dark | GitHub UI |
-| **Nord** | Dark | Arctic north-bluish palette |
 
 ### Appearance Mode
 
-Pick **Light**, **Dark**, or **Auto** at the top. Light and Dark each store a separate preferred theme. Auto follows the system and switches between the two automatically.
+Pick **Light**, **Dark**, or **Auto** at the top. Light and Dark each remember their own preferred theme; Auto follows the system and switches between the two. Selecting a dark theme while in Light mode also switches the mode to Dark so you see the change right away.
 
-When you select a theme from the list, it becomes the preferred theme for that theme's appearance (light or dark). Selecting a dark theme while in Light mode switches to Dark mode so you see the change right away.
+## Fonts
 
-{/* Screenshot: Side-by-side light and dark themes */}
-<Frame caption="Light vs Dark theme">
-  <img
-    className="block dark:hidden"
-    src="/images/theme-comparison.png"
-    alt="Theme comparison"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/theme-comparison-dark.png"
-    alt="Theme comparison"
-  />
-</Frame>
+The **Fonts** tab sets the editor and data grid fonts per theme. Family pickers list the monospaced fonts installed on your Mac, and a preview renders a sample query with the theme's editor colors.
 
-## Customizing Themes
+| Setting | Options | Default |
+|---------|---------|---------|
+| Editor Font | Family + size, 11 to 18 pt | System Mono, 13 pt |
+| Data Grid Font | Family + size, 10 to 18 pt | System Mono, 13 pt |
 
-Select a theme and edit directly. Built-in themes auto-duplicate when you change colors, preserving the original. Font changes apply without duplication, and font family pickers list installed monospaced fonts from your Mac. Interface colors (text, backgrounds, borders) default to macOS system colors and show a reset button when overridden.
+Changing a font on a built-in theme does not modify the original: TablePro creates a copy named "Theme (Custom)" and applies the change there.
+
+## Colors
+
+The **Colors** tab is editable only on custom themes. Built-in and registry themes show a lock and a **Duplicate Theme** button; the copy (named "Theme (Copy)") is fully editable.
+
+| Group | Controls |
+|-------|----------|
+| Editor | Background, text, cursor, current line, selection, line number, invisibles |
+| Syntax Colors | Keyword, string, number, comment, NULL, operator, function, type |
+| Data Grid | Background, text, alternate row, NULL value, bool true/false, row number, modified/inserted/deleted rows, deleted text, focus border |
+| Interface | Window, control, and card backgrounds, border, primary/secondary/tertiary text, selection, hover |
+| Status Colors | Success, warning, error, info |
+| Badges | Badge background, primary key, auto increment |
+| Sidebar | Background, text, selected item, hover, section header |
+| Toolbar | Secondary and tertiary text |
+
+Interface, Sidebar, and Toolbar colors fall back to macOS system colors until you override them. Overridden values show a reset button that restores the system default.
 
 ## Import, Export & Registry
 
-Export custom themes as JSON. Import from files or install from the plugin registry (**Settings > Plugins > Browse**, filter by Themes). Registry themes are read-only; duplicate to customize.
+Export any theme as JSON from the gear menu; import a JSON theme from the **+** menu. Community themes install from the [plugin registry](/features/plugins) (**Settings** > **Plugins** > **Browse**, Themes category). Colors on registry themes are locked, same as built-ins: duplicate the theme to edit them. Remove a registry theme with the gear menu's **Uninstall**.
 
 ## Connection Colors
 
-Color-code connections for quick identification:
+Assign a color to a connection in the connection form: **Customization** pane > **Appearance** > **Color**. Nine options: None, Red, Orange, Yellow, Green, Blue, Purple, Pink, Gray. With no color set, the connection uses its database type's brand color, supplied by the driver plugin. Connection groups take a color the same way, from their right-click menu on the welcome window.
 
-| Color | Suggested Use |
-|-------|---------------|
-| None | Default, neutral |
-| Red | Production databases |
-| Orange | Staging environments |
-| Yellow | Testing databases |
-| Green | Development/local |
-| Blue | Shared databases |
-| Purple | Special purpose |
-| Pink | Personal projects |
+The color appears on:
 
-### Setting Connection Color
+- The toolbar connection status indicator
+- The connection switcher popover
+- The sidebar connection header
+- The welcome window connection list
 
-1. Open the connection form (edit or create)
-2. In the **Appearance** section, click **Color**
-3. Select a color from the palette
-4. Save the connection
-
-{/* Screenshot: Connection color picker */}
-<Frame caption="Connection color picker">
-  <img
-    className="block dark:hidden"
-    src="/images/connection-colors.png"
-    alt="Connection colors"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/connection-colors-dark.png"
-    alt="Connection colors"
-  />
-</Frame>
-
-### Connection Color Display
-
-Connection colors show up in:
-
-- Sidebar connection list
-- Tab headers
-- Connection status bar
-- Window title (when connected)
-
-<Warning>
+<Tip>
 Use red for production databases as a visual reminder to be careful with queries.
-</Warning>
+</Tip>
 
-{/* Screenshot: Connection colors in sidebar and tabs */}
-<Frame caption="Connection colors displayed in sidebar and tabs">
-  <img
-    className="block dark:hidden"
-    src="/images/connection-colors-sidebar.png"
-    alt="Connection colors in sidebar and tabs"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/connection-colors-sidebar-dark.png"
-    alt="Connection colors in sidebar and tabs"
-  />
-</Frame>
-
-## Database Type Colors
-
-Each database type has a fixed color for quick identification:
-
-| Database | Color |
-|----------|-------|
-| MySQL | Orange |
-| MariaDB | Cyan |
-| PostgreSQL | Blue |
-| SQLite | Green |
-
-These appear on:
-
-- Database type icons
-- Connection type indicators
-- Sidebar icons
-
-{/* Screenshot: Database type colors */}
-<Frame caption="Database type color coding: MySQL, MariaDB, PostgreSQL, SQLite">
-  <img
-    className="block dark:hidden"
-    src="/images/database-type-colors.png"
-    alt="Database type colors"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/database-type-colors-dark.png"
-    alt="Database type colors"
-  />
+<Frame caption="Connection color on the toolbar status indicator and welcome list">
+  <img className="block dark:hidden" src="/images/connection-colors-sidebar.png" alt="Connection colors in the toolbar and welcome list" />
+  <img className="hidden dark:block" src="/images/connection-colors-sidebar-dark.png" alt="Connection colors in the toolbar and welcome list" />
 </Frame>

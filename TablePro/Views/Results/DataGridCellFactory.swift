@@ -11,16 +11,17 @@ import TableProPluginKit
 final class DataGridCellFactory {
     private static let minColumnWidth: CGFloat = 60
     private static let maxColumnWidth: CGFloat = 800
+    private static let minFitToContentWidth: CGFloat = 300
+    private static let fitToContentViewportFraction: CGFloat = 0.5
     private static let sampleRowCount = 30
     private static let maxMeasureChars = 50
+    private static let headerPadding: CGFloat = 48
+    private static let cellPadding: CGFloat = 16
+    private static let headerCharWidthRatio: CGFloat = 0.75
 
-    private static let headerFont = NSFont.systemFont(ofSize: 13, weight: .semibold)
-
-    func calculateColumnWidth(for columnName: String) -> CGFloat {
-        let attributes: [NSAttributedString.Key: Any] = [.font: Self.headerFont]
-        let size = (columnName as NSString).size(withAttributes: attributes)
-        let width = size.width + 48
-        return min(max(width, Self.minColumnWidth), Self.maxColumnWidth)
+    static func fitToContentCap(availableWidth: CGFloat) -> CGFloat {
+        let proportional = availableWidth * fitToContentViewportFraction
+        return min(max(proportional, minFitToContentWidth), maxColumnWidth)
     }
 
     func calculateOptimalColumnWidth(
@@ -28,53 +29,61 @@ final class DataGridCellFactory {
         columnIndex: Int,
         tableRows: TableRows
     ) -> CGFloat {
-        let headerCharCount = (columnName as NSString).length
-        var maxWidth = CGFloat(headerCharCount) * ThemeEngine.shared.dataGridFonts.monoCharWidth * 0.75 + 48
-
-        let totalRows = tableRows.count
-        let columnCount = tableRows.columns.count
-        let effectiveSampleCount = columnCount > 50 ? 10 : Self.sampleRowCount
-        let step = max(1, totalRows / effectiveSampleCount)
-        let charWidth = ThemeEngine.shared.dataGridFonts.monoCharWidth
-
-        for i in stride(from: 0, to: totalRows, by: step) {
-            guard let value = tableRows.value(at: i, column: columnIndex).asText else { continue }
-
-            let charCount = min((value as NSString).length, Self.maxMeasureChars)
-            let cellWidth = CGFloat(charCount) * charWidth + 16
-            maxWidth = max(maxWidth, cellWidth)
-
-            if maxWidth >= Self.maxColumnWidth {
-                return Self.maxColumnWidth
-            }
-        }
-
-        return min(max(maxWidth, Self.minColumnWidth), Self.maxColumnWidth)
+        measureColumnWidth(
+            for: columnName,
+            columnIndex: columnIndex,
+            tableRows: tableRows,
+            cap: Self.maxColumnWidth,
+            measuredCharLimit: Self.maxMeasureChars
+        )
     }
 
     func calculateFitToContentWidth(
         for columnName: String,
         columnIndex: Int,
-        tableRows: TableRows
+        tableRows: TableRows,
+        availableWidth: CGFloat
     ) -> CGFloat {
+        let cap = Self.fitToContentCap(availableWidth: availableWidth)
+        let charWidth = ThemeEngine.shared.dataGridFonts.monoCharWidth
+        let measuredCharLimit = charWidth > 0 ? Int((cap / charWidth).rounded(.up)) : Self.maxMeasureChars
+
+        return measureColumnWidth(
+            for: columnName,
+            columnIndex: columnIndex,
+            tableRows: tableRows,
+            cap: cap,
+            measuredCharLimit: measuredCharLimit
+        )
+    }
+
+    private func measureColumnWidth(
+        for columnName: String,
+        columnIndex: Int,
+        tableRows: TableRows,
+        cap: CGFloat,
+        measuredCharLimit: Int
+    ) -> CGFloat {
+        let charWidth = ThemeEngine.shared.dataGridFonts.monoCharWidth
         let headerCharCount = (columnName as NSString).length
-        var maxWidth = CGFloat(headerCharCount) * ThemeEngine.shared.dataGridFonts.monoCharWidth * 0.75 + 48
+        var maxWidth = CGFloat(headerCharCount) * charWidth * Self.headerCharWidthRatio + Self.headerPadding
 
         let totalRows = tableRows.count
-        let columnCount = tableRows.columns.count
-        let effectiveSampleCount = columnCount > 50 ? 10 : Self.sampleRowCount
+        let effectiveSampleCount = tableRows.columns.count > 50 ? 10 : Self.sampleRowCount
         let step = max(1, totalRows / effectiveSampleCount)
-        let charWidth = ThemeEngine.shared.dataGridFonts.monoCharWidth
 
         for i in stride(from: 0, to: totalRows, by: step) {
             guard let value = tableRows.value(at: i, column: columnIndex).asText else { continue }
 
-            let charCount = (value as NSString).length
-            let cellWidth = CGFloat(charCount) * charWidth + 16
-            maxWidth = max(maxWidth, cellWidth)
+            let charCount = min((value as NSString).length, measuredCharLimit)
+            maxWidth = max(maxWidth, CGFloat(charCount) * charWidth + Self.cellPadding)
+
+            if maxWidth >= cap {
+                return cap
+            }
         }
 
-        return max(maxWidth, Self.minColumnWidth)
+        return min(max(maxWidth, Self.minColumnWidth), cap)
     }
 }
 

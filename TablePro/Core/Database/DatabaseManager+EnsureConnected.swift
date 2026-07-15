@@ -23,6 +23,7 @@ extension DatabaseManager {
     }
 
     func cancelEnsureConnected(_ connectionId: UUID) async {
+        connectionAttempts.invalidate(for: connectionId)
         await ensureConnectedDedup.cancel(key: connectionId)
         if let session = activeSessions[connectionId], session.driver == nil {
             if let tunnelManager = activeTunnelManager(for: session.connection) {

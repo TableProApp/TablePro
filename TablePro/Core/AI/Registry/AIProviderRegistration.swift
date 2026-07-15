@@ -61,6 +61,30 @@ enum AIProviderRegistration {
             }
         ))
 
+        registry.register(AIProviderDescriptor(
+            typeID: AIProviderType.xai.rawValue,
+            displayName: AIProviderType.xai.displayName,
+            defaultEndpoint: AIProviderType.xai.defaultEndpoint,
+            capabilities: [
+                .chat, .models, .reasoning, .images,
+                .endpointConfigurable, .maxOutputTokens, .modelListFetchable
+            ],
+            symbolName: iconForType(.xai),
+            curatedModels: XAI.apiCuratedModels,
+            makeProvider: { config, apiKey in
+                if let apiKey, !apiKey.isEmpty {
+                    return OpenAIResponsesProvider(
+                        endpoint: config.endpoint,
+                        apiKey: apiKey,
+                        model: config.model,
+                        maxOutputTokens: config.maxOutputTokens,
+                        dialect: .xai
+                    )
+                }
+                return XAIGrokProvider(model: config.model)
+            }
+        ))
+
         for type in [AIProviderType.openRouter, .openCode, .ollama, .custom] {
             var capabilities: AIProviderCapabilities = [
                 .chat, .models, .endpointConfigurable, .maxOutputTokens, .modelListFetchable

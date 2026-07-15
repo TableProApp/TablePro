@@ -109,6 +109,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
     // Navigation
     case newTab
     case closeTab
+    case reopenClosedTab
     case quickSwitcher
     case toggleTableBrowser
     case toggleInspector
@@ -117,6 +118,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
     case toggleResults
     case previousResultTab
     case nextResultTab
+    case pinResultTab
     case closeResultTab
     case focusSidebarSearch
     case showSidebarTables
@@ -139,10 +141,10 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
              .truncateTable, .previewFKReference, .saveAsFavorite, .previousPage,
              .nextPage, .firstPage, .lastPage, .refresh, .export, .importData:
             return .dataGrid
-        case .newTab, .closeTab, .quickSwitcher, .toggleTableBrowser, .toggleInspector,
-             .toggleFilters, .toggleHistory, .toggleResults, .previousResultTab,
-             .nextResultTab, .closeResultTab, .focusSidebarSearch, .showSidebarTables,
-             .showSidebarFavorites, .showPreviousTab, .showNextTab:
+        case .newTab, .closeTab, .reopenClosedTab, .quickSwitcher, .toggleTableBrowser,
+             .toggleInspector, .toggleFilters, .toggleHistory, .toggleResults, .previousResultTab,
+             .nextResultTab, .pinResultTab, .closeResultTab, .focusSidebarSearch,
+             .showSidebarTables, .showSidebarFavorites, .showPreviousTab, .showNextTab:
             return .navigation
         }
     }
@@ -187,6 +189,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
         case .saveAs: return String(localized: "Save As")
         case .previewSQL: return String(localized: "Preview SQL")
         case .closeTab: return String(localized: "Close Tab")
+        case .reopenClosedTab: return String(localized: "Reopen Closed Tab")
         case .refresh: return String(localized: "Refresh")
         case .explainQuery: return String(localized: "Explain Query")
         case .formatQuery: return String(localized: "Format Query")
@@ -222,6 +225,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
         case .toggleResults: return String(localized: "Toggle Results")
         case .previousResultTab: return String(localized: "Previous Result")
         case .nextResultTab: return String(localized: "Next Result")
+        case .pinResultTab: return String(localized: "Pin Result")
         case .closeResultTab: return String(localized: "Close Result Tab")
         case .focusSidebarSearch: return String(localized: "Focus Sidebar Filter")
         case .showSidebarTables: return String(localized: "Show Tables Sidebar")
@@ -440,6 +444,7 @@ struct KeyboardSettings: Codable, Equatable {
         // Navigation
         .newTab: .character("t", command: true),
         .closeTab: .character("w", command: true),
+        .reopenClosedTab: .character("t", command: true, shift: true),
         .quickSwitcher: .character("o", command: true, shift: true),
         .toggleTableBrowser: .character("0", command: true),
         .toggleInspector: .character("i", command: true, option: true),
@@ -448,6 +453,7 @@ struct KeyboardSettings: Codable, Equatable {
         .toggleResults: .character("r", command: true, option: true),
         .previousResultTab: .character("[", command: true, option: true),
         .nextResultTab: .character("]", command: true, option: true),
+        .pinResultTab: .character("p", command: true, option: true),
         .closeResultTab: .character("w", command: true, shift: true),
         .focusSidebarSearch: .character("f", command: true, option: true),
         .showSidebarTables: .character("1", command: true, option: true),

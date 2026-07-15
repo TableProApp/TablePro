@@ -40,6 +40,7 @@ public protocol DriverPlugin: TableProPlugin {
     static var statementCompletions: [CompletionEntry] { get }
     static var tableEntityName: String { get }
     static var containerEntityName: String { get }
+    static var schemaEntityName: String { get }
     static var supportsCascadeDrop: Bool { get }
     static var supportsForeignKeyDisable: Bool { get }
     static var immutableColumns: [String] { get }
@@ -110,6 +111,7 @@ public extension DriverPlugin {
     static var statementCompletions: [CompletionEntry] { [] }
     static var tableEntityName: String { "Tables" }
     static var containerEntityName: String { "Database" }
+    static var schemaEntityName: String { "Schema" }
     static var supportsCascadeDrop: Bool { false }
     static var supportsForeignKeyDisable: Bool { true }
     static var immutableColumns: [String] { [] }

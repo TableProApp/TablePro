@@ -26,6 +26,14 @@ enum ReasoningEffort: String, Codable, Sendable, CaseIterable, Identifiable {
 
     var openAIWireValue: String { rawValue }
 
+    var xaiReasoningEffort: String {
+        switch self {
+        case .minimal, .low: return "low"
+        case .medium:        return "medium"
+        case .high, .xhigh:  return "high"
+        }
+    }
+
     var anthropicAdaptiveEffort: String? {
         switch self {
         case .minimal: return nil

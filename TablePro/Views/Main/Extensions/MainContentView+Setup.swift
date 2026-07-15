@@ -288,6 +288,8 @@ extension MainContentView {
         let selectedTab = tabManager.selectedTab
         if selectedTab?.tabType == .serverDashboard {
             windowTitle = String(localized: "Server Dashboard")
+        } else if selectedTab?.tabType == .usersRoles {
+            windowTitle = String(localized: "Users & Roles")
         } else if selectedTab?.tabType == .createTable {
             windowTitle = String(localized: "Create Table")
         } else if selectedTab?.tabType == .erDiagram {
@@ -305,8 +307,9 @@ extension MainContentView {
             tab: selectedTab,
             connection: connection
         )
+        coordinator.splitViewController?.updateDetailMinimumThickness(for: selectedTab?.tabType)
         viewWindow?.representedURL = selectedTab?.content.sourceFileURL
-        viewWindow?.isDocumentEdited = selectedTab?.content.isFileDirty ?? false
+        viewWindow?.isDocumentEdited = selectedTab?.showsUnsavedIndicator ?? false
     }
 
     /// Configure the hosting NSWindow — called by WindowAccessor when the window is available.
@@ -333,7 +336,7 @@ extension MainContentView {
 
         // Native proxy icon (Cmd+click shows path in Finder) and dirty dot
         window.representedURL = tabManager.selectedTab?.content.sourceFileURL
-        window.isDocumentEdited = tabManager.selectedTab?.content.isFileDirty ?? false
+        window.isDocumentEdited = tabManager.selectedTab?.showsUnsavedIndicator ?? false
 
         commandActions?.window = window
 

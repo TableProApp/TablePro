@@ -47,6 +47,7 @@ extension DatabaseType {
     static let turso = DatabaseType(rawValue: "Turso")
     static let beancount = DatabaseType(rawValue: "Beancount")
     static let elasticsearch = DatabaseType(rawValue: "Elasticsearch")
+    static let surrealdb = DatabaseType(rawValue: "SurrealDB")
 }
 
 extension DatabaseType: Codable {
@@ -430,13 +431,18 @@ struct DatabaseConnection: Identifiable, Hashable {
         set { additionalFields["preConnectScript"] = newValue ?? "" }
     }
 
+    var sshForwardUnixSocketPath: String? {
+        get { additionalFields[DatabaseConnection.sshForwardUnixSocketPathKey]?.nilIfEmpty }
+        set { additionalFields[DatabaseConnection.sshForwardUnixSocketPathKey] = newValue ?? "" }
+    }
+
     init(
         id: UUID = UUID(),
         name: String,
         host: String = "localhost",
         port: Int = 3_306,
         database: String = "",
-        username: String = "root",
+        username: String = "",
         type: DatabaseType = .mysql,
         sshConfig: SSHConfiguration = SSHConfiguration(),
         sslConfig: SSLConfiguration = SSLConfiguration(),
@@ -569,7 +575,7 @@ extension DatabaseConnection: Codable {
         host = try container.decodeIfPresent(String.self, forKey: .host) ?? "localhost"
         port = try container.decodeIfPresent(Int.self, forKey: .port) ?? 3_306
         database = try container.decodeIfPresent(String.self, forKey: .database) ?? ""
-        username = try container.decodeIfPresent(String.self, forKey: .username) ?? "root"
+        username = try container.decodeIfPresent(String.self, forKey: .username) ?? ""
         type = try container.decodeIfPresent(DatabaseType.self, forKey: .type) ?? .mysql
         sshConfig = try container.decodeIfPresent(SSHConfiguration.self, forKey: .sshConfig) ?? SSHConfiguration()
         sslConfig = try container.decodeIfPresent(SSLConfiguration.self, forKey: .sslConfig) ?? SSLConfiguration()

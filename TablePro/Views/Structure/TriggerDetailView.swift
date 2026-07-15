@@ -84,13 +84,14 @@ struct TriggerDetailView: View {
                 TriggerActionBar(triggers: triggers, state: state, canEdit: canEdit, onNew: newTrigger, onEdit: editTrigger, onDelete: { pendingDelete = $0 })
                 Divider()
             }
-            AutosavingVSplitView(
+            AutosavingSplitView(
                 autosaveName: "com.TablePro.triggerSplit",
-                topMinimumHeight: 120,
-                bottomMinimumHeight: 180
+                isVertical: false,
+                primaryMinimum: 120,
+                secondaryMinimum: 180
             ) {
                 TriggerListPane(triggers: triggers, state: state)
-            } bottom: {
+            } secondary: {
                 TriggerDetailPane(triggers: triggers, state: state, databaseType: connection.type, onOpenInEditor: onOpenInEditor)
             }
         }

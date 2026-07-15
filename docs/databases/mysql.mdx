@@ -1,124 +1,84 @@
 ---
-title: MySQL & MariaDB
-description: Connect to MySQL 5.7+/8.0+ and MariaDB 10.x+ using the same MariaDB C connector driver
+title: MySQL
+description: Connect to MySQL 5.7 and later with the bundled MariaDB Connector/C driver
 ---
 
-# MySQL & MariaDB Connections
+# MySQL Connections
 
-TablePro supports MySQL 5.7+, MySQL 8.0+, and MariaDB 10.x+. Both databases share compatible protocols and use the same connection interface.
+TablePro connects to MySQL 5.7 and later through its bundled driver, built on MariaDB Connector/C. MySQL 8's `caching_sha2_password` auth works out of the box. MariaDB uses the same driver; MariaDB-specific notes are on [MariaDB](/databases/mariadb).
 
 ## Quick Setup
 
 <Steps>
   <Step title="Create Connection">
-    Click **New Connection**, select **MySQL** or **MariaDB**, enter host/port/username/password, and click **Create**
+    Click **Create Connection** on the welcome window, pick **MySQL**, and fill in host, port, and credentials
   </Step>
-  <Step title="Test and Connect">
-    Click **Test Connection** to verify
+  <Step title="Test and Save">
+    Click **Test Connection** to verify, then **Save & Connect**
   </Step>
 </Steps>
 
 ## Connection Settings
 
-| Field | Default |
-|-------|---------|
-| **Host** | `localhost` |
-| **Port** | `3306` |
-| **Username** | `root` |
-| **Database** | Leave empty to see all databases (optional) |
+| Field | Default | Notes |
+|-------|---------|-------|
+| **Host** | `localhost` | |
+| **Port** | `3306` | |
+| **Username** | empty | Leave empty to let the server pick its own default |
+| **Database** | empty | Optional. Leave empty to browse all databases |
 
 <Tip>
-Open URLs like `mysql://user:pass@host/db` from your browser to connect directly. See [Connection URL Reference](/databases/connection-urls) for details.
+URLs like `mysql://user:pass@host/db` open a connection directly. See [Connection URL Reference](/databases/connection-urls).
 </Tip>
 
-{/* Screenshot: MySQL connection form */}
-<Frame caption="MySQL connection form">
-  <img
-    className="block dark:hidden"
-    src="/images/mysql-connection-form.png"
-    alt="MySQL connection form"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/mysql-connection-form-dark.png"
-    alt="MySQL connection form"
-  />
-</Frame>
+## Common Setups
 
-## Example Configurations
-
-**Local**: host `localhost:3306`, user `root`
-**Docker**: host `localhost:3306` (or mapped port), password from `MYSQL_ROOT_PASSWORD` env
-**MAMP Pro**: host `localhost:8889`, user/pass `root:root`
-**AWS RDS**: Use the endpoint hostname with a password or AWS IAM (see below)
-**Remote**: Use [SSH tunneling](/databases/ssh-tunneling) for production servers
+| Where | Settings |
+|-------|----------|
+| Homebrew | `localhost:3306` |
+| Docker | `localhost` with the mapped port, password from `MYSQL_ROOT_PASSWORD` |
+| MAMP Pro | `localhost:8889`, user and password `root` |
+| AWS RDS / Aurora | Endpoint hostname, password or [AWS IAM](/databases/aws-iam) |
+| Google Cloud SQL | [Cloud SQL Auth Proxy](/databases/cloud-sql-proxy) |
+| Remote production | [SSH tunnel](/databases/ssh-tunneling) |
 
 ## AWS IAM Authentication
 
-Connect to RDS or Aurora with IAM database authentication instead of a static password. Set **Authentication** in the connection form to one of the AWS IAM options:
+RDS and Aurora connections can use your AWS identity instead of a static password: TablePro signs a fresh 15-minute token on every connect and reconnect. Setup and troubleshooting are on [AWS IAM Authentication](/databases/aws-iam).
 
-- **AWS IAM (Access Key)**: enter an access key ID, secret access key, and optional session token.
-- **AWS IAM (Profile)**: use a named profile from `~/.aws/credentials` or `~/.aws/config`. Profiles that use `credential_process` work too, so you can back the profile with SSO or assume-role via `aws configure export-credentials`.
-- **AWS IAM (SSO)**: use a profile backed by IAM Identity Center. Run `aws sso login --profile <name>` first.
+## Google Cloud SQL
 
-Set **Username** to a database user created with the AWS authentication plugin. The **AWS Region** is detected from the RDS hostname and can be overridden.
+Turn on **Cloud SQL Auth Proxy** in the connection form and enter the instance connection name; TablePro starts and stops the proxy for you. See [Cloud SQL Auth Proxy](/databases/cloud-sql-proxy).
 
-TablePro generates a fresh 15-minute login token on every connect and reconnect, so you never paste an expiring token. SSL is required for IAM and is turned on automatically.
+## Users & Roles
 
-<Warning>
-The database user must be created for IAM auth (`IDENTIFIED WITH AWSAuthenticationPlugin AS 'RDS'`). Connecting fails if the user only has a password.
-</Warning>
+**View > Users & Roles** manages users, roles, and privileges on MySQL servers. Changes are staged, undoable, and shown as SQL before they run. See [Users & Roles](/features/users-roles).
 
-## MySQL vs MariaDB
+## Query Plans
 
-Same driver for both. MySQL 8.0 defaults to `caching_sha2_password` auth (vs MariaDB's `mysql_native_password`). Both support JSON, window functions, and CTEs.
+**EXPLAIN** and **EXPLAIN FORMAT=JSON** results render as a visual plan diagram. See [EXPLAIN Visualization](/features/explain-visualization).
 
-## Features
+<Frame caption="EXPLAIN rendered as a visual plan">
+  <img className="block dark:hidden" src="/images/explain-diagram.png" alt="Visual EXPLAIN plan diagram" />
+  <img className="hidden dark:block" src="/images/explain-diagram-dark.png" alt="Visual EXPLAIN plan diagram" />
+</Frame>
 
-Sidebar shows all accessible databases, tables, structure (columns, indexes, foreign keys), and DDL. Switch databases with **Cmd+K**.
+## Browsing
 
-Table and column comments are shown in the UI: the sidebar shows a table's comment in dimmed text after its name (full text on hover), and the data grid column header tooltip includes the column comment. Turn this off from **View > Show Object Comments**.
+The sidebar lists all accessible databases with each table's structure (columns, indexes, foreign keys) and DDL. Switch databases with **Cmd+K**. JSON columns, window functions, and CTEs run and display like any other query.
 
-Full MySQL syntax support for queries:
+Table and column comments show in the UI: the sidebar dims a table's comment after its name, and the data grid header tooltip includes the column comment. Toggle this with **View > Show Object Comments**.
 
-```sql
--- Select with JSON
-SELECT id, JSON_EXTRACT(data, '$.name') as name
-FROM users
-WHERE JSON_CONTAINS(roles, '"admin"');
+Set session variables (timezone, encoding) on connect with [Startup Commands](/databases/overview#startup-commands).
 
--- Window functions
-SELECT
-    department,
-    employee,
-    salary,
-    RANK() OVER (PARTITION BY department ORDER BY salary DESC) as rank
-FROM employees;
+## SSL/TLS
 
--- CTEs
-WITH RECURSIVE category_tree AS (
-    SELECT id, name, parent_id, 0 as level
-    FROM categories WHERE parent_id IS NULL
-    UNION ALL
-    SELECT c.id, c.name, c.parent_id, ct.level + 1
-    FROM categories c
-    JOIN category_tree ct ON c.parent_id = ct.id
-)
-SELECT * FROM category_tree;
-```
+New connections default to **Preferred**: the driver tries TLS first and retries in plain text only after an SSL handshake error (auth and network errors are not retried). This works for Cloud SQL, Azure MySQL, and local Docker alike. Use **Verify CA** with the provider's certificate for strict validation. See [SSL/TLS](/features/ssl).
 
 ## Troubleshooting
 
-**Connection refused**: Check MySQL is running (`brew services start mysql`), verify correct port/host, ensure `skip-networking` is not set.
+**Connection refused**: check the server is running (`brew services start mysql`), the port is right, and `skip-networking` is not set.
 
-**Access denied**: Verify credentials and user privileges with `SHOW GRANTS FOR 'user'@'host';`
+**Access denied**: verify credentials and privileges with `SHOW GRANTS FOR 'user'@'host';`.
 
-**MySQL 8.0 auth issues**: Use native password with `ALTER USER 'username'@'localhost' IDENTIFIED WITH mysql_native_password BY 'password';` or set `default_authentication_plugin=mysql_native_password` in `my.cnf`.
-
-### SSL/TLS
-
-New connections default to **Preferred**, which does a 2-pass connect: tries TLS first, falls back to plain only on SSL handshake errors (auth and network errors are not retried). Works for Cloud SQL, Azure MySQL, and local Docker. Use **Verify CA** with the provider's certificate for stricter validation. See [SSL/TLS](/features/ssl) for details.
-
-## Performance Tips
-
-Use `LIMIT` for large tables, enable pagination, create indexes, and use `EXPLAIN` for slow queries. Set session variables (timezone, encoding) via [Startup Commands](/databases/overview#startup-commands).
+**Auth plugin errors**: `caching_sha2_password` is supported natively. If a plugin error persists, check the user's plugin with `SELECT user, plugin FROM mysql.user;`.

@@ -28,6 +28,7 @@ enum SSHTunnelError: Error, LocalizedError, Equatable {
     case connectionTimeout
     case hostKeyVerificationFailed
     case channelOpenFailed
+    case socketForwardingRefused(path: String, detail: String)
 
     var errorDescription: String? {
         switch self {
@@ -56,6 +57,17 @@ enum SSHTunnelError: Error, LocalizedError, Equatable {
             return String(localized: "SSH host key verification failed")
         case .channelOpenFailed:
             return String(localized: "Failed to open SSH channel for port forwarding")
+        case .socketForwardingRefused(let path, let detail):
+            return String(
+                format: String(
+                    localized: """
+                    The SSH server would not forward the socket %@. Check that the path exists on the server \
+                    and that sshd allows socket forwarding (AllowStreamLocalForwarding). (%@)
+                    """
+                ),
+                path,
+                detail
+            )
         }
     }
 }
@@ -89,8 +101,7 @@ actor SSHTunnelManager: TunnelManaging {
         keyPassphrase: String? = nil,
         sshPassword: String? = nil,
         agentSocketPath: String? = nil,
-        remoteHost: String,
-        remotePort: Int,
+        destination: SSHForwardDestination,
         jumpHosts: [SSHJumpHost] = [],
         totpMode: TOTPMode = .none,
         totpSecret: String? = nil,
@@ -132,8 +143,7 @@ actor SSHTunnelManager: TunnelManaging {
                         connectionId: connectionId,
                         config: config,
                         credentials: credentials,
-                        remoteHost: remoteHost,
-                        remotePort: remotePort,
+                        destination: destination,
                         localPort: localPort
                     )
                 }.value
@@ -147,7 +157,7 @@ actor SSHTunnelManager: TunnelManaging {
                 tunnels[connectionId] = tunnel
                 Self.tunnelRegistry.withLock { $0[connectionId] = tunnel }
 
-                tunnel.startForwarding(remoteHost: remoteHost, remotePort: remotePort)
+                tunnel.startForwarding(destination: destination)
                 tunnel.startKeepAlive()
 
                 updateAppNapState()

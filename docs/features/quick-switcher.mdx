@@ -1,0 +1,58 @@
+---
+title: Quick Switcher
+description: Search and jump to any table, view, database, schema, saved query, or recent query
+---
+
+# Quick Switcher
+
+Press `Cmd+Shift+O` (or **Query** > **Quick Switcher**) in a connection window to open a floating search panel. Type a few characters and press `Return` to jump to any table, view, system table, database, schema, saved query, or recent query. Matching is fuzzy: `usr` finds `users` and `user_settings`, and matched characters are shown in bold.
+
+<Frame caption="The Quick Switcher with fuzzy-matched results">
+  <img className="block dark:hidden" src="/images/quick-switcher.png" alt="Quick Switcher panel" />
+  <img className="hidden dark:block" src="/images/quick-switcher-dark.png" alt="Quick Switcher panel" />
+</Frame>
+
+## Keys
+
+| Action | Shortcut |
+|--------|----------|
+| Open Quick Switcher | `Cmd+Shift+O` |
+| Move selection | `Up` / `Down`, or `Ctrl+J`/`Ctrl+N` and `Ctrl+K`/`Ctrl+P` |
+| Open selected item | `Return` (double-click also works) |
+| Open in a new window tab | `Option+Return` |
+| Switch scope | `Cmd+1` to `Cmd+4` |
+| Dismiss | `Escape`, `Cmd+Shift+O` again, or click outside |
+
+The opening shortcut is rebindable in **Settings** > **Keyboard**; see [Keyboard Shortcuts](/features/keyboard-shortcuts).
+
+## Scopes
+
+Four scopes limit what the search covers: **All** (`Cmd+1`), **Tables** (`Cmd+2`, includes views and system tables), **Databases** (`Cmd+3`, includes schemas), and **Queries** (`Cmd+4`, saved queries and recent queries). Round buttons beside the field set the scope; they show while the field is empty and nothing is listed. Once the list fills, the active scope moves to a badge in the bar. Click the badge to return to All. With an empty search in a scope other than All, everything in that scope is listed under section headers. The database list follows the sidebar's database filter.
+
+Saved queries come from your [favorites](/features/favorites) and also match on their keyword. Recent queries are the last 50 entries from [query history](/features/query-history) for the connection.
+
+## Ranking
+
+With an empty search, the panel shows a **Recent** section: the last 10 items you opened through the switcher on this connection. With a query, each result's fuzzy match score is weighted by:
+
+- **Object kind**: tables rank above views, databases, schemas, and saved queries; query history ranks last.
+- **Frecency**: each item's last 10 opens through the switcher, weighted by how recent they are, tracked per connection.
+- **Open tab boost**: tables already open in a tab rank higher.
+
+The list shows at most 200 results.
+
+## Open badge
+
+Tables already open in a tab show an **Open** badge, and the selected row's hint reads **Switch to Tab**. Committing switches to the existing tab instead of opening a duplicate. `Option+Return` forces a new window tab.
+
+What opening does depends on the item: tables and views open a table tab, databases and schemas switch the active database or schema, and queries load into the SQL editor.
+
+## Right-click actions
+
+| Action | Applies to |
+|--------|------------|
+| Open | All items |
+| Open in New Tab | Tables, views, system tables |
+| Open Structure | Tables, views, system tables |
+| Copy Name | All items |
+| Copy Query | Saved and recent queries |

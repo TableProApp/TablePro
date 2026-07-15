@@ -60,6 +60,11 @@ final class DatabaseManager {
 
     @ObservationIgnored internal let ensureConnectedDedup = OnceTask<UUID, Void>()
 
+    /// Generation token per connection. A cancelled or superseded attempt keeps running
+    /// when its driver blocks in a C call, so every attempt validates its generation
+    /// before touching shared session state and discards its driver when it lost.
+    @ObservationIgnored internal var connectionAttempts = ConnectionAttemptRegistry()
+
     /// Current session (computed from currentSessionId)
     var currentSession: ConnectionSession? {
         guard let sessionId = currentSessionId else { return nil }

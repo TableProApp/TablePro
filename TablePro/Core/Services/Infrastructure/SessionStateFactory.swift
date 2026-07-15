@@ -158,6 +158,8 @@ enum SessionStateFactory {
                     )
                 case .serverDashboard:
                     tabMgr.addServerDashboardTab()
+                case .usersRoles:
+                    tabMgr.addUsersRolesTab()
                 }
             case .newEmptyTab:
                 let allTabs = MainContentCoordinator.allTabs(for: connection.id)

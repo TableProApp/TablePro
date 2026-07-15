@@ -401,6 +401,11 @@ extension PluginManager {
         containerEntityName(for: databaseType) + "s"
     }
 
+    func schemaEntityName(for databaseType: DatabaseType) -> String {
+        PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
+            .schema.schemaEntityName ?? "Schema"
+    }
+
     func supportsCascadeDrop(for databaseType: DatabaseType) -> Bool {
         PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
             .capabilities.supportsCascadeDrop ?? false

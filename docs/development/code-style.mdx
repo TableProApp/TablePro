@@ -5,15 +5,20 @@ description: Swift conventions, tooling, naming, and file organization rules
 
 # Code Style
 
-## Tools
-
 `.swiftlint.yml` and `.swiftformat` are the source of truth. When in doubt, check those files.
 
-```bash
-# Check for issues
-swiftlint lint
+## Core Rules
 
-# Auto-fix
+- **No comments.** Code must be self-explanatory through naming and structure. Do not add comments that describe what code does, reference tickets, or explain callers.
+- **Early returns.** Use `guard` and early `return` instead of nested `if/else` blocks. Flatten control flow.
+
+## Tools
+
+```bash
+# Pre-commit gate (CI rejects warnings, so --strict is required)
+swiftlint lint --strict
+
+# Auto-fix lint issues
 swiftlint --fix
 
 # Format all code
@@ -23,7 +28,7 @@ swiftformat .
 swiftformat --lint .
 ```
 
-SwiftLint also runs during Xcode builds automatically.
+There is no SwiftLint build phase in the Xcode project. Lint runs manually and in CI.
 
 ## Formatting
 
@@ -34,7 +39,8 @@ SwiftLint also runs during Xcode builds automatically.
 | Braces | K&R (opening brace on same line) |
 | Line endings | LF |
 | Semicolons | None |
-| Trailing commas | None |
+
+Trailing commas are omitted by convention. Both tools have their trailing-comma rules disabled, so nothing enforces it.
 
 ## Naming
 
@@ -60,16 +66,16 @@ public extension NSEvent {
 
 ## Imports
 
-System frameworks first (alphabetical), then third-party, then local. Blank line after imports.
+One alphabetical block, no blank lines between imports, one blank line after the last import. SwiftFormat enforces this (`--importgrouping alpha`, `blankLinesBetweenImports`, `blankLineAfterImports`).
 
 ```swift
 import AppKit
+import CodeEditSourceEditor
 import Foundation
 import os
-
-import CodeEditSourceEditor
-
 import TableProPluginKit
+
+final class QueryRunner { ... }
 ```
 
 ## Safety

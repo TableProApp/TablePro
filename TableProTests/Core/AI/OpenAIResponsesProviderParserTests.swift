@@ -58,6 +58,22 @@ struct OpenAIResponsesProviderParserTests {
         #expect(text == "I should look at")
     }
 
+    @Test("reasoning_text.delta yields reasoningDelta for xAI raw reasoning")
+    func reasoningTextDelta() throws {
+        var state = ResponsesStreamState()
+        let events = try parse([
+            "type": "response.reasoning_text.delta",
+            "item_id": "rs_grok",
+            "delta": "Let me check the schema"
+        ], state: &state)
+        guard case .reasoningDelta(let id, let text) = events.first else {
+            Issue.record("expected reasoningDelta; got \(events)")
+            return
+        }
+        #expect(id == "rs_grok")
+        #expect(text == "Let me check the schema")
+    }
+
     @Test("output_item.done reasoning yields reasoningEnd with encrypted opaque and real itemID")
     func reasoningEndCarriesEncryptedOpaque() throws {
         var state = ResponsesStreamState()

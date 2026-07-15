@@ -21,4 +21,5 @@ public struct PluginCapabilities: OptionSet, Sendable {
     public static let cancelQuery           = PluginCapabilities(rawValue: 1 << 9)
     public static let batchExecute          = PluginCapabilities(rawValue: 1 << 10)
     public static let transactions          = PluginCapabilities(rawValue: 1 << 11)
+    public static let userManagement        = PluginCapabilities(rawValue: 1 << 12)
 }

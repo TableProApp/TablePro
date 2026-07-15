@@ -314,6 +314,9 @@
         }
       }
     },
+    "“%@” owns database objects" : {
+
+    },
     "\"%@\" was changed since you opened it. Review the diff and choose how to resolve." : {
       "localizations" : {
         "tr" : {
@@ -2068,6 +2071,9 @@
         }
       }
     },
+    "%@_name" : {
+
+    },
     "%@, %@" : {
       "localizations" : {
         "en" : {
@@ -2101,6 +2107,9 @@
           }
         }
       }
+    },
+    "%@, pinned" : {
+
     },
     "%@: %@" : {
       "localizations" : {
@@ -2359,8 +2368,20 @@
         }
       }
     },
+    "%1$@ (%2$@)" : {
+
+    },
+    "%1$@ +%2$lld" : {
+
+    },
     "%1$@, %2$@" : {
       "shouldTranslate" : false
+    },
+    "%1$lld of %2$lld statements were applied. This connection does not roll back user and role changes." : {
+
+    },
+    "%1$lld users, %2$lld roles" : {
+
     },
     "%d cells selected, rows %d to %d, columns %d to %d" : {
       "localizations" : {
@@ -3106,6 +3127,15 @@
         }
       }
     },
+    "%lld inside" : {
+
+    },
+    "%lld objects" : {
+
+    },
+    "%lld objects selected" : {
+
+    },
     "%lld of %lld" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -3210,6 +3240,12 @@
         }
       }
     },
+    "%lld pending changes" : {
+
+    },
+    "%lld privileges" : {
+
+    },
     "%lld pt" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -3238,6 +3274,9 @@
           }
         }
       }
+    },
+    "%lld roles own database objects" : {
+
     },
     "%lld row(s) affected" : {
       "localizations" : {
@@ -5338,6 +5377,9 @@
         }
       }
     },
+    "A connection can use one connection method at a time. Disable the other one to use the Cloud SQL Auth Proxy." : {
+
+    },
     "A connection can use one tunnel at a time. Disable the SSH Tunnel to use a Cloudflare Tunnel." : {
       "localizations" : {
         "tr" : {
@@ -5366,7 +5408,11 @@
         }
       }
     },
+    "A connection can use only one connection method at a time. Enabled: %@." : {
+
+    },
     "A connection cannot use SSH and Cloudflare tunnels at the same time." : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -5422,6 +5468,9 @@
         }
       }
     },
+    "A different file already exists at %@." : {
+
+    },
     "A fast, lightweight native macOS database client" : {
       "localizations" : {
         "tr" : {
@@ -5449,6 +5498,12 @@
           }
         }
       }
+    },
+    "A key from the xAI Console bills xAI API credits. Grok 4.5 and Grok 4.3 are available." : {
+
+    },
+    "A new password will be set when you apply changes." : {
+
     },
     "A newer TablePro is required to load this plugin." : {
       "localizations" : {
@@ -5506,6 +5561,12 @@
         }
       }
     },
+    "A service account key is required" : {
+
+    },
+    "A superuser bypasses all permission checks." : {
+
+    },
     "A sync conflict was detected and needs to be resolved." : {
       "localizations" : {
         "tr" : {
@@ -5533,6 +5594,9 @@
           }
         }
       }
+    },
+    "A user or role with this name already exists." : {
+
     },
     "About TablePro" : {
       "localizations" : {
@@ -5680,6 +5744,9 @@
           }
         }
       }
+    },
+    "Access Method" : {
+
     },
     "Access uses your ChatGPT subscription (Plus, Pro, Business, or Enterprise) and follows OpenAI's terms. This is an unofficial interface that may change." : {
       "localizations" : {
@@ -8034,6 +8101,9 @@
         }
       }
     },
+    "All (%lld)" : {
+
+    },
     "All %d rows selected" : {
       "localizations" : {
         "tr" : {
@@ -8203,6 +8273,9 @@
           }
         }
       }
+    },
+    "All Objects" : {
+
     },
     "All rights reserved." : {
       "extractionState" : "stale",
@@ -9671,6 +9744,9 @@
         }
       }
     },
+    "Application Default Credentials" : {
+
+    },
     "Applied" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -10072,6 +10148,9 @@
           }
         }
       }
+    },
+    "Apply User and Role Changes" : {
+
     },
     "Applying or clearing filters will reload data and discard all unsaved changes." : {
       "localizations" : {
@@ -10751,6 +10830,9 @@
         }
       }
     },
+    "Attributes" : {
+
+    },
     "Auth" : {
       "localizations" : {
         "tr" : {
@@ -10778,6 +10860,9 @@
           }
         }
       }
+    },
+    "Auth Level" : {
+
     },
     "Auth Method" : {
       "localizations" : {
@@ -11432,6 +11517,9 @@
           }
         }
       }
+    },
+    "Available after SET ROLE %@." : {
+
     },
     "Available in all connections" : {
 
@@ -12524,6 +12612,9 @@
         }
       }
     },
+    "Bulk actions" : {
+
+    },
     "Bundle ID" : {
       "localizations" : {
         "tr" : {
@@ -12862,6 +12953,15 @@
           }
         }
       }
+    },
+    "Can grant these privileges to others." : {
+
+    },
+    "Can grant to others" : {
+
+    },
+    "Can log in" : {
+
     },
     "Cancel" : {
       "localizations" : {
@@ -13405,6 +13505,21 @@
         }
       }
     },
+    "Cannot use Cloud SQL Auth Proxy and Cloudflare Tunnel at the same time" : {
+
+    },
+    "Cannot use Cloud SQL Auth Proxy and SSH Tunnel at the same time" : {
+
+    },
+    "Cannot use Cloudflare Tunnel and Cloud SQL Auth Proxy at the same time" : {
+
+    },
+    "Cannot use Cloudflare Tunnel and SSH Tunnel at the same time" : {
+
+    },
+    "Cannot use SSH Tunnel and Cloud SQL Auth Proxy at the same time" : {
+
+    },
     "Cannot use SSH Tunnel and Cloudflare Tunnel at the same time" : {
       "localizations" : {
         "tr" : {
@@ -13860,6 +13975,9 @@
         }
       }
     },
+    "Change Attributes" : {
+
+    },
     "Change Color" : {
       "localizations" : {
         "tr" : {
@@ -13944,6 +14062,18 @@
           }
         }
       }
+    },
+    "Change Password" : {
+
+    },
+    "Change password for %@" : {
+
+    },
+    "Change Password for %@" : {
+
+    },
+    "Change Password…" : {
+
     },
     "Change Primary Key" : {
       "localizations" : {
@@ -14233,6 +14363,9 @@
           }
         }
       }
+    },
+    "Checking owned objects…" : {
+
     },
     "Chinook (Sample)" : {
       "localizations" : {
@@ -14718,6 +14851,9 @@
           }
         }
       }
+    },
+    "Choose what happens to them when the role is dropped." : {
+
     },
     "Choose where to save the dump of “%@”." : {
       "localizations" : {
@@ -16482,6 +16618,21 @@
         }
       }
     },
+    "Cloud SQL Auth Proxy" : {
+
+    },
+    "Cloud SQL Auth Proxy disconnected. Click to reconnect." : {
+
+    },
+    "Cloud SQL Instance" : {
+
+    },
+    "cloud-sql-proxy not found. Install it with `brew install cloud-sql-proxy`, download it above, or choose the binary." : {
+
+    },
+    "cloud-sql-proxy was not found. Install it with `brew install cloud-sql-proxy`, or download it in the Cloud SQL Auth Proxy settings." : {
+
+    },
     "Cloudflare Access needs a browser sign-in. Sign in at %@, then reconnect." : {
       "localizations" : {
         "tr" : {
@@ -17485,6 +17636,9 @@
         }
       }
     },
+    "Command Line" : {
+
+    },
     "Command Preview" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -18098,6 +18252,9 @@
         }
       }
     },
+    "Connect over private IP" : {
+
+    },
     "Connect to a saved database" : {
       "localizations" : {
         "tr" : {
@@ -18670,6 +18827,9 @@
           }
         }
       }
+    },
+    "Connection limit" : {
+
     },
     "Connection lost" : {
       "extractionState" : "stale",
@@ -20508,6 +20668,18 @@
         }
       }
     },
+    "Copy Privileges" : {
+
+    },
+    "Copy Privileges from %@" : {
+
+    },
+    "Copy Privileges From…" : {
+
+    },
+    "Copy privileges to %@" : {
+
+    },
     "Copy Query" : {
       "localizations" : {
         "tr" : {
@@ -21296,6 +21468,9 @@
         }
       }
     },
+    "Could not remove %@." : {
+
+    },
     "Could Not Reset Sample" : {
       "localizations" : {
         "tr" : {
@@ -21379,6 +21554,15 @@
           }
         }
       }
+    },
+    "Could not start the sign-in listener. Please try again." : {
+
+    },
+    "Could not write %@." : {
+
+    },
+    "Could not write the Google Cloud service account key to a temporary file." : {
+
     },
     "Could not write to file. Check that the file is writable." : {
       "localizations" : {
@@ -21528,6 +21712,9 @@
           }
         }
       }
+    },
+    "Create %@" : {
+
     },
     "Create a connection to get started" : {
       "extractionState" : "stale",
@@ -22162,6 +22349,9 @@
         }
       }
     },
+    "Credentials" : {
+
+    },
     "CRITICAL: Transaction rollback failed - database may be in inconsistent state: %@" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -22304,6 +22494,9 @@
           }
         }
       }
+    },
+    "Current %@" : {
+
     },
     "Current %@: %@ (⌘K to %@)" : {
       "localizations" : {
@@ -22488,6 +22681,7 @@
       }
     },
     "Current schema" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -24006,6 +24200,7 @@
       }
     },
     "database_name" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -26406,6 +26601,9 @@
         }
       }
     },
+    "Disable Cloudflare Tunnel" : {
+
+    },
     "Disable foreign key checks" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -27276,6 +27474,9 @@
         }
       }
     },
+    "Download cloud-sql-proxy..." : {
+
+    },
     "Downloads" : {
       "localizations" : {
         "tr" : {
@@ -27758,6 +27959,9 @@
         }
       }
     },
+    "Drop owned objects" : {
+
+    },
     "Drop Partition" : {
       "localizations" : {
         "tr" : {
@@ -27813,6 +28017,9 @@
           }
         }
       }
+    },
+    "Drop Role" : {
+
     },
     "Drop selected database" : {
       "extractionState" : "stale",
@@ -27932,6 +28139,9 @@
           }
         }
       }
+    },
+    "Drop…" : {
+
     },
     "Dropping..." : {
       "extractionState" : "stale",
@@ -28358,6 +28568,9 @@
           }
         }
       }
+    },
+    "Dynamic" : {
+
     },
     "e.g., Claude Code on VPS" : {
       "localizations" : {
@@ -29046,6 +29259,9 @@
         }
       }
     },
+    "Edit…" : {
+
+    },
     "Editable Hex" : {
       "localizations" : {
         "tr" : {
@@ -29186,6 +29402,9 @@
           }
         }
       }
+    },
+    "Effective" : {
+
     },
     "ElastiCache IAM authentication requires TLS. Enable SSL in the connection's SSL settings." : {
       "localizations" : {
@@ -29467,6 +29686,9 @@
           }
         }
       }
+    },
+    "Enable Cloud SQL Auth Proxy" : {
+
     },
     "Enable Cloudflare Tunnel" : {
       "localizations" : {
@@ -30001,6 +30223,9 @@
           }
         }
       }
+    },
+    "Enter an absolute path, as it appears on the SSH server." : {
+
     },
     "Enter database name" : {
       "extractionState" : "stale",
@@ -33551,6 +33776,9 @@
         }
       }
     },
+    "Failed to load" : {
+
+    },
     "Failed to Load" : {
       "localizations" : {
         "tr" : {
@@ -35483,6 +35711,9 @@
         }
       }
     },
+    "Filter objects" : {
+
+    },
     "Filter operator" : {
       "localizations" : {
         "tr" : {
@@ -35596,6 +35827,12 @@
           }
         }
       }
+    },
+    "Filter privileges" : {
+
+    },
+    "Filter roles" : {
+
     },
     "Filter settings" : {
       "extractionState" : "stale",
@@ -35913,6 +36150,9 @@
           }
         }
       }
+    },
+    "Find this on the instance's overview page in the Google Cloud console." : {
+
     },
     "Find..." : {
       "localizations" : {
@@ -36537,6 +36777,12 @@
           }
         }
       }
+    },
+    "Forget" : {
+
+    },
+    "Forget All" : {
+
     },
     "Format JSON" : {
       "extractionState" : "stale",
@@ -37663,6 +37909,21 @@
         }
       }
     },
+    "Grant %1$@ on %2$@" : {
+
+    },
+    "Grant All" : {
+
+    },
+    "Grant privileges to %@" : {
+
+    },
+    "Granted" : {
+
+    },
+    "Granted on %@" : {
+
+    },
     "Graphite" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -37946,6 +38207,9 @@
           }
         }
       }
+    },
+    "Has unsaved changes" : {
+
     },
     "Help improve TablePro by sharing anonymous usage statistics (no personal data or queries)." : {
       "localizations" : {
@@ -38341,6 +38605,9 @@
         }
       }
     },
+    "Host:" : {
+
+    },
     "Host: %@" : {
       "localizations" : {
         "tr" : {
@@ -38735,6 +39002,9 @@
           }
         }
       }
+    },
+    "Identity" : {
+
     },
     "If macOS asks for your login password, click Always Allow on each prompt." : {
       "localizations" : {
@@ -40436,6 +40706,12 @@
         }
       }
     },
+    "Inherited automatically." : {
+
+    },
+    "Inherited from %@" : {
+
+    },
     "Inline Configuration" : {
       "localizations" : {
         "en" : {
@@ -41145,6 +41421,12 @@
           }
         }
       }
+    },
+    "Instance connection name" : {
+
+    },
+    "Instance connection name must be project:region:instance" : {
+
     },
     "Integer" : {
       "localizations" : {
@@ -43004,6 +43286,12 @@
         }
       }
     },
+    "Kind" : {
+
+    },
+    "Kind:" : {
+
+    },
     "Language:" : {
       "localizations" : {
         "tr" : {
@@ -44093,6 +44381,9 @@
         }
       }
     },
+    "Limits" : {
+
+    },
     "Line %lld: %@" : {
       "localizations" : {
         "en" : {
@@ -44295,6 +44586,9 @@
           }
         }
       }
+    },
+    "Links you chose to always allow. TablePro connects without asking. Only connections on this machine can be trusted." : {
+
     },
     "List" : {
       "localizations" : {
@@ -45424,6 +45718,9 @@
           }
         }
       }
+    },
+    "Loading users and roles..." : {
+
     },
     "Loading..." : {
       "extractionState" : "stale",
@@ -47215,6 +47512,15 @@
         }
       }
     },
+    "Member of" : {
+
+    },
+    "Member Of" : {
+
+    },
+    "Membership" : {
+
+    },
     "Memory Limit" : {
       "localizations" : {
         "tr" : {
@@ -47495,6 +47801,9 @@
           }
         }
       }
+    },
+    "Mixed Selection" : {
+
     },
     "Mode" : {
       "localizations" : {
@@ -48232,6 +48541,9 @@
         }
       }
     },
+    "Multi-model database with SurrealQL" : {
+
+    },
     "Multiple statements are not permitted for this client" : {
       "localizations" : {
         "tr" : {
@@ -48435,7 +48747,6 @@
       }
     },
     "Name:" : {
-      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -48462,6 +48773,9 @@
           }
         }
       }
+    },
+    "Namespace" : {
+
     },
     "Navigate to referenced row" : {
       "extractionState" : "stale",
@@ -49282,6 +49596,9 @@
         }
       }
     },
+    "New password:" : {
+
+    },
     "New Query" : {
       "localizations" : {
         "tr" : {
@@ -49306,34 +49623,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "新增查詢"
-          }
-        }
-      }
-    },
-    "New Query, favorite, or folder" : {
-      "localizations" : {
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Yeni sorgu, sık kullanılan veya klasör"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Truy vấn mới, mục yêu thích hoặc thư mục"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "新建查询、收藏或文件夹"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "新增查詢、我的最愛或資料夾"
           }
         }
       }
@@ -49420,6 +49709,34 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "新增查詢分頁 (⌘T)"
+          }
+        }
+      }
+    },
+    "New Query, favorite, or folder" : {
+      "localizations" : {
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Yeni sorgu, sık kullanılan veya klasör"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Truy vấn mới, mục yêu thích hoặc thư mục"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新建查询、收藏或文件夹"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新增查詢、我的最愛或資料夾"
           }
         }
       }
@@ -49621,6 +49938,9 @@
       }
     },
     "New Trigger" : {
+
+    },
+    "New User or Role" : {
 
     },
     "New View" : {
@@ -50107,6 +50427,9 @@
           }
         }
       }
+    },
+    "No available local port for the Cloud SQL Auth Proxy." : {
+
     },
     "No available local port for the Cloudflare tunnel." : {
       "localizations" : {
@@ -51070,6 +51393,9 @@
         }
       }
     },
+    "No links are trusted yet." : {
+
+    },
     "No matching %@" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -51471,6 +51797,9 @@
         }
       }
     },
+    "No Object Selected" : {
+
+    },
     "No objects found" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -51642,6 +51971,15 @@
           }
         }
       }
+    },
+    "No privileges" : {
+
+    },
+    "No Privileges" : {
+
+    },
+    "No privileges can be granted at this level." : {
+
     },
     "No providers configured" : {
       "localizations" : {
@@ -52349,6 +52687,9 @@
         }
       }
     },
+    "No Users or Roles" : {
+
+    },
     "No valid rows found in clipboard data." : {
       "localizations" : {
         "tr" : {
@@ -52546,6 +52887,9 @@
         }
       }
     },
+    "Not browsable on this connection" : {
+
+    },
     "Not configured" : {
       "localizations" : {
         "tr" : {
@@ -52714,6 +53058,9 @@
           }
         }
       }
+    },
+    "Not granted" : {
+
     },
     "not in list" : {
       "localizations" : {
@@ -52940,6 +53287,9 @@
         }
       }
     },
+    "Not signed in to xAI." : {
+
+    },
     "Not supported for this database." : {
       "localizations" : {
         "tr" : {
@@ -53023,6 +53373,9 @@
           }
         }
       }
+    },
+    "Not visible" : {
+
     },
     "NOW()" : {
       "extractionState" : "stale",
@@ -53475,6 +53828,9 @@
           }
         }
       }
+    },
+    "Object" : {
+
     },
     "Off" : {
       "localizations" : {
@@ -54408,6 +54764,9 @@
         }
       }
     },
+    "Open in Query Editor" : {
+
+    },
     "Open in Window" : {
       "localizations" : {
         "tr" : {
@@ -54920,6 +55279,9 @@
         }
       }
     },
+    "Opens database URLs from the terminal, such as a DDEV project database." : {
+
+    },
     "Operation cancelled by user" : {
       "localizations" : {
         "tr" : {
@@ -55315,6 +55677,9 @@
           }
         }
       }
+    },
+    "Optional. Set this to reach a database that only listens on a Unix socket." : {
+
     },
     "Options" : {
       "localizations" : {
@@ -56172,6 +56537,9 @@
         }
       }
     },
+    "Partly granted" : {
+
+    },
     "Passphrase" : {
       "localizations" : {
         "tr" : {
@@ -56514,6 +56882,9 @@
           }
         }
       }
+    },
+    "Password:" : {
+
     },
     "Passwords will be encrypted with the passphrase you provide." : {
       "extractionState" : "stale",
@@ -57223,6 +57594,9 @@
           }
         }
       }
+    },
+    "Plain-text accounting ledgers" : {
+
     },
     "Plan: %@" : {
       "localizations" : {
@@ -57975,6 +58349,9 @@
           }
         }
       }
+    },
+    "Point at the socket file itself, not the directory holding it." : {
+
     },
     "Port" : {
       "localizations" : {
@@ -59572,6 +59949,12 @@
           }
         }
       }
+    },
+    "Privilege" : {
+
+    },
+    "Privileges" : {
+
     },
     "Pro" : {
       "localizations" : {
@@ -61986,6 +62369,12 @@
         }
       }
     },
+    "Reassign owned objects" : {
+
+    },
+    "Reassign to" : {
+
+    },
     "Recent" : {
       "localizations" : {
         "tr" : {
@@ -62155,6 +62544,9 @@
         }
       }
     },
+    "Recently Closed" : {
+
+    },
     "Recheck" : {
       "localizations" : {
         "tr" : {
@@ -62268,6 +62660,9 @@
           }
         }
       }
+    },
+    "Record Access" : {
+
     },
     "Recording shortcut" : {
       "localizations" : {
@@ -63987,6 +64382,9 @@
         }
       }
     },
+    "Reopen Closed Tab" : {
+
+    },
     "Reopen Last Session" : {
       "localizations" : {
         "tr" : {
@@ -65505,6 +65903,9 @@
         }
       }
     },
+    "Review & Apply…" : {
+
+    },
     "Revoke" : {
       "localizations" : {
         "tr" : {
@@ -65532,6 +65933,15 @@
           }
         }
       }
+    },
+    "Revoke %1$@ on %2$@" : {
+
+    },
+    "Revoke All" : {
+
+    },
+    "Revoke privileges from %@" : {
+
     },
     "Revoked" : {
       "localizations" : {
@@ -65646,7 +66056,11 @@
         }
       }
     },
+    "Role Attributes" : {
+
+    },
     "root" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -65673,6 +66087,9 @@
           }
         }
       }
+    },
+    "Root" : {
+
     },
     "Root Level" : {
       "localizations" : {
@@ -67484,6 +67901,9 @@
         }
       }
     },
+    "Schema and table privileges in this database are only visible when the connection is using it." : {
+
+    },
     "Schema change was not authorized" : {
       "localizations" : {
         "tr" : {
@@ -68714,6 +69134,9 @@
         }
       }
     },
+    "Select %@" : {
+
+    },
     "Select %@ file to import" : {
       "localizations" : {
         "tr" : {
@@ -68939,6 +69362,9 @@
         }
       }
     },
+    "Select a user or role to view its privileges." : {
+
+    },
     "Select All" : {
       "localizations" : {
         "tr" : {
@@ -68994,6 +69420,9 @@
           }
         }
       }
+    },
+    "Select an object on the left to edit its privileges." : {
+
     },
     "Select Connections" : {
       "localizations" : {
@@ -69165,6 +69594,9 @@
         }
       }
     },
+    "Select objects of the same kind to edit their privileges." : {
+
+    },
     "Select Plugin" : {
       "localizations" : {
         "tr" : {
@@ -69197,6 +69629,7 @@
 
     },
     "Select schema" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -69776,6 +70209,9 @@
         }
       }
     },
+    "Service account key (JSON)" : {
+
+    },
     "Service Name" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -70035,6 +70471,9 @@
         }
       }
     },
+    "Set Password" : {
+
+    },
     "Set special value" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -70063,6 +70502,9 @@
           }
         }
       }
+    },
+    "Set the connection's username to the IAM principal (a user email, or `name@project.iam` for a service account). The database password is not used." : {
+
     },
     "Set to NULL" : {
       "localizations" : {
@@ -70942,6 +71384,9 @@
     "Show Object Comments" : {
 
     },
+    "Show password" : {
+
+    },
     "Show Previous Tab" : {
       "localizations" : {
         "tr" : {
@@ -71029,7 +71474,11 @@
         }
       }
     },
+    "Show System %@s" : {
+
+    },
     "Show System Schemas" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -71621,6 +72070,9 @@
         }
       }
     },
+    "Sign in with xAI" : {
+
+    },
     "Sign Out" : {
       "localizations" : {
         "tr" : {
@@ -71872,6 +72324,9 @@
           }
         }
       }
+    },
+    "Signed in with xAI" : {
+
     },
     "Signing in…" : {
       "localizations" : {
@@ -72383,6 +72838,9 @@
           }
         }
       }
+    },
+    "Socket Path" : {
+
     },
     "Software Update" : {
       "localizations" : {
@@ -74352,6 +74810,9 @@
         }
       }
     },
+    "Starts and stops the Cloud SQL Auth Proxy with this connection and routes it through a local port." : {
+
+    },
     "starts with" : {
       "localizations" : {
         "tr" : {
@@ -75151,6 +75612,9 @@
           }
         }
       }
+    },
+    "Stored in the macOS Keychain and written to a temporary file only while the proxy runs." : {
+
     },
     "Streaming failed: %@" : {
       "localizations" : {
@@ -77148,6 +77612,12 @@
         }
       }
     },
+    "tablepro command" : {
+
+    },
+    "TablePro could not do this for you. Run this in Terminal instead:" : {
+
+    },
     "TablePro couldn't reach the plugin registry to update this plugin. Check your connection and reopen TablePro." : {
       "localizations" : {
         "tr" : {
@@ -77315,6 +77785,9 @@
           }
         }
       }
+    },
+    "Tables, views, and functions owned by this role will be deleted." : {
+
     },
     "Tablespace" : {
       "extractionState" : "stale",
@@ -78161,6 +78634,18 @@
         }
       }
     },
+    "The Cloud SQL Auth Proxy did not become ready in time: %@" : {
+
+    },
+    "The Cloud SQL Auth Proxy did not become ready in time." : {
+
+    },
+    "The Cloud SQL Auth Proxy failed to start: %@" : {
+
+    },
+    "The Cloud SQL Auth Proxy failed to start." : {
+
+    },
     "The Cloudflare tunnel did not become ready in time: %@" : {
       "localizations" : {
         "tr" : {
@@ -78387,6 +78872,9 @@
           }
         }
       }
+    },
+    "The database this user belongs to" : {
+
     },
     "The destructive query to execute" : {
       "localizations" : {
@@ -78629,6 +79117,9 @@
         }
       }
     },
+    "The instance connection name must be in the form project:region:instance." : {
+
+    },
     "The license has been suspended." : {
       "localizations" : {
         "tr" : {
@@ -78771,6 +79262,9 @@
         }
       }
     },
+    "The passwords do not match." : {
+
+    },
     "The previous code wasn't accepted. Wait for your authenticator to refresh, then enter the new code." : {
       "localizations" : {
         "tr" : {
@@ -78882,6 +79376,19 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "伺服器將可由網路上的其他裝置存取。驗證與 TLS 會自動啟用。"
+          }
+        }
+      }
+    },
+    "The SSH server connects to this socket instead of Host and Port. A database on a socket cannot negotiate TLS, so TablePro turns it off; the SSH tunnel still encrypts the whole path." : {
+
+    },
+    "The SSH server would not forward the socket %@. Check that the path exists on the server and that sshd allows socket forwarding (AllowStreamLocalForwarding). (%@)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "The SSH server would not forward the socket %1$@. Check that the path exists on the server and that sshd allows socket forwarding (AllowStreamLocalForwarding). (%2$@)"
           }
         }
       }
@@ -79231,6 +79738,15 @@
     "There are no connections to publish." : {
 
     },
+    "These changes alter %@, the account this connection uses." : {
+
+    },
+    "These changes drop %@, the account this connection uses." : {
+
+    },
+    "These changes revoke every privilege from %@, the account this connection uses." : {
+
+    },
     "This %1$@ has no %2$@ yet." : {
       "localizations" : {
         "tr" : {
@@ -79286,6 +79802,9 @@
           }
         }
       }
+    },
+    "This connection does not support user and role management." : {
+
     },
     "This connection was deleted on another device or window. Your changes were not saved." : {
       "localizations" : {
@@ -80260,6 +80779,9 @@
         }
       }
     },
+    "This server has no users or roles you can manage." : {
+
+    },
     "This sets %lld loaded rows. Review and Save to apply." : {
       "localizations" : {
         "tr" : {
@@ -80491,6 +81013,9 @@
           }
         }
       }
+    },
+    "This user can grant this privilege to others." : {
+
     },
     "This value is too large to parse. Use raw mode to inspect it as text." : {
       "localizations" : {
@@ -82690,6 +83215,9 @@
         }
       }
     },
+    "Trusted Links" : {
+
+    },
     "Try a different search term" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -83003,6 +83531,12 @@
         }
       }
     },
+    "Unable to Load Privileges" : {
+
+    },
+    "Unable to Load Users and Roles" : {
+
+    },
     "Under MCP Servers click \"+ Add Custom Server\", select the Local tab, paste the JSON below, then click Add Server" : {
       "localizations" : {
         "tr" : {
@@ -83115,6 +83649,9 @@
           }
         }
       }
+    },
+    "Undo Staged Drop" : {
+
     },
     "Uninstall" : {
       "localizations" : {
@@ -83566,6 +84103,7 @@
       }
     },
     "Unpin" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -83592,6 +84130,9 @@
           }
         }
       }
+    },
+    "Unpin Result" : {
+
     },
     "Unset" : {
       "extractionState" : "stale",
@@ -84497,6 +85038,9 @@
         }
       }
     },
+    "Use % to allow any host." : {
+
+    },
     "Use ~/.pgpass" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -84526,7 +85070,11 @@
         }
       }
     },
+    "Use as Active %@" : {
+
+    },
     "Use as Active Database" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -84555,6 +85103,7 @@
       }
     },
     "Use as Active Schema" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -84698,6 +85247,9 @@
         }
       }
     },
+    "Use IAM database authentication" : {
+
+    },
     "Use Password File" : {
       "localizations" : {
         "tr" : {
@@ -84810,6 +85362,9 @@
         }
       }
     },
+    "Use the instance's private IP address instead of its public IP." : {
+
+    },
     "Use your Cursor subscription with no API key. Requires the Cursor CLI." : {
       "localizations" : {
         "tr" : {
@@ -84838,6 +85393,9 @@
         }
       }
     },
+    "Use your SuperGrok or X Premium+ subscription with no API key. Sign-in opens the Grok Build consent screen. This is an unofficial interface that may change." : {
+
+    },
     "User" : {
       "localizations" : {
         "tr" : {
@@ -84865,6 +85423,9 @@
           }
         }
       }
+    },
+    "User and role changes were not authorized" : {
+
     },
     "User approval timed out after 30 seconds" : {
       "localizations" : {
@@ -85061,6 +85622,12 @@
           }
         }
       }
+    },
+    "Users & Roles" : {
+
+    },
+    "Uses this Mac's Application Default Credentials. Run `gcloud auth application-default login` first, or set GOOGLE_APPLICATION_CREDENTIALS." : {
+
     },
     "using %@" : {
       "localizations" : {
@@ -85913,6 +86480,9 @@
           }
         }
       }
+    },
+    "Verify:" : {
+
     },
     "Version" : {
       "localizations" : {
@@ -86805,6 +87375,12 @@
         }
       }
     },
+    "Will be created when you apply changes" : {
+
+    },
+    "Will be dropped when you apply changes" : {
+
+    },
     "Window Background" : {
       "localizations" : {
         "tr" : {
@@ -86974,6 +87550,9 @@
           }
         }
       }
+    },
+    "xAI did not return an access token." : {
+
     },
     "XXXXX-XXXXX-XXXXX-XXXXX-XXXXX" : {
       "localizations" : {

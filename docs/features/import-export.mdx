@@ -1,41 +1,29 @@
 ---
 title: Import & Export
-description: Export to CSV, JSON, SQL, MQL, or XLSX. Import SQL, JSON, and CSV files with column mapping, transaction safety, and progress tracking.
+description: Export to CSV, JSON, SQL, MQL, or XLSX. Import SQL, JSON, and CSV files with column mapping and transaction safety.
 ---
 
 # Import & Export
 
-Export data in five formats (CSV, JSON, SQL, MQL, XLSX), import SQL, JSON, and CSV files (with gzip support for SQL), and paste tabular data from the clipboard into the grid.
+Export data in five formats (CSV, JSON, SQL, MQL, XLSX), import SQL, JSON, and CSV files (gzip supported for SQL), and paste tabular data from the clipboard into the grid.
 
 ## Export Data
 
-1. Run a query or open a table
-2. Click **Export** in the toolbar (`Cmd+Shift+E`)
-3. Choose a format, select tables, configure options
+1. Open a table, or run a query and use its results
+2. Click **Export** in the toolbar (`Cmd+Shift+E`), or right-click the results grid and choose **Export Results...**
+3. Choose a format, select tables in the tree view, configure options
 4. Click **Export**
 
-TablePro remembers the last format and options you exported with, so the dialog opens ready for a repeat export. Option changes stick only after a successful export; cancelling the dialog discards them. **Reset to Defaults** under the options restores the stock settings for the current format.
+TablePro remembers the last format and options you exported with. Option changes stick only after a successful export; cancelling the dialog discards them. **Reset to Defaults** under the options restores the stock settings for the current format.
 
 <Note>
-**MongoDB**: SQL export is not available. Use CSV, JSON, MQL, or XLSX. MQL generates `db.collection.insertMany([...])` scripts for `mongosh`.
+**MongoDB**: SQL export is not available. Use MQL, which generates `db.collection.insertMany([...])` scripts for `mongosh`. **Redis**: SQL and MQL exports are not available.
 </Note>
 
-<Note>
-**Redis**: SQL and MQL exports are not available. Use CSV, JSON, or XLSX.
-</Note>
-
-{/* Screenshot: Export dialog with format options */}
+{/* Screenshot: Export dialog with format options and table tree */}
 <Frame caption="Export dialog">
-  <img
-    className="block dark:hidden"
-    src="/images/export-dialog.png"
-    alt="Export dialog"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/export-dialog-dark.png"
-    alt="Export dialog"
-  />
+  <img className="block dark:hidden" src="/images/export-dialog.png" alt="Export dialog" />
+  <img className="hidden dark:block" src="/images/export-dialog-dark.png" alt="Export dialog" />
 </Frame>
 
 ### Export Formats
@@ -52,20 +40,6 @@ TablePro remembers the last format and options you exported with, so the dialog 
     | Line ending (LF, CRLF, CR) | LF |
     | Decimal separator (period, comma) | Period |
     | Formula sanitization | Yes |
-
-    {/* Screenshot: CSV export options: delimiter, quoting, line breaks */}
-    <Frame caption="CSV export options">
-      <img
-        className="block dark:hidden"
-        src="/images/export-csv-options.png"
-        alt="CSV export options"
-      />
-      <img
-        className="hidden dark:block"
-        src="/images/export-csv-options-dark.png"
-        alt="CSV export options"
-      />
-    </Frame>
   </Tab>
   <Tab title="JSON">
     Exports as an array of objects.
@@ -75,20 +49,6 @@ TablePro remembers the last format and options you exported with, so the dialog 
     | Pretty print | Yes |
     | Include NULL values | Yes |
     | Preserve all values as strings | No |
-
-    {/* Screenshot: JSON export options */}
-    <Frame caption="JSON export options">
-      <img
-        className="block dark:hidden"
-        src="/images/export-json-options.png"
-        alt="JSON export options"
-      />
-      <img
-        className="hidden dark:block"
-        src="/images/export-json-options-dark.png"
-        alt="JSON export options"
-      />
-    </Frame>
   </Tab>
   <Tab title="SQL">
     Global options:
@@ -98,34 +58,16 @@ TablePro remembers the last format and options you exported with, so the dialog 
     | Compress with gzip (`.sql.gz`) | No |
     | Batch size (rows per INSERT) | 500 |
 
-    Per-table options (configurable individually for multi-table exports):
+    Per-table checkboxes, set individually for multi-table exports:
 
-    | Option | Default |
-    |--------|---------|
-    | Include CREATE TABLE | Yes |
-    | Include DROP TABLE IF EXISTS | Yes |
-    | Include INSERT data | Yes |
-
-    {/* Screenshot: SQL export options: structure, data, batch size */}
-    <Frame caption="SQL export options">
-      <img
-        className="block dark:hidden"
-        src="/images/export-sql-options.png"
-        alt="SQL export options"
-      />
-      <img
-        className="hidden dark:block"
-        src="/images/export-sql-options-dark.png"
-        alt="SQL export options"
-      />
-    </Frame>
+    | Column | Includes | Default |
+    |--------|----------|---------|
+    | Structure | CREATE TABLE | Yes |
+    | Drop | DROP TABLE IF EXISTS | Yes |
+    | Data | INSERT statements | Yes |
   </Tab>
   <Tab title="MQL">
-    MongoDB only. Generates `insertMany()` scripts that run directly in `mongosh`.
-
-    | Option | Default |
-    |--------|---------|
-    | Batch size (documents per `insertMany`) | 500 |
+    MongoDB only. Generates `insertMany()` scripts that run directly in `mongosh`. Batch size defaults to 500 documents per `insertMany`. Per-collection checkboxes cover drop, indexes, and data.
 
     Output is a `.js` file:
     ```javascript
@@ -141,58 +83,19 @@ TablePro remembers the last format and options you exported with, so the dialog 
     | Include headers (bold first row) | Yes |
     | NULL as empty cells | Yes |
 
-    Each table exports as a separate worksheet. Numbers are stored as numeric cells for proper Excel formatting. Tables exceeding 1,048,576 rows (Excel's limit) auto-split into multiple sheets.
-
-    {/* Screenshot: Excel export options */}
-    <Frame caption="Excel export options">
-      <img
-        className="block dark:hidden"
-        src="/images/export-xlsx-options.png"
-        alt="Excel export options"
-      />
-      <img
-        className="hidden dark:block"
-        src="/images/export-xlsx-options-dark.png"
-        alt="Excel export options"
-      />
-    </Frame>
+    Each table exports as a separate worksheet. Numbers are stored as numeric cells. Tables exceeding 1,048,576 rows (Excel's limit) auto-split into multiple sheets.
   </Tab>
 </Tabs>
 
-### Exporting Query Results
-
-Right-click the results grid and select **Export Results...**, or go to **File** > **Export Results...**. Choose a format, configure options, and click **Export**. Only in-memory results are exported.
-
-<Tip>
-Use LIMIT in your query to control export size for large tables.
-</Tip>
-
-### Exporting Entire Tables
-
-Click a table in the sidebar and click **Export**, or run `SELECT * FROM table_name` and export.
-
-<Tip>
-Export multiple tables at once via the export dialog's tree view. SQL exports support per-table options for structure, DROP, and data.
-</Tip>
-
 ### Streaming Export
 
-Table exports stream rows directly from the database to disk (shipped v0.33.0). No in-memory buffering, no row-count limit: tables larger than RAM export fine.
+Whole-table exports stream rows from the database straight to disk:
 
-Properties:
+- Constant memory regardless of table size, no row-count limit
+- Atomic write: the destination file appears only on success, partial files are removed on failure
+- Cancellable from the progress dialog; cancelling removes the partial file
 
-- Streamed write per row, constant memory regardless of table size
-- Atomic file write: the destination file appears only on success, partial files are removed on failure
-- Cancellable from the progress dialog. Cancellation removes the partial file
-- Per-row error handling, configurable in the export dialog:
-
-| Mode | Behavior |
-|------|----------|
-| **Stop and Rollback** | Stop on first row error and discard the output file. |
-| **Stop and Commit** | Stop on first row error but keep rows already written. |
-| **Skip and Continue** | Skip the failing row, log it, and continue. A summary lists skipped rows at the end. |
-
-Streaming applies to whole-table exports. Result-grid exports use in-memory data.
+Result-grid exports use the in-memory result set. Use LIMIT in your query to control their size.
 
 ## Clipboard Paste (CSV/TSV)
 
@@ -200,38 +103,26 @@ Paste tabular data directly into the data grid. Press `Cmd+V` after selecting a 
 
 ## Import Data
 
-Import `.sql` and `.sql.gz` files (statements execute directly against your database: backups, migrations, seed data), `.json` / `.jsonl` files into a table (see [Import JSON Data](#import-json-data)), or `.csv` / `.tsv` files into a table (see [Import CSV Data](#import-csv-data)).
+Import `.sql` and `.sql.gz` files (statements execute directly against your database: backups, migrations, seed data), `.json` / `.jsonl` files into a table, or `.csv` / `.tsv` files into a table with column mapping.
 
-<Note>
-**MongoDB**: SQL import is not available. Use `mongoimport` or the MQL shell.
-</Note>
-
-### Import Workflow
+### Import SQL
 
 <Steps>
   <Step title="Open Import Dialog">
-    Click **File** > **Import** > **From SQL** (`Cmd+Shift+I`), or drag and drop a `.sql` / `.sql.gz` file onto the app.
+    Click **File** > **Import** > **From SQL** (`Cmd+Shift+I`).
   </Step>
   <Step title="Configure Options">
-    Set encoding, transaction wrapping, and foreign key check options. TablePro remembers the encoding and options from your last successful import; **Reset to Defaults** next to the Options header restores them.
+    Set encoding, transaction wrapping, and foreign key check options. TablePro remembers the options from your last successful import; cancelling the dialog discards changes, and **Reset to Defaults** restores the stock settings.
   </Step>
   <Step title="Preview and Import">
     Review the SQL preview, statement count, and file size. Click **Import** to execute.
   </Step>
 </Steps>
 
-{/* Screenshot: Import dialog with SQL preview */}
+{/* Screenshot: Import dialog with SQL preview and options */}
 <Frame caption="Import dialog with SQL file preview">
-  <img
-    className="block dark:hidden"
-    src="/images/import-dialog.png"
-    alt="Import dialog"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/import-dialog-dark.png"
-    alt="Import dialog"
-  />
+  <img className="block dark:hidden" src="/images/import-dialog.png" alt="Import dialog" />
+  <img className="hidden dark:block" src="/images/import-dialog-dark.png" alt="Import dialog" />
 </Frame>
 
 ### Import Options
@@ -243,43 +134,34 @@ Import `.sql` and `.sql.gz` files (statements execute directly against your data
 | Wrap in transaction | Execute all statements within a single transaction | Yes |
 | Disable foreign key checks | Temporarily disable FK constraints during import | Yes |
 
-For PostgreSQL the checkbox runs `SET session_replication_role = replica`, which requires the `REPLICATION` role or superuser. Most managed Postgres providers (RDS, Neon, Supabase) reject it, so the checkbox may have no effect there. TablePro's SQL exports already emit foreign key constraints with `ALTER TABLE ... ADD CONSTRAINT` after data load, so the dump round-trips without needing the privilege.
+For PostgreSQL the checkbox runs `SET session_replication_role = replica`, which requires superuser (or, on PostgreSQL 15+, a `GRANT SET` on the parameter). If the server rejects the statement, the import stops with that error; uncheck the option to proceed. TablePro's SQL exports emit foreign key constraints with `ALTER TABLE ... ADD CONSTRAINT` after data load, so the dump imports in order without needing the privilege.
 
-For MySQL the checkbox runs `SET FOREIGN_KEY_CHECKS = 0` and is supported on standard accounts. SQLite uses `PRAGMA foreign_keys = OFF`. Drivers without an equivalent (most NoSQL drivers) ignore the option.
+For MySQL the checkbox runs `SET FOREIGN_KEY_CHECKS = 0` and works on standard accounts. SQLite uses `PRAGMA foreign_keys = OFF`. Drivers without an equivalent (most NoSQL drivers) ignore the option.
 
 ### Error Handling Modes
-
-Three modes for handling errors during import:
 
 | Mode | Behavior |
 |------|----------|
 | **Stop and Rollback** | Stops on first error. If transaction is enabled, rolls back all changes. Default. |
 | **Stop and Commit** | Stops on first error. Commits statements that succeeded before the error. |
-| **Skip and Continue** | Logs failed statements and continues importing. Shows a summary with all errors at the end. Transaction wrapping is disabled in this mode. |
+| **Skip and Continue** | Logs failed statements and continues. Transaction wrapping is disabled in this mode. |
 
-In **Skip and Continue** mode, failed statements are collected (up to 1,000) with line numbers and error messages. After import completes, a summary dialog shows how many succeeded vs failed, with a scrollable error list and a "Copy Errors to Clipboard" button.
+In **Skip and Continue** mode, failed statements are collected (up to 1,000) with line numbers and error messages. After import completes, a summary shows how many succeeded vs failed, with a scrollable error list and a **Copy Errors to Clipboard** button.
 
 ### Import JSON Data
 
-Choose **File** > **Import** > **From JSON** and pick a `.json`, `.jsonl`, or `.ndjson` file, and TablePro opens a dedicated JSON import sheet. It accepts an array of objects `[{...}, {...}]`, newline-delimited JSON (one object per line, streamed for large files), and TablePro's own JSON export shape `{ "table": [ {...} ] }`, so an export round-trips back in.
+Choose **File** > **Import** > **From JSON** and pick a `.json`, `.jsonl`, or `.ndjson` file. The sheet accepts an array of objects `[{...}, {...}]`, newline-delimited JSON (one object per line, streamed for large files), and TablePro's own JSON export shape `{ "table": [ {...} ] }`, so an export round-trips back in.
 
 Choose a destination:
 
-- **Existing table**: pick the table, then map each JSON field to a column. Fields are auto-matched by name; toggle any field off to skip it, or remap it to a different column. Columns with no matching field keep their default or NULL.
+- **Existing table**: pick the table, then map each JSON field to a column. Fields are auto-matched by name; toggle any field off to skip it, or remap it. Columns with no matching field keep their default or NULL.
 - **New table**: name the table and review the columns TablePro infers from the data. Each column's name, type, primary key, nullable flag, and default are editable before the table is created.
 
-Rows insert through parameterized statements, so JSON values are never concatenated into SQL. Nested objects and arrays are stored as JSON text. The on-error, transaction, and "delete existing rows" options work the same as SQL import.
+Rows insert through parameterized statements, so JSON values are never concatenated into SQL. Nested objects and arrays are stored as JSON text.
 
 ### Import CSV Data
 
-Choose **File** > **Import** > **From CSV** and pick a `.csv` or `.tsv` file. TablePro opens the same row import sheet used for JSON, with CSV-specific parsing options. The delimiter, quote character, encoding, and line ending are auto-detected; change any of them and the field mapping re-reads the file.
-
-Choose a destination:
-
-- **Existing table**: pick the table, then map each CSV column to a table column. Columns are auto-matched by header name; toggle one off to skip it, or remap it.
-- **New table**: name the table and review the columns TablePro infers from the data. Each column's name, type, primary key, nullable flag, and default are editable before the table is created.
-
-CSV parsing options:
+Choose **File** > **Import** > **From CSV** and pick a `.csv` or `.tsv` file. TablePro opens the same row import sheet used for JSON, with CSV-specific parsing options. The delimiter and encoding are auto-detected; the quote character defaults to a double quote. Change any parsing option and the field mapping re-reads the file. Destination options match JSON import: map into an existing table or create a new one.
 
 | Option | Description | Default |
 |--------|-------------|---------|
@@ -291,22 +173,10 @@ CSV parsing options:
 | Treat empty values as NULL | Insert NULL for empty fields instead of empty text | Yes |
 | NULL text | An extra value imported as NULL, for example `\N` | None |
 
-Quoted fields keep embedded commas and newlines (RFC 4180), and doubled quotes (`""`) decode to a single quote. Rows insert through parameterized statements in batches. The on-error, transaction, and "delete existing rows" options work the same as SQL import.
+Quoted fields keep embedded commas and newlines (RFC 4180), and doubled quotes (`""`) decode to a single quote.
 
-## Progress and Errors
+### Row Import Options
 
-During import, a progress bar shows statements processed and overall completion.
+CSV and JSON imports insert rows in batches through parameterized statements. The on-error and transaction options work the same as SQL import. They add one option of their own: **Delete existing rows before import**, which clears the target table first. The delete runs inside the import transaction, so a failed import in the default Stop and Rollback mode restores the deleted rows.
 
-{/* Screenshot: Import progress bar */}
-<Frame caption="Import progress">
-  <img
-    className="block dark:hidden"
-    src="/images/import-progress.png"
-    alt="Import progress"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/import-progress-dark.png"
-    alt="Import progress"
-  />
-</Frame>
+During import, a progress bar shows rows processed and overall completion.

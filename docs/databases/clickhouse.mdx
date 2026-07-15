@@ -1,15 +1,15 @@
 ---
 title: ClickHouse
-description: Connect to ClickHouse databases with TablePro
+description: Connect to ClickHouse over its HTTP interface with TablePro
 ---
 
 # ClickHouse Connections
 
-TablePro supports ClickHouse via its HTTP interface. ClickHouse is a column-oriented OLAP database built for real-time analytics on large datasets. TablePro connects over HTTP (port 8123 by default), not the native TCP protocol.
+TablePro connects to ClickHouse over its HTTP interface (port 8123 by default), not the native TCP protocol. The driver ships inside the app; there is nothing to install.
 
 ## Quick Setup
 
-Click **New Connection**, select **ClickHouse**, enter host/port/credentials/database, and click **Create**. Plugin auto-installs or use **Settings** > **Plugins** > **Browse** > **ClickHouse Driver**.
+Click **New Connection**, select **ClickHouse**, enter host, port, credentials, and database, then click **Save & Connect**.
 
 ## Connection Settings
 
@@ -17,19 +17,12 @@ Click **New Connection**, select **ClickHouse**, enter host/port/credentials/dat
 |-------|---------|-------|
 | **Host** | `localhost` | |
 | **Port** | `8123` | HTTP port (not 9000 native TCP) |
-| **Username** | `default` | Set password in production |
-| **Database** | `default` | Leave empty to browse all databases. Switch with **Cmd+K** |
+| **Username** | `default` | Set a password in production |
+| **Database** | `default` | Leave empty to browse all databases. Switch with Cmd+K |
 
-Uses HTTP API (HTTPS on port 8443 with SSL/TLS enabled). Cloud providers typically expose HTTP(S) only.
+**SSL/TLS**: Setting any non-Disabled SSL Mode switches the URL scheme to `https`. **Required** skips certificate verification, **Verify CA** validates against the supplied CA file, **Verify Identity** uses system default HTTPS trust (certificate chain plus hostname). Use **Required** for ClickHouse Cloud (port 8443). See [SSL/TLS](/features/ssl).
 
-## Example Configurations
-
-**Local**: host `localhost:8123`, user `default`, empty password
-**Docker**: `clickhouse/clickhouse-server:latest`, set `CLICKHOUSE_USER`/`CLICKHOUSE_PASSWORD` env
-**ClickHouse Cloud**: Port 8443, enable SSL/TLS
-**Remote**: Use [SSH tunneling](/databases/ssh-tunneling) for unencrypted HTTP
-
-**SSL/TLS**: ClickHouse over HTTP uses URLSession; setting any non-Disabled SSL Mode switches the URL scheme to `https`. **Required** skips cert verification, **Verify CA** validates against the supplied CA, **Verify Identity** relies on system default HTTPS trust (cert chain + hostname). Use **Required** for ClickHouse Cloud (port 8443). See [SSL/TLS](/features/ssl) for details.
+For unencrypted HTTP to a remote server, use [SSH tunneling](/databases/ssh-tunneling).
 
 ## Connection URL
 
@@ -41,49 +34,25 @@ See [Connection URL Reference](/databases/connection-urls) for all parameters.
 
 ## Features
 
-### Database Browsing
+### Database and Table Browsing
 
-After connecting, the sidebar lists all databases on the server. Expand a database to see its tables, views, and materialized views. Press **Cmd+K** or click the database name in the toolbar to switch.
-
-### Table Browsing
+The sidebar lists all databases on the server. Expand one to see its tables, views, and materialized views. Press Cmd+K or click the database name in the toolbar to switch.
 
 For each table, TablePro shows:
 
 - **Structure**: Columns with ClickHouse data types, default expressions, and comments
-- **Indexes**: Data skipping indices (minmax, set, bloom_filter, etc.)
+- **Indexes**: Data-skipping indices (minmax, set, bloom_filter, and others)
 - **DDL**: The full CREATE TABLE statement including engine and settings
-- **Parts**: Partition and part details from `system.parts` (rows, disk size, active status). Actions: Optimize Table, Drop Partition, Detach Partition
+- **Parts**: Partition and part details from `system.parts` (rows, disk size, active status), with Optimize Table, Drop Partition, and Detach Partition actions
 
-**Engines**:
-
-| Engine | Use Case |
-|--------|----------|
-| **MergeTree** | Primary engine for production analytics tables |
-| **ReplacingMergeTree** | Deduplication by sorting key |
-| **SummingMergeTree** | Pre-aggregation of numeric columns |
-| **AggregatingMergeTree** | Incremental aggregation with AggregateFunction columns |
-| **Log / TinyLog** | Small tables, development, and testing |
-| **Memory** | In-memory tables for temporary data |
-| **Distributed** | Queries across shards in a cluster |
-
-**Sorting/Partition Keys**: Critical for performance (ClickHouse reads sorted order).
-
-### Data Skipping Indices
-
-ClickHouse supports secondary indices that skip granules during queries. TablePro shows these in the Indexes tab:
-
-```sql
--- Example: bloom filter index on a URL column
-ALTER TABLE hits ADD INDEX url_idx url TYPE bloom_filter GRANULARITY 4;
-```
-
-### Query Progress Tracking
-
-During query execution, the toolbar shows live progress: rows read and bytes processed. After completion, a summary displays total execution time, rows read, and bytes read. This data is polled from `system.processes`.
+<Frame caption="The Parts tab with partition actions">
+  <img className="block dark:hidden" src="/images/clickhouse-parts-tab.png" alt="ClickHouse Parts tab showing partitions with Optimize, Drop, and Detach actions" />
+  <img className="hidden dark:block" src="/images/clickhouse-parts-tab-dark.png" alt="ClickHouse Parts tab showing partitions with Optimize, Drop, and Detach actions" />
+</Frame>
 
 ### EXPLAIN Variants
 
-ClickHouse supports multiple EXPLAIN modes. Click the Explain dropdown in the query editor to choose:
+Click the Explain dropdown in the query editor to choose:
 
 | Variant | Description |
 |---------|-------------|
@@ -95,129 +64,36 @@ ClickHouse supports multiple EXPLAIN modes. Click the Explain dropdown in the qu
 
 ### Server-side Query Cancellation
 
-When you cancel a running query, TablePro sends a `KILL QUERY` command to the ClickHouse server. This stops the query on the server side, not just the HTTP connection.
+Cancelling a running query sends `KILL QUERY` to the server, stopping the query itself, not just the HTTP connection.
 
-### Query Editor
+### Server Dashboard
 
-Write and execute ClickHouse SQL queries in the editor:
-
-```sql
--- Aggregation query
-SELECT
-    toDate(event_time) AS date,
-    count() AS events,
-    uniqExact(user_id) AS unique_users
-FROM analytics.events
-WHERE event_time >= now() - INTERVAL 7 DAY
-GROUP BY date
-ORDER BY date;
-
--- System tables
-SELECT name, engine, total_rows, total_bytes
-FROM system.tables
-WHERE database = 'analytics';
-
--- Table partitions
-SELECT partition, sum(rows) AS rows, formatReadableSize(sum(bytes_on_disk)) AS size
-FROM system.parts
-WHERE table = 'events' AND active
-GROUP BY partition
-ORDER BY partition;
-```
+The [Server Dashboard](/features/server-dashboard) supports ClickHouse: active sessions, server metrics, and slow queries.
 
 ### Data Editing
 
-TablePro supports editing cell values, inserting rows, and deleting rows in ClickHouse tables. Edits are submitted as standard INSERT, ALTER TABLE UPDATE, and ALTER TABLE DELETE statements.
+Edit cells, insert rows, and delete rows in the data grid. Edits are submitted as INSERT, `ALTER TABLE ... UPDATE`, and `ALTER TABLE ... DELETE` statements.
 
 <Warning>
-ClickHouse mutations (UPDATE and DELETE) are asynchronous. They execute in the background and may take time to complete on large tables. See the Limitations section for details.
+ClickHouse mutations (UPDATE and DELETE) are asynchronous. They run in the background and can take time on large tables. Check progress with `SELECT * FROM system.mutations WHERE is_done = 0`.
 </Warning>
 
 ### Export and Import
 
-Export query results or table data to CSV, JSON, and other formats. Import data from CSV files into ClickHouse tables.
-
-## System Databases
-
-ClickHouse includes built-in system databases:
-
-| Database | Description |
-|----------|-------------|
-| **system** | Server metrics, query logs, parts info, cluster state |
-| **information_schema** | SQL-standard metadata views (tables, columns, schemata) |
-| **INFORMATION_SCHEMA** | Alias for `information_schema` (case-sensitive variant) |
-
-The `system` database is particularly useful for monitoring:
-
-```sql
--- Recent queries
-SELECT query, read_rows, elapsed, memory_usage
-FROM system.query_log
-WHERE type = 'QueryFinish'
-ORDER BY event_time DESC
-LIMIT 20;
-
--- Disk usage by table
-SELECT database, table, formatReadableSize(sum(bytes_on_disk)) AS size
-FROM system.parts
-WHERE active
-GROUP BY database, table
-ORDER BY sum(bytes_on_disk) DESC;
-```
+Export query results or table data to CSV, JSON, and other formats. Import data from CSV files. See [Import and Export](/features/import-export).
 
 ## Troubleshooting
 
-### Connection Refused
+**Connection refused**: Check ClickHouse is listening on the HTTP port: `curl http://localhost:8123/ping` should return `Ok.`. Common port mix-up: 8123 is HTTP, 8443 is HTTPS, 9000 is native TCP (not used by TablePro). If the HTTP interface is disabled, check `<http_port>` in `/etc/clickhouse-server/config.xml`.
 
-**Symptoms**: "Connection refused" or timeout
+**Authentication failed (HTTP 403)**: Verify the username and password, that the user exists (`SELECT name, auth_type FROM system.users`), and that it has access to the target database (`SHOW GRANTS FOR app_user`).
 
-**Causes and Solutions**:
-
-1. **ClickHouse not running or HTTP interface disabled**
-   ```bash
-   # Check if ClickHouse is listening on port 8123
-   curl http://localhost:8123/ping
-   # Expected response: "Ok."
-   ```
-
-2. **Wrong port**
-   - HTTP interface: 8123 (default)
-   - HTTPS interface: 8443
-   - Native TCP: 9000 (not used by TablePro)
-
-3. **HTTP interface disabled in config**
-   - Check `<http_port>` in `/etc/clickhouse-server/config.xml`
-
-### Authentication Failed
-
-**Symptoms**: "Authentication failed" or HTTP 403
-
-**Solutions**:
-
-1. Verify username and password
-2. Check user exists in ClickHouse:
-   ```sql
-   SELECT name, auth_type FROM system.users;
-   ```
-3. Verify the user has access to the target database:
-   ```sql
-   SHOW GRANTS FOR app_user;
-   ```
-
-### Connection Timeout
-
-**Symptoms**: Connection hangs or times out
-
-**Solutions**:
-
-1. Verify host and port are correct
-2. Check network connectivity and firewall rules
-3. For cloud-hosted ClickHouse, ensure your IP is in the allowed list
+**Connection timeout**: Verify host, port, firewall rules, and, for cloud-hosted ClickHouse, that your IP is in the allowed list.
 
 ## Known Limitations
 
 - No foreign keys or multi-statement transactions
 - No auto-increment; primary key and sorting key are immutable after creation
-- Structure editing supports add, modify, and drop columns, plus data-skipping indexes. Foreign keys and primary key changes are not available.
-- UPDATE/DELETE run as asynchronous background mutations via `ALTER TABLE`. Check progress with `SELECT * FROM system.mutations WHERE is_done = 0`
-- Designed for batch inserts, not single-row writes
+- Structure editing supports add, modify, and drop columns, plus data-skipping indexes. Foreign keys and primary key changes are not available
+- UPDATE/DELETE run as asynchronous background mutations via `ALTER TABLE`
+- ClickHouse is designed for batch inserts, not single-row writes

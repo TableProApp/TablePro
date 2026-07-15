@@ -143,6 +143,17 @@ final class QueryTabManager {
         }
     }
 
+    /// Take an already-built tab, such as one rebuilt from the recently closed history, rather than
+    /// minting a fresh one. Selecting it drives the window title, toolbar, and persistence through
+    /// the usual `selectedTabId` observation.
+    func adoptTab(_ tab: QueryTab, claimFocus: Bool = false) {
+        tabs.append(tab)
+        selectedTabId = tab.id
+        if claimFocus {
+            pendingFocusTabId = tab.id
+        }
+    }
+
     var onTableOpened: ((_ tableName: String, _ schemaName: String?, _ databaseName: String, _ isView: Bool, _ isPreview: Bool) -> Void)?
 
     private func notifyTableOpened(
@@ -239,6 +250,19 @@ final class QueryTabManager {
         selectedTabId = newTab.id
     }
 
+    func addUsersRolesTab() {
+        if let existing = tabs.first(where: { $0.tabType == .usersRoles }) {
+            selectedTabId = existing.id
+            return
+        }
+        let tabTitle = String(localized: "Users & Roles")
+        var newTab = QueryTab(title: tabTitle, tabType: .usersRoles)
+        newTab.tableContext.isEditable = false
+        newTab.hasUserInteraction = true
+        tabs.append(newTab)
+        selectedTabId = newTab.id
+    }
+
     func addPreviewTableTab(
         tableName: String,
         databaseType: DatabaseType = .mysql,
@@ -321,6 +345,8 @@ final class QueryTabManager {
         tab.execution.errorMessage = nil
         tab.execution.lastExecutedAt = nil
         tab.display.resultsViewMode = .data
+        tab.display.resultSets = []
+        tab.display.activeResultSetId = nil
         tab.sortState = SortState()
         tab.selectedRowIndices = []
         tab.pendingChanges = TabChangeSnapshot()

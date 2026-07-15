@@ -6,6 +6,18 @@
 import Foundation
 import os
 
+enum ResponsesDialect: Sendable {
+    case openAI
+    case xai
+
+    var defaultTestModel: String {
+        switch self {
+        case .openAI: return "gpt-5.5"
+        case .xai:    return "grok-4.5"
+        }
+    }
+}
+
 final class OpenAIResponsesProvider: ChatTransport {
     private static let logger = Logger(subsystem: "com.TablePro", category: "OpenAIResponsesProvider")
 
@@ -13,6 +25,7 @@ final class OpenAIResponsesProvider: ChatTransport {
     private let apiKey: String?
     private let model: String
     private let maxOutputTokens: Int?
+    private let dialect: ResponsesDialect
     private let session: URLSession
 
     init(
@@ -20,12 +33,14 @@ final class OpenAIResponsesProvider: ChatTransport {
         apiKey: String?,
         model: String = "",
         maxOutputTokens: Int? = nil,
+        dialect: ResponsesDialect = .openAI,
         session: URLSession = URLSession(configuration: .ephemeral)
     ) {
         self.endpoint = endpoint.normalizedEndpoint()
         self.apiKey = apiKey?.trimmingCharacters(in: .whitespacesAndNewlines)
         self.model = model.trimmingCharacters(in: .whitespacesAndNewlines)
         self.maxOutputTokens = maxOutputTokens
+        self.dialect = dialect
         self.session = session
     }
 
@@ -67,7 +82,7 @@ final class OpenAIResponsesProvider: ChatTransport {
     }
 
     func testConnection() async throws -> Bool {
-        let testModel = model.isEmpty ? "gpt-5.5" : model
+        let testModel = model.isEmpty ? dialect.defaultTestModel : model
         let testOptions = ChatTransportOptions(model: testModel, maxOutputTokens: 16)
         let testTurn = ChatTurnWire(role: .user, blocks: [.text("Hi")])
         let request = try buildRequest(turns: [testTurn], options: testOptions, stream: false)
@@ -117,8 +132,13 @@ final class OpenAIResponsesProvider: ChatTransport {
         }
 
         if let effort = options.reasoningEffort {
-            body["reasoning"] = ["effort": effort.openAIWireValue, "summary": "auto"]
-            body["include"] = ["reasoning.encrypted_content"]
+            switch dialect {
+            case .openAI:
+                body["reasoning"] = ["effort": effort.openAIWireValue, "summary": "auto"]
+                body["include"] = ["reasoning.encrypted_content"]
+            case .xai:
+                body["reasoning"] = ["effort": effort.xaiReasoningEffort]
+            }
         }
 
         if !options.tools.isEmpty {
@@ -275,7 +295,7 @@ final class OpenAIResponsesProvider: ChatTransport {
                 return [.textDelta(delta)]
             }
             return []
-        case "response.reasoning_summary_text.delta":
+        case "response.reasoning_summary_text.delta", "response.reasoning_text.delta":
             guard let itemID = json["item_id"] as? String,
                   let delta = json["delta"] as? String, !delta.isEmpty else { return [] }
             return [.reasoningDelta(id: itemID, text: delta)]
