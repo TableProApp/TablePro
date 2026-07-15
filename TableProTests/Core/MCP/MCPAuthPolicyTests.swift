@@ -146,6 +146,62 @@ struct MCPAuthPolicyTests {
         }
     }
 
+    @Test("Recorded approval allows the connection for the rest of the session")
+    func recordedApprovalAllowsConnection() async throws {
+        let policy = makePolicy(makeSnapshot(policy: .askEachTime))
+        await policy.recordApproval(sessionId: "session", connectionId: connectionA)
+
+        let decision = try await policy.authorize(
+            principal: makePrincipal(),
+            tool: "list_tables",
+            connectionId: connectionA,
+            sql: nil,
+            sessionId: "session"
+        )
+        guard case .allowed = decision else {
+            Issue.record("Expected an approved connection to be allowed, got \(decision)")
+            return
+        }
+    }
+
+    @Test("Clearing a terminated session drops its approvals")
+    func clearSessionDropsApprovals() async throws {
+        let policy = makePolicy(makeSnapshot(policy: .askEachTime))
+        await policy.recordApproval(sessionId: "session", connectionId: connectionA)
+        await policy.clearSession("session")
+
+        let decision = try await policy.authorize(
+            principal: makePrincipal(),
+            tool: "list_tables",
+            connectionId: connectionA,
+            sql: nil,
+            sessionId: "session"
+        )
+        guard case .requiresUserApproval = decision else {
+            Issue.record("Expected approval to be required again after the session was cleared, got \(decision)")
+            return
+        }
+    }
+
+    @Test("Clearing an unknown session is a no-op")
+    func clearUnknownSessionIsNoOp() async throws {
+        let policy = makePolicy(makeSnapshot(policy: .askEachTime))
+        await policy.recordApproval(sessionId: "session", connectionId: connectionA)
+        await policy.clearSession("other-session")
+
+        let decision = try await policy.authorize(
+            principal: makePrincipal(),
+            tool: "list_tables",
+            connectionId: connectionA,
+            sql: nil,
+            sessionId: "session"
+        )
+        guard case .allowed = decision else {
+            Issue.record("Clearing another session must not drop this session's approvals, got \(decision)")
+            return
+        }
+    }
+
     @Test("Unknown connection denies")
     func unknownConnectionDenied() async throws {
         let policy = makePolicy(nil)

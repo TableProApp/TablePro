@@ -154,9 +154,9 @@ Ask the client to list TablePro tools or call `list_connections`. Success looks 
 If the call fails, the response tells you which layer rejected it:
 
 - **stdio process exits immediately**: the bridge could not launch TablePro or got no handshake within 10 seconds. Open TablePro manually and check that **Settings > Integrations** shows the server running.
-- **`401 Unauthorized`**: the bridge token is stale. Quit and reopen TablePro to regenerate the handshake.
+- **`401 Unauthorized`**: the bridge token is stale. The stdio bridge re-reads the handshake and retries on its own; you only see this if the retry also fails, which means TablePro is not running.
 - **`403 Forbidden`**: the connection's `externalAccess` is `blocked` or `readOnly`, or the token's allowlist excludes it. Adjust **External Access** in TablePro's connection editor.
-- **`404 Session not found`** (JSON-RPC code `-32001`): the session hit the 15-minute idle timeout or the server restarted. Drop the cached `Mcp-Session-Id` and start a new `initialize` handshake; most clients do this automatically.
+- **`404 Session not found`** (JSON-RPC code `-32001`): the session hit the 15-minute idle timeout or the server restarted. The stdio bridge starts a new session on its own and replays the call, so you should never see this through the bridge. If you speak HTTP to the server directly, drop the cached `Mcp-Session-Id` and send a new `initialize` request yourself. Most HTTP clients do not do this for you.
 - **`429 Too Many Requests`**: 5 failed auth attempts within 60 seconds against the same `(client_address, principal)` pair triggered a 5-minute lockout. Wait it out or restart TablePro.
 
 ## Troubleshooting
@@ -167,6 +167,8 @@ If the call fails, the response tells you which layer rejected it:
 
 **Setapp or non-default install path.** Replace `/Applications/TablePro.app` in the `command` with your install path. For Setapp the bundle lives under `~/Applications/Setapp/TablePro.app`.
 
-**Port conflict.** If the configured port (default 23508) is taken, TablePro falls back to a free port in the 51000-52000 range and rewrites the handshake file. The stdio bridge re-reads it automatically.
+**Port conflict.** If the configured port (default 23508) is taken, TablePro falls back to a free port in the 51000-52000 range and rewrites the handshake file. A bridge that is already running re-reads the file the next time a call fails against the old port, so it picks up the new one without a restart.
+
+**Sessions recover on their own.** The MCP server drops a session after 15 minutes with no client attached, and restarting the server from Settings retires every session and rotates the bridge token. In both cases the stdio bridge starts a fresh session and replays the call that triggered it. You do not need to restart your agent or toggle the server. While an agent is attached, the bridge pings every 5 minutes, so an idle session stays alive rather than being recreated.
 
 **Tool calls return `403 Connection is read-only for external clients`.** The connection's external access is `readOnly` and the SQL is a write. Change external access in TablePro, or run the query in TablePro's editor.

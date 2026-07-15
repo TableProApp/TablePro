@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed dividers that could not be dragged at all: the user list and privilege panes in Users & Roles, the trigger list in Structure, and the metrics and slow query panes in Server Dashboard. (#1872)
 - Cancel now stops a connection attempt right away instead of letting it run on in the background. A cancelled connection is also dropped from the last session, so restarting no longer reconnects to a host you gave up on, and it can no longer interrupt a later successful connection. (#1358)
 - Fixed a crash when clicking a column header on a table whose columns have comments. Sorting such a table quit the app immediately. (#1869)
+- MCP tools no longer stop working after the server sits idle for 15 minutes, or after the MCP server is restarted from Settings. TablePro's bridge now starts a new session by itself instead of reusing a dead one, so agents like Claude Code and Cursor keep working without being turned off and on again. (#1881)
 
 ### Security
 
