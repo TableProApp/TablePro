@@ -211,7 +211,7 @@ extension PluginMetadataRegistry {
             )),
             ("Teradata", PluginMetadataSnapshot(
                 displayName: "Teradata", iconName: "teradata-icon", defaultPort: 1_025,
-                requiresAuthentication: true, supportsForeignKeys: true, supportsSchemaEditing: false,
+                requiresAuthentication: true, supportsForeignKeys: true, supportsSchemaEditing: true,
                 isDownloadable: true, primaryUrlScheme: "teradata", parameterStyle: .questionMark,
                 navigationModel: .standard, explainVariants: [], pathFieldRole: .database,
                 supportsHealthMonitor: false, urlSchemes: ["teradata"],

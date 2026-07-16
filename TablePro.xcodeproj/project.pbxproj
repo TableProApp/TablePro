@@ -426,7 +426,7 @@
 		84A5EE73D62C4576A9B9DFF2 /* SnowflakeStatementGenerator.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SnowflakeStatementGenerator.swift; sourceTree = "<group>"; };
 		95E00BB6B3C84C9583510E67 /* SnowflakeHeartbeat.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SnowflakeHeartbeat.swift; sourceTree = "<group>"; };
 		97DB8F422F8F77B13A41B15F /* Cocoa.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Cocoa.framework; path = Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/System/Library/Frameworks/Cocoa.framework; sourceTree = DEVELOPER_DIR; };
-		A20DCD2775C0BFCD60A79A91 /* TeradataDriver.bundle */ = {isa = PBXFileReference; explicitFileType = "wrapper.plug-in"; includeInIndex = 0; path = TeradataDriver.bundle; sourceTree = BUILT_PRODUCTS_DIR; };
+		A20DCD2775C0BFCD60A79A91 /* TeradataDriver.bundle */ = {isa = PBXFileReference; explicitFileType = "wrapper.plug-in"; includeInIndex = 0; name = TeradataDriver.bundle; path = TeradataDriver.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
 		C146F286FAB945E9B19E5B88 /* SnowflakeBindingEncoder.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SnowflakeBindingEncoder.swift; sourceTree = "<group>"; };
 		DE8D74A27EE24B89A7DC79F9 /* SnowflakeConnectionRegistry.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SnowflakeConnectionRegistry.swift; sourceTree = "<group>"; };
 		F9D129A56E1AB45F7D82AC58 /* SnowflakeAuth.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SnowflakeAuth.swift; sourceTree = "<group>"; };
@@ -700,8 +700,6 @@
 		};
 		5A32BC012F9D5F1300BAEB5F /* mcp-server */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-			);
 			path = "mcp-server";
 			sourceTree = "<group>";
 		};
@@ -887,8 +885,6 @@
 		};
 		5ABCC5A82F43856700EAF3FC /* TableProTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-			);
 			path = TableProTests;
 			sourceTree = "<group>";
 		};
@@ -902,8 +898,6 @@
 		};
 		5AF00A122FB9000000000001 /* TableProUITests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-			);
 			path = TableProUITests;
 			sourceTree = "<group>";
 		};
@@ -1218,10 +1212,10 @@
 		5A1091BE2EF17EDC0055EA7C = {
 			isa = PBXGroup;
 			children = (
-				5ADDB00500000000000000B0 /* DynamoDBDriverPlugin */,
-				5E1A500500000000000000B0 /* ElasticsearchDriverPlugin */,
-				5ABQR00500000000000000B0 /* BigQueryDriverPlugin */,
-				5AEA8B412F6808CA0040461A /* EtcdDriverPlugin */,
+				5ADDB00500000000000000B0 /* Plugins/DynamoDBDriverPlugin */,
+				5E1A500500000000000000B0 /* Plugins/ElasticsearchDriverPlugin */,
+				5ABQR00500000000000000B0 /* Plugins/BigQueryDriverPlugin */,
+				5AEA8B412F6808CA0040461A /* Plugins/EtcdDriverPlugin */,
 				5AE4F4812F6BC0640097AC5B /* Plugins/CloudflareD1DriverPlugin */,
 				5A1862000000000000000004 /* Plugins/SurrealDBDriverPlugin */,
 				5A3BE6FE2F97DB0100611C1F /* Plugins/LibSQLDriverPlugin */,
@@ -1300,7 +1294,7 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
-		5ABQR00500000000000000B0 /* BigQueryDriverPlugin */ = {
+		5ABQR00500000000000000B0 /* Plugins/BigQueryDriverPlugin */ = {
 			isa = PBXGroup;
 			children = (
 				5ABQR00200000000000000A1 /* BigQueryAuth.swift */,
@@ -1315,7 +1309,7 @@
 			path = Plugins/BigQueryDriverPlugin;
 			sourceTree = "<group>";
 		};
-		5ADDB00500000000000000B0 /* DynamoDBDriverPlugin */ = {
+		5ADDB00500000000000000B0 /* Plugins/DynamoDBDriverPlugin */ = {
 			isa = PBXGroup;
 			children = (
 				5ADDB00200000000000000A1 /* DynamoDBConnection.swift */,
@@ -1329,7 +1323,7 @@
 			path = Plugins/DynamoDBDriverPlugin;
 			sourceTree = "<group>";
 		};
-		5AEA8B412F6808CA0040461A /* EtcdDriverPlugin */ = {
+		5AEA8B412F6808CA0040461A /* Plugins/EtcdDriverPlugin */ = {
 			isa = PBXGroup;
 			children = (
 				5AEA8B3B2F6808CA0040461A /* EtcdCommandParser.swift */,
@@ -1350,7 +1344,7 @@
 			name = Frameworks;
 			sourceTree = "<group>";
 		};
-		5E1A500500000000000000B0 /* ElasticsearchDriverPlugin */ = {
+		5E1A500500000000000000B0 /* Plugins/ElasticsearchDriverPlugin */ = {
 			isa = PBXGroup;
 			children = (
 				5E1A500200000000000000A1 /* ElasticsearchConnection.swift */,
@@ -2214,11 +2208,11 @@
 			mainGroup = 5A1091BE2EF17EDC0055EA7C;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				5A0000012F4F000000000101 /* XCLocalSwiftPackageReference "CodeEditSourceEditor" */,
+				5A0000012F4F000000000101 /* XCLocalSwiftPackageReference "LocalPackages/CodeEditSourceEditor" */,
 				5ACE00012F4F000000000008 /* XCRemoteSwiftPackageReference "Sparkle" */,
-				5A0000012F4F000000000100 /* XCLocalSwiftPackageReference "CodeEditLanguages" */,
+				5A0000012F4F000000000100 /* XCLocalSwiftPackageReference "LocalPackages/CodeEditLanguages" */,
 				5ACE00012F4F00000000000E /* XCRemoteSwiftPackageReference "oracle-nio" */,
-				5A0000012F4F000000000102 /* XCLocalSwiftPackageReference "TableProCore" */,
+				5A0000012F4F000000000102 /* XCLocalSwiftPackageReference "Packages/TableProCore" */,
 				5A32BBF92F9D5EAB00BAEB5F /* XCRemoteSwiftPackageReference "swift-certificates" */,
 			);
 			preferredProjectObjectVersion = 77;
@@ -5296,15 +5290,15 @@
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
-		5A0000012F4F000000000100 /* XCLocalSwiftPackageReference "CodeEditLanguages" */ = {
+		5A0000012F4F000000000100 /* XCLocalSwiftPackageReference "LocalPackages/CodeEditLanguages" */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = LocalPackages/CodeEditLanguages;
 		};
-		5A0000012F4F000000000101 /* XCLocalSwiftPackageReference "CodeEditSourceEditor" */ = {
+		5A0000012F4F000000000101 /* XCLocalSwiftPackageReference "LocalPackages/CodeEditSourceEditor" */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = LocalPackages/CodeEditSourceEditor;
 		};
-		5A0000012F4F000000000102 /* XCLocalSwiftPackageReference "TableProCore" */ = {
+		5A0000012F4F000000000102 /* XCLocalSwiftPackageReference "Packages/TableProCore" */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = Packages/TableProCore;
 		};
@@ -5340,7 +5334,7 @@
 /* Begin XCSwiftPackageProductDependency section */
 		5A1MPORT000000000000A010 /* TableProImport */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 5A0000012F4F000000000102 /* XCLocalSwiftPackageReference "TableProCore" */;
+			package = 5A0000012F4F000000000102 /* XCLocalSwiftPackageReference "Packages/TableProCore" */;
 			productName = TableProImport;
 		};
 		5A32BBFA2F9D5EAB00BAEB5F /* X509 */ = {
@@ -5376,12 +5370,12 @@
 		};
 		5AD1D8C12FB5000000000002 /* TableProMSSQLCore */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 5A0000012F4F000000000102 /* XCLocalSwiftPackageReference "TableProCore" */;
+			package = 5A0000012F4F000000000102 /* XCLocalSwiftPackageReference "Packages/TableProCore" */;
 			productName = TableProMSSQLCore;
 		};
 		F2FDCCDDA7AC8E6AE30DAD35 /* TableProTeradataCore */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 5A0000012F4F000000000102 /* XCLocalSwiftPackageReference "TableProCore" */;
+			package = 5A0000012F4F000000000102 /* XCLocalSwiftPackageReference "Packages/TableProCore" */;
 			productName = TableProTeradataCore;
 		};
 /* End XCSwiftPackageProductDependency section */

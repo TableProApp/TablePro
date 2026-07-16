@@ -37,7 +37,7 @@ final class TeradataPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let databaseTypeId = "Teradata"
     static let databaseDisplayName = "Teradata"
     static let iconName = "teradata-icon"
-    static let defaultPort = 1025
+    static let defaultPort = 1_025
     static let additionalConnectionFields: [ConnectionField] = [
         ConnectionField(
             id: "teradataLogMech", label: "Logon Mechanism", placeholder: "TD2", defaultValue: "TD2"),
@@ -53,6 +53,7 @@ final class TeradataPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let databaseGroupingStrategy: GroupingStrategy = .byDatabase
     static let containerEntityName = "Database"
     static let supportsForeignKeys = true
+    static let supportsSchemaEditing = true
     static let supportsSSL = false
     static let systemDatabaseNames: [String] = [
         "DBC", "Sys", "SysAdmin", "SystemFe", "SYSLIB", "SYSUDTLIB", "SYSSPATIAL",
@@ -121,7 +122,7 @@ final class TeradataPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     var supportsTransactions: Bool { true }
 
     var capabilities: PluginCapabilities {
-        [.cancelQuery, .transactions]
+        [.cancelQuery, .transactions, .alterTableDDL]
     }
 
     init(config: DriverConnectionConfig) {
