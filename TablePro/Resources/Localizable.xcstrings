@@ -78033,6 +78033,9 @@
         }
       }
     },
+    "Teradata Vantage data warehouse" : {
+
+    },
     "Terminal" : {
       "extractionState" : "stale",
       "localizations" : {
