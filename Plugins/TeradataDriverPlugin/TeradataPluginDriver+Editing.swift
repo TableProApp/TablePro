@@ -8,7 +8,6 @@ extension TeradataPluginDriver {
         case .null:
             return "NULL"
         case .text(let string):
-            if PluginNumericLiteral.isValid(string) { return string }
             return "'" + string.replacingOccurrences(of: "'", with: "''") + "'"
         case .bytes(let data):
             return "'" + data.map { String(format: "%02X", $0) }.joined() + "'XB"
