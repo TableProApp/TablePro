@@ -97,3 +97,4 @@ Export query results or table data to CSV, JSON, and other formats. Import data 
 - Structure editing supports add, modify, and drop columns, plus data-skipping indexes. Foreign keys and primary key changes are not available
 - UPDATE/DELETE run as asynchronous background mutations via `ALTER TABLE`
 - ClickHouse is designed for batch inserts, not single-row writes
+- A query with its own `FORMAT` clause (for example `SELECT 1 FORMAT JSON`) shows the server's raw output in a single column instead of a parsed table

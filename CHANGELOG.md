@@ -18,6 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Fixed ClickHouse queries showing only a success message with no result table. TablePro guessed whether a query returns data from its first word, which failed for queries starting with a comment or with SELECT on its own line. It now reads what the server actually returned, so any query that produces a result set shows the grid, including empty results and queries with their own FORMAT clause. (#1886)
+- Fixed ClickHouse INSERT statements always reporting 0 rows affected. (#1886)
+- Fixed ClickHouse query exports writing an empty file when the query started with a comment. (#1886)
 - Fixed a restored window tab sometimes showing a blank name in the tab bar until you switched to it. (#1894)
 - Fixed the window title not updating right away after saving a query to a file or opening a favorite into the current tab. (#1894)
 - Fixed the SQL editor in a new tab losing keyboard focus after the first couple of characters, which stopped further typing until you clicked back into the editor. (#1885)

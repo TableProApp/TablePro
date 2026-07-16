@@ -508,6 +508,7 @@
 		5A863000E00000000 /* Exceptions for "Plugins/ClickHouseDriverPlugin" folder in "TableProTests" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				ClickHouseCapabilities.swift,
 				ClickHouseCredentials.swift,
 				ClickHouseTableOperations.swift,
 			);

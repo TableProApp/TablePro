@@ -149,10 +149,6 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     static let logger = Logger(subsystem: "com.TablePro", category: "ClickHousePluginDriver")
 
-    static let selectPrefixes: Set<String> = [
-        "SELECT", "SHOW", "DESCRIBE", "DESC", "EXISTS", "EXPLAIN", "WITH"
-    ]
-
     var serverVersion: String? { _serverVersion }
     var supportsSchemas: Bool { false }
     var supportsTransactions: Bool { false }
@@ -604,9 +600,8 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         if !database.isEmpty {
             queryItems.append(URLQueryItem(name: "database", value: database))
         }
-        if !queryItems.isEmpty {
-            components.queryItems = queryItems
-        }
+        queryItems.append(URLQueryItem(name: "default_format", value: "JSONEachRow"))
+        components.queryItems = queryItems
 
         guard let url = components.url else {
             throw ClickHouseError(message: "Failed to construct request URL")
@@ -622,7 +617,7 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             request.setValue(authorization, forHTTPHeaderField: "Authorization")
         }
 
-        request.httpBody = (query + " FORMAT JSONEachRow").data(using: .utf8)
+        request.httpBody = query.data(using: .utf8)
         return request
     }
 
