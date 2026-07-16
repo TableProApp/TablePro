@@ -48,6 +48,8 @@ private extension MSSQLPluginError {
             self = .connectionFailed(String(format: String(localized: "TLS: %@"), serverMessage))
         case let .kerberosAuthFailed(kind, serverMessage):
             self = .connectionFailed(MSSQLKerberosMessage.describe(kind: kind, serverMessage: serverMessage))
+        case .connectionTimedOut:
+            self = .connectionFailed(coreError.localizedDescription)
         }
     }
 }
@@ -263,19 +265,22 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func connect() async throws {
         let authMethod = MSSQLConnectionOptions.authMethod(from: config.additionalFields)
-        let options = MSSQLConnectionOptions(
-            host: config.host,
-            port: config.port,
-            user: config.username,
-            password: config.password,
-            database: config.database,
-            schema: _currentSchema,
-            encryptionFlag: MSSQLSSLMapping.freetdsEncryptionFlag(for: config.ssl.mode),
-            authMethod: authMethod
-        )
-        let conn = FreeTDSConnection(options: options)
+        let conn: FreeTDSConnection
         do {
-            try await establishConnection(conn, authMethod: authMethod)
+            let kerberosCachePath = try await acquireKerberosTicketIfNeeded(authMethod: authMethod)
+            let options = MSSQLConnectionOptions(
+                host: config.host,
+                port: config.port,
+                user: config.username,
+                password: config.password,
+                database: config.database,
+                schema: _currentSchema,
+                encryptionFlag: MSSQLSSLMapping.freetdsEncryptionFlag(for: config.ssl.mode),
+                authMethod: authMethod,
+                kerberosCachePath: kerberosCachePath
+            )
+            conn = FreeTDSConnection(options: options)
+            try await conn.connect()
         } catch let error as MSSQLCoreError {
             switch error {
             case let .tlsHandshakeFailed(kind, serverMessage):
@@ -309,15 +314,17 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
     }
 
-    private func establishConnection(_ conn: FreeTDSConnection, authMethod: MSSQLAuthMethod) async throws {
-        guard authMethod == .windows else {
-            try await conn.connect()
-            return
-        }
+    private func acquireKerberosTicketIfNeeded(authMethod: MSSQLAuthMethod) async throws -> String? {
+        guard authMethod == .windows else { return nil }
         let principal = (config.additionalFields[MSSQLKerberosField.principal] ?? "")
             .trimmingCharacters(in: .whitespaces)
         let password = config.additionalFields[MSSQLKerberosField.password] ?? ""
-        try await MSSQLKerberosConnectGate.shared.connect(conn, principal: principal, password: password)
+        guard !principal.isEmpty, !password.isEmpty else { return nil }
+        return try await MSSQLKerberosCredentials.acquireTicket(
+            principal: principal,
+            password: password,
+            timeoutSeconds: MSSQLConnectionOptions.defaultLoginTimeoutSeconds
+        )
     }
 
     private func executeInternal(_ query: String) async throws -> PluginQueryResult {

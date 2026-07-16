@@ -11,6 +11,7 @@ public struct MSSQLConnectionOptions: Sendable, Equatable {
     public var applicationName: String
     public var loginTimeoutSeconds: Int
     public var authMethod: MSSQLAuthMethod
+    public var kerberosCachePath: String?
 
     public static let defaultPort = 1433
     public static let defaultSchema = "dbo"
@@ -28,11 +29,13 @@ public struct MSSQLConnectionOptions: Sendable, Equatable {
         encryptionFlag: String = MSSQLConnectionOptions.defaultEncryptionFlag,
         applicationName: String = MSSQLConnectionOptions.defaultApplicationName,
         loginTimeoutSeconds: Int = MSSQLConnectionOptions.defaultLoginTimeoutSeconds,
-        authMethod: MSSQLAuthMethod = .sqlServer
+        authMethod: MSSQLAuthMethod = .sqlServer,
+        kerberosCachePath: String? = nil
     ) {
         self.host = host
         self.port = port
         self.authMethod = authMethod
+        self.kerberosCachePath = kerberosCachePath
         switch authMethod {
         case .sqlServer:
             self.user = user

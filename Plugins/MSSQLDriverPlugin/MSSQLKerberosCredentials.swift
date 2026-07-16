@@ -2,21 +2,28 @@ import Foundation
 import GSS
 import TableProMSSQLCore
 
-struct MSSQLKerberosCache {
-    let name: String
-    let filePath: String
-
-    func destroy() {
-        try? FileManager.default.removeItem(atPath: filePath)
-    }
-}
-
 enum MSSQLKerberosCredentials {
-    static func acquireTicket(principal: String, password: String) throws -> MSSQLKerberosCache {
-        let fileName = "tablepro-krb5-\(UUID().uuidString)"
-        let filePath = (NSTemporaryDirectory() as NSString).appendingPathComponent(fileName)
-        let cacheName = "FILE:\(filePath)"
+    private static let acquisitionQueue = DispatchQueue(
+        label: "com.TablePro.mssql.kerberos-acquire",
+        qos: .userInitiated
+    )
 
+    static func acquireTicket(principal: String, password: String, timeoutSeconds: Int) async throws -> String {
+        let cachePath = (NSTemporaryDirectory() as NSString)
+            .appendingPathComponent("tablepro-krb5-\(UUID().uuidString)")
+        return try await runCancellableBlocking(
+            on: acquisitionQueue,
+            deadline: .seconds(timeoutSeconds),
+            timeoutError: { MSSQLCoreError.connectionTimedOut(isKerberos: true) },
+            work: {
+                try acquireTicketSync(principal: principal, password: password, cachePath: cachePath)
+                return cachePath
+            },
+            discardLateResult: { path in try? FileManager.default.removeItem(atPath: path) }
+        )
+    }
+
+    private static func acquireTicketSync(principal: String, password: String, cachePath: String) throws {
         let importedName = try importName(principal)
         defer {
             var releaseMinor: OM_uint32 = 0
@@ -26,7 +33,7 @@ enum MSSQLKerberosCredentials {
 
         let attributes = NSMutableDictionary()
         attributes[kGSSICPassword] = password
-        attributes[kGSSICKerberosCacheName] = cacheName
+        attributes[kGSSICKerberosCacheName] = "FILE:\(cachePath)"
 
         var cred: gss_cred_id_t?
         var errorRef: Unmanaged<CFError>?
@@ -41,7 +48,7 @@ enum MSSQLKerberosCredentials {
         guard status == 0 else {
             let message = errorRef?.takeRetainedValue().localizedDescription
                 ?? String(localized: "Kerberos ticket request failed")
-            try? FileManager.default.removeItem(atPath: filePath)
+            try? FileManager.default.removeItem(atPath: cachePath)
             throw MSSQLCoreError.kerberosAuthFailed(
                 kind: MSSQLKerberosClassifier.classify(message) ?? .wrongPassword,
                 serverMessage: message
@@ -52,8 +59,6 @@ enum MSSQLKerberosCredentials {
             var releaseMinor: OM_uint32 = 0
             _ = gss_release_cred(&releaseMinor, &cred)
         }
-
-        return MSSQLKerberosCache(name: cacheName, filePath: filePath)
     }
 
     private static func importName(_ principal: String) throws -> gss_name_t {

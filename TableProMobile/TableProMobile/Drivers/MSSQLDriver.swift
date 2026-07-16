@@ -280,6 +280,8 @@ final class MSSQLDriver: DatabaseDriver, @unchecked Sendable {
             return DatabaseError(message: "TLS handshake failed: \(serverMessage)")
         case .kerberosAuthFailed(_, let serverMessage):
             return DatabaseError(message: "Kerberos authentication failed: \(serverMessage)")
+        case .connectionTimedOut:
+            return DatabaseError(message: error.localizedDescription)
         case .queryFailed(let msg):
             return DatabaseError(message: msg)
         case .cancelled:
