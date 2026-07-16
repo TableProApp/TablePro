@@ -3,7 +3,7 @@ import Foundation
 
 public final class TeradataConnection {
     private let config: TeradataConnectionConfig
-    private var socket: TeradataSocket?
+    private var socket: (any TeradataTransport)?
     private var sessionNumber: UInt32 = 0
     private var aesKey: [UInt8] = []
     private var charsetCode: UInt8 = 0xBF
@@ -20,8 +20,7 @@ public final class TeradataConnection {
 
     public func connect() throws {
         try validateLogMech()
-        let socket = try TeradataSocket(
-            host: config.host, port: config.port, timeoutSeconds: config.connectTimeoutSeconds)
+        let socket = try makeTransport()
         self.socket = socket
         serverIP = Self.resolveAddress(config.host) ?? config.host
 
@@ -75,6 +74,22 @@ public final class TeradataConnection {
 
     public func cancel() {
         socket?.cancel()
+    }
+
+    private func makeTransport() throws -> any TeradataTransport {
+        guard config.tls.enabled else {
+            return try TeradataSocket(
+                host: config.host, port: config.port, timeoutSeconds: config.connectTimeoutSeconds)
+        }
+        do {
+            return try TeradataTLSTransport(
+                host: config.host, port: config.port, options: config.tls,
+                timeoutSeconds: config.connectTimeoutSeconds)
+        } catch {
+            guard config.tls.allowPlaintextFallback else { throw error }
+            return try TeradataSocket(
+                host: config.host, port: config.port, timeoutSeconds: config.connectTimeoutSeconds)
+        }
     }
 
     private func validateLogMech() throws {
@@ -147,7 +162,8 @@ public final class TeradataConnection {
         let attributes = TeradataMessages.clientAttributesParcel(
             username: config.username, session: sessionNumber, charset: charsetCode,
             serverIP: serverIP, logMech: config.logMech.rawValue,
-            transactionMode: config.transactionMode.rawValue, database: config.database)
+            transactionMode: config.transactionMode.rawValue, sslMode: config.tls.modeLabel,
+            database: config.database)
         let body = logon.encoded() + sessionOptions.encoded() + connect.encoded()
             + logonData.encoded() + attributes.encoded()
         try sendEncrypted(kind: .connect, body: body, requestNumber: 0)

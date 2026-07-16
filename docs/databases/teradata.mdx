@@ -20,12 +20,23 @@ Teradata is a downloadable driver. Open **Settings > Plugins**, find Teradata, a
 | Password | Your Teradata password. |
 | Logon Mechanism | The logon method. `TD2` and `TDNEGO` are supported. Default `TD2`. |
 | Transaction Mode | `DEFAULT`, `ANSI`, or `TERA`. Default `DEFAULT`. |
+| SSL Mode | Off by default. `Preferred`, `Required`, `Verify CA`, or `Verify Identity` turn on TLS. |
 
 ## Databases and objects
 
 In Teradata a database and a user are both namespaces that hold tables, views, and macros. TablePro lists them from the data dictionary (`DBC.DatabasesV`) as top-level databases, and their tables and columns come from `DBC.TablesV` and `DBC.ColumnsV`.
 
 Identifiers are quoted with double quotes. Teradata has no `LIMIT`, so TablePro pages results with `TOP` on the first page and `QUALIFY ROW_NUMBER()` for later pages.
+
+## TLS
+
+Teradata negotiates TLS on the same gateway port (`1025`), so there is no separate HTTPS port. Set the SSL Mode to turn it on:
+
+- `Preferred` tries TLS and falls back to a plain connection if the gateway does not offer it.
+- `Required` uses TLS but does not check the server certificate.
+- `Verify CA` checks the certificate chain, and `Verify Identity` also checks the hostname. Point CA Certificate at your CA file to trust a private authority.
+
+To test TLS against a server that offers it, use `Required` so a failed handshake surfaces instead of falling back.
 
 ## Transaction mode
 

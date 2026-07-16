@@ -225,7 +225,7 @@ extension PluginMetadataRegistry {
                     supportsImport: true,
                     supportsExport: true,
                     supportsSSH: true,
-                    supportsSSL: false,
+                    supportsSSL: true,
                     supportsCascadeDrop: false,
                     supportsForeignKeyDisable: false,
                     supportsReadOnlyMode: true,

@@ -21,7 +21,14 @@ public enum TeradataWireError: Error, CustomStringConvertible {
     }
 }
 
-final class TeradataSocket {
+protocol TeradataTransport: AnyObject {
+    func send(_ bytes: [UInt8]) throws
+    func receive(_ count: Int) throws -> [UInt8]
+    func cancel()
+    func close()
+}
+
+final class TeradataSocket: TeradataTransport {
     private let lock = NSLock()
     private var descriptor: Int32 = -1
     private var closed = false

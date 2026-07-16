@@ -22,6 +22,33 @@ public enum TeradataTransactionMode: String, Sendable {
     }
 }
 
+public struct TeradataTLSOptions: Sendable {
+    public var enabled: Bool
+    public var allowPlaintextFallback: Bool
+    public var verifiesCertificate: Bool
+    public var verifiesHostname: Bool
+    public var caCertificatePath: String
+    public var modeLabel: String
+
+    public init(
+        enabled: Bool = false,
+        allowPlaintextFallback: Bool = false,
+        verifiesCertificate: Bool = false,
+        verifiesHostname: Bool = false,
+        caCertificatePath: String = "",
+        modeLabel: String = "DISABLE"
+    ) {
+        self.enabled = enabled
+        self.allowPlaintextFallback = allowPlaintextFallback
+        self.verifiesCertificate = verifiesCertificate
+        self.verifiesHostname = verifiesHostname
+        self.caCertificatePath = caCertificatePath
+        self.modeLabel = modeLabel
+    }
+
+    public static let disabled = TeradataTLSOptions()
+}
+
 public struct TeradataConnectionConfig: Sendable {
     public var host: String
     public var port: UInt16
@@ -31,6 +58,7 @@ public struct TeradataConnectionConfig: Sendable {
     public var account: String?
     public var logMech: TeradataLogMech
     public var transactionMode: TeradataTransactionMode
+    public var tls: TeradataTLSOptions
     public var connectTimeoutSeconds: Int
 
     public init(
@@ -42,6 +70,7 @@ public struct TeradataConnectionConfig: Sendable {
         account: String? = nil,
         logMech: TeradataLogMech = .td2,
         transactionMode: TeradataTransactionMode = .default,
+        tls: TeradataTLSOptions = .disabled,
         connectTimeoutSeconds: Int = 20
     ) {
         self.host = host
@@ -52,6 +81,7 @@ public struct TeradataConnectionConfig: Sendable {
         self.account = account
         self.logMech = logMech
         self.transactionMode = transactionMode
+        self.tls = tls
         self.connectTimeoutSeconds = connectTimeoutSeconds
     }
 }

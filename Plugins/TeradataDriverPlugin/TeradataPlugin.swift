@@ -54,7 +54,7 @@ final class TeradataPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let containerEntityName = "Database"
     static let supportsForeignKeys = true
     static let supportsSchemaEditing = true
-    static let supportsSSL = false
+    static let supportsSSL = true
     static let systemDatabaseNames: [String] = [
         "DBC", "Sys", "SysAdmin", "SystemFe", "SYSLIB", "SYSUDTLIB", "SYSSPATIAL",
         "TD_SYSFNLIB", "TD_SERVER_DB", "TDStats", "TDMaps", "TDQCD", "SQLJ",
@@ -146,7 +146,8 @@ final class TeradataPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             password: config.password,
             database: config.database.isEmpty ? nil : config.database,
             logMech: logMech,
-            transactionMode: transactionMode)
+            transactionMode: transactionMode,
+            tls: TeradataSSLMapping.tlsOptions(for: config.ssl))
         let connection = TeradataAsyncConnection(config: coreConfig)
         try await connection.connect()
         self.connection = connection

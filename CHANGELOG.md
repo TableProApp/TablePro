@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Teradata support through a downloadable driver written in native Swift. Connect to Teradata over TD2 logon with encrypted sessions, browse databases, tables, and columns, and run SQL. (#1867)
+- Teradata support through a downloadable driver written in native Swift. Connect over TD2 or TDNEGO logon, optionally with TLS, browse databases, tables, and columns, run SQL, edit rows, and create or alter tables. (#1867)
 
 ### Fixed
 

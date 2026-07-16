@@ -65,7 +65,7 @@ enum TeradataMessages {
 
     static func clientAttributesParcel(
         username: String, session: UInt32, charset: UInt8,
-        serverIP: String, logMech: String, transactionMode: String, database: String?
+        serverIP: String, logMech: String, transactionMode: String, sslMode: String, database: String?
     ) -> Parcel {
         var writer = ByteWriter()
         func stringAttribute(_ code: UInt16, _ value: String) {
@@ -89,7 +89,7 @@ enum TeradataMessages {
         stringAttribute(28, "P")
         stringAttribute(29, "20.0.0.63")
         let ess = "BA=N;CCS=UTF8;CERT=U;CF=0;DP=1025;ENC=Y;ES=\(session);"
-            + "LM=\(logMech);LOB=Y;PART=DBC/SQL;SCS=UTF8;SIP=Y;SSLM=DISABLE;TM=\(transactionMode);TVD=plain;"
+            + "LM=\(logMech);LOB=Y;PART=DBC/SQL;SCS=UTF8;SIP=Y;SSLM=\(sslMode);TM=\(transactionMode);TVD=plain;"
         stringAttribute(30, ess)
         stringAttribute(31, "127.0.0.1")
         portAttribute(32, 50000)
