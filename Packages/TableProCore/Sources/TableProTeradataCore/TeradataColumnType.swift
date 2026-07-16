@@ -57,6 +57,32 @@ public enum TeradataColumnType {
         }
     }
 
+    public static func wireTypeName(_ code: UInt16) -> String {
+        switch code & 0xFFFE {
+        case TeradataType.byteint: return "BYTEINT"
+        case TeradataType.smallint: return "SMALLINT"
+        case TeradataType.integer: return "INTEGER"
+        case TeradataType.bigint: return "BIGINT"
+        case TeradataType.float: return "FLOAT"
+        case TeradataType.decimal: return "DECIMAL"
+        case 604: return "NUMBER"
+        case TeradataType.char: return "CHAR"
+        case TeradataType.varchar: return "VARCHAR"
+        case TeradataType.longVarchar: return "LONG VARCHAR"
+        case TeradataType.byte: return "BYTE"
+        case TeradataType.varbyte: return "VARBYTE"
+        case TeradataType.dateInteger, TeradataType.dateAnsi: return "DATE"
+        case 760: return "TIME"
+        case 764: return "TIMESTAMP"
+        case 768: return "TIME WITH TIME ZONE"
+        case 772: return "TIMESTAMP WITH TIME ZONE"
+        case 400: return "BLOB"
+        case 416: return "CLOB"
+        case 880: return "JSON"
+        default: return "VARCHAR"
+        }
+    }
+
     public static func category(wireTypeCode: UInt16) -> TeradataTypeCategory {
         switch wireTypeCode & 0xFFFE {
         case TeradataType.integer, TeradataType.smallint, TeradataType.bigint,
