@@ -10,5 +10,6 @@
 #define CMariaDB_h
 
 #include "include/mysql.h"
+#include "include/mysqld_error.h"
 
 #endif /* CMariaDB_h */

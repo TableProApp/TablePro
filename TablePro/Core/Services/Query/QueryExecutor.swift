@@ -222,7 +222,8 @@ final class QueryExecutor {
         else {
             return nil
         }
-        return dataGridSettings.validatedQueryResultRowCap
+        let cap = dataGridSettings.validatedQueryResultRowCap
+        return cap > 0 ? cap : nil
     }
 
     static func qualifiesForRowCap(sql: String, tabType: TabType, databaseType: DatabaseType) -> Bool {

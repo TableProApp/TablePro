@@ -28,8 +28,8 @@ extension MainContentCoordinator {
         }
     }
 
-    func resolveExecutionPlan(sql: String, tabType: TabType, bypassLimit: Bool = false) -> QueryLimitPlan {
-        queryExecutionCoordinator.resolveExecutionPlan(sql: sql, tabType: tabType, bypassLimit: bypassLimit)
+    func resolveRowCap(sql: String, tabType: TabType, bypassLimit: Bool = false) -> Int? {
+        queryExecutionCoordinator.resolveRowCap(sql: sql, tabType: tabType, bypassLimit: bypassLimit)
     }
 
     func parseSchemaMetadata(_ schema: FetchedTableSchema) -> ParsedSchemaMetadata {

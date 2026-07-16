@@ -69,10 +69,9 @@ Match modes: contains, matches word, starts with, ends with, or regular expressi
 SELECT and WITH queries without their own `LIMIT` or `FETCH FIRST` run with the configured row cap:
 
 - The default cap is 10,000 rows. Pick 100 to 500,000 in **Settings > Editor** (**Row cap**), or turn off **Truncate query results** to disable it.
-- On databases whose SQL uses `LIMIT`, TablePro appends a `LIMIT` to the statement it sends, so the server stops early instead of returning millions of rows. The editor text and query history keep the query as you wrote it.
-- Your own `LIMIT` or `FETCH FIRST` always wins: the query is sent as written and not capped for that run.
+- Your query is sent exactly as you wrote it. TablePro never changes the SQL, it stops reading once it reaches the cap.
+- Your own `LIMIT`, `FETCH FIRST`, or `TOP` always wins: the query is not capped for that run.
 - `EXPLAIN`, `SHOW`, writes, and DDL are never limited.
-- Statements ending in clauses that must follow `LIMIT` (such as `FOR UPDATE` or CQL's `ALLOW FILTERING`) are sent as written, and SQL Server and Oracle queries run unmodified; in these cases the cap is enforced on the result after the query runs.
 
 When the cap trims a result, the status bar shows **truncated** with a **Fetch All** link. To skip the cap for one run, press `Cmd+Option+Enter` or use the Execute button's menu or the Query menu.
 
