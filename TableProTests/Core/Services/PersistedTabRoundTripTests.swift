@@ -7,8 +7,9 @@
 
 import Foundation
 import TableProPluginKit
-@testable import TablePro
 import Testing
+
+@testable import TablePro
 
 @Suite("PersistedTab round-trip")
 @MainActor
@@ -160,5 +161,32 @@ struct PersistedTabRoundTripTests {
         #expect(decoded.columnWidths == nil)
         #expect(decoded.windowGroupIndex == nil)
         #expect(decoded.isView == false)
+    }
+
+    @Test("A persisted tab without a title key decodes to the default title, never empty")
+    func missingTitleDecodesToDefault() throws {
+        let json = """
+        {"id":"\(UUID().uuidString)","query":"SELECT 1","tabType":{"query":{}},"tableName":null}
+        """
+        let decoded = try JSONDecoder().decode(PersistedTab.self, from: Data(json.utf8))
+        #expect(decoded.title == "Query")
+    }
+
+    @Test("A persisted tab with a null title decodes to the default title, never empty")
+    func nullTitleDecodesToDefault() throws {
+        let json = """
+        {"id":"\(UUID().uuidString)","title":null,"query":"SELECT 1","tabType":{"query":{}},"tableName":null}
+        """
+        let decoded = try JSONDecoder().decode(PersistedTab.self, from: Data(json.utf8))
+        #expect(decoded.title == "Query")
+    }
+
+    @Test("A persisted tab with a real title keeps it")
+    func realTitleIsPreserved() throws {
+        let json = """
+        {"id":"\(UUID().uuidString)","title":"auth.users","query":"","tabType":{"query":{}},"tableName":null}
+        """
+        let decoded = try JSONDecoder().decode(PersistedTab.self, from: Data(json.utf8))
+        #expect(decoded.title == "auth.users")
     }
 }

@@ -71,6 +71,7 @@ extension MainContentCoordinator {
                 tab.content.loadMtime = mtime
                 tab.title = QueryTab.fileDisplayTitle(for: favorite.fileURL)
             }
+            tabManager.markTabRenamed(tab.id)
             registerWindowForSourceFile(favorite.fileURL)
             return
         }

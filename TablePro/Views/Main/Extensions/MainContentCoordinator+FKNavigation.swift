@@ -78,8 +78,6 @@ extension MainContentCoordinator {
         }
 
         if needsQuery {
-            NSApp.keyWindow?.title = referencedTable
-
             guard let (tab, tabIndex) = tabManager.selectedTabAndIndex else { return }
             let tableRows = tabSessionRegistry.tableRows(for: tab.id)
             let filteredQuery = queryBuilder.buildFilteredQuery(

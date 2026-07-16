@@ -27,7 +27,13 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
     private var closingSessionId: UUID?
 
     var windowTitle: String {
-        didSet { view.window?.title = windowTitle }
+        didSet {
+            let sanitized = WindowTitleResolver.sanitizeTitle(previous: oldValue, candidate: windowTitle)
+            if sanitized != windowTitle {
+                windowTitle = sanitized
+            }
+            view.window?.title = windowTitle
+        }
     }
 
     var windowSubtitle: String {
@@ -61,70 +67,6 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
 
     private var connectionStatusCancellable: AnyCancellable?
 
-    // MARK: - Title Resolution
-
-    static func resolveDefaultTitle(payload: EditorTabPayload?, queryLanguageName: String?) -> String {
-        switch payload?.tabType {
-        case .serverDashboard:
-            return String(localized: "Server Dashboard")
-        case .usersRoles:
-            return String(localized: "Users & Roles")
-        case .erDiagram:
-            return String(localized: "ER Diagram")
-        case .createTable:
-            return String(localized: "Create Table")
-        default:
-            break
-        }
-        if let tabTitle = payload?.tabTitle {
-            return tabTitle
-        }
-        if let sourceFileURL = payload?.sourceFileURL {
-            return QueryTab.fileDisplayTitle(for: sourceFileURL)
-        }
-        if let tableName = payload?.tableName {
-            return tableName
-        }
-        if let queryLanguageName {
-            return String(format: String(localized: "%@ Query"), queryLanguageName)
-        }
-        return String(localized: "SQL Query")
-    }
-
-    static func resolveDefaultSubtitle(tab: QueryTab?, connection: DatabaseConnection) -> String {
-        tableSubtitle(
-            isTable: tab?.tabType == .table,
-            tableName: tab?.tableContext.tableName,
-            databaseName: tab?.tableContext.databaseName ?? "",
-            schemaName: tab?.tableContext.schemaName,
-            fallback: connection.name
-        )
-    }
-
-    static func resolveDefaultSubtitle(payload: EditorTabPayload?, connection: DatabaseConnection) -> String {
-        tableSubtitle(
-            isTable: payload?.tabType == .table,
-            tableName: payload?.tableName,
-            databaseName: payload?.databaseName ?? "",
-            schemaName: payload?.schemaName,
-            fallback: connection.name
-        )
-    }
-
-    private static func tableSubtitle(
-        isTable: Bool,
-        tableName: String?,
-        databaseName: String,
-        schemaName: String?,
-        fallback: String
-    ) -> String {
-        guard isTable, let tableName, !tableName.isEmpty, !databaseName.isEmpty else { return fallback }
-        if let schemaName, !schemaName.isEmpty {
-            return "\(databaseName) · \(schemaName)"
-        }
-        return databaseName
-    }
-
     // MARK: - Init
 
     init(payload: EditorTabPayload?, sessionState: SessionStateFactory.SessionState?) {
@@ -143,7 +85,6 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
             }
             return PluginManager.shared.queryLanguageName(for: connection.type)
         }()
-        self.windowTitle = Self.resolveDefaultTitle(payload: payload, queryLanguageName: queryLanguageName)
 
         var resolvedSession: ConnectionSession?
         if let connectionId = payload?.connectionId {
@@ -153,9 +94,14 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         }
         self.currentSession = resolvedSession
 
-        let subtitleConnection = self.payloadConnection ?? resolvedSession?.connection
-        if let subtitleConnection {
-            self.windowSubtitle = Self.resolveDefaultSubtitle(payload: payload, connection: subtitleConnection)
+        let titleConnection = self.payloadConnection ?? resolvedSession?.connection
+        self.windowTitle = WindowTitleResolver.resolveTitle(
+            payload: payload,
+            databaseType: titleConnection?.type,
+            queryLanguageName: queryLanguageName
+        )
+        if let titleConnection {
+            self.windowSubtitle = WindowTitleResolver.resolveSubtitle(payload: payload, connection: titleConnection)
         } else {
             self.windowSubtitle = ""
         }
@@ -174,7 +120,8 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
             }
             self.sessionState = state
             if payload?.intent == .newEmptyTab,
-               let tabTitle = state.coordinator.tabManager.selectedTab?.title {
+               let tabTitle = state.coordinator.tabManager.selectedTab?.title,
+               !tabTitle.isBlank {
                 self.windowTitle = tabTitle
             }
         }
@@ -326,7 +273,9 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         currentSession = newSession
 
         if payload?.tableName == nil,
-           windowTitle == String(localized: "SQL Query") || windowTitle.hasSuffix(" Query") {
+           windowTitle.isBlank
+           || windowTitle == WindowTitleResolver.fallbackTitle
+           || windowTitle.hasSuffix(" Query") {
             windowTitle = newSession.connection.name
             windowSubtitle = newSession.connection.name
         }

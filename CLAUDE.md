@@ -155,10 +155,7 @@ These have caused real bugs when violated:
 
 **Tab replacement guard**: `openTableTab` checks for active work (unsaved edits, applied filters, sorting) before replacing the current tab. Tabs with active work open a new native window tab instead. This check runs before the preview tab branch.
 
-**Window tab titles**: Resolved in TWO places that must stay in sync:
-1. `ContentView.init` (title resolution chain) — initial title from payload
-2. `MainContentView+Setup.swift` `updateWindowTitleAndFileState()` — ongoing title updates
-Missing a case produces a wrong "{Language} Query" title on the first frame.
+**Window tab titles**: The native tab label follows `NSWindow.title`, and AppKit renders it for background tabs too, so the title must be correct from creation, not from first activation. Every title resolves through `WindowTitleResolver` (pure, AppKit-free): `MainSplitViewController.init` for the payload-driven initial title, `updateWindowTitleAndFileState()` in `MainContentView+Setup.swift` for ongoing tab-driven updates. The resolver treats a blank string as absent at every tier and always recomputes a `.table` tab's name from `tableName`+`schemaName` instead of trusting a carried-over title. `TabWindowController.init` pushes the resolved title onto `window.title`/`window.subtitle` right after assigning `contentViewController`, because a joined-but-never-activated tab window never runs `viewWillAppear` or its SwiftUI lifecycle. `MainSplitViewController.windowTitle`'s `didSet` is the single guarded sink and never lets an empty string reach `NSWindow.title`. Never write `window.title` or `NSApp.keyWindow?.title` directly; mutate `tab.title` and call `QueryTabManager.markTabRenamed(_:)` so the resolver re-runs. A restored tab whose persisted title decoded to "" shipped as a blank tab label that only healed on activation.
 
 **Schema loading**: `SQLSchemaProvider` (actor) stores an in-flight `loadTask: Task<Void, Never>?`. Concurrent callers `await` the same Task instead of firing duplicate `fetchTables()` queries. Never use a boolean `isLoading` guard that returns without data — callers need to await the result.
 

@@ -687,6 +687,7 @@ final class MainContentCommandActions {
                     mutTab.content.savedFileContent = content
                     mutTab.title = url.deletingPathExtension().lastPathComponent
                 }
+                coordinator?.tabManager.markTabRenamed(tabId)
             } catch {
                 Self.logger.error("Failed to save file: \(error.localizedDescription)")
             }

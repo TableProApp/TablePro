@@ -85,7 +85,7 @@ struct PersistedTab: Codable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(UUID.self, forKey: .id)
-        title = try container.decodeIfPresent(String.self, forKey: .title) ?? ""
+        title = try container.decodeIfPresent(String.self, forKey: .title) ?? "Query"
         query = try container.decodeIfPresent(String.self, forKey: .query) ?? ""
         tabType = try container.decode(TabType.self, forKey: .tabType)
         tableName = try container.decodeIfPresent(String.self, forKey: .tableName)

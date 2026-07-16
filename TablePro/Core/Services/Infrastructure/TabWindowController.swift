@@ -61,6 +61,8 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
 
         let splitVC = MainSplitViewController(payload: payload, sessionState: sessionState)
         window.contentViewController = splitVC
+        window.title = splitVC.windowTitle
+        window.subtitle = splitVC.windowSubtitle
 
         super.init(window: window)
 
