@@ -9,7 +9,7 @@ struct ColumnMeta {
     var baseCode: UInt16 { typeCode & 0xFFFE }
 }
 
-enum TeradataValue: Equatable {
+public enum TeradataValue: Equatable, Sendable {
     case null
     case integer(Int64)
     case double(Double)

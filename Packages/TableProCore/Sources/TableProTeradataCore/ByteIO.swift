@@ -16,22 +16,6 @@ enum HexBytes {
     }
 }
 
-enum WireError: Error, CustomStringConvertible {
-    case truncated(String)
-    case malformed(String)
-    case server(code: Int, message: String)
-    case unsupported(String)
-
-    var description: String {
-        switch self {
-        case .truncated(let what): return "truncated: \(what)"
-        case .malformed(let what): return "malformed: \(what)"
-        case .server(let code, let message): return "server error \(code): \(message)"
-        case .unsupported(let what): return "unsupported: \(what)"
-        }
-    }
-}
-
 struct ByteWriter {
     private(set) var bytes: [UInt8] = []
 
@@ -74,32 +58,32 @@ struct ByteReader {
     var remaining: Int { bytes.count - offset }
 
     mutating func u8() throws -> UInt8 {
-        guard remaining >= 1 else { throw WireError.truncated("u8") }
+        guard remaining >= 1 else { throw TeradataWireError.truncated("u8") }
         defer { offset += 1 }
         return bytes[offset]
     }
 
     mutating func u16() throws -> UInt16 {
-        guard remaining >= 2 else { throw WireError.truncated("u16") }
+        guard remaining >= 2 else { throw TeradataWireError.truncated("u16") }
         defer { offset += 2 }
         return UInt16(bytes[offset]) << 8 | UInt16(bytes[offset + 1])
     }
 
     mutating func u32() throws -> UInt32 {
-        guard remaining >= 4 else { throw WireError.truncated("u32") }
+        guard remaining >= 4 else { throw TeradataWireError.truncated("u32") }
         defer { offset += 4 }
         return UInt32(bytes[offset]) << 24 | UInt32(bytes[offset + 1]) << 16
             | UInt32(bytes[offset + 2]) << 8 | UInt32(bytes[offset + 3])
     }
 
     mutating func take(_ count: Int) throws -> [UInt8] {
-        guard remaining >= count else { throw WireError.truncated("take(\(count))") }
+        guard remaining >= count else { throw TeradataWireError.truncated("take(\(count))") }
         defer { offset += count }
         return Array(bytes[offset..<offset + count])
     }
 
     mutating func skip(_ count: Int) throws {
-        guard remaining >= count else { throw WireError.truncated("skip(\(count))") }
+        guard remaining >= count else { throw TeradataWireError.truncated("skip(\(count))") }
         offset += count
     }
 }

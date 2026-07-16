@@ -49,7 +49,7 @@ enum Td2Wrap {
 
     static func unwrap(der: [UInt8], key: [UInt8]) throws -> [UInt8] {
         var reader = ByteReader(der)
-        guard try reader.u8() == 0xE0 else { throw WireError.malformed("wrap: expected E0") }
+        guard try reader.u8() == 0xE0 else { throw TeradataWireError.malformed("wrap: expected E0") }
         _ = try Der.decodeLength(&reader)
 
         var ciphertext: [UInt8] = []
@@ -78,7 +78,7 @@ enum Td2Wrap {
         }
 
         guard !ciphertext.isEmpty, authTag.count == tagLen else {
-            throw WireError.malformed("wrap: missing ciphertext/tag")
+            throw TeradataWireError.malformed("wrap: missing ciphertext/tag")
         }
         var nonce = [UInt8]()
         nonce.append(UInt8((msgLength >> 24) & 0xFF))
@@ -89,7 +89,7 @@ enum Td2Wrap {
             nonce.append(UInt8((sequenceNumber >> UInt64(shift)) & 0xFF))
         }
         let buffer = try GcmCipher(keyBytes: key).open(ciphertext: ciphertext, nonce: nonce, tag: authTag)
-        guard buffer.count >= tagLen else { throw WireError.malformed("wrap: short plaintext") }
+        guard buffer.count >= tagLen else { throw TeradataWireError.malformed("wrap: short plaintext") }
         return Array(buffer[0..<buffer.count - tagLen])
     }
 

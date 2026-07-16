@@ -87,12 +87,12 @@ struct Parcel {
                 flavor = rawFlavor ^ alternateFlag
                 _ = try reader.u16()
                 total = Int(try reader.u32())
-                guard total >= alternateHeaderLength else { throw WireError.malformed("APH length \(total)") }
+                guard total >= alternateHeaderLength else { throw TeradataWireError.malformed("APH length \(total)") }
                 parcels.append(Parcel(flavor: flavor, body: try reader.take(total - alternateHeaderLength)))
             } else {
                 flavor = rawFlavor
                 total = Int(try reader.u16())
-                guard total >= standardHeaderLength else { throw WireError.malformed("parcel length \(total)") }
+                guard total >= standardHeaderLength else { throw TeradataWireError.malformed("parcel length \(total)") }
                 parcels.append(Parcel(flavor: flavor, body: try reader.take(total - standardHeaderLength)))
             }
         }

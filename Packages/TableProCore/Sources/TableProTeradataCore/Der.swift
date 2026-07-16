@@ -21,7 +21,7 @@ enum Der {
     static func encodeObjectIdentifier(_ dotted: String) throws -> [UInt8] {
         let parts = dotted.split(separator: ".").map { Int($0) ?? -1 }
         guard parts.count >= 2, !parts.contains(where: { $0 < 0 }) else {
-            throw WireError.malformed("invalid OID \(dotted)")
+            throw TeradataWireError.malformed("invalid OID \(dotted)")
         }
         var content: [UInt8] = [UInt8(parts[0] * 40 + parts[1])]
         for component in parts.dropFirst(2) {
@@ -32,10 +32,10 @@ enum Der {
 
     static func decodeObjectIdentifier(_ bytes: [UInt8]) throws -> String {
         var reader = ByteReader(bytes)
-        guard try reader.u8() == objectIdentifierTag else { throw WireError.malformed("expected OID tag") }
+        guard try reader.u8() == objectIdentifierTag else { throw TeradataWireError.malformed("expected OID tag") }
         let length = try decodeLength(&reader)
         let content = try reader.take(length)
-        guard let first = content.first else { throw WireError.malformed("empty OID") }
+        guard let first = content.first else { throw TeradataWireError.malformed("empty OID") }
         var components = [Int(first) / 40, Int(first) % 40]
         var accumulator = 0
         for byte in content.dropFirst() {

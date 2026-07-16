@@ -38,7 +38,7 @@ enum RecordDecoder {
             let length = Int(try reader.u16())
             return try reader.take(length)
         default:
-            throw WireError.unsupported("record field type \(column.baseCode)")
+            throw TeradataWireError.unsupported("record field type \(column.baseCode)")
         }
     }
 
@@ -64,7 +64,7 @@ enum RecordDecoder {
             let day = Int(packed % 100)
             return .text(String(format: "%04d-%02d-%02d", year, month, day))
         default:
-            throw WireError.unsupported("record field type \(column.baseCode)")
+            throw TeradataWireError.unsupported("record field type \(column.baseCode)")
         }
     }
 }
