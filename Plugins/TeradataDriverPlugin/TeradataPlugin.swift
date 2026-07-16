@@ -139,9 +139,12 @@ final class TeradataPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func connect() async throws {
+        guard let port = UInt16(exactly: config.port) else {
+            throw TeradataWireError.connectionFailed("port \(config.port) is out of range 0...65535")
+        }
         let coreConfig = TeradataConnectionConfig(
             host: config.host,
-            port: UInt16(config.port),
+            port: port,
             username: config.username,
             password: config.password,
             database: config.database.isEmpty ? nil : config.database,
