@@ -53,13 +53,14 @@ struct DatabaseTypeTests {
 
     @Test("allKnownTypes contains all expected types")
     func allKnownTypesComplete() {
-        #expect(DatabaseType.allKnownTypes.count == 20)
+        #expect(DatabaseType.allKnownTypes.count == 21)
         #expect(DatabaseType.allKnownTypes.contains(.mysql))
         #expect(DatabaseType.allKnownTypes.contains(.bigquery))
         #expect(DatabaseType.allKnownTypes.contains(.snowflake))
         #expect(DatabaseType.allKnownTypes.contains(.libsql))
         #expect(DatabaseType.allKnownTypes.contains(.beancount))
         #expect(DatabaseType.allKnownTypes.contains(.surrealdb))
+        #expect(DatabaseType.allKnownTypes.contains(.teradata))
     }
 
     @Test("Hashable conformance")
