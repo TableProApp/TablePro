@@ -12,9 +12,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SQL Server connections can now use Windows Authentication (Kerberos) on macOS. Pick Windows Authentication in the connection form to sign in with the Kerberos ticket you already have from `kinit`, or enter a Kerberos principal and password to sign in with your domain credentials. Connect by hostname, not IP address. (#1879)
 - Teradata support through a downloadable driver written in native Swift. Connect over TD2 or TDNEGO logon, optionally with TLS, browse databases, tables, and columns, run SQL, edit rows, and create or alter tables. (#1867)
 
+### Changed
+
+- The query result row cap no longer adds a LIMIT to the SQL it sends. Your query now runs exactly as you wrote it and TablePro stops reading once it reaches the cap, which is how SQL Server and Oracle already worked. Adding a LIMIT could change how the server planned a query with an ORDER BY, and return different rows than the query you typed. (#1884)
+
 ### Fixed
 
 - Fixed MySQL and MariaDB queries ending in ORDER BY that could show an empty result with no error. A failure part way through reading rows was treated as a normal end of results, so a real server error looked like a table with no rows. TablePro now shows the error the server reported. (#1884)
+- Fixed the query result row cap returning a single row when it was set to unlimited. (#1884)
 - Fixed SSH tunnels that could accept a database connection and then go quiet instead of forwarding it or failing, which showed up as MySQL and MariaDB connections timing out while reading the server greeting. A tunnel that cannot open its forwarding channel now gives up after 10 seconds, closes the connection, and logs the reason, instead of leaving the driver to wait out its own timeout with no explanation. (#1883)
 - Fixed connections being reset when a single database session opened several at once through one SSH tunnel, which could happen while browsing schemas. (#1883)
 

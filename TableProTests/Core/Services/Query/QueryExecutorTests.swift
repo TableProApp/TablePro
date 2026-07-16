@@ -165,6 +165,64 @@ struct QueryExecutorTests {
         ))
     }
 
+    @Test("qualifiesForRowCap accepts a SELECT ending in ORDER BY")
+    func qualifiesForRowCapOrderBy() {
+        #expect(QueryExecutor.qualifiesForRowCap(
+            sql: "SELECT * FROM alert_events ORDER BY alert_time", tabType: .query, databaseType: .mysql
+        ))
+        #expect(QueryExecutor.qualifiesForRowCap(
+            sql: "SELECT * FROM t WHERE created_at >= '2026-01-01' ORDER BY id DESC",
+            tabType: .query, databaseType: .mysql
+        ))
+    }
+
+    // MARK: - Row cap resolution
+
+    private func withRowCapSettings(truncate: Bool, cap: Int, _ body: () -> Void) {
+        let previousTruncate = AppSettingsManager.shared.dataGrid.truncateQueryResults
+        let previousCap = AppSettingsManager.shared.dataGrid.queryResultRowCap
+        AppSettingsManager.shared.dataGrid.truncateQueryResults = truncate
+        AppSettingsManager.shared.dataGrid.queryResultRowCap = cap
+        defer {
+            AppSettingsManager.shared.dataGrid.truncateQueryResults = previousTruncate
+            AppSettingsManager.shared.dataGrid.queryResultRowCap = previousCap
+        }
+        body()
+    }
+
+    @Test("resolveRowCap returns nil when the row cap is unlimited")
+    func resolveRowCapUnlimitedReturnsNil() {
+        withRowCapSettings(truncate: true, cap: 0) {
+            #expect(QueryExecutor.resolveRowCap(
+                sql: "SELECT * FROM alert_events ORDER BY alert_time",
+                tabType: .query,
+                databaseType: .mysql
+            ) == nil)
+        }
+    }
+
+    @Test("resolveRowCap returns the configured cap for a capped SELECT")
+    func resolveRowCapReturnsConfiguredCap() {
+        withRowCapSettings(truncate: true, cap: 10_000) {
+            #expect(QueryExecutor.resolveRowCap(
+                sql: "SELECT * FROM alert_events ORDER BY alert_time",
+                tabType: .query,
+                databaseType: .mysql
+            ) == 10_000)
+        }
+    }
+
+    @Test("resolveRowCap returns nil when truncation is disabled")
+    func resolveRowCapTruncationDisabled() {
+        withRowCapSettings(truncate: false, cap: 10_000) {
+            #expect(QueryExecutor.resolveRowCap(
+                sql: "SELECT * FROM users",
+                tabType: .query,
+                databaseType: .mysql
+            ) == nil)
+        }
+    }
+
     // MARK: - Parameter detection
 
     @Test("detectAndReconcileParameters returns empty when SQL has no placeholders")

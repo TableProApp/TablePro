@@ -89,7 +89,7 @@ extension QueryExecutionCoordinator {
         let conn = parent.connection
         let tabId = parent.tabManager.tabs[index].id
 
-        let plan = resolveExecutionPlan(sql: sql, tabType: tab.tabType, bypassLimit: bypassRowLimit)
+        let rowCap = resolveRowCap(sql: sql, tabType: tab.tabType, bypassLimit: bypassRowLimit)
         let (tableName, isEditable) = parent.resolveTableEditability(tab: tab, sql: sql)
 
         let needsMetadataFetch: Bool
@@ -112,9 +112,9 @@ extension QueryExecutionCoordinator {
 
             do {
                 let fetchResult = try await parent.queryExecutor.executeQuery(
-                    sql: plan.executedSQL,
+                    sql: sql,
                     parameters: parameters,
-                    rowCap: plan.rowCap
+                    rowCap: rowCap
                 )
 
                 guard !Task.isCancelled else {
@@ -178,7 +178,7 @@ extension QueryExecutionCoordinator {
                     parent.toolbarState.setExecuting(false)
                     if error is CancellationError || Task.isCancelled { return }
                     guard capturedGeneration == parent.queryGeneration else { return }
-                    handleQueryExecutionError(error, sql: plan.executedSQL, tabId: tabId, connection: conn)
+                    handleQueryExecutionError(error, sql: sql, tabId: tabId, connection: conn)
                 }
             }
         }
@@ -278,10 +278,10 @@ extension QueryExecutionCoordinator {
                         : SQLParameterExtractor.convertToNativeStyle(sql: stmtSQL, parameters: parameters, style: style)
                     let statementSQL = conversion?.sql ?? stmtSQL
 
-                    let plan = resolveExecutionPlan(sql: statementSQL, tabType: tabType, bypassLimit: bypassRowLimit)
-                    failedSQL = plan.executedSQL
+                    let rowCap = resolveRowCap(sql: statementSQL, tabType: tabType, bypassLimit: bypassRowLimit)
+                    failedSQL = statementSQL
                     let result = try await executeStatement(
-                        plan: plan,
+                        rowCap: rowCap,
                         originalSQL: statementSQL,
                         driver: driver,
                         parameters: conversion?.values

@@ -1164,7 +1164,7 @@ final class MainContentCoordinator {
         let conn = connection
         let tabId = tabManager.tabs[index].id
 
-        let plan = resolveExecutionPlan(sql: sql, tabType: tab.tabType, bypassLimit: bypassRowLimit)
+        let rowCap = resolveRowCap(sql: sql, tabType: tab.tabType, bypassLimit: bypassRowLimit)
         let (tableName, isEditable) = resolveTableEditability(tab: tab, sql: sql)
 
         let needsMetadataFetch: Bool
@@ -1217,9 +1217,9 @@ final class MainContentCoordinator {
 
             do {
                 let fetchResult = try await queryExecutor.executeQuery(
-                    sql: plan.executedSQL,
+                    sql: sql,
                     parameters: nil,
-                    rowCap: plan.rowCap
+                    rowCap: rowCap
                 )
 
                 guard !Task.isCancelled else {
@@ -1305,7 +1305,7 @@ final class MainContentCoordinator {
                         pendingLoadTrigger = trigger
                         return
                     }
-                    handleQueryExecutionError(error, sql: plan.executedSQL, tabId: tabId, connection: conn)
+                    handleQueryExecutionError(error, sql: sql, tabId: tabId, connection: conn)
                 }
             }
         }
