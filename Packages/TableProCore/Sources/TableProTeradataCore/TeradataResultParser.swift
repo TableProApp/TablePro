@@ -11,7 +11,7 @@ enum TeradataResultParser {
 
         let activityCount = parcels
             .first { $0.flavor == ParcelFlavor.success.rawValue }
-            .map { activityCount(fromSuccess: $0.body) } ?? 0
+            .map { readActivityCount(fromSuccess: $0.body) } ?? 0
 
         var columns: [ColumnMeta] = []
         if let prepInfoX = parcels.first(where: { $0.flavor == ParcelFlavor.prepInfoX.rawValue }) {
@@ -44,7 +44,7 @@ enum TeradataResultParser {
         return (code, message.isEmpty ? String(decoding: body, as: UTF8.self) : message)
     }
 
-    private static func activityCount(fromSuccess body: [UInt8]) -> Int {
+    private static func readActivityCount(fromSuccess body: [UInt8]) -> Int {
         guard body.count >= 6 else { return 0 }
         return Int(body[2]) << 24 | Int(body[3]) << 16 | Int(body[4]) << 8 | Int(body[5])
     }
