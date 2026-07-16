@@ -89,7 +89,16 @@ final class TeradataPlugin: NSObject, TableProPlugin, DriverPlugin {
             "CHARACTER_LENGTH", "CHAR_LENGTH", "COALESCE", "NULLIFZERO", "ZEROIFNULL",
             "CURRENT_DATE", "CURRENT_TIME", "CURRENT_TIMESTAMP", "EXTRACT", "ADD_MONTHS",
             "UPPER", "LOWER", "OREPLACE", "OTRANSLATE", "INDEX", "POSITION", "SOUNDEX",
-        ]
+        ],
+        dataTypes: [
+            "BYTEINT", "SMALLINT", "INTEGER", "BIGINT", "DECIMAL", "NUMERIC", "NUMBER",
+            "FLOAT", "REAL", "DOUBLE PRECISION",
+            "CHAR", "VARCHAR", "LONG VARCHAR", "CLOB",
+            "BYTE", "VARBYTE", "BLOB",
+            "DATE", "TIME", "TIMESTAMP", "INTERVAL", "PERIOD",
+            "JSON", "XML", "ST_GEOMETRY",
+        ],
+        autoLimitStyle: .top
     )
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "TeradataPlugin")

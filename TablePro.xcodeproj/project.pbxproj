@@ -95,6 +95,8 @@
 		5E1A500100000000000000A7 /* ElasticsearchQueryBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E1A500200000000000000A7 /* ElasticsearchQueryBuilder.swift */; };
 		5E1A500100000000000000A8 /* ElasticsearchStatementGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E1A500200000000000000A8 /* ElasticsearchStatementGenerator.swift */; };
 		5E1A500100000000000000A9 /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
+		66671E37CDACCE1B9B0D9400 /* Cocoa.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 97DB8F422F8F77B13A41B15F /* Cocoa.framework */; };
+		675C428FECC26FF3E0AF42DA /* TableProTeradataCore in Frameworks */ = {isa = PBXBuildFile; productRef = F2FDCCDDA7AC8E6AE30DAD35 /* TableProTeradataCore */; };
 		690F1972044539AA3EC01FAD /* SnowflakePluginDriver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CAC14AE00C256911D2A9D2E /* SnowflakePluginDriver.swift */; };
 		69F80E23278BD01CA254E291 /* SnowflakeError.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE1C881DFE85C2D2DBCC5B87 /* SnowflakeError.swift */; };
 		703C8C18A7F43E262695F557 /* SnowflakePlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73CFCC6EA4288F34EBED5F37 /* SnowflakePlugin.swift */; };
@@ -104,6 +106,7 @@
 		8F6387B85F8B4AEE8210A6F1 /* SnowflakeIdTokenStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D67B38E07DF4F42A9C86639 /* SnowflakeIdTokenStore.swift */; };
 		952FCF406F3DE2575166802B /* SnowflakeBrowserAuthServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E0809C2747F432C1F1C5A60 /* SnowflakeBrowserAuthServer.swift */; };
 		B014CCF0DCB575301513A62D /* SnowflakeConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05C938D4946679DB526884C9 /* SnowflakeConnection.swift */; };
+		E035AC6C854B14A8D56EDD2F /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
 		EE6F98F0581A8B96C6FE45E9 /* SnowflakeMFATokenStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17CF18A0ED0B637448A808A4 /* SnowflakeMFATokenStore.swift */; };
 		FF86DE29A70540C88D2624E5 /* SnowflakeHeartbeat.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95E00BB6B3C84C9583510E67 /* SnowflakeHeartbeat.swift */; };
 /* End PBXBuildFile section */
@@ -422,6 +425,8 @@
 		7D67B38E07DF4F42A9C86639 /* SnowflakeIdTokenStore.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SnowflakeIdTokenStore.swift; sourceTree = "<group>"; };
 		84A5EE73D62C4576A9B9DFF2 /* SnowflakeStatementGenerator.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SnowflakeStatementGenerator.swift; sourceTree = "<group>"; };
 		95E00BB6B3C84C9583510E67 /* SnowflakeHeartbeat.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SnowflakeHeartbeat.swift; sourceTree = "<group>"; };
+		97DB8F422F8F77B13A41B15F /* Cocoa.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Cocoa.framework; path = Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/System/Library/Frameworks/Cocoa.framework; sourceTree = DEVELOPER_DIR; };
+		A20DCD2775C0BFCD60A79A91 /* TeradataDriver.bundle */ = {isa = PBXFileReference; explicitFileType = "wrapper.plug-in"; includeInIndex = 0; path = TeradataDriver.bundle; sourceTree = BUILT_PRODUCTS_DIR; };
 		C146F286FAB945E9B19E5B88 /* SnowflakeBindingEncoder.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SnowflakeBindingEncoder.swift; sourceTree = "<group>"; };
 		DE8D74A27EE24B89A7DC79F9 /* SnowflakeConnectionRegistry.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SnowflakeConnectionRegistry.swift; sourceTree = "<group>"; };
 		F9D129A56E1AB45F7D82AC58 /* SnowflakeAuth.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SnowflakeAuth.swift; sourceTree = "<group>"; };
@@ -666,6 +671,13 @@
 			);
 			target = 5A1091C62EF17EDC0055EA7C /* TablePro */;
 		};
+		A14460BE78075C507C6E5BDF /* Exceptions for "Plugins/TeradataDriverPlugin" folder in "TeradataDriver" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = A95F5AB41510A4EFAAA0F38C /* TeradataDriver */;
+		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -688,6 +700,8 @@
 		};
 		5A32BC012F9D5F1300BAEB5F /* mcp-server */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+			);
 			path = "mcp-server";
 			sourceTree = "<group>";
 		};
@@ -873,6 +887,8 @@
 		};
 		5ABCC5A82F43856700EAF3FC /* TableProTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+			);
 			path = TableProTests;
 			sourceTree = "<group>";
 		};
@@ -886,12 +902,32 @@
 		};
 		5AF00A122FB9000000000001 /* TableProUITests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+			);
 			path = TableProUITests;
+			sourceTree = "<group>";
+		};
+		6976BFEA1FD6CE97AD30AA12 /* Plugins/TeradataDriverPlugin */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				A14460BE78075C507C6E5BDF /* Exceptions for "Plugins/TeradataDriverPlugin" folder in "TeradataDriver" target */,
+			);
+			path = Plugins/TeradataDriverPlugin;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		3600DDF1A8FAAF26C193B519 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				66671E37CDACCE1B9B0D9400 /* Cocoa.framework in Frameworks */,
+				E035AC6C854B14A8D56EDD2F /* TableProPluginKit.framework in Frameworks */,
+				675C428FECC26FF3E0AF42DA /* TableProTeradataCore in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		5A1091C42EF17EDC0055EA7C /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -1163,6 +1199,14 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		0AF412EF6616DCE513B6EAEC /* OS X */ = {
+			isa = PBXGroup;
+			children = (
+				97DB8F422F8F77B13A41B15F /* Cocoa.framework */,
+			);
+			name = "OS X";
+			sourceTree = "<group>";
+		};
 		5A05FBC72F3EDF7500819CD7 /* Recovered References */ = {
 			isa = PBXGroup;
 			children = (
@@ -1174,10 +1218,10 @@
 		5A1091BE2EF17EDC0055EA7C = {
 			isa = PBXGroup;
 			children = (
-				5ADDB00500000000000000B0 /* Plugins/DynamoDBDriverPlugin */,
-				5E1A500500000000000000B0 /* Plugins/ElasticsearchDriverPlugin */,
-				5ABQR00500000000000000B0 /* Plugins/BigQueryDriverPlugin */,
-				5AEA8B412F6808CA0040461A /* Plugins/EtcdDriverPlugin */,
+				5ADDB00500000000000000B0 /* DynamoDBDriverPlugin */,
+				5E1A500500000000000000B0 /* ElasticsearchDriverPlugin */,
+				5ABQR00500000000000000B0 /* BigQueryDriverPlugin */,
+				5AEA8B412F6808CA0040461A /* EtcdDriverPlugin */,
 				5AE4F4812F6BC0640097AC5B /* Plugins/CloudflareD1DriverPlugin */,
 				5A1862000000000000000004 /* Plugins/SurrealDBDriverPlugin */,
 				5A3BE6FE2F97DB0100611C1F /* Plugins/LibSQLDriverPlugin */,
@@ -1210,6 +1254,7 @@
 				5A05FBC72F3EDF7500819CD7 /* Recovered References */,
 				5AEA8B482F6808E90040461A /* Frameworks */,
 				8FE5E1F9D0550A0E0AACD3EB /* SnowflakeDriverPlugin */,
+				6976BFEA1FD6CE97AD30AA12 /* Plugins/TeradataDriverPlugin */,
 			);
 			sourceTree = "<group>";
 		};
@@ -1250,11 +1295,12 @@
 				48B9743D4BDA458C9C0502A8 /* SnowflakeDriverPlugin.tableplugin */,
 				5A2A9AE12FF52C7D0082A7AC /* DuckDBDriver.tableplugin */,
 				5A2A9AE22FF52C7D0082A7AC /* ElasticsearchDriverPlugin.tableplugin */,
+				A20DCD2775C0BFCD60A79A91 /* TeradataDriver.bundle */,
 			);
 			name = Products;
 			sourceTree = "<group>";
 		};
-		5ABQR00500000000000000B0 /* Plugins/BigQueryDriverPlugin */ = {
+		5ABQR00500000000000000B0 /* BigQueryDriverPlugin */ = {
 			isa = PBXGroup;
 			children = (
 				5ABQR00200000000000000A1 /* BigQueryAuth.swift */,
@@ -1269,7 +1315,7 @@
 			path = Plugins/BigQueryDriverPlugin;
 			sourceTree = "<group>";
 		};
-		5ADDB00500000000000000B0 /* Plugins/DynamoDBDriverPlugin */ = {
+		5ADDB00500000000000000B0 /* DynamoDBDriverPlugin */ = {
 			isa = PBXGroup;
 			children = (
 				5ADDB00200000000000000A1 /* DynamoDBConnection.swift */,
@@ -1283,7 +1329,7 @@
 			path = Plugins/DynamoDBDriverPlugin;
 			sourceTree = "<group>";
 		};
-		5AEA8B412F6808CA0040461A /* Plugins/EtcdDriverPlugin */ = {
+		5AEA8B412F6808CA0040461A /* EtcdDriverPlugin */ = {
 			isa = PBXGroup;
 			children = (
 				5AEA8B3B2F6808CA0040461A /* EtcdCommandParser.swift */,
@@ -1299,11 +1345,12 @@
 		5AEA8B482F6808E90040461A /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				0AF412EF6616DCE513B6EAEC /* OS X */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
 		};
-		5E1A500500000000000000B0 /* Plugins/ElasticsearchDriverPlugin */ = {
+		5E1A500500000000000000B0 /* ElasticsearchDriverPlugin */ = {
 			isa = PBXGroup;
 			children = (
 				5E1A500200000000000000A1 /* ElasticsearchConnection.swift */,
@@ -1426,8 +1473,6 @@
 				5A1862000000000000000004 /* Plugins/SurrealDBDriverPlugin */,
 			);
 			name = SurrealDBDriverPlugin;
-			packageProductDependencies = (
-			);
 			productName = SurrealDBDriverPlugin;
 			productReference = 5A1862000000000000000002 /* SurrealDBDriverPlugin.tableplugin */;
 			productType = "com.apple.product-type.bundle";
@@ -1448,8 +1493,6 @@
 				5A32BC012F9D5F1300BAEB5F /* mcp-server */,
 			);
 			name = "mcp-server";
-			packageProductDependencies = (
-			);
 			productName = "mcp-server";
 			productReference = 5A32BC002F9D5F1300BAEB5F /* tablepro-mcp */;
 			productType = "com.apple.product-type.tool";
@@ -1470,8 +1513,6 @@
 				5A3BE6FE2F97DB0100611C1F /* Plugins/LibSQLDriverPlugin */,
 			);
 			name = LibSQLDriverPlugin;
-			packageProductDependencies = (
-			);
 			productName = LibSQLDriverPlugin;
 			productReference = 5A3BE6F82F97DA8100611C1F /* LibSQLDriverPlugin.tableplugin */;
 			productType = "com.apple.product-type.bundle";
@@ -1938,8 +1979,6 @@
 			dependencies = (
 			);
 			name = BigQueryDriverPlugin;
-			packageProductDependencies = (
-			);
 			productName = BigQueryDriverPlugin;
 			productReference = 5ABQR00300000000000000A0 /* BigQueryDriverPlugin.tableplugin */;
 			productType = "com.apple.product-type.bundle";
@@ -1957,8 +1996,6 @@
 			dependencies = (
 			);
 			name = DynamoDBDriverPlugin;
-			packageProductDependencies = (
-			);
 			productName = DynamoDBDriverPlugin;
 			productReference = 5ADDB00300000000000000A0 /* DynamoDBDriverPlugin.tableplugin */;
 			productType = "com.apple.product-type.bundle";
@@ -1979,8 +2016,6 @@
 				5AE4F4812F6BC0640097AC5B /* Plugins/CloudflareD1DriverPlugin */,
 			);
 			name = CloudflareD1DriverPlugin;
-			packageProductDependencies = (
-			);
 			productName = CloudflareD1DriverPlugin;
 			productReference = 5AE4F4742F6BC0640097AC5B /* CloudflareD1DriverPlugin.tableplugin */;
 			productType = "com.apple.product-type.bundle";
@@ -1998,8 +2033,6 @@
 			dependencies = (
 			);
 			name = EtcdDriverPlugin;
-			packageProductDependencies = (
-			);
 			productName = EtcdDriverPlugin;
 			productReference = 5AEA8B2A2F6808270040461A /* EtcdDriverPlugin.tableplugin */;
 			productType = "com.apple.product-type.bundle";
@@ -2038,10 +2071,31 @@
 			dependencies = (
 			);
 			name = ElasticsearchDriverPlugin;
-			packageProductDependencies = (
-			);
 			productName = ElasticsearchDriverPlugin;
 			productReference = 5A2A9AE22FF52C7D0082A7AC /* ElasticsearchDriverPlugin.tableplugin */;
+			productType = "com.apple.product-type.bundle";
+		};
+		A95F5AB41510A4EFAAA0F38C /* TeradataDriver */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 21831B14D329AEDEF6E0FC05 /* Build configuration list for PBXNativeTarget "TeradataDriver" */;
+			buildPhases = (
+				A71ED1E7D88AFCF2B8B4757E /* Sources */,
+				3600DDF1A8FAAF26C193B519 /* Frameworks */,
+				CEA116D19B343A1E94648AFE /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				6976BFEA1FD6CE97AD30AA12 /* Plugins/TeradataDriverPlugin */,
+			);
+			name = TeradataDriver;
+			packageProductDependencies = (
+				F2FDCCDDA7AC8E6AE30DAD35 /* TableProTeradataCore */,
+			);
+			productName = TeradataDriver;
+			productReference = A20DCD2775C0BFCD60A79A91 /* TeradataDriver.bundle */;
 			productType = "com.apple.product-type.bundle";
 		};
 		FABFFD08BCD1EEE7219EAE75 /* SnowflakeDriverPlugin */ = {
@@ -2160,11 +2214,11 @@
 			mainGroup = 5A1091BE2EF17EDC0055EA7C;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				5A0000012F4F000000000101 /* XCLocalSwiftPackageReference "LocalPackages/CodeEditSourceEditor" */,
+				5A0000012F4F000000000101 /* XCLocalSwiftPackageReference "CodeEditSourceEditor" */,
 				5ACE00012F4F000000000008 /* XCRemoteSwiftPackageReference "Sparkle" */,
-				5A0000012F4F000000000100 /* XCLocalSwiftPackageReference "LocalPackages/CodeEditLanguages" */,
+				5A0000012F4F000000000100 /* XCLocalSwiftPackageReference "CodeEditLanguages" */,
 				5ACE00012F4F00000000000E /* XCRemoteSwiftPackageReference "oracle-nio" */,
-				5A0000012F4F000000000102 /* XCLocalSwiftPackageReference "Packages/TableProCore" */,
+				5A0000012F4F000000000102 /* XCLocalSwiftPackageReference "TableProCore" */,
 				5A32BBF92F9D5EAB00BAEB5F /* XCRemoteSwiftPackageReference "swift-certificates" */,
 			);
 			preferredProjectObjectVersion = 77;
@@ -2205,6 +2259,7 @@
 				5A32BBFF2F9D5F1300BAEB5F /* mcp-server */,
 				5ABBED712FB55E1400A78382 /* CSVInspectorPlugin */,
 				FABFFD08BCD1EEE7219EAE75 /* SnowflakeDriverPlugin */,
+				A95F5AB41510A4EFAAA0F38C /* TeradataDriver */,
 			);
 		};
 /* End PBXProject section */
@@ -2428,6 +2483,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		5E1A500400000000000000B3 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		CEA116D19B343A1E94648AFE /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -2711,6 +2773,13 @@
 				5E1A500100000000000000A6 /* ElasticsearchPluginDriver+Execution.swift in Sources */,
 				5E1A500100000000000000A7 /* ElasticsearchQueryBuilder.swift in Sources */,
 				5E1A500100000000000000A8 /* ElasticsearchStatementGenerator.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A71ED1E7D88AFCF2B8B4757E /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -4858,9 +4927,66 @@
 			};
 			name = Release;
 		};
+		E7AC38103A156E07E8B6F0B9 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Plugins/TeradataDriverPlugin/Info.plist;
+				INFOPLIST_KEY_NSPrincipalClass = "$(PRODUCT_MODULE_NAME).TeradataPlugin";
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Bundles";
+				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.TablePro.TeradataDriver;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = macosx;
+				SWIFT_VERSION = 5.9;
+				WRAPPER_EXTENSION = tableplugin;
+			};
+			name = Release;
+		};
+		FDC1CCF032C4C3B329085455 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Plugins/TeradataDriverPlugin/Info.plist;
+				INFOPLIST_KEY_NSPrincipalClass = "$(PRODUCT_MODULE_NAME).TeradataPlugin";
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Bundles";
+				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.TablePro.TeradataDriver;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = macosx;
+				SWIFT_VERSION = 5.9;
+				WRAPPER_EXTENSION = tableplugin;
+			};
+			name = Debug;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		21831B14D329AEDEF6E0FC05 /* Build configuration list for PBXNativeTarget "TeradataDriver" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E7AC38103A156E07E8B6F0B9 /* Release */,
+				FDC1CCF032C4C3B329085455 /* Debug */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		2919EAF57187D4EFE7E47F98 /* Build configuration list for PBXNativeTarget "SnowflakeDriverPlugin" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
@@ -5170,15 +5296,15 @@
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
-		5A0000012F4F000000000100 /* XCLocalSwiftPackageReference "LocalPackages/CodeEditLanguages" */ = {
+		5A0000012F4F000000000100 /* XCLocalSwiftPackageReference "CodeEditLanguages" */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = LocalPackages/CodeEditLanguages;
 		};
-		5A0000012F4F000000000101 /* XCLocalSwiftPackageReference "LocalPackages/CodeEditSourceEditor" */ = {
+		5A0000012F4F000000000101 /* XCLocalSwiftPackageReference "CodeEditSourceEditor" */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = LocalPackages/CodeEditSourceEditor;
 		};
-		5A0000012F4F000000000102 /* XCLocalSwiftPackageReference "Packages/TableProCore" */ = {
+		5A0000012F4F000000000102 /* XCLocalSwiftPackageReference "TableProCore" */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = Packages/TableProCore;
 		};
@@ -5214,7 +5340,7 @@
 /* Begin XCSwiftPackageProductDependency section */
 		5A1MPORT000000000000A010 /* TableProImport */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 5A0000012F4F000000000102 /* XCLocalSwiftPackageReference "Packages/TableProCore" */;
+			package = 5A0000012F4F000000000102 /* XCLocalSwiftPackageReference "TableProCore" */;
 			productName = TableProImport;
 		};
 		5A32BBFA2F9D5EAB00BAEB5F /* X509 */ = {
@@ -5250,8 +5376,13 @@
 		};
 		5AD1D8C12FB5000000000002 /* TableProMSSQLCore */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 5A0000012F4F000000000102 /* XCLocalSwiftPackageReference "Packages/TableProCore" */;
+			package = 5A0000012F4F000000000102 /* XCLocalSwiftPackageReference "TableProCore" */;
 			productName = TableProMSSQLCore;
+		};
+		F2FDCCDDA7AC8E6AE30DAD35 /* TableProTeradataCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 5A0000012F4F000000000102 /* XCLocalSwiftPackageReference "TableProCore" */;
+			productName = TableProTeradataCore;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

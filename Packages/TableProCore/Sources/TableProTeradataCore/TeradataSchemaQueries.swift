@@ -46,7 +46,7 @@ public enum TeradataSchemaQueries {
         """
     }
 
-    public static func showTableDDL(database: String, table: String) -> String {
+    public static func showTableDDL(database: String?, table: String) -> String {
         "SHOW TABLE \(qualifiedName(database: database, table: table))"
     }
 
