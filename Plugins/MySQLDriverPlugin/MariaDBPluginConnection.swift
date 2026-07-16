@@ -381,7 +381,10 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         stateLock.unlock()
 
         guard let mysql = mysql else { return }
-        let threadId = mysql_thread_id(mysql)
+        killQueryOnServer(threadId: mysql_thread_id(mysql))
+    }
+
+    private func killQueryOnServer(threadId: UInt) {
         guard threadId > 0 else { return }
 
         let killConn = mysql_init(nil)
@@ -389,6 +392,8 @@ final class MariaDBPluginConnection: @unchecked Sendable {
 
         var killTimeout: UInt32 = 5
         mysql_options(killConn, MYSQL_OPT_CONNECT_TIMEOUT, &killTimeout)
+        mysql_options(killConn, MYSQL_OPT_READ_TIMEOUT, &killTimeout)
+        mysql_options(killConn, MYSQL_OPT_WRITE_TIMEOUT, &killTimeout)
 
         let killResult = host.withCString { hostPtr in
             user.withCString { userPtr in
@@ -410,6 +415,18 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         }
 
         mysql_close(killConn)
+    }
+
+    private func consumeCancellation() -> Bool {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        guard _isCancelled else { return false }
+        _isCancelled = false
+        return true
+    }
+
+    private static func isExpectedInterruption(errno: UInt32, wasTruncated: Bool) -> Bool {
+        wasTruncated && errno == UInt32(ER_QUERY_INTERRUPTED)
     }
 
     // MARK: - Query Execution
@@ -508,20 +525,8 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         var truncated = false
 
         while let rowPtr = mysql_fetch_row(resultPtr) {
-            stateLock.lock()
-            let shouldCancel = _isCancelled
-            if shouldCancel { _isCancelled = false }
-            stateLock.unlock()
-            if shouldCancel {
+            if consumeCancellation() {
                 while mysql_fetch_row(resultPtr) != nil {}
-                if mysql_errno(mysql) != 0 {
-                    let errorMsg = String(cString: mysql_error(mysql))
-                    mysql_free_result(resultPtr)
-                    throw MariaDBPluginError(
-                        code: mysql_errno(mysql),
-                        message: "Error draining result set during cancellation: \(errorMsg)",
-                        sqlState: nil)
-                }
                 mysql_free_result(resultPtr)
                 throw CancellationError()
             }
@@ -561,15 +566,20 @@ final class MariaDBPluginConnection: @unchecked Sendable {
 
         if truncated {
             logger.warning("Result set truncated at \(maxRows) rows")
+            killQueryOnServer(threadId: mysql_thread_id(mysql))
             while mysql_fetch_row(resultPtr) != nil {}
-            if mysql_errno(mysql) != 0 {
-                let errorMsg = String(cString: mysql_error(mysql))
-                mysql_free_result(resultPtr)
-                throw MariaDBPluginError(
-                    code: mysql_errno(mysql),
-                    message: "Error draining result set: \(errorMsg)",
-                    sqlState: nil)
-            }
+        }
+
+        if consumeCancellation() {
+            mysql_free_result(resultPtr)
+            throw CancellationError()
+        }
+
+        let fetchErrno = mysql_errno(mysql)
+        if fetchErrno != 0, !Self.isExpectedInterruption(errno: fetchErrno, wasTruncated: truncated) {
+            let error = getError()
+            mysql_free_result(resultPtr)
+            throw error
         }
 
         mysql_free_result(resultPtr)
@@ -704,13 +714,12 @@ final class MariaDBPluginConnection: @unchecked Sendable {
 
         while true {
             let fetchStatus = mysql_stmt_fetch(stmt)
-            if fetchStatus != 0 && fetchStatus != MYSQL_DATA_TRUNCATED { break }
+            if fetchStatus == MYSQL_NO_DATA { break }
+            if fetchStatus != 0, fetchStatus != MYSQL_DATA_TRUNCATED {
+                throw getStmtError(stmt)
+            }
 
-            stateLock.lock()
-            let shouldCancel = _isCancelled
-            if shouldCancel { _isCancelled = false }
-            stateLock.unlock()
-            if shouldCancel {
+            if consumeCancellation() {
                 throw CancellationError()
             }
 
