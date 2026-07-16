@@ -18,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Fixed Copy as, the context menu's Delete, and the Edit menu's copy and delete commands acting on only the active row instead of every row in a cell-range or column selection in the data grid.
+- Fixed the Edit menu's Copy as JSON copying the wrong rows when the grid was sorted or filtered.
 - Fixed tables picked in the sidebar showing up unchecked and getting silently skipped when exporting to SQL or MQL. The export sheet now checks them and applies the format's default per-table options, so Export works right away.
 - Fixed ClickHouse queries showing only a success message with no result table. TablePro guessed whether a query returns data from its first word, which failed for queries starting with a comment or with SELECT on its own line. It now reads what the server actually returned, so any query that produces a result set shows the grid, including empty results and queries with their own FORMAT clause. (#1886)
 - Fixed ClickHouse INSERT statements always reporting 0 rows affected. (#1886)

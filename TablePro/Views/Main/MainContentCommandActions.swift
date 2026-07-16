@@ -176,6 +176,10 @@ final class MainContentCommandActions {
         }
     }
 
+    private func resolvedRowSelection() -> Set<Int> {
+        coordinator?.dataTabDelegate?.tableViewCoordinator?.currentRowSelection() ?? selectionState.indices
+    }
+
     func deleteSelectedRows(rowIndices: Set<Int>? = nil) {
         let fromDataGrid = rowIndices != nil
 
@@ -184,7 +188,7 @@ final class MainContentCommandActions {
             return
         }
 
-        let indices = rowIndices ?? selectionState.indices
+        let indices = rowIndices ?? resolvedRowSelection()
         if !indices.isEmpty {
             coordinator?.deleteSelectedRows(indices: indices)
         } else if !fromDataGrid, !selectedTables.wrappedValue.isEmpty {
@@ -217,19 +221,16 @@ final class MainContentCommandActions {
         if coordinator?.tabManager.selectedTab?.display.resultsViewMode == .structure {
             coordinator?.structureActions?.copyRows?()
         } else {
-            let indices = selectionState.indices
-            coordinator?.copySelectedRowsToClipboard(indices: indices)
+            coordinator?.copySelectedRowsToClipboard(indices: resolvedRowSelection())
         }
     }
 
     func copySelectedRowsWithHeaders() {
-        let indices = selectionState.indices
-        coordinator?.copySelectedRowsWithHeaders(indices: indices)
+        coordinator?.copySelectedRowsWithHeaders(indices: resolvedRowSelection())
     }
 
     func copySelectedRowsAsJson() {
-        let indices = selectionState.indices
-        coordinator?.copySelectedRowsAsJson(indices: indices)
+        coordinator?.copySelectedRowsAsJson(indices: resolvedRowSelection())
     }
 
     func pasteRows() {
@@ -280,7 +281,7 @@ final class MainContentCommandActions {
     }
 
     var hasRowSelection: Bool {
-        !selectionState.indices.isEmpty
+        !resolvedRowSelection().isEmpty
     }
 
     var hasTableSelection: Bool {

@@ -386,12 +386,8 @@ class DataGridRowView: NSTableRowView {
     }
 
     @objc private func deleteRow() {
-        let indices: Set<Int> = if let selected = coordinator?.selectedRowIndices, !selected.isEmpty {
-            selected
-        } else {
-            [rowIndex]
-        }
-        coordinator?.delegate?.dataGridDeleteRows(indices)
+        guard let coordinator else { return }
+        coordinator.delegate?.dataGridDeleteRows(coordinator.currentRowSelection(fallbackRow: rowIndex))
     }
 
     @objc private func duplicateRow() {
@@ -402,18 +398,14 @@ class DataGridRowView: NSTableRowView {
         coordinator?.undoDeleteRow(at: rowIndex)
     }
 
-    private func selectedOrCurrentIndices(in coordinator: TableViewCoordinator) -> Set<Int> {
-        coordinator.selectedRowIndices.isEmpty ? [rowIndex] : coordinator.selectedRowIndices
-    }
-
     @objc private func copySelectedOrCurrentRowWithHeaders() {
         guard let coordinator else { return }
-        coordinator.copyRowsWithHeaders(at: selectedOrCurrentIndices(in: coordinator))
+        coordinator.copyRowsWithHeaders(at: coordinator.currentRowSelection(fallbackRow: rowIndex))
     }
 
     @objc private func copySelectedOrCurrentRow() {
         guard let coordinator else { return }
-        coordinator.delegate?.dataGridCopyRows(selectedOrCurrentIndices(in: coordinator))
+        coordinator.delegate?.dataGridCopyRows(coordinator.currentRowSelection(fallbackRow: rowIndex))
     }
 
     @objc private func copyFromContextMenu(_ sender: NSMenuItem) {
@@ -486,12 +478,12 @@ class DataGridRowView: NSTableRowView {
 
     @objc private func copyAsInsert() {
         guard let coordinator else { return }
-        coordinator.copyRowsAsInsert(at: selectedOrCurrentIndices(in: coordinator))
+        coordinator.copyRowsAsInsert(at: coordinator.currentRowSelection(fallbackRow: rowIndex))
     }
 
     @objc private func copyAsUpdate() {
         guard let coordinator else { return }
-        coordinator.copyRowsAsUpdate(at: selectedOrCurrentIndices(in: coordinator))
+        coordinator.copyRowsAsUpdate(at: coordinator.currentRowSelection(fallbackRow: rowIndex))
     }
 
     @objc private func exportResults() {
@@ -504,27 +496,30 @@ class DataGridRowView: NSTableRowView {
 
     @objc private func copyAsJson() {
         guard let coordinator else { return }
-        coordinator.copyRowsAsJson(at: selectedOrCurrentIndices(in: coordinator))
+        coordinator.copyRowsAsJson(at: coordinator.currentRowSelection(fallbackRow: rowIndex))
     }
 
     @objc private func copyAsCsv() {
         guard let coordinator else { return }
-        coordinator.copyRowsAsCsv(at: selectedOrCurrentIndices(in: coordinator), includeHeaders: false)
+        coordinator.copyRowsAsCsv(at: coordinator.currentRowSelection(fallbackRow: rowIndex), includeHeaders: false)
     }
 
     @objc private func copyAsCsvWithHeaders() {
         guard let coordinator else { return }
-        coordinator.copyRowsAsCsv(at: selectedOrCurrentIndices(in: coordinator), includeHeaders: true)
+        coordinator.copyRowsAsCsv(at: coordinator.currentRowSelection(fallbackRow: rowIndex), includeHeaders: true)
     }
 
     @objc private func copyAsMarkdown() {
         guard let coordinator else { return }
-        coordinator.copyRowsAsMarkdown(at: selectedOrCurrentIndices(in: coordinator))
+        coordinator.copyRowsAsMarkdown(at: coordinator.currentRowSelection(fallbackRow: rowIndex))
     }
 
     @objc private func copyAsInClause(_ sender: NSMenuItem) {
         guard let coordinator, let columnIndex = sender.representedObject as? Int else { return }
-        coordinator.copyRowsAsInClause(at: selectedOrCurrentIndices(in: coordinator), columnIndex: columnIndex)
+        coordinator.copyRowsAsInClause(
+            at: coordinator.currentRowSelection(fallbackRow: rowIndex),
+            columnIndex: columnIndex
+        )
     }
 
     @objc private func previewForeignKey(_ sender: NSMenuItem) {
