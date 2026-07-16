@@ -4,6 +4,7 @@
 //
 
 import AppKit
+import Network
 import SwiftUI
 import TableProPluginKit
 import UniformTypeIdentifiers
@@ -223,7 +224,7 @@ struct GeneralPaneView: View {
     private var authenticationSection: some View {
         if connectionMode != .fileBased {
             Section(String(localized: "Authentication")) {
-                if connectionMode == .network {
+                if connectionMode == .network && !coordinator.auth.hidesUsername {
                     TextField(
                         String(localized: "Username"),
                         text: $coordinator.auth.username
@@ -253,6 +254,7 @@ struct GeneralPaneView: View {
                         }
                     }
                 }
+                kerberosCaption
                 if coordinator.auth.usePgpass {
                     pgpassStatusView
                 }
@@ -294,6 +296,32 @@ struct GeneralPaneView: View {
             .foregroundStyle(.yellow)
             .font(.caption)
         }
+    }
+
+    @ViewBuilder
+    private var kerberosCaption: some View {
+        if type.pluginTypeId == "SQL Server",
+           coordinator.auth.additionalFieldValues["mssqlAuthMethod"] == "windows" {
+            Label(
+                String(localized: "Leave the principal and password blank to use your existing Kerberos ticket. Run kinit user@REALM.COM in Terminal first if you don't have one."),
+                systemImage: "info.circle"
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            if hostIsIPAddress {
+                Label(
+                    String(localized: "Windows Authentication needs the server's hostname, not an IP address. Kerberos service principals aren't registered against IP addresses."),
+                    systemImage: "exclamationmark.triangle.fill"
+                )
+                .font(.caption)
+                .foregroundStyle(.yellow)
+            }
+        }
+    }
+
+    private var hostIsIPAddress: Bool {
+        let host = coordinator.network.resolvedHost.trimmingCharacters(in: .whitespaces)
+        return IPv4Address(host) != nil || IPv6Address(host) != nil
     }
 
     private func isHostListField(_ field: ConnectionField) -> Bool {

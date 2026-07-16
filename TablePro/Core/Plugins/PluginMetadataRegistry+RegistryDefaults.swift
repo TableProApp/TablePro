@@ -202,6 +202,31 @@ extension PluginMetadataRegistry {
                 connection: PluginMetadataSnapshot.ConnectionConfig(
                     additionalConnectionFields: [
                         ConnectionField(
+                            id: "mssqlAuthMethod",
+                            label: String(localized: "Authentication"),
+                            defaultValue: "sql",
+                            fieldType: .dropdown(options: [
+                                .init(value: "sql", label: "SQL Server Authentication"),
+                                .init(value: "windows", label: "Windows Authentication (Kerberos)")
+                            ]),
+                            section: .authentication
+                        ),
+                        ConnectionField(
+                            id: "mssqlKerberosPrincipal",
+                            label: String(localized: "Kerberos Principal"),
+                            placeholder: "user@REALM.COM",
+                            section: .authentication,
+                            visibleWhen: FieldVisibilityRule(fieldId: "mssqlAuthMethod", values: ["windows"])
+                        ).withHidesUsername(true),
+                        ConnectionField(
+                            id: "mssqlKerberosPassword",
+                            label: String(localized: "Password"),
+                            fieldType: .secure,
+                            section: .authentication,
+                            hidesPassword: true,
+                            visibleWhen: FieldVisibilityRule(fieldId: "mssqlAuthMethod", values: ["windows"])
+                        ),
+                        ConnectionField(
                             id: "mssqlSchema", label: "Schema", placeholder: "dbo", defaultValue: "dbo"
                         )
                     ],

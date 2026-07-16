@@ -25,7 +25,8 @@ Click **New Connection**, select **SQL Server**, fill in the fields, and click *
 |-------|---------|-------|
 | **Host** | `localhost` | Named instances are not supported; use the host and TCP port |
 | **Port** | `1433` | |
-| **Username** | - | SQL Server Authentication only, no Windows Auth |
+| **Authentication** | `SQL Server Authentication` | Or **Windows Authentication (Kerberos)** on macOS. See [Windows Authentication](#windows-authentication-kerberos) below |
+| **Username** | - | SQL Server login name. Hidden when Windows Authentication is selected |
 | **Database** | - | Optional. Sent during login when set, which is required for logins scoped to one database, such as Azure SQL contained users |
 | **Schema** | `dbo` | Active schema after connecting. Clear it to use the login's default schema, which the driver reads with `SELECT SCHEMA_NAME()` |
 
@@ -35,6 +36,30 @@ Click **New Connection**, select **SQL Server**, fill in the fields, and click *
 </Frame>
 
 For Azure SQL Database, set the host to `yourserver.database.windows.net` and pick SSL mode **Required** or stricter.
+
+## Windows Authentication (Kerberos)
+
+Available on macOS. Set **Authentication** to **Windows Authentication (Kerberos)** to sign in with your domain identity instead of a SQL Server login. On macOS, Windows Authentication means Kerberos; NTLM is not supported.
+
+There are two ways to sign in:
+
+- **Use your existing ticket (single sign-on).** Leave the Kerberos principal and password blank. TablePro uses the ticket already in your credential cache. Get one first with `kinit`:
+
+  ```bash
+  kinit user@REALM.COM
+  klist            # confirm a krbtgt/REALM.COM@REALM.COM ticket exists
+  ```
+
+- **Sign in with a principal and password.** Enter the Kerberos principal (`user@REALM.COM`) and your domain password. TablePro requests a ticket for that principal, then connects.
+
+Requirements:
+
+- **Connect by hostname, not IP address.** Kerberos targets the service principal name `MSSQLSvc/host.domain.com:1433`, which is registered against the host name.
+- **Uppercase realm.** The realm is usually the DNS domain in uppercase, for example `CONTOSO.COM`.
+- **Realm resolution.** Your Mac must be able to find the domain's KDC, either through DNS SRV records or an `/etc/krb5.conf` entry.
+- **A registered SPN.** The SQL Server service account must have an SPN such as `MSSQLSvc/host.domain.com:1433`. Ask your administrator if connections fail with an SSPI or service-principal error.
+
+TablePro does not run `kinit` or edit `/etc/krb5.conf` for you; those are set up once per machine.
 
 ## Connection URL
 
@@ -82,4 +107,6 @@ SQL Server connections can run through the Cloud SQL Auth Proxy; TablePro starts
 
 **Login failed**: verify credentials, then check the server allows SQL Server Authentication: `SELECT SERVERPROPERTY('IsIntegratedSecurityOnly')` returns `1` when only Windows Authentication is allowed. Enable mixed mode in SSMS under Server Properties > Security, then restart the service. If the login only has access to one database (an Azure SQL contained user), set the **Database** field; TablePro sends it during login. Without it the server authenticates against `master` and rejects the login.
 
-**Limitations**: SQL Server Authentication only (no Windows or Entra ID auth), named instances unsupported (use host and port), Verify CA and Verify Identity behave like Required.
+**Windows Authentication fails**: run `klist` to confirm you have a ticket, and `kinit user@REALM.COM` if you do not. Connect by hostname, not IP address. An SSPI or "server not found in Kerberos database" error means the server's SPN is not registered; ask your administrator to register `MSSQLSvc/host.domain.com:1433`. A clock-skew error means this Mac's clock is too far from the domain controller; turn on **Set time automatically** in System Settings.
+
+**Limitations**: no Microsoft Entra ID (Azure AD) authentication, Windows Authentication (Kerberos) is macOS only, named instances unsupported (use host and port), Verify CA and Verify Identity behave like Required.

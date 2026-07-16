@@ -3581,13 +3581,15 @@
 					"$(PROJECT_DIR)/Libs/dylibs",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.1;
 				OTHER_LDFLAGS = (
 					"-force_load",
 					"$(PROJECT_DIR)/Libs/libsybdb.a",
 					"-lssl.3",
 					"-lcrypto.3",
 					"-liconv",
+					"-framework",
+					"GSS",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.TablePro.MSSQLDriver;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -3620,13 +3622,15 @@
 					"$(PROJECT_DIR)/Libs/dylibs",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.1;
 				OTHER_LDFLAGS = (
 					"-force_load",
 					"$(PROJECT_DIR)/Libs/libsybdb.a",
 					"-lssl.3",
 					"-lcrypto.3",
 					"-liconv",
+					"-framework",
+					"GSS",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.TablePro.MSSQLDriver;
 				PRODUCT_NAME = "$(TARGET_NAME)";

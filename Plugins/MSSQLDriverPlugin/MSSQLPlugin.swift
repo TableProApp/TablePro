@@ -46,6 +46,8 @@ private extension MSSQLPluginError {
             self = .queryFailed(String(localized: "Query was cancelled"))
         case .tlsHandshakeFailed(_, let serverMessage):
             self = .connectionFailed(String(format: String(localized: "TLS: %@"), serverMessage))
+        case let .kerberosAuthFailed(kind, serverMessage):
+            self = .connectionFailed(MSSQLKerberosMessage.describe(kind: kind, serverMessage: serverMessage))
         }
     }
 }
@@ -65,7 +67,7 @@ private extension MSSQLTLSFailureKind {
 
 final class MSSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let pluginName = "MSSQL Driver"
-    static let pluginVersion = "1.0.0"
+    static let pluginVersion = "1.1.0"
     static let pluginDescription = "Microsoft SQL Server support via FreeTDS db-lib"
     static let capabilities: [PluginCapability] = [.databaseDriver]
 
@@ -74,6 +76,37 @@ final class MSSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let iconName = "mssql-icon"
     static let defaultPort = 1433
     static let additionalConnectionFields: [ConnectionField] = [
+        ConnectionField(
+            id: MSSQLConnectionOptions.AdditionalFieldKey.authMethod,
+            label: String(localized: "Authentication"),
+            defaultValue: "sql",
+            fieldType: .dropdown(options: [
+                .init(value: "sql", label: "SQL Server Authentication"),
+                .init(value: "windows", label: "Windows Authentication (Kerberos)")
+            ]),
+            section: .authentication
+        ),
+        ConnectionField(
+            id: MSSQLKerberosField.principal,
+            label: String(localized: "Kerberos Principal"),
+            placeholder: "user@REALM.COM",
+            section: .authentication,
+            visibleWhen: FieldVisibilityRule(
+                fieldId: MSSQLConnectionOptions.AdditionalFieldKey.authMethod,
+                values: ["windows"]
+            )
+        ).withHidesUsername(true),
+        ConnectionField(
+            id: MSSQLKerberosField.password,
+            label: String(localized: "Password"),
+            fieldType: .secure,
+            section: .authentication,
+            hidesPassword: true,
+            visibleWhen: FieldVisibilityRule(
+                fieldId: MSSQLConnectionOptions.AdditionalFieldKey.authMethod,
+                values: ["windows"]
+            )
+        ),
         ConnectionField(id: "mssqlSchema", label: "Schema", placeholder: "dbo", defaultValue: "dbo")
     ]
 
@@ -229,6 +262,7 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Connection
 
     func connect() async throws {
+        let authMethod = MSSQLConnectionOptions.authMethod(from: config.additionalFields)
         let options = MSSQLConnectionOptions(
             host: config.host,
             port: config.port,
@@ -236,16 +270,23 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             password: config.password,
             database: config.database,
             schema: _currentSchema,
-            encryptionFlag: MSSQLSSLMapping.freetdsEncryptionFlag(for: config.ssl.mode)
+            encryptionFlag: MSSQLSSLMapping.freetdsEncryptionFlag(for: config.ssl.mode),
+            authMethod: authMethod
         )
         let conn = FreeTDSConnection(options: options)
         do {
-            try await conn.connect()
+            try await establishConnection(conn, authMethod: authMethod)
         } catch let error as MSSQLCoreError {
-            if case let .tlsHandshakeFailed(kind, serverMessage) = error {
+            switch error {
+            case let .tlsHandshakeFailed(kind, serverMessage):
                 throw kind.sslHandshakeError(serverMessage: serverMessage)
+            case let .kerberosAuthFailed(kind, serverMessage):
+                throw MSSQLPluginError.connectionFailed(
+                    MSSQLKerberosMessage.describe(kind: kind, serverMessage: serverMessage)
+                )
+            default:
+                throw MSSQLPluginError(coreError: error)
             }
-            throw MSSQLPluginError(coreError: error)
         }
         self.freeTDSConn = conn
 
@@ -266,6 +307,17 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
            let versionStr = result.rows.first?.first?.asText {
             _serverVersion = String(versionStr.prefix(50))
         }
+    }
+
+    private func establishConnection(_ conn: FreeTDSConnection, authMethod: MSSQLAuthMethod) async throws {
+        guard authMethod == .windows else {
+            try await conn.connect()
+            return
+        }
+        let principal = (config.additionalFields[MSSQLKerberosField.principal] ?? "")
+            .trimmingCharacters(in: .whitespaces)
+        let password = config.additionalFields[MSSQLKerberosField.password] ?? ""
+        try await MSSQLKerberosConnectGate.shared.connect(conn, principal: principal, password: password)
     }
 
     private func executeInternal(_ query: String) async throws -> PluginQueryResult {
@@ -732,6 +784,44 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return raw.replacingOccurrences(of: "'", with: "''")
     }
 
+}
+
+// MARK: - Kerberos
+
+enum MSSQLKerberosField {
+    static let principal = "mssqlKerberosPrincipal"
+    static let password = "mssqlKerberosPassword"
+}
+
+enum MSSQLKerberosMessage {
+    static func describe(kind: MSSQLKerberosFailureKind, serverMessage: String) -> String {
+        let summary: String
+        let suggestion: String
+        switch kind {
+        case .noCredential:
+            summary = String(localized: "No Kerberos ticket was found.")
+            suggestion = String(localized: "Run kinit user@REALM.COM in Terminal, or enter a Kerberos principal and password, then reconnect.")
+        case .principalUnknown:
+            summary = String(localized: "The Kerberos principal is unknown to the domain.")
+            suggestion = String(localized: "Check the principal spelling and realm, for example user@REALM.COM with the realm in uppercase.")
+        case .wrongPassword:
+            summary = String(localized: "The Kerberos password was rejected.")
+            suggestion = String(localized: "Re-enter the domain password for this principal.")
+        case .spnNotFound:
+            summary = String(localized: "The SQL Server Kerberos service principal name is not registered.")
+            suggestion = String(localized: "Ask your administrator to register the SPN, for example MSSQLSvc/host.domain.com:1433, and connect by hostname rather than IP address.")
+        case .clockSkew:
+            summary = String(localized: "This Mac's clock is too far out of sync with the domain controller.")
+            suggestion = String(localized: "Turn on Set time automatically in System Settings > General > Date & Time, then reconnect.")
+        case .realmNotResolved:
+            summary = String(localized: "The Kerberos realm could not be resolved.")
+            suggestion = String(localized: "Confirm this network resolves the domain, or add the realm to /etc/krb5.conf.")
+        case .ticketExpired:
+            summary = String(localized: "The Kerberos ticket has expired.")
+            suggestion = String(localized: "Run kinit user@REALM.COM to renew it, then reconnect.")
+        }
+        return "\(summary) \(suggestion) (\(serverMessage))"
+    }
 }
 
 // MARK: - Errors

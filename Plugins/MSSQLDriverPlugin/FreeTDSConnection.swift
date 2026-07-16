@@ -172,6 +172,9 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
             if let kind = MSSQLTLSClassifier.classifySSLError(detail) {
                 throw MSSQLCoreError.tlsHandshakeFailed(kind: kind, serverMessage: detail)
             }
+            if options.authMethod == .windows, let kind = MSSQLKerberosClassifier.classify(detail) {
+                throw MSSQLCoreError.kerberosAuthFailed(kind: kind, serverMessage: detail)
+            }
             throw MSSQLCoreError.connectionFailed("Failed to connect to \(options.host):\(options.port): \(msg)")
         }
 

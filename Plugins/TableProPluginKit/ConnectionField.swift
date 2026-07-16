@@ -97,6 +97,7 @@ public struct ConnectionField: Codable, Sendable {
     public let hidesPassword: Bool
     public let visibleWhen: FieldVisibilityRule?
     public var dynamicOptions: DynamicFieldOptions?
+    public var hidesUsername: Bool = false
 
     /// Backward-compatible convenience: true when fieldType is .secure
     public var isSecure: Bool {
@@ -133,6 +134,12 @@ public struct ConnectionField: Codable, Sendable {
         return copy
     }
 
+    public func withHidesUsername(_ hides: Bool) -> ConnectionField {
+        var copy = self
+        copy.hidesUsername = hides
+        return copy
+    }
+
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(String.self, forKey: .id)
@@ -145,10 +152,11 @@ public struct ConnectionField: Codable, Sendable {
         hidesPassword = try container.decodeIfPresent(Bool.self, forKey: .hidesPassword) ?? false
         visibleWhen = try container.decodeIfPresent(FieldVisibilityRule.self, forKey: .visibleWhen)
         dynamicOptions = try container.decodeIfPresent(DynamicFieldOptions.self, forKey: .dynamicOptions)
+        hidesUsername = try container.decodeIfPresent(Bool.self, forKey: .hidesUsername) ?? false
     }
 
     private enum CodingKeys: String, CodingKey {
         case id, label, placeholder, isRequired, defaultValue, fieldType, section, hidesPassword, visibleWhen
-        case dynamicOptions
+        case dynamicOptions, hidesUsername
     }
 }

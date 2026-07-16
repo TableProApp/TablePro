@@ -59,6 +59,14 @@ final class AuthPaneViewModel {
             .hidesPassword(forValues: additionalFieldValues)
     }
 
+    var hidesUsername: Bool {
+        guard let type = coordinator?.value?.network.type else {
+            return authFields.hidesUsername(forValues: additionalFieldValues)
+        }
+        return PluginManager.shared.additionalConnectionFields(for: type)
+            .hidesUsername(forValues: additionalFieldValues)
+    }
+
     var effectivePromptForPassword: Bool {
         promptForPassword && !hidesPassword
     }

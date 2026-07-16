@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- SQL Server connections can now use Windows Authentication (Kerberos) on macOS. Pick Windows Authentication in the connection form to sign in with the Kerberos ticket you already have from `kinit`, or enter a Kerberos principal and password to sign in with your domain credentials. Connect by hostname, not IP address. (#1879)
 - Teradata support through a downloadable driver written in native Swift. Connect over TD2 or TDNEGO logon, optionally with TLS, browse databases, tables, and columns, run SQL, edit rows, and create or alter tables. (#1867)
 
 ### Fixed

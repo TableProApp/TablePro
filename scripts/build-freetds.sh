@@ -55,6 +55,7 @@ build_slice() {
     local HOST_TRIPLE="$4"
     local VERSION_FLAG="$5"
     local OPENSSL_PREFIX="$6"
+    local KRB5_FLAG="${7:-}"
 
     local PREFIX="/tmp/freetds-${SLICE_LABEL}"
     local SDKPATH
@@ -89,6 +90,7 @@ build_slice() {
             --disable-libiconv \
             --with-tdsver=7.4 \
             --with-openssl="$OPENSSL_PREFIX" \
+            ${KRB5_FLAG} \
             CC="$CC_BIN" \
             CFLAGS="-arch ${ARCH} -isysroot ${SDKPATH} ${VERSION_FLAG} -I${OPENSSL_PREFIX}/include" \
             LDFLAGS="-arch ${ARCH} -isysroot ${SDKPATH} -L${OPENSSL_PREFIX}/lib"
@@ -120,8 +122,11 @@ cp "$LIBS_DIR/libcrypto_arm64.a" "$MACOS_OPENSSL_ARM64/lib/libcrypto.a"
 cp "$LIBS_DIR/libssl_x86_64.a"    "$MACOS_OPENSSL_X86_64/lib/libssl.a"
 cp "$LIBS_DIR/libcrypto_x86_64.a" "$MACOS_OPENSSL_X86_64/lib/libcrypto.a"
 
-build_slice "macos-arm64"  "macosx" "arm64"  "aarch64-apple-darwin" "-mmacosx-version-min=${MACOS_DEPLOYMENT_TARGET}" "$MACOS_OPENSSL_ARM64"
-build_slice "macos-x86_64" "macosx" "x86_64" "x86_64-apple-darwin"  "-mmacosx-version-min=${MACOS_DEPLOYMENT_TARGET}" "$MACOS_OPENSSL_X86_64"
+# macOS slices enable Kerberos/GSS (Windows Authentication). --enable-krb5 links the system
+# Heimdal GSS via the SDK libgssapi_krb5 stub (Kerberos.framework); the plugin adds -framework GSS
+# at link time to resolve the symbols. iOS slices stay krb5-free (Windows auth is macOS only).
+build_slice "macos-arm64"  "macosx" "arm64"  "aarch64-apple-darwin" "-mmacosx-version-min=${MACOS_DEPLOYMENT_TARGET}" "$MACOS_OPENSSL_ARM64"  "--enable-krb5"
+build_slice "macos-x86_64" "macosx" "x86_64" "x86_64-apple-darwin"  "-mmacosx-version-min=${MACOS_DEPLOYMENT_TARGET}" "$MACOS_OPENSSL_X86_64" "--enable-krb5"
 
 # iOS slices link OpenSSL statically from the existing xcframeworks; reconstruct a unix-style prefix
 # for FreeTDS's --with-openssl which expects include/ and lib/ siblings.
@@ -144,6 +149,16 @@ lipo -create \
     "$LIBS_DIR/libsybdb_macos-arm64.a" \
     "$LIBS_DIR/libsybdb_macos-x86_64.a" \
     -output "$LIBS_DIR/libsybdb_macos_universal.a"
+
+# Write the flat committed archives the macOS plugin links directly (TablePro.xcodeproj
+# force_loads Libs/libsybdb.a). The per-slice intermediates below are deleted after the
+# xcframework is assembled, so produce these before that cleanup runs. Publish them with
+# scripts/publish-libs.sh libsybdb_arm64.a libsybdb_x86_64.a libsybdb_universal.a libsybdb.a
+echo "==> Writing committed macOS archives (libsybdb.a, libsybdb_arm64.a, libsybdb_x86_64.a, libsybdb_universal.a)..."
+cp "$LIBS_DIR/libsybdb_macos-arm64.a"     "$LIBS_DIR/libsybdb_arm64.a"
+cp "$LIBS_DIR/libsybdb_macos-x86_64.a"    "$LIBS_DIR/libsybdb_x86_64.a"
+cp "$LIBS_DIR/libsybdb_macos_universal.a" "$LIBS_DIR/libsybdb_universal.a"
+cp "$LIBS_DIR/libsybdb_macos_universal.a" "$LIBS_DIR/libsybdb.a"
 
 HEADERS_STAGE="$BUILD_DIR/headers-stage"
 rm -rf "$HEADERS_STAGE"
