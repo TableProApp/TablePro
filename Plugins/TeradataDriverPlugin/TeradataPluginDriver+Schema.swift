@@ -138,13 +138,6 @@ extension TeradataPluginDriver {
     }
 
     private static func tableType(_ kind: String) -> String {
-        switch kind.trimmingCharacters(in: .whitespaces) {
-        case "V": return "VIEW"
-        case "M": return "MACRO"
-        case "P", "E": return "PROCEDURE"
-        case "F", "R": return "FUNCTION"
-        case "G": return "TRIGGER"
-        default: return "TABLE"
-        }
+        kind.trimmingCharacters(in: .whitespaces) == "V" ? "VIEW" : "TABLE"
     }
 }

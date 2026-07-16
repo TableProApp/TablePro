@@ -20,6 +20,14 @@ final class TeradataSchemaQueriesTests: XCTestCase {
         XCTAssertTrue(sql.contains("DatabaseName = 'Re''tail'"))
     }
 
+    func testListTablesExcludesProceduresMacrosAndFunctions() {
+        let sql = TeradataSchemaQueries.listTables(database: "demo_user")
+        XCTAssertTrue(sql.contains("TableKind IN ('T', 'O', 'Q', 'V')"))
+        for kind in ["'M'", "'P'", "'E'", "'F'", "'R'", "'G'"] {
+            XCTAssertFalse(sql.contains(kind), "browsable-object list must not include \(kind)")
+        }
+    }
+
     func testBrowseFirstPageUsesTop() {
         let sql = TeradataSchemaQueries.browse(
             database: "Retail", table: "Orders", columns: nil,

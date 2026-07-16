@@ -22,7 +22,7 @@ public enum TeradataSchemaQueries {
         """
         SELECT TableName, TableKind FROM DBC.TablesV \
         WHERE DatabaseName = \(quoteLiteral(database)) \
-        AND TableKind IN ('T', 'O', 'V', 'M', 'P', 'E', 'F', 'R', 'Q') \
+        AND TableKind IN ('T', 'O', 'Q', 'V') \
         ORDER BY TableName
         """
     }
