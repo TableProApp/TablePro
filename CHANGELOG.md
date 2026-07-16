@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Fixed the SQL editor in a new tab losing keyboard focus after the first couple of characters, which stopped further typing until you clicked back into the editor. (#1885)
 - Cancelling a SQL Server connection now stops waiting right away instead of staying stuck until the attempt finished on its own. A connection attempt also gives up after the login timeout with a clear message rather than hanging, and for Windows Authentication the message points at the usual Kerberos causes (KDC unreachable, missing SPN, or clock skew). (#1889)
 - Fixed MySQL and MariaDB queries ending in ORDER BY that could show an empty result with no error. A failure part way through reading rows was treated as a normal end of results, so a real server error looked like a table with no rows. TablePro now shows the error the server reported. (#1884)
 - Fixed the query result row cap returning a single row when it was set to unlimited. (#1884)

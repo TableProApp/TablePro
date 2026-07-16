@@ -143,9 +143,15 @@ public final class SuggestionController: NSWindowController {
         }
     }
 
-    /// Opens the window as a child of another window.
+    /// Opens the window as a child of another window. The panel is ordered front without ever
+    /// being made key or main: `orderFront(_:)` is documented not to change either status, and
+    /// `NSWindowController.showWindow(_:)` is deliberately avoided because its default
+    /// implementation routes through `makeKeyAndOrderFront(_:)`.
     public func showWindow(attachedTo parentWindow: NSWindow) {
         guard let window = window else { return }
+        if let currentParent = window.parent, currentParent !== parentWindow {
+            currentParent.removeChildWindow(window)
+        }
         parentWindow.addChildWindow(window, ordered: .above)
 
         if let existingObserver = windowResignObserver {
@@ -179,7 +185,6 @@ public final class SuggestionController: NSWindowController {
         }
 
         setupEventMonitors()
-        super.showWindow(nil)
         window.orderFront(nil)
     }
 
@@ -203,6 +208,10 @@ public final class SuggestionController: NSWindowController {
     private func performCleanup() {
         model.willClose()
         removeEventMonitors()
+
+        if let window, let parent = window.parent {
+            parent.removeChildWindow(window)
+        }
 
         if let observer = windowResignObserver {
             NotificationCenter.default.removeObserver(observer)

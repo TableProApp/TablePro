@@ -95,7 +95,7 @@ final class SuggestionViewModel: ObservableObject {
         self.delegate = nil
         itemsRequestTask?.cancel()
 
-        guard let targetParentWindow = textView.view.window else {
+        guard textView.view.window != nil else {
             Self.logger.warning("showCompletions: textView.view.window is nil")
             return
         }
@@ -121,22 +121,31 @@ final class SuggestionViewModel: ObservableObject {
                 try await MainActor.run {
                     try Task.checkCancellation()
 
+                    guard let window = textView.view.window,
+                          window.isKeyWindow,
+                          let responder = window.firstResponder as? NSView,
+                          responder.isDescendant(of: textView.view) else {
+                        Self.logger.debug("showCompletions: editor lost focus while completions were loading")
+                        return
+                    }
+
                     guard let cursorPosition = textView.resolveCursorPosition(completionItems.windowPosition),
                           let cursorRect = textView.textView.layoutManager.rectForOffset(
                             cursorPosition.range.location
-                          ),
-                          let cursorRect = textView.view.window?.convertToScreen(
-                            textView.textView.convert(cursorRect, to: nil)
                           ) else {
                         Self.logger.warning("showCompletions: cursor rect resolution failed")
                         return
                     }
 
+                    let screenCursorRect = window.convertToScreen(
+                        textView.textView.convert(cursorRect, to: nil)
+                    )
+
                     self.items = completionItems.items
                     self.selectedIndex = 0
                     self.syntaxHighlightedCache = [:]
                     self.notifySelection()
-                    showWindowOnParent(targetParentWindow, cursorRect)
+                    showWindowOnParent(window, screenCursorRect)
                 }
             } catch {
                 return
