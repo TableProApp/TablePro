@@ -178,6 +178,11 @@ jobs:
               DISPLAY_NAME="MSSQL Driver"; SUMMARY="Microsoft SQL Server driver via FreeTDS"
               DB_TYPE_IDS='["SQL Server"]'; ICON="mssql-icon"; BUNDLE_NAME="MSSQLDriver"
               CATEGORY="database-driver"; HOMEPAGE="https://docs.tablepro.app/databases/mssql" ;;
+            teradata)
+              TARGET="TeradataDriver"; BUNDLE_ID="com.TablePro.TeradataDriver"
+              DISPLAY_NAME="Teradata Driver"; SUMMARY="Teradata Vantage driver via a native Swift TD2 client"
+              DB_TYPE_IDS='["Teradata"]'; ICON="teradata-icon"; BUNDLE_NAME="TeradataDriver"
+              CATEGORY="database-driver"; HOMEPAGE="https://docs.tablepro.app/databases/teradata" ;;
             mongodb)
               TARGET="MongoDBDriver"; BUNDLE_ID="com.TablePro.MongoDBDriver"
               DISPLAY_NAME="MongoDB Driver"; SUMMARY="MongoDB document database driver via libmongoc"

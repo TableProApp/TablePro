@@ -41,6 +41,7 @@ PLUGINS=(
     libsql
     elasticsearch
     surrealdb
+    teradata
 )
 
 BUNDLED_PLUGINS=(
