@@ -18,6 +18,12 @@ final class TeradataExecuteLoopTests: XCTestCase {
         XCTAssertTrue(TeradataConnection.responseIsComplete([Parcel(.statementError)]))
     }
 
+    func testServerErrorHasReadableLocalizedDescription() {
+        let error = TeradataWireError.server(code: 21_608, message: "user does not have SELECT access")
+        XCTAssertEqual(error.errorDescription, "user does not have SELECT access (21608)")
+        XCTAssertEqual((error as Error).localizedDescription, "user does not have SELECT access (21608)")
+    }
+
     func testFailureParcelSurfacesServerErrorCodeAndMessage() throws {
         let message = Array("no SELECT access".utf8)
         let body: [UInt8] = [0, 0, 0, 0, 0, 0, 0, 0, 0x54, 0x68, 0x00, UInt8(message.count)] + message

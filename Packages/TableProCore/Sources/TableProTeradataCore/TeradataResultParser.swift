@@ -40,6 +40,7 @@ enum TeradataResultParser {
         let messageLength = Int(body[10]) << 8 | Int(body[11])
         let end = min(12 + messageLength, body.count)
         let message = String(decoding: body[12..<end], as: UTF8.self)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
         return (code, message.isEmpty ? String(decoding: body, as: UTF8.self) : message)
     }
 

@@ -1,7 +1,7 @@
 import Darwin
 import Foundation
 
-public enum TeradataWireError: Error, CustomStringConvertible {
+public enum TeradataWireError: Error, CustomStringConvertible, LocalizedError {
     case connectionFailed(String)
     case truncated(String)
     case malformed(String)
@@ -14,11 +14,13 @@ public enum TeradataWireError: Error, CustomStringConvertible {
         case .connectionFailed(let detail): return "connection failed: \(detail)"
         case .truncated(let what): return "truncated: \(what)"
         case .malformed(let what): return "malformed: \(what)"
-        case .server(let code, let message): return "server error \(code): \(message)"
+        case .server(let code, let message): return "\(message) (\(code))"
         case .unsupported(let what): return "unsupported: \(what)"
         case .cancelled: return "cancelled"
         }
     }
+
+    public var errorDescription: String? { description }
 }
 
 protocol TeradataTransport: AnyObject {
