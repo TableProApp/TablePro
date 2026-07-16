@@ -18,7 +18,7 @@ Teradata is a downloadable driver. Open **Settings > Plugins**, find Teradata, a
 | Database | The default database to use after logon. Optional; leave blank to use your account's default. |
 | Username | Your Teradata username. |
 | Password | Your Teradata password. |
-| Logon Mechanism | The logon method. Default `TD2`. |
+| Logon Mechanism | The logon method. `TD2` and `TDNEGO` are supported. Default `TD2`. |
 | Transaction Mode | `DEFAULT`, `ANSI`, or `TERA`. Default `DEFAULT`. |
 
 ## Databases and objects
@@ -34,4 +34,4 @@ Identifiers are quoted with double quotes. Teradata has no `LIMIT`, so TablePro 
 ## Troubleshooting
 
 - **Cannot reach the server.** Confirm the host and that port `1025` is open from your network.
-- **Logon fails.** Check the username, password, and that the account is not locked. LDAP and Kerberos logon are not yet supported; use `TD2`.
+- **Logon fails.** Check the username, password, and that the account is not locked. LDAP, Kerberos, and JWT logon are not yet supported; use `TD2` or `TDNEGO`. Picking an unsupported mechanism reports "unsupported logon mechanism" before connecting.

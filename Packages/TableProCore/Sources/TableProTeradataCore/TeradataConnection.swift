@@ -19,6 +19,7 @@ public final class TeradataConnection {
     public var isConnected: Bool { socket != nil }
 
     public func connect() throws {
+        try validateLogMech()
         let socket = try TeradataSocket(
             host: config.host, port: config.port, timeoutSeconds: config.connectTimeoutSeconds)
         self.socket = socket
@@ -74,6 +75,16 @@ public final class TeradataConnection {
 
     public func cancel() {
         socket?.cancel()
+    }
+
+    private func validateLogMech() throws {
+        switch config.logMech {
+        case .td2, .tdnego:
+            return
+        case .ldap, .krb5, .jwt:
+            throw TeradataWireError.unsupported(
+                "logon mechanism \(config.logMech.rawValue); only TD2 and TDNEGO are supported")
+        }
     }
 
     private func runConfig() throws {
