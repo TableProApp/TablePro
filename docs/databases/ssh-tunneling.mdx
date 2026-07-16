@@ -125,6 +125,8 @@ Paste a `scheme+ssh://` URL to create a connection with SSH pre-filled. The `+ss
 
 **Tunnel connects but the database fails**: the database host is resolved from the SSH server, not your Mac. Verify it from the server: `ssh user@server "nc -z db-host 5432"`. Also check that the database credentials differ from the SSH ones where they should.
 
+**Tunnel connects but the database times out reading the server greeting**: the tunnel could not open its forwarding channel to the database. TablePro gives up after 10 seconds and closes the connection. Open Console.app and filter on `com.TablePro` to see the `LibSSH2Tunnel` message naming the destination and the reason. Check that the SSH server allows TCP forwarding (`AllowTcpForwarding yes`) and that it can reach the database host itself.
+
 **Tunnel drops on idle networks**: TablePro already sends a libssh2 keep-alive every 30 seconds plus OS-level TCP keep-alives. If tunnels still drop, check the server's `ClientAliveInterval` and idle timeouts on firewalls or load balancers in between.
 
 **Firewall prompt on connect**: TablePro listens on a local port between 60000 and 65000 for the tunnel. Allow it.

@@ -139,6 +139,50 @@ struct SSHChannelRelayTests {
         #expect(io.written == payload)
     }
 
+    @Test("Concurrent relays sharing one transport each receive their own channel data")
+    func concurrentRelaysShareTransport() {
+        let transport = SocketPair()
+        let first = SocketPair()
+        let second = SocketPair()
+        defer { transport.close(); first.close(); second.close() }
+
+        var dummy: UInt8 = 1
+        _ = Darwin.send(transport.b, &dummy, 1, 0)
+
+        let firstPayload = Data("first".utf8)
+        let secondPayload = Data("second".utf8)
+        let firstIO = FakeChannelIO(actions: [.data(firstPayload)], fallback: .closed)
+        let secondIO = FakeChannelIO(actions: [.data(secondPayload)], fallback: .closed)
+
+        let group = DispatchGroup()
+        let firstBox = ResultBox()
+        let secondBox = ResultBox()
+
+        for (localFD, io, box) in [(first.a, firstIO, firstBox), (second.a, secondIO, secondBox)] {
+            group.enter()
+            runRelayOnDedicatedThread(
+                localFD: localFD,
+                transportFD: transport.a,
+                io: io,
+                isActive: { true },
+                box: box
+            ) { group.leave() }
+        }
+
+        #expect(group.wait(timeout: .now() + 5) == .success)
+        #expect(firstBox.value == .channelClosed)
+        #expect(secondBox.value == .channelClosed)
+        #expect(readPayload(from: first.b, count: firstPayload.count) == firstPayload)
+        #expect(readPayload(from: second.b, count: secondPayload.count) == secondPayload)
+    }
+
+    private func readPayload(from fd: Int32, count: Int) -> Data {
+        var buffer = [UInt8](repeating: 0, count: count)
+        let received = recv(fd, &buffer, count, 0)
+        guard received > 0 else { return Data() }
+        return Data(buffer.prefix(received))
+    }
+
     private func runRelay(
         localFD: Int32,
         transportFD: Int32,
@@ -148,43 +192,47 @@ struct SSHChannelRelayTests {
     ) -> RelayTermination? {
         let box = ResultBox()
         let semaphore = DispatchSemaphore(value: 0)
-        DispatchQueue.global().async {
-            let relay = SSHChannelRelay(
-                localFD: localFD,
-                transportFD: transportFD,
-                channelIO: io,
-                bufferSize: 32_768,
-                isActive: isActive
-            )
-            box.value = relay.run()
-            semaphore.signal()
-        }
+        runRelayOnDedicatedThread(
+            localFD: localFD,
+            transportFD: transportFD,
+            io: io,
+            isActive: isActive,
+            box: box
+        ) { semaphore.signal() }
         _ = semaphore.wait(timeout: .now() + timeout)
         return box.value
     }
 }
 
-private final class ResultBox: @unchecked Sendable {
-    var value: RelayTermination?
+/// Runs a relay on a thread of its own rather than borrowing from the shared global
+/// queue. The relay loop blocks its thread for as long as it runs, and the test suite
+/// runs in parallel, so relays sharing the global queue's bounded pool can starve each
+/// other and time out on machines under load.
+internal func runRelayOnDedicatedThread(
+    localFD: Int32,
+    transportFD: Int32,
+    io: any SSHChannelIO,
+    isActive: @escaping @Sendable () -> Bool,
+    box: ResultBox,
+    onFinish: @escaping @Sendable () -> Void
+) {
+    let thread = Thread {
+        let relay = SSHChannelRelay(
+            localFD: localFD,
+            transportFD: transportFD,
+            channelIO: io,
+            bufferSize: 32_768,
+            isActive: isActive
+        )
+        box.value = relay.run()
+        onFinish()
+    }
+    thread.stackSize = 512 * 1_024
+    thread.start()
 }
 
-private final class SocketPair {
-    let a: Int32
-    let b: Int32
-
-    init() {
-        var fds: [Int32] = [0, 0]
-        _ = socketpair(AF_UNIX, SOCK_STREAM, 0, &fds)
-        a = fds[0]
-        b = fds[1]
-    }
-
-    func closeB() { Darwin.close(b) }
-
-    func close() {
-        Darwin.close(a)
-        Darwin.close(b)
-    }
+internal final class ResultBox: @unchecked Sendable {
+    var value: RelayTermination?
 }
 
 private final class FakeChannelIO: SSHChannelIO, @unchecked Sendable {

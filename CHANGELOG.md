@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Fixed SSH tunnels that could accept a database connection and then go quiet instead of forwarding it or failing, which showed up as MySQL and MariaDB connections timing out while reading the server greeting. A tunnel that cannot open its forwarding channel now gives up after 10 seconds, closes the connection, and logs the reason, instead of leaving the driver to wait out its own timeout with no explanation. (#1883)
+- Fixed connections being reset when a single database session opened several at once through one SSH tunnel, which could happen while browsing schemas. (#1883)
+
 ## [0.57.1] - 2026-07-15
 
 ### Added

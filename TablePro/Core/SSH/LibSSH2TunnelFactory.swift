@@ -22,6 +22,11 @@ internal enum LibSSH2TunnelFactory {
 
     private static let connectionTimeout: Int32 = 10 // seconds
 
+    /// A single session opens more than one connection through the tunnel: the query
+    /// connection plus the metadata pool. A backlog that cannot hold them resets the
+    /// overflow before the accept loop reaches it.
+    private static let listenBacklogSize: Int32 = 16
+
     // MARK: - Global Init
 
     private static let initialized: Bool = {
@@ -816,7 +821,7 @@ internal enum LibSSH2TunnelFactory {
             throw SSHTunnelError.tunnelCreationFailed("Port \(port) already in use")
         }
 
-        guard listen(listenFD, 5) == 0 else {
+        guard listen(listenFD, Self.listenBacklogSize) == 0 else {
             Darwin.close(listenFD)
             throw SSHTunnelError.tunnelCreationFailed("Failed to listen on port \(port)")
         }

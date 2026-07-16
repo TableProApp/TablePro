@@ -165,11 +165,13 @@ internal struct SSHChannelRelay {
                 if errno == EINTR { continue }
                 return .hangup
             }
-            switch relayFDState(pollFD.revents) {
-            case .stop, .drainThenStop:
+            switch transportPollOutcome(revents: pollFD.revents, requestedEvents: events) {
+            case .hangup:
                 return .hangup
-            case .readable, .idle:
+            case .ready:
                 return .ready
+            case .timedOut:
+                guard isActive() else { return .hangup }
             }
         }
     }
