@@ -176,6 +176,21 @@ final class TeradataPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         try await execute(query: query)
     }
 
+    func executeParameterized(query: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult {
+        guard !parameters.isEmpty else { return try await execute(query: query) }
+        var rendered = ""
+        var index = 0
+        for character in query {
+            if character == "?", index < parameters.count {
+                rendered += sqlLiteral(parameters[index])
+                index += 1
+            } else {
+                rendered.append(character)
+            }
+        }
+        return try await execute(query: rendered)
+    }
+
     func cancelQuery() throws {
         connection?.cancel()
     }
