@@ -34,7 +34,7 @@ final class TeradataTLSTransport: TeradataTransport {
                 SecTrustSetPolicies(trust, policy)
                 if let anchors, !anchors.isEmpty {
                     SecTrustSetAnchorCertificates(trust, anchors as CFArray)
-                    SecTrustSetAnchorCertificatesOnly(trust, false)
+                    SecTrustSetAnchorCertificatesOnly(trust, true)
                 }
                 complete(SecTrustEvaluateWithError(trust, nil))
             },
@@ -159,7 +159,9 @@ final class TeradataTLSTransport: TeradataTransport {
     }
 
     private func sendPong(_ payload: [UInt8]) {
-        try? sendRaw(WebSocketFrame.encode(opcode: .pong, payload: payload))
+        connection.send(
+            content: Data(WebSocketFrame.encode(opcode: .pong, payload: payload)),
+            completion: .idempotent)
     }
 
     private func sendRaw(_ bytes: [UInt8]) throws {
