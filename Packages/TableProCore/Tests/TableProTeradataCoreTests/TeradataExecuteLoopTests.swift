@@ -7,9 +7,9 @@ final class TeradataExecuteLoopTests: XCTestCase {
         XCTAssertFalse(TeradataConnection.responseIsComplete(batch))
     }
 
-    func testEndMarkersTerminate() {
+    func testEndRequestTerminatesButEndStatementDoesNot() {
         XCTAssertTrue(TeradataConnection.responseIsComplete([Parcel(.endRequest)]))
-        XCTAssertTrue(TeradataConnection.responseIsComplete([Parcel(.endStatement)]))
+        XCTAssertFalse(TeradataConnection.responseIsComplete([Parcel(.record), Parcel(.endStatement)]))
     }
 
     func testServerFailuresTerminateInsteadOfLooping() {

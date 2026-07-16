@@ -78,7 +78,6 @@ public final class TeradataConnection {
     static func responseIsComplete(_ parcels: [Parcel]) -> Bool {
         let terminators: Set<UInt16> = [
             ParcelFlavor.endRequest.rawValue,
-            ParcelFlavor.endStatement.rawValue,
             ParcelFlavor.failure.rawValue,
             ParcelFlavor.error.rawValue,
             ParcelFlavor.statementError.rawValue,
@@ -213,6 +212,9 @@ public final class TeradataConnection {
         if header[1] & LanMessage.encryptedBodyFlag != 0 {
             let der = Array((header + rest)[24...])
             let plaintext = try Td2Wrap.unwrap(der: der, key: aesKey)
+            guard plaintext.count >= 28 else {
+                throw TeradataWireError.truncated("encrypted reply body \(plaintext.count) < 28")
+            }
             return try Parcel.decodeAll(Array(plaintext[28...]))
         }
         return try Parcel.decodeAll(rest)
