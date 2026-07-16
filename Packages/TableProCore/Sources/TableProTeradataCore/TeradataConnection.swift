@@ -45,14 +45,12 @@ public final class TeradataConnection {
         try sendEncrypted(kind: .start, body: body, requestNumber: requestNumber)
 
         var parcels: [Parcel] = []
-        var sawEndRequest = false
-        while !sawEndRequest {
+        var responseComplete = false
+        while !responseComplete {
             let batch = try readReply()
             parcels.append(contentsOf: batch)
-            if batch.contains(where: { $0.flavor == ParcelFlavor.endRequest.rawValue }) {
-                sawEndRequest = true
-            } else if batch.contains(where: { $0.flavor == ParcelFlavor.endStatement.rawValue }) {
-                sawEndRequest = true
+            if Self.responseIsComplete(batch) {
+                responseComplete = true
             } else {
                 try sendContinue(requestNumber: requestNumber)
             }
@@ -75,6 +73,17 @@ public final class TeradataConnection {
 
     public func cancel() {
         socket?.cancel()
+    }
+
+    static func responseIsComplete(_ parcels: [Parcel]) -> Bool {
+        let terminators: Set<UInt16> = [
+            ParcelFlavor.endRequest.rawValue,
+            ParcelFlavor.endStatement.rawValue,
+            ParcelFlavor.failure.rawValue,
+            ParcelFlavor.error.rawValue,
+            ParcelFlavor.statementError.rawValue,
+        ]
+        return parcels.contains { terminators.contains($0.flavor) }
     }
 
     private func makeTransport() throws -> any TeradataTransport {
