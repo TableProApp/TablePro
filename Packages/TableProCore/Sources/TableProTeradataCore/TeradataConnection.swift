@@ -11,6 +11,7 @@ public final class TeradataConnection {
     private var messageCounter: UInt64 = 0
     private var requestCounter: UInt64 = 0
     private var gssSequence: UInt64 = 0
+    private var confidentialityBypassed = false
 
     public init(config: TeradataConnectionConfig) {
         self.config = config
@@ -82,9 +83,11 @@ public final class TeradataConnection {
                 host: config.host, port: config.port, timeoutSeconds: config.connectTimeoutSeconds)
         }
         do {
-            return try TeradataTLSTransport(
-                host: config.host, port: config.port, options: config.tls,
+            let transport = try TeradataTLSTransport(
+                host: config.host, options: config.tls,
                 timeoutSeconds: config.connectTimeoutSeconds)
+            confidentialityBypassed = true
+            return transport
         } catch {
             guard config.tls.allowPlaintextFallback else { throw error }
             return try TeradataSocket(
@@ -163,7 +166,7 @@ public final class TeradataConnection {
             username: config.username, session: sessionNumber, charset: charsetCode,
             serverIP: serverIP, logMech: config.logMech.rawValue,
             transactionMode: config.transactionMode.rawValue, sslMode: config.tls.modeLabel,
-            database: config.database)
+            encryptData: !confidentialityBypassed, database: config.database)
         let body = logon.encoded() + sessionOptions.encoded() + connect.encoded()
             + logonData.encoded() + attributes.encoded()
         try sendEncrypted(kind: .connect, body: body, requestNumber: 0)
@@ -179,6 +182,10 @@ public final class TeradataConnection {
             kind: kind, body: body, sessionNumber: sessionNumber, requestNumber: requestNumber,
             byteVar: 0, authentication: TeradataMessages.authBytes(nextMessage()),
             hostCharSet: charsetCode)
+        if confidentialityBypassed {
+            try socket?.send(message.encoded())
+            return
+        }
         let wrapped = try Td2Wrap.encryptMessage(
             message.encoded(), key: aesKey, sequenceNumber: nextGssSequence())
         try socket?.send(wrapped)

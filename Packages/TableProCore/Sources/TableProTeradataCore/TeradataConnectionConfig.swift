@@ -29,6 +29,8 @@ public struct TeradataTLSOptions: Sendable {
     public var verifiesHostname: Bool
     public var caCertificatePath: String
     public var modeLabel: String
+    public var httpsPort: UInt16
+    public var webSocketPath: String
 
     public init(
         enabled: Bool = false,
@@ -36,7 +38,9 @@ public struct TeradataTLSOptions: Sendable {
         verifiesCertificate: Bool = false,
         verifiesHostname: Bool = false,
         caCertificatePath: String = "",
-        modeLabel: String = "DISABLE"
+        modeLabel: String = "DISABLE",
+        httpsPort: UInt16 = 443,
+        webSocketPath: String = "/gateway"
     ) {
         self.enabled = enabled
         self.allowPlaintextFallback = allowPlaintextFallback
@@ -44,6 +48,8 @@ public struct TeradataTLSOptions: Sendable {
         self.verifiesHostname = verifiesHostname
         self.caCertificatePath = caCertificatePath
         self.modeLabel = modeLabel
+        self.httpsPort = httpsPort
+        self.webSocketPath = webSocketPath
     }
 
     public static let disabled = TeradataTLSOptions()

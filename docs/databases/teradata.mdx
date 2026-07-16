@@ -30,13 +30,13 @@ Identifiers are quoted with double quotes. Teradata has no `LIMIT`, so TablePro 
 
 ## TLS
 
-Teradata negotiates TLS on the same gateway port (`1025`), so there is no separate HTTPS port. Set the SSL Mode to turn it on:
+Teradata carries encrypted sessions over HTTPS on port `443`, separate from the plain gateway port `1025`. TablePro connects with TLS and tunnels the session over the gateway's WebSocket endpoint. Set the SSL Mode to turn it on:
 
-- `Preferred` tries TLS and falls back to a plain connection if the gateway does not offer it.
+- `Preferred` tries TLS and falls back to a plain connection on `1025` if the HTTPS port is unreachable.
 - `Required` uses TLS but does not check the server certificate.
 - `Verify CA` checks the certificate chain, and `Verify Identity` also checks the hostname. Point CA Certificate at your CA file to trust a private authority.
 
-To test TLS against a server that offers it, use `Required` so a failed handshake surfaces instead of falling back.
+To test TLS, use `Required` so a failed handshake surfaces instead of falling back.
 
 ## Transaction mode
 
