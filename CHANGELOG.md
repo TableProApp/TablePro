@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Connect through a SOCKS5 proxy. Set a host, port, and an optional username and password on the connection form's new SOCKS Proxy pane, alongside SSH Tunnel, Cloudflare Tunnel, and Cloud SQL Auth Proxy. The database hostname is resolved by the proxy, so names that only resolve behind it work. (#1882)
 - SQL Server connections can now use Windows Authentication (Kerberos) on macOS. Pick Windows Authentication in the connection form to sign in with the Kerberos ticket you already have from `kinit`, or enter a Kerberos principal and password to sign in with your domain credentials. Connect by hostname, not IP address. (#1879)
 - Teradata support through a downloadable driver written in native Swift. Connect over TD2 or TDNEGO logon, optionally with TLS, browse databases, tables, and columns, run SQL, edit rows, and create or alter tables. (#1867)
 
@@ -18,6 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Fixed duplicating a connection dropping its Cloudflare Tunnel and Cloud SQL Auth Proxy settings and stored secrets.
+- Fixed the tunnel panes warning about only some of the other enabled connection methods. Each pane now lists every conflicting method with a button to turn it off.
 - Fixed Copy as, the context menu's Delete, and the Edit menu's copy and delete commands acting on only the active row instead of every row in a cell-range or column selection in the data grid. (#1898)
 - Fixed the Edit menu's Copy as JSON copying the wrong rows when the grid was sorted or filtered. (#1898)
 - Fixed tables picked in the sidebar showing up unchecked and getting silently skipped when exporting to SQL or MQL. The export sheet now checks them and applies the format's default per-table options, so Export works right away.

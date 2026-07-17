@@ -44,6 +44,7 @@
               "databases/ssh-tunneling",
               "databases/cloudflare-tunnel",
               "databases/cloud-sql-proxy",
+              "databases/socks-proxy",
               "databases/aws-iam",
               {
                 "group": "SQL",

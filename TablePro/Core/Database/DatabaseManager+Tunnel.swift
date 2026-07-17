@@ -76,6 +76,7 @@ extension DatabaseManager {
         case .ssh: return SSHTunnelManager.shared
         case .cloudflare: return CloudflareTunnelManager.shared
         case .cloudSQLProxy: return CloudSQLProxyManager.shared
+        case .socksProxy: return SOCKSProxyManager.shared
         case .none: return nil
         }
     }

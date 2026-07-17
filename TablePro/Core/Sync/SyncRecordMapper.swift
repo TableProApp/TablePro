@@ -116,8 +116,9 @@ struct SyncRecordMapper {
         // Note: sshTunnelMode is intentionally NOT synced — it is re-derived
         // on decode from sshConfig + sshProfileId. If adding sshTunnelMode to
         // the sync schema in the future, apply path contraction to its snapshot.
-        // cloudflareTunnelMode and cloudSQLProxyMode are also NOT synced: they are
-        // device-local runtime config and their secrets live in the Keychain.
+        // cloudflareTunnelMode, cloudSQLProxyMode, and socksProxyMode are also NOT
+        // synced: they are device-local runtime config and their secrets live in
+        // the Keychain.
         // passwordSource is also NOT synced: its file path, env var, or command
         // is device-local and may not exist or resolve on another Mac.
         do {

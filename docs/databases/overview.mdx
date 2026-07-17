@@ -9,32 +9,32 @@ TablePro connects to 22 databases through its plugin system. This page covers cr
 
 ## Supported Databases
 
-| Database | Default port | SSH tunnel | SSL/TLS | Cloudflare Tunnel | Cloud SQL Proxy |
-|----------|-------------|-----------|---------|-------------------|-----------------|
-| [MySQL](/databases/mysql) | 3306 | Yes | Yes | Yes | Yes |
-| [MariaDB](/databases/mariadb) | 3306 | Yes | Yes | Yes | No |
-| [PostgreSQL](/databases/postgresql) | 5432 | Yes | Yes | Yes | Yes |
-| [Amazon Redshift](/databases/redshift) | 5439 | Yes | Yes | Yes | No |
-| [CockroachDB](/databases/cockroachdb) | 26257 | Yes | Yes | Yes | No |
-| [Microsoft SQL Server](/databases/mssql) | 1433 | Yes | Yes | Yes | Yes |
-| [Oracle](/databases/oracle) | 1521 | Yes | Yes | Yes | No |
-| [ClickHouse](/databases/clickhouse) | 8123 | Yes | Yes | Yes | No |
-| [MongoDB](/databases/mongodb) | 27017 | Yes | Yes | Yes | No |
-| [Redis](/databases/redis) | 6379 | Yes | Yes | Yes | No |
-| [Cassandra / ScyllaDB](/databases/cassandra) | 9042 | Yes | Yes | Yes | No |
-| [etcd](/databases/etcd) | 2379 | Yes | Yes | Yes | No |
-| [SurrealDB](/databases/surrealdb) | 8000 | Yes | Yes | Yes | No |
-| [Elasticsearch](/databases/elasticsearch) | 9200 | No | Yes | No | No |
-| [Snowflake](/databases/snowflake) | 443 | No | No | No | No |
-| [SQLite](/databases/sqlite) | File | No | No | No | No |
-| [DuckDB](/databases/duckdb) | File | No | No | No | No |
-| [Beancount](/databases/beancount) | File | No | No | No | No |
-| [DynamoDB](/databases/dynamodb) | AWS API | No | No | No | No |
-| [BigQuery](/databases/bigquery) | Cloud API | No | No | No | No |
-| [Cloudflare D1](/databases/cloudflare-d1) | Cloud API | No | No | No | No |
-| [libSQL / Turso](/databases/libsql) | URL | No | No | No | No |
+| Database | Default port | SSH tunnel | SSL/TLS | Cloudflare Tunnel | Cloud SQL Proxy | SOCKS Proxy |
+|----------|-------------|-----------|---------|-------------------|-----------------|-------------|
+| [MySQL](/databases/mysql) | 3306 | Yes | Yes | Yes | Yes | Yes |
+| [MariaDB](/databases/mariadb) | 3306 | Yes | Yes | Yes | No | Yes |
+| [PostgreSQL](/databases/postgresql) | 5432 | Yes | Yes | Yes | Yes | Yes |
+| [Amazon Redshift](/databases/redshift) | 5439 | Yes | Yes | Yes | No | Yes |
+| [CockroachDB](/databases/cockroachdb) | 26257 | Yes | Yes | Yes | No | Yes |
+| [Microsoft SQL Server](/databases/mssql) | 1433 | Yes | Yes | Yes | Yes | Yes |
+| [Oracle](/databases/oracle) | 1521 | Yes | Yes | Yes | No | Yes |
+| [ClickHouse](/databases/clickhouse) | 8123 | Yes | Yes | Yes | No | Yes |
+| [MongoDB](/databases/mongodb) | 27017 | Yes | Yes | Yes | No | Yes |
+| [Redis](/databases/redis) | 6379 | Yes | Yes | Yes | No | Yes |
+| [Cassandra / ScyllaDB](/databases/cassandra) | 9042 | Yes | Yes | Yes | No | Yes |
+| [etcd](/databases/etcd) | 2379 | Yes | Yes | Yes | No | Yes |
+| [SurrealDB](/databases/surrealdb) | 8000 | Yes | Yes | Yes | No | Yes |
+| [Elasticsearch](/databases/elasticsearch) | 9200 | No | Yes | No | No | No |
+| [Snowflake](/databases/snowflake) | 443 | No | No | No | No | No |
+| [SQLite](/databases/sqlite) | File | No | No | No | No | No |
+| [DuckDB](/databases/duckdb) | File | No | No | No | No | No |
+| [Beancount](/databases/beancount) | File | No | No | No | No | No |
+| [DynamoDB](/databases/dynamodb) | AWS API | No | No | No | No | No |
+| [BigQuery](/databases/bigquery) | Cloud API | No | No | No | No | No |
+| [Cloudflare D1](/databases/cloudflare-d1) | Cloud API | No | No | No | No | No |
+| [libSQL / Turso](/databases/libsql) | URL | No | No | No | No | No |
 
-Transport details: [SSH Tunneling](/databases/ssh-tunneling), [SSL/TLS](/features/ssl), [Cloudflare Tunnel](/databases/cloudflare-tunnel), [Cloud SQL Auth Proxy](/databases/cloud-sql-proxy).
+Transport details: [SSH Tunneling](/databases/ssh-tunneling), [SSL/TLS](/features/ssl), [Cloudflare Tunnel](/databases/cloudflare-tunnel), [Cloud SQL Auth Proxy](/databases/cloud-sql-proxy), [SOCKS Proxy](/databases/socks-proxy).
 
 ## Creating a Connection
 
@@ -91,7 +91,7 @@ What happens on open:
 
 ## Connection Form
 
-The form is a sidebar with up to eight panes. Tunnel and SSL panes appear only for drivers that support them (see the matrix above). A warning triangle on a sidebar item marks missing required fields.
+The form is a sidebar with up to nine panes. Tunnel and SSL panes appear only for drivers that support them (see the matrix above). A warning triangle on a sidebar item marks missing required fields.
 
 | Pane | Contents |
 |------|----------|
@@ -99,6 +99,7 @@ The form is a sidebar with up to eight panes. Tunnel and SSL panes appear only f
 | **SSH Tunnel** | Reach databases behind a bastion host. See [SSH Tunneling](/databases/ssh-tunneling) |
 | **Cloudflare Tunnel** | Connect through `cloudflared`. See [Cloudflare Tunnel](/databases/cloudflare-tunnel) |
 | **Cloud SQL Auth Proxy** | Google Cloud SQL proxy for MySQL, PostgreSQL, SQL Server. See [Cloud SQL Auth Proxy](/databases/cloud-sql-proxy) |
+| **SOCKS Proxy** | Route the connection through a SOCKS5 proxy. See [SOCKS Proxy](/databases/socks-proxy) |
 | **SSL/TLS** | Encryption mode and certificates. See [SSL/TLS](/features/ssl) |
 | **Customization** | Color, tags, group, Safe Mode |
 | **Advanced** | Startup commands, pre-connect script, external access, plugin-specific fields |

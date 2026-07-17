@@ -41,12 +41,12 @@ final class CloudSQLProxyPaneViewModel {
             issues.append(String(localized: "A service account key is required"))
         }
 
-        if coordinator?.value?.ssh.state.enabled == true {
-            issues.append(String(localized: "Cannot use SSH Tunnel and Cloud SQL Auth Proxy at the same time"))
-        }
-
-        if coordinator?.value?.cloudflareTunnel.state.enabled == true {
-            issues.append(String(localized: "Cannot use Cloudflare Tunnel and Cloud SQL Auth Proxy at the same time"))
+        for other in coordinator?.value?.otherEnabledTunnels(excluding: .cloudSQLProxy) ?? [] {
+            issues.append(String(
+                format: String(localized: "Cannot use %@ and %@ at the same time"),
+                other.kind.displayName,
+                ConnectionTunnelKind.cloudSQLProxy.displayName
+            ))
         }
 
         return issues

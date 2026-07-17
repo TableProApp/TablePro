@@ -62,6 +62,8 @@ struct PluginMetadataSnapshot: Sendable {
         var supportsCloudflareTunnel: Bool = true
         var supportsClientKeyPassphrase: Bool = false
 
+        var supportsSOCKSProxy: Bool { supportsSSH }
+
         static let defaults = CapabilityFlags(
             supportsSchemaSwitching: false,
             supportsImport: true,

@@ -11,6 +11,7 @@ struct ConnectionSSHTunnelView: View {
     @Binding var sshState: SSHTunnelFormState
 
     let databaseType: DatabaseType
+    var coordinator: ConnectionFormCoordinator?
 
     var body: some View {
         Form {
@@ -24,6 +25,10 @@ struct ConnectionSSHTunnelView: View {
             }
 
             if sshState.enabled {
+                if let coordinator, !coordinator.otherEnabledTunnels(excluding: .ssh).isEmpty {
+                    TunnelExclusivityBanner(coordinator: coordinator, currentKind: .ssh)
+                }
+
                 sshProfileSection
 
                 if sshState.selectedProfile == nil, sshState.profileId != nil {

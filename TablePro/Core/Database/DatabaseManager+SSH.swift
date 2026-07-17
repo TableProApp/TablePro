@@ -31,6 +31,8 @@ extension DatabaseManager {
             return try await buildCloudflareEffectiveConnection(for: connection)
         case .cloudSQLProxy:
             return try await buildCloudSQLProxyEffectiveConnection(for: connection)
+        case .socksProxy:
+            return try await buildSOCKSProxyEffectiveConnection(for: connection)
         case .ssh, .none:
             break
         }
