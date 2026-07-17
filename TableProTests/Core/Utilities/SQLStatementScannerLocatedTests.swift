@@ -180,4 +180,18 @@ struct SQLStatementScannerLocatedTests {
         #expect(first.sql == "SELECT 'it''s here';")
         #expect(first.offset == 0)
     }
+
+    @Test("Cursor inside a trailing comment still returns the raw comment text")
+    func cursorInsideTrailingCommentReturnsRawText() {
+        let sql = "SELECT 1; -- note"
+        let located = SQLStatementScanner.locatedStatementAtCursor(in: sql, cursorPosition: 15)
+        #expect(located.sql == " -- note")
+        #expect(located.offset == 9)
+    }
+
+    @Test("statementAtCursor returns comment text for a cursor sitting in a trailing comment")
+    func statementAtCursorReturnsCommentTextForCursorInComment() {
+        let result = SQLStatementScanner.statementAtCursor(in: "SELECT 1; -- note", cursorPosition: 15)
+        #expect(result == "-- note")
+    }
 }

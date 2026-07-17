@@ -93,3 +93,22 @@ struct QueryClassifierKeywordBoundaryTests {
         #expect(QueryClassifier.classifyTier("UPDATE\nt SET x = 1", databaseType: .mysql) == .write)
     }
 }
+
+@Suite("QueryClassifier isMultiStatement")
+struct QueryClassifierMultiStatementTests {
+    @Test("A trailing comment after the terminating semicolon is not a second statement")
+    func trailingCommentIsNotMultiStatement() {
+        #expect(!QueryClassifier.isMultiStatement("SELECT 1; -- note", databaseType: .mysql))
+        #expect(!QueryClassifier.isMultiStatement("SELECT 1; /* note */", databaseType: .postgresql))
+    }
+
+    @Test("Two real statements are still multi-statement")
+    func twoRealStatementsAreMultiStatement() {
+        #expect(QueryClassifier.isMultiStatement("SELECT 1; SELECT 2", databaseType: .mysql))
+    }
+
+    @Test("A comment-only query is not multi-statement")
+    func commentOnlyQueryIsNotMultiStatement() {
+        #expect(!QueryClassifier.isMultiStatement("-- note", databaseType: .mysql))
+    }
+}

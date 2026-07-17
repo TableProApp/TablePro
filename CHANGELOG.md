@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Fixed a query with a comment after the closing semicolon, such as `SELECT 1; -- note`, being run as two statements, with the trailing comment sent to the server as a failing second statement. Running a comment-only query or selection now does nothing instead of producing a server error, and AI and MCP clients are no longer told such a query is multi-statement. (#1895)
 - Fixed duplicating a connection dropping its Cloudflare Tunnel and Cloud SQL Auth Proxy settings and stored secrets.
 - Fixed the tunnel panes warning about only some of the other enabled connection methods. Each pane now lists every conflicting method with a button to turn it off.
 - Fixed Copy as, the context menu's Delete, and the Edit menu's copy and delete commands acting on only the active row instead of every row in a cell-range or column selection in the data grid. (#1898)
