@@ -142,6 +142,8 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
 
     private func refresh() {
         guard let outlineView else { return }
+        let interval = SidebarPerfSignpost.beginInterval("DatabaseTree.refresh", connectionId: connectionId)
+        defer { SidebarPerfSignpost.endInterval("DatabaseTree.refresh", interval) }
         isReloading = true
         childrenCache.removeAll()
         outlineView.reloadData()

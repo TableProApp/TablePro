@@ -99,7 +99,8 @@ struct SidebarView: View {
     // MARK: - Body
 
     var body: some View {
-        Group {
+        SidebarPerfSignpost.recordBodyEvaluation("SidebarView", connectionId: connectionId)
+        return Group {
             switch sidebarState.selectedSidebarTab {
             case .tables:
                 VStack(spacing: 0) {

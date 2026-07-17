@@ -26,6 +26,7 @@ final class SchemaService {
 
     private func bumpGeneration(_ connectionId: UUID) {
         generations[connectionId, default: 0] &+= 1
+        SidebarPerfSignpost.recordEvent("SchemaService.mutation", connectionId: connectionId)
     }
 
     @ObservationIgnored private let loadDedup = OnceTask<UUID, [TableInfo]>()

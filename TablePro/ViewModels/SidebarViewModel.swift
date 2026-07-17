@@ -88,7 +88,10 @@ final class SidebarViewModel {
     }
 
     private(set) var filterQuery = "" {
-        didSet { invalidateFilterCaches() }
+        didSet {
+            invalidateFilterCaches()
+            SidebarPerfSignpost.recordEvent("SidebarViewModel.filterQuery", connectionId: connectionId)
+        }
     }
 
     @ObservationIgnored private var filterDebounceTask: Task<Void, Never>?
