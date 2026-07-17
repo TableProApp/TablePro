@@ -117,6 +117,51 @@ struct PasswordHidingTests {
     }
 }
 
+@Suite("Username hiding from connection fields")
+struct UsernameHidingTests {
+    private func mssqlAuthFields() -> [ConnectionField] {
+        [
+            ConnectionField(
+                id: "mssqlAuthMethod",
+                label: "Authentication",
+                defaultValue: "sql",
+                fieldType: .dropdown(options: [
+                    .init(value: "sql", label: "SQL Server Authentication"),
+                    .init(value: "windows", label: "Windows Authentication (Kerberos)"),
+                ]),
+                section: .authentication
+            ),
+            ConnectionField(
+                id: "mssqlKerberosPrincipal",
+                label: "Kerberos Principal",
+                section: .authentication,
+                visibleWhen: FieldVisibilityRule(fieldId: "mssqlAuthMethod", values: ["windows"])
+            ).withHidesUsername(true),
+        ]
+    }
+
+    @Test("Windows auth hides the built-in username, SQL auth does not")
+    func windowsHidesUsername() {
+        let fields = mssqlAuthFields()
+        #expect(fields.hidesUsername(forValues: [:]) == false)
+        #expect(fields.hidesUsername(forValues: ["mssqlAuthMethod": "sql"]) == false)
+        #expect(fields.hidesUsername(forValues: ["mssqlAuthMethod": "windows"]) == true)
+    }
+
+    @Test("hidesUsername is independent of hidesPassword")
+    func usernameHidingIsIndependent() {
+        let fields = mssqlAuthFields()
+        #expect(fields.hidesPassword(forValues: ["mssqlAuthMethod": "windows"]) == false)
+    }
+
+    @Test("Fields without the hidesUsername flag never hide the username")
+    func plainFieldsDoNotHide() {
+        let plain = ConnectionField(id: "region", label: "Region", section: .authentication)
+        #expect([plain].hidesUsername(forValues: ["region": "us-east-1"]) == false)
+        #expect([ConnectionField]().hidesUsername(forValues: [:]) == false)
+    }
+}
+
 @Suite("Password hiding resolved from plugin metadata")
 @MainActor
 struct PluginManagerPasswordHidingTests {

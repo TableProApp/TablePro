@@ -101,6 +101,8 @@ private struct ConnectionFormDetail: View {
                 CloudflareTunnelPaneView(coordinator: coordinator)
             case .cloudSQLProxy:
                 CloudSQLProxyPaneView(coordinator: coordinator)
+            case .socksProxy:
+                SOCKSProxyPaneView(coordinator: coordinator)
             case .ssl:
                 SSLPaneView(coordinator: coordinator)
             case .customization:

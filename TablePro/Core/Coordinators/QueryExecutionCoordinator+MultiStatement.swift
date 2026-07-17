@@ -12,13 +12,13 @@ extension QueryExecutionCoordinator {
     }
 
     func executeStatement(
-        plan: QueryLimitPlan,
+        rowCap: Int?,
         originalSQL: String,
         driver: DatabaseDriver,
         parameters: [Any?]? = nil
     ) async throws -> QueryResult {
-        if plan.rowCap != nil {
-            return try await driver.executeUserQuery(query: plan.executedSQL, rowCap: plan.rowCap, parameters: parameters)
+        if rowCap != nil {
+            return try await driver.executeUserQuery(query: originalSQL, rowCap: rowCap, parameters: parameters)
         }
         if let parameters {
             return try await driver.executeParameterized(query: originalSQL, parameters: parameters)

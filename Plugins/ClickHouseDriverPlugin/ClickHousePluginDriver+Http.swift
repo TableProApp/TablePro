@@ -24,50 +24,7 @@ extension ClickHousePluginDriver {
 
         var request = try buildRequest(query: query, database: database, queryId: queryId)
         request.timeoutInterval = _queryTimeout.requestTimeoutInterval
-        let isSelect = Self.isSelectLikeQuery(query)
-
-        let (data, response) = try await withTaskCancellationHandler {
-            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<(Data, URLResponse), Error>) in
-                let task = session.dataTask(with: request) { data, response, error in
-                    if let error {
-                        continuation.resume(throwing: error)
-                        return
-                    }
-                    guard let data, let response else {
-                        continuation.resume(throwing: ClickHouseError(message: "Empty response from server"))
-                        return
-                    }
-                    continuation.resume(returning: (data, response))
-                }
-
-                self.lock.lock()
-                self.currentTask = task
-                self.lock.unlock()
-
-                task.resume()
-            }
-        } onCancel: {
-            self.lock.lock()
-            self.currentTask?.cancel()
-            self.currentTask = nil
-            self.lock.unlock()
-        }
-
-        lock.lock()
-        currentTask = nil
-        lock.unlock()
-
-        if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode >= 400 {
-            let body = String(data: data, encoding: .utf8) ?? "Unknown error"
-            Self.logger.error("ClickHouse HTTP \(httpResponse.statusCode): \(body)")
-            throw ClickHouseError(message: body.trimmingCharacters(in: .whitespacesAndNewlines))
-        }
-
-        if isSelect {
-            return parseTabSeparatedResponse(data)
-        }
-
-        return CHQueryResult(columns: [], columnTypeNames: [], rows: [], affectedRows: 0, isTruncated: false)
+        return try await perform(request: request, session: session)
     }
 
     func executeRawWithParams(_ query: String, params: [String: String?], queryId: String? = nil) async throws -> CHQueryResult {
@@ -84,9 +41,39 @@ extension ClickHousePluginDriver {
 
         var request = try buildRequest(query: query, database: database, queryId: queryId, params: params)
         request.timeoutInterval = _queryTimeout.requestTimeoutInterval
-        let isSelect = Self.isSelectLikeQuery(query)
+        return try await perform(request: request, session: session)
+    }
 
-        let (data, response) = try await withTaskCancellationHandler {
+    private func perform(request: URLRequest, session: URLSession) async throws -> CHQueryResult {
+        let (data, response) = try await send(request: request, session: session)
+
+        lock.lock()
+        currentTask = nil
+        lock.unlock()
+
+        let httpResponse = response as? HTTPURLResponse
+        if let httpResponse, httpResponse.statusCode >= 400 {
+            let body = String(data: data, encoding: .utf8) ?? "Unknown error"
+            let exceptionCode = httpResponse.value(forHTTPHeaderField: "X-ClickHouse-Exception-Code") ?? "none"
+            Self.logger.error("ClickHouse HTTP \(httpResponse.statusCode) exception \(exceptionCode): \(body)")
+            throw ClickHouseError(message: body.trimmingCharacters(in: .whitespacesAndNewlines))
+        }
+
+        let outcome = ClickHouseResponseClassifier.classify(
+            headers: Self.headerFields(httpResponse),
+            body: data
+        )
+        return CHQueryResult(
+            columns: outcome.columns,
+            columnTypeNames: outcome.columnTypeNames,
+            rows: outcome.rows,
+            affectedRows: outcome.affectedRows,
+            isTruncated: outcome.isTruncated
+        )
+    }
+
+    private func send(request: URLRequest, session: URLSession) async throws -> (Data, URLResponse) {
+        try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<(Data, URLResponse), Error>) in
                 let task = session.dataTask(with: request) { data, response, error in
                     if let error {
@@ -99,9 +86,11 @@ extension ClickHousePluginDriver {
                     }
                     continuation.resume(returning: (data, response))
                 }
+
                 self.lock.lock()
                 self.currentTask = task
                 self.lock.unlock()
+
                 task.resume()
             }
         } onCancel: {
@@ -110,22 +99,16 @@ extension ClickHousePluginDriver {
             self.currentTask = nil
             self.lock.unlock()
         }
+    }
 
-        lock.lock()
-        currentTask = nil
-        lock.unlock()
-
-        if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode >= 400 {
-            let body = String(data: data, encoding: .utf8) ?? "Unknown error"
-            Self.logger.error("ClickHouse HTTP \(httpResponse.statusCode): \(body)")
-            throw ClickHouseError(message: body.trimmingCharacters(in: .whitespacesAndNewlines))
+    private static func headerFields(_ response: HTTPURLResponse?) -> [String: String] {
+        guard let response else { return [:] }
+        var fields: [String: String] = [:]
+        for (key, value) in response.allHeaderFields {
+            guard let name = key as? String, let text = value as? String else { continue }
+            fields[name] = text
         }
-
-        if isSelect {
-            return parseTabSeparatedResponse(data)
-        }
-
-        return CHQueryResult(columns: [], columnTypeNames: [], rows: [], affectedRows: 0, isTruncated: false)
+        return fields
     }
 
     func buildRequest(query: String, database: String, queryId: String? = nil, params: [String: String?]? = nil) throws -> URLRequest {
@@ -145,14 +128,15 @@ extension ClickHousePluginDriver {
             queryItems.append(URLQueryItem(name: "query_id", value: queryId))
         }
         queryItems.append(URLQueryItem(name: "send_progress_in_http_headers", value: "1"))
+        queryItems.append(contentsOf: ClickHouseResponseClassifier.transportQueryItems(
+            supportsWriteExceptionSetting: ClickHouseCapabilities.parse(serverVersion).hasWriteExceptionInOutputFormatSetting
+        ))
         if let params {
             for (key, value) in params.sorted(by: { $0.key < $1.key }) {
                 queryItems.append(URLQueryItem(name: "param_\(key)", value: value))
             }
         }
-        if !queryItems.isEmpty {
-            components.queryItems = queryItems
-        }
+        components.queryItems = queryItems
 
         guard let url = components.url else {
             throw ClickHouseError(message: "Failed to construct request URL")
@@ -170,92 +154,9 @@ extension ClickHousePluginDriver {
 
         let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
             .replacingOccurrences(of: ";+$", with: "", options: .regularExpression)
-
-        if Self.isSelectLikeQuery(trimmedQuery) {
-            request.httpBody = (trimmedQuery + " FORMAT TabSeparatedWithNamesAndTypes").data(using: .utf8)
-        } else {
-            request.httpBody = trimmedQuery.data(using: .utf8)
-        }
+        request.httpBody = trimmedQuery.data(using: .utf8)
 
         return request
-    }
-
-    static func isSelectLikeQuery(_ query: String) -> Bool {
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let firstWord = trimmed.split(separator: " ", maxSplits: 1).first else {
-            return false
-        }
-        return selectPrefixes.contains(firstWord.uppercased())
-    }
-
-    func parseTabSeparatedResponse(_ data: Data) -> CHQueryResult {
-        guard let text = String(data: data, encoding: .utf8), !text.isEmpty else {
-            return CHQueryResult(columns: [], columnTypeNames: [], rows: [], affectedRows: 0, isTruncated: false)
-        }
-
-        let lines = text.components(separatedBy: "\n")
-
-        guard lines.count >= 2 else {
-            return CHQueryResult(columns: [], columnTypeNames: [], rows: [], affectedRows: 0, isTruncated: false)
-        }
-
-        let columns = lines[0].components(separatedBy: "\t")
-        let columnTypes = lines[1].components(separatedBy: "\t")
-
-        var rows: [[PluginCellValue]] = []
-        var truncated = false
-        for i in 2..<lines.count {
-            let line = lines[i]
-            if line.isEmpty { continue }
-
-            let fields = line.components(separatedBy: "\t")
-            let row: [PluginCellValue] = fields.map { field in
-                if field == "\\N" {
-                    return .null
-                }
-                return .text(Self.unescapeTsvField(field))
-            }
-            rows.append(row)
-            if rows.count >= PluginRowLimits.emergencyMax {
-                truncated = true
-                break
-            }
-        }
-
-        return CHQueryResult(
-            columns: columns,
-            columnTypeNames: columnTypes,
-            rows: rows,
-            affectedRows: rows.count,
-            isTruncated: truncated
-        )
-    }
-
-    static func unescapeTsvField(_ field: String) -> String {
-        var result = ""
-        result.reserveCapacity((field as NSString).length)
-        var iterator = field.makeIterator()
-
-        while let char = iterator.next() {
-            if char == "\\" {
-                if let next = iterator.next() {
-                    switch next {
-                    case "\\": result.append("\\")
-                    case "t": result.append("\t")
-                    case "n": result.append("\n")
-                    default:
-                        result.append("\\")
-                        result.append(next)
-                    }
-                } else {
-                    result.append("\\")
-                }
-            } else {
-                result.append(char)
-            }
-        }
-
-        return result
     }
 
     /// Convert `?` placeholders to `{p1:String}` and build parameter map for ClickHouse HTTP params.
@@ -307,5 +208,4 @@ extension ClickHousePluginDriver {
 
         return (converted, paramMap)
     }
-
 }

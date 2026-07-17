@@ -286,27 +286,16 @@ extension MainContentView {
     /// Update window title, proxy icon, and dirty dot based on the selected tab.
     func updateWindowTitleAndFileState() {
         let selectedTab = tabManager.selectedTab
-        if selectedTab?.tabType == .serverDashboard {
-            windowTitle = String(localized: "Server Dashboard")
-        } else if selectedTab?.tabType == .usersRoles {
-            windowTitle = String(localized: "Users & Roles")
-        } else if selectedTab?.tabType == .createTable {
-            windowTitle = String(localized: "Create Table")
-        } else if selectedTab?.tabType == .erDiagram {
-            windowTitle = String(localized: "ER Diagram")
-        } else if let fileURL = selectedTab?.content.sourceFileURL {
-            windowTitle = selectedTab?.title ?? QueryTab.fileDisplayTitle(for: fileURL)
+        if selectedTab == nil, tabManager.tabs.isEmpty {
+            windowTitle = connection.name
         } else {
-            let langName = PluginManager.shared.queryLanguageName(for: connection.type)
-            let queryLabel = String(format: String(localized: "%@ Query"), langName)
-            windowTitle = (selectedTab?.tabType == .table ? selectedTab?.tableContext.tableName : nil)
-                ?? selectedTab?.title
-                ?? (tabManager.tabs.isEmpty ? connection.name : queryLabel)
+            windowTitle = WindowTitleResolver.resolveTitle(
+                tab: selectedTab,
+                connection: connection,
+                queryLanguageName: PluginManager.shared.queryLanguageName(for: connection.type)
+            )
         }
-        windowSubtitle = MainSplitViewController.resolveDefaultSubtitle(
-            tab: selectedTab,
-            connection: connection
-        )
+        windowSubtitle = WindowTitleResolver.resolveSubtitle(tab: selectedTab, connection: connection)
         coordinator.splitViewController?.updateDetailMinimumThickness(for: selectedTab?.tabType)
         viewWindow?.representedURL = selectedTab?.content.sourceFileURL
         viewWindow?.isDocumentEdited = selectedTab?.showsUnsavedIndicator ?? false

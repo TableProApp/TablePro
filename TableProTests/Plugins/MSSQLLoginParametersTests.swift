@@ -43,4 +43,17 @@ struct MSSQLLoginParametersTests {
         let parameters = build(database: "tmsdevdb1")
         #expect(parameters.contains(MSSQLLoginParameter(field: .nationalLanguage, value: "us_english")))
     }
+
+    @Test("an empty username still emits a user parameter, the FreeTDS Kerberos/GSS trigger")
+    func emptyUserEmitsEmptyUserParameter() {
+        let parameters = MSSQLLoginParameters.build(
+            user: "",
+            password: "",
+            applicationName: "TablePro",
+            encryptionFlag: "require",
+            database: "app"
+        )
+        #expect(parameters.contains(MSSQLLoginParameter(field: .user, value: "")))
+        #expect(parameters.contains(MSSQLLoginParameter(field: .password, value: "")))
+    }
 }

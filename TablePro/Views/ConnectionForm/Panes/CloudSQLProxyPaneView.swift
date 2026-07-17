@@ -20,8 +20,8 @@ struct CloudSQLProxyPaneView: View {
             }
 
             if coordinator.cloudSQLProxy.state.enabled {
-                if coordinator.ssh.state.enabled || coordinator.cloudflareTunnel.state.enabled {
-                    mutualExclusivitySection
+                if !coordinator.otherEnabledTunnels(excluding: .cloudSQLProxy).isEmpty {
+                    TunnelExclusivityBanner(coordinator: coordinator, currentKind: .cloudSQLProxy)
                 }
                 instanceSection
                 authenticationSection
@@ -35,27 +35,6 @@ struct CloudSQLProxyPaneView: View {
     }
 
     // MARK: - Sections
-
-    @ViewBuilder
-    private var mutualExclusivitySection: some View {
-        Section {
-            Label(
-                String(localized: "A connection can use one connection method at a time. Disable the other one to use the Cloud SQL Auth Proxy."),
-                systemImage: "exclamationmark.triangle.fill"
-            )
-            .foregroundStyle(.orange)
-            if coordinator.ssh.state.enabled {
-                Button("Disable SSH Tunnel") {
-                    coordinator.ssh.state.disable()
-                }
-            }
-            if coordinator.cloudflareTunnel.state.enabled {
-                Button("Disable Cloudflare Tunnel") {
-                    coordinator.cloudflareTunnel.state.enabled = false
-                }
-            }
-        }
-    }
 
     private var instanceSection: some View {
         Section {

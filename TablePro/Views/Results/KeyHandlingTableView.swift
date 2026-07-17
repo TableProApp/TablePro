@@ -221,13 +221,10 @@ final class KeyHandlingTableView: NSTableView {
     }
 
     @objc func delete(_ sender: Any?) {
-        guard coordinator?.isEditable == true else { return }
-        if let controller = gridSelection, !controller.isEmpty {
-            coordinator?.delegate?.dataGridDeleteRows(Set(controller.selection.affectedRows))
-            return
-        }
-        guard !selectedRowIndexes.isEmpty else { return }
-        coordinator?.delegate?.dataGridDeleteRows(Set(selectedRowIndexes))
+        guard let coordinator, coordinator.isEditable else { return }
+        let indices = coordinator.currentRowSelection()
+        guard !indices.isEmpty else { return }
+        coordinator.delegate?.dataGridDeleteRows(indices)
     }
 
     @objc func copy(_ sender: Any?) {
@@ -243,7 +240,8 @@ final class KeyHandlingTableView: NSTableView {
     }
 
     @objc func copyRowsAsTSV(_ sender: Any?) {
-        coordinator?.delegate?.dataGridCopyRows(Set(selectedRowIndexes))
+        guard let coordinator else { return }
+        coordinator.delegate?.dataGridCopyRows(coordinator.currentRowSelection())
     }
 
     @objc override func selectAll(_ sender: Any?) {
@@ -289,7 +287,8 @@ final class KeyHandlingTableView: NSTableView {
             let hasGridSelection = gridSelection?.isEmpty == false
             return hasGridSelection || !selectedRowIndexes.isEmpty
         case #selector(copyRowsAsTSV(_:)):
-            return !selectedRowIndexes.isEmpty
+            let hasGridSelection = gridSelection?.isEmpty == false
+            return hasGridSelection || !selectedRowIndexes.isEmpty
         case #selector(paste(_:)):
             return coordinator?.isEditable == true && coordinator?.delegate != nil
         case #selector(insertNewline(_:)):

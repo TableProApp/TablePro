@@ -202,11 +202,117 @@ extension PluginMetadataRegistry {
                 connection: PluginMetadataSnapshot.ConnectionConfig(
                     additionalConnectionFields: [
                         ConnectionField(
+                            id: "mssqlAuthMethod",
+                            label: String(localized: "Authentication"),
+                            defaultValue: "sql",
+                            fieldType: .dropdown(options: [
+                                .init(value: "sql", label: "SQL Server Authentication"),
+                                .init(value: "windows", label: "Windows Authentication (Kerberos)")
+                            ]),
+                            section: .authentication
+                        ),
+                        ConnectionField(
+                            id: "mssqlKerberosPrincipal",
+                            label: String(localized: "Kerberos Principal"),
+                            placeholder: "user@REALM.COM",
+                            section: .authentication,
+                            visibleWhen: FieldVisibilityRule(fieldId: "mssqlAuthMethod", values: ["windows"])
+                        ).withHidesUsername(true),
+                        ConnectionField(
+                            id: "mssqlKerberosPassword",
+                            label: String(localized: "Password"),
+                            fieldType: .secure,
+                            section: .authentication,
+                            hidesPassword: true,
+                            visibleWhen: FieldVisibilityRule(fieldId: "mssqlAuthMethod", values: ["windows"])
+                        ),
+                        ConnectionField(
                             id: "mssqlSchema", label: "Schema", placeholder: "dbo", defaultValue: "dbo"
                         )
                     ],
                     category: .relational,
                     tagline: String(localized: "Microsoft's enterprise SQL database")
+                )
+            )),
+            ("Teradata", PluginMetadataSnapshot(
+                displayName: "Teradata", iconName: "teradata-icon", defaultPort: 1_025,
+                requiresAuthentication: true, supportsForeignKeys: true, supportsSchemaEditing: true,
+                isDownloadable: true, primaryUrlScheme: "teradata", parameterStyle: .questionMark,
+                navigationModel: .standard, explainVariants: [], pathFieldRole: .database,
+                supportsHealthMonitor: false, urlSchemes: ["teradata"],
+                postConnectActions: [.selectDatabaseFromLastSession],
+                brandColorHex: "#F37440",
+                queryLanguageName: "SQL", editorLanguage: .sql,
+                connectionMode: .network, supportsDatabaseSwitching: true,
+                supportsColumnReorder: false,
+                capabilities: PluginMetadataSnapshot.CapabilityFlags(
+                    supportsSchemaSwitching: false,
+                    supportsImport: true,
+                    supportsExport: true,
+                    supportsSSH: true,
+                    supportsSSL: true,
+                    supportsCascadeDrop: false,
+                    supportsForeignKeyDisable: false,
+                    supportsReadOnlyMode: true,
+                    supportsQueryProgress: false,
+                    requiresReconnectForDatabaseSwitch: false,
+                    supportsDropDatabase: false,
+                    supportsRenameColumn: false,
+                    defaultSSLMode: .disabled
+                ),
+                schema: PluginMetadataSnapshot.SchemaInfo(
+                    defaultSchemaName: "",
+                    defaultGroupName: "main",
+                    tableEntityName: "Tables",
+                    containerEntityName: "Database",
+                    defaultPrimaryKeyColumn: nil,
+                    immutableColumns: [],
+                    systemDatabaseNames: ["DBC", "Sys", "SysAdmin", "SystemFe", "SYSLIB", "SYSUDTLIB", "TDStats", "PUBLIC", "All", "Default"],
+                    systemSchemaNames: [],
+                    fileExtensions: [],
+                    databaseGroupingStrategy: .byDatabase,
+                    structureColumnFields: [.name, .type, .nullable, .defaultValue]
+                ),
+                editor: PluginMetadataSnapshot.EditorConfig(
+                    sqlDialect: SQLDialectDescriptor(
+                        identifierQuote: "\"",
+                        keywords: [
+                            "SELECT", "FROM", "WHERE", "GROUP", "BY", "HAVING", "ORDER", "TOP", "QUALIFY",
+                            "JOIN", "INNER", "LEFT", "RIGHT", "FULL", "OUTER", "ON", "AND", "OR", "NOT",
+                            "INSERT", "UPDATE", "DELETE", "CREATE", "ALTER", "DROP", "TABLE", "VIEW",
+                            "DATABASE", "USER", "MACRO", "VOLATILE", "MULTISET", "SET", "AS", "SAMPLE",
+                            "HELP", "SHOW", "EXPLAIN", "COLLECT", "STATISTICS", "LOCKING", "FOR", "ACCESS",
+                        ],
+                        functions: [
+                            "COUNT", "SUM", "AVG", "MIN", "MAX", "CAST", "TRIM", "SUBSTRING",
+                            "COALESCE", "NULLIFZERO", "ZEROIFNULL", "OREPLACE", "OTRANSLATE",
+                            "CURRENT_DATE", "CURRENT_TIMESTAMP", "EXTRACT", "ADD_MONTHS",
+                        ],
+                        dataTypes: [
+                            "BYTEINT", "SMALLINT", "INTEGER", "BIGINT", "DECIMAL", "NUMBER", "FLOAT",
+                            "CHAR", "VARCHAR", "CLOB", "BYTE", "VARBYTE", "BLOB",
+                            "DATE", "TIME", "TIMESTAMP", "INTERVAL", "PERIOD", "JSON", "XML",
+                        ],
+                        autoLimitStyle: .top
+                    ),
+                    statementCompletions: [],
+                    columnTypesByCategory: [
+                        "Integer": ["BYTEINT", "SMALLINT", "INTEGER", "BIGINT"],
+                        "Float": ["FLOAT", "DECIMAL", "NUMBER"],
+                        "String": ["CHAR", "VARCHAR", "CLOB"],
+                        "Date": ["DATE", "TIME", "TIMESTAMP"],
+                        "Binary": ["BYTE", "VARBYTE", "BLOB"],
+                    ]
+                ),
+                connection: PluginMetadataSnapshot.ConnectionConfig(
+                    additionalConnectionFields: [
+                        ConnectionField(
+                            id: "teradataLogMech", label: "Logon Mechanism", placeholder: "TD2", defaultValue: "TD2"),
+                        ConnectionField(
+                            id: "teradataTMode", label: "Transaction Mode", placeholder: "DEFAULT", defaultValue: "DEFAULT"),
+                    ],
+                    category: .relational,
+                    tagline: String(localized: "Teradata Vantage data warehouse")
                 )
             )),
             ("Oracle", PluginMetadataSnapshot(

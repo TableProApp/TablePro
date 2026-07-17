@@ -349,6 +349,7 @@ struct DatabaseConnection: Identifiable, Hashable {
     var sshTunnelMode: SSHTunnelMode
     var cloudflareTunnelMode: CloudflareTunnelMode = .disabled
     var cloudSQLProxyMode: CloudSQLProxyMode = .disabled
+    var socksProxyMode: SOCKSProxyMode = .disabled
     var safeModeLevel: SafeModeLevel
     var aiPolicy: AIConnectionPolicy?
     var aiRules: String?
@@ -453,6 +454,7 @@ struct DatabaseConnection: Identifiable, Hashable {
         sshTunnelMode: SSHTunnelMode = .disabled,
         cloudflareTunnelMode: CloudflareTunnelMode = .disabled,
         cloudSQLProxyMode: CloudSQLProxyMode = .disabled,
+        socksProxyMode: SOCKSProxyMode = .disabled,
         safeModeLevel: SafeModeLevel = .silent,
         aiPolicy: AIConnectionPolicy? = nil,
         aiRules: String? = nil,
@@ -506,6 +508,7 @@ struct DatabaseConnection: Identifiable, Hashable {
         }
         self.cloudflareTunnelMode = cloudflareTunnelMode
         self.cloudSQLProxyMode = cloudSQLProxyMode
+        self.socksProxyMode = socksProxyMode
         self.aiPolicy = aiPolicy
         self.aiRules = aiRules
         self.aiAlwaysAllowedTools = aiAlwaysAllowedTools
@@ -563,7 +566,7 @@ extension DatabaseConnection: Codable {
     private enum CodingKeys: String, CodingKey {
         case id, name, host, port, database, username, type
         case sshConfig, sslConfig, color, tagId, tagIds, groupId, sshProfileId
-        case sshTunnelMode, cloudflareTunnelMode, cloudSQLProxyMode, safeModeLevel, aiPolicy, aiRules, aiAlwaysAllowedTools, externalAccess, additionalFields
+        case sshTunnelMode, cloudflareTunnelMode, cloudSQLProxyMode, socksProxyMode, safeModeLevel, aiPolicy, aiRules, aiAlwaysAllowedTools, externalAccess, additionalFields
         case redisDatabase, startupCommands, sortOrder, localOnly, isSample, isFavorite
         case passwordSource
     }
@@ -603,6 +606,7 @@ extension DatabaseConnection: Codable {
         passwordSource = PasswordSource.resilientlyDecoded(from: container, forKey: .passwordSource)
         cloudflareTunnelMode = try container.decodeIfPresent(CloudflareTunnelMode.self, forKey: .cloudflareTunnelMode) ?? .disabled
         cloudSQLProxyMode = try container.decodeIfPresent(CloudSQLProxyMode.self, forKey: .cloudSQLProxyMode) ?? .disabled
+        socksProxyMode = try container.decodeIfPresent(SOCKSProxyMode.self, forKey: .socksProxyMode) ?? .disabled
 
         // Migrate from legacy fields if sshTunnelMode is not present
         if let tunnelMode = try container.decodeIfPresent(SSHTunnelMode.self, forKey: .sshTunnelMode) {
@@ -644,6 +648,9 @@ extension DatabaseConnection: Codable {
         }
         if case .inline = cloudSQLProxyMode {
             try container.encode(cloudSQLProxyMode, forKey: .cloudSQLProxyMode)
+        }
+        if case .inline = socksProxyMode {
+            try container.encode(socksProxyMode, forKey: .socksProxyMode)
         }
         try container.encode(safeModeLevel, forKey: .safeModeLevel)
         try container.encodeIfPresent(aiPolicy, forKey: .aiPolicy)

@@ -375,6 +375,19 @@ struct ExecutionGateTests {
         #expect(allowed.isAuthorized)
     }
 
+    @Test("A trailing comment after the semicolon is not denied as multi-statement")
+    func trailingCommentNotDeniedAsMultiStatement() async {
+        let confirm = StubConfirming(answer: true)
+        let auth = StubAuthenticating(answer: true)
+        let gate = makeGate(level: .silent, confirm: confirm, auth: auth)
+
+        let decision = await gate.authorize(
+            makeRequest(sql: "SELECT 1; -- note", kind: .readQuery, capabilities: [.mayWrite])
+        )
+
+        #expect(decision.isAuthorized)
+    }
+
     // MARK: - Pre-cleared and cannot-prompt
 
     @Test("Pre-cleared caller skips confirmation and auth")

@@ -9,6 +9,8 @@ import AppKit
 import SwiftUI
 
 struct SuggestionContentView: View {
+    static let rowHeight: CGFloat = 26
+
     @ObservedObject var model: SuggestionViewModel
 
     var body: some View {
@@ -38,43 +40,20 @@ struct SuggestionContentView: View {
         }
     }
 
+    /// Rows live in a plain `ScrollView`/`LazyVStack`, never a `List`. `List` is backed by a
+    /// focusable `NSTableView`, and AppKit's attempt to focus it when the panel appears asked
+    /// the panel to become key, resigning the editor window's key status with no successor
+    /// (issue #1885). Selection, arrow keys, and taps are all model-driven, so the popup's
+    /// content must stay display-only chrome with no focus participation at all.
     private var suggestionList: some View {
         ScrollViewReader { proxy in
-            List {
-                ForEach(Array(model.items.enumerated()), id: \.offset) { index, item in
-                    CodeSuggestionLabelView(
-                        suggestion: item,
-                        labelColor: model.themeTextColor,
-                        secondaryLabelColor: model.themeTextColor.withAlphaComponent(0.5),
-                        font: model.activeTextView?.font ?? .systemFont(ofSize: 12),
-                        isSelected: index == model.selectedIndex
-                    )
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .contentShape(Rectangle())
-                    .onTapGesture(count: 1) {
-                        model.selectedIndex = index
+            ScrollView {
+                LazyVStack(spacing: 0) {
+                    ForEach(Array(model.items.enumerated()), id: \.offset) { index, item in
+                        suggestionRow(index: index, item: item)
                     }
-                    .onTapGesture(count: 2) {
-                        model.selectedIndex = index
-                        if let selectedItem = model.selectedItem {
-                            model.applySelectedItem(item: selectedItem)
-                        }
-                    }
-                    .listRowInsets(EdgeInsets())
-                    .listRowBackground(
-                        RoundedRectangle(cornerRadius: 5)
-                            .fill(index == model.selectedIndex
-                                  ? Color(nsColor: .selectedContentBackgroundColor)
-                                  : Color.clear)
-                            .padding(.horizontal, SuggestionController.WINDOW_PADDING)
-                    )
-                    .listRowSeparator(.hidden)
-                    .id(index)
                 }
             }
-            .listStyle(.plain)
-            .scrollContentBackground(.hidden)
             .padding(.vertical, SuggestionController.WINDOW_PADDING)
             .frame(height: listMaxHeight)
             .onChange(of: model.selectedIndex) { newIndex in
@@ -83,6 +62,40 @@ struct SuggestionContentView: View {
                 }
             }
         }
+    }
+
+    private func suggestionRow(index: Int, item: CodeSuggestionEntry) -> some View {
+        CodeSuggestionLabelView(
+            suggestion: item,
+            labelColor: model.themeTextColor,
+            secondaryLabelColor: model.themeTextColor.withAlphaComponent(0.5),
+            font: model.activeTextView?.font ?? .systemFont(ofSize: 12),
+            isSelected: index == model.selectedIndex
+        )
+        .lineLimit(1)
+        .truncationMode(.tail)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(height: Self.rowHeight)
+        .background(
+            RoundedRectangle(cornerRadius: 5)
+                .fill(index == model.selectedIndex
+                      ? Color(nsColor: .selectedContentBackgroundColor)
+                      : Color.clear)
+                .padding(.horizontal, SuggestionController.WINDOW_PADDING)
+        )
+        .contentShape(Rectangle())
+        .onTapGesture(count: 1) {
+            model.selectedIndex = index
+        }
+        .onTapGesture(count: 2) {
+            model.selectedIndex = index
+            if let selectedItem = model.selectedItem {
+                model.applySelectedItem(item: selectedItem)
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(index == model.selectedIndex ? .isSelected : [])
+        .id(index)
     }
 
     private var contentWidth: CGFloat {
@@ -101,9 +114,8 @@ struct SuggestionContentView: View {
     }
 
     private var listMaxHeight: CGFloat {
-        let rowHeight: CGFloat = 26
         let visibleRows = min(CGFloat(model.items.count), SuggestionController.MAX_VISIBLE_ROWS)
-        return rowHeight * visibleRows + SuggestionController.WINDOW_PADDING * 2
+        return Self.rowHeight * visibleRows + SuggestionController.WINDOW_PADDING * 2
     }
 
     private var noCompletionsView: some View {

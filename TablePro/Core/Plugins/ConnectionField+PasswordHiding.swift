@@ -7,8 +7,19 @@ import TableProPluginKit
 
 extension Sequence where Element == ConnectionField {
     func hidesPassword(forValues values: [String: String]) -> Bool {
+        hidesBuiltInField(forValues: values, when: \.hidesPassword)
+    }
+
+    func hidesUsername(forValues values: [String: String]) -> Bool {
+        hidesBuiltInField(forValues: values, when: \.hidesUsername)
+    }
+
+    private func hidesBuiltInField(
+        forValues values: [String: String],
+        when flag: (ConnectionField) -> Bool
+    ) -> Bool {
         contains { field in
-            guard field.section == .authentication, field.hidesPassword else { return false }
+            guard field.section == .authentication, flag(field) else { return false }
             switch field.fieldType {
             case .toggle:
                 return values[field.id] == "true"

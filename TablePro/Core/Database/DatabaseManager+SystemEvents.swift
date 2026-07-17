@@ -50,6 +50,8 @@ extension DatabaseManager {
                 await handleCloudflareTunnelDied(connectionId: connectionId)
             case .cloudSQLProxy:
                 await handleCloudSQLProxyTunnelDied(connectionId: connectionId)
+            case .socksProxy:
+                await handleSOCKSProxyTunnelDied(connectionId: connectionId)
             }
         }
     }

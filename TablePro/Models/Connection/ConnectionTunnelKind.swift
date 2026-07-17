@@ -9,12 +9,14 @@ enum ConnectionTunnelKind: String, CaseIterable, Sendable {
     case ssh
     case cloudflare
     case cloudSQLProxy
+    case socksProxy
 
     var displayName: String {
         switch self {
         case .ssh: return String(localized: "SSH Tunnel")
         case .cloudflare: return String(localized: "Cloudflare Tunnel")
         case .cloudSQLProxy: return String(localized: "Cloud SQL Auth Proxy")
+        case .socksProxy: return String(localized: "SOCKS Proxy")
         }
     }
 }
@@ -25,6 +27,7 @@ extension DatabaseConnection {
         if resolvedSSHConfig.enabled { kinds.append(.ssh) }
         if isCloudflareEnabled { kinds.append(.cloudflare) }
         if isCloudSQLProxyEnabled { kinds.append(.cloudSQLProxy) }
+        if isSOCKSProxyEnabled { kinds.append(.socksProxy) }
         return kinds
     }
 

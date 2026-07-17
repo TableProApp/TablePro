@@ -28,6 +28,19 @@ extension TableViewCoordinator {
         }
     }
 
+    func currentRowSelection(fallbackRow: Int? = nil) -> Set<Int> {
+        if !selectionController.isEmpty {
+            return Set(selectionController.selection.affectedRows)
+        }
+        if !selectedRowIndices.isEmpty {
+            return selectedRowIndices
+        }
+        if let fallbackRow, fallbackRow >= 0 {
+            return [fallbackRow]
+        }
+        return []
+    }
+
     func tableViewSelectionDidChange(_ notification: Notification) {
         guard let tableView = notification.object as? NSTableView else { return }
 

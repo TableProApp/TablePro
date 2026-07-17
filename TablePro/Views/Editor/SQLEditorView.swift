@@ -63,6 +63,7 @@ struct SQLEditorView: View {
             completionDelegate: completionAdapter
         )
         .accessibilityLabel(String(localized: "SQL query editor"))
+        .accessibilityIdentifier("sql-editor-textview")
         .onChange(of: editorState.cursorPositions) { _, newValue in
             guard let positions = newValue else { return }
             // Skip cursor propagation when the editor doesn't have focus

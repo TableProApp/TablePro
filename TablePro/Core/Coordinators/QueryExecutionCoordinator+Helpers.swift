@@ -11,8 +11,22 @@ import TableProPluginKit
 private let helpersLogger = Logger(subsystem: "com.TablePro", category: "QueryExecutionCoordinator")
 
 extension QueryExecutionCoordinator {
-    func resolveRowCap(sql: String, tabType: TabType) -> Int? {
-        QueryExecutor.resolveRowCap(sql: sql, tabType: tabType, databaseType: parent.connection.type)
+    func resolveRowCap(sql: String, tabType: TabType, bypassLimit: Bool = false) -> Int? {
+        guard !bypassLimit,
+              let cap = QueryExecutor.resolveRowCap(
+                  sql: sql, tabType: tabType, databaseType: parent.connection.type
+              )
+        else {
+            return nil
+        }
+        guard !SQLLimitDetector.hasExplicitRowLimit(
+            sql,
+            autoLimitStyle: PluginManager.shared.autoLimitStyle(for: parent.connection.type),
+            lexicalDialect: parent.sqlDialect
+        ) else {
+            return nil
+        }
+        return cap
     }
 
     func parseSchemaMetadata(_ schema: FetchedTableSchema) -> ParsedSchemaMetadata {

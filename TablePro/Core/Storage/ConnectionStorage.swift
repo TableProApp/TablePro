@@ -259,6 +259,7 @@ final class ConnectionStorage {
         deleteCloudflareTokenId(for: connection.id)
         deleteCloudflareTokenSecret(for: connection.id)
         deleteCloudSQLProxyServiceAccountKey(for: connection.id)
+        deleteSOCKSProxyPassword(for: connection.id)
 
         let secureFieldIds = Self.secureFieldIds(for: connection.type)
         deleteAllPluginSecureFields(for: connection.id, fieldIds: secureFieldIds)
@@ -297,6 +298,7 @@ final class ConnectionStorage {
             deleteCloudflareTokenId(for: conn.id)
             deleteCloudflareTokenSecret(for: conn.id)
             deleteCloudSQLProxyServiceAccountKey(for: conn.id)
+            deleteSOCKSProxyPassword(for: conn.id)
             let fields = Self.secureFieldIds(for: conn.type)
             deleteAllPluginSecureFields(for: conn.id, fieldIds: fields)
             let appSettings = appSettingsProvider()
@@ -334,6 +336,9 @@ final class ConnectionStorage {
             groupId: connection.groupId,
             sshProfileId: connection.sshProfileId,
             sshTunnelMode: connection.sshTunnelMode,
+            cloudflareTunnelMode: connection.cloudflareTunnelMode,
+            cloudSQLProxyMode: connection.cloudSQLProxyMode,
+            socksProxyMode: connection.socksProxyMode,
             safeModeLevel: connection.safeModeLevel,
             aiPolicy: connection.aiPolicy,
             aiRules: connection.aiRules,
@@ -371,6 +376,18 @@ final class ConnectionStorage {
         }
         if let totpSecret = loadTOTPSecret(for: connection.id) {
             saveTOTPSecret(totpSecret, for: newId)
+        }
+        if let cloudflareTokenId = loadCloudflareTokenId(for: connection.id) {
+            saveCloudflareTokenId(cloudflareTokenId, for: newId)
+        }
+        if let cloudflareTokenSecret = loadCloudflareTokenSecret(for: connection.id) {
+            saveCloudflareTokenSecret(cloudflareTokenSecret, for: newId)
+        }
+        if let serviceAccountKey = loadCloudSQLProxyServiceAccountKey(for: connection.id) {
+            saveCloudSQLProxyServiceAccountKey(serviceAccountKey, for: newId)
+        }
+        if let socksProxyPassword = loadSOCKSProxyPassword(for: connection.id) {
+            saveSOCKSProxyPassword(socksProxyPassword, for: newId)
         }
 
         let secureFieldIds = Self.secureFieldIds(for: connection.type)
@@ -538,6 +555,23 @@ final class ConnectionStorage {
     func deleteCloudSQLProxyServiceAccountKey(for connectionId: UUID) {
         let storageKey = "com.TablePro.cloudsqlproxyserviceaccountkey.\(connectionId.uuidString)"
         keychain.delete(forKey: storageKey)
+    }
+
+    // MARK: - SOCKS Proxy Password Storage
+
+    func saveSOCKSProxyPassword(_ password: String, for connectionId: UUID) {
+        let key = "com.TablePro.socksproxypassword.\(connectionId.uuidString)"
+        keychain.writeString(password, forKey: key)
+    }
+
+    func loadSOCKSProxyPassword(for connectionId: UUID) -> String? {
+        let key = "com.TablePro.socksproxypassword.\(connectionId.uuidString)"
+        return resolveString(.init(label: "SOCKS proxy password", connectionId: connectionId), forKey: key)
+    }
+
+    func deleteSOCKSProxyPassword(for connectionId: UUID) {
+        let key = "com.TablePro.socksproxypassword.\(connectionId.uuidString)"
+        keychain.delete(forKey: key)
     }
 
     private struct SecretContext {

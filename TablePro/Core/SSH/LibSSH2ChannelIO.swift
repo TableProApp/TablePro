@@ -32,10 +32,15 @@ internal struct LibSSH2ChannelIO: SSHChannelIO {
     }
 
     func blockDirections() -> RelayDirections {
-        let directions = sessionQueue.sync { libssh2_session_block_directions(session) }
+        RelayDirections(libssh2BlockDirections: sessionQueue.sync { libssh2_session_block_directions(session) })
+    }
+}
+
+internal extension RelayDirections {
+    init(libssh2BlockDirections directions: Int32) {
         var result: RelayDirections = []
         if directions & LIBSSH2_SESSION_BLOCK_INBOUND != 0 { result.insert(.inbound) }
         if directions & LIBSSH2_SESSION_BLOCK_OUTBOUND != 0 { result.insert(.outbound) }
-        return result
+        self = result
     }
 }

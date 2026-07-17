@@ -9,16 +9,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Connect through a SOCKS5 proxy. Set a host, port, and an optional username and password on the connection form's new SOCKS Proxy pane, alongside SSH Tunnel, Cloudflare Tunnel, and Cloud SQL Auth Proxy. The database hostname is resolved by the proxy, so names that only resolve behind it work. (#1882)
+- SQL Server connections can now use Windows Authentication (Kerberos) on macOS. Pick Windows Authentication in the connection form to sign in with the Kerberos ticket you already have from `kinit`, or enter a Kerberos principal and password to sign in with your domain credentials. Connect by hostname, not IP address. (#1879)
+- Teradata support through a downloadable driver written in native Swift. Connect over TD2 or TDNEGO logon, optionally with TLS, browse databases, tables, and columns, run SQL, edit rows, and create or alter tables. (#1867)
 - The sidebar database tree now remembers which databases and schemas you had expanded, per connection, so reopening a window keeps them open.
 - A Saved Customizations section in Settings lists the tables where you set column layouts or filters, and lets you reset any one of them, or all.
 - Per-table column layouts (widths, order, and hidden columns) now sync across your Macs with iCloud when Settings sync is on.
 
 ### Changed
 
+- The query result row cap no longer adds a LIMIT to the SQL it sends. Your query now runs exactly as you wrote it and TablePro stops reading once it reaches the cap, which is how SQL Server and Oracle already worked. Adding a LIMIT could change how the server planned a query with an ORDER BY, and return different rows than the query you typed. (#1884)
 - The Settings window groups the data grid, pagination, result formatting, JSON viewer, query history, and saved per-table customizations under a new Data tab, and moves recent tables, object comments, and default sidebar layout under the General tab.
 
 ### Fixed
 
+- Fixed a query with a comment after the closing semicolon, such as `SELECT 1; -- note`, being run as two statements, with the trailing comment sent to the server as a failing second statement. Running a comment-only query or selection now does nothing instead of producing a server error, and AI and MCP clients are no longer told such a query is multi-statement. (#1895)
+- Fixed duplicating a connection dropping its Cloudflare Tunnel and Cloud SQL Auth Proxy settings and stored secrets.
+- Fixed the tunnel panes warning about only some of the other enabled connection methods. Each pane now lists every conflicting method with a button to turn it off.
+- Fixed Copy as, the context menu's Delete, and the Edit menu's copy and delete commands acting on only the active row instead of every row in a cell-range or column selection in the data grid. (#1898)
+- Fixed the Edit menu's Copy as JSON copying the wrong rows when the grid was sorted or filtered. (#1898)
+- Fixed tables picked in the sidebar showing up unchecked and getting silently skipped when exporting to SQL or MQL. The export sheet now checks them and applies the format's default per-table options, so Export works right away.
+- Fixed ClickHouse queries showing only a success message with no result table. TablePro guessed whether a query returns data from its first word, which failed for queries starting with a comment or with SELECT on its own line. It now reads what the server actually returned, so any query that produces a result set shows the grid, including empty results and queries with their own FORMAT clause. (#1886)
+- Fixed ClickHouse INSERT statements always reporting 0 rows affected. (#1886)
+- Fixed ClickHouse query exports writing an empty file when the query started with a comment. (#1886)
+- Fixed a restored window tab sometimes showing a blank name in the tab bar until you switched to it. (#1894)
+- Fixed the window title not updating right away after saving a query to a file or opening a favorite into the current tab. (#1894)
+- Fixed the SQL editor in a new tab losing keyboard focus after the first couple of characters, which stopped further typing until you clicked back into the editor. (#1885)
+- Cancelling a SQL Server connection now stops waiting right away instead of staying stuck until the attempt finished on its own. A connection attempt also gives up after the login timeout with a clear message rather than hanging, and for Windows Authentication the message points at the usual Kerberos causes (KDC unreachable, missing SPN, or clock skew). (#1889)
+- Fixed MySQL and MariaDB queries ending in ORDER BY that could show an empty result with no error. A failure part way through reading rows was treated as a normal end of results, so a real server error looked like a table with no rows. TablePro now shows the error the server reported. (#1884)
+- Fixed the query result row cap returning a single row when it was set to unlimited. (#1884)
+- Fixed SSH tunnels that could accept a database connection and then go quiet instead of forwarding it or failing, which showed up as MySQL and MariaDB connections timing out while reading the server greeting. A tunnel that cannot open its forwarding channel now gives up after 10 seconds, closes the connection, and logs the reason, instead of leaving the driver to wait out its own timeout with no explanation. (#1883)
+- Fixed connections being reset when a single database session opened several at once through one SSH tunnel, which could happen while browsing schemas. (#1883)
 - Per-column display formats (Display As) are now kept per table, so two tables with the same name in different databases or schemas no longer share formatting.
 - Reopening a table now restores a saved filter's AND/OR match mode, instead of always resetting it to AND.
 

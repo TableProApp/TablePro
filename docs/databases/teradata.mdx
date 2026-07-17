@@ -1,0 +1,48 @@
+---
+title: Teradata
+description: Connect to Teradata Vantage with TablePro's native Swift driver.
+---
+
+TablePro connects to Teradata Vantage with a driver written in native Swift. It speaks the Teradata wire protocol directly, so there is no ODBC driver or JDBC jar to install. Sessions use the TD2 logon mechanism with encrypted data.
+
+## Install the plugin
+
+Teradata is a downloadable driver. Open **Settings > Plugins**, find Teradata, and install it. The driver downloads and loads without restarting the app.
+
+## Connection settings
+
+| Field | Description |
+| --- | --- |
+| Host | The Teradata database hostname. |
+| Port | The gateway port. Default `1025`. |
+| Database | The default database to use after logon. Optional; leave blank to use your account's default. |
+| Username | Your Teradata username. |
+| Password | Your Teradata password. |
+| Logon Mechanism | The logon method. `TD2` and `TDNEGO` are supported. Default `TD2`. |
+| Transaction Mode | `DEFAULT`, `ANSI`, or `TERA`. Default `DEFAULT`. |
+| SSL Mode | Off by default. `Preferred`, `Required`, `Verify CA`, or `Verify Identity` turn on TLS. |
+
+## Databases and objects
+
+In Teradata a database and a user are both namespaces that hold tables, views, and macros. TablePro lists them from the data dictionary (`DBC.DatabasesV`) as top-level databases, and their tables and columns come from `DBC.TablesV` and `DBC.ColumnsV`.
+
+Identifiers are quoted with double quotes. Teradata has no `LIMIT`, so TablePro pages results with `TOP` on the first page and `QUALIFY ROW_NUMBER()` for later pages.
+
+## TLS
+
+Teradata carries encrypted sessions over HTTPS on port `443`, separate from the plain gateway port `1025`. TablePro connects with TLS and tunnels the session over the gateway's WebSocket endpoint. Set the SSL Mode to turn it on:
+
+- `Preferred` tries TLS and falls back to a plain connection on `1025` if the HTTPS port is unreachable.
+- `Required` uses TLS but does not check the server certificate.
+- `Verify CA` checks the certificate chain, and `Verify Identity` also checks the hostname. Point CA Certificate at your CA file to trust a private authority.
+
+To test TLS, use `Required` so a failed handshake surfaces instead of falling back.
+
+## Transaction mode
+
+`ANSI` and `TERA` differ in case sensitivity and commit behavior. `ANSI` compares strings case-sensitively and keeps a transaction open until you commit; `TERA` compares case-insensitively and commits each request unless you wrap it in `BEGIN TRANSACTION`. `DEFAULT` uses whatever the database is configured for.
+
+## Troubleshooting
+
+- **Cannot reach the server.** Confirm the host and that port `1025` is open from your network.
+- **Logon fails.** Check the username, password, and that the account is not locked. LDAP, Kerberos, and JWT logon are not yet supported; use `TD2` or `TDNEGO`. Picking an unsupported mechanism reports "unsupported logon mechanism" before connecting.

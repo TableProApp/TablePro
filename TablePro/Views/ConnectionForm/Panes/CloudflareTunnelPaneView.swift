@@ -20,8 +20,8 @@ struct CloudflareTunnelPaneView: View {
             }
 
             if coordinator.cloudflareTunnel.state.enabled {
-                if coordinator.ssh.state.enabled {
-                    mutualExclusivitySection
+                if !coordinator.otherEnabledTunnels(excluding: .cloudflare).isEmpty {
+                    TunnelExclusivityBanner(coordinator: coordinator, currentKind: .cloudflare)
                 }
                 hostnameSection
                 authenticationSection
@@ -34,19 +34,6 @@ struct CloudflareTunnelPaneView: View {
     }
 
     // MARK: - Sections
-
-    private var mutualExclusivitySection: some View {
-        Section {
-            Label(
-                String(localized: "A connection can use one tunnel at a time. Disable the SSH Tunnel to use a Cloudflare Tunnel."),
-                systemImage: "exclamationmark.triangle.fill"
-            )
-            .foregroundStyle(.orange)
-            Button("Disable SSH Tunnel") {
-                coordinator.ssh.state.disable()
-            }
-        }
-    }
 
     private var hostnameSection: some View {
         Section(String(localized: "Access Application")) {

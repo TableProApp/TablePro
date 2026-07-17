@@ -466,6 +466,11 @@ extension PluginManager {
             .capabilities.supportsCloudflareTunnel ?? true
     }
 
+    func supportsSOCKSProxy(for databaseType: DatabaseType) -> Bool {
+        PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
+            .capabilities.supportsSOCKSProxy ?? true
+    }
+
     func supportsColumnReorder(for databaseType: DatabaseType) -> Bool {
         PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
             .supportsColumnReorder ?? false

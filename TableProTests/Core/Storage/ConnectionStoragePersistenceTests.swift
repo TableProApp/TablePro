@@ -93,6 +93,43 @@ struct ConnectionStoragePersistenceTests {
         #expect(loaded.first?.name == "Round Trip Test")
     }
 
+    @Test("duplicating a connection carries tunnel modes and their secrets")
+    func duplicateCarriesTunnelModesAndSecrets() {
+        var connection = DatabaseConnection(name: "Tunnels", type: .postgresql)
+        connection.cloudflareTunnelMode = .inline(CloudflareConfiguration(accessHostname: "db.example.com"))
+        connection.cloudSQLProxyMode = .inline(CloudSQLProxyConfiguration(instanceConnectionName: "p:r:i"))
+        connection.socksProxyMode = .inline(SOCKSProxyConfiguration(host: "proxy.example.com", username: "u"))
+        storage.addConnection(connection)
+        storage.saveCloudflareTokenId("token-id", for: connection.id)
+        storage.saveCloudflareTokenSecret("token-secret", for: connection.id)
+        storage.saveCloudSQLProxyServiceAccountKey("{\"type\":\"service_account\"}", for: connection.id)
+        storage.saveSOCKSProxyPassword("proxy-pw", for: connection.id)
+
+        let duplicate = storage.duplicateConnection(connection)
+
+        #expect(duplicate.cloudflareTunnelMode == connection.cloudflareTunnelMode)
+        #expect(duplicate.cloudSQLProxyMode == connection.cloudSQLProxyMode)
+        #expect(duplicate.socksProxyMode == connection.socksProxyMode)
+        #expect(storage.loadCloudflareTokenId(for: duplicate.id) == "token-id")
+        #expect(storage.loadCloudflareTokenSecret(for: duplicate.id) == "token-secret")
+        #expect(storage.loadCloudSQLProxyServiceAccountKey(for: duplicate.id) == "{\"type\":\"service_account\"}")
+        #expect(storage.loadSOCKSProxyPassword(for: duplicate.id) == "proxy-pw")
+
+        let reloaded = storage.loadConnections().first { $0.id == duplicate.id }
+        #expect(reloaded?.socksProxyMode == connection.socksProxyMode)
+    }
+
+    @Test("deleting a connection removes its SOCKS proxy password")
+    func deleteRemovesSOCKSProxyPassword() {
+        let connection = DatabaseConnection(name: "Proxied", type: .postgresql)
+        storage.addConnection(connection)
+        storage.saveSOCKSProxyPassword("proxy-pw", for: connection.id)
+
+        storage.deleteConnection(connection)
+
+        #expect(storage.loadSOCKSProxyPassword(for: connection.id) == nil)
+    }
+
     @Test("duplicating a connection preserves its password source")
     func duplicatePreservesPasswordSource() {
         var connection = DatabaseConnection(name: "Source", type: .postgresql)
