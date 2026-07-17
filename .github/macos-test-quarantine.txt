@@ -57,4 +57,3 @@ DataChangeManagerTests
 CoordinatorEditorLoadTests
 CommandActionsDispatchTests
 ChatToolSpecCopilotTests
-SQLStatementScannerLocatedTests

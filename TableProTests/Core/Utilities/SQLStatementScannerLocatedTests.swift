@@ -143,7 +143,7 @@ struct SQLStatementScannerLocatedTests {
     @Test("Handles very large input without crashing")
     func largeInput() {
         var parts: [String] = []
-        for i in 0..<200 {
+        for i in 0..<300 {
             parts.append("SELECT \(i) FROM very_long_table_name_for_testing;")
         }
         let sql = parts.joined(separator: " ")
