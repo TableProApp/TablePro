@@ -49,6 +49,21 @@ struct TableRow: View {
 
     @State private var isHovered = false
 
+    init(
+        table: TableInfo,
+        isPendingTruncate: Bool,
+        isPendingDelete: Bool,
+        isFavorite: Bool = false,
+        onToggleFavorite: (() -> Void)? = nil
+    ) {
+        self.table = table
+        self.isPendingTruncate = isPendingTruncate
+        self.isPendingDelete = isPendingDelete
+        self.isFavorite = isFavorite
+        self.onToggleFavorite = onToggleFavorite
+        SidebarPerfSignpost.recordRowConstruction()
+    }
+
     private var visibleComment: String? {
         guard AppSettingsManager.shared.general.showObjectComments,
               let comment = table.comment, !comment.isEmpty

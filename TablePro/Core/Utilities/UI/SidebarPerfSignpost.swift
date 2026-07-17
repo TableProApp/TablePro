@@ -12,9 +12,26 @@ internal enum SidebarPerfSignpost {
     internal static let signposter = OSSignposter(subsystem: subsystem, category: "SidebarPerf")
     internal static let logger = Logger(subsystem: subsystem, category: "SidebarPerf")
 
+    private static let rowConstructions = OSAllocatedUnfairLock(initialState: 0)
+
+    internal static func recordRowConstruction() {
+        rowConstructions.withLock { $0 += 1 }
+    }
+
+    private static func drainRowConstructions() -> Int {
+        rowConstructions.withLock { count in
+            let drained = count
+            count = 0
+            return drained
+        }
+    }
+
     internal static func recordBodyEvaluation(_ view: StaticString, connectionId: UUID) {
-        signposter.emitEvent(view, "connection=\(connectionId.uuidString, privacy: .public)")
-        logger.debug("body \(String(describing: view), privacy: .public) connection=\(connectionId.uuidString, privacy: .public)")
+        let rows = drainRowConstructions()
+        signposter.emitEvent(view, "connection=\(connectionId.uuidString, privacy: .public) rows=\(rows)")
+        logger.debug(
+            "body \(String(describing: view), privacy: .public) connection=\(connectionId.uuidString, privacy: .public) rowsBuiltSinceLastBody=\(rows, privacy: .public)"
+        )
     }
 
     internal static func recordEvent(_ name: StaticString, connectionId: UUID) {
