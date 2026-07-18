@@ -1,5 +1,5 @@
 //
-//  ResizeCursorSplitView.swift
+//  ResizeCursorSplitViewController.swift
 //  TablePro
 //
 
@@ -59,29 +59,24 @@ internal enum SplitDividerCursorGeometry {
 }
 
 @MainActor
-internal final class ResizeCursorSplitView: NSSplitView {
+internal class ResizeCursorSplitViewController: NSSplitViewController {
     private static let hitPadding: CGFloat = 3
 
-    private var cursorTrackingArea: NSTrackingArea?
     private var isShowingResizeCursor = false
 
-    override func updateTrackingAreas() {
-        super.updateTrackingAreas()
-        if let cursorTrackingArea {
-            removeTrackingArea(cursorTrackingArea)
-        }
+    override func viewDidLoad() {
+        super.viewDidLoad()
         let area = NSTrackingArea(
             rect: .zero,
             options: [.activeInKeyWindow, .mouseMoved, .mouseEnteredAndExited, .inVisibleRect],
             owner: self,
             userInfo: nil
         )
-        addTrackingArea(area)
-        cursorTrackingArea = area
+        splitView.addTrackingArea(area)
     }
 
     override func mouseMoved(with event: NSEvent) {
-        let point = convert(event.locationInWindow, from: nil)
+        let point = splitView.convert(event.locationInWindow, from: nil)
         guard isWithinDivider(point) else {
             restoreCursorIfNeeded()
             super.mouseMoved(with: event)
@@ -104,30 +99,21 @@ internal final class ResizeCursorSplitView: NSSplitView {
 
     private func isWithinDivider(_ point: CGPoint) -> Bool {
         let hitRects = SplitDividerCursorGeometry.dividerHitRects(
-            subviewFrames: subviews.map(\.frame),
-            collapsed: subviews.map { isSubviewCollapsed($0) },
-            isVertical: isVertical,
+            subviewFrames: splitView.subviews.map(\.frame),
+            collapsed: splitView.subviews.map { splitView.isSubviewCollapsed($0) },
+            isVertical: splitView.isVertical,
             padding: Self.hitPadding,
-            bounds: bounds
+            bounds: splitView.bounds
         )
         return SplitDividerCursorGeometry.isWithinDivider(point: point, hitRects: hitRects)
     }
 
     private var resizeCursor: NSCursor {
         if #available(macOS 15.0, *) {
-            return isVertical
+            return splitView.isVertical
                 ? .columnResize(directions: [.left, .right])
                 : .rowResize(directions: [.up, .down])
         }
-        return isVertical ? .resizeLeftRight : .resizeUpDown
-    }
-}
-
-@MainActor
-internal class ResizeCursorSplitViewController: NSSplitViewController {
-    override func loadView() {
-        let cursorSplitView = ResizeCursorSplitView()
-        splitView = cursorSplitView
-        view = cursorSplitView
+        return splitView.isVertical ? .resizeLeftRight : .resizeUpDown
     }
 }
