@@ -152,7 +152,8 @@ extension PluginMetadataRegistry {
                         )
                     ],
                     category: .keyValue,
-                    tagline: String(localized: "In-memory data store and cache")
+                    tagline: String(localized: "In-memory data store and cache"),
+                    defaultUnixSocketPath: "/var/run/redis/redis.sock"
                 )
             )),
             ("SQL Server", PluginMetadataSnapshot(

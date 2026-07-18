@@ -44,6 +44,10 @@ final class NetworkPaneViewModel {
         return port == 0 ? "" : String(port)
     }
 
+    var socketPathPrompt: String {
+        PluginManager.shared.defaultUnixSocketPath(for: type) ?? "/path/to/database.sock"
+    }
+
     var resolvedHost: String {
         host.trimmingCharacters(in: .whitespaces).isEmpty ? "localhost" : host
     }

@@ -70,4 +70,23 @@ struct NetworkPaneSocketForwardTests {
         #expect(fields[DatabaseConnection.sshForwardUnixSocketPathKey] == nil)
         #expect(viewModel.forwardsToUnixSocket == false)
     }
+
+    @Test("The socket path prompt follows the database type")
+    func socketPromptFollowsType() {
+        let viewModel = NetworkPaneViewModel()
+
+        viewModel.type = .mysql
+        #expect(viewModel.socketPathPrompt == "/var/run/mysqld/mysqld.sock")
+
+        viewModel.type = .postgresql
+        #expect(viewModel.socketPathPrompt == "/var/run/postgresql/.s.PGSQL.5432")
+    }
+
+    @Test("A type without a socket convention falls back to a generic prompt")
+    func socketPromptFallsBackForSocketlessType() {
+        let viewModel = NetworkPaneViewModel()
+        viewModel.type = .clickhouse
+
+        #expect(viewModel.socketPathPrompt == "/path/to/database.sock")
+    }
 }

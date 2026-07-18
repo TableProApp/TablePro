@@ -397,6 +397,11 @@ extension PluginManager {
             .schema.containerEntityName ?? "Database"
     }
 
+    func defaultUnixSocketPath(for databaseType: DatabaseType) -> String? {
+        PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
+            .connection.defaultUnixSocketPath
+    }
+
     func containerEntityNamePlural(for databaseType: DatabaseType) -> String {
         containerEntityName(for: databaseType) + "s"
     }

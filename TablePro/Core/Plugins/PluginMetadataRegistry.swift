@@ -171,17 +171,20 @@ struct PluginMetadataSnapshot: Sendable {
         let category: DatabaseCategory
         let tagline: String
         let hidesBuiltInPassword: Bool
+        let defaultUnixSocketPath: String?
 
         init(
             additionalConnectionFields: [ConnectionField] = [],
             category: DatabaseCategory = .other,
             tagline: String = "",
-            hidesBuiltInPassword: Bool = false
+            hidesBuiltInPassword: Bool = false,
+            defaultUnixSocketPath: String? = nil
         ) {
             self.additionalConnectionFields = additionalConnectionFields
             self.category = category
             self.tagline = tagline
             self.hidesBuiltInPassword = hidesBuiltInPassword
+            self.defaultUnixSocketPath = defaultUnixSocketPath
         }
 
         static let defaults = ConnectionConfig()
@@ -543,7 +546,8 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                 connection: PluginMetadataSnapshot.ConnectionConfig(
                     additionalConnectionFields: awsIAMFields,
                     category: .relational,
-                    tagline: String(localized: "Most popular open-source SQL database")
+                    tagline: String(localized: "Most popular open-source SQL database"),
+                    defaultUnixSocketPath: "/var/run/mysqld/mysqld.sock"
                 )
             )),
             ("MariaDB", PluginMetadataSnapshot(
@@ -594,7 +598,8 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                 connection: PluginMetadataSnapshot.ConnectionConfig(
                     additionalConnectionFields: awsIAMFields,
                     category: .relational,
-                    tagline: String(localized: "Open-source fork of MySQL")
+                    tagline: String(localized: "Open-source fork of MySQL"),
+                    defaultUnixSocketPath: "/var/run/mysqld/mysqld.sock"
                 )
             )),
             ("PostgreSQL", PluginMetadataSnapshot(
@@ -646,7 +651,8 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                 connection: PluginMetadataSnapshot.ConnectionConfig(
                     additionalConnectionFields: [pgpassField, connectionOptionsField] + awsIAMFields,
                     category: .relational,
-                    tagline: String(localized: "Advanced object-relational SQL")
+                    tagline: String(localized: "Advanced object-relational SQL"),
+                    defaultUnixSocketPath: "/var/run/postgresql/.s.PGSQL.5432"
                 )
             )),
             ("Redshift", PluginMetadataSnapshot(
@@ -1023,7 +1029,8 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     ?? Self.fallbackCategory(forTypeId: driverType.databaseTypeId),
                 tagline: existingSnapshot?.connection.tagline
                     ?? Self.fallbackTagline(forTypeId: driverType.databaseTypeId),
-                hidesBuiltInPassword: existingSnapshot?.connection.hidesBuiltInPassword ?? false
+                hidesBuiltInPassword: existingSnapshot?.connection.hidesBuiltInPassword ?? false,
+                defaultUnixSocketPath: existingSnapshot?.connection.defaultUnixSocketPath
             )
         )
     }

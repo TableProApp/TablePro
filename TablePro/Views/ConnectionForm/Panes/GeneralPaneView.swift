@@ -174,7 +174,7 @@ struct GeneralPaneView: View {
         TextField(
             String(localized: "Socket Path"),
             text: $coordinator.network.sshForwardUnixSocketPath,
-            prompt: Text(verbatim: "/var/run/postgresql/.s.PGSQL.5432")
+            prompt: Text(verbatim: coordinator.network.socketPathPrompt)
         )
         switch coordinator.network.socketPathIssue {
         case .notAbsolute:
