@@ -99,6 +99,7 @@ struct SidebarView: View {
     // MARK: - Body
 
     var body: some View {
+        _ = Self._printChanges()
         SidebarPerfSignpost.recordBodyEvaluation("SidebarView", connectionId: connectionId)
         return Group {
             switch sidebarState.selectedSidebarTab {
