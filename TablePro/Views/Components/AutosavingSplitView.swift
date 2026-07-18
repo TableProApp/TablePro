@@ -86,7 +86,7 @@ struct AutosavingSplitView<Primary: View, Secondary: View>: NSViewControllerRepr
 }
 
 @MainActor
-internal final class CollapsingSplitViewController: NSSplitViewController {
+internal final class CollapsingSplitViewController: ResizeCursorSplitViewController {
     var collapsesPrimaryWhenTight = false
 
     private var didAutoCollapsePrimary = false

@@ -9,7 +9,7 @@ struct ServerDashboardSplitView: NSViewControllerRepresentable {
     }
 
     func makeNSViewController(context: Context) -> NSSplitViewController {
-        let splitViewController = NSSplitViewController()
+        let splitViewController = ResizeCursorSplitViewController()
         splitViewController.splitView.isVertical = false
         splitViewController.splitView.dividerStyle = .thin
         splitViewController.splitView.autosaveName = "ServerDashboardSplit"
