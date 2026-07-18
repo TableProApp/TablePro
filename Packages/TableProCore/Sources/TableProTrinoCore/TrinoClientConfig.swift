@@ -15,10 +15,19 @@ public struct TrinoTLSOptions: Sendable, Equatable {
 
     public var mode: VerificationMode
     public var caCertificatePath: String
+    public var clientCertificatePath: String
+    public var clientKeyPath: String
 
-    public init(mode: VerificationMode = .full, caCertificatePath: String = "") {
+    public init(
+        mode: VerificationMode = .full,
+        caCertificatePath: String = "",
+        clientCertificatePath: String = "",
+        clientKeyPath: String = ""
+    ) {
         self.mode = mode
         self.caCertificatePath = caCertificatePath
+        self.clientCertificatePath = clientCertificatePath
+        self.clientKeyPath = clientKeyPath
     }
 
     public static let systemDefault = TrinoTLSOptions(mode: .full)

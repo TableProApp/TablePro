@@ -56,6 +56,7 @@ Whether a write succeeds depends on the connected catalog. Many connectors are r
 
 - **Username & Password** sends HTTP Basic auth. Use it for LDAP or password-file authentication. Requires TLS.
 - **JWT Access Token** sends the token as a bearer credential. Requires TLS.
+- **Client certificate** works with any SSL mode: set the Client Certificate and Client Key files in the SSL pane and TablePro presents them for mutual TLS. Use it for Trino's certificate authentication.
 
 Kerberos and OAuth 2.0 are not yet supported.
 

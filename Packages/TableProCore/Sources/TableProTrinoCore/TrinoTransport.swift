@@ -140,8 +140,21 @@ private final class TrinoTLSDelegate: NSObject, URLSessionDelegate {
         didReceive challenge: URLAuthenticationChallenge,
         completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
     ) {
-        guard challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
-              let serverTrust = challenge.protectionSpace.serverTrust else {
+        switch challenge.protectionSpace.authenticationMethod {
+        case NSURLAuthenticationMethodServerTrust:
+            handleServerTrust(challenge, completionHandler: completionHandler)
+        case NSURLAuthenticationMethodClientCertificate:
+            handleClientCertificate(completionHandler: completionHandler)
+        default:
+            completionHandler(.performDefaultHandling, nil)
+        }
+    }
+
+    private func handleServerTrust(
+        _ challenge: URLAuthenticationChallenge,
+        completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
+    ) {
+        guard let serverTrust = challenge.protectionSpace.serverTrust else {
             completionHandler(.performDefaultHandling, nil)
             return
         }
@@ -173,5 +186,98 @@ private final class TrinoTLSDelegate: NSObject, URLSessionDelegate {
         } else {
             completionHandler(.cancelAuthenticationChallenge, nil)
         }
+    }
+
+    private func handleClientCertificate(
+        completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
+    ) {
+        guard !tls.clientCertificatePath.isEmpty, !tls.clientKeyPath.isEmpty else {
+            completionHandler(.performDefaultHandling, nil)
+            return
+        }
+        guard let p12Data = Self.buildPkcs12(certPath: tls.clientCertificatePath, keyPath: tls.clientKeyPath) else {
+            completionHandler(.cancelAuthenticationChallenge, nil)
+            return
+        }
+        var items: CFArray?
+        let status = SecPKCS12Import(
+            p12Data as CFData,
+            [kSecImportExportPassphrase as String: ""] as CFDictionary,
+            &items
+        )
+        guard status == errSecSuccess,
+              let itemArray = items as? [[String: Any]],
+              let identityRef = itemArray.first?[kSecImportItemIdentity as String],
+              CFGetTypeID(identityRef as CFTypeRef) == SecIdentityGetTypeID() else {
+            completionHandler(.cancelAuthenticationChallenge, nil)
+            return
+        }
+        // swiftlint:disable:next force_cast
+        let identity = identityRef as! SecIdentity
+        completionHandler(.useCredential, URLCredential(identity: identity, certificates: nil, persistence: .forSession))
+    }
+
+    private static func buildPkcs12(certPath: String, keyPath: String) -> Data? {
+        guard let certData = try? Data(contentsOf: URL(fileURLWithPath: certPath)),
+              let keyData = try? Data(contentsOf: URL(fileURLWithPath: keyPath)) else {
+            return nil
+        }
+        var certItems: CFArray?
+        var certFormat = SecExternalFormat.formatPEMSequence
+        var certType = SecExternalItemType.itemTypeCertificate
+        let certStatus = SecItemImport(certData as CFData, nil, &certFormat, &certType, [], nil, nil, &certItems)
+        guard certStatus == errSecSuccess, let certs = certItems as? [SecCertificate], let cert = certs.first else {
+            return nil
+        }
+        var keyItems: CFArray?
+        var keyFormat = SecExternalFormat.formatPEMSequence
+        var keyType = SecExternalItemType.itemTypePrivateKey
+        let keyStatus = SecItemImport(keyData as CFData, nil, &keyFormat, &keyType, [], nil, nil, &keyItems)
+        guard keyStatus == errSecSuccess, let keys = keyItems as? [SecKey], let privateKey = keys.first else {
+            return nil
+        }
+        guard let identity = createIdentity(certificate: cert, privateKey: privateKey) else {
+            return nil
+        }
+        var exportParams = SecItemImportExportKeyParameters()
+        var exported: CFData?
+        guard SecItemExport(identity, .formatPKCS12, [], &exportParams, &exported) == errSecSuccess,
+              let data = exported else {
+            return nil
+        }
+        return data as Data
+    }
+
+    private static func createIdentity(certificate: SecCertificate, privateKey: SecKey) -> SecIdentity? {
+        var certRef: CFTypeRef?
+        let certAddStatus = SecItemAdd([
+            kSecClass as String: kSecClassCertificate,
+            kSecValueRef as String: certificate,
+            kSecReturnRef as String: true
+        ] as CFDictionary, &certRef)
+
+        var keyRef: CFTypeRef?
+        let keyAddStatus = SecItemAdd([
+            kSecClass as String: kSecClassKey,
+            kSecValueRef as String: privateKey,
+            kSecReturnRef as String: true
+        ] as CFDictionary, &keyRef)
+
+        var identity: SecIdentity?
+        let status = SecIdentityCreateWithCertificate(nil, certificate, &identity)
+
+        if certAddStatus == errSecSuccess {
+            SecItemDelete([
+                kSecClass as String: kSecClassCertificate,
+                kSecValueRef as String: certRef ?? certificate
+            ] as CFDictionary)
+        }
+        if keyAddStatus == errSecSuccess {
+            SecItemDelete([
+                kSecClass as String: kSecClassKey,
+                kSecValueRef as String: keyRef ?? privateKey
+            ] as CFDictionary)
+        }
+        return status == errSecSuccess ? identity : nil
     }
 }

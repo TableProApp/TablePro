@@ -4,13 +4,20 @@ import TableProTrinoCore
 
 enum TrinoSSLMapping {
     static func tlsOptions(for ssl: SSLConfiguration) -> TrinoTLSOptions {
+        let mode: TrinoTLSOptions.VerificationMode
         switch ssl.mode {
         case .disabled, .preferred, .required:
-            return TrinoTLSOptions(mode: .insecure)
+            mode = .insecure
         case .verifyCa:
-            return TrinoTLSOptions(mode: .caOnly, caCertificatePath: ssl.caCertificatePath)
+            mode = .caOnly
         case .verifyIdentity:
-            return TrinoTLSOptions(mode: .full, caCertificatePath: ssl.caCertificatePath)
+            mode = .full
         }
+        return TrinoTLSOptions(
+            mode: mode,
+            caCertificatePath: ssl.caCertificatePath,
+            clientCertificatePath: ssl.clientCertificatePath,
+            clientKeyPath: ssl.clientKeyPath
+        )
     }
 }

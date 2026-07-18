@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Trino support through a downloadable native Swift driver. Connect over the HTTP client protocol with a username and password or a JWT token, browse catalogs, schemas, tables, materialized views, and columns, run SQL and EXPLAIN, edit rows, and create or alter tables. TLS supports Verify CA and Verify Identity with a custom CA certificate. Large exports stream page by page. (#1906)
+- Trino support through a downloadable native Swift driver. Connect over the HTTP client protocol with a username and password or a JWT token, browse catalogs, schemas, tables, materialized views, and columns, run SQL and EXPLAIN, edit rows, and create or alter tables. TLS supports Verify CA and Verify Identity with a custom CA certificate, and client certificates for mutual TLS. Large exports stream page by page. (#1906)
 
 ## [0.58.0] - 2026-07-18
 
