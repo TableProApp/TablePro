@@ -357,13 +357,17 @@ final class SidebarViewModel {
     @ObservationIgnored private var cachedFilteredRoutines: [SidebarObjectKind: [RoutineInfo]] = [:]
     @ObservationIgnored private var cachedFilteredRoutinesFingerprint: (count: Int, generation: Int, query: String)?
 
-    private var schemaGeneration: Int {
-        SchemaService.shared.generationToken(for: connectionId)
+    private var tablesRevision: Int {
+        SchemaConnectionState.forConnection(connectionId).tablesRevision
+    }
+
+    private var routinesRevision: Int {
+        SchemaConnectionState.forConnection(connectionId).routinesRevision
     }
 
     func tables(of kind: SidebarObjectKind, from tables: [TableInfo]) -> [TableInfo] {
         guard !kind.isRoutine else { return [] }
-        let fingerprint = (count: tables.count, generation: schemaGeneration)
+        let fingerprint = (count: tables.count, generation: tablesRevision)
         if cachedKindFingerprint?.count != fingerprint.count
             || cachedKindFingerprint?.generation != fingerprint.generation {
             rebuildKindBuckets(from: tables)
@@ -374,7 +378,7 @@ final class SidebarViewModel {
 
     func filteredTables(of kind: SidebarObjectKind, from tables: [TableInfo]) -> [TableInfo] {
         let query = filterQuery
-        let fingerprint = (count: tables.count, generation: schemaGeneration, query: query)
+        let fingerprint = (count: tables.count, generation: tablesRevision, query: query)
         if cachedFilteredByKindFingerprint?.count != fingerprint.count
             || cachedFilteredByKindFingerprint?.generation != fingerprint.generation
             || cachedFilteredByKindFingerprint?.query != fingerprint.query {
@@ -399,7 +403,7 @@ final class SidebarViewModel {
 
     func filteredRoutines(of kind: SidebarObjectKind, from routines: [RoutineInfo]) -> [RoutineInfo] {
         let query = filterQuery
-        let fingerprint = (count: routines.count, generation: schemaGeneration, query: query)
+        let fingerprint = (count: routines.count, generation: routinesRevision, query: query)
         if cachedFilteredRoutinesFingerprint?.count != fingerprint.count
             || cachedFilteredRoutinesFingerprint?.generation != fingerprint.generation
             || cachedFilteredRoutinesFingerprint?.query != fingerprint.query {

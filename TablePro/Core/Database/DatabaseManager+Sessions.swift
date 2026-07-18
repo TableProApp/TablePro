@@ -359,6 +359,7 @@ extension DatabaseManager {
 
         SharedSidebarState.removeConnection(sessionId)
         SidebarViewModel.removeConnection(sessionId)
+        SchemaConnectionState.removeConnection(sessionId)
 
         if currentSessionId == sessionId {
             if let nextSessionId = activeSessions.keys.first {

@@ -13,20 +13,8 @@ import TableProPluginKit
 final class SchemaService {
     static let shared = SchemaService()
 
-    private(set) var states: [UUID: SchemaState] = [:]
-    private(set) var procedures: [UUID: [RoutineInfo]] = [:]
-    private(set) var functions: [UUID: [RoutineInfo]] = [:]
-    private(set) var schemasInOrder: [UUID: [String]] = [:]
-    private(set) var perSchemaStates: [UUID: [String: SchemaState]] = [:]
-    private(set) var generations: [UUID: Int] = [:]
-
-    func generationToken(for connectionId: UUID) -> Int {
-        generations[connectionId] ?? 0
-    }
-
-    private func bumpGeneration(_ connectionId: UUID) {
-        generations[connectionId, default: 0] &+= 1
-        SidebarPerfSignpost.recordEvent("SchemaService.mutation", connectionId: connectionId)
+    private func holder(_ connectionId: UUID) -> SchemaConnectionState {
+        SchemaConnectionState.forConnection(connectionId)
     }
 
     @ObservationIgnored private let loadDedup = OnceTask<UUID, [TableInfo]>()
@@ -54,22 +42,19 @@ final class SchemaService {
     }
 
     func state(for connectionId: UUID) -> SchemaState {
-        states[connectionId] ?? .idle
+        holder(connectionId).state
     }
 
     func tables(for connectionId: UUID) -> [TableInfo] {
-        if case .loaded(let tables) = state(for: connectionId) {
-            return tables
-        }
-        return []
+        holder(connectionId).tables
     }
 
     func procedures(for connectionId: UUID) -> [RoutineInfo] {
-        procedures[connectionId] ?? []
+        holder(connectionId).procedures
     }
 
     func functions(for connectionId: UUID) -> [RoutineInfo] {
-        functions[connectionId] ?? []
+        holder(connectionId).functions
     }
 
     func routines(for connectionId: UUID) -> [RoutineInfo] {
@@ -77,71 +62,46 @@ final class SchemaService {
     }
 
     func schemas(for connectionId: UUID) -> [String] {
-        schemasInOrder[connectionId] ?? []
+        holder(connectionId).schemasInOrder
     }
 
     func schemaState(for connectionId: UUID, schema: String) -> SchemaState {
-        perSchemaStates[connectionId]?[schema] ?? .idle
+        holder(connectionId).perSchemaState(schema)
     }
 
     func tables(for connectionId: UUID, schema: String) -> [TableInfo] {
-        if case .loaded(let tables) = schemaState(for: connectionId, schema: schema) {
-            return tables
-        }
-        return []
+        holder(connectionId).tables(inSchema: schema)
     }
 
     /// Flat tables plus the union of every loaded per-schema table list. For
     /// hierarchicalSchema plugins the flat list is empty and this is the only
     /// way to see tables across schemas (e.g. for autocomplete).
     func allLoadedTables(for connectionId: UUID) -> [TableInfo] {
-        var result = tables(for: connectionId)
-        var seen = Set(result.map(\.id))
-        for state in (perSchemaStates[connectionId] ?? [:]).values {
-            guard case .loaded(let schemaTables) = state else { continue }
-            for table in schemaTables where seen.insert(table.id).inserted {
-                result.append(table)
-            }
-        }
-        return result
+        holder(connectionId).allLoadedTables
     }
 
     func loadSchemaTables(connectionId: UUID, schema: String, driver: DatabaseDriver) async {
         if case .loaded = schemaState(for: connectionId, schema: schema) { return }
-        setPerSchemaState(.loading, connectionId: connectionId, schema: schema)
+        holder(connectionId).setPerSchemaState(.loading, schema: schema)
         do {
             let tables = try await perSchemaDedup.execute(key: SchemaKey(connectionId: connectionId, schema: schema)) {
                 try await driver.fetchTables(schema: schema)
             }
-            setPerSchemaState(.loaded(tables), connectionId: connectionId, schema: schema)
+            holder(connectionId).setPerSchemaState(.loaded(tables), schema: schema)
         } catch is CancellationError {
             return
         } catch {
             Self.logger.warning(
                 "[schema] per-schema load failed connId=\(connectionId, privacy: .public) schema=\(schema, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
             )
-            setPerSchemaState(.failed(error.localizedDescription), connectionId: connectionId, schema: schema)
+            holder(connectionId).setPerSchemaState(.failed(error.localizedDescription), schema: schema)
         }
     }
 
     func reloadSchemaTables(connectionId: UUID, schema: String, driver: DatabaseDriver) async {
         await perSchemaDedup.cancel(key: SchemaKey(connectionId: connectionId, schema: schema))
-        clearPerSchemaState(connectionId: connectionId, schema: schema)
+        holder(connectionId).clearPerSchemaState(schema: schema)
         await loadSchemaTables(connectionId: connectionId, schema: schema, driver: driver)
-    }
-
-    private func setPerSchemaState(_ state: SchemaState, connectionId: UUID, schema: String) {
-        var inner = perSchemaStates[connectionId] ?? [:]
-        inner[schema] = state
-        perSchemaStates[connectionId] = inner
-        bumpGeneration(connectionId)
-    }
-
-    private func clearPerSchemaState(connectionId: UUID, schema: String) {
-        guard var inner = perSchemaStates[connectionId] else { return }
-        inner.removeValue(forKey: schema)
-        perSchemaStates[connectionId] = inner
-        bumpGeneration(connectionId)
     }
 
     func load(connectionId: UUID, driver: DatabaseDriver, connection: DatabaseConnection) async {
@@ -162,8 +122,7 @@ final class SchemaService {
             let routines = try await procedureDedup.execute(key: connectionId) {
                 try await driver.fetchProcedures(schema: nil)
             }
-            procedures[connectionId] = routines
-            bumpGeneration(connectionId)
+            holder(connectionId).setProcedures(routines)
         } catch is CancellationError {
             return
         } catch {
@@ -178,8 +137,7 @@ final class SchemaService {
             let routines = try await functionDedup.execute(key: connectionId) {
                 try await driver.fetchFunctions(schema: nil)
             }
-            functions[connectionId] = routines
-            bumpGeneration(connectionId)
+            holder(connectionId).setFunctions(routines)
         } catch is CancellationError {
             return
         } catch {
@@ -194,18 +152,11 @@ final class SchemaService {
         await procedureDedup.cancel(key: connectionId)
         await functionDedup.cancel(key: connectionId)
         await schemasDedup.cancel(key: connectionId)
-        if let schemas = perSchemaStates[connectionId]?.keys {
-            for schema in schemas {
-                await perSchemaDedup.cancel(key: SchemaKey(connectionId: connectionId, schema: schema))
-            }
+        for schema in holder(connectionId).loadedSchemaNames() {
+            await perSchemaDedup.cancel(key: SchemaKey(connectionId: connectionId, schema: schema))
         }
         loadGenerations.removeValue(forKey: connectionId)
-        states.removeValue(forKey: connectionId)
-        procedures.removeValue(forKey: connectionId)
-        functions.removeValue(forKey: connectionId)
-        schemasInOrder.removeValue(forKey: connectionId)
-        perSchemaStates.removeValue(forKey: connectionId)
-        generations.removeValue(forKey: connectionId)
+        holder(connectionId).reset()
     }
 
     func refresh(connectionId: UUID) async {
@@ -223,8 +174,7 @@ final class SchemaService {
 
     func markLoadFailed(connectionId: UUID, message: String) {
         if case .loaded = state(for: connectionId) { return }
-        states[connectionId] = .failed(message)
-        bumpGeneration(connectionId)
+        holder(connectionId).setState(.failed(message))
     }
 
     private func runLoad(
@@ -233,12 +183,11 @@ final class SchemaService {
         connection: DatabaseConnection
     ) async {
         let generation = beginLoadGeneration(for: connectionId)
-        states[connectionId] = .loading
-        bumpGeneration(connectionId)
+        holder(connectionId).setState(.loading)
 
         let supportsSchemas = PluginManager.shared.supportsSchemaSwitching(for: connection.type)
         if !supportsSchemas {
-            schemasInOrder.removeValue(forKey: connectionId)
+            holder(connectionId).clearSchemasInOrder()
         }
 
         let grouping = PluginManager.shared.databaseGroupingStrategy(for: connection.type)
@@ -275,41 +224,39 @@ final class SchemaService {
             guard isCurrentLoadGeneration(generation, for: connectionId, phase: "tables-loaded") else {
                 return
             }
-            states[connectionId] = .loaded(tables)
+            holder(connectionId).setState(.loaded(tables))
 
             let loadedProcedures = await proceduresTask
             guard isCurrentLoadGeneration(generation, for: connectionId, phase: "procedures-loaded") else {
                 return
             }
-            procedures[connectionId] = loadedProcedures
+            holder(connectionId).setProcedures(loadedProcedures)
 
             let loadedFunctions = await functionsTask
             guard isCurrentLoadGeneration(generation, for: connectionId, phase: "functions-loaded") else {
                 return
             }
-            functions[connectionId] = loadedFunctions
+            holder(connectionId).setFunctions(loadedFunctions)
 
             if let loadedSchemas = await schemasTask {
                 guard isCurrentLoadGeneration(generation, for: connectionId, phase: "schemas-loaded") else {
                     return
                 }
-                schemasInOrder[connectionId] = loadedSchemas
+                holder(connectionId).setSchemasInOrder(loadedSchemas)
             }
-            bumpGeneration(connectionId)
         } catch is CancellationError {
             return
         } catch {
             guard isCurrentLoadGeneration(generation, for: connectionId, phase: "tables-failed") else {
-                if loadGenerations[connectionId] == nil, case .loading = states[connectionId] {
-                    states[connectionId] = .idle
+                if loadGenerations[connectionId] == nil, case .loading = state(for: connectionId) {
+                    holder(connectionId).setState(.idle)
                 }
                 return
             }
             Self.logger.warning(
                 "[schema] load failed connId=\(connectionId, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
             )
-            states[connectionId] = .failed(error.localizedDescription)
-            bumpGeneration(connectionId)
+            holder(connectionId).setState(.failed(error.localizedDescription))
         }
     }
 
@@ -344,25 +291,23 @@ final class SchemaService {
             Self.logger.warning(
                 "[schema] hierarchical schema list failed connId=\(connectionId, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
             )
-            states[connectionId] = .failed(error.localizedDescription)
-            bumpGeneration(connectionId)
+            holder(connectionId).setState(.failed(error.localizedDescription))
             return
         }
 
         guard isCurrentLoadGeneration(generation, for: connectionId, phase: "hierarchical-loaded") else {
             return
         }
-        schemasInOrder[connectionId] = loadedSchemas
-        procedures[connectionId] = loadedProcedures
-        functions[connectionId] = loadedFunctions
-        states[connectionId] = .loaded([])
-        bumpGeneration(connectionId)
+        holder(connectionId).setSchemasInOrder(loadedSchemas)
+        holder(connectionId).setProcedures(loadedProcedures)
+        holder(connectionId).setFunctions(loadedFunctions)
+        holder(connectionId).setState(.loaded([]))
     }
 
     private func beginLoadGeneration(for connectionId: UUID) -> Int {
         nextLoadGeneration += 1
         let generation = nextLoadGeneration
-        if case .loading? = states[connectionId] {
+        if case .loading = state(for: connectionId) {
             let previousGeneration = loadGenerations[connectionId] ?? 0
             Self.logger.debug(
                 "[schema] superseding in-flight load connId=\(connectionId, privacy: .public) previousGeneration=\(previousGeneration) newGeneration=\(generation)"
@@ -439,8 +384,7 @@ final class SchemaService {
         await procedureDedup.cancel(key: connectionId)
         await functionDedup.cancel(key: connectionId)
 
-        states[connectionId] = .loading
-        bumpGeneration(connectionId)
+        holder(connectionId).setState(.loading)
 
         async let proceduresTask: [RoutineInfo] = Self.fetchRoutinesSafely(
             connectionId: connectionId,
@@ -462,18 +406,16 @@ final class SchemaService {
             let tables = try await loadDedup.execute(key: connectionId) {
                 try await driver.fetchTables()
             }
-            states[connectionId] = .loaded(tables)
-            procedures[connectionId] = loadedProcedures
-            functions[connectionId] = loadedFunctions
-            bumpGeneration(connectionId)
+            holder(connectionId).setState(.loaded(tables))
+            holder(connectionId).setProcedures(loadedProcedures)
+            holder(connectionId).setFunctions(loadedFunctions)
         } catch is CancellationError {
             return
         } catch {
             Self.logger.warning(
                 "[schema] current-schema reload failed connId=\(connectionId, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
             )
-            states[connectionId] = .failed(error.localizedDescription)
-            bumpGeneration(connectionId)
+            holder(connectionId).setState(.failed(error.localizedDescription))
         }
     }
 }

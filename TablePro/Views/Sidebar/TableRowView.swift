@@ -44,6 +44,7 @@ struct TableRow: View {
     let table: TableInfo
     let isPendingTruncate: Bool
     let isPendingDelete: Bool
+    let showComment: Bool
     var isFavorite: Bool = false
     var onToggleFavorite: (() -> Void)?
 
@@ -53,19 +54,20 @@ struct TableRow: View {
         table: TableInfo,
         isPendingTruncate: Bool,
         isPendingDelete: Bool,
+        showComment: Bool,
         isFavorite: Bool = false,
         onToggleFavorite: (() -> Void)? = nil
     ) {
         self.table = table
         self.isPendingTruncate = isPendingTruncate
         self.isPendingDelete = isPendingDelete
+        self.showComment = showComment
         self.isFavorite = isFavorite
         self.onToggleFavorite = onToggleFavorite
-        SidebarPerfSignpost.recordRowConstruction()
     }
 
     private var visibleComment: String? {
-        guard AppSettingsManager.shared.general.showObjectComments,
+        guard showComment,
               let comment = table.comment, !comment.isEmpty
         else { return nil }
         return comment

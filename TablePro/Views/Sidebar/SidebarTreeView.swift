@@ -126,7 +126,8 @@ struct SidebarTreeView: View {
         TableRow(
             table: table,
             isPendingTruncate: pendingTruncates.contains(table.name),
-            isPendingDelete: pendingDeletes.contains(table.name)
+            isPendingDelete: pendingDeletes.contains(table.name),
+            showComment: settingsManager.general.showObjectComments
         )
         .tag(table)
         .contextMenu {
@@ -156,7 +157,8 @@ struct SidebarTreeView: View {
                     TableRow(
                         table: table,
                         isPendingTruncate: pendingTruncates.contains(table.name),
-                        isPendingDelete: pendingDeletes.contains(table.name)
+                        isPendingDelete: pendingDeletes.contains(table.name),
+                        showComment: settingsManager.general.showObjectComments
                     )
                     .selectionDisabled()
                     .contentShape(Rectangle())

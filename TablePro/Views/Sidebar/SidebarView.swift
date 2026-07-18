@@ -10,7 +10,7 @@ import TableProPluginKit
 
 struct SidebarView: View {
     @State private var viewModel: SidebarViewModel
-    @State private var favoriteTables: Set<FavoriteTablesStorage.FavoriteEntry> = []
+    @State private var favoriteKeys: Set<String> = []
     @State private var settingsManager = AppSettingsManager.shared
     @State private var showDatabaseFilter: Bool = false
 
@@ -348,12 +348,20 @@ struct SidebarView: View {
     }
 
     private func isFavorite(_ table: TableInfo) -> Bool {
-        favoriteTables.contains(FavoriteTablesStorage.FavoriteEntry(
-            connectionId: connectionId,
-            database: activeDatabase,
-            schema: table.schema,
-            name: table.name
-        ))
+        favoriteKeys.contains(Self.favoriteKey(schema: table.schema, name: table.name))
+    }
+
+    private static func favoriteKey(schema: String?, name: String) -> String {
+        "\(schema ?? "")\u{0}\(name)"
+    }
+
+    private func recomputeFavoriteKeys() {
+        let database = activeDatabase
+        favoriteKeys = Set(
+            FavoriteTablesStorage.shared.favorites(for: connectionId)
+                .filter { $0.database == database }
+                .map { Self.favoriteKey(schema: $0.schema, name: $0.name) }
+        )
     }
 
     private func toggleFavorite(_ table: TableInfo) {
@@ -388,6 +396,7 @@ struct SidebarView: View {
                         table: table,
                         isPendingTruncate: pendingTruncates.contains(table.name),
                         isPendingDelete: pendingDeletes.contains(table.name),
+                        showComment: settingsManager.general.showObjectComments,
                         isFavorite: isFavorite(table),
                         onToggleFavorite: { toggleFavorite(table) }
                     )
@@ -459,13 +468,16 @@ struct SidebarView: View {
             windowState.selectedTables.removeAll()
         }
         .onReceive(NotificationCenter.default.publisher(for: .favoriteTablesDidChange)) { _ in
-            favoriteTables = FavoriteTablesStorage.shared.favorites(for: connectionId)
+            recomputeFavoriteKeys()
         }
         .onChange(of: settingsManager.general.showRecentTables) { _, _ in
             sidebarState.reloadRecentTablesFromStore()
         }
+        .onChange(of: activeDatabase) { _, _ in
+            recomputeFavoriteKeys()
+        }
         .onAppear {
-            favoriteTables = FavoriteTablesStorage.shared.favorites(for: connectionId)
+            recomputeFavoriteKeys()
         }
     }
 
@@ -509,6 +521,7 @@ struct SidebarView: View {
                     table: table,
                     isPendingTruncate: pendingTruncates.contains(table.name),
                     isPendingDelete: pendingDeletes.contains(table.name),
+                    showComment: settingsManager.general.showObjectComments,
                     isFavorite: isFavorite(table),
                     onToggleFavorite: { toggleFavorite(table) }
                 )

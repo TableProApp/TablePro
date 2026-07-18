@@ -475,7 +475,8 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
             activeSchema: activeSchema,
             systemSchemas: systemSchemas,
             pendingTruncates: pendingTruncates,
-            pendingDeletes: pendingDeletes
+            pendingDeletes: pendingDeletes,
+            showComment: AppSettingsManager.shared.general.showObjectComments
         )
     }
 

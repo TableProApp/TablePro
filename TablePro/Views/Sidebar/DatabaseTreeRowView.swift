@@ -29,6 +29,7 @@ struct DatabaseTreeRowContext {
     let systemSchemas: Set<String>
     let pendingTruncates: Set<String>
     let pendingDeletes: Set<String>
+    let showComment: Bool
 }
 
 struct DatabaseTreeRowView: View {
@@ -73,7 +74,8 @@ struct DatabaseTreeRowView: View {
             TableRow(
                 table: ref.table,
                 isPendingTruncate: context.pendingTruncates.contains(ref.table.name),
-                isPendingDelete: context.pendingDeletes.contains(ref.table.name)
+                isPendingDelete: context.pendingDeletes.contains(ref.table.name),
+                showComment: context.showComment
             )
             .foregroundStyle(isEmphasized ? AnyShapeStyle(.white) : AnyShapeStyle(.primary))
         case .database(let metadata):
@@ -94,7 +96,8 @@ struct DatabaseTreeRowView: View {
             TableRow(
                 table: ref.table,
                 isPendingTruncate: context.pendingTruncates.contains(ref.table.name),
-                isPendingDelete: context.pendingDeletes.contains(ref.table.name)
+                isPendingDelete: context.pendingDeletes.contains(ref.table.name),
+                showComment: context.showComment
             )
             .foregroundStyle(isEmphasized ? AnyShapeStyle(.white) : AnyShapeStyle(.primary))
         case .routine(let ref):
