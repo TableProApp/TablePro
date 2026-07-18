@@ -21,6 +21,7 @@ struct ParsedConnectionURL {
     let sshPassword: String?
     let usePrivateKey: Bool?
     let useSSHAgent: Bool?
+    let sshNoAuth: Bool?
     let agentSocket: String?
     let connectionName: String?
     let redisDatabase: Int?
@@ -123,6 +124,7 @@ struct ConnectionURLParser {
                 sshPassword: nil,
                 usePrivateKey: nil,
                 useSSHAgent: nil,
+                sshNoAuth: nil,
                 agentSocket: nil,
                 connectionName: nil,
                 redisDatabase: nil,
@@ -228,6 +230,7 @@ struct ConnectionURLParser {
             sshPassword: nil,
             usePrivateKey: nil,
             useSSHAgent: nil,
+            sshNoAuth: nil,
             agentSocket: nil,
             connectionName: ext.connectionName,
             redisDatabase: redisDatabase,
@@ -408,6 +411,7 @@ struct ConnectionURLParser {
             sshPassword: sshPassword,
             usePrivateKey: ext.usePrivateKey,
             useSSHAgent: ext.useSSHAgent,
+            sshNoAuth: ext.sshNoAuth,
             agentSocket: ext.agentSocket,
             connectionName: ext.connectionName,
             redisDatabase: nil,
@@ -506,6 +510,7 @@ struct ConnectionURLParser {
             sshPassword: nil,
             usePrivateKey: nil,
             useSSHAgent: nil,
+            sshNoAuth: nil,
             agentSocket: nil,
             connectionName: ext.connectionName,
             redisDatabase: nil,
@@ -534,6 +539,7 @@ struct ConnectionURLParser {
         var connectionName: String?
         var usePrivateKey: Bool?
         var useSSHAgent: Bool?
+        var sshNoAuth: Bool?
         var agentSocket: String?
         var statusColor: String?
         var envTag: String?
@@ -575,6 +581,10 @@ struct ConnectionURLParser {
             }
             if keyStr == "usesshagent" {
                 ext.useSSHAgent = value.lowercased() == "true"
+                continue
+            }
+            if keyStr == "sshnoauth" {
+                ext.sshNoAuth = value.lowercased() == "true"
                 continue
             }
             if keyStr == "agentsocket" {

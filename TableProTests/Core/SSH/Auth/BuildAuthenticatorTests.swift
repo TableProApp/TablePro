@@ -118,6 +118,56 @@ struct BuildAuthenticatorTests {
         #expect(kbdint.totpProvider == nil)
     }
 
+    @Test("None auth method returns a NoneAuthenticator")
+    func noneReturnsNoneAuthenticator() throws {
+        var config = SSHConfiguration(
+            enabled: true,
+            host: "ssh.example.com",
+            username: "alice",
+            authMethod: .none
+        )
+        config.totpMode = .none
+        let credentials = SSHTunnelCredentials(
+            sshPassword: nil,
+            keyPassphrase: nil,
+            totpSecret: nil,
+            totpProvider: nil
+        )
+
+        let authenticator = try LibSSH2TunnelFactory.buildAuthenticator(
+            config: config,
+            resolved: resolved(),
+            credentials: credentials
+        )
+
+        #expect(authenticator is NoneAuthenticator)
+    }
+
+    @Test("Password auth method with no password throws before any libssh2 call")
+    func passwordWithoutCredentialThrows() {
+        var config = SSHConfiguration(
+            enabled: true,
+            host: "ssh.example.com",
+            username: "alice",
+            authMethod: .password
+        )
+        config.totpMode = .none
+        let credentials = SSHTunnelCredentials(
+            sshPassword: nil,
+            keyPassphrase: nil,
+            totpSecret: nil,
+            totpProvider: nil
+        )
+
+        #expect(throws: SSHTunnelError.authenticationFailed(reason: .password)) {
+            try LibSSH2TunnelFactory.buildAuthenticator(
+                config: config,
+                resolved: resolved(),
+                credentials: credentials
+            )
+        }
+    }
+
     @Test("Keyboard-Interactive auth method passes the password through directly")
     func keyboardInteractivePassesPassword() throws {
         var config = SSHConfiguration(

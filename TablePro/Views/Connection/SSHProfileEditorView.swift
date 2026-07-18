@@ -56,7 +56,7 @@ struct SSHProfileEditorView: View {
         let hostValid = !host.trimmingCharacters(in: .whitespaces).isEmpty
         let portValid = port.isEmpty || (Int(port).map { (1...65_535).contains($0) } ?? false)
         let authValid = authMethod == .password || authMethod == .sshAgent
-            || authMethod == .keyboardInteractive || !privateKeyPath.isEmpty
+            || authMethod == .keyboardInteractive || authMethod == .none || !privateKeyPath.isEmpty
         let jumpValid = jumpHosts.allSatisfy(\.isValid)
         return nameValid && hostValid && portValid && authValid && jumpValid
     }
@@ -165,6 +165,10 @@ struct SSHProfileEditorView: View {
             } else if authMethod == .keyboardInteractive {
                 SecureField(String(localized: "Password"), text: $sshPassword)
                 Text(String(localized: "Password is sent via keyboard-interactive challenge-response."))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else if authMethod == .none {
+                Text("No credentials are sent. Use this when the server handles authentication itself, such as a Tailscale SSH host.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else {

@@ -445,6 +445,15 @@ struct ConnectionURLParserTests {
         #expect(parsed.usePrivateKey == true)
     }
 
+    @Test("SSH URL with sshNoAuth")
+    func testSSHURLWithNoAuth() {
+        let result = ConnectionURLParser.parse("mysql+ssh://root@host:22/user:pass@localhost/db?sshNoAuth=true")
+        guard case .success(let parsed) = result else {
+            Issue.record("Expected success"); return
+        }
+        #expect(parsed.sshNoAuth == true)
+    }
+
     @Test("SSH URL with SSH password")
     func testSSHURLWithSSHPassword() {
         let result = ConnectionURLParser.parse("mysql+ssh://root:sshpass@jumphost:22/dbuser:dbpass@localhost/db")

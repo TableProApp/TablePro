@@ -16,6 +16,7 @@ enum AuthFailureReason: Sendable, Equatable {
     case verificationCode
     case privateKey
     case agentRejected
+    case passwordlessRejected
     case generic
 }
 
@@ -48,6 +49,8 @@ enum SSHTunnelError: Error, LocalizedError, Equatable {
                 return String(localized: "SSH private key rejected. Check the key file or passphrase.")
             case .agentRejected:
                 return String(localized: "SSH agent did not authenticate. Run ssh-add -l to check loaded keys.")
+            case .passwordlessRejected:
+                return String(localized: "The SSH server did not accept passwordless authentication. Choose Password, Private Key, or SSH Agent.")
             case .generic:
                 return String(localized: "SSH authentication failed. Check your credentials or private key.")
             }

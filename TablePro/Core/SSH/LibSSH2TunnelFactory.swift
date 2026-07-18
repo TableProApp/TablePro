@@ -535,6 +535,9 @@ internal enum LibSSH2TunnelFactory {
                 password: credentials.sshPassword,
                 totpProvider: totpProvider
             )
+
+        case .none:
+            return NoneAuthenticator()
         }
     }
 

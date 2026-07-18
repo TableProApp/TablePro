@@ -786,6 +786,9 @@ final class ConnectionFormCoordinator {
                 ssh.state.authMethod = .sshAgent
                 ssh.state.applyAgentSocketPath(parsed.agentSocket ?? "")
             }
+            if parsed.sshNoAuth == true {
+                ssh.state.authMethod = .none
+            }
         }
 
         if let multiHost = parsed.multiHost, !multiHost.isEmpty {

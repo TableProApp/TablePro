@@ -10,6 +10,7 @@ enum SSHAuthMethod: String, CaseIterable, Identifiable, Codable {
     case privateKey = "Private Key"
     case sshAgent = "SSH Agent"
     case keyboardInteractive = "Keyboard Interactive"
+    case none = "None"
 
     var id: String { rawValue }
 
@@ -19,6 +20,7 @@ enum SSHAuthMethod: String, CaseIterable, Identifiable, Codable {
         case .privateKey: return String(localized: "Private Key")
         case .sshAgent: return String(localized: "SSH Agent")
         case .keyboardInteractive: return String(localized: "Keyboard Interactive")
+        case .none: return String(localized: "None")
         }
     }
 
@@ -28,6 +30,7 @@ enum SSHAuthMethod: String, CaseIterable, Identifiable, Codable {
         case .privateKey: return "doc.text.fill"
         case .sshAgent: return "person.badge.key.fill"
         case .keyboardInteractive: return "keyboard"
+        case .none: return "key.slash"
         }
     }
 }
@@ -140,7 +143,7 @@ extension SSHConfiguration {
         host = try container.decode(String.self, forKey: .host)
         port = try container.decodeIfPresent(Int.self, forKey: .port)
         username = try container.decode(String.self, forKey: .username)
-        authMethod = try container.decode(SSHAuthMethod.self, forKey: .authMethod)
+        authMethod = (try? container.decodeIfPresent(SSHAuthMethod.self, forKey: .authMethod)) ?? .password
         privateKeyPath = try container.decode(String.self, forKey: .privateKeyPath)
         agentSocketPath = try container.decode(String.self, forKey: .agentSocketPath)
         jumpHosts = try container.decodeIfPresent([SSHJumpHost].self, forKey: .jumpHosts) ?? []

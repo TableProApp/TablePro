@@ -223,6 +223,23 @@ struct ConnectionURLFormatterTests {
         #expect(url.contains("usePrivateKey=true"))
     }
 
+    @Test("SSH with no auth adds query param")
+    func testSSHNoAuth() {
+        var sshConfig = SSHConfiguration()
+        sshConfig.enabled = true
+        sshConfig.host = "sshhost"
+        sshConfig.port = 22
+        sshConfig.username = "root"
+        sshConfig.authMethod = .none
+
+        let conn = DatabaseConnection(
+            name: "", host: "localhost", port: 3_306, database: "db",
+            username: "user", type: .mysql, sshConfig: sshConfig
+        )
+        let url = ConnectionURLFormatter.format(conn, password: "pass", sshPassword: nil)
+        #expect(url.contains("sshNoAuth=true"))
+    }
+
     // MARK: - SSL Mode
 
     @Test("SSL mode included in query string")

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- SSH tunnels can authenticate with no password or key, for hosts that handle SSH auth themselves like Tailscale SSH. Pick **None** as the SSH auth method. (#1907)
+
 ## [0.58.0] - 2026-07-18
 
 ### Added
