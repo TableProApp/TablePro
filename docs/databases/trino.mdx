@@ -1,0 +1,61 @@
+---
+title: Trino
+description: Connect to a Trino cluster with TablePro's native Swift driver.
+---
+
+TablePro connects to Trino with a driver written in native Swift. It speaks the Trino client REST protocol directly over HTTP, so there is no JDBC jar or CLI to install. Queries run over `POST /v1/statement` and TablePro pages through the results until the cluster is done.
+
+Presto uses the same protocol under a different header prefix. The current driver targets Trino.
+
+## Install the plugin
+
+Trino is a downloadable driver. Open **Settings > Plugins**, find Trino, and install it. The driver downloads and loads without restarting the app.
+
+## Connection settings
+
+| Field | Description |
+| --- | --- |
+| Host | The Trino coordinator hostname. |
+| Port | The coordinator HTTP port. Default `8080`, or `8443` when TLS is on. |
+| Username | The user the query runs as. Sent as `X-Trino-User`. |
+| Catalog | The default catalog for unqualified table names. Optional; leave blank to browse all catalogs. |
+| Schema | The default schema. Optional. |
+| Auth Method | `Username & Password` for LDAP or password-file auth, or `JWT Access Token` for a bearer token. |
+| Password | Your password when the auth method is Username & Password. Sent as HTTP Basic auth. |
+| Access Token | Your JWT when the auth method is JWT Access Token. Sent as a bearer token. |
+| SSL | Off by default. Turn it on to connect over HTTPS. Password and JWT auth both require it. |
+
+Trino requires TLS for any authentication. If you pick Password or JWT, turn SSL on so the coordinator accepts the credentials.
+
+## Catalogs, schemas, and tables
+
+A Trino connection is scoped to a catalog and schema, but every query can name objects in full as `catalog.schema.table`. TablePro shows catalogs from `SHOW CATALOGS`, schemas from `SHOW SCHEMAS`, and tables and columns from each catalog's `information_schema`. Expand a catalog to see its schemas, then a schema to see its tables.
+
+Identifiers are quoted with double quotes. Results page with standard `LIMIT` and `OFFSET`.
+
+## Types
+
+Trino's type system maps to TablePro's grid as follows:
+
+- Numbers keep full precision. `bigint` and `decimal` are read as exact text, not floating point.
+- `varbinary` is shown as hex.
+- `array`, `map`, and `row` are shown as JSON.
+- `json` opens in the JSON viewer.
+- `timestamp`, `time`, and their `with time zone` forms keep the value the server returned.
+
+## Writes
+
+The first release is read-focused. `SELECT` and schema browsing work everywhere. `INSERT`, `UPDATE`, `DELETE`, and DDL run through the same path, but whether they succeed depends on the connected catalog. Many Trino connectors are read-only or support only part of SQL, so a valid statement can still return `NOT_SUPPORTED` from the connector.
+
+## Authentication
+
+- **Username & Password** sends HTTP Basic auth. Use it for LDAP or password-file authentication. Requires TLS.
+- **JWT Access Token** sends the token as a bearer credential. Requires TLS.
+
+Kerberos and OAuth 2.0 are not yet supported.
+
+## Troubleshooting
+
+- **Cannot reach the coordinator.** Confirm the host and that the coordinator port is open. The default is `8080` for HTTP and `8443` for HTTPS.
+- **Authentication failed.** Password and JWT auth need TLS. Turn SSL on and confirm the credentials.
+- **A write fails with NOT_SUPPORTED.** The connected catalog's connector does not support that operation. Check the connector's documentation for what it allows.

@@ -183,6 +183,11 @@ jobs:
               DISPLAY_NAME="Teradata Driver"; SUMMARY="Teradata Vantage driver via a native Swift TD2 client"
               DB_TYPE_IDS='["Teradata"]'; ICON="teradata-icon"; BUNDLE_NAME="TeradataDriver"
               CATEGORY="database-driver"; HOMEPAGE="https://docs.tablepro.app/databases/teradata" ;;
+            trino)
+              TARGET="TrinoDriverPlugin"; BUNDLE_ID="com.TablePro.TrinoDriverPlugin"
+              DISPLAY_NAME="Trino Driver"; SUMMARY="Trino distributed SQL engine driver via the REST client protocol"
+              DB_TYPE_IDS='["Trino"]'; ICON="trino-icon"; BUNDLE_NAME="TrinoDriverPlugin"
+              CATEGORY="database-driver"; HOMEPAGE="https://docs.tablepro.app/databases/trino" ;;
             mongodb)
               TARGET="MongoDBDriver"; BUNDLE_ID="com.TablePro.MongoDBDriver"
               DISPLAY_NAME="MongoDB Driver"; SUMMARY="MongoDB document database driver via libmongoc"

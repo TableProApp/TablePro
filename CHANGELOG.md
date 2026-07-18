@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Trino support through a downloadable native Swift driver. Connect to a Trino cluster over its HTTP client protocol, browse catalogs, schemas, tables, and columns, and run SQL. Authenticate with a username and password or a JWT access token. (#1906)
+
 ## [0.58.0] - 2026-07-18
 
 ### Added

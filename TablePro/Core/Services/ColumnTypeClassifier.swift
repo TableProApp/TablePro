@@ -63,6 +63,9 @@ struct ColumnTypeClassifier {
     // MARK: - Pattern Fallback
 
     private func classifyByPattern(upper: String, rawTypeName: String) -> ColumnType {
+        if upper == "ARRAY" || upper == "MAP" || upper == "ROW" {
+            return .json(rawType: rawTypeName)
+        }
         if upper.contains("BOOL") {
             return .boolean(rawType: rawTypeName)
         }
@@ -73,6 +76,9 @@ struct ColumnTypeClassifier {
             return .integer(rawType: rawTypeName)
         }
         if upper.hasPrefix("TIMESTAMP") {
+            return .timestamp(rawType: rawTypeName)
+        }
+        if upper.hasPrefix("TIME") {
             return .timestamp(rawType: rawTypeName)
         }
         if upper.hasSuffix("TEXT") || upper.hasSuffix("CHAR") {

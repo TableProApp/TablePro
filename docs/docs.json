@@ -89,7 +89,7 @@
               },
               {
                 "group": "Analytics",
-                "pages": ["databases/clickhouse", "databases/teradata"]
+                "pages": ["databases/clickhouse", "databases/teradata", "databases/trino"]
               }
             ]
           },

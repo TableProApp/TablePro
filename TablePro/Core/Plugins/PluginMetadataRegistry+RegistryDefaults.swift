@@ -316,6 +316,117 @@ extension PluginMetadataRegistry {
                     tagline: String(localized: "Teradata Vantage data warehouse")
                 )
             )),
+            ("Trino", PluginMetadataSnapshot(
+                displayName: "Trino", iconName: "trino-icon", defaultPort: 8_080,
+                requiresAuthentication: false, supportsForeignKeys: false, supportsSchemaEditing: false,
+                isDownloadable: true, primaryUrlScheme: "trino", parameterStyle: .questionMark,
+                navigationModel: .standard, explainVariants: [], pathFieldRole: .database,
+                supportsHealthMonitor: true, urlSchemes: ["trino"],
+                postConnectActions: [.selectSchemaFromLastSession],
+                brandColorHex: "#DD5F3B",
+                queryLanguageName: "SQL", editorLanguage: .sql,
+                connectionMode: .network, supportsDatabaseSwitching: true,
+                supportsColumnReorder: false,
+                capabilities: PluginMetadataSnapshot.CapabilityFlags(
+                    supportsSchemaSwitching: true,
+                    supportsImport: false,
+                    supportsExport: true,
+                    supportsSSH: true,
+                    supportsSSL: true,
+                    supportsCascadeDrop: false,
+                    supportsForeignKeyDisable: false,
+                    supportsReadOnlyMode: true,
+                    supportsQueryProgress: false,
+                    requiresReconnectForDatabaseSwitch: false,
+                    supportsDropDatabase: false,
+                    supportsRenameColumn: false,
+                    defaultSSLMode: .disabled
+                ),
+                schema: PluginMetadataSnapshot.SchemaInfo(
+                    defaultSchemaName: "",
+                    defaultGroupName: "default",
+                    tableEntityName: "Tables",
+                    containerEntityName: "Catalog",
+                    defaultPrimaryKeyColumn: nil,
+                    immutableColumns: [],
+                    systemDatabaseNames: [],
+                    systemSchemaNames: ["information_schema"],
+                    fileExtensions: [],
+                    databaseGroupingStrategy: .hierarchicalSchema,
+                    structureColumnFields: [.name, .type, .nullable, .defaultValue]
+                ),
+                editor: PluginMetadataSnapshot.EditorConfig(
+                    sqlDialect: SQLDialectDescriptor(
+                        identifierQuote: "\"",
+                        keywords: [
+                            "SELECT", "FROM", "WHERE", "GROUP", "BY", "HAVING", "ORDER", "LIMIT", "OFFSET",
+                            "JOIN", "INNER", "LEFT", "RIGHT", "FULL", "CROSS", "ON", "USING", "AND", "OR", "NOT",
+                            "IN", "LIKE", "BETWEEN", "AS", "DISTINCT", "UNION", "INTERSECT", "EXCEPT", "WITH",
+                            "INSERT", "INTO", "UPDATE", "SET", "DELETE", "CREATE", "ALTER", "DROP", "TABLE",
+                            "VIEW", "SCHEMA", "CATALOG", "CASE", "WHEN", "THEN", "ELSE", "END", "CAST", "TRY_CAST",
+                            "SHOW", "CATALOGS", "SCHEMAS", "TABLES", "COLUMNS", "DESCRIBE", "EXPLAIN", "ANALYZE",
+                            "USE", "UNNEST", "OVER", "PARTITION", "QUALIFY",
+                        ],
+                        functions: [
+                            "COUNT", "SUM", "AVG", "MIN", "MAX", "ARRAY_AGG", "APPROX_DISTINCT", "CARDINALITY",
+                            "ELEMENT_AT", "JSON_EXTRACT", "JSON_EXTRACT_SCALAR", "REGEXP_LIKE", "REGEXP_REPLACE",
+                            "SUBSTR", "LENGTH", "LOWER", "UPPER", "TRIM", "SPLIT", "CONCAT", "COALESCE",
+                            "DATE_TRUNC", "DATE_DIFF", "DATE_FORMAT", "FROM_UNIXTIME", "TO_UNIXTIME",
+                            "ROW_NUMBER", "RANK", "DENSE_RANK", "LAG", "LEAD",
+                        ],
+                        dataTypes: [
+                            "BOOLEAN", "TINYINT", "SMALLINT", "INTEGER", "BIGINT", "REAL", "DOUBLE", "DECIMAL",
+                            "VARCHAR", "CHAR", "VARBINARY", "JSON", "DATE", "TIME", "TIMESTAMP", "INTERVAL",
+                            "ARRAY", "MAP", "ROW", "IPADDRESS", "UUID",
+                        ],
+                        regexSyntax: .regexpLike,
+                        booleanLiteralStyle: .truefalse,
+                        likeEscapeStyle: .explicit,
+                        paginationStyle: .limit
+                    ),
+                    statementCompletions: [],
+                    columnTypesByCategory: [
+                        "Boolean": ["boolean"],
+                        "Integer": ["tinyint", "smallint", "integer", "bigint"],
+                        "Floating": ["real", "double", "decimal"],
+                        "String": ["varchar", "char"],
+                        "Binary": ["varbinary"],
+                        "Date/Time": ["date", "time", "timestamp"],
+                        "Complex": ["array", "map", "row", "json"],
+                    ]
+                ),
+                connection: PluginMetadataSnapshot.ConnectionConfig(
+                    additionalConnectionFields: [
+                        ConnectionField(
+                            id: "trinoAuthMethod",
+                            label: String(localized: "Auth Method"),
+                            defaultValue: "password",
+                            fieldType: .dropdown(options: [
+                                .init(value: "password", label: "Username & Password"),
+                                .init(value: "jwt", label: "JWT Access Token"),
+                            ]),
+                            section: .authentication
+                        ),
+                        ConnectionField(
+                            id: "trinoJwtToken",
+                            label: String(localized: "Access Token"),
+                            placeholder: "JWT bearer token",
+                            fieldType: .secure,
+                            section: .authentication,
+                            hidesPassword: true,
+                            visibleWhen: FieldVisibilityRule(fieldId: "trinoAuthMethod", values: ["jwt"])
+                        ),
+                        ConnectionField(
+                            id: "trinoSchema",
+                            label: String(localized: "Schema"),
+                            placeholder: "Default schema (optional)",
+                            section: .connection
+                        ),
+                    ],
+                    category: .analytical,
+                    tagline: String(localized: "Distributed SQL query engine for data lakes")
+                )
+            )),
             ("Oracle", PluginMetadataSnapshot(
                 displayName: "Oracle", iconName: "oracle-icon", defaultPort: 1_521,
                 requiresAuthentication: true, supportsForeignKeys: true, supportsSchemaEditing: true,

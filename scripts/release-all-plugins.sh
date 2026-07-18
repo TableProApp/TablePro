@@ -42,6 +42,7 @@ PLUGINS=(
     elasticsearch
     surrealdb
     teradata
+    trino
 )
 
 BUNDLED_PLUGINS=(
