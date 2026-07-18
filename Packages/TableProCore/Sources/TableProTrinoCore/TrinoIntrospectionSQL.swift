@@ -38,7 +38,7 @@ public enum TrinoIntrospectionSQL {
 
     public static func listColumns(catalog: String, schema: String, table: String) -> String {
         """
-        SELECT column_name, data_type, is_nullable, column_default, ordinal_position \
+        SELECT column_name, data_type, is_nullable, column_default, comment, ordinal_position \
         FROM \(quoteIdentifier(catalog)).information_schema.columns \
         WHERE table_schema = \(quoteLiteral(schema)) AND table_name = \(quoteLiteral(table)) \
         ORDER BY ordinal_position
@@ -47,17 +47,29 @@ public enum TrinoIntrospectionSQL {
 
     public static func listAllColumns(catalog: String, schema: String) -> String {
         """
-        SELECT table_name, column_name, data_type, is_nullable, column_default, ordinal_position \
+        SELECT table_name, column_name, data_type, is_nullable, column_default, comment, ordinal_position \
         FROM \(quoteIdentifier(catalog)).information_schema.columns \
         WHERE table_schema = \(quoteLiteral(schema)) ORDER BY table_name, ordinal_position
         """
     }
 
-    public static func approximateRowCount(catalog: String, schema: String, table: String) -> String {
+    public static func tableComment(catalog: String, schema: String, table: String) -> String {
         """
-        SELECT row_count FROM \(quoteIdentifier(catalog)).information_schema.tables \
-        WHERE table_schema = \(quoteLiteral(schema)) AND table_name = \(quoteLiteral(table))
+        SELECT comment FROM system.metadata.table_comments \
+        WHERE catalog_name = \(quoteLiteral(catalog)) AND schema_name = \(quoteLiteral(schema)) \
+        AND table_name = \(quoteLiteral(table))
         """
+    }
+
+    public static func listMaterializedViews(catalog: String, schema: String) -> String {
+        """
+        SELECT name FROM system.metadata.materialized_views \
+        WHERE catalog_name = \(quoteLiteral(catalog)) AND schema_name = \(quoteLiteral(schema))
+        """
+    }
+
+    public static func approximateRowCount(catalog: String?, schema: String?, table: String) -> String {
+        "SHOW STATS FOR \(qualifiedName(catalog: catalog, schema: schema, table: table))"
     }
 
     public static func showCreateTable(catalog: String?, schema: String?, table: String) -> String {

@@ -43,7 +43,23 @@ final class TrinoIntrospectionSQLTests: XCTestCase {
         XCTAssertTrue(sql.contains("\"hive\".information_schema.columns"))
         XCTAssertTrue(sql.contains("table_schema = 'sales'"))
         XCTAssertTrue(sql.contains("table_name = 'orders'"))
+        XCTAssertTrue(sql.contains("comment"))
         XCTAssertTrue(sql.contains("ORDER BY ordinal_position"))
+    }
+
+    func testTableCommentQueriesSystemMetadata() {
+        let sql = TrinoIntrospectionSQL.tableComment(catalog: "hive", schema: "sales", table: "orders")
+        XCTAssertTrue(sql.contains("system.metadata.table_comments"))
+        XCTAssertTrue(sql.contains("catalog_name = 'hive'"))
+        XCTAssertTrue(sql.contains("schema_name = 'sales'"))
+        XCTAssertTrue(sql.contains("table_name = 'orders'"))
+    }
+
+    func testListMaterializedViewsQueriesSystemMetadata() {
+        let sql = TrinoIntrospectionSQL.listMaterializedViews(catalog: "hive", schema: "sales")
+        XCTAssertTrue(sql.contains("system.metadata.materialized_views"))
+        XCTAssertTrue(sql.contains("catalog_name = 'hive'"))
+        XCTAssertTrue(sql.contains("schema_name = 'sales'"))
     }
 
     func testShowCreateTableAndView() {

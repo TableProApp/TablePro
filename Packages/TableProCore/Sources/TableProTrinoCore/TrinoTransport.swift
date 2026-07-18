@@ -1,4 +1,5 @@
 import Foundation
+import Security
 
 public struct TrinoHeaderFields: Sendable, Equatable {
     private let storage: [String: String]
@@ -76,15 +77,13 @@ public protocol TrinoTransport: Sendable {
     func send(_ request: TrinoHTTPRequest) async throws -> TrinoHTTPResponse
 }
 
-public final class URLSessionTrinoTransport: NSObject, TrinoTransport, URLSessionDelegate, @unchecked Sendable {
-    private let verifyTLS: Bool
+public final class URLSessionTrinoTransport: NSObject, TrinoTransport, @unchecked Sendable {
     private let session: URLSession
 
-    public init(verifyTLS: Bool) {
-        self.verifyTLS = verifyTLS
+    public init(tls: TrinoTLSOptions) {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
-        let delegateProxy = TLSDelegate(verifyTLS: verifyTLS)
+        let delegateProxy = TrinoTLSDelegate(tls: tls)
         self.session = URLSession(configuration: configuration, delegate: delegateProxy, delegateQueue: nil)
         super.init()
     }
@@ -129,11 +128,11 @@ public final class URLSessionTrinoTransport: NSObject, TrinoTransport, URLSessio
     }
 }
 
-private final class TLSDelegate: NSObject, URLSessionDelegate {
-    private let verifyTLS: Bool
+private final class TrinoTLSDelegate: NSObject, URLSessionDelegate {
+    private let tls: TrinoTLSOptions
 
-    init(verifyTLS: Bool) {
-        self.verifyTLS = verifyTLS
+    init(tls: TrinoTLSOptions) {
+        self.tls = tls
     }
 
     func urlSession(
@@ -141,12 +140,38 @@ private final class TLSDelegate: NSObject, URLSessionDelegate {
         didReceive challenge: URLAuthenticationChallenge,
         completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
     ) {
-        guard !verifyTLS,
-              challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
-              let trust = challenge.protectionSpace.serverTrust else {
+        guard challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
+              let serverTrust = challenge.protectionSpace.serverTrust else {
             completionHandler(.performDefaultHandling, nil)
             return
         }
-        completionHandler(.useCredential, URLCredential(trust: trust))
+
+        if tls.mode == .insecure {
+            completionHandler(.useCredential, URLCredential(trust: serverTrust))
+            return
+        }
+
+        if !tls.caCertificatePath.isEmpty {
+            guard let caData = try? Data(contentsOf: URL(fileURLWithPath: tls.caCertificatePath)),
+                  let caCert = SecCertificateCreateWithData(nil, caData as CFData) else {
+                completionHandler(.cancelAuthenticationChallenge, nil)
+                return
+            }
+            SecTrustSetAnchorCertificates(serverTrust, [caCert] as CFArray)
+            SecTrustSetAnchorCertificatesOnly(serverTrust, true)
+        } else if tls.mode == .full {
+            completionHandler(.performDefaultHandling, nil)
+            return
+        }
+
+        if tls.mode == .caOnly {
+            SecTrustSetPolicies(serverTrust, SecPolicyCreateBasicX509())
+        }
+
+        if SecTrustEvaluateWithError(serverTrust, nil) {
+            completionHandler(.useCredential, URLCredential(trust: serverTrust))
+        } else {
+            completionHandler(.cancelAuthenticationChallenge, nil)
+        }
     }
 }

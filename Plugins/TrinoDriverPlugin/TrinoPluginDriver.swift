@@ -10,6 +10,7 @@ final class TrinoPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private let lock = NSLock()
     private var _client: TrinoStatementClient?
     private var _serverVersion: String?
+    private var _columnTypes: [String: [String: String]] = [:]
 
     static let logger = Logger(subsystem: "com.TablePro", category: "TrinoPluginDriver")
 
@@ -23,7 +24,15 @@ final class TrinoPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     var capabilities: PluginCapabilities {
-        [.multiSchema, .cancelQuery]
+        [.multiSchema, .cancelQuery, .materializedViews]
+    }
+
+    func cacheColumnTypes(_ types: [String: String], key: String) {
+        lock.withLock { _columnTypes[key] = types }
+    }
+
+    func cachedColumnTypes(key: String) -> [String: String] {
+        lock.withLock { _columnTypes[key] } ?? [:]
     }
 
     var supportsSchemas: Bool { true }
@@ -36,7 +45,7 @@ final class TrinoPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func connect() async throws {
-        let transport = URLSessionTrinoTransport(verifyTLS: clientConfig.verifyTLS)
+        let transport = URLSessionTrinoTransport(tls: clientConfig.tls)
         let client = TrinoStatementClient(transport: transport, config: clientConfig, session: session)
         lock.withLock { _client = client }
 
@@ -63,8 +72,55 @@ final class TrinoPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     func execute(query: String) async throws -> PluginQueryResult {
         guard let client else { throw TrinoError.notConnected }
         let start = Date()
-        let result = try await client.execute(query)
-        return pluginResult(result, executionTime: Date().timeIntervalSince(start))
+
+        if !query.contains(";") {
+            let result = try await client.execute(query)
+            return pluginResult(result, executionTime: Date().timeIntervalSince(start))
+        }
+
+        let statements = TrinoStatementSplitter.split(query)
+        guard !statements.isEmpty else {
+            return pluginResult(TrinoResultSet(columns: [], rows: []), executionTime: 0)
+        }
+        var last = TrinoResultSet(columns: [], rows: [])
+        for statement in statements {
+            last = try await client.execute(statement)
+        }
+        return pluginResult(last, executionTime: Date().timeIntervalSince(start))
+    }
+
+    func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        let statement = query.contains(";") ? (TrinoStatementSplitter.split(query).last ?? query) : query
+        return AsyncThrowingStream { continuation in
+            let driver = self
+            Task {
+                guard let client = driver.client else {
+                    continuation.finish(throwing: TrinoError.notConnected)
+                    return
+                }
+                do {
+                    var headerSent = false
+                    for try await element in client.executeStreamed(statement) {
+                        switch element {
+                        case .columns(let columns):
+                            continuation.yield(.header(PluginStreamHeader(
+                                columns: columns.map(\.name),
+                                columnTypeNames: columns.map(\.typeName)
+                            )))
+                            headerSent = true
+                        case .rows(let page):
+                            continuation.yield(.rows(page.map { row in row.map(Self.cellValue) }))
+                        }
+                    }
+                    if !headerSent {
+                        continuation.yield(.header(PluginStreamHeader(columns: [], columnTypeNames: [])))
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+        }
     }
 
     private func pluginResult(_ result: TrinoResultSet, executionTime: TimeInterval) -> PluginQueryResult {
@@ -116,10 +172,11 @@ final class TrinoPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             host: config.host.isEmpty ? "localhost" : config.host,
             port: port,
             useTLS: useTLS,
-            verifyTLS: !useTLS || config.ssl.verifiesCertificate,
+            tls: TrinoSSLMapping.tlsOptions(for: config.ssl),
             user: config.username,
             catalog: config.database.isEmpty ? nil : config.database,
             schema: trimmedField(config.additionalFields["trinoSchema"]),
+            timeZone: trimmedField(config.additionalFields["trinoTimeZone"]),
             auth: resolveAuth(config)
         )
     }

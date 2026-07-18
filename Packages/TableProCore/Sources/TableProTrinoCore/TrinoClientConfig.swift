@@ -6,11 +6,30 @@ public enum TrinoAuth: Sendable, Equatable {
     case jwt(token: String)
 }
 
+public struct TrinoTLSOptions: Sendable, Equatable {
+    public enum VerificationMode: Sendable, Equatable {
+        case full
+        case caOnly
+        case insecure
+    }
+
+    public var mode: VerificationMode
+    public var caCertificatePath: String
+
+    public init(mode: VerificationMode = .full, caCertificatePath: String = "") {
+        self.mode = mode
+        self.caCertificatePath = caCertificatePath
+    }
+
+    public static let systemDefault = TrinoTLSOptions(mode: .full)
+    public static let insecure = TrinoTLSOptions(mode: .insecure)
+}
+
 public struct TrinoClientConfig: Sendable {
     public var host: String
     public var port: Int
     public var useTLS: Bool
-    public var verifyTLS: Bool
+    public var tls: TrinoTLSOptions
     public var user: String
     public var source: String
     public var catalog: String?
@@ -25,7 +44,7 @@ public struct TrinoClientConfig: Sendable {
         host: String,
         port: Int = 8_080,
         useTLS: Bool = false,
-        verifyTLS: Bool = true,
+        tls: TrinoTLSOptions = .systemDefault,
         user: String,
         source: String = "TablePro",
         catalog: String? = nil,
@@ -39,7 +58,7 @@ public struct TrinoClientConfig: Sendable {
         self.host = host
         self.port = port
         self.useTLS = useTLS
-        self.verifyTLS = verifyTLS
+        self.tls = tls
         self.user = user
         self.source = source
         self.catalog = catalog

@@ -1,6 +1,11 @@
 import Foundation
 import os
 
+public enum TrinoStreamElement: Sendable {
+    case columns([TrinoColumnDescriptor])
+    case rows([[TrinoValue]])
+}
+
 public final class TrinoStatementClient: @unchecked Sendable {
     private let transport: TrinoTransport
     private let config: TrinoClientConfig
@@ -19,6 +24,61 @@ public final class TrinoStatementClient: @unchecked Sendable {
     }
 
     public func execute(_ sql: String) async throws -> TrinoResultSet {
+        var columns: [TrinoColumn] = []
+        var rows: [[TrinoValue]] = []
+        let outcome = try await runStatement(
+            sql,
+            onColumns: { columns = $0 },
+            onPage: { rows.append(contentsOf: $0) }
+        )
+        return TrinoResultSet(
+            columns: descriptors(from: columns),
+            rows: rows,
+            updateType: outcome.updateType,
+            updateCount: outcome.updateCount,
+            queryId: outcome.queryId
+        )
+    }
+
+    public func executeStreamed(_ sql: String) -> AsyncThrowingStream<TrinoStreamElement, Error> {
+        AsyncThrowingStream { continuation in
+            let client = self
+            Task {
+                do {
+                    _ = try await client.runStatement(
+                        sql,
+                        onColumns: { continuation.yield(.columns(client.descriptors(from: $0))) },
+                        onPage: { continuation.yield(.rows($0)) }
+                    )
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+        }
+    }
+
+    public func cancel() {
+        let uri = lock.withLock { () -> String? in
+            _cancelled = true
+            return _currentNextUri
+        }
+        if let uri {
+            fireDelete(uri)
+        }
+    }
+
+    private struct StatementOutcome {
+        let updateType: String?
+        let updateCount: Int?
+        let queryId: String
+    }
+
+    private func runStatement(
+        _ sql: String,
+        onColumns: ([TrinoColumn]) -> Void,
+        onPage: ([[TrinoValue]]) -> Void
+    ) async throws -> StatementOutcome {
         lock.withLock {
             _cancelled = false
             _currentNextUri = nil
@@ -27,8 +87,9 @@ public final class TrinoStatementClient: @unchecked Sendable {
             throw TrinoError.invalidConfiguration("Invalid Trino server URL")
         }
 
-        let initialRequest = makeRequest(method: .post, url: statementURL, headers: initialHeaders(), body: Data(sql.utf8))
-        var httpResponse = try await sendWithRetry(initialRequest)
+        var httpResponse = try await sendWithRetry(
+            makeRequest(method: .post, url: statementURL, headers: initialHeaders(), body: Data(sql.utf8))
+        )
         var results = try decode(httpResponse)
         session.apply(responseHeaders: httpResponse.headers, protocolHeaders: config.protocolHeaders)
         if let error = results.error {
@@ -36,8 +97,12 @@ public final class TrinoStatementClient: @unchecked Sendable {
         }
 
         var columns = results.columns
-        var rows: [[TrinoValue]] = []
-        appendRows(from: results, columns: columns, into: &rows)
+        var columnsEmitted = false
+        if let columns {
+            onColumns(columns)
+            columnsEmitted = true
+        }
+        emitRows(results, columns: columns, onPage: onPage)
         var updateType = results.updateType
         var updateCount = results.updateCount
         let queryId = results.id
@@ -58,7 +123,11 @@ public final class TrinoStatementClient: @unchecked Sendable {
             if columns == nil {
                 columns = results.columns
             }
-            appendRows(from: results, columns: columns, into: &rows)
+            if !columnsEmitted, let columns {
+                onColumns(columns)
+                columnsEmitted = true
+            }
+            emitRows(results, columns: columns, onPage: onPage)
             if let type = results.updateType {
                 updateType = type
             }
@@ -69,27 +138,13 @@ public final class TrinoStatementClient: @unchecked Sendable {
         }
 
         lock.withLock { _currentNextUri = nil }
-        return TrinoResultSet(
-            columns: descriptors(from: columns),
-            rows: rows,
-            updateType: updateType,
-            updateCount: updateCount,
-            queryId: queryId
-        )
+        return StatementOutcome(updateType: updateType, updateCount: updateCount, queryId: queryId)
     }
 
-    public func cancel() {
-        let uri = lock.withLock { () -> String? in
-            _cancelled = true
-            return _currentNextUri
-        }
-        if let uri {
-            fireDelete(uri)
-        }
-    }
-
-    private func appendRows(from results: TrinoQueryResults, columns: [TrinoColumn]?, into rows: inout [[TrinoValue]]) {
-        guard let data = results.data, let columns else { return }
+    private func emitRows(_ results: TrinoQueryResults, columns: [TrinoColumn]?, onPage: ([[TrinoValue]]) -> Void) {
+        guard let data = results.data, let columns, !data.isEmpty else { return }
+        var page: [[TrinoValue]] = []
+        page.reserveCapacity(data.count)
         for row in data {
             var decoded: [TrinoValue] = []
             decoded.reserveCapacity(columns.count)
@@ -97,13 +152,13 @@ public final class TrinoStatementClient: @unchecked Sendable {
                 let category = index < columns.count ? columns[index].category : .scalar
                 decoded.append(TrinoValueDecoder.decode(value, category: category))
             }
-            rows.append(decoded)
+            page.append(decoded)
         }
+        onPage(page)
     }
 
-    private func descriptors(from columns: [TrinoColumn]?) -> [TrinoColumnDescriptor] {
-        guard let columns else { return [] }
-        return columns.map {
+    private func descriptors(from columns: [TrinoColumn]) -> [TrinoColumnDescriptor] {
+        columns.map {
             TrinoColumnDescriptor(name: $0.name, typeName: $0.type, category: $0.category)
         }
     }

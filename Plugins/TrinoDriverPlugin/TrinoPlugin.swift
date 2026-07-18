@@ -20,7 +20,7 @@ final class TrinoPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let queryLanguageName = "SQL"
     static let editorLanguage: EditorLanguage = .sql
     static let supportsForeignKeys = false
-    static let supportsSchemaEditing = false
+    static let supportsSchemaEditing = true
     static let supportsDatabaseSwitching = true
     static let supportsSchemaSwitching = true
     static let requiresReconnectForDatabaseSwitch = false
@@ -38,13 +38,13 @@ final class TrinoPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let supportsExport = true
     static let supportsReadOnlyMode = true
     static let supportsForeignKeyDisable = false
-    static let supportsAddColumn = false
-    static let supportsModifyColumn = false
-    static let supportsDropColumn = false
+    static let supportsAddColumn = true
+    static let supportsModifyColumn = true
+    static let supportsDropColumn = true
     static let supportsAddIndex = false
     static let supportsDropIndex = false
     static let supportsModifyPrimaryKey = false
-    static let structureColumnFields: [StructureColumnField] = [.name, .type, .nullable, .defaultValue]
+    static let structureColumnFields: [StructureColumnField] = [.name, .type, .nullable, .defaultValue, .comment]
     static let postConnectActions: [PostConnectAction] = [.selectSchemaFromLastSession]
 
     static let columnTypesByCategory: [String: [String]] = [
@@ -83,6 +83,12 @@ final class TrinoPlugin: NSObject, TableProPlugin, DriverPlugin {
             label: String(localized: "Schema"),
             placeholder: "Default schema (optional)",
             section: .connection
+        ),
+        ConnectionField(
+            id: "trinoTimeZone",
+            label: String(localized: "Time Zone"),
+            placeholder: "Optional (e.g. America/New_York)",
+            section: .advanced
         ),
     ]
 
@@ -133,6 +139,9 @@ final class TrinoPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let explainVariants: [ExplainVariant] = [
         ExplainVariant(id: "logical", label: "Explain (Logical)", sqlPrefix: "EXPLAIN"),
         ExplainVariant(id: "distributed", label: "Explain (Distributed)", sqlPrefix: "EXPLAIN (TYPE DISTRIBUTED)"),
+        ExplainVariant(id: "io", label: "Explain (IO)", sqlPrefix: "EXPLAIN (TYPE IO)"),
+        ExplainVariant(id: "validate", label: "Explain (Validate)", sqlPrefix: "EXPLAIN (TYPE VALIDATE)"),
+        ExplainVariant(id: "analyze", label: "Explain Analyze", sqlPrefix: "EXPLAIN ANALYZE"),
     ]
 
     func createDriver(config: DriverConnectionConfig) -> any PluginDatabaseDriver {

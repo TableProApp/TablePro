@@ -318,9 +318,17 @@ extension PluginMetadataRegistry {
             )),
             ("Trino", PluginMetadataSnapshot(
                 displayName: "Trino", iconName: "trino-icon", defaultPort: 8_080,
-                requiresAuthentication: false, supportsForeignKeys: false, supportsSchemaEditing: false,
+                requiresAuthentication: false, supportsForeignKeys: false, supportsSchemaEditing: true,
                 isDownloadable: true, primaryUrlScheme: "trino", parameterStyle: .questionMark,
-                navigationModel: .standard, explainVariants: [], pathFieldRole: .database,
+                navigationModel: .standard,
+                explainVariants: [
+                    ExplainVariant(id: "logical", label: "Explain (Logical)", sqlPrefix: "EXPLAIN"),
+                    ExplainVariant(id: "distributed", label: "Explain (Distributed)", sqlPrefix: "EXPLAIN (TYPE DISTRIBUTED)"),
+                    ExplainVariant(id: "io", label: "Explain (IO)", sqlPrefix: "EXPLAIN (TYPE IO)"),
+                    ExplainVariant(id: "validate", label: "Explain (Validate)", sqlPrefix: "EXPLAIN (TYPE VALIDATE)"),
+                    ExplainVariant(id: "analyze", label: "Explain Analyze", sqlPrefix: "EXPLAIN ANALYZE"),
+                ],
+                pathFieldRole: .database,
                 supportsHealthMonitor: true, urlSchemes: ["trino"],
                 postConnectActions: [.selectSchemaFromLastSession],
                 brandColorHex: "#DD5F3B",
@@ -353,7 +361,7 @@ extension PluginMetadataRegistry {
                     systemSchemaNames: ["information_schema"],
                     fileExtensions: [],
                     databaseGroupingStrategy: .hierarchicalSchema,
-                    structureColumnFields: [.name, .type, .nullable, .defaultValue]
+                    structureColumnFields: [.name, .type, .nullable, .defaultValue, .comment]
                 ),
                 editor: PluginMetadataSnapshot.EditorConfig(
                     sqlDialect: SQLDialectDescriptor(
@@ -421,6 +429,12 @@ extension PluginMetadataRegistry {
                             label: String(localized: "Schema"),
                             placeholder: "Default schema (optional)",
                             section: .connection
+                        ),
+                        ConnectionField(
+                            id: "trinoTimeZone",
+                            label: String(localized: "Time Zone"),
+                            placeholder: "Optional (e.g. America/New_York)",
+                            section: .advanced
                         ),
                     ],
                     category: .analytical,
