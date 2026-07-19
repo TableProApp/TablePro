@@ -57,6 +57,9 @@ To reuse one SSH config across several connections, save it as a profile with **
   <Tab title="Keyboard Interactive">
     Sends your password through SSH's keyboard-interactive challenge-response. Use this when the server rejects plain password auth, which is common with PAM-based setups.
   </Tab>
+  <Tab title="None">
+    Sends no password or key. Use this when the server authenticates the connection itself, such as a [Tailscale SSH](https://tailscale.com/kb/1193/tailscale-ssh) host or a bastion configured for passwordless access. If the server still requires credentials, the connection fails with a message telling you to pick another method.
+  </Tab>
 </Tabs>
 
 ### Two-Factor Authentication (TOTP)

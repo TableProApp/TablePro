@@ -22,6 +22,9 @@ internal enum TransientConnectionFactory {
                 sshConfig.authMethod = .sshAgent
                 sshConfig.agentSocketPath = parsed.agentSocket ?? ""
             }
+            if parsed.sshNoAuth == true {
+                sshConfig.authMethod = .none
+            }
         }
 
         var sslConfig = SSLConfiguration()

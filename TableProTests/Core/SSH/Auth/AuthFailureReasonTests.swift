@@ -51,6 +51,15 @@ struct AuthFailureReasonTests {
         #expect(description.localizedCaseInsensitiveContains("agent"))
     }
 
+    @Test("Passwordless reason points at the server, not the user's credentials")
+    func passwordlessRejectedMessage() {
+        let error = SSHTunnelError.authenticationFailed(reason: .passwordlessRejected)
+        let description = error.errorDescription ?? ""
+
+        #expect(description.localizedCaseInsensitiveContains("passwordless"))
+        #expect(!description.localizedCaseInsensitiveContains("verification code"))
+    }
+
     @Test("Generic reason keeps the original wording for unknown cases")
     func genericMessage() {
         let error = SSHTunnelError.authenticationFailed(reason: .generic)
@@ -64,6 +73,7 @@ struct AuthFailureReasonTests {
             SSHTunnelError.authenticationFailed(reason: .verificationCode).errorDescription ?? "",
             SSHTunnelError.authenticationFailed(reason: .privateKey).errorDescription ?? "",
             SSHTunnelError.authenticationFailed(reason: .agentRejected).errorDescription ?? "",
+            SSHTunnelError.authenticationFailed(reason: .passwordlessRejected).errorDescription ?? "",
             SSHTunnelError.authenticationFailed(reason: .generic).errorDescription ?? ""
         ]
 

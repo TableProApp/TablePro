@@ -200,6 +200,42 @@ struct SSHConfigurationTests {
         #expect(config.enabled == true)
     }
 
+    @Test("None auth method is valid and round-trips through Codable")
+    func testNoneAuthRoundTrips() throws {
+        let config = SSHConfiguration(
+            enabled: true, host: "tailscale.example.com", username: "admin",
+            authMethod: .none
+        )
+        #expect(config.isValid == true)
+
+        let data = try JSONEncoder().encode(config)
+        let decoded = try JSONDecoder().decode(SSHConfiguration.self, from: data)
+        #expect(decoded.authMethod == .none)
+        #expect(decoded.host == "tailscale.example.com")
+    }
+
+    @Test("Unknown authMethod falls back to Password and preserves the tunnel config")
+    func testUnknownAuthMethodFallsBackToPassword() throws {
+        let jsonString = """
+        {
+            "enabled": true,
+            "host": "example.com",
+            "port": 2222,
+            "username": "admin",
+            "authMethod": "FutureMethodFromNewerApp",
+            "privateKeyPath": "",
+            "agentSocketPath": ""
+        }
+        """
+        let json = Data(jsonString.utf8)
+
+        let config = try JSONDecoder().decode(SSHConfiguration.self, from: json)
+        #expect(config.authMethod == .password)
+        #expect(config.host == "example.com")
+        #expect(config.port == 2_222)
+        #expect(config.enabled == true)
+    }
+
     @Test("Decoding ignores legacy useSSHConfig field")
     func testLegacyUseSSHConfigIgnored() throws {
         let jsonString = """

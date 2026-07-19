@@ -195,6 +195,10 @@ struct ConnectionURLFormatter {
             }
         }
 
+        if ssh.enabled && ssh.authMethod == .none {
+            params.append("sshNoAuth=true")
+        }
+
         if let sslParam = sslModeParam(connection.sslConfig.mode) {
             params.append("sslmode=\(sslParam)")
         }

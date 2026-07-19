@@ -202,6 +202,10 @@ struct ConnectionSSHTunnelView: View {
                     Text(String(localized: "Password is sent via keyboard-interactive challenge-response."))
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                } else if sshState.authMethod == .none {
+                    Text("No credentials are sent. Use this when the server handles authentication itself, such as a Tailscale SSH host.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 } else {
                     LabeledContent(String(localized: "Key File")) {
                         HStack {
