@@ -165,16 +165,8 @@ private struct AIChatBlockView: View {
     var body: some View {
         switch block.kind {
         case .text(let text):
-            if block.isStreaming {
-                Text(text)
-                    .font(.body)
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 8)
-            } else {
-                MarkdownView(source: text)
-                    .padding(.horizontal, 8)
-            }
+            MarkdownView(source: text, isStreaming: block.isStreaming)
+                .padding(.horizontal, 8)
         case .toolUse(let useBlock):
             AIChatToolUseBlockView(block: useBlock)
         case .toolResult(let resultBlock):

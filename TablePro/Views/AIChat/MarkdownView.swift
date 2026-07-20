@@ -4,6 +4,8 @@
 //
 //  Block-level markdown renderer backed by Foundation's AttributedString(markdown:)
 //  for inline formatting and native SwiftUI views for block layout.
+//  Supports progressive (streaming) sources with open fenced code blocks and
+//  throttled re-parses while the source is still growing.
 //
 
 import AppKit
@@ -11,16 +13,59 @@ import SwiftUI
 
 struct MarkdownView: View {
     let source: String
+    var isStreaming: Bool = false
+
     @State private var cache = MarkdownDocumentCache()
+    @State private var displaySource: String = ""
+    @State private var throttleTask: Task<Void, Never>?
 
     var body: some View {
-        let blocks = cache.blocks(for: source)
+        let blocks = cache.blocks(for: displaySource.isEmpty ? source : displaySource)
         VStack(alignment: .leading, spacing: 6) {
             ForEach(blocks) { block in
-                MarkdownBlockView(block: block)
+                MarkdownBlockView(block: block, prefersLightweightCode: isStreaming)
                     .equatable()
             }
         }
+        .onAppear {
+            displaySource = source
+        }
+        .onChange(of: source) { _, newValue in
+            scheduleDisplayUpdate(newValue)
+        }
+        .onChange(of: isStreaming) { _, streaming in
+            if !streaming {
+                flushDisplayUpdate(source)
+            }
+        }
+        .onDisappear {
+            throttleTask?.cancel()
+            throttleTask = nil
+        }
+    }
+
+    private func scheduleDisplayUpdate(_ newValue: String) {
+        if !isStreaming {
+            flushDisplayUpdate(newValue)
+            return
+        }
+        if displaySource.isEmpty {
+            displaySource = newValue
+            return
+        }
+        throttleTask?.cancel()
+        throttleTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(48))
+            guard !Task.isCancelled else { return }
+            displaySource = newValue
+            throttleTask = nil
+        }
+    }
+
+    private func flushDisplayUpdate(_ newValue: String) {
+        throttleTask?.cancel()
+        throttleTask = nil
+        displaySource = newValue
     }
 }
 
@@ -39,9 +84,10 @@ final class MarkdownDocumentCache {
 
 private struct MarkdownBlockView: View, Equatable {
     let block: MarkdownBlock
+    let prefersLightweightCode: Bool
 
     static func == (lhs: Self, rhs: Self) -> Bool {
-        lhs.block == rhs.block
+        lhs.block == rhs.block && lhs.prefersLightweightCode == rhs.prefersLightweightCode
     }
 
     var body: some View {
@@ -58,13 +104,21 @@ private struct MarkdownBlockView: View, Equatable {
                 .padding(.bottom, 2)
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
-        case .codeBlock(let code, let language):
-            AIChatCodeBlockView(code: code, language: language)
-                .equatable()
+        case .codeBlock(let code, let language, _):
+            AIChatCodeBlockView(
+                code: code,
+                language: language,
+                prefersLightweightRendering: prefersLightweightCode
+            )
+            .equatable()
         case .unorderedList(let items):
-            MarkdownListView(items: items, style: .unordered)
+            MarkdownListView(items: items, style: .unordered, prefersLightweightCode: prefersLightweightCode)
         case .orderedList(let start, let items):
-            MarkdownListView(items: items, style: .ordered(start: start))
+            MarkdownListView(
+                items: items,
+                style: .ordered(start: start),
+                prefersLightweightCode: prefersLightweightCode
+            )
         case .blockquote(let lines):
             MarkdownBlockquoteView(lines: lines)
         case .table(let headers, let alignments, let rows):
@@ -94,6 +148,7 @@ private struct MarkdownBlockView: View, Equatable {
 private struct MarkdownListView: View {
     let items: [MarkdownListItem]
     let style: ListStyle
+    let prefersLightweightCode: Bool
 
     enum ListStyle: Equatable {
         case unordered
@@ -113,7 +168,7 @@ private struct MarkdownListView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                         if !item.children.isEmpty {
                             ForEach(item.children) { child in
-                                MarkdownBlockView(block: child)
+                                MarkdownBlockView(block: child, prefersLightweightCode: prefersLightweightCode)
                                     .equatable()
                             }
                             .padding(.leading, 4)
@@ -238,7 +293,7 @@ struct MarkdownBlock: Identifiable, Equatable {
     enum Kind: Equatable {
         case paragraph(String)
         case header(level: Int, text: String)
-        case codeBlock(code: String, language: String?)
+        case codeBlock(code: String, language: String?, isClosed: Bool)
         case unorderedList([MarkdownListItem])
         case orderedList(start: Int, items: [MarkdownListItem])
         case blockquote(String)
@@ -359,21 +414,40 @@ enum MarkdownBlockParser {
     private static func parseFencedCodeBlock(_ lines: inout [String], index: Int) -> MarkdownBlock {
         let opener = lines.removeFirst()
         let trimmedOpener = opener.trimmingCharacters(in: .whitespaces)
-        let fence = trimmedOpener.hasPrefix("```") ? "```" : "~~~"
+        let fenceChar: Character = trimmedOpener.hasPrefix("`") ? "`" : "~"
+        let fenceLength = trimmedOpener.prefix(while: { $0 == fenceChar }).count
         let language: String? = {
-            let info = String(trimmedOpener.dropFirst(3)).trimmingCharacters(in: .whitespaces)
+            let info = String(trimmedOpener.dropFirst(fenceLength)).trimmingCharacters(in: .whitespaces)
             return info.isEmpty ? nil : info
         }()
         var bodyLines: [String] = []
+        var isClosed = false
         while let line = lines.first {
-            if line.trimmingCharacters(in: .whitespaces).hasPrefix(fence) {
+            let trimmedLine = line.trimmingCharacters(in: .whitespaces)
+            if isFencedCodeClose(trimmedLine, fenceChar: fenceChar, fenceLength: fenceLength) {
                 lines.removeFirst()
+                isClosed = true
                 break
             }
             bodyLines.append(line)
             lines.removeFirst()
         }
-        return MarkdownBlock(id: index, kind: .codeBlock(code: bodyLines.joined(separator: "\n"), language: language))
+        return MarkdownBlock(
+            id: index,
+            kind: .codeBlock(
+                code: bodyLines.joined(separator: "\n"),
+                language: language,
+                isClosed: isClosed
+            )
+        )
+    }
+
+    private static func isFencedCodeClose(_ trimmed: String, fenceChar: Character, fenceLength: Int) -> Bool {
+        guard !trimmed.isEmpty else { return false }
+        let run = trimmed.prefix(while: { $0 == fenceChar })
+        guard run.count >= fenceLength else { return false }
+        let rest = trimmed.dropFirst(run.count)
+        return rest.allSatisfy { $0.isWhitespace }
     }
 
     private static func parseBlockquote(_ lines: inout [String], index: Int) -> MarkdownBlock {

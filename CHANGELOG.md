@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - SSH tunnels can authenticate with no password or key, for hosts that handle SSH auth themselves like Tailscale SSH. Pick **None** as the SSH auth method. (#1907)
 
+### Changed
+
+- AI Chat renders Markdown while the assistant reply is still streaming, including open fenced code blocks, instead of waiting until the reply finishes.
+
 ## [0.58.0] - 2026-07-18
 
 ### Added

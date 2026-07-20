@@ -11,9 +11,12 @@ import SwiftUI
 struct AIChatCodeBlockView: View, Equatable {
     let code: String
     let language: String?
+    var prefersLightweightRendering: Bool = false
 
     static func == (lhs: AIChatCodeBlockView, rhs: AIChatCodeBlockView) -> Bool {
-        lhs.code == rhs.code && lhs.language == rhs.language
+        lhs.code == rhs.code
+            && lhs.language == rhs.language
+            && lhs.prefersLightweightRendering == rhs.prefersLightweightRendering
     }
 
     @State private var isCopied: Bool = false
@@ -26,6 +29,10 @@ struct AIChatCodeBlockView: View, Equatable {
         focusedActions ?? commandRegistry.current
     }
 
+    private var usesLightweightContent: Bool {
+        prefersLightweightRendering || !isEditorReady
+    }
+
     var body: some View {
         GroupBox {
             codeContent
@@ -33,7 +40,11 @@ struct AIChatCodeBlockView: View, Equatable {
             codeBlockHeader
         }
         .groupBoxStyle(CodeBlockGroupBoxStyle())
-        .task {
+        .task(id: prefersLightweightRendering) {
+            guard !prefersLightweightRendering else {
+                isEditorReady = false
+                return
+            }
             isEditorReady = true
         }
         .onDisappear {
@@ -92,7 +103,16 @@ struct AIChatCodeBlockView: View, Equatable {
 
     @ViewBuilder
     private var codeContent: some View {
-        if isEditorReady {
+        if usesLightweightContent {
+            Text(code.isEmpty ? " " : code)
+                .font(.system(.body, design: .monospaced))
+                .foregroundStyle(.primary)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(8)
+                .frame(minHeight: 32, alignment: .topLeading)
+                .background(Color(nsColor: .textBackgroundColor))
+        } else {
             SourceEditor(
                 .constant(code),
                 language: treeSitterLanguage,
@@ -100,9 +120,6 @@ struct AIChatCodeBlockView: View, Equatable {
                 state: $editorState
             )
             .frame(height: editorHeight)
-        } else {
-            Color(nsColor: .textBackgroundColor)
-                .frame(height: editorHeight)
         }
     }
 
