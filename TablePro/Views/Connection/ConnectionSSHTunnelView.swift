@@ -223,7 +223,7 @@ struct ConnectionSSHTunnelView: View {
                 }
             }
 
-            if sshState.authMethod != .none {
+            if sshState.authMethod.supportsTwoFactorAuthentication {
                 Section(String(localized: "Two-Factor Authentication")) {
                     Picker(String(localized: "TOTP"), selection: $sshState.totpMode) {
                         ForEach(TOTPMode.allCases) { mode in

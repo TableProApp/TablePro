@@ -75,7 +75,7 @@ struct SSHProfileEditorView: View {
                 serverSection
                 authenticationSection
 
-                if authMethod != .none {
+                if authMethod.supportsTwoFactorAuthentication {
                     totpSection
                 }
 

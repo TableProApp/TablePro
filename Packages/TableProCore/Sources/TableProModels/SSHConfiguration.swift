@@ -14,6 +14,7 @@ public struct SSHConfiguration: Codable, Hashable, Sendable {
         case privateKey
         case sshAgent
         case keyboardInteractive
+        case none
 
         public init(from decoder: Decoder) throws {
             let raw = try decoder.singleValueContainer().decode(String.self)
@@ -26,6 +27,8 @@ public struct SSHConfiguration: Codable, Hashable, Sendable {
                 self = .sshAgent
             case "keyboardInteractive", "Keyboard Interactive":
                 self = .keyboardInteractive
+            case "none", "None":
+                self = .none
             default:
                 self = .password
             }

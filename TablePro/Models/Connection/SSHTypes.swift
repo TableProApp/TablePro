@@ -33,6 +33,10 @@ enum SSHAuthMethod: String, CaseIterable, Identifiable, Codable {
         case .none: return "key.slash"
         }
     }
+
+    var supportsTwoFactorAuthentication: Bool {
+        self != .none
+    }
 }
 
 enum SSHAgentSocketOption: String, CaseIterable, Identifiable {

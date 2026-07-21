@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- SSH tunnels using the None auth method now work on iPhone and iPad, not just the Mac. A connection synced from the Mac with None auth no longer fails to connect. (#1912)
+
 ## [0.59.0] - 2026-07-21
 
 ### Added

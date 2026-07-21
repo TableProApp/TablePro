@@ -214,6 +214,7 @@ enum IOSConnectionImportService {
         case "privatekey", "publickey", "private key": return .privateKey
         case "sshagent", "agent", "ssh agent": return .sshAgent
         case "keyboardinteractive", "keyboard interactive": return .keyboardInteractive
+        case "none": return .none
         default: return .password
         }
     }
