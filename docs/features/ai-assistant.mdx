@@ -1,6 +1,6 @@
 ---
 title: AI Assistant
-description: "Built-in AI for SQL: chat with tool calling, inline suggestions, explain, optimize, and fix-error across 11 providers."
+description: "Built-in AI for SQL: chat with tool calling, inline suggestions, explain, optimize, and fix-error across 13 providers."
 ---
 
 # AI Assistant
@@ -16,7 +16,7 @@ Open **Settings** (`Cmd+,`) > **AI**. The **Enable AI Features** toggle at the t
   <img className="hidden dark:block" src="/images/ai-chat-settings-provider-dark.png" alt="AI settings" />
 </Frame>
 
-1. Click **Add Provider...** and pick a type: GitHub Copilot, ChatGPT, Cursor, Claude, OpenAI, OpenRouter, OpenCode Zen, Gemini, xAI, Ollama, or a custom OpenAI-compatible endpoint.
+1. Click **Add Provider...** and pick a type: GitHub Copilot, ChatGPT, Cursor, Claude, OpenAI, OpenRouter, OpenCode Zen, Gemini, xAI, Ollama, llama.cpp, MLX, or a custom OpenAI-compatible endpoint.
 2. Enter the API key, or sign in for Copilot, ChatGPT, Cursor, and xAI.
 3. Enter a model name, or pick one from the fetched list.
 4. Click **Test Connection**.
@@ -29,6 +29,7 @@ Provider notes:
 - **ChatGPT**: sign in with your ChatGPT account to use the Codex quota from Plus, Pro, Business, and Enterprise plans, no API key. **Import from Codex CLI** reuses an existing Codex login. Unofficial interface; may change.
 - **Cursor**: paste an API key from the Cursor dashboard, or leave it blank and click **Sign in with Cursor** (needs the Cursor CLI installed). Cursor runs as an agent, not a chat-completions endpoint. It cannot call TablePro's database tools, so Edit and Agent modes do not run queries through it.
 - **xAI**: paste an API key, or click **Sign in with xAI** to use a SuperGrok or X Premium+ subscription. Sign-in opens a Grok Build consent screen; this path is unofficial and may change. Preset models: Grok 4.5 and Grok 4.3.
+- **Ollama, llama.cpp, MLX**: local providers, no API key. Each preset fills in its default endpoint (`http://localhost:11434` for Ollama, `http://localhost:8080` for `llama-server` and `mlx_lm.server`); edit it if you moved the host or port. Start the server first, then **Test Connection** and pick a model from the fetched list. llama.cpp and MLX speak the OpenAI-compatible API; for tool calling, start `llama-server` with `--jinja`. For any other OpenAI-compatible server, use the custom endpoint.
 
 ## Chat
 
@@ -72,7 +73,7 @@ In Edit and Agent modes, each tool call appears as a card in the reply. Read-onl
 
 If the connection's safe-mode level is **Silent**, write tools auto-approve. If it is **Read Only**, they auto-deny. Destructive operations are the exception: `confirm_destructive_operation` always requires a per-call click. Silent mode does not auto-approve it, and **Always for this connection** is refused for it. The tool also requires the model to pass the verbatim phrase `I understand this is irreversible`.
 
-Provider support for tool calling: every provider except Cursor. Ollama and custom endpoints depend on the model.
+Provider support for tool calling: every provider except Cursor. Ollama, llama.cpp, MLX, and custom endpoints depend on the model.
 
 ### Attach Context with `@`
 

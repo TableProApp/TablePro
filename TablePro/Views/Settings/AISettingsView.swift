@@ -333,16 +333,12 @@ struct AISettingsView: View {
                 ? String(localized: "API key set")
                 : String(localized: "Not configured")
         case .none:
-            if provider.type == .ollama {
-                let endpoint = provider.endpoint.isEmpty ? provider.type.defaultEndpoint : provider.endpoint
-                if let host = URL(string: endpoint)?.host, host == "localhost" || host == "127.0.0.1" {
-                    return String(localized: "Local")
-                }
-                return endpoint
+            let endpoint = provider.endpoint.isEmpty ? provider.type.defaultEndpoint : provider.endpoint
+            guard !endpoint.isEmpty else { return String(localized: "Not configured") }
+            if let host = URL(string: endpoint)?.host, host == "localhost" || host == "127.0.0.1" {
+                return String(localized: "Local")
             }
-            return provider.endpoint.isEmpty
-                ? String(localized: "Not configured")
-                : provider.endpoint
+            return endpoint
         }
     }
 
