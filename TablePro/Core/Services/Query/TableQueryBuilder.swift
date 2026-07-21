@@ -215,7 +215,8 @@ struct TableQueryBuilder {
             return orderBy
         }
         guard dialect?.paginationStyle == .offsetFetch else { return nil }
-        return dialect?.offsetFetchOrderBy ?? "ORDER BY (SELECT NULL)"
+        let defaultOrderBy = dialect?.offsetFetchOrderBy ?? "ORDER BY (SELECT NULL)"
+        return defaultOrderBy.isEmpty ? nil : defaultOrderBy
     }
 
     private func buildOrderByClause(sortState: SortState?, columns: [String]) -> String? {

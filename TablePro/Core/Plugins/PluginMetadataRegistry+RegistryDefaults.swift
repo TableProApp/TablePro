@@ -390,7 +390,8 @@ extension PluginMetadataRegistry {
                         regexSyntax: .regexpLike,
                         booleanLiteralStyle: .truefalse,
                         likeEscapeStyle: .explicit,
-                        paginationStyle: .limit
+                        paginationStyle: .offsetFetch,
+                        offsetFetchOrderBy: ""
                     ),
                     statementCompletions: [],
                     columnTypesByCategory: [

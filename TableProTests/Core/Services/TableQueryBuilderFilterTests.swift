@@ -134,6 +134,75 @@ struct TableQueryBuilderFilteredCountTests {
     }
 }
 
+@Suite("Table Query Builder - Pagination Clause")
+struct TableQueryBuilderPaginationTests {
+    private static let trinoDialect = SQLDialectDescriptor(
+        identifierQuote: "\"", keywords: [], functions: [], dataTypes: [],
+        regexSyntax: .regexpLike, booleanLiteralStyle: .truefalse,
+        likeEscapeStyle: .explicit, paginationStyle: .offsetFetch, offsetFetchOrderBy: ""
+    )
+
+    private static let mssqlDialect = SQLDialectDescriptor(
+        identifierQuote: "[", keywords: [], functions: [], dataTypes: [],
+        regexSyntax: .unsupported, booleanLiteralStyle: .numeric,
+        likeEscapeStyle: .explicit, paginationStyle: .offsetFetch
+    )
+
+    private static let mysqlDialect = SQLDialectDescriptor(
+        identifierQuote: "`", keywords: [], functions: [], dataTypes: [],
+        regexSyntax: .regexp, booleanLiteralStyle: .numeric,
+        likeEscapeStyle: .implicit, paginationStyle: .limit
+    )
+
+    private func builder(_ dialect: SQLDialectDescriptor) -> TableQueryBuilder {
+        TableQueryBuilder(databaseType: .postgresql, dialect: dialect)
+    }
+
+    private func enabledFilter(_ column: String, _ value: String) -> TableFilter {
+        var filter = TableFilter()
+        filter.columnName = column
+        filter.filterOperator = .equal
+        filter.value = value
+        filter.isEnabled = true
+        return filter
+    }
+
+    @Test("Trino base query pages with OFFSET before FETCH FIRST and no ORDER BY")
+    func trinoBaseQueryOffsetFetch() {
+        let query = builder(Self.trinoDialect).buildBaseQuery(
+            tableName: "pseudo_columns", schemaName: "jdbc", limit: 1_000, offset: 0
+        )
+        #expect(query.contains("\"jdbc\".\"pseudo_columns\""))
+        #expect(query.contains("OFFSET 0 ROWS FETCH NEXT 1000 ROWS ONLY"))
+        #expect(!query.contains("LIMIT"))
+        #expect(!query.contains("ORDER BY"))
+    }
+
+    @Test("Trino filtered query keeps the WHERE and pages with OFFSET/FETCH FIRST")
+    func trinoFilteredQueryOffsetFetch() {
+        let query = builder(Self.trinoDialect).buildFilteredQuery(
+            tableName: "orders", filters: [enabledFilter("status", "open")], limit: 500, offset: 500
+        )
+        #expect(query.contains("WHERE"))
+        #expect(query.contains("OFFSET 500 ROWS FETCH NEXT 500 ROWS ONLY"))
+        #expect(!query.contains("LIMIT"))
+    }
+
+    @Test("MSSQL base query injects its default ORDER BY before OFFSET/FETCH FIRST")
+    func mssqlBaseQueryKeepsDefaultOrderBy() {
+        let query = builder(Self.mssqlDialect).buildBaseQuery(tableName: "users", limit: 100, offset: 0)
+        #expect(query.contains("ORDER BY (SELECT NULL) OFFSET 0 ROWS FETCH NEXT 100 ROWS ONLY"))
+        #expect(!query.contains("LIMIT"))
+    }
+
+    @Test("LIMIT-style dialect pages with LIMIT then OFFSET")
+    func limitStyleBaseQuery() {
+        let query = builder(Self.mysqlDialect).buildBaseQuery(tableName: "users", limit: 200, offset: 0)
+        #expect(query.contains("LIMIT 200 OFFSET 0"))
+        #expect(!query.contains("FETCH NEXT"))
+    }
+}
+
 @Suite("Table Query Builder - NoSQL Nil Dialect Fallback")
 struct TableQueryBuilderNoSQLTests {
     // MongoDB has no SQL dialect — should produce bare SELECT without WHERE

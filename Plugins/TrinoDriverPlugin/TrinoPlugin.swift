@@ -133,7 +133,8 @@ final class TrinoPlugin: NSObject, TableProPlugin, DriverPlugin {
         regexSyntax: .regexpLike,
         booleanLiteralStyle: .truefalse,
         likeEscapeStyle: .explicit,
-        paginationStyle: .limit
+        paginationStyle: .offsetFetch,
+        offsetFetchOrderBy: ""
     )
 
     static let explainVariants: [ExplainVariant] = [

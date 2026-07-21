@@ -32,7 +32,7 @@ Trino requires TLS for any authentication. If you pick Password or JWT, set an S
 
 A Trino connection is scoped to a catalog and schema, but every query can name objects in full as `catalog.schema.table`. TablePro shows catalogs from `SHOW CATALOGS`, schemas from `SHOW SCHEMAS`, and tables and columns from each catalog's `information_schema`. Materialized views appear alongside tables and views. Expand a catalog to see its schemas, then a schema to see its tables. Table row counts come from `SHOW STATS`, and table and column comments come from `information_schema` and the `system.metadata` tables.
 
-Identifiers are quoted with double quotes. Results page with standard `LIMIT` and `OFFSET`.
+Identifiers are quoted with double quotes. Results page with `OFFSET` and `FETCH FIRST`, the order Trino's grammar requires.
 
 ## Types
 

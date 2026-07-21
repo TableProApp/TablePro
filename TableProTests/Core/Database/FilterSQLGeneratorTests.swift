@@ -50,6 +50,13 @@ struct FilterSQLGeneratorTests {
         offsetFetchOrderBy: "ORDER BY 1"
     )
 
+    private static let trinoDialect = SQLDialectDescriptor(
+        identifierQuote: "\"", keywords: [], functions: [], dataTypes: [],
+        regexSyntax: .regexpLike, booleanLiteralStyle: .truefalse,
+        likeEscapeStyle: .explicit, paginationStyle: .offsetFetch,
+        offsetFetchOrderBy: ""
+    )
+
     // MARK: - Per-Operator Tests (MySQL)
 
     @Test("Equal operator generates correct condition")
@@ -824,6 +831,25 @@ struct FilterSQLGeneratorTests {
             tableName: "users", schemaName: "", filters: [], limit: 1_000
         )
         #expect(result.contains("SELECT * FROM `users`"))
+    }
+
+    @Test("Trino paging emits OFFSET before FETCH FIRST with no synthetic ORDER BY")
+    func testPreviewSQLTrinoOffsetFetch() {
+        let generator = FilterSQLGenerator(dialect: Self.trinoDialect)
+        let result = generator.generatePreviewSQL(
+            tableName: "pseudo_columns", schemaName: "jdbc", filters: [], limit: 1_000
+        )
+        #expect(result.contains("OFFSET 0 ROWS FETCH NEXT 1000 ROWS ONLY"))
+        #expect(!result.contains("LIMIT"))
+        #expect(!result.contains("ORDER BY"))
+    }
+
+    @Test("Oracle paging keeps its default ORDER BY before OFFSET and FETCH FIRST")
+    func testPreviewSQLOracleOffsetFetch() {
+        let generator = FilterSQLGenerator(dialect: Self.oracleDialect)
+        let result = generator.generatePreviewSQL(tableName: "users", filters: [], limit: 1_000)
+        #expect(result.contains("ORDER BY 1 OFFSET 0 ROWS FETCH NEXT 1000 ROWS ONLY"))
+        #expect(!result.contains("LIMIT"))
     }
 
     // MARK: - Edge Cases

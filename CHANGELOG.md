@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - SSH tunnels using the None auth method now work on iPhone and iPad, not just the Mac. A connection synced from the Mac with None auth no longer fails to connect. (#1912)
+- Browsing a Trino table no longer fails with a syntax error. Trino requires `OFFSET` before `LIMIT`, so paging now uses `OFFSET` and `FETCH FIRST`. (#1936)
 
 ## [0.59.0] - 2026-07-21
 

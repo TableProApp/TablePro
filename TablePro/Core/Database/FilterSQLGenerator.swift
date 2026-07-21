@@ -330,7 +330,8 @@ extension FilterSQLGenerator {
 
         if dialect.paginationStyle == .offsetFetch {
             let orderBy = dialect.offsetFetchOrderBy
-            sql += "\n\(orderBy) OFFSET 0 ROWS FETCH NEXT \(limit) ROWS ONLY"
+            let orderByPrefix = orderBy.isEmpty ? "" : "\(orderBy) "
+            sql += "\n\(orderByPrefix)OFFSET 0 ROWS FETCH NEXT \(limit) ROWS ONLY"
         } else {
             sql += "\nLIMIT \(limit)"
         }
