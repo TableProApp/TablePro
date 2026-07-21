@@ -8,30 +8,37 @@ import TableProPluginKit
 
 @MainActor
 enum InspectorColumnMenuBuilder {
-    static func structureItems(forColumn index: Int, currentType: InspectorColumnType) -> [NSMenuItem] {
+    static func structureItems(
+        forColumn index: Int,
+        currentType: InspectorColumnType,
+        deleteColumns: [Int]
+    ) -> [NSMenuItem] {
         let rename = actionItem(
             title: String(localized: "Rename Column…"),
             action: #selector(InspectorViewController.inspectorRenameColumn(_:)),
             column: index
         )
-        let insertBefore = actionItem(
-            title: String(localized: "Insert Column Before"),
-            action: #selector(InspectorViewController.inspectorInsertColumnBefore(_:)),
+        let insertLeft = actionItem(
+            title: String(localized: "Insert Column Left"),
+            action: #selector(InspectorViewController.inspectorInsertColumnLeft(_:)),
             column: index
         )
-        let insertAfter = actionItem(
-            title: String(localized: "Insert Column After"),
-            action: #selector(InspectorViewController.inspectorInsertColumnAfter(_:)),
+        let insertRight = actionItem(
+            title: String(localized: "Insert Column Right"),
+            action: #selector(InspectorViewController.inspectorInsertColumnRight(_:)),
             column: index
         )
         let changeType = NSMenuItem(title: String(localized: "Change Type"), action: nil, keyEquivalent: "")
         changeType.submenu = typeSubmenu(forColumn: index, currentType: currentType)
         let delete = actionItem(
-            title: String(localized: "Delete Column"),
+            title: deleteColumns.count > 1
+                ? String(localized: "Delete Columns")
+                : String(localized: "Delete Column"),
             action: #selector(InspectorViewController.inspectorDeleteColumn(_:)),
             column: index
         )
-        return [rename, insertBefore, insertAfter, changeType, .separator(), delete]
+        delete.representedObject = deleteColumns
+        return [rename, insertLeft, insertRight, changeType, .separator(), delete]
     }
 
     static func typeSubmenu(forColumn index: Int, currentType: InspectorColumnType) -> NSMenu {

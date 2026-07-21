@@ -17,6 +17,25 @@ enum InspectorDeleteConfirmation {
             : String(format: String(localized: "Delete %lld rows?"), count)
     }
 
+    static func columnDeleteTitle(count: Int) -> String {
+        count == 1
+            ? String(localized: "Delete this column?")
+            : String(format: String(localized: "Delete %lld columns?"), count)
+    }
+
+    static func confirmDeleteColumnsIfNeeded(
+        count: Int,
+        containsData: Bool,
+        window: NSWindow?,
+        proceed: @escaping @MainActor () -> Void
+    ) {
+        guard containsData else {
+            proceed()
+            return
+        }
+        present(messageText: columnDeleteTitle(count: count), window: window, proceed: proceed)
+    }
+
     static func confirmDeleteRowsIfNeeded(
         rowsCells: [[String]],
         window: NSWindow?,

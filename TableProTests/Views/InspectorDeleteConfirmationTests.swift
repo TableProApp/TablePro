@@ -30,4 +30,10 @@ struct InspectorDeleteConfirmationTests {
         #expect(InspectorDeleteConfirmation.rowDeleteTitle(count: 1) == "Delete this row?")
         #expect(InspectorDeleteConfirmation.rowDeleteTitle(count: 3).contains("3"))
     }
+
+    @Test("Column delete title reflects the column count")
+    func columnDeleteTitles() {
+        #expect(InspectorDeleteConfirmation.columnDeleteTitle(count: 1) == "Delete this column?")
+        #expect(InspectorDeleteConfirmation.columnDeleteTitle(count: 2).contains("2"))
+    }
 }

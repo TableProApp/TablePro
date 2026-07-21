@@ -620,6 +620,21 @@ struct AppMenuCommands: Commands {
             }
             .disabled(!keyWindowIsInspector)
 
+            Button(String(localized: "Insert Column Left")) {
+                NSApp.sendAction(#selector(InspectorViewController.inspectorInsertColumnLeft(_:)), to: nil, from: nil)
+            }
+            .disabled(!keyWindowIsInspector)
+
+            Button(String(localized: "Insert Column Right")) {
+                NSApp.sendAction(#selector(InspectorViewController.inspectorInsertColumnRight(_:)), to: nil, from: nil)
+            }
+            .disabled(!keyWindowIsInspector)
+
+            Button(String(localized: "Delete Column")) {
+                NSApp.sendAction(#selector(InspectorViewController.inspectorDeleteColumn(_:)), to: nil, from: nil)
+            }
+            .disabled(!keyWindowIsInspector)
+
             Divider()
 
             // Table operations (work when tables selected in sidebar)

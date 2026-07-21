@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Connect to PGlite through its socket server (`pglite-server`), with schema browsing, SQL editing, and row editing like PostgreSQL. Defaults to a loopback host with no TLS, and treats the connection as single-use to match PGlite's one-connection limit. (#1911)
 - In the CSV editor, right-click a column header to rename, insert, delete, or change the type of that column. (#1913)
 - In the CSV editor, insert a row above or below any row from the row's right-click menu or the Edit menu. Deleting rows that contain data now asks you to confirm first. (#1469)
+- In the CSV editor, insert a column to the left or right, and delete several selected columns at once. Column verbs also appear in the Edit menu, and deleting a column that holds data asks you to confirm first. (#1469)
 - Add llama.cpp and MLX as local AI providers. Each preset points at the server's default local endpoint and needs no API key, alongside the existing Ollama and custom OpenAI-compatible options. (#1777)
 
 ### Fixed

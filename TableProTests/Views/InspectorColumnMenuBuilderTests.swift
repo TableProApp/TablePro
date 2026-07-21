@@ -13,12 +13,12 @@ import Testing
 struct InspectorColumnMenuBuilderTests {
     @Test("Structure items route each action to the clicked column")
     func structureItemsWiring() {
-        let items = InspectorColumnMenuBuilder.structureItems(forColumn: 3, currentType: .text)
+        let items = InspectorColumnMenuBuilder.structureItems(forColumn: 3, currentType: .text, deleteColumns: [3])
 
         #expect(items.count == 6)
         #expect(items[0].action == #selector(InspectorViewController.inspectorRenameColumn(_:)))
-        #expect(items[1].action == #selector(InspectorViewController.inspectorInsertColumnBefore(_:)))
-        #expect(items[2].action == #selector(InspectorViewController.inspectorInsertColumnAfter(_:)))
+        #expect(items[1].action == #selector(InspectorViewController.inspectorInsertColumnLeft(_:)))
+        #expect(items[2].action == #selector(InspectorViewController.inspectorInsertColumnRight(_:)))
         #expect(items[3].submenu != nil)
         #expect(items[4].isSeparatorItem)
         #expect(items[5].action == #selector(InspectorViewController.inspectorDeleteColumn(_:)))
@@ -31,10 +31,21 @@ struct InspectorColumnMenuBuilderTests {
 
     @Test("Delete Column is the last item, in its own trailing group")
     func deleteIsLastAfterSeparator() {
-        let items = InspectorColumnMenuBuilder.structureItems(forColumn: 0, currentType: .integer)
+        let items = InspectorColumnMenuBuilder.structureItems(forColumn: 0, currentType: .integer, deleteColumns: [0])
 
         #expect(items.last?.action == #selector(InspectorViewController.inspectorDeleteColumn(_:)))
         #expect(items[items.count - 2].isSeparatorItem)
+    }
+
+    @Test("Delete item carries the target columns and pluralizes its title")
+    func deleteTargetsAndTitle() {
+        let single = InspectorColumnMenuBuilder.structureItems(forColumn: 1, currentType: .text, deleteColumns: [1])
+        #expect(single.last?.representedObject as? [Int] == [1])
+        #expect(single.last?.title == "Delete Column")
+
+        let multi = InspectorColumnMenuBuilder.structureItems(forColumn: 1, currentType: .text, deleteColumns: [1, 2, 3])
+        #expect(multi.last?.representedObject as? [Int] == [1, 2, 3])
+        #expect(multi.last?.title == "Delete Columns")
     }
 
     @Test("Type submenu checks the current type and offers Reset to Inferred")
