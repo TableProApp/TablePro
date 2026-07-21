@@ -25,6 +25,7 @@ final class InspectorViewController: NSViewController, NSUserInterfaceValidation
     private var lastFilterClauses: [FilterClause] = []
     private var lastSortSpecs: [SortSpec] = []
     private var pendingPostRefresh: PostRefreshAction?
+    private var propertiesSheetController: NSViewController?
 
     private enum PostRefreshAction {
         case selectClamped(displayRow: Int)
@@ -219,6 +220,51 @@ final class InspectorViewController: NSViewController, NSUserInterfaceValidation
 
     @objc func inspectorToggleHeaderRow(_ sender: Any?) {
         inspectorDocument?.toggleHeaderRow()
+    }
+
+    @objc func inspectorSetCSVProperties(_ sender: Any?) {
+        guard let configurable = inspectorDocument as? CSVConfigurableDocument else { return }
+        presentCSVProperties(configurable)
+    }
+
+    private func presentCSVProperties(_ document: CSVConfigurableDocument) {
+        guard propertiesSheetController == nil else { return }
+        let sheet = CSVPropertiesSheet(
+            dialect: document.csvDialect,
+            onReload: { [weak self, weak document] dialect in
+                self?.dismissPropertiesSheet()
+                guard let document else { return }
+                DispatchQueue.main.async { self?.reloadCSV(document, with: dialect) }
+            },
+            onCancel: { [weak self] in self?.dismissPropertiesSheet() }
+        )
+        let hosting = NSHostingController(rootView: sheet)
+        propertiesSheetController = hosting
+        presentAsSheet(hosting)
+    }
+
+    private func dismissPropertiesSheet() {
+        guard let controller = propertiesSheetController else { return }
+        dismiss(controller)
+        propertiesSheetController = nil
+    }
+
+    private func reloadCSV(_ document: CSVConfigurableDocument, with dialect: CSVDialect) {
+        guard nsDocument?.isDocumentEdited == true, let window = view.window else {
+            document.reload(with: dialect)
+            return
+        }
+        let alert = NSAlert()
+        alert.messageText = String(localized: "Reload with new properties?")
+        alert.informativeText = String(localized: "This discards your unsaved changes and re-reads the file with the chosen settings.")
+        alert.alertStyle = .warning
+        let reloadButton = alert.addButton(withTitle: String(localized: "Reload"))
+        reloadButton.hasDestructiveAction = true
+        alert.addButton(withTitle: String(localized: "Cancel"))
+        alert.beginSheetModal(for: window) { [weak document] response in
+            guard response == .alertFirstButtonReturn, let document else { return }
+            document.reload(with: dialect)
+        }
     }
 
     @objc func inspectorInsertRowAbove(_ sender: Any?) {
@@ -595,6 +641,8 @@ final class InspectorViewController: NSViewController, NSUserInterfaceValidation
              #selector(inspectorSplitColumn(_:)), #selector(inspectorMergeColumns(_:)),
              #selector(inspectorToggleHeaderRow(_:)):
             return nsDocument != nil
+        case #selector(inspectorSetCSVProperties(_:)):
+            return inspectorDocument is CSVConfigurableDocument
         case #selector(inspectorDeleteColumn(_:)):
             guard nsDocument != nil else { return false }
             if let menuItem = item as? NSMenuItem, menuItem.representedObject is [Int] { return true }

@@ -651,6 +651,11 @@ struct AppMenuCommands: Commands {
             .optionalKeyboardShortcut(shortcut(for: .toggleHeaderRow))
             .disabled(!keyWindowIsInspector)
 
+            Button(String(localized: "Set CSV Properties…")) {
+                NSApp.sendAction(#selector(InspectorViewController.inspectorSetCSVProperties(_:)), to: nil, from: nil)
+            }
+            .disabled(!keyWindowIsInspector)
+
             Divider()
 
             // Table operations (work when tables selected in sidebar)

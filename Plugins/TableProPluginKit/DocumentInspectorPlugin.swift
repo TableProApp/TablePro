@@ -72,3 +72,9 @@ public extension InspectorDocument {
     func mergeColumns(at index: Int, separator: String) {}
     func toggleHeaderRow() {}
 }
+
+@MainActor
+public protocol CSVConfigurableDocument: InspectorDocument {
+    var csvDialect: CSVDialect { get }
+    func reload(with dialect: CSVDialect)
+}

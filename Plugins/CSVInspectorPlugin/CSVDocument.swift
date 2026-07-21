@@ -2,7 +2,7 @@ import AppKit
 import TableProPluginKit
 import os
 
-public final class CSVDocument: NSDocument, InspectorDocument {
+public final class CSVDocument: NSDocument, CSVConfigurableDocument {
     static let logger = Logger(subsystem: "com.TablePro", category: "CSVInspector")
 
     private static let typeInferenceSampleSize = 200
@@ -354,6 +354,18 @@ public final class CSVDocument: NSDocument, InspectorDocument {
             store.toggleHeaderRow()
             recomputeInferredTypes()
         }
+    }
+
+    public var csvDialect: CSVDialect { dialect }
+
+    public func reload(with newDialect: CSVDialect) {
+        let data = store.data
+        dialect = newDialect
+        store = CSVRowStore(data: data, dialect: newDialect)
+        recomputeInferredTypes()
+        undoManager?.removeAllActions()
+        updateChangeCount(.changeDone)
+        onChange?()
     }
 
     private func recomputeInferredTypes() {
