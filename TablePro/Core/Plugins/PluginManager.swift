@@ -437,8 +437,11 @@ final class PluginManager {
             }
         }
 
-        guard bundle.load() else {
-            Self.logger.error("Failed to load lazy bundle '\(bundleId)' at \(url.lastPathComponent)")
+        do {
+            try PluginBundleLoader.load(bundle)
+        } catch {
+            Self.logger.error("Failed to load lazy bundle '\(bundleId)' at \(url.lastPathComponent): \(error.localizedDescription)")
+            recordLazyActivationRejection(url: url, bundleId: bundleId, entry: entry, error: error)
             return
         }
 
@@ -546,9 +549,7 @@ final class PluginManager {
 
         try validateBundleVersions(bundle)
 
-        guard bundle.load() else {
-            throw PluginError.invalidBundle("Bundle failed to load executable")
-        }
+        try PluginBundleLoader.load(bundle)
 
         return bundle
     }

@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - MySQL and MariaDB queries no longer fail after about a minute when a longer query timeout is set. The client read timeout now follows the configured query timeout, so a long query or stored procedure runs for the full time you allow. (#1921)
 - A dropped MySQL or MariaDB connection no longer silently re-runs a statement that changes data, so a lost connection can no longer run an insert, update, or stored procedure twice. (#1921)
 - The MongoDB, Oracle, Cassandra, and Elasticsearch plugins failed to install on 0.58 with "Bundle failed to load executable". (#1917)
+- Plugin install and load failures now name the real cause (wrong architecture, missing dependency, or incompatibility with this version of TablePro) instead of a generic error. A plugin that fails to load on demand is now reported instead of silently disappearing. (#1915)
 
 ## [0.58.0] - 2026-07-18
 
