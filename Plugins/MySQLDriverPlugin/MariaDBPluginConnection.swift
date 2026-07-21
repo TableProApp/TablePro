@@ -159,6 +159,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
     private let database: String
     private let sslConfig: SSLConfiguration
     private let enableCleartextPlugin: Bool
+    private let queryTimeoutSeconds: Int
 
     private let stateLock = NSLock()
     private var _isConnected: Bool = false
@@ -192,7 +193,8 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         password: String?,
         database: String,
         sslConfig: SSLConfiguration,
-        enableCleartextPlugin: Bool = false
+        enableCleartextPlugin: Bool = false,
+        queryTimeoutSeconds: Int = 0
     ) {
         self.host = host
         self.port = UInt32(port)
@@ -201,6 +203,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         self.database = database
         self.sslConfig = sslConfig
         self.enableCleartextPlugin = enableCleartextPlugin
+        self.queryTimeoutSeconds = queryTimeoutSeconds
     }
 
     deinit {
@@ -261,10 +264,10 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         var timeout: UInt32 = 10
         mysql_options(mysql, MYSQL_OPT_CONNECT_TIMEOUT, &timeout)
 
-        var readTimeout: UInt32 = 30
+        var readTimeout = mysqlSocketTimeoutSeconds(forQueryTimeout: queryTimeoutSeconds)
         mysql_options(mysql, MYSQL_OPT_READ_TIMEOUT, &readTimeout)
 
-        var writeTimeout: UInt32 = 30
+        var writeTimeout = mysqlSocketTimeoutSeconds(forQueryTimeout: queryTimeoutSeconds)
         mysql_options(mysql, MYSQL_OPT_WRITE_TIMEOUT, &writeTimeout)
 
         var protocol_tcp = UInt32(MYSQL_PROTOCOL_TCP.rawValue)

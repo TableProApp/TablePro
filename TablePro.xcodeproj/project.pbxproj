@@ -532,6 +532,8 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				MySQLQueryTimeoutStatement.swift,
+				MySQLSocketTimeout.swift,
+				MySQLStatementClassification.swift,
 			);
 			target = 5ABCC5A62F43856700EAF3FC /* TableProTests */;
 		};
