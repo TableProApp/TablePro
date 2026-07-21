@@ -4,8 +4,8 @@
 //
 //  Block-level markdown renderer backed by Foundation's AttributedString(markdown:)
 //  for inline formatting and native SwiftUI views for block layout.
-//  Supports progressive (streaming) sources with open fenced code blocks and
-//  throttled re-parses while the source is still growing.
+//  Supports progressive (streaming) sources: an open fenced code block renders as
+//  lightweight code until its closing fence arrives, then switches to the editor.
 //
 
 import AppKit
@@ -16,56 +16,15 @@ struct MarkdownView: View {
     var isStreaming: Bool = false
 
     @State private var cache = MarkdownDocumentCache()
-    @State private var displaySource: String = ""
-    @State private var throttleTask: Task<Void, Never>?
 
     var body: some View {
-        let blocks = cache.blocks(for: displaySource.isEmpty ? source : displaySource)
+        let blocks = cache.blocks(for: source)
         VStack(alignment: .leading, spacing: 6) {
             ForEach(blocks) { block in
                 MarkdownBlockView(block: block, prefersLightweightCode: isStreaming)
                     .equatable()
             }
         }
-        .onAppear {
-            displaySource = source
-        }
-        .onChange(of: source) { _, newValue in
-            scheduleDisplayUpdate(newValue)
-        }
-        .onChange(of: isStreaming) { _, streaming in
-            if !streaming {
-                flushDisplayUpdate(source)
-            }
-        }
-        .onDisappear {
-            throttleTask?.cancel()
-            throttleTask = nil
-        }
-    }
-
-    private func scheduleDisplayUpdate(_ newValue: String) {
-        if !isStreaming {
-            flushDisplayUpdate(newValue)
-            return
-        }
-        if displaySource.isEmpty {
-            displaySource = newValue
-            return
-        }
-        throttleTask?.cancel()
-        throttleTask = Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(48))
-            guard !Task.isCancelled else { return }
-            displaySource = newValue
-            throttleTask = nil
-        }
-    }
-
-    private func flushDisplayUpdate(_ newValue: String) {
-        throttleTask?.cancel()
-        throttleTask = nil
-        displaySource = newValue
     }
 }
 
@@ -104,11 +63,11 @@ private struct MarkdownBlockView: View, Equatable {
                 .padding(.bottom, 2)
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
-        case .codeBlock(let code, let language, _):
+        case .codeBlock(let code, let language, let isClosed):
             AIChatCodeBlockView(
                 code: code,
                 language: language,
-                prefersLightweightRendering: prefersLightweightCode
+                prefersLightweightRendering: prefersLightweightCode && !isClosed
             )
             .equatable()
         case .unorderedList(let items):

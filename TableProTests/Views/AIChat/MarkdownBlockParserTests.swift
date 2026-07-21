@@ -215,4 +215,30 @@ struct MarkdownBlockParserTests {
         #expect(code.contains("still code"))
         #expect(isClosed == true)
     }
+
+    @Test("A closed code block stays closed while a later fence streams open")
+    func closedBlockThenOpenBlockDuringStream() {
+        let source = """
+        ```sql
+        SELECT 1
+        ```
+
+        Then run:
+
+        ```sql
+        SELECT 2
+        """
+        let blocks = MarkdownBlockParser.parse(source)
+        guard case .codeBlock(_, _, let firstClosed) = blocks.first?.kind else {
+            Issue.record("Expected a leading code block")
+            return
+        }
+        #expect(firstClosed == true)
+        guard case .codeBlock(let lastCode, _, let lastClosed) = blocks.last?.kind else {
+            Issue.record("Expected a trailing code block")
+            return
+        }
+        #expect(lastCode == "SELECT 2")
+        #expect(lastClosed == false)
+    }
 }
