@@ -207,6 +207,48 @@ struct SQLRowToStatementConverterTests {
         #expect(result == "UPDATE `users` SET `name` = 'Alice', `email` = 'alice@example.com' WHERE `name` = 'Alice' AND `email` = 'alice@example.com';")
     }
 
+    @Test("UPDATE restricts SET to settable columns and keys WHERE on the primary key")
+    func updateSettableColumnsRestrictsSetClause() throws {
+        let converter = try SQLRowToStatementConverter(
+            tableName: "users",
+            columns: ["id", "name", "email"],
+            primaryKeyColumn: "id",
+            databaseType: .mysql,
+            settableColumns: ["email"],
+            dialect: Self.mysqlDialect
+        )
+        let result = converter.generateUpdates(rows: [["1", "Alice", "alice@example.com"]])
+        #expect(result == "UPDATE `users` SET `email` = 'alice@example.com' WHERE `id` = '1';")
+    }
+
+    @Test("UPDATE without a primary key keeps the full row in WHERE while restricting SET")
+    func updateSettableColumnsNoPrimaryKeyKeepsFullRowWhere() throws {
+        let converter = try SQLRowToStatementConverter(
+            tableName: "users",
+            columns: ["id", "name", "email"],
+            primaryKeyColumn: nil,
+            databaseType: .mysql,
+            settableColumns: ["email"],
+            dialect: Self.mysqlDialect
+        )
+        let result = converter.generateUpdates(rows: [["1", "Alice", "alice@example.com"]])
+        #expect(result == "UPDATE `users` SET `email` = 'alice@example.com' WHERE `id` = '1' AND `name` = 'Alice' AND `email` = 'alice@example.com';")
+    }
+
+    @Test("UPDATE emits no statement when only the primary key is settable")
+    func updateSettableColumnsPrimaryKeyOnlyEmitsNothing() throws {
+        let converter = try SQLRowToStatementConverter(
+            tableName: "users",
+            columns: ["id", "name", "email"],
+            primaryKeyColumn: "id",
+            databaseType: .mysql,
+            settableColumns: ["id"],
+            dialect: Self.mysqlDialect
+        )
+        let result = converter.generateUpdates(rows: [["1", "Alice", "alice@example.com"]])
+        #expect(result == "")
+    }
+
     // MARK: - Edge Cases
 
     @Test("Empty rows input returns empty string")

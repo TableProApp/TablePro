@@ -121,7 +121,7 @@ extension TableViewCoordinator {
     func copyRowsAsInsert(at indices: Set<Int>) {
         guard let tableName, let databaseType else { return }
         let tableRows = tableRowsProvider()
-        let projection = visibleColumnProjection
+        let projection = selectedColumnProjection()
         let driver = resolveDriver()
         do {
             let converter = try SQLRowToStatementConverter(
@@ -143,6 +143,9 @@ extension TableViewCoordinator {
     func copyRowsAsUpdate(at indices: Set<Int>) {
         guard let tableName, let databaseType else { return }
         let tableRows = tableRowsProvider()
+        let settableColumns = selectionController.isEmpty
+            ? nil
+            : selectedColumnProjection().columns(tableRows.columns)
         let pkIndex = primaryKeyColumn.flatMap { tableRows.columns.firstIndex(of: $0) }
         let projection = visibleColumnProjection.including(pkIndex)
         let driver = resolveDriver()
@@ -152,6 +155,7 @@ extension TableViewCoordinator {
                 columns: projection.columns(tableRows.columns),
                 primaryKeyColumn: primaryKeyColumn,
                 databaseType: databaseType,
+                settableColumns: settableColumns,
                 quoteIdentifier: driver?.quoteIdentifier,
                 escapeStringLiteral: driver?.escapeStringLiteral
             )
@@ -164,7 +168,7 @@ extension TableViewCoordinator {
     }
 
     func copyRowsAsJson(at indices: Set<Int>) {
-        let projection = visibleColumnProjection
+        let projection = selectedColumnProjection()
         let rows = indices.sorted().compactMap { displayRow(at: $0).map { projection.values(Array($0.values)) } }
         guard !rows.isEmpty else { return }
         let tableRows = tableRowsProvider()
@@ -176,7 +180,7 @@ extension TableViewCoordinator {
     }
 
     func copyRowsAsCsv(at indices: Set<Int>, includeHeaders: Bool) {
-        let projection = visibleColumnProjection
+        let projection = selectedColumnProjection()
         let rows = indices.sorted().compactMap { displayRow(at: $0).map { projection.values(Array($0.values)) } }
         guard !rows.isEmpty else { return }
         let tableRows = tableRowsProvider()
@@ -188,7 +192,7 @@ extension TableViewCoordinator {
     }
 
     func copyRowsAsMarkdown(at indices: Set<Int>) {
-        let projection = visibleColumnProjection
+        let projection = selectedColumnProjection()
         let rows = indices.sorted().compactMap { displayRow(at: $0).map { projection.values(Array($0.values)) } }
         guard !rows.isEmpty else { return }
         let tableRows = tableRowsProvider()
@@ -251,6 +255,17 @@ extension TableViewCoordinator {
 
     private var visibleColumnProjection: VisibleColumnProjection {
         VisibleColumnProjection(indices: visibleColumnDataIndices())
+    }
+
+    private func selectedColumnProjection() -> VisibleColumnProjection {
+        guard !selectionController.isEmpty else { return visibleColumnProjection }
+        let selectedColumns = selectionController.selection.affectedColumns
+        guard !selectedColumns.isEmpty else { return visibleColumnProjection }
+        guard let visible = visibleColumnDataIndices() else {
+            return VisibleColumnProjection(indices: selectedColumns.sorted())
+        }
+        let ordered = visible.filter { selectedColumns.contains($0) }
+        return ordered.isEmpty ? visibleColumnProjection : VisibleColumnProjection(indices: ordered)
     }
 
     private func resolveDriver() -> (any DatabaseDriver)? {

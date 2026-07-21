@@ -375,8 +375,8 @@ struct DataGridRowViewCopyTests {
         withExtendedLifetime(coordinator) {}
     }
 
-    @Test("Copy as JSON covers every row of a column selection")
-    func copyAsJsonUsesColumnSelection() {
+    @Test("Copy as JSON includes only the selected column")
+    func copyAsJsonScopesToSelectedColumn() {
         withClipboard { clipboard in
             let coordinator = makeCoordinator(
                 rows: [[.text("1"), .text("Alice")], [.text("2"), .text("Bob")]],
@@ -389,8 +389,140 @@ struct DataGridRowViewCopyTests {
 
             _ = rowView.perform(NSSelectorFromString("copyAsJson"))
 
-            #expect(clipboard.text?.contains("Alice") == true)
-            #expect(clipboard.text?.contains("Bob") == true)
+            #expect(clipboard.text?.contains("\"c0\"") == true)
+            #expect(clipboard.text?.contains("Alice") != true)
+            #expect(clipboard.text?.contains("Bob") != true)
+        }
+    }
+
+    private func makeCellSelectedCoordinator() -> TableViewCoordinator {
+        let coordinator = makeCoordinator(
+            rows: [[.text("1"), .text("Alice"), .text("NYC"), .text("x")]],
+            columnTypes: [
+                .integer(rawType: "INT"), .text(rawType: "TEXT"),
+                .text(rawType: "TEXT"), .text(rawType: "TEXT")
+            ]
+        )
+        coordinator.tableName = "users"
+        coordinator.databaseType = .mysql
+        coordinator.selectionController.update(
+            GridSelection(
+                rectangles: [
+                    GridRect(cell: GridCoord(row: 0, column: 2)),
+                    GridRect(cell: GridCoord(row: 0, column: 3))
+                ],
+                activeCell: GridCoord(row: 0, column: 3),
+                anchor: GridCoord(row: 0, column: 2)
+            )
+        )
+        return coordinator
+    }
+
+    @Test("Copy as INSERT includes only the selected columns")
+    func copyAsInsertScopesToSelectedColumns() {
+        withClipboard { clipboard in
+            let coordinator = makeCellSelectedCoordinator()
+            let rowView = DataGridRowView()
+            rowView.coordinator = coordinator
+            rowView.rowIndex = 0
+
+            _ = rowView.perform(NSSelectorFromString("copyAsInsert"))
+
+            #expect(clipboard.text == "INSERT INTO `users` (`c2`, `c3`) VALUES ('NYC', 'x');")
+        }
+    }
+
+    @Test("Copy as UPDATE sets only selected columns and keys WHERE on the primary key")
+    func copyAsUpdateScopesSetToSelectedColumns() {
+        withClipboard { clipboard in
+            let coordinator = makeCellSelectedCoordinator()
+            coordinator.primaryKeyColumns = ["c0"]
+            let rowView = DataGridRowView()
+            rowView.coordinator = coordinator
+            rowView.rowIndex = 0
+
+            _ = rowView.perform(NSSelectorFromString("copyAsUpdate"))
+
+            #expect(clipboard.text == "UPDATE `users` SET `c2` = 'NYC', `c3` = 'x' WHERE `c0` = '1';")
+        }
+    }
+
+    @Test("Copy as UPDATE without a primary key keeps the full row in WHERE")
+    func copyAsUpdateNoPrimaryKeyKeysWhereOnFullRow() {
+        withClipboard { clipboard in
+            let coordinator = makeCoordinator(
+                rows: [[.text("1"), .text("Alice"), .text("NYC")]],
+                columnTypes: [.integer(rawType: "INT"), .text(rawType: "TEXT"), .text(rawType: "TEXT")]
+            )
+            coordinator.tableName = "users"
+            coordinator.databaseType = .mysql
+            coordinator.selectionController.update(
+                GridSelection(
+                    rectangles: [GridRect(cell: GridCoord(row: 0, column: 2))],
+                    activeCell: GridCoord(row: 0, column: 2),
+                    anchor: GridCoord(row: 0, column: 2)
+                )
+            )
+            let rowView = DataGridRowView()
+            rowView.coordinator = coordinator
+            rowView.rowIndex = 0
+
+            _ = rowView.perform(NSSelectorFromString("copyAsUpdate"))
+
+            #expect(clipboard.text == "UPDATE `users` SET `c2` = 'NYC' WHERE `c0` = '1' AND `c1` = 'Alice' AND `c2` = 'NYC';")
+        }
+    }
+
+    @Test("Copy as INSERT flattens a discontiguous selection to the column-union rectangle")
+    func copyAsInsertFlattensDiscontiguousSelection() {
+        withClipboard { clipboard in
+            let coordinator = makeCoordinator(
+                rows: [
+                    [.text("1"), .text("Alice"), .text("NYC")],
+                    [.text("2"), .text("Bob"), .text("LA")]
+                ],
+                columnTypes: [.integer(rawType: "INT"), .text(rawType: "TEXT"), .text(rawType: "TEXT")]
+            )
+            coordinator.tableName = "users"
+            coordinator.databaseType = .mysql
+            coordinator.selectionController.update(
+                GridSelection(
+                    rectangles: [
+                        GridRect(cell: GridCoord(row: 0, column: 2)),
+                        GridRect(cell: GridCoord(row: 1, column: 0))
+                    ],
+                    activeCell: GridCoord(row: 1, column: 0),
+                    anchor: GridCoord(row: 0, column: 2)
+                )
+            )
+            let rowView = DataGridRowView()
+            rowView.coordinator = coordinator
+            rowView.rowIndex = 0
+
+            _ = rowView.perform(NSSelectorFromString("copyAsInsert"))
+
+            let text = clipboard.text ?? ""
+            #expect(text.contains("INSERT INTO `users` (`c0`, `c2`) VALUES ('1', 'NYC');"))
+            #expect(text.contains("INSERT INTO `users` (`c0`, `c2`) VALUES ('2', 'LA');"))
+        }
+    }
+
+    @Test("Copy as CSV includes only the selected column")
+    func copyAsCsvScopesToSelectedColumn() {
+        withClipboard { clipboard in
+            let coordinator = makeCoordinator(
+                rows: [[.text("1"), .text("Alice")], [.text("2"), .text("Bob")]],
+                columnTypes: [.integer(rawType: "INT"), .text(rawType: "TEXT")]
+            )
+            coordinator.selectionController.selectEntireColumn(0, totalRows: 2)
+            let rowView = DataGridRowView()
+            rowView.coordinator = coordinator
+            rowView.rowIndex = 0
+
+            _ = rowView.perform(NSSelectorFromString("copyAsCsv"))
+
+            #expect(clipboard.text?.contains("Alice") != true)
+            #expect(clipboard.text?.contains("Bob") != true)
         }
     }
 

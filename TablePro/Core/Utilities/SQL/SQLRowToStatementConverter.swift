@@ -10,6 +10,7 @@ internal struct SQLRowToStatementConverter {
     internal let columns: [String]
     internal let primaryKeyColumn: String?
     internal let databaseType: DatabaseType
+    private let settableColumns: Set<String>?
     private let quoteIdentifierFn: (String) -> String
     private let escapeStringFn: (String) -> String
 
@@ -18,6 +19,7 @@ internal struct SQLRowToStatementConverter {
         columns: [String],
         primaryKeyColumn: String?,
         databaseType: DatabaseType,
+        settableColumns: [String]? = nil,
         dialect: SQLDialectDescriptor? = nil,
         quoteIdentifier: ((String) -> String)? = nil,
         escapeStringLiteral: ((String) -> String)? = nil
@@ -26,6 +28,7 @@ internal struct SQLRowToStatementConverter {
         self.columns = columns
         self.primaryKeyColumn = primaryKeyColumn
         self.databaseType = databaseType
+        self.settableColumns = settableColumns.map(Set.init)
 
         if let quoteIdentifier, let escapeStringLiteral {
             self.quoteIdentifierFn = quoteIdentifier
@@ -67,12 +70,17 @@ internal struct SQLRowToStatementConverter {
     internal func generateUpdates(rows: [[PluginCellValue]]) -> String {
         let capped = rows.prefix(Self.maxRows)
 
-        return capped.map { row in
+        return capped.compactMap { row in
             buildUpdateStatement(row: row)
         }.joined(separator: "\n")
     }
 
-    private func buildUpdateStatement(row: [PluginCellValue]) -> String {
+    private func isSettable(_ column: String) -> Bool {
+        guard let settableColumns else { return true }
+        return settableColumns.contains(column)
+    }
+
+    private func buildUpdateStatement(row: [PluginCellValue]) -> String? {
         let quotedTable = quoteColumn(tableName)
 
         let setClause: String
@@ -84,10 +92,11 @@ internal struct SQLRowToStatementConverter {
             let pkValue = row[pkIndex]
 
             let setClauses = columns.enumerated().compactMap { index, col -> String? in
-                guard col != pkColumn else { return nil }
+                guard col != pkColumn, isSettable(col) else { return nil }
                 let value = row.indices.contains(index) ? row[index] : .null
                 return "\(quoteColumn(col)) = \(formatValue(value))"
             }
+            guard !setClauses.isEmpty else { return nil }
             setClause = setClauses.joined(separator: ", ")
             if pkValue.isNull {
                 whereClause = "\(quoteColumn(pkColumn)) IS NULL"
@@ -95,10 +104,12 @@ internal struct SQLRowToStatementConverter {
                 whereClause = "\(quoteColumn(pkColumn)) = \(formatValue(pkValue))"
             }
         } else {
-            let allClauses = columns.enumerated().map { index, col -> String in
+            let allClauses = columns.enumerated().compactMap { index, col -> String? in
+                guard isSettable(col) else { return nil }
                 let value = row.indices.contains(index) ? row[index] : .null
                 return "\(quoteColumn(col)) = \(formatValue(value))"
             }
+            guard !allClauses.isEmpty else { return nil }
             setClause = allClauses.joined(separator: ", ")
 
             let whereParts = columns.enumerated().map { index, col -> String in

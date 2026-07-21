@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Copy as INSERT, UPDATE, JSON, CSV, or Markdown now includes only the columns you selected when you select specific cells. It used to include every column in the row. Copy as UPDATE still keys its WHERE clause on the primary key. (#1929)
 - Windows Authentication (Kerberos) to SQL Server now works on macOS. The bundled SQL Server driver was built without Kerberos support, so every Windows-auth connect failed as if the credentials were wrong. (#1918)
 - MySQL and MariaDB queries no longer fail after about a minute when a longer query timeout is set. The client read timeout now follows the configured query timeout, so a long query or stored procedure runs for the full time you allow. (#1921)
 - A dropped MySQL or MariaDB connection no longer silently re-runs a statement that changes data, so a lost connection can no longer run an insert, update, or stored procedure twice. (#1921)
