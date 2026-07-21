@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- In the CSV editor, right-click a column header to rename, insert, delete, or change the type of that column. (#1913)
+
 ### Fixed
 
 - SSH tunnels using the None auth method now work on iPhone and iPad, not just the Mac. A connection synced from the Mac with None auth no longer fails to connect. (#1912)

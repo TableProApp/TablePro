@@ -270,6 +270,14 @@ final class InspectorViewController: NSViewController, NSUserInterfaceValidation
         inspectorDocument?.setTypeOverride(assignment.type, forColumn: assignment.column)
     }
 
+    fileprivate func columnStructureMenuItems(forColumn index: Int) -> [NSMenuItem] {
+        guard let inspector = inspectorDocument, index >= 0, index < inspector.columnNames.count else { return [] }
+        return InspectorColumnMenuBuilder.structureItems(
+            forColumn: index,
+            currentType: inspector.displayedType(forColumn: index)
+        )
+    }
+
     private func renameLayoutKey(from oldName: String, to newName: String) {
         if state.columnLayout.columnOrder != nil {
             state.columnLayout.columnOrder = state.columnLayout.columnOrder?.map { $0 == oldName ? newName : $0 }
@@ -687,6 +695,10 @@ private final class InspectorGridDelegate: DataGridViewDelegate {
 
     func dataGridSortStateChanged(_ state: SortState) {
         owner?.handleSortChanged(state)
+    }
+
+    func dataGridColumnStructureMenuItems(forColumn dataColumnIndex: Int) -> [NSMenuItem] {
+        owner?.columnStructureMenuItems(forColumn: dataColumnIndex) ?? []
     }
 
     func dataGridUndo() {

@@ -223,6 +223,18 @@ extension TableViewCoordinator {
             showAllItem.target = self
             menu.addItem(showAllItem)
         }
+
+        appendColumnStructureItems(to: menu, forColumnIdentifier: column.identifier)
+    }
+
+    private func appendColumnStructureItems(to menu: NSMenu, forColumnIdentifier identifier: NSUserInterfaceItemIdentifier) {
+        guard let dataColumnIndex = dataColumnIndex(from: identifier),
+              let structureItems = delegate?.dataGridColumnStructureMenuItems(forColumn: dataColumnIndex),
+              !structureItems.isEmpty else { return }
+        menu.addItem(NSMenuItem.separator())
+        for item in structureItems {
+            menu.addItem(item)
+        }
     }
 
     @objc func sortAscending(_ sender: NSMenuItem) {

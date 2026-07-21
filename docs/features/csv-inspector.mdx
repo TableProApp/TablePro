@@ -34,7 +34,7 @@ Rows load in pages. The page size comes from the Default page size setting in [S
 
 - Double-click a cell (or press Return on it) to edit. Return commits and closes the editor. Tab commits and moves to the next cell, wrapping to the next row.
 - The toolbar `Add Row` button appends a new row, scrolls to it, and selects it.
-- Select rows and press `Delete` (or the toolbar `Delete` button) to remove them. The next row takes selection so arrow keys keep working from where you were.
+- Select rows and press `Delete` (the toolbar `Delete` button, or right-click a row and choose Delete) to remove them. The next row takes selection so arrow keys keep working from where you were.
 - Cmd+Z and Cmd+Shift+Z undo and redo every change. A bulk delete or a paste is a single undo step.
 
 ## Column operations
@@ -44,12 +44,14 @@ Rows load in pages. The page size comes from the Default page size setting in [S
   <img className="hidden dark:block" src="/images/csv-inspector-columns-menu-dark.png" alt="CSV Inspector Columns Menu" />
 </Frame>
 
-The toolbar `Columns` button opens a menu. **Add Column…** at the top appends a new column at the end. Below it, every column is listed with its current type, each with a submenu:
+Right-click a column header, or open the toolbar `Columns` menu, to reach the same per-column actions:
 
-- **Rename…** prompts for a new name; the column stays in place.
+- **Rename Column…** prompts for a new name; the column stays in place.
 - **Insert Column Before / After** inserts a new column at the chosen position with a name you supply.
-- **Type ▸** overrides the inferred type as Text, Integer, Real, Boolean, or Date. **Reset to Inferred** drops the override.
-- **Delete** removes the column (undoable).
+- **Change Type ▸** overrides the inferred type as Text, Integer, Real, Boolean, or Date. **Reset to Inferred** drops the override.
+- **Delete Column** removes the column. It sits last in the menu and is undoable with Cmd+Z.
+
+In the toolbar `Columns` menu, **Add Column…** at the top appends a new column at the end, and every column is listed below it with its current type and the same submenu.
 
 ## Filter and sort
 

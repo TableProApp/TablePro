@@ -144,97 +144,21 @@ final class InspectorWindowController: NSWindowController, NSWindowDelegate, NST
         for (index, name) in columns.enumerated() {
             let item = NSMenuItem(title: name, action: nil, keyEquivalent: "")
             let type = inspector.displayedType(forColumn: index)
-            item.image = NSImage(systemSymbolName: Self.typeSymbol(type), accessibilityDescription: nil)
-            item.submenu = makeColumnSubmenu(columnIndex: index, currentType: type)
+            item.image = NSImage(
+                systemSymbolName: InspectorColumnMenuBuilder.typeSymbol(type),
+                accessibilityDescription: nil
+            )
+            item.submenu = columnSubmenu(forColumn: index, currentType: type)
             menu.addItem(item)
         }
     }
 
-    private func makeColumnSubmenu(columnIndex: Int, currentType: InspectorColumnType) -> NSMenu {
+    private func columnSubmenu(forColumn index: Int, currentType: InspectorColumnType) -> NSMenu {
         let submenu = NSMenu()
-        let rename = NSMenuItem(
-            title: String(localized: "Rename…"),
-            action: #selector(InspectorViewController.inspectorRenameColumn(_:)),
-            keyEquivalent: ""
-        )
-        rename.tag = columnIndex
-        submenu.addItem(rename)
-
-        let insertBefore = NSMenuItem(
-            title: String(localized: "Insert Column Before"),
-            action: #selector(InspectorViewController.inspectorInsertColumnBefore(_:)),
-            keyEquivalent: ""
-        )
-        insertBefore.tag = columnIndex
-        submenu.addItem(insertBefore)
-
-        let insertAfter = NSMenuItem(
-            title: String(localized: "Insert Column After"),
-            action: #selector(InspectorViewController.inspectorInsertColumnAfter(_:)),
-            keyEquivalent: ""
-        )
-        insertAfter.tag = columnIndex
-        submenu.addItem(insertAfter)
-
-        submenu.addItem(.separator())
-
-        let typeItem = NSMenuItem(title: String(localized: "Type"), action: nil, keyEquivalent: "")
-        typeItem.submenu = makeTypeSubmenu(columnIndex: columnIndex, currentType: currentType)
-        submenu.addItem(typeItem)
-
-        submenu.addItem(.separator())
-
-        let delete = NSMenuItem(
-            title: String(localized: "Delete"),
-            action: #selector(InspectorViewController.inspectorDeleteColumn(_:)),
-            keyEquivalent: ""
-        )
-        delete.tag = columnIndex
-        submenu.addItem(delete)
-        return submenu
-    }
-
-    private func makeTypeSubmenu(columnIndex: Int, currentType: InspectorColumnType) -> NSMenu {
-        let submenu = NSMenu()
-        for type in InspectorColumnType.allCases {
-            let item = NSMenuItem(
-                title: Self.typeLabel(type),
-                action: #selector(InspectorViewController.inspectorSetColumnType(_:)),
-                keyEquivalent: ""
-            )
-            item.representedObject = ColumnTypeAssignment(column: columnIndex, type: type)
-            item.state = (type == currentType) ? .on : .off
+        for item in InspectorColumnMenuBuilder.structureItems(forColumn: index, currentType: currentType) {
             submenu.addItem(item)
         }
-        submenu.addItem(.separator())
-        let reset = NSMenuItem(
-            title: String(localized: "Reset to Inferred"),
-            action: #selector(InspectorViewController.inspectorSetColumnType(_:)),
-            keyEquivalent: ""
-        )
-        reset.representedObject = ColumnTypeAssignment(column: columnIndex, type: nil)
-        submenu.addItem(reset)
         return submenu
-    }
-
-    private static func typeSymbol(_ type: InspectorColumnType) -> String {
-        switch type {
-        case .text: return "textformat"
-        case .integer: return "number"
-        case .real: return "number.square"
-        case .boolean: return "checkmark.square"
-        case .date: return "calendar"
-        }
-    }
-
-    private static func typeLabel(_ type: InspectorColumnType) -> String {
-        switch type {
-        case .text: return String(localized: "Text")
-        case .integer: return String(localized: "Integer")
-        case .real: return String(localized: "Real")
-        case .boolean: return String(localized: "Boolean")
-        case .date: return String(localized: "Date")
-        }
     }
 
     private func makeItem(
