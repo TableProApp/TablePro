@@ -111,8 +111,10 @@ final class MetadataConnectionPool {
     ) async throws -> Entry {
         if let session = DatabaseManager.shared.session(for: connectionId),
            session.connection.type.supportsConnectionPooling == false {
-            guard session.driver.status == .connected else { throw DatabaseError.notConnected }
-            return Entry(driver: session.driver, ownsDriver: false)
+            guard let driver = session.driver, driver.status == .connected else {
+                throw DatabaseError.notConnected
+            }
+            return Entry(driver: driver, ownsDriver: false)
         }
 
         let key = Key(connectionId: connectionId, database: database, schema: schema, workload: workload)
