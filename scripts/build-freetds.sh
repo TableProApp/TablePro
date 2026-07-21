@@ -122,11 +122,21 @@ cp "$LIBS_DIR/libcrypto_arm64.a" "$MACOS_OPENSSL_ARM64/lib/libcrypto.a"
 cp "$LIBS_DIR/libssl_x86_64.a"    "$MACOS_OPENSSL_X86_64/lib/libssl.a"
 cp "$LIBS_DIR/libcrypto_x86_64.a" "$MACOS_OPENSSL_X86_64/lib/libcrypto.a"
 
-# macOS slices enable Kerberos/GSS (Windows Authentication). --enable-krb5 links the system
-# Heimdal GSS via the SDK libgssapi_krb5 stub (Kerberos.framework); the plugin adds -framework GSS
-# at link time to resolve the symbols. iOS slices stay krb5-free (Windows auth is macOS only).
-build_slice "macos-arm64"  "macosx" "arm64"  "aarch64-apple-darwin" "-mmacosx-version-min=${MACOS_DEPLOYMENT_TARGET}" "$MACOS_OPENSSL_ARM64"  "--enable-krb5"
-build_slice "macos-x86_64" "macosx" "x86_64" "x86_64-apple-darwin"  "-mmacosx-version-min=${MACOS_DEPLOYMENT_TARGET}" "$MACOS_OPENSSL_X86_64" "--enable-krb5"
+# macOS slices enable Kerberos/GSS (Windows Authentication). The explicit --enable-krb5=gssapi_krb5
+# form makes FreeTDS define ENABLE_KRB5 unconditionally; plain --enable-krb5 only defines it when an
+# auto link probe succeeds and skips it silently otherwise, which shipped an empty gssapi.o once.
+# The symbols resolve against the SDK's libgssapi_krb5 stub (Kerberos.framework); the plugin adds
+# -framework GSS at link time. iOS slices stay krb5-free (Windows auth is macOS only).
+build_slice "macos-arm64"  "macosx" "arm64"  "aarch64-apple-darwin" "-mmacosx-version-min=${MACOS_DEPLOYMENT_TARGET}" "$MACOS_OPENSSL_ARM64"  "--enable-krb5=gssapi_krb5"
+build_slice "macos-x86_64" "macosx" "x86_64" "x86_64-apple-darwin"  "-mmacosx-version-min=${MACOS_DEPLOYMENT_TARGET}" "$MACOS_OPENSSL_X86_64" "--enable-krb5=gssapi_krb5"
+
+for slice in macos-arm64 macos-x86_64; do
+    if ! nm "$LIBS_DIR/libsybdb_${slice}.a" 2>/dev/null | grep -q 'T _tds_gss_get_auth'; then
+        echo "ERROR: libsybdb_${slice}.a has no tds_gss_get_auth; Kerberos/GSS was not compiled in." >&2
+        echo "       configure did not define ENABLE_KRB5. Check --enable-krb5=gssapi_krb5 and the SDK gssapi headers." >&2
+        exit 1
+    fi
+done
 
 # iOS slices link OpenSSL statically from the existing xcframeworks; reconstruct a unix-style prefix
 # for FreeTDS's --with-openssl which expects include/ and lib/ siblings.

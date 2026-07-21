@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - SSH tunnels can authenticate with no password or key, for hosts that handle SSH auth themselves like Tailscale SSH. Pick **None** as the SSH auth method. (#1907)
 
+### Fixed
+
+- Windows Authentication (Kerberos) to SQL Server now works on macOS. The bundled SQL Server driver was built without Kerberos support, so every Windows-auth connect failed as if the credentials were wrong. (#1918)
+
 ## [0.58.0] - 2026-07-18
 
 ### Added
