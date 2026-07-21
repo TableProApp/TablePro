@@ -38,10 +38,12 @@ struct CSVWriter {
             buffer.reserveCapacity(Self.flushThreshold + 4_096)
             buffer.append(contentsOf: dialect.bomBytes)
 
-            append(store.headerSource, from: store, into: &buffer)
-            if buffer.count >= Self.flushThreshold {
-                try handle.write(contentsOf: buffer)
-                buffer.removeAll(keepingCapacity: true)
+            if store.hasHeaderRow {
+                append(store.headerSource, from: store, into: &buffer)
+                if buffer.count >= Self.flushThreshold {
+                    try handle.write(contentsOf: buffer)
+                    buffer.removeAll(keepingCapacity: true)
+                }
             }
 
             for row in 0..<store.rowCount {

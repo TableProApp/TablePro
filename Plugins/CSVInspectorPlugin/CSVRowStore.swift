@@ -27,6 +27,7 @@ final class CSVRowStore {
         let headerRef: RowRef
         let logicalRows: [RowRef]
         let columnTransforms: [ColumnTransform]
+        let hasHeaderRow: Bool
     }
 
     struct Snapshot: InspectorDataSnapshot {
@@ -72,6 +73,7 @@ final class CSVRowStore {
     let data: Data
     private let parser: CSVStreamingParser
     private(set) var columnNames: [String]
+    private(set) var hasHeaderRow: Bool
     private var headerRef: RowRef
     private var logicalRows: [RowRef]
     private var columnTransforms: [ColumnTransform] = []
@@ -89,6 +91,7 @@ final class CSVRowStore {
 
         var resolvedColumnNames: [String] = []
         var resolvedHeaderRef: RowRef = .materialized([])
+        var resolvedHasHeaderRow = false
         if let first = ranges.first {
             let headerCells = data.withUnsafeBytes { raw -> [String] in
                 guard let base = raw.bindMemory(to: UInt8.self).baseAddress else { return [] }
@@ -97,6 +100,7 @@ final class CSVRowStore {
             if Self.isLikelyHeader(headerCells) {
                 resolvedColumnNames = headerCells
                 resolvedHeaderRef = .original(first)
+                resolvedHasHeaderRow = true
                 ranges.removeFirst()
             } else {
                 let synthetic = (0..<headerCells.count).map { "Column \($0 + 1)" }
@@ -108,6 +112,7 @@ final class CSVRowStore {
         self.data = data
         self.parser = streamingParser
         self.columnNames = resolvedColumnNames
+        self.hasHeaderRow = resolvedHasHeaderRow
         self.headerRef = resolvedHeaderRef
         self.logicalRows = ranges.map { .original($0) }
     }
@@ -324,12 +329,33 @@ final class CSVRowStore {
         finishStructuralRewrite()
     }
 
+    func toggleHeaderRow() {
+        if hasHeaderRow {
+            let headerCells = currentHeaderCells()
+            let synthetic = (0..<columnNames.count).map { "Column \($0 + 1)" }
+            logicalRows.insert(.materialized(headerCells), at: 0)
+            columnNames = synthetic
+            headerRef = .materialized(synthetic)
+            hasHeaderRow = false
+        } else {
+            guard !logicalRows.isEmpty else { return }
+            let firstCells = cells(forRow: 0)
+            logicalRows.removeFirst()
+            columnNames = firstCells
+            headerRef = .materialized(firstCells)
+            hasHeaderRow = true
+        }
+        cache.removeAll()
+        cacheOrder.removeAll()
+    }
+
     func captureState() -> StoreState {
         StoreState(
             columnNames: columnNames,
             headerRef: headerRef,
             logicalRows: logicalRows,
-            columnTransforms: columnTransforms
+            columnTransforms: columnTransforms,
+            hasHeaderRow: hasHeaderRow
         )
     }
 
@@ -338,8 +364,18 @@ final class CSVRowStore {
         headerRef = state.headerRef
         logicalRows = state.logicalRows
         columnTransforms = state.columnTransforms
+        hasHeaderRow = state.hasHeaderRow
         cache.removeAll()
         cacheOrder.removeAll()
+    }
+
+    private func currentHeaderCells() -> [String] {
+        switch headerRef {
+        case .original(let range):
+            return applyColumnTransforms(cachedRawCells(in: range))
+        case .materialized(let cells):
+            return cells
+        }
     }
 
     static func split(_ value: String, spec: SplitSpec) -> [String] {

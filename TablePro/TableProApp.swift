@@ -645,6 +645,12 @@ struct AppMenuCommands: Commands {
             }
             .disabled(!keyWindowIsInspector)
 
+            Button(String(localized: "Switch First Row Between Header/Data")) {
+                NSApp.sendAction(#selector(InspectorViewController.inspectorToggleHeaderRow(_:)), to: nil, from: nil)
+            }
+            .keyboardShortcut("h", modifiers: [.command, .shift])
+            .disabled(!keyWindowIsInspector)
+
             Divider()
 
             // Table operations (work when tables selected in sidebar)

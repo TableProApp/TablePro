@@ -348,6 +348,13 @@ public final class CSVDocument: NSDocument, InspectorDocument {
         }
     }
 
+    public func toggleHeaderRow() {
+        performStructuralChange(name: String(localized: "Switch Header Row")) {
+            store.toggleHeaderRow()
+            recomputeInferredTypes()
+        }
+    }
+
     private func recomputeInferredTypes() {
         let sample = store.pageRows(offset: 0, limit: Self.typeInferenceSampleSize)
         inferredTypes = CSVTypeInferrer.inferColumns(rows: sample, columnCount: store.columnCount)

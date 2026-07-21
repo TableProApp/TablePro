@@ -361,6 +361,40 @@ struct CSVRowStoreTests {
         #expect(store.columnNames == ["first", "last"])
         #expect(store.cells(forRow: 0) == ["Alice", "Smith"])
     }
+
+    @Test("toggleHeaderRow demotes the header into a data row")
+    func toggleHeaderToData() {
+        let store = makeStore("name,age\nAlice,30\n")
+        #expect(store.hasHeaderRow)
+        store.toggleHeaderRow()
+        #expect(!store.hasHeaderRow)
+        #expect(store.columnNames == ["Column 1", "Column 2"])
+        #expect(store.rowCount == 2)
+        #expect(store.cells(forRow: 0) == ["name", "age"])
+        #expect(store.cells(forRow: 1) == ["Alice", "30"])
+    }
+
+    @Test("toggleHeaderRow promotes the first data row into the header")
+    func toggleDataToHeader() {
+        let store = makeStore("1,2\n3,4\n")
+        #expect(!store.hasHeaderRow)
+        store.toggleHeaderRow()
+        #expect(store.hasHeaderRow)
+        #expect(store.columnNames == ["1", "2"])
+        #expect(store.rowCount == 1)
+        #expect(store.cells(forRow: 0) == ["3", "4"])
+    }
+
+    @Test("toggleHeaderRow twice returns to the original state")
+    func toggleHeaderRoundTrip() {
+        let store = makeStore("name,age\nAlice,30\nBob,25\n")
+        store.toggleHeaderRow()
+        store.toggleHeaderRow()
+        #expect(store.hasHeaderRow)
+        #expect(store.columnNames == ["name", "age"])
+        #expect(store.rowCount == 2)
+        #expect(store.cells(forRow: 0) == ["Alice", "30"])
+    }
 }
 
 @Suite("CSVWriter round-trip")
@@ -425,5 +459,25 @@ struct CSVWriterRoundTripTests {
 
         let written = try Data(contentsOf: outURL)
         #expect(written.prefix(3) == Data([0xEF, 0xBB, 0xBF]))
+    }
+
+    @Test("A headerless file is written without a synthetic header row")
+    func roundTripHeaderless() throws {
+        let source = "1,2\n3,4\n"
+        let url = tempURL()
+        try source.data(using: .utf8)!.write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let data = try Data(contentsOf: url, options: .mappedIfSafe)
+        let dialect = CSVDialect.detect(from: data)
+        let store = CSVRowStore(data: data, dialect: dialect)
+        #expect(!store.hasHeaderRow)
+
+        let outURL = tempURL()
+        defer { try? FileManager.default.removeItem(at: outURL) }
+        try CSVWriter(dialect: dialect).write(store, to: outURL)
+
+        let written = try Data(contentsOf: outURL)
+        #expect(written == data)
     }
 }

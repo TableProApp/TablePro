@@ -217,6 +217,10 @@ final class InspectorViewController: NSViewController, NSUserInterfaceValidation
         handleDeleteRows(state.selectedRowIndices)
     }
 
+    @objc func inspectorToggleHeaderRow(_ sender: Any?) {
+        inspectorDocument?.toggleHeaderRow()
+    }
+
     @objc func inspectorInsertRowAbove(_ sender: Any?) {
         performInsertRow(anchoredBy: sender, below: false)
     }
@@ -588,7 +592,8 @@ final class InspectorViewController: NSViewController, NSUserInterfaceValidation
              #selector(toggleInspectorFilter(_:)), #selector(inspectorAddRow(_:)),
              #selector(inspectorInsertRowAbove(_:)), #selector(inspectorInsertRowBelow(_:)),
              #selector(inspectorInsertColumnLeft(_:)), #selector(inspectorInsertColumnRight(_:)),
-             #selector(inspectorSplitColumn(_:)), #selector(inspectorMergeColumns(_:)):
+             #selector(inspectorSplitColumn(_:)), #selector(inspectorMergeColumns(_:)),
+             #selector(inspectorToggleHeaderRow(_:)):
             return nsDocument != nil
         case #selector(inspectorDeleteColumn(_:)):
             guard nsDocument != nil else { return false }
