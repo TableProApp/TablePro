@@ -320,6 +320,14 @@ class DataGridRowView: NSTableRowView {
         }
 
         if coordinator.isEditable {
+            let rowStructureItems = coordinator.delegate?.dataGridRowStructureMenuItems(forRow: rowIndex) ?? []
+            if !rowStructureItems.isEmpty {
+                menu.addItem(NSMenuItem.separator())
+                for item in rowStructureItems {
+                    menu.addItem(item)
+                }
+            }
+
             let duplicateItem = NSMenuItem(
                 title: String(localized: "Duplicate"), action: #selector(duplicateRow), keyEquivalent: "")
             duplicateItem.target = self

@@ -28,6 +28,7 @@ protocol DataGridViewDelegate: AnyObject {
     func dataGridHideColumn(_ columnName: String)
     func dataGridShowAllColumns()
     func dataGridColumnStructureMenuItems(forColumn dataColumnIndex: Int) -> [NSMenuItem]
+    func dataGridRowStructureMenuItems(forRow displayRow: Int) -> [NSMenuItem]
     func dataGridVisualState(forRow row: Int) -> RowVisualState?
     func dataGridRowView(for tableView: NSTableView, row: Int, coordinator: TableViewCoordinator) -> NSTableRowView?
     func dataGridEmptySpaceMenu() -> NSMenu?
@@ -57,6 +58,7 @@ extension DataGridViewDelegate {
     func dataGridHideColumn(_ columnName: String) {}
     func dataGridShowAllColumns() {}
     func dataGridColumnStructureMenuItems(forColumn dataColumnIndex: Int) -> [NSMenuItem] { [] }
+    func dataGridRowStructureMenuItems(forRow displayRow: Int) -> [NSMenuItem] { [] }
     func dataGridVisualState(forRow row: Int) -> RowVisualState? { nil }
     func dataGridRowView(for tableView: NSTableView, row: Int, coordinator: TableViewCoordinator) -> NSTableRowView? { nil }
     func dataGridEmptySpaceMenu() -> NSMenu? { nil }

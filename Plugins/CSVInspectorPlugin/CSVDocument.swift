@@ -191,6 +191,7 @@ public final class CSVDocument: NSDocument, InspectorDocument {
         registerUndo { document in
             document.removeRow(at: index, suppressUndo: false)
         }
+        setUndoActionName(String(localized: "Add Row"))
         onChange?()
     }
 
@@ -199,11 +200,13 @@ public final class CSVDocument: NSDocument, InspectorDocument {
         registerUndo { document in
             document.removeRow(at: index, suppressUndo: false)
         }
+        setUndoActionName(String(localized: "Insert Row"))
         onChange?()
     }
 
     public func removeRow(at index: Int) {
         removeRow(at: index, suppressUndo: false)
+        setUndoActionName(String(localized: "Delete Row"))
     }
 
     private func removeRow(at index: Int, suppressUndo: Bool) {
@@ -230,6 +233,11 @@ public final class CSVDocument: NSDocument, InspectorDocument {
         registerUndo { document in
             document.reinsertRows(removed)
         }
+        setUndoActionName(
+            removed.count == 1
+                ? String(localized: "Delete Row")
+                : String(localized: "Delete Rows")
+        )
         onChange?()
     }
 
@@ -316,6 +324,10 @@ public final class CSVDocument: NSDocument, InspectorDocument {
 
     private func registerUndo(_ action: @escaping (CSVDocument) -> Void) {
         undoManager?.registerUndo(withTarget: self, handler: action)
+    }
+
+    private func setUndoActionName(_ name: String) {
+        undoManager?.setActionName(name)
     }
 
     private func shiftTypeOverrides(insertingAt index: Int) {

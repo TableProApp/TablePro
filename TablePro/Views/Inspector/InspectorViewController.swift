@@ -162,8 +162,19 @@ final class InspectorViewController: NSViewController, NSUserInterfaceValidation
             return displayToStore[index]
         }
         guard !storeIndices.isEmpty else { return }
-        pendingPostRefresh = .selectClamped(displayRow: sortedDisplay.first ?? 0)
-        inspectorDocument.removeRows(at: IndexSet(storeIndices))
+        let columnCount = inspectorDocument.columnNames.count
+        let rowsCells = storeIndices.map { storeRow in
+            (0..<columnCount).map { inspectorDocument.value(row: storeRow, column: $0) }
+        }
+        let firstDisplayRow = sortedDisplay.first ?? 0
+        InspectorDeleteConfirmation.confirmDeleteRowsIfNeeded(
+            rowsCells: rowsCells,
+            window: view.window
+        ) { [weak self] in
+            guard let self else { return }
+            self.pendingPostRefresh = .selectClamped(displayRow: firstDisplayRow)
+            self.inspectorDocument?.removeRows(at: IndexSet(storeIndices))
+        }
     }
 
     fileprivate func handleSortChanged(_ newState: SortState) {
@@ -204,6 +215,38 @@ final class InspectorViewController: NSViewController, NSUserInterfaceValidation
     @objc func inspectorAddRow(_ sender: Any?) { handleAddRow() }
     @objc func inspectorDeleteSelectedRows(_ sender: Any?) {
         handleDeleteRows(state.selectedRowIndices)
+    }
+
+    @objc func inspectorInsertRowAbove(_ sender: Any?) {
+        performInsertRow(anchoredBy: sender, below: false)
+    }
+
+    @objc func inspectorInsertRowBelow(_ sender: Any?) {
+        performInsertRow(anchoredBy: sender, below: true)
+    }
+
+    private func performInsertRow(anchoredBy sender: Any?, below: Bool) {
+        guard let inspectorDocument else { return }
+        let storeIndex = insertStoreIndex(anchoredBy: sender, below: below)
+        pendingPostRefresh = .focusStoreIndex(storeIndex)
+        inspectorDocument.insertRow(at: storeIndex)
+    }
+
+    private func insertStoreIndex(anchoredBy sender: Any?, below: Bool) -> Int {
+        let rowCount = inspectorDocument?.rowCount ?? 0
+        let anchorDisplayRow: Int? = if let item = sender as? NSMenuItem {
+            item.tag
+        } else if below {
+            state.selectedRowIndices.max()
+        } else {
+            state.selectedRowIndices.min()
+        }
+        guard let displayRow = anchorDisplayRow,
+              displayRow >= 0, displayRow < displayToStore.count else {
+            return below ? rowCount : 0
+        }
+        let storeRow = displayToStore[displayRow]
+        return below ? storeRow + 1 : storeRow
     }
 
     @objc func inspectorAddColumn(_ sender: Any?) {
@@ -278,6 +321,11 @@ final class InspectorViewController: NSViewController, NSUserInterfaceValidation
         )
     }
 
+    fileprivate func rowStructureMenuItems(forRow displayRow: Int) -> [NSMenuItem] {
+        guard inspectorDocument != nil else { return [] }
+        return InspectorRowMenuBuilder.structureItems(forRow: displayRow)
+    }
+
     private func renameLayoutKey(from oldName: String, to newName: String) {
         if state.columnLayout.columnOrder != nil {
             state.columnLayout.columnOrder = state.columnLayout.columnOrder?.map { $0 == oldName ? newName : $0 }
@@ -350,7 +398,8 @@ final class InspectorViewController: NSViewController, NSUserInterfaceValidation
         case #selector(redo(_:)):
             return nsDocument?.undoManager?.canRedo ?? false
         case #selector(saveDocument(_:)), #selector(saveDocumentAs(_:)),
-             #selector(toggleInspectorFilter(_:)), #selector(inspectorAddRow(_:)):
+             #selector(toggleInspectorFilter(_:)), #selector(inspectorAddRow(_:)),
+             #selector(inspectorInsertRowAbove(_:)), #selector(inspectorInsertRowBelow(_:)):
             return nsDocument != nil
         case #selector(inspectorDeleteSelectedRows(_:)):
             return !state.selectedRowIndices.isEmpty
@@ -699,6 +748,10 @@ private final class InspectorGridDelegate: DataGridViewDelegate {
 
     func dataGridColumnStructureMenuItems(forColumn dataColumnIndex: Int) -> [NSMenuItem] {
         owner?.columnStructureMenuItems(forColumn: dataColumnIndex) ?? []
+    }
+
+    func dataGridRowStructureMenuItems(forRow displayRow: Int) -> [NSMenuItem] {
+        owner?.rowStructureMenuItems(forRow: displayRow) ?? []
     }
 
     func dataGridUndo() {

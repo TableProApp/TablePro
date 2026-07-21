@@ -605,6 +605,23 @@ struct AppMenuCommands: Commands {
 
             Divider()
 
+            Button(String(localized: "Insert Row Above")) {
+                NSApp.sendAction(#selector(InspectorViewController.inspectorInsertRowAbove(_:)), to: nil, from: nil)
+            }
+            .disabled(!keyWindowIsInspector)
+
+            Button(String(localized: "Insert Row Below")) {
+                NSApp.sendAction(#selector(InspectorViewController.inspectorInsertRowBelow(_:)), to: nil, from: nil)
+            }
+            .disabled(!keyWindowIsInspector)
+
+            Button(String(localized: "Delete Rows")) {
+                NSApp.sendAction(#selector(InspectorViewController.inspectorDeleteSelectedRows(_:)), to: nil, from: nil)
+            }
+            .disabled(!keyWindowIsInspector)
+
+            Divider()
+
             // Table operations (work when tables selected in sidebar)
             Button("Truncate Table") {
                 actions?.truncateTables()

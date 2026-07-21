@@ -265,6 +265,39 @@ struct CSVRowStoreTests {
         #expect(store.cells(forRow: 4) == ["5", "5"])
     }
 
+    @Test("insertRow places a row at the given index and shifts the rest down")
+    func insertRowAtIndex() {
+        let store = makeStore("a,b\n1,1\n3,3\n")
+        store.insertRow(["2", "2"], at: 1)
+        #expect(store.rowCount == 3)
+        #expect(store.cells(forRow: 0) == ["1", "1"])
+        #expect(store.cells(forRow: 1) == ["2", "2"])
+        #expect(store.cells(forRow: 2) == ["3", "3"])
+    }
+
+    @Test("insertRow at 0 inserts above the first row")
+    func insertRowAtTop() {
+        let store = makeStore("a,b\n1,1\n2,2\n")
+        store.insertRow(["0", "0"], at: 0)
+        #expect(store.cells(forRow: 0) == ["0", "0"])
+        #expect(store.cells(forRow: 1) == ["1", "1"])
+    }
+
+    @Test("insertRow past the end clamps to an append")
+    func insertRowClampsToEnd() {
+        let store = makeStore("a,b\n1,1\n")
+        store.insertRow(["9", "9"], at: 99)
+        #expect(store.rowCount == 2)
+        #expect(store.cells(forRow: 1) == ["9", "9"])
+    }
+
+    @Test("insertRow pads a short row to the column count")
+    func insertRowPadsShortRow() {
+        let store = makeStore("a,b,c\n1,2,3\n")
+        store.insertRow(["x"], at: 0)
+        #expect(store.cells(forRow: 0) == ["x", "", ""])
+    }
+
     @Test("renameColumn updates columnNames in place")
     func renameColumnInPlace() {
         let store = makeStore("a,b,c\n1,2,3\n")
