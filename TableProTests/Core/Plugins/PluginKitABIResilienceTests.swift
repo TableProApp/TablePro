@@ -32,6 +32,7 @@ struct PluginKitABIResilienceTests {
         #expect(driver.foreignKeyEnableStatements() == nil)
         #expect(driver.supportedMaintenanceOperations() == nil)
         #expect(driver.buildExplainQuery("SELECT 1") == nil)
+        #expect(driver.injectRowLimit("SELECT 1", limit: 100) == nil)
         #expect(driver.defaultExportQuery(table: "users") == nil)
         #expect(driver.createViewTemplate() == nil)
         #expect(driver.generateCreateTableSQL(definition: .init(tableName: "users", columns: [], primaryKeyColumns: [])) == nil)

@@ -168,6 +168,8 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     // EXPLAIN query building (optional)
     func buildExplainQuery(_ sql: String) -> String?
 
+    func injectRowLimit(_ sql: String, limit: Int) -> String?
+
     func quoteIdentifier(_ name: String) -> String
 
     func escapeStringLiteral(_ value: String) -> String
@@ -346,6 +348,8 @@ public extension PluginDatabaseDriver {
     func maintenanceStatements(operation: String, table: String?, schema: String?, options: [String: String]) -> [String]? { nil }
 
     func buildExplainQuery(_ sql: String) -> String? { nil }
+
+    func injectRowLimit(_ sql: String, limit: Int) -> String? { nil }
 
     func createViewTemplate() -> String? { nil }
     func editViewFallbackTemplate(viewName: String) -> String? { nil }

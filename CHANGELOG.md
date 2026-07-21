@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Windows Authentication (Kerberos) to SQL Server now works on macOS. The bundled SQL Server driver was built without Kerberos support, so every Windows-auth connect failed as if the credentials were wrong. (#1918)
+- The MongoDB, Oracle, Cassandra, and Elasticsearch plugins failed to install on 0.58 with "Bundle failed to load executable". (#1917)
 
 ## [0.58.0] - 2026-07-18
 
