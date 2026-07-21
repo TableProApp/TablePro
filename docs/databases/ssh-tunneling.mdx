@@ -46,6 +46,8 @@ To reuse one SSH config across several connections, save it as a profile with **
     | **Passphrase** | Key passphrase, if the key is encrypted |
 
     Leave **Key File** empty to auto-detect the key from `~/.ssh/config` and default key locations.
+
+    If the server also requires a keyboard-interactive step such as a 2FA code, TablePro prompts for it after the key is accepted.
   </Tab>
   <Tab title="SSH Agent">
     Signing is delegated to an agent process; TablePro never reads the key. The **Agent Socket** picker offers:
@@ -53,6 +55,8 @@ To reuse one SSH config across several connections, save it as a profile with **
     - **SSH_AUTH_SOCK**: the system `SSH_AUTH_SOCK` environment variable
     - **1Password**: 1Password's socket at `~/Library/Group Containers/2BUA8C4S2C.com.1password/t/agent.sock`
     - **Custom Path**: any other agent socket path (Secretive, custom `ssh-agent`)
+
+    If the server also requires a keyboard-interactive step such as a 2FA code, TablePro prompts for it after the agent authenticates.
   </Tab>
   <Tab title="Keyboard Interactive">
     Sends your password through SSH's keyboard-interactive challenge-response. Use this when the server rejects plain password auth, which is common with PAM-based setups.
@@ -62,11 +66,13 @@ To reuse one SSH config across several connections, save it as a profile with **
   </Tab>
 </Tabs>
 
-### Two-Factor Authentication (TOTP)
+### Verification Prompts and Two-Factor Authentication
 
-When the auth method is **Password** or **Keyboard Interactive**, a **Two-Factor Authentication** section appears for servers that require TOTP codes (PAM modules like `google-authenticator` or `duo_unix`):
+If the SSH server issues a keyboard-interactive challenge during authentication, for example a verification code from `google-authenticator` or `duo_unix`, TablePro shows the server's prompt and lets you type the response. This works with every authentication method except **None**, including a private key or SSH agent followed by a second factor (`AuthenticationMethods publickey,keyboard-interactive`).
 
-- **Prompt at Connect**: TablePro asks for the code each time you connect.
+The **Two-Factor Authentication** section lets you skip that prompt for TOTP codes:
+
+- **None** or **Prompt at Connect**: TablePro asks for the code when the server requests it.
 - **Auto Generate**: TablePro computes the code from your base32 **TOTP Secret** (the key from your authenticator enrollment). Algorithm (SHA1, SHA256, SHA512), digits (6 or 8), and period (30s or 60s) are configurable; defaults match most setups.
 
 ## Host Keys

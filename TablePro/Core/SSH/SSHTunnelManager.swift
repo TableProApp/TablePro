@@ -11,12 +11,14 @@ import os
 /// Why an SSH authentication attempt failed. Drives the user-facing error string so the
 /// alert points at the actual cause (wrong OTP, missing key, agent rejection) instead of
 /// the catch-all "credentials or private key" message.
-enum AuthFailureReason: Sendable, Equatable {
+enum AuthFailureReason: Sendable, Equatable, CaseIterable {
     case password
     case verificationCode
     case privateKey
     case agentRejected
     case passwordlessRejected
+    case keyboardInteractive
+    case cancelled
     case generic
 }
 
@@ -51,6 +53,10 @@ enum SSHTunnelError: Error, LocalizedError, Equatable {
                 return String(localized: "SSH agent did not authenticate. Run ssh-add -l to check loaded keys.")
             case .passwordlessRejected:
                 return String(localized: "The SSH server did not accept passwordless authentication. Choose Password, Private Key, or SSH Agent.")
+            case .keyboardInteractive:
+                return String(localized: "SSH verification rejected. Check your response and try again.")
+            case .cancelled:
+                return String(localized: "SSH authentication cancelled.")
             case .generic:
                 return String(localized: "SSH authentication failed. Check your credentials or private key.")
             }
@@ -72,6 +78,13 @@ enum SSHTunnelError: Error, LocalizedError, Equatable {
                 detail
             )
         }
+    }
+}
+
+extension SSHTunnelError {
+    var isUserCancelledAuthentication: Bool {
+        guard case .authenticationFailed(reason: .cancelled) = self else { return false }
+        return true
     }
 }
 
@@ -135,7 +148,7 @@ actor SSHTunnelManager: TunnelManaging {
             sshPassword: sshPassword,
             keyPassphrase: keyPassphrase,
             totpSecret: totpSecret,
-            totpProvider: nil
+            keyboardInteractivePromptProvider: nil
         )
 
         // Try ports until one works

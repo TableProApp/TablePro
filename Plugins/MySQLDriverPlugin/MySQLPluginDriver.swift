@@ -79,7 +79,8 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             password: config.password,
             database: _activeDatabase,
             sslConfig: sslConfig,
-            enableCleartextPlugin: config.additionalFields["enableCleartextPlugin"] == "true"
+            enableCleartextPlugin: config.additionalFields["enableCleartextPlugin"] == "true",
+            queryTimeoutSeconds: config.additionalFields["queryTimeoutSeconds"].flatMap { Int($0) } ?? 0
         )
 
         try await conn.connect()
@@ -193,7 +194,8 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 isTruncated: result.isTruncated,
                 columnMeta: result.columnMeta
             )
-        } catch let error as MariaDBPluginError where !isRetry && isConnectionLostError(error) {
+        } catch let error as MariaDBPluginError
+            where !isRetry && isConnectionLostError(error) && mysqlStatementIsReadOnly(query) {
             try await reconnect()
             return try await executeWithReconnect(query: query, isRetry: true, rowCap: rowCap)
         }

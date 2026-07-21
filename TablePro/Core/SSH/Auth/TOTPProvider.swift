@@ -8,10 +8,8 @@ import Foundation
 /// Protocol for providing TOTP verification codes
 internal protocol TOTPProvider: Sendable {
     /// Generate or obtain a TOTP code.
-    /// - Parameter attempt: 0 for the first prompt in a session, 1+ for retries when the
-    ///   server rejected an earlier code (wrong digits, expired window). Implementations
-    ///   may use this to vary UI affordances. `PromptTOTPProvider` shows a "previous code
-    ///   was rejected" hint when `attempt > 0`.
+    /// - Parameter attempt: 0 for the first code in a session, 1+ for retries when the
+    ///   server rejected an earlier code (wrong digits, expired window).
     /// - Returns: The TOTP code string.
     /// - Throws: `SSHTunnelError` if the code cannot be obtained (user cancelled, no secret).
     func provideCode(attempt: Int) throws -> String

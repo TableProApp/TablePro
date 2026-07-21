@@ -532,6 +532,8 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				MySQLQueryTimeoutStatement.swift,
+				MySQLSocketTimeout.swift,
+				MySQLStatementClassification.swift,
 			);
 			target = 5ABCC5A62F43856700EAF3FC /* TableProTests */;
 		};
@@ -3591,6 +3593,7 @@
 					"-liconv",
 					"-framework",
 					"GSS",
+					"-lcom_err",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.TablePro.MSSQLDriver;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -3632,6 +3635,7 @@
 					"-liconv",
 					"-framework",
 					"GSS",
+					"-lcom_err",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.TablePro.MSSQLDriver;
 				PRODUCT_NAME = "$(TARGET_NAME)";

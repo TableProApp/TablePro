@@ -223,7 +223,7 @@ struct ConnectionSSHTunnelView: View {
                 }
             }
 
-            if sshState.authMethod == .keyboardInteractive || sshState.authMethod == .password {
+            if sshState.authMethod != .none {
                 Section(String(localized: "Two-Factor Authentication")) {
                     Picker(String(localized: "TOTP"), selection: $sshState.totpMode) {
                         ForEach(TOTPMode.allCases) { mode in
@@ -247,8 +247,8 @@ struct ConnectionSSHTunnelView: View {
                             Text("30s").tag(30)
                             Text("60s").tag(60)
                         }
-                    } else if sshState.totpMode == .promptAtConnect {
-                        Text(String(localized: "You will be prompted for a verification code each time you connect."))
+                    } else {
+                        Text(String(localized: "If the SSH server asks for a verification code, TablePro prompts you for it when you connect."))
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
