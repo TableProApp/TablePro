@@ -60,6 +60,13 @@ public protocol InspectorDocument: AnyObject {
     func insertColumn(at index: Int, name: String)
     func removeColumn(at index: Int)
     func renameColumn(at index: Int, to name: String)
+    func splitColumn(at index: Int, separator: String, isRegex: Bool)
+    func mergeColumns(at index: Int, separator: String)
     func setTypeOverride(_ type: InspectorColumnType?, forColumn index: Int)
     var onChange: (() -> Void)? { get set }
+}
+
+public extension InspectorDocument {
+    func splitColumn(at index: Int, separator: String, isRegex: Bool) {}
+    func mergeColumns(at index: Int, separator: String) {}
 }

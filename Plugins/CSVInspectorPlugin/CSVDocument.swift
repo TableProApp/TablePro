@@ -325,6 +325,67 @@ public final class CSVDocument: NSDocument, InspectorDocument {
         onChange?()
     }
 
+    public func splitColumn(at index: Int, separator: String, isRegex: Bool) {
+        guard index >= 0, index < store.columnCount, !separator.isEmpty else { return }
+        let spec: CSVRowStore.SplitSpec
+        if isRegex {
+            guard let regex = try? NSRegularExpression(pattern: separator) else { return }
+            spec = .regex(regex)
+        } else {
+            spec = .literal(separator)
+        }
+        performStructuralChange(name: String(localized: "Split Column")) {
+            store.splitColumn(at: index, spec: spec)
+            recomputeInferredTypes()
+        }
+    }
+
+    public func mergeColumns(at index: Int, separator: String) {
+        guard index >= 0, index + 1 < store.columnCount else { return }
+        performStructuralChange(name: String(localized: "Merge Columns")) {
+            store.mergeColumns(at: index, separator: separator)
+            recomputeInferredTypes()
+        }
+    }
+
+    private func recomputeInferredTypes() {
+        let sample = store.pageRows(offset: 0, limit: Self.typeInferenceSampleSize)
+        inferredTypes = CSVTypeInferrer.inferColumns(rows: sample, columnCount: store.columnCount)
+        typeOverrides = [:]
+    }
+
+    private func performStructuralChange(name: String, _ mutate: () -> Void) {
+        let before = captureStructuralSnapshot()
+        mutate()
+        registerStructuralUndo(name: name, undoTo: before, redoTo: captureStructuralSnapshot())
+        onChange?()
+    }
+
+    private func registerStructuralUndo(name: String, undoTo: StructuralSnapshot, redoTo: StructuralSnapshot) {
+        undoManager?.registerUndo(withTarget: self) { document in
+            document.restoreStructuralSnapshot(undoTo)
+            document.registerStructuralUndo(name: name, undoTo: redoTo, redoTo: undoTo)
+            document.onChange?()
+        }
+        undoManager?.setActionName(name)
+    }
+
+    private func captureStructuralSnapshot() -> StructuralSnapshot {
+        StructuralSnapshot(store: store.captureState(), inferredTypes: inferredTypes, typeOverrides: typeOverrides)
+    }
+
+    private func restoreStructuralSnapshot(_ snapshot: StructuralSnapshot) {
+        store.restore(snapshot.store)
+        inferredTypes = snapshot.inferredTypes
+        typeOverrides = snapshot.typeOverrides
+    }
+
+    private struct StructuralSnapshot {
+        let store: CSVRowStore.StoreState
+        let inferredTypes: [InspectorColumnType]
+        let typeOverrides: [Int: InspectorColumnType]
+    }
+
     private func registerUndo(_ action: @escaping (CSVDocument) -> Void) {
         undoManager?.registerUndo(withTarget: self, handler: action)
     }

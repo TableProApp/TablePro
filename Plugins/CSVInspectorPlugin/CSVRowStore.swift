@@ -17,6 +17,18 @@ final class CSVRowStore {
         case remove(index: Int)
     }
 
+    enum SplitSpec {
+        case literal(String)
+        case regex(NSRegularExpression)
+    }
+
+    struct StoreState {
+        let columnNames: [String]
+        let headerRef: RowRef
+        let logicalRows: [RowRef]
+        let columnTransforms: [ColumnTransform]
+    }
+
     struct Snapshot: InspectorDataSnapshot {
         let data: Data
         let parser: CSVStreamingParser
@@ -267,6 +279,91 @@ final class CSVRowStore {
             headerRef = .materialized(cells)
         }
         return previous
+    }
+
+    func splitColumn(at index: Int, spec: SplitSpec) {
+        guard index >= 0, index < columnNames.count else { return }
+        let baseName = columnNames[index]
+        var pieceRows: [[String]] = []
+        pieceRows.reserveCapacity(logicalRows.count)
+        var pieceCount = 1
+        for row in logicalRows.indices {
+            let cells = cells(forRow: row)
+            let value = index < cells.count ? cells[index] : ""
+            let pieces = Self.split(value, spec: spec)
+            pieceCount = max(pieceCount, pieces.count)
+            pieceRows.append(pieces)
+        }
+        let newNames = (0..<pieceCount).map { "\(baseName) \($0 + 1)" }
+        for row in logicalRows.indices {
+            var cells = cells(forRow: row)
+            let pieces = pieceRows[row]
+            let padded = (0..<pieceCount).map { $0 < pieces.count ? pieces[$0] : "" }
+            if index < cells.count { cells.remove(at: index) }
+            cells.insert(contentsOf: padded, at: min(index, cells.count))
+            logicalRows[row] = .materialized(cells)
+        }
+        columnNames.remove(at: index)
+        columnNames.insert(contentsOf: newNames, at: index)
+        finishStructuralRewrite()
+    }
+
+    func mergeColumns(at index: Int, separator: String) {
+        guard index >= 0, index + 1 < columnNames.count else { return }
+        for row in logicalRows.indices {
+            var cells = cells(forRow: row)
+            while cells.count <= index + 1 { cells.append("") }
+            cells[index] = cells[index] + separator + cells[index + 1]
+            cells.remove(at: index + 1)
+            logicalRows[row] = .materialized(cells)
+        }
+        columnNames.remove(at: index + 1)
+        finishStructuralRewrite()
+    }
+
+    func captureState() -> StoreState {
+        StoreState(
+            columnNames: columnNames,
+            headerRef: headerRef,
+            logicalRows: logicalRows,
+            columnTransforms: columnTransforms
+        )
+    }
+
+    func restore(_ state: StoreState) {
+        columnNames = state.columnNames
+        headerRef = state.headerRef
+        logicalRows = state.logicalRows
+        columnTransforms = state.columnTransforms
+        cache.removeAll()
+        cacheOrder.removeAll()
+    }
+
+    static func split(_ value: String, spec: SplitSpec) -> [String] {
+        switch spec {
+        case .literal(let separator):
+            guard !separator.isEmpty else { return [value] }
+            return value.components(separatedBy: separator)
+        case .regex(let regex):
+            let text = value as NSString
+            guard text.length > 0 else { return [value] }
+            var pieces: [String] = []
+            var lastEnd = 0
+            regex.enumerateMatches(in: value, range: NSRange(location: 0, length: text.length)) { match, _, _ in
+                guard let match, match.range.length > 0 else { return }
+                pieces.append(text.substring(with: NSRange(location: lastEnd, length: match.range.location - lastEnd)))
+                lastEnd = match.range.location + match.range.length
+            }
+            pieces.append(text.substring(from: lastEnd))
+            return pieces
+        }
+    }
+
+    private func finishStructuralRewrite() {
+        headerRef = .materialized(columnNames)
+        columnTransforms = []
+        cache.removeAll()
+        cacheOrder.removeAll()
     }
 
     private func applyColumnTransforms(_ cells: [String]) -> [String] {

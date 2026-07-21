@@ -630,6 +630,16 @@ struct AppMenuCommands: Commands {
             }
             .disabled(!keyWindowIsInspector)
 
+            Button("Split Column…") {
+                NSApp.sendAction(#selector(InspectorViewController.inspectorSplitColumn(_:)), to: nil, from: nil)
+            }
+            .disabled(!keyWindowIsInspector)
+
+            Button("Merge Columns…") {
+                NSApp.sendAction(#selector(InspectorViewController.inspectorMergeColumns(_:)), to: nil, from: nil)
+            }
+            .disabled(!keyWindowIsInspector)
+
             Button("Delete Column") {
                 NSApp.sendAction(#selector(InspectorViewController.inspectorDeleteColumn(_:)), to: nil, from: nil)
             }

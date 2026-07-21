@@ -13,25 +13,41 @@ import Testing
 struct InspectorColumnMenuBuilderTests {
     @Test("Structure items route each action to the clicked column")
     func structureItemsWiring() {
-        let items = InspectorColumnMenuBuilder.structureItems(forColumn: 3, currentType: .text, deleteColumns: [3])
+        let items = InspectorColumnMenuBuilder.structureItems(
+            forColumn: 3, currentType: .text, deleteColumns: [3], canMerge: true
+        )
 
-        #expect(items.count == 6)
         #expect(items[0].action == #selector(InspectorViewController.inspectorRenameColumn(_:)))
         #expect(items[1].action == #selector(InspectorViewController.inspectorInsertColumnLeft(_:)))
         #expect(items[2].action == #selector(InspectorViewController.inspectorInsertColumnRight(_:)))
-        #expect(items[3].submenu != nil)
-        #expect(items[4].isSeparatorItem)
-        #expect(items[5].action == #selector(InspectorViewController.inspectorDeleteColumn(_:)))
+        #expect(items[3].action == #selector(InspectorViewController.inspectorSplitColumn(_:)))
+        #expect(items[4].action == #selector(InspectorViewController.inspectorMergeColumns(_:)))
+        #expect(items.last?.action == #selector(InspectorViewController.inspectorDeleteColumn(_:)))
 
-        for index in [0, 1, 2, 5] {
-            #expect(items[index].tag == 3)
-            #expect(items[index].target == nil)
+        for item in items where item.action != nil && !item.isSeparatorItem {
+            #expect(item.tag == 3)
+            #expect(item.target == nil)
         }
+    }
+
+    @Test("Merge Columns is omitted for the last column")
+    func mergeOmittedWhenNoNextColumn() {
+        let withMerge = InspectorColumnMenuBuilder.structureItems(
+            forColumn: 1, currentType: .text, deleteColumns: [1], canMerge: true
+        )
+        let withoutMerge = InspectorColumnMenuBuilder.structureItems(
+            forColumn: 1, currentType: .text, deleteColumns: [1], canMerge: false
+        )
+
+        #expect(withMerge.contains { $0.action == #selector(InspectorViewController.inspectorMergeColumns(_:)) })
+        #expect(!withoutMerge.contains { $0.action == #selector(InspectorViewController.inspectorMergeColumns(_:)) })
     }
 
     @Test("Delete Column is the last item, in its own trailing group")
     func deleteIsLastAfterSeparator() {
-        let items = InspectorColumnMenuBuilder.structureItems(forColumn: 0, currentType: .integer, deleteColumns: [0])
+        let items = InspectorColumnMenuBuilder.structureItems(
+            forColumn: 0, currentType: .integer, deleteColumns: [0], canMerge: false
+        )
 
         #expect(items.last?.action == #selector(InspectorViewController.inspectorDeleteColumn(_:)))
         #expect(items[items.count - 2].isSeparatorItem)
@@ -39,11 +55,15 @@ struct InspectorColumnMenuBuilderTests {
 
     @Test("Delete item carries the target columns and pluralizes its title")
     func deleteTargetsAndTitle() {
-        let single = InspectorColumnMenuBuilder.structureItems(forColumn: 1, currentType: .text, deleteColumns: [1])
+        let single = InspectorColumnMenuBuilder.structureItems(
+            forColumn: 1, currentType: .text, deleteColumns: [1], canMerge: true
+        )
         #expect(single.last?.representedObject as? [Int] == [1])
         #expect(single.last?.title == "Delete Column")
 
-        let multi = InspectorColumnMenuBuilder.structureItems(forColumn: 1, currentType: .text, deleteColumns: [1, 2, 3])
+        let multi = InspectorColumnMenuBuilder.structureItems(
+            forColumn: 1, currentType: .text, deleteColumns: [1, 2, 3], canMerge: true
+        )
         #expect(multi.last?.representedObject as? [Int] == [1, 2, 3])
         #expect(multi.last?.title == "Delete Columns")
     }

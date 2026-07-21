@@ -359,6 +359,116 @@ final class InspectorViewController: NSViewController, NSUserInterfaceValidation
         return false
     }
 
+    @objc func inspectorSplitColumn(_ sender: Any?) {
+        guard let column = structuralTargetColumn(from: sender) else { return }
+        promptSplitColumn(column)
+    }
+
+    @objc func inspectorMergeColumns(_ sender: Any?) {
+        guard let inspector = inspectorDocument,
+              let column = structuralTargetColumn(from: sender),
+              column + 1 < inspector.columnNames.count else { return }
+        promptMergeColumns(column)
+    }
+
+    private func structuralTargetColumn(from sender: Any?) -> Int? {
+        guard let inspector = inspectorDocument, !inspector.columnNames.isEmpty else { return nil }
+        let count = inspector.columnNames.count
+        if let menuItem = sender as? NSMenuItem, menuItem.tag >= 0, menuItem.tag < count {
+            return menuItem.tag
+        }
+        if let first = gridDelegate.coordinator?.selectionController.selection.affectedColumns.min(),
+           first >= 0, first < count {
+            return first
+        }
+        return nil
+    }
+
+    private func promptSplitColumn(_ column: Int) {
+        guard let inspector = inspectorDocument, let window = view.window,
+              column >= 0, column < inspector.columnNames.count else { return }
+        let alert = NSAlert()
+        alert.messageText = String(format: String(localized: "Split “%@”"), inspector.columnNames[column])
+        alert.informativeText = String(localized: "Split each value into new columns at every match.")
+        alert.addButton(withTitle: String(localized: "Split"))
+        alert.addButton(withTitle: String(localized: "Cancel"))
+
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 24))
+        field.placeholderString = String(localized: "Separator or pattern")
+        field.usesSingleLineMode = true
+        let mode = NSSegmentedControl(
+            labels: [String(localized: "Delimiter"), String(localized: "Regex")],
+            trackingMode: .selectOne,
+            target: nil,
+            action: nil
+        )
+        mode.selectedSegment = 0
+        let stack = accessoryStack(with: [field, mode])
+        alert.accessoryView = stack
+
+        alert.beginSheetModal(for: window) { [weak self] response in
+            guard response == .alertFirstButtonReturn else { return }
+            self?.applySplit(column: column, separator: field.stringValue, isRegex: mode.selectedSegment == 1)
+        }
+        DispatchQueue.main.async { alert.window.makeFirstResponder(field) }
+    }
+
+    private func promptMergeColumns(_ column: Int) {
+        guard let inspector = inspectorDocument, let window = view.window,
+              column + 1 < inspector.columnNames.count else { return }
+        let alert = NSAlert()
+        alert.messageText = String(
+            format: String(localized: "Merge “%@” with “%@”"),
+            inspector.columnNames[column],
+            inspector.columnNames[column + 1]
+        )
+        alert.informativeText = String(localized: "Join the two columns into one, placing this text between the values.")
+        alert.addButton(withTitle: String(localized: "Merge"))
+        alert.addButton(withTitle: String(localized: "Cancel"))
+
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 24))
+        field.placeholderString = String(localized: "Separator (optional)")
+        field.usesSingleLineMode = true
+        alert.accessoryView = accessoryStack(with: [field])
+
+        alert.beginSheetModal(for: window) { [weak self] response in
+            guard response == .alertFirstButtonReturn else { return }
+            self?.inspectorDocument?.mergeColumns(at: column, separator: field.stringValue)
+        }
+        DispatchQueue.main.async { alert.window.makeFirstResponder(field) }
+    }
+
+    private func applySplit(column: Int, separator: String, isRegex: Bool) {
+        guard !separator.isEmpty else { return }
+        if isRegex, (try? NSRegularExpression(pattern: separator)) == nil {
+            presentInvalidPattern()
+            return
+        }
+        inspectorDocument?.splitColumn(at: column, separator: separator, isRegex: isRegex)
+    }
+
+    private func presentInvalidPattern() {
+        guard let window = view.window else { return }
+        let alert = NSAlert()
+        alert.messageText = String(localized: "Invalid pattern")
+        alert.informativeText = String(localized: "That regular expression could not be read. Check the syntax and try again.")
+        alert.addButton(withTitle: String(localized: "OK"))
+        alert.beginSheetModal(for: window)
+    }
+
+    private func accessoryStack(with views: [NSView]) -> NSStackView {
+        let stack = NSStackView(views: views)
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 8
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        for view in views {
+            view.widthAnchor.constraint(equalToConstant: 260).isActive = true
+        }
+        stack.frame = NSRect(x: 0, y: 0, width: 260, height: CGFloat(views.count) * 32)
+        return stack
+    }
+
     @objc func inspectorSetColumnType(_ sender: Any?) {
         guard let menuItem = sender as? NSMenuItem,
               let assignment = menuItem.representedObject as? ColumnTypeAssignment else { return }
@@ -370,7 +480,8 @@ final class InspectorViewController: NSViewController, NSUserInterfaceValidation
         return InspectorColumnMenuBuilder.structureItems(
             forColumn: index,
             currentType: inspector.displayedType(forColumn: index),
-            deleteColumns: columnDeleteSelection(clicked: index)
+            deleteColumns: columnDeleteSelection(clicked: index),
+            canMerge: index + 1 < inspector.columnNames.count
         )
     }
 
@@ -457,7 +568,8 @@ final class InspectorViewController: NSViewController, NSUserInterfaceValidation
         case #selector(saveDocument(_:)), #selector(saveDocumentAs(_:)),
              #selector(toggleInspectorFilter(_:)), #selector(inspectorAddRow(_:)),
              #selector(inspectorInsertRowAbove(_:)), #selector(inspectorInsertRowBelow(_:)),
-             #selector(inspectorInsertColumnLeft(_:)), #selector(inspectorInsertColumnRight(_:)):
+             #selector(inspectorInsertColumnLeft(_:)), #selector(inspectorInsertColumnRight(_:)),
+             #selector(inspectorSplitColumn(_:)), #selector(inspectorMergeColumns(_:)):
             return nsDocument != nil
         case #selector(inspectorDeleteColumn(_:)):
             guard nsDocument != nil else { return false }

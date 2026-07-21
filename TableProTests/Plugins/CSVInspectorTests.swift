@@ -319,6 +319,48 @@ struct CSVRowStoreTests {
         #expect(store.columnNames == ["a", "c"])
         #expect(store.cells(forRow: 0) == ["1", "3"])
     }
+
+    @Test("split(_:spec:) splits by a literal separator")
+    func splitLiteral() {
+        #expect(CSVRowStore.split("a-b-c", spec: .literal("-")) == ["a", "b", "c"])
+        #expect(CSVRowStore.split("nodash", spec: .literal("-")) == ["nodash"])
+        #expect(CSVRowStore.split("x", spec: .literal("")) == ["x"])
+    }
+
+    @Test("split(_:spec:) splits by a regular expression")
+    func splitRegex() throws {
+        let regex = try NSRegularExpression(pattern: "[0-9]+")
+        #expect(CSVRowStore.split("a12b3c", spec: .regex(regex)) == ["a", "b", "c"])
+    }
+
+    @Test("splitColumn replaces the column with padded split pieces")
+    func splitColumnReplaces() {
+        let store = makeStore("full\nAlice Smith\nBob\n")
+        store.splitColumn(at: 0, spec: .literal(" "))
+        #expect(store.columnNames == ["full 1", "full 2"])
+        #expect(store.cells(forRow: 0) == ["Alice", "Smith"])
+        #expect(store.cells(forRow: 1) == ["Bob", ""])
+    }
+
+    @Test("mergeColumns joins a column with the next using the separator")
+    func mergeColumnsJoins() {
+        let store = makeStore("first,last\nAlice,Smith\nBob,Jones\n")
+        store.mergeColumns(at: 0, separator: " ")
+        #expect(store.columnNames == ["first"])
+        #expect(store.cells(forRow: 0) == ["Alice Smith"])
+        #expect(store.cells(forRow: 1) == ["Bob Jones"])
+    }
+
+    @Test("captureState and restore round-trip a structural change")
+    func captureRestoreRoundTrip() {
+        let store = makeStore("first,last\nAlice,Smith\n")
+        let before = store.captureState()
+        store.mergeColumns(at: 0, separator: " ")
+        #expect(store.columnCount == 1)
+        store.restore(before)
+        #expect(store.columnNames == ["first", "last"])
+        #expect(store.cells(forRow: 0) == ["Alice", "Smith"])
+    }
 }
 
 @Suite("CSVWriter round-trip")

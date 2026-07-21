@@ -155,10 +155,12 @@ final class InspectorWindowController: NSWindowController, NSWindowDelegate, NST
 
     private func columnSubmenu(forColumn index: Int, currentType: InspectorColumnType) -> NSMenu {
         let submenu = NSMenu()
+        let columnCount = (documentRef as? (any InspectorDocument))?.columnNames.count ?? 0
         let items = InspectorColumnMenuBuilder.structureItems(
             forColumn: index,
             currentType: currentType,
-            deleteColumns: [index]
+            deleteColumns: [index],
+            canMerge: index + 1 < columnCount
         )
         for item in items {
             submenu.addItem(item)

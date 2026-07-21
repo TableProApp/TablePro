@@ -11,7 +11,8 @@ enum InspectorColumnMenuBuilder {
     static func structureItems(
         forColumn index: Int,
         currentType: InspectorColumnType,
-        deleteColumns: [Int]
+        deleteColumns: [Int],
+        canMerge: Bool
     ) -> [NSMenuItem] {
         let rename = actionItem(
             title: String(localized: "Rename Column…"),
@@ -28,6 +29,11 @@ enum InspectorColumnMenuBuilder {
             action: #selector(InspectorViewController.inspectorInsertColumnRight(_:)),
             column: index
         )
+        let split = actionItem(
+            title: String(localized: "Split Column…"),
+            action: #selector(InspectorViewController.inspectorSplitColumn(_:)),
+            column: index
+        )
         let changeType = NSMenuItem(title: String(localized: "Change Type"), action: nil, keyEquivalent: "")
         changeType.submenu = typeSubmenu(forColumn: index, currentType: currentType)
         let delete = actionItem(
@@ -38,7 +44,17 @@ enum InspectorColumnMenuBuilder {
             column: index
         )
         delete.representedObject = deleteColumns
-        return [rename, insertLeft, insertRight, changeType, .separator(), delete]
+
+        var items = [rename, insertLeft, insertRight, split]
+        if canMerge {
+            items.append(actionItem(
+                title: String(localized: "Merge Columns…"),
+                action: #selector(InspectorViewController.inspectorMergeColumns(_:)),
+                column: index
+            ))
+        }
+        items.append(contentsOf: [changeType, .separator(), delete])
+        return items
     }
 
     static func typeSubmenu(forColumn index: Int, currentType: InspectorColumnType) -> NSMenu {

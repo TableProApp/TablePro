@@ -50,10 +50,12 @@ Right-click a column header, or open the toolbar `Columns` menu, to reach the sa
 
 - **Rename Column…** prompts for a new name; the column stays in place.
 - **Insert Column Left / Right** inserts a new column next to the one you clicked, with a name you supply.
+- **Split Column…** splits each value into new columns at every match of a delimiter or a regular expression. The original column is replaced by the pieces; rows with fewer pieces get empty cells.
+- **Merge Columns…** joins the column with the one to its right into a single column, placing a separator you choose between the two values.
 - **Change Type ▸** overrides the inferred type as Text, Integer, Real, Boolean, or Date. **Reset to Inferred** drops the override.
 - **Delete Column** removes the column. It sits last in the menu and is undoable with Cmd+Z. Deleting a column that holds data asks you to confirm first.
 
-Cmd-click several column headers to select whole columns, and the menu reads **Delete Columns**, removing all of them in one undoable step. Insert Column Left / Right, and Delete Column, also appear in the Edit menu, where they act on the selected columns.
+Cmd-click several column headers to select whole columns, and the menu reads **Delete Columns**, removing all of them in one undoable step. Insert Column Left / Right, Split Column…, Merge Columns…, and Delete Column also appear in the Edit menu, where they act on the selected columns.
 
 In the toolbar `Columns` menu, **Add Column…** at the top appends a new column at the end, and every column is listed below it with its current type and the same submenu.
 
