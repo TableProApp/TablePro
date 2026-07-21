@@ -75,7 +75,7 @@ struct SSHProfileEditorView: View {
                 serverSection
                 authenticationSection
 
-                if authMethod == .keyboardInteractive || authMethod == .password {
+                if authMethod != .none {
                     totpSection
                 }
 
@@ -213,8 +213,8 @@ struct SSHProfileEditorView: View {
                     Text("30s").tag(30)
                     Text("60s").tag(60)
                 }
-            } else if totpMode == .promptAtConnect {
-                Text(String(localized: "You will be prompted for a verification code each time you connect."))
+            } else {
+                Text(String(localized: "If the SSH server asks for a verification code, TablePro prompts you for it when you connect."))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -448,8 +448,6 @@ struct SSHProfileEditorView: View {
         testSucceeded = false
         testError = nil
 
-        let testTotpMode: TOTPMode = totpMode == .promptAtConnect ? .none : totpMode
-
         let config = SSHConfiguration(
             enabled: true,
             host: host,
@@ -459,7 +457,7 @@ struct SSHProfileEditorView: View {
             privateKeyPath: privateKeyPath,
             agentSocketPath: resolvedAgentSocketPath,
             jumpHosts: jumpHosts,
-            totpMode: testTotpMode,
+            totpMode: totpMode,
             totpAlgorithm: totpAlgorithm,
             totpDigits: totpDigits,
             totpPeriod: totpPeriod
@@ -469,7 +467,7 @@ struct SSHProfileEditorView: View {
             sshPassword: sshPassword.isEmpty ? nil : sshPassword,
             keyPassphrase: keyPassphrase.isEmpty ? nil : keyPassphrase,
             totpSecret: totpSecret.isEmpty ? nil : totpSecret,
-            totpProvider: nil
+            keyboardInteractivePromptProvider: nil
         )
 
         testTask = Task {

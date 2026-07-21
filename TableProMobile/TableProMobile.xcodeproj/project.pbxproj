@@ -155,7 +155,6 @@
 		5A87ED432F7F88F200D028D0 /* CompositeAuthenticator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompositeAuthenticator.swift; sourceTree = "<group>"; };
 		5A87ED442F7F88F200D028D0 /* KeyboardInteractiveAuthenticator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardInteractiveAuthenticator.swift; sourceTree = "<group>"; };
 		5A87ED452F7F88F200D028D0 /* PasswordAuthenticator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PasswordAuthenticator.swift; sourceTree = "<group>"; };
-		5A87ED462F7F88F200D028D0 /* PromptTOTPProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptTOTPProvider.swift; sourceTree = "<group>"; };
 		5A87ED472F7F88F200D028D0 /* PublicKeyAuthenticator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PublicKeyAuthenticator.swift; sourceTree = "<group>"; };
 		5A87ED482F7F88F200D028D0 /* SSHAuthenticator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSHAuthenticator.swift; sourceTree = "<group>"; };
 		5A87ED492F7F88F200D028D0 /* TOTPProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TOTPProvider.swift; sourceTree = "<group>"; };
@@ -829,7 +828,6 @@
 				5A87ED432F7F88F200D028D0 /* CompositeAuthenticator.swift */,
 				5A87ED442F7F88F200D028D0 /* KeyboardInteractiveAuthenticator.swift */,
 				5A87ED452F7F88F200D028D0 /* PasswordAuthenticator.swift */,
-				5A87ED462F7F88F200D028D0 /* PromptTOTPProvider.swift */,
 				5A87ED472F7F88F200D028D0 /* PublicKeyAuthenticator.swift */,
 				5A87ED482F7F88F200D028D0 /* SSHAuthenticator.swift */,
 				5A87ED492F7F88F200D028D0 /* TOTPProvider.swift */,

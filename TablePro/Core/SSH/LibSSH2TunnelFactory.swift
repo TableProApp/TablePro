@@ -13,7 +13,7 @@ internal struct SSHTunnelCredentials: Sendable {
     let sshPassword: String?
     let keyPassphrase: String?
     let totpSecret: String?
-    let totpProvider: (any TOTPProvider)?
+    let keyboardInteractivePromptProvider: (any KeyboardInteractivePromptProvider)?
 }
 
 /// Creates fully-connected and authenticated SSH tunnels using libssh2.
@@ -462,6 +462,8 @@ internal enum LibSSH2TunnelFactory {
         resolved: ResolvedSSHTarget,
         credentials: SSHTunnelCredentials
     ) throws -> any SSHAuthenticator {
+        let promptProvider = credentials.keyboardInteractivePromptProvider ?? PromptKeyboardInteractiveProvider()
+
         switch config.authMethod {
         case .password:
             // Always pair password with a keyboard-interactive fallback that reuses the same
@@ -473,10 +475,13 @@ internal enum LibSSH2TunnelFactory {
                 logger.error("SSH password is nil (Keychain lookup may have failed) for \(resolved.host)")
                 throw SSHTunnelError.authenticationFailed(reason: .password)
             }
-            let totpProvider = buildTOTPProvider(config: config, credentials: credentials)
             return CompositeAuthenticator(authenticators: [
                 PasswordAuthenticator(password: sshPassword),
-                KeyboardInteractiveAuthenticator(password: sshPassword, totpProvider: totpProvider),
+                KeyboardInteractiveAuthenticator(
+                    password: sshPassword,
+                    totpProvider: buildTOTPProvider(config: config, credentials: credentials),
+                    promptProvider: promptProvider
+                ),
             ])
 
         case .privateKey:
@@ -492,15 +497,12 @@ internal enum LibSSH2TunnelFactory {
                     canPrompt: true
                 )
             }
-            if config.totpMode != .none {
-                authenticators.append(KeyboardInteractiveAuthenticator(
-                    password: nil,
-                    totpProvider: buildTOTPProvider(config: config, credentials: credentials)
-                ))
-            }
-            return authenticators.count == 1
-                ? authenticators[0]
-                : CompositeAuthenticator(authenticators: authenticators)
+            authenticators.append(KeyboardInteractiveAuthenticator(
+                password: nil,
+                totpProvider: buildTOTPProvider(config: config, credentials: credentials),
+                promptProvider: promptProvider
+            ))
+            return CompositeAuthenticator(authenticators: authenticators)
 
         case .sshAgent:
             let socketPath: String? = resolved.agentSocketPath.isEmpty
@@ -518,22 +520,19 @@ internal enum LibSSH2TunnelFactory {
                 ))
             }
 
-            if config.totpMode != .none {
-                authenticators.append(KeyboardInteractiveAuthenticator(
-                    password: nil,
-                    totpProvider: buildTOTPProvider(config: config, credentials: credentials)
-                ))
-            }
+            authenticators.append(KeyboardInteractiveAuthenticator(
+                password: nil,
+                totpProvider: buildTOTPProvider(config: config, credentials: credentials),
+                promptProvider: promptProvider
+            ))
 
-            return authenticators.count == 1
-                ? authenticators[0]
-                : CompositeAuthenticator(authenticators: authenticators)
+            return CompositeAuthenticator(authenticators: authenticators)
 
         case .keyboardInteractive:
-            let totpProvider = buildTOTPProvider(config: config, credentials: credentials)
             return KeyboardInteractiveAuthenticator(
                 password: credentials.sshPassword,
-                totpProvider: totpProvider
+                totpProvider: buildTOTPProvider(config: config, credentials: credentials),
+                promptProvider: promptProvider
             )
 
         case .none:
@@ -601,7 +600,13 @@ internal enum LibSSH2TunnelFactory {
                 addToAgentIfNeeded(path: expandedPath)
                 return
             } catch {
-                // Auth failed — key likely needs a passphrase we don't have yet
+                // A wire-level rejection (or a partial success the server accepted as one
+                // factor of publickey,keyboard-interactive) reports AUTHENTICATION_FAILED. No
+                // passphrase can change that, so rethrow instead of prompting; any other errno
+                // means the local key file needs a passphrase we don't have yet.
+                guard libssh2_session_last_errno(session) != LIBSSH2_ERROR_AUTHENTICATION_FAILED else {
+                    throw error
+                }
             }
 
             // 2. Prompt the user if allowed (key is encrypted, no stored passphrase)
@@ -684,23 +689,17 @@ internal enum LibSSH2TunnelFactory {
         config: SSHConfiguration,
         credentials: SSHTunnelCredentials
     ) -> (any TOTPProvider)? {
-        switch config.totpMode {
-        case .none:
+        guard config.totpMode == .autoGenerate else { return nil }
+        guard let secret = credentials.totpSecret,
+              let generator = TOTPGenerator.fromBase32Secret(
+                  secret,
+                  algorithm: config.totpAlgorithm.toGeneratorAlgorithm,
+                  digits: config.totpDigits,
+                  period: config.totpPeriod
+              ) else {
             return nil
-        case .autoGenerate:
-            guard let secret = credentials.totpSecret,
-                  let generator = TOTPGenerator.fromBase32Secret(
-                      secret,
-                      algorithm: config.totpAlgorithm.toGeneratorAlgorithm,
-                      digits: config.totpDigits,
-                      period: config.totpPeriod
-                  ) else {
-                return nil
-            }
-            return AutoTOTPProvider(generator: generator)
-        case .promptAtConnect:
-            return credentials.totpProvider ?? PromptTOTPProvider()
         }
+        return AutoTOTPProvider(generator: generator)
     }
 
     // MARK: - Channel Operations

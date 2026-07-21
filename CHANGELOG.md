@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - SSH tunnels can authenticate with no password or key, for hosts that handle SSH auth themselves like Tailscale SSH. Pick **None** as the SSH auth method. (#1907)
+- SSH tunnels can complete keyboard-interactive verification, so servers that require a private key plus a one-time code (2FA through Google Authenticator or another PAM module) now connect. TablePro shows the server's prompt and you type the response. (#1920)
 
 ### Fixed
 

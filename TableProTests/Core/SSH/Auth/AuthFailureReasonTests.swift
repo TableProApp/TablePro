@@ -9,8 +9,9 @@
 
 import Foundation
 import TableProPluginKit
-@testable import TablePro
 import Testing
+
+@testable import TablePro
 
 @Suite("SSHTunnelError.authenticationFailed reason")
 struct AuthFailureReasonTests {
@@ -60,6 +61,23 @@ struct AuthFailureReasonTests {
         #expect(!description.localizedCaseInsensitiveContains("verification code"))
     }
 
+    @Test("Keyboard-interactive reason points at the verification response")
+    func keyboardInteractiveMessage() {
+        let error = SSHTunnelError.authenticationFailed(reason: .keyboardInteractive)
+        let description = error.errorDescription ?? ""
+
+        #expect(description.localizedCaseInsensitiveContains("verification"))
+        #expect(!description.localizedCaseInsensitiveContains("private key"))
+    }
+
+    @Test("Cancelled reason says the attempt was cancelled")
+    func cancelledMessage() {
+        let error = SSHTunnelError.authenticationFailed(reason: .cancelled)
+        let description = error.errorDescription ?? ""
+
+        #expect(description.localizedCaseInsensitiveContains("cancel"))
+    }
+
     @Test("Generic reason keeps the original wording for unknown cases")
     func genericMessage() {
         let error = SSHTunnelError.authenticationFailed(reason: .generic)
@@ -68,14 +86,9 @@ struct AuthFailureReasonTests {
 
     @Test("Each reason produces a distinct, non-empty message")
     func allReasonsHaveDistinctMessages() {
-        let messages: [String] = [
-            SSHTunnelError.authenticationFailed(reason: .password).errorDescription ?? "",
-            SSHTunnelError.authenticationFailed(reason: .verificationCode).errorDescription ?? "",
-            SSHTunnelError.authenticationFailed(reason: .privateKey).errorDescription ?? "",
-            SSHTunnelError.authenticationFailed(reason: .agentRejected).errorDescription ?? "",
-            SSHTunnelError.authenticationFailed(reason: .passwordlessRejected).errorDescription ?? "",
-            SSHTunnelError.authenticationFailed(reason: .generic).errorDescription ?? ""
-        ]
+        let messages = AuthFailureReason.allCases.map {
+            SSHTunnelError.authenticationFailed(reason: $0).errorDescription ?? ""
+        }
 
         #expect(!messages.contains(""))
         #expect(Set(messages).count == messages.count)
