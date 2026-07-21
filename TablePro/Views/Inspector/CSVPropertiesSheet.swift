@@ -13,6 +13,7 @@ struct CSVPropertiesSheet: View {
 
     @State private var delimiterIndex: Int
     @State private var quoteIndex: Int
+    @State private var escapeIndex: Int
     @State private var encodingIndex: Int
     @State private var lineEndingIndex: Int
 
@@ -26,6 +27,7 @@ struct CSVPropertiesSheet: View {
         self.onCancel = onCancel
         _delimiterIndex = State(initialValue: CSVPropertyOptions.delimiterIndex(for: dialect.delimiter))
         _quoteIndex = State(initialValue: CSVPropertyOptions.quoteIndex(for: dialect.quoteChar))
+        _escapeIndex = State(initialValue: CSVPropertyOptions.escapeIndex(for: dialect.escapeChar))
         _encodingIndex = State(initialValue: CSVPropertyOptions.encodingIndex(for: dialect.encoding))
         _lineEndingIndex = State(initialValue: CSVPropertyOptions.lineEndingIndex(for: dialect.lineEnding))
     }
@@ -46,6 +48,11 @@ struct CSVPropertiesSheet: View {
                 Picker("Quote character", selection: $quoteIndex) {
                     ForEach(CSVPropertyOptions.quotes.indices, id: \.self) { index in
                         Text(CSVPropertyOptions.quotes[index].label).tag(index)
+                    }
+                }
+                Picker("Escape character", selection: $escapeIndex) {
+                    ForEach(CSVPropertyOptions.escapes.indices, id: \.self) { index in
+                        Text(CSVPropertyOptions.escapes[index].label).tag(index)
                     }
                 }
                 Picker("Encoding", selection: $encodingIndex) {
@@ -77,6 +84,7 @@ struct CSVPropertiesSheet: View {
             base: baseDialect,
             delimiterIndex: delimiterIndex,
             quoteIndex: quoteIndex,
+            escapeIndex: escapeIndex,
             encodingIndex: encodingIndex,
             lineEndingIndex: lineEndingIndex
         )

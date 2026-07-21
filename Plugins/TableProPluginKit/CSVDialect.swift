@@ -17,6 +17,7 @@ public struct CSVDialect: Equatable, Sendable {
 
     public var delimiter: UInt8
     public var quoteChar: UInt8
+    public var escapeChar: UInt8 = 0x22
     public var encoding: String.Encoding
     public var lineEnding: LineEnding
     public var hasBom: Bool

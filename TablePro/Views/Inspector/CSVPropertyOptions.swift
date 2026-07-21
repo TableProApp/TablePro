@@ -21,6 +21,11 @@ enum CSVPropertyOptions {
         (String(localized: "Single Quote  '"), 0x27),
     ]
 
+    static let escapes: [(label: String, byte: UInt8)] = [
+        (String(localized: "Doubled Quote"), 0x22),
+        (String(localized: "Backslash  \\"), 0x5C),
+    ]
+
     static let encodings: [(label: String, encoding: String.Encoding)] = [
         ("UTF-8", .utf8),
         ("UTF-16 LE", .utf16LittleEndian),
@@ -43,6 +48,10 @@ enum CSVPropertyOptions {
         quotes.firstIndex { $0.byte == byte } ?? 0
     }
 
+    static func escapeIndex(for byte: UInt8) -> Int {
+        escapes.firstIndex { $0.byte == byte } ?? 0
+    }
+
     static func encodingIndex(for encoding: String.Encoding) -> Int {
         encodings.firstIndex { $0.encoding == encoding } ?? 0
     }
@@ -55,15 +64,18 @@ enum CSVPropertyOptions {
         base: CSVDialect,
         delimiterIndex: Int,
         quoteIndex: Int,
+        escapeIndex: Int,
         encodingIndex: Int,
         lineEndingIndex: Int
     ) -> CSVDialect {
-        CSVDialect(
+        var dialect = CSVDialect(
             delimiter: delimiters.indices.contains(delimiterIndex) ? delimiters[delimiterIndex].byte : base.delimiter,
             quoteChar: quotes.indices.contains(quoteIndex) ? quotes[quoteIndex].byte : base.quoteChar,
             encoding: encodings.indices.contains(encodingIndex) ? encodings[encodingIndex].encoding : base.encoding,
             lineEnding: lineEndings.indices.contains(lineEndingIndex) ? lineEndings[lineEndingIndex].value : base.lineEnding,
             hasBom: base.hasBom
         )
+        dialect.escapeChar = escapes.indices.contains(escapeIndex) ? escapes[escapeIndex].byte : base.escapeChar
+        return dialect
     }
 }

@@ -77,6 +77,13 @@ struct CSVDialectDetectionTests {
         let dialect = CSVDialect.detect(from: data)
         #expect(dialect.encoding == .windowsCP1252)
     }
+
+    @Test("Default escape character is the quote character")
+    func defaultEscapeChar() {
+        #expect(CSVDialect.csv.escapeChar == 0x22)
+        let detected = CSVDialect.detect(from: "a,b\n1,2\n".data(using: .utf8)!)
+        #expect(detected.escapeChar == 0x22)
+    }
 }
 
 @Suite("CSVStreamingParser")
@@ -131,6 +138,25 @@ struct CSVStreamingParserTests {
         let (data, ranges, parser) = parse(#"a,"say ""hi""",c"# + "\n")
         let fields = row(data, parser, ranges[0])
         #expect(fields == ["a", #"say "hi""#, "c"])
+    }
+
+    @Test("Backslash escape decodes an escaped quote to a single quote")
+    func backslashEscapesQuote() {
+        var dialect = CSVDialect.csv
+        dialect.escapeChar = 0x5C
+        let (data, ranges, parser) = parse(#""a\"b",c"# + "\n", dialect: dialect)
+        #expect(ranges.count == 1)
+        let fields = row(data, parser, ranges[0])
+        #expect(fields == [#"a"b"#, "c"])
+    }
+
+    @Test("Backslash escape decodes a doubled backslash to a single backslash")
+    func backslashEscapesBackslash() {
+        var dialect = CSVDialect.csv
+        dialect.escapeChar = 0x5C
+        let (data, ranges, parser) = parse(#""a\\b""# + "\n", dialect: dialect)
+        let fields = row(data, parser, ranges[0])
+        #expect(fields == [#"a\b"#])
     }
 
     @Test("Empty fields preserved")
@@ -471,6 +497,20 @@ struct CSVWriterRoundTripTests {
 
         let written = try Data(contentsOf: outURL)
         #expect(written.prefix(3) == Data([0xEF, 0xBB, 0xBF]))
+    }
+
+    @Test("Writer doubles an embedded quote by default")
+    func writerDefaultDoublesQuote() {
+        let writer = CSVWriter(dialect: .csv)
+        #expect(writer.encodeRow([#"a"b"#, "c"]) == #""a""b",c"#)
+    }
+
+    @Test("Writer escapes an embedded quote with the escape character")
+    func writerBackslashEscapesQuote() {
+        var dialect = CSVDialect.csv
+        dialect.escapeChar = 0x5C
+        let writer = CSVWriter(dialect: dialect)
+        #expect(writer.encodeRow([#"a"b"#, "c"]) == #""a\"b",c"#)
     }
 
     @Test("A headerless file is written without a synthetic header row")

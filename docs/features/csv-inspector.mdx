@@ -26,7 +26,7 @@ When a file opens, TablePro detects:
 - **Line ending**: CRLF, LF, or CR, whichever appears first in the first 64 KB.
 - **Header row**: row one is treated as headers when at least half of its cells are non-empty and not numbers. Otherwise TablePro generates `Column 1`, `Column 2`, ... and treats every row as data.
 
-When a guess is wrong, choose **Edit > Set CSV Properties…** to pick the delimiter, quote character, encoding, and line ending by hand, then **Reload** to re-read the file with those settings. Reload discards unsaved edits and asks first if you have any.
+When a guess is wrong, choose **Edit > Set CSV Properties…** to pick the delimiter, quote character, escape character, encoding, and line ending by hand, then **Reload** to re-read the file with those settings. The escape character is either a doubled quote (the RFC 4180 default) or a backslash. Reload discards unsaved edits and asks first if you have any.
 
 ## Pagination
 

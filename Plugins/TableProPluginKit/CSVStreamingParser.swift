@@ -10,6 +10,7 @@ public struct CSVStreamingParser: Sendable {
     public func indexRows(_ bytes: UnsafeBufferPointer<UInt8>) -> [Range<Int>] {
         var ranges: [Range<Int>] = []
         let quote = dialect.quoteChar
+        let escape = dialect.escapeChar
         let delimiter = dialect.delimiter
         let count = bytes.count
         var i = bomSkip(in: bytes)
@@ -20,8 +21,12 @@ public struct CSVStreamingParser: Sendable {
         while i < count {
             let byte = bytes[i]
             if insideQuotes {
+                if escape != quote, byte == escape, i + 1 < count {
+                    i += 2
+                    continue
+                }
                 if byte == quote {
-                    if i + 1 < count, bytes[i + 1] == quote {
+                    if escape == quote, i + 1 < count, bytes[i + 1] == quote {
                         i += 2
                         continue
                     }
@@ -69,6 +74,7 @@ public struct CSVStreamingParser: Sendable {
         var fields: [String] = []
         var field: [UInt8] = []
         let quote = dialect.quoteChar
+        let escape = dialect.escapeChar
         let delimiter = dialect.delimiter
         var insideQuotes = false
         var i = range.lowerBound
@@ -77,8 +83,13 @@ public struct CSVStreamingParser: Sendable {
         while i < end {
             let byte = bytes[i]
             if insideQuotes {
+                if escape != quote, byte == escape, i + 1 < end {
+                    field.append(bytes[i + 1])
+                    i += 2
+                    continue
+                }
                 if byte == quote {
-                    if i + 1 < end, bytes[i + 1] == quote {
+                    if escape == quote, i + 1 < end, bytes[i + 1] == quote {
                         field.append(quote)
                         i += 2
                         continue
@@ -115,6 +126,7 @@ public struct CSVStreamingParser: Sendable {
     public func field(_ bytes: UnsafeBufferPointer<UInt8>, range: Range<Int>, column: Int) -> String {
         guard column >= 0 else { return "" }
         let quote = dialect.quoteChar
+        let escape = dialect.escapeChar
         let delimiter = dialect.delimiter
         var insideQuotes = false
         var i = range.lowerBound
@@ -126,8 +138,13 @@ public struct CSVStreamingParser: Sendable {
         while i < end {
             let byte = bytes[i]
             if insideQuotes {
+                if escape != quote, byte == escape, i + 1 < end {
+                    if currentColumn == column { field.append(bytes[i + 1]) }
+                    i += 2
+                    continue
+                }
                 if byte == quote {
-                    if i + 1 < end, bytes[i + 1] == quote {
+                    if escape == quote, i + 1 < end, bytes[i + 1] == quote {
                         if currentColumn == column { field.append(quote) }
                         i += 2
                         continue

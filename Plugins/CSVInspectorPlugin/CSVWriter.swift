@@ -72,9 +72,8 @@ struct CSVWriter {
     func encodeRow(_ cells: [String]) -> String {
         let delimiterScalar = UnicodeScalar(dialect.delimiter)
         let quoteScalar = UnicodeScalar(dialect.quoteChar)
+        let escapeScalar = UnicodeScalar(dialect.escapeChar)
         let delimiter = String(delimiterScalar)
-        let quote = String(quoteScalar)
-        let doubledQuote = quote + quote
 
         var line = ""
         for (index, field) in cells.enumerated() {
@@ -85,8 +84,7 @@ struct CSVWriter {
                 field,
                 delimiterScalar: delimiterScalar,
                 quoteScalar: quoteScalar,
-                quote: quote,
-                doubledQuote: doubledQuote
+                escapeScalar: escapeScalar
             )
         }
         return line
@@ -108,13 +106,19 @@ struct CSVWriter {
         _ field: String,
         delimiterScalar: UnicodeScalar,
         quoteScalar: UnicodeScalar,
-        quote: String,
-        doubledQuote: String
+        escapeScalar: UnicodeScalar
     ) -> String {
         let needsQuoting = field.unicodeScalars.contains { scalar in
             scalar == delimiterScalar || scalar == quoteScalar || scalar == "\n" || scalar == "\r"
         }
         guard needsQuoting else { return field }
-        return quote + field.replacingOccurrences(of: quote, with: doubledQuote) + quote
+        let quote = String(quoteScalar)
+        if escapeScalar == quoteScalar {
+            return quote + field.replacingOccurrences(of: quote, with: quote + quote) + quote
+        }
+        let escape = String(escapeScalar)
+        var body = field.replacingOccurrences(of: escape, with: escape + escape)
+        body = body.replacingOccurrences(of: quote, with: escape + quote)
+        return quote + body + quote
     }
 }
