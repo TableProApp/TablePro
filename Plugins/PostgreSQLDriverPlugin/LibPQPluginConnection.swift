@@ -99,6 +99,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
     private let database: String
     private let sslConfig: SSLConfiguration
     private let options: String?
+    private let suppressServerSideCancel: Bool
 
     private let stateLock = NSLock()
     private var _isConnected: Bool = false
@@ -135,7 +136,8 @@ final class LibPQPluginConnection: @unchecked Sendable {
         password: String?,
         database: String,
         sslConfig: SSLConfiguration = SSLConfiguration(),
-        options: String? = nil
+        options: String? = nil,
+        suppressServerSideCancel: Bool = false
     ) {
         self.host = host
         self.port = port
@@ -144,6 +146,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
         self.database = database
         self.sslConfig = sslConfig
         self.options = options
+        self.suppressServerSideCancel = suppressServerSideCancel
     }
 
     deinit {
@@ -358,7 +361,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
         let currentConn = conn
         stateLock.unlock()
 
-        guard let currentConn else { return }
+        guard let currentConn, !suppressServerSideCancel else { return }
         let cancelObj = PQgetCancel(currentConn)
         guard let cancelObj else { return }
         defer { PQfreeCancel(cancelObj) }
@@ -555,9 +558,22 @@ final class LibPQPluginConnection: @unchecked Sendable {
 
     // MARK: - Streaming Query
 
+    private static func cancelAndDrain(_ conn: OpaquePointer, suppressCancel: Bool) {
+        if !suppressCancel {
+            let cancelObj = PQgetCancel(conn)
+            if let cancelObj {
+                var errbuf = [CChar](repeating: 0, count: 256)
+                PQcancel(cancelObj, &errbuf, Int32(errbuf.count))
+                PQfreeCancel(cancelObj)
+            }
+        }
+        while let res = PQgetResult(conn) { PQclear(res) }
+    }
+
     func streamQuery(_ query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
         let queryToRun = String(query)
         let queue = self.queue
+        let suppressCancel = suppressServerSideCancel
 
         final class StreamState: @unchecked Sendable {
             var conn: OpaquePointer?
@@ -583,13 +599,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
                     streamState.drained = true
                     streamState.lock.unlock()
                     guard let conn, !alreadyDrained else { return }
-                    let cancelObj = PQgetCancel(conn)
-                    if let cancelObj {
-                        var errbuf = [CChar](repeating: 0, count: 256)
-                        PQcancel(cancelObj, &errbuf, Int32(errbuf.count))
-                        PQfreeCancel(cancelObj)
-                    }
-                    while let res = PQgetResult(conn) { PQclear(res) }
+                    Self.cancelAndDrain(conn, suppressCancel: suppressCancel)
                 }
             }
 
@@ -703,13 +713,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
                             if !batch.isEmpty {
                                 continuation.yield(.rows(batch))
                             }
-                            let cancelObj = PQgetCancel(conn)
-                            if let cancelObj {
-                                var errbuf = [CChar](repeating: 0, count: 256)
-                                PQcancel(cancelObj, &errbuf, Int32(errbuf.count))
-                                PQfreeCancel(cancelObj)
-                            }
-                            while let res = PQgetResult(conn) { PQclear(res) }
+                            Self.cancelAndDrain(conn, suppressCancel: suppressCancel)
                             streamState.lock.lock()
                             streamState.drained = true
                             streamState.lock.unlock()

@@ -49,7 +49,7 @@ final class NetworkPaneViewModel {
     }
 
     var resolvedHost: String {
-        host.trimmingCharacters(in: .whitespaces).isEmpty ? "localhost" : host
+        host.trimmingCharacters(in: .whitespaces).isEmpty ? (type.defaultHost ?? "localhost") : host
     }
 
     var resolvedPort: Int {
@@ -94,6 +94,9 @@ final class NetworkPaneViewModel {
 
     func applyTypeDefaults(forNewType newType: DatabaseType) {
         port = String(newType.defaultPort)
+        if host.trimmingCharacters(in: .whitespaces).isEmpty, let defaultHost = newType.defaultHost {
+            host = defaultHost
+        }
         var values: [String: String] = [:]
         for field in PluginManager.shared.additionalConnectionFields(for: newType)
             where field.section == .connection

@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Connect to PGlite through its socket server (`pglite-server`), with schema browsing, SQL editing, and row editing like PostgreSQL. Defaults to a loopback host with no TLS, and treats the connection as single-use to match PGlite's one-connection limit. (#1911)
 - In the CSV editor, right-click a column header to rename, insert, delete, or change the type of that column. (#1913)
 
 ### Fixed

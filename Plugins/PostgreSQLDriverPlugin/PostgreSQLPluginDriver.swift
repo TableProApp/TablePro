@@ -10,7 +10,7 @@ import Foundation
 import os
 import TableProPluginKit
 
-final class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
+class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     let core: LibPQDriverCore
 
     private static let logger = Logger(subsystem: "com.TablePro.PostgreSQLDriver", category: "PostgreSQLPluginDriver")
@@ -41,8 +41,8 @@ final class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         ]
     }
 
-    init(config: DriverConnectionConfig) {
-        self.core = LibPQDriverCore(config: config)
+    init(config: DriverConnectionConfig, singleConnectionMode: Bool = false) {
+        self.core = LibPQDriverCore(config: config, singleConnectionMode: singleConnectionMode)
     }
 
     // MARK: - Connection

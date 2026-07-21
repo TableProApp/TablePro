@@ -14,13 +14,13 @@ import TableProPluginKit
 final class PostgreSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let pluginName = "PostgreSQL Driver"
     static let pluginVersion = "1.0.0"
-    static let pluginDescription = "PostgreSQL, Redshift, and CockroachDB support via libpq"
+    static let pluginDescription = "PostgreSQL, Redshift, CockroachDB, and PGlite support via libpq"
     static let capabilities: [PluginCapability] = [.databaseDriver]
 
     static let databaseTypeId = "PostgreSQL"
     static let databaseDisplayName = "PostgreSQL"
     static let iconName = "postgresql-icon"
-    static let defaultPort = 5432
+    static let defaultPort = 5_432
     static let additionalConnectionFields: [ConnectionField] = [
         ConnectionField(
             id: "usePgpass",
@@ -88,7 +88,7 @@ final class PostgreSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
             section: .advanced
         )
     ]
-    static let additionalDatabaseTypeIds: [String] = ["Redshift", "CockroachDB"]
+    static let additionalDatabaseTypeIds: [String] = ["Redshift", "CockroachDB", "PGlite"]
 
     // MARK: - UI/Capability Metadata
 
@@ -176,6 +176,7 @@ final class PostgreSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
         case "PostgreSQL": return "PostgreSQL"
         case "Redshift": return "Redshift"
         case "CockroachDB": return "CockroachDB"
+        case "PGlite": return "PGlite"
         default: return nil
         }
     }
@@ -185,6 +186,7 @@ final class PostgreSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
         switch variant {
         case "Redshift": return RedshiftPluginDriver(config: config)
         case "CockroachDB": return CockroachPluginDriver(config: config)
+        case "PGlite": return PGlitePluginDriver(config: config)
         default: return PostgreSQLPluginDriver(config: config)
         }
     }

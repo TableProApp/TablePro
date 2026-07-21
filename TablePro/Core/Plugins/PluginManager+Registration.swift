@@ -43,12 +43,7 @@ extension PluginManager {
                 }
                 PluginMetadataRegistry.shared.register(snapshot: snapshot, forTypeId: typeId, preserveIcon: true)
                 for additionalId in driverType.additionalDatabaseTypeIds {
-                    var additionalSnapshot = snapshot
-                    if let existingDefault = PluginMetadataRegistry.shared.snapshot(forTypeId: additionalId),
-                       !existingDefault.explainVariants.isEmpty {
-                        additionalSnapshot = snapshot.withExplainVariants(existingDefault.explainVariants)
-                    }
-                    PluginMetadataRegistry.shared.register(snapshot: additionalSnapshot, forTypeId: additionalId, preserveIcon: true)
+                    PluginMetadataRegistry.shared.registerVariant(pluginSnapshot: snapshot, forTypeId: additionalId)
                     PluginMetadataRegistry.shared.registerTypeAlias(additionalId, primaryTypeId: typeId)
                 }
 

@@ -29,6 +29,7 @@ extension DatabaseType {
     static let sqlite = DatabaseType(rawValue: "SQLite")
     static let redshift = DatabaseType(rawValue: "Redshift")
     static let cockroachdb = DatabaseType(rawValue: "CockroachDB")
+    static let pglite = DatabaseType(rawValue: "PGlite")
 
     // Registry-distributed types (known plugins, downloadable separately)
     static let mongodb = DatabaseType(rawValue: "MongoDB")
@@ -117,6 +118,14 @@ extension DatabaseType {
         PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.capabilities.supportsClientKeyPassphrase ?? false
     }
 
+    var supportsConnectionPooling: Bool {
+        PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.capabilities.supportsConnectionPooling ?? true
+    }
+
+    var defaultHost: String? {
+        PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.connection.defaultHost
+    }
+
     var supportsCloudSQLProxy: Bool {
         switch rawValue {
         case "MySQL", "PostgreSQL", "SQL Server":
@@ -182,6 +191,7 @@ extension DatabaseType {
         case "PostgreSQL": Color(hex: "336791")
         case "Redshift": Color(hex: "527FFF")
         case "CockroachDB": Color(hex: "6933FF")
+        case "PGlite": Color(hex: "F4B942")
         case "SQLite": Color(hex: "0F80CC")
         case "SQL Server": Color(hex: "CC2927")
         case "Oracle": Color(hex: "C74634")

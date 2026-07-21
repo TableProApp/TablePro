@@ -12,6 +12,7 @@ import TableProPluginKit
 final class LibPQDriverCore: @unchecked Sendable {
     private let config: DriverConnectionConfig
     private let schemaFallbackQueries: [String]
+    private let singleConnectionMode: Bool
     private var libpqConnection: LibPQPluginConnection?
 
     var currentSchema: String = "public"
@@ -24,10 +25,12 @@ final class LibPQDriverCore: @unchecked Sendable {
 
     init(
         config: DriverConnectionConfig,
-        schemaFallbackQueries: [String] = PostgreSQLSchemaQueries.schemaFallbackQueries
+        schemaFallbackQueries: [String] = PostgreSQLSchemaQueries.schemaFallbackQueries,
+        singleConnectionMode: Bool = false
     ) {
         self.config = config
         self.schemaFallbackQueries = schemaFallbackQueries
+        self.singleConnectionMode = singleConnectionMode
     }
 
     // MARK: - Connection
@@ -40,7 +43,8 @@ final class LibPQDriverCore: @unchecked Sendable {
             password: config.password.isEmpty ? nil : config.password,
             database: config.database,
             sslConfig: config.ssl,
-            options: config.additionalFields["connectionOptions"]
+            options: config.additionalFields["connectionOptions"],
+            suppressServerSideCancel: singleConnectionMode
         )
 
         try await pqConn.connect()

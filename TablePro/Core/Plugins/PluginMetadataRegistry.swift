@@ -61,6 +61,7 @@ struct PluginMetadataSnapshot: Sendable {
         var supportsOpportunisticTLS: Bool = true
         var supportsCloudflareTunnel: Bool = true
         var supportsClientKeyPassphrase: Bool = false
+        var supportsConnectionPooling: Bool = true
 
         var supportsSOCKSProxy: Bool { supportsSSH }
 
@@ -172,19 +173,22 @@ struct PluginMetadataSnapshot: Sendable {
         let tagline: String
         let hidesBuiltInPassword: Bool
         let defaultUnixSocketPath: String?
+        let defaultHost: String?
 
         init(
             additionalConnectionFields: [ConnectionField] = [],
             category: DatabaseCategory = .other,
             tagline: String = "",
             hidesBuiltInPassword: Bool = false,
-            defaultUnixSocketPath: String? = nil
+            defaultUnixSocketPath: String? = nil,
+            defaultHost: String? = nil
         ) {
             self.additionalConnectionFields = additionalConnectionFields
             self.category = category
             self.tagline = tagline
             self.hidesBuiltInPassword = hidesBuiltInPassword
             self.defaultUnixSocketPath = defaultUnixSocketPath
+            self.defaultHost = defaultHost
         }
 
         static let defaults = ConnectionConfig()
@@ -765,6 +769,62 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     tagline: String(localized: "Distributed SQL, PostgreSQL-compatible")
                 )
             )),
+            ("PGlite", PluginMetadataSnapshot(
+                displayName: "PGlite", iconName: "postgresql-icon", defaultPort: 5_432,
+                requiresAuthentication: true, supportsForeignKeys: true, supportsSchemaEditing: true,
+                isDownloadable: false, primaryUrlScheme: "pglite", parameterStyle: .dollar,
+                navigationModel: .standard, explainVariants: [], pathFieldRole: .database,
+                supportsHealthMonitor: true, urlSchemes: ["pglite"],
+                postConnectActions: [.selectSchemaFromLastSession],
+                brandColorHex: "#F4B942",
+                queryLanguageName: "SQL", editorLanguage: .sql,
+                connectionMode: .network, supportsDatabaseSwitching: true,
+                supportsColumnReorder: false,
+                capabilities: PluginMetadataSnapshot.CapabilityFlags(
+                    supportsSchemaSwitching: true,
+                    supportsImport: true,
+                    supportsExport: true,
+                    supportsSSH: false,
+                    supportsSSL: false,
+                    supportsCascadeDrop: true,
+                    supportsForeignKeyDisable: false,
+                    supportsReadOnlyMode: true,
+                    supportsQueryProgress: false,
+                    requiresReconnectForDatabaseSwitch: true,
+                    supportsDropDatabase: true,
+                    supportsRenameColumn: true,
+                    supportsTriggers: true,
+                    supportsTriggerEditing: true,
+                    defaultSSLMode: .disabled,
+                    supportsCloudflareTunnel: false,
+                    supportsConnectionPooling: false
+                ),
+                schema: PluginMetadataSnapshot.SchemaInfo(
+                    defaultSchemaName: "public",
+                    defaultGroupName: "main",
+                    tableEntityName: "Tables",
+                    containerEntityName: "Database",
+                    defaultPrimaryKeyColumn: nil,
+                    immutableColumns: [],
+                    systemDatabaseNames: ["postgres", "template0", "template1"],
+                    systemSchemaNames: [],
+                    fileExtensions: [],
+                    databaseGroupingStrategy: .bySchema,
+                    structureColumnFields: [.name, .type, .nullable, .defaultValue, .autoIncrement, .comment]
+                ),
+                editor: PluginMetadataSnapshot.EditorConfig(
+                    sqlDialect: postgresqlDialect,
+                    statementCompletions: [],
+                    columnTypesByCategory: postgresqlColumnTypes
+                ),
+                connection: PluginMetadataSnapshot.ConnectionConfig(
+                    additionalConnectionFields: [],
+                    category: .relational,
+                    tagline: String(localized: "Embedded WASM Postgres over a socket server"),
+                    hidesBuiltInPassword: true,
+                    defaultHost: "127.0.0.1"
+                )
+            )),
             ("SQLite", PluginMetadataSnapshot(
                 displayName: "SQLite", iconName: "sqlite-icon", defaultPort: 0,
                 requiresAuthentication: false, supportsForeignKeys: true, supportsSchemaEditing: true,
@@ -831,6 +891,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
         reverseTypeIndex["MariaDB"] = "MySQL"
         reverseTypeIndex["Redshift"] = "PostgreSQL"
         reverseTypeIndex["CockroachDB"] = "PostgreSQL"
+        reverseTypeIndex["PGlite"] = "PostgreSQL"
         reverseTypeIndex["ScyllaDB"] = "Cassandra"
         reverseTypeIndex["Turso"] = "libSQL"
     }
@@ -838,6 +899,29 @@ final class PluginMetadataRegistry: @unchecked Sendable {
     func register(snapshot: PluginMetadataSnapshot, forTypeId typeId: String, preserveIcon: Bool = false) {
         lock.lock()
         defer { lock.unlock() }
+        registerLocked(snapshot: snapshot, forTypeId: typeId, preserveIcon: preserveIcon)
+    }
+
+    /// Registers an additional database type served by a multi-type plugin (Redshift,
+    /// CockroachDB, PGlite on the PostgreSQL plugin). A plugin's statics are per-class, so
+    /// they cannot express per-type facts like PGlite's disabled SSL or single-connection limit.
+    /// The curated built-in entry is therefore authoritative for a variant; the plugin only
+    /// fills the EXPLAIN variants the curated entry leaves open. A variant with no curated entry
+    /// falls back to deriving its snapshot from the plugin.
+    func registerVariant(pluginSnapshot: PluginMetadataSnapshot, forTypeId typeId: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let curated = defaultSnapshots[typeId] else {
+            registerLocked(snapshot: pluginSnapshot, forTypeId: typeId, preserveIcon: true)
+            return
+        }
+        let resolved = curated.explainVariants.isEmpty && !pluginSnapshot.explainVariants.isEmpty
+            ? curated.withExplainVariants(pluginSnapshot.explainVariants)
+            : curated
+        registerLocked(snapshot: resolved, forTypeId: typeId, preserveIcon: false)
+    }
+
+    private func registerLocked(snapshot: PluginMetadataSnapshot, forTypeId typeId: String, preserveIcon: Bool) {
         var resolved = snapshot
         if preserveIcon, let existing = snapshots[typeId] {
             resolved = resolved.withBranding(from: existing)
@@ -1030,7 +1114,8 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                 tagline: existingSnapshot?.connection.tagline
                     ?? Self.fallbackTagline(forTypeId: driverType.databaseTypeId),
                 hidesBuiltInPassword: existingSnapshot?.connection.hidesBuiltInPassword ?? false,
-                defaultUnixSocketPath: existingSnapshot?.connection.defaultUnixSocketPath
+                defaultUnixSocketPath: existingSnapshot?.connection.defaultUnixSocketPath,
+                defaultHost: existingSnapshot?.connection.defaultHost
             )
         )
     }

@@ -25,13 +25,15 @@ final class MetadataConnectionPool {
     @MainActor
     private final class Entry {
         let driver: DatabaseDriver
+        let ownsDriver: Bool
         var lastUsed: Date
         var inFlightCount: Int
         var closeWhenIdle: Bool
         private var tail: Task<Void, Never> = Task {}
 
-        init(driver: DatabaseDriver) {
+        init(driver: DatabaseDriver, ownsDriver: Bool = true) {
             self.driver = driver
+            self.ownsDriver = ownsDriver
             self.lastUsed = Date()
             self.inFlightCount = 0
             self.closeWhenIdle = false
@@ -86,13 +88,14 @@ final class MetadataConnectionPool {
 
     private func releaseEntry(_ entry: Entry) {
         entry.inFlightCount -= 1
-        if entry.inFlightCount == 0, entry.closeWhenIdle {
+        if entry.inFlightCount == 0, entry.closeWhenIdle, entry.ownsDriver {
             entry.driver.disconnect()
         }
     }
 
     private func closeOrDeferEntry(forKey key: Key) {
         guard let entry = entries.removeValue(forKey: key) else { return }
+        guard entry.ownsDriver else { return }
         if entry.inFlightCount == 0 {
             entry.driver.disconnect()
         } else {
@@ -106,6 +109,12 @@ final class MetadataConnectionPool {
         schema: String?,
         workload: Workload
     ) async throws -> Entry {
+        if let session = DatabaseManager.shared.session(for: connectionId),
+           session.connection.type.supportsConnectionPooling == false {
+            guard session.driver.status == .connected else { throw DatabaseError.notConnected }
+            return Entry(driver: session.driver, ownsDriver: false)
+        }
+
         let key = Key(connectionId: connectionId, database: database, schema: schema, workload: workload)
         if let entry = entries[key], entry.driver.status == .connected {
             return entry

@@ -1,0 +1,63 @@
+---
+title: PGlite
+description: Connect to a PGlite database over its socket server using the PostgreSQL wire protocol
+---
+
+# PGlite Connections
+
+TablePro connects to [PGlite](https://pglite.dev), a build of PostgreSQL 17 compiled to WebAssembly. PGlite runs in-process in JavaScript, so it speaks the network wire protocol only through its socket server, `@electric-sql/pglite-socket`. Once that server is running, TablePro connects to it with the same libpq driver as [PostgreSQL](/databases/postgresql), and schema introspection, DDL, and EXPLAIN all behave like PostgreSQL.
+
+## Start the socket server
+
+PGlite has no server of its own, so start one first. It listens on `127.0.0.1:5432` by default:
+
+```bash
+# In-memory database, gone when the server stops
+npx @electric-sql/pglite-socket
+
+# Persist to a data directory
+npx @electric-sql/pglite-socket --db=./my-pgdata
+```
+
+Leave it running while you use the connection. TablePro opens a single connection to PGlite and serializes all of its own background work (schema browsing, autocomplete, row counts) over that one connection, so you do not need to raise the server's `--max-connections`.
+
+## Connection Settings
+
+| Field | Default | Notes |
+|-------|---------|-------|
+| **Host** | `127.0.0.1` | The socket server binds loopback IPv4, not `localhost` |
+| **Port** | `5432` | Match the server's `--port` |
+| **Database** | `postgres` | The single database PGlite exposes |
+| **Username** | `postgres` | PGlite uses trust auth; any username connects |
+| **Password** | - | Ignored |
+
+SSL is off and cannot be enabled: the socket server has no TLS. Fill in the form and click **Save & Connect**.
+
+## Connection URL
+
+```text
+pglite://postgres@127.0.0.1:5432/postgres
+```
+
+See [Connection URL Reference](/databases/connection-urls) for all parameters.
+
+## Features
+
+**Schemas**: like PostgreSQL, default schema `public`. Switch with Cmd+K.
+
+**DDL, EXPLAIN, editing**: PGlite is real PostgreSQL 17, so `pg_catalog` and `information_schema` are complete. Table and view definitions, indexes, foreign keys, structure editing, and the visual `EXPLAIN` / `EXPLAIN ANALYZE` plan tree all work as they do for PostgreSQL.
+
+**Import & Export**: export to CSV, JSON, SQL, or XLSX. Import from JSON or SQL. See [Import & Export](/features/import-export).
+
+## Limitations
+
+- **Single connection.** PGlite serves one connection at a time. TablePro is built for this and keeps to one connection, but other tools that open connections in parallel will fail against the same server.
+- **No TLS.** The socket server rejects SSL, so SSL Mode is fixed to Disabled and the SSH, Cloudflare Tunnel, and SOCKS panes do not apply.
+- **Cancel does nothing.** PGlite has no backend process to signal, so cancelling a running query has no effect at the protocol level. Let long queries finish.
+- **No `COPY ... FROM STDIN`.** The socket server does not support it, so avoid import paths that stream a copy; SQL and JSON import work.
+
+## Troubleshooting
+
+**Can't reach a PGlite socket server**: the server is not running or is on a different address. Start it with `npx @electric-sql/pglite-socket` and confirm the host and port match. TablePro needs loopback `127.0.0.1`, not `localhost`, which can resolve to IPv6 first.
+
+**Too many connections**: something else is already connected to the socket server, which allows only one client by default. Close the other client, or start the server with a higher `--max-connections`.
