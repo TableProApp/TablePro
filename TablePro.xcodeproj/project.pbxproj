@@ -3591,6 +3591,7 @@
 					"-liconv",
 					"-framework",
 					"GSS",
+					"-lcom_err",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.TablePro.MSSQLDriver;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -3632,6 +3633,7 @@
 					"-liconv",
 					"-framework",
 					"GSS",
+					"-lcom_err",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.TablePro.MSSQLDriver;
 				PRODUCT_NAME = "$(TARGET_NAME)";
