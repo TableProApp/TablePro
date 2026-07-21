@@ -1,6 +1,6 @@
 ---
 title: SOCKS Proxy
-description: Route a database connection through a SOCKS5 proxy
+description: Route a database connection through a SOCKS5 proxy, with remote DNS (socks5h) so the proxy resolves the database hostname
 ---
 
 # SOCKS Proxy
@@ -29,7 +29,7 @@ flowchart LR
 
 TablePro opens a loopback listener on a free port and relays every connection through the proxy to the database, then points the driver at the local port. Unlike Cloudflare Tunnel and Cloud SQL Auth Proxy, there is no external binary to install: TablePro's own networking stack (Network.framework) speaks SOCKS5 directly.
 
-The database hostname is sent to the proxy and resolved there, not on your Mac. Hostnames that only resolve inside the private network behind the proxy work, and no DNS query for the database host leaves your machine.
+The database hostname is sent to the proxy and resolved there, not on your Mac. This is remote DNS (what a `socks5h://` URL selects in other clients), and TablePro always does it, so there is no separate `socks5` mode that resolves locally. Hostnames that only resolve inside the private network behind the proxy work, and no DNS query for the database host leaves your machine.
 
 ## Setting up
 
