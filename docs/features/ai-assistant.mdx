@@ -107,6 +107,17 @@ Right-click SQL in the editor for **Explain with AI** (`Cmd+L`) and **Optimize w
 
 When a query fails, the inline error banner above the results shows a **Fix with AI** button. It opens chat with the failed query and error pre-filled.
 
+## SQL Walkthroughs
+
+Explain, Optimize, and Fix answer with a walkthrough in the chat panel instead of plain text, so you can review the change before trusting it:
+
+- **Before/after diff.** Optimize and Fix show a diff between your query and the AI's version. Switch between **Unified** and **Split** with the toggle in the walkthrough header. Explain shows the query with the steps anchored to it.
+- **Numbered steps.** Each step has a one-line reason and an importance tag (**Critical**, **Change**, or **Context**). Expand a step to see the exact lines it refers to, and **Show in diff** scrolls to and highlights them.
+- **Ask about a step.** Use **Ask about this change** on any step to send a follow-up question that stays anchored to that step.
+- **Apply to Editor.** When the AI rewrote your query, **Apply to Editor** replaces the editor content after you confirm. Nothing is applied automatically.
+
+The AI writes the steps and the rewritten query; TablePro computes the diff itself, so the diff always reflects the real change. If a model returns plain prose instead, the response renders as normal text.
+
 ## Context
 
 Under **Settings** > **AI** > **Context**:

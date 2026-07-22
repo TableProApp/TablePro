@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - In the CSV editor, set the delimiter, quote character, encoding, and line ending by hand from Edit > Set CSV Properties…, then Reload to re-read the file with those settings. (#1469)
 - In the CSV editor, choose the escape character (a doubled quote or a backslash) in Set CSV Properties…, so files that escape quotes with a backslash read and save correctly. (#1469)
 - Add llama.cpp and MLX as local AI providers. Each preset points at the server's default local endpoint and needs no API key, alongside the existing Ollama and custom OpenAI-compatible options. (#1777)
+- AI Explain, Optimize, and Fix Error now answer with a walkthrough in the chat panel: a before/after SQL diff you can switch between unified and split, numbered steps anchored to the lines they change, and a follow-up prompt on any step. Optimize and Fix add an Apply to Editor button that asks before replacing your query. (#1945)
 
 ### Fixed
 

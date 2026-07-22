@@ -190,6 +190,7 @@ extension AIChatViewModel {
                 await MainActor.run { [weak self] in
                     guard let self else { return }
                     self.finalizeStreamingMessage(id: finalAssistantID)
+                    self.resolveWalkthroughIfNeeded(id: finalAssistantID)
                     self.streamingState = .idle
                     self.streamingTask = nil
                     self.persistCurrentConversation()
@@ -198,6 +199,7 @@ extension AIChatViewModel {
                 let failedAssistantID = currentAssistantID
                 await MainActor.run { [weak self] in
                     guard let self else { return }
+                    self.pendingWalkthroughBeforeSQL = nil
                     if !Task.isCancelled {
                         Self.logger.error("Streaming failed: \(error.localizedDescription)")
                         self.errorMessage = error.localizedDescription
@@ -221,6 +223,30 @@ extension AIChatViewModel {
     func finalizeStreamingMessage(id: UUID) {
         guard let idx = messages.firstIndex(where: { $0.id == id }) else { return }
         messages[idx].finishStreamingTextBlock()
+    }
+
+    @MainActor
+    func resolveWalkthroughIfNeeded(id: UUID) {
+        guard let beforeSQL = pendingWalkthroughBeforeSQL else { return }
+        pendingWalkthroughBeforeSQL = nil
+        guard let idx = messages.firstIndex(where: { $0.id == id }),
+              let lastBlock = messages[idx].blocks.last,
+              case .text(let fullText) = lastBlock.kind,
+              fullText.contains(WalkthroughEnvelopeParser.openFence)
+        else { return }
+
+        let prose = WalkthroughEnvelopeParser.stripFence(from: fullText)
+        guard let envelope = WalkthroughEnvelopeParser.parse(from: fullText) else {
+            lastBlock.setKind(.text(prose))
+            return
+        }
+        if prose.isEmpty {
+            messages[idx].blocks.removeLast()
+        } else {
+            lastBlock.setKind(.text(prose))
+        }
+        let walkthrough = SqlWalkthroughBlock(beforeSQL: beforeSQL, envelope: envelope)
+        messages[idx].appendBlock(.sqlWalkthrough(walkthrough))
     }
 
     private func consumeStreamRound(
