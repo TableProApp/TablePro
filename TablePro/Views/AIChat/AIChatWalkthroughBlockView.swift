@@ -370,7 +370,7 @@ struct AIChatWalkthroughBlockView: View {
                     : String(localized: "Replace the editor content with the suggested SQL"))
         }
         .alert(String(localized: "Apply suggested SQL?"), isPresented: $showApplyConfirmation) {
-            Button(String(localized: "Apply")) { actions?.insertQueryFromAI(afterSQL) }
+            Button(String(localized: "Apply")) { actions?.loadQueryIntoEditor(afterSQL) }
             Button(String(localized: "Cancel"), role: .cancel) {}
         } message: {
             Text("This replaces the editor content with the AI-generated SQL.")
