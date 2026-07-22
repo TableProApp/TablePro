@@ -331,7 +331,7 @@ final class CSVRowStore {
 
     func toggleHeaderRow() {
         if hasHeaderRow {
-            let headerCells = currentHeaderCells()
+            let headerCells = columnNames
             let synthetic = (0..<columnNames.count).map { "Column \($0 + 1)" }
             logicalRows.insert(.materialized(headerCells), at: 0)
             columnNames = synthetic
@@ -367,15 +367,6 @@ final class CSVRowStore {
         hasHeaderRow = state.hasHeaderRow
         cache.removeAll()
         cacheOrder.removeAll()
-    }
-
-    private func currentHeaderCells() -> [String] {
-        switch headerRef {
-        case .original(let range):
-            return applyColumnTransforms(cachedRawCells(in: range))
-        case .materialized(let cells):
-            return cells
-        }
     }
 
     static func split(_ value: String, spec: SplitSpec) -> [String] {

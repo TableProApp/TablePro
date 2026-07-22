@@ -349,6 +349,7 @@ public final class CSVDocument: NSDocument, InspectorDocument {
     }
 
     public func toggleHeaderRow() {
+        guard store.hasHeaderRow || store.rowCount > 0 else { return }
         performStructuralChange(name: String(localized: "Switch Header Row")) {
             store.toggleHeaderRow()
             recomputeInferredTypes()

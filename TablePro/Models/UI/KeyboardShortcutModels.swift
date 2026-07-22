@@ -96,6 +96,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
     case addRow
     case duplicateRow
     case truncateTable
+    case toggleHeaderRow
     case previewFKReference
     case saveAsFavorite
     case previousPage
@@ -138,7 +139,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
             return .editor
         case .undo, .redo, .cut, .copy, .copyRowsExplicit, .copyWithHeaders, .copyAsJson,
              .paste, .delete, .selectAll, .clearSelection, .addRow, .duplicateRow,
-             .truncateTable, .previewFKReference, .saveAsFavorite, .previousPage,
+             .truncateTable, .toggleHeaderRow, .previewFKReference, .saveAsFavorite, .previousPage,
              .nextPage, .firstPage, .lastPage, .refresh, .export, .importData:
             return .dataGrid
         case .newTab, .closeTab, .reopenClosedTab, .quickSwitcher, .toggleTableBrowser,
@@ -216,6 +217,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
         case .addRow: return String(localized: "Add Row")
         case .duplicateRow: return String(localized: "Duplicate Row")
         case .truncateTable: return String(localized: "Truncate Table")
+        case .toggleHeaderRow: return String(localized: "Switch First Row Between Header/Data")
         case .previewFKReference: return String(localized: "Preview FK Reference")
         case .saveAsFavorite: return String(localized: "Save as Favorite")
         case .toggleTableBrowser: return String(localized: "Toggle Table Browser")
@@ -433,6 +435,7 @@ struct KeyboardSettings: Codable, Equatable {
         .addRow: .character("n", command: true, shift: true),
         .duplicateRow: .character("d", command: true, shift: true),
         .truncateTable: .special(.delete, option: true),
+        .toggleHeaderRow: .character("h", command: true, shift: true),
         .previewFKReference: .special(.space),
         .saveAsFavorite: .character("d", command: true),
         .previousPage: .character("[", command: true),

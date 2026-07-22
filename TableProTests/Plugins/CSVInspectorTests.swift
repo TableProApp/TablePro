@@ -395,6 +395,18 @@ struct CSVRowStoreTests {
         #expect(store.rowCount == 2)
         #expect(store.cells(forRow: 0) == ["Alice", "30"])
     }
+
+    @Test("Demoting after a column insert keeps the header row the full width")
+    func toggleHeaderAfterColumnInsert() {
+        let store = makeStore("1,2\n3,4\n")
+        store.toggleHeaderRow()
+        store.insertColumn(at: 2, name: "c")
+        store.toggleHeaderRow()
+        #expect(store.columnCount == 3)
+        #expect(store.columnNames == ["Column 1", "Column 2", "Column 3"])
+        #expect(store.cells(forRow: 0) == ["1", "2", "c"])
+        #expect(store.cells(forRow: 1).count == 3)
+    }
 }
 
 @Suite("CSVWriter round-trip")
