@@ -143,7 +143,6 @@ final class InspectorViewController: NSViewController, NSUserInterfaceValidation
 
         let undoManager = nsDocument?.undoManager
         undoManager?.beginUndoGrouping()
-        undoManager?.setActionName(String(localized: "Paste"))
         for row in rows {
             let newRowIndex = inspectorDocument.rowCount
             inspectorDocument.appendRow()
@@ -151,6 +150,7 @@ final class InspectorViewController: NSViewController, NSUserInterfaceValidation
                 inspectorDocument.setCell(row: newRowIndex, column: column, to: value)
             }
         }
+        undoManager?.setActionName(String(localized: "Paste"))
         undoManager?.endUndoGrouping()
     }
 
@@ -233,7 +233,6 @@ final class InspectorViewController: NSViewController, NSUserInterfaceValidation
     }
 
     private func insertStoreIndex(anchoredBy sender: Any?, below: Bool) -> Int {
-        let rowCount = inspectorDocument?.rowCount ?? 0
         let anchorDisplayRow: Int? = if let item = sender as? NSMenuItem {
             item.tag
         } else if below {
@@ -241,12 +240,12 @@ final class InspectorViewController: NSViewController, NSUserInterfaceValidation
         } else {
             state.selectedRowIndices.min()
         }
-        guard let displayRow = anchorDisplayRow,
-              displayRow >= 0, displayRow < displayToStore.count else {
-            return below ? rowCount : 0
-        }
-        let storeRow = displayToStore[displayRow]
-        return below ? storeRow + 1 : storeRow
+        return InspectorRowInsertion.storeIndex(
+            anchorDisplayRow: anchorDisplayRow,
+            below: below,
+            displayToStore: displayToStore,
+            rowCount: inspectorDocument?.rowCount ?? 0
+        )
     }
 
     @objc func inspectorAddColumn(_ sender: Any?) {

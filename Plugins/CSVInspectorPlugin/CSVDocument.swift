@@ -187,61 +187,63 @@ public final class CSVDocument: NSDocument, InspectorDocument {
     }
 
     public func appendRow() {
+        let name = String(localized: "Add Row")
         let index = store.appendRow(values: [])
         registerUndo { document in
-            document.removeRow(at: index, suppressUndo: false)
+            document.removeRow(at: index, suppressUndo: false, actionName: name)
         }
-        setUndoActionName(String(localized: "Add Row"))
+        setUndoActionName(name)
         onChange?()
     }
 
     public func insertRow(at index: Int) {
+        let name = String(localized: "Insert Row")
         store.insertRow([], at: index)
         registerUndo { document in
-            document.removeRow(at: index, suppressUndo: false)
+            document.removeRow(at: index, suppressUndo: false, actionName: name)
         }
-        setUndoActionName(String(localized: "Insert Row"))
+        setUndoActionName(name)
         onChange?()
     }
 
     public func removeRow(at index: Int) {
-        removeRow(at: index, suppressUndo: false)
-        setUndoActionName(String(localized: "Delete Row"))
+        removeRow(at: index, suppressUndo: false, actionName: String(localized: "Delete Row"))
     }
 
-    private func removeRow(at index: Int, suppressUndo: Bool) {
+    private func removeRow(at index: Int, suppressUndo: Bool, actionName: String) {
         guard let removed = store.removeRow(at: index) else { return }
         if !suppressUndo {
             registerUndo { document in
-                document.reinsertRow(removed, at: index)
+                document.reinsertRow(removed, at: index, actionName: actionName)
             }
+            setUndoActionName(actionName)
         }
         onChange?()
     }
 
-    private func reinsertRow(_ values: [String], at index: Int) {
+    private func reinsertRow(_ values: [String], at index: Int, actionName: String) {
         store.insertRow(values, at: index)
         registerUndo { document in
-            document.removeRow(at: index, suppressUndo: false)
+            document.removeRow(at: index, suppressUndo: false, actionName: actionName)
         }
+        setUndoActionName(actionName)
         onChange?()
     }
 
     public func removeRows(at indices: IndexSet) {
         let removed = store.removeRows(at: indices)
         guard !removed.isEmpty else { return }
+        let name = removed.count == 1
+            ? String(localized: "Delete Row")
+            : String(localized: "Delete Rows")
         registerUndo { document in
-            document.reinsertRows(removed)
+            document.reinsertRows(removed, actionName: name)
         }
-        setUndoActionName(
-            removed.count == 1
-                ? String(localized: "Delete Row")
-                : String(localized: "Delete Rows")
-        )
+        setUndoActionName(name)
         onChange?()
     }
 
-    private func reinsertRows(_ rows: [(index: Int, cells: [String])]) {
+    private func reinsertRows(_ rows: [(index: Int, cells: [String])], actionName: String) {
         for entry in rows.sorted(by: { $0.index < $1.index }) {
             store.insertRow(entry.cells, at: entry.index)
         }
@@ -249,6 +251,7 @@ public final class CSVDocument: NSDocument, InspectorDocument {
         registerUndo { document in
             document.removeRows(at: originalIndices)
         }
+        setUndoActionName(actionName)
         onChange?()
     }
 

@@ -605,17 +605,17 @@ struct AppMenuCommands: Commands {
 
             Divider()
 
-            Button(String(localized: "Insert Row Above")) {
+            Button("Insert Row Above") {
                 NSApp.sendAction(#selector(InspectorViewController.inspectorInsertRowAbove(_:)), to: nil, from: nil)
             }
             .disabled(!keyWindowIsInspector)
 
-            Button(String(localized: "Insert Row Below")) {
+            Button("Insert Row Below") {
                 NSApp.sendAction(#selector(InspectorViewController.inspectorInsertRowBelow(_:)), to: nil, from: nil)
             }
             .disabled(!keyWindowIsInspector)
 
-            Button(String(localized: "Delete Rows")) {
+            Button("Delete Rows") {
                 NSApp.sendAction(#selector(InspectorViewController.inspectorDeleteSelectedRows(_:)), to: nil, from: nil)
             }
             .disabled(!keyWindowIsInspector)
