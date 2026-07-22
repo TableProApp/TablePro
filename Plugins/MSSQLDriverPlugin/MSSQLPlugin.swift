@@ -268,6 +268,10 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let conn: FreeTDSConnection
         do {
             let kerberosCachePath = try await acquireKerberosTicketIfNeeded(authMethod: authMethod)
+            let kerberosServicePrincipal = authMethod == .windows
+                ? MSSQLKerberosRealmResolver.canonicalService(forHost: config.host)
+                    .flatMap { MSSQLKerberosSPN.build(host: $0.host, port: config.port, realm: $0.realm) }
+                : nil
             let options = MSSQLConnectionOptions(
                 host: config.host,
                 port: config.port,
@@ -277,7 +281,8 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 schema: _currentSchema,
                 encryptionFlag: MSSQLSSLMapping.freetdsEncryptionFlag(for: config.ssl.mode),
                 authMethod: authMethod,
-                kerberosCachePath: kerberosCachePath
+                kerberosCachePath: kerberosCachePath,
+                kerberosServicePrincipal: kerberosServicePrincipal
             )
             conn = FreeTDSConnection(options: options)
             try await conn.connect()
