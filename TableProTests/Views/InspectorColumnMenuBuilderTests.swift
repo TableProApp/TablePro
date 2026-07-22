@@ -24,7 +24,7 @@ struct InspectorColumnMenuBuilderTests {
         #expect(items[4].action == #selector(InspectorViewController.inspectorMergeColumns(_:)))
         #expect(items.last?.action == #selector(InspectorViewController.inspectorDeleteColumn(_:)))
 
-        for item in items where item.action != nil && !item.isSeparatorItem {
+        for item in items where !item.isSeparatorItem && item.submenu == nil {
             #expect(item.tag == 3)
             #expect(item.target == nil)
         }
