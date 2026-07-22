@@ -181,6 +181,10 @@ final class GeminiProvider: ChatTransport {
             case .text(let text):
                 guard !text.isEmpty else { continue }
                 parts.append(["text": text])
+            case .sqlWalkthrough(let walkthrough):
+                let text = walkthrough.transcriptText
+                guard !text.isEmpty else { continue }
+                parts.append(["text": text])
             case .attachment, .reasoning, .image:
                 continue
             case .toolUse(let useBlock):

@@ -173,6 +173,9 @@ final class CursorProvider: ChatTransport {
             switch block.kind {
             case .text(let text):
                 if !text.isEmpty { parts.append(text) }
+            case .sqlWalkthrough(let walkthrough):
+                let text = walkthrough.transcriptText
+                if !text.isEmpty { parts.append(text) }
             case .toolResult(let result):
                 if !result.content.isEmpty { parts.append("Result: \(result.content)") }
             case .toolUse, .attachment, .reasoning, .image:

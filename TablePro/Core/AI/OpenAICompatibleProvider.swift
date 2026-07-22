@@ -339,7 +339,14 @@ final class OpenAICompatibleProvider: ChatTransport {
             if case .image(let input) = block.kind { return input }
             return nil
         }
-        let textContent = turn.plainText
+        let walkthroughText = turn.blocks.compactMap { block -> String? in
+            guard case .sqlWalkthrough(let walkthrough) = block.kind else { return nil }
+            let text = walkthrough.transcriptText
+            return text.isEmpty ? nil : text
+        }.joined(separator: "\n")
+        let textContent = [turn.plainText, walkthroughText]
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n")
 
         if turn.role == .assistant, !toolUseBlocks.isEmpty {
             var message: [String: Any] = ["role": "assistant"]

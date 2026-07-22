@@ -154,6 +154,7 @@ struct AIChatPanelView: View {
                     bottomVisibleMessageID = lastMessageID
                 }
             }
+            .environment(viewModel)
 
             if isUserScrolledUp {
                 Button {
@@ -530,7 +531,7 @@ struct AIChatPanelView: View {
                 switch block.kind {
                 case .text(let value): return !value.isEmpty
                 case .attachment, .image: return true
-                case .toolUse, .toolResult, .reasoning: return false
+                case .toolUse, .toolResult, .reasoning, .sqlWalkthrough: return false
                 }
             }
             if !hasUserContent { return false }

@@ -142,6 +142,8 @@ struct AIChatMessageView: View {
                 return block.isStreaming || (reasoning.text?.isEmpty == false)
             case .image:
                 return true
+            case .sqlWalkthrough:
+                return true
             }
         }
         if visibleBlocks.isEmpty {
@@ -178,6 +180,9 @@ private struct AIChatBlockView: View {
                 .padding(.horizontal, 8)
         case .image(let input):
             AIChatImageBlockView(input: input)
+                .padding(.horizontal, 8)
+        case .sqlWalkthrough:
+            AIChatWalkthroughBlockView(block: block)
                 .padding(.horizontal, 8)
         }
     }

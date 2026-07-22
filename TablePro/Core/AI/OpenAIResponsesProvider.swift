@@ -182,6 +182,10 @@ final class OpenAIResponsesProvider: ChatTransport {
                 case .text(let text):
                     guard !text.isEmpty else { continue }
                     messageParts.append(["type": "output_text", "text": text])
+                case .sqlWalkthrough(let walkthrough):
+                    let text = walkthrough.transcriptText
+                    guard !text.isEmpty else { continue }
+                    messageParts.append(["type": "output_text", "text": text])
                 case .toolUse(let useBlock):
                     flushAssistantMessage(parts: &messageParts, into: &items)
                     items.append([
@@ -227,7 +231,7 @@ final class OpenAIResponsesProvider: ChatTransport {
                     if let part = inputImagePart(input) {
                         userParts.append(part)
                     }
-                case .toolUse, .toolResult, .attachment, .reasoning:
+                case .toolUse, .toolResult, .attachment, .reasoning, .sqlWalkthrough:
                     continue
                 }
             }
