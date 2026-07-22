@@ -432,8 +432,10 @@ final class InspectorViewController: NSViewController, NSUserInterfaceValidation
         alert.accessoryView = accessoryStack(with: [field])
 
         alert.beginSheetModal(for: window) { [weak self] response in
-            guard response == .alertFirstButtonReturn else { return }
-            self?.inspectorDocument?.mergeColumns(at: column, separator: field.stringValue)
+            guard response == .alertFirstButtonReturn, let self, let inspector = self.inspectorDocument else { return }
+            let removedName = column + 1 < inspector.columnNames.count ? inspector.columnNames[column + 1] : nil
+            inspector.mergeColumns(at: column, separator: field.stringValue)
+            if let removedName { self.removeLayoutKey(removedName) }
         }
         DispatchQueue.main.async { alert.window.makeFirstResponder(field) }
     }
@@ -444,7 +446,15 @@ final class InspectorViewController: NSViewController, NSUserInterfaceValidation
             presentInvalidPattern()
             return
         }
-        inspectorDocument?.splitColumn(at: column, separator: separator, isRegex: isRegex)
+        guard let inspector = inspectorDocument else { return }
+        let oldName = column < inspector.columnNames.count ? inspector.columnNames[column] : nil
+        let oldCount = inspector.columnNames.count
+        inspector.splitColumn(at: column, separator: separator, isRegex: isRegex)
+        guard let oldName else { return }
+        let pieceCount = inspector.columnNames.count - oldCount + 1
+        let upper = min(column + max(pieceCount, 0), inspector.columnNames.count)
+        let newNames = column < upper ? Array(inspector.columnNames[column..<upper]) : []
+        replaceLayoutKey(oldName, with: newNames)
     }
 
     private func presentInvalidPattern() {
@@ -519,6 +529,15 @@ final class InspectorViewController: NSViewController, NSUserInterfaceValidation
               let anchorPos = order.firstIndex(of: anchor) else { return }
         order.insert(name, at: after ? anchorPos + 1 : anchorPos)
         state.columnLayout.columnOrder = order
+    }
+
+    private func replaceLayoutKey(_ oldName: String, with newNames: [String]) {
+        if var order = state.columnLayout.columnOrder, let position = order.firstIndex(of: oldName) {
+            order.replaceSubrange(position...position, with: newNames)
+            state.columnLayout.columnOrder = order
+        }
+        state.columnLayout.columnWidths.removeValue(forKey: oldName)
+        state.columnLayout.hiddenColumns.remove(oldName)
     }
 
     private func promptForColumnName(

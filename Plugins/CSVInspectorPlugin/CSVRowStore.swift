@@ -284,7 +284,9 @@ final class CSVRowStore {
     func splitColumn(at index: Int, spec: SplitSpec) {
         guard index >= 0, index < columnNames.count else { return }
         let baseName = columnNames[index]
+        var rowCells: [[String]] = []
         var pieceRows: [[String]] = []
+        rowCells.reserveCapacity(logicalRows.count)
         pieceRows.reserveCapacity(logicalRows.count)
         var pieceCount = 1
         for row in logicalRows.indices {
@@ -292,11 +294,12 @@ final class CSVRowStore {
             let value = index < cells.count ? cells[index] : ""
             let pieces = Self.split(value, spec: spec)
             pieceCount = max(pieceCount, pieces.count)
+            rowCells.append(cells)
             pieceRows.append(pieces)
         }
         let newNames = (0..<pieceCount).map { "\(baseName) \($0 + 1)" }
         for row in logicalRows.indices {
-            var cells = cells(forRow: row)
+            var cells = rowCells[row]
             let pieces = pieceRows[row]
             let padded = (0..<pieceCount).map { $0 < pieces.count ? pieces[$0] : "" }
             if index < cells.count { cells.remove(at: index) }
