@@ -84,6 +84,11 @@ struct CSVDialectDetectionTests {
         let detected = CSVDialect.detect(from: "a,b\n1,2\n".data(using: .utf8)!)
         #expect(detected.escapeChar == 0x22)
     }
+
+    @Test("Escape character follows a non-default quote character")
+    func escapeFollowsQuote() {
+        #expect(CSVDialect(delimiter: 0x2C, quoteChar: 0x27).escapeChar == 0x27)
+    }
 }
 
 @Suite("CSVStreamingParser")
@@ -157,6 +162,18 @@ struct CSVStreamingParserTests {
         let (data, ranges, parser) = parse(#""a\\b""# + "\n", dialect: dialect)
         let fields = row(data, parser, ranges[0])
         #expect(fields == [#"a\b"#])
+    }
+
+    @Test("field(at:column:) honors the backslash escape inside a quoted field")
+    func fieldBackslashEscape() {
+        var dialect = CSVDialect.csv
+        dialect.escapeChar = 0x5C
+        let (data, ranges, parser) = parse(#""a\"b",c"# + "\n", dialect: dialect)
+        let first = data.withUnsafeBytes { raw -> String in
+            guard let base = raw.bindMemory(to: UInt8.self).baseAddress else { return "" }
+            return parser.field(UnsafeBufferPointer(start: base, count: raw.count), range: ranges[0], column: 0)
+        }
+        #expect(first == #"a"b"#)
     }
 
     @Test("Empty fields preserved")

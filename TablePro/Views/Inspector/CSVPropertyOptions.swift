@@ -26,6 +26,8 @@ enum CSVPropertyOptions {
         (String(localized: "Backslash  \\"), 0x5C),
     ]
 
+    static let backslashEscapeIndex = 1
+
     static let encodings: [(label: String, encoding: String.Encoding)] = [
         ("UTF-8", .utf8),
         ("UTF-16 LE", .utf16LittleEndian),
@@ -49,7 +51,7 @@ enum CSVPropertyOptions {
     }
 
     static func escapeIndex(for byte: UInt8) -> Int {
-        escapes.firstIndex { $0.byte == byte } ?? 0
+        byte == escapes[backslashEscapeIndex].byte ? backslashEscapeIndex : 0
     }
 
     static func encodingIndex(for encoding: String.Encoding) -> Int {
@@ -75,7 +77,9 @@ enum CSVPropertyOptions {
             lineEnding: lineEndings.indices.contains(lineEndingIndex) ? lineEndings[lineEndingIndex].value : base.lineEnding,
             hasBom: base.hasBom
         )
-        dialect.escapeChar = escapes.indices.contains(escapeIndex) ? escapes[escapeIndex].byte : base.escapeChar
+        dialect.escapeChar = escapeIndex == backslashEscapeIndex
+            ? escapes[backslashEscapeIndex].byte
+            : dialect.quoteChar
         return dialect
     }
 }

@@ -40,4 +40,18 @@ struct CSVPropertyOptionsTests {
         #expect(dialect.lineEnding == .cr)
         #expect(dialect.hasBom)
     }
+
+    @Test("The doubled-quote escape follows the selected quote character")
+    func doubledQuoteEscapeTracksQuote() {
+        let dialect = CSVPropertyOptions.dialect(
+            base: CSVDialect(delimiter: 0x2C),
+            delimiterIndex: 0,
+            quoteIndex: CSVPropertyOptions.quoteIndex(for: 0x27),
+            escapeIndex: 0,
+            encodingIndex: 0,
+            lineEndingIndex: 0
+        )
+        #expect(dialect.quoteChar == 0x27)
+        #expect(dialect.escapeChar == 0x27)
+    }
 }
