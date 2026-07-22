@@ -152,6 +152,18 @@ final class GridSelectionController {
         update(.single(rect, anchor: anchor, active: anchor))
     }
 
+    func addEntireColumn(_ column: Int, totalRows: Int) {
+        guard column >= 0, totalRows > 0 else { return }
+        let rect = GridRect(rows: 0...(totalRows - 1), columns: column...column)
+        let anchor = GridCoord(row: 0, column: column)
+        let addition = GridSelection.single(rect, anchor: anchor, active: anchor)
+        update(selection.isEmpty ? addition : selection.union(addition))
+    }
+
+    func selectedFullColumns() -> IndexSet {
+        fullySelectedColumns(in: selection)
+    }
+
     func selectEntireRow(_ row: Int, totalColumns: Int) {
         guard row >= 0, totalColumns > 0 else { return }
         let rect = GridRect(rows: row...row, columns: 0...(totalColumns - 1))

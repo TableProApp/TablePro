@@ -620,17 +620,17 @@ struct AppMenuCommands: Commands {
             }
             .disabled(!keyWindowIsInspector)
 
-            Button(String(localized: "Insert Column Left")) {
+            Button("Insert Column Left") {
                 NSApp.sendAction(#selector(InspectorViewController.inspectorInsertColumnLeft(_:)), to: nil, from: nil)
             }
             .disabled(!keyWindowIsInspector)
 
-            Button(String(localized: "Insert Column Right")) {
+            Button("Insert Column Right") {
                 NSApp.sendAction(#selector(InspectorViewController.inspectorInsertColumnRight(_:)), to: nil, from: nil)
             }
             .disabled(!keyWindowIsInspector)
 
-            Button(String(localized: "Delete Column")) {
+            Button("Delete Column") {
                 NSApp.sendAction(#selector(InspectorViewController.inspectorDeleteColumn(_:)), to: nil, from: nil)
             }
             .disabled(!keyWindowIsInspector)

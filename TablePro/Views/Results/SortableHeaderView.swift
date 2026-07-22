@@ -303,7 +303,7 @@ final class SortableHeaderView: NSTableHeaderView {
         }
 
         if modifierFlags.contains(.command) && !modifierFlags.contains(.shift) {
-            coordinator.selectColumn(dataIndex)
+            coordinator.extendColumnSelection(dataIndex)
             return
         }
 

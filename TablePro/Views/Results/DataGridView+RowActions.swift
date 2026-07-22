@@ -340,6 +340,14 @@ extension TableViewCoordinator {
         }
     }
 
+    func extendColumnSelection(_ dataColumnIndex: Int) {
+        let totalRows = displayIDs?.count ?? tableRowsProvider().rows.count
+        selectionController.addEntireColumn(dataColumnIndex, totalRows: totalRows)
+        if let keyTableView = tableView as? KeyHandlingTableView {
+            keyTableView.deselectAll(nil)
+        }
+    }
+
     func copyGridSelection(_ selection: GridSelection) {
         guard let rect = selection.boundingRectangle else { return }
         let tableRows = tableRowsProvider()

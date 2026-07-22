@@ -292,17 +292,14 @@ final class InspectorViewController: NSViewController, NSUserInterfaceValidation
     }
 
     private func columnInsertAnchor(from sender: Any?, toRight: Bool) -> Int? {
-        guard let inspector = inspectorDocument, !inspector.columnNames.isEmpty else { return nil }
-        let count = inspector.columnNames.count
-        if let menuItem = sender as? NSMenuItem, menuItem.tag >= 0, menuItem.tag < count {
-            return menuItem.tag
-        }
-        if let affected = gridDelegate.coordinator?.selectionController.selection.affectedColumns,
-           let bound = toRight ? affected.max() : affected.min(),
-           bound >= 0, bound < count {
-            return bound
-        }
-        return toRight ? count - 1 : 0
+        guard let inspector = inspectorDocument else { return nil }
+        let clicked = (sender as? NSMenuItem).map(\.tag)
+        return InspectorColumnTargets.insertAnchor(
+            clicked: clicked,
+            fullySelected: selectedFullColumns(),
+            columnCount: inspector.columnNames.count,
+            toRight: toRight
+        )
     }
 
     @objc func inspectorDeleteColumn(_ sender: Any?) {
@@ -312,14 +309,15 @@ final class InspectorViewController: NSViewController, NSUserInterfaceValidation
 
     private func columnDeleteTargets(from sender: Any?) -> [Int] {
         guard let inspector = inspectorDocument else { return [] }
-        let count = inspector.columnNames.count
-        if let menuItem = sender as? NSMenuItem, let represented = menuItem.representedObject as? [Int] {
-            return represented.filter { $0 >= 0 && $0 < count }.sorted()
-        }
-        if let affected = gridDelegate.coordinator?.selectionController.selection.affectedColumns {
-            return affected.filter { $0 >= 0 && $0 < count }.sorted()
-        }
-        return []
+        return InspectorColumnTargets.deleteTargets(
+            explicit: (sender as? NSMenuItem)?.representedObject as? [Int],
+            fullySelected: selectedFullColumns(),
+            columnCount: inspector.columnNames.count
+        )
+    }
+
+    private func selectedFullColumns() -> IndexSet {
+        gridDelegate.coordinator?.selectionController.selectedFullColumns() ?? IndexSet()
     }
 
     private func performDeleteColumns(_ columns: [Int]) {
@@ -377,11 +375,7 @@ final class InspectorViewController: NSViewController, NSUserInterfaceValidation
     }
 
     private func columnDeleteSelection(clicked: Int) -> [Int] {
-        guard let affected = gridDelegate.coordinator?.selectionController.selection.affectedColumns,
-              affected.contains(clicked), affected.count > 1 else {
-            return [clicked]
-        }
-        return affected.sorted()
+        InspectorColumnTargets.deleteMenuSelection(clicked: clicked, fullySelected: selectedFullColumns())
     }
 
     fileprivate func rowStructureMenuItems(forRow displayRow: Int) -> [NSMenuItem] {
@@ -468,7 +462,7 @@ final class InspectorViewController: NSViewController, NSUserInterfaceValidation
         case #selector(inspectorDeleteColumn(_:)):
             guard nsDocument != nil else { return false }
             if let menuItem = item as? NSMenuItem, menuItem.representedObject is [Int] { return true }
-            return !(gridDelegate.coordinator?.selectionController.selection.affectedColumns.isEmpty ?? true)
+            return !selectedFullColumns().isEmpty
         case #selector(inspectorDeleteSelectedRows(_:)):
             return !state.selectedRowIndices.isEmpty
         default:
