@@ -95,7 +95,8 @@ extension AIChatViewModel {
                     promptContext: promptContext,
                     resolved: resolved,
                     assistantID: assistantID,
-                    settings: settings
+                    settings: settings,
+                    includeWalkthroughDirective: self.pendingWalkthroughBeforeSQL != nil
                 )
                 self.prepTask = nil
             }
@@ -107,13 +108,18 @@ extension AIChatViewModel {
         promptContext: PromptContext?,
         resolved: AIProviderFactory.ResolvedProvider,
         assistantID: UUID,
-        settings: AISettings
+        settings: AISettings,
+        includeWalkthroughDirective: Bool = false
     ) {
         let chatMode = settings.chatMode
         streamingTask = Task.detached(priority: .userInitiated) { [weak self] in
             var currentAssistantID = assistantID
             do {
-                let systemPrompt = Self.buildSystemPrompt(promptContext, mode: chatMode)
+                let systemPrompt = Self.buildSystemPrompt(
+                    promptContext,
+                    mode: chatMode,
+                    includeWalkthroughDirective: includeWalkthroughDirective
+                )
                 guard let self else { return }
                 let preflightOK = await self.preflightCheck(
                     systemPrompt: systemPrompt,
@@ -229,21 +235,23 @@ extension AIChatViewModel {
     func resolveWalkthroughIfNeeded(id: UUID) {
         guard let beforeSQL = pendingWalkthroughBeforeSQL else { return }
         pendingWalkthroughBeforeSQL = nil
-        guard let idx = messages.firstIndex(where: { $0.id == id }),
-              let lastBlock = messages[idx].blocks.last,
-              case .text(let fullText) = lastBlock.kind,
-              fullText.contains(WalkthroughEnvelopeParser.openFence)
-        else { return }
+        guard let idx = messages.firstIndex(where: { $0.id == id }) else { return }
+        guard let fenceBlock = messages[idx].blocks.last(where: { block in
+            if case .text(let text) = block.kind {
+                return text.contains(WalkthroughEnvelopeParser.openFence)
+            }
+            return false
+        }), case .text(let fullText) = fenceBlock.kind else { return }
 
         let prose = WalkthroughEnvelopeParser.stripFence(from: fullText)
         guard let envelope = WalkthroughEnvelopeParser.parse(from: fullText) else {
-            lastBlock.setKind(.text(prose))
+            fenceBlock.setKind(.text(prose))
             return
         }
         if prose.isEmpty {
-            messages[idx].blocks.removeLast()
+            messages[idx].blocks.removeAll { $0.id == fenceBlock.id }
         } else {
-            lastBlock.setKind(.text(prose))
+            fenceBlock.setKind(.text(prose))
         }
         let walkthrough = SqlWalkthroughBlock(beforeSQL: beforeSQL, envelope: envelope)
         messages[idx].appendBlock(.sqlWalkthrough(walkthrough))
@@ -382,7 +390,11 @@ extension AIChatViewModel {
         idMap = updated
     }
 
-    nonisolated static func buildSystemPrompt(_ promptContext: PromptContext?, mode: AIChatMode) -> String? {
+    nonisolated static func buildSystemPrompt(
+        _ promptContext: PromptContext?,
+        mode: AIChatMode,
+        includeWalkthroughDirective: Bool = false
+    ) -> String? {
         let schemaPrompt = promptContext.map {
             AISchemaContext.buildSystemPrompt(
                 databaseType: $0.databaseType,
@@ -400,8 +412,16 @@ extension AIChatViewModel {
             )
         }
         let modeNote = mode.systemPromptNote
-        guard let schemaPrompt, !schemaPrompt.isEmpty else { return modeNote }
-        return "\(schemaPrompt)\n\n\(modeNote)"
+        let base: String?
+        if let schemaPrompt, !schemaPrompt.isEmpty {
+            base = "\(schemaPrompt)\n\n\(modeNote)"
+        } else {
+            base = modeNote
+        }
+        guard includeWalkthroughDirective else { return base }
+        let directive = AIPromptTemplates.walkthroughSystemDirective
+        guard let base, !base.isEmpty else { return directive }
+        return "\(base)\n\n\(directive)"
     }
 
     private func failTooManyRoundtrips(assistantID: UUID) async {

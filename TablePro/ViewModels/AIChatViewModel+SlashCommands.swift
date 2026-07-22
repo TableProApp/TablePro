@@ -33,14 +33,14 @@ extension AIChatViewModel {
             guard let query = resolveQuery(body: body, command: command) else { return }
             messages.append(ChatTurn(role: .user, blocks: [.text(invocationText)]))
             sendWithWalkthroughContext(
-                prompt: AIPromptTemplates.explainQueryWalkthrough(query, databaseType: databaseType),
+                prompt: AIPromptTemplates.explainQuery(query, databaseType: databaseType),
                 beforeSQL: query
             )
         case .optimize:
             guard let query = resolveQuery(body: body, command: command) else { return }
             messages.append(ChatTurn(role: .user, blocks: [.text(invocationText)]))
             sendWithWalkthroughContext(
-                prompt: AIPromptTemplates.optimizeQueryWalkthrough(query, databaseType: databaseType),
+                prompt: AIPromptTemplates.optimizeQuery(query, databaseType: databaseType),
                 beforeSQL: query
             )
         case .fix:
@@ -48,7 +48,7 @@ extension AIChatViewModel {
             messages.append(ChatTurn(role: .user, blocks: [.text(invocationText)]))
             let lastError = queryResults ?? ""
             sendWithWalkthroughContext(
-                prompt: AIPromptTemplates.fixErrorWalkthrough(query: query, error: lastError, databaseType: databaseType),
+                prompt: AIPromptTemplates.fixError(query: query, error: lastError, databaseType: databaseType),
                 beforeSQL: query
             )
         }
@@ -81,7 +81,7 @@ extension AIChatViewModel {
         guard !selectedText.isEmpty else { return }
         startNewConversation()
         let databaseType = connection?.type ?? .mysql
-        let prompt = AIPromptTemplates.explainQueryWalkthrough(selectedText, databaseType: databaseType)
+        let prompt = AIPromptTemplates.explainQuery(selectedText, databaseType: databaseType)
         sendWithWalkthroughContext(prompt: prompt, beforeSQL: selectedText)
     }
 
@@ -89,7 +89,7 @@ extension AIChatViewModel {
         guard !selectedText.isEmpty else { return }
         startNewConversation()
         let databaseType = connection?.type ?? .mysql
-        let prompt = AIPromptTemplates.optimizeQueryWalkthrough(selectedText, databaseType: databaseType)
+        let prompt = AIPromptTemplates.optimizeQuery(selectedText, databaseType: databaseType)
         sendWithWalkthroughContext(prompt: prompt, beforeSQL: selectedText)
     }
 

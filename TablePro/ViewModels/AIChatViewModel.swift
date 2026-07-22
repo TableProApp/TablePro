@@ -270,7 +270,7 @@ final class AIChatViewModel {
     func handleFixError(query: String, error: String) {
         startNewConversation()
         let databaseType = connection?.type ?? .mysql
-        let prompt = AIPromptTemplates.fixErrorWalkthrough(query: query, error: error, databaseType: databaseType)
+        let prompt = AIPromptTemplates.fixError(query: query, error: error, databaseType: databaseType)
         sendWithWalkthroughContext(prompt: prompt, beforeSQL: query)
     }
 
