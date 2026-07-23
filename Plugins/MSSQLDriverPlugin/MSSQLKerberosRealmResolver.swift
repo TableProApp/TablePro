@@ -1,5 +1,6 @@
 import Foundation
 import GSS
+import TableProMSSQLCore
 
 /// Resolves the canonical SQL Server Kerberos service (host + realm) for a connection host.
 ///
@@ -11,15 +12,18 @@ import GSS
 /// Once an explicit SPN is set, FreeTDS stops canonicalizing a short hostname to its FQDN (which it
 /// otherwise does with `getaddrinfo` for dot-less names). To avoid regressing those connections we
 /// perform the same canonicalization here, so the SPN carries the FQDN the service is registered
-/// under — short name or CNAME included.
+/// under, short name or CNAME included.
 enum MSSQLKerberosRealmResolver {
-    /// Canonical host and realm for `host`, or `nil` if the realm can't be resolved (caller then
-    /// leaves the SPN to FreeTDS, i.e. today's behavior).
+    /// Canonical host and realm for `host`, or `nil` when the realm is unresolved or Heimdal only
+    /// guessed it from the host's own DNS domain. The caller then leaves the SPN to FreeTDS, whose
+    /// unrealmed principal resolves against `default_realm`.
     static func canonicalService(forHost host: String) -> (host: String, realm: String)? {
-        let trimmed = host.trimmingCharacters(in: .whitespaces)
+        let trimmed = host.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
         let canonicalHost = canonicalHostname(trimmed)
-        guard let realm = realm(forHost: canonicalHost) else { return nil }
+        guard let realm = realm(forHost: canonicalHost),
+              MSSQLKerberosRealm.isConfigured(realm, forHost: canonicalHost)
+        else { return nil }
         return (host: canonicalHost, realm: realm)
     }
 
@@ -42,7 +46,7 @@ enum MSSQLKerberosRealmResolver {
     }
 
     /// Realm for a host from the system Kerberos configuration (`[domain_realm]`, `default_realm`),
-    /// via GSS name canonicalization — the same resolution the KDC clients use.
+    /// via GSS name canonicalization, the same resolution the KDC clients use.
     private static func realm(forHost host: String) -> String? {
         var minor: OM_uint32 = 0
         guard let cString = strdup("MSSQLSvc@\(host)") else { return nil }
@@ -73,13 +77,12 @@ enum MSSQLKerberosRealmResolver {
         var displayBuffer = gss_buffer_desc()
         var nameType: gss_OID?
         let displayStatus = gss_display_name(&minor, canonicalName, &displayBuffer, &nameType)
-        guard displayStatus == GSS_S_COMPLETE, let value = displayBuffer.value else { return nil }
         defer {
             var releaseMinor: OM_uint32 = 0
             _ = gss_release_buffer(&releaseMinor, &displayBuffer)
         }
+        guard displayStatus == GSS_S_COMPLETE, let value = displayBuffer.value else { return nil }
 
-        // Canonical form is "MSSQLSvc/<host>@<REALM>"; take the realm after the last '@'.
         let display = String(data: Data(bytes: value, count: displayBuffer.length), encoding: .utf8) ?? ""
         guard let atIndex = display.lastIndex(of: "@") else { return nil }
         let realm = String(display[display.index(after: atIndex)...])

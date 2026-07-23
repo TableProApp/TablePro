@@ -59,6 +59,19 @@ Requirements:
 - **Realm resolution.** Your Mac must be able to find the domain's KDC, either through DNS SRV records or an `/etc/krb5.conf` entry.
 - **A registered SPN.** The SQL Server service account must have an SPN such as `MSSQLSvc/host.domain.com:1433`. Ask your administrator if connections fail with an SSPI or service-principal error.
 
+### Servers in another realm
+
+If the SQL Server lives in a different Kerberos realm than your Mac's `default_realm`, map its DNS domain to that realm in `/etc/krb5.conf`:
+
+```ini
+[domain_realm]
+  .sql.example.com = RESOURCE.REALM.COM
+```
+
+TablePro reads that mapping and asks the KDC for a ticket in `RESOURCE.REALM.COM`, so a cross-realm trust works without changing `default_realm`. This is the same mapping the JDBC driver uses, so a server that already works in DataGrip works here.
+
+With no `[domain_realm]` entry for the host, TablePro falls back to `default_realm`, which is what a single-realm domain needs.
+
 TablePro does not run `kinit` or edit `/etc/krb5.conf` for you; those are set up once per machine.
 
 ## Connection URL
@@ -107,6 +120,6 @@ SQL Server connections can run through the Cloud SQL Auth Proxy; TablePro starts
 
 **Login failed**: verify credentials, then check the server allows SQL Server Authentication: `SELECT SERVERPROPERTY('IsIntegratedSecurityOnly')` returns `1` when only Windows Authentication is allowed. Enable mixed mode in SSMS under Server Properties > Security, then restart the service. If the login only has access to one database (an Azure SQL contained user), set the **Database** field; TablePro sends it during login. Without it the server authenticates against `master` and rejects the login.
 
-**Windows Authentication fails**: run `klist` to confirm you have a ticket, and `kinit user@REALM.COM` if you do not. Connect by hostname, not IP address. An SSPI or "server not found in Kerberos database" error means the server's SPN is not registered; ask your administrator to register `MSSQLSvc/host.domain.com:1433`. A clock-skew error means this Mac's clock is too far from the domain controller; turn on **Set time automatically** in System Settings.
+**Windows Authentication fails**: run `klist` to confirm you have a ticket, and `kinit user@REALM.COM` if you do not. Connect by hostname, not IP address. An SSPI or "server not found in Kerberos database" error means the server's SPN is not registered, or it is registered in a realm your Mac does not map the host to; ask your administrator to register `MSSQLSvc/host.domain.com:1433`, and if the server is in another realm add a `[domain_realm]` entry as shown in [Servers in another realm](#servers-in-another-realm). A clock-skew error means this Mac's clock is too far from the domain controller; turn on **Set time automatically** in System Settings.
 
 **Limitations**: no Microsoft Entra ID (Azure AD) authentication, Windows Authentication (Kerberos) is macOS only, named instances unsupported (use host and port), Verify CA and Verify Identity behave like Required.

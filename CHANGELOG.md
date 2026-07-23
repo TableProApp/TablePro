@@ -18,7 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - In the CSV editor, set the delimiter, quote character, encoding, and line ending by hand from Edit > Set CSV Properties…, then Reload to re-read the file with those settings. (#1469)
 - In the CSV editor, choose the escape character (a doubled quote or a backslash) in Set CSV Properties…, so files that escape quotes with a backslash read and save correctly. (#1469)
 - Add llama.cpp and MLX as local AI providers. Each preset points at the server's default local endpoint and needs no API key, alongside the existing Ollama and custom OpenAI-compatible options. (#1777)
-- SQL Server Windows Authentication (Kerberos) now connects to servers whose Kerberos realm differs from your Mac's default realm. TablePro derives the realm from the server hostname using your Kerberos configuration (the same way the JDBC driver does), so it works with no extra setup and without changing your system `default_realm`. (#1947)
+- SQL Server Windows Authentication (Kerberos) now connects to servers whose Kerberos realm differs from your Mac's default realm. TablePro reads the `[domain_realm]` mapping from your Kerberos configuration, the same way the JDBC driver does, so a server that works in DataGrip works here without changing your system `default_realm`. Hosts with no mapping keep using the default realm. (#1947)
 
 ### Fixed
 
