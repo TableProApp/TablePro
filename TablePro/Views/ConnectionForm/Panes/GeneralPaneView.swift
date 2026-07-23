@@ -223,8 +223,9 @@ struct GeneralPaneView: View {
     @ViewBuilder
     private var authenticationSection: some View {
         if connectionMode != .fileBased {
+            let authFields = coordinator.auth.authFields.splitCredentialControllers()
             Section(String(localized: "Authentication")) {
-                ForEach(pinnedAuthFields, id: \.id) { field in
+                ForEach(authFields.controllers, id: \.id) { field in
                     authFieldRow(field)
                 }
                 if connectionMode == .network && !coordinator.auth.hidesUsername {
@@ -241,7 +242,7 @@ struct GeneralPaneView: View {
                         additionalFieldValues: $coordinator.auth.additionalFieldValues
                     )
                 }
-                ForEach(unpinnedAuthFields, id: \.id) { field in
+                ForEach(authFields.rest, id: \.id) { field in
                     authFieldRow(field)
                 }
                 kerberosCaption
@@ -250,25 +251,6 @@ struct GeneralPaneView: View {
                 }
             }
         }
-    }
-
-    /// Auth-method/mode selectors whose dependent fields hide the built-in Username/Password.
-    /// Rendered before the credentials so the selector keeps a stable position instead of jumping
-    /// when those dependent fields appear or disappear as the selection changes.
-    private var pinnedAuthControllerIds: Set<String> {
-        Set(
-            coordinator.auth.authFields
-                .filter { $0.hidesUsername || $0.hidesPassword }
-                .compactMap { $0.visibleWhen?.fieldId }
-        )
-    }
-
-    private var pinnedAuthFields: [ConnectionField] {
-        coordinator.auth.authFields.filter { pinnedAuthControllerIds.contains($0.id) }
-    }
-
-    private var unpinnedAuthFields: [ConnectionField] {
-        coordinator.auth.authFields.filter { !pinnedAuthControllerIds.contains($0.id) }
     }
 
     @ViewBuilder

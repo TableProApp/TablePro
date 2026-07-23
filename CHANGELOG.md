@@ -24,7 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - SSH tunnels using the None auth method now work on iPhone and iPad, not just the Mac. A connection synced from the Mac with None auth no longer fails to connect. (#1912)
 - Browsing a Trino table no longer fails with a syntax error. Trino requires `OFFSET` before `LIMIT`, so paging now uses `OFFSET` and `FETCH FIRST`. (#1936)
-- The Authentication method selector no longer changes position in the connection form when you switch between methods that show or hide the username and password (for example SQL Server's SQL vs Windows Authentication). (#1947)
+- The Authentication method selector no longer changes position in the connection form when you switch between methods that show or hide the username and password (for example SQL Server's SQL vs Windows Authentication, or PostgreSQL's password vs AWS IAM). (#1947)
 
 ## [0.59.0] - 2026-07-21
 
