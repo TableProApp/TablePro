@@ -236,23 +236,38 @@ extension AIChatViewModel {
         guard let beforeSQL = pendingWalkthroughBeforeSQL else { return }
         pendingWalkthroughBeforeSQL = nil
         guard let idx = messages.firstIndex(where: { $0.id == id }) else { return }
-        guard let fenceBlock = messages[idx].blocks.last(where: { block in
+
+        let textBlocks = messages[idx].blocks.filter { block in
+            if case .text = block.kind { return true }
+            return false
+        }
+        guard let openOffset = textBlocks.firstIndex(where: { block in
             if case .text(let text) = block.kind {
                 return text.contains(WalkthroughEnvelopeParser.openFence)
             }
             return false
-        }), case .text(let fullText) = fenceBlock.kind else { return }
+        }) else { return }
 
-        let prose = WalkthroughEnvelopeParser.stripFence(from: fullText)
-        guard let envelope = WalkthroughEnvelopeParser.parse(from: fullText) else {
-            fenceBlock.setKind(.text(prose))
-            return
-        }
+        // A provider can split the envelope across text blocks, so parse the joined tail
+        // rather than only the block that happens to carry the opening fence.
+        let tail = Array(textBlocks[openOffset...])
+        let joined = tail.compactMap { block -> String? in
+            if case .text(let text) = block.kind { return text }
+            return nil
+        }.joined()
+
+        guard case .text(let openText) = tail[0].kind else { return }
+        let prose = WalkthroughEnvelopeParser.stripFence(from: openText)
+        let consumedIDs = Set(tail.dropFirst().map(\.id))
+        messages[idx].blocks.removeAll { consumedIDs.contains($0.id) }
+
         if prose.isEmpty {
-            messages[idx].blocks.removeAll { $0.id == fenceBlock.id }
+            messages[idx].blocks.removeAll { $0.id == tail[0].id }
         } else {
-            fenceBlock.setKind(.text(prose))
+            tail[0].setKind(.text(prose))
         }
+
+        guard let envelope = WalkthroughEnvelopeParser.parse(from: joined) else { return }
         let walkthrough = SqlWalkthroughBlock(beforeSQL: beforeSQL, envelope: envelope)
         messages[idx].appendBlock(.sqlWalkthrough(walkthrough))
     }
