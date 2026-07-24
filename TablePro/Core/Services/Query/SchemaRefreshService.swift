@@ -96,7 +96,7 @@ final class SchemaRefreshService {
         let connectionId = connection.id
 
         if pluginManager.databaseGroupingStrategy(for: connection.type) == .hierarchicalSchema {
-            await schemaService.invalidate(connectionId: connectionId)
+            await schemaService.prepareForReload(connectionId: connectionId)
         }
 
         do {
@@ -108,6 +108,10 @@ final class SchemaRefreshService {
                     connectionId: connectionId,
                     driver: driver,
                     connection: connection
+                )
+                await schemaService.refreshLoadedSchemaTables(
+                    connectionId: connectionId,
+                    driver: driver
                 )
             }
         } catch is CancellationError {

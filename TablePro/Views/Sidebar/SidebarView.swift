@@ -170,6 +170,8 @@ struct SidebarView: View {
                 if usesDatabaseTree {
                     databaseFilterButton
                 }
+                DelayedProgressIndicator(isActive: schemaService.isRefreshing(connectionId: connectionId))
+                    .accessibilityLabel(String(localized: "Refreshing"))
                 Spacer()
                 if supportsSchemaFooter {
                     SchemaPickerControl(
@@ -273,7 +275,7 @@ struct SidebarView: View {
     @ViewBuilder
     private var flatContent: some View {
         switch schemaService.state(for: connectionId) {
-        case .loading where tables.isEmpty:
+        case .loading:
             loadingState
         case .failed(let message):
             errorState(message: message)
@@ -281,7 +283,7 @@ struct SidebarView: View {
             noMatchState
         case .loaded(let allTables) where allTables.isEmpty && routines.isEmpty:
             emptyState
-        case .loaded, .loading:
+        case .loaded:
             tableList
         case .idle:
             emptyState
