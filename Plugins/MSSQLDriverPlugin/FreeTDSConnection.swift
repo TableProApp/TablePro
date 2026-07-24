@@ -189,6 +189,16 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
         _ = dbsetlversion(login, UInt8(DBVERSION_74))
         _ = dbsetlogintime(Int32(options.loginTimeoutSeconds))
 
+        #if os(macOS)
+        // Windows Auth cross-realm: FreeTDS otherwise builds its own SPN and only canonicalizes a
+        // short hostname (via getaddrinfo), never applying [domain_realm] to pick the realm. We
+        // resolve the canonical host + realm up front and hand FreeTDS the full SPN, so cross-realm
+        // and short-name/CNAME hosts authenticate like the JDBC driver does.
+        if options.authMethod == .windows, let spn = options.kerberosServicePrincipal, !spn.isEmpty {
+            _ = dbsetlname(login, spn, Int32(DBSETSERVERPRINCIPAL))
+        }
+        #endif
+
         freetdsClearError(for: nil)
         let serverName = "\(options.host):\(options.port)"
         guard let proc = withKerberosEnvironmentIfNeeded({ dbopen(login, serverName) }) else {

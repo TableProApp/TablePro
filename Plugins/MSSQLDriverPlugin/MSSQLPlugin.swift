@@ -210,6 +210,14 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "MSSQLPluginDriver")
 
+    private static let kerberosResolveQueue = DispatchQueue(
+        label: "com.TablePro.mssql.kerberos-resolve",
+        qos: .userInitiated
+    )
+    private static let kerberosResolveTimeoutSeconds = 5
+
+    private struct KerberosRealmResolutionTimeout: Error {}
+
     var currentSchema: String? { _currentSchema }
     var serverVersion: String? { _serverVersion }
     var supportsSchemas: Bool { true }
@@ -268,6 +276,7 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let conn: FreeTDSConnection
         do {
             let kerberosCachePath = try await acquireKerberosTicketIfNeeded(authMethod: authMethod)
+            let kerberosServicePrincipal = try await resolveKerberosServicePrincipal(authMethod: authMethod)
             let options = MSSQLConnectionOptions(
                 host: config.host,
                 port: config.port,
@@ -277,7 +286,8 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 schema: _currentSchema,
                 encryptionFlag: MSSQLSSLMapping.freetdsEncryptionFlag(for: config.ssl.mode),
                 authMethod: authMethod,
-                kerberosCachePath: kerberosCachePath
+                kerberosCachePath: kerberosCachePath,
+                kerberosServicePrincipal: kerberosServicePrincipal
             )
             conn = FreeTDSConnection(options: options)
             try await conn.connect()
@@ -311,6 +321,26 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         if let result = try? await executeInternal("SELECT @@VERSION"),
            let versionStr = result.rows.first?.first?.asText {
             _serverVersion = String(versionStr.prefix(50))
+        }
+    }
+
+    private func resolveKerberosServicePrincipal(authMethod: MSSQLAuthMethod) async throws -> String? {
+        guard authMethod == .windows else { return nil }
+        let host = config.host
+        let port = config.port
+        do {
+            return try await runCancellableBlocking(
+                on: Self.kerberosResolveQueue,
+                deadline: .seconds(Self.kerberosResolveTimeoutSeconds),
+                timeoutError: { KerberosRealmResolutionTimeout() },
+                work: {
+                    MSSQLKerberosRealmResolver.canonicalService(forHost: host)
+                        .flatMap { MSSQLKerberosSPN.build(host: $0.host, port: port, realm: $0.realm) }
+                }
+            )
+        } catch is KerberosRealmResolutionTimeout {
+            Self.logger.warning("Kerberos realm resolution timed out; using the default service principal")
+            return nil
         }
     }
 

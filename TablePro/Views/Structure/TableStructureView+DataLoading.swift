@@ -32,7 +32,7 @@ extension TableStructureView {
             columns = try await DatabaseManager.shared.withMetadataDriver(connectionId: connection.id) { driver in
                 try await driver.fetchColumns(table: tableName)
             }
-            loadedTabs.insert(.columns)
+            tabData.markFetched(.columns)
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -41,7 +41,7 @@ extension TableStructureView {
     }
 
     func loadTabDataIfNeeded(_ tab: StructureTab) async {
-        guard !loadedTabs.contains(tab) else { return }
+        guard tabData.needsFetch(tab) else { return }
         await fetchTabData(tab)
     }
 
@@ -91,7 +91,7 @@ extension TableStructureView {
             case .parts:
                 return
             }
-            loadedTabs.insert(tab)
+            tabData.markFetched(tab)
         } catch {
             Self.logger.error("Failed to load \(tab.rawValue, privacy: .public): \(error.localizedDescription, privacy: .public)")
         }
@@ -173,18 +173,46 @@ extension TableStructureView {
     }
 
     private func reloadAllTabs() async {
-        loadedTabs.removeAll()
+        tabData.markAllStale()
         partsReloadToken += 1
-        await loadColumns()
-        await fetchTabData(.indexes)
-        if connection.type.supportsForeignKeys {
-            await fetchTabData(.foreignKeys)
-        }
+        await reloadCoreTabs()
         if selectedTab == .ddl {
             await fetchTabData(.ddl)
         }
         if selectedTab == .triggers, connection.type.supportsTriggers {
             await fetchTabData(.triggers)
+        }
+    }
+
+    /// Fetches columns, indexes and foreign keys together and commits them in a single
+    /// synchronous block, so the segmented picker re-lays out once instead of per tab.
+    func reloadCoreTabs() async {
+        isLoading = true
+        errorMessage = nil
+        defer { isLoading = false }
+
+        let includesForeignKeys = connection.type.supportsForeignKeys
+        do {
+            let reloaded = try await DatabaseManager.shared.withMetadataDriver(connectionId: connection.id) { driver in
+                let fetchedColumns = try await driver.fetchColumns(table: tableName)
+                let fetchedIndexes = try await driver.fetchIndexes(table: tableName)
+                let fetchedForeignKeys = includesForeignKeys
+                    ? try await driver.fetchForeignKeys(table: tableName)
+                    : []
+                return (columns: fetchedColumns, indexes: fetchedIndexes, foreignKeys: fetchedForeignKeys)
+            }
+
+            columns = reloaded.columns
+            indexes = reloaded.indexes
+            tabData.markFetched(.columns)
+            tabData.markFetched(.indexes)
+            if includesForeignKeys {
+                foreignKeys = reloaded.foreignKeys
+                tabData.markFetched(.foreignKeys)
+            }
+        } catch {
+            Self.logger.error("Failed to reload structure: \(error.localizedDescription, privacy: .public)")
+            errorMessage = error.localizedDescription
         }
     }
 }

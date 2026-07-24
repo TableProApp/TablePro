@@ -223,7 +223,11 @@ struct GeneralPaneView: View {
     @ViewBuilder
     private var authenticationSection: some View {
         if connectionMode != .fileBased {
+            let authFields = coordinator.auth.authFields.splitCredentialControllers()
             Section(String(localized: "Authentication")) {
+                ForEach(authFields.controllers, id: \.id) { field in
+                    authFieldRow(field)
+                }
                 if connectionMode == .network && !coordinator.auth.hidesUsername {
                     TextField(
                         String(localized: "Username"),
@@ -238,26 +242,31 @@ struct GeneralPaneView: View {
                         additionalFieldValues: $coordinator.auth.additionalFieldValues
                     )
                 }
-                ForEach(coordinator.auth.authFields, id: \.id) { field in
-                    if coordinator.auth.isFieldVisible(field) {
-                        if FilePathConnectionFieldRow.isFilePathField(field) {
-                            FilePathConnectionFieldRow(
-                                field: field,
-                                value: authFieldBinding(for: field),
-                                onBrowse: { browseForAuthFile(field: field) }
-                            )
-                        } else {
-                            ConnectionFieldRow(
-                                field: field,
-                                value: authFieldBinding(for: field)
-                            )
-                        }
-                    }
+                ForEach(authFields.rest, id: \.id) { field in
+                    authFieldRow(field)
                 }
                 kerberosCaption
                 if coordinator.auth.usePgpass {
                     pgpassStatusView
                 }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func authFieldRow(_ field: ConnectionField) -> some View {
+        if coordinator.auth.isFieldVisible(field) {
+            if FilePathConnectionFieldRow.isFilePathField(field) {
+                FilePathConnectionFieldRow(
+                    field: field,
+                    value: authFieldBinding(for: field),
+                    onBrowse: { browseForAuthFile(field: field) }
+                )
+            } else {
+                ConnectionFieldRow(
+                    field: field,
+                    value: authFieldBinding(for: field)
+                )
             }
         }
     }

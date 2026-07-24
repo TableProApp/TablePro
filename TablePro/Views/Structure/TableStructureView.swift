@@ -35,7 +35,7 @@ struct TableStructureView: View {
     @State var isLoading = true
     @State var isInitialLoading = true
     @State var errorMessage: String?
-    @State var loadedTabs: Set<StructureTab> = []
+    @State var tabData = StructureTabDataState()
     @State var partsReloadToken = 0
     @State var isReloadingAfterSave = false  // Prevent onChange loops during save reload
     @State var lastSaveTime: Date?
@@ -183,6 +183,7 @@ struct TableStructureView: View {
             }
             .pickerStyle(.segmented)
             .labelsHidden()
+            .monospacedDigit()
 
             Spacer()
         }
@@ -242,24 +243,18 @@ struct TableStructureView: View {
     // MARK: - Tab Label with Count Badge
 
     private func tabLabel(for tab: StructureTab) -> String {
-        let count: Int?
-        switch tab {
-        case .columns:
-            count = loadedTabs.contains(.columns) ? columns.count : nil
-        case .indexes:
-            count = loadedTabs.contains(.indexes) ? indexes.count : nil
-        case .foreignKeys:
-            count = loadedTabs.contains(.foreignKeys) ? foreignKeys.count : nil
-        case .triggers:
-            count = loadedTabs.contains(.triggers) ? triggers.count : nil
-        case .ddl, .parts:
-            count = nil
-        }
+        StructureTabDataState.label(for: tab, count: loadedCount(for: tab))
+    }
 
-        if let count {
-            return "\(tab.displayName) (\(count))"
+    private func loadedCount(for tab: StructureTab) -> Int? {
+        guard tabData.hasData(tab) else { return nil }
+        switch tab {
+        case .columns: return columns.count
+        case .indexes: return indexes.count
+        case .foreignKeys: return foreignKeys.count
+        case .triggers: return triggers.count
+        case .ddl, .parts: return nil
         }
-        return tab.displayName
     }
 
     // MARK: - Content Area
@@ -295,7 +290,7 @@ struct TableStructureView: View {
                 triggers: triggers,
                 connection: connection,
                 tableName: tableName,
-                isLoading: !loadedTabs.contains(.triggers),
+                isLoading: !tabData.hasData(.triggers),
                 onOpenInEditor: openTriggerInEditor
             )
         case .ddl:
@@ -310,13 +305,13 @@ struct TableStructureView: View {
     }
 
     private var shouldShowIndexesEmptyState: Bool {
-        loadedTabs.contains(.indexes)
+        tabData.hasData(.indexes)
             && structureChangeManager.workingIndexes.isEmpty
             && connection.type.supportsAddIndex
     }
 
     private var shouldShowForeignKeysEmptyState: Bool {
-        loadedTabs.contains(.foreignKeys)
+        tabData.hasData(.foreignKeys)
             && structureChangeManager.workingForeignKeys.isEmpty
             && connection.type.supportsForeignKeys
     }

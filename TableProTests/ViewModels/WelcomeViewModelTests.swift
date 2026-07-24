@@ -76,6 +76,7 @@ final class WelcomeViewModelTests: XCTestCase {
             databaseManager: live.databaseManager,
             pluginManager: live.pluginManager,
             schemaService: live.schemaService,
+            schemaRefreshService: live.schemaRefreshService,
             schemaProviderRegistry: live.schemaProviderRegistry,
             sqlFavoriteManager: live.sqlFavoriteManager,
             favoriteTablesStorage: live.favoriteTablesStorage,

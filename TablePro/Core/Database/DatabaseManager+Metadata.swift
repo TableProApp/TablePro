@@ -5,6 +5,17 @@
 
 import Foundation
 
+@MainActor
+protocol MetadataDriverProviding: AnyObject {
+    func withMetadataDriver<T: Sendable>(
+        connectionId: UUID,
+        workload: MetadataConnectionPool.Workload,
+        _ body: @Sendable @escaping (DatabaseDriver) async throws -> T
+    ) async throws -> T
+}
+
+extension DatabaseManager: MetadataDriverProviding {}
+
 extension DatabaseManager {
     func withMetadataDriver<T: Sendable>(
         connectionId: UUID,

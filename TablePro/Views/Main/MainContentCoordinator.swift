@@ -232,7 +232,6 @@ final class MainContentCoordinator {
 
     @ObservationIgnored var refreshCoalesceTask: Task<Void, Never>?
     @ObservationIgnored var refreshPendingTrailing = false
-    @ObservationIgnored private var schemaReloadTask: Task<Void, Never>?
 
     /// True once the coordinator's view has appeared (onAppear fired).
     /// Coordinators that SwiftUI creates during body re-evaluation but never
@@ -492,7 +491,6 @@ final class MainContentCoordinator {
             }
 
         schemaSwitchCancellable = services.appEvents.currentSchemaChanged
-            .receive(on: RunLoop.main)
             .sink { [weak self] changedConnectionId in
                 guard let self, changedConnectionId == self.connectionId else { return }
                 Task { @MainActor in
@@ -595,45 +593,15 @@ final class MainContentCoordinator {
         _teardownScheduled.withLock { $0 = false }
     }
 
+    /// Requests the connection-scoped refresh, which every window of this connection
+    /// shares, then applies the window-local follow-up.
     func refreshTables(currentDatabaseOnly: Bool = false) async {
-        if let existing = schemaReloadTask {
-            await existing.value
-            return
-        }
-        let task = Task { [weak self] in
-            guard let self else { return }
-            await self.reloadSchema(currentDatabaseOnly: currentDatabaseOnly)
-        }
-        schemaReloadTask = task
-        await task.value
-        schemaReloadTask = nil
-    }
-
-    private func reloadSchema(currentDatabaseOnly: Bool = false) async {
         schemaColumns.removeAll()
-        let schemaService = services.schemaService
-        let connectionId = connectionId
-        let connection = connection
-        do {
-            try await services.databaseManager.withMetadataDriver(
-                connectionId: connectionId,
-                workload: .bulk
-            ) { driver in
-                await schemaService.reload(
-                    connectionId: connectionId,
-                    driver: driver,
-                    connection: connection
-                )
-            }
-        } catch is CancellationError {
-            return
-        } catch {
-            Self.logger.warning("Schema refresh failed: \(error.localizedDescription, privacy: .public)")
-            schemaService.markLoadFailed(connectionId: connectionId, message: error.localizedDescription)
-        }
-        let database = currentDatabaseOnly ? activeDatabaseName : nil
-        await DatabaseTreeMetadataService.shared.refreshLoadedTables(connectionId: connectionId, database: database)
-        await reconcilePostSchemaLoad()
+        await services.schemaRefreshService.refresh(
+            connection: connection,
+            database: currentDatabaseOnly ? activeDatabaseName : nil
+        )
+        pruneStaleSidebarState()
     }
 
     func refreshProcedures() async {
@@ -683,21 +651,11 @@ final class MainContentCoordinator {
         }
     }
 
-    /// Push the SchemaService table list into the autocomplete provider and prune sidebar
-    /// state for tables that no longer exist.
-    private func reconcilePostSchemaLoad() async {
+    /// Drop sidebar state for tables that no longer exist. The selection lives in this
+    /// window's sidebar, so it is pruned per window.
+    private func pruneStaleSidebarState() {
         guard case .loaded = services.schemaService.state(for: connectionId) else { return }
         let tables = services.schemaService.allLoadedTables(for: connectionId)
-        if let driver = services.databaseManager.driver(for: connectionId),
-           let provider = services.schemaProviderRegistry.provider(for: connectionId) {
-            let currentDb = services.databaseManager.session(for: connectionId)?.activeDatabase
-            await provider.resetForDatabase(currentDb, tables: tables, driver: driver)
-            await provider.setNamespaces(
-                schemas: services.schemaService.schemas(for: connectionId),
-                databases: currentDb.map { [$0] } ?? []
-            )
-        }
-
         guard let vm = sidebarViewModel else { return }
         let validNames = Set(tables.map(\.name))
         let staleSelections = vm.selectedTables.filter { !validNames.contains($0.name) }
@@ -744,8 +702,6 @@ final class MainContentCoordinator {
         currentQueryTask = nil
         refreshCoalesceTask?.cancel()
         refreshCoalesceTask = nil
-        schemaReloadTask?.cancel()
-        schemaReloadTask = nil
         for entry in tableLoadTasks.values { entry.task.cancel() }
         tableLoadTasks.removeAll()
         changeManagerUpdateTask?.cancel()
@@ -863,7 +819,8 @@ final class MainContentCoordinator {
             connectionId: connectionId,
             databaseType: connection.type
         )
-        await reconcilePostSchemaLoad()
+        await services.schemaRefreshService.syncAutocompleteProvider(connectionId: connectionId)
+        pruneStaleSidebarState()
     }
 
     func loadTableMetadata(tableName: String) async {

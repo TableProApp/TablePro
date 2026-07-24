@@ -18,12 +18,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - In the CSV editor, set the delimiter, quote character, encoding, and line ending by hand from Edit > Set CSV Properties…, then Reload to re-read the file with those settings. (#1469)
 - In the CSV editor, choose the escape character (a doubled quote or a backslash) in Set CSV Properties…, so files that escape quotes with a backslash read and save correctly. (#1469)
 - Add llama.cpp and MLX as local AI providers. Each preset points at the server's default local endpoint and needs no API key, alongside the existing Ollama and custom OpenAI-compatible options. (#1777)
+- SQL Server Windows Authentication (Kerberos) now connects to servers whose Kerberos realm differs from your Mac's default realm. TablePro reads the `[domain_realm]` mapping from your Kerberos configuration, the same way the JDBC driver does, so a server that works in DataGrip works here without changing your system `default_realm`. Hosts with no mapping keep using the default realm. (#1947)
 - AI Explain, Optimize, and Fix Error now answer with a walkthrough in the chat panel: a before/after SQL diff you can switch between unified and split, numbered steps anchored to the lines they change, and a follow-up prompt on any step. Optimize and Fix add an Apply to Editor button that asks before replacing your query. (#1945)
 
 ### Fixed
 
+- The object list no longer blanks out and shows a spinner while a schema change refreshes it. The tables, views, and functions you were looking at stay on screen until the new list arrives, and a spinner only appears for a first load or a refresh that runs long. (#1916)
+- Saving a change in the Structure tab no longer strips the counts from Columns, Indexes, and Foreign Keys and adds them back one at a time, so the picker stops shifting on every save. (#1916)
 - SSH tunnels using the None auth method now work on iPhone and iPad, not just the Mac. A connection synced from the Mac with None auth no longer fails to connect. (#1912)
 - Browsing a Trino table no longer fails with a syntax error. Trino requires `OFFSET` before `LIMIT`, so paging now uses `OFFSET` and `FETCH FIRST`. (#1936)
+- The Authentication method selector no longer changes position in the connection form when you switch between methods that show or hide the username and password (for example SQL Server's SQL vs Windows Authentication, or PostgreSQL's password vs AWS IAM). (#1947)
+- Switching schemas no longer makes the sidebar flash its loading spinner once per open tab. The table list now reloads once for the connection instead of once per window, which also cuts the metadata queries a schema switch sends. (#1946)
 
 ## [0.59.0] - 2026-07-21
 
