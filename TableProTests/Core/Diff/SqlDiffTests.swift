@@ -66,6 +66,23 @@ struct SqlDiffTests {
         #expect(Set(ids).count == ids.count)
     }
 
+    @Test("computeUnified from pairs matches computing it from the inputs")
+    func unifiedFromPairsMatchesDirect() {
+        let before = ["a", "b", "c", "d"]
+        let after = ["a", "x", "d", "e"]
+        let pairs = DiffComputer.computeSplit(before: before, after: after)
+
+        #expect(DiffComputer.computeUnified(from: pairs) == DiffComputer.computeUnified(before: before, after: after))
+    }
+
+    @Test("computeUnified from pairs keeps ids unique across changed rows")
+    func unifiedFromPairsKeepsIdsUnique() {
+        let pairs = DiffComputer.computeSplit(before: ["a", "b"], after: ["x", "y"])
+        let ids = DiffComputer.computeUnified(from: pairs).map(\.id)
+
+        #expect(Set(ids).count == ids.count)
+    }
+
     @Test("normalize collapses CRLF and trims boundary whitespace")
     func normalizeWhitespace() {
         #expect(SqlNormalizer.normalize("  SELECT 1\r\nFROM t  ") == "SELECT 1\nFROM t")

@@ -20,15 +20,15 @@ enum SqlNormalizer {
     }
 }
 
-struct DiffPair: Equatable {
-    enum Kind { case unchanged, added, removed, changed }
+struct DiffPair: Equatable, Sendable {
+    enum Kind: Sendable { case unchanged, added, removed, changed }
     let before: String?
     let after: String?
     let kind: Kind
 }
 
-struct DiffUnifiedLine: Identifiable, Equatable {
-    enum Kind { case context, added, removed }
+struct DiffUnifiedLine: Identifiable, Equatable, Sendable {
+    enum Kind: Sendable { case context, added, removed }
     let id: Int
     let beforeLineNumber: Int?
     let afterLineNumber: Int?
@@ -85,7 +85,12 @@ enum DiffComputer {
     }
 
     static func computeUnified(before: [String], after: [String]) -> [DiffUnifiedLine] {
-        let pairs = computeSplit(before: before, after: after)
+        computeUnified(from: computeSplit(before: before, after: after))
+    }
+
+    /// Derives unified rows from already-computed pairs so a caller that needs both
+    /// layouts runs the underlying diff once instead of twice.
+    static func computeUnified(from pairs: [DiffPair]) -> [DiffUnifiedLine] {
         var result: [DiffUnifiedLine] = []
         var beforeNumber = 1
         var afterNumber = 1

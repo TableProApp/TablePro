@@ -20,8 +20,7 @@ struct AIChatWalkthroughBlockView: View {
     @State private var activeFollowUpStepID: UUID?
     @State private var followUpText: String = ""
     @State private var showApplyConfirmation = false
-
-    private static let maxDiffLines = 500
+    @State private var presentation: SqlWalkthroughPresentation?
 
     private var actions: MainContentCommandActions? {
         focusedActions ?? commandRegistry.current
@@ -35,26 +34,28 @@ struct AIChatWalkthroughBlockView: View {
     var body: some View {
         if let walkthrough {
             content(for: walkthrough)
+                .task(id: block.id) {
+                    presentation = SqlWalkthroughPresentation(block: walkthrough)
+                }
         }
     }
 
     @ViewBuilder
     private func content(for walkthrough: SqlWalkthroughBlock) -> some View {
-        let beforeLines = SqlNormalizer.lines(walkthrough.beforeSQL)
-        let afterLines = walkthrough.envelope.afterSQL.map(SqlNormalizer.lines) ?? []
-
         GroupBox {
             VStack(alignment: .leading, spacing: 8) {
                 header(for: walkthrough)
                 Divider()
-                if walkthrough.hasDiff {
-                    diffSection(for: walkthrough, beforeLines: beforeLines, afterLines: afterLines)
-                } else {
-                    sourceListing(beforeLines)
-                }
-                if !walkthrough.envelope.steps.isEmpty {
-                    Divider()
-                    stepList(walkthrough.envelope.steps, beforeLines: beforeLines, afterLines: afterLines)
+                if let presentation {
+                    if walkthrough.hasDiff {
+                        diffSection(for: walkthrough, presentation: presentation)
+                    } else {
+                        sourceListing(presentation)
+                    }
+                    if !walkthrough.envelope.steps.isEmpty {
+                        Divider()
+                        stepList(walkthrough.envelope.steps, presentation: presentation)
+                    }
                 }
                 if let afterSQL = walkthrough.envelope.afterSQL, !afterSQL.isEmpty {
                     applyControls(afterSQL: afterSQL)
@@ -96,17 +97,16 @@ struct AIChatWalkthroughBlockView: View {
     @ViewBuilder
     private func diffSection(
         for walkthrough: SqlWalkthroughBlock,
-        beforeLines: [String],
-        afterLines: [String]
+        presentation: SqlWalkthroughPresentation
     ) -> some View {
         ScrollViewReader { proxy in
             ScrollView {
                 Group {
                     switch walkthrough.diffStyle {
                     case .unified:
-                        unifiedDiff(before: beforeLines, after: afterLines)
+                        unifiedDiff(presentation)
                     case .split:
-                        splitDiff(before: beforeLines, after: afterLines)
+                        splitDiff(presentation)
                     }
                 }
                 .padding(.vertical, 2)
@@ -121,14 +121,13 @@ struct AIChatWalkthroughBlockView: View {
         }
     }
 
-    private func unifiedDiff(before: [String], after: [String]) -> some View {
-        let lines = Array(DiffComputer.computeUnified(before: before, after: after).prefix(Self.maxDiffLines))
-        return LazyVStack(alignment: .leading, spacing: 0) {
-            ForEach(lines) { line in
+    private func unifiedDiff(_ presentation: SqlWalkthroughPresentation) -> some View {
+        LazyVStack(alignment: .leading, spacing: 0) {
+            ForEach(presentation.unifiedLines) { line in
                 unifiedRow(line)
                     .id(line.id)
             }
-            truncationFooter(shown: lines.count, total: max(before.count, after.count))
+            truncationFooter(hidden: presentation.hiddenLines(for: .unified))
         }
     }
 
@@ -171,12 +170,15 @@ struct AIChatWalkthroughBlockView: View {
         let lineNumber: Int?
     }
 
-    private func splitDiff(before: [String], after: [String]) -> some View {
-        let pairs = Array(DiffComputer.computeSplit(before: before, after: after).prefix(Self.maxDiffLines))
-        return HStack(alignment: .top, spacing: 0) {
-            splitColumn(rows: splitRows(pairs, side: .before), side: .before)
-            Divider()
-            splitColumn(rows: splitRows(pairs, side: .after), side: .after)
+    private func splitDiff(_ presentation: SqlWalkthroughPresentation) -> some View {
+        let pairs = presentation.splitPairs
+        return VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .top, spacing: 0) {
+                splitColumn(rows: splitRows(pairs, side: .before), side: .before)
+                Divider()
+                splitColumn(rows: splitRows(pairs, side: .after), side: .after)
+            }
+            truncationFooter(hidden: presentation.hiddenLines(for: .split))
         }
     }
 
@@ -216,8 +218,8 @@ struct AIChatWalkthroughBlockView: View {
         .background(splitRowBackground(base: tint, side: side, lineNumber: row.lineNumber))
     }
 
-    private func sourceListing(_ lines: [String]) -> some View {
-        let capped = Array(lines.prefix(Self.maxDiffLines))
+    private func sourceListing(_ presentation: SqlWalkthroughPresentation) -> some View {
+        let capped = presentation.sourceLines
         return ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
@@ -236,7 +238,7 @@ struct AIChatWalkthroughBlockView: View {
                         .padding(.vertical, 1)
                         .background(sourceRowBackground(lineNumber: index + 1))
                     }
-                    truncationFooter(shown: capped.count, total: lines.count)
+                    truncationFooter(hidden: presentation.hiddenSourceListingLines)
                 }
             }
             .frame(maxHeight: 220)
@@ -251,12 +253,11 @@ struct AIChatWalkthroughBlockView: View {
 
     private func stepList(
         _ steps: [SqlWalkthroughStep],
-        beforeLines: [String],
-        afterLines: [String]
+        presentation: SqlWalkthroughPresentation
     ) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             ForEach(Array(steps.enumerated()), id: \.element.id) { index, step in
-                stepRow(step, index: index, beforeLines: beforeLines, afterLines: afterLines)
+                stepRow(step, index: index, presentation: presentation)
             }
         }
     }
@@ -264,10 +265,9 @@ struct AIChatWalkthroughBlockView: View {
     private func stepRow(
         _ step: SqlWalkthroughStep,
         index: Int,
-        beforeLines: [String],
-        afterLines: [String]
+        presentation: SqlWalkthroughPresentation
     ) -> some View {
-        let anchor = resolvedAnchor(step.anchor, beforeCount: beforeLines.count, afterCount: afterLines.count)
+        let anchor = presentation.resolvedAnchor(step.anchor)
         return DisclosureGroup(isExpanded: stepBinding(step.id)) {
             VStack(alignment: .leading, spacing: 6) {
                 if !step.why.isEmpty {
@@ -277,7 +277,7 @@ struct AIChatWalkthroughBlockView: View {
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                if let anchor, let snippet = anchorSnippet(anchor, beforeLines: beforeLines, afterLines: afterLines) {
+                if let anchor, let snippet = presentation.anchoredSnippet(for: anchor) {
                     anchoredSnippet(snippet)
                     Button(String(localized: "Jump to lines")) { activateAnchor(anchor) }
                         .buttonStyle(.link)
@@ -378,9 +378,9 @@ struct AIChatWalkthroughBlockView: View {
     }
 
     @ViewBuilder
-    private func truncationFooter(shown: Int, total: Int) -> some View {
-        if total > shown {
-            Text(String(format: String(localized: "…and %d more lines"), total - shown))
+    private func truncationFooter(hidden: Int) -> some View {
+        if hidden > 0 {
+            Text(String(format: String(localized: "…and %d more lines"), hidden))
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
                 .padding(.horizontal, 8)
@@ -413,19 +413,6 @@ struct AIChatWalkthroughBlockView: View {
     }
 
     // MARK: - Anchor helpers
-
-    private func resolvedAnchor(_ anchor: SqlWalkthroughAnchor?, beforeCount: Int, afterCount: Int) -> SqlWalkthroughAnchor? {
-        guard let anchor, anchor.isValid(beforeLineCount: beforeCount, afterLineCount: afterCount) else { return nil }
-        return anchor
-    }
-
-    private func anchorSnippet(_ anchor: SqlWalkthroughAnchor, beforeLines: [String], afterLines: [String]) -> String? {
-        let source = anchor.side == .after ? afterLines : beforeLines
-        guard anchor.startLine >= 1, anchor.endLine <= source.count else { return nil }
-        let slice = source[(anchor.startLine - 1)..<anchor.endLine]
-        let joined = slice.joined(separator: "\n")
-        return joined.isEmpty ? nil : joined
-    }
 
     private func unifiedLineMatches(_ line: DiffUnifiedLine, anchor: SqlWalkthroughAnchor) -> Bool {
         func inRange(_ number: Int?) -> Bool {
