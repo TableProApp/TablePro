@@ -14,6 +14,7 @@ struct AppServices {
     let databaseManager: DatabaseManager
     let pluginManager: PluginManager
     let schemaService: SchemaService
+    let schemaRefreshService: SchemaRefreshService
     let schemaProviderRegistry: SchemaProviderRegistry
     let sqlFavoriteManager: SQLFavoriteManager
     let favoriteTablesStorage: FavoriteTablesStorage
@@ -42,6 +43,7 @@ struct AppServices {
         databaseManager: .shared,
         pluginManager: .shared,
         schemaService: .shared,
+        schemaRefreshService: .shared,
         schemaProviderRegistry: .shared,
         sqlFavoriteManager: .shared,
         favoriteTablesStorage: .shared,

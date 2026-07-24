@@ -3,7 +3,6 @@
 //  TablePro
 //
 
-import Combine
 import Foundation
 import os
 import TableProPluginKit
@@ -38,19 +37,9 @@ final class SchemaService {
         let connectionId: UUID
         let schema: String
     }
-    @ObservationIgnored private var schemaChangeCancellable: AnyCancellable?
     @ObservationIgnored private var loadGenerations: [UUID: Int] = [:]
     @ObservationIgnored private var nextLoadGeneration = 0
     @ObservationIgnored private static let logger = Logger(subsystem: "com.TablePro", category: "SchemaService")
-
-    init() {
-        schemaChangeCancellable = AppEvents.shared.currentSchemaChanged
-            .sink { [weak self] connectionId in
-                Task { @MainActor [weak self] in
-                    await self?.handleSchemaSwitch(connectionId: connectionId)
-                }
-            }
-    }
 
     func state(for connectionId: UUID) -> SchemaState {
         states[connectionId] ?? .idle
@@ -418,61 +407,6 @@ final class SchemaService {
                 "[schema] \(kind.rawValue, privacy: .public) load failed connId=\(connectionId, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
             )
             return []
-        }
-    }
-
-    private func handleSchemaSwitch(connectionId: UUID) async {
-        guard let session = DatabaseManager.shared.activeSessions[connectionId],
-              let driver = session.driver else { return }
-        let connection = session.connection
-        if PluginManager.shared.databaseGroupingStrategy(for: connection.type) == .hierarchicalSchema {
-            await invalidate(connectionId: connectionId)
-            await reload(connectionId: connectionId, driver: driver, connection: connection)
-            return
-        }
-        await reloadCurrentSchemaContent(connectionId: connectionId, driver: driver)
-    }
-
-    private func reloadCurrentSchemaContent(connectionId: UUID, driver: DatabaseDriver) async {
-        await loadDedup.cancel(key: connectionId)
-        await procedureDedup.cancel(key: connectionId)
-        await functionDedup.cancel(key: connectionId)
-
-        states[connectionId] = .loading
-        bumpGeneration(connectionId)
-
-        async let proceduresTask: [RoutineInfo] = Self.fetchRoutinesSafely(
-            connectionId: connectionId,
-            kind: .procedure,
-            dedup: procedureDedup,
-            fetch: { try await driver.fetchProcedures(schema: nil) }
-        )
-        async let functionsTask: [RoutineInfo] = Self.fetchRoutinesSafely(
-            connectionId: connectionId,
-            kind: .function,
-            dedup: functionDedup,
-            fetch: { try await driver.fetchFunctions(schema: nil) }
-        )
-
-        let loadedProcedures = await proceduresTask
-        let loadedFunctions = await functionsTask
-
-        do {
-            let tables = try await loadDedup.execute(key: connectionId) {
-                try await driver.fetchTables()
-            }
-            states[connectionId] = .loaded(tables)
-            procedures[connectionId] = loadedProcedures
-            functions[connectionId] = loadedFunctions
-            bumpGeneration(connectionId)
-        } catch is CancellationError {
-            return
-        } catch {
-            Self.logger.warning(
-                "[schema] current-schema reload failed connId=\(connectionId, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
-            )
-            states[connectionId] = .failed(error.localizedDescription)
-            bumpGeneration(connectionId)
         }
     }
 }
