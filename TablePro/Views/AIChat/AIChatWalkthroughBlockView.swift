@@ -367,13 +367,13 @@ struct AIChatWalkthroughBlockView: View {
                 .disabled(actions == nil)
                 .help(actions == nil
                     ? String(localized: "Open a connection to apply")
-                    : String(localized: "Replace the editor content with the suggested SQL"))
+                    : String(localized: "Put the suggested SQL into the query editor"))
         }
         .alert(String(localized: "Apply suggested SQL?"), isPresented: $showApplyConfirmation) {
             Button(String(localized: "Apply")) { actions?.loadQueryIntoEditor(afterSQL) }
             Button(String(localized: "Cancel"), role: .cancel) {}
         } message: {
-            Text("This replaces the editor content with the AI-generated SQL.")
+            Text("This puts the AI-generated SQL into the query editor, replacing what is there. Nothing runs until you execute it.")
         }
     }
 
