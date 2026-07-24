@@ -16,9 +16,7 @@ internal struct FileConflictDiffSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     private var diffLines: [DiffPair] {
-        let mineLines = mineContent.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
-        let diskLines = diskContent.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
-        return DiffComputer.computeSplit(before: mineLines, after: diskLines)
+        FileConflictDiff.pairs(mine: mineContent, disk: diskContent)
     }
 
     var body: some View {
