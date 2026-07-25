@@ -53,19 +53,22 @@ struct AIChatCodeBlockView: View, Equatable {
     }
 
     private var codeBlockHeader: some View {
-        HStack {
+        HStack(spacing: 8) {
             if let resolved = resolvedLanguage {
                 Text(resolved.uppercased())
                     .font(.caption2)
                     .fontWeight(.medium)
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
                     .background(Color(nsColor: .separatorColor))
                     .clipShape(RoundedRectangle(cornerRadius: 4))
+                    .layoutPriority(-1)
             }
 
-            Spacer()
+            Spacer(minLength: 0)
 
             Button {
                 ClipboardService.shared.writeText(code)
@@ -80,9 +83,11 @@ struct AIChatCodeBlockView: View, Equatable {
                     systemImage: isCopied ? "checkmark" : "doc.on.doc"
                 )
                 .font(.caption2)
+                .lineLimit(1)
             }
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
+            .fixedSize()
 
             if isInsertable {
                 Button {
@@ -90,9 +95,11 @@ struct AIChatCodeBlockView: View, Equatable {
                 } label: {
                     Label(String(localized: "Insert"), systemImage: "square.and.pencil")
                         .font(.caption2)
+                        .lineLimit(1)
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
+                .fixedSize()
                 .disabled(actions == nil)
                 .help(actions == nil
                     ? String(localized: "Open a connection to insert")
@@ -119,7 +126,9 @@ struct AIChatCodeBlockView: View, Equatable {
                 configuration: Self.makeConfiguration(),
                 state: $editorState
             )
+            .frame(maxWidth: .infinity)
             .frame(height: editorHeight)
+            .clipped()
         }
     }
 
@@ -214,6 +223,7 @@ private struct CodeBlockGroupBoxStyle: GroupBoxStyle {
 
             configuration.content
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color(nsColor: .controlBackgroundColor))
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .overlay(

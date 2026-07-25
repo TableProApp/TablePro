@@ -23,8 +23,10 @@ struct MarkdownView: View {
             ForEach(blocks) { block in
                 MarkdownBlockView(block: block, prefersLightweightCode: isStreaming)
                     .equatable()
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -176,29 +178,32 @@ private struct MarkdownTableView: View {
 
     var body: some View {
         let columnCount = headers.count
-        Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 6) {
-            GridRow {
-                ForEach(0..<columnCount, id: \.self) { col in
-                    cell(text: headers[col], alignment: alignments[safe: col] ?? .left)
-                        .fontWeight(.semibold)
-                }
-            }
-            Divider().gridCellColumns(columnCount)
-            ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+        ScrollView(.horizontal, showsIndicators: true) {
+            Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 6) {
                 GridRow {
                     ForEach(0..<columnCount, id: \.self) { col in
-                        cell(text: row[safe: col] ?? "", alignment: alignments[safe: col] ?? .left)
+                        cell(text: headers[col], alignment: alignments[safe: col] ?? .left)
+                            .fontWeight(.semibold)
+                    }
+                }
+                Divider().gridCellColumns(columnCount)
+                ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                    GridRow {
+                        ForEach(0..<columnCount, id: \.self) { col in
+                            cell(text: row[safe: col] ?? "", alignment: alignments[safe: col] ?? .left)
+                        }
                     }
                 }
             }
+            .padding(8)
+            .background(Color(nsColor: .controlBackgroundColor))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
+            )
         }
-        .padding(8)
-        .background(Color(nsColor: .controlBackgroundColor))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
-        )
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     @ViewBuilder

@@ -28,7 +28,7 @@ struct AIChatMessageView: View {
             if message.role == .user {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 4) {
-                        Spacer()
+                        Spacer(minLength: 0)
                         Text("You")
                             .fontWeight(.medium)
                         Text("·")
@@ -47,7 +47,7 @@ struct AIChatMessageView: View {
 
                     if let onEdit {
                         HStack {
-                            Spacer()
+                            Spacer(minLength: 0)
                             Button { onEdit() } label: {
                                 Image(systemName: "pencil")
                                     .font(.caption2)
@@ -60,6 +60,7 @@ struct AIChatMessageView: View {
                     }
                 }
                 .padding(8)
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .background(Color.accentColor.opacity(Self.userBubbleTintOpacity))
                 .clipShape(RoundedRectangle(cornerRadius: 8))
             } else {
@@ -152,8 +153,10 @@ struct AIChatMessageView: View {
             VStack(alignment: .leading, spacing: 6) {
                 ForEach(visibleBlocks) { block in
                     AIChatBlockView(block: block)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.vertical, 6)
         }
     }

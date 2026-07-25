@@ -43,6 +43,8 @@ struct AIChatPanelView: View {
                 inputArea
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .clipped()
         .onAppear {
             viewModel.connection = connection
         }
@@ -127,9 +129,11 @@ struct AIChatPanelView: View {
                                 ? { viewModel.editMessage(message) } : nil
                         )
                         .padding(.vertical, 4)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                         .id(message.id)
                     }
                 }
+                .frame(maxWidth: .infinity)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 8)
                 .scrollTargetLayout()
@@ -174,6 +178,7 @@ struct AIChatPanelView: View {
                 .accessibilityLabel(String(localized: "Scroll to latest message"))
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     // MARK: - Error Banner
@@ -249,11 +254,12 @@ struct AIChatPanelView: View {
                     slashCommandMenu
                     modeMenu
                     modelPicker
-                    Spacer()
+                        .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
                     sendOrStopButton
                 }
             }
             .padding(8)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
@@ -293,6 +299,7 @@ struct AIChatPanelView: View {
                 Image(systemName: settingsManager.ai.chatMode.symbolName)
                 Text(settingsManager.ai.chatMode.displayName)
                     .lineLimit(1)
+                    .truncationMode(.tail)
                 Image(systemName: "chevron.up.chevron.down")
                     .font(.caption2)
             }
@@ -300,7 +307,6 @@ struct AIChatPanelView: View {
             .foregroundStyle(.secondary)
         }
         .menuStyle(.borderlessButton)
-        .fixedSize()
         .help(settingsManager.ai.chatMode.helpText)
     }
 
@@ -360,14 +366,15 @@ struct AIChatPanelView: View {
                     Text(label)
                         .lineLimit(1)
                         .truncationMode(.middle)
+                        .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
                     Image(systemName: "chevron.up.chevron.down")
                         .font(.caption2)
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
             }
             .menuStyle(.borderlessButton)
-            .fixedSize()
             .help(String(localized: "Choose AI provider and model"))
         }
     }
@@ -420,7 +427,6 @@ struct AIChatPanelView: View {
                     .foregroundStyle(.secondary)
             }
             .menuStyle(.borderlessButton)
-            .fixedSize()
             .help(String(localized: "Attach context"))
             .accessibilityLabel(String(localized: "Attach context"))
         }
@@ -460,7 +466,6 @@ struct AIChatPanelView: View {
                 .foregroundStyle(.secondary)
         }
         .menuStyle(.borderlessButton)
-        .fixedSize()
         .help(String(localized: "Slash commands"))
         .accessibilityLabel(String(localized: "Slash commands"))
     }

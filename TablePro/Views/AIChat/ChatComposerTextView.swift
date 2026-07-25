@@ -40,6 +40,11 @@ struct ChatComposerTextView: NSViewRepresentable {
         textView.textContainer?.widthTracksTextView = true
         textView.isHorizontallyResizable = false
         textView.isVerticallyResizable = true
+        textView.minSize = NSSize(width: 0, height: 0)
+        textView.maxSize = NSSize(
+            width: CGFloat.greatestFiniteMagnitude,
+            height: CGFloat.greatestFiniteMagnitude
+        )
         textView.autoresizingMask = [.width]
         textView.placeholder = placeholder
         textView.acceptsImagePaste = acceptsImages
@@ -48,12 +53,14 @@ struct ChatComposerTextView: NSViewRepresentable {
         let scrollView = ChatComposerScrollView()
         scrollView.documentView = textView
         scrollView.hasVerticalScroller = true
+        scrollView.hasHorizontalScroller = false
         scrollView.autohidesScrollers = true
         scrollView.scrollerStyle = .overlay
         scrollView.borderType = .noBorder
         scrollView.drawsBackground = false
         scrollView.backgroundColor = .clear
         scrollView.verticalScrollElasticity = .allowed
+        scrollView.horizontalScrollElasticity = .none
         scrollView.minLines = minLines
         scrollView.maxLines = maxLines
 
@@ -100,6 +107,7 @@ struct ChatComposerTextView: NSViewRepresentable {
             }
         }
 
+        scrollView.syncDocumentWidthToBounds()
         scrollView.invalidateIntrinsicContentSize()
     }
 
@@ -266,6 +274,16 @@ final class ChatComposerScrollView: NSScrollView {
     var minLines: Int = 1
     var maxLines: Int = 5
 
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        syncDocumentWidthToBounds()
+    }
+
+    override func layout() {
+        super.layout()
+        syncDocumentWidthToBounds()
+    }
+
     override var intrinsicContentSize: NSSize {
         guard
             let textView = documentView as? NSTextView,
@@ -280,8 +298,26 @@ final class ChatComposerScrollView: NSScrollView {
         let verticalPadding = inset.height * 2
         let minHeight = CGFloat(minLines) * lineHeight + verticalPadding
         let maxHeight = CGFloat(maxLines) * lineHeight + verticalPadding
+        layoutManager.ensureLayout(for: container)
         let used = layoutManager.usedRect(for: container).height
         let content = used + verticalPadding
         return NSSize(width: NSView.noIntrinsicMetric, height: max(minHeight, min(maxHeight, content)))
+    }
+
+    func syncDocumentWidthToBounds() {
+        guard let textView = documentView as? NSTextView else { return }
+        let width = max(0, bounds.width)
+        guard width > 0 else { return }
+
+        if abs(textView.frame.width - width) > 0.5 {
+            textView.setFrameSize(NSSize(width: width, height: max(textView.frame.height, 1)))
+        }
+
+        guard let container = textView.textContainer else { return }
+        let nextSize = NSSize(width: width, height: CGFloat.greatestFiniteMagnitude)
+        guard abs(container.containerSize.width - width) > 0.5 else { return }
+        container.containerSize = nextSize
+        textView.layoutManager?.ensureLayout(for: container)
+        invalidateIntrinsicContentSize()
     }
 }
