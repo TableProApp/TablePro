@@ -486,10 +486,7 @@ impl BrowseTab {
         // shows the active rule count next to the word when ≥1 rule
         // applies; hidden otherwise.
         let filter_label = gtk::Label::new(Some(&crate::tr!("Filter")));
-        let filter_badge = gtk::Label::builder()
-            .label("")
-            .visible(false)
-            .build();
+        let filter_badge = gtk::Label::builder().label("").visible(false).build();
         filter_badge.add_css_class("numeric");
         filter_badge.add_css_class("caption-heading");
         filter_badge.add_css_class("dim-label");
@@ -1255,7 +1252,6 @@ impl BrowseTab {
             .build();
         self.replace_status_child("error", &page);
     }
-
 }
 
 impl SimpleComponent for BrowseTab {
@@ -1374,9 +1370,8 @@ impl SimpleComponent for BrowseTab {
             let no_pk_for_sync = no_pk_banner.clone();
             let filter_for_sync = filter_strip.widget.clone();
             std::rc::Rc::new(move || {
-                let any_revealed = read_only_for_sync.is_revealed()
-                    || no_pk_for_sync.is_revealed()
-                    || filter_for_sync.reveals_child();
+                let any_revealed =
+                    read_only_for_sync.is_revealed() || no_pk_for_sync.is_revealed() || filter_for_sync.reveals_child();
                 root_for_sync.set_reveal_top_bars(any_revealed);
             })
         };
@@ -2500,9 +2495,7 @@ fn update_selection_chrome(label: &gtk::Label, n: u32) {
         return;
     }
     let count = n.to_string();
-    label.set_label(
-        &crate::tr!("{n} selected · press Delete to remove").replace("{n}", &count),
-    );
+    label.set_label(&crate::tr!("{n} selected · press Delete to remove").replace("{n}", &count));
     label.set_visible(true);
 }
 
