@@ -137,6 +137,30 @@ struct DotenvConnectionExtractorTests {
         #expect(extract(source).first?.warnings.isEmpty == false)
     }
 
+    @Test("Two relational engines in one file each produce a candidate")
+    func testTwoRelationalEngines() {
+        let source = """
+        DATABASE_URL=postgresql://u:p@localhost:5432/appdb
+        JAWSDB_URL=mysql://u:p@mysql.example.com:3306/legacy
+        """
+        let candidates = extract(source)
+        let types = candidates.map(\.parsedURL.type)
+        #expect(types.contains(.postgresql))
+        #expect(types.contains(.mysql))
+    }
+
+    @Test("Pooled and direct URLs for one engine collapse to the direct one")
+    func testPooledAndDirectCollapse() {
+        let source = """
+        DATABASE_URL=postgresql://u:p@pooled.example.com:6543/app
+        DATABASE_URL_UNPOOLED=postgresql://u:p@direct.example.com:5432/app
+        POSTGRES_URL=postgresql://u:p@another.example.com:5432/app
+        """
+        let candidates = extract(source).filter { $0.parsedURL.type == .postgresql }
+        #expect(candidates.count == 1)
+        #expect(candidates.first?.parsedURL.host == "direct.example.com")
+    }
+
     @Test("Separate URLs for different engines each produce a candidate")
     func testMultipleEngines() {
         let source = """

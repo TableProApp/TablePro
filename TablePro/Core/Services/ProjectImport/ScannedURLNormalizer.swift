@@ -19,6 +19,9 @@ enum ScannedURLNormalizer {
         }
         let scheme = String(trimmed[trimmed.startIndex..<schemeRange.upperBound])
         let remainder = String(trimmed[schemeRange.upperBound...])
+        guard !remainder.hasPrefix("/") else {
+            return trimmed
+        }
         guard let separator = lastUserInfoSeparator(in: remainder) else {
             return trimmed
         }

@@ -222,6 +222,22 @@ struct DockerComposeExtractorTests {
         #expect(candidate?.parsedURL.database == "appdb")
     }
 
+    @Test("A variable with no value anywhere is reported, not silently emptied")
+    func testUnresolvedInterpolationWarns() {
+        let contents = """
+        services:
+          db:
+            image: postgres:16
+            environment:
+              POSTGRES_PASSWORD: ${DB_PASSWORD}
+              POSTGRES_DB: appdb
+            ports:
+              - "5432:5432"
+        """
+        let candidate = extract(contents).first
+        #expect(candidate?.warnings.isEmpty == false)
+    }
+
     @Test("Services that are not databases are ignored")
     func testNonDatabaseServiceIgnored() {
         let contents = """

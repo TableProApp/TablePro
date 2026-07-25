@@ -6,7 +6,7 @@
 import Foundation
 
 enum RailsDatabaseYamlExtractor {
-    private static let preferredEnvironments = ["development", "primary", "production", "staging", "test"]
+    private static let preferredEnvironments = ["development", "production", "staging", "test"]
 
     static func extract(
         contents: String,

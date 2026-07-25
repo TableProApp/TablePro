@@ -44,6 +44,9 @@ enum DockerComposeExtractor {
         fields.connectionName = name
         applyCredentials(&fields, type: database.type, variables: variables)
         var warnings: [String] = []
+        if [fields.username, fields.password, fields.database].contains(where: ComposeInterpolator.isUnresolved) {
+            warnings.append(String(localized: "Some values are set outside this file"))
+        }
         if let published = publishedPort(service["ports"], containerPort: database.defaultPort) {
             fields.port = published
         } else {
@@ -218,8 +221,16 @@ enum ComposeInterpolator {
             if let value = environment?[name] {
                 return value
             }
-            return separator.hasSuffix("?") ? "" : fallback
+            return separator.hasSuffix("?") ? unresolvedMarker(reference) : fallback
         }
-        return environment?[reference] ?? ""
+        return environment?[reference] ?? unresolvedMarker(reference)
+    }
+
+    static func isUnresolved(_ value: String) -> Bool {
+        value.contains("${")
+    }
+
+    private static func unresolvedMarker(_ reference: String) -> String {
+        "${\(reference)}"
     }
 }

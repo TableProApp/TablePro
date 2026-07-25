@@ -39,6 +39,81 @@ struct ScannedURLNormalizerTests {
         let normalized = ScannedURLNormalizer.normalize("postgresql://user:p/ss@host:5432/db")
         #expect(normalized == "postgresql://user:p%2Fss@host:5432/db")
     }
+
+    @Test("A file path containing an at sign is left alone")
+    func testFilePathWithAtSignUntouched() {
+        let scoped = "sqlite:///Users/dat/@scope/proj/database.sqlite"
+        #expect(ScannedURLNormalizer.normalize(scoped) == scoped)
+        let mailbox = "duckdb:///Users/dat/mail@work/warehouse.duckdb"
+        #expect(ScannedURLNormalizer.normalize(mailbox) == mailbox)
+    }
+
+    @Test("A unix socket host parameter is left alone")
+    func testUnixSocketFormUntouched() {
+        let socket = "postgresql:///appdb?host=/var/run/postgresql"
+        #expect(ScannedURLNormalizer.normalize(socket) == socket)
+    }
+}
+
+@Suite("Scanned Production Heuristic")
+struct ScannedProductionHeuristicTests {
+
+    @Test("Production markers are detected in the file name, host, and database")
+    func testMarkersDetected() {
+        #expect(ScannedProductionHeuristic.isProduction(relativePath: ".env.production", host: "", database: ""))
+        #expect(ScannedProductionHeuristic.isProduction(relativePath: ".env", host: "db.prod.example.com", database: ""))
+        #expect(ScannedProductionHeuristic.isProduction(relativePath: ".env", host: "", database: "live"))
+    }
+
+    @Test("A marker embedded in a longer word does not count")
+    func testNoSubstringFalsePositives() {
+        #expect(!ScannedProductionHeuristic.isProduction(relativePath: ".env", host: "products.example.com", database: ""))
+        #expect(!ScannedProductionHeuristic.isProduction(relativePath: ".env", host: "productivity.io", database: ""))
+        #expect(!ScannedProductionHeuristic.isProduction(relativePath: ".env.local", host: "localhost", database: "appdb"))
+    }
+
+    @Test("A separated marker counts, so the safer default wins")
+    func testSeparatedMarkerCounts() {
+        #expect(ScannedProductionHeuristic.isProduction(relativePath: ".env", host: "", database: "production_orders"))
+        #expect(ScannedProductionHeuristic.isProduction(relativePath: ".env", host: "app-prod-01.internal", database: ""))
+    }
+}
+
+@Suite("YAML Mapping Support")
+struct YamlMappingSupportTests {
+
+    @Test("Merge keys are expanded with the owning mapping winning")
+    func testMergeKeyExpansion() throws {
+        let contents = """
+        base: &base
+          adapter: postgresql
+          host: shared.example.com
+        child:
+          <<: *base
+          host: own.example.com
+          database: appdb
+        """
+        let root = try #require(YamlMappingSupport.loadMapping(contents))
+        let child = try #require(YamlMappingSupport.mapping(root["child"]))
+        #expect(YamlMappingSupport.string(child["adapter"]) == "postgresql")
+        #expect(YamlMappingSupport.string(child["host"]) == "own.example.com")
+        #expect(YamlMappingSupport.string(child["database"]) == "appdb")
+    }
+
+    @Test("Scalars coerce to strings and integers")
+    func testScalarCoercion() {
+        #expect(YamlMappingSupport.string(5_432) == "5432")
+        #expect(YamlMappingSupport.string(true) == "true")
+        #expect(YamlMappingSupport.string("  spaced  ") == "spaced")
+        #expect(YamlMappingSupport.string("") == nil)
+        #expect(YamlMappingSupport.int("5432") == 5_432)
+        #expect(YamlMappingSupport.int("not a port") == nil)
+    }
+
+    @Test("A document that is not a mapping yields nil")
+    func testNonMappingDocument() {
+        #expect(YamlMappingSupport.loadMapping("- just\n- a\n- list") == nil)
+    }
 }
 
 @Suite("WordPress Config Extractor")

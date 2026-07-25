@@ -46,7 +46,7 @@ A connection found in a file named for production starts at the **Alert** [Safe 
 
 Template files are skipped, so `.env.example`, `.env.sample`, `.env.template`, and `.env.dist` never appear. `.envrc` is a shell script, so TablePro never reads or runs it.
 
-The scan stays inside the folder you picked. It does not follow symlinks, skips `node_modules`, `.git`, `vendor`, `dist`, `build` and similar directories, goes four levels deep, and ignores files over 1 MB.
+The scan does not follow symlinks, skips `node_modules`, `.git`, `vendor`, `dist`, `build` and similar directories, goes four levels deep, and ignores files over 1 MB. It reads only the folder you picked, with one exception: WordPress allows `wp-config.php` to sit one level above the site, so that single file is checked in the parent folder too. When it comes from there, the row shows the path as `../wp-config.php`.
 
 ## When a value cannot be read
 

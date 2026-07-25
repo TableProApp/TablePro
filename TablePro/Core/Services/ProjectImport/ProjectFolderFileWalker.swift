@@ -123,7 +123,7 @@ enum ProjectFolderFileWalker {
         return name.hasSuffix(".dist-info")
     }
 
-    private static var deniedPrefixes: [String] {
+    private static let deniedPrefixes: [String] = {
         let home = FileManager.default.homeDirectoryForCurrentUser.standardizedFileURL.path
         return [
             home + "/.ssh",
@@ -134,5 +134,5 @@ enum ProjectFolderFileWalker {
             "/etc",
             "/private/etc",
         ]
-    }
+    }()
 }

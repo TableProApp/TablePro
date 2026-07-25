@@ -50,9 +50,7 @@ enum DotenvConnectionExtractor {
             directoryURL: directoryURL
         )
         var candidates: [ScannedConnectionCandidate] = []
-        if let relational = relationalCandidate(context) {
-            candidates.append(relational)
-        }
+        candidates.append(contentsOf: relationalCandidates(context))
         if let mongo = mongoCandidate(context) {
             candidates.append(mongo)
         }
@@ -84,17 +82,40 @@ enum DotenvConnectionExtractor {
         return nil
     }
 
-    private static func relationalCandidate(_ context: Context) -> ScannedConnectionCandidate? {
-        if let fromURL = firstURLCandidate(context, keys: relationalURLKeys) {
-            return fromURL
+    private static func relationalCandidates(_ context: Context) -> [ScannedConnectionCandidate] {
+        var byType: [String: ScannedConnectionCandidate] = [:]
+        var order: [String] = []
+        for key in relationalURLKeys {
+            guard let value = context.document[key] else {
+                continue
+            }
+            let candidate = ScannedConnectionURLBuilder.candidate(
+                fromURL: value,
+                key: key,
+                relativePath: context.relativePath,
+                kind: .dotenv,
+                tier: context.tier
+            )
+            guard let candidate else {
+                continue
+            }
+            let type = candidate.parsedURL.type.rawValue
+            guard byType[type] == nil else {
+                continue
+            }
+            byType[type] = candidate
+            order.append(type)
+        }
+        guard order.isEmpty else {
+            return order.compactMap { byType[$0] }
         }
         if let laravel = laravelCandidate(context) {
-            return laravel
+            return [laravel]
         }
         if let docker = dockerRelationalCandidate(context) {
-            return docker
+            return [docker]
         }
-        return libpqCandidate(context)
+        return libpqCandidate(context).map { [$0] } ?? []
     }
 
     private static func mongoCandidate(_ context: Context) -> ScannedConnectionCandidate? {

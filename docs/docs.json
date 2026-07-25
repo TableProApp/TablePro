@@ -144,6 +144,7 @@
                   "features/quick-switcher",
                   "features/query-history",
                   "features/favorites",
+                  "features/project-folder-import",
                   "features/keyboard-shortcuts"
                 ]
               },
@@ -153,8 +154,7 @@
                   "features/safe-mode",
                   "features/ssh-profiles",
                   "features/ssl",
-                  "features/connection-sharing",
-                  "features/project-folder-import"
+                  "features/connection-sharing"
                 ]
               },
               {
