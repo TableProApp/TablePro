@@ -188,7 +188,6 @@ pub struct StructureTabSlot {
     pub mode: crate::ui::structure_tab::StructureMode,
 }
 
-
 /// One workspace tab pinned to a single `(schema, table)` entity in
 /// Data (Browse) mode. The Structure (DDL) view is no longer fused
 /// into the same tab — `WorkspaceTab::Structure` is its own
