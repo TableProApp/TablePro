@@ -79,7 +79,6 @@ struct LicenseActivationSheet: View {
             .padding(.bottom, 24)
         }
         .frame(width: 400)
-        .defaultFocus($keyFocused, true)
     }
 
     private func activate() async {

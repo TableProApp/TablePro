@@ -11,8 +11,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Create a connection from a project folder. Pick one from the welcome screen or File > Open Project Folder..., and TablePro reads the database settings it finds in `.env` files, `wp-config.php`, `prisma/schema.prisma`, `config/database.yml`, `docker-compose.yml`, `application.properties`, `application.yml`, and `appsettings.json`. Review what it found, pick one, and the connection form opens filled in. Nothing is saved or connected until you save it. (#1959)
 
+### Changed
+
+- The welcome screen groups the ways to add an existing connection into one **Add from Existing** menu, next to **Create Connection**. Import from URL now has a home in that menu and in the File menu, where it had none. **Try Sample Database** moved to the connection list, which already offers it when the list is empty.
+
 ### Fixed
 
+- The license activation sheet now opens when you click **Activate License**. It was built and then failed to appear, and once that happened further clicks did nothing at all.
+- File > Import from Other App..., Open Project Folder..., Import Connections... and Export Connections... now work when no welcome window is open. They used to do nothing.
+- The tooltip on the welcome screen's **+** button shows the shortcut you actually have bound for New Connection instead of always claiming ⌘N.
 - The AI chat panel stays inside the right panel when you drag it narrow. The model name, tool names, and code block headers now truncate, long chat messages and code wrap, wide tables scroll inside their own box, and the composer text follows the panel width instead of running under the editor. (#1956)
 
 ## [0.60.1] - 2026-07-25
