@@ -60,7 +60,6 @@ struct AIChatMessageView: View {
                     }
                 }
                 .padding(8)
-                .frame(maxWidth: .infinity, alignment: .leading)
                 .background(Color.accentColor.opacity(Self.userBubbleTintOpacity))
                 .clipShape(RoundedRectangle(cornerRadius: 8))
             } else {
@@ -153,7 +152,6 @@ struct AIChatMessageView: View {
             VStack(alignment: .leading, spacing: 6) {
                 ForEach(visibleBlocks) { block in
                     AIChatBlockView(block: block)
-                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)

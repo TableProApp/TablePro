@@ -48,7 +48,6 @@ struct UnifiedRightPanelView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .clipped()
     }
 
     private var inspectorHeader: some View {
@@ -154,6 +153,5 @@ struct UnifiedRightPanelView: View {
             queryResults: ctx.queryResults,
             viewModel: state.aiViewModel
         )
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 }

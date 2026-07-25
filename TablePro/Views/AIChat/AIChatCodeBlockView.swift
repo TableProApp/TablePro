@@ -60,12 +60,10 @@ struct AIChatCodeBlockView: View, Equatable {
                     .fontWeight(.medium)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
-                    .truncationMode(.middle)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
                     .background(Color(nsColor: .separatorColor))
                     .clipShape(RoundedRectangle(cornerRadius: 4))
-                    .layoutPriority(-1)
             }
 
             Spacer(minLength: 0)
@@ -128,7 +126,6 @@ struct AIChatCodeBlockView: View, Equatable {
             )
             .frame(maxWidth: .infinity)
             .frame(height: editorHeight)
-            .clipped()
         }
     }
 

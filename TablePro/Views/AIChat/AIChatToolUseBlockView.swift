@@ -39,7 +39,6 @@ struct AIChatToolUseBlockView: View {
                             .foregroundStyle(.primary)
                             .lineLimit(1)
                             .truncationMode(.middle)
-                            .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
                     }
                     .font(.caption)
                     if hasInput && !isPending {

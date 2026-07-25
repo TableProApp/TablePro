@@ -23,7 +23,6 @@ struct MarkdownView: View {
             ForEach(blocks) { block in
                 MarkdownBlockView(block: block, prefersLightweightCode: isStreaming)
                     .equatable()
-                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -178,7 +177,7 @@ private struct MarkdownTableView: View {
 
     var body: some View {
         let columnCount = headers.count
-        ScrollView(.horizontal, showsIndicators: true) {
+        ScrollView(.horizontal) {
             Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 6) {
                 GridRow {
                     ForEach(0..<columnCount, id: \.self) { col in
@@ -196,14 +195,13 @@ private struct MarkdownTableView: View {
                 }
             }
             .padding(8)
-            .background(Color(nsColor: .controlBackgroundColor))
-            .clipShape(RoundedRectangle(cornerRadius: 8))
-            .overlay(
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
-            )
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(nsColor: .controlBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
+        )
     }
 
     @ViewBuilder
