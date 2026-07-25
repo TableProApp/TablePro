@@ -35,7 +35,6 @@ struct MCPTokenRevealSheet: View {
             .padding()
         }
         .frame(minWidth: 540, minHeight: 520)
-        .defaultFocus($doneFocused, true)
     }
 
     private var warningBanner: some View {

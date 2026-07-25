@@ -34,7 +34,6 @@ struct MCPTokenCreateSheet: View {
                 .padding()
         }
         .frame(minWidth: 480, minHeight: 520)
-        .defaultFocus($focused, .name)
         .task {
             connections = ConnectionStorage.shared.loadConnections()
         }
