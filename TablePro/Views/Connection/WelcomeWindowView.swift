@@ -131,6 +131,9 @@ struct WelcomeWindowView: View {
             chooserState: $welcomeChooserState,
             urlImportPresented: $urlImportPresented
         ))
+        .onReceive(AppCommands.shared.importConnectionFromURL) { _ in
+            urlImportPresented = true
+        }
         .onReceive(AppCommands.shared.presentDatabaseTypeChooser) { payload in
             welcomeChooserState = WelcomeChooserState(
                 initialType: payload.initialType,
@@ -216,9 +219,10 @@ struct WelcomeWindowView: View {
             WelcomeActionsPanel(
                 onActivateLicense: { vm.activeSheet = .activation },
                 onCreateConnection: { WindowOpener.shared.openConnectionForm() },
+                onImportFromURL: { urlImportPresented = true },
                 onImportFromApp: { vm.importConnectionsFromApp() },
                 onOpenProjectFolder: { vm.openProjectFolder() },
-                onTrySample: { vm.openSampleDatabase() }
+                onImportConnectionsFile: { vm.importConnectionsFromFile() }
             )
             .frame(width: 240)
             .themeMaterial(.sidebar, .regularMaterial)
@@ -265,6 +269,14 @@ struct WelcomeWindowView: View {
         .accessibilityHidden(true)
     }
 
+    private var newConnectionHelp: String {
+        let binding = AppSettingsManager.shared.keyboard.shortcut(for: .newConnection)
+        guard let displayString = binding?.displayString, !displayString.isEmpty else {
+            return String(localized: "New Connection")
+        }
+        return String(format: String(localized: "New Connection (%@)"), displayString)
+    }
+
     private var connectionsHeader: some View {
         HStack(spacing: 8) {
             Button {
@@ -275,7 +287,7 @@ struct WelcomeWindowView: View {
             }
             .buttonStyle(.bordered)
             .controlSize(.large)
-            .help(String(localized: "New Connection (⌘N)"))
+            .help(newConnectionHelp)
             .accessibilityLabel(String(localized: "New Connection"))
 
             Button {

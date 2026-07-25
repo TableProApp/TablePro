@@ -8,9 +8,10 @@ import SwiftUI
 struct WelcomeActionsPanel: View {
     let onActivateLicense: () -> Void
     let onCreateConnection: () -> Void
+    let onImportFromURL: () -> Void
     let onImportFromApp: () -> Void
     let onOpenProjectFolder: () -> Void
-    let onTrySample: () -> Void
+    let onImportConnectionsFile: () -> Void
 
     private let updaterBridge = UpdaterBridge.shared
 
@@ -45,24 +46,17 @@ struct WelcomeActionsPanel: View {
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
 
-                Button(action: onImportFromApp) {
-                    Label(String(localized: "Import from Other App..."), systemImage: "square.and.arrow.down.on.square")
+                Menu {
+                    Button(String(localized: "Import from URL..."), action: onImportFromURL)
+                    Button(String(localized: "Import from Other App..."), action: onImportFromApp)
+                    Button(String(localized: "Open Project Folder..."), action: onOpenProjectFolder)
+                    Divider()
+                    Button(String(localized: "Import Connections..."), action: onImportConnectionsFile)
+                } label: {
+                    Label(String(localized: "Add from Existing"), systemImage: "square.and.arrow.down")
                         .frame(maxWidth: .infinity, alignment: .center)
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.large)
-
-                Button(action: onOpenProjectFolder) {
-                    Label(String(localized: "Open Project Folder..."), systemImage: "folder.badge.gearshape")
-                        .frame(maxWidth: .infinity, alignment: .center)
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.large)
-
-                Button(action: onTrySample) {
-                    Label(String(localized: "Try Sample Database"), systemImage: "cylinder.split.1x2")
-                        .frame(maxWidth: .infinity, alignment: .center)
-                }
+                .menuStyle(.button)
                 .buttonStyle(.bordered)
                 .controlSize(.large)
             }
@@ -70,18 +64,7 @@ struct WelcomeActionsPanel: View {
 
             Spacer()
 
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: 12) {
-                    SyncStatusIndicator(onActivateLicense: onActivateLicense)
-                    KeyboardHint(keys: "⌘N", label: String(localized: "New"))
-                    KeyboardHint(keys: "⌘,", label: String(localized: "Settings"))
-                }
-                HStack(spacing: 8) {
-                    SyncStatusIndicator(onActivateLicense: onActivateLicense)
-                    KeyboardHint(keys: "⌘N", label: String(localized: "New"))
-                    KeyboardHint(keys: "⌘,", label: nil)
-                }
-            }
+            SyncStatusIndicator(onActivateLicense: onActivateLicense)
             .font(.caption)
             .foregroundStyle(.tertiary)
             .padding(.horizontal, 12)
@@ -119,27 +102,6 @@ struct WelcomeActionsPanel: View {
                     .font(.subheadline)
             }
             .buttonStyle(.link)
-        }
-    }
-}
-
-struct KeyboardHint: View {
-    let keys: String
-    let label: String?
-
-    var body: some View {
-        HStack(spacing: 4) {
-            Text(keys)
-                .font(.system(.caption, design: .monospaced))
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
-                .background(
-                    RoundedRectangle(cornerRadius: 3)
-                        .fill(.tertiary.opacity(0.4))
-                )
-            if let label {
-                Text(label)
-            }
         }
     }
 }
