@@ -1,7 +1,9 @@
 use std::sync::Arc;
 
 use secrecy::SecretString;
-use tablepro_core::{ConnectOptions, Connection, DriverRegistry, ReadOnlyConnection, TableInfo};
+use tablepro_core::{
+    AuthMode, ConnectOptions, Connection, DriverRegistry, ReadOnlyConnection, ServiceEndpoint, TableInfo,
+};
 use tablepro_ssh::{SshConfig, SshTunnel};
 use tablepro_storage::{SavedConnection, SavedSshAuth, load_password, load_ssh_passphrase, load_ssh_password};
 
@@ -11,11 +13,16 @@ pub async fn open_saved(registry: Arc<DriverRegistry>, saved: SavedConnection) -
     let driver = registry
         .get(&saved.driver_id)
         .ok_or_else(|| format!("driver {} not registered", saved.driver_id))?;
-    let password = load_password(saved.id)
-        .await
-        .ok()
-        .flatten()
-        .unwrap_or_else(|| SecretString::new(String::new().into()));
+    // Kerberos authenticates from the ambient ticket cache, so there is
+    // no stored secret to read back from the keyring.
+    let password = match saved.auth_mode {
+        AuthMode::Kerberos => SecretString::new(String::new().into()),
+        AuthMode::Password => load_password(saved.id)
+            .await
+            .ok()
+            .flatten()
+            .unwrap_or_else(|| SecretString::new(String::new().into())),
+    };
     let id = saved.id;
 
     let ssh_cfg = match &saved.ssh {
@@ -31,6 +38,7 @@ pub async fn open_saved(registry: Arc<DriverRegistry>, saved: SavedConnection) -
         password,
         use_tls: saved.use_tls,
         auth_mode: saved.auth_mode,
+        service_endpoint: None,
     };
 
     let (conn, tunnel) = establish(&*driver, opts.clone(), ssh_cfg.clone(), saved.read_only).await?;
@@ -59,9 +67,17 @@ pub async fn establish(
     let tunnel = if let Some(cfg) = ssh {
         let remote_host = std::mem::take(&mut opts.host);
         let remote_port = opts.port;
-        let tun = SshTunnel::open(cfg, remote_host, remote_port)
+        let tun = SshTunnel::open(cfg, remote_host.clone(), remote_port)
             .await
             .map_err(|e| format!("ssh: {e}"))?;
+        // The socket now points at the local forward, so remember what
+        // the service is actually called. Kerberos builds its SPN from
+        // it; without this a tunnelled connection would ask the KDC for
+        // MSSQLSvc/127.0.0.1:<ephemeral port>.
+        opts.service_endpoint = Some(ServiceEndpoint {
+            host: remote_host,
+            port: remote_port,
+        });
         opts.host = tun.local_host().to_string();
         opts.port = tun.local_port();
         Some(tun)

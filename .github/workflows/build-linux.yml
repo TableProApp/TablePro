@@ -70,8 +70,15 @@ jobs:
         run: cargo clippy --all-targets -- -D warnings
       - name: Build
         run: cargo build --workspace
+      # The MSSQL driver's Kerberos support is a default-on cargo feature
+      # so packagers without MIT Kerberos / libclang can drop it. Check
+      # that path here or it rots.
+      - name: Build without Kerberos
+        run: cargo check -p tablepro-driver-mssql --no-default-features --all-targets
+      # --bins matters: tablepro-app has no lib target, so --lib alone
+      # skips every test in the app crate.
       - name: Unit tests
-        run: cargo test --workspace --lib
+        run: cargo test --workspace --lib --bins
 
   integration:
     name: Driver integration tests (docker)

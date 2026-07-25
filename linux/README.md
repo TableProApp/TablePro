@@ -70,6 +70,35 @@ Driver smoke against a Postgres you already run, no Docker needed:
 
 Optional: if the system `-dev` packages above are missing, extract the package payloads under `../.local-deps/root/` (so headers land in `../.local-deps/root/usr/include`) and `source scripts/dev-env.sh` before cargo. Debian-family layouts only.
 
+`libkrb5-dev` and `clang` are only there for the SQL Server driver's
+Windows integrated auth, which links MIT Kerberos and runs bindgen. Drop
+both packages and build without it:
+
+```bash
+cargo build --workspace --no-default-features
+```
+
+## SQL Server with Windows integrated auth
+
+Pick **Method → Windows (Kerberos)** in the connect dialog. There is no
+username or password to enter: the driver uses whatever ticket `klist`
+shows, so get one first.
+
+```bash
+kinit you@EXAMPLE.COM
+```
+
+The driver asks for `MSSQLSvc/<host>:<port>`, built from the host and
+port you typed, not from an SSH tunnel's local forward. Two things are
+worth knowing:
+
+- tiberius imports that SPN as a raw Kerberos principal, so it resolves
+  in your *default* realm. When the service lives in another realm, set
+  `default_realm` in `/etc/krb5.conf` and map the host with
+  `[domain_realm]` (plus `[capaths]` for a cross-realm trust).
+- The host has to match the SPN registered on the server. An IP address
+  or a CNAME usually does not.
+
 ## Documentation index
 
 | Topic | File |

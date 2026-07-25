@@ -43,21 +43,21 @@ impl DatabaseDriver for MssqlDriver {
     }
 
     fn supports_integrated_auth(&self) -> bool {
-        true
+        cfg!(feature = "kerberos")
     }
 
     async fn connect(&self, opts: ConnectOptions) -> Result<Box<dyn Connection>, DriverError> {
+        // tiberius derives the Kerberos SPN and the TLS server name from
+        // the configured host/port, while the socket is opened here. An
+        // SSH tunnel replaces `opts.host`/`opts.port` with a local
+        // forward, so the two have to come from different places:
+        // `service_address()` names the server, `opts.host` reaches it.
+        let (service_host, service_port) = opts.service_address();
         let mut config = Config::new();
-        config.host(&opts.host);
-        config.port(opts.port);
+        config.host(service_host);
+        config.port(service_port);
         config.database(&opts.database);
-        config.authentication(match opts.auth_mode {
-            // Windows integrated auth over Kerberos (GSSAPI). tiberius
-            // uses the ambient ticket cache (from `kinit`) and the SPN
-            // MSSQLSvc/<host>:<port>; username/password are ignored.
-            AuthMode::Kerberos => AuthMethod::Integrated,
-            AuthMode::Password => AuthMethod::sql_server(&opts.username, opts.password.expose_secret()),
-        });
+        config.authentication(authentication_for(&opts)?);
         // SQL Server always encrypts the login exchange; `Off` keeps the
         // post-login stream in the clear, `Required` encrypts everything.
         // No cert-path UI exists, so the server certificate is trusted
@@ -74,9 +74,13 @@ impl DatabaseDriver for MssqlDriver {
         // and an unreachable host would otherwise hang the connect
         // dialog for the OS SYN timeout. The budget covers both so the
         // failure arrives on the same scale as the sqlx drivers'
-        // acquire_timeout.
+        // acquire_timeout. The socket targets opts.host/opts.port (an
+        // SSH tunnel's local forward when present); `config` already
+        // names the real service for the SPN and TLS server name.
         tokio::time::timeout(CONNECT_TIMEOUT, async {
-            let tcp = TcpStream::connect(config.get_addr()).await.map_err(map_io_error)?;
+            let tcp = TcpStream::connect((opts.host.as_str(), opts.port))
+                .await
+                .map_err(map_io_error)?;
             tcp.set_nodelay(true).map_err(map_io_error)?;
             Client::connect(config, tcp.compat_write())
                 .await
@@ -89,6 +93,26 @@ impl DatabaseDriver for MssqlDriver {
                 client: Mutex::new(client),
             }) as Box<dyn Connection>
         })
+    }
+}
+
+/// Windows integrated auth over Kerberos (GSSAPI) needs tiberius's
+/// `integrated-auth-gssapi` feature, which links MIT Kerberos and runs
+/// bindgen at build time. The `kerberos` feature keeps that opt-out-able
+/// for packagers, so the mode has to fail loudly when it is compiled out
+/// rather than quietly falling back to a SQL login.
+fn authentication_for(opts: &ConnectOptions) -> Result<AuthMethod, DriverError> {
+    match opts.auth_mode {
+        AuthMode::Password => Ok(AuthMethod::sql_server(&opts.username, opts.password.expose_secret())),
+        #[cfg(feature = "kerberos")]
+        // tiberius reads the ambient ticket cache (from `kinit`) and
+        // targets MSSQLSvc/<service host>:<port>; username and password
+        // are ignored.
+        AuthMode::Kerberos => Ok(AuthMethod::Integrated),
+        #[cfg(not(feature = "kerberos"))]
+        AuthMode::Kerberos => Err(DriverError::Unsupported(
+            "Kerberos authentication (cargo feature `kerberos`) was not compiled in".into(),
+        )),
     }
 }
 
@@ -691,7 +715,28 @@ mod tests {
         assert_eq!(d.display_name(), "SQL Server");
         assert_eq!(d.default_port(), 1433);
         assert!(!d.is_file_based());
-        assert!(d.supports_integrated_auth());
+        assert_eq!(d.supports_integrated_auth(), cfg!(feature = "kerberos"));
+    }
+
+    #[test]
+    fn kerberos_matches_the_advertised_capability() {
+        let opts = ConnectOptions {
+            auth_mode: AuthMode::Kerberos,
+            ..Default::default()
+        };
+        assert_eq!(
+            authentication_for(&opts).is_ok(),
+            MssqlDriver.supports_integrated_auth()
+        );
+    }
+
+    #[test]
+    fn password_auth_is_always_available() {
+        let opts = ConnectOptions {
+            username: "sa".into(),
+            ..Default::default()
+        };
+        assert!(authentication_for(&opts).is_ok());
     }
 
     #[test]

@@ -17,8 +17,19 @@ pub enum AuthMode {
     Password,
     /// Windows integrated authentication over Kerberos (GSSAPI), using
     /// the ambient ticket cache. `username`/`password` are ignored.
-    /// Drivers that don't support it fall back to password auth.
+    /// Drivers that report `supports_integrated_auth() == false` reject
+    /// this mode rather than silently authenticating some other way.
     Kerberos,
+}
+
+/// Host and port the database service is known by, kept separate from
+/// the socket address when an SSH tunnel rewrites `host`/`port` to a
+/// local forward. Anything that names the *service* rather than the
+/// socket (a Kerberos SPN, a TLS server name) has to read this.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ServiceEndpoint {
+    pub host: String,
+    pub port: u16,
 }
 
 #[derive(Debug, Clone)]
@@ -30,6 +41,20 @@ pub struct ConnectOptions {
     pub password: SecretString,
     pub use_tls: bool,
     pub auth_mode: AuthMode,
+    /// Set only when `host`/`port` were replaced by a tunnel's local
+    /// forward. `None` means the socket already points at the service.
+    pub service_endpoint: Option<ServiceEndpoint>,
+}
+
+impl ConnectOptions {
+    /// Host and port the service answers to, which is `host`/`port`
+    /// unless a tunnel replaced them.
+    pub fn service_address(&self) -> (&str, u16) {
+        match &self.service_endpoint {
+            Some(endpoint) => (endpoint.host.as_str(), endpoint.port),
+            None => (self.host.as_str(), self.port),
+        }
+    }
 }
 
 impl Default for ConnectOptions {
@@ -42,6 +67,7 @@ impl Default for ConnectOptions {
             password: SecretString::new(String::new().into()),
             use_tls: false,
             auth_mode: AuthMode::Password,
+            service_endpoint: None,
         }
     }
 }
@@ -100,4 +126,39 @@ pub trait Connection: Send + Sync {
     }
     async fn ping(&self) -> Result<(), DriverError>;
     async fn close(self: Box<Self>) -> Result<(), DriverError>;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn service_address_falls_back_to_the_socket_address() {
+        let opts = ConnectOptions {
+            host: "sql.corp.example".into(),
+            port: 1433,
+            ..Default::default()
+        };
+        assert_eq!(opts.service_address(), ("sql.corp.example", 1433));
+    }
+
+    #[test]
+    fn service_address_survives_a_tunnel_rewrite() {
+        let opts = ConnectOptions {
+            host: "127.0.0.1".into(),
+            port: 54321,
+            service_endpoint: Some(ServiceEndpoint {
+                host: "sql.corp.example".into(),
+                port: 1433,
+            }),
+            ..Default::default()
+        };
+        assert_eq!(opts.service_address(), ("sql.corp.example", 1433));
+    }
+
+    #[test]
+    fn auth_mode_defaults_to_password() {
+        assert_eq!(AuthMode::default(), AuthMode::Password);
+        assert_eq!(ConnectOptions::default().auth_mode, AuthMode::Password);
+    }
 }

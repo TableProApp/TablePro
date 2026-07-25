@@ -32,7 +32,10 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 clickhouse = { version = "0.15", default-features = false, features = ["rustls-tls"] }
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-rustls", "chrono", "rust_decimal", "uuid", "json"] }
-tiberius = { version = "0.12", default-features = false, features = ["tds73", "rustls", "chrono", "rust_decimal", "integrated-auth-gssapi"] }
+# `integrated-auth-gssapi` is not listed here: it drags in MIT Kerberos
+# and bindgen, so it hangs off the mssql crate's `kerberos` feature
+# (default on) where a packager can turn it off.
+tiberius = { version = "0.12", default-features = false, features = ["tds73", "rustls", "chrono", "rust_decimal"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
 rust_decimal = { version = "1", default-features = false, features = ["serde", "std"] }
 futures = "0.3"
@@ -51,3 +54,12 @@ relm4 = { version = "0.11", default-features = false, features = ["macros", "lib
 lto = "fat"
 codegen-units = 1
 strip = "symbols"
+
+# libgssapi 0.4.6 builds the empty final GSSAPI token with
+# `slice::from_raw_parts(null, 0)`, which trips Rust's UB precondition
+# check and aborts the process. The check is emitted per crate, so
+# turning debug assertions off for this one package keeps `cargo run`
+# usable for Kerberos logins without weakening them anywhere else.
+# Drop this once the null guard lands upstream.
+[profile.dev.package.libgssapi]
+debug-assertions = false

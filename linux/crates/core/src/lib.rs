@@ -8,7 +8,7 @@ mod registry;
 pub mod sql_ddl;
 pub mod sql_dialect;
 
-pub use connection::{AuthMode, ConnectOptions, Connection};
+pub use connection::{AuthMode, ConnectOptions, Connection, ServiceEndpoint};
 pub use driver::DatabaseDriver;
 pub use error::DriverError;
 pub use filter::{BuildFilterError, Combinator, FilterOp, FilterRule, FilterSet, FilterValue, build_filter_where};
