@@ -26,11 +26,6 @@ use tablepro_core::{ForeignKeyInfo, IndexInfo};
 
 use super::structure_tab::{StructureTab, StructureTabInput, StructureTabOutput};
 
-/// Foreign-key referential action choices, in the same order they
-/// appear in the `AdwComboRow`s. The index returned by
-/// `selected()` is mapped back to a string via this slice.
-const FK_ACTIONS: &[&str] = &["NO ACTION", "RESTRICT", "CASCADE", "SET NULL", "SET DEFAULT"];
-
 /// `(column name, checkbox)` pairs, shared between the dialog body
 /// and the submit handler so the latter can collect which columns the
 /// user ticked. Pulled out as an alias so `build_column_checklist`'s
@@ -182,7 +177,13 @@ pub(super) fn present_index_dialog(
     dialog.present(Some(parent));
 }
 
-pub(super) fn present_fk_dialog(parent: &gtk::Widget, columns: &[DraftColumn], sender: ComponentSender<StructureTab>) {
+pub(super) fn present_fk_dialog(
+    parent: &gtk::Widget,
+    columns: &[DraftColumn],
+    driver_id: &str,
+    sender: ComponentSender<StructureTab>,
+) {
+    let fk_actions = tablepro_core::sql_ddl::supported_fk_actions(driver_id);
     let (dialog, body, submit_btn) = build_form_dialog(&crate::tr!("Add Foreign Key"), &crate::tr!("Add"));
 
     // Name in its own AdwPreferencesGroup at the top — matches the
@@ -206,12 +207,12 @@ pub(super) fn present_fk_dialog(parent: &gtk::Widget, columns: &[DraftColumn], s
     ref_group.add(&ref_cols_row);
     let on_delete_row = adw::ComboRow::builder()
         .title(crate::tr!("On delete"))
-        .model(&gtk::StringList::new(FK_ACTIONS))
+        .model(&gtk::StringList::new(fk_actions))
         .build();
     ref_group.add(&on_delete_row);
     let on_update_row = adw::ComboRow::builder()
         .title(crate::tr!("On update"))
-        .model(&gtk::StringList::new(FK_ACTIONS))
+        .model(&gtk::StringList::new(fk_actions))
         .build();
     ref_group.add(&on_update_row);
     body.append(&ref_group);
@@ -275,7 +276,7 @@ pub(super) fn present_fk_dialog(parent: &gtk::Widget, columns: &[DraftColumn], s
         // driver-returned-unknown case so the SQL emitter can choose
         // sensibly per dialect (MySQL implicit RESTRICT vs Postgres
         // implicit NO ACTION).
-        let action_at = |idx: u32| -> Option<String> { FK_ACTIONS.get(idx as usize).map(|s| (*s).to_string()) };
+        let action_at = |idx: u32| -> Option<String> { fk_actions.get(idx as usize).map(|s| (*s).to_string()) };
         sender_for_resp.input(StructureTabInput::AddForeignKey(ForeignKeyInfo {
             name,
             columns: cols,

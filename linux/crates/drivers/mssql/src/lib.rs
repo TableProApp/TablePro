@@ -10,12 +10,17 @@ use tokio::net::TcpStream;
 use tokio::sync::Mutex;
 use tokio_util::compat::{Compat, TokioAsyncWriteCompatExt};
 
+use tablepro_core::sql_dialect::build_order_and_pagination;
 use tablepro_core::{
     ColumnInfo, ConnectOptions, Connection, DatabaseDriver, DriverError, ExecResult, ForeignKeyInfo, IndexInfo,
     MAX_QUERY_ROWS, QueryResult, TableInfo, Value,
 };
 
 type MssqlClient = Client<Compat<TcpStream>>;
+
+/// Matches the `acquire_timeout` the sqlx-backed drivers give their
+/// pools, so a dead host fails at the same speed on every engine.
+const CONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 
 pub struct MssqlDriver;
 
@@ -33,6 +38,10 @@ impl DatabaseDriver for MssqlDriver {
         1433
     }
 
+    fn ddl_is_transactional(&self) -> bool {
+        true
+    }
+
     async fn connect(&self, opts: ConnectOptions) -> Result<Box<dyn Connection>, DriverError> {
         let mut config = Config::new();
         config.host(&opts.host);
@@ -41,8 +50,9 @@ impl DatabaseDriver for MssqlDriver {
         config.authentication(AuthMethod::sql_server(&opts.username, opts.password.expose_secret()));
         // SQL Server always encrypts the login exchange; `Off` keeps the
         // post-login stream in the clear, `Required` encrypts everything.
-        // No cert-path UI exists, so trust the server certificate — same
-        // posture the sqlx drivers take with rustls.
+        // No cert-path UI exists, so the server certificate is trusted
+        // without verification, matching the sqlx drivers' Require /
+        // Required modes.
         config.encryption(if opts.use_tls {
             EncryptionLevel::Required
         } else {
@@ -50,14 +60,25 @@ impl DatabaseDriver for MssqlDriver {
         });
         config.trust_cert();
 
-        let tcp = TcpStream::connect(config.get_addr()).await.map_err(map_io_error)?;
-        tcp.set_nodelay(true).map_err(map_io_error)?;
-        let client = Client::connect(config, tcp.compat_write())
-            .await
-            .map_err(map_tiberius_error)?;
-        Ok(Box::new(MssqlConnection {
-            client: Mutex::new(client),
-        }))
+        // Neither the TCP dial nor the TDS login has its own deadline,
+        // and an unreachable host would otherwise hang the connect
+        // dialog for the OS SYN timeout. The budget covers both so the
+        // failure arrives on the same scale as the sqlx drivers'
+        // acquire_timeout.
+        tokio::time::timeout(CONNECT_TIMEOUT, async {
+            let tcp = TcpStream::connect(config.get_addr()).await.map_err(map_io_error)?;
+            tcp.set_nodelay(true).map_err(map_io_error)?;
+            Client::connect(config, tcp.compat_write())
+                .await
+                .map_err(map_tiberius_error)
+        })
+        .await
+        .map_err(|_| DriverError::ConnectionRefused)?
+        .map(|client| {
+            Box::new(MssqlConnection {
+                client: Mutex::new(client),
+            }) as Box<dyn Connection>
+        })
     }
 }
 
@@ -135,11 +156,10 @@ impl Connection for MssqlConnection {
         offset: u64,
         limit: u64,
     ) -> Result<QueryResult, DriverError> {
-        // OFFSET/FETCH requires an ORDER BY; `(SELECT NULL)` gives a stable
-        // no-op ordering so unordered pagination works on any table.
         let sql = format!(
-            "SELECT * FROM {} ORDER BY (SELECT NULL) OFFSET {offset} ROWS FETCH NEXT {limit} ROWS ONLY",
-            qualified(schema, table)
+            "SELECT * FROM {}{}",
+            qualified(schema, table),
+            build_order_and_pagination("mssql", None, limit, offset)
         );
         let mut client = self.client.lock().await;
         run_query(&mut client, &sql, &[], limit as usize).await
@@ -192,6 +212,9 @@ impl Connection for MssqlConnection {
     async fn fetch_indexes(&self, schema: Option<&str>, table: &str) -> Result<Vec<IndexInfo>, DriverError> {
         // Flat rows (one per index column) ordered by key_ordinal; grouped
         // into IndexInfo below since TDS has no array aggregation.
+        // INCLUDE columns are not part of the key and carry key_ordinal
+        // 0, so leaving them in would both list them as key columns and
+        // sort them ahead of the real ones.
         let sql = "SELECT i.name AS index_name, i.is_unique, i.is_primary_key, c.name AS col_name \
                    FROM sys.indexes i \
                    JOIN sys.index_columns ic ON ic.object_id = i.object_id AND ic.index_id = i.index_id \
@@ -200,6 +223,7 @@ impl Connection for MssqlConnection {
                    JOIN sys.schemas s ON s.schema_id = o.schema_id \
                    WHERE o.name = @P1 AND s.name = COALESCE(@P2, SCHEMA_NAME()) \
                      AND i.name IS NOT NULL AND i.type > 0 \
+                     AND ic.is_included_column = 0 \
                    ORDER BY i.name, ic.key_ordinal";
         let mut client = self.client.lock().await;
         let result = run_query(
@@ -288,9 +312,7 @@ impl Connection for MssqlConnection {
     }
 
     async fn close(self: Box<Self>) -> Result<(), DriverError> {
-        // Dropping the client closes the TDS connection; there is no async
-        // teardown handshake to await.
-        Ok(())
+        self.client.into_inner().close().await.map_err(map_tiberius_error)
     }
 }
 
@@ -306,13 +328,22 @@ async fn run_query(
     let mut columns: Vec<ColumnInfo> = Vec::new();
     let mut rows: Vec<Vec<Value>> = Vec::new();
     let mut truncated = false;
+    let mut seen_result_set = false;
     while let Some(item) = stream.try_next().await.map_err(map_tiberius_error)? {
         match item {
-            QueryItem::Metadata(_) => {}
-            QueryItem::Row(row) => {
-                if columns.is_empty() {
-                    columns = row.columns().iter().map(col_to_info).collect();
+            // Metadata arrives before the rows it describes, so a
+            // result set with no rows still reports its columns. A
+            // second one means the batch produced another result set;
+            // the grid renders a single column list, so stop rather
+            // than file the next set's rows under these headers.
+            QueryItem::Metadata(meta) => {
+                if seen_result_set {
+                    break;
                 }
+                seen_result_set = true;
+                columns = meta.columns().iter().map(col_to_info).collect();
+            }
+            QueryItem::Row(row) => {
                 if rows.len() >= limit {
                     truncated = true;
                     break;

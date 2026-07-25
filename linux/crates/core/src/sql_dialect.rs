@@ -30,6 +30,27 @@ pub fn placeholder_for(driver_id: &str, index: usize) -> String {
     }
 }
 
+/// Render the `ORDER BY` and row-window tail of a paged `SELECT`,
+/// including the leading space. The two clauses are built together
+/// because SQL Server couples them: `OFFSET … FETCH` is defined as a
+/// suffix of `ORDER BY`, so a paged query with no user sort still
+/// needs one. `(SELECT NULL)` is the no-op ordering that satisfies the
+/// parser without imposing a sort the user did not ask for.
+///
+/// `order_by` is pre-quoted SQL (`"name" ASC, "id" DESC`), not an
+/// identifier.
+pub fn build_order_and_pagination(driver_id: &str, order_by: Option<&str>, limit: u64, offset: u64) -> String {
+    let order_by = order_by.map(str::trim).filter(|o| !o.is_empty());
+    if driver_id == "mssql" {
+        let order = order_by.unwrap_or("(SELECT NULL)");
+        return format!(" ORDER BY {order} OFFSET {offset} ROWS FETCH NEXT {limit} ROWS ONLY");
+    }
+    match order_by {
+        Some(order) => format!(" ORDER BY {order} LIMIT {limit} OFFSET {offset}"),
+        None => format!(" LIMIT {limit} OFFSET {offset}"),
+    }
+}
+
 pub fn build_single_cell_update(
     driver_id: &str,
     table: &str,
@@ -274,6 +295,50 @@ mod tests {
     fn placeholder_mssql() {
         assert_eq!(placeholder_for("mssql", 0), "@P1");
         assert_eq!(placeholder_for("mssql", 2), "@P3");
+    }
+
+    #[test]
+    fn pagination_limit_offset_dialects() {
+        assert_eq!(
+            build_order_and_pagination("postgres", None, 50, 100),
+            " LIMIT 50 OFFSET 100"
+        );
+        assert_eq!(
+            build_order_and_pagination("mysql", Some("`a` ASC"), 50, 100),
+            " ORDER BY `a` ASC LIMIT 50 OFFSET 100"
+        );
+        assert_eq!(
+            build_order_and_pagination("sqlite", Some("\"a\" DESC"), 10, 0),
+            " ORDER BY \"a\" DESC LIMIT 10 OFFSET 0"
+        );
+    }
+
+    #[test]
+    fn pagination_mssql_uses_offset_fetch() {
+        assert_eq!(
+            build_order_and_pagination("mssql", Some("[a] ASC"), 50, 100),
+            " ORDER BY [a] ASC OFFSET 100 ROWS FETCH NEXT 50 ROWS ONLY"
+        );
+    }
+
+    #[test]
+    fn pagination_mssql_synthesizes_order_by_when_unsorted() {
+        // OFFSET / FETCH is a suffix of ORDER BY in T-SQL, so an
+        // unsorted page still needs one to parse at all.
+        let sql = build_order_and_pagination("mssql", None, 50, 0);
+        assert_eq!(sql, " ORDER BY (SELECT NULL) OFFSET 0 ROWS FETCH NEXT 50 ROWS ONLY");
+    }
+
+    #[test]
+    fn pagination_treats_blank_order_by_as_absent() {
+        assert_eq!(
+            build_order_and_pagination("postgres", Some("  "), 5, 0),
+            " LIMIT 5 OFFSET 0"
+        );
+        assert_eq!(
+            build_order_and_pagination("mssql", Some("  "), 5, 0),
+            " ORDER BY (SELECT NULL) OFFSET 0 ROWS FETCH NEXT 5 ROWS ONLY"
+        );
     }
 
     #[test]

@@ -194,3 +194,175 @@ async fn bad_sql_returns_query_error() {
         "expected error to mention the missing object, got: {msg}"
     );
 }
+
+/// The structure editor's Save path. Transaction control has to travel
+/// as a SQL batch: tiberius routes `query` / `execute` through
+/// `sp_executesql`, and SQL Server rejects a stored procedure that
+/// returns with a different `@@TRANCOUNT` than it entered with (Msg
+/// 266), leaving the transaction open on the connection.
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn ddl_batch_commits_and_rolls_back_as_a_unit() {
+    let (_c, opts) = start_mssql().await;
+    let conn = connect(opts).await;
+
+    let committed = conn
+        .execute_in_transaction(&[
+            ("CREATE TABLE tx_demo (id int NOT NULL)".to_string(), Vec::new()),
+            ("ALTER TABLE tx_demo ADD name nvarchar(50) NULL".to_string(), Vec::new()),
+        ])
+        .await
+        .unwrap();
+    assert_eq!(committed.len(), 2);
+    assert_eq!(conn.fetch_columns(None, "tx_demo").await.unwrap().len(), 2);
+
+    let err = conn
+        .execute_in_transaction(&[
+            ("ALTER TABLE tx_demo ADD extra int NULL".to_string(), Vec::new()),
+            ("ALTER TABLE tx_demo ADD extra int NULL".to_string(), Vec::new()),
+        ])
+        .await
+        .unwrap_err();
+    assert!(matches!(
+        err,
+        tablepro_core::DriverError::Transaction { statement_index: 1, .. }
+    ));
+    let cols = conn.fetch_columns(None, "tx_demo").await.unwrap();
+    assert_eq!(cols.len(), 2, "the failed batch must roll back the first statement");
+    assert!(!cols.iter().any(|c| c.name == "extra"));
+
+    // The connection is still usable, which it would not be if a
+    // half-open transaction were left behind holding schema locks.
+    conn.execute("CREATE TABLE tx_demo_after (id int)").await.unwrap();
+}
+
+/// Default constraints are separate objects here, so a default change
+/// is drop-then-add against a server-generated constraint name.
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn alter_column_default_round_trips() {
+    let (_c, opts) = start_mssql().await;
+    let conn = connect(opts).await;
+
+    conn.execute("CREATE TABLE def_demo (id int NOT NULL, status nvarchar(20) NULL)")
+        .await
+        .unwrap();
+
+    let mut column = tablepro_core::sql_ddl::DraftColumn {
+        original: Some(
+            conn.fetch_columns(None, "def_demo")
+                .await
+                .unwrap()
+                .into_iter()
+                .find(|c| c.name == "status")
+                .unwrap(),
+        ),
+        name: "status".into(),
+        data_type: "nvarchar(20)".into(),
+        nullable: true,
+        primary_key: false,
+        auto_increment: false,
+        default_value: Some("'pending'".into()),
+    };
+    for sql in tablepro_core::sql_ddl::build_alter_column("mssql", None, "def_demo", &column).unwrap() {
+        conn.execute(&sql).await.unwrap();
+    }
+    let status = |cols: Vec<tablepro_core::ColumnInfo>| cols.into_iter().find(|c| c.name == "status").unwrap();
+    let after_add = status(conn.fetch_columns(None, "def_demo").await.unwrap());
+    assert_eq!(after_add.default_value.as_deref(), Some("pending"));
+
+    conn.execute("INSERT INTO def_demo (id) VALUES (1)").await.unwrap();
+    let rows = conn.query("SELECT status FROM def_demo").await.unwrap();
+    assert_eq!(rows.rows[0][0], Value::Text("pending".into()));
+
+    column.original = Some(after_add);
+    column.default_value = None;
+    for sql in tablepro_core::sql_ddl::build_alter_column("mssql", None, "def_demo", &column).unwrap() {
+        conn.execute(&sql).await.unwrap();
+    }
+    assert!(
+        status(conn.fetch_columns(None, "def_demo").await.unwrap())
+            .default_value
+            .is_none()
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn foreign_key_actions_round_trip() {
+    let (_c, opts) = start_mssql().await;
+    let conn = connect(opts).await;
+
+    conn.execute("CREATE TABLE fk_parent (id int NOT NULL PRIMARY KEY)")
+        .await
+        .unwrap();
+    conn.execute("CREATE TABLE fk_child (id int NOT NULL PRIMARY KEY, parent_id int NULL)")
+        .await
+        .unwrap();
+
+    let fk = tablepro_core::ForeignKeyInfo {
+        name: "fk_child_parent".into(),
+        columns: vec!["parent_id".into()],
+        ref_schema: None,
+        ref_table: "fk_parent".into(),
+        ref_columns: vec!["id".into()],
+        on_delete: Some("CASCADE".into()),
+        on_update: Some("NO ACTION".into()),
+    };
+    let sql = tablepro_core::sql_ddl::build_add_foreign_key("mssql", None, "fk_child", &fk).unwrap();
+    conn.execute(&sql).await.unwrap();
+
+    let fks = conn.fetch_foreign_keys(None, "fk_child").await.unwrap();
+    assert_eq!(fks.len(), 1);
+    assert_eq!(fks[0].columns, vec!["parent_id".to_string()]);
+    assert_eq!(fks[0].ref_table, "fk_parent");
+    assert_eq!(fks[0].on_delete.as_deref(), Some("CASCADE"));
+
+    // RESTRICT is not in the T-SQL grammar, so the builder refuses it
+    // rather than handing the server a syntax error.
+    let mut restricted = fk.clone();
+    restricted.name = "fk_restrict".into();
+    restricted.on_delete = Some("RESTRICT".into());
+    assert!(tablepro_core::sql_ddl::build_add_foreign_key("mssql", None, "fk_child", &restricted).is_err());
+}
+
+/// An index's INCLUDE columns are not part of its key and carry
+/// key_ordinal 0, so leaving them in the catalog query would both list
+/// them as key columns and sort them ahead of the real ones.
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn index_columns_exclude_included_columns() {
+    let (_c, opts) = start_mssql().await;
+    let conn = connect(opts).await;
+
+    conn.execute("CREATE TABLE ix_demo (a int NOT NULL, b int NOT NULL, c int NULL, d int NULL)")
+        .await
+        .unwrap();
+    conn.execute("CREATE INDEX ix_demo_ab ON ix_demo (a, b) INCLUDE (c, d)")
+        .await
+        .unwrap();
+
+    let indexes = conn.fetch_indexes(None, "ix_demo").await.unwrap();
+    let ix = indexes.iter().find(|i| i.name == "ix_demo_ab").unwrap();
+    assert_eq!(ix.columns, vec!["a".to_string(), "b".to_string()]);
+}
+
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn empty_result_set_still_reports_columns() {
+    let (_c, opts) = start_mssql().await;
+    let conn = connect(opts).await;
+
+    conn.execute("CREATE TABLE empty_demo (id int NOT NULL, label nvarchar(10) NULL)")
+        .await
+        .unwrap();
+
+    let result = conn.query("SELECT id, label FROM empty_demo").await.unwrap();
+    assert!(result.rows.is_empty());
+    let names: Vec<&str> = result.columns.iter().map(|c| c.name.as_str()).collect();
+    assert_eq!(names, vec!["id", "label"]);
+
+    let paged = conn.fetch_rows(None, "empty_demo", 0, 50).await.unwrap();
+    assert!(paged.rows.is_empty());
+    assert_eq!(paged.columns.len(), 2);
+}
