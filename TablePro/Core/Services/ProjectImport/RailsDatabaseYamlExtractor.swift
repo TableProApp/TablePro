@@ -144,7 +144,7 @@ struct ErbValueResolver {
     }
 
     private var unresolvedWarning: String {
-        String(localized: "Some values come from Ruby code and could not be read. Fill them in before connecting.")
+        String(localized: "Some values come from Ruby code and were not read")
     }
 
     private func environmentVariableName(in value: String) -> String? {

@@ -59,7 +59,14 @@ struct ProjectFolderScanSheet: View {
                     .foregroundStyle(.secondary)
             }
         case .results(let candidates):
-            ProjectFolderCandidateList(candidates: candidates, selection: $selection)
+            VStack(alignment: .leading, spacing: 6) {
+                ProjectFolderCandidateList(
+                    candidates: candidates,
+                    projectRoot: rootURL,
+                    selection: $selection
+                )
+                detailStrip
+            }
         case .empty:
             centered {
                 Image(systemName: "folder.badge.questionmark")
@@ -102,6 +109,22 @@ struct ProjectFolderScanSheet: View {
             .buttonStyle(.borderedProminent)
             .disabled(selectedCandidate == nil)
         }
+    }
+
+    private var detailStrip: some View {
+        Text(verbatim: selectedCandidate.map(Self.notes) ?? "")
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+            .lineLimit(2)
+            .frame(maxWidth: .infinity, minHeight: 30, alignment: .topLeading)
+    }
+
+    private static func notes(for candidate: ScannedConnectionCandidate) -> String {
+        var notes = candidate.warnings
+        if candidate.placeholderSuspected {
+            notes.insert(String(localized: "Looks like a placeholder value"), at: 0)
+        }
+        return notes.joined(separator: " · ")
     }
 
     private var selectedCandidate: ScannedConnectionCandidate? {

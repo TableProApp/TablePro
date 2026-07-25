@@ -22,7 +22,7 @@ enum WordPressConfigExtractor {
         fields.host = address.host
         fields.port = address.port ?? 3_306
         if address.isSocket {
-            warnings.append(String(localized: "The host looks like a socket path. Check it before connecting."))
+            warnings.append(String(localized: "Host looks like a socket path"))
         }
         let candidate = ScannedConnectionCandidate(
             parsedURL: fields.toParsedConnectionURL(),

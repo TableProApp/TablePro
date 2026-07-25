@@ -177,14 +177,17 @@ extension DotenvConnectionExtractor {
     }
 
     private static var assumedAddressWarning: String {
-        String(localized: "Host and port were assumed. The published address is set where the container runs.")
+        String(localized: "Host and port assumed")
     }
 
     private static func serviceHostWarnings(_ host: String) -> [String] {
-        let serviceNames: Set<String> = ["db", "database", "postgres", "postgresql", "mysql", "mariadb", "mongo", "mongodb", "redis", "mssql", "pgsql"]
+        let serviceNames: Set<String> = [
+            "db", "database", "postgres", "postgresql", "mysql",
+            "mariadb", "mongo", "mongodb", "redis", "mssql", "pgsql",
+        ]
         guard serviceNames.contains(host.lowercased()) else {
             return []
         }
-        return [String(localized: "This looks like a container service name, which is usually not reachable from your Mac.")]
+        return [String(localized: "Container service name, may be unreachable")]
     }
 }

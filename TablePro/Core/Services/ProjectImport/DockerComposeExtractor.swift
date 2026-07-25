@@ -49,7 +49,7 @@ enum DockerComposeExtractor {
         } else {
             fields.port = database.defaultPort
             warnings.append(String(
-                localized: "This service does not publish a port, so it may not be reachable from your Mac."
+                localized: "No published port, may be unreachable"
             ))
         }
         return ScannedConnectionCandidate(
