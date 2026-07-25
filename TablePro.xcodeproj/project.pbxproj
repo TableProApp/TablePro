@@ -86,6 +86,7 @@
 		5AEA8B472F6808CA0040461A /* EtcdHttpClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AEA8B3C2F6808CA0040461A /* EtcdHttpClient.swift */; };
 		5AEA8B492F6808E90040461A /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
 		5AEE5B362F5C9B7B00FA84D7 /* OracleNIO in Frameworks */ = {isa = PBXBuildFile; productRef = 5ACE00012F4F00000000000F /* OracleNIO */; };
+		5AYAMS00000000000000A003 /* Yams in Frameworks */ = {isa = PBXBuildFile; productRef = 5AYAMS00000000000000A002 /* Yams */; };
 		5E1A500100000000000000A1 /* ElasticsearchConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E1A500200000000000000A1 /* ElasticsearchConnection.swift */; };
 		5E1A500100000000000000A2 /* ElasticsearchConsoleParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E1A500200000000000000A2 /* ElasticsearchConsoleParser.swift */; };
 		5E1A500100000000000000A3 /* ElasticsearchMappingFlattener.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E1A500200000000000000A3 /* ElasticsearchMappingFlattener.swift */; };
@@ -955,6 +956,7 @@
 				5A32BBFB2F9D5EAB00BAEB5F /* X509 in Frameworks */,
 				5ACE00012F4F000000000006 /* CodeEditTextView in Frameworks */,
 				5ACE00012F4F00000000000A /* Sparkle in Frameworks */,
+				5AYAMS00000000000000A003 /* Yams in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1480,6 +1482,7 @@
 				5ACE00012F4F000000000010 /* TableProAnalytics */,
 				5A32BBFA2F9D5EAB00BAEB5F /* X509 */,
 				5A1MPORT000000000000A010 /* TableProImport */,
+				5AYAMS00000000000000A002 /* Yams */,
 			);
 			productName = TablePro;
 			productReference = 5A1091C72EF17EDC0055EA7C /* TablePro.app */;
@@ -2271,6 +2274,7 @@
 				5ACE00012F4F00000000000E /* XCRemoteSwiftPackageReference "oracle-nio" */,
 				5A0000012F4F000000000102 /* XCLocalSwiftPackageReference "Packages/TableProCore" */,
 				5A32BBF92F9D5EAB00BAEB5F /* XCRemoteSwiftPackageReference "swift-certificates" */,
+				5AYAMS00000000000000A001 /* XCRemoteSwiftPackageReference "Yams" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 5A1091C82EF17EDC0055EA7C /* Products */;
@@ -5464,6 +5468,14 @@
 				revision = 23c77812ed90259243a761d7fdea19db47d3ca41;
 			};
 		};
+		5AYAMS00000000000000A001 /* XCRemoteSwiftPackageReference "Yams" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/jpsim/Yams";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 5.1.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -5507,6 +5519,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 5A0000012F4F000000000102 /* XCLocalSwiftPackageReference "Packages/TableProCore" */;
 			productName = TableProMSSQLCore;
+		};
+		5AYAMS00000000000000A002 /* Yams */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 5AYAMS00000000000000A001 /* XCRemoteSwiftPackageReference "Yams" */;
+			productName = Yams;
 		};
 		AC1D0000000000000000F002 /* TableProTrinoCore */ = {
 			isa = XCSwiftPackageProductDependency;

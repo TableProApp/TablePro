@@ -9,6 +9,7 @@ struct WelcomeActionsPanel: View {
     let onActivateLicense: () -> Void
     let onCreateConnection: () -> Void
     let onImportFromApp: () -> Void
+    let onOpenProjectFolder: () -> Void
     let onTrySample: () -> Void
 
     private let updaterBridge = UpdaterBridge.shared
@@ -46,6 +47,13 @@ struct WelcomeActionsPanel: View {
 
                 Button(action: onImportFromApp) {
                     Label(String(localized: "Import from Other App..."), systemImage: "square.and.arrow.down.on.square")
+                        .frame(maxWidth: .infinity, alignment: .center)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.large)
+
+                Button(action: onOpenProjectFolder) {
+                    Label(String(localized: "Open Project Folder..."), systemImage: "folder.badge.gearshape")
                         .frame(maxWidth: .infinity, alignment: .center)
                 }
                 .buttonStyle(.bordered)

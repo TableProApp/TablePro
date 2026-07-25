@@ -109,6 +109,18 @@ struct WelcomeWindowView: View {
                     vm.pendingImportResultCount = count
                     vm.activeSheet = nil
                 }
+            case .projectFolderScan(let url):
+                ProjectFolderScanSheet(
+                    rootURL: url,
+                    onSelect: { parsed in
+                        vm.activeSheet = nil
+                        WindowOpener.shared.openConnectionFormFromURL(parsed)
+                    },
+                    onChooseAnotherFolder: {
+                        vm.activeSheet = nil
+                        vm.openProjectFolder()
+                    }
+                )
             case .deeplinkImport(let exportable):
                 DeeplinkImportSheet(connection: exportable) {
                     vm.loadConnections()
@@ -205,6 +217,7 @@ struct WelcomeWindowView: View {
                 onActivateLicense: { vm.activeSheet = .activation },
                 onCreateConnection: { WindowOpener.shared.openConnectionForm() },
                 onImportFromApp: { vm.importConnectionsFromApp() },
+                onOpenProjectFolder: { vm.openProjectFolder() },
                 onTrySample: { vm.openSampleDatabase() }
             )
             .frame(width: 240)

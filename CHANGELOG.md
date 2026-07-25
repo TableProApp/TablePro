@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Create a connection from a project folder. Pick one from the welcome screen or File > Open Project Folder..., and TablePro reads the database settings it finds in `.env` files, `wp-config.php`, `prisma/schema.prisma`, `config/database.yml`, `docker-compose.yml`, `application.properties`, `application.yml`, and `appsettings.json`. Review what it found, pick one, and the connection form opens filled in. Nothing is saved or connected until you save it. (#1959)
+
 ### Fixed
 
 - The AI chat panel stays inside the right panel when you drag it narrow. The model name, tool names, and code block headers now truncate, long chat messages and code wrap, wide tables scroll inside their own box, and the composer text follows the panel width instead of running under the editor. (#1956)

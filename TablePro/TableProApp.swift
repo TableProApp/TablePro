@@ -366,6 +366,10 @@ struct AppMenuCommands: Commands {
                 AppCommands.shared.importConnectionsFromApp.send(())
             }
 
+            Button(String(localized: "Open Project Folder...")) {
+                AppCommands.shared.openProjectFolder.send(())
+            }
+
             Divider()
 
             Button("Export...") {
