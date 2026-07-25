@@ -11,6 +11,7 @@ path = "src/main.rs"
 
 [dependencies]
 tablepro-core = { path = "../core" }
+tablepro-driver-mssql = { path = "../drivers/mssql" }
 tablepro-driver-mysql = { path = "../drivers/mysql" }
 tablepro-driver-postgres = { path = "../drivers/postgres" }
 tablepro-driver-sqlite = { path = "../drivers/sqlite" }

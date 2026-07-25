@@ -15,18 +15,18 @@ pub enum BuildSqlError {
 }
 
 pub fn quote_ident(driver_id: &str, name: &str) -> String {
-    if driver_id == "mysql" {
-        format!("`{}`", name.replace('`', "``"))
-    } else {
-        format!("\"{}\"", name.replace('"', "\"\""))
+    match driver_id {
+        "mysql" => format!("`{}`", name.replace('`', "``")),
+        "mssql" => format!("[{}]", name.replace(']', "]]")),
+        _ => format!("\"{}\"", name.replace('"', "\"\"")),
     }
 }
 
 pub fn placeholder_for(driver_id: &str, index: usize) -> String {
-    if driver_id == "postgres" {
-        format!("${}", index + 1)
-    } else {
-        "?".to_string()
+    match driver_id {
+        "postgres" => format!("${}", index + 1),
+        "mssql" => format!("@P{}", index + 1),
+        _ => "?".to_string(),
     }
 }
 
@@ -257,11 +257,23 @@ mod tests {
     }
 
     #[test]
+    fn quote_ident_mssql() {
+        assert_eq!(quote_ident("mssql", "users"), "[users]");
+        assert_eq!(quote_ident("mssql", "a]b"), "[a]]b]");
+    }
+
+    #[test]
     fn placeholder_dialect() {
         assert_eq!(placeholder_for("postgres", 0), "$1");
         assert_eq!(placeholder_for("postgres", 2), "$3");
         assert_eq!(placeholder_for("sqlite", 0), "?");
         assert_eq!(placeholder_for("mysql", 5), "?");
+    }
+
+    #[test]
+    fn placeholder_mssql() {
+        assert_eq!(placeholder_for("mssql", 0), "@P1");
+        assert_eq!(placeholder_for("mssql", 2), "@P3");
     }
 
     #[test]
@@ -291,6 +303,16 @@ mod tests {
         let (sql, _) =
             build_single_cell_update("sqlite", "t", &columns, &original, 1, Value::Text("b".into())).unwrap();
         assert_eq!(sql, "UPDATE \"t\" SET \"v\" = ? WHERE \"id\" = ?");
+    }
+
+    #[test]
+    fn single_cell_update_mssql() {
+        let columns = vec![col("id", true), col("name", false)];
+        let original = vec![Value::Int(7), Value::Text("alice".into())];
+        let (sql, params) =
+            build_single_cell_update("mssql", "u", &columns, &original, 1, Value::Text("bob".into())).unwrap();
+        assert_eq!(sql, "UPDATE [u] SET [name] = @P1 WHERE [id] = @P2");
+        assert_eq!(params, vec![Value::Text("bob".into()), Value::Int(7)]);
     }
 
     #[test]
@@ -383,6 +405,15 @@ mod tests {
         let (sql, params) = build_insert_from_draft("mysql", None, "t", &columns, &values).unwrap();
         assert_eq!(sql, "INSERT INTO `t` (`a`, `b`) VALUES (?, ?)");
         assert_eq!(params, vec![Value::Int(1), Value::Int(2)]);
+    }
+
+    #[test]
+    fn insert_from_draft_mssql() {
+        let columns = vec![col_auto("id"), col("name", false)];
+        let values = vec![Value::Null, Value::Text("alice".into())];
+        let (sql, params) = build_insert_from_draft("mssql", None, "users", &columns, &values).unwrap();
+        assert_eq!(sql, "INSERT INTO [users] ([name]) VALUES (@P1)");
+        assert_eq!(params, vec![Value::Text("alice".into())]);
     }
 
     #[test]

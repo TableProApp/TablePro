@@ -292,8 +292,13 @@ impl App {
                         sender_for_cmd.input(AppMsg::StructureSaveFailed(tab_id, crate::tr!("No active connection.")));
                         return;
                     };
-                    let wrap_tx = driver_id == "postgres";
-                    if wrap_tx && let Err(e) = conn.execute("BEGIN").await {
+                    let wrap_tx = driver_id == "postgres" || driver_id == "mssql";
+                    let begin_stmt = if driver_id == "mssql" {
+                        "BEGIN TRANSACTION"
+                    } else {
+                        "BEGIN"
+                    };
+                    if wrap_tx && let Err(e) = conn.execute(begin_stmt).await {
                         sender_for_cmd.input(AppMsg::StructureSaveFailed(tab_id, format!("{e}")));
                         return;
                     }
