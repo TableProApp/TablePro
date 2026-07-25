@@ -12,8 +12,9 @@ import TableProPluginKit
 extension DatabaseManager {
     /// Rewrite a connection to point at the local tunnel endpoint. A 127.0.0.1
     /// certificate can't satisfy hostname verification, so verify modes drop to
-    /// `.required` while keeping encryption; cert paths are cleared and pgpass keeps
-    /// the original host/port. A tunnel forwards a single local port, so MongoDB's
+    /// `.required` while keeping encryption; cert paths are cleared and the pre-tunnel
+    /// endpoint is recorded for the callers that must name the real server rather than
+    /// the local forward. A tunnel forwards a single local port, so MongoDB's
     /// seed list is collapsed to that endpoint and a direct connection is forced,
     /// stopping replica set discovery from reaching members behind the tunnel.
     /// Shared by the SSH and Cloudflare tunnel paths.
@@ -47,10 +48,8 @@ extension DatabaseManager {
 
         var effectiveFields = connection.additionalFields
         effectiveFields[DatabaseConnection.sshForwardUnixSocketPathKey] = nil
-        if connection.usePgpass {
-            effectiveFields["pgpassOriginalHost"] = connection.host
-            effectiveFields["pgpassOriginalPort"] = String(connection.port)
-        }
+        effectiveFields[DatabaseConnection.preTunnelHostKey] = connection.host
+        effectiveFields[DatabaseConnection.preTunnelPortKey] = String(connection.port)
         if connection.type.pluginTypeId == "MongoDB", !connection.usesMongoSrv {
             effectiveFields["mongoHosts"] = nil
             effectiveFields["mongoParam_directConnection"] = "true"

@@ -114,6 +114,115 @@ struct RDSEndpointTests {
     }
 }
 
+@Suite("RDS signing endpoint")
+struct RDSSigningEndpointResolverTests {
+    private func resolve(
+        host: String = "mydb.abc123.us-east-1.rds.amazonaws.com",
+        port: Int = 5_432,
+        preTunnelHost: String? = nil,
+        preTunnelPort: Int? = nil,
+        override: String? = nil,
+        defaultPort: Int = 5_432
+    ) throws -> RDSSigningEndpoint {
+        try RDSSigningEndpointResolver.resolve(
+            configuredHost: host,
+            configuredPort: port,
+            preTunnelHost: preTunnelHost,
+            preTunnelPort: preTunnelPort,
+            override: override,
+            defaultPort: defaultPort
+        )
+    }
+
+    @Test("A direct connection signs its own endpoint")
+    func directConnection() throws {
+        let endpoint = try resolve()
+        #expect(endpoint == RDSSigningEndpoint(host: "mydb.abc123.us-east-1.rds.amazonaws.com", port: 5_432))
+    }
+
+    @Test("A tunneled connection signs the endpoint from before the rewrite")
+    func tunneledConnection() throws {
+        let endpoint = try resolve(
+            host: "127.0.0.1",
+            port: 62_000,
+            preTunnelHost: "mydb.abc123.us-east-1.rds.amazonaws.com",
+            preTunnelPort: 5_432
+        )
+        #expect(endpoint == RDSSigningEndpoint(host: "mydb.abc123.us-east-1.rds.amazonaws.com", port: 5_432))
+    }
+
+    @Test("The endpoint override wins over the tunnel and the configured host")
+    func overrideWins() throws {
+        let endpoint = try resolve(
+            host: "127.0.0.1",
+            port: 62_000,
+            preTunnelHost: "old.abc123.us-east-1.rds.amazonaws.com",
+            preTunnelPort: 5_432,
+            override: "mydb.abc123.ap-south-1.rds.amazonaws.com:5433"
+        )
+        #expect(endpoint == RDSSigningEndpoint(host: "mydb.abc123.ap-south-1.rds.amazonaws.com", port: 5_433))
+    }
+
+    @Test("An override without a port falls back to the engine default")
+    func overrideWithoutPort() throws {
+        let endpoint = try resolve(
+            host: "127.0.0.1",
+            port: 54_321,
+            override: "mydb.abc123.ap-south-1.rds.amazonaws.com",
+            defaultPort: 5_432
+        )
+        #expect(endpoint == RDSSigningEndpoint(host: "mydb.abc123.ap-south-1.rds.amazonaws.com", port: 5_432))
+    }
+
+    @Test("A blank override is ignored")
+    func blankOverrideIgnored() throws {
+        let endpoint = try resolve(override: "   ")
+        #expect(endpoint.host == "mydb.abc123.us-east-1.rds.amazonaws.com")
+    }
+
+    @Test("An override keeps only the host and port of a pasted URL")
+    func overrideStripsSchemeAndPath() throws {
+        let endpoint = try resolve(override: "postgresql://mydb.abc123.us-east-1.rds.amazonaws.com:5432/postgres")
+        #expect(endpoint == RDSSigningEndpoint(host: "mydb.abc123.us-east-1.rds.amazonaws.com", port: 5_432))
+    }
+
+    @Test("A local forward with no override is rejected before the token is signed")
+    func loopbackIsRejected() {
+        for host in ["127.0.0.1", "localhost", "::1", "127.0.0.53"] {
+            #expect(throws: AWSAuthError.rdsEndpointUnresolved(host: host)) {
+                _ = try resolve(host: host, port: 54_321)
+            }
+        }
+    }
+
+    @Test("A tunnel to a loopback destination is rejected too")
+    func loopbackPreTunnelHostIsRejected() {
+        #expect(throws: AWSAuthError.rdsEndpointUnresolved(host: "localhost")) {
+            _ = try resolve(host: "127.0.0.1", port: 62_000, preTunnelHost: "localhost", preTunnelPort: 5_432)
+        }
+    }
+
+    @Test("A malformed override is rejected with the value the user typed")
+    func malformedOverrideIsRejected() {
+        for value in ["mydb.rds.amazonaws.com:port", "mydb.rds.amazonaws.com:0", ":5432", "127.0.0.1:5432"] {
+            #expect(throws: AWSAuthError.rdsEndpointInvalid(value)) {
+                _ = try resolve(override: value)
+            }
+        }
+    }
+
+    @Test("The region comes from the signing host, not the local forward")
+    func regionFollowsSigningHost() throws {
+        let endpoint = try resolve(
+            host: "127.0.0.1",
+            port: 62_000,
+            preTunnelHost: "mydb.abc123.ap-south-1.rds.amazonaws.com",
+            preTunnelPort: 5_432
+        )
+        #expect(RDSEndpoint.region(forHost: endpoint.host) == "ap-south-1")
+    }
+}
+
 @Suite("AWS credential resolver")
 struct AWSCredentialResolverTests {
     @Test("Resolves static access-key credentials")
@@ -211,7 +320,23 @@ struct RegistryAWSIAMFieldsTests {
             #expect(ids.contains("awsAccessKeyId"), "\(typeId) is missing awsAccessKeyId")
             #expect(ids.contains("awsSecretAccessKey"), "\(typeId) is missing awsSecretAccessKey")
             #expect(ids.contains("awsProfileName"), "\(typeId) is missing awsProfileName")
+            #expect(ids.contains("awsRDSEndpoint"), "\(typeId) is missing awsRDSEndpoint")
         }
+    }
+
+    @Test("The profile field offers the profiles found on disk")
+    func profileFieldHasDynamicOptions() {
+        for typeId in ["MySQL", "MariaDB", "PostgreSQL"] {
+            let field = PluginMetadataRegistry.shared.snapshot(forTypeId: typeId)?
+                .connection.additionalConnectionFields.first { $0.id == "awsProfileName" }
+            #expect(field?.dynamicOptions == .awsProfiles, "\(typeId) profile field has no profile list")
+        }
+    }
+
+    @Test("The shared AWS fields carry no RDS endpoint, so ElastiCache and Keyspaces never show one")
+    func sharedFieldsExcludeRDSEndpoint() {
+        #expect(!AWSAuthFields.standard().map(\.id).contains("awsRDSEndpoint"))
+        #expect(AWSAuthFields.rdsEndpointField().section == .authentication)
     }
 
     @Test("The secret access key field is Keychain-backed (secure)")

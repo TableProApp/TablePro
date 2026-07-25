@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- AWS IAM connections have an **RDS Endpoint** field, for when the connection points at a port forward you run yourself and TablePro cannot tell which database is behind it. The MySQL and PostgreSQL profile fields now list the profiles found on disk, like MariaDB already did. (#1432)
+
+### Fixed
+
+- AWS IAM authentication now works through a tunnel. The token was signed for the local forward instead of the database endpoint, so RDS rejected every connection made over SSH, Cloudflare, Cloud SQL Auth Proxy, or SOCKS. A tunneled connection also no longer needs the region filled in by hand. (#1432)
+
 ## [0.60.0] - 2026-07-24
 
 ### Added

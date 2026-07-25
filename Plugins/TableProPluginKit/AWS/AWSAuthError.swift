@@ -10,6 +10,8 @@ public enum AWSAuthError: Error, LocalizedError, Equatable {
     case credentialsFileUnreadable
     case profileIncomplete(String)
     case regionUnknown(host: String)
+    case rdsEndpointUnresolved(host: String)
+    case rdsEndpointInvalid(String)
     case credentialProcessInvalid(String)
     case credentialProcessLaunchFailed(profile: String, underlying: String)
     case credentialProcessFailed(profile: String, status: Int, message: String)
@@ -38,6 +40,16 @@ public enum AWSAuthError: Error, LocalizedError, Equatable {
             return String(
                 format: String(localized: "Could not determine an AWS region for \"%@\". Set the AWS Region field."),
                 host
+            )
+        case .rdsEndpointUnresolved(let host):
+            return String(
+                format: String(localized: "TablePro cannot sign an RDS token for \"%@\". Enter the RDS Endpoint (for example mydb.abc123.us-east-1.rds.amazonaws.com:5432) when you connect through a port forward or bastion."),
+                host
+            )
+        case .rdsEndpointInvalid(let value):
+            return String(
+                format: String(localized: "\"%@\" is not a valid RDS endpoint. Use the form host or host:port."),
+                value
             )
         case .credentialProcessInvalid(let profile):
             return String(
