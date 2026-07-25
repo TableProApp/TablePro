@@ -33,13 +33,13 @@ System dependencies:
 
 ```bash
 # Ubuntu / Debian
-sudo apt install -y build-essential pkg-config libgtk-4-dev libadwaita-1-dev libgtksourceview-5-dev libssl-dev libsecret-1-dev
+sudo apt install -y build-essential pkg-config libgtk-4-dev libadwaita-1-dev libgtksourceview-5-dev libssl-dev libsecret-1-dev libkrb5-dev clang
 
 # Fedora
-sudo dnf install -y gcc pkg-config gtk4-devel libadwaita-devel gtksourceview5-devel openssl-devel libsecret-devel
+sudo dnf install -y gcc pkg-config gtk4-devel libadwaita-devel gtksourceview5-devel openssl-devel libsecret-devel krb5-devel clang
 
 # Arch
-sudo pacman -S --needed base-devel pkg-config gtk4 libadwaita gtksourceview5 openssl libsecret
+sudo pacman -S --needed base-devel pkg-config gtk4 libadwaita gtksourceview5 openssl libsecret krb5 clang
 ```
 
 Verify the right versions are present:

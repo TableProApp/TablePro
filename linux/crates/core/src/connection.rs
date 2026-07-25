@@ -1,8 +1,25 @@
 use async_trait::async_trait;
 use secrecy::SecretString;
+use serde::{Deserialize, Serialize};
 
 use crate::error::DriverError;
 use crate::query::{ColumnInfo, ExecResult, ForeignKeyInfo, IndexInfo, QueryResult, TableInfo, Value};
+
+/// How a driver authenticates to the database. Most drivers only
+/// support [`AuthMode::Password`]; the SQL Server driver also supports
+/// [`AuthMode::Kerberos`] (Windows integrated auth) using the current
+/// user's Kerberos ticket cache obtained via `kinit`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AuthMode {
+    /// Username + password authentication.
+    #[default]
+    Password,
+    /// Windows integrated authentication over Kerberos (GSSAPI), using
+    /// the ambient ticket cache. `username`/`password` are ignored.
+    /// Drivers that don't support it fall back to password auth.
+    Kerberos,
+}
 
 #[derive(Debug, Clone)]
 pub struct ConnectOptions {
@@ -12,6 +29,7 @@ pub struct ConnectOptions {
     pub username: String,
     pub password: SecretString,
     pub use_tls: bool,
+    pub auth_mode: AuthMode,
 }
 
 impl Default for ConnectOptions {
@@ -23,6 +41,7 @@ impl Default for ConnectOptions {
             username: String::new(),
             password: SecretString::new(String::new().into()),
             use_tls: false,
+            auth_mode: AuthMode::Password,
         }
     }
 }

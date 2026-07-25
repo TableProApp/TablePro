@@ -6,7 +6,7 @@ use relm4::{adw, gtk};
 use secrecy::{ExposeSecret, SecretString};
 use uuid::Uuid;
 
-use tablepro_core::{ConnectOptions, DriverRegistry, TableInfo};
+use tablepro_core::{AuthMode, ConnectOptions, DriverRegistry, TableInfo};
 use tablepro_storage::{
     SavedConnection, SavedSshConfig, save_connections, store_password, store_ssh_passphrase, store_ssh_password,
 };
@@ -24,6 +24,7 @@ pub struct ConnectDialog {
     database: adw::EntryRow,
     username: adw::EntryRow,
     password: adw::PasswordEntryRow,
+    auth_combo: adw::ComboRow,
     use_tls: adw::SwitchRow,
     read_only: adw::SwitchRow,
     auth_group: adw::PreferencesGroup,
@@ -48,6 +49,7 @@ pub enum ConnectDialogInput {
     DriverChanged(u32),
     SshToggled,
     SshAuthChanged,
+    AuthModeChanged,
     Submit,
     TestConnection,
     InputChanged,
@@ -187,9 +189,25 @@ impl Component for ConnectDialog {
         connection_group.add(&port);
         connection_group.add(&database);
 
+        // MSSQL supports Windows integrated (Kerberos) auth alongside SQL
+        // logins; the selector is revealed only for integrated-capable
+        // drivers (see apply_driver_form_visibility).
+        let auth_password_label = crate::tr!("Password");
+        let auth_kerberos_label = crate::tr!("Windows (Kerberos)");
+        let auth_mode_model = gtk::StringList::new(&[auth_password_label.as_str(), auth_kerberos_label.as_str()]);
+        let auth_combo = adw::ComboRow::builder()
+            .title(crate::tr!("Method"))
+            .model(&auth_mode_model)
+            .build();
+        let sender_for_authmode = sender.clone();
+        auth_combo.connect_selected_notify(move |_| {
+            sender_for_authmode.input(ConnectDialogInput::AuthModeChanged);
+        });
+
         let auth_group = adw::PreferencesGroup::builder()
             .title(crate::tr!("Authentication"))
             .build();
+        auth_group.add(&auth_combo);
         auth_group.add(&username);
         auth_group.add(&password);
 
@@ -227,6 +245,7 @@ impl Component for ConnectDialog {
             database,
             username,
             password,
+            auth_combo,
             use_tls,
             read_only,
             auth_group,
@@ -277,6 +296,11 @@ impl Component for ConnectDialog {
                 self.refresh_validity();
             }
 
+            ConnectDialogInput::AuthModeChanged => {
+                self.refresh_auth_visibility();
+                self.refresh_validity();
+            }
+
             ConnectDialogInput::InputChanged => {
                 self.refresh_validity();
             }
@@ -307,10 +331,13 @@ impl Component for ConnectDialog {
                     username: self.username.text().to_string(),
                     password: SecretString::new(self.password.text().to_string().into()),
                     use_tls: self.use_tls.is_active(),
+                    auth_mode: self.selected_auth_mode(),
                 };
 
                 let label = if entry.id == "sqlite" {
                     opts.database.clone()
+                } else if opts.username.is_empty() {
+                    opts.host.clone()
                 } else {
                     format!("{}@{}", opts.username, opts.host)
                 };
@@ -362,6 +389,7 @@ impl Component for ConnectDialog {
                     username: self.username.text().to_string(),
                     password: SecretString::new(self.password.text().to_string().into()),
                     use_tls: self.use_tls.is_active(),
+                    auth_mode: self.selected_auth_mode(),
                 };
                 let ssh_inputs = if self.ssh.is_enabled() {
                     match self.ssh.collect() {
@@ -452,7 +480,7 @@ impl ConnectDialog {
             if self.host.text().trim().is_empty() {
                 return false;
             }
-            if self.username.text().trim().is_empty() {
+            if self.username.is_visible() && self.username.text().trim().is_empty() {
                 return false;
             }
         }
@@ -466,18 +494,39 @@ impl ConnectDialog {
         let file_based = driver.is_file_based();
         self.host.set_visible(!file_based);
         self.port.set_visible(!file_based);
-        self.username.set_visible(!file_based);
-        self.password.set_visible(!file_based);
         self.use_tls.set_visible(!file_based);
         // For file-based drivers (SQLite), only Connection + Options
         // groups make sense; hide Authentication and SSH entirely.
         self.auth_group.set_visible(!file_based);
         self.ssh.set_visible(!file_based);
+        // The auth-mode selector is only meaningful for drivers that
+        // support Windows integrated (Kerberos) auth — currently MSSQL.
+        self.auth_combo
+            .set_visible(!file_based && driver.supports_integrated_auth());
+        self.refresh_auth_visibility();
         self.database.set_title(&if file_based {
             crate::tr!("File path")
         } else {
             crate::tr!("Database")
         });
+    }
+
+    /// Kerberos is active only when the auth-mode combo is visible (the
+    /// driver supports integrated auth) and set to the Windows entry.
+    fn selected_auth_mode(&self) -> AuthMode {
+        if self.auth_combo.is_visible() && self.auth_combo.selected() == 1 {
+            AuthMode::Kerberos
+        } else {
+            AuthMode::Password
+        }
+    }
+
+    /// Kerberos uses the ambient ticket cache, so hide the username /
+    /// password rows when it is the active mode.
+    fn refresh_auth_visibility(&self) {
+        let creds = matches!(self.selected_auth_mode(), AuthMode::Password);
+        self.username.set_visible(creds);
+        self.password.set_visible(creds);
     }
 
     fn show_toast(&self, message: &str) {
@@ -551,6 +600,7 @@ async fn run_connect(
         username: opts_clone.username.clone(),
         use_tls: opts_clone.use_tls,
         read_only,
+        auth_mode: opts_clone.auth_mode,
         ssh: ssh.as_ref().map(|s| s.saved.clone()),
         // Stays None until `App::on_connected` stamps it. Save then
         // connect arrives in that order, so a freshly-saved entry is
@@ -604,6 +654,7 @@ async fn find_existing_id(driver_id: &str, opts: &ConnectOptions, ssh: Option<&S
                 && c.port == opts.port
                 && c.database == opts.database
                 && c.username == opts.username
+                && c.auth_mode == opts.auth_mode
                 && saved_ssh_matches(&c.ssh, ssh)
         })
         .map(|c| c.id)

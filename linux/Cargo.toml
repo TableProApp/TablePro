@@ -32,7 +32,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 clickhouse = { version = "0.15", default-features = false, features = ["rustls-tls"] }
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-rustls", "chrono", "rust_decimal", "uuid", "json"] }
-tiberius = { version = "0.12", default-features = false, features = ["tds73", "rustls", "chrono", "rust_decimal"] }
+tiberius = { version = "0.12", default-features = false, features = ["tds73", "rustls", "chrono", "rust_decimal", "integrated-auth-gssapi"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
 rust_decimal = { version = "1", default-features = false, features = ["serde", "std"] }
 futures = "0.3"

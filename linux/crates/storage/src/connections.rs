@@ -2,6 +2,7 @@ use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use tablepro_core::AuthMode;
 use uuid::Uuid;
 
 use crate::error::StorageError;
@@ -20,6 +21,8 @@ pub struct SavedConnection {
     pub use_tls: bool,
     #[serde(default)]
     pub read_only: bool,
+    #[serde(default)]
+    pub auth_mode: AuthMode,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ssh: Option<SavedSshConfig>,
     /// Last successful open of this connection. Drives the welcome
@@ -151,6 +154,7 @@ mod tests {
             username: "postgres".into(),
             use_tls: false,
             read_only: false,
+            auth_mode: AuthMode::Password,
             ssh: None,
             last_opened_at: None,
         }
@@ -227,5 +231,29 @@ mod tests {
         save_to(&path, &[conn.clone()]).await.unwrap();
         let loaded = load_from(&path).await.unwrap();
         assert_eq!(loaded, vec![conn]);
+    }
+
+    #[tokio::test]
+    async fn auth_mode_round_trips_and_defaults_to_password() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("connections.json");
+
+        // Explicit Kerberos survives a save/load cycle.
+        let mut conn = sample_connection();
+        conn.auth_mode = AuthMode::Kerberos;
+        save_to(&path, &[conn.clone()]).await.unwrap();
+        assert_eq!(load_from(&path).await.unwrap(), vec![conn]);
+
+        // A legacy file without the field loads as Password.
+        let id = Uuid::new_v4();
+        let legacy = format!(
+            r#"{{"version":1,"connections":[{{
+                "id":"{id}","name":"Old","driver_id":"mssql",
+                "host":"localhost","port":1433,"database":"db",
+                "username":"sa","use_tls":false}}]}}"#
+        );
+        tokio::fs::write(&path, legacy).await.unwrap();
+        let loaded = load_from(&path).await.unwrap();
+        assert_eq!(loaded[0].auth_mode, AuthMode::Password);
     }
 }

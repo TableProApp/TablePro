@@ -30,6 +30,7 @@ pub async fn open_saved(registry: Arc<DriverRegistry>, saved: SavedConnection) -
         username: saved.username,
         password,
         use_tls: saved.use_tls,
+        auth_mode: saved.auth_mode,
     };
 
     let (conn, tunnel) = establish(&*driver, opts.clone(), ssh_cfg.clone(), saved.read_only).await?;

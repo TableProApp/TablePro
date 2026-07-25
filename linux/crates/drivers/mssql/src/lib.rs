@@ -12,8 +12,8 @@ use tokio_util::compat::{Compat, TokioAsyncWriteCompatExt};
 
 use tablepro_core::sql_dialect::build_order_and_pagination;
 use tablepro_core::{
-    ColumnInfo, ConnectOptions, Connection, DatabaseDriver, DriverError, ExecResult, ForeignKeyInfo, IndexInfo,
-    MAX_QUERY_ROWS, QueryResult, TableInfo, Value,
+    AuthMode, ColumnInfo, ConnectOptions, Connection, DatabaseDriver, DriverError, ExecResult, ForeignKeyInfo,
+    IndexInfo, MAX_QUERY_ROWS, QueryResult, TableInfo, Value,
 };
 
 type MssqlClient = Client<Compat<TcpStream>>;
@@ -42,12 +42,22 @@ impl DatabaseDriver for MssqlDriver {
         true
     }
 
+    fn supports_integrated_auth(&self) -> bool {
+        true
+    }
+
     async fn connect(&self, opts: ConnectOptions) -> Result<Box<dyn Connection>, DriverError> {
         let mut config = Config::new();
         config.host(&opts.host);
         config.port(opts.port);
         config.database(&opts.database);
-        config.authentication(AuthMethod::sql_server(&opts.username, opts.password.expose_secret()));
+        config.authentication(match opts.auth_mode {
+            // Windows integrated auth over Kerberos (GSSAPI). tiberius
+            // uses the ambient ticket cache (from `kinit`) and the SPN
+            // MSSQLSvc/<host>:<port>; username/password are ignored.
+            AuthMode::Kerberos => AuthMethod::Integrated,
+            AuthMode::Password => AuthMethod::sql_server(&opts.username, opts.password.expose_secret()),
+        });
         // SQL Server always encrypts the login exchange; `Off` keeps the
         // post-login stream in the clear, `Required` encrypts everything.
         // No cert-path UI exists, so the server certificate is trusted
@@ -681,6 +691,7 @@ mod tests {
         assert_eq!(d.display_name(), "SQL Server");
         assert_eq!(d.default_port(), 1433);
         assert!(!d.is_file_based());
+        assert!(d.supports_integrated_auth());
     }
 
     #[test]
