@@ -81,11 +81,11 @@ struct ParsedConnectionSummaryRow: View {
         HStack(spacing: 4) {
             Text(label)
                 .font(.caption2)
-                .foregroundStyle(.tertiary)
+                .selectionAwareForeground(Color(nsColor: .tertiaryLabelColor), emphasizedOpacity: 0.6)
                 .frame(width: 58, alignment: .trailing)
             Text(value)
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .selectionAwareForeground(Color(nsColor: .secondaryLabelColor), emphasizedOpacity: 0.85)
                 .lineLimit(1)
                 .truncationMode(.middle)
         }

@@ -10,50 +10,60 @@ struct ProjectFolderCandidateList: View {
     @Binding var selection: UUID?
 
     var body: some View {
-        List(candidates, id: \.id, selection: $selection) { candidate in
-            row(for: candidate)
-                .padding(.vertical, 4)
-                .tag(candidate.id)
+        List(selection: $selection) {
+            ForEach(candidates) { candidate in
+                ProjectFolderCandidateRow(candidate: candidate)
+                    .tag(candidate.id)
+            }
         }
         .listStyle(.inset)
-        .alternatingRowBackgrounds()
     }
+}
 
-    private func row(for candidate: ScannedConnectionCandidate) -> some View {
+struct ProjectFolderCandidateRow: View {
+    let candidate: ScannedConnectionCandidate
+
+    var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             ParsedConnectionSummaryView(parsed: candidate.parsedURL, showsBackground: false)
-            HStack(spacing: 6) {
-                Image(systemName: "doc.text")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                Text(candidate.sourceRelativePath)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                Text(candidate.sourceKey)
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(1)
-            }
+            sourceLine
             if candidate.hasPassword {
-                Label(String(localized: "Password found"), systemImage: "key.fill")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                badge(String(localized: "Password found"), systemImage: "key.fill", tint: .secondary)
             }
             if candidate.placeholderSuspected {
-                Label(
+                badge(
                     String(localized: "Looks like a placeholder value"),
-                    systemImage: "questionmark.circle"
+                    systemImage: "questionmark.circle",
+                    tint: .orange
                 )
-                .font(.caption2)
-                .foregroundStyle(.orange)
             }
             ForEach(candidate.warnings, id: \.self) { warning in
-                Label(warning, systemImage: "exclamationmark.triangle")
-                    .font(.caption2)
-                    .foregroundStyle(.orange)
+                badge(warning, systemImage: "exclamationmark.triangle", tint: .orange)
             }
         }
+        .padding(.vertical, 4)
+    }
+
+    private var sourceLine: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "doc.text")
+                .font(.caption2)
+                .selectionAwareForeground(Color(nsColor: .tertiaryLabelColor), emphasizedOpacity: 0.6)
+            Text(candidate.sourceRelativePath)
+                .font(.caption2)
+                .selectionAwareForeground(Color(nsColor: .secondaryLabelColor), emphasizedOpacity: 0.85)
+                .lineLimit(1)
+                .truncationMode(.middle)
+            Text(candidate.sourceKey)
+                .font(.caption2)
+                .selectionAwareForeground(Color(nsColor: .tertiaryLabelColor), emphasizedOpacity: 0.6)
+                .lineLimit(1)
+        }
+    }
+
+    private func badge(_ text: String, systemImage: String, tint: Color) -> some View {
+        Label(text, systemImage: systemImage)
+            .font(.caption2)
+            .selectionAwareForeground(tint, emphasizedOpacity: 0.85)
     }
 }

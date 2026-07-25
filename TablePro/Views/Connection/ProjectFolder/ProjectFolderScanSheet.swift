@@ -28,7 +28,7 @@ struct ProjectFolderScanSheet: View {
             footer
         }
         .padding(20)
-        .frame(width: 560, height: 480)
+        .frame(width: 520, height: 440)
         .task(id: rootURL) {
             await runScan()
         }
