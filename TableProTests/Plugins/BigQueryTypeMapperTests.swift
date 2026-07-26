@@ -171,22 +171,38 @@ struct BigQueryTypeMapperRowTests {
     }
 }
 
+private func decodeResponse(_ json: String) throws -> BQQueryResponse {
+    try JSONDecoder().decode(BQQueryResponse.self, from: Data(json.utf8))
+}
+
+private func firstCell(_ json: String, schema: BQTableSchema) throws -> PluginCellValue {
+    let rows = BigQueryTypeMapper.flattenRows(from: try decodeResponse(json), schema: schema)
+    return try #require(rows.first?.first)
+}
+
 @Suite("BigQueryTypeMapper - Raw JSON Decoding")
 struct BigQueryTypeMapperJSONDecodingTests {
-    @Test("REPEATED STRING decodes each wrapped array element, not as null")
+    @Test("REPEATED STRING unwraps each wrapped array element")
     func repeatedStringFromRawJSON() throws {
         let schema = BQTableSchema(fields: [field("tags", "STRING", mode: "REPEATED")])
         let json = #"""
         {"rows": [{"f": [{"v": [{"v": "red"}, {"v": "blue"}]}]}], "totalRows": "1"}
         """#
-        let resp = try JSONDecoder().decode(BQQueryResponse.self, from: Data(json.utf8))
-        let value = BigQueryTypeMapper.flattenRows(from: resp, schema: schema)[0][0]
-        #expect(value.asText?.contains("null") == false)
-        #expect(value.asText?.contains("red") == true)
-        #expect(value.asText?.contains("blue") == true)
+        let value = try firstCell(json, schema: schema)
+        #expect(value.asText == #"["red","blue"]"#)
     }
 
-    @Test("REPEATED RECORD decodes nested struct elements, not as null")
+    @Test("REPEATED INT64 emits JSON numbers, not quoted strings")
+    func repeatedIntegerFromRawJSON() throws {
+        let schema = BQTableSchema(fields: [field("scores", "INT64", mode: "REPEATED")])
+        let json = #"""
+        {"rows": [{"f": [{"v": [{"v": "1"}, {"v": "2"}]}]}], "totalRows": "1"}
+        """#
+        let value = try firstCell(json, schema: schema)
+        #expect(value.asText == "[1,2]")
+    }
+
+    @Test("REPEATED RECORD unwraps each nested struct element")
     func repeatedRecordFromRawJSON() throws {
         let schema = BQTableSchema(fields: [
             field("items", "RECORD", mode: "REPEATED", fields: [field("name", "STRING")])
@@ -194,10 +210,106 @@ struct BigQueryTypeMapperJSONDecodingTests {
         let json = #"""
         {"rows": [{"f": [{"v": [{"v": {"f": [{"v": "a"}]}}, {"v": {"f": [{"v": "b"}]}}]}]}], "totalRows": "1"}
         """#
-        let resp = try JSONDecoder().decode(BQQueryResponse.self, from: Data(json.utf8))
-        let value = BigQueryTypeMapper.flattenRows(from: resp, schema: schema)[0][0]
-        #expect(value.asText?.contains("null") == false)
-        #expect(value.asText?.contains("\"a\"") == true)
-        #expect(value.asText?.contains("\"b\"") == true)
+        let value = try firstCell(json, schema: schema)
+        #expect(value.asText == #"[{"name":"a"},{"name":"b"}]"#)
+    }
+
+    @Test("Empty REPEATED column renders an empty JSON array")
+    func emptyRepeatedFromRawJSON() throws {
+        let schema = BQTableSchema(fields: [field("tags", "STRING", mode: "REPEATED")])
+        let json = #"""
+        {"rows": [{"f": [{"v": []}]}], "totalRows": "1"}
+        """#
+        let value = try firstCell(json, schema: schema)
+        #expect(value.asText == "[]")
+    }
+
+    @Test("Null array element renders as JSON null, not a dropped element")
+    func nullElementFromRawJSON() throws {
+        let schema = BQTableSchema(fields: [field("tags", "STRING", mode: "REPEATED")])
+        let json = #"""
+        {"rows": [{"f": [{"v": [{"v": "red"}, {"v": null}]}]}], "totalRows": "1"}
+        """#
+        let value = try firstCell(json, schema: schema)
+        #expect(value.asText == #"["red",null]"#)
+    }
+
+    @Test("Non-repeated STRUCT still decodes as a record")
+    func scalarRecordFromRawJSON() throws {
+        let schema = BQTableSchema(fields: [
+            field("addr", "RECORD", fields: [field("city", "STRING"), field("zip", "INT64")])
+        ])
+        let json = #"""
+        {"rows": [{"f": [{"v": {"f": [{"v": "NYC"}, {"v": "10001"}]}}]}], "totalRows": "1"}
+        """#
+        let value = try firstCell(json, schema: schema)
+        #expect(value.asText == #"{"city":"NYC","zip":10001}"#)
+    }
+
+    @Test("STRUCT with a null member keeps the member as JSON null")
+    func recordWithNullMemberFromRawJSON() throws {
+        let schema = BQTableSchema(fields: [
+            field("addr", "RECORD", fields: [field("city", "STRING"), field("zip", "INT64")])
+        ])
+        let json = #"""
+        {"rows": [{"f": [{"v": {"f": [{"v": "NYC"}, {"v": null}]}}]}], "totalRows": "1"}
+        """#
+        let value = try firstCell(json, schema: schema)
+        #expect(value.asText == #"{"city":"NYC","zip":null}"#)
+    }
+
+    @Test("REPEATED member of a STRUCT nests as a JSON array")
+    func recordWithRepeatedMemberFromRawJSON() throws {
+        let schema = BQTableSchema(fields: [
+            field("post", "RECORD", fields: [field("tags", "STRING", mode: "REPEATED")])
+        ])
+        let json = #"""
+        {"rows": [{"f": [{"v": {"f": [{"v": [{"v": "a"}, {"v": "b"}]}]}}]}], "totalRows": "1"}
+        """#
+        let value = try firstCell(json, schema: schema)
+        #expect(value.asText == #"{"tags":["a","b"]}"#)
+    }
+
+    @Test("Nested STRUCT nests as a JSON object")
+    func nestedRecordFromRawJSON() throws {
+        let schema = BQTableSchema(fields: [
+            field("post", "RECORD", fields: [field("addr", "RECORD", fields: [field("city", "STRING")])])
+        ])
+        let json = #"""
+        {"rows": [{"f": [{"v": {"f": [{"v": {"f": [{"v": "NYC"}]}}]}}]}], "totalRows": "1"}
+        """#
+        let value = try firstCell(json, schema: schema)
+        #expect(value.asText == #"{"addr":{"city":"NYC"}}"#)
+    }
+
+    @Test("String elements escape quotes, backslashes, and control characters")
+    func escapedStringElementsFromRawJSON() throws {
+        let schema = BQTableSchema(fields: [field("tags", "STRING", mode: "REPEATED")])
+        let json = #"""
+        {"rows": [{"f": [{"v": [{"v": "he said \"hi\"\npath C:\\tmp\tend"}]}]}], "totalRows": "1"}
+        """#
+        let text = try #require(try firstCell(json, schema: schema).asText)
+        #expect(text == #"["he said \"hi\"\npath C:\\tmp\tend"]"#)
+        let reparsed = try JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String]
+        #expect(reparsed == ["he said \"hi\"\npath C:\\tmp\tend"])
+    }
+
+    @Test("Arrays survive a Codable round trip")
+    func arrayRoundTripsThroughCodable() throws {
+        let schema = BQTableSchema(fields: [
+            field("items", "RECORD", mode: "REPEATED", fields: [field("name", "STRING")])
+        ])
+        let json = #"""
+        {"rows": [{"f": [{"v": [{"v": {"f": [{"v": "a"}]}}, {"v": {"f": [{"v": "b"}]}}]}]}], "totalRows": "1"}
+        """#
+        let decoded = try decodeResponse(json)
+        let reencoded = try JSONEncoder().encode(decoded)
+        let roundTripped = try JSONDecoder().decode(BQQueryResponse.self, from: reencoded)
+        #expect(
+            BigQueryTypeMapper.flattenRows(from: roundTripped, schema: schema)
+                == BigQueryTypeMapper.flattenRows(from: decoded, schema: schema)
+        )
+        #expect(BigQueryTypeMapper.flattenRows(from: roundTripped, schema: schema)[0][0].asText
+            == #"[{"name":"a"},{"name":"b"}]"#)
     }
 }

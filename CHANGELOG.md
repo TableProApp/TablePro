@@ -10,7 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - The AI chat panel stays inside the right panel when you drag it narrow. The model name, tool names, and code block headers now truncate, long chat messages and code wrap, wide tables scroll inside their own box, and the composer text follows the panel width instead of running under the editor. (#1956)
-- BigQuery `REPEATED` columns (including repeated `STRUCT`) no longer show every element as `null`. Array elements weren't being unwrapped from BigQuery's per-element cell format during decoding.
+- BigQuery `REPEATED` columns (including repeated `STRUCT`) no longer show every element as `null`. (#1963)
+- BigQuery `STRUCT` cells now show nested structs and arrays as real JSON instead of escaped text, and quotes, backslashes, tabs, and newlines inside values are escaped correctly. (#1963)
 
 ## [0.60.1] - 2026-07-25
 
