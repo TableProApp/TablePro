@@ -210,12 +210,12 @@ internal enum BQCellValue: Codable, Sendable {
             self = .string(str)
             return
         }
-        if let record = try? container.decode(BQRecordValue.self) {
-            self = .record(record)
+        if let cells = try? container.decode([BQQueryResponse.BQCell].self) {
+            self = .array(cells.map { $0.v ?? .null })
             return
         }
-        if let array = try? container.decode([BQCellValue].self) {
-            self = .array(array)
+        if let record = try? container.decode(BQRecordValue.self) {
+            self = .record(record)
             return
         }
         self = .null

@@ -170,3 +170,34 @@ struct BigQueryTypeMapperRowTests {
         #expect(BigQueryTypeMapper.flattenRows(from: resp, schema: schema).isEmpty)
     }
 }
+
+@Suite("BigQueryTypeMapper - Raw JSON Decoding")
+struct BigQueryTypeMapperJSONDecodingTests {
+    @Test("REPEATED STRING decodes each wrapped array element, not as null")
+    func repeatedStringFromRawJSON() throws {
+        let schema = BQTableSchema(fields: [field("tags", "STRING", mode: "REPEATED")])
+        let json = #"""
+        {"rows": [{"f": [{"v": [{"v": "red"}, {"v": "blue"}]}]}], "totalRows": "1"}
+        """#
+        let resp = try JSONDecoder().decode(BQQueryResponse.self, from: Data(json.utf8))
+        let value = BigQueryTypeMapper.flattenRows(from: resp, schema: schema)[0][0]
+        #expect(value.asText?.contains("null") == false)
+        #expect(value.asText?.contains("red") == true)
+        #expect(value.asText?.contains("blue") == true)
+    }
+
+    @Test("REPEATED RECORD decodes nested struct elements, not as null")
+    func repeatedRecordFromRawJSON() throws {
+        let schema = BQTableSchema(fields: [
+            field("items", "RECORD", mode: "REPEATED", fields: [field("name", "STRING")])
+        ])
+        let json = #"""
+        {"rows": [{"f": [{"v": [{"v": {"f": [{"v": "a"}]}}, {"v": {"f": [{"v": "b"}]}}]}]}], "totalRows": "1"}
+        """#
+        let resp = try JSONDecoder().decode(BQQueryResponse.self, from: Data(json.utf8))
+        let value = BigQueryTypeMapper.flattenRows(from: resp, schema: schema)[0][0]
+        #expect(value.asText?.contains("null") == false)
+        #expect(value.asText?.contains("\"a\"") == true)
+        #expect(value.asText?.contains("\"b\"") == true)
+    }
+}
