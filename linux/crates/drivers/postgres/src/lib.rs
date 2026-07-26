@@ -28,6 +28,10 @@ impl DatabaseDriver for PgDriver {
         5432
     }
 
+    fn ddl_is_transactional(&self) -> bool {
+        true
+    }
+
     async fn connect(&self, opts: ConnectOptions) -> Result<Box<dyn Connection>, DriverError> {
         let pg_opts = PgConnectOptions::new()
             .host(&opts.host)

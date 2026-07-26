@@ -25,7 +25,9 @@ impl App {
     /// Fire the SELECT * query for a specific browse tab. Result goes to
     /// the same tab via `AppMsg::RowsLoaded(tab_id, ...)`. Composes the
     /// SELECT from the tab's current sort + filter + pagination state.
-    /// Filter and sort are server-side; pagination uses LIMIT/OFFSET.
+    /// Filter and sort are server-side; the row window is rendered by
+    /// `sql_dialect::build_order_and_pagination` because the syntax is
+    /// dialect-specific.
     pub(super) fn fetch_browse_page(&self, tab_id: Uuid, sender: ComponentSender<Self>) {
         let (schema, table, offset, limit, sort, filter, columns, driver_id) = {
             let tabs = self.workspace_tabs.borrow();
@@ -94,11 +96,12 @@ impl App {
                             sql.push_str(" WHERE ");
                             sql.push_str(w);
                         }
-                        if let Some(order) = &order_by {
-                            sql.push_str(" ORDER BY ");
-                            sql.push_str(order);
-                        }
-                        sql.push_str(&format!(" LIMIT {limit} OFFSET {offset}"));
+                        sql.push_str(&tablepro_core::sql_dialect::build_order_and_pagination(
+                            &driver_id,
+                            order_by.as_deref(),
+                            limit,
+                            offset,
+                        ));
                         conn.query_params(&sql, &params).await
                     };
                     match result {

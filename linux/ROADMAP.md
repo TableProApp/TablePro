@@ -233,7 +233,7 @@ This is where the project sits today. The app is interesting but **not productio
 ### Additional drivers (parallelizable, ~1 week each)
 
 - [ ] ClickHouse via `clickhouse-arrow`
-- [ ] MSSQL via `tiberius`
+- [x] MSSQL via `tiberius`
 - [ ] Oracle via `oracle` crate (ODPI-C)
 - [ ] Redis via `fred`
 - [ ] MongoDB via official `mongodb` crate

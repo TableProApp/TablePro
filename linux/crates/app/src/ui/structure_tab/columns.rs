@@ -61,6 +61,26 @@ pub(super) fn driver_types(driver_id: &str) -> &'static [&'static str] {
         "sqlite" => &[
             "INTEGER", "TEXT", "REAL", "BLOB", "NUMERIC", "BOOLEAN", "DATETIME", "DATE",
         ],
+        "mssql" => &[
+            "int",
+            "bigint",
+            "smallint",
+            "tinyint",
+            "bit",
+            "nvarchar(255)",
+            "nvarchar(max)",
+            "varchar(255)",
+            "decimal(18, 2)",
+            "float",
+            "real",
+            "money",
+            "date",
+            "time",
+            "datetime2",
+            "datetimeoffset",
+            "uniqueidentifier",
+            "varbinary(max)",
+        ],
         _ => &["TEXT"],
     }
 }
@@ -85,6 +105,7 @@ pub(super) fn default_type_for(driver_id: &str) -> String {
         "postgres" => "text".into(),
         "mysql" => "VARCHAR(255)".into(),
         "sqlite" => "TEXT".into(),
+        "mssql" => "nvarchar(255)".into(),
         _ => "TEXT".into(),
     }
 }

@@ -115,12 +115,26 @@ fn validate_safe_default(s: &str) -> Result<(), BuildDdlError> {
 
 const FK_ACTIONS: &[&str] = &["NO ACTION", "RESTRICT", "CASCADE", "SET NULL", "SET DEFAULT"];
 
-/// FK actions are a closed enum in the SQL standard. Allow-list rather
-/// than escape; case-insensitive match against the canonical strings
+/// T-SQL's `ON DELETE` / `ON UPDATE` grammar has no `RESTRICT`; the
+/// engine spells that behaviour `NO ACTION`. Emitting `RESTRICT` is a
+/// syntax error, so it is not an option the UI may offer either.
+const FK_ACTIONS_MSSQL: &[&str] = &["NO ACTION", "CASCADE", "SET NULL", "SET DEFAULT"];
+
+/// Referential actions the engine accepts, in the order the UI should
+/// present them. The first entry is the SQL default.
+pub fn supported_fk_actions(driver_id: &str) -> &'static [&'static str] {
+    match driver_id {
+        "mssql" => FK_ACTIONS_MSSQL,
+        _ => FK_ACTIONS,
+    }
+}
+
+/// FK actions are a closed enum per dialect. Allow-list rather than
+/// escape; case-insensitive match against the canonical strings
 /// returned in upper case for emission.
-fn validate_fk_action(s: &str) -> Result<&'static str, BuildDdlError> {
+fn validate_fk_action(driver_id: &str, s: &str) -> Result<&'static str, BuildDdlError> {
     let upper = s.trim().to_ascii_uppercase();
-    FK_ACTIONS
+    supported_fk_actions(driver_id)
         .iter()
         .copied()
         .find(|canon| *canon == upper.as_str())
@@ -259,6 +273,33 @@ fn qualified_table(driver_id: &str, schema: Option<&str>, table: &str) -> String
     }
 }
 
+/// Escape a value for inclusion in a SQL string literal. Bracket
+/// quoting escapes `]`, not `'`, so any identifier that travels as a
+/// literal (`sp_rename`'s arguments, an `OBJECT_ID()` lookup) needs
+/// this on top of, or instead of, `quote_ident`.
+fn sql_literal(value: &str) -> String {
+    value.replace('\'', "''")
+}
+
+/// Drop the default constraint bound to `column`, if any. SQL Server
+/// generates the constraint name, and `DROP CONSTRAINT` does not accept
+/// a variable, so the name is resolved from `sys.default_constraints`
+/// and applied through `EXEC`. Emitted as one batch because the
+/// variable does not outlive it.
+fn mssql_drop_default_constraint(driver_id: &str, schema: Option<&str>, table: &str, column: &str) -> String {
+    let qualified = qualified_table(driver_id, schema, table);
+    let table_literal = sql_literal(&qualified);
+    let column_literal = sql_literal(column.trim());
+    format!(
+        "DECLARE @default_constraint sysname = (\
+SELECT dc.name FROM sys.default_constraints dc \
+JOIN sys.columns c ON c.object_id = dc.parent_object_id AND c.column_id = dc.parent_column_id \
+WHERE dc.parent_object_id = OBJECT_ID('{table_literal}') AND c.name = '{column_literal}'); \
+IF @default_constraint IS NOT NULL \
+EXEC('ALTER TABLE {table_literal} DROP CONSTRAINT [' + @default_constraint + ']')"
+    )
+}
+
 fn validate_table(table: &str) -> Result<(), BuildDdlError> {
     if table.trim().is_empty() {
         return Err(BuildDdlError::EmptyTableName);
@@ -330,6 +371,21 @@ fn render_column_definition(driver_id: &str, column: &DraftColumn, inline_pk: bo
             "SERIAL"
         };
         parts = vec![quote_ident(driver_id, &column.name), serial_type.into()];
+        if inline_pk && column.primary_key {
+            parts.push("PRIMARY KEY".into());
+        }
+        return Ok(parts.join(" "));
+    }
+
+    // MSSQL IDENTITY(1,1) auto-increment. An identity column cannot
+    // carry a DEFAULT, so this bypasses the generic tail entirely —
+    // unlike Postgres SERIAL, MSSQL identity still honors the user's
+    // NOT NULL choice instead of forcing one implicitly.
+    if driver_id == "mssql" && column.auto_increment {
+        parts.push("IDENTITY(1,1)".into());
+        if !column.nullable {
+            parts.push("NOT NULL".into());
+        }
         if inline_pk && column.primary_key {
             parts.push("PRIMARY KEY".into());
         }
@@ -447,6 +503,13 @@ pub fn build_rename_table(
 ) -> Result<String, BuildDdlError> {
     validate_table(old_name)?;
     validate_table(new_name)?;
+    if driver_id == "mssql" {
+        // sp_rename's arguments are SQL string literals, not
+        // identifiers, and the bare @newname isn't quoted at all.
+        let old_qualified = sql_literal(&qualified_table(driver_id, schema, old_name));
+        let new_bare = sql_literal(new_name.trim());
+        return Ok(format!("EXEC sp_rename '{}', '{}'", old_qualified, new_bare));
+    }
     Ok(format!(
         "ALTER TABLE {} RENAME TO {}",
         qualified_table(driver_id, schema, old_name),
@@ -469,9 +532,11 @@ pub fn build_add_column(
         // error before sending the statement to the driver.
         return Err(BuildDdlError::SqliteNotSupported("ADD COLUMN NOT NULL without DEFAULT"));
     }
+    let keyword = if driver_id == "mssql" { "ADD" } else { "ADD COLUMN" };
     Ok(format!(
-        "ALTER TABLE {} ADD COLUMN {}",
+        "ALTER TABLE {} {} {}",
         qualified_table(driver_id, schema, table),
+        keyword,
         column_def
     ))
 }
@@ -508,6 +573,16 @@ pub fn build_rename_column(
     validate_table(table)?;
     validate_column_name(old_name)?;
     validate_column_name(new_name)?;
+    if driver_id == "mssql" {
+        // Same string-literal escaping requirement as build_rename_table.
+        let object_name = sql_literal(&format!(
+            "{}.{}",
+            qualified_table(driver_id, schema, table),
+            quote_ident(driver_id, old_name)
+        ));
+        let new_bare = sql_literal(new_name.trim());
+        return Ok(format!("EXEC sp_rename '{}', '{}', 'COLUMN'", object_name, new_bare));
+    }
     Ok(format!(
         "ALTER TABLE {} RENAME COLUMN {} TO {}",
         qualified_table(driver_id, schema, table),
@@ -611,6 +686,49 @@ pub fn build_alter_column(
             }
             Ok(stmts)
         }
+        "mssql" => {
+            let original = column.original.as_ref();
+            let type_changed = original.map(|o| o.data_type != column.data_type).unwrap_or(true);
+            let nullable_changed = original.map(|o| o.nullable != column.nullable).unwrap_or(false);
+            let default_changed = original
+                .map(|o| o.default_value.as_deref() != column.default_value.as_deref())
+                .unwrap_or(column.default_value.is_some());
+            let mut stmts: Vec<String> = Vec::new();
+            // ALTER COLUMN carries type and nullability together: T-SQL
+            // reads an omitted NULL / NOT NULL as NULL, so a type-only
+            // change has to restate the nullability or it would silently
+            // drop NOT NULL.
+            if type_changed || nullable_changed {
+                validate_safe_type(&column.data_type)?;
+                let nullability = if column.nullable { "NULL" } else { "NOT NULL" };
+                stmts.push(format!(
+                    "ALTER TABLE {} ALTER COLUMN {} {} {}",
+                    qualified,
+                    quote_ident(driver_id, &column.name),
+                    column.data_type,
+                    nullability
+                ));
+            }
+            if default_changed {
+                // A default is a separate named constraint here, not a
+                // column attribute, so changing one is drop-then-add.
+                // The existing constraint's name is generated by the
+                // server, so the drop resolves it from the catalog.
+                stmts.push(mssql_drop_default_constraint(driver_id, schema, table, &column.name));
+                if let Some(default) = validated_default(column.default_value.as_deref())? {
+                    stmts.push(format!(
+                        "ALTER TABLE {} ADD DEFAULT ({}) FOR {}",
+                        qualified,
+                        default,
+                        quote_ident(driver_id, &column.name)
+                    ));
+                }
+            }
+            if stmts.is_empty() {
+                return Err(BuildDdlError::NoChange);
+            }
+            Ok(stmts)
+        }
         "sqlite" => Err(BuildDdlError::SqliteNotSupported(
             "ALTER COLUMN (type / nullable / default change)",
         )),
@@ -692,6 +810,16 @@ pub fn build_drop_index(
             quote_ident(driver_id, index_name)
         ));
     }
+    if driver_id == "mssql" {
+        validate_table(table)?;
+        // MSSQL indexes are not standalone schema objects: DROP INDEX
+        // must always state the owning table via ON <table>.
+        return Ok(format!(
+            "DROP INDEX IF EXISTS {} ON {}",
+            quote_ident(driver_id, index_name),
+            qualified_table(driver_id, schema, table)
+        ));
+    }
     // Postgres + SQLite: schema-qualified index name, no table ref.
     let qualified_index = match schema {
         Some(s) if !s.is_empty() => format!("{}.{}", quote_ident(driver_id, s), quote_ident(driver_id, index_name)),
@@ -725,11 +853,11 @@ pub fn build_add_foreign_key(
         ref_cols.join(", "),
     )];
     if let Some(raw) = fk.on_delete.as_deref().filter(|a| !a.is_empty()) {
-        let action = validate_fk_action(raw)?;
+        let action = validate_fk_action(driver_id, raw)?;
         clauses.push(format!("ON DELETE {action}"));
     }
     if let Some(raw) = fk.on_update.as_deref().filter(|a| !a.is_empty()) {
-        let action = validate_fk_action(raw)?;
+        let action = validate_fk_action(driver_id, raw)?;
         clauses.push(format!("ON UPDATE {action}"));
     }
     Ok(clauses.join(" "))
@@ -752,7 +880,7 @@ pub fn build_drop_foreign_key(
             qualified,
             quote_ident(driver_id, fk_name)
         )),
-        "postgres" => Ok(format!(
+        "postgres" | "mssql" => Ok(format!(
             "ALTER TABLE {} DROP CONSTRAINT {}",
             qualified,
             quote_ident(driver_id, fk_name)
@@ -1052,6 +1180,18 @@ mod tests {
     }
 
     #[test]
+    fn create_table_simple_mssql() {
+        let mut cols = vec![ai(dc("id", "INT")), nn(dc("email", "VARCHAR(255)"))];
+        cols[0].primary_key = true;
+        let stmts = build_create_table("mssql", None, "users", &cols, &[], &[]).unwrap();
+        assert_eq!(stmts.len(), 1);
+        assert!(stmts[0].contains("[id] INT IDENTITY(1,1) PRIMARY KEY"));
+        assert!(!stmts[0].contains("DEFAULT"));
+        assert!(stmts[0].contains("[email] VARCHAR(255) NOT NULL"));
+        assert!(stmts[0].starts_with("CREATE TABLE [users]"));
+    }
+
+    #[test]
     fn create_table_postgres_bigserial() {
         let cols = vec![pk(ai(dc("id", "bigint")))];
         let stmts = build_create_table("postgres", None, "t", &cols, &[], &[]).unwrap();
@@ -1189,6 +1329,18 @@ mod tests {
     }
 
     #[test]
+    fn drop_table_mssql_no_cascade() {
+        assert_eq!(
+            build_drop_table("mssql", None, "users", false, false).unwrap(),
+            "DROP TABLE [users]"
+        );
+        assert_eq!(
+            build_drop_table("mssql", Some("dbo"), "users", true, true).unwrap(),
+            "DROP TABLE IF EXISTS [dbo].[users]"
+        );
+    }
+
+    #[test]
     fn rename_table_each_driver() {
         assert_eq!(
             build_rename_table("postgres", None, "old", "new").unwrap(),
@@ -1202,6 +1354,27 @@ mod tests {
             build_rename_table("sqlite", None, "old", "new").unwrap(),
             "ALTER TABLE \"old\" RENAME TO \"new\""
         );
+    }
+
+    #[test]
+    fn rename_table_mssql() {
+        assert_eq!(
+            build_rename_table("mssql", None, "old", "new").unwrap(),
+            "EXEC sp_rename '[old]', 'new'"
+        );
+        assert_eq!(
+            build_rename_table("mssql", Some("dbo"), "old", "new").unwrap(),
+            "EXEC sp_rename '[dbo].[old]', 'new'"
+        );
+    }
+
+    #[test]
+    fn rename_table_mssql_escapes_embedded_quote() {
+        // sp_rename's arguments are SQL string literals; an embedded
+        // `'` in a name must be doubled or it would close the literal
+        // early and splice the remainder in as a second statement.
+        let sql = build_rename_table("mssql", None, "o'brien", "new'table").unwrap();
+        assert_eq!(sql, "EXEC sp_rename '[o''brien]', 'new''table'");
     }
 
     #[test]
@@ -1228,6 +1401,17 @@ mod tests {
     }
 
     #[test]
+    fn add_column_mssql_no_column_keyword() {
+        let col = nn(def(dc("created_at", "DATETIME2"), "SYSUTCDATETIME()"));
+        let sql = build_add_column("mssql", None, "users", &col).unwrap();
+        assert_eq!(
+            sql,
+            "ALTER TABLE [users] ADD [created_at] DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()"
+        );
+        assert!(!sql.contains("ADD COLUMN"));
+    }
+
+    #[test]
     fn drop_column_each_driver() {
         assert_eq!(
             build_drop_column("postgres", None, "users", "email").unwrap(),
@@ -1244,6 +1428,14 @@ mod tests {
     }
 
     #[test]
+    fn drop_column_mssql() {
+        assert_eq!(
+            build_drop_column("mssql", None, "users", "email").unwrap(),
+            "ALTER TABLE [users] DROP COLUMN [email]"
+        );
+    }
+
+    #[test]
     fn rename_column_each_driver() {
         assert_eq!(
             build_rename_column("postgres", None, "t", "old", "new").unwrap(),
@@ -1253,6 +1445,24 @@ mod tests {
             build_rename_column("mysql", None, "t", "old", "new").unwrap(),
             "ALTER TABLE `t` RENAME COLUMN `old` TO `new`"
         );
+    }
+
+    #[test]
+    fn rename_column_mssql() {
+        assert_eq!(
+            build_rename_column("mssql", None, "t", "old", "new").unwrap(),
+            "EXEC sp_rename '[t].[old]', 'new', 'COLUMN'"
+        );
+        assert_eq!(
+            build_rename_column("mssql", Some("dbo"), "t", "old", "new").unwrap(),
+            "EXEC sp_rename '[dbo].[t].[old]', 'new', 'COLUMN'"
+        );
+    }
+
+    #[test]
+    fn rename_column_mssql_escapes_embedded_quote() {
+        let sql = build_rename_column("mssql", None, "t", "o'brien", "new'name").unwrap();
+        assert_eq!(sql, "EXEC sp_rename '[t].[o''brien]', 'new''name', 'COLUMN'");
     }
 
     #[test]
@@ -1374,6 +1584,156 @@ mod tests {
     }
 
     #[test]
+    fn alter_column_mssql_type_and_nullable_change() {
+        let col = DraftColumn {
+            original: Some(ColumnInfo {
+                name: "x".into(),
+                data_type: "int".into(),
+                nullable: true,
+                primary_key: false,
+                is_auto_increment: false,
+                default_value: None,
+                is_generated: false,
+            }),
+            name: "x".into(),
+            data_type: "int".into(),
+            nullable: false,
+            primary_key: false,
+            auto_increment: false,
+            default_value: None,
+        };
+        let stmts = build_alter_column("mssql", None, "t", &col).unwrap();
+        assert_eq!(stmts.len(), 1);
+        assert_eq!(stmts[0], "ALTER TABLE [t] ALTER COLUMN [x] int NOT NULL");
+    }
+
+    #[test]
+    fn alter_column_mssql_default_only_replaces_the_constraint() {
+        let col = DraftColumn {
+            original: Some(ColumnInfo {
+                name: "x".into(),
+                data_type: "text".into(),
+                nullable: true,
+                primary_key: false,
+                is_auto_increment: false,
+                default_value: None,
+                is_generated: false,
+            }),
+            name: "x".into(),
+            data_type: "text".into(),
+            nullable: true,
+            primary_key: false,
+            auto_increment: false,
+            default_value: Some("'pending'".into()),
+        };
+        let stmts = build_alter_column("mssql", None, "t", &col).unwrap();
+        assert_eq!(stmts.len(), 2);
+        assert!(!stmts[0].contains("ALTER COLUMN"));
+        assert!(stmts[0].contains("sys.default_constraints"));
+        assert!(stmts[0].contains("OBJECT_ID('[t]')"));
+        assert!(stmts[0].contains("c.name = 'x'"));
+        assert_eq!(stmts[1], "ALTER TABLE [t] ADD DEFAULT ('pending') FOR [x]");
+    }
+
+    #[test]
+    fn alter_column_mssql_clearing_a_default_only_drops() {
+        let col = DraftColumn {
+            original: Some(ColumnInfo {
+                name: "x".into(),
+                data_type: "text".into(),
+                nullable: true,
+                primary_key: false,
+                is_auto_increment: false,
+                default_value: Some("'pending'".into()),
+                is_generated: false,
+            }),
+            name: "x".into(),
+            data_type: "text".into(),
+            nullable: true,
+            primary_key: false,
+            auto_increment: false,
+            default_value: None,
+        };
+        let stmts = build_alter_column("mssql", None, "t", &col).unwrap();
+        assert_eq!(stmts.len(), 1);
+        assert!(stmts[0].contains("DROP CONSTRAINT"));
+        assert!(!stmts[0].contains("ADD DEFAULT"));
+    }
+
+    #[test]
+    fn alter_column_mssql_applies_default_alongside_type_change() {
+        let col = DraftColumn {
+            original: Some(ColumnInfo {
+                name: "x".into(),
+                data_type: "int".into(),
+                nullable: true,
+                primary_key: false,
+                is_auto_increment: false,
+                default_value: None,
+                is_generated: false,
+            }),
+            name: "x".into(),
+            data_type: "bigint".into(),
+            nullable: true,
+            primary_key: false,
+            auto_increment: false,
+            default_value: Some("0".into()),
+        };
+        let stmts = build_alter_column("mssql", None, "t", &col).unwrap();
+        assert_eq!(stmts.len(), 3);
+        assert_eq!(stmts[0], "ALTER TABLE [t] ALTER COLUMN [x] bigint NULL");
+        assert!(stmts[1].contains("DROP CONSTRAINT"));
+        assert_eq!(stmts[2], "ALTER TABLE [t] ADD DEFAULT (0) FOR [x]");
+    }
+
+    #[test]
+    fn alter_column_mssql_unchanged_is_no_change() {
+        let col = DraftColumn {
+            original: Some(ColumnInfo {
+                name: "x".into(),
+                data_type: "int".into(),
+                nullable: true,
+                primary_key: false,
+                is_auto_increment: false,
+                default_value: None,
+                is_generated: false,
+            }),
+            name: "x".into(),
+            data_type: "int".into(),
+            nullable: true,
+            primary_key: false,
+            auto_increment: false,
+            default_value: None,
+        };
+        let err = build_alter_column("mssql", None, "t", &col).unwrap_err();
+        assert!(matches!(err, BuildDdlError::NoChange));
+    }
+
+    #[test]
+    fn alter_column_mssql_drop_default_escapes_literals() {
+        let col = DraftColumn {
+            original: Some(ColumnInfo {
+                name: "o'brien".into(),
+                data_type: "int".into(),
+                nullable: true,
+                primary_key: false,
+                is_auto_increment: false,
+                default_value: Some("0".into()),
+                is_generated: false,
+            }),
+            name: "o'brien".into(),
+            data_type: "int".into(),
+            nullable: true,
+            primary_key: false,
+            auto_increment: false,
+            default_value: None,
+        };
+        let stmts = build_alter_column("mssql", Some("s'x"), "t'q", &col).unwrap();
+        assert!(stmts[0].contains("OBJECT_ID('[s''x].[t''q]')"));
+        assert!(stmts[0].contains("c.name = 'o''brien'"));
+    }
+
+    #[test]
     fn reorder_column_mysql() {
         let col = nn(dc("status", "VARCHAR(64)"));
         let sql = build_reorder_column("mysql", None, "t", &col, Some("name")).unwrap();
@@ -1443,6 +1803,18 @@ mod tests {
     }
 
     #[test]
+    fn create_index_mssql() {
+        let idx = IndexInfo {
+            name: "idx_a_b".into(),
+            columns: vec!["a".into(), "b".into()],
+            unique: true,
+            primary: false,
+        };
+        let sql = build_create_index("mssql", None, "t", &idx).unwrap();
+        assert_eq!(sql, "CREATE UNIQUE INDEX [idx_a_b] ON [t] ([a], [b])");
+    }
+
+    #[test]
     fn drop_index_postgres() {
         assert_eq!(
             build_drop_index("postgres", Some("public"), "t", "my_idx").unwrap(),
@@ -1463,6 +1835,14 @@ mod tests {
         assert_eq!(
             build_drop_index("sqlite", None, "t", "my_idx").unwrap(),
             "DROP INDEX IF EXISTS \"my_idx\""
+        );
+    }
+
+    #[test]
+    fn drop_index_mssql() {
+        assert_eq!(
+            build_drop_index("mssql", Some("schema"), "t", "ix").unwrap(),
+            "DROP INDEX IF EXISTS [ix] ON [schema].[t]"
         );
     }
 
@@ -1506,6 +1886,29 @@ mod tests {
     }
 
     #[test]
+    fn add_foreign_key_mssql() {
+        let mut fk = fk_basic();
+        fk.on_update = Some("NO ACTION".into());
+        let sql = build_add_foreign_key("mssql", None, "orders", &fk).unwrap();
+        assert!(sql.contains("ADD CONSTRAINT [fk_user]"));
+        assert!(sql.contains("FOREIGN KEY ([user_id])"));
+        assert!(sql.contains("REFERENCES [users] ([id])"));
+        assert!(sql.contains("ON DELETE CASCADE"));
+        assert!(sql.contains("ON UPDATE NO ACTION"));
+    }
+
+    #[test]
+    fn add_foreign_key_mssql_rejects_restrict() {
+        // T-SQL has no RESTRICT. Emitting it produces a syntax error at
+        // Save time, so the builder refuses it up front and the dialog
+        // never offers it.
+        let err = build_add_foreign_key("mssql", None, "orders", &fk_basic()).unwrap_err();
+        assert!(matches!(err, BuildDdlError::InvalidFkAction(a) if a == "RESTRICT"));
+        assert!(!supported_fk_actions("mssql").contains(&"RESTRICT"));
+        assert!(supported_fk_actions("postgres").contains(&"RESTRICT"));
+    }
+
+    #[test]
     fn drop_foreign_key_postgres() {
         assert_eq!(
             build_drop_foreign_key("postgres", None, "orders", "fk_user").unwrap(),
@@ -1525,6 +1928,14 @@ mod tests {
     fn drop_foreign_key_sqlite_rejected() {
         let err = build_drop_foreign_key("sqlite", None, "orders", "fk_user").unwrap_err();
         assert!(matches!(err, BuildDdlError::SqliteNotSupported(_)));
+    }
+
+    #[test]
+    fn drop_foreign_key_mssql() {
+        assert_eq!(
+            build_drop_foreign_key("mssql", None, "orders", "fk_user").unwrap(),
+            "ALTER TABLE [orders] DROP CONSTRAINT [fk_user]"
+        );
     }
 
     #[test]
@@ -1628,5 +2039,48 @@ mod tests {
         // must double the inner quote.
         let sql = build_drop_table("postgres", Some("a\"b"), "c\"d", false, false).unwrap();
         assert!(sql.contains("\"a\"\"b\".\"c\"\"d\""));
+    }
+
+    #[test]
+    fn materialize_ops_mssql_orders_rename_alter_then_add() {
+        let ops = vec![
+            StructureOp::RenameTable {
+                schema: None,
+                old_name: "old_t".into(),
+                new_name: "new_t".into(),
+            },
+            StructureOp::AlterColumn {
+                schema: None,
+                table: "new_t".into(),
+                column: DraftColumn {
+                    original: Some(ColumnInfo {
+                        name: "x".into(),
+                        data_type: "text".into(),
+                        nullable: true,
+                        primary_key: false,
+                        is_auto_increment: false,
+                        default_value: None,
+                        is_generated: false,
+                    }),
+                    name: "x".into(),
+                    data_type: "text".into(),
+                    nullable: true,
+                    primary_key: false,
+                    auto_increment: false,
+                    default_value: Some("'x'".into()),
+                },
+            },
+            StructureOp::AddColumn {
+                schema: None,
+                table: "new_t".into(),
+                column: nn(dc("flag", "BIT")),
+            },
+        ];
+        let stmts = materialize_ops(&ops, "mssql").unwrap();
+        assert_eq!(stmts.len(), 4);
+        assert_eq!(stmts[0], "EXEC sp_rename '[old_t]', 'new_t'");
+        assert!(stmts[1].contains("DROP CONSTRAINT"));
+        assert_eq!(stmts[2], "ALTER TABLE [new_t] ADD DEFAULT ('x') FOR [x]");
+        assert_eq!(stmts[3], "ALTER TABLE [new_t] ADD [flag] BIT NOT NULL");
     }
 }

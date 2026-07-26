@@ -13,5 +13,16 @@ pub trait DatabaseDriver: Send + Sync {
         false
     }
 
+    /// Whether a multi-statement DDL batch can roll back as a unit, so
+    /// the structure editor's Save runs through
+    /// `Connection::execute_in_transaction` instead of statement by
+    /// statement. MySQL commits implicitly on every DDL statement: the
+    /// transaction would end after the first one and a later failure
+    /// would leave the earlier statements applied, which is worse than
+    /// not opening one at all.
+    fn ddl_is_transactional(&self) -> bool {
+        false
+    }
+
     async fn connect(&self, opts: ConnectOptions) -> Result<Box<dyn Connection>, DriverError>;
 }

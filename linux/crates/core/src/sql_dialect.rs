@@ -15,18 +15,39 @@ pub enum BuildSqlError {
 }
 
 pub fn quote_ident(driver_id: &str, name: &str) -> String {
-    if driver_id == "mysql" {
-        format!("`{}`", name.replace('`', "``"))
-    } else {
-        format!("\"{}\"", name.replace('"', "\"\""))
+    match driver_id {
+        "mysql" => format!("`{}`", name.replace('`', "``")),
+        "mssql" => format!("[{}]", name.replace(']', "]]")),
+        _ => format!("\"{}\"", name.replace('"', "\"\"")),
     }
 }
 
 pub fn placeholder_for(driver_id: &str, index: usize) -> String {
-    if driver_id == "postgres" {
-        format!("${}", index + 1)
-    } else {
-        "?".to_string()
+    match driver_id {
+        "postgres" => format!("${}", index + 1),
+        "mssql" => format!("@P{}", index + 1),
+        _ => "?".to_string(),
+    }
+}
+
+/// Render the `ORDER BY` and row-window tail of a paged `SELECT`,
+/// including the leading space. The two clauses are built together
+/// because SQL Server couples them: `OFFSET … FETCH` is defined as a
+/// suffix of `ORDER BY`, so a paged query with no user sort still
+/// needs one. `(SELECT NULL)` is the no-op ordering that satisfies the
+/// parser without imposing a sort the user did not ask for.
+///
+/// `order_by` is pre-quoted SQL (`"name" ASC, "id" DESC`), not an
+/// identifier.
+pub fn build_order_and_pagination(driver_id: &str, order_by: Option<&str>, limit: u64, offset: u64) -> String {
+    let order_by = order_by.map(str::trim).filter(|o| !o.is_empty());
+    if driver_id == "mssql" {
+        let order = order_by.unwrap_or("(SELECT NULL)");
+        return format!(" ORDER BY {order} OFFSET {offset} ROWS FETCH NEXT {limit} ROWS ONLY");
+    }
+    match order_by {
+        Some(order) => format!(" ORDER BY {order} LIMIT {limit} OFFSET {offset}"),
+        None => format!(" LIMIT {limit} OFFSET {offset}"),
     }
 }
 
@@ -257,11 +278,67 @@ mod tests {
     }
 
     #[test]
+    fn quote_ident_mssql() {
+        assert_eq!(quote_ident("mssql", "users"), "[users]");
+        assert_eq!(quote_ident("mssql", "a]b"), "[a]]b]");
+    }
+
+    #[test]
     fn placeholder_dialect() {
         assert_eq!(placeholder_for("postgres", 0), "$1");
         assert_eq!(placeholder_for("postgres", 2), "$3");
         assert_eq!(placeholder_for("sqlite", 0), "?");
         assert_eq!(placeholder_for("mysql", 5), "?");
+    }
+
+    #[test]
+    fn placeholder_mssql() {
+        assert_eq!(placeholder_for("mssql", 0), "@P1");
+        assert_eq!(placeholder_for("mssql", 2), "@P3");
+    }
+
+    #[test]
+    fn pagination_limit_offset_dialects() {
+        assert_eq!(
+            build_order_and_pagination("postgres", None, 50, 100),
+            " LIMIT 50 OFFSET 100"
+        );
+        assert_eq!(
+            build_order_and_pagination("mysql", Some("`a` ASC"), 50, 100),
+            " ORDER BY `a` ASC LIMIT 50 OFFSET 100"
+        );
+        assert_eq!(
+            build_order_and_pagination("sqlite", Some("\"a\" DESC"), 10, 0),
+            " ORDER BY \"a\" DESC LIMIT 10 OFFSET 0"
+        );
+    }
+
+    #[test]
+    fn pagination_mssql_uses_offset_fetch() {
+        assert_eq!(
+            build_order_and_pagination("mssql", Some("[a] ASC"), 50, 100),
+            " ORDER BY [a] ASC OFFSET 100 ROWS FETCH NEXT 50 ROWS ONLY"
+        );
+    }
+
+    #[test]
+    fn pagination_mssql_synthesizes_order_by_when_unsorted() {
+        // OFFSET / FETCH is a suffix of ORDER BY in T-SQL, so an
+        // unsorted page still needs one to parse at all.
+        let sql = build_order_and_pagination("mssql", None, 50, 0);
+        assert_eq!(sql, " ORDER BY (SELECT NULL) OFFSET 0 ROWS FETCH NEXT 50 ROWS ONLY");
+    }
+
+    #[test]
+    fn pagination_treats_blank_order_by_as_absent() {
+        assert_eq!(
+            build_order_and_pagination("postgres", Some("  "), 5, 0),
+            " LIMIT 5 OFFSET 0"
+        );
+        assert_eq!(
+            build_order_and_pagination("mssql", Some("  "), 5, 0),
+            " ORDER BY (SELECT NULL) OFFSET 0 ROWS FETCH NEXT 5 ROWS ONLY"
+        );
     }
 
     #[test]
@@ -291,6 +368,16 @@ mod tests {
         let (sql, _) =
             build_single_cell_update("sqlite", "t", &columns, &original, 1, Value::Text("b".into())).unwrap();
         assert_eq!(sql, "UPDATE \"t\" SET \"v\" = ? WHERE \"id\" = ?");
+    }
+
+    #[test]
+    fn single_cell_update_mssql() {
+        let columns = vec![col("id", true), col("name", false)];
+        let original = vec![Value::Int(7), Value::Text("alice".into())];
+        let (sql, params) =
+            build_single_cell_update("mssql", "u", &columns, &original, 1, Value::Text("bob".into())).unwrap();
+        assert_eq!(sql, "UPDATE [u] SET [name] = @P1 WHERE [id] = @P2");
+        assert_eq!(params, vec![Value::Text("bob".into()), Value::Int(7)]);
     }
 
     #[test]
@@ -383,6 +470,15 @@ mod tests {
         let (sql, params) = build_insert_from_draft("mysql", None, "t", &columns, &values).unwrap();
         assert_eq!(sql, "INSERT INTO `t` (`a`, `b`) VALUES (?, ?)");
         assert_eq!(params, vec![Value::Int(1), Value::Int(2)]);
+    }
+
+    #[test]
+    fn insert_from_draft_mssql() {
+        let columns = vec![col_auto("id"), col("name", false)];
+        let values = vec![Value::Null, Value::Text("alice".into())];
+        let (sql, params) = build_insert_from_draft("mssql", None, "users", &columns, &values).unwrap();
+        assert_eq!(sql, "INSERT INTO [users] ([name]) VALUES (@P1)");
+        assert_eq!(params, vec![Value::Text("alice".into())]);
     }
 
     #[test]
