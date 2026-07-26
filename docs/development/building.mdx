@@ -3,8 +3,6 @@ title: Building
 description: Development builds, release builds, static libraries, DMG packaging, and CI/CD
 ---
 
-# Building TablePro
-
 ## Development Builds
 
 ### Xcode
@@ -26,7 +24,7 @@ xcodebuild -project TablePro.xcodeproj -scheme TablePro -configuration Debug bui
 ```
 
 <Note>
-`-skipPackagePluginValidation` is required. CodeEditSourceEditor bundles a SwiftLint plugin that triggers Xcode's plugin validation on CLI builds.
+`-skipPackagePluginValidation` is required on every `xcodebuild` invocation. `scripts/build-release.sh`, `scripts/build-plugin.sh`, and `scripts/check-pluginkit-abi.sh` all pass it.
 </Note>
 
 Debug builds use automatic signing with an Apple Development identity. Switch the **Team** in Signing & Capabilities to your own Apple Developer account (a free account works), see [Development Setup](/development/setup). Signing matters even locally: plugin signature verification derives the required team from the running app's signature.

@@ -3,8 +3,6 @@ title: AWS IAM Authentication
 description: Connect to Amazon RDS and Aurora with IAM database authentication instead of a static password
 ---
 
-# AWS IAM Authentication
-
 Connect to Amazon RDS and Aurora using your AWS identity instead of a database password. On every connect, TablePro signs a short-lived authentication token with your AWS credentials and uses it as the password. Available for MySQL, MariaDB, and PostgreSQL connections.
 
 ## Setting up
@@ -34,7 +32,7 @@ When TablePro opens the tunnel (SSH, Cloudflare, Cloud SQL Auth Proxy, or SOCKS)
 
 When you run the forward yourself, the connection form holds `127.0.0.1` and a local port, and TablePro cannot tell which database is on the other end. Set **RDS Endpoint** to the real endpoint:
 
-```
+```text
 mydb.abc123.us-east-1.rds.amazonaws.com:5432
 ```
 

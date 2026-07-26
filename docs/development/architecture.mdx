@@ -3,8 +3,6 @@ title: Architecture
 description: How the app, plugin system, and core services fit together
 ---
 
-# Architecture
-
 TablePro is built with:
 
 - **SwiftUI** for the UI layer
@@ -52,8 +50,11 @@ actor SSHTunnelManager {
 | Package | Source | Purpose |
 |---------|--------|---------|
 | CodeEditSourceEditor | Vendored in `LocalPackages/` (with CodeEditTextView, CodeEditLanguages) | Tree-sitter code editor |
+| TableProCore | Local package in `Packages/` | Shared SwiftPM modules the macOS and iOS apps both use |
 | Sparkle | SPM, 2.9.0 | Auto-update with EdDSA signing |
 | OracleNIO | SPM, TablePro fork pinned by revision | Oracle wire protocol for OracleDriverPlugin |
+| swift-certificates | SPM, 1.19.0 | Generates the MCP server's self-signed TLS certificate |
+| Yams | SPM, 5.4.0 | YAML parsing for project folder import |
 
 ## Plugin System
 
@@ -66,21 +67,23 @@ All database drivers are `.tableplugin` bundles loaded at runtime. This keeps th
 | PluginDriverAdapter | `Core/Plugins/PluginDriverAdapter.swift` | Bridges `PluginDatabaseDriver` to core `DatabaseDriver` |
 | DatabaseDriverFactory | `Core/Database/DatabaseDriver.swift` | Resolves `DatabaseType` to loaded plugin |
 
+`Packages/TableProCore/Sources/TableProPluginKit` is a symlink to the same files, so edit only `Plugins/TableProPluginKit/`.
+
 ### Driver Plugins
 
-Five driver plugins ship inside the app bundle:
+Five driver plugins ship inside the app bundle, covering nine database types:
 
 | Plugin | Database types | Connectivity |
 |--------|---------------|--------------|
 | MySQLDriverPlugin | MySQL, MariaDB | CMariaDB (libmariadb) |
-| PostgreSQLDriverPlugin | PostgreSQL, Redshift, CockroachDB | CLibPQ (libpq) |
+| PostgreSQLDriverPlugin | PostgreSQL, Redshift, CockroachDB, PGlite | CLibPQ (libpq) |
 | SQLiteDriverPlugin | SQLite | System sqlite3 |
 | ClickHouseDriverPlugin | ClickHouse | HTTP (URLSession) |
 | RedisDriverPlugin | Redis | CRedis |
 
 The app bundle also carries non-driver plugins: CSVInspectorPlugin, export plugins (CSV, JSON, SQL, XLSX, MQL), and import plugins (CSV, JSON, SQL).
 
-The remaining 14 driver plugins are downloaded on demand from the [plugin registry](/development/plugin-registry):
+The remaining 16 driver plugins are downloaded on demand from the [plugin registry](/development/plugin-registry):
 
 | Plugin | Database types | Connectivity |
 |--------|---------------|--------------|
@@ -98,12 +101,14 @@ The remaining 14 driver plugins are downloaded on demand from the [plugin regist
 | ElasticsearchDriverPlugin | Elasticsearch | REST (URLSession) |
 | SurrealDBDriverPlugin | SurrealDB | HTTP RPC with CBOR encoding |
 | BeancountDriverPlugin | Beancount | Ledger file parsing, optional Python projection |
+| TeradataDriverPlugin | Teradata | Native Swift TD2 client (TableProTeradataCore) |
+| TrinoDriverPlugin | Trino | Trino client REST protocol over HTTP |
 
 ### PluginKit ABI
 
 TableProPluginKit builds with Swift Library Evolution (`BUILD_LIBRARY_FOR_DISTRIBUTION = YES`), so its public ABI is resilient. Plugins built against an older PluginKit keep loading under a newer app: the runtime fills unimplemented protocol requirements from their defaults.
 
-Additive changes (a new requirement with a default implementation, a new field added through a new initializer overload) need no version bump. Breaking changes bump `currentPluginKitVersion` (18 as of 0.57.0) in `PluginManager.swift`, and the loader then rejects mismatched plugins cleanly. Run `scripts/check-pluginkit-abi.sh` before merging any change under `Plugins/TableProPluginKit/`. See [Plugin Development](/development/plugin-development) for the full rules.
+Additive changes (a new requirement with a default implementation, a new field added through a new initializer overload) need no version bump. Breaking changes bump `currentPluginKitVersion` (18, unchanged since 0.48.0) in `PluginManager.swift`, and the loader then rejects mismatched plugins cleanly. Run `scripts/check-pluginkit-abi.sh` before merging any change under `Plugins/TableProPluginKit/`. See [Plugin Development](/development/plugin-development) for the full rules.
 
 ### Opt-in Plugin Protocols
 
@@ -114,6 +119,8 @@ Plugins can adopt protocols beyond `PluginDatabaseDriver` to expose extra capabi
 | `PluginDiagnosticProvider` | Provide a user-facing diagnostic for driver errors |
 | `PluginProcedureFunctionSupport` | Expose stored procedures and functions in the structure tab |
 | `PluginDefaultSortProvider` | Override default-sort behavior per table: `.useAppDefault`, `.suppress`, or `.forceColumns([String])` |
+| `PluginPrincipalManagement` | Serve users, roles, and grants to the Users & Roles tab |
+| `PluginBrowseFilterProvider` | Describe how the sidebar's object filter behaves for this driver (glob, case sensitivity, type scopes) |
 
 ## Key Components
 
@@ -153,7 +160,7 @@ flowchart LR
 
 ### MCP Server
 
-The MCP server lives under `Core/MCP/`, layered from wire types up: Codable JSON-RPC 2.0 and SSE types, transports (an `NWListener` HTTP server bound to `127.0.0.1` plus a stdio bridge for the `tablepro-mcp` CLI), actor-based session, auth, and rate-limit stores, and a protocol dispatcher that runs each inbound request in its own task. Sessions expire after 15 minutes idle. The dispatcher serves 19 tools and accepts protocol versions `2025-03-26`, `2025-06-18`, and `2025-11-25`. See the [tool catalog](/external-api/mcp-tools) and [Versioning](/external-api/versioning).
+The MCP server lives under `Core/MCP/`. It layers up from Codable JSON-RPC 2.0 and SSE wire types. Two transports sit on top: an `NWListener` HTTP server bound to `127.0.0.1`, and a stdio bridge for the `tablepro-mcp` CLI. Above those are actor-based session, auth, and rate-limit stores, plus a dispatcher that runs each inbound request in its own task. Sessions expire after 15 minutes idle. The dispatcher serves 19 tools and accepts protocol versions `2025-03-26`, `2025-06-18`, and `2025-11-25`. See the [tool catalog](/external-api/mcp-tools) and [Versioning](/external-api/versioning).
 
 ## Data Flow
 
@@ -186,7 +193,7 @@ flowchart TD
 | Pattern | What | Where |
 |---------|------|-------|
 | `@Observable` | UI state, sessions, active tab | ViewModels |
-| `@AppStorage` | User preferences | Settings |
+| UserDefaults via `AppSettingsStorage` | User preferences | `Core/Storage`; a few view-local toggles use `@AppStorage` |
 | Keychain | Connection passwords | ConnectionStorage |
 | SQLite FTS5 | Query history (full-text search) | QueryHistoryStorage |
 | JSON files | Tab state persistence | TabStateStorage |

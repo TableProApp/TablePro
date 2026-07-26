@@ -3,15 +3,11 @@ title: Safe Mode
 description: Per-connection query execution controls, from no restrictions to full read-only lockdown
 ---
 
-# Safe Mode
-
-Safe Mode is a per-connection setting that controls how TablePro handles query execution. Each connection can have its own level, from unrestricted access to complete write protection.
+Each connection carries its own Safe Mode level, from no restrictions to full write protection. The level decides what happens before a query runs.
 
 Set the Safe Mode level in the **Customization** pane of the connection form.
 
 ## Levels
-
-TablePro provides 6 graduated Safe Mode levels:
 
 | Level | Write Queries | Read Queries | Authentication |
 |-------|--------------|--------------|----------------|
@@ -70,7 +66,7 @@ The current Safe Mode level appears as a badge in the toolbar (orange for Alert 
   <img className="hidden dark:block" src="/images/safe-mode-toolbar-badge-dark.png" alt="Safe Mode level badge and picker in the toolbar" />
 </Frame>
 
-Changing the level from the badge applies to the whole connection and stays set as you open other tables and tabs. The saved default in the Customization pane is the level a connection starts at.
+Changing the level from the badge applies to the whole connection and stays set as you open other tables and tabs. It writes back to the saved connection, so the Customization pane shows the new level and the change reaches your other Macs when iCloud Sync is on. There is no session-only override.
 
 Safe Mode gates apply to query execution, saving cell edits, table operations, and sidebar changes.
 

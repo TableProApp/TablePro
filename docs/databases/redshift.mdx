@@ -3,8 +3,6 @@ title: Amazon Redshift
 description: Connect to Redshift clusters and Serverless over the PostgreSQL wire protocol, with DISTKEY and SORTKEY metadata display
 ---
 
-# Amazon Redshift Connections
-
 TablePro connects to Amazon Redshift using the same libpq driver as [PostgreSQL](/databases/postgresql), plus Redshift-specific metadata queries for distribution style, sort keys, and table size. The PostgreSQL page applies unless noted here.
 
 ## Connection Settings
@@ -15,11 +13,19 @@ TablePro connects to Amazon Redshift using the same libpq driver as [PostgreSQL]
 | **Port** | `5439` | |
 | **Database** | `dev` | **Required**; every cluster has a `dev` database |
 
-Fill in the form and click **Save & Connect**. Connection URLs use the `redshift://` scheme, see [Connection URL Reference](/databases/connection-urls).
+Fill in the form and click **Save & Connect**.
 
 <Note>
 AWS IAM authentication is not available for Redshift connections (unlike MySQL and PostgreSQL). Use the cluster's database username and password.
 </Note>
+
+## Connection URL
+
+```text
+redshift://user:password@my-cluster.abc123xyz.us-east-1.redshift.amazonaws.com:5439/dev
+```
+
+See [Connection URL Reference](/databases/connection-urls).
 
 ## Features
 
@@ -32,7 +38,7 @@ AWS IAM authentication is not available for Redshift connections (unlike MySQL a
   <img className="hidden dark:block" src="/images/redshift-table-info-sortkeys-dark.png" alt="Redshift table info showing distribution style and sort keys" />
 </Frame>
 
-**Backup & Maintenance**: **Backup Dump** and **Restore Dump** (via `pg_dump`) work for Redshift, and the maintenance panel offers **VACUUM** with FULL, ANALYZE, and VERBOSE options. See [Backup & Restore](/features/backup-restore).
+**Backup & Restore**: **Backup Dump** and **Restore Dump** run `pg_dump` and `pg_restore` for Redshift. See [Backup & Restore](/features/backup-restore).
 
 **Import & Export**: export to CSV, JSON, SQL, or XLSX. Import from CSV, JSON, or SQL. See [Import & Export](/features/import-export).
 
@@ -40,9 +46,14 @@ AWS IAM authentication is not available for Redshift connections (unlike MySQL a
 
 TablePro disables the structure-editing UI for Redshift: no column, index, or key changes from the structure tab. Run `ALTER TABLE` statements in the SQL editor instead.
 
-## Redshift Limitations
+## Limitations
 
-Columnar warehouse, not a general-purpose RDBMS: no traditional indexes (DISTKEY/SORTKEY instead), no enums, sequences, or triggers, and foreign keys are informational only.
+Redshift is a columnar warehouse, not a general-purpose RDBMS.
+
+- No traditional indexes. Redshift uses DISTKEY and SORTKEY instead.
+- No enums, sequences, or triggers.
+- Foreign keys are informational. Redshift does not enforce them.
+- No Maintenance menu. Run `VACUUM` and `ANALYZE` from the SQL editor.
 
 ## Troubleshooting
 

@@ -3,8 +3,6 @@ title: EXPLAIN Visualization
 description: View query execution plans as diagrams, trees, or raw output
 ---
 
-# EXPLAIN Visualization
-
 Click **Explain** in the query editor toolbar, or use **Query > Explain Query** (default shortcut `Cmd+Option+E`), to get the execution plan for the current query.
 
 Databases with multiple EXPLAIN variants show a dropdown: PostgreSQL offers **EXPLAIN** (estimated plan) and **EXPLAIN ANALYZE** (runs the query and shows actual timing); MySQL and MariaDB offer **EXPLAIN** and **EXPLAIN (JSON)**. Databases with a single variant, like SQLite or DuckDB, show a plain Explain button.
@@ -52,7 +50,7 @@ Toggle between three views using the segmented control above the results:
 | Database | Variants | Output |
 |----------|----------|--------|
 | PostgreSQL | EXPLAIN, EXPLAIN ANALYZE | JSON, parsed into diagram and tree |
-| Redshift | Explain | Raw text |
+| Redshift | EXPLAIN, EXPLAIN ANALYZE | PostgreSQL's `EXPLAIN (FORMAT JSON)`, read by the PostgreSQL plan parser |
 | CockroachDB | EXPLAIN, EXPLAIN ANALYZE | Text plan, parsed into diagram and tree |
 | MySQL / MariaDB | EXPLAIN, EXPLAIN (JSON) | JSON variant parsed into diagram and tree; plain EXPLAIN stays in the results grid |
 | SQLite | Explain | EXPLAIN QUERY PLAN, parsed into diagram and tree |
@@ -61,6 +59,7 @@ Toggle between three views using the segmented control above the results:
 | Cloudflare D1 | Query Plan | EXPLAIN QUERY PLAN, raw text |
 | LibSQL / Turso | Query Plan | EXPLAIN QUERY PLAN, raw text |
 | Snowflake | Explain (Text) | Raw text |
+| Trino | Explain (Logical), Explain (Distributed), Explain (IO), Explain (Validate), Explain Analyze | Raw text |
 | SurrealDB | Explain, Explain Full | Raw text |
 | BigQuery | Dry Run (Cost) | Dry run cost estimate |
 | MongoDB | Explain | `explain` runCommand with execution stats |

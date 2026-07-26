@@ -3,20 +3,18 @@ title: AI Assistant
 description: "Built-in AI for SQL: chat with tool calling, inline suggestions, explain, optimize, and fix-error across 13 providers."
 ---
 
-# AI Assistant
-
 Built-in AI for writing, explaining, optimizing, and fixing SQL. One active provider drives every AI feature: chat, inline suggestions, editor actions, and fix-error. Provider keys stay in the macOS Keychain.
 
 ## Configure a Provider
 
-Open **Settings** (`Cmd+,`) > **AI**. The **Enable AI Features** toggle at the top gates the whole tab; turning it off also hides the per-connection AI policy in the connection form.
+Open **Settings > AI** (`Cmd+,`). The **Enable AI Features** toggle at the top gates the whole tab; turning it off also hides the per-connection AI policy in the connection form.
 
 <Frame caption="AI settings">
   <img className="block dark:hidden" src="/images/ai-chat-settings-provider.png" alt="AI settings" />
   <img className="hidden dark:block" src="/images/ai-chat-settings-provider-dark.png" alt="AI settings" />
 </Frame>
 
-1. Click **Add Provider...** and pick a type: GitHub Copilot, ChatGPT, Cursor, Claude, OpenAI, OpenRouter, OpenCode Zen, Gemini, xAI, Ollama, llama.cpp, MLX, or a custom OpenAI-compatible endpoint.
+1. Click **Add Provider...** and pick a type: GitHub Copilot, ChatGPT, Cursor, Claude, OpenAI, OpenRouter, Gemini, xAI, Ollama, llama.cpp, MLX, or OpenCode Zen. **Add Custom Provider...** at the bottom of the menu takes any OpenAI-compatible endpoint.
 2. Enter the API key, or sign in for Copilot, ChatGPT, Cursor, and xAI.
 3. Enter a model name, or pick one from the fetched list.
 4. Click **Test Connection**.
@@ -71,7 +69,7 @@ In Edit and Agent modes, each tool call appears as a card in the reply. Read-onl
   <img className="hidden dark:block" src="/images/ai-chat-tool-approval-dark.png" alt="Per-card tool approval" />
 </Frame>
 
-If the connection's safe-mode level is **Silent**, write tools auto-approve. If it is **Read Only**, they auto-deny. Destructive operations are the exception: `confirm_destructive_operation` always requires a per-call click. Silent mode does not auto-approve it, and **Always for this connection** is refused for it. The tool also requires the model to pass the verbatim phrase `I understand this is irreversible`.
+If the connection's safe-mode level is **Silent**, write tools auto-approve. If it is **Read-Only**, they auto-deny. Destructive operations are the exception: `confirm_destructive_operation` always requires a per-call click. Silent mode does not auto-approve it, and **Always for this connection** is refused for it. The tool also requires the model to pass the verbatim phrase `I understand this is irreversible`.
 
 Provider support for tool calling: every provider except Cursor. Ollama, llama.cpp, MLX, and custom endpoints depend on the model.
 
@@ -83,7 +81,7 @@ Attached items show as chips. Saved query chips resolve at send time, so the AI 
 
 ### Slash Commands
 
-Type `/` to run a command: **`/explain`**, **`/optimize`**, and **`/fix`** act on the active query; **`/help`** lists commands. Add your own under **Settings** > **AI** > **Custom Slash Commands**. Templates substitute `{{query}}`, `{{schema}}`, `{{database}}`, and `{{body}}` (text typed after the command) at send time.
+Type `/` to run a command: **`/explain`**, **`/optimize`**, and **`/fix`** act on the active query; **`/help`** lists commands. Add your own under **Settings > AI > Custom Slash Commands**. Templates substitute `{{query}}`, `{{schema}}`, `{{database}}`, and `{{body}}` (text typed after the command) at send time.
 
 ### Model Picker
 
@@ -101,18 +99,18 @@ The pause length is the **Debounce** setting next to the toggle: 500 ms by defau
 
 ## Editor Actions
 
-Right-click SQL in the editor for **Explain with AI** (`Cmd+L`) and **Optimize with AI** (`Cmd+Option+L`). Rebind them under **Settings** > **Keyboard** in the **Editor & Query** category.
+**Query > Explain with AI** (`Cmd+L`) and **Query > Optimize with AI** (`Cmd+Option+L`) act on the whole query tab. The editor's right-click menu has the same two items and acts on the selected text; they only appear when text is selected. Either way, a new conversation starts and the request is sent right away. Rebind the shortcuts under **Settings > Keyboard** in the **Editor & Query** category.
 
 ## Fix with AI
 
-When a query fails, the inline error banner above the results shows a **Fix with AI** button. It opens chat with the failed query and error pre-filled.
+When a query fails, the inline error banner above the results shows a **Fix with AI** button. It opens the chat panel, starts a new conversation, and sends the failed query and the error straight to the AI, which answers with a walkthrough.
 
 ## SQL Walkthroughs
 
 Explain, Optimize, and Fix answer with a walkthrough in the chat panel instead of plain text, so you can review the change before trusting it:
 
 - **Before/after diff.** Optimize and Fix show a diff between your query and the AI's version. Switch between **Unified** and **Split** with the toggle in the walkthrough header. Explain shows the query with the steps anchored to it.
-- **Numbered steps.** Each step has a one-line reason and an importance tag (**Critical**, **Change**, or **Context**). Expand a step to see the exact lines it refers to, and **Show in diff** scrolls to and highlights them.
+- **Numbered steps.** Each step has a one-line reason and an importance tag (**Critical**, **Change**, or **Context**). Expand a step to see the exact lines it refers to. **Jump to lines** scrolls to them and highlights them for a moment.
 - **Ask about a step.** Use **Ask about this change** on any step to send a follow-up question that stays anchored to that step.
 - **Apply to Editor.** When the AI rewrote your query, **Apply to Editor** replaces the editor content after you confirm. Nothing is applied automatically.
 
@@ -120,7 +118,7 @@ The AI writes the steps and the rewritten query; TablePro computes the diff itse
 
 ## Context
 
-Under **Settings** > **AI** > **Context**:
+Under **Settings > AI > Context**:
 
 | Setting | Default |
 |---------|---------|

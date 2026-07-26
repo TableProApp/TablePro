@@ -3,9 +3,9 @@ title: MongoDB
 description: Connect to MongoDB with MQL shell queries, collection browsing, and automatic Atlas SRV setup
 ---
 
-# MongoDB Connections
+Collections appear as tables in the sidebar. Documents display with top-level fields as columns and nested objects as formatted JSON.
 
-Collections appear as tables in the sidebar. Documents display with top-level fields as columns and nested objects as formatted JSON. MongoDB is a registry plugin: it auto-installs when you create a MongoDB connection, or install it from **Settings** > **Plugins** > **Browse** > **MongoDB Driver**.
+MongoDB is a registry plugin. Picking it in the **Choose a Database** sheet prompts to install; connecting to a saved MongoDB connection installs it without asking. You can also install **MongoDB Driver** from **Settings > Plugins > Browse**.
 
 ## Quick Setup
 
@@ -23,10 +23,11 @@ Collections appear as tables in the sidebar. Documents display with top-level fi
 | Field | Default | Notes |
 |-------|---------|-------|
 | **Hosts** | `localhost:27017` | Add multiple `host:port` pairs for replica sets |
-| **Database** | - | Optional. Leave empty to browse all databases. Switch with **Cmd+K** |
 | **Username** | - | Leave empty for local dev without auth |
 | **Password** | - | |
 | **Auth Mechanism** | Default | SCRAM-SHA-1, SCRAM-SHA-256, X.509, or AWS IAM. In the Authentication section |
+
+The form has no Database field. On connect TablePro opens the first non-system database it finds, and **Cmd+K** switches to another. A database in a connection URL path (`mongodb://host:27017/mydb`) is used instead.
 
 **Advanced**: **Auth Database** (usually `admin`), **Read Preference**, **Write Concern**, **Use SRV Record**, and **Replica Set** name.
 
@@ -45,12 +46,12 @@ The **Hosts** field accepts multiple `host:port` pairs separated by commas (for 
 
 You can also paste a multi-host URI directly:
 
-```
+```text
 mongodb://user:pass@host1:27017,host2:27017,host3:27017/db?replicaSet=rs0
 ```
 
 <Note>
-SSH tunneling only forwards the first host. Other members must be reachable from the SSH server.
+Over an SSH tunnel TablePro connects to the first host only and drops the rest of the list. Replica set discovery and failover are off for that session.
 </Note>
 
 ## SSL/TLS
@@ -76,31 +77,39 @@ See [Connection URL Reference](/databases/connection-urls) for all parameters.
 
 **Explain**: Press `Cmd+Option+E` on an MQL statement. TablePro converts `find`, `aggregate`, `countDocuments`, update, delete, and `findOneAnd*` calls into `db.runCommand({"explain": ..., "verbosity": "executionStats"})`.
 
-**MQL Shell Queries**:
+**MQL Shell Queries**: Filters and pipelines are parsed as JSON and Extended JSON, not JavaScript. Quote every key, operators included: `{age: {$gte: 18}}` fails with a parse error. mongosh helpers like `ISODate("2025-01-01")` fail too; write `{"$date": "2025-01-01T00:00:00Z"}`. The editor has no comment syntax, so a `//` line becomes part of the statement.
+
+Find with a filter:
 
 ```javascript
-// Find documents with filtering
-db.users.find({ age: { $gte: 18 }, active: true })
-
-// Find with projection and sorting
-db.orders.find(
-  { status: "completed" },
-  { customerId: 1, total: 1, date: 1 }
-).sort({ date: -1 }).limit(20)
-
-// Aggregation pipeline (dates use Extended JSON)
-db.sales.aggregate([
-  { "$match": { "date": { "$gte": { "$date": "2025-01-01T00:00:00Z" } } } },
-  { "$group": { "_id": "$product", "totalSales": { "$sum": "$amount" } } },
-  { "$sort": { "totalSales": -1 } },
-  { "$limit": 10 }
-])
-
-// Count documents
-db.users.countDocuments({ role: "admin" })
+db.users.find({"age": {"$gte": 18}, "active": true})
 ```
 
-Filters and pipelines are parsed as JSON/Extended JSON, not JavaScript. mongosh helpers like `ISODate("2025-01-01")` fail to parse; write `{"$date": "2025-01-01T00:00:00Z"}` instead.
+Find with a projection and a sort:
+
+```javascript
+db.orders.find(
+  {"status": "completed"},
+  {"customerId": 1, "total": 1, "date": 1}
+).sort({"date": -1}).limit(20)
+```
+
+Aggregation pipeline, with dates in Extended JSON:
+
+```javascript
+db.sales.aggregate([
+  {"$match": {"date": {"$gte": {"$date": "2025-01-01T00:00:00Z"}}}},
+  {"$group": {"_id": "$product", "totalSales": {"$sum": "$amount"}}},
+  {"$sort": {"totalSales": -1}},
+  {"$limit": 10}
+])
+```
+
+Count documents:
+
+```javascript
+db.users.countDocuments({"role": "admin"})
+```
 
 **Supported methods**: collection-level `find`, `findOne`, `aggregate`, `countDocuments`/`count`, `insertOne`/`insertMany`, `updateOne`/`updateMany`, `replaceOne`, `deleteOne`/`deleteMany`, `findOneAndUpdate`/`findOneAndReplace`/`findOneAndDelete`, `createIndex`, `dropIndex`, `drop`; database-level `getCollectionNames`/`listCollections`, `createCollection`, `dropDatabase`, `version`, `stats`. Anything else goes through `db.runCommand({...})` or `db.adminCommand({...})`. Unlisted shell methods (for example `distinct` or `getUsers`) return an unsupported-method error.
 
@@ -112,4 +121,9 @@ Filters and pipelines are parsed as JSON/Extended JSON, not JavaScript. mongosh 
 
 **Timeout**: Verify host/port, check network and firewall, whitelist your IP in MongoDB Atlas.
 
-**Limitations**: Transactions are not exposed (statements always run standalone, on any topology), schema is inferred by sampling, GridFS is not browsable, change streams are unsupported.
+## Limitations
+
+- Transactions are not exposed. Statements always run standalone, on any topology.
+- The grid schema is inferred by sampling documents, not read from a validator.
+- GridFS buckets are not browsable.
+- Change streams are unsupported.

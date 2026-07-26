@@ -3,19 +3,19 @@ title: SurrealDB
 description: Connect to SurrealDB with namespace and database browsing, SurrealQL, and inline record editing
 ---
 
-# SurrealDB Connections
-
 TablePro connects to SurrealDB 2.x and 3.x over the HTTP RPC protocol. Browse namespaces and databases in the sidebar, run SurrealQL in the editor, and edit records inline in the data grid.
 
 The driver talks CBOR, so record links, datetimes, durations, decimals, and UUIDs keep their types instead of arriving as plain strings.
 
 ## Quick Setup
 
-Click **New Connection**, select **SurrealDB**, enter the host and port (default `8000`), pick an auth level, and connect. The plugin installs on first use, or install it from **Settings** > **Plugins** > **Browse** > **SurrealDB Driver**.
+Click **New Connection**, select **SurrealDB**, enter the host and port (default `8000`), pick an auth level, and connect.
+
+SurrealDB is a registry plugin. Picking it in the **Choose a Database** sheet prompts to install; connecting to a saved SurrealDB connection installs it without asking. You can also install **SurrealDB Driver** from **Settings > Plugins > Browse**.
 
 TablePro registers the `surrealdb://` URL scheme, so `surrealdb://user:pass@host:8000` links pre-fill the connection form (see [Connection URL Reference](/databases/connection-urls)). For a remote server, connect through an [SSH tunnel](/databases/ssh-tunneling).
 
-## Namespaces and databases
+## Namespaces and Databases
 
 SurrealDB nests tables under a namespace and a database. TablePro maps that straight onto the sidebar: namespaces sit at the top level, databases sit inside them, and tables sit inside a database. Switch either level without reconnecting.
 
@@ -51,12 +51,12 @@ Only a root user can list every namespace. With namespace or database credential
 |-------|-------------|
 | **Namespace** | The namespace to open. Required for every level except Root and Token |
 | **Database** | The database to open. Required for Database and Record Access; otherwise pick one from the sidebar |
-| **SSL** | Enable to connect over HTTPS |
-| **Skip TLS Verification** | Trust a self-signed certificate (Advanced section) |
+| **SSL Mode** | In the **SSL/TLS** pane. Any mode other than Disabled connects over HTTPS. **Preferred** and **Required (skip verify)** accept a self-signed certificate |
+| **Skip TLS Verification** | Advanced section. Trusts any certificate, even with **Verify CA** or **Verify Identity** set |
 | **Token** | A JWT, shown when Auth Level is Token |
 | **Access Method** | The name from `DEFINE ACCESS`, shown when Auth Level is Record Access |
 
-## Editing records
+## Editing Records
 
 <Frame caption="SurrealDB records in the data grid">
   <img className="block dark:hidden" src="/images/surrealdb-record-grid.png" alt="SurrealDB table records with record links and typed values in the data grid" />
@@ -71,11 +71,11 @@ The grid writes one field at a time. Changing a cell runs an `UPDATE` that sets 
 
 Values are sent as typed parameters, so an `int` column stays an `int` and a filter value is never treated as SurrealQL.
 
-## Schemaless tables
+## Schemaless Tables
 
 A `SCHEMALESS` table has no declared fields. TablePro reads the columns from the rows it fetched, so a field only some records carry still gets a column, and records missing it show an empty cell.
 
-## Query plans
+## Query Plans
 
 The Explain button in the editor offers **Explain** and **Explain Full**, which run the current query with SurrealDB's `EXPLAIN` and `EXPLAIN FULL` to show how it resolves, for example whether an index is used.
 

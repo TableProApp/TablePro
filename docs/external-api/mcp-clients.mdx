@@ -3,8 +3,6 @@ title: MCP Clients
 description: Connect Claude Desktop, Claude Code, Cursor, VS Code, Cline, Continue, Zed, Windsurf, Antigravity, Goose, and custom clients to TablePro over stdio
 ---
 
-# MCP Clients
-
 Any MCP client that supports the stdio transport and can run a command on disk can connect to TablePro. The pattern is the same across every client:
 
 ```json
@@ -91,7 +89,7 @@ Zed keys MCP servers under `context_servers` (not `mcpServers`) in `~/.config/ze
 }
 ```
 
-Or use the Agent Panel: header menu > **Settings** > **MCP Servers** > **+ Add Custom Server** > **Local** tab. That dialog requires an `"args": []` field even though the settings-file form treats it as optional.
+Or use the Agent Panel: header menu > **Settings > MCP Servers > + Add Custom Server > Local** tab. That dialog requires an `"args": []` field even though the settings-file form treats it as optional.
 
 ## Goose
 

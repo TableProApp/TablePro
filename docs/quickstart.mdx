@@ -3,8 +3,6 @@ title: Quick Start
 description: Connect to your first database and run a query in a few minutes
 ---
 
-# Quick Start Guide
-
 Install TablePro, connect to a database, and run your first query.
 
 ## Step 1: Install
@@ -13,14 +11,13 @@ Install via Homebrew (`brew install --cask tablepro`) or download the DMG from G
 
 ## Step 2: Create Your First Connection
 
-The welcome window has an actions panel on the left (Create Connection, Import from Other App, Try Sample Database) and your saved connections on the right. The search field, `+` button, and group button sit at the top of the connections panel; press `Cmd+F` to focus search. Each connection shows its tag and group, so you can tell production from staging at a glance.
+The welcome window has an actions panel on the left with **Create Connection...** and an **Add from Existing** menu. Your saved connections are on the right. The `+` button, the group button, and the search field sit at the top of the connections panel. Press `Cmd+F` to focus search. Each connection shows its tags and group.
 
-- **Try Sample Database** opens the bundled Chinook SQLite database, no server needed. Reset it any time from **File > Reset Sample Database...**.
-- **Import from Other App...** copies your saved connections from TablePlus, DataGrip, Beekeeper Studio, and other clients.
+- **Add from Existing** holds **Import from URL...**, **Import from Other App...** (TablePlus, DataGrip, DBeaver, Beekeeper Studio, Sequel Ace, and others), **Open Project Folder...**, and **Import Connections...**.
+- With no connections saved yet, the right panel offers **Try Sample Database**. It opens the bundled Chinook SQLite database, no server needed. Reset it any time from **File > Reset Sample Database...**.
 
 Click **Create Connection...**. A chooser sheet lists every supported database type grouped by category. Pick one and click **Continue**.
 
-{/* Screenshot: Database type chooser sheet */}
 <Frame caption="Pick a database type">
   <img
     className="block dark:hidden"
@@ -47,7 +44,6 @@ The form pre-fills the host (`localhost`) and the default port. The username is 
 - **MongoDB**: port `27017`
 - **SQLite**: browse to a `.sqlite` or `.db` file, no auth needed
 
-{/* Screenshot: PostgreSQL connection form with fields filled in */}
 <Frame caption="PostgreSQL connection form">
   <img
     className="block dark:hidden"
@@ -67,7 +63,6 @@ Already have a connection URL? Click **Import from URL...** in the chooser foote
 
 Click **Test Connection** in the **Status** row at the bottom of the General pane. When it shows a green checkmark, click **Save & Connect** in the toolbar.
 
-{/* Screenshot: Test Connection status row showing success */}
 <Frame caption="Test Connection succeeded">
   <img
     className="block dark:hidden"
@@ -83,10 +78,9 @@ Click **Test Connection** in the **Status** row at the bottom of the General pan
 
 ## Step 4: Run Your First Query
 
-The main window has three panels: the sidebar (databases and tables), the SQL editor, and the data grid for results.
+The main window has a sidebar on the left (databases and tables), the open tab in the middle, and an inspector on the right. A table tab shows the data grid. A query tab puts the SQL editor above the result grid.
 
-{/* Screenshot: Main interface after connecting, showing sidebar with tables */}
-<Frame caption="TablePro main interface">
+<Frame caption="A table tab showing the data grid">
   <img
     className="block dark:hidden"
     src="/images/app.png"
@@ -99,7 +93,7 @@ The main window has three panels: the sidebar (databases and tables), the SQL ed
   />
 </Frame>
 
-Click a table in the sidebar to browse it, or type a query in the editor and press `Cmd+Enter`:
+Click a table in the sidebar to browse it. For SQL, press `Cmd+T` to open a query tab, type a query, and press `Cmd+Enter`:
 
 ```sql
 SELECT * FROM users LIMIT 10;

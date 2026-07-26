@@ -3,8 +3,6 @@ title: Plugin Registry
 description: Registry manifest format, binary selection, publishing, and PluginKit compatibility
 ---
 
-# Plugin Registry
-
 The plugin registry is a JSON manifest (`plugins.json`) hosted at [github.com/TableProApp/plugins](https://github.com/TableProApp/plugins). TablePro fetches it to populate **Settings > Plugins > Browse** and to auto-install a driver when a user selects a database type with no loaded plugin. This page covers the manifest and publishing pipeline; for install and update behavior in the app, see [Plugins & Themes](/features/plugins). To build a plugin, see [Plugin Development](/development/plugin-development).
 
 ## Manifest Format
@@ -51,7 +49,7 @@ v1 manifests carried top-level `downloadURL`, `sha256`, and `minPluginKitVersion
 
 ## Binary Selection
 
-For a database driver, the app filters `binaries` to the current architecture, keeps those whose `pluginKitVersion` falls within `[minimumCompatiblePluginKitVersion, currentPluginKitVersion]` (both declared in `PluginManager.swift`, both 18 as of 0.57.0), and installs the highest. A driver binary without `pluginKitVersion` never resolves, and install fails with `noCompatibleBinary`.
+For a database driver, the app filters `binaries` to the current architecture, keeps those whose `pluginKitVersion` falls within `[minimumCompatiblePluginKitVersion, currentPluginKitVersion]` (both declared in `PluginManager.swift`, both 18 and unchanged since 0.48.0), and installs the highest. A driver binary without `pluginKitVersion` never resolves, and install fails with `noCompatibleBinary`.
 
 Themes carry no native code, so they match on architecture only.
 
@@ -120,10 +118,14 @@ The full field list is `RegistryPluginMetadata` in `TablePro/Core/Plugins/Regist
 | `plugin-libsql` | `"libSQL"`, `"Turso"` |
 | `plugin-elasticsearch` | `"Elasticsearch"` |
 | `plugin-surrealdb` | `"SurrealDB"` |
+| `plugin-teradata` | `"Teradata"` |
+| `plugin-trino` | `"Trino"` |
 
 Bundled plugins (MySQL, PostgreSQL, SQLite, ClickHouse, Redis, and the import/export formats) ship inside the app and are never published to the registry.
 
 ## Publishing a Plugin
+
+A new plugin needs a case in `resolve_plugin_info()` in `.github/workflows/build-plugin.yml` before its first tag. Without one the workflow exits with `Unknown plugin name`.
 
 Tag the commit and push that one tag:
 

@@ -3,8 +3,6 @@ title: Server Dashboard
 description: Monitor active sessions, server metrics, and slow queries in real time
 ---
 
-# Server Dashboard
-
 The dashboard shows active sessions, key server metrics, and slow-running queries with configurable auto-refresh.
 
 Open it from the menu bar **View > Server Dashboard**. A Dashboard toolbar button is also available: right-click the toolbar, choose **Customize Toolbar**, and drag it in.
@@ -22,23 +20,25 @@ Open it from the menu bar **View > Server Dashboard**. A Dashboard toolbar butto
   />
 </Frame>
 
+The panels are stacked top to bottom. Drag the dividers between Active Sessions, Server Metrics, and Slow Queries to resize each section; positions are remembered across launches.
+
 ## Active Sessions
 
 A sortable table of all connections to the server, showing:
 
-- **PID** - process or session ID
-- **User** - connected user
-- **Database** - target database
-- **State** - current status (active, idle, sleeping)
-- **Duration** - how long the current operation has been running
-- **Query** - the SQL statement being executed (truncated, hover for full text)
+- **PID**: process or session ID
+- **User**: connected user
+- **Database**: target database
+- **State**: current status (active, idle, sleeping)
+- **Duration**: how long the current operation has been running
+- **Query**: the SQL statement being executed (truncated, hover for full text)
 
 ### Kill and Cancel
 
 Each session row has action buttons:
 
-- **Cancel Query** (stop icon) - cancels the running query without terminating the connection (`pg_cancel_backend` on PostgreSQL, `KILL QUERY` on MySQL)
-- **Terminate Session** (x icon) - kills the entire connection
+- **Cancel Query** (stop icon): cancels the running query without terminating the connection (`pg_cancel_backend` on PostgreSQL, `KILL QUERY` on MySQL)
+- **Terminate Session** (x icon): kills the entire connection
 
 Both actions show a confirmation alert before executing. If the server rejects the action, an Action Failed alert shows the error.
 
@@ -59,16 +59,14 @@ A horizontal strip of metric cards. What is shown depends on the database:
 
 A list of queries running longer than 1 second, sorted by duration. Each entry shows the elapsed time, SQL text, user, and database.
 
-The dashboard panels sit in a vertical split. Drag the dividers between Active Sessions, Server Metrics, and Slow Queries to resize each section; positions are remembered across launches.
+ClickHouse is different: the list comes from `system.query_log`, so it shows the 20 most recent finished queries that took over a second, newest first, with no database.
 
 ## Auto-refresh
 
-The dashboard toolbar provides refresh controls:
-
-- **Interval picker** - choose 1s, 2s, 5s (default), 10s, 30s, or Off
-- **Pause/Resume** - temporarily stop refreshing without changing the interval (disabled when the interval is Off)
-- **Refresh Now** - runs a manual refresh
-- **Last refresh time** - shown on the right
+- **Interval menu**: 1s, 2s, 5s (default), 10s, 30s, or Off
+- **Pause/Resume**: stops refreshing without changing the interval (disabled when the interval is Off)
+- **Refresh Now**: runs one refresh
+- **Last refresh time**: shown on the right
 
 ## Database Support
 

@@ -3,8 +3,6 @@ title: Query Tabs
 description: Each tab keeps its own SQL, results, sorting, and filters, and comes back after a restart
 ---
 
-# Query Tabs
-
 Every tab is a native macOS window tab: each tab is an NSWindow in a tab group, managed by the system tabbing API. Standard macOS tab behavior applies. Drag tabs to reorder or move them between windows, use **Window > Merge All Windows** and **Window > Move Tab to New Window**, press `Ctrl+Tab` to cycle, and use **View > Show All Tabs** (`Cmd+Shift+\`) for the tab overview. When more tabs open than fit, the tab bar shrinks them to fit, as in Safari.
 
 Each tab is an independent workspace with its own SQL, results, sorting, and filter state. Tabs persist across app restarts.
@@ -21,7 +19,7 @@ Each tab is an independent workspace with its own SQL, results, sorting, and fil
 | **Query tab** | Write and run SQL |
 | **Table tab** | Browse table data with pagination, sorting, and [filters](/features/filtering) |
 
-Table tabs track cell edits as pending changes by default. Query tabs support [change tracking](/features/change-tracking) only for simple `SELECT * FROM table` results.
+Table tabs track cell edits as pending changes by default. Query tabs support [change tracking](/features/change-tracking) when the query is a SELECT from one table, with or without `WHERE`, `ORDER BY`, or `LIMIT`. Joins, table aliases, and schema-qualified names like `public.users` come back read-only.
 
 ## Preview Tabs
 

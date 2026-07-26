@@ -3,14 +3,14 @@ title: Development Setup
 description: Clone, configure signing, and build TablePro in Xcode
 ---
 
-# Development Setup
-
 ## Prerequisites
 
 | Software | Version | Notes |
 |----------|---------|-------|
-| macOS | 14.0+ (Sonoma) | Target platform |
-| Xcode | 15.0+ | Includes Swift 5.9 |
+| Xcode | 26.0+ | Ships the macOS 26 SDK the app builds against. Every CI job pins 26.4.1. |
+| Swift | 5.9 language mode | Comes with Xcode, set by `SWIFT_VERSION` in the project |
+
+The app references macOS 26 SDK symbols (`NSGlassEffectView` in the quick switcher), so an older Xcode cannot compile it. The deployment target stays at macOS 14.0 Sonoma, which is what the built app runs on, not what you build on.
 
 Optional but recommended:
 
@@ -34,7 +34,7 @@ Optional but recommended:
     scripts/download-libs.sh
     ```
 
-    This pulls pre-built `.a` files (libmariadb, libpq, etc.) from GitHub Releases into `Libs/`. Takes a few seconds.
+    This pulls two archives from the `libs-v1` GitHub Release into `Libs/`: the macOS `.a` files (libmariadb, libpq, libduckdb, libmongoc, and others) and the iOS xcframeworks. About 257 MB downloaded, 620 MB on disk once expanded. Expect a minute or two.
 
     <Warning>
     Skipping this step causes linker errors. The static libraries are not checked into git.
@@ -89,14 +89,14 @@ Optional but recommended:
     xcodebuild -project TablePro.xcodeproj -scheme TablePro -configuration Debug build -skipPackagePluginValidation
     ```
 
-    Xcode writes the built app to DerivedData
-    (`~/Library/Developer/Xcode/DerivedData/TablePro-*/Build/Products/Debug`).
+    `Cmd+R` writes the app to DerivedData
+    (`~/Library/Developer/Xcode/DerivedData/TablePro-*/Build/Products/Debug`). The
+    `xcodebuild` command above writes to `build/Debug/TablePro.app` inside the repo instead.
   </Step>
 </Steps>
 
 Writing a driver plugin? See [Plugin Development](/development/plugin-development) to build one and [Testing a Custom Plugin](/development/testing-plugins) to run it in your local build.
 
-{/* Screenshot: Xcode Signing & Capabilities pane with Team highlighted */}
 <Frame caption="Xcode project setup">
   <img
     className="block dark:hidden"
@@ -129,10 +129,20 @@ Writing a driver plugin? See [Plugin Development](/development/plugin-developmen
   <Tree.Folder name="Plugins">
     <Tree.File name=".tableplugin bundles + TableProPluginKit framework" />
   </Tree.Folder>
+  <Tree.Folder name="Packages">
+    <Tree.File name="TableProCore: shared SwiftPM modules used by the macOS and iOS apps" />
+  </Tree.Folder>
+  <Tree.Folder name="LocalPackages">
+    <Tree.File name="Vendored CodeEditSourceEditor, CodeEditTextView, CodeEditLanguages" />
+  </Tree.Folder>
   <Tree.Folder name="Libs">
     <Tree.File name="Pre-built static libraries (downloaded, not in git)" />
   </Tree.Folder>
+  <Tree.Folder name="TableProMobile">
+    <Tree.File name="iOS app" />
+  </Tree.Folder>
   <Tree.Folder name="TableProTests" />
+  <Tree.Folder name="TableProUITests" />
   <Tree.Folder name="docs">
     <Tree.File name="Mintlify docs site" />
   </Tree.Folder>
@@ -140,6 +150,8 @@ Writing a driver plugin? See [Plugin Development](/development/plugin-developmen
     <Tree.File name="build-release.sh, create-dmg.sh, download-libs.sh" />
   </Tree.Folder>
 </Tree>
+
+`Packages/TableProCore/Sources/TableProPluginKit` is a symlink to `Plugins/TableProPluginKit`. Edit the files under `Plugins/` only.
 
 ## Running Tests
 
@@ -171,5 +183,5 @@ CI rejects warnings, so plain `swiftlint lint` is not enough. Full tooling refer
 | Code signing errors | Change Team in Signing & Capabilities |
 
 <Note>
-The `-skipPackagePluginValidation` flag is required because CodeEditSourceEditor (an SPM dependency) bundles a SwiftLint plugin. Without this flag, CLI builds fail with a validation error.
+Pass `-skipPackagePluginValidation` on every `xcodebuild` invocation so the build does not stop on package plugin validation. `scripts/build-release.sh`, `scripts/build-plugin.sh`, `scripts/check-pluginkit-abi.sh`, and CI all pass it.
 </Note>

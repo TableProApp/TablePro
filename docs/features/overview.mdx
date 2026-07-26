@@ -3,11 +3,9 @@ title: Features Overview
 description: Index of TablePro features grouped by editor, AI, views, data management, workflow, security, sync, team and licensing, and extensibility.
 ---
 
-# Features
-
 Every feature in TablePro, grouped so you can jump straight to what you need.
 
-TablePro opens with a welcome window: an actions panel on the left (Create Connection, Import from App, Try Sample Database) and your saved connections on the right. Search sits in the connections panel header; press `Cmd+F` to focus it. The sample is a bundled Chinook SQLite database. Reset it any time from **File > Reset Sample Database**.
+TablePro opens with a welcome window: an actions panel on the left and your saved connections on the right. The panel has **Create Connection...** and an **Add from Existing** menu holding Import from URL, Import from Other App, Open Project Folder, and Import Connections. Search sits in the connections panel header; press `Cmd+F` to focus it. With nothing saved yet, the connections panel offers **Try Sample Database**, a bundled Chinook SQLite database. Reset it any time from **File > Reset Sample Database...**.
 
 ## Editor & Data
 
@@ -31,7 +29,7 @@ TablePro opens with a welcome window: an actions panel on the left (Create Conne
     Schema-aware completions backed by cached column metadata.
   </Card>
   <Card title="Vim Mode" icon="keyboard" href="/features/vim-mode">
-    Modal editing in the SQL editor with Normal, Insert, and Visual modes.
+    Modal editing in the SQL editor with motions, operators, text objects, and macros.
   </Card>
 </CardGroup>
 
@@ -61,7 +59,7 @@ TablePro opens with a welcome window: an actions panel on the left (Create Conne
   <Card title="EXPLAIN Visualization" icon="chart-network" href="/features/explain-visualization">
     Inspect query plans as a tree.
   </Card>
-  <Card title="Cell & Row Viewers" icon="brackets-curly" href="/features/json-viewer">
+  <Card title="Cell and Row Viewers" icon="brackets-curly" href="/features/json-viewer">
     JSON, PHP serialized, and binary viewers, per-column display formats, row details inspector.
   </Card>
   <Card title="Server Dashboard" icon="gauge" href="/features/server-dashboard">
@@ -95,7 +93,7 @@ TablePro opens with a welcome window: an actions panel on the left (Create Conne
 ## Workflow
 
 <CardGroup cols={2}>
-  <Card title="Tabs" icon="window-restore" href="/features/tabs">
+  <Card title="Query Tabs" icon="window-restore" href="/features/tabs">
     Native macOS window tabs per connection.
   </Card>
   <Card title="Quick Switcher" icon="compass" href="/features/quick-switcher">
@@ -106,6 +104,9 @@ TablePro opens with a welcome window: an actions panel on the left (Create Conne
   </Card>
   <Card title="Favorites" icon="star" href="/features/favorites">
     Pin tables and save reusable queries.
+  </Card>
+  <Card title="Open Project Folder" icon="folder-open" href="/features/project-folder-import">
+    Create a connection from the database settings in a project's config files.
   </Card>
   <Card title="Keyboard Shortcuts" icon="keyboard" href="/features/keyboard-shortcuts">
     Full shortcut reference.
@@ -157,7 +158,7 @@ TablePro opens with a welcome window: an actions panel on the left (Create Conne
 ## Extensibility
 
 <CardGroup cols={2}>
-  <Card title="Plugins" icon="puzzle-piece" href="/features/plugins">
-    Install database driver plugins from the registry.
+  <Card title="Plugins & Themes" icon="puzzle-piece" href="/features/plugins">
+    Install drivers, import and export formats, and themes from the registry.
   </Card>
 </CardGroup>

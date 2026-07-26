@@ -3,9 +3,7 @@ title: Managing Connections
 description: Create, organize, and switch database connections, with health monitoring and startup commands.
 ---
 
-# Managing Connections
-
-TablePro connects to 23 databases through its plugin system. This page covers creating and organizing connections. Driver-specific fields and quirks live on each database's own page.
+TablePro connects to 25 databases through its plugin system. This page covers creating and organizing connections. Driver-specific fields and quirks live on each database's own page.
 
 ## Supported Databases
 
@@ -20,6 +18,8 @@ TablePro connects to 23 databases through its plugin system. This page covers cr
 | [Microsoft SQL Server](/databases/mssql) | 1433 | Yes | Yes | Yes | Yes | Yes |
 | [Oracle](/databases/oracle) | 1521 | Yes | Yes | Yes | No | Yes |
 | [ClickHouse](/databases/clickhouse) | 8123 | Yes | Yes | Yes | No | Yes |
+| [Teradata](/databases/teradata) | 1025 | Yes | Yes | Yes | No | Yes |
+| [Trino](/databases/trino) | 8080 | Yes | Yes | Yes | No | Yes |
 | [MongoDB](/databases/mongodb) | 27017 | Yes | Yes | Yes | No | Yes |
 | [Redis](/databases/redis) | 6379 | Yes | Yes | Yes | No | Yes |
 | [Cassandra / ScyllaDB](/databases/cassandra) | 9042 | Yes | Yes | Yes | No | Yes |
@@ -39,14 +39,14 @@ Transport details: [SSH Tunneling](/databases/ssh-tunneling), [SSL/TLS](/feature
 
 ## Creating a Connection
 
-The Welcome window appears on launch. The left panel has **Create Connection**, **Import from Other App**, and **Try Sample Database**; saved connections are on the right, with a search field in the header (`Cmd+F` focuses it).
+The Welcome window appears on launch. The left panel has **Create Connection...** and an **Add from Existing** menu holding Import from URL, Import from Other App, Open Project Folder, and Import Connections. Saved connections are on the right, with a search field in the header (`Cmd+F` focuses it). With nothing saved yet, that list offers **Try Sample Database**.
 
 <Frame caption="Welcome window">
   <img className="block dark:hidden" src="/images/welcome-screen.png" alt="Welcome window with actions panel and connection list" />
   <img className="hidden dark:block" src="/images/welcome-screen-dark.png" alt="Welcome window with actions panel and connection list" />
 </Frame>
 
-1. Click **Create Connection** (or press `Cmd+N` anywhere)
+1. Click **Create Connection...** (or press `Cmd+N` anywhere)
 2. Pick a database type from the chooser sheet
 3. Fill in connection details
 4. Click **Test Connection**. A green **Connected** pill confirms success
@@ -147,7 +147,7 @@ The **Customization** pane sets a color, tags, and a group per connection. The c
 </Frame>
 
 <Tip>
-Red for production, green for development. Set Safe Mode to **Read Only** on production to block accidental writes. See [Safe Mode](/features/safe-mode).
+Red for production, green for development. Set Safe Mode to **Read-Only** on production to block accidental writes. See [Safe Mode](/features/safe-mode).
 </Tip>
 
 ### Groups
@@ -164,7 +164,7 @@ Hover a connection row and click the star, or right-click and choose **Add to Fa
 
 ## Switching Connections and Databases
 
-- **Switch Connection** (`Cmd+Control+C`): a toolbar popover lists active sessions and saved connections. Type to filter, arrow keys to move, Return to switch
+- **Switch Connection** (`Ctrl+Cmd+C`): a toolbar popover lists active sessions and saved connections. Type to filter, arrow keys to move, Return to switch
 - **Open Database** (`Cmd+K`): switch databases on the same server without reconnecting
 
 <Frame caption="Database switcher in toolbar">
@@ -182,7 +182,7 @@ Right-click the TablePro Dock icon and pick a saved connection under **Open Conn
 
 ## Connection Health Monitoring
 
-TablePro pings every active connection every 30 seconds and skips the ping while one of your queries is running. File-based drivers (SQLite, DuckDB, Beancount) and Snowflake are not monitored.
+TablePro pings every active connection every 30 seconds and skips the ping while one of your queries is running. File-based drivers (SQLite, DuckDB, Beancount), Snowflake, and Teradata are not monitored.
 
 When a ping fails, TablePro reconnects with exponential backoff: 2s, 4s, 8s, doubling up to a 120-second cap, and keeps retrying until the connection recovers or you close it. Authentication failures stop the retries, since an expired credential never recovers on its own. Reconnecting rebuilds the SSH tunnel if there is one, restores the selected database and schema, and re-runs startup commands. The session shows as connecting while this happens.
 
@@ -190,9 +190,16 @@ When a ping fails, TablePro reconnects with exponential backoff: 2s, 4s, 8s, dou
 
 SQL statements that run after every connect, including auto-reconnects. Configure them in the **Advanced** pane; statements are split on semicolons and newlines and run in order.
 
+All statements run on the same connection, so use one dialect. MySQL:
+
 ```sql
 SET time_zone = '+00:00';
 SET NAMES utf8mb4;
+```
+
+PostgreSQL:
+
+```sql
 SET search_path TO myschema, public;
 ```
 

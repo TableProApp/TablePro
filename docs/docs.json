@@ -168,10 +168,7 @@
                 "group": "Team & Licensing",
                 "pages": ["features/team", "features/licensing"]
               },
-              {
-                "group": "Extensibility",
-                "pages": ["features/plugins"]
-              }
+              "features/plugins"
             ]
           },
           {
@@ -190,12 +187,12 @@
               "external-api/url-scheme",
               "external-api/terminal",
               "external-api/ios-shortcuts",
-              "external-api/mcp-tools",
-              "external-api/mcp-resources",
-              "external-api/pairing",
-              "external-api/tokens",
               "external-api/raycast",
               "external-api/mcp-clients",
+              "external-api/pairing",
+              "external-api/tokens",
+              "external-api/mcp-tools",
+              "external-api/mcp-resources",
               "external-api/versioning"
             ]
           }

@@ -3,17 +3,15 @@ title: Connection Sharing
 description: Export connections to a file, share links, import from other apps, and resolve passwords from secret managers
 ---
 
-# Connection Sharing
-
-Export connections to a `.tablepro` file and share with your team. Passwords stay in your Keychain unless you make an encrypted export. Sections tagged Starter or Team need a [license](/features/licensing) of that tier.
+Export connections to a `.tablepro` file and share with your team. Passwords are left out of the file and stay in your Keychain unless you make an encrypted export. Sections tagged Starter or Team need a [license](/features/licensing) of that tier.
 
 ## Export
 
 Right-click a connection > **Share** > **Export to File...**. Select multiple first to export together. **File** > **Export Connections...** exports all.
 
-Exported: name, host, port, database, username, type, SSH/SSL config, color, tags, group, Safe Mode level. Not exported: passwords, key passphrases, TOTP secrets.
+Exported: name, host, port, database, username, type, SSH/SSL config, color, tags, group, Safe Mode level, Startup Commands, Pre-Connect Script, AI Policy, the Local only flag, the Redis database index, and any driver field the plugin does not mark secret (region, project ID, and so on). Not exported: passwords, key passphrases, TOTP secrets, or any driver field marked secret.
 
-The Share menu also has **Copy Connection String** (a database URL) and **Copy as JSON** (one connection as JSON).
+The Share menu also has three copy items. **Copy Connection String** writes a full database URL, and that URL carries the password in plain text, plus the SSH password when the connection tunnels. Treat what it puts on the clipboard as a credential. **Copy TablePro Link** and **Copy as JSON** carry no secrets.
 
 <Frame caption="Export connections">
   <img className="block dark:hidden" src="/images/connection-export-menu.png" alt="Export connections" />
@@ -23,6 +21,7 @@ The Share menu also has **Copy Connection String** (a database URL) and **Copy a
 ## Import
 
 - **File** > **Import Connections...**
+- **File** > **Import from URL...** (paste a database URL, see [Connection URLs](/databases/connection-urls))
 - Right-click empty area > **Import Connections...**
 - Double-click a `.tablepro` file
 - Drag onto TablePro
@@ -70,9 +69,9 @@ Groups and folders carry over. The source app doesn't need to be running. DBeave
 
 ## Share via Link
 
-Right-click a connection > **Share** > **Copy TablePro Link**. Produces a `tablepro://import?...` URL with host, port, type, and username (no password). The recipient opens the link, reviews the prefilled form, adds their own password, and saves.
+Right-click a connection > **Share** > **Copy TablePro Link**. Produces a `tablepro://import?...` URL with the name, host, port, type, username, database, and any SSH or SSL settings. No passwords, key passphrases, or TOTP secrets. The recipient opens the link, reviews the prefilled form, adds their own password, and saves.
 
-```
+```text
 tablepro://import?name=Staging&host=db.example.com&port=5432&type=PostgreSQL&username=admin
 ```
 
@@ -98,7 +97,7 @@ Credentials are encrypted with AES-256-GCM; the key derives from your passphrase
 
 Watch a shared directory for `.tablepro` files. Connections appear read-only in the sidebar. Each person enters their own password. Works with Git repos, Dropbox, network drives.
 
-**Settings** (`Cmd+,`) > **Account** > **Linked Folders** > **Add Folder...**
+Press `Cmd+,`, then go to **Settings > Account > Linked Folders > Add Folder...**
 
 <Frame caption="Linked Folders settings">
   <img className="block dark:hidden" src="/images/linked-folders-settings.png" alt="Linked Folders" />
@@ -138,7 +137,7 @@ Add a `passwordSource` object to the connection:
 
 When `passwordSource` is set it replaces the Keychain lookup. If resolution fails, the connection reports the error instead of falling back to the Keychain.
 
-### Secret managers
+### Secret Managers
 
 1Password, HashiCorp Vault, and AWS Secrets Manager have dedicated kinds. They build the CLI call for you and quote every argument, so a reference can't break out into the shell.
 

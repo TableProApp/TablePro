@@ -3,8 +3,6 @@ title: Cell and Row Viewers
 description: View and edit JSON, PHP serialized, and binary cell values, set per-column display formats, and inspect whole rows in the sidebar.
 ---
 
-# Cell and Row Viewers
-
 Structured cell values open in dedicated viewers: JSON, PHP serialized data, and binary blobs. A per-column **Display As** format controls how a column renders and which viewer opens. The row details inspector shows every field of the selected row with the same editors.
 
 ## Display As formats
@@ -22,7 +20,7 @@ Right-click a column header and pick **Display As**. The submenu lists the forma
 
 Formats are display only: they never change the stored value. Overrides persist per column, scoped to the connection and table.
 
-TablePro also auto-detects two cases: `BINARY(16)` columns with id-like names and `CHAR(32)`/`CHAR(36)` columns named `uuid` or `guid` render as UUIDs, and integer columns named `*_at`, `*_time`, `*_timestamp`, `created`, `updated`, or `modified` render as dates when sample values fall in a plausible range. A manual Display As choice always wins over detection.
+TablePro also auto-detects two cases: `BINARY(16)` columns with id-like names and `CHAR(32)`/`CHAR(36)` columns named `uuid` or `guid` render as UUIDs, and integer columns named `*_at`, `*_time`, `*_timestamp`, `created`, `updated`, `modified`, or `timestamp` render as dates when sample values fall in a plausible range. A manual Display As choice always wins over detection.
 
 ## JSON viewer
 
@@ -41,7 +39,7 @@ The viewer opens as a popover anchored to the cell, with two modes:
 
 Both modes keep your original key order and exact number values, including integers larger than JavaScript can represent. Pretty-printing caps at 500 KB; larger values show as stored. Tree mode handles documents up to 100 KB and 5,000 nodes; beyond that it shows a "JSON Too Large" placeholder and you read the value in Text mode.
 
-The mode you switch to becomes the default for the next open. The same preference lives in Settings (`Cmd+,`) > Editor > **JSON Viewer** > **Default view**.
+The mode you switch to becomes the default for the next open. The same preference lives in **Settings > Data > JSON Viewer > Default view** (`Cmd+,`).
 
 Click the pop-out button in the toolbar to detach the viewer into its own resizable window. The window supports fullscreen.
 
@@ -80,4 +78,4 @@ Blob cells render in the grid as compact hex (`0x48656C...`, first 64 bytes). Cl
 
 JSON and PHP fields have buttons to expand inside the sidebar or pop out to a window. Hover over an editable field for a menu that sets NULL, the column default, an empty value, or a SQL function. With no row selected, the inspector shows table info instead.
 
-For whole-row JSON across a result set, switch the results pane to its JSON view mode (Data / Structure / JSON).
+For whole-row JSON across a result set, switch the results pane to its JSON view mode with the segmented control in the status bar. Table tabs show Data / Structure / JSON; query tabs show Data / JSON.

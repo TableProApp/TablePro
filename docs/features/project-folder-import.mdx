@@ -3,14 +3,12 @@ title: Open Project Folder
 description: Create a connection from the database settings already in your project's config files
 ---
 
-# Open Project Folder
-
 Point TablePro at a project folder and it reads the database settings the project already has, so you do not have to copy them out of a `.env` file by hand.
 
 ## Open a folder
 
-- **File** > **Open Project Folder...**
-- The **Open Project Folder...** button on the welcome screen
+- **File > Open Project Folder...**
+- **Add from Existing > Open Project Folder...** on the welcome screen
 
 Pick the folder in the panel that appears. TablePro scans it and lists what it found.
 
@@ -26,11 +24,11 @@ Rows can carry extra notes:
 |------|---------|
 | Password found | The file has a password. It is not displayed. |
 | Looks like a placeholder value | The value matches a known template, such as `!ChangeMe!` or `password_here`. |
-| Container service name | The host is a name like `db` or `postgres`, which usually only resolves inside Docker. |
-| Host and port were assumed | The file had credentials but no address, so `127.0.0.1` and the default port were used. |
-| Does not publish a port | A Compose service with no `ports:` mapping, so it may not be reachable from your Mac. |
+| Container service name, may be unreachable | The host is a name like `db` or `postgres`, which usually only resolves inside Docker. |
+| Host and port assumed | The file had credentials but no address, so `127.0.0.1` and the default port were used. |
+| No published port, may be unreachable | A Compose service with no `ports:` mapping, so it may not be reachable from your Mac. |
 
-A connection found in a file named for production starts at the **Alert** [Safe Mode](/features/safe-mode) level rather than Silent.
+A connection starts at the **Alert** [Safe Mode](/features/safe-mode) level instead of Silent when `prod`, `production`, or `live` shows up as a whole word in the file path, the host, or the database name.
 
 ## Files it reads
 

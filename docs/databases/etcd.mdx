@@ -3,13 +3,13 @@ title: etcd
 description: Connect to etcd v3 clusters with prefix-based key browsing and an etcdctl-style command editor
 ---
 
-# etcd Connections
-
 TablePro connects to etcd v3 over the HTTP/JSON gRPC-gateway (it never speaks raw gRPC). On connect it probes the `/v3/`, `/v3beta/`, and `/v3alpha/` gateway prefixes in order, so etcd 3.2 through current releases work without configuration. Browse keys grouped by prefix, edit values in the grid, and run etcdctl-style commands in the editor.
 
 ## Quick Setup
 
-Click **New Connection**, select **etcd**, enter host (default `localhost`) and port (default `2379`), and connect. The plugin auto-installs, or use **Settings** > **Plugins** > **Browse** > **etcd Driver**.
+Click **New Connection**, select **etcd**, enter host (default `localhost`) and port (default `2379`), and connect.
+
+etcd is a registry plugin. Picking it in the **Choose a Database** sheet prompts to install; connecting to a saved etcd connection installs it without asking. You can also install **etcd Driver** from **Settings > Plugins > Browse**.
 
 ## Connection Settings
 
@@ -35,7 +35,7 @@ For self-signed certificates, pick **Required (skip verify)** or set the **CA Ce
 
 ## Connection URL
 
-```
+```text
 etcd://127.0.0.1:2379
 etcds://127.0.0.1:2379
 ```
@@ -78,7 +78,7 @@ endpoint health
 compaction 1000 --physical
 ```
 
-Lease IDs accept decimal or hex (`0x` prefix optional).
+Lease IDs accept decimal or hex. Hex is detected by its letters, so prefix an all-digit hex ID with `0x` (`--lease=0x69407712`) or it is read as decimal and resolves to a different lease.
 
 Auth, user, and role management:
 
@@ -105,4 +105,7 @@ etcd connections support [SSH tunneling](/databases/ssh-tunneling) for reaching 
 
 **TLS errors**: Set **TLS Mode** and the certificate paths in the Advanced fields. For self-signed certificates use **Required (skip verify)** or provide the CA certificate.
 
-**Limitations**: No transactions, no schema editing, and no import.
+## Limitations
+
+- No transactions. Each command is a separate gateway request.
+- No schema editing and no import.

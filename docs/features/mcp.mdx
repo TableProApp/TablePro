@@ -3,15 +3,13 @@ title: MCP Server
 description: Built-in Model Context Protocol server that lets AI clients query your databases through TablePro
 ---
 
-# MCP Server
-
 TablePro includes a built-in [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server. AI clients like Claude Desktop, Claude Code, Cursor, and Zed connect to it and query your databases through TablePro's saved connections, without ever seeing your passwords.
 
 This page covers the **Settings > Integrations** pane. Protocol details, the tool catalog, and token scopes live in the [External API](/external-api/index) section.
 
 <Frame caption="MCP server settings">
-  <img className="block dark:hidden" src="/images/mcp-settings.png" alt="TablePro MCP settings with server status, port configuration, and client setup instructions" />
-  <img className="hidden dark:block" src="/images/mcp-settings-dark.png" alt="TablePro MCP settings with server status, port configuration, and client setup instructions" />
+  <img className="block dark:hidden" src="/images/mcp-settings.png" alt="TablePro MCP settings" />
+  <img className="hidden dark:block" src="/images/mcp-settings-dark.png" alt="TablePro MCP settings" />
 </Frame>
 
 ## Enabling the server
@@ -34,7 +32,7 @@ The server binds the configured port (default **23508**). Starts triggered on de
 
 ## Connecting a client
 
-Click **Connect a Client…** in **Settings > Integrations**. The sheet has a tab per client: **Claude Desktop**, **Claude Code**, **Cursor**, and **Zed**. Each tab shows numbered steps and a copyable config snippet or command that points at the bundled stdio bridge. You paste it into the client's own config; TablePro does not write to other apps' files.
+Click **Connect a Client…** in **Settings > Integrations**. The sheet has a **Client** picker with four choices: **Claude Code**, **Claude Desktop**, **Cursor**, and **Zed**. Each shows numbered steps and a copyable config snippet or command that points at the bundled stdio bridge. You paste it into the client's own config; TablePro does not write to other apps' files.
 
 For VS Code, Cline, Continue, Windsurf, Goose, the HTTP transport, and troubleshooting, see [MCP Clients](/external-api/mcp-clients).
 
@@ -56,7 +54,7 @@ Remote access exposes the server to your network. Leave it off unless you connec
 
 ## Activity and connected clients
 
-**View Activity…** opens a separate window with two panes:
+**View Activity…** opens a separate window with two sections in its sidebar:
 
 - **Activity Log**: every authentication, tool call, and resource read, with token, category, connection, and outcome. Filter by time range, category, or token, search, and export the filtered view to CSV. Entries are kept for 90 days.
 - **Connected Clients**: active MCP sessions, with a **Disconnect** button to end one.

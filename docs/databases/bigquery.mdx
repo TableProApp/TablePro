@@ -3,13 +3,11 @@ title: Google BigQuery
 description: Connect to Google BigQuery with Service Account, ADC, or OAuth auth
 ---
 
-# Google BigQuery Connections
-
-TablePro connects to BigQuery via its REST API. Browse datasets and tables, run GoogleSQL queries, edit rows in the data grid. Plugin auto-installs or grab it from **Settings** > **Plugins** > **Browse**.
+TablePro connects to BigQuery via its REST API. Browse datasets and tables, run GoogleSQL queries, edit rows in the data grid. The plugin auto-installs when you pick BigQuery, or install it from **Settings > Plugins > Browse > BigQuery Driver**.
 
 ## Quick Setup
 
-Click **New Connection**, select **BigQuery**, pick an auth method, enter your Project ID, connect.
+Click **New Connection**, select **BigQuery**, pick an auth method, enter your Project ID, and click **Save & Connect**.
 
 ## Authentication
 
@@ -51,7 +49,7 @@ Without a saved refresh token, the browser authorization repeats on every connec
 
 **Dataset Browsing**: The sidebar lists every dataset as an expandable node. Click a dataset to load its tables; they load the first time you open it. Search filters across the datasets you have open.
 
-**Dataset Switching**: Press `Cmd+K`, click the **Dataset** toolbar button, or use **File** > **Open Dataset...** to jump to another dataset. The switcher also creates new datasets (`Cmd+N` inside the popover) and drops datasets from the row context menu.
+**Dataset Switching**: Press `Cmd+K`, click the dataset chip in the toolbar, or use **File > Open Dataset...** to jump to another dataset. The switcher also creates new datasets (`Cmd+N` inside the popover) and drops datasets from the row context menu.
 
 **Table Structure**: Columns with full BigQuery types: `STRUCT<name STRING, age INT64>`, `ARRAY<STRING>`, nullable status, field descriptions. Clustering and partitioning info in the Indexes tab.
 
@@ -85,7 +83,7 @@ Backtick-quote table names: `` `dataset.table` ``. Single-quote strings: `'value
 Partitioned tables require a partition filter for UPDATE/DELETE. Every query costs money (billed per bytes scanned). Set **Max Bytes Billed** in Advanced settings to cap costs.
 </Warning>
 
-**DDL**: Create datasets (`CREATE SCHEMA`), add/drop columns (`ALTER TABLE`), create views (`CREATE OR REPLACE VIEW`). Table DDL viewable via INFORMATION_SCHEMA.
+**DDL**: Run DDL from the SQL editor: `CREATE SCHEMA` for datasets, `ALTER TABLE ... ADD COLUMN` and `DROP COLUMN`, `CREATE OR REPLACE VIEW`. The DDL tab reads each table's definition from `INFORMATION_SCHEMA.TABLES`. The Structure tab is read-only for BigQuery.
 
 **Export**: CSV, JSON, SQL, XLSX formats.
 
@@ -93,9 +91,9 @@ Partitioned tables require a partition filter for UPDATE/DELETE. Every query cos
 
 Minimum roles:
 
-- `roles/bigquery.user` -- run queries
-- `roles/bigquery.dataViewer` -- browse and read data
-- `roles/bigquery.dataEditor` -- INSERT, UPDATE, DELETE
+- `roles/bigquery.user`: run queries
+- `roles/bigquery.dataViewer`: browse and read data
+- `roles/bigquery.dataEditor`: INSERT, UPDATE, DELETE
 
 ## Troubleshooting
 

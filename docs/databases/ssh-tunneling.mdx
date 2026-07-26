@@ -3,11 +3,9 @@ title: SSH Tunneling
 description: Route database connections through an SSH tunnel to reach servers in private networks
 ---
 
-# SSH Tunneling
-
 TablePro tunnels database connections through SSH using a built-in libssh2 client. No `ssh` binary or external setup is required. The tunnel opens a local forwarding port in the 60000-65000 range (this is why macOS may show a network permission prompt), sends a keep-alive every 30 seconds, and reconnects automatically if the tunnel dies.
 
-The **SSH Tunnel** pane appears only for databases whose driver supports it. Databases reached through a file path or an HTTP API (SQLite, LibSQL, Beancount, BigQuery, Cloudflare D1, DynamoDB, Elasticsearch, Snowflake) do not show it.
+The **SSH Tunnel** pane appears only for databases whose driver supports it. SQLite, PGlite, libSQL, Beancount, BigQuery, Cloudflare D1, DynamoDB, Elasticsearch, and Snowflake do not show it: they are reached over a local file, a loopback socket, or a vendor HTTP API.
 
 ```mermaid
 flowchart LR
@@ -22,16 +20,18 @@ flowchart LR
 4. Pick an authentication method
 5. Back on **General**, click **Test Connection**
 
-<Frame caption="SSH tunnel configuration">
-  <img className="block dark:hidden" src="/images/ssh-tunnel-config.png" alt="SSH tunnel settings" />
-  <img className="hidden dark:block" src="/images/ssh-tunnel-config-dark.png" alt="SSH tunnel settings" />
-</Frame>
-
 <Note>
 The database **Host** and **Port** on the General pane are what the SSH server uses to reach the database, not what your Mac would use. Use `localhost` if the database runs on the SSH server itself, or the internal hostname (for example an RDS endpoint reached through a bastion) if it runs elsewhere. If the database listens on a Unix socket rather than a port, use [Socket Path](#forwarding-to-a-unix-socket) instead.
 </Note>
 
-To reuse one SSH config across several connections, save it as a profile with **Save Current as Profile...** or pick one from the **Profile** picker. See [SSH Profiles](/features/ssh-profiles).
+A connection uses one connection method at a time. If a Cloudflare tunnel, Cloud SQL Auth Proxy, or SOCKS proxy is already enabled, the pane shows a button to disable it.
+
+To reuse one SSH config across several connections, save it as a profile with **Save Current as Profile...** or pick one from the **Profile** picker. A selected profile replaces the inline fields with a read-only **Profile Details** summary. Switch the picker back to **Inline Configuration** to edit the settings on this connection. See [SSH Profiles](/features/ssh-profiles).
+
+<Frame caption="Reusing a saved SSH profile">
+  <img className="block dark:hidden" src="/images/ssh-tunnel-config.png" alt="SSH Tunnel pane with a saved profile selected" />
+  <img className="hidden dark:block" src="/images/ssh-tunnel-config-dark.png" alt="SSH Tunnel pane with a saved profile selected" />
+</Frame>
 
 ## Authentication Methods
 
