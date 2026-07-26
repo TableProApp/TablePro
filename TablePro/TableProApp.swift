@@ -355,15 +355,28 @@ struct AppMenuCommands: Commands {
             Divider()
 
             Button(String(localized: "Export Connections...")) {
+                WindowOpener.shared.openWelcome()
                 AppCommands.shared.exportConnections.send(())
             }
 
             Button(String(localized: "Import Connections...")) {
+                WindowOpener.shared.openWelcome()
                 AppCommands.shared.importConnections.send(())
             }
 
+            Button(String(localized: "Import from URL...")) {
+                WindowOpener.shared.openWelcome()
+                AppCommands.shared.importConnectionFromURL.send(())
+            }
+
             Button(String(localized: "Import from Other App...")) {
+                WindowOpener.shared.openWelcome()
                 AppCommands.shared.importConnectionsFromApp.send(())
+            }
+
+            Button(String(localized: "Open Project Folder...")) {
+                WindowOpener.shared.openWelcome()
+                AppCommands.shared.openProjectFolder.send(())
             }
 
             Divider()

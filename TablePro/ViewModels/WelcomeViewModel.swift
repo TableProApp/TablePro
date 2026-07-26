@@ -16,6 +16,7 @@ enum WelcomeActiveSheet: Identifiable {
     case importFile(URL)
     case exportConnections([DatabaseConnection])
     case importFromApp
+    case projectFolderScan(URL)
     case deeplinkImport(ExportableConnection)
 
     var id: String {
@@ -25,6 +26,7 @@ enum WelcomeActiveSheet: Identifiable {
         case .importFile(let u): "importFile-\(u.absoluteString)"
         case .exportConnections: "exportConnections"
         case .importFromApp: "importFromApp"
+        case .projectFolderScan(let u): "projectFolderScan-\(u.absoluteString)"
         case .deeplinkImport(let c): "deeplinkImport-\(c.type)-\(c.name)-\(c.host)-\(c.port)"
         }
     }
@@ -95,6 +97,7 @@ final class WelcomeViewModel {
     @ObservationIgnored private var exportConnectionsCancellable: AnyCancellable?
     @ObservationIgnored private var importConnectionsCancellable: AnyCancellable?
     @ObservationIgnored private var importFromAppCancellable: AnyCancellable?
+    @ObservationIgnored var openProjectFolderCancellable: AnyCancellable?
     @ObservationIgnored private var welcomeRouterTask: Task<Void, Never>?
     @ObservationIgnored private var searchDebounceTask: Task<Void, Never>?
     private static let searchDebounceNanoseconds: UInt64 = 150_000_000
@@ -210,6 +213,8 @@ final class WelcomeViewModel {
             .sink { [weak self] _ in
                 self?.activeSheet = .importFromApp
             }
+
+        setUpProjectFolderCommand()
 
         linkedFoldersCancellable = services.appEvents.linkedFoldersDidUpdate
             .receive(on: RunLoop.main)

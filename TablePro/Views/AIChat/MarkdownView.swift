@@ -25,6 +25,7 @@ struct MarkdownView: View {
                     .equatable()
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -176,23 +177,25 @@ private struct MarkdownTableView: View {
 
     var body: some View {
         let columnCount = headers.count
-        Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 6) {
-            GridRow {
-                ForEach(0..<columnCount, id: \.self) { col in
-                    cell(text: headers[col], alignment: alignments[safe: col] ?? .left)
-                        .fontWeight(.semibold)
-                }
-            }
-            Divider().gridCellColumns(columnCount)
-            ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+        ScrollView(.horizontal) {
+            Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 6) {
                 GridRow {
                     ForEach(0..<columnCount, id: \.self) { col in
-                        cell(text: row[safe: col] ?? "", alignment: alignments[safe: col] ?? .left)
+                        cell(text: headers[col], alignment: alignments[safe: col] ?? .left)
+                            .fontWeight(.semibold)
+                    }
+                }
+                Divider().gridCellColumns(columnCount)
+                ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                    GridRow {
+                        ForEach(0..<columnCount, id: \.self) { col in
+                            cell(text: row[safe: col] ?? "", alignment: alignments[safe: col] ?? .left)
+                        }
                     }
                 }
             }
+            .padding(8)
         }
-        .padding(8)
         .background(Color(nsColor: .controlBackgroundColor))
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .overlay(

@@ -278,6 +278,12 @@
 			</dict>
 		</dict>
 	</array>
+	<key>NSDesktopFolderUsageDescription</key>
+	<string>TablePro reads database settings from the project folder you choose.</string>
+	<key>NSDocumentsFolderUsageDescription</key>
+	<string>TablePro reads database settings from the project folder you choose.</string>
+	<key>NSDownloadsFolderUsageDescription</key>
+	<string>TablePro reads database settings from the project folder you choose.</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsArbitraryLoads</key>

@@ -516,13 +516,23 @@ enum DatabaseDriverFactory {
             )
         }
 
+        let endpoint = try RDSSigningEndpointResolver.resolve(
+            configuredHost: connection.host,
+            configuredPort: connection.port,
+            preTunnelHost: connection.preTunnelHost,
+            preTunnelPort: connection.preTunnelPort,
+            override: fields["awsRDSEndpoint"],
+            defaultPort: PluginMetadataRegistry.shared
+                .snapshot(forTypeId: connection.type.pluginTypeId)?.defaultPort ?? connection.port
+        )
+
         let explicitRegion = fields["awsRegion"].flatMap { $0.isEmpty ? nil : $0 }
-        guard let region = explicitRegion ?? RDSEndpoint.region(forHost: connection.host) else {
-            throw AWSAuthError.regionUnknown(host: connection.host)
+        guard let region = explicitRegion ?? RDSEndpoint.region(forHost: endpoint.host) else {
+            throw AWSAuthError.regionUnknown(host: endpoint.host)
         }
         return RDSAuthTokenGenerator.generateToken(
-            host: connection.host,
-            port: connection.port,
+            host: endpoint.host,
+            port: endpoint.port,
             region: region,
             username: connection.username,
             credentials: credentials
@@ -542,9 +552,8 @@ enum DatabaseDriverFactory {
             return try await PasswordSourceResolver.resolve(passwordSource)
         }
         if connection.usePgpass {
-            let pgpassHost = connection.additionalFields["pgpassOriginalHost"] ?? connection.host
-            let pgpassPort = connection.additionalFields["pgpassOriginalPort"]
-                .flatMap(Int.init) ?? connection.port
+            let pgpassHost = connection.preTunnelHost ?? connection.host
+            let pgpassPort = connection.preTunnelPort ?? connection.port
             return PgpassReader.resolve(
                 host: pgpassHost.isEmpty ? "localhost" : pgpassHost,
                 port: pgpassPort,

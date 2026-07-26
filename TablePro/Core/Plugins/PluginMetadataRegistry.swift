@@ -499,7 +499,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
             section: .advanced
         )
 
-        let awsIAMFields = AWSAuthFields.standard()
+        let awsIAMFields = AWSAuthFields.standard() + [AWSAuthFields.rdsEndpointField()]
 
         let defaults: [(typeId: String, snapshot: PluginMetadataSnapshot)] = [
             ("MySQL", PluginMetadataSnapshot(

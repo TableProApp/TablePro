@@ -56,6 +56,16 @@ public enum AWSAuthFields {
         ]
     }
 
+    public static func rdsEndpointField() -> ConnectionField {
+        ConnectionField(
+            id: "awsRDSEndpoint",
+            label: String(localized: "RDS Endpoint"),
+            placeholder: "mydb.abc123.us-east-1.rds.amazonaws.com:5432",
+            section: .authentication,
+            visibleWhen: FieldVisibilityRule(fieldId: "awsAuth", values: ["accessKey", "profile", "sso"])
+        )
+    }
+
     public static func elastiCacheReplicationGroupField() -> ConnectionField {
         ConnectionField(
             id: "awsReplicationGroupId",

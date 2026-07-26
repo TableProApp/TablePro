@@ -197,7 +197,7 @@ internal enum BQCellValue: Codable, Sendable {
     case array([BQCellValue])
 
     struct BQRecordValue: Codable, Sendable {
-        let f: [BQQueryResponse.BQCell]?
+        let f: [BQQueryResponse.BQCell]
     }
 
     init(from decoder: Decoder) throws {
@@ -206,16 +206,16 @@ internal enum BQCellValue: Codable, Sendable {
             self = .null
             return
         }
-        if let str = try? container.decode(String.self) {
-            self = .string(str)
+        if let string = try? container.decode(String.self) {
+            self = .string(string)
+            return
+        }
+        if let cells = try? container.decode([BQQueryResponse.BQCell].self) {
+            self = .array(cells.map { $0.v ?? .null })
             return
         }
         if let record = try? container.decode(BQRecordValue.self) {
             self = .record(record)
-            return
-        }
-        if let array = try? container.decode([BQCellValue].self) {
-            self = .array(array)
             return
         }
         self = .null
@@ -224,14 +224,14 @@ internal enum BQCellValue: Codable, Sendable {
     func encode(to encoder: Encoder) throws {
         var container = encoder.singleValueContainer()
         switch self {
-        case .string(let s):
-            try container.encode(s)
+        case .string(let string):
+            try container.encode(string)
         case .null:
             try container.encodeNil()
-        case .record(let r):
-            try container.encode(r)
-        case .array(let a):
-            try container.encode(a)
+        case .record(let record):
+            try container.encode(record)
+        case .array(let values):
+            try container.encode(values.map { BQQueryResponse.BQCell(v: $0) })
         }
     }
 }

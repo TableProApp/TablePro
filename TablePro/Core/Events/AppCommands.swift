@@ -21,6 +21,8 @@ final class AppCommands {
     let exportConnections = PassthroughSubject<Void, Never>()
     let importConnections = PassthroughSubject<Void, Never>()
     let importConnectionsFromApp = PassthroughSubject<Void, Never>()
+    let openProjectFolder = PassthroughSubject<Void, Never>()
+    let importConnectionFromURL = PassthroughSubject<Void, Never>()
     let exportQueryResults = PassthroughSubject<Void, Never>()
 
     // MARK: - Window / Sheet Commands

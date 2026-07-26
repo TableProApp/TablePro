@@ -111,6 +111,35 @@ struct DatabaseManagerTunnelTests {
         #expect(tunneled.sslConfig.mode == .required)
     }
 
+    @Test("The pre-tunnel endpoint is recorded for every tunneled connection")
+    func tunnelRecordsPreTunnelEndpoint() {
+        let connection = DatabaseConnection(
+            name: "rds",
+            host: "mydb.abc123.us-east-1.rds.amazonaws.com",
+            port: 5_432,
+            type: .postgresql,
+            additionalFields: ["awsAuth": "profile"]
+        )
+
+        let tunneled = DatabaseManager.shared.tunneledConnection(from: connection, localPort: 62_000)
+
+        #expect(tunneled.preTunnelHost == "mydb.abc123.us-east-1.rds.amazonaws.com")
+        #expect(tunneled.preTunnelPort == 5_432)
+    }
+
+    @Test("A connection that is not tunneled has no pre-tunnel endpoint")
+    func directConnectionHasNoPreTunnelEndpoint() {
+        let connection = DatabaseConnection(
+            name: "rds",
+            host: "mydb.abc123.us-east-1.rds.amazonaws.com",
+            port: 5_432,
+            type: .postgresql
+        )
+
+        #expect(connection.preTunnelHost == nil)
+        #expect(connection.preTunnelPort == nil)
+    }
+
     @Test("The socket path never reaches the driver")
     func socketPathIsStrippedFromDriverFields() {
         var connection = DatabaseConnection(

@@ -4,6 +4,42 @@ description: "Product updates and announcements for TablePro"
 rss: true
 ---
 
+<Update label="July 25, 2026" description="v0.60.1">
+  ### New Features
+
+  - **RDS Endpoint**: AWS IAM connections have an RDS Endpoint field, for when the connection points at a port forward you run yourself and TablePro cannot tell which database is behind it (#1432)
+
+  ### Improvements
+
+  - The AWS profile field on MySQL and PostgreSQL connections now lists the profiles found on disk, like MariaDB already did (#1432)
+
+  ### Bug Fixes
+
+  - AWS IAM authentication now works through a tunnel. The token was signed for the local forward instead of the database endpoint, so RDS rejected every connection made over SSH, Cloudflare, Cloud SQL Auth Proxy, or SOCKS. A tunneled connection also no longer needs the region filled in by hand (#1432)
+</Update>
+
+<Update label="July 24, 2026" description="v0.60.0">
+  ### New Features
+
+  - **PGlite**: Connect to PGlite through its socket server (`pglite-server`), with schema browsing, SQL editing, and row editing like PostgreSQL (#1911)
+  - **CSV structure editing**: In the CSV editor, rename, insert, delete, or retype columns, insert or delete rows, and split or merge columns from the right-click menus and the Edit menu. Each split or merge is a single undo step, and deleting columns or rows that hold data asks you to confirm first (#1469, #1913)
+  - **CSV file properties**: In the CSV editor, set the delimiter, quote character, escape character, encoding, and line ending from Edit > Set CSV Properties…, then Reload to re-read the file. Switch the first row between header and data with `Cmd+Shift+H` (#1469)
+  - **Local AI providers**: Add llama.cpp and MLX as local AI providers, each pointing at the server's default local endpoint with no API key (#1777)
+
+  ### Improvements
+
+  - SQL Server Windows Authentication (Kerberos) now connects to servers whose Kerberos realm differs from your Mac's default realm, read from the `[domain_realm]` mapping in your Kerberos configuration (#1947)
+  - Switching schemas reloads the table list once per connection instead of once per window, so the sidebar no longer flashes its loading spinner once per open tab (#1946)
+
+  ### Bug Fixes
+
+  - The object list no longer blanks out and shows a spinner while a schema change refreshes it. A spinner now only appears for a first load or a refresh that runs long (#1916)
+  - Saving a change in the Structure tab no longer strips and re-adds the Columns, Indexes, and Foreign Keys counts, so the picker stops shifting on every save (#1916)
+  - SSH tunnels using the None auth method now work on iPhone and iPad, including connections synced from the Mac (#1912)
+  - Browsing a Trino table no longer fails with a syntax error (#1936)
+  - The Authentication method selector no longer shifts position in the connection form when you switch between methods that show or hide the username and password (#1947)
+</Update>
+
 <Update label="July 21, 2026" description="v0.59.0">
   ### New Features
 

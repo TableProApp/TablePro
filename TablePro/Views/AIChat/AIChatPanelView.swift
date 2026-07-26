@@ -130,6 +130,7 @@ struct AIChatPanelView: View {
                         .id(message.id)
                     }
                 }
+                .frame(maxWidth: .infinity)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 8)
                 .scrollTargetLayout()
@@ -250,7 +251,6 @@ struct AIChatPanelView: View {
                     slashCommandMenu
                     modeMenu
                     modelPicker
-                    Spacer()
                     sendOrStopButton
                 }
             }
@@ -366,9 +366,9 @@ struct AIChatPanelView: View {
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
             .menuStyle(.borderlessButton)
-            .fixedSize()
             .help(String(localized: "Choose AI provider and model"))
         }
     }

@@ -24,36 +24,13 @@ struct ChatComposerTextView: NSViewRepresentable {
     let onPasteImageData: (Data, String) -> Void
 
     func makeNSView(context: Context) -> ChatComposerScrollView {
-        let textView = ChatComposerNSTextView()
+        let textView = ChatComposerNSTextView.make()
         textView.delegate = context.coordinator
-        textView.isRichText = false
-        textView.isEditable = true
-        textView.isSelectable = true
-        textView.allowsUndo = true
-        textView.drawsBackground = false
-        textView.backgroundColor = .clear
-        textView.font = .systemFont(ofSize: NSFont.systemFontSize)
-        textView.textColor = .labelColor
-        textView.insertionPointColor = .controlAccentColor
-        textView.textContainerInset = NSSize(width: 14, height: 8)
-        textView.textContainer?.lineFragmentPadding = 0
-        textView.textContainer?.widthTracksTextView = true
-        textView.isHorizontallyResizable = false
-        textView.isVerticallyResizable = true
-        textView.autoresizingMask = [.width]
         textView.placeholder = placeholder
         textView.acceptsImagePaste = acceptsImages
         textView.onPasteImageData = onPasteImageData
 
-        let scrollView = ChatComposerScrollView()
-        scrollView.documentView = textView
-        scrollView.hasVerticalScroller = true
-        scrollView.autohidesScrollers = true
-        scrollView.scrollerStyle = .overlay
-        scrollView.borderType = .noBorder
-        scrollView.drawsBackground = false
-        scrollView.backgroundColor = .clear
-        scrollView.verticalScrollElasticity = .allowed
+        let scrollView = ChatComposerScrollView.make(documentView: textView)
         scrollView.minLines = minLines
         scrollView.maxLines = maxLines
 
@@ -208,6 +185,22 @@ final class ChatComposerNSTextView: NSTextView {
     var acceptsImagePaste: Bool = false
     var onPasteImageData: ((Data, String) -> Void)?
 
+    static func make() -> ChatComposerNSTextView {
+        let textView = ChatComposerNSTextView()
+        textView.isRichText = false
+        textView.isEditable = true
+        textView.isSelectable = true
+        textView.allowsUndo = true
+        textView.drawsBackground = false
+        textView.backgroundColor = .clear
+        textView.font = .systemFont(ofSize: NSFont.systemFontSize)
+        textView.textColor = .labelColor
+        textView.insertionPointColor = .controlAccentColor
+        textView.textContainerInset = NSSize(width: 14, height: 8)
+        textView.textContainer?.lineFragmentPadding = 0
+        return textView
+    }
+
     override func becomeFirstResponder() -> Bool {
         let became = super.becomeFirstResponder()
         if became { onFocusChange?(true) }
@@ -266,6 +259,37 @@ final class ChatComposerScrollView: NSScrollView {
     var minLines: Int = 1
     var maxLines: Int = 5
 
+    static func make(documentView textView: NSTextView) -> ChatComposerScrollView {
+        let scrollView = ChatComposerScrollView()
+        scrollView.hasVerticalScroller = true
+        scrollView.hasHorizontalScroller = false
+        scrollView.autohidesScrollers = true
+        scrollView.scrollerStyle = .overlay
+        scrollView.borderType = .noBorder
+        scrollView.drawsBackground = false
+        scrollView.backgroundColor = .clear
+        scrollView.verticalScrollElasticity = .allowed
+        scrollView.horizontalScrollElasticity = .none
+        scrollView.documentView = textView
+
+        let contentSize = scrollView.contentSize
+        textView.frame = NSRect(origin: .zero, size: contentSize)
+        textView.minSize = NSSize(width: 0, height: 0)
+        textView.maxSize = NSSize(
+            width: CGFloat.greatestFiniteMagnitude,
+            height: CGFloat.greatestFiniteMagnitude
+        )
+        textView.isHorizontallyResizable = false
+        textView.isVerticallyResizable = true
+        textView.autoresizingMask = [.width]
+        textView.textContainer?.size = NSSize(
+            width: contentSize.width,
+            height: CGFloat.greatestFiniteMagnitude
+        )
+        textView.textContainer?.widthTracksTextView = true
+        return scrollView
+    }
+
     override var intrinsicContentSize: NSSize {
         guard
             let textView = documentView as? NSTextView,
@@ -280,6 +304,10 @@ final class ChatComposerScrollView: NSScrollView {
         let verticalPadding = inset.height * 2
         let minHeight = CGFloat(minLines) * lineHeight + verticalPadding
         let maxHeight = CGFloat(maxLines) * lineHeight + verticalPadding
+        layoutManager.ensureLayout(
+            forBoundingRect: NSRect(x: 0, y: 0, width: container.size.width, height: maxHeight),
+            in: container
+        )
         let used = layoutManager.usedRect(for: container).height
         let content = used + verticalPadding
         return NSSize(width: NSView.noIntrinsicMetric, height: max(minHeight, min(maxHeight, content)))

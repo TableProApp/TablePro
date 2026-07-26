@@ -3,6 +3,94 @@
     <channel>
         <title>TablePro</title>
         <item>
+            <title>0.60.1</title>
+            <pubDate>Sat, 25 Jul 2026 08:09:47 +0000</pubDate>
+            <sparkle:version>113</sparkle:version>
+            <sparkle:shortVersionString>0.60.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <description><![CDATA[<h3>Added</h3>
+<ul>
+<li>AWS IAM connections have an **RDS Endpoint** field, for when the connection points at a port forward you run yourself and TablePro cannot tell which database is behind it. The MySQL and PostgreSQL profile fields now list the profiles found on disk, like MariaDB already did. (#1432)</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>AWS IAM authentication now works through a tunnel. The token was signed for the local forward instead of the database endpoint, so RDS rejected every connection made over SSH, Cloudflare, Cloud SQL Auth Proxy, or SOCKS. A tunneled connection also no longer needs the region filled in by hand. (#1432)</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.60.1/TablePro-0.60.1-arm64.zip" length="20657327" type="application/octet-stream" sparkle:edSignature="2atAiuol4yJ/tKXO5MXAIBKSP4dMvEHI8ABQLsdlfthNya7orKoe7ftunpODNR82D3Y5Q0eyJrFZ1LF872kkAw=="/>
+        </item>
+        <item>
+            <title>0.60.1</title>
+            <pubDate>Sat, 25 Jul 2026 08:09:48 +0000</pubDate>
+            <sparkle:version>113</sparkle:version>
+            <sparkle:shortVersionString>0.60.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[<h3>Added</h3>
+<ul>
+<li>AWS IAM connections have an **RDS Endpoint** field, for when the connection points at a port forward you run yourself and TablePro cannot tell which database is behind it. The MySQL and PostgreSQL profile fields now list the profiles found on disk, like MariaDB already did. (#1432)</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>AWS IAM authentication now works through a tunnel. The token was signed for the local forward instead of the database endpoint, so RDS rejected every connection made over SSH, Cloudflare, Cloud SQL Auth Proxy, or SOCKS. A tunneled connection also no longer needs the region filled in by hand. (#1432)</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.60.1/TablePro-0.60.1-x86_64.zip" length="21871172" type="application/octet-stream" sparkle:edSignature="rM20letf1DDToK5X1qyKdqlb6Q1o7VJeFvObHXN4l3fVq7rlf49qcX2wgJzzHeAd6n7qseVlDQDKF2yZN1HOAg=="/>
+        </item>
+        <item>
+            <title>0.60.0</title>
+            <pubDate>Fri, 24 Jul 2026 05:12:21 +0000</pubDate>
+            <sparkle:version>112</sparkle:version>
+            <sparkle:shortVersionString>0.60.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <description><![CDATA[<h3>Added</h3>
+<ul>
+<li>Connect to PGlite through its socket server (`pglite-server`), with schema browsing, SQL editing, and row editing like PostgreSQL. (#1911)</li>
+<li>In the CSV editor, edit structure from the column-header and row right-click menus and the Edit menu: rename, insert, delete, or change the type of columns; insert or delete rows; split a column by a delimiter or regex and merge adjacent columns, each a single undo step. Deleting columns or rows that hold data asks you to confirm first. (#1469, #1913)</li>
+<li>In the CSV editor, set the delimiter, quote character, escape character, encoding, and line ending from Edit > Set CSV Properties…, then Reload to re-read the file. Switch the first row between header and data with `Cmd+Shift+H`, and files without a header no longer save with a generated header row. (#1469)</li>
+<li>Add llama.cpp and MLX as local AI providers, each pointing at the server's default local endpoint with no API key. (#1777)</li>
+<li>SQL Server Windows Authentication (Kerberos) now connects to servers whose Kerberos realm differs from your Mac's default realm, read from the `[domain_realm]` mapping in your Kerberos configuration. (#1947)</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>The object list no longer blanks out and shows a spinner while a schema change refreshes it. A spinner now only appears for a first load or a refresh that runs long. (#1916)</li>
+<li>Saving a change in the Structure tab no longer strips and re-adds the Columns, Indexes, and Foreign Keys counts, so the picker stops shifting on every save. (#1916)</li>
+<li>SSH tunnels using the None auth method now work on iPhone and iPad, including connections synced from the Mac. (#1912)</li>
+<li>Browsing a Trino table no longer fails with a syntax error. (#1936)</li>
+<li>The Authentication method selector no longer shifts position in the connection form when you switch between methods that show or hide the username and password. (#1947)</li>
+<li>Switching schemas no longer flashes the sidebar loading spinner once per open tab. The table list now reloads once per connection instead of once per window. (#1946)</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.60.0/TablePro-0.60.0-arm64.zip" length="20658423" type="application/octet-stream" sparkle:edSignature="bQnIUjzLb2Qq85iJREoCgW4jwvmwo0IDfJtRyNTu1vhDu4YFwfJk2q60wZNMgxCKUoBYd3wmowC3Yai8qGfBDg=="/>
+        </item>
+        <item>
+            <title>0.60.0</title>
+            <pubDate>Fri, 24 Jul 2026 05:12:21 +0000</pubDate>
+            <sparkle:version>112</sparkle:version>
+            <sparkle:shortVersionString>0.60.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[<h3>Added</h3>
+<ul>
+<li>Connect to PGlite through its socket server (`pglite-server`), with schema browsing, SQL editing, and row editing like PostgreSQL. (#1911)</li>
+<li>In the CSV editor, edit structure from the column-header and row right-click menus and the Edit menu: rename, insert, delete, or change the type of columns; insert or delete rows; split a column by a delimiter or regex and merge adjacent columns, each a single undo step. Deleting columns or rows that hold data asks you to confirm first. (#1469, #1913)</li>
+<li>In the CSV editor, set the delimiter, quote character, escape character, encoding, and line ending from Edit > Set CSV Properties…, then Reload to re-read the file. Switch the first row between header and data with `Cmd+Shift+H`, and files without a header no longer save with a generated header row. (#1469)</li>
+<li>Add llama.cpp and MLX as local AI providers, each pointing at the server's default local endpoint with no API key. (#1777)</li>
+<li>SQL Server Windows Authentication (Kerberos) now connects to servers whose Kerberos realm differs from your Mac's default realm, read from the `[domain_realm]` mapping in your Kerberos configuration. (#1947)</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>The object list no longer blanks out and shows a spinner while a schema change refreshes it. A spinner now only appears for a first load or a refresh that runs long. (#1916)</li>
+<li>Saving a change in the Structure tab no longer strips and re-adds the Columns, Indexes, and Foreign Keys counts, so the picker stops shifting on every save. (#1916)</li>
+<li>SSH tunnels using the None auth method now work on iPhone and iPad, including connections synced from the Mac. (#1912)</li>
+<li>Browsing a Trino table no longer fails with a syntax error. (#1936)</li>
+<li>The Authentication method selector no longer shifts position in the connection form when you switch between methods that show or hide the username and password. (#1947)</li>
+<li>Switching schemas no longer flashes the sidebar loading spinner once per open tab. The table list now reloads once per connection instead of once per window. (#1946)</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.60.0/TablePro-0.60.0-x86_64.zip" length="21870533" type="application/octet-stream" sparkle:edSignature="re4KTQlR2QdUYzPSCf5N7peg6552pOZHKy+6TaAXKDvF2EGQT99B9JhBxAF795Zml8QcvIC6VMKf/yscB25WAw=="/>
+        </item>
+        <item>
             <title>0.59.0</title>
             <pubDate>Tue, 21 Jul 2026 12:11:30 +0000</pubDate>
             <sparkle:version>111</sparkle:version>

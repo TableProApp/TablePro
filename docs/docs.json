@@ -144,6 +144,7 @@
                   "features/quick-switcher",
                   "features/query-history",
                   "features/favorites",
+                  "features/project-folder-import",
                   "features/keyboard-shortcuts"
                 ]
               },
