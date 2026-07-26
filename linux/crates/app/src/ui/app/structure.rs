@@ -12,11 +12,12 @@ use relm4::adw::prelude::*;
 use relm4::{ComponentController, ComponentSender, adw};
 use uuid::Uuid;
 
-use tablepro_core::ColumnInfo;
+use tablepro_core::{ColumnInfo, Value};
 
 use crate::services::database_service;
 use crate::services::structure_tracker;
 use crate::ui::app::{App, AppMsg, WorkspaceTab};
+use crate::ui::error_text;
 use crate::ui::structure_tab::{StructureMode, StructureTabInput};
 
 impl App {
@@ -222,11 +223,12 @@ impl App {
         }
     }
 
-    /// Structure tab Save → run ordered DDL statements. Postgres wraps
-    /// in BEGIN / COMMIT for atomicity (DDL is transactional in PG);
-    /// MySQL / SQLite execute sequentially because their DDL is
-    /// auto-committed per-statement and a wrapping transaction would
-    /// either be ignored or error out on the first DDL.
+    /// Structure tab Save → run ordered DDL statements. Engines whose
+    /// DDL is transactional go through `execute_in_transaction` so a
+    /// mid-batch failure rolls the whole save back; the driver owns the
+    /// transaction-control statements because their spelling and their
+    /// wire encoding are engine-specific. The rest execute
+    /// sequentially.
     pub(super) fn on_execute_structure_transaction(
         &mut self,
         tab_id: Uuid,
@@ -246,6 +248,10 @@ impl App {
             sender.input(AppMsg::StructureSaveFailed(tab_id, crate::tr!("No active connection.")));
             return;
         };
+        let ddl_is_transactional = self
+            .registry
+            .get(&driver_id)
+            .is_some_and(|driver| driver.ddl_is_transactional());
         let mode = {
             let tabs = self.workspace_tabs.borrow();
             let Some(slot) = tabs.get(&tab_id) else {
@@ -292,29 +298,21 @@ impl App {
                         sender_for_cmd.input(AppMsg::StructureSaveFailed(tab_id, crate::tr!("No active connection.")));
                         return;
                     };
-                    let wrap_tx = driver_id == "postgres";
-                    if wrap_tx && let Err(e) = conn.execute("BEGIN").await {
-                        sender_for_cmd.input(AppMsg::StructureSaveFailed(tab_id, format!("{e}")));
-                        return;
-                    }
-                    for sql in &statements {
-                        if let Err(e) = conn.execute(sql).await {
-                            if wrap_tx {
-                                let _ = conn.execute("ROLLBACK").await;
-                            }
-                            sender_for_cmd.input(AppMsg::StructureSaveFailed(tab_id, format!("{e}")));
+                    if ddl_is_transactional {
+                        let batch: Vec<(String, Vec<Value>)> =
+                            statements.iter().map(|sql| (sql.clone(), Vec::new())).collect();
+                        if let Err(e) = conn.execute_in_transaction(&batch).await {
+                            sender_for_cmd.input(AppMsg::StructureSaveFailed(tab_id, error_text::driver_message(&e)));
                             return;
                         }
-                    }
-                    if wrap_tx && let Err(e) = conn.execute("COMMIT").await {
-                        // COMMIT failure leaves the connection in an
-                        // open transaction. Fire ROLLBACK so the
-                        // pooled connection is reusable; ignore its
-                        // result because the user already has the
-                        // commit-failure to surface.
-                        let _ = conn.execute("ROLLBACK").await;
-                        sender_for_cmd.input(AppMsg::StructureSaveFailed(tab_id, format!("{e}")));
-                        return;
+                    } else {
+                        for sql in &statements {
+                            if let Err(e) = conn.execute(sql).await {
+                                sender_for_cmd
+                                    .input(AppMsg::StructureSaveFailed(tab_id, error_text::driver_message(&e)));
+                                return;
+                            }
+                        }
                     }
                     sender_for_cmd.input(AppMsg::StructureSaveCompleted {
                         tab_id,

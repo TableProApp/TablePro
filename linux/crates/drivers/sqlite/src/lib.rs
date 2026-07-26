@@ -32,6 +32,10 @@ impl DatabaseDriver for SqliteDriver {
         true
     }
 
+    fn ddl_is_transactional(&self) -> bool {
+        true
+    }
+
     async fn connect(&self, opts: ConnectOptions) -> Result<Box<dyn Connection>, DriverError> {
         let url = if opts.database.is_empty() || opts.database == ":memory:" {
             "sqlite::memory:".to_string()

@@ -5,6 +5,7 @@ members = [
     "crates/core",
     "crates/ssh",
     "crates/storage",
+    "crates/drivers/mssql",
     "crates/drivers/mysql",
     "crates/drivers/postgres",
     "crates/drivers/sqlite",
@@ -29,6 +30,7 @@ secrecy = { version = "0.10", features = ["serde"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-rustls", "chrono", "rust_decimal", "uuid", "json"] }
+tiberius = { version = "0.12", default-features = false, features = ["tds73", "rustls", "chrono", "rust_decimal"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
 rust_decimal = { version = "1", default-features = false, features = ["serde", "std"] }
 futures = "0.3"

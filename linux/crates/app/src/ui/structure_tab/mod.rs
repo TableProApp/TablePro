@@ -396,10 +396,12 @@ impl StructureTab {
         let columns_for_dialog = self.columns.clone();
         let sender_for_add = sender.clone();
         let parent_box = self.fks_box.clone();
+        let driver_id_for_dialog = driver_id.clone();
         append_add_button(&list, &crate::tr!("Add Foreign Key…"), move || {
             present_fk_dialog(
                 parent_box.upcast_ref(),
                 &columns_for_dialog.borrow(),
+                &driver_id_for_dialog,
                 sender_for_add.clone(),
             );
         });
