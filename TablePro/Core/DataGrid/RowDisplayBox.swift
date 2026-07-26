@@ -6,16 +6,68 @@
 import Foundation
 
 final class RowDisplayBox {
-    var values: ContiguousArray<String?>
+    private enum CachedValue {
+        case text(String)
+        case empty
+    }
 
-    init(_ values: ContiguousArray<String?>) {
-        self.values = values
+    private var valuesByColumn: [Int: CachedValue] = [:]
+    private(set) var cost: Int = 0
+
+    init(_ values: ContiguousArray<String?> = []) {
+        valuesByColumn.reserveCapacity(values.count)
+        for (column, value) in values.enumerated() {
+            setValue(value, at: column)
+        }
+    }
+
+    var cachedColumnCount: Int {
+        valuesByColumn.count
+    }
+
+    func containsValue(at column: Int) -> Bool {
+        valuesByColumn[column] != nil
+    }
+
+    func value(at column: Int) -> String? {
+        guard let value = valuesByColumn[column] else { return nil }
+        switch value {
+        case .text(let text):
+            return text
+        case .empty:
+            return nil
+        }
+    }
+
+    func setValue(_ value: String?, at column: Int) {
+        guard column >= 0 else { return }
+        if case .text(let previous)? = valuesByColumn[column] {
+            cost -= previous.utf8.count
+        }
+        if let value {
+            valuesByColumn[column] = .text(value)
+            cost += value.utf8.count
+        } else {
+            valuesByColumn[column] = .empty
+        }
+    }
+
+    func invalidateValue(at column: Int) {
+        guard let previous = valuesByColumn.removeValue(forKey: column) else { return }
+        if case .text(let previous) = previous {
+            cost -= previous.utf8.count
+        }
     }
 }
 
 @MainActor
 final class RowDisplayCache {
-    private var storage: [RowID: RowDisplayBox] = [:]
+    private struct Entry {
+        let box: RowDisplayBox
+        let cost: Int
+    }
+
+    private var storage: [RowID: Entry] = [:]
     private var insertionOrder: [RowID] = []
     private var insertionHead: Int = 0
     private var totalCost: Int = 0
@@ -28,17 +80,17 @@ final class RowDisplayCache {
     }
 
     func box(forID id: RowID) -> RowDisplayBox? {
-        storage[id]
+        storage[id]?.box
     }
 
-    func setBox(_ box: RowDisplayBox, forID id: RowID, cost: Int) {
+    func setBox(_ box: RowDisplayBox, forID id: RowID) {
         if let existing = storage[id] {
-            totalCost -= rowCost(existing.values)
+            totalCost -= existing.cost
         } else {
             insertionOrder.append(id)
         }
-        storage[id] = box
-        totalCost += cost
+        storage[id] = Entry(box: box, cost: box.cost)
+        totalCost += box.cost
         evictIfNeeded()
     }
 
@@ -55,20 +107,12 @@ final class RowDisplayCache {
             let oldest = insertionOrder[insertionHead]
             insertionHead += 1
             if let removed = storage.removeValue(forKey: oldest) {
-                totalCost -= rowCost(removed.values)
+                totalCost -= removed.cost
             }
         }
         if insertionHead > 10_000 {
             insertionOrder.removeFirst(insertionHead)
             insertionHead = 0
         }
-    }
-
-    private func rowCost(_ values: ContiguousArray<String?>) -> Int {
-        var total = 0
-        for value in values {
-            if let s = value { total &+= s.utf8.count }
-        }
-        return total
     }
 }

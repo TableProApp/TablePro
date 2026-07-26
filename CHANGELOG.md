@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Data grids with hundreds of columns no longer format every offscreen cell while warming the scroll cache. Cache work now follows the columns in the viewport, which keeps wide ClickHouse results responsive while scrolling. (#1219)
 - The license activation sheet now opens when you click **Activate License**. It was built and then failed to appear, and once that happened further clicks did nothing at all.
 - File > Import from Other App..., Open Project Folder..., Import Connections... and Export Connections... now work when no welcome window is open. They used to do nothing.
 - The tooltip on the welcome screen's **+** button shows the shortcut you actually have bound for New Connection instead of always claiming ⌘N.

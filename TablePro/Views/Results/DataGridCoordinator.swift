@@ -376,31 +376,15 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
 
     func displayValue(forID id: RowID, column: Int, rawValue: PluginCellValue, columnType: ColumnType?) -> String? {
         if let box = displayCache.box(forID: id),
-           column >= 0, column < box.values.count,
-           let cached = box.values[column] {
-            return cached
+           box.containsValue(at: column) {
+            return box.value(at: column)
         }
         let format = column >= 0 && column < columnDisplayFormats.count ? columnDisplayFormats[column] : nil
         let formatted = CellDisplayFormatter.format(rawValue, columnType: columnType, displayFormat: format) ?? rawValue.asText
 
-        let neededCount = max(column + 1, columnDisplayFormats.count, cachedColumnCount)
-        let box: RowDisplayBox
-        if let existing = displayCache.box(forID: id) {
-            box = existing
-            if box.values.count < neededCount {
-                box.values.reserveCapacity(neededCount)
-                for _ in box.values.count..<neededCount { box.values.append(nil) }
-            }
-        } else {
-            var values = ContiguousArray<String?>()
-            values.reserveCapacity(neededCount)
-            for _ in 0..<neededCount { values.append(nil) }
-            box = RowDisplayBox(values)
-        }
-        if column >= 0, column < box.values.count {
-            box.values[column] = formatted
-        }
-        displayCache.setBox(box, forID: id, cost: displayCacheCost(box.values))
+        let box = displayCache.box(forID: id) ?? RowDisplayBox()
+        box.setValue(formatted, at: column)
+        displayCache.setBox(box, forID: id)
         return formatted
     }
 
@@ -425,12 +409,15 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     }
 
     func preWarmDisplayCache(upTo rowCount: Int) {
+        guard let tableView else { return }
+        let columnIndices = visibleDataColumnIndices(in: tableView)
+        guard !columnIndices.isEmpty else { return }
         let tableRows = tableRowsProvider()
         let displayCount = displayIDs?.count ?? tableRows.count
         let count = min(rowCount, displayCount)
         guard count > 0 else { return }
         for displayIndex in 0..<count {
-            cacheDisplayRow(at: displayIndex, in: tableRows)
+            cacheDisplayRow(at: displayIndex, columnIndices: columnIndices, in: tableRows)
         }
     }
 
@@ -492,6 +479,9 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     }
 
     private func runBackgroundPrewarm() async {
+        guard let tableView else { return }
+        let columnIndices = visibleDataColumnIndices(in: tableView)
+        guard !columnIndices.isEmpty else { return }
         var nextIndex = 0
         while !Task.isCancelled {
             let tableRows = tableRowsProvider()
@@ -501,7 +491,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             let deadline = ContinuousClock.now.advanced(by: Self.prewarmFrameBudget)
             while nextIndex < displayCount {
                 if Task.isCancelled { return }
-                cacheDisplayRow(at: nextIndex, in: tableRows)
+                cacheDisplayRow(at: nextIndex, columnIndices: columnIndices, in: tableRows)
                 nextIndex += 1
                 if ContinuousClock.now >= deadline { break }
             }
@@ -509,41 +499,67 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         }
     }
 
-    private func cacheDisplayRow(at displayIndex: Int, in tableRows: TableRows) {
-        guard let row = displayRow(at: displayIndex, in: tableRows) else { return }
-        guard displayCache.box(forID: row.id) == nil else { return }
-
-        let columnCount = tableRows.columns.count
-        var values = ContiguousArray<String?>()
-        values.reserveCapacity(columnCount)
-        for _ in 0..<columnCount { values.append(nil) }
-        for col in 0..<min(row.values.count, columnCount) {
+    @discardableResult
+    func cacheDisplayRow(
+        at displayIndex: Int,
+        columnIndices: IndexSet,
+        in tableRows: TableRows
+    ) -> Int {
+        guard let row = displayRow(at: displayIndex, in: tableRows) else { return 0 }
+        let box = displayCache.box(forID: row.id) ?? RowDisplayBox()
+        let columnCount = min(row.values.count, tableRows.columns.count)
+        var cachedCount = 0
+        for col in columnIndices where col >= 0 && col < columnCount && !box.containsValue(at: col) {
             let columnType = col < tableRows.columnTypes.count ? tableRows.columnTypes[col] : nil
             let format = col < columnDisplayFormats.count ? columnDisplayFormats[col] : nil
-            values[col] = CellDisplayFormatter.format(
+            let formatted = CellDisplayFormatter.format(
                 row.values[col],
                 columnType: columnType,
                 displayFormat: format
             ) ?? row.values[col].asText
+            box.setValue(formatted, at: col)
+            cachedCount += 1
         }
-        let box = RowDisplayBox(values)
-        displayCache.setBox(box, forID: row.id, cost: displayCacheCost(values))
+        guard cachedCount > 0 else { return 0 }
+        displayCache.setBox(box, forID: row.id)
+        return cachedCount
     }
 
-    private func displayCacheCost(_ values: ContiguousArray<String?>) -> Int {
-        var total = 0
-        for value in values {
-            if let s = value { total &+= s.utf8.count }
+    func visibleDataColumnIndices(in tableView: NSTableView) -> IndexSet {
+        let visibleRect = tableView.visibleRect
+        let tableMaxY = tableView.bounds.maxY
+        guard visibleRect.width > 0, tableMaxY > 0,
+              let firstContentColumn = tableView.tableColumns.firstIndex(where: { !$0.isHidden }),
+              let lastContentColumn = tableView.tableColumns.lastIndex(where: { !$0.isHidden }) else {
+            return IndexSet()
         }
-        return total
+        let contentMinX = tableView.rect(ofColumn: firstContentColumn).minX
+        let contentMaxX = tableView.rect(ofColumn: lastContentColumn).maxX
+        guard contentMaxX > contentMinX,
+              visibleRect.maxX > contentMinX,
+              visibleRect.minX < contentMaxX else { return IndexSet() }
+        let probeY = min(max(visibleRect.midY, tableView.bounds.minY), tableMaxY - 1)
+        let leadingX = min(max(visibleRect.minX, contentMinX), contentMaxX - 1)
+        let trailingX = min(max(visibleRect.maxX - 1, leadingX), contentMaxX - 1)
+        let firstVisibleColumn = tableView.column(at: NSPoint(x: leadingX, y: probeY))
+        let lastVisibleColumn = tableView.column(at: NSPoint(x: trailingX, y: probeY))
+        guard firstVisibleColumn >= 0, lastVisibleColumn >= firstVisibleColumn else { return IndexSet() }
+        var indices = IndexSet()
+        for tableColumnIndex in firstVisibleColumn...lastVisibleColumn {
+            let tableColumn = tableView.tableColumns[tableColumnIndex]
+            guard !tableColumn.isHidden,
+                  let dataColumnIndex = dataColumnIndex(from: tableColumn.identifier) else { continue }
+            indices.insert(dataColumnIndex)
+        }
+        return indices
     }
 
     private func invalidateDisplayCache(forDisplayRow displayIndex: Int, column: Int) {
         guard let row = displayRow(at: displayIndex) else { return }
         guard let box = displayCache.box(forID: row.id),
-              column >= 0, column < box.values.count else { return }
-        box.values[column] = nil
-        displayCache.setBox(box, forID: row.id, cost: displayCacheCost(box.values))
+              box.containsValue(at: column) else { return }
+        box.invalidateValue(at: column)
+        displayCache.setBox(box, forID: row.id)
     }
 
     func applyDelta(_ delta: Delta) {
