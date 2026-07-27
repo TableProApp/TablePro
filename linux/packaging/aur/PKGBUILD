@@ -1,0 +1,44 @@
+# Maintainer: TablePro Contributors <noreply@tablepro.app>
+pkgname=tablepro
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Native Linux database client (GTK4 / libadwaita)"
+arch=('x86_64')
+url="https://github.com/TableProApp/TablePro"
+license=('AGPL-3.0-or-later')
+depends=('gtk4' 'libadwaita' 'gtksourceview5' 'libsecret' 'openssl')
+makedepends=('cargo' 'git' 'pkgconf' 'clang' 'mold')
+source=("$pkgname-$pkgver::git+https://github.com/TableProApp/TablePro.git#branch=linux")
+sha256sums=('SKIP')
+options=('!lto')
+
+prepare() {
+  cd "$srcdir/$pkgname-$pkgver/linux"
+  export RUSTUP_TOOLCHAIN=1.93
+  cargo fetch --locked --target "$CARCH-unknown-linux-gnu"
+}
+
+build() {
+  cd "$srcdir/$pkgname-$pkgver/linux"
+  export RUSTUP_TOOLCHAIN=1.93
+  export CARGO_TARGET_DIR="$srcdir/target"
+  cargo build --release --locked -p tablepro-app
+}
+
+check() {
+  cd "$srcdir/$pkgname-$pkgver/linux"
+  export RUSTUP_TOOLCHAIN=1.93
+  export CARGO_TARGET_DIR="$srcdir/target"
+  cargo test --workspace --lib --locked
+}
+
+package() {
+  cd "$srcdir/$pkgname-$pkgver/linux"
+  install -Dm755 "$srcdir/target/release/tablepro-app" "$pkgdir/usr/bin/tablepro-app"
+  install -Dm644 flatpak/com.tablepro.linux.desktop \
+    "$pkgdir/usr/share/applications/com.tablepro.linux.desktop"
+  install -Dm644 flatpak/com.tablepro.linux.metainfo.xml \
+    "$pkgdir/usr/share/metainfo/com.tablepro.linux.metainfo.xml"
+  install -Dm644 flatpak/icons/scalable/com.tablepro.linux.svg \
+    "$pkgdir/usr/share/icons/hicolor/scalable/apps/com.tablepro.linux.svg"
+}

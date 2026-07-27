@@ -1,0 +1,32 @@
+name: Flatpak Linux
+
+on:
+  push:
+    branches: [linux, "linux/**", "feat/linux-**"]
+    paths:
+      - "linux/**"
+      - ".github/workflows/flatpak-linux.yml"
+  pull_request:
+    paths:
+      - "linux/**"
+      - ".github/workflows/flatpak-linux.yml"
+  workflow_dispatch:
+
+jobs:
+  flatpak:
+    name: flatpak-builder
+    runs-on: ubuntu-24.04
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-47
+      options: --privileged
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event_name == 'schedule' && 'linux' || github.ref }}
+      - name: Build Flatpak
+        uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+        with:
+          bundle: tablepro.flatpak
+          manifest-path: linux/flatpak/com.tablepro.linux.json
+          cache-key: flatpak-builder-${{ github.sha }}
+          upload-artifact: true

@@ -1,0 +1,17 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: TablePro
+Upstream-Contact: https://github.com/TableProApp/TablePro/issues
+Source: https://github.com/TableProApp/TablePro
+
+Files: *
+Copyright: TablePro Authors
+License: AGPL-3.0-or-later
+
+License: AGPL-3.0-or-later
+ This program is free software: you can redistribute it and/or modify
+ it under the terms of the GNU Affero General Public License as published
+ by the Free Software Foundation, either version 3 of the License, or
+ (at your option) any later version.
+ .
+ On Debian systems, the full text of the GNU Affero General Public
+ License version 3 can be found in /usr/share/common-licenses/AGPL-3.

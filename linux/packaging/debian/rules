@@ -1,0 +1,32 @@
+#!/usr/bin/make -f
+
+export DH_VERBOSE = 1
+export CARGO_HOME = $(CURDIR)/debian/cargo-home
+# Build from the linux/ workspace root (this debian/ lives under packaging/).
+export TABLEPRO_LINUX = $(CURDIR)/../..
+
+%:
+	dh $@
+
+override_dh_auto_configure:
+	@true
+
+override_dh_auto_build:
+	cd $(TABLEPRO_LINUX) && cargo build --release -p tablepro-app --locked
+
+override_dh_auto_test:
+	cd $(TABLEPRO_LINUX) && cargo test --workspace --lib
+
+override_dh_auto_install:
+	install -Dm755 $(TABLEPRO_LINUX)/target/release/tablepro-app \
+		$(CURDIR)/debian/tablepro/usr/bin/tablepro-app
+	install -Dm644 $(TABLEPRO_LINUX)/flatpak/com.tablepro.linux.desktop \
+		$(CURDIR)/debian/tablepro/usr/share/applications/com.tablepro.linux.desktop
+	install -Dm644 $(TABLEPRO_LINUX)/flatpak/com.tablepro.linux.metainfo.xml \
+		$(CURDIR)/debian/tablepro/usr/share/metainfo/com.tablepro.linux.metainfo.xml
+	install -Dm644 $(TABLEPRO_LINUX)/flatpak/icons/scalable/com.tablepro.linux.svg \
+		$(CURDIR)/debian/tablepro/usr/share/icons/hicolor/scalable/apps/com.tablepro.linux.svg
+
+override_dh_auto_clean:
+	cd $(TABLEPRO_LINUX) && cargo clean || true
+	rm -rf $(CARGO_HOME)

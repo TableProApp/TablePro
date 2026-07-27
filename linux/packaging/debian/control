@@ -1,0 +1,27 @@
+Source: tablepro
+Section: database
+Priority: optional
+Maintainer: TablePro Contributors <noreply@tablepro.app>
+Build-Depends:
+ debhelper-compat (= 13),
+ cargo,
+ rustc (>= 1.93),
+ pkg-config,
+ libgtk-4-dev,
+ libadwaita-1-dev,
+ libgtksourceview-5-dev,
+ libssl-dev,
+ libsecret-1-dev,
+ gettext
+Standards-Version: 4.7.0
+Homepage: https://github.com/TableProApp/TablePro
+Rules-Requires-Root: no
+
+Package: tablepro
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: Native Linux database client
+ TablePro is a fast, native GTK4 / libadwaita database client. It connects
+ to PostgreSQL, MySQL, SQLite, Microsoft SQL Server, and ClickHouse, with
+ in-place editing, a SQL editor, SSH tunnels, and Secret Service password
+ storage.

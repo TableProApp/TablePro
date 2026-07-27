@@ -8,13 +8,13 @@
   <description>
     <p>
       TablePro is a fast, native database client for Linux. It connects to
-      PostgreSQL, MySQL, and SQLite, and lets you browse tables, edit data
-      in place, run SQL, and tunnel through SSH bastions — all from a clean
-      GTK4 / libadwaita interface.
+      PostgreSQL, MySQL, SQLite, Microsoft SQL Server, and ClickHouse, and
+      lets you browse tables, edit data in place, run SQL, and tunnel through
+      SSH bastions — all from a clean GTK4 / libadwaita interface.
     </p>
     <p>Features:</p>
     <ul>
-      <li>PostgreSQL, MySQL, and SQLite drivers</li>
+      <li>PostgreSQL, MySQL, SQLite, MSSQL, and ClickHouse drivers</li>
       <li>In-place cell editing with primary-key safety</li>
       <li>SQL editor with syntax highlighting and Run / Cancel</li>
       <li>SSH tunneling with TOFU host-key checking</li>

@@ -1,0 +1,5 @@
+tablepro (0.1.0-1) UNRELEASED; urgency=medium
+
+  * Initial Debian packaging for the Linux GTK4 client.
+
+ -- TablePro Contributors <noreply@tablepro.app>  Mon, 27 Jul 2026 00:00:00 +0000
