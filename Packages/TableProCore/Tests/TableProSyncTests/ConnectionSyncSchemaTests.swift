@@ -111,8 +111,19 @@ struct ConnectionSyncSchemaTests {
         #expect(decoded?.sortOrder == connection.sortOrder)
         #expect(decoded?.isReadOnly == connection.isReadOnly)
         #expect(decoded?.safeModeLevel == connection.safeModeLevel)
-        #expect(decoded?.queryTimeoutSeconds == connection.queryTimeoutSeconds)
         #expect(decoded?.groupId == connection.groupId)
         #expect(decoded?.colorTag == connection.colorTag)
+    }
+
+    @Test("A gated field does not survive the round trip")
+    func gatedFieldsDoNotRoundTrip() {
+        let connection = makeFullyPopulatedConnection()
+        let record = SyncRecordMapper.toRecord(connection, zoneID: zoneID)
+
+        let decoded = SyncRecordMapper.toConnection(record)
+
+        #expect(connection.queryTimeoutSeconds != nil)
+        #expect(ConnectionSyncField.queryTimeoutSeconds.isWritable == false)
+        #expect(decoded?.queryTimeoutSeconds == nil)
     }
 }

@@ -44,7 +44,7 @@ public enum ConnectionSyncField: String, CaseIterable, Sendable {
         switch self {
         case .connectionId, .name, .host, .port, .database, .username, .type,
              .color, .colorTag, .safeModeLevel, .sortOrder, .groupId, .tagId,
-             .isReadOnly, .sshEnabled, .sslEnabled, .queryTimeoutSeconds,
+             .isReadOnly, .sshEnabled, .sslEnabled,
              .sshConfigJson, .sslConfigJson, .additionalFieldsJson,
              .aiPolicy, .redisDatabase, .startupCommands, .sshProfileId,
              .modifiedAtLocal, .schemaVersion:
