@@ -111,6 +111,8 @@ Count documents:
 db.users.countDocuments({"role": "admin"})
 ```
 
+**Collection references**: Write `db.users`, `db["users"]`, or `db.getCollection("users")`. The bracket and `getCollection` forms take the name exactly as written, so use them for names that contain dots or spaces, start with a digit, or match a database method such as `stats` or `version`. Single quotes and backticks work in place of double quotes. `db.getSiblingDB(...)` is not supported: a query always runs against the database the connection is using.
+
 **Supported methods**: collection-level `find`, `findOne`, `aggregate`, `countDocuments`/`count`, `insertOne`/`insertMany`, `updateOne`/`updateMany`, `replaceOne`, `deleteOne`/`deleteMany`, `findOneAndUpdate`/`findOneAndReplace`/`findOneAndDelete`, `createIndex`, `dropIndex`, `drop`; database-level `getCollectionNames`/`listCollections`, `createCollection`, `dropDatabase`, `version`, `stats`. Anything else goes through `db.runCommand({...})` or `db.adminCommand({...})`. Unlisted shell methods (for example `distinct` or `getUsers`) return an unsupported-method error.
 
 ## Troubleshooting

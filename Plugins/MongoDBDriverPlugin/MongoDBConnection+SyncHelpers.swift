@@ -365,9 +365,8 @@ extension MongoDBConnection {
         streamState: MongoStreamState
     ) {
         var docPtr: OpaquePointer?
-        var headerSent = false
-        var columns: [String] = []
-        var columnTypeNames: [String] = []
+        var sample: [[String: Any]] = []
+        var projection: MongoStreamProjection?
 
         while mongoc_cursor_next(cursor, &docPtr) {
             if Task.isCancelled {
@@ -379,31 +378,16 @@ extension MongoDBConnection {
             guard let doc = docPtr else { continue }
             let dict = bsonToDict(doc)
 
-            if !headerSent {
-                columns = BsonDocumentFlattener.unionColumns(from: [dict])
-                let bsonTypes = BsonDocumentFlattener.columnTypes(for: columns, documents: [dict])
-                columnTypeNames = bsonTypes.map { bsonTypeToStreamString($0) }
-                continuation.yield(.header(PluginStreamHeader(
-                    columns: columns,
-                    columnTypeNames: columnTypeNames
-                )))
-                headerSent = true
-            } else {
-                for key in dict.keys.sorted() where !columns.contains(key) {
-                    columns.append(key)
-                    let type = BsonDocumentFlattener.columnTypes(for: [key], documents: [dict])
-                    columnTypeNames.append(bsonTypeToStreamString(type.first ?? 2))
-                }
+            if let projection {
+                continuation.yield(.rows([projection.row(for: dict, convert: streamCellValue)]))
+                continue
             }
 
-            let row: [PluginCellValue] = columns.map { column in
-                guard let value = dict[column] else { return .null }
-                if let data = value as? Data {
-                    return .bytes(data)
-                }
-                return PluginCellValue.fromOptional(BsonDocumentFlattener.stringValue(for: value))
+            sample.append(dict)
+            if sample.count >= MongoStreamProjection.sampleSize {
+                projection = openStream(sample: sample, continuation: continuation)
+                sample = []
             }
-            continuation.yield(.rows([row]))
         }
 
         var error = bson_error_t()
@@ -413,15 +397,38 @@ extension MongoDBConnection {
             return
         }
 
-        if !headerSent {
-            continuation.yield(.header(PluginStreamHeader(
-                columns: ["_id"],
-                columnTypeNames: ["VARCHAR"]
-            )))
+        if projection == nil {
+            _ = openStream(sample: sample, continuation: continuation)
         }
 
         cleanup(streamState)
         continuation.finish()
+    }
+
+    private func openStream(
+        sample: [[String: Any]],
+        continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
+    ) -> MongoStreamProjection {
+        let columns = BsonDocumentFlattener.unionColumns(from: sample)
+        let columnTypeNames = BsonDocumentFlattener
+            .columnTypes(for: columns, documents: sample)
+            .map { bsonTypeToStreamString($0) }
+        let projection = MongoStreamProjection(columns: columns, columnTypeNames: columnTypeNames)
+
+        continuation.yield(.header(projection.header))
+
+        if !sample.isEmpty {
+            continuation.yield(.rows(sample.map { projection.row(for: $0, convert: streamCellValue) }))
+        }
+
+        return projection
+    }
+
+    private func streamCellValue(_ value: Any) -> PluginCellValue {
+        if let data = value as? Data {
+            return .bytes(data)
+        }
+        return PluginCellValue.fromOptional(BsonDocumentFlattener.stringValue(for: value))
     }
 
     private func cleanup(_ state: MongoStreamState) {

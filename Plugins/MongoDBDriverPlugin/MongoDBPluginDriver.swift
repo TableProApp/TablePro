@@ -27,7 +27,7 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func defaultExportQuery(table: String) -> String? {
-        "db.getCollection(\"\(table)\").find({})"
+        MongoDBQueryBuilder().buildExportQuery(collection: table)
     }
 
     init(config: DriverConnectionConfig) {

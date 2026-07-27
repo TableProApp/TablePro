@@ -479,6 +479,40 @@ struct MongoDBQueryBuilderTests {
         #expect(query.contains(".countDocuments({})"))
     }
 
+    // MARK: - Export Query
+
+    @Test("Export query streams the whole collection")
+    func exportQueryHasNoLimit() {
+        let query = builder.buildExportQuery(collection: "users")
+        #expect(query == "db.users.find({})")
+    }
+
+    @Test("Export query brackets a dotted collection name")
+    func exportQueryDottedCollection() {
+        let query = builder.buildExportQuery(collection: "logs.2024.06")
+        #expect(query == "db[\"logs.2024.06\"].find({})")
+    }
+
+    @Test("Export query escapes quotes and backslashes in the collection name")
+    func exportQueryEscapesCollectionName() {
+        let query = builder.buildExportQuery(collection: "say\"hi\\bye")
+        #expect(query == "db[\"say\\\"hi\\\\bye\"].find({})")
+    }
+
+    @Test("Export query parses back to a find on the same collection")
+    func exportQueryRoundTripsThroughTheParser() throws {
+        for collection in ["users", "logs.2024.06", "stats", "2024_orders", "say\"hi"] {
+            let operation = try MongoShellParser.parse(builder.buildExportQuery(collection: collection))
+            if case .find(let parsed, let filter, let options) = operation {
+                #expect(parsed == collection)
+                #expect(filter == "{}")
+                #expect(options.limit == nil)
+            } else {
+                Issue.record("Expected .find operation for \(collection)")
+            }
+        }
+    }
+
     // MARK: - ObjectId Matching
 
     @Test("Equals on an ObjectId value matches both the ObjectId and the string form")

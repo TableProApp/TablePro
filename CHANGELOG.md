@@ -18,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Exporting a MongoDB collection works again. Every format failed with "Unsupported MongoDB method: getCollection" before any data was read. You can now also write `db.getCollection("name")` in the query editor, which is the only way to reach collections whose names contain dots or spaces, start with a digit, or match a database method such as `stats`. (#1971)
+- Exported MongoDB collections keep every field. TablePro took the column list from the first document alone, so a field that showed up later was dropped from JSON exports and pushed CSV rows out of line with their header. (#1971)
 - The `postgres` database shows in the database list again. It was marked as a system database, which hid it from the sidebar, Cmd+K, the database filter, and the Backup and Restore Dump pickers. PostgreSQL creates it for users and applications, so nothing about it is internal. CockroachDB's `defaultdb` and Redshift's `dev` were hidden the same way and now show too. (#1967)
 - The database a connection is using always shows in the sidebar and the database switchers, even when it is a system database or the database filter excludes it. (#1967)
 - The license activation sheet now opens when you click **Activate License**. It was built and then failed to appear, and once that happened further clicks did nothing at all.

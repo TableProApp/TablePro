@@ -66,6 +66,12 @@ struct MongoDBQueryBuilder {
         "\(Self.mongoCollectionAccessor(collection)).countDocuments(\(filterJson))"
     }
 
+    // MARK: - Export Query
+
+    func buildExportQuery(collection: String) -> String {
+        "\(Self.mongoCollectionAccessor(collection)).find({})"
+    }
+
     // MARK: - Filter Document
 
     /// Convert filter tuples to MongoDB filter document string
