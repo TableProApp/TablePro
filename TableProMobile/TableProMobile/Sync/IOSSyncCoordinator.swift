@@ -4,6 +4,7 @@ import Observation
 import os
 import TableProModels
 import TableProSync
+import TableProSyncTransport
 
 @MainActor @Observable
 final class IOSSyncCoordinator {

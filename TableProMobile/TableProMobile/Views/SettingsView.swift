@@ -1,6 +1,6 @@
 import SwiftUI
 import TableProModels
-import TableProSync
+import TableProSyncTransport
 
 struct SettingsView: View {
     @Environment(AppState.self) private var appState

@@ -3,6 +3,7 @@ import Foundation
 import os
 
 import TableProModels
+import TableProSyncTransport
 
 public enum SyncRecordMapper {
     private static let logger = Logger(subsystem: "com.TablePro", category: "SyncRecordMapper")
