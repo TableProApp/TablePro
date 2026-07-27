@@ -4,7 +4,7 @@ Native Linux database client. Sister product to the macOS TablePro app, sharing 
 
 ## Status
 
-Phase 0 — foundation. The technology stack was validated by a 2-day spike in April 2026: Rust + GTK4 + libadwaita + sqlx + GtkColumnView built and scrolled 100,000 rows with no perceptible lag. Real codebase scaffolding has not started yet.
+Phase 2 in progress (see [ROADMAP.md](ROADMAP.md)). The stack (Rust + GTK4 + libadwaita + Relm4 + sqlx / tiberius) is shipping a working app with PostgreSQL, MySQL, SQLite, and MSSQL drivers, workspace tabs, structure editing, SSH tunnels, and query history. Flatpak / Flathub distribution and remaining hardening items are still open.
 
 ## Stack
 
@@ -14,7 +14,7 @@ Phase 0 — foundation. The technology stack was validated by a 2-day spike in A
 | GUI toolkit | GTK4 4.14+ + libadwaita 1.5+ |
 | App architecture | [Relm4](https://relm4.org) — Elm-style components on gtk4-rs |
 | Async | tokio (DB drivers) bridged to glib main loop (UI) |
-| DB drivers | sqlx (PG / MySQL / SQLite), fred (Redis), official mongodb crate, clickhouse-arrow, etc. |
+| DB drivers | sqlx (PG / MySQL / SQLite), tiberius (MSSQL); planned: fred (Redis), official `clickhouse` / mongodb / duckdb crates, etc. |
 | Persistence | libsecret (passwords), gio::Settings (prefs), JSON files (connection metadata) |
 | Distribution | Flathub primary, .deb / .rpm / AppImage secondary |
 
@@ -49,12 +49,20 @@ pkg-config --modversion gtk4 libadwaita-1   # need 4.14+ / 1.5+
 rustc --version                              # need 1.93+
 ```
 
-Build and run (once `crates/app/` exists):
+Build and run:
 
 ```bash
 cd linux
 cargo run -p tablepro-app
 ```
+
+Local CI mirror (fmt + clippy + build + unit tests):
+
+```bash
+./scripts/ci-local.sh
+```
+
+Optional: if system `-dev` packages for GtkSourceView 5 / libsecret are missing, extract them under `../.local-deps/` and `source scripts/dev-env.sh` before cargo.
 
 ## Documentation index
 

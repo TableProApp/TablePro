@@ -62,7 +62,21 @@ async fn list_tables_returns_seeded_tables() {
 }
 ```
 
-Integration tests run in CI. Locally they require Docker and a user that can reach the daemon (see the macOS `CLAUDE.md` notes about Docker group permissions).
+Integration tests run in CI. Locally they require a Docker-compatible API socket.
+
+### Docker or Podman
+
+Upstream CI uses Docker. On hosts that only ship Podman (Debian / Fedora defaults), point testcontainers at Podman's rootless socket:
+
+```bash
+systemctl --user enable --now podman.socket
+export DOCKER_HOST=unix:///run/user/$(id -u)/podman/podman.sock
+export TESTCONTAINERS_RYUK_DISABLED=true   # Ryuk needs privileges rootless Podman will not grant
+cargo test --test integration -p tablepro-driver-postgres -- --include-ignored --test-threads=1
+cargo test --test integration -p tablepro-driver-mysql -- --include-ignored --test-threads=1
+```
+
+`curl --unix-socket "$DOCKER_HOST" http://localhost/_ping` should print `OK` before you run the suite.
 
 Mark slow integration tests with `#[ignore]` if they take more than ~5 seconds:
 

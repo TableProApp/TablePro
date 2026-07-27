@@ -1,26 +1,26 @@
 # Roadmap
 
-## Where we are (2026-04-26)
+## Where we are (2026-07-27)
 
-**Phase 0 and Phase 1 are complete in spirit but not in production sense.**
+**Phase 0 is complete. Phase 1 is complete. Large parts of Phase 2 and Phase 3 are already in the tree.**
 
-The current build connects to PostgreSQL / MySQL / SQLite, browses tables with a virtualized 100k-row grid, supports in-place cell edit, has a SQL editor, and persists connections to JSON + libsecret. 31 unit tests, CI green, Relm4 architecture clean.
+The app connects to PostgreSQL, MySQL, SQLite, and Microsoft SQL Server; browses tables in a virtualized `GtkColumnView`; supports in-place cell edit with transactional save; hosts an `AdwTabView` workspace (editor / table / structure); filters rows; tunnels over SSH via `russh`; stores passwords in the Secret Service; and records query history in SQLite + FTS5. Drivers ship with testcontainers integration tests. Relm4 architecture is intact.
 
-This is **demo-grade**. It is not beta-shippable. The gap between "works on the developer's machine" and "I would install this from Flathub and use it daily" is substantial — see [`docs/production-audit.md`](docs/production-audit.md) for the detailed gap analysis. The big-ticket missing pieces:
+This is **past demo-grade**, but still **not beta-shippable**. The gap between "works on the developer's machine" and "I would install this from Flathub and use it daily" remains — see [`docs/production-audit.md`](docs/production-audit.md) for the detailed gap analysis. Remaining big-ticket items:
 
 | Concern | Status |
 |---|---|
-| Type system | 6 of ~20 needed types (no Date / Time / Decimal / Uuid / Json) |
-| Result scaling | Materializes full result into memory; OOM at 1M+ rows |
-| Connection management | One global connection at a time; no multi-tab, no multi-window |
-| Network security | TLS UI absent, SSH tunnelling absent |
-| Distribution | Flatpak manifest never built; no AppStream metainfo, icons, or screenshots |
-| Internationalization | 100% English hardcoded |
+| Type system | `Value` covers Null/Bool/Int/Float/Text/Bytes/Date/Time/DateTime/TimestampTz/Decimal/Uuid/Json — done |
+| Result scaling | Streams via sqlx `fetch` with `MAX_QUERY_ROWS` cap; full result still held in the grid model |
+| Connection management | `DatabaseService` + `AdwTabView` workspace tabs — done; multi-window still open |
+| Network security | SSH tunnelling + TLS toggle present; cert-path / verify-mode UI still thin |
+| Distribution | Flatpak manifest + metainfo + desktop + icon present; never built end-to-end on CI |
+| Internationalization | gettext scaffolding + `tr!` macro; strings not yet fully extracted to `.po` |
 | Accessibility | Untested with Orca / keyboard nav |
-| Integration tests | One ignored testcontainers test; zero per-driver matrix |
-| Recovery | No reconnect on connection loss; no cancel running query |
+| Integration tests | Postgres + MySQL (+ MSSQL) testcontainers suites; CI job exists |
+| Recovery | `connection_monitor` ping + reconnect loop; query cancel still open |
 
-**What "production-ready" means for this project**: a user on Fedora 41 or Ubuntu 24.04 can install from Flathub, connect to their everyday Postgres or MySQL database, browse and edit data correctly across all native types, run SQL queries, see schema, and trust the app to handle errors gracefully. Demo-grade does not meet this bar.
+**What "production-ready" means for this project**: a user on Fedora 41 or Ubuntu 24.04 can install from Flathub, connect to their everyday Postgres or MySQL database, browse and edit data correctly across all native types, run SQL queries, see schema, and trust the app to handle errors gracefully.
 
 ## Phase legend
 
@@ -32,11 +32,11 @@ Phases are ordered by **maturity**, not feature count. Each phase has a single c
 
 **Status**: complete.
 
-- [x] Cargo workspace with `app`, `core`, `storage`, `drivers/{postgres,sqlite,mysql}`
+- [x] Cargo workspace with `app`, `core`, `storage`, `ssh`, `drivers/{postgres,sqlite,mysql,mssql}`
 - [x] `core::DatabaseDriver`, `core::Connection`, `core::DriverRegistry` traits
 - [x] `storage::connections` (JSON, atomic writes, schema versioning)
-- [x] `storage::secrets` (libsecret via `oo7`)
-- [x] CI on Ubuntu 24.04 (build, clippy `-D warnings`, fmt check, tests)
+- [x] `storage::secrets` (Secret Service via `oo7`)
+- [x] CI (`build-linux.yml`: fmt, clippy `-D warnings`, build, unit tests + driver integration)
 - [x] `rustfmt.toml`, `clippy.toml`, `rust-toolchain.toml`
 - [x] Flatpak manifest skeleton (not yet validated end-to-end — see Phase 3)
 - [x] Architecture decision records for stack picks
@@ -49,10 +49,10 @@ Exit criterion: a fresh contributor can `cargo run -p tablepro-app` and reach a 
 
 **Status**: complete.
 
-- [x] Three drivers wired (PostgreSQL, SQLite, MySQL) via `sqlx`
+- [x] Drivers wired: PostgreSQL / SQLite / MySQL via `sqlx`, MSSQL via `tiberius`
 - [x] `AdwNavigationSplitView` shell with header bar + Connect/Open/Edit/Disconnect
 - [x] Multi-driver Connect dialog with engine picker + per-driver form
-- [x] Saved connection list popover with delete + reconnect
+- [x] Saved connection list with delete + reconnect
 - [x] Browse paginated table results in `GtkColumnView` (100k rows scroll smoothly)
 - [x] Sidebar table search (case-insensitive substring filter)
 - [x] SQL editor pane (GtkSourceView 5 + Run button)
@@ -66,51 +66,48 @@ Exit criterion: a fresh contributor can `cargo run -p tablepro-app` and reach a 
 
 Exit criterion: a developer can demo the basic flows (connect, browse, edit, query) without crashes on their own machine. **Met.**
 
-This is where the project sits today. The app is interesting but **not production-ready**.
-
 ---
 
-## Phase 2 — Production hardening (4 weeks)
+## Phase 2 — Production hardening (in progress)
 
 **Goal**: handle real-world data and real-world failure modes correctly.
 
-### Type system expansion (~1.5 weeks)
+### Type system expansion ✅
 
-- [ ] Add to `core::Value`: `Date`, `Time`, `DateTime`, `TimestampTz`, `Decimal`, `Uuid`, `Json`
-- [ ] Map driver-specific types: PG `numeric`/`uuid`/`jsonb`/`timestamptz`, MySQL `datetime`/`json`, SQLite `julianday`/text variants
-- [ ] Add `chrono` and `rust_decimal` and `serde_json` to workspace
-- [ ] Update `RowObject` to handle full `Value` set (already typed as `Vec<Value>`, just needs the new variants)
-- [ ] `value_to_display_text` / `value_to_edit_text` per type with locale-aware formatting
+- [x] Add to `core::Value`: `Date`, `Time`, `DateTime`, `TimestampTz`, `Decimal`, `Uuid`, `Json`
+- [x] Map driver-specific types across PG / MySQL / SQLite / MSSQL
+- [x] `chrono`, `rust_decimal`, `serde_json` in the workspace
+- [x] `RowObject` / display helpers consume the full `Value` set
 
-### Streaming results (~1 week)
+### Streaming results (partial)
 
-- [ ] Replace `fetch_rows` materialization with sqlx `fetch` stream
-- [ ] Backpressure model: read up to `PAGE_SIZE` rows, hold the stream open for next-page reads
-- [ ] Memory-bounded grid: drop rows outside viewport (already virtualized in GTK, but model holds all rows)
+- [x] sqlx `fetch` stream into a bounded collector (`MAX_QUERY_ROWS`)
+- [ ] Backpressure model: hold the stream open for next-page reads
+- [ ] Memory-bounded grid: drop rows outside viewport (GTK virtualizes paint; model still holds all loaded rows)
 - [ ] Cancellation: drop the stream when user navigates away
 
-### Multi-connection / multi-tab architecture (~1 week)
+### Multi-connection / multi-tab architecture (partial)
 
-- [ ] `DatabaseService` actor (worker component) owning `Vec<Arc<dyn Connection>>` keyed by connection id
-- [ ] Replace `connection_holder` static singleton with service handle
-- [ ] App state: `active_connections: HashMap<ConnectionId, ConnectionState>`
-- [ ] `AdwTabView` for multiple open tables / queries within one connection
+- [x] `DatabaseService` owning active connection(s)
+- [x] `AdwTabView` for multiple open tables / queries within one connection
+- [x] Workspace tab persistence (`workspace_state.json`)
 - [ ] Multi-window: each window holds its own active connection via `gtk::Application::add_window`
 
-### Security baseline (~1 week)
+### Security baseline (partial)
 
-- [ ] TLS configuration UI: cert path, verify mode, SNI override
-- [ ] SSH tunnelling via `russh` crate (host, port, key path, optional jump host)
-- [ ] Read-only mode toggle per connection (blocks UPDATE/DELETE/DROP from UI)
+- [x] TLS toggle on connect options
+- [x] SSH tunnelling via `russh` (host, port, key / password auth)
+- [x] Read-only mode toggle per connection
 - [ ] Cancel running query (button + Esc shortcut + `Connection::cancel` driver method)
-- [ ] Connection lost recovery: detect disconnect, show modal, retry button
+- [x] Connection lost recovery: ping monitor + reconnect loop
 - [ ] Statement timeout configurable per connection
+- [ ] TLS cert path / verify mode / SNI override UI
 
-### Integration tests (~0.5 weeks)
+### Integration tests ✅
 
-- [ ] Per-driver `tests/integration.rs` using `testcontainers-rs`
-- [ ] Each driver: connect, list_tables, fetch_columns (with PK detection), fetch_rows pagination, execute_params CRUD, query
-- [ ] Run in CI gated behind `--ignored` to avoid Docker dependency in fast-checks job
+- [x] Per-driver `tests/integration.rs` using `testcontainers-rs` (Postgres, MySQL; MSSQL present)
+- [x] Connect, list_tables, fetch_columns (PK detection), pagination, value round-trip, bad SQL
+- [x] CI integration job gated behind `--include-ignored`
 
 **Exit criterion**: Connect to a 10M-row Postgres table, scroll, edit a date column, lose network mid-query, see a recoverable error, reconnect via the same UI flow.
 
@@ -120,14 +117,14 @@ This is where the project sits today. The app is interesting but **not productio
 
 **Goal**: shippable to Flathub. A user installs and uses for real work.
 
-### Browse UX (~1 week)
+### Browse UX (partial)
 
-- [ ] Where-filter UI: per-column filter row above grid with operators (=, !=, LIKE, NULL, IN)
+- [x] Where-filter UI (`filter_strip`) with per-column operators
 - [ ] ORDER BY wired to `GtkColumnView` header click → server sort
 - [ ] Multi-row select via shift-click + Ctrl-click
 - [ ] Bulk delete with confirmation
 - [ ] Right-click context menu (copy cell, copy row as INSERT, copy column, set NULL, delete row)
-- [ ] Save column widths and order per (connection, table)
+- [x] Save column widths per (connection, table)
 
 ### Export / import (~1 week)
 
@@ -136,22 +133,22 @@ This is where the project sits today. The app is interesting but **not productio
 - [ ] Import CSV → table (with column mapping dialog)
 - [ ] Run SQL file (load + execute via SQL editor)
 
-### Schema browser (~1 week)
+### Schema browser (partial)
 
-- [ ] Sidebar tabs: Tables, Views, Indexes, Foreign Keys, Triggers, Functions, Sequences
+- [x] Structure tab: columns, indexes, foreign keys (edit + DDL diff)
+- [ ] Sidebar tabs: Views, Triggers, Functions, Sequences
 - [ ] Click view → SELECT * FROM view (re-uses browse view)
 - [ ] Click index → show CREATE INDEX DDL + which columns
 - [ ] Click FK → highlight columns + jump to referenced table
-- [ ] Column metadata: type, nullable, default, comment
 
-### Query history + saved queries (~0.5 weeks)
+### Query history + saved queries (partial)
 
-- [ ] SQLite FTS5 store at `$XDG_DATA_HOME/tablepro/history.db`
-- [ ] Every executed query recorded with timestamp, duration, success, connection name
-- [ ] History pane with full-text search
+- [x] SQLite FTS5 store at `$XDG_DATA_HOME/tablepro/history.db`
+- [x] Every executed query recorded with timestamp, duration, success, connection name
+- [x] History pane with full-text search
 - [ ] Saved queries: name + SQL, organized by connection
 
-### Connection management (~0.5 weeks)
+### Connection management (partial)
 
 - [ ] Connection groups (folders in saved-connections list)
 - [ ] Color tags per connection
@@ -161,10 +158,10 @@ This is where the project sits today. The app is interesting but **not productio
 
 ### Distribution scaffolding (~1 week)
 
-- [ ] `com.tablepro.linux.metainfo.xml` (AppStream metadata, screenshots refs, license SPDX)
-- [ ] App icon set: 16/32/48/64/128/256/512 PNG + scalable SVG
+- [x] `com.tablepro.linux.metainfo.xml` skeleton
+- [x] App icon (scalable SVG)
 - [ ] 4–5 high-resolution screenshots showing key flows
-- [ ] Long description + short description in metainfo
+- [ ] Long description + short description polish in metainfo
 - [ ] ContentRating
 - [ ] `cargo-sources.json` generation via `flatpak-builder-tools/cargo`
 - [ ] CI job: `flatpak-builder` builds the manifest end-to-end on each PR
@@ -172,7 +169,7 @@ This is where the project sits today. The app is interesting but **not productio
 
 ### Observability (~0.5 weeks)
 
-- [ ] Structured JSON logging via `tracing-subscriber` JSON layer (env-toggleable)
+- [x] Structured logging via `tracing-subscriber` (env-filter)
 - [ ] Crash reporter: panic hook captures backtrace, writes to log, optional anonymous upload (with explicit opt-in)
 - [ ] "Help → Report bug" UI helper that opens the issue tracker pre-filled with sanitized log excerpt
 
@@ -184,11 +181,11 @@ This is where the project sits today. The app is interesting but **not productio
 
 **Goal**: shipped beta, accepting external bug reports, ready for first wave of public users.
 
-### Internationalization setup (~1 week)
+### Internationalization setup (partial)
 
-- [ ] `gettext` integration via `gettext-rs` or `cargo-i18n`
+- [x] `gettext` integration via `gettext-rs`
+- [x] `tr!` macro + locale bind in `i18n::init`
 - [ ] Extract all user-facing strings to `.pot` template
-- [ ] Locale detection from `LANG` env
 - [ ] Build pipeline integrates `.po` → `.mo` compilation
 - [ ] Ship English-only at first; structure ready for translators
 
@@ -206,7 +203,7 @@ This is where the project sits today. The app is interesting but **not productio
 - [ ] KDE Plasma 6 visual smoke test (Adwaita styling acceptable; do not adopt KDE styling)
 - [ ] Wayland-specific bug fixes (HiDPI fractional scaling, drag handles)
 - [ ] X11 fallback works on older distros
-- [ ] Manual install + smoke on Fedora 41, Ubuntu 24.04, Arch (latest), Debian 12
+- [ ] Manual install + smoke on Fedora 41, Ubuntu 24.04, Arch (latest), Debian 12/13
 
 ### Distribution variants (~0.5 weeks)
 
@@ -232,7 +229,7 @@ This is where the project sits today. The app is interesting but **not productio
 
 ### Additional drivers (parallelizable, ~1 week each)
 
-- [ ] ClickHouse via `clickhouse-arrow`
+- [ ] ClickHouse via official `clickhouse` crate (or `clickhouse-arrow`)
 - [x] MSSQL via `tiberius`
 - [ ] Oracle via `oracle` crate (ODPI-C)
 - [ ] Redis via `fred`
@@ -256,10 +253,10 @@ This is where the project sits today. The app is interesting but **not productio
 
 ### Schema editor (~2 weeks)
 
-- [ ] Create / alter / drop table via UI
-- [ ] Add / remove / rename columns
-- [ ] Add / remove indexes
-- [ ] Add / remove foreign keys
+- [x] Create / alter / drop table via Structure tab + DDL materialization
+- [x] Add / remove / rename columns
+- [x] Add / remove indexes
+- [x] Add / remove foreign keys
 - [ ] Drag-drop column reordering with ALTER TABLE preview
 
 ### ER diagram (~3 weeks)
@@ -343,11 +340,11 @@ This is a separate undertaking and is not blocking any phase. It moves only afte
 
 | Stage | Effort | Calendar |
 |---|---|---|
-| Phase 0 + 1 (current) | done | done |
-| Phase 2 — Production hardening | 4 weeks FT | Sprint 1 |
-| Phase 3 — Beta release | 4 weeks FT | Sprint 2 |
-| Phase 4 — Beta polish | 3 weeks FT | Sprint 3 |
-| **Beta on Flathub** | **11 weeks total** | **~3 months from start of Phase 2** |
+| Phase 0 + 1 | done | done |
+| Phase 2 remainder (streaming backpressure, query cancel, multi-window, TLS UI polish) | ~2 weeks FT | next |
+| Phase 3 remainder — Beta release | ~3 weeks FT | following |
+| Phase 4 — Beta polish | 3 weeks FT | after Beta |
+| **Beta on Flathub** | **~8 weeks FT from this revision** | |
 | Phase 5 — GA expansion | 6 months FT | rolling |
 | Phase 6 — Parity ambitions | 12+ months FT | optional |
 
@@ -355,12 +352,12 @@ At 50% effort (part-time), double everything. At 25% effort (side project), 4x.
 
 ---
 
-## What changed in this revision
+## What changed in this revision (2026-07-27)
 
-The previous version of this file had Phase 0 and Phase 1 as 4–6 weeks and 2–3 months respectively, then Phase 2 "Parity push" at 3–4 months and Phase 3 "Polish + distribution" at 1–2 months. Total ~8–12 months.
+The previous "Where we are (2026-04-26)" section still described the project as Phase 0/1 demo-grade with a type system of 6 variants, no multi-tab, no SSH, and a single ignored integration test. The tree has moved on:
 
-That sequence underestimated production hardening. Adding more drivers ("parity push") before fixing type system, streaming, multi-connection, and security would have shipped a feature-rich-but-fragile app. The new sequence prioritizes hardening first, then ships Beta on a smaller-but-solid surface, then expands.
+- Four drivers (including MSSQL), full `Value` set, `DatabaseService`, workspace tabs, Structure tab + DDL, filters, SSH, read-only mode, query history, connection monitor, gettext scaffolding, and CI integration jobs are all present.
+- Phase 2 and Phase 3 checklists were marked to match the code. Unchecked items are the real remaining work.
+- Timeline shortened: Beta is roughly 8 weeks of focused work from this baseline, not 11 weeks from a stale Phase 1.
 
-The `Phase 1 — MVP (2–3 months)` checklist with mostly-checked items in the old roadmap was misleading — it implied "MVP done means shippable," when in fact our MVP is demo-grade and Beta is 11 weeks of focused work away.
-
-This revision makes that explicit: **Phase 1 is the demo state. Beta is Phases 2 + 3 + 4.**
+This revision does not claim Beta readiness. It stops the roadmap from under-selling what already ships.
