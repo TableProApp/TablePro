@@ -667,19 +667,15 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         let tableCount = Int(row?[0].asText ?? "0") ?? 0
         let sizeBytes = Int64(row?[1].asText ?? "0") ?? 0
 
-        let systemDatabases = ["postgres", "template0", "template1"]
-        let isSystem = systemDatabases.contains(database)
-
         return PluginDatabaseMetadata(
             name: database,
             tableCount: tableCount,
             sizeBytes: sizeBytes,
-            isSystemDatabase: isSystem
+            isSystemDatabase: PostgreSQLSystemDatabases.postgreSQL.contains(database)
         )
     }
 
     func fetchAllDatabaseMetadata() async throws -> [PluginDatabaseMetadata] {
-        let systemDatabases = ["postgres", "template0", "template1"]
         let query = """
             SELECT d.datname, pg_database_size(d.datname)
             FROM pg_database d
@@ -690,8 +686,11 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         return result.rows.compactMap { row -> PluginDatabaseMetadata? in
             guard let dbName = row[0].asText else { return nil }
             let sizeBytes = Int64(row[1].asText ?? "0") ?? 0
-            let isSystem = systemDatabases.contains(dbName)
-            return PluginDatabaseMetadata(name: dbName, sizeBytes: sizeBytes, isSystemDatabase: isSystem)
+            return PluginDatabaseMetadata(
+                name: dbName,
+                sizeBytes: sizeBytes,
+                isSystemDatabase: PostgreSQLSystemDatabases.postgreSQL.contains(dbName)
+            )
         }
     }
 

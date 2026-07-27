@@ -196,7 +196,8 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
         }
         let visible = DatabaseTreeVisibility.visible(
             databases: service.databases(for: connectionId),
-            selected: sidebarState?.databaseFilterSelected ?? []
+            selected: sidebarState?.databaseFilterSelected ?? [],
+            activeDatabase: mainCoordinator?.activeDatabaseName ?? activeDatabase
         )
         let matched = searchText.isEmpty ? visible : visible.filter { databaseMatchesSearch($0) }
         var seen = Set<String>()

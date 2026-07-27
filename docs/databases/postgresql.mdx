@@ -37,6 +37,8 @@ Connect to RDS or Aurora with your AWS identity instead of a static password: se
 
 **Schemas**: The sidebar shows all accessible schemas and tables. Cmd+K switches databases; pick the active schema from the schema menu at the bottom of the sidebar. Table info shows columns, indexes, constraints, and DDL.
 
+**Databases**: Every database on the server is listed, including `postgres`. It is an ordinary database that `initdb` creates for users and applications, not a system database. `template0` and `template1` are not listed.
+
 **Types**: `jsonb` renders as formatted JSON. `array`, `uuid`, `inet`, `timestamp with time zone`, `interval`, and `bytea` display natively.
 
 **EXPLAIN**: `EXPLAIN` and `EXPLAIN ANALYZE` run with `FORMAT JSON` and render as a plan diagram or tree. See [EXPLAIN Visualization](/features/explain-visualization).

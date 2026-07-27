@@ -38,6 +38,8 @@ cockroachdb://user:password@host:26257/defaultdb
 
 **Schemas**: like PostgreSQL, default schema `public`. Cmd+K switches databases; the schema menu at the bottom of the sidebar switches schemas.
 
+**Databases**: `defaultdb` and `postgres`, the two databases a new cluster starts with, are listed like any other. Only `system` is marked as a system database.
+
 **DDL**: table and view definitions come from `SHOW CREATE`. Indexes come from `SHOW INDEXES`. Foreign keys are read from `information_schema`.
 
 **EXPLAIN**: `EXPLAIN` and `EXPLAIN ANALYZE` render as a visual plan tree. CockroachDB returns text plans, not JSON, and TablePro parses them into the tree. See [EXPLAIN Visualization](/features/explain-visualization).

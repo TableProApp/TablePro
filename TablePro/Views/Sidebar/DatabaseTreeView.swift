@@ -70,7 +70,11 @@ struct DatabaseTreeView: View {
     }
 
     private var filteredDatabases: [DatabaseMetadata] {
-        DatabaseTreeVisibility.visible(databases: databases, selected: sidebarState.databaseFilterSelected)
+        DatabaseTreeVisibility.visible(
+            databases: databases,
+            selected: sidebarState.databaseFilterSelected,
+            activeDatabase: activeDatabase
+        )
     }
 
     private var isFilterHidingEverything: Bool {

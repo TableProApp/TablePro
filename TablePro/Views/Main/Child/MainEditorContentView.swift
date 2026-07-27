@@ -300,13 +300,11 @@ struct MainEditorContentView: View {
         guard containerSwitchTarget == .database else { return [] }
         let all = treeService.databases(for: connectionId)
         let selected = SharedSidebarState.forConnection(connectionId).databaseFilterSelected
-        var visible = DatabaseTreeVisibility.visible(databases: all, selected: selected)
-        let bound = containerName(for: tab)
-        if !bound.isEmpty, !visible.contains(where: { $0.name == bound }),
-           let boundDatabase = all.first(where: { $0.name == bound }) {
-            visible.insert(boundDatabase, at: 0)
-        }
-        return visible
+        return DatabaseTreeVisibility.visible(
+            databases: all,
+            selected: selected,
+            activeDatabase: containerName(for: tab)
+        )
     }
 
     private var isContainerSwitchReadOnly: Bool {

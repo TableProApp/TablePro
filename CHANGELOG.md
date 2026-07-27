@@ -18,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The `postgres` database shows in the database list again. It was marked as a system database, which hid it from the sidebar, Cmd+K, the database filter, and the Backup and Restore Dump pickers. PostgreSQL creates it for users and applications, so nothing about it is internal. CockroachDB's `defaultdb` and Redshift's `dev` were hidden the same way and now show too. (#1967)
+- The database a connection is using always shows in the sidebar and the database switchers, even when it is a system database or the database filter excludes it. (#1967)
 - The license activation sheet now opens when you click **Activate License**. It was built and then failed to appear, and once that happened further clicks did nothing at all.
 - File > Import from Other App..., Open Project Folder..., Import Connections... and Export Connections... now work when no welcome window is open. They used to do nothing.
 - The tooltip on the welcome screen's **+** button shows the shortcut you actually have bound for New Connection instead of always claiming ⌘N.
