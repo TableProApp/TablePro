@@ -269,6 +269,8 @@ mod tests {
         assert_eq!(quote_ident("postgres", "users"), "\"users\"");
         assert_eq!(quote_ident("sqlite", "users"), "\"users\"");
         assert_eq!(quote_ident("mysql", "users"), "`users`");
+        assert_eq!(quote_ident("clickhouse", "users"), "`users`");
+        assert_eq!(quote_ident("clickhouse", "a`b"), "`a``b`");
     }
 
     #[test]
