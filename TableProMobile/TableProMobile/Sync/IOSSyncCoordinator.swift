@@ -76,6 +76,10 @@ final class IOSSyncCoordinator {
             onGroupsChanged?(mergedGroups)
             onTagsChanged?(mergedTags)
 
+            if let newToken = remoteChanges.newToken {
+                metadata.saveToken(newToken)
+            }
+
             metadata.lastSyncDate = Date()
             lastSyncDate = metadata.lastSyncDate
             status = .idle
@@ -256,17 +260,15 @@ final class IOSSyncCoordinator {
         var deletedGroupIDs: Set<UUID> = []
         var changedTags: [ConnectionTag] = []
         var deletedTagIDs: Set<UUID> = []
+        var newToken: CKServerChangeToken?
     }
 
     private func pull() async throws -> PullChanges {
         let token = metadata.loadToken()
         let result = try await getEngine().pull(since: token)
 
-        if let newToken = result.newToken {
-            metadata.saveToken(newToken)
-        }
-
         var changes = PullChanges()
+        changes.newToken = result.newToken
 
         for record in result.changedRecords {
             switch record.recordType {

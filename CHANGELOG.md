@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A device catching up on a lot of iCloud changes at once now downloads all of them. Only the first page of changes was read and the rest were skipped, and the sync position was still moved past them, so those changes never arrived. (#643)
 - iCloud Sync reports a failed sync instead of always reporting success. A rejected change was logged and then dropped, the status went back to idle, and the Last Synced time was stamped as though everything had worked, so there was no way to tell sync was broken. (#643)
 - One rejected change no longer stops every other change in the same batch from syncing. Each change is now confirmed on its own, and only the ones iCloud accepted are marked as sent, so the rest are retried instead of being silently discarded. (#643)
 - Connection changes made on the Mac reach the iPhone and iPad app again. The Mac was sending fields that its iCloud database does not hold, so iCloud rejected every connection it sent while the app still reported the sync as successful. Changes made on iPhone or iPad always reached the Mac, which is why sync looked like it worked in one direction only. (#643)

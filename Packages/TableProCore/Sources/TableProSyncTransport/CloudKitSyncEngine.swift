@@ -136,12 +136,35 @@ public actor CloudKitSyncEngine {
     // MARK: - Pull
 
     public func pull(since token: CKServerChangeToken?) async throws -> PullResult {
-        try await withRetry {
-            try await performPull(since: token)
+        var changedRecords: [CKRecord] = []
+        var deletedRecordIDs: [CKRecord.ID] = []
+        var cursor = token
+
+        while true {
+            let page = try await withRetry { [cursor] in
+                try await performPull(since: cursor)
+            }
+
+            changedRecords.append(contentsOf: page.result.changedRecords)
+            deletedRecordIDs.append(contentsOf: page.result.deletedRecordIDs)
+            cursor = page.result.newToken ?? cursor
+
+            guard page.moreComing, page.result.newToken != nil else {
+                return PullResult(
+                    changedRecords: changedRecords,
+                    deletedRecordIDs: deletedRecordIDs,
+                    newToken: cursor
+                )
+            }
         }
     }
 
-    private func performPull(since token: CKServerChangeToken?) async throws -> PullResult {
+    private struct PullPage {
+        let result: PullResult
+        let moreComing: Bool
+    }
+
+    private func performPull(since token: CKServerChangeToken?) async throws -> PullPage {
         let configuration = CKFetchRecordZoneChangesOperation.ZoneConfiguration()
         configuration.previousServerChangeToken = token
 
@@ -153,6 +176,7 @@ public actor CloudKitSyncEngine {
         var changedRecords: [CKRecord] = []
         var deletedRecordIDs: [CKRecord.ID] = []
         var newToken: CKServerChangeToken?
+        var moreComing = false
 
         return try await withCheckedThrowingContinuation { continuation in
             operation.recordWasChangedBlock = { _, result in
@@ -171,11 +195,12 @@ public actor CloudKitSyncEngine {
 
             operation.recordZoneFetchResultBlock = { _, result in
                 switch result {
-                case .success(let (serverToken, _, _)):
+                case .success(let (serverToken, _, hasMore)):
                     newToken = serverToken
+                    moreComing = hasMore
                 case .failure(let error):
                     Self.logger.warning("Zone fetch result error: \(error.localizedDescription)")
-                    // Zone-level failure with records collected so far is acceptable —
+                    // Zone-level failure with records collected so far is acceptable:
                     // newToken stays nil, forcing a full re-fetch on next sync cycle.
                 }
             }
@@ -183,10 +208,13 @@ public actor CloudKitSyncEngine {
             operation.fetchRecordZoneChangesResultBlock = { result in
                 switch result {
                 case .success:
-                    continuation.resume(returning: PullResult(
-                        changedRecords: changedRecords,
-                        deletedRecordIDs: deletedRecordIDs,
-                        newToken: newToken
+                    continuation.resume(returning: PullPage(
+                        result: PullResult(
+                            changedRecords: changedRecords,
+                            deletedRecordIDs: deletedRecordIDs,
+                            newToken: newToken
+                        ),
+                        moreComing: moreComing
                     ))
                 case .failure(let error):
                     // Map CKError.changeTokenExpired to SyncError.tokenExpired
