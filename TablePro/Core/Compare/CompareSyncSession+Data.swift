@@ -14,6 +14,7 @@ internal struct DataComparePlan: Identifiable, Hashable {
     internal let table: String
     internal let schema: String?
     internal var columns: [String]
+    internal var columnTypes: [String: String] = [:]
     internal var keyColumns: [String]
     internal var isEnabled: Bool
     internal var unavailableReason: String?
@@ -166,7 +167,7 @@ internal extension CompareSyncSession {
             keyColumns: plan.keyColumns, driver: targetDriver
         )
 
-        let engine = DataDiffEngine(options: options, columns: plan.columns)
+        let engine = DataDiffEngine(options: options, columns: plan.columns, columnTypes: plan.columnTypes)
         return try await engine.compare(
             source: StreamingRowProvider(stream: sourceDriver.streamRows(query: sourceQuery), columns: plan.columns),
             target: StreamingRowProvider(stream: targetDriver.streamRows(query: targetQuery), columns: plan.columns)
@@ -205,24 +206,42 @@ internal extension CompareSyncSession {
             let primaryKey = sourceColumns.filter { $0.isPrimaryKey }.map { $0.name }
             let identifier = table.schema.map { "\($0).\(table.name)" } ?? table.name
             let carried = previous[identifier]
+            let columnTypes = Dictionary(
+                sourceColumns.map { ($0.name, $0.dataType) },
+                uniquingKeysWith: { first, _ in first }
+            )
 
             var plan = DataComparePlan(
                 table: table.name,
                 schema: table.schema ?? sourceSchema,
                 columns: shared,
-                keyColumns: carried?.keyColumns.isEmpty == false ? carried?.keyColumns ?? primaryKey : primaryKey,
+                columnTypes: columnTypes,
+                keyColumns: carried.map { $0.keyColumns } ?? primaryKey,
                 isEnabled: carried?.isEnabled ?? true,
                 unavailableReason: nil,
                 summary: nil
             )
-
-            if shared.isEmpty {
-                plan.unavailableReason = String(localized: "No columns in common.")
-            } else if plan.keyColumns.isEmpty {
-                plan.unavailableReason = String(localized: "No primary key. Choose key columns to compare this table.")
-            }
+            plan.unavailableReason = Self.unavailableReason(for: plan)
             plans.append(plan)
         }
         return plans.sorted { $0.id.localizedStandardCompare($1.id) == .orderedAscending }
+    }
+
+    static func unavailableReason(for plan: DataComparePlan) -> String? {
+        if plan.columns.isEmpty {
+            return String(localized: "No columns in common.")
+        }
+        if plan.keyColumns.isEmpty {
+            return String(localized: "No primary key. Choose key columns to compare this table.")
+        }
+        let available = Set(plan.columns.map { $0.lowercased() })
+        let missing = plan.keyColumns.filter { !available.contains($0.lowercased()) }
+        guard missing.isEmpty else {
+            return String(
+                format: String(localized: "Key column %@ is not present on both sides. Choose a different key."),
+                missing.joined(separator: ", ")
+            )
+        }
+        return nil
     }
 }

@@ -6,6 +6,12 @@
 //  order and walked in lockstep, so neither side is ever materialized and no
 //  server-side hash function has to agree between two engines.
 //
+//  The walk depends on the client comparator agreeing with the order the server
+//  sent rows in. See KeyOrdering: numeric keys agree by construction, and any
+//  other key is verified as the stream is read, so a disagreeing collation is
+//  reported instead of silently producing a delete for a row that exists on both
+//  sides.
+//
 
 import Foundation
 import TableProPluginKit
@@ -69,6 +75,7 @@ internal struct DataDiffSummary {
     internal let updateCount: Int
     internal let deleteCount: Int
     internal let identicalCount: Int
+    internal let skippedNullKeyCount: Int
     internal let entries: [RowDiffEntry]
     internal let truncatedEntries: Bool
 
@@ -81,15 +88,36 @@ internal struct DataDiffSummary {
     }
 }
 
+internal struct KeyedRow {
+    internal let row: DataRow
+    internal let key: [PluginCellValue]
+}
+
+internal enum ComparisonSide: String {
+    case source
+    case target
+
+    internal var displayName: String {
+        switch self {
+        case .source: return String(localized: "source")
+        case .target: return String(localized: "target")
+        }
+    }
+}
+
 internal struct DataDiffEngine {
     private let options: DataCompareOptions
     private let comparator: CellValueComparator
     private let comparisonColumns: [String]
+    private let ordering: KeyOrdering
 
-    internal init(options: DataCompareOptions, columns: [String]) {
+    internal init(options: DataCompareOptions, columns: [String], columnTypes: [String: String] = [:]) {
         self.options = options
         self.comparator = CellValueComparator(options: options)
         self.comparisonColumns = options.comparisonColumns(from: columns)
+        self.ordering = KeyOrdering(
+            orders: KeyOrdering.orders(for: options.keyColumns, columnTypes: columnTypes)
+        )
     }
 
     internal func compare(
@@ -101,65 +129,70 @@ internal struct DataDiffEngine {
         }
 
         var accumulator = Accumulator(limit: options.maxRetainedEntries)
-        var sourceRow = try await source.nextRow()
-        var targetRow = try await target.nextRow()
+        let sourceReader = KeyedRowReader(
+            provider: source, keyColumns: options.keyColumns, ordering: ordering, side: .source
+        )
+        let targetReader = KeyedRowReader(
+            provider: target, keyColumns: options.keyColumns, ordering: ordering, side: .target
+        )
 
-        while sourceRow != nil || targetRow != nil {
+        var left = try await sourceReader.next(&accumulator)
+        var right = try await targetReader.next(&accumulator)
+
+        while left != nil || right != nil {
             try Task.checkCancellation()
 
-            guard let left = sourceRow else {
-                accumulator.add(deleteEntry(for: targetRow))
-                targetRow = try await target.nextRow()
+            guard let sourceEntry = left else {
+                accumulator.add(deleteEntry(for: right))
+                right = try await targetReader.next(&accumulator)
                 continue
             }
-            guard let right = targetRow else {
-                accumulator.add(insertEntry(for: left))
-                sourceRow = try await source.nextRow()
+            guard let targetEntry = right else {
+                accumulator.add(insertEntry(for: sourceEntry))
+                left = try await sourceReader.next(&accumulator)
                 continue
             }
 
-            let leftKey = keyComponents(of: left)
-            let rightKey = keyComponents(of: right)
-            switch KeyOrdering.compare(leftKey, rightKey) {
+            switch ordering.compare(sourceEntry.key, targetEntry.key) {
             case .orderedSame:
-                accumulator.add(matchedEntry(source: left, target: right))
-                sourceRow = try await source.nextRow()
-                targetRow = try await target.nextRow()
+                accumulator.add(matchedEntry(source: sourceEntry, target: targetEntry))
+                left = try await sourceReader.next(&accumulator)
+                right = try await targetReader.next(&accumulator)
             case .orderedAscending:
-                accumulator.add(insertEntry(for: left))
-                sourceRow = try await source.nextRow()
+                accumulator.add(insertEntry(for: sourceEntry))
+                left = try await sourceReader.next(&accumulator)
             case .orderedDescending:
-                accumulator.add(deleteEntry(for: right))
-                targetRow = try await target.nextRow()
+                accumulator.add(deleteEntry(for: targetEntry))
+                right = try await targetReader.next(&accumulator)
             }
         }
 
         return accumulator.summary()
     }
 
-    private func insertEntry(for row: DataRow) -> RowDiffEntry {
+    private func insertEntry(for entry: KeyedRow) -> RowDiffEntry {
         RowDiffEntry(
             kind: .insert,
-            keyDescription: keyDescription(of: row),
-            sourceRow: row,
+            keyDescription: KeyOrdering.description(of: entry.key),
+            sourceRow: entry.row,
             targetRow: nil
         )
     }
 
-    private func deleteEntry(for row: DataRow?) -> RowDiffEntry {
+    private func deleteEntry(for entry: KeyedRow?) -> RowDiffEntry {
         RowDiffEntry(
             kind: .delete,
-            keyDescription: row.map { keyDescription(of: $0) } ?? "",
+            keyDescription: entry.map { KeyOrdering.description(of: $0.key) } ?? "",
             sourceRow: nil,
-            targetRow: row
+            targetRow: entry?.row
         )
     }
 
-    private func matchedEntry(source: DataRow, target: DataRow) -> RowDiffEntry {
+    private func matchedEntry(source: KeyedRow, target: KeyedRow) -> RowDiffEntry {
         var differences: [CellDifference] = []
         for column in comparisonColumns {
-            let sourceValue = source.value(for: column)
-            let targetValue = target.value(for: column)
+            let sourceValue = source.row.value(for: column)
+            let targetValue = target.row.value(for: column)
             let outcome = comparator.compare(sourceValue, targetValue)
             guard !outcome.isEqual else { continue }
             differences.append(CellDifference(
@@ -171,36 +204,31 @@ internal struct DataDiffEngine {
         }
         return RowDiffEntry(
             kind: differences.isEmpty ? .identical : .update,
-            keyDescription: keyDescription(of: source),
-            sourceRow: source,
-            targetRow: target,
+            keyDescription: KeyOrdering.description(of: source.key),
+            sourceRow: source.row,
+            targetRow: target.row,
             cellDifferences: differences
         )
     }
-
-    private func keyComponents(of row: DataRow) -> [PluginCellValue] {
-        options.keyColumns.map { row.value(for: $0) }
-    }
-
-    private func keyDescription(of row: DataRow) -> String {
-        options.keyColumns
-            .map { column in KeyOrdering.sortKey(row.value(for: column)) }
-            .joined(separator: ", ")
-    }
 }
 
-private extension DataDiffEngine {
+internal extension DataDiffEngine {
     struct Accumulator {
         private let limit: Int
         private var insertCount = 0
         private var updateCount = 0
         private var deleteCount = 0
         private var identicalCount = 0
+        private var skippedNullKeyCount = 0
         private var entries: [RowDiffEntry] = []
         private var truncated = false
 
         init(limit: Int) {
             self.limit = limit
+        }
+
+        mutating func addSkippedNullKey() {
+            skippedNullKeyCount += 1
         }
 
         mutating func add(_ entry: RowDiffEntry) {
@@ -223,6 +251,7 @@ private extension DataDiffEngine {
                 updateCount: updateCount,
                 deleteCount: deleteCount,
                 identicalCount: identicalCount,
+                skippedNullKeyCount: skippedNullKeyCount,
                 entries: entries,
                 truncatedEntries: truncated
             )
@@ -230,32 +259,48 @@ private extension DataDiffEngine {
     }
 }
 
-internal enum KeyOrdering {
-    internal static func compare(_ lhs: [PluginCellValue], _ rhs: [PluginCellValue]) -> ComparisonResult {
-        for (left, right) in zip(lhs, rhs) {
-            let leftKey = sortKey(left)
-            let rightKey = sortKey(right)
-            if leftKey == rightKey { continue }
-            if let leftNumber = Double(leftKey), let rightNumber = Double(rightKey) {
-                return leftNumber < rightNumber ? .orderedAscending : .orderedDescending
-            }
-            return leftKey < rightKey ? .orderedAscending : .orderedDescending
-        }
-        if lhs.count == rhs.count { return .orderedSame }
-        return lhs.count < rhs.count ? .orderedAscending : .orderedDescending
+private final class KeyedRowReader {
+    private let provider: DataRowProviding
+    private let keyColumns: [String]
+    private let ordering: KeyOrdering
+    private let side: ComparisonSide
+    private var previousKey: [PluginCellValue]?
+
+    init(provider: DataRowProviding, keyColumns: [String], ordering: KeyOrdering, side: ComparisonSide) {
+        self.provider = provider
+        self.keyColumns = keyColumns
+        self.ordering = ordering
+        self.side = side
     }
 
-    internal static func sortKey(_ value: PluginCellValue) -> String {
-        switch value {
-        case .null: return ""
-        case .text(let text): return text
-        case .bytes(let data): return data.base64EncodedString()
+    func next(_ accumulator: inout DataDiffEngine.Accumulator) async throws -> KeyedRow? {
+        while let row = try await provider.nextRow() {
+            let key = keyColumns.map { row.value(for: $0) }
+            if KeyOrdering.hasNullComponent(key) {
+                accumulator.addSkippedNullKey()
+                continue
+            }
+            try checkOrder(of: key)
+            previousKey = key
+            return KeyedRow(row: row, key: key)
         }
+        return nil
+    }
+
+    private func checkOrder(of key: [PluginCellValue]) throws {
+        guard ordering.requiresStreamOrderCheck, let previousKey else { return }
+        guard ordering.compare(previousKey, key) == .orderedDescending else { return }
+        let explanation = String(
+            localized: "The %1$@ sorted rows differently than the comparison expects, near key %2$@. Pick a numeric key, or one that sorts by byte value."
+        )
+        throw CompareSyncError.streamOutOfOrder(
+            String(format: explanation, side.displayName, KeyOrdering.description(of: key))
+        )
     }
 }
 
 internal final class ArrayRowProvider: DataRowProviding {
-    private var rows: [DataRow]
+    private let rows: [DataRow]
     private var index = 0
 
     internal init(rows: [DataRow]) {

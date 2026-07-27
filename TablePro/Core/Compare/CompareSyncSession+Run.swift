@@ -107,7 +107,6 @@ internal extension CompareSyncSession {
         runTask = Task { [weak self] in
             guard let self else { return }
             self.activity = .applying
-            self.hasWrittenToTarget = true
             CompareSyncRunRegistry.shared.markApplying(self, target: target.qualifiedDescription)
             defer {
                 self.activity = .idle
@@ -117,6 +116,7 @@ internal extension CompareSyncSession {
 
             do {
                 let targetDriver = try Self.driver(for: target)
+                self.hasWrittenToTarget = true
                 let result = try await self.executorRun(
                     statements: self.statements,
                     target: target,
@@ -208,16 +208,17 @@ internal extension CompareSyncSession {
             let dependencies = snapshot.foreignKeys.compactMap { foreignKey -> PluginForeignKeyInfo? in
                 guard let column = foreignKey.columns.first,
                       let referencedColumn = foreignKey.referencedColumns.first else { return nil }
+                let referencedSchema = foreignKey.referencedSchema ?? snapshot.schema
                 return PluginForeignKeyInfo(
                     name: foreignKey.name,
                     column: column,
-                    referencedTable: foreignKey.referencedTable,
+                    referencedTable: SchemaSyncOperation.qualify(foreignKey.referencedTable, referencedSchema),
                     referencedColumn: referencedColumn,
-                    referencedSchema: foreignKey.referencedSchema
+                    referencedSchema: referencedSchema
                 )
             }
             guard !dependencies.isEmpty else { continue }
-            map[snapshot.name] = dependencies
+            map[snapshot.qualifiedName] = dependencies
         }
         return map
     }

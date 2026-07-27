@@ -204,10 +204,14 @@ internal actor CompareSyncExecutor {
 
     private static func digest(of statements: [SyncStatement]) -> String {
         var digest = ""
+        var length = 0
         for statement in statements {
-            guard digest.count < 10_000 else { break }
+            guard length < Self.digestCharacterLimit else { break }
             digest += statement.sql + "\n"
+            length += (statement.sql as NSString).length + 1
         }
         return digest
     }
+
+    private static let digestCharacterLimit = 10_000
 }

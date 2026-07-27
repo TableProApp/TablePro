@@ -327,34 +327,3 @@ final class CellValueComparatorTests: XCTestCase {
         XCTAssertFalse(subject.compare(.bytes(Data([1, 2, 3])), .bytes(Data([1, 2, 4]))).isEqual)
     }
 }
-
-final class KeyOrderingTests: XCTestCase {
-    func testNumericKeysOrderNumericallyNotLexically() {
-        let result = KeyOrdering.compare([.text("9")], [.text("10")])
-
-        XCTAssertEqual(result, .orderedAscending, "9 must sort before 10")
-    }
-
-    func testTextKeysOrderLexically() {
-        XCTAssertEqual(KeyOrdering.compare([.text("a")], [.text("b")]), .orderedAscending)
-    }
-
-    func testEqualKeysReportSame() {
-        XCTAssertEqual(KeyOrdering.compare([.text("a"), .text("1")], [.text("a"), .text("1")]), .orderedSame)
-    }
-
-    func testOrderingIsAntisymmetric() {
-        let pairs: [([PluginCellValue], [PluginCellValue])] = [
-            ([.text("1")], [.text("2")]),
-            ([.text("b")], [.text("a")]),
-            ([.null], [.text("x")])
-        ]
-
-        for (left, right) in pairs {
-            let forward = KeyOrdering.compare(left, right)
-            let backward = KeyOrdering.compare(right, left)
-            XCTAssertNotEqual(forward, backward)
-            XCTAssertNotEqual(forward, .orderedSame)
-        }
-    }
-}

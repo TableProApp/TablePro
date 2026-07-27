@@ -39,7 +39,11 @@ internal enum SchemaSyncOperation: Identifiable {
         }
     }
 
-    private static func qualify(_ name: String, _ schema: String?) -> String {
+    internal var tableIdentifier: String {
+        Self.qualify(tableName, schema)
+    }
+
+    internal static func qualify(_ name: String, _ schema: String?) -> String {
         guard let schema, !schema.isEmpty else { return name }
         return "\(schema).\(name)"
     }

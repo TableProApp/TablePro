@@ -173,6 +173,34 @@ final class SchemaSyncScriptBuilderTests: XCTestCase {
         XCTAssertEqual(ordered.map { $0.tableName }, ["c", "b", "a"])
     }
 
+    func testSameTableNameInTwoSchemasBothSurviveOrdering() {
+        let operations: [SchemaSyncOperation] = [
+            .alterTable(name: "users", schema: "app", changes: []),
+            .alterTable(name: "users", schema: "audit", changes: [])
+        ]
+
+        let ordered = SchemaSyncScriptBuilder.order(operations: operations, foreignKeysByTable: [:])
+
+        XCTAssertEqual(ordered.count, 2, "a bare-name collision must not drop or duplicate an operation")
+        XCTAssertEqual(Set(ordered.map { $0.tableIdentifier }), ["app.users", "audit.users"])
+    }
+
+    func testOrderingUsesQualifiedNamesForDependencies() {
+        let operations: [SchemaSyncOperation] = [
+            .createTable(snapshot("orders")),
+            .createTable(snapshot("customers"))
+        ]
+        let foreignKeys = [
+            "orders": [PluginForeignKeyInfo(
+                name: "fk", column: "customer_id", referencedTable: "customers", referencedColumn: "id"
+            )]
+        ]
+
+        let ordered = SchemaSyncScriptBuilder.order(operations: operations, foreignKeysByTable: foreignKeys)
+
+        XCTAssertEqual(ordered.map { $0.tableIdentifier }, ["customers", "orders"])
+    }
+
     func testCircularForeignKeysStillEmitEveryTable() {
         let operations: [SchemaSyncOperation] = [
             .createTable(snapshot("a")),

@@ -254,6 +254,13 @@ internal struct DataComparePlanRow: View {
                     countLabel(String(localized: "Update"), summary.updateCount, "pencil.circle")
                     countLabel(String(localized: "Delete"), summary.deleteCount, "minus.circle")
                     countLabel(String(localized: "Same"), summary.identicalCount, "equal.circle")
+                    if summary.skippedNullKeyCount > 0 {
+                        countLabel(
+                            String(localized: "Skipped, NULL key"),
+                            summary.skippedNullKeyCount,
+                            "exclamationmark.circle"
+                        )
+                    }
                 }
                 .font(.caption2)
                 .foregroundStyle(.secondary)

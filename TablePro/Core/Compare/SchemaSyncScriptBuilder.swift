@@ -56,15 +56,20 @@ internal struct SchemaSyncScriptBuilder {
         childrenFirst: Bool
     ) -> [SchemaSyncOperation] {
         guard operations.count > 1 else { return operations }
-        let byName = Dictionary(
-            operations.map { ($0.tableName, $0) },
-            uniquingKeysWith: { first, _ in first }
-        )
+        var byIdentifier: [String: [SchemaSyncOperation]] = [:]
+        for operation in operations {
+            byIdentifier[operation.tableIdentifier, default: []].append(operation)
+        }
         let ordered = ForeignKeyTopologicalSort.orderedNames(
-            operations.map { $0.tableName },
+            operations.map { $0.tableIdentifier },
             foreignKeysByTable: foreignKeysByTable
         )
-        let resolved = ordered.compactMap { byName[$0] }
+        var emitted: Set<String> = []
+        var resolved: [SchemaSyncOperation] = []
+        for identifier in ordered where !emitted.contains(identifier) {
+            emitted.insert(identifier)
+            resolved.append(contentsOf: byIdentifier[identifier] ?? [])
+        }
         return childrenFirst ? resolved.reversed() : resolved
     }
 
@@ -170,12 +175,14 @@ internal enum CompareSyncError: LocalizedError {
     case unsupportedOperation(String)
     case incompatibleEngines(String)
     case noComparisonKey(String)
+    case streamOutOfOrder(String)
 
     internal var errorDescription: String? {
         switch self {
         case .unsupportedOperation(let message): return message
         case .incompatibleEngines(let message): return message
         case .noComparisonKey(let message): return message
+        case .streamOutOfOrder(let message): return message
         }
     }
 }

@@ -15,9 +15,7 @@ internal extension CompareSyncSession {
         guard let index = dataPlans.firstIndex(where: { $0.id == planId }) else { return }
         dataPlans[index].keyColumns = columns
         dataPlans[index].summary = nil
-        dataPlans[index].unavailableReason = columns.isEmpty
-            ? String(localized: "No primary key. Choose key columns to compare this table.")
-            : nil
+        dataPlans[index].unavailableReason = CompareSyncSession.unavailableReason(for: dataPlans[index])
         invalidateGeneratedScript()
     }
 
