@@ -9,6 +9,7 @@ members = [
     "crates/drivers/mysql",
     "crates/drivers/postgres",
     "crates/drivers/sqlite",
+    "crates/drivers/clickhouse",
 ]
 
 [workspace.package]

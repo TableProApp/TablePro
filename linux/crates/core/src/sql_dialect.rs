@@ -16,7 +16,7 @@ pub enum BuildSqlError {
 
 pub fn quote_ident(driver_id: &str, name: &str) -> String {
     match driver_id {
-        "mysql" => format!("`{}`", name.replace('`', "``")),
+        "mysql" | "clickhouse" => format!("`{}`", name.replace('`', "``")),
         "mssql" => format!("[{}]", name.replace(']', "]]")),
         _ => format!("\"{}\"", name.replace('"', "\"\"")),
     }

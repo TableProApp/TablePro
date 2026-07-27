@@ -22,7 +22,7 @@ Each step is small. The whole task takes between half a day (PG-shaped engines) 
 | SQLite | `sqlx` with `sqlite` feature | File-based, no network. |
 | MSSQL | `tiberius` | Pure Rust TDS. Watch governance — `praxiomlabs/rust-mssql-driver` is a credible alternative. |
 | Oracle | `oracle` (rust-oracle, kubo) | Wraps ODPI-C. Requires Oracle Instant Client on the build host. |
-| ClickHouse | `clickhouse-arrow` | Faster than `clickhouse-rs`. |
+| ClickHouse | official `clickhouse` crate | HTTP interface (8123). Dynamic results via `FORMAT JSON`. |
 | Redis | `fred` | Modern tokio rewrite of redis-rs. |
 | MongoDB | official `mongodb` | Mature, OpenTelemetry support. |
 | DuckDB | `duckdb` (official) | Bundled native lib, edition 2024. |
