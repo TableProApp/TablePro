@@ -133,6 +133,7 @@
                   "features/csv-inspector",
                   "features/import-export",
                   "features/backup-restore",
+                  "features/compare-sync",
                   "features/change-tracking",
                   "features/filtering"
                 ]

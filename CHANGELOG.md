@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - AI Explain, Optimize, and Fix Error now answer with a walkthrough in the chat panel: a before/after SQL diff you can switch between unified and split, numbered steps anchored to the lines they change, and a follow-up prompt on any step. Optimize and Fix add an Apply to Editor button that asks before replacing your query. (#1945)
 - Create a connection from a project folder. Pick one from the welcome screen or File > Open Project Folder..., and TablePro reads the database settings it finds in `.env` files, `wp-config.php`, `prisma/schema.prisma`, `config/database.yml`, `docker-compose.yml`, `application.properties`, `application.yml`, and `appsettings.json`. A project that uses more than one engine gets a row for each. Review what it found, pick one, and the connection form opens filled in. Nothing is saved or connected until you save it. (#1959)
+- Compare structure or data between two connections and generate the SQL script that brings the target in line with the source. Differences show in a tree you can group by object type or by operation, with the source and target definitions side by side. The script is editable before it runs, statements are ordered so parent tables come before the tables that reference them, and anything that would drop data is listed but held back until you allow it for that run. A read-only connection cannot be chosen as the target. Requires a Starter license. (#721)
 
 ### Changed
 

@@ -1,0 +1,125 @@
+---
+title: Compare & Sync
+description: Compare structure or data between two connections and generate the SQL script that syncs the target
+---
+
+Compare two connections and generate the SQL script that brings one in line with the other. Use it to check whether staging matches production, to diff two versions of a schema, or to copy rows between servers.
+
+Requires a Starter license.
+
+## Opening it
+
+- **File > Compare & Sync Databases...**
+- Right-click a connection in the sidebar or on the welcome screen and choose **Compare/Sync with...**. The connection you clicked is filled in as the source.
+
+## Source and target
+
+The **source** is the connection that will not change. The **target** is the connection that will change.
+
+Both pickers start empty. Nothing is preselected as the target, so the write side is always a deliberate choice. A sentence under the pickers spells out what will happen, for example *Compare `staging` and write changes to `prod`*. Use **Swap** to reverse the direction.
+
+A connection whose safe mode level is **Read-Only** cannot be chosen as the target. It appears in the list with the reason shown, so you find out at selection time rather than after comparing.
+
+The target connection's colour is carried into the window and onto the apply button, so a connection you have tagged as production stays visually distinct.
+
+Nothing is written to either database until you apply. Until then the window shows **Comparing only, nothing has been written**.
+
+## Comparing structure
+
+Structure comparison reads column, index, foreign key, and primary key metadata from both sides and compares the parsed values. It does not diff `CREATE TABLE` text, because driver-rendered DDL varies by formatting and by system-generated constraint names, which reports identical objects as different.
+
+Each table lands in one of four states: **only in source**, **only in target**, **different**, or **identical**. Tables that cannot be compared get their own group with the reason, so nothing is silently skipped.
+
+Every object starts unchecked. You choose what to apply.
+
+### What is ignored
+
+These differences drift between environments by design, so they are ignored by default. Turn any of them off to have the difference reported.
+
+| Option | What it ignores |
+| --- | --- |
+| Identifier case | `Users` and `users` are the same table |
+| Column order | Same columns in a different order |
+| Whitespace in text | Padding inside default values and comments |
+| Auto-increment seed | `AUTO_INCREMENT=184` against `AUTO_INCREMENT=1522` |
+| Collation and character set | Column and table collation differences |
+| Comments and owners | Column comments, object owners, and definers |
+
+Indexes and foreign keys are matched on structure, not on name. An index that matches on columns, uniqueness, and type but carries a different system-generated name is reported as a note rather than as a change, so no DDL is generated for it.
+
+Renames are never guessed. A renamed column shows as a drop and an add, because no tool can tell a rename from a drop plus an add without being told.
+
+### Same-engine rule
+
+Generating a structure sync script needs matching database types. Column data types are engine-specific strings, so building DDL for one engine out of another engine's metadata is not sound. MySQL and MariaDB are treated as one family.
+
+Two different engines can still be compared. You get the differences as a read-only view, with no script.
+
+## Comparing data
+
+Data comparison matches rows by a key and walks both sides in key order, so neither table is loaded into memory in full.
+
+Key columns are filled in from the source table's primary key. Composite keys are supported. A table with no primary key, or with no columns in common, is listed as not comparable rather than matched on a guess, because matching on every column cannot tell one row from two identical rows.
+
+Tables are matched by name across the two sides, and only the columns present on both are compared.
+
+Three actions control what the script contains:
+
+- **Insert missing rows** (on by default)
+- **Update differing rows** (on by default)
+- **Delete extra rows** (off by default)
+
+Delete is off by default so the first run cannot remove a row you did not mean to touch.
+
+### Which columns are compared
+
+Columns used to compare are separate from columns that get written. Exclude `updated_at` from comparison and rows that differ only in that column stop showing as differences, while the column is still carried into any row that is inserted or updated.
+
+### How values are judged equal
+
+- `NULL` equals only `NULL`. It is never treated as an empty string.
+- Numbers compare exactly unless you set a tolerance. A tolerance of `0.001` treats `109.05999755859375` and `109.05999755859381` as equal. The comparison gives the same answer whichever side you call the source.
+- Timestamps compare as instants at the fractional precision you choose. The same instant written at two offsets, such as `08:00:00-08:00` and `11:00:00-05:00`, is not a difference. No timezone conversion is applied anywhere in the comparison.
+- Binary values compare by bytes.
+
+When a value is flagged, the row inspector names the rule that fired, so you can tell why two values that look the same were treated as different.
+
+## The script
+
+The generated script is editable before it runs.
+
+Statements are ordered by foreign key dependency: tables are dropped children first, and created parents first. For data, inserts come before updates before deletes. A circular foreign key still emits every table.
+
+### Held-back statements
+
+Anything that can destroy data is listed but not executed unless you allow it for that run:
+
+- Dropping a table or a column
+- A type change that can truncate values, such as `varchar(255)` to `varchar(50)`
+- Making a nullable column `NOT NULL`
+- Changing the primary key
+
+Held-back statements stay visible in the preview, so what you see is what would run. There is no setting that permanently allows them; the choice is made per run.
+
+Collation changes and dropped indexes are shown as warnings rather than held back.
+
+## Applying
+
+Applying runs the script against the target only. You confirm once, in an alert that names the target and counts the statements.
+
+Data sync runs in a transaction where the target supports one. Structure sync runs in a transaction only where the target supports transactional DDL; on MySQL and Oracle it does not, so statements that already ran stay applied if a later one fails. The window says which case applies rather than implying a rollback you will not get.
+
+If you choose to continue past errors, the transaction option is disabled, because the two combined leave the target half-applied.
+
+Progress is reported per statement and the run can be cancelled. Cancelling stops the run between statements; a statement already in flight finishes.
+
+## Saving a setup
+
+Save the source, target, mode, scope, ignore options, and key choices as a named comparison you can run again.
+
+## Limits
+
+- One direction per run. To sync both ways, swap and run again.
+- Two live connections only. Backups, dump files, and source control are not comparison endpoints.
+- No scheduling. Every comparison is started by you and reviewed before anything runs.
+- Structure sync needs a driver that reports comparable structure metadata and can generate DDL. Data sync needs rows addressable by a key. A driver that declares neither stops the comparison with the reason shown once both sides are connected.

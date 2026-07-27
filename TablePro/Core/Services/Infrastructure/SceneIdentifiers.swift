@@ -9,4 +9,5 @@ internal enum SceneId {
     static let welcome = "welcome"
     static let connectionForm = "connection-form"
     static let integrationsActivity = "integrations-activity"
+    static let compareSync = "compare-sync"
 }

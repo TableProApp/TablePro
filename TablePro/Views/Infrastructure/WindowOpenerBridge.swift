@@ -21,6 +21,9 @@ internal struct WindowOpenerBridge: View {
             openWelcome: { openWindow(id: SceneId.welcome) },
             openConnectionForm: { id in openWindow(id: SceneId.connectionForm, value: id) },
             openIntegrationsActivity: { openWindow(id: SceneId.integrationsActivity) },
+            openCompareSync: { id in
+                openWindow(id: SceneId.compareSync, value: CompareSyncPayload(sourceConnectionId: id))
+            },
             openSettings: { openSettings() },
             presentTypeChooser: { initialType, onSelected in
                 let payload = DatabaseTypeChooserPayload(

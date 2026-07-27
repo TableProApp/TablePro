@@ -15,6 +15,7 @@ internal enum ProFeature: String, CaseIterable {
     case linkedFolders
     case teamCatalog
     case teamLibrary
+    case compareSync
 
     var displayName: String {
         switch self {
@@ -30,6 +31,8 @@ internal enum ProFeature: String, CaseIterable {
             return String(localized: "Team Catalog")
         case .teamLibrary:
             return String(localized: "Team Library")
+        case .compareSync:
+            return String(localized: "Compare & Sync")
         }
     }
 
@@ -47,6 +50,8 @@ internal enum ProFeature: String, CaseIterable {
             return "person.2.fill"
         case .teamLibrary:
             return "books.vertical.fill"
+        case .compareSync:
+            return "arrow.left.arrow.right.square"
         }
     }
 
@@ -64,13 +69,15 @@ internal enum ProFeature: String, CaseIterable {
             return String(localized: "Publish connections to a shared folder your team reads from. Passwords are never included.")
         case .teamLibrary:
             return String(localized: "Share connections and saved queries with your team through your account. Passwords are never included.")
+        case .compareSync:
+            return String(localized: "Compare structure or data between two connections and generate the sync script.")
         }
     }
 
     /// The lowest license tier that unlocks this feature.
     var requiredTier: LicenseTier {
         switch self {
-        case .iCloudSync, .encryptedExport, .envVarReferences, .linkedFolders:
+        case .iCloudSync, .encryptedExport, .envVarReferences, .linkedFolders, .compareSync:
             return .starter
         case .teamCatalog, .teamLibrary:
             return .team

@@ -265,6 +265,10 @@ struct AppMenuCommands: Commands {
             }
             .optionalKeyboardShortcut(shortcut(for: .manageConnections))
 
+            Button(String(localized: "Compare & Sync Databases...")) {
+                CompareSyncLauncher.open()
+            }
+
             Button(String(localized: "Open Sample Database")) {
                 SampleDatabaseLauncher.open()
             }
@@ -922,6 +926,23 @@ struct TableProApp: App {
         .windowResizability(.contentMinSize)
         .defaultSize(width: 820, height: 600)
         .commandsRemoved()
+
+        WindowGroup("Compare & Sync", id: SceneId.compareSync, for: CompareSyncPayload.self) { $payload in
+            CompareSyncWindowView(prefillSourceConnectionId: payload?.sourceConnectionId)
+                .background(WindowOpenerBridge())
+                .background(WindowChromeConfigurator(restorable: false))
+                .environment(\.appServices, .live)
+        }
+        .windowResizability(.contentMinSize)
+        .defaultSize(width: 1_040, height: 680)
+        .commands {
+            AppMenuCommands(
+                settingsManager: AppSettingsManager.shared,
+                updaterBridge: updaterBridge,
+                commandRegistry: commandRegistry,
+                recentlyClosedStore: RecentlyClosedTabStore.shared
+            )
+        }
 
         Window("Integrations Activity", id: SceneId.integrationsActivity) {
             IntegrationsActivityView()

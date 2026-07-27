@@ -184,44 +184,8 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin {
         _ tables: [PluginExportTable],
         fkMap: [String: [PluginForeignKeyInfo]]
     ) -> [PluginExportTable] {
-        let nameSet = Set(tables.map { $0.name })
-        var indegree: [String: Int] = [:]
-        var children: [String: Set<String>] = [:]
-        for table in tables { indegree[table.name] = 0 }
-
-        for table in tables {
-            let fks = fkMap[table.name] ?? []
-            var seenParents: Set<String> = []
-            for fk in fks where fk.referencedTable != table.name {
-                guard nameSet.contains(fk.referencedTable),
-                      !seenParents.contains(fk.referencedTable) else { continue }
-                seenParents.insert(fk.referencedTable)
-                children[fk.referencedTable, default: []].insert(table.name)
-                indegree[table.name, default: 0] += 1
-            }
-        }
-
-        let byName = Dictionary(uniqueKeysWithValues: tables.map { ($0.name, $0) })
-        var queue = tables.map { $0.name }.filter { (indegree[$0] ?? 0) == 0 }.sorted()
-        var ordered: [String] = []
-        while !queue.isEmpty {
-            let head = queue.removeFirst()
-            ordered.append(head)
-            for child in (children[head] ?? []).sorted() {
-                indegree[child] = (indegree[child] ?? 0) - 1
-                if indegree[child] == 0 {
-                    queue.append(child)
-                }
-            }
-        }
-
-        if ordered.count < tables.count {
-            let remaining = tables.map { $0.name }
-                .filter { name in !ordered.contains(name) }
-                .sorted()
-            ordered.append(contentsOf: remaining)
-        }
-
+        let byName = Dictionary(tables.map { ($0.name, $0) }, uniquingKeysWith: { first, _ in first })
+        let ordered = ForeignKeyTopologicalSort.orderedNames(tables.map { $0.name }, foreignKeysByTable: fkMap)
         return ordered.compactMap { byName[$0] }
     }
 

@@ -17,6 +17,7 @@ internal final class WindowOpener {
     @ObservationIgnored private var openWelcomeAction: (() -> Void)?
     @ObservationIgnored private var openConnectionFormAction: ((UUID?) -> Void)?
     @ObservationIgnored private var openIntegrationsActivityAction: (() -> Void)?
+    @ObservationIgnored private var openCompareSyncAction: ((UUID?) -> Void)?
     @ObservationIgnored private var openSettingsAction: (() -> Void)?
     @ObservationIgnored
     private var presentTypeChooserAction: ((DatabaseType?, @escaping (DatabaseType) -> Void) -> Void)?
@@ -81,16 +82,22 @@ internal final class WindowOpener {
         run { $0.openIntegrationsActivityAction?() }
     }
 
+    internal func openCompareSync(prefillSource connectionId: UUID? = nil) {
+        run { $0.openCompareSyncAction?(connectionId) }
+    }
+
     internal func wire(
         openWelcome: @escaping () -> Void,
         openConnectionForm: @escaping (UUID?) -> Void,
         openIntegrationsActivity: @escaping () -> Void,
+        openCompareSync: @escaping (UUID?) -> Void,
         openSettings: @escaping () -> Void,
         presentTypeChooser: @escaping (DatabaseType?, @escaping (DatabaseType) -> Void) -> Void
     ) {
         openWelcomeAction = openWelcome
         openConnectionFormAction = openConnectionForm
         openIntegrationsActivityAction = openIntegrationsActivity
+        openCompareSyncAction = openCompareSync
         openSettingsAction = openSettings
         presentTypeChooserAction = presentTypeChooser
         isWired = true
