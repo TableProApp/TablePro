@@ -15,9 +15,7 @@ final class IOSSyncCoordinator {
 
     private var engine: CloudKitSyncEngine?
     private let metadata = SyncMetadataStorage()
-    private var cachedRecords: [UUID: CKRecord] = [:]
-    private var cachedGroupRecords: [UUID: CKRecord] = [:]
-    private var cachedTagRecords: [UUID: CKRecord] = [:]
+    private let recordCache = SyncRecordCache()
 
     private func getEngine() -> CloudKitSyncEngine {
         if let engine { return engine }
@@ -109,9 +107,7 @@ final class IOSSyncCoordinator {
     ) async {
         debounceTask?.cancel()
         metadata.saveToken(nil)
-        cachedRecords.removeAll()
-        cachedGroupRecords.removeAll()
-        cachedTagRecords.removeAll()
+        recordCache.removeAll()
         Self.logger.info("Sync token cleared; forcing full pull from iCloud")
         await sync(
             localConnections: localConnections,
@@ -183,7 +179,8 @@ final class IOSSyncCoordinator {
         // Dirty connections
         let dirtyConnIDs = metadata.dirtyIDs(for: .connection)
         for connection in localConnections where dirtyConnIDs.contains(connection.id.uuidString) {
-            if let existing = cachedRecords[connection.id] {
+            let recordID = SyncRecordMapper.recordID(type: .connection, id: connection.id.uuidString, in: zoneID)
+            if let existing = recordCache.record(for: recordID) {
                 SyncRecordMapper.updateRecord(existing, with: connection)
                 allRecords.append(existing)
             } else {
@@ -199,7 +196,8 @@ final class IOSSyncCoordinator {
         // Dirty groups
         let dirtyGroupIDs = metadata.dirtyIDs(for: .group)
         for group in localGroups where dirtyGroupIDs.contains(group.id.uuidString) {
-            if let existing = cachedGroupRecords[group.id] {
+            let recordID = SyncRecordMapper.recordID(type: .group, id: group.id.uuidString, in: zoneID)
+            if let existing = recordCache.record(for: recordID) {
                 SyncRecordMapper.updateRecord(existing, with: group)
                 allRecords.append(existing)
             } else {
@@ -215,7 +213,8 @@ final class IOSSyncCoordinator {
         // Dirty tags
         let dirtyTagIDs = metadata.dirtyIDs(for: .tag)
         for tag in localTags where dirtyTagIDs.contains(tag.id.uuidString) {
-            if let existing = cachedTagRecords[tag.id] {
+            let recordID = SyncRecordMapper.recordID(type: .tag, id: tag.id.uuidString, in: zoneID)
+            if let existing = recordCache.record(for: recordID) {
                 SyncRecordMapper.updateRecord(existing, with: tag)
                 allRecords.append(existing)
             } else {
@@ -231,6 +230,9 @@ final class IOSSyncCoordinator {
         guard !allRecords.isEmpty || !allDeletions.isEmpty else { return }
 
         let outcome = try await getEngine().push(records: allRecords, deletions: allDeletions)
+
+        recordCache.store(Array(outcome.savedRecords.values))
+        recordCache.remove(Array(outcome.deletedRecordIDs))
 
         for recordID in outcome.savedRecords.keys {
             guard let parsed = SyncRecordMapper.parse(recordName: recordID.recordName) else { continue }
@@ -270,21 +272,21 @@ final class IOSSyncCoordinator {
         var changes = PullChanges()
         changes.newToken = result.newToken
 
+        recordCache.store(result.changedRecords)
+        recordCache.remove(result.deletedRecordIDs)
+
         for record in result.changedRecords {
             switch record.recordType {
             case SyncRecordType.connection.rawValue:
                 if let connection = SyncRecordMapper.toConnection(record) {
-                    cachedRecords[connection.id] = record
                     changes.changedConnections.append(connection)
                 }
             case SyncRecordType.group.rawValue:
                 if let group = SyncRecordMapper.toGroup(record) {
-                    cachedGroupRecords[group.id] = record
                     changes.changedGroups.append(group)
                 }
             case SyncRecordType.tag.rawValue:
                 if let tag = SyncRecordMapper.toTag(record) {
-                    cachedTagRecords[tag.id] = record
                     changes.changedTags.append(tag)
                 }
             default:

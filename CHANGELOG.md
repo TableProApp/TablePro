@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Editing a connection on one device no longer overwrites a different field of the same connection edited on another. Each device sent the whole connection on every sync, so the last one to sync won outright. Sync now sends only the fields that actually changed and merges the rest. (#643)
 - A per-connection query timeout set on iPhone or iPad no longer stops that connection from syncing at all. (#643)
 - A device catching up on a lot of iCloud changes at once now downloads all of them. Only the first page of changes was read and the rest were skipped, and the sync position was still moved past them, so those changes never arrived. (#643)
 - iCloud Sync reports a failed sync instead of always reporting success. A rejected change was logged and then dropped, the status went back to idle, and the Last Synced time was stamped as though everything had worked, so there was no way to tell sync was broken. (#643)

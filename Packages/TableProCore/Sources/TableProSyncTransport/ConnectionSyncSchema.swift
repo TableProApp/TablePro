@@ -70,7 +70,20 @@ public extension CKRecord {
         get { self[field.key] }
         set {
             guard field.isWritable else { return }
-            self[field.key] = newValue as? any CKRecordValueProtocol
+            let replacement = newValue as? any CKRecordValueProtocol
+            guard !Self.isEqualRecordValue(self[field.key], replacement) else { return }
+            self[field.key] = replacement
+        }
+    }
+
+    static func isEqualRecordValue(_ lhs: Any?, _ rhs: Any?) -> Bool {
+        switch (lhs, rhs) {
+        case (nil, nil):
+            return true
+        case (let lhs as NSObject, let rhs as NSObject):
+            return lhs.isEqual(rhs)
+        default:
+            return false
         }
     }
 }

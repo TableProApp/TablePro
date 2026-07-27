@@ -83,9 +83,18 @@ struct SyncRecordMapper {
 
     // MARK: - Connection
 
-    static func toCKRecord(_ connection: DatabaseConnection, in zone: CKRecordZone.ID) -> CKRecord {
+    static func toCKRecord(
+        _ connection: DatabaseConnection,
+        in zone: CKRecordZone.ID,
+        base: CKRecord? = nil
+    ) -> CKRecord {
         let recordID = recordID(type: .connection, id: connection.id.uuidString, in: zone)
-        let record = CKRecord(recordType: SyncRecordType.connection.rawValue, recordID: recordID)
+        let record: CKRecord
+        if let base, base.recordID == recordID {
+            record = base
+        } else {
+            record = CKRecord(recordType: SyncRecordType.connection.rawValue, recordID: recordID)
+        }
 
         record[.connectionId] = connection.id.uuidString as CKRecordValue
         record[.name] = connection.name as CKRecordValue

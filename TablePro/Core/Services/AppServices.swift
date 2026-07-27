@@ -24,7 +24,6 @@ struct AppServices {
     let tagStorage: TagStorage
     let sshProfileStorage: SSHProfileStorage
     let licenseManager: LicenseManager
-    let conflictResolver: ConflictResolver
     let syncMetadataStorage: SyncMetadataStorage
     let favoritesExpansionState: FavoritesExpansionState
     let linkedFolderWatcher: LinkedFolderWatcher
@@ -54,7 +53,6 @@ struct AppServices {
         tagStorage: .shared,
         sshProfileStorage: .shared,
         licenseManager: .shared,
-        conflictResolver: .shared,
         syncMetadataStorage: .shared,
         favoritesExpansionState: .shared,
         linkedFolderWatcher: .shared,
