@@ -695,7 +695,17 @@ private extension PluginDriverAdapter {
     func mapFormSpec(_ spec: PluginCreateDatabaseFormSpec) -> CreateDatabaseFormSpec {
         CreateDatabaseFormSpec(
             fields: spec.fields.map(mapFormField),
-            footnote: spec.footnote
+            footnote: spec.footnote,
+            textInputs: spec.textInputs.map(mapTextInput)
+        )
+    }
+
+    func mapTextInput(_ input: PluginCreateDatabaseFormSpec.TextInput) -> CreateDatabaseFormSpec.TextInput {
+        CreateDatabaseFormSpec.TextInput(
+            id: input.id,
+            label: input.label,
+            placeholder: input.placeholder,
+            isRequired: input.isRequired
         )
     }
 

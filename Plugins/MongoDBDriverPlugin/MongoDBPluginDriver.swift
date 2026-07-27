@@ -68,6 +68,7 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             user: config.username,
             password: config.password,
             database: currentDb,
+            configuredDatabase: config.database,
             ssl: effectiveSSL,
             authSource: config.additionalFields["mongoAuthSource"],
             readPreference: config.additionalFields["mongoReadPreference"],
@@ -451,7 +452,18 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func createDatabaseFormSpec() async throws -> PluginCreateDatabaseFormSpec? {
-        PluginCreateDatabaseFormSpec(fields: [], footnote: nil)
+        PluginCreateDatabaseFormSpec(
+            fields: [],
+            textInputs: [
+                PluginCreateDatabaseFormSpec.TextInput(
+                    id: MongoDBCreateDatabasePlan.firstCollectionFieldId,
+                    label: String(localized: "First Collection"),
+                    placeholder: String(localized: "Collection name"),
+                    isRequired: true
+                )
+            ],
+            footnote: String(localized: "MongoDB stores a database only once it holds a collection, so a new database needs its first one.")
+        )
     }
 
     func createDatabase(_ request: PluginCreateDatabaseRequest) async throws {
@@ -459,8 +471,17 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             throw MongoDBPluginError.notConnected
         }
 
-        _ = try await conn.insertOne(database: request.name, collection: "__tablepro_init", document: "{\"_init\": true}")
-        _ = try await conn.runCommand("{\"drop\": \"__tablepro_init\"}", database: request.name)
+        try MongoDBNameValidator.validateDatabaseName(request.name)
+        let collection = MongoDBCreateDatabasePlan.firstCollectionName(
+            from: request.values,
+            databaseName: request.name
+        )
+        try MongoDBNameValidator.validateCollectionName(collection, inDatabase: request.name)
+
+        _ = try await conn.runCommand(
+            "{\"create\": \"\(escapeJsonString(collection))\"}",
+            database: request.name
+        )
     }
 
     func dropDatabase(name: String) async throws {

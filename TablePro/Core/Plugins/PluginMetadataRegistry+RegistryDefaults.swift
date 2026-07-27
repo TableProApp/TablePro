@@ -39,7 +39,8 @@ extension PluginMetadataRegistry {
                     supportsQueryProgress: false,
                     requiresReconnectForDatabaseSwitch: false,
                     supportsDropDatabase: true,
-                    supportsOpportunisticTLS: false
+                    supportsOpportunisticTLS: false,
+                    authenticationIsDatabaseScoped: true
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",

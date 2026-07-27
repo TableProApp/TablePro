@@ -60,7 +60,7 @@ final class MongoDBConnection: @unchecked Sendable {
     private let password: String?
     let database: String
     private let ssl: SSLConfiguration
-    private let authSource: String?
+    private let resolvedAuthSource: String
     private let readPreference: String?
     private let writeConcern: String?
     private let useSrv: Bool
@@ -114,6 +114,7 @@ final class MongoDBConnection: @unchecked Sendable {
         user: String,
         password: String?,
         database: String,
+        configuredDatabase: String,
         ssl: SSLConfiguration = SSLConfiguration(),
         authSource: String? = nil,
         readPreference: String? = nil,
@@ -129,7 +130,11 @@ final class MongoDBConnection: @unchecked Sendable {
         self.password = password
         self.database = database
         self.ssl = ssl
-        self.authSource = authSource
+        self.resolvedAuthSource = MongoDBAuthSourceResolver.resolve(
+            explicitAuthSource: authSource,
+            configuredDatabase: configuredDatabase,
+            useSrv: useSrv
+        )
         self.readPreference = readPreference
         self.writeConcern = writeConcern
         self.useSrv = useSrv
@@ -204,18 +209,8 @@ final class MongoDBConnection: @unchecked Sendable {
         let encodedDb = database.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? database
         uri += database.isEmpty ? "/" : "/\(encodedDb)"
 
-        let effectiveAuthSource: String
-        if let source = authSource, !source.isEmpty {
-            effectiveAuthSource = source
-        } else if useSrv {
-            effectiveAuthSource = "admin"
-        } else if !database.isEmpty {
-            effectiveAuthSource = database
-        } else {
-            effectiveAuthSource = "admin"
-        }
-        let encodedAuthSource = effectiveAuthSource
-            .addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? effectiveAuthSource
+        let encodedAuthSource = resolvedAuthSource
+            .addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? resolvedAuthSource
         var params: [String] = [
             "connectTimeoutMS=10000",
             "serverSelectionTimeoutMS=10000",
@@ -267,6 +262,19 @@ final class MongoDBConnection: @unchecked Sendable {
         return String(trimmed[..<colonIndex])
     }
 
+    private var authenticationFailureMessage: String {
+        String(
+            format: String(
+                localized: """
+                Authentication failed for user '%1$@' against database '%2$@'. \
+                Check the username, password, and Auth Database in the connection settings.
+                """
+            ),
+            user,
+            resolvedAuthSource
+        )
+    }
+
     // MARK: - Connection Management
 
     func connect() async throws {
@@ -298,12 +306,17 @@ final class MongoDBConnection: @unchecked Sendable {
 
             guard success else {
                 let errorMsg = bsonErrorMessage(&error)
+                let domain = error.domain
+                let code = error.code
                 mongoc_client_destroy(newClient)
-                logger.error("MongoDB ping failed: \(errorMsg)")
+                logger.error("MongoDB ping failed [\(domain)/\(code)]: \(errorMsg)")
                 if let sslError = MongoDBSSLClassifier.classifySSLError(errorMsg) {
                     throw sslError
                 }
-                throw MongoDBError(code: error.code, message: errorMsg)
+                if domain == MONGOC_ERROR_CLIENT.rawValue, code == MONGOC_ERROR_CLIENT_AUTHENTICATE.rawValue {
+                    throw MongoDBError(code: 0, message: self.authenticationFailureMessage)
+                }
+                throw MongoDBError(code: code, message: errorMsg)
             }
 
             self.client = newClient

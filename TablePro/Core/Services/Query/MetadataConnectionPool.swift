@@ -155,7 +155,12 @@ final class MetadataConnectionPool {
             throw DatabaseError.notConnected
         }
         var connection = session.effectiveConnection ?? session.connection
-        connection.database = key.database
+        let plan = Self.planConnection(
+            configuredDatabase: connection.database,
+            targetDatabase: key.database,
+            authenticationIsDatabaseScoped: connection.type.authenticationIsDatabaseScoped
+        )
+        connection.database = plan.connectDatabase
 
         let driver = try await DatabaseDriverFactory.createDriver(
             for: connection,
@@ -163,11 +168,14 @@ final class MetadataConnectionPool {
             awaitPlugins: true
         )
         do {
-            try await Self.connect(driver, database: key.database, timeoutSeconds: operationTimeoutSeconds)
+            try await Self.connect(driver, database: plan.connectDatabase, timeoutSeconds: operationTimeoutSeconds)
             try? await driver.applyQueryTimeout(AppSettingsManager.shared.general.queryTimeoutSeconds)
             await DatabaseManager.shared.executeStartupCommands(
                 session.connection.startupCommands, on: driver, connectionName: session.connection.name
             )
+            if let database = plan.switchDatabase {
+                try await Self.switchDatabase(driver, to: database, timeoutSeconds: operationTimeoutSeconds)
+            }
             if let schema = key.schema {
                 try await Self.switchSchema(driver, to: schema, timeoutSeconds: operationTimeoutSeconds)
             }
@@ -185,6 +193,35 @@ final class MetadataConnectionPool {
             timeoutMessage: String(format: String(localized: "Connecting to '%@' timed out."), database)
         ) {
             try await driver.connect()
+        }
+    }
+
+    struct ConnectionPlan: Sendable, Equatable {
+        let connectDatabase: String
+        let switchDatabase: String?
+    }
+
+    static func planConnection(
+        configuredDatabase: String,
+        targetDatabase: String,
+        authenticationIsDatabaseScoped: Bool
+    ) -> ConnectionPlan {
+        guard authenticationIsDatabaseScoped, targetDatabase != configuredDatabase else {
+            return ConnectionPlan(connectDatabase: targetDatabase, switchDatabase: nil)
+        }
+        return ConnectionPlan(connectDatabase: configuredDatabase, switchDatabase: targetDatabase)
+    }
+
+    static func switchDatabase(_ driver: DatabaseDriver, to database: String, timeoutSeconds: Double) async throws {
+        guard let adapter = driver as? PluginDriverAdapter else {
+            throw DatabaseError.unsupportedOperation
+        }
+        try await bounded(
+            driver: driver,
+            timeoutSeconds: timeoutSeconds,
+            timeoutMessage: String(format: String(localized: "Switching to database '%@' timed out."), database)
+        ) {
+            try await adapter.switchDatabase(to: database)
         }
     }
 

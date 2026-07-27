@@ -31,6 +31,8 @@ The form has no Database field. On connect TablePro opens the first non-system d
 
 **Advanced**: **Auth Database** (usually `admin`), **Read Preference**, **Write Concern**, **Use SRV Record**, and **Replica Set** name.
 
+Leaving **Auth Database** empty authenticates against the database in the connection URL path, or `admin` when there is none. Switching databases in the app never changes it, so browsing a database your user has no account in does not break the connection.
+
 <Frame caption="MongoDB connection form">
   <img className="block dark:hidden" src="/images/mongodb-connection-form.png" alt="MongoDB connection form with the multi-host Hosts editor" />
   <img className="hidden dark:block" src="/images/mongodb-connection-form-dark.png" alt="MongoDB connection form with the multi-host Hosts editor" />
@@ -72,6 +74,8 @@ See [Connection URL Reference](/databases/connection-urls) for all parameters.
 ## Features
 
 **Collection Browsing**: Sidebar shows all collections. Click to view documents in the data grid. Top-level fields render as columns, nested objects and arrays as formatted JSON, ObjectIds as strings. The grid schema is inferred by sampling documents.
+
+**New Database**: The dialog asks for a database name and the name of its first collection. Both are required. MongoDB stores a database only once it holds a collection, so a name on its own would disappear as soon as the sidebar refreshed. The collection is created empty.
 
 **Views**: **New View** in the sidebar opens a query tab with a `db.createView("view_name", "source_collection", [pipeline])` template. Editing a view definition pre-fills a `db.runCommand({"collMod": ...})` command.
 
@@ -119,7 +123,7 @@ db.users.countDocuments({"role": "admin"})
 
 **Connection refused**: Check MongoDB is running (`brew services start mongodb-community`), verify host/port in `mongod.conf`, check `bindIp` setting.
 
-**Auth failed**: Verify username, password, auth database, and auth mechanism. The MQL editor does not parse `db.getUsers()` or `db.createUser()`; inspect users with `db.runCommand({"usersInfo": 1})` or manage them in mongosh.
+**Auth failed**: The error names the database TablePro authenticated against. If that is not where your user lives, set **Auth Database** in the Advanced section. Otherwise verify username, password, and auth mechanism. The MQL editor does not parse `db.getUsers()` or `db.createUser()`; inspect users with `db.runCommand({"usersInfo": 1})` or manage them in mongosh.
 
 **Timeout**: Verify host/port, check network and firewall, whitelist your IP in MongoDB Atlas.
 
