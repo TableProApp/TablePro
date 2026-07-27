@@ -19,6 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Connection changes made on the Mac reach the iPhone and iPad app again. The Mac was sending fields that its iCloud database does not hold, so iCloud rejected every connection it sent while the app still reported the sync as successful. Changes made on iPhone or iPad always reached the Mac, which is why sync looked like it worked in one direction only. (#643)
+- A connection synced from iPhone or iPad keeps its safe mode setting on the Mac. Read-only and confirm-writes connections arrived with no protection at all, because the Mac did not recognise the values the mobile app writes and fell back to Silent. An unrecognised value now asks for confirmation before a write instead of allowing it. (#643)
+- A connection's colour tag set on iPhone or iPad no longer overwrites the colour label on the Mac. Both were stored in the same field despite meaning different things. (#643)
 - Closing a window that holds more than one tab now asks about unsaved changes in any of them, not just the tab on screen. (#1972)
 - MongoDB no longer fails with an authentication error when you open a database your credentials do not belong to. TablePro authenticated against whichever database you were browsing instead of the one set on the connection, which left the connection broken until you deleted and recreated it. Creating a database hit this every time. (#1970)
 - Creating a MongoDB database now asks for its first collection and keeps it. The database was created and then removed again, because MongoDB drops a database as soon as its last collection goes. (#1970)
