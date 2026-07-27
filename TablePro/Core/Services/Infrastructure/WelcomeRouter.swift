@@ -14,11 +14,32 @@ internal struct PendingConnectionError {
     let error: Error
 }
 
+internal final class DatabaseTypeChooserPayload: Identifiable {
+    internal let id = UUID()
+    internal let initialType: DatabaseType?
+    internal let onSelected: (DatabaseType) -> Void
+
+    internal init(initialType: DatabaseType?, onSelected: @escaping (DatabaseType) -> Void) {
+        self.initialType = initialType
+        self.onSelected = onSelected
+    }
+}
+
+internal enum WelcomeRequest {
+    case chooseDatabaseType(DatabaseTypeChooserPayload)
+    case exportConnections
+    case importConnections
+    case importFromApp
+    case importFromURL
+    case openProjectFolder
+}
+
 @MainActor
 @Observable
 internal final class WelcomeRouter {
     internal static let shared = WelcomeRouter()
 
+    private(set) var pendingRequest: WelcomeRequest?
     private(set) var pendingImport: ExportableConnection?
     private(set) var pendingConnectionShare: URL?
     private(set) var pendingSQLFiles: [URL] = []
@@ -27,11 +48,11 @@ internal final class WelcomeRouter {
 
     @ObservationIgnored private var databaseDidConnectCancellable: AnyCancellable?
 
-    private init() {
-        databaseDidConnectCancellable = AppEvents.shared.databaseDidConnect
+    internal init(appEvents: AppEvents = .shared) {
+        databaseDidConnectCancellable = appEvents.databaseDidConnect
             .receive(on: RunLoop.main)
-            .sink { _ in
-                WelcomeRouter.shared.drainPendingSQLFiles()
+            .sink { [weak self] _ in
+                self?.drainPendingSQLFiles()
             }
     }
 
@@ -39,6 +60,17 @@ internal final class WelcomeRouter {
         let urls = consumePendingSQLFiles()
         guard !urls.isEmpty else { return }
         AppCommands.shared.openSQLFiles.send(urls)
+    }
+
+    internal func route(_ request: WelcomeRequest) {
+        pendingRequest = request
+        showWelcomeWindow()
+    }
+
+    internal func consumePendingRequest() -> WelcomeRequest? {
+        let value = pendingRequest
+        pendingRequest = nil
+        return value
     }
 
     internal func routeImport(_ exportable: ExportableConnection) {

@@ -59,6 +59,11 @@ final class WelcomeViewModel {
     var activeSheet: WelcomeActiveSheet?
     var pluginInstallConnection: DatabaseConnection?
 
+    var databaseTypeChooser: DatabaseTypeChooserPayload?
+    var urlImportPresented = false
+    var pendingInstallType: DatabaseType?
+    @ObservationIgnored var pendingInstallPayload: DatabaseTypeChooserPayload?
+
     var renameGroupTarget: ConnectionGroup?
     var renameGroupName = ""
     var showRenameGroupAlert = false
@@ -94,10 +99,6 @@ final class WelcomeViewModel {
     @ObservationIgnored private var connectionUpdatedCancellable: AnyCancellable?
     @ObservationIgnored private var linkedFoldersCancellable: AnyCancellable?
     @ObservationIgnored private var teamLibraryCancellable: AnyCancellable?
-    @ObservationIgnored private var exportConnectionsCancellable: AnyCancellable?
-    @ObservationIgnored private var importConnectionsCancellable: AnyCancellable?
-    @ObservationIgnored private var importFromAppCancellable: AnyCancellable?
-    @ObservationIgnored var openProjectFolderCancellable: AnyCancellable?
     @ObservationIgnored private var welcomeRouterTask: Task<Void, Never>?
     @ObservationIgnored private var searchDebounceTask: Task<Void, Never>?
     private static let searchDebounceNanoseconds: UInt64 = 150_000_000
@@ -195,27 +196,6 @@ final class WelcomeViewModel {
                 self?.loadConnections()
             }
 
-        exportConnectionsCancellable = AppCommands.shared.exportConnections
-            .receive(on: RunLoop.main)
-            .sink { [weak self] _ in
-                guard let self, !self.connections.isEmpty else { return }
-                self.activeSheet = .exportConnections(self.connections)
-            }
-
-        importConnectionsCancellable = AppCommands.shared.importConnections
-            .receive(on: RunLoop.main)
-            .sink { [weak self] _ in
-                self?.importConnectionsFromFile()
-            }
-
-        importFromAppCancellable = AppCommands.shared.importConnectionsFromApp
-            .receive(on: RunLoop.main)
-            .sink { [weak self] _ in
-                self?.activeSheet = .importFromApp
-            }
-
-        setUpProjectFolderCommand()
-
         linkedFoldersCancellable = services.appEvents.linkedFoldersDidUpdate
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
@@ -238,44 +218,50 @@ final class WelcomeViewModel {
     }
 
     private func consumePendingRouterActions() {
-        if let pendingURL = WelcomeRouter.shared.consumePendingShare() {
+        let router = services.welcomeRouter
+        if let request = router.consumePendingRequest() {
+            handle(request)
+            return
+        }
+        if let pendingURL = router.consumePendingShare() {
             activeSheet = .importFile(pendingURL)
             return
         }
-        if let pendingImport = WelcomeRouter.shared.consumePendingImport() {
+        if let pendingImport = router.consumePendingImport() {
             activeSheet = .deeplinkImport(pendingImport)
             return
         }
-        if let pendingInstall = WelcomeRouter.shared.consumePendingPluginInstall() {
+        if let pendingInstall = router.consumePendingPluginInstall() {
             pluginInstallConnection = pendingInstall
             return
         }
-        if let pendingError = WelcomeRouter.shared.consumePendingError() {
+        if let pendingError = router.consumePendingError() {
             presentConnectionFailure(pendingError.error, connection: pendingError.connection)
         }
     }
 
     private func startWelcomeRouterObservation() {
         welcomeRouterTask?.cancel()
+        let router = services.welcomeRouter
         welcomeRouterTask = Task { @MainActor [weak self] in
             while !Task.isCancelled {
-                let didChange = await Self.awaitWelcomeRouterChange()
-                guard didChange else { return }
                 self?.consumePendingRouterActions()
+                guard await Self.awaitWelcomeRouterChange(router: router) else { return }
             }
         }
     }
 
-    private static func awaitWelcomeRouterChange() async -> Bool {
+    private static func awaitWelcomeRouterChange(router: WelcomeRouter) async -> Bool {
         let box = ContinuationBox()
         return await withTaskCancellationHandler {
             await withCheckedContinuation { continuation in
                 box.set(continuation)
                 withObservationTracking({
-                    _ = WelcomeRouter.shared.pendingImport
-                    _ = WelcomeRouter.shared.pendingConnectionShare
-                    _ = WelcomeRouter.shared.pendingError
-                    _ = WelcomeRouter.shared.pendingPluginInstall
+                    _ = router.pendingRequest
+                    _ = router.pendingImport
+                    _ = router.pendingConnectionShare
+                    _ = router.pendingError
+                    _ = router.pendingPluginInstall
                 }, onChange: {
                     box.resume(with: true)
                 })

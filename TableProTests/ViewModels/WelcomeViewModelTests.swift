@@ -16,6 +16,7 @@ final class WelcomeViewModelTests: XCTestCase {
     private var connectionFileURL: URL!
     private var groupStorage: GroupStorage!
     private var connectionStorage: ConnectionStorage!
+    private var welcomeRouter: WelcomeRouter!
     private var viewModel: WelcomeViewModel!
 
     override func setUp() {
@@ -48,6 +49,7 @@ final class WelcomeViewModelTests: XCTestCase {
             syncTracker: tracker,
             connectionStorage: self.connectionStorage
         )
+        welcomeRouter = WelcomeRouter()
         viewModel = WelcomeViewModel(services: makeServices())
     }
 
@@ -56,6 +58,7 @@ final class WelcomeViewModelTests: XCTestCase {
         syncDefaults.removePersistentDomain(forName: syncSuiteName)
         try? FileManager.default.removeItem(at: connectionFileURL)
         viewModel = nil
+        welcomeRouter = nil
         groupStorage = nil
         connectionStorage = nil
         defaults = nil
@@ -95,7 +98,8 @@ final class WelcomeViewModelTests: XCTestCase {
             copilotService: live.copilotService,
             mcpServerManager: live.mcpServerManager,
             syncTracker: live.syncTracker,
-            themeEngine: live.themeEngine
+            themeEngine: live.themeEngine,
+            welcomeRouter: welcomeRouter
         )
     }
 
@@ -137,5 +141,77 @@ final class WelcomeViewModelTests: XCTestCase {
             viewModel.groups.first { $0.id == id }?.name.lowercased() == "staging"
         }
         XCTAssertEqual(stagingNodes.count, 1)
+    }
+
+    // MARK: - Welcome Router Requests
+
+    private func waitForChooser(timeout: TimeInterval = 2) async -> DatabaseTypeChooserPayload? {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if let chooser = viewModel.databaseTypeChooser {
+                return chooser
+            }
+            try? await Task.sleep(nanoseconds: 5_000_000)
+        }
+        return viewModel.databaseTypeChooser
+    }
+
+    func testChooserRoutedWhileWelcomeWindowIsClosedSurvivesUntilItMounts() {
+        let payload = DatabaseTypeChooserPayload(initialType: .postgresql) { _ in }
+        welcomeRouter.route(.chooseDatabaseType(payload))
+
+        viewModel.setUp()
+
+        XCTAssertEqual(viewModel.databaseTypeChooser?.id, payload.id)
+        XCTAssertNil(welcomeRouter.pendingRequest)
+    }
+
+    func testChooserRoutedWhileWelcomeWindowIsOpenIsDelivered() async {
+        viewModel.setUp()
+        XCTAssertNil(viewModel.databaseTypeChooser)
+
+        let payload = DatabaseTypeChooserPayload(initialType: .mysql) { _ in }
+        welcomeRouter.route(.chooseDatabaseType(payload))
+
+        let delivered = await waitForChooser()
+        XCTAssertEqual(delivered?.id, payload.id)
+    }
+
+    func testImportFromURLRequestPresentsTheURLSheet() {
+        welcomeRouter.route(.importFromURL)
+
+        viewModel.setUp()
+
+        XCTAssertTrue(viewModel.urlImportPresented)
+    }
+
+    func testImportFromAppRequestPresentsTheImportSheet() {
+        welcomeRouter.route(.importFromApp)
+
+        viewModel.setUp()
+
+        guard case .importFromApp = viewModel.activeSheet else {
+            return XCTFail("Expected the Import from Other App sheet")
+        }
+    }
+
+    func testExportConnectionsRequestIsIgnoredWhenThereAreNoConnections() {
+        welcomeRouter.route(.exportConnections)
+
+        viewModel.setUp()
+
+        XCTAssertNil(viewModel.activeSheet)
+    }
+
+    func testRequestIsDrainedAheadOfABackgroundPluginInstall() {
+        let connection = DatabaseConnection(name: "Pending", type: .mysql)
+        welcomeRouter.routePluginInstall(connection)
+        welcomeRouter.route(.importFromURL)
+
+        viewModel.setUp()
+
+        XCTAssertTrue(viewModel.urlImportPresented)
+        XCTAssertNil(viewModel.pluginInstallConnection)
+        XCTAssertEqual(welcomeRouter.pendingPluginInstall?.id, connection.id)
     }
 }

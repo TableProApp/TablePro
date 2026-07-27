@@ -34,6 +34,7 @@ struct AppServices {
     let mcpServerManager: MCPServerManager
     let syncTracker: SyncChangeTracker
     let themeEngine: ThemeEngine
+    let welcomeRouter: WelcomeRouter
 
     static let live = AppServices(
         appEvents: .shared,
@@ -62,7 +63,8 @@ struct AppServices {
         copilotService: .shared,
         mcpServerManager: .shared,
         syncTracker: .shared,
-        themeEngine: .shared
+        themeEngine: .shared,
+        welcomeRouter: .shared
     )
 }
 

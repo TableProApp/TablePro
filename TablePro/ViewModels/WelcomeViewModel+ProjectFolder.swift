@@ -4,7 +4,6 @@
 //
 
 import AppKit
-import Combine
 import os
 
 extension WelcomeViewModel {
@@ -12,14 +11,6 @@ extension WelcomeViewModel {
         subsystem: "com.TablePro",
         category: "WelcomeProjectFolder"
     )
-
-    func setUpProjectFolderCommand() {
-        openProjectFolderCancellable = AppCommands.shared.openProjectFolder
-            .receive(on: RunLoop.main)
-            .sink { [weak self] _ in
-                self?.openProjectFolder()
-            }
-    }
 
     func openProjectFolder() {
         Task { @MainActor in
