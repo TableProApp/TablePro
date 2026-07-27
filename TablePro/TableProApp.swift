@@ -337,6 +337,25 @@ struct AppMenuCommands: Commands {
             }
             .optionalKeyboardShortcut(shortcut(for: .closeTab))
 
+            Button(String(localized: "Close Other Tabs")) {
+                resolvedCloseTabActions?.closeOtherTabs()
+            }
+            .optionalKeyboardShortcut(shortcut(for: .closeOtherTabs))
+            .disabled(resolvedCloseTabActions?.canCloseOtherTabs != true)
+
+            Button(resolvedCloseTabActions?.closeTabsForOtherDatabasesTitle
+                ?? String(localized: "Close Tabs for Other Databases")) {
+                resolvedCloseTabActions?.closeTabsForOtherDatabases()
+            }
+            .optionalKeyboardShortcut(shortcut(for: .closeTabsForOtherDatabases))
+            .disabled(resolvedCloseTabActions?.canCloseTabsForOtherDatabases != true)
+
+            Button(String(localized: "Close All Tabs")) {
+                resolvedCloseTabActions?.closeAllTabs()
+            }
+            .optionalKeyboardShortcut(shortcut(for: .closeAllTabs))
+            .disabled(resolvedCloseTabActions?.canCloseAllTabs != true)
+
             Button(String(localized: "Reopen Closed Tab")) {
                 RecentlyClosedTabReopener.reopenMostRecent()
             }

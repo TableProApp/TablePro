@@ -22,6 +22,11 @@ import UniformTypeIdentifiers
 final class MainContentCommandActions {
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "MainContentCommandActions")
 
+    enum WindowCloseOutcome {
+        case closed
+        case cancelled
+    }
+
     // MARK: - Dependencies
 
     @ObservationIgnored private weak var coordinator: MainContentCoordinator?
@@ -256,6 +261,12 @@ final class MainContentCommandActions {
 
     var currentDatabaseType: DatabaseType { connection.type }
 
+    var connectionId: UUID { connection.id }
+
+    var activeDatabaseName: String { coordinator?.activeDatabaseName ?? "" }
+
+    var openTabCount: Int { coordinator?.tabManager.tabs.count ?? 0 }
+
     var supportsContainerSwitching: Bool {
         PluginManager.shared.supportsContainerSwitching(for: connection.type)
     }
@@ -311,8 +322,10 @@ final class MainContentCommandActions {
 
     // MARK: - Unsaved Changes Check
 
-    private var hasUnsavedChanges: Bool {
-        coordinator?.hasUnsavedWorkInSelectedTab() ?? false
+    /// Scoped to the whole window, not the selected tab: closing a window closes every tab in it,
+    /// so a tab the user is not looking at must still get its prompt.
+    private var hasUnsavedWorkInWindow: Bool {
+        coordinator?.hasAnyUnsavedWork() ?? false
     }
 
     private var isUsersRolesTab: Bool {
@@ -363,27 +376,52 @@ final class MainContentCommandActions {
     }
 
     func closeTab() {
-        let seq = MainContentCoordinator.nextSwitchSeq()
-        Self.logger.info("[close] closeTab seq=\(seq) hasUnsavedChanges=\(self.hasUnsavedChanges)")
-        if hasUnsavedChanges {
-            Task {
-                let keyWindow = NSApp.keyWindow
-                let result = await AlertHelper.confirmSaveChanges(
-                    message: String(localized: "Your changes will be lost if you don't save them."),
-                    window: keyWindow
-                )
+        Task { await closeWindowAwaiting() }
+    }
 
-                switch result {
-                case .save:
-                    await saveAndClose()
-                case .dontSave:
-                    discardAndClose()
-                case .cancel:
-                    break
-                }
-            }
-        } else {
-            performClose()
+    /// The single close primitive. `asBatchSurvivor` is `nil` for a lone close gesture, which lets
+    /// the window decide for itself whether it can go away; a batch passes `true` for the one
+    /// window it keeps blank and `false` for every window it tears down.
+    @discardableResult
+    func closeWindowAwaiting(asBatchSurvivor: Bool? = nil) async -> WindowCloseOutcome {
+        let seq = MainContentCoordinator.nextSwitchSeq()
+        Self.logger.info("[close] closeWindowAwaiting seq=\(seq) hasUnsavedWork=\(self.hasUnsavedWorkInWindow)")
+
+        guard hasUnsavedWorkInWindow else {
+            finish(asBatchSurvivor: asBatchSurvivor)
+            return .closed
+        }
+
+        selectInTabGroup()
+        let result = await AlertHelper.confirmSaveChanges(
+            message: String(localized: "Your changes will be lost if you don't save them."),
+            window: closeAnchorWindow
+        )
+
+        switch result {
+        case .save:
+            return await saveAndClose(asBatchSurvivor: asBatchSurvivor) ? .closed : .cancelled
+        case .dontSave:
+            discardAndClose(asBatchSurvivor: asBatchSurvivor)
+            return .closed
+        case .cancel:
+            return .cancelled
+        }
+    }
+
+    var closeAnchorWindow: NSWindow? {
+        coordinator?.contentWindow ?? window ?? NSApp.keyWindow
+    }
+
+    /// A background tabbed window is occluded by the selected tab, so its confirmation sheet would
+    /// animate onto a surface the user cannot see. Bring it forward first.
+    private func selectInTabGroup() {
+        guard let target = coordinator?.contentWindow ?? window,
+              let tabGroup = target.tabGroup,
+              tabGroup.selectedWindow !== target else { return }
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0
+            tabGroup.selectedWindow = target
         }
     }
 
@@ -397,37 +435,51 @@ final class MainContentCommandActions {
         }
     }
 
-    private func performClose() {
+    private func finish(asBatchSurvivor: Bool?) {
         let t0 = Date()
         guard let window = coordinator?.contentWindow ?? NSApp.keyWindow else { return }
         captureClosingTabsForRecovery()
-        let visibleTabbedWindows = (window.tabbedWindows ?? [window]).filter(\.isVisible)
-        Self.logger.info("[close] performClose visibleTabs=\(visibleTabbedWindows.count) tabManagerTabs=\(self.coordinator?.tabManager.tabs.count ?? 0)")
 
-        if visibleTabbedWindows.count > 1 {
-            window.close()
-        } else if coordinator?.tabManager.tabs.isEmpty == true {
+        if let asBatchSurvivor {
+            Self.logger.info("[close] finish batch survivor=\(asBatchSurvivor)")
+            if asBatchSurvivor {
+                clearTabsInPlace()
+            } else {
+                window.close()
+            }
+            return
+        }
+
+        let visibleTabbedWindows = (window.tabbedWindows ?? [window]).filter(\.isVisible)
+        Self.logger.info("[close] finish visibleTabs=\(visibleTabbedWindows.count) tabManagerTabs=\(self.coordinator?.tabManager.tabs.count ?? 0)")
+
+        if visibleTabbedWindows.count > 1 || coordinator?.tabManager.tabs.isEmpty == true {
             window.close()
         } else {
-            if let coordinator {
-                for tab in coordinator.tabManager.tabs {
-                    coordinator.tabSessionRegistry.removeTableRows(for: tab.id)
-                    if let url = tab.content.sourceFileURL {
-                        WindowLifecycleMonitor.shared.unregisterSourceFile(url)
-                    }
-                }
-                coordinator.tabManager.tabs.removeAll()
-                coordinator.tabManager.selectedTabId = nil
-                coordinator.toolbarState.isTableTab = false
-            }
+            clearTabsInPlace()
         }
-        Self.logger.info("[close] performClose done ms=\(Int(Date().timeIntervalSince(t0) * 1_000))")
+        Self.logger.info("[close] finish done ms=\(Int(Date().timeIntervalSince(t0) * 1_000))")
     }
 
-    private func saveAndClose() async {
+    /// Empties the window instead of closing it, which is how the last tab of a group lands on the
+    /// no-tabs state with its connection still live.
+    private func clearTabsInPlace() {
+        guard let coordinator else { return }
+        for tab in coordinator.tabManager.tabs {
+            coordinator.tabSessionRegistry.removeTableRows(for: tab.id)
+            if let url = tab.content.sourceFileURL {
+                WindowLifecycleMonitor.shared.unregisterSourceFile(url)
+            }
+        }
+        coordinator.tabManager.tabs.removeAll()
+        coordinator.tabManager.selectedTabId = nil
+        coordinator.toolbarState.isTableTab = false
+    }
+
+    private func saveAndClose(asBatchSurvivor: Bool?) async -> Bool {
         guard let coordinator = coordinator else {
-            performClose()
-            return
+            finish(asBatchSurvivor: asBatchSurvivor)
+            return true
         }
 
         // User and role changes can only be applied after the SQL is reviewed, so Save opens the
@@ -435,14 +487,14 @@ final class MainContentCommandActions {
         // destroy every staged change.
         if isUsersRolesTab, coordinator.usersRolesActions?.hasChanges() == true {
             coordinator.usersRolesActions?.reviewAndApply()
-            return
+            return false
         }
 
         // Structure view saves via direct coordinator call
         if coordinator.tabManager.selectedTab?.display.resultsViewMode == .structure {
             coordinator.structureActions?.saveChanges?()
-            performClose()
-            return
+            finish(asBatchSurvivor: asBatchSurvivor)
+            return true
         }
 
         // Data grid changes or pending table operations take priority
@@ -455,26 +507,27 @@ final class MainContentCommandActions {
                 saveChanges()
             }
             if saved {
-                performClose()
+                finish(asBatchSurvivor: asBatchSurvivor)
             }
-            return
+            return saved
         }
 
         // Sidebar-only edits (made directly in the inspector panel)
         if rightPanelState.editState.hasEdits {
             rightPanelState.onSave?()
-            performClose()
-            return
+            finish(asBatchSurvivor: asBatchSurvivor)
+            return true
         }
 
         // File save (query editor with source file)
         if coordinator.tabManager.selectedTab?.content.isFileDirty == true {
             saveFileToSourceURL()
-            performClose()
-            return
+            finish(asBatchSurvivor: asBatchSurvivor)
+            return true
         }
 
-        performClose()
+        finish(asBatchSurvivor: asBatchSurvivor)
+        return true
     }
 
     private func saveFileToSourceURL() {
@@ -546,12 +599,12 @@ final class MainContentCommandActions {
         }
     }
 
-    private func discardAndClose() {
+    private func discardAndClose(asBatchSurvivor: Bool?) {
         coordinator?.changeManager.clearChangesAndUndoHistory()
         pendingTruncates.wrappedValue.removeAll()
         pendingDeletes.wrappedValue.removeAll()
         rightPanelState.editState.clearEdits()
-        performClose()
+        finish(asBatchSurvivor: asBatchSurvivor)
     }
 
     func copyTableNames() {
