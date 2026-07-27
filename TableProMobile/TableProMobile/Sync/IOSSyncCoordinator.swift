@@ -226,13 +226,25 @@ final class IOSSyncCoordinator {
 
         guard !allRecords.isEmpty || !allDeletions.isEmpty else { return }
 
-        try await getEngine().push(records: allRecords, deletions: allDeletions)
-        metadata.clearDirty(type: .connection)
-        metadata.clearTombstones(type: .connection)
-        metadata.clearDirty(type: .group)
-        metadata.clearTombstones(type: .group)
-        metadata.clearDirty(type: .tag)
-        metadata.clearTombstones(type: .tag)
+        let outcome = try await getEngine().push(records: allRecords, deletions: allDeletions)
+
+        for recordID in outcome.savedRecords.keys {
+            guard let parsed = SyncRecordMapper.parse(recordName: recordID.recordName) else { continue }
+            metadata.removeDirty(parsed.id, type: parsed.type)
+        }
+
+        for recordID in outcome.deletedRecordIDs {
+            guard let parsed = SyncRecordMapper.parse(recordName: recordID.recordName) else { continue }
+            metadata.removeTombstone(parsed.id, type: parsed.type)
+        }
+
+        guard outcome.hasFailures else { return }
+
+        for (recordID, failure) in outcome.failures {
+            Self.logger.error("iCloud rejected \(recordID.recordName): \(failure.message)")
+        }
+
+        throw SyncError.pushFailed(outcome.failures.values.first?.message ?? "")
     }
 
     // MARK: - Pull

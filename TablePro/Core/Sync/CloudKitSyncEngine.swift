@@ -9,6 +9,7 @@ import CloudKit
 import Foundation
 import os
 import Security
+import TableProSyncTransport
 
 /// Result of a pull operation
 struct PullResult: Sendable {
@@ -73,12 +74,14 @@ actor CloudKitSyncEngine {
     /// CloudKit allows at most 400 items (saves + deletions) per modify operation
     private static let maxBatchSize = 400
 
-    func push(records: [CKRecord], deletions: [CKRecord.ID]) async throws {
-        guard !records.isEmpty || !deletions.isEmpty else { return }
+    @discardableResult
+    func push(records: [CKRecord], deletions: [CKRecord.ID]) async throws -> PushOutcome {
+        guard !records.isEmpty || !deletions.isEmpty else { return PushOutcome() }
 
         // Split into batches that fit within CloudKit's 400-item limit
         var remainingSaves = records[...]
         var remainingDeletions = deletions[...]
+        var outcome = PushOutcome()
 
         while !remainingSaves.isEmpty || !remainingDeletions.isEmpty {
             let batchSaves: [CKRecord]
@@ -92,39 +95,63 @@ actor CloudKitSyncEngine {
             batchDeletions = Array(remainingDeletions.prefix(deletionsCount))
             remainingDeletions = remainingDeletions.dropFirst(deletionsCount)
 
-            try await pushBatch(records: batchSaves, deletions: batchDeletions)
+            outcome.merge(try await pushBatch(records: batchSaves, deletions: batchDeletions))
         }
 
-        Self.logger.info("Pushed \(records.count) records, \(deletions.count) deletions")
+        let saved = outcome.savedRecords.count
+        let deleted = outcome.deletedRecordIDs.count
+        let failed = outcome.failures.count
+        Self.logger.info("Pushed \(saved) records, \(deleted) deletions, \(failed) rejected")
+
+        for (recordID, failure) in outcome.failures {
+            Self.logger.error("CloudKit rejected \(recordID.recordName): \(failure.message)")
+        }
+
+        return outcome
     }
 
-    private func pushBatch(records: [CKRecord], deletions: [CKRecord.ID]) async throws {
+    private func pushBatch(records: [CKRecord], deletions: [CKRecord.ID]) async throws -> PushOutcome {
         guard let database else { throw SyncError.accountUnavailable }
         try await withRetry {
             let operation = CKModifyRecordsOperation(
                 recordsToSave: records,
                 recordIDsToDelete: deletions
             )
-            // Use .changedKeys so we don't need to track server change tags
-            // This overwrites only the fields we set, which is safe for our use case
             operation.savePolicy = .changedKeys
             operation.isAtomic = false
 
             return try await withCheckedThrowingContinuation { continuation in
+                var outcome = PushOutcome()
+
                 operation.perRecordSaveBlock = { recordID, result in
-                    if case .failure(let error) = result {
-                        Self.logger.error(
-                            "Failed to save record \(recordID.recordName): \(error.localizedDescription)"
-                        )
+                    switch result {
+                    case .success(let record):
+                        outcome.recordSave(record)
+                    case .failure(let error):
+                        outcome.recordFailure(SyncItemFailure(error: error), for: recordID)
+                    }
+                }
+
+                operation.perRecordDeleteBlock = { recordID, result in
+                    switch result {
+                    case .success:
+                        outcome.recordDeletion(recordID)
+                    case .failure(let error):
+                        outcome.recordFailure(SyncItemFailure(error: error), for: recordID)
                     }
                 }
 
                 operation.modifyRecordsResultBlock = { result in
                     switch result {
                     case .success:
-                        continuation.resume()
+                        continuation.resume(returning: outcome)
                     case .failure(let error):
-                        continuation.resume(throwing: error)
+                        guard let ckError = error as? CKError, ckError.code == .partialFailure else {
+                            continuation.resume(throwing: error)
+                            return
+                        }
+                        outcome.absorbPartialErrors(from: ckError)
+                        continuation.resume(returning: outcome)
                     }
                 }
                 database.add(operation)

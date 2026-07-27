@@ -10,6 +10,7 @@ import Combine
 import Foundation
 import Observation
 import os
+import TableProSyncTransport
 
 /// Central coordinator for iCloud sync
 @MainActor @Observable
@@ -97,8 +98,21 @@ final class SyncCoordinator {
 
         do {
             try await engine.ensureZoneExists()
-            await performPush()
+
+            var pushError: Error?
+            do {
+                try await performPush()
+            } catch {
+                pushError = error
+                Self.logger.error("Push failed: \(error.localizedDescription)")
+            }
+
             await performPull()
+
+            if let pushError {
+                syncStatus = .error(SyncError.from(pushError))
+                return
+            }
 
             lastSyncDate = Date()
             metadataStorage.lastSyncDate = lastSyncDate
@@ -267,7 +281,7 @@ final class SyncCoordinator {
 
     // MARK: - Push
 
-    private func performPush() async {
+    private func performPush() async throws {
         let settings = services.appSettingsStorage.loadSync()
         var recordsToSave: [CKRecord] = []
         var recordIDsToDelete: [CKRecord.ID] = []
@@ -328,75 +342,30 @@ final class SyncCoordinator {
 
         guard !recordsToSave.isEmpty || !uniqueDeletions.isEmpty else { return }
 
-        do {
-            try await engine.push(records: recordsToSave, deletions: uniqueDeletions)
+        let outcome = try await engine.push(records: recordsToSave, deletions: uniqueDeletions)
 
-            if settings.syncConnections {
-                changeTracker.clearAllDirty(.connection)
-            }
-            if settings.syncGroupsAndTags {
-                changeTracker.clearAllDirty(.group)
-                changeTracker.clearAllDirty(.tag)
-            }
-            if settings.syncSSHProfiles {
-                changeTracker.clearAllDirty(.sshProfile)
-            }
-            if settings.syncSettings {
-                changeTracker.clearAllDirty(.settings)
-            }
-            if settings.syncTableFavorites {
-                changeTracker.clearAllDirty(.tableFavorite)
-            }
-            if settings.syncSQLFavorites {
-                changeTracker.clearAllDirty(.favorite)
-                changeTracker.clearAllDirty(.favoriteFolder)
-            }
-
-            // Clear tombstones only for types that were actually pushed
-            if settings.syncConnections {
-                for tombstone in metadataStorage.tombstones(for: .connection) {
-                    metadataStorage.removeTombstone(type: .connection, id: tombstone.id)
-                }
-            }
-            if settings.syncGroupsAndTags {
-                for tombstone in metadataStorage.tombstones(for: .group) {
-                    metadataStorage.removeTombstone(type: .group, id: tombstone.id)
-                }
-                for tombstone in metadataStorage.tombstones(for: .tag) {
-                    metadataStorage.removeTombstone(type: .tag, id: tombstone.id)
-                }
-            }
-            if settings.syncSSHProfiles {
-                for tombstone in metadataStorage.tombstones(for: .sshProfile) {
-                    metadataStorage.removeTombstone(type: .sshProfile, id: tombstone.id)
-                }
-            }
-            if settings.syncSettings {
-                for tombstone in metadataStorage.tombstones(for: .settings) {
-                    metadataStorage.removeTombstone(type: .settings, id: tombstone.id)
-                }
-            }
-            if settings.syncTableFavorites {
-                for tombstone in metadataStorage.tombstones(for: .tableFavorite) {
-                    metadataStorage.removeTombstone(type: .tableFavorite, id: tombstone.id)
-                }
-            }
-            if settings.syncSQLFavorites {
-                for tombstone in metadataStorage.tombstones(for: .favorite) {
-                    metadataStorage.removeTombstone(type: .favorite, id: tombstone.id)
-                }
-                for tombstone in metadataStorage.tombstones(for: .favoriteFolder) {
-                    metadataStorage.removeTombstone(type: .favoriteFolder, id: tombstone.id)
-                }
-            }
-
-            Self.logger.info("Push completed: \(recordsToSave.count) saved, \(recordIDsToDelete.count) deleted")
-        } catch let error as CKError where error.code == .serverRecordChanged {
-            Self.logger.warning("Server record changed during push — conflicts detected")
-            handlePushConflicts(error)
-        } catch {
-            Self.logger.error("Push failed: \(error.localizedDescription)")
+        for recordID in outcome.savedRecords.keys {
+            guard let parsed = SyncRecordMapper.parse(recordName: recordID.recordName) else { continue }
+            changeTracker.clearDirty(parsed.type, id: parsed.id)
         }
+
+        for recordID in outcome.deletedRecordIDs {
+            guard let parsed = SyncRecordMapper.parse(recordName: recordID.recordName) else { continue }
+            metadataStorage.removeTombstone(type: parsed.type, id: parsed.id)
+        }
+
+        Self.logger.info(
+            "Push completed: \(outcome.savedRecords.count) saved, "
+                + "\(outcome.deletedRecordIDs.count) deleted, \(outcome.failures.count) rejected"
+        )
+
+        guard outcome.hasFailures else { return }
+
+        handlePushConflicts(outcome)
+
+        let rejected = outcome.failures.filter { !$0.value.isConflict }
+        guard let firstRejection = rejected.values.first else { return }
+        throw SyncError.pushRejected(count: rejected.count, detail: firstRejection.message)
     }
 
     // MARK: - Pull
@@ -803,14 +772,10 @@ final class SyncCoordinator {
 
     // MARK: - Conflict Handling
 
-    private func handlePushConflicts(_ error: CKError) {
-        guard let partialErrors = error.partialErrorsByItemID else { return }
-
-        for (_, itemError) in partialErrors {
-            guard let ckError = itemError as? CKError,
-                  ckError.code == .serverRecordChanged,
-                  let serverRecord = ckError.serverRecord,
-                  let clientRecord = ckError.clientRecord
+    private func handlePushConflicts(_ outcome: PushOutcome) {
+        for failure in outcome.conflicts.values {
+            guard let serverRecord = failure.serverRecord,
+                  let clientRecord = failure.clientRecord
             else { continue }
 
             let recordType = serverRecord.recordType

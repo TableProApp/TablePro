@@ -19,6 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- iCloud Sync reports a failed sync instead of always reporting success. A rejected change was logged and then dropped, the status went back to idle, and the Last Synced time was stamped as though everything had worked, so there was no way to tell sync was broken. (#643)
+- One rejected change no longer stops every other change in the same batch from syncing. Each change is now confirmed on its own, and only the ones iCloud accepted are marked as sent, so the rest are retried instead of being silently discarded. (#643)
 - Connection changes made on the Mac reach the iPhone and iPad app again. The Mac was sending fields that its iCloud database does not hold, so iCloud rejected every connection it sent while the app still reported the sync as successful. Changes made on iPhone or iPad always reached the Mac, which is why sync looked like it worked in one direction only. (#643)
 - A connection synced from iPhone or iPad keeps its safe mode setting on the Mac. Read-only and confirm-writes connections arrived with no protection at all, because the Mac did not recognise the values the mobile app writes and fell back to Silent. An unrecognised value now asks for confirmation before a write instead of allowing it. (#643)
 - A connection's colour tag set on iPhone or iPad no longer overwrites the colour label on the Mac. Both were stored in the same field despite meaning different things. (#643)

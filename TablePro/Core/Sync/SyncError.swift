@@ -17,6 +17,7 @@ enum SyncError: LocalizedError, Equatable {
     case serverError(String)
     case conflictDetected
     case encodingFailed(String)
+    case pushRejected(count: Int, detail: String)
     case unknown(String)
 
     var errorDescription: String? {
@@ -35,6 +36,12 @@ enum SyncError: LocalizedError, Equatable {
             return String(localized: "A sync conflict was detected and needs to be resolved.")
         case .encodingFailed(let detail):
             return String(format: String(localized: "Failed to encode sync data: %@"), detail)
+        case .pushRejected(let count, let detail):
+            return String(
+                format: String(localized: "iCloud rejected %d change(s). They stay on this Mac and will retry: %@"),
+                count,
+                detail
+            )
         case .unknown(let message):
             return String(format: String(localized: "An unknown sync error occurred: %@"), message)
         }
@@ -76,6 +83,8 @@ enum SyncError: LocalizedError, Equatable {
             return a == b
         case (.encodingFailed(let a), .encodingFailed(let b)):
             return a == b
+        case (.pushRejected(let aCount, let aDetail), .pushRejected(let bCount, let bDetail)):
+            return aCount == bCount && aDetail == bDetail
         case (.unknown(let a), .unknown(let b)):
             return a == b
         default:

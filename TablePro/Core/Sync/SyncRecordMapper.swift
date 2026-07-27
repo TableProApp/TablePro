@@ -64,6 +64,23 @@ struct SyncRecordMapper {
         return CKRecord.ID(recordName: recordName, zoneID: zone)
     }
 
+    static func parse(recordName: String) -> (type: SyncRecordType, id: String)? {
+        let prefixes: [(SyncRecordType, String)] = [
+            (.connection, "Connection_"),
+            (.group, "Group_"),
+            (.tag, "Tag_"),
+            (.settings, "Settings_"),
+            (.favoriteFolder, "FavoriteFolder_"),
+            (.tableFavorite, "FavoriteTable_"),
+            (.favorite, "Favorite_"),
+            (.sshProfile, "SSHProfile_")
+        ]
+        for (type, prefix) in prefixes where recordName.hasPrefix(prefix) {
+            return (type, String(recordName.dropFirst(prefix.count)))
+        }
+        return nil
+    }
+
     // MARK: - Connection
 
     static func toCKRecord(_ connection: DatabaseConnection, in zone: CKRecordZone.ID) -> CKRecord {

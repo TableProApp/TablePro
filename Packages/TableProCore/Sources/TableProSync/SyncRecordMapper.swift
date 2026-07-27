@@ -24,6 +24,18 @@ public enum SyncRecordMapper {
         return CKRecord.ID(recordName: recordName, zoneID: zone)
     }
 
+    public static func parse(recordName: String) -> (type: SyncRecordType, id: String)? {
+        let prefixes: [(SyncRecordType, String)] = [
+            (.connection, "Connection_"),
+            (.group, "Group_"),
+            (.tag, "Tag_")
+        ]
+        for (type, prefix) in prefixes where recordName.hasPrefix(prefix) {
+            return (type, String(recordName.dropFirst(prefix.count)))
+        }
+        return nil
+    }
+
     // MARK: - Connection -> CKRecord
 
     public static func toRecord(_ connection: DatabaseConnection, zoneID: CKRecordZone.ID) -> CKRecord {
