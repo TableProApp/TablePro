@@ -74,6 +74,8 @@ internal final class CompareSyncSession {
 
     internal var hasWrittenToTarget = false
     internal var sourceSnapshotCache: [String: TableStructureSnapshot] = [:]
+    internal var targetSnapshotCache: [String: TableStructureSnapshot] = [:]
+    internal var pendingSelectedTables: Set<String> = []
 
     internal var runTask: Task<Void, Never>?
 
@@ -197,6 +199,7 @@ internal final class CompareSyncSession {
     internal func resetComparison() {
         structureReport = nil
         sourceSnapshotCache = [:]
+        targetSnapshotCache = [:]
         dataPlans = []
         tableActions = [:]
         statements = []

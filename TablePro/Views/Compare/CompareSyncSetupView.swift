@@ -13,6 +13,7 @@ internal struct CompareSyncSetupView: View {
     @Bindable internal var session: CompareSyncSession
 
     @State private var candidates: [CompareSyncEndpoint] = []
+    @State private var profileName = ""
 
     internal var body: some View {
         ScrollView {
@@ -20,6 +21,7 @@ internal struct CompareSyncSetupView: View {
                 modePicker
                 endpointPickers
                 directionSummary
+                profilesSection
                 optionsSection
             }
             .padding(20)
@@ -126,6 +128,54 @@ internal struct CompareSyncSetupView: View {
             Label(notice, systemImage: "exclamationmark.triangle")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder
+    private var profilesSection: some View {
+        if session.source != nil, session.target != nil {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Saved comparisons")
+                    .font(.headline)
+
+                HStack(spacing: 8) {
+                    let profiles = session.savedProfiles
+                    if profiles.isEmpty {
+                        Text("None saved for this pair yet.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Menu {
+                            ForEach(profiles) { profile in
+                                Button(profile.name) { session.apply(profile) }
+                            }
+                            Divider()
+                            ForEach(profiles) { profile in
+                                Button(
+                                    String(format: String(localized: "Delete %@"), profile.name),
+                                    role: .destructive
+                                ) {
+                                    session.deleteProfile(profile)
+                                }
+                            }
+                        } label: {
+                            Label(String(localized: "Load"), systemImage: "tray.and.arrow.down")
+                        }
+                        .menuStyle(.borderlessButton)
+                        .fixedSize()
+                    }
+
+                    Spacer()
+
+                    TextField(String(localized: "Name"), text: $profileName)
+                        .frame(width: 160)
+                    Button(String(localized: "Save")) {
+                        session.saveProfile(named: profileName)
+                        profileName = ""
+                    }
+                    .disabled(profileName.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+            }
         }
     }
 

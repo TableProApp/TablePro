@@ -63,6 +63,7 @@ internal extension CompareSyncSession {
                 }
 
                 self.activity = .comparing
+                let pending = self.pendingSelectedTables
                 var plans = try await Self.buildPlans(
                     sourceDriver: sourceDriver,
                     targetDriver: targetDriver,
@@ -70,6 +71,13 @@ internal extension CompareSyncSession {
                     targetSchema: target.schema,
                     existing: self.dataPlans
                 )
+
+                if !pending.isEmpty {
+                    for index in plans.indices {
+                        plans[index].isEnabled = pending.contains(plans[index].id)
+                    }
+                    self.pendingSelectedTables = []
+                }
 
                 for index in plans.indices where plans[index].isEnabled && plans[index].isComparable {
                     try Task.checkCancellation()

@@ -46,7 +46,15 @@ internal extension CompareSyncSession {
                     sourceSnapshots.map { ($0.qualifiedName, $0) },
                     uniquingKeysWith: { first, _ in first }
                 )
+                self.targetSnapshotCache = Dictionary(
+                    targetSnapshots.map { ($0.qualifiedName, $0) },
+                    uniquingKeysWith: { first, _ in first }
+                )
                 self.tableActions = [:]
+                for result in report.comparable where self.pendingSelectedTables.contains(result.id) {
+                    self.tableActions[result.id] = result.suggestedAction
+                }
+                self.pendingSelectedTables = []
                 self.statements = []
                 self.editedScript = nil
                 self.lastAction = .compared(Date(), differences: report.comparable.filter { $0.status != .identical }.count)
@@ -100,9 +108,11 @@ internal extension CompareSyncSession {
             guard let self else { return }
             self.activity = .applying
             self.hasWrittenToTarget = true
+            CompareSyncRunRegistry.shared.markApplying(self, target: target.qualifiedDescription)
             defer {
                 self.activity = .idle
                 self.progress = nil
+                CompareSyncRunRegistry.shared.clear(self)
             }
 
             do {

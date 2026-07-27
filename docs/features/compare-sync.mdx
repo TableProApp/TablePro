@@ -59,7 +59,9 @@ Two different engines can still be compared. You get the differences as a read-o
 
 Data comparison matches rows by a key and walks both sides in key order, so neither table is loaded into memory in full.
 
-Key columns are filled in from the source table's primary key. Composite keys are supported. A table with no primary key, or with no columns in common, is listed as not comparable rather than matched on a guess, because matching on every column cannot tell one row from two identical rows.
+Key columns are filled in from the source table's primary key, and you can change them per table from the **Key columns** menu above the row list. Composite keys are supported. A table with no key, or with no columns in common, is listed as not comparable rather than matched on a guess, because matching on every column cannot tell one row from two identical rows.
+
+Changing keys or compared columns clears that table's result. Press **Compare Again** to refresh it.
 
 Tables are matched by name across the two sides, and only the columns present on both are compared.
 
@@ -73,7 +75,9 @@ Delete is off by default so the first run cannot remove a row you did not mean t
 
 ### Which columns are compared
 
-Columns used to compare are separate from columns that get written. Exclude `updated_at` from comparison and rows that differ only in that column stop showing as differences, while the column is still carried into any row that is inserted or updated.
+Columns used to compare are separate from columns that get written. Use the **Compared columns** menu to exclude one. Exclude `updated_at` and rows that differ only in that column stop showing as differences, while the column is still carried into any row that is inserted or updated.
+
+Exclusions apply by column name across every table in the comparison, which is what you want for audit columns that repeat.
 
 ### How values are judged equal
 
@@ -113,9 +117,11 @@ If you choose to continue past errors, the transaction option is disabled, becau
 
 Progress is reported per statement and the run can be cancelled. Cancelling stops the run between statements; a statement already in flight finishes.
 
+Closing the window or quitting TablePro while a run is in progress asks first, and says that statements which already ran stay applied.
+
 ## Saving a setup
 
-Save the source, target, mode, scope, ignore options, and key choices as a named comparison you can run again.
+Give a comparison a name and **Save** it, and it is stored against that source, target, and mode. Load it later from the same screen to restore the mode, ignore options, value rules, and which tables were selected. Delete one from the same menu.
 
 ## Limits
 

@@ -13,7 +13,6 @@ internal struct CompareSyncWindowView: View {
 
     @State private var session = CompareSyncSession()
     @State private var isConfirmingApply = false
-    @State private var isConfirmingClose = false
 
     internal var body: some View {
         VStack(spacing: 0) {
@@ -29,6 +28,7 @@ internal struct CompareSyncWindowView: View {
             CompareSyncFooter(session: session, isConfirmingApply: $isConfirmingApply)
         }
         .frame(minWidth: 900, minHeight: 560)
+        .background(CompareSyncCloseGuard(session: session))
         .task { applyPrefill() }
         .alert(String(localized: "Apply changes?"), isPresented: $isConfirmingApply) {
             Button(String(localized: "Cancel"), role: .cancel) {}

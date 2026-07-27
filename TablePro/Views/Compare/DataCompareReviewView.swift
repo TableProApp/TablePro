@@ -87,7 +87,27 @@ internal struct DataCompareReviewView: View {
 
     @ViewBuilder
     private var rowPane: some View {
-        if let plan = selectedPlan, let summary = plan.summary {
+        if let plan = selectedPlan {
+            VStack(spacing: 0) {
+                DataComparePlanEditor(session: session, plan: plan)
+                Divider()
+                rowContent(for: plan)
+            }
+        } else {
+            VStack(spacing: 8) {
+                Image(systemName: "tablecells")
+                    .font(.largeTitle)
+                    .foregroundStyle(.tertiary)
+                Text("Select a table to see its row differences")
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    @ViewBuilder
+    private func rowContent(for plan: DataComparePlan) -> some View {
+        if let summary = plan.summary {
             VStack(spacing: 0) {
                 HStack {
                     Picker("", selection: $filter) {
@@ -98,9 +118,6 @@ internal struct DataCompareReviewView: View {
                     .labelsHidden()
                     .frame(width: 150)
                     Spacer()
-                    Text(String(format: String(localized: "Key: %@"), plan.keyColumns.joined(separator: ", ")))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
@@ -121,13 +138,94 @@ internal struct DataCompareReviewView: View {
             }
         } else {
             VStack(spacing: 8) {
-                Image(systemName: "tablecells")
+                Image(systemName: "arrow.clockwise")
                     .font(.largeTitle)
                     .foregroundStyle(.tertiary)
-                Text("Select a table to see its row differences")
+                Text(plan.unavailableReason ?? String(localized: "Not compared yet. Run Compare Again to refresh this table."))
                     .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
             }
+            .padding(20)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+}
+
+internal struct DataComparePlanEditor: View {
+    @Bindable internal var session: CompareSyncSession
+    internal let plan: DataComparePlan
+
+    internal var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .top, spacing: 12) {
+                columnMenu(
+                    title: String(localized: "Key columns"),
+                    summary: plan.keyColumns.isEmpty
+                        ? String(localized: "None chosen")
+                        : plan.keyColumns.joined(separator: ", "),
+                    systemImage: "key.fill"
+                ) {
+                    ForEach(plan.columns, id: \.self) { column in
+                        Toggle(column, isOn: Binding(
+                            get: { session.isKeyColumn(column, in: plan) },
+                            set: { _ in session.toggleKeyColumn(column, for: plan.id) }
+                        ))
+                    }
+                }
+
+                columnMenu(
+                    title: String(localized: "Compared columns"),
+                    summary: comparedSummary,
+                    systemImage: "text.magnifyingglass"
+                ) {
+                    ForEach(nonKeyColumns, id: \.self) { column in
+                        Toggle(column, isOn: Binding(
+                            get: { session.isColumnCompared(column) },
+                            set: { _ in session.toggleComparedColumn(column) }
+                        ))
+                    }
+                }
+
+                Spacer()
+            }
+
+            Text("Excluded columns are still written on insert and update. Changing either list needs another comparison.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+    }
+
+    private var nonKeyColumns: [String] {
+        plan.columns.filter { !session.isKeyColumn($0, in: plan) }
+    }
+
+    private var comparedSummary: String {
+        let excluded = nonKeyColumns.filter { !session.isColumnCompared($0) }
+        guard !excluded.isEmpty else { return String(localized: "All") }
+        return String(format: String(localized: "%d excluded"), excluded.count)
+    }
+
+    private func columnMenu(
+        title: String,
+        summary: String,
+        systemImage: String,
+        @ViewBuilder content: () -> some View
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            Menu {
+                content()
+            } label: {
+                Label(summary, systemImage: systemImage)
+                    .font(.caption)
+                    .lineLimit(1)
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
         }
     }
 }

@@ -125,6 +125,20 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        if CompareSyncRunRegistry.shared.isApplying {
+            let alert = NSAlert()
+            alert.messageText = String(localized: "A sync is still running")
+            alert.informativeText = String(
+                format: String(localized: "Quitting stops the run against %@. Statements that already ran stay applied."),
+                CompareSyncRunRegistry.shared.applyingTargetNames.joined(separator: ", ")
+            )
+            alert.alertStyle = .critical
+            alert.addButton(withTitle: String(localized: "Keep Running"))
+            alert.addButton(withTitle: String(localized: "Stop and Quit"))
+            alert.buttons[1].hasDestructiveAction = true
+            guard alert.runModal() == .alertSecondButtonReturn else { return .terminateCancel }
+        }
+
         let hasUnsaved = MainContentCoordinator.hasAnyUnsavedChanges()
         if hasUnsaved {
             let alert = NSAlert()

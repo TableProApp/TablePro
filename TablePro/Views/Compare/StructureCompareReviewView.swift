@@ -136,7 +136,11 @@ internal struct StructureCompareReviewView: View {
     @ViewBuilder
     private var detailPane: some View {
         if let result = visibleResults.first(where: { $0.id == selection }) {
-            CompareResultDetailView(result: result)
+            CompareResultDetailView(
+                result: result,
+                sourceSnapshot: session.sourceSnapshotCache[result.id],
+                targetSnapshot: session.targetSnapshotCache[result.id]
+            )
         } else {
             VStack(spacing: 8) {
                 Image(systemName: "sidebar.right")
@@ -247,6 +251,8 @@ internal struct CompareResultRow: View {
 
 internal struct CompareResultDetailView: View {
     internal let result: TableDiffResult
+    internal let sourceSnapshot: TableStructureSnapshot?
+    internal let targetSnapshot: TableStructureSnapshot?
 
     internal var body: some View {
         ScrollView {
@@ -262,6 +268,23 @@ internal struct CompareResultDetailView: View {
                             Label(note, systemImage: "info.circle")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+
+                if let sourceSnapshot, let targetSnapshot {
+                    StructureDefinitionDiffView(
+                        sourceLines: TableDefinitionRenderer.lines(for: sourceSnapshot),
+                        targetLines: TableDefinitionRenderer.lines(for: targetSnapshot)
+                    )
+                } else if let onlySide = sourceSnapshot ?? targetSnapshot {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(sourceSnapshot == nil ? "Definition on the target" : "Definition on the source")
+                            .font(.subheadline.weight(.semibold))
+                        ForEach(TableDefinitionRenderer.lines(for: onlySide), id: \.self) { line in
+                            Text(line)
+                                .font(.system(.caption, design: .monospaced))
+                                .textSelection(.enabled)
                         }
                     }
                 }

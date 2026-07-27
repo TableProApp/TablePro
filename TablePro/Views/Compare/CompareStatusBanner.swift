@@ -99,9 +99,16 @@ internal struct CompareSyncFooter: View {
                 .disabled(!session.canCompare)
         case .review:
             Button(String(localized: "Back")) { session.step = .setup }
-            Button(String(localized: "Generate Script")) { session.buildScript() }
-                .keyboardShortcut(.defaultAction)
-                .disabled(!session.canBuildScript)
+            if session.needsRecompare {
+                Button(String(localized: "Compare Again")) { session.runComparison() }
+                    .keyboardShortcut(.defaultAction)
+                Button(String(localized: "Generate Script")) { session.buildScript() }
+                    .disabled(!session.canBuildScript)
+            } else {
+                Button(String(localized: "Generate Script")) { session.buildScript() }
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(!session.canBuildScript)
+            }
         case .script:
             Button(String(localized: "Back")) { session.step = .review }
             Button(String(localized: "Apply to Target")) { isConfirmingApply = true }
