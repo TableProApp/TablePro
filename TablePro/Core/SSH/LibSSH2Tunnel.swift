@@ -152,7 +152,7 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
                     self.sessionQueue.async {
                         var secondsToNext: Int32 = 0
                         let rc = libssh2_keepalive_send(self.session, &secondsToNext)
-                        continuation.resume(returning: rc != 0)
+                        continuation.resume(returning: sshKeepAliveDidFail(rc))
                     }
                 }
 
