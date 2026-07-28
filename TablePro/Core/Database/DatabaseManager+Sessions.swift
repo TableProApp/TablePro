@@ -156,14 +156,18 @@ extension DatabaseManager {
             }
         } catch {
             let cancelled = isAttemptCancelled(attempt, for: connection.id)
+            var reportedError = error
             if cancelled {
                 driver.disconnect()
             } else {
+                if let attributed = await attributedTunnelFailure(for: connection) {
+                    reportedError = attributed
+                }
                 closeActiveTunnel(for: connection)
             }
 
             finalizeConnectionFailure(for: connection.id, cancelled: cancelled)
-            throw error
+            throw reportedError
         }
     }
 
