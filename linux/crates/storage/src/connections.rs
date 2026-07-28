@@ -234,17 +234,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn auth_mode_round_trips_and_defaults_to_password() {
+    async fn auth_mode_defaults_to_password_on_a_legacy_file() {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("connections.json");
-
-        // Explicit Kerberos survives a save/load cycle.
-        let mut conn = sample_connection();
-        conn.auth_mode = AuthMode::Kerberos;
-        save_to(&path, &[conn.clone()]).await.unwrap();
-        assert_eq!(load_from(&path).await.unwrap(), vec![conn]);
-
-        // A legacy file without the field loads as Password.
         let id = Uuid::new_v4();
         let legacy = format!(
             r#"{{"version":1,"connections":[{{

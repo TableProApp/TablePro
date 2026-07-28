@@ -70,13 +70,9 @@ Driver smoke against a Postgres you already run, no Docker needed:
 
 Optional: if the system `-dev` packages above are missing, extract the package payloads under `../.local-deps/root/` (so headers land in `../.local-deps/root/usr/include`) and `source scripts/dev-env.sh` before cargo. Debian-family layouts only.
 
-`libkrb5-dev` and `clang` are only there for the SQL Server driver's
-Windows integrated auth, which links MIT Kerberos and runs bindgen. Drop
-both packages and build without it:
-
-```bash
-cargo build --workspace --no-default-features
-```
+`libkrb5-dev` and `clang` are there for the SQL Server driver's Windows
+integrated auth, which links MIT Kerberos and runs bindgen at build
+time.
 
 ## SQL Server with Windows integrated auth
 

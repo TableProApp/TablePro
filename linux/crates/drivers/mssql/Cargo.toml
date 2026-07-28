@@ -9,12 +9,6 @@ publish = false
 name = "drivers_mssql"
 path = "src/lib.rs"
 
-[features]
-default = ["kerberos"]
-# Windows integrated auth. Links MIT Kerberos (libkrb5) and runs bindgen
-# (libclang) at build time; build with --no-default-features to drop both.
-kerberos = ["tiberius/integrated-auth-gssapi"]
-
 [dependencies]
 tablepro-core = { path = "../../core" }
 async-trait.workspace = true

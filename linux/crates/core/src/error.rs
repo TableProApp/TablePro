@@ -23,12 +23,6 @@ pub enum DriverError {
     #[error("driver internal error: {0}")]
     Internal(String),
 
-    /// The driver understood the request but this binary cannot serve
-    /// it, typically because an optional cargo feature was compiled
-    /// out. Distinct from `Internal`: nothing went wrong at runtime.
-    #[error("not supported by this build: {0}")]
-    Unsupported(String),
-
     /// Returned by `Connection::execute_in_transaction` when one of the
     /// statements failed; the index identifies which statement (so the
     /// UI can highlight the offending row) and `source` carries the

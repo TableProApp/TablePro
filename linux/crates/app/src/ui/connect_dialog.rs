@@ -45,8 +45,7 @@ struct DriverEntry {
 const KERBEROS_ROW: u32 = 1;
 
 /// What the selected driver allows, kept beside the widgets so the form
-/// never has to read its own visibility flags back to work out what the
-/// user picked.
+/// never reads its own visibility flags back to work out the mode.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 struct AuthFormState {
     file_based: bool,
@@ -55,9 +54,9 @@ struct AuthFormState {
 }
 
 impl AuthFormState {
-    /// Kerberos only applies to a network driver that supports it. A
-    /// stale selection left over from another driver resolves back to
-    /// password auth instead of leaking across the switch.
+    /// A stale Kerberos selection left over from another driver
+    /// resolves back to password auth instead of leaking across the
+    /// switch.
     fn mode(self) -> AuthMode {
         if !self.file_based && self.supports_integrated && self.kerberos_selected {
             AuthMode::Kerberos
@@ -227,9 +226,6 @@ impl Component for ConnectDialog {
         connection_group.add(&port);
         connection_group.add(&database);
 
-        // MSSQL supports Windows integrated (Kerberos) auth alongside SQL
-        // logins; the selector is revealed only for integrated-capable
-        // drivers (see AuthFormState::shows_method).
         let auth_password_label = crate::tr!("Password");
         let auth_kerberos_label = crate::tr!("Windows (Kerberos)");
         let auth_mode_model = gtk::StringList::new(&[auth_password_label.as_str(), auth_kerberos_label.as_str()]);
@@ -324,8 +320,6 @@ impl Component for ConnectDialog {
                     self.port.set_value(driver.default_port() as f64);
                 }
                 root.set_title(&crate::tr!("Connect to {name}").replace("{name}", &entry.display_name));
-                // Which fields are required just changed, so the submit
-                // state has to be recomputed against the new driver.
                 self.refresh_validity();
             }
 
@@ -544,31 +538,23 @@ impl ConnectDialog {
         self.password.set_visible(credentials);
     }
 
-    fn selected_auth_mode(&self) -> AuthMode {
-        self.form.mode()
-    }
-
     fn collect_options(&self) -> ConnectOptions {
-        // Kerberos ignores the credential rows, and whatever the user
-        // typed before switching modes must not reach the driver or the
-        // keyring, so it never leaves the widget.
-        let kerberos = self.selected_auth_mode() == AuthMode::Kerberos;
+        // Kerberos ignores the credential rows, so whatever the user
+        // typed before switching modes never reaches the driver or the
+        // keyring.
+        let (username, password) = if self.form.shows_credentials() {
+            (self.username.text().to_string(), self.password.text().to_string())
+        } else {
+            (String::new(), String::new())
+        };
         ConnectOptions {
             host: self.host.text().to_string(),
             port: self.port.value() as u16,
             database: self.database.text().to_string(),
-            username: if kerberos {
-                String::new()
-            } else {
-                self.username.text().to_string()
-            },
-            password: if kerberos {
-                SecretString::new(String::new().into())
-            } else {
-                SecretString::new(self.password.text().to_string().into())
-            },
+            username,
+            password: SecretString::new(password.into()),
             use_tls: self.use_tls.is_active(),
-            auth_mode: self.selected_auth_mode(),
+            auth_mode: self.form.mode(),
             service_endpoint: None,
         }
     }
@@ -720,57 +706,59 @@ fn saved_ssh_matches(saved: &Option<SavedSshConfig>, current: Option<&SshInputs>
 mod tests {
     use super::*;
 
-    fn mssql(kerberos_selected: bool) -> AuthFormState {
-        AuthFormState {
-            file_based: false,
-            supports_integrated: true,
-            kerberos_selected,
+    /// (state, mode, shows_method, shows_credentials)
+    #[test]
+    fn auth_form_state_drives_mode_and_visibility() {
+        let cases = [
+            (AuthFormState::default(), AuthMode::Password, false, true),
+            // MSSQL: offers the selector, password until Kerberos is picked.
+            (
+                AuthFormState {
+                    file_based: false,
+                    supports_integrated: true,
+                    kerberos_selected: false,
+                },
+                AuthMode::Password,
+                true,
+                true,
+            ),
+            (
+                AuthFormState {
+                    file_based: false,
+                    supports_integrated: true,
+                    kerberos_selected: true,
+                },
+                AuthMode::Kerberos,
+                true,
+                false,
+            ),
+            // Postgres: a stale Kerberos selection does not survive the switch.
+            (
+                AuthFormState {
+                    file_based: false,
+                    supports_integrated: false,
+                    kerberos_selected: true,
+                },
+                AuthMode::Password,
+                false,
+                true,
+            ),
+            // SQLite: no credentials at all.
+            (
+                AuthFormState {
+                    file_based: true,
+                    supports_integrated: true,
+                    kerberos_selected: true,
+                },
+                AuthMode::Password,
+                false,
+                false,
+            ),
+        ];
+        for (state, mode, method, credentials) in cases {
+            assert_eq!(state.mode(), mode, "{state:?}");
+            assert_eq!(state.shows_method(), method, "{state:?}");
+            assert_eq!(state.shows_credentials(), credentials, "{state:?}");
         }
-    }
-
-    #[test]
-    fn password_is_the_default_everywhere() {
-        let state = AuthFormState::default();
-        assert_eq!(state.mode(), AuthMode::Password);
-        assert!(!state.shows_method());
-        assert!(state.shows_credentials());
-    }
-
-    #[test]
-    fn integrated_driver_offers_the_method_selector() {
-        assert!(mssql(false).shows_method());
-        assert_eq!(mssql(false).mode(), AuthMode::Password);
-        assert!(mssql(false).shows_credentials());
-    }
-
-    #[test]
-    fn kerberos_hides_the_credential_rows() {
-        assert_eq!(mssql(true).mode(), AuthMode::Kerberos);
-        assert!(!mssql(true).shows_credentials());
-        assert!(mssql(true).shows_method());
-    }
-
-    #[test]
-    fn a_stale_kerberos_selection_does_not_survive_a_driver_switch() {
-        let postgres = AuthFormState {
-            file_based: false,
-            supports_integrated: false,
-            kerberos_selected: true,
-        };
-        assert_eq!(postgres.mode(), AuthMode::Password);
-        assert!(!postgres.shows_method());
-        assert!(postgres.shows_credentials());
-    }
-
-    #[test]
-    fn file_based_drivers_ask_for_no_credentials() {
-        let sqlite = AuthFormState {
-            file_based: true,
-            supports_integrated: true,
-            kerberos_selected: true,
-        };
-        assert_eq!(sqlite.mode(), AuthMode::Password);
-        assert!(!sqlite.shows_method());
-        assert!(!sqlite.shows_credentials());
     }
 }

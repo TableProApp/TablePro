@@ -1,9 +1,7 @@
 use std::sync::Arc;
 
 use secrecy::SecretString;
-use tablepro_core::{
-    AuthMode, ConnectOptions, Connection, DriverRegistry, ReadOnlyConnection, ServiceEndpoint, TableInfo,
-};
+use tablepro_core::{AuthMode, ConnectOptions, Connection, DriverRegistry, ReadOnlyConnection, TableInfo};
 use tablepro_ssh::{SshConfig, SshTunnel};
 use tablepro_storage::{SavedConnection, SavedSshAuth, load_password, load_ssh_passphrase, load_ssh_password};
 
@@ -71,13 +69,9 @@ pub async fn establish(
             .await
             .map_err(|e| format!("ssh: {e}"))?;
         // The socket now points at the local forward, so remember what
-        // the service is actually called. Kerberos builds its SPN from
-        // it; without this a tunnelled connection would ask the KDC for
-        // MSSQLSvc/127.0.0.1:<ephemeral port>.
-        opts.service_endpoint = Some(ServiceEndpoint {
-            host: remote_host,
-            port: remote_port,
-        });
+        // the service is actually called; without this Kerberos would
+        // ask the KDC for MSSQLSvc/127.0.0.1:<ephemeral port>.
+        opts.service_endpoint = Some((remote_host, remote_port));
         opts.host = tun.local_host().to_string();
         opts.port = tun.local_port();
         Some(tun)
