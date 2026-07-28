@@ -142,4 +142,6 @@ Paste a `scheme+ssh://` URL to create a connection with SSH pre-filled. The `+ss
 
 **Firewall prompt on connect**: TablePro listens on a local port between 60000 and 65000 for the tunnel. Allow it.
 
+**SSH fails right away against a server on your own network**: macOS 15 and later gate outbound connections to local network addresses behind a Local Network permission, and a denied app fails fast with "no route to host". Check TablePro under System Settings > Privacy & Security > Local Network. Servers reached over the internet, and anything on `127.0.0.1`, are not affected.
+
 **SSH itself fails**: test the same host, user, and key in Terminal with `ssh -v user@server`. If that fails, the problem is server-side, not TablePro.
