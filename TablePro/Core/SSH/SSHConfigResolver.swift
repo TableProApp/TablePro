@@ -350,8 +350,11 @@ private struct ResolutionState {
             if canonicalizeFallbackLocal == nil { canonicalizeFallbackLocal = value }
         case .canonicalizeMaxDots(let value):
             if canonicalizeMaxDots == nil { canonicalizeMaxDots = value }
-        case .unrecognized:
-            break
+        case .unrecognized(let key, _):
+            guard SSHUnsupportedDirective.changesRouting(key: key) else { break }
+            SSHConfigResolver.logger.warning(
+                "Ignoring \(key) from ssh_config: TablePro connects to the host directly, so this connection may not reach the same server ssh would"
+            )
         }
     }
 
