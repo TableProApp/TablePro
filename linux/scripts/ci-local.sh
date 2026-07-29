@@ -19,7 +19,9 @@ cargo clippy --all-targets -- -D warnings
 echo "==> cargo build --workspace"
 cargo build --workspace
 
-echo "==> cargo test --workspace --lib"
-cargo test --workspace --lib
+echo "==> cargo test --workspace --lib --bins"
+# --bins matters: tablepro-app has no lib.rs, so --lib alone skips its tests.
+cargo test --workspace --lib --bins
 
 echo "All fast checks passed."
+echo "Driver integration tests are a separate CI job; see docs/testing.md to run them locally."
