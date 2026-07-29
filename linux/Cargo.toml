@@ -5,11 +5,11 @@ members = [
     "crates/core",
     "crates/ssh",
     "crates/storage",
+    "crates/drivers/clickhouse",
     "crates/drivers/mssql",
     "crates/drivers/mysql",
     "crates/drivers/postgres",
     "crates/drivers/sqlite",
-    "crates/drivers/clickhouse",
 ]
 
 [workspace.package]
@@ -30,6 +30,7 @@ russh = "0.55"
 secrecy = { version = "0.10", features = ["serde"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+clickhouse = { version = "0.15", default-features = false, features = ["rustls-tls"] }
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-rustls", "chrono", "rust_decimal", "uuid", "json"] }
 tiberius = { version = "0.12", default-features = false, features = ["tds73", "rustls", "chrono", "rust_decimal"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }

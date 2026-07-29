@@ -13,7 +13,7 @@ path = "src/lib.rs"
 tablepro-core = { path = "../../core" }
 async-trait.workspace = true
 chrono.workspace = true
-clickhouse = { version = "0.15", default-features = false, features = ["rustls-tls"] }
+clickhouse.workspace = true
 rust_decimal.workspace = true
 secrecy.workspace = true
 serde.workspace = true
@@ -24,5 +24,5 @@ uuid.workspace = true
 [dev-dependencies]
 chrono.workspace = true
 secrecy.workspace = true
-testcontainers = { version = "0.27", features = ["http_wait_plain"] }
+testcontainers = { workspace = true, features = ["http_wait_plain"] }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

@@ -14,7 +14,7 @@ Phase 0 — foundation. The technology stack was validated by a 2-day spike in A
 | GUI toolkit | GTK4 4.14+ + libadwaita 1.5+ |
 | App architecture | [Relm4](https://relm4.org) — Elm-style components on gtk4-rs |
 | Async | tokio (DB drivers) bridged to glib main loop (UI) |
-| DB drivers | sqlx (PG / MySQL / SQLite), fred (Redis), official mongodb crate, clickhouse-arrow, etc. |
+| DB drivers | sqlx (PG / MySQL / SQLite), tiberius (MSSQL), official clickhouse and mongodb crates, fred (Redis), etc. |
 | Persistence | libsecret (passwords), gio::Settings (prefs), JSON files (connection metadata) |
 | Distribution | Flathub primary, .deb / .rpm / AppImage secondary |
 

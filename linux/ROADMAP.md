@@ -232,7 +232,7 @@ This is where the project sits today. The app is interesting but **not productio
 
 ### Additional drivers (parallelizable, ~1 week each)
 
-- [ ] ClickHouse via `clickhouse-arrow`
+- [x] ClickHouse via the official `clickhouse` crate
 - [x] MSSQL via `tiberius`
 - [ ] Oracle via `oracle` crate (ODPI-C)
 - [ ] Redis via `fred`
