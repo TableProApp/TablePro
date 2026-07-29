@@ -32,7 +32,7 @@ use uuid::Uuid;
 
 use tablepro_core::{
     ColumnInfo, Value,
-    sql_dialect::{BuildSqlError, build_full_row_update, build_insert_from_draft, placeholder_for, quote_ident},
+    sql_dialect::{BuildSqlError, build_insert_from_draft, build_update, placeholder_for, quote_ident},
 };
 
 const UNDO_LIMIT: usize = 50;
@@ -582,12 +582,10 @@ impl TabChangeTracker {
         }
         for (row_key, mut edits) in per_row {
             edits.sort_by_key(|e| e.0);
-            // Build a synthetic original_row + new_row pair so we can
-            // reuse `build_full_row_update`. For non-edited columns we
-            // pass `Value::Null` for the new value but the UPDATE only
-            // touches non-PK columns and we want it to leave un-edited
-            // columns alone — so pass `original_row` for them too.
-            // Easier: build the SQL directly here.
+            // `build_full_row_update` writes every non-PK column, which
+            // would clobber concurrent edits to columns this user never
+            // touched. Build the SET list from the tracked edits instead
+            // and render it through the shared dialect helper.
             let RowKey::Persisted(pk_keyvalues) = &row_key else {
                 continue; // Drafts don't go through UPDATE
             };
@@ -642,15 +640,12 @@ impl TabChangeTracker {
                 Some(s) => format!("{}.{}", quote_ident(driver_id, s), quote_ident(driver_id, table)),
                 None => quote_ident(driver_id, table),
             };
-            let sql = format!(
-                "UPDATE {} SET {} WHERE {}",
-                qualified,
-                set_clauses.join(", "),
-                where_clauses.join(" AND ")
+            let sql = build_update(
+                driver_id,
+                &qualified,
+                &set_clauses.join(", "),
+                &where_clauses.join(" AND "),
             );
-            // Suppress unused-variable warning while keeping the same
-            // build pattern as build_full_row_update.
-            let _ = build_full_row_update;
             out.push((sql, params));
             sources.push(StatementSource::Update {
                 row_key: row_key.clone(),

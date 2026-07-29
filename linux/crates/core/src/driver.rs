@@ -24,5 +24,15 @@ pub trait DatabaseDriver: Send + Sync {
         false
     }
 
+    /// Whether `ExecResult::rows_affected` carries a real count for
+    /// UPDATE and DELETE. The inline-edit Save path reads a zero count
+    /// as an optimistic-concurrency conflict, so a driver that cannot
+    /// produce one must say so or every successful save reports a lost
+    /// update. ClickHouse applies both as asynchronous mutations and
+    /// returns no row count for either.
+    fn reports_rows_affected(&self) -> bool {
+        true
+    }
+
     async fn connect(&self, opts: ConnectOptions) -> Result<Box<dyn Connection>, DriverError>;
 }

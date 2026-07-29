@@ -96,3 +96,5 @@ jobs:
         run: cargo test --test integration -p tablepro-driver-postgres -- --include-ignored --test-threads=1
       - name: MySQL integration tests
         run: cargo test --test integration -p tablepro-driver-mysql -- --include-ignored --test-threads=1
+      - name: ClickHouse integration tests
+        run: cargo test --test integration -p tablepro-driver-clickhouse -- --include-ignored --test-threads=1

@@ -79,6 +79,7 @@ systemctl --user enable --now podman.socket
 export DOCKER_HOST=unix:///run/user/$(id -u)/podman/podman.sock
 cargo test --test integration -p tablepro-driver-postgres -- --include-ignored --test-threads=1
 cargo test --test integration -p tablepro-driver-mysql -- --include-ignored --test-threads=1
+cargo test --test integration -p tablepro-driver-clickhouse -- --include-ignored --test-threads=1
 ```
 
 Do not bother with `TESTCONTAINERS_RYUK_DISABLED`. That is a testcontainers-java / go setting; the Rust crate has no Ryuk reaper and stops each container when its handle drops.
@@ -138,7 +139,7 @@ What exists today is the driver-level smoke described above: `scripts/smoke-post
 GitHub Actions (`.github/workflows/build-linux.yml`), Ubuntu runner, two jobs:
 
 1. **Fast checks**: `cargo fmt --all -- --check`, `cargo clippy --all-targets -- -D warnings`, `cargo build --workspace`, `cargo test --workspace --lib`. Runs in an `ubuntu:25.10` container, which ships the glib version libadwaita 1.6 needs. `scripts/ci-local.sh` runs the same steps, but with `--lib --bins` so the app crate's tests actually run. The workflow should pick up `--bins` too.
-2. **Driver integration tests**: runs after fast checks pass. Boots Docker on the host runner and runs the Postgres and MySQL suites with `--include-ignored`. The MSSQL suite exists but is not wired in yet.
+2. **Driver integration tests**: runs after fast checks pass. Boots Docker on the host runner and runs the Postgres, MySQL, and ClickHouse suites with `--include-ignored`. The MSSQL suite exists but is not wired in yet.
 
 PRs only merge when both jobs are green.
 

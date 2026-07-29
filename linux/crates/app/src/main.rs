@@ -70,6 +70,7 @@ fn main() {
 
 fn build_registry() -> DriverRegistry {
     let mut r = DriverRegistry::new();
+    r.register(Arc::new(drivers_clickhouse::ClickhouseDriver));
     r.register(Arc::new(drivers_mssql::MssqlDriver));
     r.register(Arc::new(drivers_mysql::MysqlDriver));
     r.register(Arc::new(drivers_postgres::PgDriver));
