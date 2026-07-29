@@ -44,6 +44,11 @@
         {
             "name": "tablepro-app",
             "buildsystem": "simple",
+            "build-options": {
+                "build-args": [
+                    "--share=network"
+                ]
+            },
             "build-commands": [
                 "cargo build --release -p tablepro-app --locked",
                 "install -Dm755 target/release/tablepro-app /app/bin/tablepro-app",

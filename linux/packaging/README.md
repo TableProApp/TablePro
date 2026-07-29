@@ -10,15 +10,14 @@ Manifest: [`../flatpak/com.tablepro.linux.json`](../flatpak/com.tablepro.linux.j
 ./scripts/build-flatpak.sh
 ```
 
-CI: [`.github/workflows/flatpak-linux.yml`](../../.github/workflows/flatpak-linux.yml) builds the manifest on every Linux-path PR.
-
-For Flathub offline sources:
+CI: [`.github/workflows/flatpak-linux.yml`](../../.github/workflows/flatpak-linux.yml) builds the manifest on every Linux-path PR. The app module uses `--share=network` so Cargo can fetch crates during CI. Flathub forbids that, so generate offline sources before a Flathub submission:
 
 ```bash
 git clone https://github.com/flatpak/flatpak-builder-tools
 ./scripts/generate-cargo-sources.sh ./flatpak-builder-tools
 ```
 
+Then wire `flatpak/generated-sources.json` into the module sources and set `CARGO_NET_OFFLINE=true` (see the script's output).
 ## Debian / Ubuntu (`.deb`)
 
 Debian source packaging lives in [`debian/`](debian/). For a quick local binary package without a full source upload:
