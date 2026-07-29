@@ -21,7 +21,7 @@ struct SwitchDatabaseTests {
     private func withConnectedCoordinator(
         _ body: (MainContentCoordinator, QueryTabManager) async throws -> Void
     ) async throws {
-        let connection = TestFixtures.makeConnection(type: .mysql, database: "db_a")
+        let connection = TestFixtures.makeConnection(database: "db_a", type: .mysql)
         let driver = MockDatabaseDriver(connection: connection)
         DatabaseManager.shared.injectSession(
             ConnectionSession(connection: connection, driver: driver),

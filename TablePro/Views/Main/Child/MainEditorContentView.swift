@@ -538,6 +538,7 @@ struct MainEditorContentView: View {
                     .frame(maxHeight: .infinity)
                 }
             case .json:
+                resultTabBarSection(tab: tab)
                 ResultsJsonView(
                     tableRows: resolvedTableRows(for: tab),
                     selectedRowIndices: selectionState.indices
@@ -547,10 +548,7 @@ struct MainEditorContentView: View {
                     ExplainResultView(text: explainText, executionTime: tab.display.explainExecutionTime, plan: tab.display.explainPlan)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
-                    if showsResultTabBar(for: tab) {
-                        resultTabBar(tab: tab)
-                        Divider()
-                    }
+                    resultTabBarSection(tab: tab)
 
                     let resolvedRows = resolvedTableRows(for: tab)
                     if let rs = tab.display.activeResultSet, rs.resultColumns.isEmpty,
@@ -611,9 +609,12 @@ struct MainEditorContentView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private func showsResultTabBar(for tab: QueryTab) -> Bool {
-        if tab.display.resultSets.count > 1 { return true }
-        return tab.tabType == .query && !tab.display.resultSets.isEmpty
+    @ViewBuilder
+    private func resultTabBarSection(tab: QueryTab) -> some View {
+        if ResultTabBarPolicy.showsTabBar(tabType: tab.tabType, display: tab.display) {
+            resultTabBar(tab: tab)
+            Divider()
+        }
     }
 
     private func resultTabBar(tab: QueryTab) -> some View {
@@ -628,7 +629,7 @@ struct MainEditorContentView: View {
             onClose: { id in
                 coordinator.closeResultSet(id: id)
             },
-            onPin: { id in
+            onTogglePin: { id in
                 coordinator.togglePinResultSet(id: id)
             }
         )

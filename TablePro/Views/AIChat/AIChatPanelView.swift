@@ -124,7 +124,13 @@ struct AIChatPanelView: View {
                             onRetry: shouldShowRetry(for: message) ? { viewModel.retry() } : nil,
                             onRegenerate: shouldShowRegenerate(for: message) ? { viewModel.regenerate() } : nil,
                             onEdit: message.role == .user && !viewModel.isStreaming
-                                ? { viewModel.editMessage(message) } : nil
+                                ? { viewModel.editMessage(message) } : nil,
+                            onContinue: shouldShowContinue(for: message)
+                                ? { viewModel.continueToolLoop() } : nil,
+                            onAdjustToolLimit: shouldShowContinue(for: message)
+                                ? { WindowOpener.shared.openSettings(tab: .ai) } : nil,
+                            pausedToolCallCount: shouldShowContinue(for: message)
+                                ? viewModel.toolLimitPauseCount : nil
                         )
                         .padding(.vertical, 4)
                         .id(message.id)
@@ -620,6 +626,12 @@ struct AIChatPanelView: View {
             && message.id == viewModel.messages.last?.id
             && viewModel.lastMessageFailed
             && viewModel.canRetryLastFailure
+    }
+
+    private func shouldShowContinue(for message: ChatTurn) -> Bool {
+        message.role == .assistant
+            && viewModel.isPausedAtToolLimit
+            && message.id == viewModel.messages.last(where: { $0.role == .assistant })?.id
     }
 
     private func shouldShowRegenerate(for message: ChatTurn) -> Bool {

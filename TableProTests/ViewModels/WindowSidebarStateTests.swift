@@ -73,6 +73,63 @@ struct WindowSidebarStateTests {
         #expect(restored.expandedTreeDatabases.isEmpty)
     }
 
+    @Test("Expanded partitioned tables persist and restore")
+    func persistsExpandedPartitionedTables() throws {
+        let defaults = try makeDefaults()
+        let connectionId = UUID()
+        let orders = DatabaseTableKey(database: "shop", schema: "public", table: "orders")
+
+        let state = WindowSidebarState(connectionId: connectionId, defaults: defaults)
+        state.expandedTreeTables.insert(orders)
+
+        let restored = WindowSidebarState(connectionId: connectionId, defaults: defaults)
+        #expect(restored.expandedTreeTables == [orders])
+    }
+
+    @Test("A schema-less table key stays distinct from a schema-qualified one")
+    func partitionedTableKeysDistinguishSchema() throws {
+        let defaults = try makeDefaults()
+        let connectionId = UUID()
+        let qualified = DatabaseTableKey(database: "shop", schema: "public", table: "orders")
+        let unqualified = DatabaseTableKey(database: "shop", schema: nil, table: "orders")
+
+        let state = WindowSidebarState(connectionId: connectionId, defaults: defaults)
+        state.expandedTreeTables = [qualified, unqualified]
+
+        let restored = WindowSidebarState(connectionId: connectionId, defaults: defaults)
+        #expect(restored.expandedTreeTables.count == 2)
+        #expect(restored.expandedTreeTables.contains(qualified))
+        #expect(restored.expandedTreeTables.contains(unqualified))
+    }
+
+    @Test("Expansion saved before partitions shipped still decodes")
+    func decodesExpansionWrittenBeforePartitionSupport() throws {
+        let defaults = try makeDefaults()
+        let connectionId = UUID()
+        let legacy = """
+            {"schemas":["public"],"databases":["shop"],"databaseSchemas":[{"database":"shop","schema":"public"}]}
+            """
+        defaults.set(Data(legacy.utf8), forKey: "com.TablePro.sidebar.treeExpansion.\(connectionId.uuidString)")
+
+        let restored = WindowSidebarState(connectionId: connectionId, defaults: defaults)
+        #expect(restored.expandedTreeDatabases == ["shop"])
+        #expect(restored.expandedTreeSchemas == ["public"])
+        #expect(restored.expandedTreeTables.isEmpty)
+    }
+
+    @Test("Collapsing every partitioned table clears storage alongside the rest")
+    func clearingPartitionedTablesRemovesStorage() throws {
+        let defaults = try makeDefaults()
+        let connectionId = UUID()
+
+        let state = WindowSidebarState(connectionId: connectionId, defaults: defaults)
+        state.expandedTreeTables.insert(DatabaseTableKey(database: "shop", schema: "public", table: "orders"))
+        state.expandedTreeTables.removeAll()
+
+        let restored = WindowSidebarState(connectionId: connectionId, defaults: defaults)
+        #expect(restored.expandedTreeTables.isEmpty)
+    }
+
     @Test("A window without a connection does not persist")
     func nilConnectionDoesNotPersist() throws {
         let defaults = try makeDefaults()

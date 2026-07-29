@@ -116,6 +116,15 @@ API keys are stored in the macOS Keychain; removing a provider deletes its key.
 | **Enable inline suggestions while typing** | Off | Ghost-text SQL completions. Requires an active provider. Tab accepts, Escape dismisses |
 | **Debounce** | 500 ms | Pause after typing before requesting a suggestion, 100 to 3,000 ms in 50 ms steps |
 
+### Agent
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| **Limit tool calls per reply** | On | Turn off to let the agent keep calling tools until it finishes |
+| **Tool call limit** | 25 | Tool calls the AI may make in one reply before pausing, 5 to 200 in steps of 5 |
+
+Reaching the limit pauses the reply instead of failing it. Everything the AI found so far stays in the chat, and **Continue** picks up where it stopped with a fresh budget. GitHub Copilot manages its own tool loop, so this setting does not apply to it.
+
 ### Context
 
 | Setting | Default | Description |

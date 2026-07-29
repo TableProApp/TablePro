@@ -17,6 +17,7 @@ final class AIChatViewModel {
         case loading
         case streaming(assistantID: UUID)
         case awaitingApproval
+        case pausedAtToolLimit(count: Int)
         case failed(AIProviderError?)
     }
 
@@ -51,7 +52,7 @@ final class AIChatViewModel {
         switch streamingState {
         case .loading, .streaming:
             return true
-        case .idle, .awaitingApproval, .failed:
+        case .idle, .awaitingApproval, .pausedAtToolLimit, .failed:
             return false
         }
     }
@@ -60,6 +61,13 @@ final class AIChatViewModel {
         if case .failed = streamingState { return true }
         return false
     }
+
+    var toolLimitPauseCount: Int? {
+        if case .pausedAtToolLimit(let count) = streamingState { return count }
+        return nil
+    }
+
+    var isPausedAtToolLimit: Bool { toolLimitPauseCount != nil }
 
     var lastError: AIProviderError? {
         if case .failed(let error) = streamingState { return error }

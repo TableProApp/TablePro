@@ -115,6 +115,9 @@ internal final class QuickSwitcherViewModel {
             case .systemTable:
                 kind = .systemTable
                 subtitle = String(localized: "System")
+            case .partitionedTable:
+                kind = .table
+                subtitle = String(localized: "Partitioned Table")
             }
             items.append(QuickSwitcherItem(
                 id: "table_\(table.name)_\(table.type.rawValue)",

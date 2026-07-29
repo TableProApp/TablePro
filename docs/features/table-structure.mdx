@@ -19,6 +19,7 @@ Tabs: **Columns**, **Indexes**, **Foreign Keys**, **Triggers**, **DDL**, and **P
 Columns are edited inline in the grid:
 
 - **Nullable**, **Primary Key**, and **Auto Inc** are YES/NO dropdowns.
+- Setting **Primary Key** to YES sets **Nullable** to NO. A primary key column cannot hold NULL, so Nullable stays NO until you turn the primary key off.
 - **Type** opens a picker with the database's types grouped by category. Search to filter, or type a parametric value such as `VARCHAR(255)` or `DECIMAL(10,2)` and press Return to use it as written.
 - **Charset** and **Collation** columns appear for MySQL and MariaDB.
 

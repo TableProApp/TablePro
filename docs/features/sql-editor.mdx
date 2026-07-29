@@ -78,8 +78,8 @@ When the cap trims a result, the status bar shows **truncated** with a **Fetch A
 
 Results appear in the data grid below the editor with row count and execution time. Large result sets are paginated.
 
-- **Result tabs**: every result gets a tab above the grid; multi-statement runs produce one tab per statement. Switch with `Cmd+Option+[` / `Cmd+Option+]`, close with `Cmd+Shift+W`. Hover a tab to see its query.
-- **Pinning**: right-click a tab and choose **Pin Result**, or press `Cmd+Option+P`. The next query lands in a new tab instead of overwriting the pinned one. Pinned tabs cannot be closed or cleared until unpinned.
+- **Result tabs**: every result gets a tab above the grid; multi-statement runs produce one tab per statement. Tabs show in JSON view too. Switch with `Cmd+Option+[` / `Cmd+Option+]`, close with `Cmd+Shift+W`. Hover a tab to see its query.
+- **Pinning**: click the pin on the right of a result tab, press `Cmd+Option+P`, or right-click the tab and choose **Pin Result**. The next query lands in a new tab instead of overwriting the pinned one. Pinned results move to the front of the strip and cannot be closed or cleared until unpinned.
 - **Panel**: toggle the results panel with `Cmd+Option+R` or the toolbar button; it auto-expands when a query executes. The toolbar trash button clears the query and results together; to keep the query, right-click the results and choose **Clear Results**.
 - **Errors**: a red banner above the results shows the database error message with a **Fix with AI** button.
 - **Non-SELECT statements** (INSERT, UPDATE, DELETE, DDL) show a success view with affected row count and execution time.

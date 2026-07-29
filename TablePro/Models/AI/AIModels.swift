@@ -227,11 +227,15 @@ struct AISettings: Codable, Equatable, Sendable {
     var includeCurrentQuery: Bool
     var includeQueryResults: Bool
     var maxSchemaTables: Int
+    var maxToolRoundtrips: Int
+    var maxToolRoundtripsEnabled: Bool
     var defaultConnectionPolicy: AIConnectionPolicy
     var chatMode: AIChatMode
 
     static let defaultInlineSuggestionDebounceMs: Int = 500
     static let inlineSuggestionDebounceRange: ClosedRange<Int> = 100...3_000
+    static let defaultMaxToolRoundtrips: Int = 25
+    static let maxToolRoundtripsRange: ClosedRange<Int> = 5...200
 
     static let `default` = AISettings(
         enabled: true,
@@ -243,6 +247,8 @@ struct AISettings: Codable, Equatable, Sendable {
         includeCurrentQuery: true,
         includeQueryResults: false,
         maxSchemaTables: 20,
+        maxToolRoundtrips: AISettings.defaultMaxToolRoundtrips,
+        maxToolRoundtripsEnabled: true,
         defaultConnectionPolicy: .askEachTime,
         chatMode: .ask
     )
@@ -257,6 +263,8 @@ struct AISettings: Codable, Equatable, Sendable {
         includeCurrentQuery: Bool = true,
         includeQueryResults: Bool = false,
         maxSchemaTables: Int = 20,
+        maxToolRoundtrips: Int = AISettings.defaultMaxToolRoundtrips,
+        maxToolRoundtripsEnabled: Bool = true,
         defaultConnectionPolicy: AIConnectionPolicy = .askEachTime,
         chatMode: AIChatMode = .ask
     ) {
@@ -269,6 +277,8 @@ struct AISettings: Codable, Equatable, Sendable {
         self.includeCurrentQuery = includeCurrentQuery
         self.includeQueryResults = includeQueryResults
         self.maxSchemaTables = maxSchemaTables
+        self.maxToolRoundtrips = maxToolRoundtrips
+        self.maxToolRoundtripsEnabled = maxToolRoundtripsEnabled
         self.defaultConnectionPolicy = defaultConnectionPolicy
         self.chatMode = chatMode
     }
@@ -286,6 +296,12 @@ struct AISettings: Codable, Equatable, Sendable {
         includeCurrentQuery = try container.decodeIfPresent(Bool.self, forKey: .includeCurrentQuery) ?? true
         includeQueryResults = try container.decodeIfPresent(Bool.self, forKey: .includeQueryResults) ?? false
         maxSchemaTables = try container.decodeIfPresent(Int.self, forKey: .maxSchemaTables) ?? 20
+        maxToolRoundtrips = try container.decodeIfPresent(
+            Int.self, forKey: .maxToolRoundtrips
+        ) ?? AISettings.defaultMaxToolRoundtrips
+        maxToolRoundtripsEnabled = try container.decodeIfPresent(
+            Bool.self, forKey: .maxToolRoundtripsEnabled
+        ) ?? true
         defaultConnectionPolicy = try container.decodeIfPresent(
             AIConnectionPolicy.self, forKey: .defaultConnectionPolicy
         ) ?? .askEachTime
@@ -307,6 +323,14 @@ struct AISettings: Codable, Equatable, Sendable {
         min(
             max(inlineSuggestionDebounceMs, AISettings.inlineSuggestionDebounceRange.lowerBound),
             AISettings.inlineSuggestionDebounceRange.upperBound
+        )
+    }
+
+    var effectiveMaxToolRoundtrips: Int? {
+        guard maxToolRoundtripsEnabled else { return nil }
+        return min(
+            max(maxToolRoundtrips, AISettings.maxToolRoundtripsRange.lowerBound),
+            AISettings.maxToolRoundtripsRange.upperBound
         )
     }
 }

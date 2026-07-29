@@ -181,11 +181,19 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
         return pluginTables.map { mapPluginTable($0, schemaFallback: resolvedSchema) }
     }
 
+    func fetchPartitions(table: String, schema: String?) async throws -> [TableInfo] {
+        let resolvedSchema = schema ?? pluginDriver.currentSchema
+        let pluginTables = try await pluginDriver.fetchPartitions(table: table, schema: resolvedSchema)
+        return pluginTables.map { mapPluginTable($0, schemaFallback: resolvedSchema) }
+    }
+
     private func mapPluginTable(_ table: PluginTableInfo, schemaFallback: String?) -> TableInfo {
         let tableType: TableInfo.TableType
         switch table.type.lowercased() {
         case "table", "base table", "prefix":
             tableType = .table
+        case "partitioned table", "partitioned_table":
+            tableType = .partitionedTable
         case "view":
             tableType = .view
         case "materialized view", "materialized_view":

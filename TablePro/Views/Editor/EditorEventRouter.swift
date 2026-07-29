@@ -2,8 +2,8 @@
 //  EditorEventRouter.swift
 //  TablePro
 //
-//  Shared event router that installs one set of process-global monitors
-//  and dispatches to the correct editor by window, replacing per-editor monitors.
+//  Registry of the live SQL editors, used to dispatch window-scoped commands
+//  to the editor in the key window.
 //
 
 @preconcurrency import AppKit
@@ -21,7 +21,6 @@ internal final class EditorEventRouter {
     }
 
     private var editors: [ObjectIdentifier: EditorRef] = [:]
-    private var rightClickMonitor: Any?
 
     private init() {}
 
@@ -30,10 +29,6 @@ internal final class EditorEventRouter {
     internal func register(_ coordinator: SQLEditorCoordinator, textView: TextView) {
         let key = ObjectIdentifier(coordinator)
         editors[key] = EditorRef(coordinator: coordinator, textView: textView)
-
-        if rightClickMonitor == nil {
-            installMonitors()
-        }
 
         if textView.window != nil {
             installWindowObserver(for: key)
@@ -52,10 +47,6 @@ internal final class EditorEventRouter {
         }
         editors.removeValue(forKey: key)
         purgeStaleEntries()
-
-        if editors.isEmpty {
-            removeMonitors()
-        }
     }
 
     // MARK: - Per-Window Observer
@@ -136,36 +127,5 @@ internal final class EditorEventRouter {
 
     private func purgeStaleEntries() {
         editors = editors.filter { $0.value.coordinator != nil && $0.value.textView != nil }
-    }
-
-    // MARK: - Monitor Installation
-
-    private func installMonitors() {
-        rightClickMonitor = NSEvent.addLocalMonitorForEvents(matching: .rightMouseDown) { [weak self] nsEvent in
-            guard let self else { return nsEvent }
-            nonisolated(unsafe) let event = nsEvent
-            return MainActor.assumeIsolated {
-                self.handleRightClick(event)
-            }
-        }
-    }
-
-    private func removeMonitors() {
-        if let monitor = rightClickMonitor {
-            NSEvent.removeMonitor(monitor)
-            rightClickMonitor = nil
-        }
-    }
-
-    // MARK: - Event Handlers
-
-    private func handleRightClick(_ event: NSEvent) -> NSEvent? {
-        guard let (coordinator, textView) = editor(for: event.window) else { return event }
-
-        let locationInView = textView.convert(event.locationInWindow, from: nil)
-        guard textView.bounds.contains(locationInView) else { return event }
-
-        coordinator.showContextMenu(for: event, in: textView)
-        return nil
     }
 }

@@ -7,9 +7,28 @@ import Foundation
 
 internal enum ChannelOpenOutcome: Equatable {
     case opened(OpaquePointer)
-    case failed(Int32)
+    case failed(code: Int32, message: String)
     case timedOut
     case cancelled
+}
+
+internal extension ChannelOpenOutcome {
+    /// The SSH-layer reason this open failed, ready to surface in place of the database
+    /// driver's own error. A driver that dials the local port sees only an accepted socket
+    /// that went silent, so its error names a timeout and never the cause.
+    func tunnelError(destination: SSHForwardDestination, deadlineSeconds: Int) -> SSHTunnelError? {
+        switch self {
+        case .opened, .cancelled:
+            return nil
+        case .failed(_, let message):
+            if case .unixSocket(let path) = destination {
+                return .socketForwardingRefused(path: path, detail: message)
+            }
+            return .forwardRefused(destination: destination.logDescription, detail: message)
+        case .timedOut:
+            return .forwardTimedOut(destination: destination.logDescription, seconds: deadlineSeconds)
+        }
+    }
 }
 
 /// Drives a forwarding channel open to a decision within an app-owned deadline.
@@ -34,8 +53,8 @@ internal struct SSHForwardChannelOpenPump {
             switch opener.attemptOpen() {
             case .opened(let channel):
                 return .opened(channel)
-            case .failed(let errorCode):
-                return .failed(errorCode)
+            case .failed(let errorCode, let message):
+                return .failed(code: errorCode, message: message)
             case .wouldBlock(let directions):
                 guard pollForReadiness(directions) else { return .timedOut }
             }

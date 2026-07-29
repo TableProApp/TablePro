@@ -87,7 +87,9 @@ final class StructureRowProvider {
         }
     }
 
-    /// Custom dropdown options for specific columns (non-YES/NO dropdowns)
+    /// Explicit option lists for every dropdown column, keyed by column index.
+    /// Structure flags are schema properties, not data values, so they always offer
+    /// the same YES/NO pair the grid displays and never a NULL option.
     var customDropdownOptions: [Int: [String]] {
         switch tab {
         case .foreignKeys:
@@ -95,11 +97,20 @@ final class StructureRowProvider {
             return [5: actions, 6: actions]
         case .indexes:
             let types = EditableIndexDefinition.IndexType.allCases.map(\.rawValue)
-            return [2: types]
-        case .columns, .ddl, .parts, .triggers:
+            return [2: types, 3: Self.booleanOptions]
+        case .columns:
+            var result: [Int: [String]] = [:]
+            for field in [StructureColumnField.nullable, .primaryKey, .autoIncrement] {
+                guard let index = orderedColumnFields.firstIndex(of: field) else { continue }
+                result[index] = Self.booleanOptions
+            }
+            return result
+        case .ddl, .parts, .triggers:
             return [:]
         }
     }
+
+    static let booleanOptions = ["YES", "NO"]
 
     var typePickerColumns: Set<Int> {
         switch tab {
@@ -254,7 +265,8 @@ extension StructureRowProvider {
         return TableRows.from(
             queryRows: typedRows,
             columns: columns,
-            columnTypes: columnTypes
+            columnTypes: columnTypes,
+            columnNullable: Dictionary(uniqueKeysWithValues: columns.map { ($0, false) })
         )
     }
 }
