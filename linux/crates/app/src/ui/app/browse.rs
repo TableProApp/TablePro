@@ -9,8 +9,7 @@ use crate::services::database_service;
 use crate::ui::browse_tab::BrowseTabInput;
 
 use super::export::{
-    CsvOptions, CsvQuoteStyle, ExportFormat, LineEnding, render_csv, render_json, render_markdown,
-    render_sql_insert,
+    CsvOptions, CsvQuoteStyle, ExportFormat, LineEnding, render_csv, render_json, render_markdown, render_sql_insert,
 };
 use super::{App, AppMsg, OpenMode};
 
@@ -286,12 +285,7 @@ impl App {
         });
     }
 
-    fn present_csv_export_options(
-        &self,
-        result: QueryResult,
-        schema: Option<String>,
-        table: String,
-    ) {
+    fn present_csv_export_options(&self, result: QueryResult, schema: Option<String>, table: String) {
         let dialog = adw::Dialog::builder()
             .title(crate::tr!("Export as CSV"))
             .content_width(420)
@@ -300,16 +294,12 @@ impl App {
         let header = adw::HeaderBar::new();
         let cancel = gtk::Button::builder().label(crate::tr!("Cancel")).build();
         cancel.add_css_class("flat");
-        let export_btn = gtk::Button::builder()
-            .label(crate::tr!("Export…"))
-            .build();
+        let export_btn = gtk::Button::builder().label(crate::tr!("Export…")).build();
         export_btn.add_css_class("suggested-action");
         header.pack_start(&cancel);
         header.pack_end(&export_btn);
 
-        let group = adw::PreferencesGroup::builder()
-            .title(crate::tr!("Options"))
-            .build();
+        let group = adw::PreferencesGroup::builder().title(crate::tr!("Options")).build();
 
         let headers_row = adw::SwitchRow::builder()
             .title(crate::tr!("Include headers"))
@@ -476,9 +466,7 @@ impl App {
             let bytes = match format {
                 ExportFormat::Csv => render_csv(&result, csv_options),
                 ExportFormat::Json => render_json(&result),
-                ExportFormat::SqlInsert => {
-                    render_sql_insert(&result, &driver_id, schema_for_sql.as_deref(), &table)
-                }
+                ExportFormat::SqlInsert => render_sql_insert(&result, &driver_id, schema_for_sql.as_deref(), &table),
                 ExportFormat::Markdown => render_markdown(&result),
             };
             match std::fs::write(&path, bytes) {

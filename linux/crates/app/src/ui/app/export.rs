@@ -99,21 +99,12 @@ pub fn render_json(result: &QueryResult) -> Vec<u8> {
     serde_json::to_vec_pretty(&rows).unwrap_or_default()
 }
 
-pub fn render_sql_insert(
-    result: &QueryResult,
-    driver_id: &str,
-    schema: Option<&str>,
-    table: &str,
-) -> Vec<u8> {
+pub fn render_sql_insert(result: &QueryResult, driver_id: &str, schema: Option<&str>, table: &str) -> Vec<u8> {
     let table_sql = match schema {
         Some(s) => format!("{}.{}", quote_ident(driver_id, s), quote_ident(driver_id, table)),
         None => quote_ident(driver_id, table),
     };
-    let cols: Vec<String> = result
-        .columns
-        .iter()
-        .map(|c| quote_ident(driver_id, &c.name))
-        .collect();
+    let cols: Vec<String> = result.columns.iter().map(|c| quote_ident(driver_id, &c.name)).collect();
     let col_list = cols.join(", ");
     let mut out = String::new();
     for row in &result.rows {
@@ -260,10 +251,7 @@ mod tests {
     fn csv_default_includes_header_and_escapes() {
         let bytes = render_csv(&sample_result(), CsvOptions::default());
         let text = String::from_utf8(bytes).unwrap();
-        assert_eq!(
-            text,
-            "id,name\n1,alice\n2,\"a,b\"\"c\"\n3,\n"
-        );
+        assert_eq!(text, "id,name\n1,alice\n2,\"a,b\"\"c\"\n3,\n");
     }
 
     #[test]
