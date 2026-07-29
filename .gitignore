@@ -158,3 +158,6 @@ fix-1322-plugin-abi-and-registry-overhaul.diff
 .docs/
 Local.xcconfig
 /plans/reports
+
+# Linux dev sysroot (see linux/scripts/dev-env.sh)
+.local-deps/
