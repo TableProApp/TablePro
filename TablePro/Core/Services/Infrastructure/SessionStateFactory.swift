@@ -62,6 +62,11 @@ enum SessionStateFactory {
             },
             tabSessionRegistry: tabSessionRegistry
         )
+        tabMgr.onTableOpened = { tableName, schemaName, databaseName, isView, isPreview in
+            SharedSidebarState.forConnection(connectionId).recordTableOpen(
+                database: databaseName, schema: schemaName, name: tableName, isView: isView, isPreview: isPreview
+            )
+        }
         let changeMgr = DataChangeManager()
         changeMgr.databaseType = connection.type
         let toolbarSt = ConnectionToolbarState(connection: connection)
@@ -90,19 +95,26 @@ enum SessionStateFactory {
                 switch payload.tabType {
                 case .table:
                     toolbarSt.isTableTab = true
+                    let resolvedSchemaName = DatabaseManager.shared.resolvedSchemaName(
+                        payload.schemaName, for: connectionId
+                    )
                     if let tableName = payload.tableName {
                         do {
                             if payload.isPreview {
                                 try tabMgr.addPreviewTableTab(
                                     tableName: tableName,
                                     databaseType: connection.type,
-                                    databaseName: payload.databaseName ?? activeDatabaseName
+                                    databaseName: payload.databaseName ?? activeDatabaseName,
+                                    schemaName: resolvedSchemaName,
+                                    isView: payload.isView
                                 )
                             } else {
                                 try tabMgr.addTableTab(
                                     tableName: tableName,
                                     databaseType: connection.type,
-                                    databaseName: payload.databaseName ?? activeDatabaseName
+                                    databaseName: payload.databaseName ?? activeDatabaseName,
+                                    schemaName: resolvedSchemaName,
+                                    isView: payload.isView
                                 )
                             }
                         } catch {
@@ -111,7 +123,7 @@ enum SessionStateFactory {
                         if let index = tabMgr.selectedTabIndex {
                             tabMgr.tabs[index].tableContext.isView = payload.isView
                             tabMgr.tabs[index].tableContext.isEditable = !payload.isView
-                            tabMgr.tabs[index].tableContext.schemaName = payload.schemaName
+                            tabMgr.tabs[index].tableContext.schemaName = resolvedSchemaName
                             if payload.showStructure {
                                 tabMgr.tabs[index].display.resultsViewMode = .structure
                             }
@@ -131,7 +143,8 @@ enum SessionStateFactory {
                             initialQuery: payload.initialQuery,
                             title: payload.tabTitle,
                             databaseName: payload.databaseName ?? activeDatabaseName,
-                            sourceFileURL: payload.sourceFileURL
+                            sourceFileURL: payload.sourceFileURL,
+                            claimFocus: true
                         )
                     }
                 case .createTable:
@@ -145,10 +158,8 @@ enum SessionStateFactory {
                     )
                 case .serverDashboard:
                     tabMgr.addServerDashboardTab()
-                case .terminal:
-                    tabMgr.addTerminalTab(
-                        databaseName: payload.databaseName ?? activeDatabaseName
-                    )
+                case .usersRoles:
+                    tabMgr.addUsersRolesTab()
                 }
             case .newEmptyTab:
                 let allTabs = MainContentCoordinator.allTabs(for: connection.id)
@@ -156,7 +167,8 @@ enum SessionStateFactory {
                 tabMgr.addTab(
                     initialQuery: payload.initialQuery,
                     title: title,
-                    databaseName: payload.databaseName ?? activeDatabaseName
+                    databaseName: payload.databaseName ?? activeDatabaseName,
+                    claimFocus: true
                 )
             case .restoreOrDefault:
                 break

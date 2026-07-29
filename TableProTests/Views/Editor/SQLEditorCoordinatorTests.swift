@@ -6,8 +6,8 @@
 //
 
 import Foundation
-import TableProPluginKit
 @testable import TablePro
+import TableProPluginKit
 import Testing
 
 @MainActor
@@ -40,5 +40,26 @@ struct SQLEditorCoordinatorTests {
         let coordinator = SQLEditorCoordinator()
         coordinator.destroy()
         #expect(coordinator.vimMode == .normal)
+    }
+
+    @Test("pendingFocusClaim starts false on a fresh coordinator")
+    func freshCoordinatorHasNoPendingClaim() {
+        let coordinator = SQLEditorCoordinator()
+        #expect(coordinator.pendingFocusClaim == false)
+    }
+
+    @Test("scheduleEditorFocusClaim() sets pendingFocusClaim to true")
+    func scheduleEditorFocusClaimSetsLatch() {
+        let coordinator = SQLEditorCoordinator()
+        coordinator.scheduleEditorFocusClaim()
+        #expect(coordinator.pendingFocusClaim == true)
+    }
+
+    @Test("scheduleEditorFocusClaim() is idempotent")
+    func scheduleEditorFocusClaimIsIdempotent() {
+        let coordinator = SQLEditorCoordinator()
+        coordinator.scheduleEditorFocusClaim()
+        coordinator.scheduleEditorFocusClaim()
+        #expect(coordinator.pendingFocusClaim == true)
     }
 }

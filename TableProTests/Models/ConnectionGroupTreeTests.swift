@@ -499,4 +499,185 @@ struct ConnectionGroupTreeTests {
         let depth = depthOf(groupId: idA, groups: [a, b])
         #expect(depth <= 2)
     }
+
+    // MARK: - Indexed Tree Equivalence
+
+    @Test("Indexed buildGroupTree matches reference across nested + orphan topologies")
+    func indexedTree_matchesReference() {
+        let id1 = UUID()
+        let id2 = UUID()
+        let id3 = UUID()
+        let orphanParent = UUID()
+        let g1 = makeGroup(id: id1, name: "L1", sortOrder: 0)
+        let g2 = makeGroup(id: id2, name: "L2", parentId: id1, sortOrder: 0)
+        let g3 = makeGroup(id: id3, name: "L3", parentId: id2, sortOrder: 0)
+        let orphan = makeGroup(id: orphanParent, name: "Orphan", parentId: UUID())
+        let groups = [g2, orphan, g1, g3]
+
+        let c1 = DatabaseConnection(name: "In L1 a", groupId: id1, sortOrder: 2)
+        let c2 = DatabaseConnection(name: "In L1 b", groupId: id1, sortOrder: 1)
+        let c3 = DatabaseConnection(name: "In L3", groupId: id3)
+        let c4 = DatabaseConnection(name: "Orphan conn", groupId: orphanParent)
+        let c5 = DatabaseConnection(name: "Ungrouped")
+        let c6 = DatabaseConnection(name: "Dangling", groupId: UUID())
+        let connections = [c6, c5, c4, c3, c2, c1]
+
+        let reference = buildGroupTree(groups: groups, connections: connections, parentId: nil)
+        let indexed = buildGroupTreeIndexed(groups: groups, connections: connections)
+        #expect(treeNodeFingerprint(indexed) == treeNodeFingerprint(reference))
+    }
+
+    @Test("Indexed tree matches reference for sorting across multiple siblings")
+    func indexedTree_sortingEquivalence() {
+        let groups = (0..<8).map { idx in
+            makeGroup(name: "Group \(idx)", sortOrder: (idx * 7) % 11)
+        }
+        let connections = (0..<groups.count).map { idx in
+            DatabaseConnection(name: "Conn \(idx)", groupId: groups[idx].id, sortOrder: (idx * 3) % 7)
+        }
+
+        let reference = buildGroupTree(groups: groups, connections: connections, parentId: nil)
+        let indexed = buildGroupTreeIndexed(groups: groups, connections: connections)
+        #expect(treeNodeFingerprint(indexed) == treeNodeFingerprint(reference))
+    }
+
+    @Test("Indexed depth/count/maxDepth match reference for deep tree")
+    func indices_matchReference_deepTree() {
+        let ids = (0..<6).map { _ in UUID() }
+        var groups: [ConnectionGroup] = []
+        for (index, id) in ids.enumerated() {
+            let parent = index == 0 ? UUID() : ids[index - 1]
+            groups.append(makeGroup(id: id, name: "G\(index)", parentId: parent))
+        }
+        let orphanId = UUID()
+        groups.append(makeGroup(id: orphanId, name: "Sibling", parentId: ids[2]))
+
+        let connections: [DatabaseConnection] = [
+            makeConnection(name: "c0", groupId: ids[0]),
+            makeConnection(name: "c1", groupId: ids[1]),
+            makeConnection(name: "c1b", groupId: ids[1]),
+            makeConnection(name: "c3", groupId: ids[3]),
+            makeConnection(name: "cOrphan", groupId: orphanId),
+            makeConnection(name: "ungrouped"),
+            makeConnection(name: "dangling", groupId: UUID())
+        ]
+
+        let indices = computeGroupTreeIndices(groups: groups, connections: connections)
+
+        for group in groups {
+            #expect(indices.depthByGroup[group.id] == depthOf(groupId: group.id, groups: groups))
+            #expect(indices.maxDescendantDepthByGroup[group.id] == maxDescendantDepth(groupId: group.id, groups: groups))
+            #expect(indices.connectionCountByGroup[group.id] == connectionCount(
+                in: group.id,
+                connections: connections,
+                groups: groups
+            ))
+        }
+    }
+
+    @Test("Random property test: indexed tree and indices match reference")
+    func indices_randomPropertyTest() {
+        for seed in 0..<32 {
+            let (groups, connections) = generateRandomTopology(seed: seed)
+            let referenceTree = buildGroupTree(groups: groups, connections: connections, parentId: nil)
+            let indexedTree = buildGroupTreeIndexed(groups: groups, connections: connections)
+            #expect(
+                treeNodeFingerprint(indexedTree) == treeNodeFingerprint(referenceTree),
+                "Tree mismatch at seed \(seed)"
+            )
+
+            let indices = computeGroupTreeIndices(groups: groups, connections: connections)
+            for group in groups {
+                #expect(
+                    indices.depthByGroup[group.id] == depthOf(groupId: group.id, groups: groups),
+                    "Depth mismatch for \(group.id) at seed \(seed)"
+                )
+                #expect(
+                    indices.maxDescendantDepthByGroup[group.id]
+                        == maxDescendantDepth(groupId: group.id, groups: groups),
+                    "MaxDescendantDepth mismatch for \(group.id) at seed \(seed)"
+                )
+                #expect(
+                    indices.connectionCountByGroup[group.id] == connectionCount(
+                        in: group.id,
+                        connections: connections,
+                        groups: groups
+                    ),
+                    "ConnectionCount mismatch for \(group.id) at seed \(seed)"
+                )
+            }
+        }
+    }
+
+    // MARK: - Property Test Helpers
+
+    private func treeNodeFingerprint(_ nodes: [ConnectionGroupTreeNode]) -> String {
+        nodes.map { nodeFingerprint($0) }.joined(separator: "|")
+    }
+
+    private func nodeFingerprint(_ node: ConnectionGroupTreeNode) -> String {
+        switch node {
+        case .connection(let conn):
+            return "conn(\(conn.id.uuidString.prefix(4)):\(conn.sortOrder))"
+        case .group(let group, let children):
+            let childFingerprint = treeNodeFingerprint(children)
+            return "group(\(group.id.uuidString.prefix(4)):\(group.sortOrder))[\(childFingerprint)]"
+        }
+    }
+
+    private func generateRandomTopology(seed: Int) -> ([ConnectionGroup], [DatabaseConnection]) {
+        var rng = SeededRNG(seed: UInt64(seed))
+        let groupCount = Int(rng.next() % 12) + 1
+        var groups: [ConnectionGroup] = []
+        for index in 0..<groupCount {
+            let parentId: UUID?
+            if groups.isEmpty || (rng.next() % 3 == 0) {
+                parentId = nil
+            } else if rng.next() % 8 == 0 {
+                parentId = UUID()
+            } else {
+                parentId = groups[Int(rng.next() % UInt64(index))].id
+            }
+            groups.append(ConnectionGroup(
+                id: UUID(),
+                name: "G\(rng.next() % 100)",
+                parentId: parentId,
+                sortOrder: Int(rng.next() % 5)
+            ))
+        }
+        let connectionCount = Int(rng.next() % 15) + 1
+        var connections: [DatabaseConnection] = []
+        for _ in 0..<connectionCount {
+            let groupId: UUID?
+            if groups.isEmpty || rng.next() % 4 == 0 {
+                groupId = nil
+            } else if rng.next() % 5 == 0 {
+                groupId = UUID()
+            } else {
+                groupId = groups[Int(rng.next() % UInt64(groups.count))].id
+            }
+            connections.append(DatabaseConnection(
+                id: UUID(),
+                name: "C\(rng.next() % 100)",
+                groupId: groupId,
+                sortOrder: Int(rng.next() % 5)
+            ))
+        }
+        return (groups, connections)
+    }
+}
+
+fileprivate struct SeededRNG: RandomNumberGenerator {
+    var state: UInt64
+
+    init(seed: UInt64) {
+        state = seed == 0 ? 0xDEADBEEFCAFEBABE : seed
+    }
+
+    mutating func next() -> UInt64 {
+        state ^= state << 13
+        state ^= state >> 7
+        state ^= state << 17
+        return state
+    }
 }

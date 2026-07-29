@@ -13,19 +13,19 @@ final class GridSelectionState {
 
 /// Type of tab
 enum TabType: Equatable, Codable, Hashable {
-    case query            // SQL editor tab
-    case table            // Direct table view tab
-    case createTable      // Create new table tab
-    case erDiagram        // ER diagram tab
-    case serverDashboard  // Server dashboard tab
-    case terminal         // Embedded database CLI terminal tab
+    case query
+    case table
+    case createTable
+    case erDiagram
+    case serverDashboard
+    case usersRoles
 }
 
 /// Minimal representation of a tab for persistence
 struct PersistedTab: Codable {
     let id: UUID
     let title: String
-    let query: String
+    var query: String
     let tabType: TabType
     let tableName: String?
     var isView: Bool = false
@@ -34,6 +34,73 @@ struct PersistedTab: Codable {
     var sourceFileURL: URL?
     var erDiagramSchemaKey: String?
     var queryParameters: [QueryParameter]?
+    var sortColumns: [PersistedSortColumn]?
+    var restoredPage: Int?
+    var cursorOffset: Int?
+    var columnWidths: [String: CGFloat]?
+    var windowGroupIndex: Int?
+
+    init(
+        id: UUID,
+        title: String,
+        query: String,
+        tabType: TabType,
+        tableName: String?,
+        isView: Bool = false,
+        databaseName: String = "",
+        schemaName: String? = nil,
+        sourceFileURL: URL? = nil,
+        erDiagramSchemaKey: String? = nil,
+        queryParameters: [QueryParameter]? = nil,
+        sortColumns: [PersistedSortColumn]? = nil,
+        restoredPage: Int? = nil,
+        cursorOffset: Int? = nil,
+        columnWidths: [String: CGFloat]? = nil,
+        windowGroupIndex: Int? = nil
+    ) {
+        self.id = id
+        self.title = title
+        self.query = query
+        self.tabType = tabType
+        self.tableName = tableName
+        self.isView = isView
+        self.databaseName = databaseName
+        self.schemaName = schemaName
+        self.sourceFileURL = sourceFileURL
+        self.erDiagramSchemaKey = erDiagramSchemaKey
+        self.queryParameters = queryParameters
+        self.sortColumns = sortColumns
+        self.restoredPage = restoredPage
+        self.cursorOffset = cursorOffset
+        self.columnWidths = columnWidths
+        self.windowGroupIndex = windowGroupIndex
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, title, query, tabType, tableName, isView, databaseName, schemaName
+        case sourceFileURL, erDiagramSchemaKey, queryParameters
+        case sortColumns, restoredPage, cursorOffset, columnWidths, windowGroupIndex
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        title = try container.decodeIfPresent(String.self, forKey: .title) ?? "Query"
+        query = try container.decodeIfPresent(String.self, forKey: .query) ?? ""
+        tabType = try container.decode(TabType.self, forKey: .tabType)
+        tableName = try container.decodeIfPresent(String.self, forKey: .tableName)
+        isView = try container.decodeIfPresent(Bool.self, forKey: .isView) ?? false
+        databaseName = try container.decodeIfPresent(String.self, forKey: .databaseName) ?? ""
+        schemaName = try container.decodeIfPresent(String.self, forKey: .schemaName)
+        sourceFileURL = try container.decodeIfPresent(URL.self, forKey: .sourceFileURL)
+        erDiagramSchemaKey = try container.decodeIfPresent(String.self, forKey: .erDiagramSchemaKey)
+        queryParameters = try container.decodeIfPresent([QueryParameter].self, forKey: .queryParameters)
+        sortColumns = try container.decodeIfPresent([PersistedSortColumn].self, forKey: .sortColumns)
+        restoredPage = try container.decodeIfPresent(Int.self, forKey: .restoredPage)
+        cursorOffset = try container.decodeIfPresent(Int.self, forKey: .cursorOffset)
+        columnWidths = try container.decodeIfPresent([String: CGFloat].self, forKey: .columnWidths)
+        windowGroupIndex = try container.decodeIfPresent(Int.self, forKey: .windowGroupIndex)
+    }
 }
 
 struct TabChangeSnapshot: Equatable {
@@ -60,7 +127,7 @@ struct TabChangeSnapshot: Equatable {
     }
 }
 
-enum SortDirection: Equatable {
+enum SortDirection: String, Equatable, Codable {
     case ascending
     case descending
 
@@ -73,13 +140,35 @@ enum SortDirection: Equatable {
 struct SortColumn: Equatable {
     var columnIndex: Int
     var direction: SortDirection
+    var columnName: String?
+
+    init(columnIndex: Int, direction: SortDirection, columnName: String? = nil) {
+        self.columnIndex = columnIndex
+        self.direction = direction
+        self.columnName = columnName
+    }
+}
+
+/// A sort column captured for cross-launch persistence, keyed by name so it survives column reordering
+struct PersistedSortColumn: Codable, Equatable {
+    let columnName: String
+    let direction: SortDirection
+}
+
+enum SortSource: Equatable {
+    case user
+    case defaultSort
 }
 
 /// Tracks sorting state for a table (supports multi-column sort)
 struct SortState: Equatable {
     var columns: [SortColumn] = []
+    var source: SortSource = .user
 
-    init() {}
+    init(columns: [SortColumn] = [], source: SortSource = .user) {
+        self.columns = columns
+        self.source = source
+    }
 
     var isSorting: Bool { !columns.isEmpty }
 
@@ -94,7 +183,7 @@ struct PaginationState: Equatable {
     var pageSize: Int               // Rows per page (passed from manager/coordinator)
     var currentPage: Int = 1         // Current page number (1-based)
     var currentOffset: Int = 0       // Current OFFSET for SQL query
-    var isLoading: Bool = false      // Loading indicator
+    var isLoading: Bool = false
     var isApproximateRowCount: Bool = false  // True when totalRowCount is from fast estimate
 
     // Result truncation state (query tabs)
@@ -102,6 +191,7 @@ struct PaginationState: Equatable {
     var isLoadingMore: Bool = false
     var baseQueryForMore: String?
     var baseQueryParameterValues: [String?]?
+    var sortExecutionOverride: String?  // Derived ORDER BY query run for a grid sort; never written back to the editor
 
     /// Default page size constant (used when no explicit value is provided)
     /// Note: For new tabs, callers should pass AppSettingsManager.shared.dataGrid.defaultPageSize
@@ -134,6 +224,15 @@ struct PaginationState: Equatable {
         currentPage < totalPages
     }
 
+    var isLastPageKnown: Bool {
+        totalRowCount != nil
+    }
+
+    func canGoToNextPage(loadedRowCount: Int) -> Bool {
+        if hasNextPage { return true }
+        return totalRowCount == nil && loadedRowCount >= pageSize
+    }
+
     /// Whether there is a previous page available
     var hasPreviousPage: Bool {
         currentPage > 1
@@ -154,37 +253,37 @@ struct PaginationState: Equatable {
 
     // MARK: - Navigation Methods
 
-    /// Navigate to next page
-    mutating func goToNextPage() {
-        guard hasNextPage else { return }
-        currentPage += 1
-        currentOffset = (currentPage - 1) * pageSize
-    }
-
-    /// Navigate to previous page
-    mutating func goToPreviousPage() {
-        guard hasPreviousPage else { return }
-        currentPage -= 1
-        currentOffset = (currentPage - 1) * pageSize
-    }
-
-    /// Navigate to first page
-    mutating func goToFirstPage() {
-        currentPage = 1
-        currentOffset = 0
-    }
-
-    /// Navigate to last page
-    mutating func goToLastPage() {
-        currentPage = totalPages
-        currentOffset = (totalPages - 1) * pageSize
-    }
-
-    /// Navigate to specific page
-    mutating func goToPage(_ page: Int) {
-        guard page > 0 && page <= totalPages else { return }
+    private mutating func setPage(_ page: Int) {
         currentPage = page
         currentOffset = (page - 1) * pageSize
+    }
+
+    mutating func goToNextPage() {
+        guard hasNextPage else { return }
+        setPage(currentPage + 1)
+    }
+
+    mutating func goToNextPage(loadedRowCount: Int) {
+        guard canGoToNextPage(loadedRowCount: loadedRowCount) else { return }
+        setPage(currentPage + 1)
+    }
+
+    mutating func goToPreviousPage() {
+        guard hasPreviousPage else { return }
+        setPage(currentPage - 1)
+    }
+
+    mutating func goToFirstPage() {
+        setPage(1)
+    }
+
+    mutating func goToLastPage() {
+        setPage(totalPages)
+    }
+
+    mutating func goToPage(_ page: Int) {
+        guard page > 0 && page <= totalPages else { return }
+        setPage(page)
     }
 
     /// Reset pagination to first page
@@ -200,13 +299,13 @@ struct PaginationState: Equatable {
         isLoadingMore = false
         baseQueryForMore = nil
         baseQueryParameterValues = nil
+        sortExecutionOverride = nil
     }
 
     /// Update page size (limit)
     mutating func updatePageSize(_ newSize: Int) {
         guard newSize > 0 else { return }
         pageSize = newSize
-        // Recalculate current page based on current offset
         currentPage = (currentOffset / pageSize) + 1
     }
 
@@ -223,6 +322,17 @@ struct ColumnLayoutState: Equatable {
     var columnWidths: [String: CGFloat] = [:]
     var columnOrder: [String]?
     var hiddenColumns: Set<String> = []
+
+    mutating func applyGeometry(from other: ColumnLayoutState) {
+        columnWidths = other.columnWidths
+        columnOrder = other.columnOrder
+    }
+
+    func mergingWidths(_ liveWidths: [String: CGFloat]) -> ColumnLayoutState {
+        var result = self
+        result.columnWidths.merge(liveWidths) { _, live in live }
+        return result
+    }
 }
 
 struct TabExecutionState: Equatable {
@@ -230,6 +340,7 @@ struct TabExecutionState: Equatable {
     var executionTime: TimeInterval?
     var statusMessage: String?
     var errorMessage: String?
+    var errorQuery: String?
     var rowsAffected: Int = 0
     var lastExecutedAt: Date?
 
@@ -254,7 +365,21 @@ struct TabTableContext: Equatable {
 }
 
 struct TabQueryContent: Equatable {
-    var query: String = ""
+    /// Holds the query text behind a reference. SwiftUI's attribute-graph diff compares a value by walking its memory
+    /// layout, so a stored `String` field made it normalize the whole multi-megabyte query (NFC) on every view update.
+    /// Storing the text in a class makes that walk compare an 8-byte pointer instead. Value semantics are preserved
+    /// because the setter replaces the box.
+    private final class QueryStorage: Sendable {
+        let text: String
+        init(_ text: String) { self.text = text }
+    }
+
+    private var queryStorage: QueryStorage
+
+    var query: String {
+        get { queryStorage.text }
+        set { queryStorage = QueryStorage(newValue) }
+    }
     var queryParameters: [QueryParameter] = []
     var isParameterPanelVisible: Bool = false
     var sourceFileURL: URL?
@@ -264,12 +389,55 @@ struct TabQueryContent: Equatable {
 
     static let maxPersistableQuerySize = 500_000
 
+    init(
+        query: String = "",
+        queryParameters: [QueryParameter] = [],
+        isParameterPanelVisible: Bool = false,
+        sourceFileURL: URL? = nil,
+        savedFileContent: String? = nil,
+        loadMtime: Date? = nil,
+        externalModificationDetected: Bool = false
+    ) {
+        self.queryStorage = QueryStorage(query)
+        self.queryParameters = queryParameters
+        self.isParameterPanelVisible = isParameterPanelVisible
+        self.sourceFileURL = sourceFileURL
+        self.savedFileContent = savedFileContent
+        self.loadMtime = loadMtime
+        self.externalModificationDetected = externalModificationDetected
+    }
+
     var isFileDirty: Bool {
         guard sourceFileURL != nil, let saved = savedFileContent else { return false }
         let queryNS = query as NSString
         let savedNS = saved as NSString
         if queryNS.length != savedNS.length { return true }
         return queryNS != savedNS
+    }
+
+    static func == (lhs: TabQueryContent, rhs: TabQueryContent) -> Bool {
+        // Cheap scalar fields short-circuit first. The query and saved-file text can be multiple megabytes and are
+        // bridged from NSTextStorage, so they are compared last and with `sameText` to avoid Swift's canonical Unicode
+        // comparison (O(n) on the bridged text); the same-box identity check makes an unchanged query O(1).
+        lhs.isParameterPanelVisible == rhs.isParameterPanelVisible
+            && lhs.externalModificationDetected == rhs.externalModificationDetected
+            && lhs.sourceFileURL == rhs.sourceFileURL
+            && lhs.loadMtime == rhs.loadMtime
+            && lhs.queryParameters == rhs.queryParameters
+            && (lhs.queryStorage === rhs.queryStorage || sameText(lhs.query, rhs.query))
+            && sameText(lhs.savedFileContent, rhs.savedFileContent)
+    }
+
+    /// Literal text equality that skips Swift's canonical Unicode comparison, returning in O(1) when the lengths differ.
+    private static func sameText(_ lhs: String?, _ rhs: String?) -> Bool {
+        switch (lhs, rhs) {
+        case (nil, nil):
+            return true
+        case let (lhs?, rhs?):
+            return (lhs as NSString).isEqual(to: rhs)
+        default:
+            return false
+        }
     }
 }
 
@@ -286,6 +454,27 @@ struct TabDisplayState: Equatable {
     var activeResultSet: ResultSet? {
         guard let id = activeResultSetId else { return resultSets.last }
         return resultSets.first { $0.id == id }
+    }
+
+    var hasPinnedResults: Bool {
+        resultSets.contains(where: \.isPinned)
+    }
+
+    mutating func replaceUnpinnedResults(with newResults: [ResultSet]) {
+        resultSets = resultSets.filter(\.isPinned) + newResults
+        activeResultSetId = newResults.last?.id ?? resultSets.last?.id
+    }
+
+    mutating func removeUnpinnedResults() {
+        resultSets = resultSets.filter(\.isPinned)
+        activeResultSetId = resultSets.last?.id
+    }
+
+    @MainActor
+    mutating func togglePin(resultSetId: UUID) {
+        guard let target = resultSets.first(where: { $0.id == resultSetId }) else { return }
+        target.isPinned.toggle()
+        resultSets = resultSets.filter(\.isPinned) + resultSets.filter { !$0.isPinned }
     }
 
     static func == (lhs: TabDisplayState, rhs: TabDisplayState) -> Bool {

@@ -5,7 +5,6 @@
 //  Created by Ngo Quoc Dat on 16/12/25.
 //
 
-import AppKit
 import Foundation
 import Observation
 import os
@@ -61,6 +60,11 @@ final class DatabaseManager {
 
     @ObservationIgnored internal let ensureConnectedDedup = OnceTask<UUID, Void>()
 
+    /// Generation token per connection. A cancelled or superseded attempt keeps running
+    /// when its driver blocks in a C call, so every attempt validates its generation
+    /// before touching shared session state and discards its driver when it lost.
+    @ObservationIgnored internal var connectionAttempts = ConnectionAttemptRegistry()
+
     /// Current session (computed from currentSessionId)
     var currentSession: ConnectionSession? {
         guard let sessionId = currentSessionId else { return nil }
@@ -87,6 +91,13 @@ final class DatabaseManager {
     /// `connection.database` (the saved default) is wrong after Cmd+K.
     func activeDatabaseName(for connection: DatabaseConnection) -> String {
         activeSessions[connection.id]?.activeDatabase ?? connection.database
+    }
+
+    /// Authoritative schema for a table identity when the caller has no explicit
+    /// schema. Explicit schemas pass through unchanged; nil resolves to the live
+    /// session's current schema and stays nil for schema-less engines.
+    func resolvedSchemaName(_ schemaName: String?, for connectionId: UUID) -> String? {
+        schemaName ?? activeSessions[connectionId]?.currentSchema
     }
 
     /// Current connection status

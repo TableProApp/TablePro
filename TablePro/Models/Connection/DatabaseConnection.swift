@@ -28,6 +28,8 @@ extension DatabaseType {
     static let postgresql = DatabaseType(rawValue: "PostgreSQL")
     static let sqlite = DatabaseType(rawValue: "SQLite")
     static let redshift = DatabaseType(rawValue: "Redshift")
+    static let cockroachdb = DatabaseType(rawValue: "CockroachDB")
+    static let pglite = DatabaseType(rawValue: "PGlite")
 
     // Registry-distributed types (known plugins, downloadable separately)
     static let mongodb = DatabaseType(rawValue: "MongoDB")
@@ -44,6 +46,9 @@ extension DatabaseType {
     static let bigQuery = DatabaseType(rawValue: "BigQuery")
     static let libsql = DatabaseType(rawValue: "libSQL")
     static let turso = DatabaseType(rawValue: "Turso")
+    static let beancount = DatabaseType(rawValue: "Beancount")
+    static let elasticsearch = DatabaseType(rawValue: "Elasticsearch")
+    static let surrealdb = DatabaseType(rawValue: "SurrealDB")
 }
 
 extension DatabaseType: Codable {
@@ -63,9 +68,6 @@ extension DatabaseType {
     static var allKnownTypes: [DatabaseType] {
         PluginMetadataRegistry.shared.allRegisteredTypeIds().map { DatabaseType(rawValue: $0) }
     }
-
-    /// Compatibility shim for CaseIterable call sites.
-    static var allCases: [DatabaseType] { allKnownTypes }
 }
 
 extension DatabaseType {
@@ -101,11 +103,85 @@ extension DatabaseType {
     }
 
     var defaultPort: Int {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: pluginTypeId)?.defaultPort ?? 0
+        PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.defaultPort ?? 0
+    }
+
+    var defaultSSLMode: SSLMode {
+        PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.capabilities.defaultSSLMode ?? .disabled
+    }
+
+    var supportsOpportunisticTLS: Bool {
+        PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.capabilities.supportsOpportunisticTLS ?? true
+    }
+
+    var supportsClientKeyPassphrase: Bool {
+        PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.capabilities.supportsClientKeyPassphrase ?? false
+    }
+
+    var supportsConnectionPooling: Bool {
+        PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.capabilities.supportsConnectionPooling ?? true
+    }
+
+    var authenticationIsDatabaseScoped: Bool {
+        PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?
+            .capabilities.authenticationIsDatabaseScoped ?? false
+    }
+
+    var defaultHost: String? {
+        PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.connection.defaultHost
+    }
+
+    var supportsCloudSQLProxy: Bool {
+        switch rawValue {
+        case "MySQL", "PostgreSQL", "SQL Server":
+            return true
+        default:
+            return false
+        }
+    }
+
+    var sslPaneTooltip: String {
+        switch rawValue {
+        case "PostgreSQL", "Redshift", "CockroachDB":
+            return String(localized: """
+                Preferred tries TLS first, falls back to plain. Matches psql and DataGrip defaults. \
+                Required by AWS RDS, Cloud SQL, Heroku, Supabase, Neon.
+                """)
+        case "MySQL", "MariaDB":
+            return String(localized: """
+                Preferred performs a 2-pass connect: tries TLS first, falls back to plain only on \
+                SSL handshake errors. Required by Cloud SQL and Azure MySQL.
+                """)
+        case "SQL Server":
+            return String(localized: "Preferred requests TLS; the server decides. Required by SQL Server 2022 and Azure SQL Database.")
+        case "MongoDB":
+            return String(localized: "MongoDB driver has no TLS fallback. Preferred and Required both force TLS. Use Required for MongoDB Atlas and other hosted instances.")
+        case "Redis":
+            return String(localized: """
+                Redis driver has no TLS fallback. Preferred and Required both force TLS. \
+                Use Required for Redis Cloud, Upstash, and AWS ElastiCache encrypted endpoints.
+                """)
+        case "Oracle":
+            return String(localized: "OracleNIO has no TLS fallback. Preferred connects in plain TCP. Use Required for TCPS to Oracle Autonomous Database.")
+        case "Cassandra", "ScyllaDB":
+            return String(localized: "Use Required for AstraDB, DataStax Astra, and other hosted Cassandra deployments.")
+        case "ClickHouse":
+            return String(localized: "Use Required for ClickHouse Cloud and other managed instances.")
+        default:
+            return ""
+        }
+    }
+
+    var explainVariants: [ExplainVariant] {
+        PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.explainVariants ?? []
     }
 
     var category: DatabaseCategory {
         PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.connection.category ?? .other
+    }
+
+    var pathFieldRole: PathFieldRole {
+        PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.pathFieldRole ?? .database
     }
 
     var tagline: String? {
@@ -119,6 +195,8 @@ extension DatabaseType {
         case "MariaDB": Color(hex: "C0765A")
         case "PostgreSQL": Color(hex: "336791")
         case "Redshift": Color(hex: "527FFF")
+        case "CockroachDB": Color(hex: "6933FF")
+        case "PGlite": Color(hex: "F4B942")
         case "SQLite": Color(hex: "0F80CC")
         case "SQL Server": Color(hex: "CC2927")
         case "Oracle": Color(hex: "C74634")
@@ -133,6 +211,7 @@ extension DatabaseType {
         case "libSQL", "Turso": Color(hex: "4FF8D2")
         case "DynamoDB": Color(hex: "4053D6")
         case "BigQuery": Color(hex: "4285F4")
+        case "Beancount": Color(hex: "3F7D20")
         default: Color.accentColor
         }
     }
@@ -145,36 +224,44 @@ extension DatabaseType {
         PluginMetadataRegistry.shared.snapshot(forTypeId: pluginTypeId)?.supportsForeignKeys ?? true
     }
 
+    var supportsTriggers: Bool {
+        PluginMetadataRegistry.shared.snapshot(forTypeId: pluginTypeId)?.capabilities.supportsTriggers ?? false
+    }
+
+    var supportsTriggerEditing: Bool {
+        PluginMetadataRegistry.shared.snapshot(forTypeId: pluginTypeId)?.capabilities.supportsTriggerEditing ?? false
+    }
+
     var supportsSchemaEditing: Bool {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: pluginTypeId)?.supportsSchemaEditing ?? true
+        PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.supportsSchemaEditing ?? true
     }
 
     var supportsAddColumn: Bool {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: pluginTypeId)?.capabilities.supportsAddColumn ?? true
+        PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.capabilities.supportsAddColumn ?? true
     }
 
     var supportsModifyColumn: Bool {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: pluginTypeId)?.capabilities.supportsModifyColumn ?? true
+        PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.capabilities.supportsModifyColumn ?? true
     }
 
     var supportsDropColumn: Bool {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: pluginTypeId)?.capabilities.supportsDropColumn ?? true
+        PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.capabilities.supportsDropColumn ?? true
     }
 
     var supportsRenameColumn: Bool {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: pluginTypeId)?.capabilities.supportsRenameColumn ?? false
+        PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.capabilities.supportsRenameColumn ?? false
     }
 
     var supportsAddIndex: Bool {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: pluginTypeId)?.capabilities.supportsAddIndex ?? true
+        PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.capabilities.supportsAddIndex ?? true
     }
 
     var supportsDropIndex: Bool {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: pluginTypeId)?.capabilities.supportsDropIndex ?? true
+        PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.capabilities.supportsDropIndex ?? true
     }
 
     var supportsModifyPrimaryKey: Bool {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: pluginTypeId)?.capabilities.supportsModifyPrimaryKey ?? true
+        PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.capabilities.supportsModifyPrimaryKey ?? true
     }
 }
 
@@ -242,14 +329,14 @@ enum ConnectionColor: String, CaseIterable, Identifiable, Codable {
     var color: Color {
         switch self {
         case .none: return .clear
-        case .red: return Color(nsColor: .systemRed)
-        case .orange: return Color(nsColor: .systemOrange)
-        case .yellow: return Color(nsColor: .systemYellow)
-        case .green: return Color(nsColor: .systemGreen)
-        case .blue: return Color(nsColor: .systemBlue)
-        case .purple: return Color(nsColor: .systemPurple)
-        case .pink: return Color(nsColor: .systemPink)
-        case .gray: return Color(nsColor: .systemGray)
+        case .red: return .red
+        case .orange: return .orange
+        case .yellow: return .yellow
+        case .green: return .green
+        case .blue: return .blue
+        case .purple: return .purple
+        case .pink: return .pink
+        case .gray: return .gray
         }
     }
 
@@ -271,10 +358,13 @@ struct DatabaseConnection: Identifiable, Hashable {
     var sshConfig: SSHConfiguration
     var sslConfig: SSLConfiguration
     var color: ConnectionColor
-    var tagId: UUID?
+    var tagIds: [UUID]
     var groupId: UUID?
     var sshProfileId: UUID?
     var sshTunnelMode: SSHTunnelMode
+    var cloudflareTunnelMode: CloudflareTunnelMode = .disabled
+    var cloudSQLProxyMode: CloudSQLProxyMode = .disabled
+    var socksProxyMode: SOCKSProxyMode = .disabled
     var safeModeLevel: SafeModeLevel
     var aiPolicy: AIConnectionPolicy?
     var aiRules: String?
@@ -286,6 +376,8 @@ struct DatabaseConnection: Identifiable, Hashable {
     var sortOrder: Int
     var localOnly: Bool = false
     var isSample: Bool = false
+    var isFavorite: Bool = false
+    var passwordSource: PasswordSource?
 
     var mongoAuthSource: String? {
         get { additionalFields["mongoAuthSource"]?.nilIfEmpty }
@@ -305,6 +397,10 @@ struct DatabaseConnection: Identifiable, Hashable {
     var mongoUseSrv: Bool {
         get { additionalFields["mongoUseSrv"] == "true" }
         set { additionalFields["mongoUseSrv"] = newValue ? "true" : "" }
+    }
+
+    var usesMongoSrv: Bool {
+        mongoUseSrv || host.hasSuffix(".mongodb.net")
     }
 
     var mongoAuthMechanism: String? {
@@ -337,9 +433,23 @@ struct DatabaseConnection: Identifiable, Hashable {
         set { additionalFields["promptForPassword"] = newValue ? "true" : "" }
     }
 
+    var usesAWSIAM: Bool {
+        let value = additionalFields["awsAuth"] ?? "off"
+        return value != "off" && !value.isEmpty
+    }
+
+    var resolvesAWSIAMInDriver: Bool {
+        type == .cassandra || type == .scylladb
+    }
+
     var preConnectScript: String? {
         get { additionalFields["preConnectScript"]?.nilIfEmpty }
         set { additionalFields["preConnectScript"] = newValue ?? "" }
+    }
+
+    var sshForwardUnixSocketPath: String? {
+        get { additionalFields[DatabaseConnection.sshForwardUnixSocketPathKey]?.nilIfEmpty }
+        set { additionalFields[DatabaseConnection.sshForwardUnixSocketPathKey] = newValue ?? "" }
     }
 
     init(
@@ -348,15 +458,18 @@ struct DatabaseConnection: Identifiable, Hashable {
         host: String = "localhost",
         port: Int = 3_306,
         database: String = "",
-        username: String = "root",
+        username: String = "",
         type: DatabaseType = .mysql,
         sshConfig: SSHConfiguration = SSHConfiguration(),
         sslConfig: SSLConfiguration = SSLConfiguration(),
         color: ConnectionColor = .none,
-        tagId: UUID? = nil,
+        tagIds: [UUID] = [],
         groupId: UUID? = nil,
         sshProfileId: UUID? = nil,
         sshTunnelMode: SSHTunnelMode = .disabled,
+        cloudflareTunnelMode: CloudflareTunnelMode = .disabled,
+        cloudSQLProxyMode: CloudSQLProxyMode = .disabled,
+        socksProxyMode: SOCKSProxyMode = .disabled,
         safeModeLevel: SafeModeLevel = .silent,
         aiPolicy: AIConnectionPolicy? = nil,
         aiRules: String? = nil,
@@ -375,6 +488,8 @@ struct DatabaseConnection: Identifiable, Hashable {
         sortOrder: Int = 0,
         localOnly: Bool = false,
         isSample: Bool = false,
+        isFavorite: Bool = false,
+        passwordSource: PasswordSource? = nil,
         additionalFields: [String: String]? = nil
     ) {
         self.id = id
@@ -387,7 +502,7 @@ struct DatabaseConnection: Identifiable, Hashable {
         self.sshConfig = sshConfig
         self.sslConfig = sslConfig
         self.color = color
-        self.tagId = tagId
+        self.tagIds = tagIds
         self.groupId = groupId
         self.sshProfileId = sshProfileId
         self.safeModeLevel = safeModeLevel
@@ -406,6 +521,9 @@ struct DatabaseConnection: Identifiable, Hashable {
         } else {
             self.sshTunnelMode = sshTunnelMode
         }
+        self.cloudflareTunnelMode = cloudflareTunnelMode
+        self.cloudSQLProxyMode = cloudSQLProxyMode
+        self.socksProxyMode = socksProxyMode
         self.aiPolicy = aiPolicy
         self.aiRules = aiRules
         self.aiAlwaysAllowedTools = aiAlwaysAllowedTools
@@ -415,6 +533,8 @@ struct DatabaseConnection: Identifiable, Hashable {
         self.sortOrder = sortOrder
         self.localOnly = localOnly
         self.isSample = isSample
+        self.isFavorite = isFavorite
+        self.passwordSource = passwordSource
         if let additionalFields {
             self.additionalFields = additionalFields
         } else {
@@ -460,9 +580,10 @@ extension DatabaseConnection {
 extension DatabaseConnection: Codable {
     private enum CodingKeys: String, CodingKey {
         case id, name, host, port, database, username, type
-        case sshConfig, sslConfig, color, tagId, groupId, sshProfileId
-        case sshTunnelMode, safeModeLevel, aiPolicy, aiRules, aiAlwaysAllowedTools, externalAccess, additionalFields
-        case redisDatabase, startupCommands, sortOrder, localOnly, isSample
+        case sshConfig, sslConfig, color, tagId, tagIds, groupId, sshProfileId
+        case sshTunnelMode, cloudflareTunnelMode, cloudSQLProxyMode, socksProxyMode, safeModeLevel, aiPolicy, aiRules, aiAlwaysAllowedTools, externalAccess, additionalFields
+        case redisDatabase, startupCommands, sortOrder, localOnly, isSample, isFavorite
+        case passwordSource
     }
 
     init(from decoder: Decoder) throws {
@@ -472,12 +593,17 @@ extension DatabaseConnection: Codable {
         host = try container.decodeIfPresent(String.self, forKey: .host) ?? "localhost"
         port = try container.decodeIfPresent(Int.self, forKey: .port) ?? 3_306
         database = try container.decodeIfPresent(String.self, forKey: .database) ?? ""
-        username = try container.decodeIfPresent(String.self, forKey: .username) ?? "root"
+        username = try container.decodeIfPresent(String.self, forKey: .username) ?? ""
         type = try container.decodeIfPresent(DatabaseType.self, forKey: .type) ?? .mysql
         sshConfig = try container.decodeIfPresent(SSHConfiguration.self, forKey: .sshConfig) ?? SSHConfiguration()
         sslConfig = try container.decodeIfPresent(SSLConfiguration.self, forKey: .sslConfig) ?? SSLConfiguration()
         color = try container.decodeIfPresent(ConnectionColor.self, forKey: .color) ?? .none
-        tagId = try container.decodeIfPresent(UUID.self, forKey: .tagId)
+        let decodedTagIds = try container.decodeIfPresent([UUID].self, forKey: .tagIds) ?? []
+        if decodedTagIds.isEmpty {
+            tagIds = try container.decodeIfPresent(UUID.self, forKey: .tagId).map { [$0] } ?? []
+        } else {
+            tagIds = decodedTagIds
+        }
         groupId = try container.decodeIfPresent(UUID.self, forKey: .groupId)
         sshProfileId = try container.decodeIfPresent(UUID.self, forKey: .sshProfileId)
         safeModeLevel = try container.decodeIfPresent(SafeModeLevel.self, forKey: .safeModeLevel) ?? .silent
@@ -491,6 +617,11 @@ extension DatabaseConnection: Codable {
         sortOrder = try container.decodeIfPresent(Int.self, forKey: .sortOrder) ?? 0
         localOnly = try container.decodeIfPresent(Bool.self, forKey: .localOnly) ?? false
         isSample = try container.decodeIfPresent(Bool.self, forKey: .isSample) ?? false
+        isFavorite = try container.decodeIfPresent(Bool.self, forKey: .isFavorite) ?? false
+        passwordSource = PasswordSource.resilientlyDecoded(from: container, forKey: .passwordSource)
+        cloudflareTunnelMode = try container.decodeIfPresent(CloudflareTunnelMode.self, forKey: .cloudflareTunnelMode) ?? .disabled
+        cloudSQLProxyMode = try container.decodeIfPresent(CloudSQLProxyMode.self, forKey: .cloudSQLProxyMode) ?? .disabled
+        socksProxyMode = try container.decodeIfPresent(SOCKSProxyMode.self, forKey: .socksProxyMode) ?? .disabled
 
         // Migrate from legacy fields if sshTunnelMode is not present
         if let tunnelMode = try container.decodeIfPresent(SSHTunnelMode.self, forKey: .sshTunnelMode) {
@@ -520,10 +651,22 @@ extension DatabaseConnection: Codable {
         try container.encode(sshConfig, forKey: .sshConfig)
         try container.encode(sslConfig, forKey: .sslConfig)
         try container.encode(color, forKey: .color)
-        try container.encodeIfPresent(tagId, forKey: .tagId)
+        if !tagIds.isEmpty {
+            try container.encode(tagIds, forKey: .tagIds)
+            try container.encode(tagIds[0], forKey: .tagId)
+        }
         try container.encodeIfPresent(groupId, forKey: .groupId)
         try container.encodeIfPresent(sshProfileId, forKey: .sshProfileId)
         try container.encode(sshTunnelMode, forKey: .sshTunnelMode)
+        if case .inline = cloudflareTunnelMode {
+            try container.encode(cloudflareTunnelMode, forKey: .cloudflareTunnelMode)
+        }
+        if case .inline = cloudSQLProxyMode {
+            try container.encode(cloudSQLProxyMode, forKey: .cloudSQLProxyMode)
+        }
+        if case .inline = socksProxyMode {
+            try container.encode(socksProxyMode, forKey: .socksProxyMode)
+        }
         try container.encode(safeModeLevel, forKey: .safeModeLevel)
         try container.encodeIfPresent(aiPolicy, forKey: .aiPolicy)
         try container.encodeIfPresent(aiRules, forKey: .aiRules)
@@ -537,6 +680,8 @@ extension DatabaseConnection: Codable {
         try container.encode(sortOrder, forKey: .sortOrder)
         try container.encode(localOnly, forKey: .localOnly)
         try container.encode(isSample, forKey: .isSample)
+        try container.encode(isFavorite, forKey: .isFavorite)
+        try container.encodeIfPresent(passwordSource, forKey: .passwordSource)
     }
 }
 

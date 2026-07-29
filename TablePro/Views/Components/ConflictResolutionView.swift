@@ -32,7 +32,7 @@ struct ConflictResolutionView: View {
         HStack(spacing: 8) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.title2)
-                .foregroundStyle(Color(nsColor: .systemOrange))
+                .foregroundStyle(.orange)
             Text(String(localized: "Sync Conflict"))
                 .font(.headline)
         }
@@ -130,7 +130,7 @@ struct ConflictResolutionView: View {
             if let color = record["color"] as? String {
                 fieldRow(label: "Color", value: color)
             }
-        case .favorite, .favoriteFolder:
+        case .favorite, .favoriteFolder, .tableFavorite:
             if let name = record["name"] as? String {
                 fieldRow(label: String(localized: "Name"), value: name)
             }

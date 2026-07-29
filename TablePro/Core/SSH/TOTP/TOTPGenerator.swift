@@ -32,7 +32,6 @@ internal struct TOTPGenerator {
         var bigEndianCounter = counter.bigEndian
         let counterData = Data(bytes: &bigEndianCounter, count: 8)
 
-        // Compute HMAC
         let hmac = computeHmac(key: secret, message: counterData)
 
         // Dynamic truncation
@@ -42,7 +41,6 @@ internal struct TOTPGenerator {
             | UInt32(hmac[offset + 2]) << 8
             | UInt32(hmac[offset + 3])
 
-        // Modulo and zero-pad
         var divisor: UInt32 = 1
         for _ in 0..<digits {
             divisor *= 10

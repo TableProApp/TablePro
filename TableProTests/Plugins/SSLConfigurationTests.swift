@@ -59,6 +59,20 @@ struct SSLConfigurationTests {
         #expect(decoded == original)
     }
 
+    @Test("encoded JSON never carries a client key passphrase")
+    func encodedJsonExcludesPassphrase() throws {
+        let ssl = SSLConfiguration(
+            mode: .verifyIdentity,
+            caCertificatePath: "/etc/ssl/ca.pem",
+            clientCertificatePath: "/etc/ssl/client.crt",
+            clientKeyPath: "/etc/ssl/client.key"
+        )
+        let data = try JSONEncoder().encode(ssl)
+        let json = String(bytes: data, encoding: .utf8) ?? ""
+        #expect(!json.lowercased().contains("passphrase"))
+        #expect(!json.lowercased().contains("password"))
+    }
+
     @Test("raw values match the strings used in the connection form picker")
     func rawValueStability() {
         #expect(SSLMode.disabled.rawValue == "Disabled")

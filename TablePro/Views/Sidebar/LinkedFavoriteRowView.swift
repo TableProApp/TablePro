@@ -17,7 +17,7 @@ internal struct LinkedFavoriteRowView: View {
         HStack(spacing: 6) {
             Image(systemName: "doc.text")
                 .font(.callout)
-                .foregroundStyle(Color(nsColor: .systemBlue))
+                .foregroundStyle(.blue)
                 .accessibilityHidden(true)
 
             Text(favorite.name)
@@ -29,7 +29,7 @@ internal struct LinkedFavoriteRowView: View {
             if !favorite.isUTF8 {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.caption)
-                    .foregroundStyle(Color(nsColor: .systemYellow))
+                    .foregroundStyle(.yellow)
                     .help(String(format: String(localized: "Non-UTF-8 file (%@). Saving may change the encoding."), favorite.encodingName))
                     .accessibilityHidden(true)
             }
@@ -69,7 +69,7 @@ internal struct LinkedFolderRowLabel: View {
     var body: some View {
         HStack(spacing: 6) {
             Image(systemName: "link.circle.fill")
-                .foregroundStyle(Color(nsColor: .systemBlue))
+                .foregroundStyle(.blue)
                 .accessibilityHidden(true)
             Text(folder.name)
                 .lineLimit(1)

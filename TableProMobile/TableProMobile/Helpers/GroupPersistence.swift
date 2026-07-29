@@ -11,16 +11,18 @@ struct GroupPersistence {
         return appDir.appendingPathComponent("groups.json")
     }
 
-    func save(_ groups: [ConnectionGroup]) {
-        guard let fileURL, let data = try? JSONEncoder().encode(groups) else { return }
-        try? data.write(to: fileURL, options: [.atomic, .completeFileProtection])
+    func save(_ groups: [ConnectionGroup]) throws {
+        guard let fileURL else { return }
+        let data = try JSONEncoder().encode(groups)
+        try data.write(to: fileURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
     }
 
-    func load() -> [ConnectionGroup] {
-        guard let fileURL, let data = try? Data(contentsOf: fileURL),
-              let groups = try? JSONDecoder().decode([ConnectionGroup].self, from: data) else {
+    func load() throws -> [ConnectionGroup] {
+        guard let fileURL else { return [] }
+        if !FileManager.default.fileExists(atPath: fileURL.path) {
             return []
         }
-        return groups
+        let data = try Data(contentsOf: fileURL)
+        return try JSONDecoder().decode([ConnectionGroup].self, from: data)
     }
 }

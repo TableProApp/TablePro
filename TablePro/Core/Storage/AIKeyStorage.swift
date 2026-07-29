@@ -27,25 +27,8 @@ final class AIKeyStorage {
 
     func loadAPIKey(for providerID: UUID) -> String? {
         let key = "com.TablePro.aikey.\(providerID.uuidString)"
-        let pid = providerID.uuidString
-        switch keychain.readStringResult(forKey: key) {
-        case .found(let value):
-            return value
-        case .notFound:
-            return nil
-        case .locked:
-            Self.logger.warning("AI API key unavailable: Keychain locked (providerID=\(pid, privacy: .public))")
-            return nil
-        case .userCancelled:
-            Self.logger.notice("AI API key prompt cancelled (providerID=\(pid, privacy: .public))")
-            return nil
-        case .authFailed:
-            Self.logger.warning("AI API key auth failed (providerID=\(pid, privacy: .public))")
-            return nil
-        case .error(let status):
-            Self.logger.error("AI API key read error \(status) (providerID=\(pid, privacy: .public))")
-            return nil
-        }
+        return keychain.readStringResult(forKey: key)
+            .value(label: "AI API key (providerID=\(providerID.uuidString))", logger: Self.logger)
     }
 
     func deleteAPIKey(for providerID: UUID) {

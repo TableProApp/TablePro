@@ -103,7 +103,6 @@ actor CopilotBinaryManager {
 
         try? FileManager.default.removeItem(at: tempTar)
 
-        // Verify extraction; try to find binary if not at expected path
         if !FileManager.default.fileExists(atPath: binaryExecutablePath) {
             let enumerator = FileManager.default.enumerator(at: baseDirectory, includingPropertiesForKeys: nil)
             while let fileURL = enumerator?.nextObject() as? URL {

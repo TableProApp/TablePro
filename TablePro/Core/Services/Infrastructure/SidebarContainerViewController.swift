@@ -11,8 +11,7 @@ internal final class SidebarContainerViewController: NSViewController {
     private let searchField = NSSearchField()
     private var hostingController: NSHostingController<AnyView>
     private var sidebarState: SharedSidebarState?
-    private var windowState: WindowSidebarState?
-    private var observationGeneration = 0
+    private var observationTask: Task<Void, Never>?
 
     var rootView: AnyView {
         get { hostingController.rootView }
@@ -38,12 +37,14 @@ internal final class SidebarContainerViewController: NSViewController {
         searchField.sendsSearchStringImmediately = true
         searchField.delegate = self
         searchField.setAccessibilityIdentifier("sidebar-filter")
+        searchField.setAccessibilityLabel(String(localized: "Filter"))
         view.addSubview(searchField)
 
         addChild(hostingController)
         let hostingView = hostingController.view
         hostingView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(hostingView)
+        searchField.nextKeyView = hostingView
 
         NSLayoutConstraint.activate([
             searchField.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 5),
@@ -57,41 +58,51 @@ internal final class SidebarContainerViewController: NSViewController {
         ])
     }
 
-    func updateSidebarState(_ state: SharedSidebarState?, windowState: WindowSidebarState?) {
-        observationGeneration += 1
+    func focusSearchField() {
+        guard !searchField.isHidden else { return }
+        view.window?.makeFirstResponder(searchField)
+    }
+
+    func updateSidebarState(_ state: SharedSidebarState?) {
+        observationTask?.cancel()
         self.sidebarState = state
-        self.windowState = windowState
-        guard let state, let windowState else {
+        guard let state else {
             searchField.isHidden = true
             return
         }
         searchField.isHidden = false
-        syncFromState(state, windowState: windowState)
-        startObserving(state, windowState: windowState, generation: observationGeneration)
-    }
-
-    private func startObserving(
-        _ state: SharedSidebarState,
-        windowState: WindowSidebarState,
-        generation: Int
-    ) {
-        withObservationTracking {
-            _ = state.searchText
-            _ = state.selectedSidebarTab
-            _ = windowState.favoritesSearchText
-        } onChange: { [weak self] in
-            Task { @MainActor [weak self] in
-                guard let self,
-                      generation == self.observationGeneration,
-                      let sidebarState = self.sidebarState,
-                      let windowState = self.windowState else { return }
-                self.syncFromState(sidebarState, windowState: windowState)
-                self.startObserving(sidebarState, windowState: windowState, generation: generation)
+        observationTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            while !Task.isCancelled {
+                self.syncFromState(state)
+                await Self.awaitChange(state: state)
             }
         }
     }
 
-    private func syncFromState(_ state: SharedSidebarState, windowState: WindowSidebarState) {
+    private static func awaitChange(state: SharedSidebarState) async {
+        let box = ObservationContinuationBox()
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                box.attach(continuation)
+                withObservationTracking {
+                    _ = state.selectedSidebarTab
+                    _ = state.searchText
+                    _ = state.favoritesSearchText
+                } onChange: {
+                    box.resume()
+                }
+            }
+        } onCancel: {
+            box.resume()
+        }
+    }
+
+    deinit {
+        observationTask?.cancel()
+    }
+
+    private func syncFromState(_ state: SharedSidebarState) {
         let activeText: String
         let placeholder: String
         switch state.selectedSidebarTab {
@@ -99,7 +110,7 @@ internal final class SidebarContainerViewController: NSViewController {
             activeText = state.searchText
             placeholder = String(localized: "Filter")
         case .favorites:
-            activeText = windowState.favoritesSearchText
+            activeText = state.favoritesSearchText
             placeholder = String(localized: "Filter favorites")
         }
 
@@ -107,6 +118,7 @@ internal final class SidebarContainerViewController: NSViewController {
             searchField.stringValue = activeText
         }
         searchField.placeholderString = placeholder
+        searchField.setAccessibilityLabel(placeholder)
     }
 }
 
@@ -120,13 +132,44 @@ extension SidebarContainerViewController: NSSearchFieldDelegate {
         writeSearchText("")
     }
 
+    func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+        guard commandSelector == #selector(NSResponder.moveDown(_:)) else { return false }
+        view.window?.makeFirstResponder(hostingController.view)
+        return true
+    }
+
     private func writeSearchText(_ text: String) {
         guard let sidebarState else { return }
         switch sidebarState.selectedSidebarTab {
         case .tables:
             sidebarState.searchText = text
         case .favorites:
-            windowState?.favoritesSearchText = text
+            sidebarState.favoritesSearchText = text
         }
+    }
+}
+
+private final class ObservationContinuationBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<Void, Never>?
+    private var resumed = false
+
+    func attach(_ continuation: CheckedContinuation<Void, Never>) {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !resumed else {
+            continuation.resume()
+            return
+        }
+        self.continuation = continuation
+    }
+
+    func resume() {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !resumed else { return }
+        resumed = true
+        continuation?.resume()
+        continuation = nil
     }
 }

@@ -13,8 +13,16 @@ final class SSHPaneViewModel {
     var coordinator: WeakCoordinatorRef?
 
     var validationIssues: [String] {
-        guard state.enabled, state.profileId == nil else { return [] }
+        guard state.enabled else { return [] }
         var issues: [String] = []
+        for other in coordinator?.value?.otherEnabledTunnels(excluding: .ssh) ?? [] {
+            issues.append(String(
+                format: String(localized: "Cannot use %@ and %@ at the same time"),
+                other.kind.displayName,
+                ConnectionTunnelKind.ssh.displayName
+            ))
+        }
+        guard state.profileId == nil else { return issues }
         if state.host.trimmingCharacters(in: .whitespaces).isEmpty {
             issues.append(String(localized: "SSH host is required"))
         }

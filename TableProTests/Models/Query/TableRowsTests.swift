@@ -575,6 +575,33 @@ struct TableRowsMetadataTests {
         )
         #expect(delta == .none)
     }
+
+    @Test("updateDisplayMetadata stores columnComments and reports columnsReplaced")
+    func updateDisplayMetadataStoresComments() {
+        var table = Self.makeTable()
+        let delta = table.updateDisplayMetadata(columnComments: ["c1": "Primary key"])
+        #expect(delta == .columnsReplaced)
+        #expect(table.columnComments == ["c1": "Primary key"])
+    }
+
+    @Test("updateDisplayMetadata returns Delta.none when columnComments are unchanged")
+    func updateDisplayMetadataUnchangedCommentsIsNoOp() {
+        var table = Self.makeTable()
+        _ = table.updateDisplayMetadata(columnComments: ["c1": "Primary key"])
+        let delta = table.updateDisplayMetadata(columnComments: ["c1": "Primary key"])
+        #expect(delta == .none)
+    }
+
+    @Test("Factory preserves columnComments")
+    func factoryPreservesComments() {
+        let table = TableRows.from(
+            queryRows: [["a"]],
+            columns: ["c1"],
+            columnTypes: [.text(rawType: nil)],
+            columnComments: ["c1": "A note"]
+        )
+        #expect(table.columnComments == ["c1": "A note"])
+    }
 }
 
 @Suite("TableRows - metadata preservation regression")
@@ -625,5 +652,48 @@ struct TableRowsMetadataPreservationTests {
         var table = Self.makeTable()
         _ = table.replace(rows: [["x", "y"]], offset: 0)
         Self.assertMetadataPreserved(table)
+    }
+}
+
+@Suite("TableRows - foreignKeysFetched")
+struct TableRowsForeignKeysFetchedTests {
+    @Test("Defaults to false on init and factory")
+    func defaultsToFalse() {
+        #expect(TableRows().foreignKeysFetched == false)
+        #expect(TestFixtures.makeTableRows().foreignKeysFetched == false)
+    }
+
+    @Test("Applying a foreign key dictionary marks foreign keys as fetched")
+    func applyingForeignKeysMarksFetched() {
+        var table = TestFixtures.makeTableRows()
+        _ = table.updateDisplayMetadata(columnForeignKeys: ["user_id": TestFixtures.makeForeignKeyInfo()])
+        #expect(table.foreignKeysFetched)
+        #expect(table.columnForeignKeys.count == 1)
+    }
+
+    @Test("Applying an empty dictionary still marks fetched for tables without foreign keys")
+    func emptyDictionaryMarksFetched() {
+        var table = TestFixtures.makeTableRows()
+        _ = table.updateDisplayMetadata(columnForeignKeys: [:])
+        #expect(table.foreignKeysFetched)
+        #expect(table.columnForeignKeys.isEmpty)
+    }
+
+    @Test("Updating other metadata leaves the flag untouched")
+    func otherMetadataLeavesFlag() {
+        var table = TestFixtures.makeTableRows()
+        _ = table.updateDisplayMetadata(columnDefaults: ["id": nil])
+        #expect(table.foreignKeysFetched == false)
+    }
+
+    @Test("Factory preserves an explicit fetched flag")
+    func factoryPreservesFlag() {
+        let table = TableRows.from(
+            queryRows: [],
+            columns: ["id"],
+            columnTypes: [],
+            foreignKeysFetched: true
+        )
+        #expect(table.foreignKeysFetched)
     }
 }

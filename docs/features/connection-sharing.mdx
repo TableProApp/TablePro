@@ -1,34 +1,27 @@
 ---
 title: Connection Sharing
-description: Share connections with your team or import from other apps
+description: Export connections to a file, share links, import from other apps, and resolve passwords from secret managers
 ---
 
-# Connection Sharing
-
-Export connections to a `.tablepro` file and share with your team. Passwords stay in your Keychain.
+Export connections to a `.tablepro` file and share with your team. Passwords are left out of the file and stay in your Keychain unless you make an encrypted export. Sections tagged Starter or Team need a [license](/features/licensing) of that tier.
 
 ## Export
 
-Right-click a connection > **Export Connection...**. Select multiple first to export together. Or use **File** > **Export Connections...** for all.
+Right-click a connection > **Share** > **Export to File...**. Select multiple first to export together. **File** > **Export Connections...** exports all.
 
-Exported: host, port, username, type, SSH/SSL config, color, tag, group, Safe Mode. Not exported: passwords, key passphrases, TOTP secrets.
+Exported: name, host, port, database, username, type, SSH/SSL config, color, tags, group, Safe Mode level, Startup Commands, Pre-Connect Script, AI Policy, the Local only flag, the Redis database index, and any driver field the plugin does not mark secret (region, project ID, and so on). Not exported: passwords, key passphrases, TOTP secrets, or any driver field marked secret.
+
+The Share menu also has three copy items. **Copy Connection String** writes a full database URL, and that URL carries the password in plain text, plus the SSH password when the connection tunnels. Treat what it puts on the clipboard as a credential. **Copy TablePro Link** and **Copy as JSON** carry no secrets.
 
 <Frame caption="Export connections">
-  <img
-    className="block dark:hidden"
-    src="/images/connection-export-menu.png"
-    alt="Export connections"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/connection-export-menu-dark.png"
-    alt="Export connections"
-  />
+  <img className="block dark:hidden" src="/images/connection-export-menu.png" alt="Export connections" />
+  <img className="hidden dark:block" src="/images/connection-export-menu-dark.png" alt="Export connections" />
 </Frame>
 
 ## Import
 
 - **File** > **Import Connections...**
+- **File** > **Import from URL...** (paste a database URL, see [Connection URLs](/databases/connection-urls))
 - Right-click empty area > **Import Connections...**
 - Double-click a `.tablepro` file
 - Drag onto TablePro
@@ -41,120 +34,83 @@ A preview shows each connection before importing:
 | Yellow triangle | SSH key or cert not found |
 | "duplicate" tag | Already exists |
 
-Duplicates are unchecked. Check to import, then pick **As Copy**, **Replace**, or **Skip**.
+Duplicates match by host, port, database, and username, and start unchecked. Check to import, then pick **As Copy**, **Replace**, or **Skip**.
 
 <Frame caption="Import preview">
-  <img
-    className="block dark:hidden"
-    src="/images/connection-import-preview.png"
-    alt="Import preview"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/connection-import-preview-dark.png"
-    alt="Import preview"
-  />
+  <img className="block dark:hidden" src="/images/connection-import-preview.png" alt="Import preview" />
+  <img className="hidden dark:block" src="/images/connection-import-preview-dark.png" alt="Import preview" />
 </Frame>
+
+## On iPhone
+
+TablePro for iPhone reads and writes the same `.tablepro` file. Import: tap the **more** menu (•••) above the connection list > **Import Connections**, or open a `.tablepro` file from Files or AirDrop. Export: **more** menu > **Export Connections** shares through the system share sheet. Passwords are left out unless you turn on **Include passwords** and set a passphrase.
 
 ## Import from Other Apps
 
-Bring your connections over from TablePlus, Sequel Ace, or DBeaver. Passwords can be imported too. The source app doesn't need to be running.
-
 1. **File** > **Import from Other App...**
-2. Pick the source app and click **Continue**.
-3. Review the list, uncheck anything you don't want, then click **Import**.
+2. Pick the source app. Navicat asks for the `.ncx` file you exported from Navicat.
+3. Review the list, uncheck what you don't want, resolve duplicates, click **Import**.
 
 <Frame caption="Pick the source app">
-  <img
-    className="block dark:hidden"
-    src="/images/import-from-app-picker.png"
-    alt="Import from other app - source picker"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/import-from-app-picker-dark.png"
-    alt="Import from other app - source picker"
-  />
+  <img className="block dark:hidden" src="/images/import-from-app-picker.png" alt="Import from other app - source picker" />
+  <img className="hidden dark:block" src="/images/import-from-app-picker-dark.png" alt="Import from other app - source picker" />
 </Frame>
-
-Groups and folders carry over.
 
 | App | Databases | Passwords |
 |-----|-----------|-----------|
 | TablePlus | MySQL, PostgreSQL, MongoDB, SQLite, Redis, and more | From Keychain |
 | Sequel Ace | MySQL | From Keychain |
 | DBeaver | MySQL, PostgreSQL, SQLite, SQL Server, Oracle, and more | Decrypted from config file |
+| DataGrip | MySQL, PostgreSQL, SQLite, SQL Server, Oracle, and more | From Keychain or `c.kdbx` |
+| Beekeeper Studio | MySQL, PostgreSQL, SQLite, SQL Server, Oracle, and more | Decrypted from its `app.db` store |
+| Navicat | MySQL, MariaDB, PostgreSQL, SQLite, SQL Server, Oracle, MongoDB | Decrypted from `.ncx` file |
+
+Groups and folders carry over. The source app doesn't need to be running. DBeaver is read from its data folder, so every edition works. DataGrip imports from its recent projects with SSH tunnel and SSL settings; master-password-protected connections can't be read. Beekeeper Studio imports include encrypted passwords and SSH bastion hosts. Navicat needs an export first: **File** > **Export Connections** in Navicat, with **Export Password** on to bring passwords across.
 
 ## Share via Link
 
-Two link forms ship with TablePro. Pick the one that matches what you want to share.
+Right-click a connection > **Share** > **Copy TablePro Link**. Produces a `tablepro://import?...` URL with the name, host, port, type, username, database, and any SSH or SSL settings. No passwords, key passphrases, or TOTP secrets. The recipient opens the link, reviews the prefilled form, adds their own password, and saves.
 
-### Copy as Import Link
-
-Right-click > **Copy as Import Link**. Produces a `tablepro://import?...` URL with host, port, type, and username (no password). Paste in Slack, a wiki, or a README. The recipient opens the link, reviews the prefilled form, adds their own password, and saves.
-
-```
+```text
 tablepro://import?name=Staging&host=db.example.com&port=5432&type=PostgreSQL&username=admin
 ```
 
-### Copy Connection Deep Link
+TablePro also opens `tablepro://connect/<uuid>` URLs that launch a saved connection. There is no menu item for this form; build the URL from the connection's UUID. See [URL Scheme](/external-api/url-scheme#open-a-connection).
 
-Right-click > **Copy Connection Deep Link**. Produces a `tablepro://connect/<uuid>` URL that opens the connection you already have saved. The link refers to your local connection record by UUID, so it only works on a Mac that already has the same connection saved (for example, your other Mac with iCloud Sync, or a teammate who imported the connection). Use this form for bookmarks, Raycast Quicklinks, or shell aliases.
+## Encrypted Export <sup>Starter</sup>
 
-```
-tablepro://connect/9f1f0c3e-2e3d-4b14-9c3a-1d2f4ad1f6f1
-```
+Include passwords in the export, protected by a passphrase.
 
-See [URL Scheme](/external-api/url-scheme#open-a-connection) for the full path syntax (table targets, query parameters, percent-encoding).
-
-## Encrypted Export <sup>Pro</sup>
-
-Include passwords in the export, protected by a passphrase (AES-256-GCM).
-
-1. Right-click > **Export...**
-2. Check **Include Credentials**
-3. Enter passphrase (8+ characters), confirm
+1. Right-click > **Share** > **Export to File...**
+2. Turn on **Include Credentials**
+3. Enter a passphrase (8+ characters), confirm
 4. **Export...**
 
-When importing, TablePro prompts for the passphrase.
+Credentials are encrypted with AES-256-GCM; the key derives from your passphrase via PBKDF2 (600,000 iterations). Importing prompts for the passphrase.
 
 <Frame caption="Encrypted export">
-  <img
-    className="block dark:hidden"
-    src="/images/connection-export-encrypted.png"
-    alt="Encrypted export"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/connection-export-encrypted-dark.png"
-    alt="Encrypted export"
-  />
+  <img className="block dark:hidden" src="/images/connection-export-encrypted.png" alt="Encrypted export" />
+  <img className="hidden dark:block" src="/images/connection-export-encrypted-dark.png" alt="Encrypted export" />
 </Frame>
 
-## Linked Folders <sup>Pro</sup>
+## Linked Folders <sup>Starter</sup>
 
-Watch a shared directory for `.tablepro` files. Connections appear read-only in the sidebar. Each person enters their own password.
+Watch a shared directory for `.tablepro` files. Connections appear read-only in the sidebar. Each person enters their own password. Works with Git repos, Dropbox, network drives.
 
-**Settings** (`Cmd+,`) > **Account** > **Linked Folders** > **Add Folder...**
-
-Works with Git repos, Dropbox, network drives.
+Press `Cmd+,`, then go to **Settings > Account > Linked Folders > Add Folder...**
 
 <Frame caption="Linked Folders settings">
-  <img
-    className="block dark:hidden"
-    src="/images/linked-folders-settings.png"
-    alt="Linked Folders"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/linked-folders-settings-dark.png"
-    alt="Linked Folders"
-  />
+  <img className="block dark:hidden" src="/images/linked-folders-settings.png" alt="Linked Folders" />
+  <img className="hidden dark:block" src="/images/linked-folders-settings-dark.png" alt="Linked Folders" />
 </Frame>
 
-## Environment Variables <sup>Pro</sup>
+## Team Catalog <sup>Team</sup>
 
-Use `$VAR` and `${VAR}` in `.tablepro` files. Resolved at connection time.
+Right-click a connection > **Share** > **Publish to Team Catalog...** writes each selected connection as its own `.tablepro` file into a shared folder. The first time, TablePro asks for the folder: a Git repo, Dropbox folder, or network drive your team shares. Republishing overwrites the file. Passwords, passphrases, and TOTP secrets are never written. Teammates add the same folder as a [Linked Folder](#linked-folders) and get the connections read-only. Part of the [Team plan](/features/team).
+
+## Environment Variables <sup>Starter</sup>
+
+Use `$VAR` and `${VAR}` in `.tablepro` files. Resolved from TablePro's process environment at connect time, so set variables with `launchctl setenv NAME value` or launch TablePro from a terminal.
 
 ```json
 {
@@ -163,34 +119,66 @@ Use `$VAR` and `${VAR}` in `.tablepro` files. Resolved at connection time.
 }
 ```
 
-Works with `.env` files, 1Password CLI (`op run`), direnv.
+## Password Sources
+
+Connections in `~/Library/Application Support/TablePro/connections.json` can declare where their password comes from instead of storing it in the Keychain. Useful when a script provisions connections, for example one Docker database per git worktree. The password resolves at connect time and is not synced to iCloud, since the path, variable, or command is specific to one Mac.
+
+Add a `passwordSource` object to the connection:
+
+```json
+{ "passwordSource": { "kind": "file", "path": "~/.config/tablepro/secrets/feature-x.pw" } }
+{ "passwordSource": { "kind": "env", "variable": "STAGING_DB_PASSWORD" } }
+{ "passwordSource": { "kind": "command", "shell": "op read op://vault/feature-x/password" } }
+```
+
+- `file`: reads the password from the file. A trailing newline is trimmed. Use `chmod 600` to keep it private.
+- `env`: reads the named environment variable. Apps launched from the Dock don't inherit shell exports; use `launchctl setenv` or launch from a terminal.
+- `command`: runs the command through `/bin/bash` and reads stdout. A trailing newline is trimmed, a non-zero exit fails the connection, and the command has a 30 second timeout.
+
+When `passwordSource` is set it replaces the Keychain lookup. If resolution fails, the connection reports the error instead of falling back to the Keychain.
+
+### Secret Managers
+
+1Password, HashiCorp Vault, and AWS Secrets Manager have dedicated kinds. They build the CLI call for you and quote every argument, so a reference can't break out into the shell.
+
+```json
+{ "passwordSource": { "kind": "onePassword", "reference": "op://vault/feature-x/password" } }
+{ "passwordSource": { "kind": "vault", "path": "secret/data/staging/db", "field": "password" } }
+{ "passwordSource": { "kind": "awsSecretsManager", "secretId": "prod/db", "jsonKey": "password" } }
+```
+
+- `onePassword`: runs `op read` on the reference. Sign in to the 1Password CLI first (`op signin`).
+- `vault`: runs `vault kv get` for one field at a path. Set `VAULT_ADDR` and `VAULT_TOKEN` in TablePro's environment.
+- `awsSecretsManager`: runs `aws secretsmanager get-secret-value`. Set `jsonKey` to pull one field out of a JSON secret; leave it off to use the whole value.
+
+The CLI tools must be on `PATH`; TablePro also looks in `/usr/local/bin` and `/opt/homebrew/bin`. Same 30 second timeout as `command`.
 
 ## File Format
 
-JSON. Required fields: `name`, `host`, `type`.
+JSON. The envelope needs `formatVersion`, `exportedAt`, and `appVersion`; each connection needs `name`, `host`, `port`, `database`, `username`, and `type` (empty strings are fine where a value doesn't apply).
 
 ```json
 {
   "formatVersion": 1,
+  "exportedAt": "2026-07-14T09:00:00Z",
+  "appVersion": "0.57.0",
   "connections": [
     {
       "name": "Production",
       "host": "db.example.com",
       "port": 3306,
-      "type": "MySQL",
+      "database": "app",
       "username": "deploy",
+      "type": "MySQL",
       "tagName": "production"
     }
   ],
-  "groups": [
-    { "name": "Backend", "color": "Blue" },
-    { "name": "Staging", "color": "Green", "parentGroupName": "Backend" }
-  ],
+  "groups": [{ "name": "Backend", "color": "Blue" }],
   "tags": [{ "name": "production", "color": "Red" }]
 }
 ```
 
-Groups and tags match by name. Missing ones are created. Nested groups use `parentGroupName` to preserve hierarchy. Paths use `~/` for portability.
+Groups and tags match by name; missing ones are created. Groups export flat: name and color only, no hierarchy. Paths use `~/` for portability.
 
 ## Sharing vs iCloud Sync
 
@@ -198,5 +186,5 @@ Groups and tags match by name. Missing ones are created. Nested groups use `pare
 |---|---|---|
 | **For** | Team | Your Macs |
 | **How** | Files, links | CloudKit |
-| **Passwords** | Per-user (encrypted with Pro) | Optional sync |
-| **Requires** | Nothing (Pro for extras) | Pro + iCloud |
+| **Passwords** | Per-user (encrypted export with a license) | Optional sync |
+| **Requires** | Nothing (Starter for extras) | Starter license + iCloud |

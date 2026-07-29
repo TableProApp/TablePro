@@ -150,9 +150,6 @@ struct ResolvedUIColors {
     let tertiaryText: NSColor
     let tertiaryTextSwiftUI: Color
 
-    let accentColor: NSColor?
-    let accentColorSwiftUI: Color?
-
     let selectionBackground: NSColor
     let selectionBackgroundSwiftUI: Color
     let hoverBackground: NSColor
@@ -191,14 +188,6 @@ struct ResolvedUIColors {
         secondaryTextSwiftUI = colors.secondaryText?.swiftUIColor ?? Color(nsColor: .secondaryLabelColor)
         tertiaryText = colors.tertiaryText?.nsColor ?? .tertiaryLabelColor
         tertiaryTextSwiftUI = colors.tertiaryText?.swiftUIColor ?? Color(nsColor: .tertiaryLabelColor)
-
-        if let accent = colors.accentColor {
-            accentColor = accent.nsColor
-            accentColorSwiftUI = accent.swiftUIColor
-        } else {
-            accentColor = nil
-            accentColorSwiftUI = nil
-        }
 
         selectionBackground = colors.selectionBackground?.nsColor ?? .selectedContentBackgroundColor
         selectionBackgroundSwiftUI = colors.selectionBackground?.swiftUIColor

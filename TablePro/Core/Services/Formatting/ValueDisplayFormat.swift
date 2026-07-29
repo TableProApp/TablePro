@@ -14,6 +14,8 @@ enum ValueDisplayFormat: String, Codable, CaseIterable, Identifiable {
     case uuid
     case unixTimestamp
     case unixTimestampMillis
+    case json
+    case phpSerialized
 
     var id: String { rawValue }
 
@@ -23,6 +25,8 @@ enum ValueDisplayFormat: String, Codable, CaseIterable, Identifiable {
         case .uuid: return String(localized: "UUID")
         case .unixTimestamp: return String(localized: "Unix Timestamp (seconds)")
         case .unixTimestampMillis: return String(localized: "Unix Timestamp (milliseconds)")
+        case .json: return String(localized: "JSON")
+        case .phpSerialized: return String(localized: "PHP Serialized")
         }
     }
 
@@ -35,6 +39,8 @@ enum ValueDisplayFormat: String, Codable, CaseIterable, Identifiable {
             return ["blob", "text"]
         case .unixTimestamp, .unixTimestampMillis:
             return ["integer"]
+        case .json, .phpSerialized:
+            return ["text"]
         }
     }
 

@@ -104,6 +104,24 @@ final class LicenseManager {
     // MARK: - Activation
 
     /// Activate a license key on this machine
+    /// Activates from either a license key or a team invite code, auto-detecting which was entered.
+    /// Every activation entry point routes through here so the settings pane and the standalone sheet
+    /// behave identically.
+    func activate(codeOrKey: String) async throws {
+        let trimmed = codeOrKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        if Self.isLicenseKey(trimmed) {
+            try await activate(licenseKey: trimmed)
+        } else {
+            try await activate(inviteCode: trimmed)
+        }
+    }
+
+    /// A license key looks like XXXXX-XXXXX-XXXXX-XXXXX-XXXXX; anything else is treated as an invite code.
+    nonisolated static func isLicenseKey(_ value: String) -> Bool {
+        let pattern = "^[A-Z0-9]{5}-[A-Z0-9]{5}-[A-Z0-9]{5}-[A-Z0-9]{5}-[A-Z0-9]{5}$"
+        return value.uppercased().range(of: pattern, options: .regularExpression) != nil
+    }
+
     func activate(licenseKey: String) async throws {
         let trimmedKey = licenseKey.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
         guard !trimmedKey.isEmpty else {
@@ -126,13 +144,10 @@ final class LicenseManager {
         )
 
         do {
-            // Call server
             let signedPayload = try await apiClient.activate(request: request)
 
-            // Verify signature
             let payloadData = try verifier.verify(payload: signedPayload)
 
-            // Build and store license
             let newLicense = License.from(
                 payload: payloadData,
                 signedPayload: signedPayload,
@@ -146,6 +161,53 @@ final class LicenseManager {
             evaluateStatus()
 
             Self.logger.info("License activated for \(payloadData.email)")
+        } catch let error as LicenseError {
+            lastError = error
+            throw error
+        } catch {
+            let licenseError = LicenseError.networkError(error)
+            lastError = licenseError
+            throw licenseError
+        }
+    }
+
+    /// Join a team by accepting an invitation, activating this machine as a member
+    func activate(inviteCode: String) async throws {
+        let trimmedCode = inviteCode.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedCode.isEmpty else {
+            throw LicenseError.invalidKey
+        }
+
+        isValidating = true
+        lastError = nil
+        defer { isValidating = false }
+
+        let request = LicenseAcceptInviteRequest(
+            token: trimmedCode,
+            machineId: storage.machineId,
+            machineName: storage.machineName,
+            appVersion: Bundle.main.appVersion,
+            osVersion: ProcessInfo.processInfo.operatingSystemVersionString
+        )
+
+        do {
+            let signedPayload = try await apiClient.acceptInvite(request: request)
+
+            let payloadData = try verifier.verify(payload: signedPayload)
+
+            let newLicense = License.from(
+                payload: payloadData,
+                signedPayload: signedPayload,
+                machineId: storage.machineId
+            )
+
+            storage.saveLicenseKey(newLicense.key)
+            storage.saveLicense(newLicense)
+
+            license = newLicense
+            evaluateStatus()
+
+            Self.logger.info("Joined team via invitation for \(payloadData.email)")
         } catch let error as LicenseError {
             lastError = error
             throw error
@@ -221,7 +283,6 @@ final class LicenseManager {
             let signedPayload = try await apiClient.validate(request: request)
             let payloadData = try verifier.verify(payload: signedPayload)
 
-            // Update cached license with fresh data
             let updatedLicense = License.from(
                 payload: payloadData,
                 signedPayload: signedPayload,
@@ -232,13 +293,14 @@ final class LicenseManager {
             self.license = updatedLicense
             evaluateStatus()
 
+            await TeamLibrarySyncCoordinator.shared.pullIfNeeded()
+
             Self.logger.trace("License re-validated successfully")
         } catch {
             // Network failure — use grace period
             Self.logger.warning("Re-validation failed: \(error.localizedDescription)")
 
             if license.daysSinceLastValidation > gracePeriodDays {
-                // Grace period exceeded — mark as validation failed
                 self.status = .validationFailed
                 Self.logger.error("Grace period exceeded (\(license.daysSinceLastValidation) days)")
             }

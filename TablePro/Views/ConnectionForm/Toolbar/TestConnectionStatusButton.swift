@@ -43,7 +43,7 @@ struct TestConnectionStatusButton: View {
                 .controlSize(.small)
         } else if coordinator.testSucceeded {
             Image(systemName: "checkmark.circle.fill")
-                .foregroundStyle(Color(nsColor: .systemGreen))
+                .foregroundStyle(.green)
         } else {
             Image(systemName: "antenna.radiowaves.left.and.right")
                 .foregroundStyle(.secondary)

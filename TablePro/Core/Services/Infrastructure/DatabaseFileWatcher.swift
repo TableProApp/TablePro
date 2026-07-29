@@ -53,7 +53,6 @@ final class DatabaseFileWatcher {
     // MARK: - Private
 
     private func startSource(connectionId: UUID) {
-        // Cancel any existing source
         if let existing = activeSources.removeValue(forKey: connectionId) {
             existing.cancel()
         }
@@ -62,7 +61,7 @@ final class DatabaseFileWatcher {
 
         let fd = open(path, O_EVTONLY)
         guard fd >= 0 else {
-            Self.logger.warning("Cannot open database file for watching: \(path, privacy: .public)")
+            Self.logger.error("Cannot open database file for watching: \(path, privacy: .public) errno=\(errno)")
             return
         }
 
@@ -85,14 +84,15 @@ final class DatabaseFileWatcher {
 
         activeSources[connectionId] = source
         source.resume()
+        Self.logger.info("watching connId=\(connectionId, privacy: .public) path=\(path, privacy: .public)")
     }
 
     private func handleEvent(connectionId: UUID) {
+        Self.logger.info("file event connId=\(connectionId, privacy: .public)")
         // Re-create the watcher to get a fresh file descriptor.
         // SQLite journaling (rename + recreate) can invalidate the old fd.
         startSource(connectionId: connectionId)
 
-        // Debounced refresh
         debounceTasks[connectionId]?.cancel()
         debounceTasks[connectionId] = Task { @MainActor [weak self] in
             try? await Task.sleep(for: self?.debounceInterval ?? .milliseconds(500))

@@ -34,7 +34,7 @@ final class TreeSitterClientTests: XCTestCase {
     func test_clientSetup() async {
         let client = Mock.treeSitterClient()
         let textView = Mock.textView()
-        client.setUp(textView: textView, codeLanguage: .swift)
+        client.setUp(textView: textView, codeLanguage: .sql)
 
         let expectation = XCTestExpectation(description: "Setup occurs")
 
@@ -49,7 +49,7 @@ final class TreeSitterClientTests: XCTestCase {
 
         let primaryLanguage = client.state?.primaryLayer.id
         let layerCount = client.state?.layers.count
-        XCTAssertEqual(primaryLanguage, .swift, "Client set up incorrect language")
+        XCTAssertEqual(primaryLanguage, .sql, "Client set up incorrect language")
         XCTAssertEqual(layerCount, 1, "Client set up too many layers")
     }
 
@@ -67,7 +67,7 @@ final class TreeSitterClientTests: XCTestCase {
         let client = Mock.treeSitterClient()
         let textView = Mock.textView()
 
-        client.setUp(textView: textView, codeLanguage: .swift)
+        client.setUp(textView: textView, codeLanguage: .sql)
 
         // Perform a highlight query
         let cancelledQuery = XCTestExpectation(description: "Highlight query should be cancelled by edits.")
@@ -109,7 +109,7 @@ final class TreeSitterClientTests: XCTestCase {
         let textView = Mock.textView()
 
         // First setup, wrong language
-        client.setUp(textView: textView, codeLanguage: .c)
+        client.setUp(textView: textView, codeLanguage: .json)
 
         // Perform a highlight query
         let cancelledQuery = XCTestExpectation(description: "Highlight query should be cancelled by second setup.")
@@ -132,12 +132,12 @@ final class TreeSitterClientTests: XCTestCase {
         }
 
         // Second setup, which should cancel all previous operations
-        client.setUp(textView: textView, codeLanguage: .swift)
+        client.setUp(textView: textView, codeLanguage: .sql)
 
         let finalSetupExpectation = XCTestExpectation(description: "Final setup should complete successfully.")
 
         Task.detached {
-            while client.state?.primaryLayer.id != .swift {
+            while client.state?.primaryLayer.id != .sql {
                 try await Task.sleep(for: .seconds(0.5))
             }
             finalSetupExpectation.fulfill()
@@ -148,7 +148,7 @@ final class TreeSitterClientTests: XCTestCase {
         // Ensure only the final setup's language is active
         let primaryLanguage = client.state?.primaryLayer.id
         let layerCount = client.state?.layers.count
-        XCTAssertEqual(primaryLanguage, .swift, "Client set up incorrect language after re-setup.")
+        XCTAssertEqual(primaryLanguage, .sql, "Client set up incorrect language after re-setup.")
         XCTAssertEqual(layerCount, 1, "Client set up too many layers after re-setup.")
     }
 
@@ -158,7 +158,7 @@ final class TreeSitterClientTests: XCTestCase {
         let textView = Mock.textView()
         textView.setText("asadajkfijio;amfjamc;aoijaoajkvarpfjo;sdjlkj")
 
-        client.setUp(textView: textView, codeLanguage: .swift)
+        client.setUp(textView: textView, codeLanguage: .sql)
 
         // Set up random edits
         let editExpectations = (0..<10).map { index -> XCTestExpectation in
@@ -192,6 +192,40 @@ final class TreeSitterClientTests: XCTestCase {
         }
 
         wait(for: editExpectations + [finalEditExpectation], timeout: 5.0)
+    }
+}
+
+final class TreeSitterClientAsyncGateTests: XCTestCase {
+    private var savedEditLength = 0
+    private var savedContentLength = 0
+
+    override func setUp() {
+        savedEditLength = TreeSitterClient.Constants.maxSyncEditLength
+        savedContentLength = TreeSitterClient.Constants.maxSyncContentLength
+        TreeSitterClient.Constants.maxSyncEditLength = 1024
+        TreeSitterClient.Constants.maxSyncContentLength = 1_000_000
+    }
+
+    override func tearDown() {
+        TreeSitterClient.Constants.maxSyncEditLength = savedEditLength
+        TreeSitterClient.Constants.maxSyncContentLength = savedContentLength
+    }
+
+    func test_largePasteAtCaretRunsAsync() {
+        // The replaced range is empty for a caret paste; the inserted length must still force the async path.
+        XCTAssertTrue(TreeSitterClient.shouldExecuteAsync(editLength: 0, delta: 500_000, documentLength: 500_000))
+    }
+
+    func test_smallEditInSmallDocumentRunsSync() {
+        XCTAssertFalse(TreeSitterClient.shouldExecuteAsync(editLength: 4, delta: 4, documentLength: 1_000))
+    }
+
+    func test_largeDocumentRunsAsync() {
+        XCTAssertTrue(TreeSitterClient.shouldExecuteAsync(editLength: 1, delta: 1, documentLength: 2_000_000))
+    }
+
+    func test_largeDeletionRunsAsync() {
+        XCTAssertTrue(TreeSitterClient.shouldExecuteAsync(editLength: 0, delta: -500_000, documentLength: 10))
     }
 }
 // swiftlint:enable all

@@ -20,7 +20,7 @@ final class RedisPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let databaseTypeId = "Redis"
     static let databaseDisplayName = "Redis"
     static let iconName = "redis-icon"
-    static let defaultPort = 6379
+    static let defaultPort = 6_379
     static let additionalConnectionFields: [ConnectionField] = [
         ConnectionField(
             id: "redisDatabase",
@@ -35,8 +35,7 @@ final class RedisPlugin: NSObject, TableProPlugin, DriverPlugin {
             fieldType: .text,
             section: .advanced
         ),
-    ]
-    static let additionalDatabaseTypeIds: [String] = []
+    ] + AWSAuthFields.standard() + [AWSAuthFields.elastiCacheReplicationGroupField()]
 
     // MARK: - UI/Capability Metadata
 
@@ -187,5 +186,22 @@ final class RedisPlugin: NSObject, TableProPlugin, DriverPlugin {
 
     func createDriver(config: DriverConnectionConfig) -> any PluginDatabaseDriver {
         RedisPluginDriver(config: config)
+    }
+}
+
+extension RedisPlugin: PluginBrowseFilterProvider {
+    var browseFilterDescriptor: BrowseFilterDescriptor? {
+        BrowseFilterDescriptor(
+            usesGlob: true,
+            caseSensitive: true,
+            typeScopes: [
+                BrowseFilterDescriptor.TypeScope(id: "string", label: "String"),
+                BrowseFilterDescriptor.TypeScope(id: "hash", label: "Hash"),
+                BrowseFilterDescriptor.TypeScope(id: "list", label: "List"),
+                BrowseFilterDescriptor.TypeScope(id: "set", label: "Set"),
+                BrowseFilterDescriptor.TypeScope(id: "zset", label: "Sorted Set"),
+                BrowseFilterDescriptor.TypeScope(id: "stream", label: "Stream"),
+            ]
+        )
     }
 }

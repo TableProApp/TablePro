@@ -90,7 +90,6 @@ final class AIChatInlineSource: InlineSuggestionSource {
         while result.first?.isNewline == true {
             result.removeFirst()
         }
-        // Strip trailing whitespace and newlines
         while result.last?.isWhitespace == true {
             result.removeLast()
         }

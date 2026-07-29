@@ -61,7 +61,7 @@ internal struct BlobHexEditorView: View {
                 if BlobFormattingService.shared.parseHex(hexEditText) == nil, !hexEditText.isEmpty {
                     Text("Invalid hex")
                         .font(.caption2)
-                        .foregroundStyle(Color(nsColor: .systemRed))
+                        .foregroundStyle(.red)
                 }
             }
         }

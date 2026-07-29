@@ -32,7 +32,6 @@ struct DynamoDBItemFlattener {
             }
         }
 
-        // Collect all other attribute names across all items
         var remaining = Set<String>()
         for item in items {
             for key in item.keys where !seen.contains(key) {
@@ -40,7 +39,6 @@ struct DynamoDBItemFlattener {
             }
         }
 
-        // Append remaining sorted alphabetically
         ordered.append(contentsOf: remaining.sorted())
 
         return ordered

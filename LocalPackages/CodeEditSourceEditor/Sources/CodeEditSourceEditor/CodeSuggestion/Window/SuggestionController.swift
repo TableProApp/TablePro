@@ -11,7 +11,7 @@ import Combine
 import SwiftUI
 
 public final class SuggestionController: NSWindowController {
-    static var shared: SuggestionController = SuggestionController()
+    static var shared = SuggestionController()
 
     // MARK: - Properties
 
@@ -20,7 +20,7 @@ public final class SuggestionController: NSWindowController {
         window?.isVisible ?? false || popover?.isShown ?? false
     }
 
-    var model: SuggestionViewModel = SuggestionViewModel()
+    var model = SuggestionViewModel()
 
     // MARK: - Private Properties
 
@@ -32,6 +32,11 @@ public final class SuggestionController: NSWindowController {
     /// Tracks when the window is placed above the cursor
     var isWindowAboveCursor = false
 
+    /// Anchor for the current completion session. Re-applied by ``applyPlacement(windowSize:)``
+    /// on every resize so the panel re-derives its position from the cursor instead of drifting
+    /// from its previous frame as the list grows.
+    var placementAnchor: SuggestionPlacementAnchor?
+
     var popover: NSPopover?
 
     /// Holds the observer for the window resign notifications
@@ -39,6 +44,7 @@ public final class SuggestionController: NSWindowController {
     /// Closes autocomplete when first responder changes away from the active text view
     private var firstResponderKVO: NSKeyValueObservation?
     private var localEventMonitor: Any?
+    private var mouseEventMonitor: Any?
     private var sizeObservers: Set<AnyCancellable> = []
 
     // MARK: - Initialization
@@ -50,6 +56,16 @@ public final class SuggestionController: NSWindowController {
         let contentView = SuggestionContentView(model: model)
         let hostingView = NSHostingView(rootView: contentView)
         window.contentView = hostingView
+
+        model.onApply = { [weak self] in self?.close() }
+        model.onBackgroundTap = { [weak self] in self?.close() }
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleWindowWillClose(_:)),
+            name: NSWindow.willCloseNotification,
+            object: window
+        )
 
         // Resize window when items change
         model.$items
@@ -115,14 +131,27 @@ public final class SuggestionController: NSWindowController {
                 self.popover = popover
             } else {
                 self.showWindow(attachedTo: parentWindow)
-                self.constrainWindowToScreenEdges(cursorRect: cursorRect, font: textView.font)
+                let editorFrame = textView.view.window.map { window in
+                    window.convertToScreen(textView.view.convert(textView.view.bounds, to: nil))
+                }
+                self.constrainWindowToScreenEdges(
+                    cursorRect: cursorRect,
+                    font: textView.font,
+                    editorFrame: editorFrame
+                )
             }
         }
     }
 
-    /// Opens the window as a child of another window.
+    /// Opens the window as a child of another window. The panel is ordered front without ever
+    /// being made key or main: `orderFront(_:)` is documented not to change either status, and
+    /// `NSWindowController.showWindow(_:)` is deliberately avoided because its default
+    /// implementation routes through `makeKeyAndOrderFront(_:)`.
     public func showWindow(attachedTo parentWindow: NSWindow) {
         guard let window = window else { return }
+        if let currentParent = window.parent, currentParent !== parentWindow {
+            currentParent.removeChildWindow(window)
+        }
         parentWindow.addChildWindow(window, ordered: .above)
 
         if let existingObserver = windowResignObserver {
@@ -156,14 +185,33 @@ public final class SuggestionController: NSWindowController {
         }
 
         setupEventMonitors()
-        super.showWindow(nil)
         window.orderFront(nil)
     }
 
-    /// Close the window
-    public override func close() {
+    /// Close the window. Cleanup is performed by ``handleWindowWillClose(_:)``
+    /// which fires off `NSWindow.willCloseNotification`. Routing through the
+    /// notification means cleanup is idempotent and runs even when callers
+    /// invoke `window.close()` on the underlying `NSWindow` directly.
+    override public func close() {
+        if popover != nil {
+            popover?.close()
+            popover = nil
+        }
+        super.close()
+    }
+
+    @objc private func handleWindowWillClose(_ notification: Notification) {
+        guard (notification.object as AnyObject?) === window else { return }
+        performCleanup()
+    }
+
+    private func performCleanup() {
         model.willClose()
         removeEventMonitors()
+
+        if let window, let parent = window.parent {
+            parent.removeChildWindow(window)
+        }
 
         if let observer = windowResignObserver {
             NotificationCenter.default.removeObserver(observer)
@@ -172,13 +220,7 @@ public final class SuggestionController: NSWindowController {
 
         firstResponderKVO?.invalidate()
         firstResponderKVO = nil
-
-        if popover != nil {
-            popover?.close()
-            popover = nil
-        }
-
-        super.close()
+        placementAnchor = nil
     }
 
     // MARK: - Cursors Updated
@@ -212,6 +254,19 @@ public final class SuggestionController: NSWindowController {
 
     private func setupEventMonitors() {
         removeEventMonitors()
+        mouseEventMonitor = NSEvent.addLocalMonitorForEvents(
+            matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]
+        ) { [weak self] event in
+            guard let self else { return event }
+            if let panel = self.window, event.window === panel {
+                if event.type != .leftMouseDown {
+                    self.close()
+                }
+                return event
+            }
+            self.close()
+            return event
+        }
         localEventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self else { return event }
 
@@ -233,7 +288,7 @@ public final class SuggestionController: NSWindowController {
                 return nil
             case 36, 48: // Return, Tab
                 if let item = self.model.selectedItem {
-                    self.model.applySelectedItem(item: item, window: self.window)
+                    self.model.applySelectedItem(item: item)
                 }
                 return nil
             default:
@@ -246,6 +301,10 @@ public final class SuggestionController: NSWindowController {
         if let monitor = localEventMonitor {
             NSEvent.removeMonitor(monitor)
             localEventMonitor = nil
+        }
+        if let monitor = mouseEventMonitor {
+            NSEvent.removeMonitor(monitor)
+            mouseEventMonitor = nil
         }
     }
 }

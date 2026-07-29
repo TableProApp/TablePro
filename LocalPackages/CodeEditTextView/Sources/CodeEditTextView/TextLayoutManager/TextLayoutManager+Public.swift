@@ -180,10 +180,10 @@ extension TextLayoutManager {
         }
 
         // Get the *real* length of the character at the offset. If this is a surrogate pair it'll return the correct
-        // length of the character at the offset.
-        let realRange = if textStorage?.length == 0 {
-            NSRange(location: offset, length: 0)
-        } else if let string = textStorage?.string as? NSString {
+        // length of the character at the offset. Guard against an offset past the text storage's length: the line
+        // storage can be transiently longer than the string during an edit, and `rangeOfComposedCharacterSequence`
+        // raises `NSInvalidArgumentException` for an out-of-bounds index.
+        let realRange = if let string = textStorage?.string as? NSString, offset < string.length {
             string.rangeOfComposedCharacterSequence(at: offset)
         } else {
             NSRange(location: offset, length: 0)
@@ -222,6 +222,11 @@ extension TextLayoutManager {
     /// - Returns: Multiple bounding rects. Will return one rect for each line fragment that overlaps the given range.
     private func rectsFor(range: NSRange, in line: borrowing TextLineStorage<TextLine>.TextLinePosition) -> [CGRect] {
         guard let textStorage = (textStorage?.string as? NSString) else { return [] }
+
+        // Guard against a range past the text storage's length: the line storage can be transiently longer than the
+        // string during an edit, and `rangeOfComposedCharacterSequence` raises `NSInvalidArgumentException` for an
+        // out-of-bounds index.
+        guard range.length > 0, range.upperBound <= textStorage.length else { return [] }
 
         // Don't make rects in between characters
         let realRangeStart = textStorage.rangeOfComposedCharacterSequence(at: range.lowerBound)

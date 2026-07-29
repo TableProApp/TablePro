@@ -24,7 +24,7 @@ internal extension SafeModeLevel {
         case .alertFull: return String(localized: "Alert (Full)")
         case .safeMode: return String(localized: "Safe Mode")
         case .safeModeFull: return String(localized: "Safe Mode (Full)")
-        case .readOnly: return String(localized: "Read Only")
+        case .readOnly: return String(localized: "Read-Only")
         }
     }
 
@@ -67,8 +67,8 @@ internal extension SafeModeLevel {
     var badgeColor: Color {
         switch self {
         case .silent: return .secondary
-        case .alert, .alertFull: return Color(nsColor: .systemOrange)
-        case .safeMode, .safeModeFull, .readOnly: return Color(nsColor: .systemRed)
+        case .alert, .alertFull: return .orange
+        case .safeMode, .safeModeFull, .readOnly: return .red
         }
     }
 

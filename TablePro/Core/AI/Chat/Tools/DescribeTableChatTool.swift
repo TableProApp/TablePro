@@ -13,8 +13,7 @@ struct DescribeTableChatTool: ChatTool {
             "connection_id": ChatToolSchemaBuilder.connectionId,
             "table": ChatToolSchemaBuilder.string(description: "Table or view name"),
             "schema": ChatToolSchemaBuilder.schemaName
-        ],
-        required: ["table"]
+        ]
     )
     let mode: ChatToolMode = .readOnly
 

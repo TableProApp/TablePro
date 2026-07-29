@@ -38,6 +38,7 @@ public enum SyncRecordMapper {
         record["type"] = connection.type.rawValue as CKRecordValue
         record["sortOrder"] = Int64(connection.sortOrder) as CKRecordValue
         record["isReadOnly"] = Int64(connection.isReadOnly ? 1 : 0) as CKRecordValue
+        record["safeModeLevel"] = connection.safeModeLevel.rawValue as CKRecordValue
         record["sshEnabled"] = Int64(connection.sshEnabled ? 1 : 0) as CKRecordValue
         record["sslEnabled"] = Int64(connection.sslEnabled ? 1 : 0) as CKRecordValue
 
@@ -48,8 +49,10 @@ public enum SyncRecordMapper {
         if let groupId = connection.groupId {
             record["groupId"] = groupId.uuidString as CKRecordValue
         }
-        if let tagId = connection.tagId {
-            record["tagId"] = tagId.uuidString as CKRecordValue
+        if !connection.tagIds.isEmpty {
+            let tagIdStrings = connection.tagIds.map { $0.uuidString }
+            record["tagIds"] = tagIdStrings as CKRecordValue
+            record["tagId"] = tagIdStrings[0] as CKRecordValue
         }
         if let queryTimeout = connection.queryTimeoutSeconds {
             record["queryTimeoutSeconds"] = Int64(queryTimeout) as CKRecordValue
@@ -108,9 +111,17 @@ public enum SyncRecordMapper {
         let username = record["username"] as? String ?? ""
         let colorTag = record["color"] as? String ?? record["colorTag"] as? String
         let groupId = (record["groupId"] as? String).flatMap { UUID(uuidString: $0) }
-        let tagId = (record["tagId"] as? String).flatMap { UUID(uuidString: $0) }
+        let tagIds: [UUID]
+        if let rawIds = record["tagIds"] as? [String], !rawIds.isEmpty {
+            tagIds = rawIds.compactMap { UUID(uuidString: $0) }
+        } else if let single = (record["tagId"] as? String).flatMap({ UUID(uuidString: $0) }) {
+            tagIds = [single]
+        } else {
+            tagIds = []
+        }
         let sortOrder = (record["sortOrder"] as? Int64).map { Int($0) } ?? 0
         let isReadOnly = (record["isReadOnly"] as? Int64 ?? 0) != 0
+        let safeModeLevel = safeModeLevel(fromWire: record["safeModeLevel"] as? String, isReadOnly: isReadOnly)
         let queryTimeout = (record["queryTimeoutSeconds"] as? Int64).map { Int($0) }
         var sshConfig: SSHConfiguration?
         if let sshData = record["sshConfigJson"] as? Data {
@@ -151,6 +162,7 @@ public enum SyncRecordMapper {
             database: database,
             colorTag: colorTag,
             isReadOnly: isReadOnly,
+            safeModeLevel: safeModeLevel,
             queryTimeoutSeconds: queryTimeout,
             additionalFields: additionalFields,
             sshEnabled: sshEnabled,
@@ -158,9 +170,19 @@ public enum SyncRecordMapper {
             sslEnabled: sslEnabled,
             sslConfiguration: sslConfig,
             groupId: groupId,
-            tagId: tagId,
+            tagIds: tagIds,
             sortOrder: sortOrder
         )
+    }
+
+    private static func safeModeLevel(fromWire raw: String?, isReadOnly: Bool) -> SafeModeLevel {
+        guard let raw else { return isReadOnly ? .readOnly : .off }
+        if let level = SafeModeLevel(rawValue: raw) { return level }
+        switch raw {
+        case "silent": return .off
+        case "alert", "alertFull", "safeMode", "safeModeFull": return .confirmWrites
+        default: return isReadOnly ? .readOnly : .off
+        }
     }
 
     // MARK: - Update Existing CKRecord (preserves macOS-only fields)
@@ -175,6 +197,7 @@ public enum SyncRecordMapper {
         record["type"] = connection.type.rawValue as CKRecordValue
         record["sortOrder"] = Int64(connection.sortOrder) as CKRecordValue
         record["isReadOnly"] = Int64(connection.isReadOnly ? 1 : 0) as CKRecordValue
+        record["safeModeLevel"] = connection.safeModeLevel.rawValue as CKRecordValue
         record["sshEnabled"] = Int64(connection.sshEnabled ? 1 : 0) as CKRecordValue
         record["sslEnabled"] = Int64(connection.sslEnabled ? 1 : 0) as CKRecordValue
 
@@ -192,9 +215,12 @@ public enum SyncRecordMapper {
             record["groupId"] = nil
         }
 
-        if let tagId = connection.tagId {
-            record["tagId"] = tagId.uuidString as CKRecordValue
+        if !connection.tagIds.isEmpty {
+            let tagIdStrings = connection.tagIds.map { $0.uuidString }
+            record["tagIds"] = tagIdStrings as CKRecordValue
+            record["tagId"] = tagIdStrings[0] as CKRecordValue
         } else {
+            record["tagIds"] = nil
             record["tagId"] = nil
         }
 

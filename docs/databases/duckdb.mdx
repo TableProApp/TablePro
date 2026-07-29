@@ -1,101 +1,97 @@
 ---
 title: DuckDB
-description: Connect to DuckDB databases with TablePro
+description: Open local DuckDB files or connect to a remote DuckDB server over Quack
 ---
 
-# DuckDB
+DuckDB is an embedded analytical database built for OLAP workloads. TablePro opens local DuckDB files and connects to remote DuckDB servers over the Quack protocol. The driver plugin bundles DuckDB 1.5.3 and is a downloadable plugin: TablePro prompts to install it when you pick DuckDB in the connection form.
 
-DuckDB is an embedded analytical database, optimized for OLAP workloads. TablePro supports connecting to DuckDB database files for browsing tables, running queries, and managing schemas.
-
-The DuckDB driver plugin (1.0.19) bundles DuckDB 1.5.2, with DuckLake 1.0 support.
-
-## Connecting to a DuckDB database
+## Connecting to a local DuckDB file
 
 <Steps>
   <Step title="Create a new connection">
-    Open TablePro and click **New Connection** or press <kbd>⌘N</kbd>.
+    Click **Create Connection...** or press **Cmd+N**, then choose **DuckDB**.
   </Step>
-  <Step title="Select DuckDB">
-    Choose **DuckDB** from the database type list.
-  </Step>
-  <Step title="Choose your database file">
-    Click **Browse** to select an existing `.duckdb` file, or enter the path to create a new database.
+  <Step title="Keep Connection Type set to Local File">
+    Click **Browse...** to select an existing `.duckdb` file, or enter a path to create a new database.
   </Step>
   <Step title="Connect">
-    Click **Connect** to open the database.
+    Click **Save & Connect** to open the database.
   </Step>
 </Steps>
+
+<Frame caption="DuckDB connection form">
+  <img className="block dark:hidden" src="/images/duckdb-connection-form.png" alt="DuckDB connection form with Local File and Remote (Quack) connection types" />
+  <img className="hidden dark:block" src="/images/duckdb-connection-form-dark.png" alt="DuckDB connection form with Local File and Remote (Quack) connection types" />
+</Frame>
+
+## Connecting to a remote DuckDB server (Quack)
+
+Quack is DuckDB's client-server protocol. A DuckDB server exposes itself with `quack_serve`, and TablePro attaches to it as a remote database. Set **Connection Type** to **Remote (Quack, experimental)** and fill in:
+
+| Field | Value |
+|-------|-------|
+| **Host** | Server address (required) |
+| **Port** | `9494` by default |
+| **Token** | The token the server was started with |
+| **Database Alias** | Name TablePro attaches the remote under. Pre-filled with `remotedb` |
+
+Click **Save & Connect**. TablePro opens an in-memory DuckDB, registers the token as a secret, and attaches the remote server.
+
+<Warning>
+Remote (Quack) is experimental and matches the Quack beta:
+- You can run SQL against the remote, for example `SELECT * FROM alias.main.your_table`.
+- The sidebar cannot list remote tables yet; the Quack beta cannot enumerate a remote catalog.
+- On macOS the quack extension downloads from the DuckDB extension registry on first use, so the first remote connection needs network access.
+</Warning>
 
 ## Connection URL
 
 ```text
+# Local file
 duckdb:///path/to/database.duckdb
+
+# Remote (Quack)
+quack://host:9494/alias
 ```
 
 See [Connection URL Reference](/databases/connection-urls) for all parameters.
 
 ## Opening DuckDB files from Finder
 
-Double-click any `.duckdb` file in Finder to open it directly in TablePro.
+Double-click a `.duckdb` or `.ddb` file in Finder to open it directly in TablePro.
+
+## Schemas
+
+DuckDB supports multiple schemas per database; the default is `main`. Browse them in the sidebar. DuckDB has no toolbar schema switcher.
 
 ## Querying files directly
 
-DuckDB can query CSV, Parquet, and JSON files directly with SQL:
+DuckDB can query CSV, Parquet, and JSON files with SQL:
 
 ```sql
--- Query a CSV file
 SELECT * FROM 'data.csv';
-
--- Query a Parquet file
 SELECT * FROM read_parquet('analytics.parquet');
-
--- Query a JSON file
 SELECT * FROM read_json('config.json');
 ```
 
-## Schema support
+## DuckDB on iOS
 
-DuckDB supports multiple schemas within a single database. The default schema is `main`. Use the schema switcher in the toolbar to navigate between schemas.
+The iOS app supports DuckDB too. In the connection form, pick DuckDB and either turn on **In-Memory Database** or open a `.duckdb`/`.ddb` file through the Files app. Opened files keep working across launches through a security-scoped bookmark, so edits write back to the original file.
 
-```sql
--- Create a new schema
-CREATE SCHEMA analytics;
+The iOS build statically links the `core_functions`, `json`, `parquet`, `icu`, `autocomplete`, `httpfs`, and `quack` extensions, so remote Quack connections work on iOS without a download. Runtime extension autoloading stays off, so other on-demand extensions are not available on iOS. Large in-memory databases are bounded by the app's memory budget.
 
--- Create a table in a specific schema
-CREATE TABLE analytics.events (
-    id INTEGER PRIMARY KEY,
-    event_name VARCHAR,
-    created_at TIMESTAMP
-);
-```
+## Troubleshooting
 
-## DuckDB extensions
+**Connect fails on a local file**: DuckDB allows one writer per file. Quit anything else holding it, a `duckdb` CLI session, a Python process, or another TablePro window, then reconnect.
 
-DuckDB has a rich extension ecosystem. Install and load extensions using SQL:
+**Remote connection fails while attaching**: On macOS the `quack` extension downloads from the DuckDB extension registry the first time you connect. If that download is blocked, the attach step fails. Connect once from a network that can reach the registry.
 
-```sql
--- Install an extension
-INSTALL httpfs;
+**Host is required for a remote DuckDB connection**: The **Host** field is empty. Fill it in before saving.
 
--- Load an extension
-LOAD httpfs;
-
--- Query remote Parquet files
-SELECT * FROM read_parquet('https://example.com/data.parquet');
-```
-
-## Data types
-
-DuckDB supports a wide range of data types:
-
-| Category | Types |
-|----------|-------|
-| Numeric | `INTEGER`, `BIGINT`, `HUGEINT`, `DOUBLE`, `FLOAT`, `DECIMAL` |
-| String | `VARCHAR`, `TEXT`, `CHAR` |
-| Date/Time | `DATE`, `TIME`, `TIMESTAMP`, `INTERVAL` |
-| Complex | `LIST`, `MAP`, `STRUCT`, `UNION`, `ENUM` |
-| Other | `BOOLEAN`, `BLOB`, `UUID`, `JSON`, `BIT` |
+**Port must be a number between 1 and 65535**: The **Port** field holds something else. The Quack default is `9494`.
 
 ## Limitations
 
-DuckDB is embedded (no network access) and allows only one writer at a time.
+- A local DuckDB file allows only one writer at a time.
+- Remote (Quack) mode cannot list tables in the sidebar. Reference them by name in SQL.
+- TablePro cannot switch databases on a DuckDB connection. Each connection targets one file or one attached remote.

@@ -12,7 +12,7 @@ struct QuerySplitView<TopContent: View, BottomContent: View>: NSViewControllerRe
     }
 
     func makeNSViewController(context: Context) -> NSSplitViewController {
-        let splitViewController = NSSplitViewController()
+        let splitViewController = ResizeCursorSplitViewController()
         splitViewController.splitView.isVertical = false
         splitViewController.splitView.dividerStyle = .thin
         splitViewController.splitView.autosaveName = autosaveName

@@ -25,7 +25,6 @@ extension TableStructureView {
             return
         }
 
-        // If user chose to skip preview, apply changes directly
         if skipSchemaPreview {
             Task {
                 await executeSchemaChanges()
@@ -66,7 +65,6 @@ extension TableStructureView {
         let changes = structureChangeManager.getChangesArray()
         guard !changes.isEmpty else { return }
 
-        // Check for destructive changes that require confirmation
         let destructiveChanges = changes.filter { $0.requiresDataMigration }
         if !destructiveChanges.isEmpty {
             let descriptions = destructiveChanges.map { $0.description }
@@ -95,30 +93,11 @@ extension TableStructureView {
                 databaseType: connection.type
             )
 
-            // Success - reload schema
-            loadedTabs.removeAll()
+            tabData.markAllStale()
+            await reloadCoreTabs()
 
-            // Reload all structure data before calling loadSchemaForEditing
-            await loadColumns()
-
-            // Load indexes and foreign keys (needed for complete schema state)
-            guard let driver = DatabaseManager.shared.driver(for: connection.id) else {
-                isReloadingAfterSave = false
-                return
-            }
-            do {
-                indexes = try await driver.fetchIndexes(table: tableName)
-                loadedTabs.insert(.indexes)
-                foreignKeys = try await driver.fetchForeignKeys(table: tableName)
-                loadedTabs.insert(.foreignKeys)
-            } catch {
-                Self.logger.error("Failed to reload indexes/FKs: \(error.localizedDescription, privacy: .public)")
-            }
-
-            // Now load the complete schema into the change manager
             loadSchemaForEditing()
 
-            // Load current tab data for display
             await loadTabDataIfNeeded(selectedTab)
 
             // Force clear state after reload (in case it got set during the async process)
@@ -136,7 +115,7 @@ extension TableStructureView {
             lastSaveTime = Date()
             isReloadingAfterSave = false
         } catch {
-            isReloadingAfterSave = false  // Clear flag on error
+            isReloadingAfterSave = false
             AlertHelper.showErrorSheet(
                 title: String(localized: "Error Applying Changes"),
                 message: error.localizedDescription,
@@ -157,7 +136,6 @@ extension TableStructureView {
 
     var ddlView: some View {
         VStack(spacing: 0) {
-            // DDL toolbar
             HStack(spacing: 12) {
                 HStack(spacing: 4) {
                     Button(action: { ddlFontSize = max(10, ddlFontSize - 1) }) {
@@ -182,7 +160,7 @@ extension TableStructureView {
                 if showCopyConfirmation {
                     HStack {
                         Image(systemName: "checkmark.circle.fill")
-                            .foregroundStyle(Color(nsColor: .systemGreen))
+                            .foregroundStyle(.green)
                         Text("Copied!")
                     }
                     .transition(.opacity)
@@ -224,6 +202,14 @@ extension TableStructureView {
         coordinator?.tabManager.addTab(
             initialQuery: ddlStatement,
             title: "\(tableName) DDL"
+        )
+    }
+
+    func openTriggerInEditor(_ trigger: TriggerInfo) {
+        guard !trigger.statement.isEmpty else { return }
+        coordinator?.tabManager.addTab(
+            initialQuery: trigger.statement,
+            title: trigger.name
         )
     }
 

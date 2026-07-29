@@ -14,18 +14,27 @@ enum TableSelectionAction: Equatable {
     /// Covers: Cmd+A (multi-select), Shift+click range, deselection.
     case noNavigation
     /// Exactly one table was added — navigate to it.
-    case navigate(tableName: String, isView: Bool)
+    case navigate(table: TableInfo)
 
-    /// Pure function — determines the action from old/new selection sets.
     static func resolve(
         oldTables: Set<TableInfo>,
         newTables: Set<TableInfo>
     ) -> TableSelectionAction {
-        let added = newTables.subtracting(oldTables)
-        guard added.count == 1, let table = added.first else {
+        guard let table = SelectionDelta.singleAddition(old: oldTables, new: newTables) else {
             return .noNavigation
         }
-        return .navigate(tableName: table.name, isView: table.type == .view)
+        return .navigate(table: table)
+    }
+}
+
+enum SelectionDelta {
+    static func singleAddition<Element: Hashable>(
+        old: Set<Element>,
+        new: Set<Element>
+    ) -> Element? {
+        let added = new.subtracting(old)
+        guard added.count == 1 else { return nil }
+        return added.first
     }
 }
 
@@ -40,7 +49,6 @@ enum SidebarSyncAction: Equatable {
         selectedTables: Set<TableInfo>,
         currentTabTableName: String?
     ) -> SidebarSyncAction {
-        // Only sync when tables just loaded and sidebar has no selection
         guard !newTables.isEmpty, selectedTables.isEmpty,
               let tabTableName = currentTabTableName,
               newTables.contains(where: { $0.name == tabTableName })

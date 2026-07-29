@@ -17,6 +17,7 @@ enum RedisOperation {
     case del(keys: [String])
     case keys(pattern: String)
     case scan(cursor: Int, pattern: String?, count: Int?)
+    case keyBrowse(pattern: String?, typeScope: String?, limit: Int, offset: Int)
     case type(key: String)
     case ttl(key: String)
     case pttl(key: String)
@@ -90,8 +91,8 @@ extension RedisParseError: PluginDriverError {
     var pluginErrorMessage: String {
         switch self {
         case .emptySyntax: return String(localized: "Empty Redis command")
-        case .invalidArgument(let msg): return String(localized: "Invalid argument: \(msg)")
-        case .missingArgument(let msg): return String(localized: "Missing argument: \(msg)")
+        case .invalidArgument(let msg): return String(format: String(localized: "Invalid argument: %@"), msg)
+        case .missingArgument(let msg): return String(format: String(localized: "Missing argument: %@"), msg)
         }
     }
 }
@@ -151,9 +152,48 @@ struct RedisCommandParser {
              "MULTI", "EXEC", "DISCARD", "AUTH", "OBJECT":
             return try parseServerCommand(command, args: args, tokens: tokens)
 
+        case "KEYBROWSE":
+            return parseKeyBrowse(args)
+
         default:
             return .command(args: tokens)
         }
+    }
+
+    private static func parseKeyBrowse(_ args: [String]) -> RedisOperation {
+        var pattern: String?
+        var typeScope: String?
+        var limit = 200
+        var offset = 0
+        var i = 0
+        while i < args.count {
+            switch args[i].uppercased() {
+            case "MATCH":
+                if i + 1 < args.count {
+                    pattern = args[i + 1]
+                    i += 1
+                }
+            case "TYPE":
+                if i + 1 < args.count {
+                    typeScope = args[i + 1]
+                    i += 1
+                }
+            case "LIMIT":
+                if i + 1 < args.count, let value = Int(args[i + 1]) {
+                    limit = value
+                    i += 1
+                }
+            case "OFFSET":
+                if i + 1 < args.count, let value = Int(args[i + 1]) {
+                    offset = value
+                    i += 1
+                }
+            default:
+                break
+            }
+            i += 1
+        }
+        return .keyBrowse(pattern: pattern, typeScope: typeScope, limit: limit, offset: offset)
     }
 
     // MARK: - Key Commands
@@ -568,7 +608,6 @@ struct RedisCommandParser {
                 if knownFlags.contains(upper) {
                     flags.append(upper)
                     if upper == "LIMIT" {
-                        // LIMIT requires offset and count
                         guard i + 2 < args.count else {
                             throw RedisParseError.missingArgument("LIMIT requires offset and count")
                         }

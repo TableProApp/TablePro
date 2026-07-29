@@ -90,7 +90,6 @@ enum ValueDisplayDetector {
 
         guard nameMatches else { return nil }
 
-        // Validate with sample value if available
         if let sample = sampleValue, let numericValue = Double(sample) {
             // Millisecond timestamps are > 10 billion
             if numericValue > 10_000_000_000 {

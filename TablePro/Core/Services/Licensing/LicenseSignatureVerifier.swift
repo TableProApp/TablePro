@@ -37,12 +37,10 @@ final class LicenseSignatureVerifier {
         encoder.outputFormatting = [.sortedKeys]
         let dataJSON = try encoder.encode(payload.data)
 
-        // Decode the base64 signature
         guard let signatureData = Data(base64Encoded: payload.signature) else {
             throw LicenseError.signatureInvalid
         }
 
-        // Verify RSA-SHA256 signature
         let isValid = SecKeyVerifySignature(
             publicKey,
             .rsaSignatureMessagePKCS1v15SHA256,
@@ -73,7 +71,6 @@ final class LicenseSignatureVerifier {
 
     /// Parse a PEM-encoded public key into a SecKey
     private static func createSecKey(fromPEM pem: String) -> SecKey? {
-        // Strip PEM headers/footers and whitespace
         let stripped = pem
             .replacingOccurrences(of: "-----BEGIN PUBLIC KEY-----", with: "")
             .replacingOccurrences(of: "-----END PUBLIC KEY-----", with: "")

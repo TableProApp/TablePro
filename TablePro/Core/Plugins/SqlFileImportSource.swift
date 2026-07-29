@@ -50,7 +50,7 @@ final class SqlFileImportSource: PluginImportSource, @unchecked Sendable {
 
     func statements() async throws -> AsyncThrowingStream<(statement: String, lineNumber: Int), Error> {
         let fileURL = try await resolveURL()
-        return parser.parseFile(url: fileURL, encoding: encoding)
+        return parser.parseFile(url: fileURL, encoding: encoding, dialect: dialect)
     }
 
     func cleanup() {

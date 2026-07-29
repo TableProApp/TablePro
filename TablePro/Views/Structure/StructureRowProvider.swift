@@ -61,7 +61,7 @@ final class StructureRowProvider {
                 String(localized: "On Delete"),
                 String(localized: "On Update")
             ]
-        case .ddl, .parts:
+        case .ddl, .parts, .triggers:
             return []
         }
     }
@@ -82,7 +82,7 @@ final class StructureRowProvider {
             return [3]
         case .foreignKeys:
             return []
-        case .ddl, .parts:
+        case .ddl, .parts, .triggers:
             return []
         }
     }
@@ -96,7 +96,7 @@ final class StructureRowProvider {
         case .indexes:
             let types = EditableIndexDefinition.IndexType.allCases.map(\.rawValue)
             return [2: types]
-        case .columns, .ddl, .parts:
+        case .columns, .ddl, .parts, .triggers:
             return [:]
         }
     }
@@ -106,7 +106,7 @@ final class StructureRowProvider {
         case .columns:
             if let i = orderedColumnFields.firstIndex(of: .type) { return [i] }
             return []
-        case .indexes, .foreignKeys, .ddl, .parts:
+        case .indexes, .foreignKeys, .ddl, .parts, .triggers:
             return []
         }
     }
@@ -213,7 +213,7 @@ final class StructureRowProvider {
                     fk.onUpdate.rawValue
                 ])
             }
-        case .ddl, .parts:
+        case .ddl, .parts, .triggers:
             return []
         }
     }

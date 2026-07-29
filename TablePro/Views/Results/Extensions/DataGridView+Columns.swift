@@ -16,7 +16,7 @@ extension TableViewCoordinator {
         guard let column = tableColumn else { return nil }
 
         let tableRows = tableRowsProvider()
-        let displayCount = sortedIDs?.count ?? tableRows.count
+        let displayCount = displayIDs?.count ?? tableRows.count
 
         if column.identifier == ColumnIdentitySchema.rowNumberIdentifier {
             return cellRegistry.makeRowNumberCell(
@@ -56,11 +56,7 @@ extension TableViewCoordinator {
         let isFocused: Bool = {
             guard let keyTableView = tableView as? KeyHandlingTableView,
                   keyTableView.focusedRow == row,
-                  let tableColumnIndex = DataGridView.tableColumnIndex(
-                    for: columnIndex,
-                    in: tableView,
-                    schema: identitySchema
-                  ),
+                  let tableColumnIndex = tableColumnIndex(for: columnIndex),
                   keyTableView.focusedColumn == tableColumnIndex else { return false }
             return true
         }()

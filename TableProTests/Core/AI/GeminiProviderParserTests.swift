@@ -49,7 +49,7 @@ struct GeminiProviderParserTests {
             ]]
         ], state: &state)
         #expect(events.count == 3)
-        if case .toolUseStart(let id, let name) = events[0] {
+        if case .toolUseStart(let id, let name, _) = events[0] {
             #expect(id == stableID)
             #expect(name == "list_tables")
         } else {
@@ -156,7 +156,7 @@ struct GeminiProviderParserTests {
             return "id-\(counter)"
         })
         let starts = events.compactMap { event -> String? in
-            if case .toolUseStart(let id, _) = event { return id }
+            if case .toolUseStart(let id, _, _) = event { return id }
             return nil
         }
         #expect(starts == ["id-0", "id-1"])

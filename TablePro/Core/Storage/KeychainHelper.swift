@@ -25,7 +25,14 @@ enum KeychainStringResult: Sendable, Equatable {
     case error(OSStatus)
 }
 
-final class KeychainHelper: Sendable {
+protocol KeychainStoring: Sendable {
+    @discardableResult
+    func writeString(_ value: String, forKey key: String) -> Bool
+    func readStringResult(forKey key: String) -> KeychainStringResult
+    func delete(forKey key: String)
+}
+
+final class KeychainHelper: KeychainStoring {
     static let shared = KeychainHelper()
     static let passwordSyncEnabledKey = "com.TablePro.keychainPasswordSyncEnabled"
 
@@ -169,14 +176,30 @@ final class KeychainHelper: Sendable {
         var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
-            kSecAttrAccount as String: key,
-            kSecUseDataProtectionKeychain as String: true
+            kSecAttrAccount as String: key
         ]
+        if Self.canUseDataProtectionKeychain {
+            query[kSecUseDataProtectionKeychain as String] = true
+        }
         if let accessGroup {
             query[kSecAttrAccessGroup as String] = accessGroup
         }
         return query
     }
+
+    private static let canUseDataProtectionKeychain: Bool = {
+        #if DEBUG
+        guard let task = SecTaskCreateFromSelf(nil),
+              SecTaskCopyValueForEntitlement(task, "com.apple.application-identifier" as CFString, nil) != nil
+        else {
+            logger.warning("No application-identifier entitlement; falling back to the file-based keychain (DEBUG build)")
+            return false
+        }
+        return true
+        #else
+        return true
+        #endif
+    }()
 
     private func accessibility(forSync synchronizable: Bool) -> CFString {
         synchronizable

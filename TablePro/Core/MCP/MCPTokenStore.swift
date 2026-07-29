@@ -3,7 +3,7 @@ import Foundation
 import os
 import Security
 
-enum ConnectionAccess: Sendable, Codable, Equatable {
+public enum ConnectionAccess: Sendable, Codable, Equatable {
     case all
     case limited(Set<UUID>)
 
@@ -14,7 +14,7 @@ enum ConnectionAccess: Sendable, Codable, Equatable {
         }
     }
 
-    func allows(_ connectionId: UUID) -> Bool {
+    public func allows(_ connectionId: UUID) -> Bool {
         switch self {
         case .all: return true
         case .limited(let ids): return ids.contains(connectionId)
@@ -341,7 +341,7 @@ actor MCPTokenStore {
         let input = salt + plaintext
         guard let data = input.data(using: .utf8) else { return "" }
         let digest = SHA256.hash(data: data)
-        return digest.map { String(format: "%02x", $0) }.joined()
+        return digest.hexEncoded
     }
 
     private func base64UrlEncode(_ data: Data) -> String {

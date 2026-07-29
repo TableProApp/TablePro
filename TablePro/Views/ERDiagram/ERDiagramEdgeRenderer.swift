@@ -79,9 +79,80 @@ enum ERDiagramEdgeRenderer {
             let (path, cp1, cp2) = bezierPath(from: srcPort, to: dstPort, verticalPorts: verticalPorts)
 
             context.stroke(path, with: .color(strokeColor), style: strokeStyle)
-            drawCrowFoot(context: context, at: srcPort, toward: cp1, color: strokeColor)
-            drawOneBar(context: context, at: dstPort, toward: cp2, color: strokeColor)
+            drawSourceMarker(context: context, cardinality: item.edge.cardinality, at: srcPort, toward: cp1, color: strokeColor)
+            drawDestinationMarker(context: context, cardinality: item.edge.cardinality, at: dstPort, toward: cp2, color: strokeColor)
         }
+    }
+
+    // MARK: - Cardinality Markers
+
+    private static func drawSourceMarker(
+        context: GraphicsContext,
+        cardinality: ERCardinality,
+        at point: CGPoint,
+        toward target: CGPoint,
+        color: Color
+    ) {
+        switch cardinality {
+        case .oneToOne:
+            drawCompoundEndMarker(context: context, at: point, toward: target, isMany: false, isMandatory: true, color: color)
+        case .zeroOrOneToOne:
+            drawCompoundEndMarker(context: context, at: point, toward: target, isMany: false, isMandatory: false, color: color)
+        case .manyToOne:
+            drawCompoundEndMarker(context: context, at: point, toward: target, isMany: true, isMandatory: true, color: color)
+        case .zeroOrManyToOne:
+            drawCompoundEndMarker(context: context, at: point, toward: target, isMany: true, isMandatory: false, color: color)
+        case .manyToMany:
+            drawCrowFoot(context: context, at: point, toward: target, color: color)
+        default:
+            drawCompoundEndMarker(context: context, at: point, toward: target, isMany: true, isMandatory: true, color: color)
+        }
+    }
+
+    private static func drawDestinationMarker(
+        context: GraphicsContext,
+        cardinality: ERCardinality,
+        at point: CGPoint,
+        toward target: CGPoint,
+        color: Color
+    ) {
+        switch cardinality {
+        case .manyToMany:
+            drawCrowFoot(context: context, at: point, toward: target, color: color)
+        default:
+            drawOneBar(context: context, at: point, toward: target, color: color)
+        }
+    }
+
+    private static func drawCompoundEndMarker(
+        context: GraphicsContext,
+        at point: CGPoint,
+        toward target: CGPoint,
+        isMany: Bool,
+        isMandatory: Bool,
+        color: Color
+    ) {
+        if isMany {
+            drawCrowFoot(context: context, at: point, toward: target, color: color)
+        } else {
+            drawOneBar(context: context, at: point, toward: target, color: color)
+        }
+
+        let angle = atan2(target.y - point.y, target.x - point.x)
+        let innerOffset: CGFloat = 14
+        let innerPoint = CGPoint(x: point.x + innerOffset * cos(angle), y: point.y + innerOffset * sin(angle))
+
+        if isMandatory {
+            drawOneBar(context: context, at: innerPoint, toward: target, color: color)
+        } else {
+            drawCircle(context: context, at: innerPoint, color: color)
+        }
+    }
+
+    private static func drawCircle(context: GraphicsContext, at point: CGPoint, color: Color) {
+        let radius: CGFloat = 3.5
+        let rect = CGRect(x: point.x - radius, y: point.y - radius, width: radius * 2, height: radius * 2)
+        context.stroke(Path(ellipseIn: rect), with: .color(color), style: StrokeStyle(lineWidth: 1.5))
     }
 
     // MARK: - Port Selection

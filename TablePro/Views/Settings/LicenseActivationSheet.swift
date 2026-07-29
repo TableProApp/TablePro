@@ -13,10 +13,10 @@ struct LicenseActivationSheet: View {
     @State private var licenseKeyInput = ""
     @State private var isActivating = false
     @State private var errorMessage: String?
+    @FocusState private var keyFocused: Bool
 
     var body: some View {
         VStack(spacing: 0) {
-            // Header
             VStack(spacing: 8) {
                 Image(systemName: "key.fill")
                     .font(.title)
@@ -26,31 +26,31 @@ struct LicenseActivationSheet: View {
                     .font(.title2)
                     .fontWeight(.semibold)
 
-                Text("Enter your license key to unlock Pro features.")
+                Text("Enter your license key, or a team invite code to join a team.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
             }
             .padding(.top, 24)
             .padding(.bottom, 20)
 
-            // License key input
             VStack(spacing: 12) {
                 TextField("XXXXX-XXXXX-XXXXX-XXXXX-XXXXX", text: $licenseKeyInput)
                     .font(.system(.body, design: .monospaced))
                     .textFieldStyle(.roundedBorder)
                     .disableAutocorrection(true)
                     .multilineTextAlignment(.center)
+                    .focused($keyFocused)
                     .onSubmit { Task { await activate() } }
 
                 if let errorMessage {
                     Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
                         .font(.caption)
-                        .foregroundStyle(Color(nsColor: .systemOrange))
+                        .foregroundStyle(.orange)
                 }
             }
             .padding(.horizontal, 32)
 
-            // Actions
             VStack(spacing: 10) {
                 if isActivating {
                     ProgressView()
@@ -61,7 +61,7 @@ struct LicenseActivationSheet: View {
                         Task { await activate() }
                     }
                     .buttonStyle(.borderedProminent)
-                    .keyboardShortcut(.return, modifiers: [])
+                    .keyboardShortcut(.defaultAction)
                     .disabled(licenseKeyInput.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
 
@@ -87,7 +87,7 @@ struct LicenseActivationSheet: View {
         defer { isActivating = false }
 
         do {
-            try await LicenseManager.shared.activate(licenseKey: licenseKeyInput)
+            try await LicenseManager.shared.activate(codeOrKey: licenseKeyInput)
             dismiss()
         } catch {
             errorMessage = (error as? LicenseError)?.friendlyDescription ?? error.localizedDescription

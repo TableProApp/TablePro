@@ -10,16 +10,16 @@
 
 import AppKit
 import Foundation
-import TableProPluginKit
 import SwiftUI
-import Testing
 @testable import TablePro
+import TableProPluginKit
+import Testing
 
 @MainActor
 private final class NoopColumnLayoutPersister: ColumnLayoutPersisting {
-    func load(for tableName: String, connectionId: UUID) -> ColumnLayoutState? { nil }
-    func save(_ layout: ColumnLayoutState, for tableName: String, connectionId: UUID) {}
-    func clear(for tableName: String, connectionId: UUID) {}
+    func load(for key: ColumnLayoutTableKey) -> ColumnLayoutState? { nil }
+    func save(_ layout: ColumnLayoutState, for key: ColumnLayoutTableKey) {}
+    func clear(for key: ColumnLayoutTableKey) {}
 }
 
 @MainActor
@@ -28,8 +28,13 @@ private final class StubClipboard: ClipboardProvider {
     var hasGridRowsValue = false
 
     func readText() -> String? { text }
+    func readGridRows() -> GridRowsClipboardPayload? { nil }
     func writeText(_ text: String) { self.text = text; hasGridRowsValue = false }
-    func writeRows(tsv: String, html: String?) { self.text = tsv; hasGridRowsValue = true }
+    func writeCsv(_ csv: String) { self.text = csv; hasGridRowsValue = false }
+    func writeRows(tsv: String, html: String?, gridRows: GridRowsClipboardPayload) {
+        self.text = tsv
+        hasGridRowsValue = true
+    }
     var hasText: Bool { text != nil }
     var hasGridRows: Bool { hasGridRowsValue }
 }

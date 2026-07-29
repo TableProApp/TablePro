@@ -45,14 +45,15 @@ extension MainContentCoordinator {
         } else {
             sql = SQLStatementScanner.statementAtCursor(
                 in: fullQuery,
-                cursorPosition: cursorPositions.first?.range.location ?? 0
+                cursorPosition: cursorPositions.first?.range.location ?? 0,
+                dialect: sqlDialect
             )
         }
 
         let trimmed = sql.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
 
-        let statements = SQLStatementScanner.allStatements(in: trimmed)
+        let statements = SQLStatementScanner.allStatements(in: trimmed, dialect: sqlDialect)
         guard let stmt = statements.first else { return }
 
         let explainSQL = "\(variant.sqlPrefix) \(stmt)"

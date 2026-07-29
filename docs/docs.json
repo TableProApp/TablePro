@@ -17,6 +17,16 @@
     "twitter:card": "summary_large_image",
     "twitter:image": "https://tablepro.app/og.png"
   },
+  "redirects": [
+    {
+      "source": "/features/php-viewer",
+      "destination": "/features/json-viewer"
+    },
+    {
+      "source": "/customization/overview",
+      "destination": "/customization/settings"
+    }
+  ],
   "navigation": {
     "tabs": [
       {
@@ -32,6 +42,10 @@
               "databases/overview",
               "databases/connection-urls",
               "databases/ssh-tunneling",
+              "databases/cloudflare-tunnel",
+              "databases/cloud-sql-proxy",
+              "databases/socks-proxy",
+              "databases/aws-iam",
               {
                 "group": "SQL",
                 "pages": [
@@ -39,6 +53,8 @@
                   "databases/mariadb",
                   "databases/postgresql",
                   "databases/redshift",
+                  "databases/cockroachdb",
+                  "databases/pglite",
                   "databases/mssql",
                   "databases/oracle"
                 ]
@@ -49,7 +65,9 @@
                   "databases/mongodb",
                   "databases/redis",
                   "databases/cassandra",
-                  "databases/etcd"
+                  "databases/etcd",
+                  "databases/elasticsearch",
+                  "databases/surrealdb"
                 ]
               },
               {
@@ -57,6 +75,7 @@
                 "pages": [
                   "databases/sqlite",
                   "databases/duckdb",
+                  "databases/beancount",
                   "databases/libsql"
                 ]
               },
@@ -65,12 +84,13 @@
                 "pages": [
                   "databases/dynamodb",
                   "databases/bigquery",
+                  "databases/snowflake",
                   "databases/cloudflare-d1"
                 ]
               },
               {
                 "group": "Analytics",
-                "pages": ["databases/clickhouse"]
+                "pages": ["databases/clickhouse", "databases/teradata", "databases/trino"]
               }
             ]
           },
@@ -104,12 +124,13 @@
                   "features/explain-visualization",
                   "features/json-viewer",
                   "features/server-dashboard",
-                  "features/terminal"
+                  "features/users-roles"
                 ]
               },
               {
                 "group": "Data Management",
                 "pages": [
+                  "features/csv-inspector",
                   "features/import-export",
                   "features/backup-restore",
                   "features/change-tracking",
@@ -120,8 +141,10 @@
                 "group": "Workflow",
                 "pages": [
                   "features/tabs",
+                  "features/quick-switcher",
                   "features/query-history",
-                  "features/sql-favorites",
+                  "features/favorites",
+                  "features/project-folder-import",
                   "features/keyboard-shortcuts"
                 ]
               },
@@ -130,6 +153,7 @@
                 "pages": [
                   "features/safe-mode",
                   "features/ssh-profiles",
+                  "features/ssl",
                   "features/connection-sharing"
                 ]
               },
@@ -141,18 +165,19 @@
                 ]
               },
               {
-                "group": "Extensibility",
-                "pages": ["features/plugins"]
-              }
+                "group": "Team & Licensing",
+                "pages": ["features/team", "features/licensing"]
+              },
+              "features/plugins"
             ]
           },
           {
             "group": "Customization",
             "pages": [
-              "customization/overview",
               "customization/settings",
               "customization/appearance",
-              "customization/editor-settings"
+              "customization/editor-settings",
+              "customization/data-settings"
             ]
           },
           {
@@ -160,12 +185,14 @@
             "pages": [
               "external-api/index",
               "external-api/url-scheme",
-              "external-api/mcp-tools",
-              "external-api/mcp-resources",
-              "external-api/pairing",
-              "external-api/tokens",
+              "external-api/terminal",
+              "external-api/ios-shortcuts",
               "external-api/raycast",
               "external-api/mcp-clients",
+              "external-api/pairing",
+              "external-api/tokens",
+              "external-api/mcp-tools",
+              "external-api/mcp-resources",
               "external-api/versioning"
             ]
           }
@@ -182,7 +209,9 @@
               "development/architecture",
               "development/building",
               "development/code-style",
-              "development/plugin-registry"
+              "development/plugin-development",
+              "development/plugin-registry",
+              "development/testing-plugins"
             ]
           }
         ]

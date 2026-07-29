@@ -9,6 +9,8 @@ Three layers, three tools. Each crate's test policy follows from its position in
 | `drivers/<engine>` | Real engines | Unit tests + `testcontainers-rs` integration tests | Yes |
 | `app` | GTK4 + Relm4 components | Limited; pure logic in `services/` is unit-tested | No |
 
+Two helper scripts sit on top: `scripts/ci-local.sh` runs the fast CI checks, `scripts/smoke-postgres.sh` runs the driver smoke against a Postgres you already have.
+
 ## Unit tests
 
 In-crate, in `#[cfg(test)] mod tests` next to the code they cover. Standard Rust idiom.
@@ -30,8 +32,10 @@ mod tests {
 Run all unit tests:
 
 ```bash
-cargo test --workspace --lib
+cargo test --workspace --lib --bins
 ```
+
+`--bins` is not optional: `tablepro-app` has no `lib.rs`, so `--lib` alone skips every test in the app crate. `scripts/ci-local.sh` runs this command; the CI workflow still passes `--lib` only.
 
 ## Integration tests
 
@@ -42,19 +46,18 @@ For `storage`, integration tests use `tempfile::TempDir` to run against an isola
 For drivers, integration tests use [`testcontainers`](https://docs.rs/testcontainers/latest/testcontainers/) to spin up a real database. The pattern is identical for every driver:
 
 ```rust
-use testcontainers::{clients::Cli, images::generic::GenericImage};
+use testcontainers::ImageExt;
+use testcontainers_modules::postgres::Postgres;
+use testcontainers_modules::testcontainers::runners::AsyncRunner;
 
 #[tokio::test]
+#[ignore = "requires docker"]
 async fn list_tables_returns_seeded_tables() {
-    let docker = Cli::default();
-    let image = GenericImage::new("postgres", "16")
-        .with_env_var("POSTGRES_PASSWORD", "test")
-        .with_exposed_port(5432);
-    let node = docker.run(image);
-    let port = node.get_host_port_ipv4(5432);
+    let container = Postgres::default().with_tag("16-alpine").start().await.unwrap();
+    let host = container.get_host().await.unwrap().to_string();
+    let port = container.get_host_port_ipv4(5432).await.unwrap();
 
-    let driver = PgDriver;
-    let conn = driver.connect(opts_for(port)).await.unwrap();
+    let conn = PgDriver.connect(opts_for(host, port)).await.unwrap();
 
     conn.execute("CREATE TABLE foo (id INT)").await.unwrap();
     let tables = conn.list_tables().await.unwrap();
@@ -62,7 +65,42 @@ async fn list_tables_returns_seeded_tables() {
 }
 ```
 
-Integration tests run in CI. Locally they require Docker and a user that can reach the daemon (see the macOS `CLAUDE.md` notes about Docker group permissions).
+Keep the container alive for the whole test: dropping the handle stops it.
+
+Integration tests run in CI. Locally they require a Docker-compatible API socket.
+
+### Docker or Podman
+
+Upstream CI uses Docker. Fedora ships Podman instead, and on Debian it is the easier install; either way, point testcontainers at Podman's rootless socket:
+
+```bash
+sudo dnf install -y podman   # or: sudo apt install -y podman
+systemctl --user enable --now podman.socket
+export DOCKER_HOST=unix:///run/user/$(id -u)/podman/podman.sock
+cargo test --test integration -p tablepro-driver-postgres -- --include-ignored --test-threads=1
+cargo test --test integration -p tablepro-driver-mysql -- --include-ignored --test-threads=1
+cargo test --test integration -p tablepro-driver-clickhouse -- --include-ignored --test-threads=1
+```
+
+Do not bother with `TESTCONTAINERS_RYUK_DISABLED`. That is a testcontainers-java / go setting; the Rust crate has no Ryuk reaper and stops each container when its handle drops.
+
+`curl --unix-socket "${DOCKER_HOST#unix://}" http://localhost/_ping` should print `OK` before you run the suite. `--unix-socket` takes a filesystem path, so the `unix://` prefix has to come off.
+
+A test that panics hard can still leave a container behind. `podman container prune` clears them.
+
+### Local smoke without a container
+
+`crates/drivers/postgres/tests/smoke_local.rs` runs connect, list tables, fetch rows, edit a cell against a Postgres that is already up. It is `#[ignore]`d like the container suites, so it never runs during a plain `cargo test`.
+
+```bash
+podman run -d --name tablepro-smoke -p 54329:5432 \
+  -e POSTGRES_USER=tablepro -e POSTGRES_PASSWORD=tablepro -e POSTGRES_DB=tablepro \
+  docker.io/library/postgres:16-alpine
+
+./scripts/smoke-postgres.sh
+```
+
+Point it somewhere else with `SMOKE_PG_HOST`, `SMOKE_PG_PORT`, `SMOKE_PG_USER`, `SMOKE_PG_PASS`, `SMOKE_PG_DB`. The test creates, clears and drops `tablepro_smoke_items`, so use a scratch database.
 
 Mark slow integration tests with `#[ignore]` if they take more than ~5 seconds:
 
@@ -92,16 +130,16 @@ If a UI bug ships and a regression test would have caught it, write the test the
 
 ## End-to-end smoke test
 
-`crates/app/tests/smoke.rs` runs at the top of the CI pipeline. It launches the app under `xvfb-run`, sends a fixed sequence of D-Bus actions through `gtk::Application`'s registered actions, and asserts that the app reaches "connected to PostgreSQL, table list visible" without panicking.
+There is no app-level end-to-end test yet. Driving the GTK app under `xvfb-run` through its registered `gtk::Application` actions is the intended shape when we add one.
 
-The smoke test is not exhaustive. Its job is to fail loudly when something fundamental is broken before the slower per-driver integration tests run.
+What exists today is the driver-level smoke described above: `scripts/smoke-postgres.sh` against a Postgres you already run.
 
 ## CI
 
-GitHub Actions, Linux runner, two jobs:
+GitHub Actions (`.github/workflows/build-linux.yml`), Ubuntu runner, two jobs:
 
-1. **Fast** (~2 min) — `cargo fmt --check`, `cargo clippy --all -- -D warnings`, `cargo build --workspace`, `cargo test --workspace --lib`.
-2. **Full** (~10 min) — runs after fast passes. Boots Docker, runs all integration tests including the smoke test.
+1. **Fast checks**: `cargo fmt --all -- --check`, `cargo clippy --all-targets -- -D warnings`, `cargo build --workspace`, `cargo test --workspace --lib`. Runs in an `ubuntu:25.10` container, which ships the glib version libadwaita 1.6 needs. `scripts/ci-local.sh` runs the same steps, but with `--lib --bins` so the app crate's tests actually run. The workflow should pick up `--bins` too.
+2. **Driver integration tests**: runs after fast checks pass. Boots Docker on the host runner and runs the Postgres, MySQL, and ClickHouse suites with `--include-ignored`. The MSSQL suite exists but is not wired in yet.
 
 PRs only merge when both jobs are green.
 

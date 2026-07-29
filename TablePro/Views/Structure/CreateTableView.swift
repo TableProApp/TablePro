@@ -33,6 +33,7 @@ struct CreateTableView: View {
 
     let connection: DatabaseConnection
     var coordinator: MainContentCoordinator?
+    let selectionState: GridSelectionState
 
     @State private var structureChangeManager: StructureChangeManager
     @State private var wrappedChangeManager: AnyChangeManager
@@ -44,15 +45,21 @@ struct CreateTableView: View {
     @State private var showError = false
     @State private var previewSQL = ""
     @State private var gridDelegate: CreateTableGridDelegate
+    @State private var actionHandler = CreateTableActionHandler()
 
     // DataGridView state
     @State private var selectedRows: Set<Int> = []
     @State private var sortState = SortState()
     @State private var columnLayout = ColumnLayoutState()
 
-    init(connection: DatabaseConnection, coordinator: MainContentCoordinator?) {
+    init(
+        connection: DatabaseConnection,
+        coordinator: MainContentCoordinator?,
+        selectionState: GridSelectionState
+    ) {
         self.connection = connection
         self.coordinator = coordinator
+        self.selectionState = selectionState
 
         let manager = StructureChangeManager()
         _structureChangeManager = State(wrappedValue: manager)
@@ -79,8 +86,18 @@ struct CreateTableView: View {
             if structureChangeManager.workingColumns.isEmpty {
                 structureChangeManager.addNewColumn()
             }
+            actionHandler.createTable = { createTable() }
+            coordinator?.createTableActions = actionHandler
+            coordinator?.toolbarState.hasCreateTablePending = isReadyToCreate
         }
+        .onDisappear {
+            selectionState.indices = []
+            coordinator?.createTableActions = nil
+            coordinator?.toolbarState.hasCreateTablePending = false
+        }
+        .onChange(of: selectedRows) { _, newRows in selectionState.indices = newRows }
         .onChange(of: selectedTab) { updateGridDelegate() }
+        .onChange(of: isReadyToCreate) { updateCreateTablePendingState() }
         .alert(String(localized: "Create Table Failed"), isPresented: $showError) {
             Button("OK") {}
         } message: {
@@ -332,8 +349,18 @@ struct CreateTableView: View {
 
     // MARK: - Create Table
 
+    private var isReadyToCreate: Bool {
+        !isCreating
+            && !tableName.isEmpty
+            && structureChangeManager.workingColumns.contains { !$0.name.isEmpty && !$0.dataType.isEmpty }
+    }
+
+    private func updateCreateTablePendingState() {
+        coordinator?.toolbarState.hasCreateTablePending = isReadyToCreate
+    }
+
     private func createTable() {
-        guard !tableName.isEmpty else { return }
+        guard !isCreating, !tableName.isEmpty else { return }
         guard let sql = buildCreateTableSQL() else {
             errorMessage = String(localized: "Add at least one column with a name and type")
             showError = true
@@ -342,6 +369,7 @@ struct CreateTableView: View {
 
         isCreating = true
         errorMessage = nil
+        updateCreateTablePendingState()
 
         Task {
             defer { isCreating = false }
@@ -351,6 +379,23 @@ struct CreateTableView: View {
                         domain: "CreateTableView", code: -1,
                         userInfo: [NSLocalizedDescriptionKey: String(localized: "Not connected to database")]
                     )
+                }
+
+                let decision = await ExecutionGateProvider.shared.authorize(
+                    OperationRequest(
+                        connectionId: connection.id,
+                        databaseType: connection.type,
+                        sql: sql,
+                        kind: .schemaMutation,
+                        caller: .userInterface,
+                        capabilities: .interactiveUser,
+                        operationDescription: String(localized: "Create Table")
+                    )
+                )
+                guard case .authorized = decision else {
+                    errorMessage = decision.deniedReason ?? String(localized: "Operation not permitted")
+                    showError = true
+                    return
                 }
 
                 _ = try await driver.execute(query: sql)
@@ -364,11 +409,11 @@ struct CreateTableView: View {
                     wasSuccessful: true
                 )
 
-                AppCommands.shared.refreshData.send(nil)
-
                 if let coordinator {
                     coordinator.openTableTab(tableName)
                 }
+
+                AppCommands.shared.refreshData.send(connection.id)
             } catch {
                 Self.logger.error("Create table failed: \(error.localizedDescription, privacy: .public)")
                 errorMessage = error.localizedDescription

@@ -17,15 +17,70 @@ final class DuckDBPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let databaseTypeId = "DuckDB"
     static let databaseDisplayName = "DuckDB"
     static let iconName = "duckdb-icon"
-    static let defaultPort = 0
+    static let defaultPort = 9_494
 
     // MARK: - UI/Capability Metadata
 
     static let isDownloadable = true
-    static let pathFieldRole: PathFieldRole = .filePath
+    static let pathFieldRole: PathFieldRole = .database
     static let requiresAuthentication = false
-    static let connectionMode: ConnectionMode = .fileBased
-    static let urlSchemes: [String] = ["duckdb"]
+    static let connectionMode: ConnectionMode = .apiOnly
+    static let urlSchemes: [String] = ["duckdb", "quack"]
+
+    static let additionalConnectionFields: [ConnectionField] = [
+        ConnectionField(
+            id: "duckdbMode",
+            label: String(localized: "Connection Type"),
+            defaultValue: "local",
+            fieldType: .dropdown(options: [
+                ConnectionField.DropdownOption(value: "local", label: String(localized: "Local File")),
+                ConnectionField.DropdownOption(value: "remote", label: String(localized: "Remote (Quack, experimental)"))
+            ]),
+            section: .authentication
+        ),
+        ConnectionField(
+            id: "duckdbFilePath",
+            label: String(localized: "Database File"),
+            placeholder: "/path/to/database.duckdb",
+            required: true,
+            section: .authentication,
+            visibleWhen: FieldVisibilityRule(fieldId: "duckdbMode", values: ["local"])
+        ),
+        ConnectionField(
+            id: "duckdbHost",
+            label: String(localized: "Host"),
+            placeholder: "localhost",
+            required: true,
+            section: .authentication,
+            visibleWhen: FieldVisibilityRule(fieldId: "duckdbMode", values: ["remote"])
+        ),
+        ConnectionField(
+            id: "duckdbPort",
+            label: String(localized: "Port"),
+            placeholder: "9494",
+            defaultValue: "9494",
+            fieldType: .number,
+            section: .authentication,
+            visibleWhen: FieldVisibilityRule(fieldId: "duckdbMode", values: ["remote"])
+        ),
+        ConnectionField(
+            id: "duckdbToken",
+            label: String(localized: "Token"),
+            fieldType: .secure,
+            section: .authentication,
+            hidesPassword: true,
+            visibleWhen: FieldVisibilityRule(fieldId: "duckdbMode", values: ["remote"])
+        ),
+        ConnectionField(
+            id: "duckdbAlias",
+            label: String(localized: "Database Alias"),
+            placeholder: "remotedb",
+            required: true,
+            defaultValue: "remotedb",
+            section: .authentication,
+            visibleWhen: FieldVisibilityRule(fieldId: "duckdbMode", values: ["remote"])
+        )
+    ]
     static let fileExtensions: [String] = ["duckdb", "ddb"]
     static let brandColorHex = "#FFD900"
     static let supportsDatabaseSwitching = false
@@ -103,516 +158,6 @@ final class DuckDBPlugin: NSObject, TableProPlugin, DriverPlugin {
     }
 }
 
-// MARK: - DuckDB Connection Actor
-
-private actor DuckDBConnectionActor {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "DuckDBConnectionActor")
-
-    private var database: duckdb_database?
-    private var connection: duckdb_connection?
-
-    var isConnected: Bool { connection != nil }
-
-    var connectionHandleForInterrupt: duckdb_connection? { connection }
-
-    func open(path: String) throws {
-        var db: duckdb_database?
-        var errorPtr: UnsafeMutablePointer<CChar>?
-        let state = duckdb_open_ext(path, &db, nil, &errorPtr)
-
-        if state == DuckDBError {
-            let detail: String
-            if let errPtr = errorPtr {
-                detail = String(cString: errPtr)
-                duckdb_free(errPtr)
-            } else {
-                detail = "unknown error"
-            }
-            throw DuckDBPluginError.connectionFailed(
-                "Failed to open DuckDB database at '\(path)': \(detail)"
-            )
-        }
-
-        guard let openedDB = db else {
-            throw DuckDBPluginError.connectionFailed(
-                "Failed to open DuckDB database at '\(path)'"
-            )
-        }
-
-        var conn: duckdb_connection?
-        let connState = duckdb_connect(openedDB, &conn)
-
-        if connState == DuckDBError {
-            duckdb_close(&db)
-            throw DuckDBPluginError.connectionFailed("Failed to create DuckDB connection")
-        }
-
-        database = db
-        connection = conn
-    }
-
-    func close() {
-        if connection != nil {
-            duckdb_disconnect(&connection)
-            connection = nil
-        }
-        if database != nil {
-            duckdb_close(&database)
-            database = nil
-        }
-    }
-
-    func executeQuery(_ query: String) throws -> DuckDBRawResult {
-        guard let conn = connection else {
-            throw DuckDBPluginError.notConnected
-        }
-
-        let startTime = Date()
-        var result = duckdb_result()
-
-        let state = duckdb_query(conn, query, &result)
-
-        if state == DuckDBError {
-            let errorMsg: String
-            if let errPtr = duckdb_result_error(&result) {
-                errorMsg = String(cString: errPtr)
-            } else {
-                errorMsg = "Unknown DuckDB error"
-            }
-            duckdb_destroy_result(&result)
-            throw DuckDBPluginError.queryFailed(errorMsg)
-        }
-
-        defer {
-            duckdb_destroy_result(&result)
-        }
-
-        var raw = Self.extractResult(from: &result, startTime: startTime)
-        Self.patchTzColumns(&raw, query: query, connection: conn)
-        return raw
-    }
-
-    func executePrepared(_ query: String, parameters: [PluginCellValue]) throws -> DuckDBRawResult {
-        guard let conn = connection else {
-            throw DuckDBPluginError.notConnected
-        }
-
-        let startTime = Date()
-        var stmtOpt: duckdb_prepared_statement?
-
-        let prepState = duckdb_prepare(conn, query, &stmtOpt)
-        if prepState == DuckDBError {
-            let errorMsg: String
-            if let s = stmtOpt, let errPtr = duckdb_prepare_error(s) {
-                errorMsg = String(cString: errPtr)
-            } else {
-                errorMsg = "Failed to prepare statement"
-            }
-            duckdb_destroy_prepare(&stmtOpt)
-            throw DuckDBPluginError.queryFailed(errorMsg)
-        }
-
-        guard let stmt = stmtOpt else {
-            throw DuckDBPluginError.queryFailed("Failed to prepare statement")
-        }
-
-        defer {
-            duckdb_destroy_prepare(&stmtOpt)
-        }
-
-        for (index, param) in parameters.enumerated() {
-            let paramIdx = idx_t(index + 1)
-            let bindState: duckdb_state
-            switch param {
-            case .null:
-                bindState = duckdb_bind_null(stmt, paramIdx)
-            case .text(let value):
-                bindState = duckdb_bind_varchar(stmt, paramIdx, value)
-            case .bytes(let data):
-                bindState = data.withUnsafeBytes { rawBuffer -> duckdb_state in
-                    guard let baseAddress = rawBuffer.baseAddress else {
-                        return duckdb_bind_null(stmt, paramIdx)
-                    }
-                    return duckdb_bind_blob(stmt, paramIdx, baseAddress, idx_t(data.count))
-                }
-            }
-            if bindState == DuckDBError {
-                throw DuckDBPluginError.queryFailed("Failed to bind parameter at index \(index)")
-            }
-        }
-
-        var result = duckdb_result()
-        let execState = duckdb_execute_prepared(stmt, &result)
-
-        if execState == DuckDBError {
-            let errorMsg: String
-            if let errPtr = duckdb_result_error(&result) {
-                errorMsg = String(cString: errPtr)
-            } else {
-                errorMsg = "Failed to execute prepared statement"
-            }
-            duckdb_destroy_result(&result)
-            throw DuckDBPluginError.queryFailed(errorMsg)
-        }
-
-        defer {
-            duckdb_destroy_result(&result)
-        }
-
-        var raw = Self.extractResult(from: &result, startTime: startTime)
-        Self.patchTzColumns(&raw, query: query, connection: conn)
-        return raw
-    }
-
-    func streamQuery(
-        _ query: String,
-        continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
-    ) throws {
-        guard let conn = connection else {
-            throw DuckDBPluginError.notConnected
-        }
-
-        var result = duckdb_result()
-        let state = duckdb_query(conn, query, &result)
-
-        if state == DuckDBError {
-            let errorMsg: String
-            if let errPtr = duckdb_result_error(&result) {
-                errorMsg = String(cString: errPtr)
-            } else {
-                errorMsg = "Unknown DuckDB error"
-            }
-            duckdb_destroy_result(&result)
-            throw DuckDBPluginError.queryFailed(errorMsg)
-        }
-
-        let colCount = duckdb_column_count(&result)
-        let rowCount = duckdb_row_count(&result)
-
-        var columns: [String] = []
-        var columnTypeNames: [String] = []
-
-        for i in 0..<colCount {
-            if let namePtr = duckdb_column_name(&result, i) {
-                columns.append(String(cString: namePtr))
-            } else {
-                columns.append("column_\(i)")
-            }
-            let colType = duckdb_column_type(&result, i)
-            columnTypeNames.append(Self.typeName(for: colType))
-        }
-
-        continuation.yield(.header(PluginStreamHeader(
-            columns: columns,
-            columnTypeNames: columnTypeNames,
-            estimatedRowCount: Int(rowCount)
-        )))
-
-        for row in 0..<rowCount {
-            if Task.isCancelled {
-                duckdb_destroy_result(&result)
-                continuation.finish(throwing: CancellationError())
-                return
-            }
-
-            var rowData: [PluginCellValue] = []
-            for col in 0..<colCount {
-                let colType = duckdb_column_type(&result, col)
-                if duckdb_value_is_null(&result, col, row) {
-                    rowData.append(.null)
-                } else if colType == DUCKDB_TYPE_BLOB {
-                    let blob = duckdb_value_blob(&result, col, row)
-                    if let ptr = blob.data {
-                        rowData.append(.bytes(Data(bytes: ptr, count: Int(blob.size))))
-                    } else {
-                        rowData.append(.bytes(Data()))
-                    }
-                    var mutableBlob = blob
-                    duckdb_free(&mutableBlob.data)
-                } else if let valPtr = duckdb_value_varchar(&result, col, row) {
-                    rowData.append(.text(String(cString: valPtr)))
-                    duckdb_free(valPtr)
-                } else {
-                    rowData.append(PluginCellValue.fromOptional(
-                        Self.extractFallbackValue(&result, col: col, row: row, type: colType)
-                    ))
-                }
-            }
-
-            continuation.yield(.rows([rowData]))
-        }
-
-        duckdb_destroy_result(&result)
-        continuation.finish()
-    }
-
-    private static func extractResult(
-        from result: inout duckdb_result,
-        startTime: Date
-    ) -> DuckDBRawResult {
-        let colCount = duckdb_column_count(&result)
-        let rowCount = duckdb_row_count(&result)
-        let rowsChanged = duckdb_rows_changed(&result)
-
-        var columns: [String] = []
-        var columnTypeNames: [String] = []
-        var columnTypes: [duckdb_type] = []
-
-        for i in 0..<colCount {
-            if let namePtr = duckdb_column_name(&result, i) {
-                columns.append(String(cString: namePtr))
-            } else {
-                columns.append("column_\(i)")
-            }
-
-            let colType = duckdb_column_type(&result, i)
-            columnTypes.append(colType)
-            columnTypeNames.append(Self.typeName(for: colType))
-        }
-
-        var rows: [[PluginCellValue]] = []
-        var truncated = false
-
-        let maxRows = min(rowCount, UInt64(PluginRowLimits.emergencyMax))
-        if rowCount > UInt64(PluginRowLimits.emergencyMax) {
-            truncated = true
-        }
-
-        for row in 0..<maxRows {
-            var rowData: [PluginCellValue] = []
-
-            for col in 0..<colCount {
-                let colType = columnTypes[Int(col)]
-                if duckdb_value_is_null(&result, col, row) {
-                    rowData.append(.null)
-                } else if colType == DUCKDB_TYPE_BLOB {
-                    let blob = duckdb_value_blob(&result, col, row)
-                    if let ptr = blob.data {
-                        rowData.append(.bytes(Data(bytes: ptr, count: Int(blob.size))))
-                    } else {
-                        rowData.append(.bytes(Data()))
-                    }
-                    var mutableBlob = blob
-                    duckdb_free(&mutableBlob.data)
-                } else if let valPtr = duckdb_value_varchar(&result, col, row) {
-                    rowData.append(.text(String(cString: valPtr)))
-                    duckdb_free(valPtr)
-                } else {
-                    rowData.append(PluginCellValue.fromOptional(
-                        Self.extractFallbackValue(&result, col: col, row: row, type: colType)
-                    ))
-                }
-            }
-
-            rows.append(rowData)
-        }
-
-        let executionTime = Date().timeIntervalSince(startTime)
-
-        return DuckDBRawResult(
-            columns: columns,
-            columnTypeNames: columnTypeNames,
-            rows: rows,
-            rowsAffected: Int(rowsChanged),
-            executionTime: executionTime,
-            isTruncated: truncated
-        )
-    }
-
-    private static func typeName(for type: duckdb_type) -> String {
-        switch type {
-        case DUCKDB_TYPE_BOOLEAN: return "BOOLEAN"
-        case DUCKDB_TYPE_TINYINT: return "TINYINT"
-        case DUCKDB_TYPE_SMALLINT: return "SMALLINT"
-        case DUCKDB_TYPE_INTEGER: return "INTEGER"
-        case DUCKDB_TYPE_BIGINT: return "BIGINT"
-        case DUCKDB_TYPE_UTINYINT: return "UTINYINT"
-        case DUCKDB_TYPE_USMALLINT: return "USMALLINT"
-        case DUCKDB_TYPE_UINTEGER: return "UINTEGER"
-        case DUCKDB_TYPE_UBIGINT: return "UBIGINT"
-        case DUCKDB_TYPE_FLOAT: return "FLOAT"
-        case DUCKDB_TYPE_DOUBLE: return "DOUBLE"
-        case DUCKDB_TYPE_TIMESTAMP: return "TIMESTAMP"
-        case DUCKDB_TYPE_DATE: return "DATE"
-        case DUCKDB_TYPE_TIME: return "TIME"
-        case DUCKDB_TYPE_INTERVAL: return "INTERVAL"
-        case DUCKDB_TYPE_HUGEINT: return "HUGEINT"
-        case DUCKDB_TYPE_VARCHAR: return "VARCHAR"
-        case DUCKDB_TYPE_BLOB: return "BLOB"
-        case DUCKDB_TYPE_DECIMAL: return "DECIMAL"
-        case DUCKDB_TYPE_TIMESTAMP_S: return "TIMESTAMP_S"
-        case DUCKDB_TYPE_TIMESTAMP_MS: return "TIMESTAMP_MS"
-        case DUCKDB_TYPE_TIMESTAMP_NS: return "TIMESTAMP_NS"
-        case DUCKDB_TYPE_ENUM: return "ENUM"
-        case DUCKDB_TYPE_LIST: return "LIST"
-        case DUCKDB_TYPE_STRUCT: return "STRUCT"
-        case DUCKDB_TYPE_MAP: return "MAP"
-        case DUCKDB_TYPE_UUID: return "UUID"
-        case DUCKDB_TYPE_UNION: return "UNION"
-        case DUCKDB_TYPE_BIT: return "BIT"
-        case DUCKDB_TYPE_TIMESTAMP_TZ: return "TIMESTAMPTZ"
-        case DUCKDB_TYPE_TIME_TZ: return "TIMETZ"
-        case DUCKDB_TYPE_TIME_NS: return "TIME_NS"
-        case DUCKDB_TYPE_UHUGEINT: return "UHUGEINT"
-        case DUCKDB_TYPE_ARRAY: return "ARRAY"
-        default: return "VARCHAR"
-        }
-    }
-
-    private static func extractFallbackValue(
-        _ result: inout duckdb_result, col: idx_t, row: idx_t, type: duckdb_type
-    ) -> String? {
-        switch type {
-        case DUCKDB_TYPE_TIMESTAMP, DUCKDB_TYPE_TIMESTAMP_S, DUCKDB_TYPE_TIMESTAMP_MS, DUCKDB_TYPE_TIMESTAMP_NS:
-            let ts = duckdb_value_timestamp(&result, col, row)
-            return formatTimestamp(ts)
-
-        case DUCKDB_TYPE_DATE:
-            let date = duckdb_value_date(&result, col, row)
-            let d = duckdb_from_date(date)
-            return String(format: "%04d-%02d-%02d", d.year, d.month, d.day)
-
-        case DUCKDB_TYPE_TIME, DUCKDB_TYPE_TIME_NS:
-            let time = duckdb_value_time(&result, col, row)
-            return formatTime(duckdb_from_time(time))
-
-        case DUCKDB_TYPE_BOOLEAN:
-            return duckdb_value_boolean(&result, col, row) ? "true" : "false"
-
-        case DUCKDB_TYPE_TINYINT:
-            return String(duckdb_value_int8(&result, col, row))
-        case DUCKDB_TYPE_SMALLINT:
-            return String(duckdb_value_int16(&result, col, row))
-        case DUCKDB_TYPE_INTEGER:
-            return String(duckdb_value_int32(&result, col, row))
-        case DUCKDB_TYPE_BIGINT:
-            return String(duckdb_value_int64(&result, col, row))
-        case DUCKDB_TYPE_UTINYINT:
-            return String(duckdb_value_uint8(&result, col, row))
-        case DUCKDB_TYPE_USMALLINT:
-            return String(duckdb_value_uint16(&result, col, row))
-        case DUCKDB_TYPE_UINTEGER:
-            return String(duckdb_value_uint32(&result, col, row))
-        case DUCKDB_TYPE_UBIGINT:
-            return String(duckdb_value_uint64(&result, col, row))
-        case DUCKDB_TYPE_FLOAT:
-            return String(duckdb_value_float(&result, col, row))
-        case DUCKDB_TYPE_DOUBLE:
-            return String(duckdb_value_double(&result, col, row))
-
-        case DUCKDB_TYPE_HUGEINT:
-            let h = duckdb_value_hugeint(&result, col, row)
-            return formatHugeInt(upper: h.upper, lower: h.lower)
-
-        case DUCKDB_TYPE_UHUGEINT:
-            let u = duckdb_value_uhugeint(&result, col, row)
-            return formatUHugeInt(upper: u.upper, lower: u.lower)
-
-        default:
-            return nil
-        }
-    }
-
-    /// DuckDB v1.5.0 C API: duckdb_value_varchar returns nil for TIMESTAMPTZ and TIMETZ,
-    /// and duckdb_value_is_null is unreliable for these types. The only reliable method
-    /// is re-executing the query with TZ columns cast to VARCHAR at the SQL level.
-    private static func patchTzColumns(
-        _ raw: inout DuckDBRawResult, query: String, connection: duckdb_connection
-    ) {
-        let tzTypes: Set<String> = ["TIMESTAMPTZ", "TIMETZ"]
-        let tzColIndices = raw.columnTypeNames.enumerated().compactMap { idx, name in
-            tzTypes.contains(name) ? idx : nil
-        }
-        guard !tzColIndices.isEmpty, !raw.rows.isEmpty else { return }
-
-        var castExprs: [String] = []
-        for (i, name) in raw.columns.enumerated() {
-            let escaped = name.replacingOccurrences(of: "\"", with: "\"\"")
-            if tzColIndices.contains(i) {
-                castExprs.append(
-                    "CASE WHEN \"\(escaped)\" IS NULL THEN NULL ELSE CAST(\"\(escaped)\" AS VARCHAR) END AS \"\(escaped)\""
-                )
-            } else {
-                castExprs.append("\"\(escaped)\"")
-            }
-        }
-
-        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
-            .hasSuffix(";") ? String(query.dropLast()) : query
-        let wrappedQuery = "SELECT \(castExprs.joined(separator: ", ")) FROM (\(trimmedQuery)) AS _tz_cast"
-        var patchResult = duckdb_result()
-        guard duckdb_query(connection, wrappedQuery, &patchResult) == DuckDBSuccess else { return }
-        defer { duckdb_destroy_result(&patchResult) }
-
-        let patchRowCount = min(duckdb_row_count(&patchResult), UInt64(raw.rows.count))
-        for row in 0..<patchRowCount {
-            for colIdx in tzColIndices {
-                if duckdb_value_is_null(&patchResult, idx_t(colIdx), row) {
-                    raw.rows[Int(row)][colIdx] = .null
-                } else if let ptr = duckdb_value_varchar(&patchResult, idx_t(colIdx), row) {
-                    raw.rows[Int(row)][colIdx] = .text(String(cString: ptr))
-                    duckdb_free(ptr)
-                }
-            }
-        }
-    }
-
-    private static func formatTimestamp(_ ts: duckdb_timestamp) -> String {
-        let parts = duckdb_from_timestamp(ts)
-        let d = parts.date
-        let t = parts.time
-        let micros = t.micros % 1_000_000
-        if micros == 0 {
-            return String(
-                format: "%04d-%02d-%02d %02d:%02d:%02d",
-                d.year, d.month, d.day, t.hour, t.min, t.sec
-            )
-        }
-        return String(
-            format: "%04d-%02d-%02d %02d:%02d:%02d.%06d",
-            d.year, d.month, d.day, t.hour, t.min, t.sec, micros
-        )
-    }
-
-    private static func formatTime(_ t: duckdb_time_struct) -> String {
-        let micros = t.micros % 1_000_000
-        if micros == 0 {
-            return String(format: "%02d:%02d:%02d", t.hour, t.min, t.sec)
-        }
-        return String(format: "%02d:%02d:%02d.%06d", t.hour, t.min, t.sec, micros)
-    }
-
-    private static func formatHugeInt(upper: Int64, lower: UInt64) -> String {
-        if upper == 0 {
-            return String(lower)
-        }
-        if upper == -1, lower > Int64.max.magnitude {
-            let val = ~upper
-            let low = ~lower &+ 1
-            return "-\(formatUHugeInt(upper: UInt64(val), lower: low))"
-        }
-        return formatUHugeInt(upper: UInt64(upper), lower: lower)
-    }
-
-    private static func formatUHugeInt(upper: UInt64, lower: UInt64) -> String {
-        if upper == 0 {
-            return String(lower)
-        }
-        let upperDecimal = Decimal(upper) * Decimal(sign: .plus, exponent: 0, significand: Decimal(UInt64.max) + 1)
-        let result = upperDecimal + Decimal(lower)
-        return "\(result)"
-    }
-}
-
-private struct DuckDBRawResult: Sendable {
-    let columns: [String]
-    let columnTypeNames: [String]
-    var rows: [[PluginCellValue]]
-    let rowsAffected: Int
-    let executionTime: TimeInterval
-    let isTruncated: Bool
-}
-
 // MARK: - DuckDB Plugin Driver
 
 final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
@@ -657,8 +202,27 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     // MARK: - Connection
 
+    private var isRemoteMode: Bool {
+        config.additionalFields["duckdbMode"] == "remote"
+    }
+
+    private var remoteAlias: String? {
+        guard isRemoteMode else { return nil }
+        let alias = (config.additionalFields["duckdbAlias"] ?? "").trimmingCharacters(in: .whitespaces)
+        return alias.isEmpty ? "remotedb" : alias
+    }
+
     func connect() async throws {
-        let path = expandPath(config.database)
+        if isRemoteMode {
+            try await connectRemote()
+        } else {
+            try await connectLocal()
+        }
+    }
+
+    private func connectLocal() async throws {
+        let rawPath = config.additionalFields["duckdbFilePath"].flatMap { $0.isEmpty ? nil : $0 } ?? config.database
+        let path = expandPath(rawPath)
 
         if !FileManager.default.fileExists(atPath: path) {
             let directory = (path as NSString).deletingLastPathComponent
@@ -671,15 +235,66 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
 
         try await connectionActor.open(path: path)
+        await enableExtensionAutoloading()
+        await captureInterruptHandle()
+    }
 
-        // Enable auto-install and auto-load of extensions (e.g. core_functions)
+    private func connectRemote() async throws {
+        let host = (config.additionalFields["duckdbHost"] ?? "").trimmingCharacters(in: .whitespaces)
+        let aliasInput = (config.additionalFields["duckdbAlias"] ?? "").trimmingCharacters(in: .whitespaces)
+        let portInput = config.additionalFields["duckdbPort"] ?? ""
+        let token = config.additionalFields["duckdbToken"] ?? ""
+
+        guard QuackConnectBuilder.isValidHost(host) else {
+            throw DuckDBPluginError.connectionFailed(
+                String(localized: "Host is required for a remote DuckDB connection")
+            )
+        }
+        guard let port = QuackConnectBuilder.normalizedPort(portInput) else {
+            throw DuckDBPluginError.connectionFailed(
+                String(localized: "Port must be a number between 1 and 65535")
+            )
+        }
+        let alias = aliasInput.isEmpty ? "remotedb" : aliasInput
+
+        try await connectionActor.open(path: ":memory:")
+        await enableExtensionAutoloading()
+        await loadQuackExtension()
+
+        if !token.isEmpty {
+            try await connectionActor.executeQuery(QuackConnectBuilder.secretSQL(token: token))
+        }
+
+        try await connectionActor.executeQuery(QuackConnectBuilder.attachSQL(host: host, port: port, alias: alias))
+        try await connectionActor.executeQuery(QuackConnectBuilder.useSQL(alias: alias))
+
+        stateLock.lock()
+        _currentSchema = "main"
+        stateLock.unlock()
+
+        await captureInterruptHandle()
+    }
+
+    private func enableExtensionAutoloading() async {
         do {
             try await connectionActor.executeQuery("SET autoinstall_known_extensions=1")
             try await connectionActor.executeQuery("SET autoload_known_extensions=1")
         } catch {
             Self.logger.warning("Failed to enable DuckDB extension autoloading: \(error.localizedDescription)")
         }
+    }
 
+    private func loadQuackExtension() async {
+        for statement in ["INSTALL quack", "LOAD quack"] {
+            do {
+                try await connectionActor.executeQuery(statement)
+            } catch {
+                Self.logger.warning("DuckDB '\(statement)' failed: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    private func captureInterruptHandle() async {
         if let conn = await connectionActor.connectionHandleForInterrupt {
             setInterruptHandle(conn)
         }
@@ -785,6 +400,7 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let result = try await executeParameterized(query: query, parameters: [.text(schemaName), .text(table)])
 
         let pkColumns = try await fetchPrimaryKeyColumns(table: table, schema: schemaName)
+        let enumMap = try await fetchEnumLabelMap(schema: schemaName)
 
         return result.rows.compactMap { row in
             guard let name = row[safe: 0]?.asText,
@@ -801,7 +417,8 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 dataType: dataType,
                 isNullable: isNullable,
                 isPrimaryKey: isPrimaryKey,
-                defaultValue: defaultValue
+                defaultValue: defaultValue,
+                allowedValues: resolveEnumValues(dataType: dataType, enumMap: enumMap)
             )
         }
     }
@@ -833,6 +450,7 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             }
         }
 
+        let enumMap = try await fetchEnumLabelMap(schema: schemaName)
         var allColumns: [String: [PluginColumnInfo]] = [:]
 
         for row in result.rows {
@@ -851,13 +469,55 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 dataType: dataType,
                 isNullable: isNullable,
                 isPrimaryKey: isPrimaryKey,
-                defaultValue: defaultValue
+                defaultValue: defaultValue,
+                allowedValues: resolveEnumValues(dataType: dataType, enumMap: enumMap)
             )
 
             allColumns[tableName, default: []].append(column)
         }
 
         return allColumns
+    }
+
+    private func fetchEnumLabelMap(schema: String) async throws -> [String: [String]] {
+        let typeNamesQuery = """
+            SELECT type_name
+            FROM duckdb_types()
+            WHERE schema_name = $1 AND type_category = 'ENUM'
+        """
+        let typeResult: PluginQueryResult
+        do {
+            typeResult = try await executeParameterized(query: typeNamesQuery, parameters: [.text(schema)])
+        } catch {
+            return [:]
+        }
+        let typeNames = typeResult.rows.compactMap { $0[safe: 0]?.asText }
+        guard !typeNames.isEmpty else { return [:] }
+
+        let quotedSchema = quoteIdentifier(schema)
+        var map: [String: [String]] = [:]
+        for typeName in typeNames {
+            let quoted = quoteIdentifier(typeName)
+            let valuesQuery = "SELECT UNNEST(enum_range(NULL::\(quotedSchema).\(quoted)))::VARCHAR AS value"
+            let valuesResult: PluginQueryResult
+            do {
+                valuesResult = try await execute(query: valuesQuery)
+            } catch {
+                continue
+            }
+            let labels = valuesResult.rows.compactMap { $0[safe: 0]?.asText }
+            if !labels.isEmpty {
+                map[typeName] = labels
+            }
+        }
+        return map
+    }
+
+    private func resolveEnumValues(dataType: String, enumMap: [String: [String]]) -> [String]? {
+        if let values = enumMap[dataType], !values.isEmpty {
+            return values
+        }
+        return EnumValueParser.parseMySQLEnumOrSet(from: dataType)
     }
 
     func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] {
@@ -956,7 +616,6 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         if let firstRow = nativeResult.rows.first, let sql = firstRow[0].asText {
             var ddl = sql.hasSuffix(";") ? sql : sql + ";"
 
-            // Append index definitions
             let indexes = try await fetchIndexes(table: table, schema: schemaName)
             for index in indexes where !index.isPrimary {
                 let uniqueStr = index.isUnique ? "UNIQUE " : ""
@@ -1057,6 +716,10 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func fetchSchemas() async throws -> [String] {
         let query = "SELECT schema_name FROM information_schema.schemata ORDER BY schema_name"
+        if let remoteAlias {
+            let schemas = (try? await execute(query: query))?.rows.compactMap { $0[safe: 0]?.asText } ?? []
+            return schemas.isEmpty ? ["main"] : schemas
+        }
         let result = try await execute(query: query)
         return result.rows.compactMap { $0[safe: 0]?.asText }
     }
@@ -1072,6 +735,9 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Database Operations
 
     func fetchDatabases() async throws -> [String] {
+        if let remoteAlias {
+            return [remoteAlias]
+        }
         let query = "SELECT database_name FROM duckdb_databases() ORDER BY database_name"
         let result = try await execute(query: query)
         return result.rows.compactMap { row in
@@ -1103,7 +769,7 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - All Tables Metadata
 
     func allTablesMetadataSQL(schema: String?) -> String? {
-        let s = schema ?? currentSchema ?? "main"
+        let s = (schema ?? currentSchema ?? "main").replacingOccurrences(of: "'", with: "''")
         return """
         SELECT
             table_schema as schema_name,
@@ -1157,7 +823,7 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     func generateCreateTableSQL(definition: PluginCreateTableDefinition) -> String? {
         guard !definition.columns.isEmpty else { return nil }
 
-        let schema = _currentSchema
+        let schema = resolveSchema(nil)
         let qualifiedTable = "\(quoteIdentifier(schema)).\(quoteIdentifier(definition.tableName))"
         let pkColumns = definition.columns.filter { $0.isPrimaryKey }
         let inlinePK = pkColumns.count == 1
@@ -1245,7 +911,7 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     private func qualifiedTableName(_ table: String) -> String {
-        "\(quoteIdentifier(_currentSchema)).\(quoteIdentifier(table))"
+        "\(quoteIdentifier(resolveSchema(nil))).\(quoteIdentifier(table))"
     }
 
     // MARK: - ALTER TABLE DDL
@@ -1338,26 +1004,6 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return String(sql[columnsRange]).split(separator: ",").map {
             $0.trimmingCharacters(in: .whitespaces)
                 .replacingOccurrences(of: "\"", with: "")
-        }
-    }
-}
-
-// MARK: - Errors
-
-enum DuckDBPluginError: Error {
-    case connectionFailed(String)
-    case notConnected
-    case queryFailed(String)
-    case unsupportedOperation
-}
-
-extension DuckDBPluginError: PluginDriverError {
-    var pluginErrorMessage: String {
-        switch self {
-        case .connectionFailed(let msg): return msg
-        case .notConnected: return String(localized: "Not connected to database")
-        case .queryFailed(let msg): return msg
-        case .unsupportedOperation: return String(localized: "Operation not supported")
         }
     }
 }

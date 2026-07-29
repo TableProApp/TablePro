@@ -28,7 +28,7 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
     private var forwardingTask: Task<Void, Never>?
     private var keepAliveTask: Task<Void, Never>?
     private let isAlive = OSAllocatedUnfairLock(initialState: true)
-    private let relayTasks = OSAllocatedUnfairLock(initialState: [Task<Void, Never>]())
+    private let clientTasks = OSAllocatedUnfairLock(initialState: [Task<Void, Never>]())
 
     /// Serial queue for all libssh2 calls on this tunnel's session.
     /// libssh2 is not thread-safe per session, so every call must be serialized.
@@ -44,6 +44,8 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
     /// Callback invoked when the tunnel dies (keep-alive failure, etc.)
     var onDeath: ((UUID) -> Void)?
 
+    private let forwardFailure = SSHForwardFailureRecorder()
+
     struct JumpHop {
         let session: OpaquePointer    // LIBSSH2_SESSION*
         let socket: Int32             // TCP or socketpair fd
@@ -52,6 +54,22 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
     }
 
     private static let relayBufferSize = 32_768 // 32KB
+
+    /// Bounds a forwarding channel open for a client that has already been accepted. libssh2
+    /// retries EAGAIN forever on its own, so without this a stuck open outlives the database
+    /// driver's connect timeout and the client waits on a socket nothing will ever write to.
+    /// Held strictly below every bundled driver's connect timeout (10s for MySQL, PostgreSQL,
+    /// Redis, MongoDB, and Cassandra) so the failure recorded here reaches the user before the
+    /// driver reports its own timeout, which names no cause. An equal budget loses that race:
+    /// the driver's clock starts when it dials, this one only once the accept has been noticed.
+    /// A registry plugin with a shorter connect timeout is not covered, because a plugin's
+    /// C-level timeout cannot be read from here.
+    internal static let channelOpenDeadlineSeconds: TimeInterval = 6
+    private static let channelOpenPollTimeoutMs: Int32 = 5_000
+
+    /// How long the accept loop waits per poll before rechecking `isRunning`. Small enough that
+    /// noticing a client the kernel already accepted costs a slim part of the margin above.
+    internal static let acceptPollTimeoutMs: Int32 = 200
 
     init(connectionId: UUID, localPort: Int, session: OpaquePointer,
          socketFD: Int32, listenFD: Int32, jumpChain: [JumpHop] = []) {
@@ -83,7 +101,7 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
 
     // MARK: - Forwarding
 
-    func startForwarding(remoteHost: String, remotePort: Int) {
+    func startForwarding(destination: SSHForwardDestination) {
         sessionQueue.sync { libssh2_session_set_blocking(session, 0) }
 
         forwardingTask = Task.detached { [weak self] in
@@ -94,38 +112,25 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
                     defer { continuation.resume() }
                     guard let self else { return }
 
+                    let target = destination.logDescription
+
                     Self.logger.info(
-                        "Forwarding started on port \(self.localPort) -> \(remoteHost):\(remotePort)"
+                        "Forwarding started on port \(self.localPort) -> \(target)"
                     )
 
                     while self.isRunning {
-                        let clientFD = self.acceptClient()
-                        guard clientFD >= 0 else {
+                        guard let client = self.acceptClient() else {
                             if self.isRunning {
                                 continue
                             }
                             break
                         }
 
-                        // Open channel on sessionQueue (serialized libssh2 call),
-                        // then hand off relay to relayQueue (concurrent I/O).
-                        let channel: OpaquePointer? = self.sessionQueue.sync {
-                            self.openDirectTcpipChannel(
-                                remoteHost: remoteHost,
-                                remotePort: remotePort
-                            )
-                        }
-
-                        guard let channel else {
-                            Self.logger.error("Failed to open direct-tcpip channel")
-                            Darwin.close(clientFD)
-                            continue
-                        }
-
-                        Self.logger.debug(
-                            "Client connected, relaying to \(remoteHost):\(remotePort)"
+                        self.spawnClient(
+                            clientFD: client.fd,
+                            acceptedAt: client.acceptedAt,
+                            destination: destination
                         )
-                        self.spawnRelay(clientFD: clientFD, channel: channel)
                     }
 
                     Self.logger.info("Forwarding loop ended for port \(self.localPort)")
@@ -147,7 +152,7 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
                     self.sessionQueue.async {
                         var secondsToNext: Int32 = 0
                         let rc = libssh2_keepalive_send(self.session, &secondsToNext)
-                        continuation.resume(returning: rc != 0)
+                        continuation.resume(returning: sshKeepAliveDidFail(rc))
                     }
                 }
 
@@ -175,7 +180,7 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
         // Cancel all tasks so relay loops see isCancelled
         forwardingTask?.cancel()
         keepAliveTask?.cancel()
-        let currentRelayTasks = relayTasks.withLock { tasks -> [Task<Void, Never>] in
+        let currentClientTasks = clientTasks.withLock { tasks -> [Task<Void, Never>] in
             let copy = tasks
             for task in tasks { task.cancel() }
             tasks.removeAll()
@@ -200,7 +205,7 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
             // Wait for all tasks to exit before touching the session.
             await forwardingTask?.value
             await keepAliveTask?.value
-            for task in currentRelayTasks {
+            for task in currentClientTasks {
                 await task.value
             }
 
@@ -238,7 +243,7 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
 
         forwardingTask?.cancel()
         keepAliveTask?.cancel()
-        relayTasks.withLock { tasks in
+        clientTasks.withLock { tasks in
             for task in tasks { task.cancel() }
             tasks.removeAll()
         }
@@ -267,13 +272,15 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
         }
     }
 
-    /// Accept a client connection on the listening socket with a 1-second poll timeout.
-    private func acceptClient() -> Int32 {
+    /// Accepts a client on the listening socket. The accept timestamp is taken here, not once
+    /// the open reaches `openAndRelay`, because the client's own connect timeout is already
+    /// running by then and the scheduling hops in between would push the deadline past it.
+    private func acceptClient() -> (fd: Int32, acceptedAt: Date)? {
         var pollFD = pollfd(fd: listenFD, events: Int16(POLLIN), revents: 0)
-        let pollResult = poll(&pollFD, 1, 1_000) // 1 second timeout
+        let pollResult = poll(&pollFD, 1, Self.acceptPollTimeoutMs)
 
         guard pollResult > 0, pollFD.revents & Int16(POLLIN) != 0 else {
-            return -1
+            return nil
         }
 
         var clientAddr = sockaddr_in()
@@ -285,41 +292,71 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
             }
         }
 
-        return clientFD
+        guard clientFD >= 0 else { return nil }
+        return (clientFD, Date())
     }
 
-    /// Open a direct-tcpip channel, handling EAGAIN with select().
-    /// Must be called on `sessionQueue`.
-    private func openDirectTcpipChannel(remoteHost: String, remotePort: Int) -> OpaquePointer? {
-        while isRunning {
-            let channel = libssh2_channel_direct_tcpip_ex(
-                session,
-                remoteHost,
-                Int32(remotePort),
-                "127.0.0.1",
-                Int32(localPort)
-            )
-
-            if let channel {
-                return channel
+    /// Open the channel and relay the client, off the accept loop so a slow open cannot
+    /// stall the next accept, and off `sessionQueue` between attempts so it cannot stall
+    /// the relays and keep-alive that share the session.
+    private func openAndRelay(clientFD: Int32, acceptedAt: Date, destination: SSHForwardDestination) {
+        let pump = SSHForwardChannelOpenPump(
+            opener: LibSSH2ForwardChannelOpener(
+                session: session,
+                destination: destination,
+                originPort: localPort,
+                sessionQueue: sessionQueue
+            ),
+            isActive: { [weak self] in self?.isRunning ?? false },
+            deadline: acceptedAt.addingTimeInterval(Self.channelOpenDeadlineSeconds),
+            pollForReadiness: { [weak self] directions in
+                guard let self else { return false }
+                return pollReady(
+                    fd: self.socketFD,
+                    directions: directions,
+                    timeoutMs: Self.channelOpenPollTimeoutMs
+                )
             }
+        )
 
-            let errno = libssh2_session_last_errno(session)
-            guard errno == LIBSSH2_ERROR_EAGAIN else {
-                return nil
-            }
-
-            if !waitForSocket(session: session, socketFD: socketFD, timeoutMs: 5_000) {
-                return nil
-            }
+        let outcome = pump.run()
+        logChannelOpenOutcome(outcome, destination: destination)
+        forwardFailure.record(
+            outcome,
+            destination: destination,
+            deadlineSeconds: Int(Self.channelOpenDeadlineSeconds)
+        )
+        handleChannelOpenOutcome(outcome, clientFD: clientFD) { channel in
+            runRelay(clientFD: clientFD, channel: channel, destination: destination)
         }
-        return nil
     }
 
-    /// Bidirectional relay between a client socket and an SSH channel.
-    /// The relay loop runs on `relayQueue` (concurrent). Individual libssh2 calls
-    /// are dispatched to `sessionQueue` (serial) for thread safety.
-    private func spawnRelay(clientFD: Int32, channel: OpaquePointer) {
+    func consumeLastForwardFailure() -> SSHTunnelError? {
+        forwardFailure.consume()
+    }
+
+    private func logChannelOpenOutcome(_ outcome: ChannelOpenOutcome, destination: SSHForwardDestination) {
+        let target = destination.logDescription
+        switch outcome {
+        case .opened:
+            Self.logger.debug("Client connected, relaying to \(target)")
+        case .failed(let errorCode, let message):
+            Self.logger.error(
+                "Forwarding channel to \(target) failed to open, libssh2 error \(errorCode): \(message)"
+            )
+        case .timedOut:
+            Self.logger.error(
+                "Forwarding channel to \(target) did not open within \(Int(Self.channelOpenDeadlineSeconds))s, closing local socket"
+            )
+        case .cancelled:
+            break
+        }
+    }
+
+    /// Opens the channel and relays one accepted client, off the accept loop so a slow
+    /// open cannot delay the next accept. The loop runs on `relayQueue` (concurrent);
+    /// individual libssh2 calls are dispatched to `sessionQueue` (serial) for thread safety.
+    private func spawnClient(clientFD: Int32, acceptedAt: Date, destination: SSHForwardDestination) {
         let task = Task.detached { [weak self] in
             guard let self else {
                 Darwin.close(clientFD)
@@ -333,12 +370,12 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
                         Darwin.close(clientFD)
                         return
                     }
-                    self.runRelay(clientFD: clientFD, channel: channel)
+                    self.openAndRelay(clientFD: clientFD, acceptedAt: acceptedAt, destination: destination)
                 }
             }
         }
 
-        let shouldCancel = relayTasks.withLock { tasks -> Bool in
+        let shouldCancel = clientTasks.withLock { tasks -> Bool in
             tasks.removeAll { $0.isCancelled }
             tasks.append(task)
             return !isAlive.withLock { $0 }
@@ -349,108 +386,38 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
     }
 
     /// Blocking relay loop. Runs on `relayQueue`; libssh2 calls go through `sessionQueue`.
-    private func runRelay(clientFD: Int32, channel: OpaquePointer) {
-        let buffer = UnsafeMutablePointer<CChar>.allocate(capacity: Self.relayBufferSize)
-        defer {
-            buffer.deallocate()
-            Darwin.close(clientFD)
-            if self.isRunning {
-                sessionQueue.sync {
-                    libssh2_channel_close(channel)
-                    libssh2_channel_free(channel)
-                }
-            }
+    /// Every termination is logged, not just a hangup: a channel that opens only after the
+    /// database client already gave up ends as `.localClosed`, and staying silent about that
+    /// leaves no trace of a tunnel that worked but arrived too late.
+    private func runRelay(clientFD: Int32, channel: OpaquePointer, destination: SSHForwardDestination) {
+        let relay = SSHChannelRelay(
+            localFD: clientFD,
+            transportFD: socketFD,
+            channelIO: LibSSH2ChannelIO(channel: channel, session: session, sessionQueue: sessionQueue),
+            bufferSize: Self.relayBufferSize,
+            isActive: { [weak self] in self?.isRunning ?? false }
+        )
+
+        let startedAt = Date()
+        let termination = relay.run()
+        let elapsed = Date().timeIntervalSince(startedAt)
+
+        let target = destination.logDescription
+        Self.logger.debug(
+            "Relay to \(target) ended as \(String(describing: termination)) after \(elapsed, format: .fixed(precision: 1))s"
+        )
+
+        Darwin.close(clientFD)
+        guard self.isRunning else { return }
+
+        sessionQueue.sync {
+            libssh2_channel_close(channel)
+            libssh2_channel_free(channel)
         }
 
-        while self.isRunning {
-            var pollFDs = [
-                pollfd(fd: clientFD, events: Int16(POLLIN), revents: 0),
-                pollfd(fd: self.socketFD, events: Int16(POLLIN), revents: 0),
-            ]
-
-            let pollResult = poll(&pollFDs, 2, 500) // 500ms timeout
-            if pollResult < 0 { break }
-
-            // Read from SSH channel when the SSH socket has data or on timeout
-            // (libssh2 may have internally buffered data)
-            if pollFDs[1].revents & Int16(POLLIN) != 0 || pollResult == 0 {
-                let readResult: Int = sessionQueue.sync {
-                    Int(tablepro_libssh2_channel_read(channel, buffer, Self.relayBufferSize))
-                }
-                if readResult > 0 {
-                    var totalSent = 0
-                    while totalSent < readResult {
-                        let sent = send(
-                            clientFD,
-                            buffer.advanced(by: totalSent),
-                            readResult - totalSent,
-                            0
-                        )
-                        if sent <= 0 { return }
-                        totalSent += sent
-                    }
-                } else if readResult == 0 || sessionQueue.sync(execute: { libssh2_channel_eof(channel) }) != 0 {
-                    return
-                } else if readResult != Int(LIBSSH2_ERROR_EAGAIN) {
-                    return
-                }
-            }
-
-            // Read from client -> write to SSH channel
-            if pollFDs[0].revents & Int16(POLLIN) != 0 {
-                let clientRead = recv(clientFD, buffer, Self.relayBufferSize, 0)
-                if clientRead <= 0 { return }
-
-                var totalWritten = 0
-                while totalWritten < Int(clientRead) {
-                    let written: Int = sessionQueue.sync {
-                        Int(tablepro_libssh2_channel_write(
-                            channel,
-                            buffer.advanced(by: totalWritten),
-                            Int(clientRead) - totalWritten
-                        ))
-                    }
-                    if written > 0 {
-                        totalWritten += written
-                    } else if written == Int(LIBSSH2_ERROR_EAGAIN) {
-                        let directions = sessionQueue.sync {
-                            libssh2_session_block_directions(self.session)
-                        }
-                        _ = self.waitForSocketDirections(
-                            directions: directions,
-                            socketFD: self.socketFD,
-                            timeoutMs: 1_000
-                        )
-                    } else {
-                        return
-                    }
-                }
-            }
+        if termination == .transportHangup {
+            Self.logger.info("SSH transport hung up, marking tunnel dead for \(self.connectionId)")
+            markDead()
         }
-    }
-
-    /// Wait for the SSH socket to become ready, based on libssh2's block directions.
-    /// Must be called on `sessionQueue` (reads session state via `libssh2_session_block_directions`).
-    private func waitForSocket(session: OpaquePointer, socketFD: Int32, timeoutMs: Int32) -> Bool {
-        let directions = libssh2_session_block_directions(session)
-        return waitForSocketDirections(directions: directions, socketFD: socketFD, timeoutMs: timeoutMs)
-    }
-
-    /// Wait for the SSH socket to become ready with pre-fetched block directions.
-    /// Safe to call from any queue since it does not access the session.
-    private func waitForSocketDirections(directions: Int32, socketFD: Int32, timeoutMs: Int32) -> Bool {
-        var events: Int16 = 0
-        if directions & LIBSSH2_SESSION_BLOCK_INBOUND != 0 {
-            events |= Int16(POLLIN)
-        }
-        if directions & LIBSSH2_SESSION_BLOCK_OUTBOUND != 0 {
-            events |= Int16(POLLOUT)
-        }
-
-        guard events != 0 else { return true }
-
-        var pollFD = pollfd(fd: socketFD, events: events, revents: 0)
-        let rc = poll(&pollFD, 1, timeoutMs)
-        return rc > 0
     }
 }

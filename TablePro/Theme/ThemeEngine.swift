@@ -125,14 +125,14 @@ internal final class ThemeEngine {
     // MARK: - Theme Lifecycle
 
     func activateTheme(id: String) {
-        guard let theme = availableThemes.first(where: { $0.id == id })
-            ?? ThemeStorage.loadTheme(id: id)
-        else {
-            Self.logger.warning("Theme not found: \(id)")
+        if let theme = availableThemes.first(where: { $0.id == id })
+            ?? ThemeStorage.loadTheme(id: id) {
+            activateTheme(theme)
             return
         }
 
-        activateTheme(theme)
+        Self.logger.warning("Theme '\(id)' not found; falling back to default")
+        activateTheme(.default)
     }
 
     func activateTheme(_ theme: ThemeDefinition) {
@@ -150,9 +150,14 @@ internal final class ThemeEngine {
 
     func saveUserTheme(_ theme: ThemeDefinition) throws {
         try ThemeStorage.saveUserTheme(theme)
+
+        if let index = availableThemes.firstIndex(where: { $0.id == theme.id }) {
+            availableThemes[index] = theme
+        } else {
+            availableThemes.append(theme)
+        }
         reloadAvailableThemes()
 
-        // If editing the active theme, re-activate to apply changes
         if theme.id == activeTheme.id {
             activateTheme(theme)
         }

@@ -5,8 +5,8 @@ import UniformTypeIdentifiers
 
 struct ERDiagramView: View {
     @Bindable var viewModel: ERDiagramViewModel
+    @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
     @State private var selectedNodeId: UUID?
-    @State private var scrollMonitor: Any?
     @State private var currentCursor: NSCursor?
     @State private var magnifyStartMag: CGFloat?
 
@@ -47,7 +47,7 @@ struct ERDiagramView: View {
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
-                    diagramContent
+                    ERDiagramCanvasContainer(viewModel: viewModel) { diagramContent }
                 }
                 ERDiagramToolbar(viewModel: viewModel, onExport: exportDiagram)
                 .onKeyPress(characters: .init(charactersIn: "c"), phases: .down) { keyPress in
@@ -71,6 +71,7 @@ struct ERDiagramView: View {
             let selectedId = selectedNodeId
             let mag = viewModel.magnification
             let offset = viewModel.canvasOffset
+            let clusterColors = nodeClusterColors(nodes: nodes)
 
             Canvas { context, _ in
                 context.translateBy(x: offset.x, y: offset.y)
@@ -89,7 +90,8 @@ struct ERDiagramView: View {
                         context: &context,
                         node: node,
                         rect: rect,
-                        isSelected: selectedId == node.id
+                        isSelected: selectedId == node.id,
+                        clusterColor: clusterColors[node.id]
                     )
                 }
             }
@@ -120,7 +122,6 @@ struct ERDiagramView: View {
         .onContinuousHover { phase in
             switch phase {
             case .active(let location):
-                viewModel.isMouseOverCanvas = true
                 guard !viewModel.isDragging else { return }
                 let desired: NSCursor? = nodeAt(point: location) != nil ? .openHand : nil
                 if desired !== currentCursor {
@@ -129,7 +130,6 @@ struct ERDiagramView: View {
                     currentCursor = desired
                 }
             case .ended:
-                viewModel.isMouseOverCanvas = false
                 if currentCursor != nil {
                     NSCursor.pop()
                     currentCursor = nil
@@ -138,29 +138,19 @@ struct ERDiagramView: View {
                 break
             }
         }
-        .onAppear {
-            guard scrollMonitor == nil else { return }
-            scrollMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { event in
-                guard viewModel.isMouseOverCanvas else { return event }
-                if event.modifierFlags.contains(.command) {
-                    let zoomDelta = event.scrollingDeltaY * 0.01
-                    viewModel.zoom(to: viewModel.magnification + zoomDelta)
-                    return nil
-                }
-                let multiplier: CGFloat = event.hasPreciseScrollingDeltas ? 1.0 : 10.0
-                viewModel.canvasOffset = CGPoint(
-                    x: viewModel.canvasOffset.x + event.scrollingDeltaX * multiplier,
-                    y: viewModel.canvasOffset.y + event.scrollingDeltaY * multiplier
-                )
-                return nil
+    }
+
+    // MARK: - Cluster Colors
+
+    private func nodeClusterColors(nodes: [ERTableNode]) -> [UUID: Color] {
+        guard !differentiateWithoutColor else { return [:] }
+        var colors: [UUID: Color] = [:]
+        for node in nodes {
+            if let color = ERClusterPalette.color(for: node.clusterId) {
+                colors[node.id] = color
             }
         }
-        .onDisappear {
-            if let monitor = scrollMonitor {
-                NSEvent.removeMonitor(monitor)
-                scrollMonitor = nil
-            }
-        }
+        return colors
     }
 
     // MARK: - Hit Testing
@@ -228,6 +218,7 @@ struct ERDiagramView: View {
         let nodes = viewModel.graph.nodes
         let edges = viewModel.graph.edges
         let nodeIndex = viewModel.graph.nodeIndex
+        let clusterColors = nodeClusterColors(nodes: nodes)
 
         let padding: CGFloat = 40
         let bounds = nodeRects.values.reduce(CGRect.null) { $0.union($1) }
@@ -246,7 +237,13 @@ struct ERDiagramView: View {
             )
             for node in nodes {
                 guard let rect = nodeRects[node.id] else { continue }
-                ERDiagramNodeRenderer.drawNode(context: &context, node: node, rect: rect, isSelected: false)
+                ERDiagramNodeRenderer.drawNode(
+                    context: &context,
+                    node: node,
+                    rect: rect,
+                    isSelected: false,
+                    clusterColor: clusterColors[node.id]
+                )
             }
         }
         .frame(width: exportWidth, height: exportHeight)

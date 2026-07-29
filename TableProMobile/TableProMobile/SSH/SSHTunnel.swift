@@ -207,6 +207,23 @@ actor SSHTunnel {
         Self.logger.debug("In-memory key authentication successful for \(username)")
     }
 
+    func authenticateNone(username: String) throws {
+        guard let session else {
+            throw SSHTunnelError.authenticationFailed("No active session")
+        }
+
+        let authList = libssh2_userauth_list(session, username, UInt32(username.utf8.count))
+        guard authList == nil else {
+            throw SSHTunnelError.authenticationFailed("Server requires credentials; passwordless authentication is not permitted")
+        }
+
+        guard libssh2_userauth_authenticated(session) != 0 else {
+            throw SSHTunnelError.authenticationFailed("Passwordless authentication failed")
+        }
+
+        Self.logger.debug("Passwordless authentication successful for \(username)")
+    }
+
     // MARK: - Port Forwarding
 
     func startForwarding(remoteHost: String, remotePort: Int) throws {

@@ -28,7 +28,7 @@ struct AIChatMessageView: View {
             if message.role == .user {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 4) {
-                        Spacer()
+                        Spacer(minLength: 0)
                         Text("You")
                             .fontWeight(.medium)
                         Text("·")
@@ -47,7 +47,7 @@ struct AIChatMessageView: View {
 
                     if let onEdit {
                         HStack {
-                            Spacer()
+                            Spacer(minLength: 0)
                             Button { onEdit() } label: {
                                 Image(systemName: "pencil")
                                     .font(.caption2)
@@ -101,7 +101,7 @@ struct AIChatMessageView: View {
                 } label: {
                     HStack(spacing: 4) {
                         Image(systemName: "exclamationmark.circle")
-                            .foregroundStyle(Color(nsColor: .systemRed))
+                            .foregroundStyle(.red)
                         Text("Generation failed.")
                             .foregroundStyle(.secondary)
                         Text("Retry")
@@ -138,6 +138,12 @@ struct AIChatMessageView: View {
                 return true
             case .attachment:
                 return false
+            case .reasoning(let reasoning):
+                return block.isStreaming || (reasoning.text?.isEmpty == false)
+            case .image:
+                return true
+            case .sqlWalkthrough:
+                return true
             }
         }
         if visibleBlocks.isEmpty {
@@ -150,6 +156,7 @@ struct AIChatMessageView: View {
                     AIChatBlockView(block: block)
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.vertical, 6)
         }
     }
@@ -161,22 +168,23 @@ private struct AIChatBlockView: View {
     var body: some View {
         switch block.kind {
         case .text(let text):
-            if block.isStreaming {
-                Text(text)
-                    .font(.body)
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 8)
-            } else {
-                MarkdownView(source: text)
-                    .padding(.horizontal, 8)
-            }
+            MarkdownView(source: text, isStreaming: block.isStreaming)
+                .padding(.horizontal, 8)
         case .toolUse(let useBlock):
             AIChatToolUseBlockView(block: useBlock)
         case .toolResult(let resultBlock):
             AIChatToolResultBlockView(block: resultBlock)
         case .attachment:
             EmptyView()
+        case .reasoning(let reasoning):
+            AIChatReasoningBlockView(block: reasoning, isStreaming: block.isStreaming)
+                .padding(.horizontal, 8)
+        case .image(let input):
+            AIChatImageBlockView(input: input)
+                .padding(.horizontal, 8)
+        case .sqlWalkthrough:
+            AIChatWalkthroughBlockView(block: block)
+                .padding(.horizontal, 8)
         }
     }
 }

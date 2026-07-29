@@ -28,7 +28,7 @@ struct ResultSuccessView: View {
             Spacer()
             Image(systemName: "checkmark.circle.fill")
                 .font(.largeTitle)
-                .foregroundStyle(Color(nsColor: .systemGreen))
+                .foregroundStyle(.green)
             Text(primaryMessage)
                 .font(.body)
             if let time = executionTime {

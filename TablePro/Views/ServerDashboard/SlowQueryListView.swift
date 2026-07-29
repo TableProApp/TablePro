@@ -3,28 +3,9 @@ import SwiftUI
 struct SlowQueryListView: View {
     let queries: [DashboardSlowQuery]
     let error: String?
-    @State private var isExpanded = true
 
     var body: some View {
-        DisclosureGroup(isExpanded: $isExpanded) {
-            if queries.isEmpty && error == nil {
-                Text(String(localized: "No slow queries"))
-                    .foregroundStyle(.secondary)
-                    .font(.caption)
-                    .padding(.vertical, 4)
-            } else {
-                List {
-                    ForEach(queries) { query in
-                        slowQueryRow(query)
-                            .listRowSeparator(.hidden)
-                            .listRowInsets(EdgeInsets(top: 2, leading: 0, bottom: 2, trailing: 0))
-                    }
-                }
-                .listStyle(.plain)
-                .scrollContentBackground(.hidden)
-                .frame(maxHeight: 200)
-            }
-        } label: {
+        VStack(alignment: .leading, spacing: 0) {
             HStack {
                 Label(String(localized: "Slow Queries"), systemImage: "tortoise")
                     .font(.headline)
@@ -34,12 +15,29 @@ struct SlowQueryListView: View {
                 if let error {
                     Label(error, systemImage: "exclamationmark.triangle.fill")
                         .font(.caption)
-                        .foregroundStyle(Color(nsColor: .systemOrange))
+                        .foregroundStyle(.orange)
                 }
             }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+
+            if queries.isEmpty && error == nil {
+                Text(String(localized: "No slow queries"))
+                    .foregroundStyle(.secondary)
+                    .font(.caption)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                List {
+                    ForEach(queries) { query in
+                        slowQueryRow(query)
+                            .listRowSeparator(.hidden)
+                            .listRowInsets(EdgeInsets(top: 2, leading: 12, bottom: 2, trailing: 12))
+                    }
+                }
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
+            }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
     }
 
     private func slowQueryRow(_ query: DashboardSlowQuery) -> some View {
@@ -47,7 +45,7 @@ struct SlowQueryListView: View {
             Text(query.duration)
                 .font(.system(.caption, design: .monospaced))
                 .monospacedDigit()
-                .foregroundStyle(Color(nsColor: .systemOrange))
+                .foregroundStyle(.orange)
                 .frame(width: 50, alignment: .trailing)
 
             VStack(alignment: .leading, spacing: 2) {

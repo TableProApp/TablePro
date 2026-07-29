@@ -93,4 +93,31 @@ struct ConnectionToolbarStateTests {
 
         #expect(state.currentDatabase == "Production")
     }
+
+    // MARK: - safe mode
+
+    @Test("syncFromSession falls back to the connection's saved safe mode when no session exists")
+    func syncFromSessionFallsBackToConnectionSafeMode() {
+        var connection = TestFixtures.makeConnection()
+        connection.safeModeLevel = .readOnly
+        let state = ConnectionToolbarState()
+
+        state.syncFromSession(for: connection)
+
+        #expect(state.safeModeLevel == .readOnly)
+    }
+
+    @Test("A new toolbar state adopts the live session safe mode, not the stale saved default")
+    func newToolbarStateAdoptsLiveSessionSafeMode() {
+        let id = UUID()
+        var connection = TestFixtures.makeConnection(id: id)
+        connection.safeModeLevel = .silent
+        DatabaseManager.shared.injectSession(ConnectionSession(connection: connection), for: id)
+        DatabaseManager.shared.setSafeModeLevel(.readOnly, for: id)
+        defer { DatabaseManager.shared.removeSession(for: id) }
+
+        let state = ConnectionToolbarState(connection: connection)
+
+        #expect(state.safeModeLevel == .readOnly)
+    }
 }

@@ -21,27 +21,77 @@ final class OnceTaskTests: XCTestCase {
         let tag: String
     }
 
+    /// Work that ignores cancellation, standing in for a driver blocked in a C call.
+    actor Gate {
+        private var continuation: CheckedContinuation<Void, Never>?
+        private var isOpen = false
+
+        func wait() async {
+            guard !isOpen else { return }
+            await withCheckedContinuation { continuation in
+                self.continuation = continuation
+            }
+        }
+
+        func open() {
+            isOpen = true
+            continuation?.resume()
+            continuation = nil
+        }
+    }
+
+    func testRerunDoesNotAdoptAbandonedNonCooperativeWork() async throws {
+        let dedup = OnceTask<String, Int>()
+        let gate = Gate()
+        let started = expectation(description: "abandoned work started")
+        started.assertForOverFulfill = false
+
+        let abandoned = Task {
+            try await dedup.execute(key: "k") {
+                started.fulfill()
+                await gate.wait()
+                return 1
+            }
+        }
+
+        await fulfillment(of: [started], timeout: 2.0)
+        await dedup.cancel(key: "k")
+
+        let rerunValue = try await dedup.execute(key: "k") { 2 }
+        XCTAssertEqual(rerunValue, 2, "A rerun must run fresh work, not adopt the abandoned attempt")
+
+        await gate.open()
+        let abandonedValue = try await abandoned.value
+        XCTAssertEqual(abandonedValue, 1, "The abandoned attempt still completes; its result belongs to no one")
+    }
+
     func testConcurrentSameKeyRunsWorkOnce() async throws {
         let dedup = OnceTask<String, Int>()
         let counter = Counter()
+        let firstRegistered = expectation(description: "first work started")
+        firstRegistered.assertForOverFulfill = false
 
-        async let first = dedup.execute(key: "k") {
-            await counter.increment()
-            try await Task.sleep(for: .milliseconds(50))
-            return 42
+        let firstTask = Task {
+            try await dedup.execute(key: "k") {
+                await counter.increment()
+                firstRegistered.fulfill()
+                try await Task.sleep(for: .milliseconds(200))
+                return 42
+            }
         }
-        async let second = dedup.execute(key: "k") {
+
+        await fulfillment(of: [firstRegistered], timeout: 2.0)
+
+        let second = try await dedup.execute(key: "k") {
             await counter.increment()
-            try await Task.sleep(for: .milliseconds(50))
             return 99
         }
-
-        let results = try await [first, second]
+        let first = try await firstTask.value
         let invocations = await counter.value
 
         XCTAssertEqual(invocations, 1, "Work block must run exactly once for concurrent same-key callers")
-        XCTAssertEqual(results[0], results[1], "Concurrent callers must observe the same value")
-        XCTAssertEqual(results[0], 42, "Both callers must receive the value produced by the first work block")
+        XCTAssertEqual(first, second, "Concurrent callers must observe the same value")
+        XCTAssertEqual(first, 42, "Both callers must receive the value produced by the first work block")
     }
 
     func testConcurrentDifferentKeysRunWorkSeparately() async throws {

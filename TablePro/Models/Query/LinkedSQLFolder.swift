@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProImport
 
 internal struct LinkedSQLFolder: Codable, Identifiable, Hashable {
     let id: UUID

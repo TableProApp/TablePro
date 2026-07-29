@@ -10,18 +10,10 @@ import Foundation
 import os
 import TableProPluginKit
 
-final class RedshiftPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
-    private let config: DriverConnectionConfig
-    private var libpqConnection: LibPQPluginConnection?
-    private var _currentSchema: String = "public"
+final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
+    let core: LibPQDriverCore
 
     private static let logger = Logger(subsystem: "com.TablePro.PostgreSQLDriver", category: "RedshiftPluginDriver")
-
-    var currentSchema: String? { _currentSchema }
-    var supportsSchemas: Bool { true }
-    var supportsTransactions: Bool { true }
-    var serverVersion: String? { libpqConnection?.serverVersion() }
-    var parameterStyle: ParameterStyle { .dollar }
 
     var capabilities: PluginCapabilities {
         [
@@ -34,132 +26,10 @@ final class RedshiftPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     init(config: DriverConnectionConfig) {
-        self.config = config
-    }
-
-    private var escapedSchema: String {
-        escapeLiteral(_currentSchema)
-    }
-
-    private func escapeLiteral(_ str: String) -> String {
-        var result = str
-        result = result.replacingOccurrences(of: "'", with: "''")
-        result = result.replacingOccurrences(of: "\0", with: "")
-        return result
-    }
-
-    // MARK: - Connection
-
-    func connect() async throws {
-        let sslConfig = config.ssl
-
-        let pqConn = LibPQPluginConnection(
-            host: config.host,
-            port: config.port,
-            user: config.username,
-            password: config.password.isEmpty ? nil : config.password,
-            database: config.database,
-            sslConfig: sslConfig
+        self.core = LibPQDriverCore(
+            config: config,
+            schemaFallbackQueries: PostgreSQLSchemaQueries.schemaFallbackQueriesRedshift
         )
-
-        try await pqConn.connect()
-        self.libpqConnection = pqConn
-
-        if let schemaResult = try? await pqConn.executeQuery("SELECT current_schema()"),
-           let schema = schemaResult.rows.first?.first?.asText {
-            _currentSchema = schema
-        }
-    }
-
-    func disconnect() {
-        libpqConnection?.disconnect()
-        libpqConnection = nil
-    }
-
-    func ping() async throws {
-        _ = try await execute(query: "SELECT 1")
-    }
-
-    // MARK: - Query Execution
-
-    func execute(query: String) async throws -> PluginQueryResult {
-        try await executeWithReconnect(query: query, isRetry: false)
-    }
-
-    private func executeWithReconnect(query: String, isRetry: Bool) async throws -> PluginQueryResult {
-        guard let pqConn = libpqConnection else {
-            throw LibPQPluginError.notConnected
-        }
-
-        let startTime = Date()
-
-        do {
-            let result = try await pqConn.executeQuery(query)
-            return PluginQueryResult(
-                columns: result.columns,
-                columnTypeNames: result.columnTypeNames,
-                rows: result.rows,
-                rowsAffected: result.affectedRows,
-                executionTime: Date().timeIntervalSince(startTime),
-                isTruncated: result.isTruncated
-            )
-        } catch let error as NSError where !isRetry && isConnectionLostError(error) {
-            try await reconnect()
-            return try await executeWithReconnect(query: query, isRetry: true)
-        }
-    }
-
-    func executeParameterized(query: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult {
-        guard let pqConn = libpqConnection else {
-            throw LibPQPluginError.notConnected
-        }
-        let startTime = Date()
-        let result = try await pqConn.executeParameterizedQuery(query, parameters: parameters)
-        return PluginQueryResult(
-            columns: result.columns,
-            columnTypeNames: result.columnTypeNames,
-            rows: result.rows,
-            rowsAffected: result.affectedRows,
-            executionTime: Date().timeIntervalSince(startTime),
-            isTruncated: result.isTruncated
-        )
-    }
-
-    // MARK: - Streaming
-
-    func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
-        guard let pqConn = libpqConnection else {
-            return AsyncThrowingStream { $0.finish(throwing: LibPQPluginError.notConnected) }
-        }
-        return pqConn.streamQuery(query)
-    }
-
-    // MARK: - Reconnect
-
-    private func isConnectionLostError(_ error: NSError) -> Bool {
-        let errorMessage = error.localizedDescription.lowercased()
-        return errorMessage.contains("connection") &&
-            (errorMessage.contains("lost") ||
-                errorMessage.contains("closed") ||
-                errorMessage.contains("no connection") ||
-                errorMessage.contains("could not send"))
-    }
-
-    private func reconnect() async throws {
-        libpqConnection?.disconnect()
-        libpqConnection = nil
-        try await connect()
-    }
-
-    // MARK: - Cancellation
-
-    func cancelQuery() throws {
-        libpqConnection?.cancelCurrentQuery()
-    }
-
-    func applyQueryTimeout(_ seconds: Int) async throws {
-        let ms = seconds * 1_000
-        _ = try await execute(query: "SET statement_timeout = '\(ms)'")
     }
 
     // MARK: - EXPLAIN
@@ -171,10 +41,11 @@ final class RedshiftPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Schema
 
     func fetchTables(schema: String?) async throws -> [PluginTableInfo] {
+        let schemaLiteral = escapeLiteral(schema ?? core.currentSchema)
         let query = """
             SELECT table_name, table_type
             FROM information_schema.tables
-            WHERE table_schema = '\(escapedSchema)'
+            WHERE table_schema = '\(schemaLiteral)'
             ORDER BY table_name
             """
         let result = try await execute(query: query)
@@ -187,37 +58,11 @@ final class RedshiftPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] {
-        let safeTable = escapeLiteral(table)
-        let query = """
-            SELECT
-                c.column_name,
-                c.data_type,
-                c.is_nullable,
-                c.column_default,
-                c.collation_name,
-                pgd.description,
-                c.udt_name,
-                CASE WHEN pk.column_name IS NOT NULL THEN 'YES' ELSE 'NO' END AS is_pk
-            FROM information_schema.columns c
-            LEFT JOIN pg_catalog.pg_class cls
-                ON cls.relname = c.table_name
-                AND cls.relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = c.table_schema)
-            LEFT JOIN pg_catalog.pg_description pgd
-                ON pgd.objoid = cls.oid
-                AND pgd.objsubid = c.ordinal_position
-            LEFT JOIN (
-                SELECT DISTINCT kcu.column_name
-                FROM information_schema.table_constraints tc
-                JOIN information_schema.key_column_usage kcu
-                    ON tc.constraint_name = kcu.constraint_name
-                    AND tc.table_schema = kcu.table_schema
-                WHERE tc.constraint_type = 'PRIMARY KEY'
-                    AND tc.table_schema = '\(escapedSchema)'
-                    AND tc.table_name = '\(safeTable)'
-            ) pk ON c.column_name = pk.column_name
-            WHERE c.table_schema = '\(escapedSchema)' AND c.table_name = '\(safeTable)'
-            ORDER BY c.ordinal_position
-            """
+        let schemaLiteral = escapeLiteral(schema ?? core.currentSchema)
+        let query = RedshiftSchemaQueries.columnsQuery(
+            schemaLiteral: schemaLiteral,
+            tableLiteral: escapeLiteral(table)
+        )
         let result = try await execute(query: query)
         return result.rows.compactMap { row -> PluginColumnInfo? in
             guard row.count >= 4,
@@ -261,36 +106,8 @@ final class RedshiftPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
-        let query = """
-            SELECT
-                c.table_name,
-                c.column_name,
-                c.data_type,
-                c.is_nullable,
-                c.column_default,
-                c.collation_name,
-                pgd.description,
-                c.udt_name,
-                CASE WHEN pk.column_name IS NOT NULL THEN 'YES' ELSE 'NO' END AS is_pk
-            FROM information_schema.columns c
-            LEFT JOIN pg_catalog.pg_class cls
-                ON cls.relname = c.table_name
-                AND cls.relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = c.table_schema)
-            LEFT JOIN pg_catalog.pg_description pgd
-                ON pgd.objoid = cls.oid
-                AND pgd.objsubid = c.ordinal_position
-            LEFT JOIN (
-                SELECT DISTINCT kcu.table_name, kcu.column_name
-                FROM information_schema.table_constraints tc
-                JOIN information_schema.key_column_usage kcu
-                    ON tc.constraint_name = kcu.constraint_name
-                    AND tc.table_schema = kcu.table_schema
-                WHERE tc.constraint_type = 'PRIMARY KEY'
-                    AND tc.table_schema = '\(escapedSchema)'
-            ) pk ON c.table_name = pk.table_name AND c.column_name = pk.column_name
-            WHERE c.table_schema = '\(escapedSchema)'
-            ORDER BY c.table_name, c.ordinal_position
-            """
+        let schemaLiteral = escapeLiteral(schema ?? core.currentSchema)
+        let query = RedshiftSchemaQueries.columnsQuery(schemaLiteral: schemaLiteral, tableLiteral: nil)
         let result = try await execute(query: query)
         var allColumns: [String: [PluginColumnInfo]] = [:]
         for row in result.rows {
@@ -339,6 +156,7 @@ final class RedshiftPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] {
         let safeTable = escapeLiteral(table)
+        let schemaLiteral = escapeLiteral(schema ?? core.currentSchema)
         let query = """
             SELECT
                 "column",
@@ -346,7 +164,7 @@ final class RedshiftPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 distkey,
                 sortkey
             FROM pg_table_def
-            WHERE schemaname = '\(escapedSchema)'
+            WHERE schemaname = '\(schemaLiteral)'
               AND tablename = '\(safeTable)'
               AND (distkey = true OR sortkey != 0)
             ORDER BY sortkey
@@ -415,11 +233,12 @@ final class RedshiftPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func fetchApproximateRowCount(table: String, schema: String?) async throws -> Int? {
         let safeTable = escapeLiteral(table)
+        let schemaLiteral = escapeLiteral(schema ?? core.currentSchema)
         let query = """
             SELECT tbl_rows
             FROM svv_table_info
             WHERE "table" = '\(safeTable)'
-              AND schema = '\(escapedSchema)'
+              AND schema = '\(schemaLiteral)'
             """
         let result = try await execute(query: query)
         guard let firstRow = result.rows.first, let value = firstRow[0].asText, let count = Int(value) else { return nil }
@@ -428,8 +247,10 @@ final class RedshiftPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func fetchTableDDL(table: String, schema: String?) async throws -> String {
         let safeTable = escapeLiteral(table)
-        let quotedTable = "\"\(table.replacingOccurrences(of: "\"", with: "\"\""))\""
-        let quotedSchema = "\"\(_currentSchema.replacingOccurrences(of: "\"", with: "\"\""))\""
+        let resolvedSchema = schema ?? core.currentSchema
+        let schemaLiteral = escapeLiteral(resolvedSchema)
+        let quotedTable = quoteIdentifier(table)
+        let quotedSchema = quoteIdentifier(resolvedSchema)
 
         do {
             let showResult = try await execute(query: "SHOW TABLE \(quotedSchema).\(quotedTable)")
@@ -450,7 +271,7 @@ final class RedshiftPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             JOIN pg_namespace n ON n.oid = c.relnamespace
             LEFT JOIN pg_attrdef d ON d.adrelid = c.oid AND d.adnum = a.attnum
             WHERE c.relname = '\(safeTable)'
-              AND n.nspname = '\(escapedSchema)'
+              AND n.nspname = '\(schemaLiteral)'
               AND a.attnum > 0
               AND NOT a.attisdropped
             ORDER BY a.attnum
@@ -487,11 +308,12 @@ final class RedshiftPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func fetchViewDefinition(view: String, schema: String?) async throws -> String {
         let safeView = escapeLiteral(view)
+        let schemaLiteral = escapeLiteral(schema ?? core.currentSchema)
         let query = """
             SELECT 'CREATE OR REPLACE VIEW ' || quote_ident(schemaname) || '.' || quote_ident(viewname) || ' AS ' || E'\\n' || definition AS ddl
             FROM pg_views
             WHERE viewname = '\(safeView)'
-              AND schemaname = '\(escapedSchema)'
+              AND schemaname = '\(schemaLiteral)'
             """
         let result = try await execute(query: query)
         guard let firstRow = result.rows.first, let ddl = firstRow[0].asText else {
@@ -502,6 +324,7 @@ final class RedshiftPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
         let safeTable = escapeLiteral(table)
+        let schemaLiteral = escapeLiteral(schema ?? core.currentSchema)
         let query = """
             SELECT
                 tbl_rows,
@@ -511,7 +334,7 @@ final class RedshiftPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 stats_off
             FROM svv_table_info
             WHERE "table" = '\(safeTable)'
-              AND schema = '\(escapedSchema)'
+              AND schema = '\(schemaLiteral)'
             """
         let result = try await execute(query: query)
         guard let row = result.rows.first else {
@@ -547,12 +370,6 @@ final class RedshiftPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return result.rows.compactMap { row in row.first?.asText }
     }
 
-    func switchSchema(to schema: String) async throws {
-        let escapedName = schema.replacingOccurrences(of: "\"", with: "\"\"")
-        _ = try await execute(query: "SET search_path TO \"\(escapedName)\", public")
-        _currentSchema = schema
-    }
-
     func fetchDatabaseMetadata(_ database: String) async throws -> PluginDatabaseMetadata {
         let escapedDbLiteral = escapeLiteral(database)
         let countQuery = """
@@ -572,19 +389,15 @@ final class RedshiftPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let sizeMb = Int64(sizeRes.rows.first?[0].asText ?? "0") ?? 0
         let sizeBytes = sizeMb * 1_024 * 1_024
 
-        let systemDatabases = ["dev", "padb_harvest"]
-        let isSystem = systemDatabases.contains(database)
-
         return PluginDatabaseMetadata(
             name: database,
             tableCount: tableCount,
             sizeBytes: sizeBytes,
-            isSystemDatabase: isSystem
+            isSystemDatabase: PostgreSQLSystemDatabases.redshift.contains(database)
         )
     }
 
     func fetchAllDatabaseMetadata() async throws -> [PluginDatabaseMetadata] {
-        let systemDatabases = ["dev", "padb_harvest"]
         let dbResult = try await execute(
             query: "SELECT datname FROM pg_database WHERE datistemplate = false ORDER BY datname"
         )
@@ -606,13 +419,12 @@ final class RedshiftPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
 
         return dbNames.map { dbName in
-            let isSystem = systemDatabases.contains(dbName)
             let info = metadataByName[dbName]
             return PluginDatabaseMetadata(
                 name: dbName,
                 tableCount: info?.tableCount,
                 sizeBytes: info.map { $0.sizeMb * 1_024 * 1_024 },
-                isSystemDatabase: isSystem
+                isSystemDatabase: PostgreSQLSystemDatabases.redshift.contains(dbName)
             )
         }
     }
@@ -647,14 +459,12 @@ final class RedshiftPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             )
         }
 
-        let quotedName = request.name.replacingOccurrences(of: "\"", with: "\"\"")
-        let sql = "CREATE DATABASE \"\(quotedName)\" COLLATE \(collate)"
+        let sql = "CREATE DATABASE \(quoteIdentifier(request.name)) COLLATE \(collate)"
         _ = try await execute(query: sql)
     }
 
     func dropDatabase(name: String) async throws {
-        let escapedName = name.replacingOccurrences(of: "\"", with: "\"\"")
-        _ = try await execute(query: "DROP DATABASE \"\(escapedName)\"")
+        _ = try await execute(query: "DROP DATABASE \(quoteIdentifier(name))")
     }
 
     // MARK: - All Tables Metadata
@@ -676,5 +486,4 @@ final class RedshiftPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         ORDER BY "table"
         """
     }
-
 }

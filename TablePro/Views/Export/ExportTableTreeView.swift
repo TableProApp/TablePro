@@ -23,6 +23,10 @@ struct ExportTableTreeView: View {
         PluginManager.shared.exportPlugin(forFormat: formatId)
     }
 
+    private var defaultOptionValues: [Bool] {
+        currentPlugin?.defaultTableOptionValues() ?? []
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             List {
@@ -55,14 +59,15 @@ struct ExportTableTreeView: View {
                 action: {
                     let newState = !database.allSelected
                     for index in allTables.wrappedValue.indices {
-                        allTables[index].isSelected.wrappedValue = newState
-                        if newState && !optionColumns.isEmpty {
-                            if allTables[index].wrappedValue.optionValues.isEmpty ||
-                                !allTables[index].wrappedValue.optionValues.contains(true) {
-                                let defaults = currentPlugin?.defaultTableOptionValues() ?? Array(repeating: true, count: optionColumns.count)
-                                allTables[index].optionValues.wrappedValue = defaults
-                            }
+                        var updated = allTables[index].wrappedValue
+                        updated.isSelected = newState
+                        if newState {
+                            updated = updated.normalized(
+                                forOptionColumnCount: optionColumns.count,
+                                defaultOptionValues: defaultOptionValues
+                            )
                         }
+                        allTables[index].wrappedValue = updated
                     }
                 }
             )
@@ -70,7 +75,7 @@ struct ExportTableTreeView: View {
             .frame(width: 18)
 
             Image(systemName: "cylinder")
-                .foregroundStyle(Color(nsColor: .systemBlue))
+                .foregroundStyle(.blue)
                 .font(.body)
 
             Text(database.name)
@@ -120,14 +125,12 @@ struct ExportTableTreeView: View {
                 ForEach(Array(optionColumns.enumerated()), id: \.element.id) { colIndex, column in
                     Toggle(column.label, isOn: Binding(
                         get: {
-                            guard colIndex < table.wrappedValue.optionValues.count else { return true }
-                            return table.optionValues[colIndex].wrappedValue
+                            table.wrappedValue.optionValues[safe: colIndex] ?? column.defaultValue
                         },
                         set: { newValue in
-                            ensureOptionValues(table)
+                            guard table.wrappedValue.optionValues.indices.contains(colIndex) else { return }
                             table.optionValues[colIndex].wrappedValue = newValue
-                            let anyTrue = table.wrappedValue.optionValues.contains(true)
-                            table.isSelected.wrappedValue = anyTrue
+                            table.isSelected.wrappedValue = table.wrappedValue.optionValues.contains(true)
                         }
                     ))
                     .toggleStyle(.checkbox)
@@ -143,7 +146,7 @@ struct ExportTableTreeView: View {
     // MARK: - Generic Option Helpers
 
     private func genericCheckboxState(_ table: ExportTableItem) -> TristateCheckbox.State {
-        if !table.isSelected || table.optionValues.isEmpty { return .unchecked }
+        if !table.isSelected { return .unchecked }
         let trueCount = table.optionValues.count(where: { $0 })
         if trueCount == 0 { return .unchecked }
         if trueCount == table.optionValues.count { return .checked }
@@ -151,73 +154,19 @@ struct ExportTableTreeView: View {
     }
 
     private func toggleGenericOptions(_ table: Binding<ExportTableItem>) {
-        ensureOptionValues(table)
-        if !table.wrappedValue.isSelected {
-            table.isSelected.wrappedValue = true
-            if !table.wrappedValue.optionValues.contains(true) {
-                for i in table.wrappedValue.optionValues.indices {
-                    table.optionValues[i].wrappedValue = true
-                }
-            }
+        guard table.wrappedValue.isSelected else {
+            var updated = table.wrappedValue
+            updated.isSelected = true
+            table.wrappedValue = updated.normalized(
+                forOptionColumnCount: optionColumns.count,
+                defaultOptionValues: defaultOptionValues
+            )
+            return
+        }
+        if table.wrappedValue.optionValues.allSatisfy({ $0 }) {
+            table.isSelected.wrappedValue = false
         } else {
-            let allChecked = table.wrappedValue.optionValues.allSatisfy { $0 }
-            if allChecked {
-                table.isSelected.wrappedValue = false
-            } else {
-                for i in table.wrappedValue.optionValues.indices {
-                    table.optionValues[i].wrappedValue = true
-                }
-            }
-        }
-    }
-
-    private func ensureOptionValues(_ table: Binding<ExportTableItem>) {
-        if table.wrappedValue.optionValues.count < optionColumns.count {
-            let defaults = currentPlugin?.defaultTableOptionValues() ?? Array(repeating: true, count: optionColumns.count)
-            table.optionValues.wrappedValue = defaults
-        }
-    }
-}
-
-// MARK: - Tristate Checkbox
-
-/// Native macOS tristate checkbox using NSButton
-private struct TristateCheckbox: NSViewRepresentable {
-    enum State {
-        case unchecked, checked, mixed
-    }
-
-    let state: State
-    let action: () -> Void
-
-    func makeNSView(context: Context) -> NSButton {
-        let button = NSButton(checkboxWithTitle: "", target: context.coordinator, action: #selector(Coordinator.clicked))
-        button.allowsMixedState = true
-        button.setContentHuggingPriority(.defaultHigh, for: .horizontal)
-        button.setContentHuggingPriority(.defaultHigh, for: .vertical)
-        return button
-    }
-
-    func updateNSView(_ button: NSButton, context: Context) {
-        switch state {
-        case .unchecked: button.state = .off
-        case .checked: button.state = .on
-        case .mixed: button.state = .mixed
-        }
-        context.coordinator.action = action
-    }
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(action: action)
-    }
-
-    class Coordinator: NSObject {
-        var action: () -> Void
-        init(action: @escaping () -> Void) {
-            self.action = action
-        }
-        @objc func clicked() {
-            action()
+            table.optionValues.wrappedValue = Array(repeating: true, count: optionColumns.count)
         }
     }
 }

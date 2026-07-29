@@ -71,7 +71,7 @@ struct CoordinatorSidebarActionsTests {
         let (coordinator, _) = makeCoordinator(safeModeLevel: .readOnly)
         defer { coordinator.teardown() }
 
-        coordinator.openImportDialog()
+        coordinator.openImportDialog(formatId: "sql")
     }
 
     @Test("openImportDialog with MongoDB returns early at type guard")
@@ -82,7 +82,7 @@ struct CoordinatorSidebarActionsTests {
 
         // Hits the MongoDB/Redis guard; shows an alert as side effect
         // but should not crash.
-        coordinator.openImportDialog()
+        coordinator.openImportDialog(formatId: "sql")
     }
 
     @Test("openImportDialog with Redis returns early at type guard")
@@ -91,7 +91,7 @@ struct CoordinatorSidebarActionsTests {
         let (coordinator, _) = makeCoordinator(type: .redis)
         defer { coordinator.teardown() }
 
-        coordinator.openImportDialog()
+        coordinator.openImportDialog(formatId: "sql")
     }
 
     // MARK: - openExportDialog

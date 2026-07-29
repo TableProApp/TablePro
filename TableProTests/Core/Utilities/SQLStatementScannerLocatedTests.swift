@@ -143,7 +143,7 @@ struct SQLStatementScannerLocatedTests {
     @Test("Handles very large input without crashing")
     func largeInput() {
         var parts: [String] = []
-        for i in 0..<200 {
+        for i in 0..<300 {
             parts.append("SELECT \(i) FROM very_long_table_name_for_testing;")
         }
         let sql = parts.joined(separator: " ")
@@ -179,5 +179,19 @@ struct SQLStatementScannerLocatedTests {
         let first = SQLStatementScanner.locatedStatementAtCursor(in: sql, cursorPosition: 0)
         #expect(first.sql == "SELECT 'it''s here';")
         #expect(first.offset == 0)
+    }
+
+    @Test("Cursor inside a trailing comment still returns the raw comment text")
+    func cursorInsideTrailingCommentReturnsRawText() {
+        let sql = "SELECT 1; -- note"
+        let located = SQLStatementScanner.locatedStatementAtCursor(in: sql, cursorPosition: 15)
+        #expect(located.sql == " -- note")
+        #expect(located.offset == 9)
+    }
+
+    @Test("statementAtCursor returns comment text for a cursor sitting in a trailing comment")
+    func statementAtCursorReturnsCommentTextForCursorInComment() {
+        let result = SQLStatementScanner.statementAtCursor(in: "SELECT 1; -- note", cursorPosition: 15)
+        #expect(result == "-- note")
     }
 }

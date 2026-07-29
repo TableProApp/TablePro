@@ -14,13 +14,21 @@ import TableProPluginKit
 // MARK: - Session Management
 
 extension DatabaseManager {
-    func connectToSession(_ connection: DatabaseConnection) async throws {
+    func connectToSession(
+        _ requestedConnection: DatabaseConnection,
+        passwordOverride incomingPasswordOverride: String? = nil,
+        sshPasswordOverride: String? = nil
+    ) async throws {
+        let connection = resolvedConnectionDefinition(for: requestedConnection)
+
         if let existing = activeSessions[connection.id], existing.driver != nil {
             switchToSession(connection.id)
             return
         }
 
         MacAnalyticsProvider.shared.markConnectionAttempted()
+
+        let attempt = connectionAttempts.begin(for: connection.id)
 
         let resolvedConnection: DatabaseConnection
         if LicenseManager.shared.isFeatureAvailable(.envVarReferences) {
@@ -38,10 +46,15 @@ extension DatabaseManager {
 
         let effectiveConnection: DatabaseConnection
         do {
-            effectiveConnection = try await buildEffectiveConnection(for: resolvedConnection)
+            effectiveConnection = try await buildEffectiveConnection(
+                for: resolvedConnection,
+                sshPasswordOverride: sshPasswordOverride
+            )
         } catch {
-            removeSessionEntry(for: connection.id)
-            currentSessionId = nil
+            finalizeConnectionFailure(
+                for: connection.id,
+                cancelled: isAttemptCancelled(attempt, for: connection.id)
+            )
             throw error
         }
 
@@ -51,14 +64,16 @@ extension DatabaseManager {
             do {
                 try await PreConnectHookRunner.run(script: script)
             } catch {
-                removeSessionEntry(for: connection.id)
-                currentSessionId = nil
+                finalizeConnectionFailure(
+                    for: connection.id,
+                    cancelled: isAttemptCancelled(attempt, for: connection.id)
+                )
                 throw error
             }
         }
 
-        var passwordOverride: String?
-        if connection.promptForPassword {
+        var passwordOverride: String? = incomingPasswordOverride
+        if passwordOverride == nil, connection.promptForPassword, !pluginManager.hidesPassword(for: connection) {
             if let cached = activeSessions[connection.id]?.cachedPassword {
                 passwordOverride = cached
             } else {
@@ -68,8 +83,10 @@ extension DatabaseManager {
                     isAPIToken: isApiOnly,
                     window: NSApp.keyWindow
                 ) else {
-                    removeSessionEntry(for: connection.id)
-                    currentSessionId = nil
+                    finalizeConnectionFailure(
+                        for: connection.id,
+                        cancelled: isAttemptCancelled(attempt, for: connection.id)
+                    )
                     throw CancellationError()
                 }
                 passwordOverride = prompted
@@ -84,38 +101,23 @@ extension DatabaseManager {
                 awaitPlugins: true
             )
         } catch {
-            if connection.resolvedSSHConfig.enabled {
-                Task {
-                    do {
-                        try await SSHTunnelManager.shared.closeTunnel(connectionId: connection.id)
-                    } catch {
-                        Self.logger.warning("SSH tunnel cleanup failed for \(connection.name): \(error.localizedDescription)")
-                    }
-                }
+            let cancelled = isAttemptCancelled(attempt, for: connection.id)
+            if !cancelled {
+                closeActiveTunnel(for: connection)
             }
-            removeSessionEntry(for: connection.id)
-            currentSessionId = nil
+            finalizeConnectionFailure(for: connection.id, cancelled: cancelled)
             throw error
         }
 
         do {
             try await driver.connect()
+            try Task.checkCancellation()
+            try ensureAttemptIsCurrent(attempt, for: connection.id, driver: driver)
 
-            let timeoutSeconds = AppSettingsManager.shared.general.queryTimeoutSeconds
-            if timeoutSeconds > 0 {
-                do {
-                    try await driver.applyQueryTimeout(timeoutSeconds)
-                } catch {
-                    // Best-effort: some PostgreSQL-compatible databases like Aurora DSQL
-                    // don't support SET statement_timeout.
-                    Self.logger.warning(
-                        "Query timeout not supported for \(connection.name): \(error.localizedDescription)"
-                    )
-                }
-            }
-
-            await executeStartupCommands(
-                resolvedConnection.startupCommands, on: driver, connectionName: connection.name
+            await applyTimeoutAndStartupCommands(
+                on: driver,
+                startupCommands: resolvedConnection.startupCommands,
+                connectionName: connection.name
             )
 
             if let schemaDriver = driver as? SchemaSwitchable {
@@ -126,16 +128,21 @@ extension DatabaseManager {
                 for: connection, resolvedConnection: resolvedConnection, driver: driver
             )
 
+            try Task.checkCancellation()
+            try ensureAttemptIsCurrent(attempt, for: connection.id, driver: driver)
+
             // Batch all session mutations into a single write to fire objectWillChange once.
             if var session = activeSessions[connection.id] {
                 session.driver = driver
                 session.status = driver.status
                 session.effectiveConnection = effectiveConnection
-                if let passwordOverride {
+                if let passwordOverride, !connection.usesAWSIAM {
                     session.cachedPassword = passwordOverride
                 }
                 setSession(session, for: connection.id)
             }
+
+            connectionAttempts.finish(attempt, for: connection.id)
 
             MacAnalyticsProvider.shared.markConnectionSucceeded()
             AppEvents.shared.databaseDidConnect.send(DatabaseDidConnect(connectionId: connection.id))
@@ -148,28 +155,49 @@ extension DatabaseManager {
                 await startHealthMonitor(for: connection.id)
             }
         } catch {
-            if connection.resolvedSSHConfig.enabled {
-                Task {
-                    do {
-                        try await SSHTunnelManager.shared.closeTunnel(connectionId: connection.id)
-                    } catch {
-                        Self.logger.warning("SSH tunnel cleanup failed for \(connection.name): \(error.localizedDescription)")
-                    }
+            let cancelled = isAttemptCancelled(attempt, for: connection.id)
+            var reportedError = error
+            if cancelled {
+                driver.disconnect()
+            } else {
+                if let attributed = await attributedTunnelFailure(for: connection) {
+                    reportedError = attributed
                 }
+                closeActiveTunnel(for: connection)
             }
 
-            // Remove failed session completely so UI returns to Welcome window.
-            removeSessionEntry(for: connection.id)
+            finalizeConnectionFailure(for: connection.id, cancelled: cancelled)
+            throw reportedError
+        }
+    }
 
-            if currentSessionId == connection.id {
-                if let nextSessionId = activeSessions.keys.first {
-                    currentSessionId = nextSessionId
-                } else {
-                    currentSessionId = nil
-                }
-            }
+    private func isAttemptCancelled(_ attempt: Int, for connectionId: UUID) -> Bool {
+        Task.isCancelled || !connectionAttempts.isCurrent(attempt, for: connectionId)
+    }
 
-            throw error
+    private func ensureAttemptIsCurrent(
+        _ attempt: Int,
+        for connectionId: UUID,
+        driver: DatabaseDriver
+    ) throws {
+        guard !isAttemptCancelled(attempt, for: connectionId) else {
+            driver.disconnect()
+            throw CancellationError()
+        }
+    }
+
+    internal func resolvedConnectionDefinition(for connection: DatabaseConnection) -> DatabaseConnection {
+        guard let stored = connectionStorage.loadConnection(id: connection.id) else { return connection }
+        var resolved = connection
+        resolved.safeModeLevel = stored.safeModeLevel
+        return resolved
+    }
+
+    internal func finalizeConnectionFailure(for connectionId: UUID, cancelled: Bool) {
+        guard !cancelled else { return }
+        removeSessionEntry(for: connectionId)
+        if currentSessionId == connectionId {
+            currentSessionId = activeSessions.keys.first
         }
     }
 
@@ -233,7 +261,7 @@ extension DatabaseManager {
 
     // MARK: - Database / Schema Switching
 
-    func switchDatabase(to database: String, for connectionId: UUID) async throws {
+    func switchDatabase(to database: String, for connectionId: UUID, persist: Bool = true) async throws {
         guard let driver = driver(for: connectionId) else {
             throw DatabaseError.notConnected
         }
@@ -247,6 +275,7 @@ extension DatabaseManager {
                 session.connection.database = database
                 session.currentDatabase = database
                 session.currentSchema = nil
+                session.status = .connecting
             }
             appSettingsStorage.saveLastSchema(nil, for: connectionId)
             await SchemaService.shared.invalidate(connectionId: connectionId)
@@ -262,7 +291,9 @@ extension DatabaseManager {
             }
         }
 
-        appSettingsStorage.saveLastDatabase(database, for: connectionId)
+        if persist {
+            appSettingsStorage.saveLastDatabase(database, for: connectionId)
+        }
     }
 
     func switchSchema(to schema: String, for connectionId: UUID) async throws {
@@ -276,6 +307,7 @@ extension DatabaseManager {
             session.currentSchema = schema
         }
         appSettingsStorage.saveLastSchema(schema, for: connectionId)
+        AppEvents.shared.currentSchemaChanged.send(connectionId)
     }
 
     func switchToSession(_ sessionId: UUID) {
@@ -299,15 +331,15 @@ extension DatabaseManager {
             "[close] disconnectSession start connId=\(sessionId, privacy: .public) name=\(session.connection.name, privacy: .public) hasSSH=\(session.connection.resolvedSSHConfig.enabled)"
         )
 
-        if session.connection.resolvedSSHConfig.enabled {
-            let sshStart = Date()
+        if let tunnelManager = activeTunnelManager(for: session.connection) {
+            let tunnelStart = Date()
             do {
-                try await SSHTunnelManager.shared.closeTunnel(connectionId: session.connection.id)
+                try await tunnelManager.closeTunnel(connectionId: session.connection.id)
             } catch {
-                Self.logger.warning("SSH tunnel cleanup failed for \(session.connection.name): \(error.localizedDescription)")
+                Self.logger.warning("Tunnel cleanup failed for \(session.connection.name): \(error.localizedDescription)")
             }
             lifecycleLogger.info(
-                "[close] disconnectSession SSH tunnel close done connId=\(sessionId, privacy: .public) elapsedMs=\(Int(Date().timeIntervalSince(sshStart) * 1_000))"
+                "[close] disconnectSession tunnel close done connId=\(sessionId, privacy: .public) elapsedMs=\(Int(Date().timeIntervalSince(tunnelStart) * 1_000))"
             )
         }
 
@@ -325,10 +357,12 @@ extension DatabaseManager {
         removeSessionEntry(for: sessionId)
 
         await SchemaService.shared.invalidate(connectionId: sessionId)
+        await DatabaseTreeMetadataService.shared.handleDisconnect(connectionId: sessionId)
 
         SchemaProviderRegistry.shared.clear(for: sessionId)
 
         SharedSidebarState.removeConnection(sessionId)
+        SidebarViewModel.removeConnection(sessionId)
 
         if currentSessionId == sessionId {
             if let nextSessionId = activeSessions.keys.first {
@@ -363,6 +397,15 @@ extension DatabaseManager {
         let driverAfter = session.driver as AnyObject?
         guard !session.isContentViewEquivalent(to: before) || driverBefore !== driverAfter else { return }
         setSession(session, for: sessionId)
+    }
+
+    func setSafeModeLevel(_ level: SafeModeLevel, for connectionId: UUID) {
+        guard var session = activeSessions[connectionId] else { return }
+        guard session.safeModeLevel != level || session.connection.safeModeLevel != level else { return }
+        session.safeModeLevel = level
+        session.connection.safeModeLevel = level
+        setSession(session, for: connectionId)
+        _ = connectionStorage.updateSafeModeLevel(level, for: connectionId)
     }
 
     internal func setSession(_ session: ConnectionSession, for connectionId: UUID) {
