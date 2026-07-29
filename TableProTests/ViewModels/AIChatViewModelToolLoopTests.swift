@@ -8,9 +8,10 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("AIChatViewModel tool roundtrip loop")
+@Suite("AIChatViewModel tool roundtrip loop", .serialized)
 @MainActor
 struct AIChatViewModelToolLoopTests {
+    private static let testLimit = 5
     private final class ScriptedTransport: ChatTransport, @unchecked Sendable {
         private let rounds: [[ChatStreamEvent]]
         private(set) var roundsRequested = 0
@@ -56,6 +57,10 @@ struct AIChatViewModelToolLoopTests {
             .toolUseDelta(id: id, inputJSONDelta: "{}"),
             .toolUseEnd(id: id)
         ]
+    }
+
+    private static func toolRounds(count: Int) -> [[ChatStreamEvent]] {
+        (1...count).map { toolRound(id: "u\($0)") }
     }
 
     private static func makeSettings(limit: Int?, enabled: Bool) -> AISettings {
@@ -110,45 +115,46 @@ struct AIChatViewModelToolLoopTests {
 
     @Test("Pauses after exactly the configured number of executed rounds")
     func pausesAtConfiguredLimit() async {
-        let transport = ScriptedTransport(rounds: (1...8).map { Self.toolRound(id: "u\($0)") })
+        let transport = ScriptedTransport(rounds: Self.toolRounds(count: 20))
         let viewModel = AIChatViewModel()
 
         await runLoop(
             viewModel: viewModel,
             transport: transport,
-            settings: Self.makeSettings(limit: 5, enabled: true)
+            settings: Self.makeSettings(limit: Self.testLimit, enabled: true)
         )
 
         #expect(viewModel.isPausedAtToolLimit)
-        #expect(viewModel.toolLimitPauseCount == 5)
-        #expect(toolUseTurnCount(viewModel) == 5)
+        #expect(viewModel.toolLimitPauseCount == Self.testLimit)
+        #expect(toolUseTurnCount(viewModel) == Self.testLimit)
     }
 
     @Test("Does not stream a round it cannot execute")
     func doesNotWasteARound() async {
-        let transport = ScriptedTransport(rounds: (1...8).map { Self.toolRound(id: "u\($0)") })
+        let transport = ScriptedTransport(rounds: Self.toolRounds(count: 20))
         let viewModel = AIChatViewModel()
 
         await runLoop(
             viewModel: viewModel,
             transport: transport,
-            settings: Self.makeSettings(limit: 3, enabled: true)
+            settings: Self.makeSettings(limit: Self.testLimit, enabled: true)
         )
 
-        #expect(transport.roundsRequested == 3)
+        #expect(transport.roundsRequested == Self.testLimit)
     }
 
     @Test("Pausing leaves no error state and keeps the retry affordance hidden")
     func pauseIsNotAFailure() async {
-        let transport = ScriptedTransport(rounds: (1...4).map { Self.toolRound(id: "u\($0)") })
+        let transport = ScriptedTransport(rounds: Self.toolRounds(count: 20))
         let viewModel = AIChatViewModel()
 
         await runLoop(
             viewModel: viewModel,
             transport: transport,
-            settings: Self.makeSettings(limit: 2, enabled: true)
+            settings: Self.makeSettings(limit: Self.testLimit, enabled: true)
         )
 
+        #expect(viewModel.isPausedAtToolLimit)
         #expect(viewModel.errorMessage == nil)
         #expect(viewModel.lastMessageFailed == false)
         #expect(viewModel.isStreaming == false)
@@ -156,15 +162,16 @@ struct AIChatViewModelToolLoopTests {
 
     @Test("Pause preserves the transcript and ends on a tool result turn")
     func pausePreservesTranscript() async {
-        let transport = ScriptedTransport(rounds: (1...4).map { Self.toolRound(id: "u\($0)") })
+        let transport = ScriptedTransport(rounds: Self.toolRounds(count: 20))
         let viewModel = AIChatViewModel()
 
         await runLoop(
             viewModel: viewModel,
             transport: transport,
-            settings: Self.makeSettings(limit: 2, enabled: true)
+            settings: Self.makeSettings(limit: Self.testLimit, enabled: true)
         )
 
+        #expect(viewModel.isPausedAtToolLimit)
         #expect(viewModel.messages.last?.role == .user)
         let trailingBlocks = viewModel.messages.last?.blocks ?? []
         #expect(!trailingBlocks.isEmpty)
@@ -177,14 +184,13 @@ struct AIChatViewModelToolLoopTests {
 
     @Test("No limit runs until the model stops calling tools")
     func unlimitedRunsToCompletion() async {
-        let rounds: [[ChatStreamEvent]] = (1...3).map { Self.toolRound(id: "u\($0)") } + [[.textDelta("all done")]]
-        let transport = ScriptedTransport(rounds: rounds)
+        let transport = ScriptedTransport(rounds: Self.toolRounds(count: 3) + [[.textDelta("all done")]])
         let viewModel = AIChatViewModel()
 
         await runLoop(
             viewModel: viewModel,
             transport: transport,
-            settings: Self.makeSettings(limit: 5, enabled: false)
+            settings: Self.makeSettings(limit: Self.testLimit, enabled: false)
         )
 
         #expect(viewModel.isPausedAtToolLimit == false)
@@ -194,13 +200,13 @@ struct AIChatViewModelToolLoopTests {
 
     @Test("Continue resumes from the pause with a fresh budget")
     func continueResumesFromPause() async {
-        let transport = ScriptedTransport(rounds: (1...4).map { Self.toolRound(id: "u\($0)") })
+        let transport = ScriptedTransport(rounds: Self.toolRounds(count: 20))
         let viewModel = AIChatViewModel()
 
         await runLoop(
             viewModel: viewModel,
             transport: transport,
-            settings: Self.makeSettings(limit: 2, enabled: true)
+            settings: Self.makeSettings(limit: Self.testLimit, enabled: true)
         )
         #expect(viewModel.isPausedAtToolLimit)
         let pausedMessageCount = viewModel.messages.count
@@ -209,7 +215,7 @@ struct AIChatViewModelToolLoopTests {
         await runLoop(
             viewModel: viewModel,
             transport: resumeTransport,
-            settings: Self.makeSettings(limit: 2, enabled: true)
+            settings: Self.makeSettings(limit: Self.testLimit, enabled: true)
         )
 
         #expect(viewModel.isPausedAtToolLimit == false)
@@ -226,5 +232,18 @@ struct AIChatViewModelToolLoopTests {
 
         #expect(viewModel.messages.isEmpty)
         #expect(viewModel.errorMessage == nil)
+    }
+
+    @Test("Restoring the last conversation never replaces messages already in the panel")
+    func conversationRestoreDoesNotClobberInFlightMessages() async {
+        let viewModel = AIChatViewModel()
+        viewModel.messages.append(ChatTurn(role: .user, blocks: [.text("typed first")]))
+
+        for _ in 0..<10 {
+            await Task.yield()
+        }
+
+        #expect(viewModel.messages.count == 1)
+        #expect(viewModel.messages.first?.plainText == "typed first")
     }
 }

@@ -13,10 +13,9 @@ extension AIChatViewModel {
             await MainActor.run {
                 guard let self else { return }
                 self.conversations = loaded
-                if let mostRecent = loaded.first {
-                    self.activeConversationID = mostRecent.id
-                    self.messages = mostRecent.messages.map { ChatTurn(wire: $0) }
-                }
+                guard self.messages.isEmpty, let mostRecent = loaded.first else { return }
+                self.activeConversationID = mostRecent.id
+                self.messages = mostRecent.messages.map { ChatTurn(wire: $0) }
             }
         }
     }
