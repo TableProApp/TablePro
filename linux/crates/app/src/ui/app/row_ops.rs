@@ -29,6 +29,15 @@ impl App {
             self.dispatch_to_tab(tab_id, BrowseTabInput::SaveFailed(crate::tr!("No active connection")));
             return;
         };
+        // Drivers that cannot report a row count for UPDATE / DELETE
+        // return 0 for every statement, which the concurrency guard
+        // below would read as "every row vanished". Skip the guard for
+        // them rather than warn on every successful save.
+        let reports_rows_affected = self
+            .current_driver_id
+            .as_ref()
+            .and_then(|id| self.registry.get(id))
+            .is_none_or(|driver| driver.reports_rows_affected());
         self.set_row_op_in_flight(true);
         // Increment the in-flight counter so window-close blocks until
         // the transaction resolves. Decrement happens in the
@@ -51,7 +60,9 @@ impl App {
                             // — there's nothing to roll back — but the
                             // user must hear about it so a phantom save
                             // doesn't pass silently.
-                            let warning = compute_concurrency_warning(&statements, &affected);
+                            let warning = reports_rows_affected
+                                .then(|| compute_concurrency_warning(&statements, &affected))
+                                .flatten();
                             sender_for_cmd.input(AppMsg::RowOpStarted);
                             sender_for_cmd.input(AppMsg::WorkspaceSchemaWordsChanged);
                             sender_for_cmd.input(AppMsg::SaveCompletedForTab(tab_id, warning));
