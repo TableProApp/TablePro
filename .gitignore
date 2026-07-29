@@ -153,3 +153,6 @@ Libs/ios/
 
 # Claude Code session data
 .claude/
+
+# Linux dev sysroot (see linux/scripts/dev-env.sh)
+.local-deps/
