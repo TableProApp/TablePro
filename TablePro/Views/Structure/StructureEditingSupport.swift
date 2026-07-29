@@ -12,6 +12,13 @@ import TableProPluginKit
 
 @MainActor
 enum StructureEditingSupport {
+    static func parseBool(_ value: String) -> Bool {
+        switch value.uppercased() {
+        case "YES", "TRUE", "1": return true
+        default: return false
+        }
+    }
+
     static func updateColumn(
         _ column: inout EditableColumnDefinition,
         at index: Int,
@@ -22,10 +29,12 @@ enum StructureEditingSupport {
         switch orderedFields[index] {
         case .name: column.name = value
         case .type: column.dataType = value
-        case .nullable: column.isNullable = value.uppercased() == "YES" || value == "1"
+        case .nullable: column.isNullable = parseBool(value) && !column.isPrimaryKey
         case .defaultValue: column.defaultValue = value.isEmpty ? nil : value
-        case .primaryKey: column.isPrimaryKey = value.uppercased() == "YES" || value == "1"
-        case .autoIncrement: column.autoIncrement = value.uppercased() == "YES" || value == "1"
+        case .primaryKey:
+            column.isPrimaryKey = parseBool(value)
+            if column.isPrimaryKey { column.isNullable = false }
+        case .autoIncrement: column.autoIncrement = parseBool(value)
         case .comment: column.comment = value.isEmpty ? nil : value
         case .charset: column.charset = value.isEmpty ? nil : value
         case .collation: column.collation = value.isEmpty ? nil : value
@@ -53,7 +62,7 @@ enum StructureEditingSupport {
             if let indexType = EditableIndexDefinition.IndexType(rawValue: value.uppercased()) {
                 index.type = indexType
             }
-        case 3: index.isUnique = value.uppercased() == "YES" || value == "1"
+        case 3: index.isUnique = parseBool(value)
         case 4: index.whereClause = value.isEmpty ? nil : value
         default: break
         }
