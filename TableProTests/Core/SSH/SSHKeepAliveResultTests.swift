@@ -7,7 +7,6 @@
 //  connection through it.
 //
 
-import CLibSSH2
 @testable import TablePro
 import Testing
 
@@ -15,22 +14,31 @@ import Testing
 struct SSHKeepAliveResultTests {
     @Test("A sent keep-alive is not a failure")
     func successIsNotFailure() {
-        #expect(sshKeepAliveDidFail(0) == false)
+        #expect(sshKeepAliveDidFail(SSHKeepAliveCode.sent) == false)
     }
 
     @Test("A keep-alive that would block is not a failure")
     func wouldBlockIsNotFailure() {
-        #expect(sshKeepAliveDidFail(LIBSSH2_ERROR_EAGAIN) == false)
+        #expect(sshKeepAliveDidFail(SSHKeepAliveCode.wouldBlock) == false)
     }
 
     @Test("A send error is a failure")
     func sendErrorIsFailure() {
-        #expect(sshKeepAliveDidFail(LIBSSH2_ERROR_SOCKET_SEND))
+        #expect(sshKeepAliveDidFail(SSHKeepAliveCode.socketSend))
+    }
+
+    @Test("A disconnected socket is a failure")
+    func disconnectIsFailure() {
+        #expect(sshKeepAliveDidFail(SSHKeepAliveCode.socketDisconnect))
+    }
+
+    @Test("Would-block is a distinct code, not an alias for success")
+    func wouldBlockIsNotSuccess() {
+        #expect(SSHKeepAliveCode.wouldBlock != SSHKeepAliveCode.sent)
     }
 
     @Test("Any other libssh2 error is a failure")
     func otherErrorsAreFailures() {
         #expect(sshKeepAliveDidFail(-1))
-        #expect(sshKeepAliveDidFail(LIBSSH2_ERROR_SOCKET_DISCONNECT))
     }
 }
