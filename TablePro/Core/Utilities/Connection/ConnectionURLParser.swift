@@ -21,6 +21,7 @@ struct ParsedConnectionURL {
     let sshPassword: String?
     let usePrivateKey: Bool?
     let useSSHAgent: Bool?
+    let sshNoAuth: Bool?
     let agentSocket: String?
     let connectionName: String?
     let redisDatabase: Int?
@@ -104,7 +105,7 @@ struct ConnectionURLParser {
 
         let isSrv = scheme == "mongodb+srv"
 
-        let isFileBased = dbType == .sqlite || dbType == .duckdb
+        let isFileBased = dbType == .sqlite || (dbType == .duckdb && scheme == "duckdb")
             || PluginMetadataRegistry.shared.snapshot(forTypeId: dbType.pluginTypeId)?.connectionMode == .fileBased
         if isFileBased {
             let path = String(trimmed[schemeEnd.upperBound...])
@@ -123,6 +124,7 @@ struct ConnectionURLParser {
                 sshPassword: nil,
                 usePrivateKey: nil,
                 useSSHAgent: nil,
+                sshNoAuth: nil,
                 agentSocket: nil,
                 connectionName: nil,
                 redisDatabase: nil,
@@ -228,6 +230,7 @@ struct ConnectionURLParser {
             sshPassword: nil,
             usePrivateKey: nil,
             useSSHAgent: nil,
+            sshNoAuth: nil,
             agentSocket: nil,
             connectionName: ext.connectionName,
             redisDatabase: redisDatabase,
@@ -254,6 +257,8 @@ struct ConnectionURLParser {
             return .postgresql
         case "redshift":
             return .redshift
+        case "cockroachdb", "cockroach":
+            return .cockroachdb
         case "mysql":
             return .mysql
         case "mariadb":
@@ -274,6 +279,8 @@ struct ConnectionURLParser {
             return .cassandra
         case "scylladb", "scylla":
             return .scylladb
+        case "quack":
+            return .duckdb
         default:
             return PluginMetadataRegistry.shared.databaseType(forUrlScheme: scheme)
         }
@@ -404,6 +411,7 @@ struct ConnectionURLParser {
             sshPassword: sshPassword,
             usePrivateKey: ext.usePrivateKey,
             useSSHAgent: ext.useSSHAgent,
+            sshNoAuth: ext.sshNoAuth,
             agentSocket: ext.agentSocket,
             connectionName: ext.connectionName,
             redisDatabase: nil,
@@ -502,6 +510,7 @@ struct ConnectionURLParser {
             sshPassword: nil,
             usePrivateKey: nil,
             useSSHAgent: nil,
+            sshNoAuth: nil,
             agentSocket: nil,
             connectionName: ext.connectionName,
             redisDatabase: nil,
@@ -530,6 +539,7 @@ struct ConnectionURLParser {
         var connectionName: String?
         var usePrivateKey: Bool?
         var useSSHAgent: Bool?
+        var sshNoAuth: Bool?
         var agentSocket: String?
         var statusColor: String?
         var envTag: String?
@@ -573,6 +583,10 @@ struct ConnectionURLParser {
                 ext.useSSHAgent = value.lowercased() == "true"
                 continue
             }
+            if keyStr == "sshnoauth" {
+                ext.sshNoAuth = value.lowercased() == "true"
+                continue
+            }
             if keyStr == "agentsocket" {
                 ext.agentSocket = value.removingPercentEncoding ?? value
                 continue
@@ -591,7 +605,7 @@ struct ConnectionURLParser {
             ext.authSource = value
         case "statuscolor":
             ext.statusColor = value
-        case "env":
+        case "env", "enviroment", "environment":
             ext.envTag = value.removingPercentEncoding ?? value
         case "schema":
             ext.schema = value

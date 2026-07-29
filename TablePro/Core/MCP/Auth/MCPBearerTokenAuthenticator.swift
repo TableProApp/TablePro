@@ -6,6 +6,7 @@ public struct MCPValidatedToken: Sendable, Equatable {
     public let tokenId: UUID
     public let label: String?
     public let scopes: Set<MCPScope>
+    public let connectionAccess: ConnectionAccess
     public let issuedAt: Date
     public let expiresAt: Date?
 
@@ -13,12 +14,14 @@ public struct MCPValidatedToken: Sendable, Equatable {
         tokenId: UUID,
         label: String?,
         scopes: Set<MCPScope>,
+        connectionAccess: ConnectionAccess = .all,
         issuedAt: Date,
         expiresAt: Date?
     ) {
         self.tokenId = tokenId
         self.label = label
         self.scopes = scopes
+        self.connectionAccess = connectionAccess
         self.issuedAt = issuedAt
         self.expiresAt = expiresAt
     }
@@ -51,6 +54,7 @@ internal extension MCPTokenStore {
             tokenId: authToken.id,
             label: authToken.name,
             scopes: Self.mcpScopes(for: authToken.permissions),
+            connectionAccess: authToken.connectionAccess,
             issuedAt: authToken.createdAt,
             expiresAt: authToken.expiresAt
         )
@@ -160,6 +164,7 @@ public actor MCPBearerTokenAuthenticator: MCPAuthenticator {
                 tokenFingerprint: fingerprint,
                 tokenId: validated.tokenId,
                 scopes: validated.scopes,
+                connectionAccess: validated.connectionAccess,
                 metadata: MCPPrincipalMetadata(
                     label: validated.label,
                     issuedAt: validated.issuedAt,
@@ -207,7 +212,7 @@ public actor MCPBearerTokenAuthenticator: MCPAuthenticator {
     internal static func fingerprint(of token: String) -> String {
         guard let data = token.data(using: .utf8) else { return "" }
         let digest = SHA256.hash(data: data)
-        let hex = digest.map { String(format: "%02x", $0) }.joined()
+        let hex = digest.hexEncoded
         return String(hex.prefix(16))
     }
 }

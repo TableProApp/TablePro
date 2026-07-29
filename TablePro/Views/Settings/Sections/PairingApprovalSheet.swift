@@ -81,13 +81,13 @@ struct PairingApprovalSheet: View {
     private var countdownLabel: some View {
         HStack(spacing: 6) {
             Image(systemName: isExpired ? "clock.badge.exclamationmark.fill" : "clock")
-                .foregroundStyle(isExpired ? Color(nsColor: .systemRed) : Color(nsColor: .secondaryLabelColor))
+                .foregroundStyle(isExpired ? .red : Color(nsColor: .secondaryLabelColor))
                 .imageScale(.small)
                 .accessibilityHidden(true)
             Text(countdownText)
                 .font(.caption)
                 .monospacedDigit()
-                .foregroundStyle(isExpired ? Color(nsColor: .systemRed) : .secondary)
+                .foregroundStyle(isExpired ? .red : .secondary)
                 .contentTransition(.numericText())
         }
     }
@@ -220,6 +220,8 @@ struct PairingApprovalSheet: View {
                 )
                 onComplete(.success(approval))
             }
+            .buttonStyle(.borderedProminent)
+            .keyboardShortcut(.defaultAction)
             .disabled(approveDisabled)
         }
     }

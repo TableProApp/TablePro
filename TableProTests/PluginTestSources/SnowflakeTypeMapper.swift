@@ -1,0 +1,1 @@
+../../Plugins/SnowflakeDriverPlugin/SnowflakeTypeMapper.swift

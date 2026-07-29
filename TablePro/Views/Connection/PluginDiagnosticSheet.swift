@@ -83,7 +83,7 @@ struct PluginDiagnosticSheet: View {
                 .font(.subheadline.weight(.semibold))
             ForEach(Array(item.diagnostic.suggestedActions.enumerated()), id: \.offset) { index, action in
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text("\(index + 1).")
+                    Text(verbatim: "\(index + 1).")
                         .foregroundStyle(.tertiary)
                         .monospacedDigit()
                     Text(action)

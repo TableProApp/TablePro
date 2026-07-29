@@ -14,7 +14,9 @@ struct AISettingsView: View {
     @State private var editingProviderID: UUID?
     @State private var addingProviderType: AIProviderType?
     @State private var pendingDeleteID: UUID?
-    @State private var copilotService = CopilotService.shared
+    @State private var chatGPTCodexService = ChatGPTCodexService.shared
+    @State private var cursorAgentService = CursorAgentService.shared
+    @State private var xaiService = XAIService.shared
     @State private var providersWithKey: Set<UUID> = []
 
     var body: some View {
@@ -31,6 +33,9 @@ struct AISettingsView: View {
         }
         .formStyle(.grouped)
         .task { refreshKeyAvailability() }
+        .task { await chatGPTCodexService.refreshAuthState() }
+        .task { await cursorAgentService.refreshStatus() }
+        .task { await xaiService.refreshAuthState() }
         .onChange(of: settings.providers.map(\.id)) {
             refreshKeyAvailability()
         }
@@ -213,7 +218,9 @@ struct AISettingsView: View {
     }
 
     private var orderedAddableTypes: [AIProviderType] {
-        [.copilot, .claude, .openAI, .openRouter, .gemini, .ollama]
+        AIProviderType.allCases.filter { type in
+            type != .custom && AIProviderRegistry.shared.descriptor(for: type.rawValue) != nil
+        }
     }
 
     // MARK: - Inline Suggestions
@@ -311,37 +318,61 @@ struct AISettingsView: View {
     private func statusText(for provider: AIProviderConfig) -> String {
         switch provider.type.authStyle {
         case .oauth:
-            return copilotStatusText()
-        case .apiKey:
+            return oauthStatusText(for: provider.type)
+        case .apiKey, .optionalApiKey:
             if provider.type == .custom {
                 return customStatusText(for: provider)
+            }
+            if provider.type == .cursor {
+                return cursorStatusText(for: provider)
+            }
+            if provider.type == .xai {
+                return xaiStatusText(for: provider)
             }
             return providersWithKey.contains(provider.id)
                 ? String(localized: "API key set")
                 : String(localized: "Not configured")
         case .none:
-            if provider.type == .ollama {
-                let endpoint = provider.endpoint.isEmpty ? provider.type.defaultEndpoint : provider.endpoint
-                if let host = URL(string: endpoint)?.host, host == "localhost" || host == "127.0.0.1" {
-                    return String(localized: "Local")
-                }
-                return endpoint
+            let endpoint = provider.endpoint.isEmpty ? provider.type.defaultEndpoint : provider.endpoint
+            guard !endpoint.isEmpty else { return String(localized: "Not configured") }
+            if let host = URL(string: endpoint)?.host, host == "localhost" || host == "127.0.0.1" {
+                return String(localized: "Local")
             }
-            return provider.endpoint.isEmpty
-                ? String(localized: "Not configured")
-                : provider.endpoint
+            return endpoint
         }
     }
 
-    private func copilotStatusText() -> String {
-        switch copilotService.authState {
-        case .signedIn(let username):
-            return String(format: String(localized: "Signed in as %@"), username)
+    private func oauthStatusText(for type: AIProviderType) -> String {
+        switch OAuthProviderRegistry.service(for: type)?.oauthState ?? .signedOut {
+        case .signedIn(let identity):
+            return identity.isEmpty
+                ? String(localized: "Signed in")
+                : String(format: String(localized: "Signed in as %@"), identity)
         case .signingIn:
             return String(localized: "Signing in…")
         case .signedOut:
             return String(localized: "Not signed in")
         }
+    }
+
+    private func cursorStatusText(for provider: AIProviderConfig) -> String {
+        if providersWithKey.contains(provider.id) {
+            return String(localized: "API key set")
+        }
+        if cursorAgentService.authState.isSignedIn {
+            return String(localized: "Signed in with Cursor")
+        }
+        return String(localized: "Not configured")
+    }
+
+    private func xaiStatusText(for provider: AIProviderConfig) -> String {
+        if providersWithKey.contains(provider.id) {
+            return String(localized: "API key set")
+        }
+        if xaiService.authState.isSignedIn {
+            return String(localized: "Signed in with xAI")
+        }
+        return String(localized: "Not configured")
     }
 
     private func customStatusText(for provider: AIProviderConfig) -> String {
@@ -356,7 +387,7 @@ struct AISettingsView: View {
 
     private func refreshKeyAvailability() {
         var ids: Set<UUID> = []
-        for provider in settings.providers where provider.type.authStyle == .apiKey {
+        for provider in settings.providers where provider.type.authStyle.usesAPIKey {
             if let key = AIKeyStorage.shared.loadAPIKey(for: provider.id), !key.isEmpty {
                 ids.insert(provider.id)
             }
@@ -367,19 +398,20 @@ struct AISettingsView: View {
     // MARK: - Mutations
 
     private func makeNewProvider(type: AIProviderType) -> AIProviderConfig {
-        AIProviderConfig(
+        let descriptor = AIProviderRegistry.shared.descriptor(for: type.rawValue)
+        return AIProviderConfig(
             id: UUID(),
             name: "",
             type: type,
             model: "",
             endpoint: type.defaultEndpoint,
             maxOutputTokens: nil,
-            telemetryEnabled: type == .copilot ? true : false
+            telemetryEnabled: descriptor?.defaultTelemetryEnabled ?? false
         )
     }
 
     private func saveProvider(_ provider: AIProviderConfig, apiKey: String, isNew: Bool) {
-        if provider.type.authStyle == .apiKey {
+        if provider.type.authStyle.usesAPIKey {
             AIKeyStorage.shared.saveAPIKey(apiKey, for: provider.id)
         }
 

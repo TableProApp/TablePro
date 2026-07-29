@@ -14,7 +14,7 @@ extension QueryExecutionCoordinator {
         QueryExecutor.detectAndReconcileParameters(sql: sql, existing: existing)
     }
 
-    func executeQueryWithParameters(_ sql: String, parameters: [QueryParameter]) {
+    func executeQueryWithParameters(_ sql: String, parameters: [QueryParameter], bypassRowLimit: Bool = false) {
         guard let (_, index) = parent.tabManager.selectedTabAndIndex else { return }
 
         let missing = parameters.filter {
@@ -44,14 +44,18 @@ extension QueryExecutionCoordinator {
         executeQueryInternalParameterized(
             conversion.sql,
             parameters: conversion.values,
-            originalParameters: parameters
+            originalParameters: parameters,
+            bypassRowLimit: bypassRowLimit,
+            originalSQL: sql
         )
     }
 
     func executeQueryInternalParameterized(
         _ sql: String,
         parameters: [Any?],
-        originalParameters: [QueryParameter]
+        originalParameters: [QueryParameter],
+        bypassRowLimit: Bool = false,
+        originalSQL: String? = nil
     ) {
         guard let (selectedTab, index) = parent.tabManager.selectedTabAndIndex,
               !selectedTab.execution.isExecuting else { return }
@@ -85,7 +89,7 @@ extension QueryExecutionCoordinator {
         let conn = parent.connection
         let tabId = parent.tabManager.tabs[index].id
 
-        let rowCap = resolveRowCap(sql: sql, tabType: tab.tabType)
+        let rowCap = resolveRowCap(sql: sql, tabType: tab.tabType, bypassLimit: bypassRowLimit)
         let (tableName, isEditable) = parent.resolveTableEditability(tab: tab, sql: sql)
 
         let needsMetadataFetch: Bool
@@ -94,38 +98,47 @@ extension QueryExecutionCoordinator {
         } else {
             needsMetadataFetch = false
         }
+        let connId = parent.connectionId
 
         parent.currentQueryTask = Task { [weak self, parent] in
             guard let self else { return }
 
+            let schemaTask: Task<FetchedTableSchema, Error>?
+            if needsMetadataFetch, let tableName {
+                schemaTask = Task { try await QueryExecutor.fetchTableSchema(connectionId: connId, tableName: tableName) }
+            } else {
+                schemaTask = nil
+            }
+
             do {
-                let executionResult = try await parent.queryExecutor.executeQuery(
+                let fetchResult = try await parent.queryExecutor.executeQuery(
                     sql: sql,
                     parameters: parameters,
-                    rowCap: rowCap,
-                    tableName: tableName,
-                    fetchSchemaForTable: needsMetadataFetch
+                    rowCap: rowCap
                 )
 
                 guard !Task.isCancelled else {
-                    await parent.resetExecutionState(
-                        tabId: tabId,
-                        executionTime: executionResult.fetchResult.executionTime
-                    )
+                    schemaTask?.cancel()
+                    await parent.resetExecutionState(tabId: tabId, executionTime: fetchResult.executionTime)
                     return
                 }
 
+                let inlineMeta = needsMetadataFetch
+                    ? QueryExecutor.inlineMetadata(from: fetchResult.resultColumnMeta, columns: fetchResult.columns)
+                    : nil
+
                 await applyParameterizedResult(
                     tabId: tabId,
-                    fetchResult: executionResult.fetchResult,
-                    schemaResult: executionResult.schemaResult,
+                    fetchResult: fetchResult,
+                    inlineMetadata: inlineMeta,
                     tableName: tableName,
                     isEditable: isEditable,
                     sql: sql,
                     connection: conn,
                     capturedGeneration: capturedGeneration,
                     originalParameters: originalParameters,
-                    nativeParameters: parameters
+                    nativeParameters: parameters,
+                    originalSQL: originalSQL
                 )
 
                 if isEditable, let tableName {
@@ -135,7 +148,7 @@ extension QueryExecutionCoordinator {
                             tabId: tabId,
                             capturedGeneration: capturedGeneration,
                             connectionType: conn.type,
-                            schemaResult: executionResult.schemaResult
+                            schemaTask: schemaTask
                         )
                     } else {
                         launchPhase2Count(
@@ -154,6 +167,7 @@ extension QueryExecutionCoordinator {
                     }
                 }
             } catch {
+                schemaTask?.cancel()
                 await MainActor.run { [weak self] in
                     guard let self else { return }
                     parent.tabManager.mutate(tabId: tabId) { tab in
@@ -170,7 +184,11 @@ extension QueryExecutionCoordinator {
         }
     }
 
-    func executeMultipleStatementsWithParameters(_ statements: [String], parameters: [QueryParameter]) {
+    func executeMultipleStatementsWithParameters(
+        _ statements: [String],
+        parameters: [QueryParameter],
+        bypassRowLimit: Bool = false
+    ) {
         guard let (selectedTab, index) = parent.tabManager.selectedTabAndIndex,
               !selectedTab.execution.isExecuting else { return }
 
@@ -205,6 +223,8 @@ extension QueryExecutionCoordinator {
         let conn = parent.connection
         let tabId = parent.tabManager.tabs[index].id
         let totalCount = statements.count
+
+        let tabType = parent.tabManager.tabs[index].tabType
 
         parent.currentQueryTask = Task { [weak self, parent] in
             guard let self else { return }
@@ -250,24 +270,22 @@ extension QueryExecutionCoordinator {
                         return
                     }
 
-                    failedSQL = stmtSQL
-                    let stmtParamNames = SQLParameterExtractor.extractParameters(from: stmtSQL)
+                    let stmtParamNames = parameters.isEmpty
+                        ? []
+                        : SQLParameterExtractor.extractParameters(from: stmtSQL)
+                    let conversion = stmtParamNames.isEmpty
+                        ? nil
+                        : SQLParameterExtractor.convertToNativeStyle(sql: stmtSQL, parameters: parameters, style: style)
+                    let statementSQL = conversion?.sql ?? stmtSQL
 
-                    let result: QueryResult
-                    if stmtParamNames.isEmpty {
-                        result = try await driver.execute(query: stmtSQL)
-                    } else {
-                        let conversion = SQLParameterExtractor.convertToNativeStyle(
-                            sql: stmtSQL,
-                            parameters: parameters,
-                            style: style
-                        )
-                        result = try await driver.executeParameterized(
-                            query: conversion.sql,
-                            parameters: conversion.values
-                        )
-                    }
-
+                    let rowCap = resolveRowCap(sql: statementSQL, tabType: tabType, bypassLimit: bypassRowLimit)
+                    failedSQL = statementSQL
+                    let result = try await executeStatement(
+                        rowCap: rowCap,
+                        originalSQL: statementSQL,
+                        driver: driver,
+                        parameters: conversion?.values
+                    )
                     failedSQL = nil
                     executedCount = stmtIndex + 1
                     cumulativeTime += result.executionTime
@@ -275,35 +293,22 @@ extension QueryExecutionCoordinator {
 
                     if !result.columns.isEmpty {
                         lastSelectResult = result
-                        lastSelectSQL = stmtSQL
+                        lastSelectSQL = statementSQL
                     }
 
-                    let stmtTableName = await MainActor.run { parent.extractTableName(from: stmtSQL) }
-                    let stmtRows = TableRows.from(
-                        queryRows: result.rows,
-                        columns: result.columns.map { String($0) },
-                        columnTypes: result.columnTypes
+                    newResultSets.append(makeStatementResultSet(
+                        result: result,
+                        sql: stmtSQL,
+                        index: stmtIndex,
+                        baseQuery: statementSQL,
+                        baseQueryParameterValues: conversion?.values.map { $0 as? String }
+                    ))
+                    recordStatementHistory(
+                        sql: stmtSQL,
+                        result: result,
+                        connection: conn,
+                        parameterValues: stmtParamNames.isEmpty ? nil : parameters
                     )
-                    let rs = ResultSet(label: stmtTableName ?? "Result \(stmtIndex + 1)", tableRows: stmtRows)
-                    rs.executionTime = result.executionTime
-                    rs.rowsAffected = result.rowsAffected
-                    rs.statusMessage = result.statusMessage
-                    rs.tableName = stmtTableName
-                    newResultSets.append(rs)
-
-                    let historySQL = stmtSQL.hasSuffix(";") ? stmtSQL : stmtSQL + ";"
-                    await MainActor.run {
-                        QueryHistoryManager.shared.recordQuery(
-                            query: historySQL,
-                            connectionId: conn.id,
-                            databaseName: parent.activeDatabaseName,
-                            executionTime: result.executionTime,
-                            rowCount: result.rows.count,
-                            wasSuccessful: true,
-                            errorMessage: nil,
-                            parameterValues: stmtParamNames.isEmpty ? nil : parameters
-                        )
-                    }
                 }
 
                 if useTransaction {
@@ -341,17 +346,16 @@ extension QueryExecutionCoordinator {
     func applyParameterizedResult(
         tabId: UUID,
         fetchResult: QueryFetchResult,
-        schemaResult: SchemaResult?,
+        inlineMetadata: ParsedSchemaMetadata?,
         tableName: String?,
         isEditable: Bool,
         sql: String,
         connection: DatabaseConnection,
         capturedGeneration: Int,
         originalParameters: [QueryParameter],
-        nativeParameters: [Any?]
+        nativeParameters: [Any?],
+        originalSQL: String? = nil
     ) async {
-        let metadata = schemaResult.map { QueryExecutor.parseSchemaMetadata($0) }
-
         await MainActor.run { [weak self] in
             guard let self else { return }
             parent.currentQueryTask = nil
@@ -376,16 +380,19 @@ extension QueryExecutionCoordinator {
                 statusMessage: fetchResult.statusMessage,
                 tableName: tableName,
                 isEditable: isEditable,
-                metadata: metadata,
-                hasSchema: schemaResult != nil,
+                metadata: inlineMetadata,
+                hasSchema: false,
                 sql: sql,
                 connection: connection,
                 isTruncated: fetchResult.isTruncated,
-                queryParameterValues: originalParameters
+                queryParameterValues: originalParameters,
+                historySQL: originalSQL
             )
 
+            let parameterValues = nativeParameters.map { $0 as? String }
             parent.tabManager.mutate(tabId: tabId) {
-                $0.pagination.baseQueryParameterValues = nativeParameters.map { $0 as? String }
+                $0.pagination.baseQueryParameterValues = parameterValues
+                $0.display.activeResultSet?.baseQueryParameterValues = parameterValues
             }
         }
     }
@@ -425,9 +432,10 @@ extension QueryExecutionCoordinator {
             + error.localizedDescription
 
         let errorRS = ResultSet(label: "Error \(failedStmtIndex)")
-        errorRS.errorMessage = error.localizedDescription
+        errorRS.errorMessage = contextMsg
         resultSets.append(errorRS)
 
+        let failedStatement = failedSQL ?? statements[min(executedCount, totalCount - 1)]
         let capturedResultSets = resultSets
         await MainActor.run { [weak self] in
             guard let self else { return }
@@ -436,15 +444,14 @@ extension QueryExecutionCoordinator {
 
             parent.tabManager.mutate(tabId: tabId) { tab in
                 tab.execution.errorMessage = contextMsg
+                tab.execution.errorQuery = failedStatement
                 tab.execution.isExecuting = false
                 tab.execution.executionTime = cumulativeTime
 
-                let pinnedResults = tab.display.resultSets.filter(\.isPinned)
-                tab.display.resultSets = pinnedResults + capturedResultSets
-                tab.display.activeResultSetId = capturedResultSets.last?.id
+                tab.display.replaceUnpinnedResults(with: capturedResultSets)
             }
 
-            let rawSQL = failedSQL ?? statements[min(executedCount, totalCount - 1)]
+            let rawSQL = failedStatement
             let recordSQL = rawSQL.hasSuffix(";") ? rawSQL : rawSQL + ";"
             QueryHistoryManager.shared.recordQuery(
                 query: recordSQL,
@@ -454,12 +461,6 @@ extension QueryExecutionCoordinator {
                 rowCount: 0,
                 wasSuccessful: false,
                 errorMessage: error.localizedDescription
-            )
-
-            AlertHelper.showErrorSheet(
-                title: String(localized: "Query Execution Failed"),
-                message: contextMsg,
-                window: parent.contentWindow
             )
         }
     }

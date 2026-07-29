@@ -31,6 +31,7 @@ final class AIChatViewModel {
     var selectedModel: String?
     var availableModels: [UUID: [String]] = [:]
     var attachedContext: [ContextItem] = []
+    var attachedImages: [ChatImageInput] = []
     var savedQueries: [SQLFavorite] = []
 
     var connection: DatabaseConnection?
@@ -69,6 +70,7 @@ final class AIChatViewModel {
         lastError?.isRetryable ?? true
     }
 
+    @ObservationIgnored var pendingWalkthroughBeforeSQL: String?
     @ObservationIgnored var inFlightColumnFetches: [String: Task<Void, Never>] = [:]
     @ObservationIgnored var inFlightSchemaLoad: Task<Void, Never>?
     @ObservationIgnored nonisolated(unsafe) var streamingTask: Task<Void, Never>?
@@ -92,23 +94,54 @@ final class AIChatViewModel {
 
     func sendMessage() {
         let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
+        guard !text.isEmpty || !attachedImages.isEmpty else { return }
 
         if let parsed = SlashCommand.parse(text) {
             runSlashCommand(parsed.command, body: parsed.body)
             return
         }
 
-        var blocks: [ChatContentBlock] = [.text(text)]
+        var blocks: [ChatContentBlock] = []
+        if !text.isEmpty {
+            blocks.append(.text(text))
+        }
         blocks.append(contentsOf: attachedContext.map { .attachment($0) })
+        blocks.append(contentsOf: attachedImages.map { .image($0) })
 
         messages.append(ChatTurn(role: .user, blocks: blocks))
         trimMessagesIfNeeded()
         inputText = ""
         attachedContext = []
+        attachedImages = []
         clearError()
 
         startStreaming()
+    }
+
+    func attachImage(_ image: ChatImageInput) {
+        attachedImages.append(image)
+    }
+
+    func reportImageAttachmentFailure(_ message: String) {
+        errorMessage = message
+    }
+
+    func detachImage(at index: Int) {
+        guard attachedImages.indices.contains(index) else { return }
+        if case .cacheFile(let filename, _) = attachedImages[index].source {
+            AIImageCache.shared.delete(filename: filename)
+        }
+        attachedImages.remove(at: index)
+    }
+
+    var activeProviderSupportsImages: Bool {
+        let settings = services.appSettings.ai
+        let configID = selectedProviderId ?? settings.activeProviderID
+        guard let configID,
+              let config = settings.providers.first(where: { $0.id == configID }),
+              let descriptor = AIProviderRegistry.shared.descriptor(for: config.type.rawValue)
+        else { return false }
+        return descriptor.supportsImages
     }
 
     func sendWithContext(prompt: String) {
@@ -117,6 +150,11 @@ final class AIChatViewModel {
         trimMessagesIfNeeded()
         clearError()
         startStreaming()
+    }
+
+    func sendWithWalkthroughContext(prompt: String, beforeSQL: String) {
+        pendingWalkthroughBeforeSQL = beforeSQL
+        sendWithContext(prompt: prompt)
     }
 
     func attach(_ item: ContextItem) {
@@ -130,6 +168,7 @@ final class AIChatViewModel {
     }
 
     func cancelStream() {
+        pendingWalkthroughBeforeSQL = nil
         prepTask?.cancel()
         prepTask = nil
         streamingTask?.cancel()
@@ -214,18 +253,25 @@ final class AIChatViewModel {
         inFlightSchemaLoad = nil
         currentQuery = nil
         queryResults = nil
+        pendingWalkthroughBeforeSQL = nil
         messages = []
         errorMessage = nil
         activeConversationID = nil
         sessionApprovedConnections = []
         streamingState = .idle
+        for image in attachedImages {
+            if case .cacheFile(let filename, _) = image.source {
+                AIImageCache.shared.delete(filename: filename)
+            }
+        }
+        attachedImages = []
     }
 
     func handleFixError(query: String, error: String) {
         startNewConversation()
         let databaseType = connection?.type ?? .mysql
         let prompt = AIPromptTemplates.fixError(query: query, error: error, databaseType: databaseType)
-        sendWithContext(prompt: prompt)
+        sendWithWalkthroughContext(prompt: prompt, beforeSQL: query)
     }
 
     func loadAvailableModels() async {
@@ -237,7 +283,7 @@ final class AIChatViewModel {
             for config in pending {
                 let apiKey: String?
                 switch config.type.authStyle {
-                case .apiKey:
+                case .apiKey, .optionalApiKey:
                     apiKey = services.aiKeyStorage.loadAPIKey(for: config.id)
                 case .oauth, .none:
                     apiKey = nil

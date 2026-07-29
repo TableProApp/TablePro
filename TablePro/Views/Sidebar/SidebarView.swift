@@ -8,14 +8,16 @@
 import SwiftUI
 import TableProPluginKit
 
-// MARK: - SidebarView
-
-/// Sidebar view with segmented tab picker for Tables and Favorites
 struct SidebarView: View {
     @State private var viewModel: SidebarViewModel
-    @Bindable private var schemaService = SchemaService.shared
+    @State private var favoriteTables: Set<FavoriteTablesStorage.FavoriteEntry> = []
+    @State private var settingsManager = AppSettingsManager.shared
+    @State private var showDatabaseFilter: Bool = false
+
+    private var schemaService: SchemaService { SchemaService.shared }
 
     var sidebarState: SharedSidebarState
+    var windowState: WindowSidebarState
     @Binding var pendingTruncates: Set<String>
     @Binding var pendingDeletes: Set<String>
 
@@ -41,15 +43,25 @@ struct SidebarView: View {
         }
     }
 
+    private var groupingStrategy: GroupingStrategy {
+        PluginManager.shared.databaseGroupingStrategy(for: viewModel.databaseType)
+    }
+
+    private var supportsSchemaFooter: Bool {
+        guard PluginManager.shared.supportsSchemaSwitching(for: viewModel.databaseType) else { return false }
+        return groupingStrategy != .hierarchicalSchema && !usesDatabaseTree
+    }
+
     private var selectedTablesBinding: Binding<Set<TableInfo>> {
         Binding(
-            get: { sidebarState.selectedTables },
-            set: { sidebarState.selectedTables = $0 }
+            get: { windowState.selectedTables },
+            set: { windowState.selectedTables = $0 }
         )
     }
 
     init(
         sidebarState: SharedSidebarState,
+        windowState: WindowSidebarState,
         onDoubleClick: ((TableInfo) -> Void)? = nil,
         pendingTruncates: Binding<Set<String>>,
         pendingDeletes: Binding<Set<String>>,
@@ -59,20 +71,21 @@ struct SidebarView: View {
         coordinator: MainContentCoordinator? = nil
     ) {
         self.sidebarState = sidebarState
+        self.windowState = windowState
         self.onDoubleClick = onDoubleClick
         _pendingTruncates = pendingTruncates
         _pendingDeletes = pendingDeletes
         let selectedBinding = Binding(
-            get: { sidebarState.selectedTables },
-            set: { sidebarState.selectedTables = $0 }
+            get: { windowState.selectedTables },
+            set: { windowState.selectedTables = $0 }
         )
-        let vm = SidebarViewModel(
+        let vm = SidebarViewModel.shared(
+            connectionId: connectionId,
+            databaseType: databaseType,
             selectedTables: selectedBinding,
             pendingTruncates: pendingTruncates,
             pendingDeletes: pendingDeletes,
-            tableOperationOptions: tableOperationOptions,
-            databaseType: databaseType,
-            connectionId: connectionId
+            tableOperationOptions: tableOperationOptions
         )
         vm.searchText = sidebarState.searchText
         if databaseType == .redis, let existingVM = sidebarState.redisKeyTreeViewModel {
@@ -89,12 +102,16 @@ struct SidebarView: View {
         Group {
             switch sidebarState.selectedSidebarTab {
             case .tables:
-                tablesContent
+                VStack(spacing: 0) {
+                    tablesContent
+                    tablesBottomBar
+                }
             case .favorites:
                 if let coordinator {
                     FavoritesTabView(
                         connectionId: connectionId,
-                        windowState: coordinator.windowSidebarState,
+                        sharedSidebarState: sidebarState,
+                        tables: tables,
                         coordinator: coordinator
                     )
                 } else {
@@ -134,16 +151,139 @@ struct SidebarView: View {
 
     @ViewBuilder
     private var tablesContent: some View {
+        if groupingStrategy == .hierarchicalSchema {
+            hierarchicalContent
+        } else if usesDatabaseTree {
+            databaseTreeContent
+        } else {
+            flatContent
+        }
+    }
+
+    // MARK: - Bottom Bar
+
+    private var tablesBottomBar: some View {
+        VStack(spacing: 0) {
+            Divider()
+            HStack(spacing: 8) {
+                createObjectMenu
+                if usesDatabaseTree {
+                    databaseFilterButton
+                }
+                DelayedProgressIndicator(isActive: schemaService.isRefreshing(connectionId: connectionId))
+                    .accessibilityLabel(String(localized: "Refreshing"))
+                Spacer()
+                if supportsSchemaFooter {
+                    SchemaPickerControl(
+                        connectionId: connectionId,
+                        databaseType: viewModel.databaseType,
+                        coordinator: coordinator
+                    )
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+        }
+    }
+
+    private var isDatabaseFilterActive: Bool {
+        !sidebarState.databaseFilterSelected.isEmpty
+    }
+
+    private var databaseFilterSelectionBinding: Binding<Set<String>> {
+        Binding(
+            get: { sidebarState.databaseFilterSelected },
+            set: { sidebarState.databaseFilterSelected = $0 }
+        )
+    }
+
+    private var databaseFilterButton: some View {
+        Button {
+            showDatabaseFilter = true
+        } label: {
+            Image(systemName: isDatabaseFilterActive
+                ? "line.3.horizontal.decrease.circle.fill"
+                : "line.3.horizontal.decrease.circle")
+                .foregroundStyle(isDatabaseFilterActive ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
+        }
+        .buttonStyle(.borderless)
+        .help(String(localized: "Filter databases"))
+        .accessibilityIdentifier("sidebar-database-filter")
+        .popover(isPresented: $showDatabaseFilter) {
+            DatabaseTreeFilterPopover(
+                connectionId: connectionId,
+                selectedDatabases: databaseFilterSelectionBinding
+            )
+        }
+    }
+
+    private var createObjectMenu: some View {
+        Menu {
+            Button(String(localized: "New Table")) { coordinator?.createNewTable() }
+            Button(String(localized: "New View")) { coordinator?.createView() }
+        } label: {
+            Image(systemName: "plus")
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help(String(localized: "Create a new table or view"))
+        .disabled(coordinator?.safeModeLevel.blocksAllWrites ?? true)
+        .accessibilityIdentifier("sidebar-create-table")
+    }
+
+    private var usesDatabaseTree: Bool {
+        PluginManager.shared.supportsDatabaseTree(for: viewModel.databaseType)
+            && sidebarState.sidebarLayout == .tree
+    }
+
+    @ViewBuilder
+    private var databaseTreeContent: some View {
+        DatabaseTreeView(
+            connectionId: connectionId,
+            databaseType: viewModel.databaseType,
+            viewModel: viewModel,
+            windowState: windowState,
+            pendingTruncates: $pendingTruncates,
+            pendingDeletes: $pendingDeletes,
+            coordinator: coordinator,
+            sidebarState: sidebarState
+        )
+    }
+
+    @ViewBuilder
+    private var hierarchicalContent: some View {
         switch schemaService.state(for: connectionId) {
-        case .loading where tables.isEmpty:
+        case .idle, .loading:
             loadingState
         case .failed(let message):
             errorState(message: message)
-        case .loaded where !viewModel.searchText.isEmpty && !hasAnyMatch:
+        case .loaded:
+            SidebarTreeView(
+                connectionId: connectionId,
+                viewModel: viewModel,
+                windowState: windowState,
+                sidebarState: sidebarState,
+                pendingTruncates: $pendingTruncates,
+                pendingDeletes: $pendingDeletes,
+                onDoubleClick: onDoubleClick,
+                coordinator: coordinator
+            )
+        }
+    }
+
+    @ViewBuilder
+    private var flatContent: some View {
+        switch schemaService.state(for: connectionId) {
+        case .loading:
+            loadingState
+        case .failed(let message):
+            errorState(message: message)
+        case .loaded where !viewModel.filterQuery.isEmpty && !hasAnyMatch:
             noMatchState
         case .loaded(let allTables) where allTables.isEmpty && routines.isEmpty:
             emptyState
-        case .loaded, .loading:
+        case .loaded:
             tableList
         case .idle:
             emptyState
@@ -159,11 +299,15 @@ struct SidebarView: View {
         VStack(spacing: 8) {
             Image(systemName: "exclamationmark.triangle")
                 .font(.title)
-                .foregroundStyle(Color(nsColor: .systemOrange))
+                .foregroundStyle(.orange)
             Text(message)
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
+            Button("Retry") {
+                Task { await schemaService.refresh(connectionId: connectionId) }
+            }
+            .controlSize(.small)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding()
@@ -176,8 +320,13 @@ struct SidebarView: View {
 
     private var emptyState: some View {
         let entityName = PluginManager.shared.tableEntityName(for: viewModel.databaseType)
+        let containerName = PluginManager.shared.containerEntityName(for: viewModel.databaseType)
         let noItemsLabel = String(format: String(localized: "No %@"), entityName)
-        let noItemsDetail = String(format: String(localized: "This database has no %@ yet."), entityName.lowercased())
+        let noItemsDetail = String(
+            format: String(localized: "This %1$@ has no %2$@ yet."),
+            containerName.lowercased(),
+            entityName.lowercased()
+        )
         return ContentUnavailableView(
             noItemsLabel,
             systemImage: "tablecells",
@@ -188,8 +337,89 @@ struct SidebarView: View {
 
     // MARK: - Table List
 
+    private var recentRows: [RecentTableRow] {
+        guard settingsManager.general.showRecentTables else { return [] }
+        let infos = sidebarState.recentEntries(inDatabase: activeDatabase).map(\.tableInfo)
+        return viewModel.filteredRecentTables(infos).map(RecentTableRow.init)
+    }
+
+    private var activeDatabase: String? {
+        let name = coordinator?.activeDatabaseName ?? ""
+        return name.isEmpty ? nil : name
+    }
+
+    private func isFavorite(_ table: TableInfo) -> Bool {
+        favoriteTables.contains(FavoriteTablesStorage.FavoriteEntry(
+            connectionId: connectionId,
+            database: activeDatabase,
+            schema: table.schema,
+            name: table.name
+        ))
+    }
+
+    private func toggleFavorite(_ table: TableInfo) {
+        FavoriteTablesStorage.shared.toggle(
+            name: table.name,
+            schema: table.schema,
+            database: activeDatabase,
+            connectionId: connectionId
+        )
+    }
+
+    @ViewBuilder
+    private func tableSelectionMenu(clicked: TableInfo?, selected: Set<TableInfo>) -> some View {
+        SidebarContextMenu(
+            clickedTable: clicked,
+            selectedTables: selected,
+            isReadOnly: coordinator?.safeModeLevel.blocksAllWrites ?? false,
+            onBatchToggleTruncate: { viewModel.batchToggleTruncate(tableNames: $0) },
+            onBatchToggleDelete: { viewModel.batchToggleDelete(tableNames: $0) },
+            coordinator: coordinator
+        )
+    }
+
+    @ViewBuilder
+    private var recentSection: some View {
+        let rows = recentRows
+        if !rows.isEmpty {
+            Section(isExpanded: $viewModel.isRecentsExpanded) {
+                ForEach(rows) { row in
+                    let table = row.table
+                    TableRow(
+                        table: table,
+                        isPendingTruncate: pendingTruncates.contains(table.name),
+                        isPendingDelete: pendingDeletes.contains(table.name),
+                        isFavorite: isFavorite(table),
+                        onToggleFavorite: { toggleFavorite(table) }
+                    )
+                    .selectionDisabled()
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        onDoubleClick?(table)
+                    }
+                    .contextMenu {
+                        tableSelectionMenu(clicked: table, selected: [table])
+                        Divider()
+                        Button(String(localized: "Remove from Recent")) {
+                            sidebarState.removeRecentTable(
+                                database: activeDatabase, schema: table.schema, name: table.name
+                            )
+                        }
+                        Button(String(localized: "Clear Recent Tables")) {
+                            sidebarState.clearRecentTables(inDatabase: activeDatabase)
+                        }
+                    }
+                }
+            } header: {
+                Text(String(localized: "Recent"))
+            }
+        }
+    }
+
     private var tableList: some View {
         List(selection: selectedTablesBinding) {
+            recentSection
+
             ForEach(SidebarObjectKind.allCases, id: \.self) { kind in
                 sectionView(for: kind)
             }
@@ -197,7 +427,7 @@ struct SidebarView: View {
             if viewModel.databaseType == .redis, let keyTreeVM = sidebarState.redisKeyTreeViewModel {
                 Section(isExpanded: $viewModel.isRedisKeysExpanded) {
                     RedisKeyTreeView(
-                        nodes: keyTreeVM.displayNodes(searchText: viewModel.searchText),
+                        nodes: keyTreeVM.displayNodes(searchText: viewModel.filterQuery),
                         isLoading: keyTreeVM.isLoading,
                         isTruncated: keyTreeVM.isTruncated,
                         onSelectNamespace: { prefix in
@@ -208,20 +438,35 @@ struct SidebarView: View {
                         }
                     )
                 } header: {
-                    Text("Keys")
+                    Text(String(localized: "Keys"))
                 }
             }
         }
-        .listStyle(.sidebar)
-        .scrollContentBackground(.hidden)
-        .contextMenu(forSelectionType: TableInfo.self) { _ in
-            EmptyView()
+        .sidebarListLayout()
+        .contextMenu(forSelectionType: TableInfo.self) { selection in
+            SidebarContextMenu(
+                clickedTable: selection.first,
+                selectedTables: selection,
+                isReadOnly: coordinator?.safeModeLevel.blocksAllWrites ?? false,
+                onBatchToggleTruncate: { viewModel.batchToggleTruncate(tableNames: $0) },
+                onBatchToggleDelete: { viewModel.batchToggleDelete(tableNames: $0) },
+                coordinator: coordinator
+            )
         } primaryAction: { selection in
             guard let table = selection.first else { return }
             onDoubleClick?(table)
         }
         .onExitCommand {
-            sidebarState.selectedTables.removeAll()
+            windowState.selectedTables.removeAll()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .favoriteTablesDidChange)) { _ in
+            favoriteTables = FavoriteTablesStorage.shared.favorites(for: connectionId)
+        }
+        .onChange(of: settingsManager.general.showRecentTables) { _, _ in
+            sidebarState.reloadRecentTablesFromStore()
+        }
+        .onAppear {
+            favoriteTables = FavoriteTablesStorage.shared.favorites(for: connectionId)
         }
     }
 
@@ -264,19 +509,11 @@ struct SidebarView: View {
                 TableRow(
                     table: table,
                     isPendingTruncate: pendingTruncates.contains(table.name),
-                    isPendingDelete: pendingDeletes.contains(table.name)
+                    isPendingDelete: pendingDeletes.contains(table.name),
+                    isFavorite: isFavorite(table),
+                    onToggleFavorite: { toggleFavorite(table) }
                 )
                 .tag(table)
-                .contextMenu {
-                    SidebarContextMenu(
-                        clickedTable: table,
-                        selectedTables: sidebarState.selectedTables,
-                        isReadOnly: coordinator?.safeModeLevel.blocksAllWrites ?? false,
-                        onBatchToggleTruncate: { viewModel.batchToggleTruncate(tableNames: $0) },
-                        onBatchToggleDelete: { viewModel.batchToggleDelete(tableNames: $0) },
-                        coordinator: coordinator
-                    )
-                }
             }
         }
     }
@@ -336,6 +573,7 @@ struct SidebarView: View {
 #Preview {
     SidebarView(
         sidebarState: SharedSidebarState(),
+        windowState: WindowSidebarState(),
         pendingTruncates: .constant([]),
         pendingDeletes: .constant([]),
         tableOperationOptions: .constant([:]),

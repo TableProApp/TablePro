@@ -11,17 +11,19 @@ struct TagPersistence {
         return appDir.appendingPathComponent("tags.json")
     }
 
-    func save(_ tags: [ConnectionTag]) {
-        guard let fileURL, let data = try? JSONEncoder().encode(tags) else { return }
-        try? data.write(to: fileURL, options: [.atomic, .completeFileProtection])
+    func save(_ tags: [ConnectionTag]) throws {
+        guard let fileURL else { return }
+        let data = try JSONEncoder().encode(tags)
+        try data.write(to: fileURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
     }
 
-    func load() -> [ConnectionTag] {
-        guard let fileURL, let data = try? Data(contentsOf: fileURL),
-              let tags = try? JSONDecoder().decode([ConnectionTag].self, from: data),
-              !tags.isEmpty else {
+    func load() throws -> [ConnectionTag] {
+        guard let fileURL else { return ConnectionTag.presets }
+        if !FileManager.default.fileExists(atPath: fileURL.path) {
             return ConnectionTag.presets
         }
-        return tags
+        let data = try Data(contentsOf: fileURL)
+        let tags = try JSONDecoder().decode([ConnectionTag].self, from: data)
+        return tags.isEmpty ? ConnectionTag.presets : tags
     }
 }

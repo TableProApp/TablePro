@@ -1,0 +1,1 @@
+../../Plugins/ElasticsearchDriverPlugin/ElasticsearchMappingFlattener.swift

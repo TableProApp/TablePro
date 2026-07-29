@@ -12,6 +12,14 @@ import SwiftTreeSitter
 import CodeEditLanguages
 import OSLog
 
+/// Thresholds for degrading language services on large documents.
+public enum EditorHighlighting {
+    /// Documents longer than this (UTF-16 character count) are not syntax highlighted by default. Above it the
+    /// per-edit re-parse and re-highlight cost dominates, so the editor stops highlighting to keep typing, scrolling,
+    /// and deleting responsive, the same way DataGrip and VS Code degrade large files.
+    public static let maxHighlightableCharacters = 2_000_000
+}
+
 /// This class manages fetching syntax highlights from providers, and applying those styles to the editor.
 /// Multiple highlight providers can be used to style the editor.
 ///
@@ -81,7 +89,7 @@ class Highlighter: NSObject {
     /// Counts upwards to provide unique IDs for new highlight providers.
     private var providerIdCounter: Int
 
-    public var maxHighlightableLength: Int = 5_000_000
+    public var maxHighlightableLength: Int = EditorHighlighting.maxHighlightableCharacters
 
     // MARK: - Init
 

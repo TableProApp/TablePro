@@ -6,67 +6,23 @@
 import Combine
 import Foundation
 import os
+import TableProImport
 import TableProPluginKit
 import UniformTypeIdentifiers
 
-// MARK: - Export Error
+// MARK: - Prepared Import
 
-enum ConnectionExportError: LocalizedError {
-    case encodingFailed
-    case fileWriteFailed(String)
-    case fileReadFailed(String)
-    case invalidFormat
-    case unsupportedVersion(Int)
-    case decodingFailed(String)
-    case requiresPassphrase
-    case decryptionFailed(String)
-
-    var errorDescription: String? {
-        switch self {
-        case .encodingFailed:
-            return String(localized: "Failed to encode connection data")
-        case .fileWriteFailed(let path):
-            return String(format: String(localized: "Failed to write file: %@"), path)
-        case .fileReadFailed(let path):
-            return String(format: String(localized: "Failed to read file: %@"), path)
-        case .invalidFormat:
-            return String(localized: "This file is not a valid TablePro export")
-        case .unsupportedVersion(let version):
-            return String(format: String(localized: "This file requires a newer version of TablePro (format version %d)"), version)
-        case .decodingFailed(let detail):
-            return String(format: String(localized: "Failed to parse connection file: %@"), detail)
-        case .requiresPassphrase:
-            return String(localized: "This file is encrypted and requires a passphrase")
-        case .decryptionFailed(let detail):
-            return String(format: String(localized: "Decryption failed: %@"), detail)
-        }
-    }
+enum PreparedImportOperation {
+    case add(DatabaseConnection)
+    case replace(DatabaseConnection)
 }
 
-// MARK: - Import Preview Types
+struct PreparedConnectionImport {
+    let operations: [PreparedImportOperation]
+    let connectionIdMap: [Int: UUID]
+    let newConnectionIdMap: [Int: UUID]
 
-enum ImportItemStatus {
-    case ready
-    case duplicate(existing: DatabaseConnection)
-    case warnings([String])
-}
-
-struct ImportItem: Identifiable {
-    let id = UUID()
-    let connection: ExportableConnection
-    let status: ImportItemStatus
-}
-
-enum ImportResolution: Hashable {
-    case importNew
-    case skip
-    case replace(existingId: UUID)
-    case importAsCopy
-}
-
-struct ConnectionImportPreview {
-    let envelope: ConnectionExportEnvelope
-    let items: [ImportItem]
+    var importedCount: Int { operations.count }
 }
 
 // MARK: - Connection Export Service
@@ -93,15 +49,9 @@ enum ConnectionExportService {
                 sshConfig = connection.sshConfig
             }
 
-            // Resolve tag name
-            let tagName: String?
-            if let tagId = connection.tagId {
-                tagName = TagStorage.shared.tag(for: tagId)?.name
-            } else {
-                tagName = nil
-            }
+            let resolvedTagNames = TagStorage.shared.tags(for: connection.tagIds).map { $0.name }
+            let tagName = resolvedTagNames.first
 
-            // Resolve group name
             let groupName: String?
             if let groupId = connection.groupId {
                 groupName = GroupStorage.shared.group(for: groupId)?.name
@@ -152,13 +102,10 @@ enum ConnectionExportService {
                 exportableSSL = nil
             }
 
-            // Color
             let color: String? = connection.color == .none ? nil : connection.color.rawValue
 
-            // Safe mode level
             let safeModeLevel: String? = connection.safeModeLevel == .silent ? nil : connection.safeModeLevel.rawValue
 
-            // AI policy
             let aiPolicy: String? = connection.aiPolicy?.rawValue
 
             // Filter secure fields from additionalFields
@@ -188,6 +135,7 @@ enum ConnectionExportService {
                 sslConfig: exportableSSL,
                 color: color,
                 tagName: tagName,
+                tagNames: resolvedTagNames.isEmpty ? nil : resolvedTagNames,
                 groupName: groupName,
                 sshProfileId: connection.sshProfileId?.uuidString,
                 safeModeLevel: safeModeLevel,
@@ -200,8 +148,7 @@ enum ConnectionExportService {
 
             exportableConnections.append(exportable)
 
-            // Collect unique group/tag names
-            if let name = tagName { tagNames.insert(name) }
+            resolvedTagNames.forEach { tagNames.insert($0) }
             if let name = groupName { groupNames.insert(name) }
         }
 
@@ -244,9 +191,12 @@ enum ConnectionExportService {
         }
     }
 
+    static func exportData(_ connections: [DatabaseConnection]) throws -> Data {
+        try encode(buildEnvelope(for: connections))
+    }
+
     static func exportConnections(_ connections: [DatabaseConnection], to url: URL) throws {
-        let envelope = buildEnvelope(for: connections)
-        let data = try encode(envelope)
+        let data = try exportData(connections)
 
         do {
             try data.write(to: url, options: .atomic)
@@ -266,6 +216,7 @@ enum ConnectionExportService {
             let password = ConnectionStorage.shared.loadPassword(for: connection.id)
             let sshPassword = ConnectionStorage.shared.loadSSHPassword(for: connection.id)
             let keyPassphrase = ConnectionStorage.shared.loadKeyPassphrase(for: connection.id)
+            let sslClientKeyPassphrase = ConnectionStorage.shared.loadSSLClientKeyPassphrase(for: connection.id)
             let totpSecret = ConnectionStorage.shared.loadTOTPSecret(for: connection.id)
 
             // Collect plugin-specific secure fields
@@ -291,13 +242,15 @@ enum ConnectionExportService {
             }
 
             let hasAnyCredential = password != nil || sshPassword != nil
-                || keyPassphrase != nil || totpSecret != nil || pluginSecureFields != nil
+                || keyPassphrase != nil || sslClientKeyPassphrase != nil
+                || totpSecret != nil || pluginSecureFields != nil
 
             if hasAnyCredential {
                 credentialsMap[String(index)] = ExportableCredentials(
                     password: password,
                     sshPassword: sshPassword,
                     keyPassphrase: keyPassphrase,
+                    sslClientKeyPassphrase: sslClientKeyPassphrase,
                     totpSecret: totpSecret,
                     pluginSecureFields: pluginSecureFields
                 )
@@ -315,14 +268,17 @@ enum ConnectionExportService {
         )
     }
 
+    static func exportEncryptedData(_ connections: [DatabaseConnection], passphrase: String) throws -> Data {
+        let jsonData = try encode(buildEnvelopeWithCredentials(for: connections))
+        return try ConnectionExportCrypto.encrypt(data: jsonData, passphrase: passphrase)
+    }
+
     static func exportConnectionsEncrypted(
         _ connections: [DatabaseConnection],
         to url: URL,
         passphrase: String
     ) throws {
-        let envelope = buildEnvelopeWithCredentials(for: connections)
-        let jsonData = try encode(envelope)
-        let encryptedData = try ConnectionExportCrypto.encrypt(data: jsonData, passphrase: passphrase)
+        let encryptedData = try exportEncryptedData(connections, passphrase: passphrase)
 
         do {
             try encryptedData.write(to: url, options: .atomic)
@@ -346,17 +302,7 @@ enum ConnectionExportService {
             throw ConnectionExportError.requiresPassphrase
         }
 
-        return try decodeData(data)
-    }
-
-    nonisolated static func decodeEncryptedData(_ data: Data, passphrase: String) throws -> ConnectionExportEnvelope {
-        let decryptedData: Data
-        do {
-            decryptedData = try ConnectionExportCrypto.decrypt(data: data, passphrase: passphrase)
-        } catch {
-            throw ConnectionExportError.decryptionFailed(error.localizedDescription)
-        }
-        return try decodeData(decryptedData)
+        return try ConnectionImportDecoder.decodeData(data)
     }
 
     static func restoreCredentials(from envelope: ConnectionExportEnvelope, connectionIdMap: [Int: UUID]) {
@@ -376,6 +322,9 @@ enum ConnectionExportService {
             if let keyPassphrase = creds.keyPassphrase {
                 ConnectionStorage.shared.saveKeyPassphrase(keyPassphrase, for: connectionId)
             }
+            if let sslClientKeyPassphrase = creds.sslClientKeyPassphrase {
+                ConnectionStorage.shared.saveSSLClientKeyPassphrase(sslClientKeyPassphrase, for: connectionId)
+            }
             if let totpSecret = creds.totpSecret {
                 ConnectionStorage.shared.saveTOTPSecret(totpSecret, for: connectionId)
             }
@@ -390,94 +339,33 @@ enum ConnectionExportService {
         logger.info("Restored credentials for \(restoredCount) of \(credentials.count) connections")
     }
 
-    /// Decode an envelope from raw JSON data. Can be called from any thread.
-    nonisolated static func decodeData(_ data: Data) throws -> ConnectionExportEnvelope {
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-
-        let envelope: ConnectionExportEnvelope
-        do {
-            envelope = try decoder.decode(ConnectionExportEnvelope.self, from: data)
-        } catch {
-            throw ConnectionExportError.decodingFailed(error.localizedDescription)
-        }
-
-        guard envelope.formatVersion <= currentFormatVersion else {
-            throw ConnectionExportError.unsupportedVersion(envelope.formatVersion)
-        }
-
-        return envelope
+    static func analyzeImport(_ envelope: ConnectionExportEnvelope) -> ConnectionImportPreview {
+        analyzeImport(
+            envelope,
+            existingConnections: ConnectionStorage.shared.loadConnections(),
+            registeredTypeIds: Set(PluginMetadataRegistry.shared.allRegisteredTypeIds()),
+            fileExists: { FileManager.default.fileExists(atPath: $0) }
+        )
     }
 
-    static func analyzeImport(_ envelope: ConnectionExportEnvelope) -> ConnectionImportPreview {
-        let existingConnections = ConnectionStorage.shared.loadConnections()
-        let registeredTypeIds = Set(PluginMetadataRegistry.shared.allRegisteredTypeIds())
-
-        let items: [ImportItem] = envelope.connections.map { exportable in
-            // Check for duplicate by matching key fields
-            let duplicate = existingConnections.first { existing in
-                existing.name.lowercased() == exportable.name.lowercased()
-                    && existing.host.lowercased() == exportable.host.lowercased()
-                    && existing.port == exportable.port
-                    && existing.type.rawValue.lowercased() == exportable.type.lowercased()
-            }
-
-            if let duplicate {
-                return ImportItem(connection: exportable, status: .duplicate(existing: duplicate))
-            }
-
-            // Check for warnings
-            var warnings: [String] = []
-
-            // SSH key path check
-            if let ssh = exportable.sshConfig {
-                let keyPath = PathPortability.expandHome(ssh.privateKeyPath)
-                if !keyPath.isEmpty, !FileManager.default.fileExists(atPath: keyPath) {
-                    warnings.append("SSH private key not found: \(ssh.privateKeyPath)")
-                }
-                // Jump host key paths
-                for jump in ssh.jumpHosts ?? [] {
-                    let jumpKeyPath = PathPortability.expandHome(jump.privateKeyPath)
-                    if !jumpKeyPath.isEmpty, !FileManager.default.fileExists(atPath: jumpKeyPath) {
-                        warnings.append("Jump host key not found: \(jump.privateKeyPath)")
-                    }
-                }
-            }
-
-            // SSL cert paths check
-            if let ssl = exportable.sslConfig {
-                for (path, label) in [
-                    (ssl.caCertificatePath, "CA certificate"),
-                    (ssl.clientCertificatePath, "Client certificate"),
-                    (ssl.clientKeyPath, "Client key")
-                ] {
-                    if let path, !path.isEmpty {
-                        let expanded = PathPortability.expandHome(path)
-                        if !FileManager.default.fileExists(atPath: expanded) {
-                            warnings.append("\(label) not found: \(path)")
-                        }
-                    }
-                }
-            }
-
-            // Database type check
-            if !registeredTypeIds.contains(exportable.type) {
-                warnings.append("Database type \"\(exportable.type)\" is not installed")
-            }
-
-            if !warnings.isEmpty {
-                return ImportItem(connection: exportable, status: .warnings(warnings))
-            }
-
-            return ImportItem(connection: exportable, status: .ready)
-        }
-
-        return ConnectionImportPreview(envelope: envelope, items: items)
+    static func analyzeImport(
+        _ envelope: ConnectionExportEnvelope,
+        existingConnections: [DatabaseConnection],
+        registeredTypeIds: Set<String>,
+        fileExists: (String) -> Bool
+    ) -> ConnectionImportPreview {
+        ConnectionImportAnalyzer.analyze(
+            envelope,
+            existingConnections: existingConnections.map(duplicateCandidate(for:)),
+            registeredTypeIds: registeredTypeIds,
+            fileExists: fileExists
+        )
     }
 
     struct ImportResult {
         let importedCount: Int
-        let connectionIdMap: [Int: UUID] // envelope index -> new connection UUID
+        let connectionIdMap: [Int: UUID] // envelope index -> connection UUID (added and replaced)
+        let newConnectionIdMap: [Int: UUID] // envelope index -> UUID, added connections only
     }
 
     @discardableResult
@@ -485,9 +373,8 @@ enum ConnectionExportService {
         _ preview: ConnectionImportPreview,
         resolutions: [UUID: ImportResolution]
     ) -> ImportResult {
-        // Create missing groups
-        let existingGroups = GroupStorage.shared.loadGroups()
         if let envelopeGroups = preview.envelope.groups {
+            let existingGroups = GroupStorage.shared.loadGroups()
             for exportGroup in envelopeGroups {
                 let alreadyExists = existingGroups.contains {
                     $0.name.lowercased() == exportGroup.name.lowercased()
@@ -500,9 +387,8 @@ enum ConnectionExportService {
             }
         }
 
-        // Create missing tags
-        let existingTags = TagStorage.shared.loadTags()
         if let envelopeTags = preview.envelope.tags {
+            let existingTags = TagStorage.shared.loadTags()
             for exportTag in envelopeTags {
                 let alreadyExists = existingTags.contains {
                     $0.name.lowercased() == exportTag.name.lowercased()
@@ -523,10 +409,29 @@ enum ConnectionExportService {
             }
         }
 
-        var importedCount = 0
-        var connectionIdMap: [Int: UUID] = [:]
+        let prepared = prepareImport(
+            preview,
+            resolutions: resolutions,
+            existingNames: ConnectionStorage.shared.loadConnections().map(\.name),
+            tagIdsByName: tagIdsByName(),
+            groupIdsByName: groupIdsByName()
+        )
 
-        // Build a lookup from item.id to envelope index
+        return performPreparedImport(prepared)
+    }
+
+    static func prepareImport(
+        _ preview: ConnectionImportPreview,
+        resolutions: [UUID: ImportResolution],
+        existingNames: [String] = [],
+        tagIdsByName: [String: UUID],
+        groupIdsByName: [String: UUID]
+    ) -> PreparedConnectionImport {
+        var operations: [PreparedImportOperation] = []
+        var connectionIdMap: [Int: UUID] = [:]
+        var newConnectionIdMap: [Int: UUID] = [:]
+        var takenNames = Set(existingNames.map { normalizedLookupKey($0) })
+
         let itemIndexMap: [UUID: Int] = Dictionary(
             uniqueKeysWithValues: preview.items.enumerated().map { ($1.id, $0) }
         )
@@ -541,37 +446,69 @@ enum ConnectionExportService {
 
             case .importNew, .importAsCopy:
                 let connectionId = UUID()
-                var name = item.connection.name
-                if case .importAsCopy = resolution {
-                    name += " (Imported)"
+                let name: String
+                if resolution == .importAsCopy {
+                    name = uniqueCopyName(for: item.connection.name, taken: takenNames)
+                } else {
+                    name = item.connection.name
                 }
+                takenNames.insert(normalizedLookupKey(name))
                 let connection = buildDatabaseConnection(
                     id: connectionId,
                     from: item.connection,
-                    name: name
+                    name: name,
+                    tagIdsByName: tagIdsByName,
+                    groupIdsByName: groupIdsByName
                 )
-                ConnectionStorage.shared.addConnection(connection, password: nil)
+                operations.append(.add(connection))
                 connectionIdMap[envelopeIndex] = connectionId
-                importedCount += 1
+                newConnectionIdMap[envelopeIndex] = connectionId
 
             case .replace(let existingId):
                 let connection = buildDatabaseConnection(
                     id: existingId,
                     from: item.connection,
-                    name: item.connection.name
+                    name: item.connection.name,
+                    tagIdsByName: tagIdsByName,
+                    groupIdsByName: groupIdsByName
                 )
-                ConnectionStorage.shared.updateConnection(connection, password: nil)
+                operations.append(.replace(connection))
                 connectionIdMap[envelopeIndex] = existingId
-                importedCount += 1
             }
         }
 
-        if importedCount > 0 {
-            AppEvents.shared.connectionUpdated.send(nil)
-            logger.info("Imported \(importedCount) connections")
+        return PreparedConnectionImport(
+            operations: operations,
+            connectionIdMap: connectionIdMap,
+            newConnectionIdMap: newConnectionIdMap
+        )
+    }
+
+    @discardableResult
+    static func performPreparedImport(
+        _ prepared: PreparedConnectionImport,
+        connectionStorage: ConnectionStorage = .shared,
+        notifyConnectionsChanged: () -> Void = { AppEvents.shared.connectionUpdated.send(nil) }
+    ) -> ImportResult {
+        for operation in prepared.operations {
+            switch operation {
+            case .add(let connection):
+                connectionStorage.addConnection(connection, password: nil)
+            case .replace(let connection):
+                connectionStorage.updateConnection(connection, password: nil)
+            }
         }
 
-        return ImportResult(importedCount: importedCount, connectionIdMap: connectionIdMap)
+        if prepared.importedCount > 0 {
+            notifyConnectionsChanged()
+            logger.info("Imported \(prepared.importedCount) connections")
+        }
+
+        return ImportResult(
+            importedCount: prepared.importedCount,
+            connectionIdMap: prepared.connectionIdMap,
+            newConnectionIdMap: prepared.newConnectionIdMap
+        )
     }
 
     // MARK: - Deeplink Builder
@@ -649,7 +586,8 @@ enum ConnectionExportService {
         if let color = exportable.color {
             queryItems.append(URLQueryItem(name: "color", value: color))
         }
-        if let tagName = exportable.tagName {
+        let exportableTagNames = exportable.tagNames ?? exportable.tagName.map { [$0] } ?? []
+        for tagName in exportableTagNames {
             queryItems.append(URLQueryItem(name: "tagName", value: tagName))
         }
         if let groupName = exportable.groupName {
@@ -703,7 +641,9 @@ enum ConnectionExportService {
     static func buildDatabaseConnection(
         id: UUID,
         from exportable: ExportableConnection,
-        name: String
+        name: String,
+        tagIdsByName: [String: UUID],
+        groupIdsByName: [String: UUID]
     ) -> DatabaseConnection {
         // Build SSH configuration
         let sshConfig: SSHConfiguration
@@ -747,12 +687,11 @@ enum ConnectionExportService {
             sslConfig = SSLConfiguration()
         }
 
-        // Resolve tag and group by name
-        let tagId = exportable.tagName.flatMap { name in
-            TagStorage.shared.loadTags().first { $0.name.lowercased() == name.lowercased() }?.id
-        }
+        // Resolve tags and group by name
+        let resolvedTagNames = exportable.tagNames ?? exportable.tagName.map { [$0] } ?? []
+        let tagIds = resolvedTagNames.compactMap { tagIdsByName[normalizedLookupKey($0)] }
         let groupId = exportable.groupName.flatMap { name in
-            GroupStorage.shared.loadGroups().first { $0.name.lowercased() == name.lowercased() }?.id
+            groupIdsByName[normalizedLookupKey(name)]
         }
 
         let parsedSSHProfileId = exportable.sshProfileId.flatMap { UUID(uuidString: $0) }
@@ -771,7 +710,7 @@ enum ConnectionExportService {
             sshConfig: sshConfig,
             sslConfig: sslConfig,
             color: exportable.color.flatMap { ConnectionColor(rawValue: $0) } ?? .none,
-            tagId: tagId,
+            tagIds: tagIds,
             groupId: groupId,
             sshProfileId: parsedSSHProfileId,
             safeModeLevel: exportable.safeModeLevel.flatMap { SafeModeLevel(rawValue: $0) } ?? .silent,
@@ -781,5 +720,58 @@ enum ConnectionExportService {
             localOnly: exportable.localOnly ?? false,
             additionalFields: exportable.additionalFields
         )
+    }
+
+    private static func uniqueCopyName(for baseName: String, taken: Set<String>) -> String {
+        let firstCandidate = "\(baseName) (Imported)"
+        if !taken.contains(normalizedLookupKey(firstCandidate)) {
+            return firstCandidate
+        }
+        var suffix = 2
+        while true {
+            let candidate = "\(baseName) (Imported \(suffix))"
+            if !taken.contains(normalizedLookupKey(candidate)) {
+                return candidate
+            }
+            suffix += 1
+        }
+    }
+
+    private static func duplicateCandidate(for connection: DatabaseConnection) -> ConnectionDuplicateCandidate {
+        ConnectionDuplicateCandidate(
+            id: connection.id,
+            name: connection.name,
+            host: connection.host,
+            port: connection.port,
+            database: connection.database,
+            username: connection.username,
+            redisDatabase: connection.redisDatabase
+        )
+    }
+
+    private static func tagIdsByName() -> [String: UUID] {
+        var idsByName: [String: UUID] = [:]
+        for tag in TagStorage.shared.loadTags() {
+            let key = normalizedLookupKey(tag.name)
+            if idsByName[key] == nil {
+                idsByName[key] = tag.id
+            }
+        }
+        return idsByName
+    }
+
+    private static func groupIdsByName() -> [String: UUID] {
+        var idsByName: [String: UUID] = [:]
+        for group in GroupStorage.shared.loadGroups() {
+            let key = normalizedLookupKey(group.name)
+            if idsByName[key] == nil {
+                idsByName[key] = group.id
+            }
+        }
+        return idsByName
+    }
+
+    private static func normalizedLookupKey(_ value: String?) -> String {
+        value?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
     }
 }

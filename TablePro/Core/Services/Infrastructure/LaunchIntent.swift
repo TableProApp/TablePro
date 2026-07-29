@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProImport
 
 internal enum LaunchIntent: @unchecked Sendable {
     case openConnection(UUID)
@@ -12,11 +13,13 @@ internal enum LaunchIntent: @unchecked Sendable {
     case importConnection(ExportableConnection)
     case openSQLFile(URL)
     case openDatabaseFile(URL, DatabaseType)
+    case openInspectorFile(URL)
     case openConnectionShare(URL)
     case pairIntegration(PairingRequest)
     case startMCPServer
     case openDatabaseURL(URL)
     case installPlugin(URL)
+    case reopenClosedTab(RecentlyClosedTabEntry)
 
     internal var targetConnectionId: UUID? {
         switch self {
@@ -24,8 +27,11 @@ internal enum LaunchIntent: @unchecked Sendable {
              .openTable(let id, _, _, _, _),
              .openQuery(let id, _):
             return id
+        case .reopenClosedTab(let entry):
+            return entry.connectionId
         case .openDatabaseURL,
              .openDatabaseFile,
+             .openInspectorFile,
              .openSQLFile,
              .importConnection,
              .openConnectionShare,

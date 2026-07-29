@@ -46,6 +46,6 @@ struct DatabaseTypeRedisTests {
 
     @Test("Included in allCases shim")
     func includedInAllCases() {
-        #expect(DatabaseType.allCases.contains(.redis))
+        #expect(DatabaseType.allKnownTypes.contains(.redis))
     }
 }

@@ -5,6 +5,7 @@
 
 import Foundation
 import os
+import TableProImport
 
 struct SequelAceImporter: ForeignAppImporter {
     private static let logger = Logger(subsystem: "com.TablePro", category: "SequelAceImporter")
@@ -13,16 +14,13 @@ struct SequelAceImporter: ForeignAppImporter {
     let displayName = "Sequel Ace"
     let symbolName = "cylinder.split.1x2"
     let appBundleIdentifier = "com.sequel-ace.sequel-ace"
+    let readsPasswordsFromKeychain = true
 
     var favoritesFileURL: URL = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent(
             "Library/Containers/com.sequel-ace.sequel-ace/Data/Library/Application Support/"
                 + "Sequel Ace/Data/Favorites.plist"
         )
-
-    func isAvailable() -> Bool {
-        FileManager.default.fileExists(atPath: favoritesFileURL.path)
-    }
 
     func connectionCount() -> Int {
         guard let root = loadRootDict() else { return 0 }
@@ -289,6 +287,7 @@ struct SequelAceImporter: ForeignAppImporter {
             password: dbPassword,
             sshPassword: sshPassword,
             keyPassphrase: nil,
+            sslClientKeyPassphrase: nil,
             totpSecret: nil,
             pluginSecureFields: nil
         )

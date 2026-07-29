@@ -6,8 +6,8 @@
 //
 
 import Foundation
-import TableProPluginKit
 @testable import TablePro
+import TableProPluginKit
 import Testing
 
 @Suite("License")
@@ -312,5 +312,73 @@ struct LicenseTests {
 
         #expect(json?.contains("\"billing_cycle\":null") == true)
         #expect(json?.contains("\"expires_at\":null") == true)
+    }
+
+    @Test("LicensePayloadData omits team_id and role when nil so old payloads still verify")
+    func payloadDataOmitsTeamFieldsWhenNil() throws {
+        let payloadData = LicensePayloadData(
+            billingCycle: nil,
+            licenseKey: "ABC-123",
+            email: "user@example.com",
+            status: "active",
+            expiresAt: nil,
+            issuedAt: "2025-01-01T00:00:00Z",
+            tier: "starter"
+        )
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let data = try encoder.encode(payloadData)
+
+        guard let keys = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            Issue.record("Failed to deserialize JSON as dictionary")
+            return
+        }
+        #expect(keys["team_id"] == nil)
+        #expect(keys["role"] == nil)
+        #expect(keys.keys.count == 7)
+    }
+
+    @Test("LicensePayloadData encodes team_id and role for a Team license")
+    func payloadDataEncodesTeamFields() throws {
+        let payloadData = LicensePayloadData(
+            billingCycle: "yearly",
+            licenseKey: "ABC-123",
+            email: "user@example.com",
+            status: "active",
+            expiresAt: "2026-12-31T23:59:59Z",
+            issuedAt: "2026-01-01T00:00:00Z",
+            tier: "team",
+            teamId: "01JXYZ",
+            role: "owner"
+        )
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let data = try encoder.encode(payloadData)
+
+        guard let keys = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            Issue.record("Failed to deserialize JSON as dictionary")
+            return
+        }
+        #expect(keys["team_id"] as? String == "01JXYZ")
+        #expect(keys["role"] as? String == "owner")
+        #expect(keys.keys.count == 9)
+    }
+
+    @Test("LicensePayloadData round-trips team fields through Codable")
+    func payloadDataRoundTripsTeamFields() throws {
+        let original = LicensePayloadData(
+            billingCycle: nil,
+            licenseKey: "ABC-123",
+            email: "user@example.com",
+            status: "active",
+            expiresAt: nil,
+            issuedAt: "2026-01-01T00:00:00Z",
+            tier: "team",
+            teamId: "01JXYZ",
+            role: "member"
+        )
+        let data = try JSONEncoder().encode(original)
+        let decoded = try JSONDecoder().decode(LicensePayloadData.self, from: data)
+        #expect(decoded == original)
     }
 }

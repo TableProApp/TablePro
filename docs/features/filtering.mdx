@@ -3,13 +3,29 @@ title: Filtering
 description: Filter table data with 18 operators, raw SQL, and saved presets
 ---
 
-# Filtering
+Press `Cmd+F` while viewing a table to open the filter panel. Type a raw SQL WHERE clause and press `Enter` to filter. Raw SQL is the default mode.
 
-Press `Cmd+Shift+F` to open the filter panel. Type a raw SQL WHERE clause and press `Enter` to filter. Raw SQL is the default mode.
+<Frame caption="Filter panel with column and raw SQL conditions">
+  <img className="block dark:hidden" src="/images/filter-panel.png" alt="Filter panel above the data grid" />
+  <img className="hidden dark:block" src="/images/filter-panel-dark.png" alt="Filter panel above the data grid" />
+</Frame>
 
-Each row has a column picker, operator, value field, and **+**/**−** buttons. Multiple rows combine with **AND** or **OR** (toggle in the header). Click **Apply** or press `Enter` to activate. Click **Unset** to clear all.
+Each row has a checkbox, a column picker, operator, value field, and **+**/**−** buttons. The **Match all** / **Match any** picker in the header combines rows with AND or OR. You can also right-click a column header in the data grid and choose **Filter with column** to pre-fill a filter row for that column.
 
-Filters are per-tab. Tables with active filters open in a new tab when you click another table.
+| Control | What it does |
+|---------|--------------|
+| Header **Apply** (or `Enter` in a value field, or `Cmd+Return`) | Runs all checked filter rows |
+| Row checkbox | Turns that filter off without deleting it; unchecked rows stay dimmed. Toggling does not re-run the query, press **Apply** when ready |
+| Row **Apply** | Filters by just that row, leaving all checkboxes as they are, so you can test one condition and return to the checked set with the header **Apply** |
+| **Clear** | Removes the applied filter without deleting the filter rows |
+
+When you reopen a table, TablePro restores the filters you last applied to it, including the ones you left unchecked, after you quit and relaunch. Filters are saved per connection, database, schema, and table, so two tables on the same connection keep independent filters. If you cleared the filter with **Clear** or removed its rows with **−**, the table reopens unfiltered. Tables with active filters open in a new tab when you click another table.
+
+The filter panel queries the database. To narrow rows already loaded in the grid without re-querying, use the column value filter in the [Data Grid](/features/data-grid).
+
+<Note>
+Redis shows a key-pattern search bar (for example `user:*`) with a key-type picker instead of the filter panel.
+</Note>
 
 ## Operators
 
@@ -28,6 +44,8 @@ created_at > NOW() - INTERVAL 7 DAY
 ```sql
 price * quantity > 1000
 ```
+
+As you type, autocomplete suggests the table's columns and SQL keywords at every position in the expression, including after AND and OR. Use the arrow keys to pick a suggestion and Tab or Return to insert it. Suggestions only appear once you start a word, not on an empty field or after a space. Press Escape to dismiss the suggestions; the filter bar stays open.
 
 To switch a row to column mode, select a column from the picker.
 
@@ -58,3 +76,5 @@ Save and load filter configurations via the **⋯** menu in the header.
 | Default Column | Raw SQL, Primary Key, Any Column |
 | Default Operator | Equal, Contains |
 | Panel State | Always Hide, Always Show, Restore Last Filter |
+
+**Panel State** controls what happens when you reopen a table. **Restore Last Filter** (the default) brings back the filter you last applied. **Always Hide** reopens tables unfiltered with the panel closed. **Always Show** keeps the filter panel visible even when no filter is set.

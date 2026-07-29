@@ -95,7 +95,6 @@ internal final class ThemeRegistryInstaller {
         // Remove old files without triggering theme reload or fallback
         _ = try removeRegistryFiles(for: plugin.id)
 
-        // Write new themes
         var installedThemes: [InstalledRegistryTheme] = []
         for theme in stagedThemes {
             try ThemeStorage.saveRegistryTheme(theme)
@@ -186,9 +185,9 @@ internal final class ThemeRegistryInstaller {
             }
         }
 
-        let resolved = try plugin.resolvedBinary()
+        let resolved = try plugin.resolvedThemeBinary(for: .current)
 
-        guard let downloadURL = URL(string: resolved.url) else {
+        guard let downloadURL = URL(string: resolved.downloadURL) else {
             throw PluginError.downloadFailed("Invalid download URL")
         }
 
@@ -213,7 +212,7 @@ internal final class ThemeRegistryInstaller {
 
         let downloadedData = try Data(contentsOf: tempDownloadURL)
         let digest = SHA256.hash(data: downloadedData)
-        let hexChecksum = digest.map { String(format: "%02x", $0) }.joined()
+        let hexChecksum = digest.hexEncoded
 
         if hexChecksum != resolved.sha256.lowercased() {
             throw PluginError.checksumMismatch
@@ -238,9 +237,15 @@ internal final class ThemeRegistryInstaller {
             }
         }.value
 
+        PluginInstaller.stripQuarantine(at: extractDir)
+
         let jsonFiles = try findJsonFiles(in: extractDir)
         guard !jsonFiles.isEmpty else {
             throw PluginError.installFailed("No theme files found in archive")
+        }
+
+        for jsonFile in jsonFiles {
+            PluginInstaller.stripQuarantine(at: jsonFile)
         }
 
         progress(0.9)

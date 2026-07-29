@@ -7,6 +7,7 @@ import AppKit
 import Combine
 import os
 import SwiftUI
+import UserNotifications
 
 @MainActor
 class AppDelegate: NSObject, NSApplicationDelegate {
@@ -14,11 +15,23 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     static let lifecycleLogger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
 
     private var hasRunPostLaunchActivation = false
-    private var pluginsRejectedCancellable: AnyCancellable?
+
+    private static var isUITesting: Bool {
+        ProcessInfo.processInfo.environment["TABLEPRO_UI_TESTING"] == "1"
+    }
 
     // MARK: - URL & File Open
 
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        _ = InspectorDocumentController()
+        guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
+        PluginManager.shared.loadPlugins()
+        Task { await RegistryClient.shared.ensureManifest(.ifStale) }
+    }
+
     func application(_ application: NSApplication, open urls: [URL]) {
+        Logger(subsystem: "com.TablePro", category: "CSVInspector")
+            .debug("AppDelegate.application(_:open:) urls=\(urls.map(\.lastPathComponent).joined(separator: ","), privacy: .public)")
         AppLaunchCoordinator.shared.handleOpenURLs(urls)
     }
 
@@ -48,13 +61,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         )
 
         NSWindow.allowsAutomaticWindowTabbing = true
+        KeyRepeatFilter.shared.install()
         let syncSettings = AppSettingsStorage.shared.loadSync()
         let passwordSyncExpected = syncSettings.enabled && syncSettings.syncConnections && syncSettings.syncPasswords
         UserDefaults.standard.set(passwordSyncExpected, forKey: KeychainHelper.passwordSyncEnabledKey)
         DatabaseManager.shared.startObservingSystemEvents()
 
+        Task { await CloudflareTunnelManager.shared.sweepStalePidsIfNeeded() }
+        Task { await CloudSQLProxyManager.shared.sweepStalePidsIfNeeded() }
+
         MemoryPressureAdvisor.startMonitoring()
-        PluginManager.shared.loadPlugins()
+        UNUserNotificationCenter.current().delegate = self
+        PluginNotificationService.shared.setUp()
         ChatToolBootstrap.register()
 
         NSWorkspace.shared.notificationCenter.addObserver(
@@ -78,26 +96,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             self, selector: #selector(windowWillClose(_:)),
             name: NSWindow.willCloseNotification, object: nil
         )
-        pluginsRejectedCancellable = AppEvents.shared.pluginsRejected
-            .receive(on: RunLoop.main)
-            .sink { [weak self] rejected in
-                self?.handlePluginsRejected(rejected)
-            }
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {
         runPostLaunchActivationIfNeeded()
+        guard !Self.isUITesting else { return }
         SyncCoordinator.shared.syncIfNeeded()
     }
 
     private func runPostLaunchActivationIfNeeded() {
         guard !hasRunPostLaunchActivation else { return }
         hasRunPostLaunchActivation = true
+        guard !Self.isUITesting else { return }
 
         ConnectionStorage.shared.migratePluginSecureFieldsIfNeeded()
         AnalyticsService.shared.startPeriodicHeartbeat()
         SyncCoordinator.shared.start()
         LinkedFolderWatcher.shared.start()
+        TeamLibrarySyncCoordinator.shared.start()
 
         Task {
             LicenseManager.shared.startPeriodicValidation()
@@ -130,10 +146,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        persistOpenConnectionsForRecovery()
         LinkedFolderWatcher.shared.stop()
         SQLFolderWatcher.shared.stop()
-        TerminalProcessManager.registry.terminateAllSync()
         SSHTunnelManager.shared.terminateAllProcessesSync()
+        CloudflareTunnelManager.shared.terminateAllProcessesSync()
+        CloudSQLProxyManager.shared.terminateAllProcessesSync()
+    }
+
+    private func persistOpenConnectionsForRecovery() {
+        LastOpenConnectionsStorage.shared.save(connectionIds: SessionRecoveryTracker.connectionIds())
     }
 
     @objc func handleSystemDidWake(_ notification: Notification) {
@@ -146,55 +168,23 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    // MARK: - Plugin Rejection Alert
-
-    private func handlePluginsRejected(_ rejected: [RejectedPlugin]) {
-        guard !rejected.isEmpty else { return }
-        let details = rejected.map { "\($0.name): \($0.reason)" }.joined(separator: "\n")
-        Task {
-            let alert = NSAlert()
-            alert.messageText = String(
-                format: String(localized: "%d plugin(s) could not be loaded"),
-                rejected.count
-            )
-            alert.informativeText = String(
-                format: String(localized: "The following plugins were rejected:\n\n%@\n\nYou can update them from the plugin registry in Settings."),
-                details
-            )
-            alert.alertStyle = .warning
-            alert.addButton(withTitle: String(localized: "Open Plugin Settings"))
-            alert.addButton(withTitle: String(localized: "Dismiss"))
-
-            let response: NSApplication.ModalResponse
-            if let window = AlertHelper.resolveWindow(nil) {
-                response = await withCheckedContinuation { continuation in
-                    alert.beginSheetModal(for: window) { resp in
-                        continuation.resume(returning: resp)
-                    }
-                }
-            } else {
-                response = alert.runModal()
-            }
-
-            if response == .alertFirstButtonReturn {
-                WindowOpener.shared.openSettings(tab: .plugins)
-            }
-        }
-    }
-
     // MARK: - Window Notifications
 
     @objc func windowWillClose(_ notification: Notification) {
         guard let window = notification.object as? NSWindow else { return }
 
+        let csvLogger = Logger(subsystem: "com.TablePro", category: "CSVInspector")
         if AppLaunchCoordinator.isMainWindow(window) {
             let remaining = NSApp.windows.filter {
                 $0 !== window && AppLaunchCoordinator.isMainWindow($0) && $0.isVisible
             }.count
+            csvLogger.debug("AppDelegate.windowWillClose - main window '\(window.identifier?.rawValue ?? "nil", privacy: .public)' closing, remaining main windows=\(remaining, privacy: .public)")
             if remaining == 0 {
                 AppEvents.shared.mainWindowWillClose.send(())
                 WindowOpener.shared.openWelcome()
             }
+        } else {
+            csvLogger.debug("AppDelegate.windowWillClose - non-main window '\(window.identifier?.rawValue ?? "nil", privacy: .public)' closing")
         }
     }
 
@@ -277,5 +267,37 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     nonisolated deinit {
         NotificationCenter.default.removeObserver(self)
         NSWorkspace.shared.notificationCenter.removeObserver(self)
+    }
+}
+
+extension AppDelegate: UNUserNotificationCenterDelegate {
+    nonisolated func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+    ) {
+        guard notification.request.identifier.hasPrefix(PluginNotificationService.identifierPrefix) else {
+            completionHandler([])
+            return
+        }
+        completionHandler([.banner])
+    }
+
+    nonisolated func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse,
+        withCompletionHandler completionHandler: @escaping () -> Void
+    ) {
+        defer { completionHandler() }
+        guard response.notification.request.identifier.hasPrefix(PluginNotificationService.identifierPrefix) else {
+            return
+        }
+        let action = response.actionIdentifier
+        guard action == PluginNotificationService.openPluginSettingsActionId
+            || action == UNNotificationDefaultActionIdentifier
+        else { return }
+        Task { @MainActor in
+            WindowOpener.shared.openSettings(tab: .plugins)
+        }
     }
 }

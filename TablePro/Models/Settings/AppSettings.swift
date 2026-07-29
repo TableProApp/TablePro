@@ -126,6 +126,22 @@ enum DateFormatOption: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+enum DefaultSortBehavior: String, Codable, CaseIterable, Identifiable, Equatable {
+    case none
+    case primaryKey
+    case firstColumn
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .none: return String(localized: "No sorting (engine order)")
+        case .primaryKey: return String(localized: "Primary key")
+        case .firstColumn: return String(localized: "First column")
+        }
+    }
+}
+
 /// Data grid settings
 struct DataGridSettings: Codable, Equatable {
     var rowHeight: DataGridRowHeight
@@ -139,6 +155,7 @@ struct DataGridSettings: Codable, Equatable {
     var countRowsIfEstimateLessThan: Int
     var queryResultRowCap: Int
     var truncateQueryResults: Bool
+    var defaultSortBehavior: DefaultSortBehavior
 
     static let `default` = DataGridSettings(
         rowHeight: .normal,
@@ -151,7 +168,8 @@ struct DataGridSettings: Codable, Equatable {
         enableSmartValueDetection: true,
         countRowsIfEstimateLessThan: 100_000,
         queryResultRowCap: 10_000,
-        truncateQueryResults: true
+        truncateQueryResults: true,
+        defaultSortBehavior: .none
     )
 
     init(
@@ -165,7 +183,8 @@ struct DataGridSettings: Codable, Equatable {
         enableSmartValueDetection: Bool = true,
         countRowsIfEstimateLessThan: Int = 100_000,
         queryResultRowCap: Int = 10_000,
-        truncateQueryResults: Bool = true
+        truncateQueryResults: Bool = true,
+        defaultSortBehavior: DefaultSortBehavior = .none
     ) {
         self.rowHeight = rowHeight
         self.dateFormat = dateFormat
@@ -178,6 +197,7 @@ struct DataGridSettings: Codable, Equatable {
         self.countRowsIfEstimateLessThan = countRowsIfEstimateLessThan
         self.queryResultRowCap = queryResultRowCap
         self.truncateQueryResults = truncateQueryResults
+        self.defaultSortBehavior = defaultSortBehavior
     }
 
     init(from decoder: Decoder) throws {
@@ -185,7 +205,8 @@ struct DataGridSettings: Codable, Equatable {
         rowHeight = try container.decodeIfPresent(DataGridRowHeight.self, forKey: .rowHeight) ?? .normal
         dateFormat = try container.decodeIfPresent(DateFormatOption.self, forKey: .dateFormat) ?? .iso8601
         nullDisplay = try container.decodeIfPresent(String.self, forKey: .nullDisplay) ?? "NULL"
-        defaultPageSize = try container.decodeIfPresent(Int.self, forKey: .defaultPageSize) ?? 1_000
+        defaultPageSize = (try container.decodeIfPresent(Int.self, forKey: .defaultPageSize) ?? 1_000)
+            .clamped(to: SettingsValidationRules.defaultPageSizeRange)
         showAlternateRows = try container.decodeIfPresent(Bool.self, forKey: .showAlternateRows) ?? true
         showRowNumbers = try container.decodeIfPresent(Bool.self, forKey: .showRowNumbers) ?? true
         autoShowInspector = try container.decodeIfPresent(Bool.self, forKey: .autoShowInspector) ?? false
@@ -193,6 +214,7 @@ struct DataGridSettings: Codable, Equatable {
         countRowsIfEstimateLessThan = try container.decodeIfPresent(Int.self, forKey: .countRowsIfEstimateLessThan) ?? 100_000
         queryResultRowCap = try container.decodeIfPresent(Int.self, forKey: .queryResultRowCap) ?? 10_000
         truncateQueryResults = try container.decodeIfPresent(Bool.self, forKey: .truncateQueryResults) ?? true
+        defaultSortBehavior = try container.decodeIfPresent(DefaultSortBehavior.self, forKey: .defaultSortBehavior) ?? .none
     }
 
     // MARK: - Validated Properties
@@ -202,7 +224,6 @@ struct DataGridSettings: Codable, Equatable {
         let sanitized = nullDisplay.sanitized
         let maxLength = SettingsValidationRules.nullDisplayMaxLength
 
-        // Clamp to max length
         if sanitized.isEmpty {
             return "NULL" // Fallback to default
         } else if sanitized.count > maxLength {
@@ -333,81 +354,5 @@ struct TabSettings: Codable, Equatable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         enablePreviewTabs = try container.decodeIfPresent(Bool.self, forKey: .enablePreviewTabs) ?? true
         groupAllConnectionTabs = try container.decodeIfPresent(Bool.self, forKey: .groupAllConnectionTabs) ?? false
-    }
-}
-
-// MARK: - Terminal Settings
-
-enum TerminalCursorStyleOption: String, Codable, CaseIterable {
-    case block
-    case bar
-    case underline
-
-    var displayName: String {
-        switch self {
-        case .block: return String(localized: "Block")
-        case .bar: return String(localized: "Bar")
-        case .underline: return String(localized: "Underline")
-        }
-    }
-}
-
-struct TerminalSettings: Codable, Equatable {
-    var fontFamily: String = "Menlo"
-    var fontSize: Int = 13
-    var cursorStyle: TerminalCursorStyleOption = .block
-    var cursorBlink: Bool = true
-    var scrollbackLines: Int = 10_000
-    var optionAsMeta: Bool = true
-    var bellEnabled: Bool = true
-    var themeName: String = ""
-
-    /// Per-database CLI path overrides (empty = auto-detect).
-    /// Keys are `DatabaseType.rawValue` for interactive CLIs, plus
-    /// `TerminalSettings.pgDumpCliPathKey` and `TerminalSettings.pgRestoreCliPathKey`
-    /// for the PostgreSQL backup/restore binaries.
-    var cliPaths: [String: String] = [:]
-
-    /// Key under `cliPaths` for the pg_dump backup binary path.
-    static let pgDumpCliPathKey = "pg_dump"
-
-    /// Key under `cliPaths` for the pg_restore binary path.
-    static let pgRestoreCliPathKey = "pg_restore"
-
-    static let `default` = TerminalSettings()
-
-    init(
-        fontFamily: String = "Menlo",
-        fontSize: Int = 13,
-        cursorStyle: TerminalCursorStyleOption = .block,
-        cursorBlink: Bool = true,
-        scrollbackLines: Int = 10_000,
-        optionAsMeta: Bool = true,
-        bellEnabled: Bool = true,
-        themeName: String = "",
-        cliPaths: [String: String] = [:]
-    ) {
-        self.fontFamily = fontFamily
-        self.fontSize = fontSize
-        self.cursorStyle = cursorStyle
-        self.cursorBlink = cursorBlink
-        self.scrollbackLines = scrollbackLines
-        self.optionAsMeta = optionAsMeta
-        self.bellEnabled = bellEnabled
-        self.themeName = themeName
-        self.cliPaths = cliPaths
-    }
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        fontFamily = try container.decodeIfPresent(String.self, forKey: .fontFamily) ?? "Menlo"
-        fontSize = try container.decodeIfPresent(Int.self, forKey: .fontSize) ?? 13
-        cursorStyle = try container.decodeIfPresent(TerminalCursorStyleOption.self, forKey: .cursorStyle) ?? .block
-        cursorBlink = try container.decodeIfPresent(Bool.self, forKey: .cursorBlink) ?? true
-        scrollbackLines = try container.decodeIfPresent(Int.self, forKey: .scrollbackLines) ?? 10_000
-        optionAsMeta = try container.decodeIfPresent(Bool.self, forKey: .optionAsMeta) ?? true
-        bellEnabled = try container.decodeIfPresent(Bool.self, forKey: .bellEnabled) ?? true
-        themeName = try container.decodeIfPresent(String.self, forKey: .themeName) ?? ""
-        cliPaths = try container.decodeIfPresent([String: String].self, forKey: .cliPaths) ?? [:]
     }
 }

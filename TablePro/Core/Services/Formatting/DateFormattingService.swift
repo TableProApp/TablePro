@@ -36,7 +36,6 @@ final class DateFormattingService {
     // MARK: - Initialization
 
     private init() {
-        // Initialize with default format (ISO 8601)
         // Will be updated by AppSettingsManager after it completes initialization
         self.currentFormat = .iso8601
         self.formatter = Self.createFormatter(format: DateFormatOption.iso8601.formatString)

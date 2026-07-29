@@ -1,7 +1,10 @@
 import SwiftUI
 import TableProModels
+import TableProSync
 
 struct SettingsView: View {
+    @Environment(AppState.self) private var appState
+
     @AppStorage("com.TablePro.settings.shareAnalytics") private var shareAnalytics = true
     @AppStorage(AppLockState.lockEnabledKey) private var lockEnabled = false
     @AppStorage(AppLockState.lockTimeoutKey) private var lockTimeoutSeconds = AppLockState.AutoLockTimeout.fiveMinutes.rawValue
@@ -10,12 +13,17 @@ struct SettingsView: View {
     @AppStorage(AppPreferences.defaultSafeModeKey) private var defaultSafeModeRaw = SafeModeLevel.off.rawValue
     @AppStorage(AppPreferences.hideQueryPreviewInActivityKey) private var hideQueryPreviewInActivity = false
 
+    @State private var showRefreshConfirmation = false
+
     private let auth = BiometricAuthService()
 
     var body: some View {
         Form {
             biometricSection
             syncSection
+            if cloudSyncEnabled {
+                refreshFromICloudSection
+            }
             defaultsSection
 
             Section {
@@ -69,11 +77,102 @@ struct SettingsView: View {
     private var syncSection: some View {
         Section {
             Toggle(String(localized: "iCloud Sync"), isOn: $cloudSyncEnabled)
+            if cloudSyncEnabled {
+                LabeledContent(String(localized: "Last Sync")) {
+                    syncStatusLabel
+                }
+                Button {
+                    Task { await runSync() }
+                } label: {
+                    HStack {
+                        Text(String(localized: "Sync Now"))
+                        Spacer()
+                        if isSyncing {
+                            ProgressView().controlSize(.small)
+                        }
+                    }
+                }
+                .disabled(isSyncing)
+            }
         } header: {
             Text("Sync")
         } footer: {
             Text("When off, connections, groups, and tags stay on this device only. Existing iCloud data is not deleted.")
         }
+    }
+
+    private var refreshFromICloudSection: some View {
+        Section {
+            Button {
+                showRefreshConfirmation = true
+            } label: {
+                Label {
+                    Text(String(localized: "Refresh from iCloud"))
+                } icon: {
+                    Image(systemName: "arrow.clockwise.icloud")
+                }
+            }
+            .disabled(isSyncing)
+            .confirmationDialog(
+                String(localized: "Refresh from iCloud?"),
+                isPresented: $showRefreshConfirmation,
+                titleVisibility: .visible
+            ) {
+                Button(String(localized: "Refresh from iCloud")) {
+                    Task { await runRefresh() }
+                }
+                Button(String(localized: "Cancel"), role: .cancel) {}
+            } message: {
+                Text("TablePro will re-download every connection, group, and tag from your iCloud account. Local data on this device is not deleted.")
+            }
+        } footer: {
+            Text("If items appear on another device but not here, refresh forces a full re-download from iCloud. This may take a moment on slow networks.")
+        }
+    }
+
+    @ViewBuilder
+    private var syncStatusLabel: some View {
+        switch appState.syncCoordinator.status {
+        case .syncing:
+            HStack(spacing: 6) {
+                ProgressView().controlSize(.mini)
+                Text(String(localized: "Syncing\u{2026}"))
+                    .foregroundStyle(.secondary)
+            }
+        case .error(let message):
+            Text(message)
+                .foregroundStyle(.red)
+                .multilineTextAlignment(.trailing)
+                .lineLimit(2)
+        case .idle:
+            if let date = appState.syncCoordinator.lastSyncDate {
+                Text(date, style: .relative)
+                    .foregroundStyle(.secondary)
+            } else {
+                Text(String(localized: "Never"))
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var isSyncing: Bool {
+        appState.syncCoordinator.status == .syncing
+    }
+
+    private func runSync() async {
+        await appState.syncCoordinator.sync(
+            localConnections: appState.connections,
+            localGroups: appState.groups,
+            localTags: appState.tags
+        )
+    }
+
+    private func runRefresh() async {
+        await appState.syncCoordinator.resetSyncToken(
+            localConnections: appState.connections,
+            localGroups: appState.groups,
+            localTags: appState.tags
+        )
     }
 
     private var defaultsSection: some View {

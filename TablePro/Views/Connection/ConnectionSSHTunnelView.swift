@@ -11,6 +11,7 @@ struct ConnectionSSHTunnelView: View {
     @Binding var sshState: SSHTunnelFormState
 
     let databaseType: DatabaseType
+    var coordinator: ConnectionFormCoordinator?
 
     var body: some View {
         Form {
@@ -24,13 +25,17 @@ struct ConnectionSSHTunnelView: View {
             }
 
             if sshState.enabled {
+                if let coordinator, !coordinator.otherEnabledTunnels(excluding: .ssh).isEmpty {
+                    TunnelExclusivityBanner(coordinator: coordinator, currentKind: .ssh)
+                }
+
                 sshProfileSection
 
                 if sshState.selectedProfile == nil, sshState.profileId != nil {
                     Section {
                         HStack {
                             Image(systemName: "exclamationmark.triangle.fill")
-                                .foregroundStyle(Color(nsColor: .systemYellow))
+                                .foregroundStyle(.yellow)
                             Text("Selected SSH profile no longer exists.")
                         }
                         Button("Switch to Inline Configuration") {
@@ -197,6 +202,10 @@ struct ConnectionSSHTunnelView: View {
                     Text(String(localized: "Password is sent via keyboard-interactive challenge-response."))
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                } else if sshState.authMethod == .none {
+                    Text("No credentials are sent. Use this when the server handles authentication itself, such as a Tailscale SSH host.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 } else {
                     LabeledContent(String(localized: "Key File")) {
                         HStack {
@@ -214,7 +223,7 @@ struct ConnectionSSHTunnelView: View {
                 }
             }
 
-            if sshState.authMethod == .keyboardInteractive || sshState.authMethod == .password {
+            if sshState.authMethod.supportsTwoFactorAuthentication {
                 Section(String(localized: "Two-Factor Authentication")) {
                     Picker(String(localized: "TOTP"), selection: $sshState.totpMode) {
                         ForEach(TOTPMode.allCases) { mode in
@@ -238,8 +247,8 @@ struct ConnectionSSHTunnelView: View {
                             Text("30s").tag(30)
                             Text("60s").tag(60)
                         }
-                    } else if sshState.totpMode == .promptAtConnect {
-                        Text(String(localized: "You will be prompted for a verification code each time you connect."))
+                    } else {
+                        Text(String(localized: "If the SSH server asks for a verification code, TablePro prompts you for it when you connect."))
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -307,7 +316,7 @@ struct ConnectionSSHTunnelView: View {
                                 } label: {
                                     Image(systemName: "minus.circle.fill")
                                         .frame(width: 24, height: 24)
-                                        .foregroundStyle(Color(nsColor: .systemRed))
+                                        .foregroundStyle(.red)
                                 }
                                 .buttonStyle(.plain)
                                 .accessibilityLabel(String(localized: "Remove jump host"))

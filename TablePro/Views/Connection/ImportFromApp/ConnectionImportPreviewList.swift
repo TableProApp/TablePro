@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import TableProImport
 
 struct ConnectionImportPreviewList: View {
     let items: [ImportItem]
@@ -57,7 +58,7 @@ struct ConnectionImportPreviewList: View {
                     }
                 }
                 HStack(spacing: 0) {
-                    Text("\(item.connection.host):\(item.connection.port)")
+                    Text(verbatim: item.connection.displaySubtitle)
                     warningText(for: item.status)
                 }
                 .font(.subheadline)
@@ -73,8 +74,8 @@ struct ConnectionImportPreviewList: View {
                     set: { duplicateResolutions[item.id] = $0 }
                 )) {
                     Text(String(localized: "As Copy")).tag(ImportResolution.importAsCopy)
-                    if case .duplicate(let existing) = item.status {
-                        Text(String(localized: "Replace")).tag(ImportResolution.replace(existingId: existing.id))
+                    if case .duplicate(let existingId, _) = item.status {
+                        Text(String(localized: "Replace")).tag(ImportResolution.replace(existingId: existingId))
                     }
                     Text(String(localized: "Skip")).tag(ImportResolution.skip)
                 }
@@ -95,11 +96,11 @@ struct ConnectionImportPreviewList: View {
         case .ready:
             Image(systemName: "checkmark.circle.fill")
                 .font(.callout)
-                .foregroundStyle(Color(nsColor: .systemGreen))
+                .foregroundStyle(.green)
         case .warnings:
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.callout)
-                .foregroundStyle(Color(nsColor: .systemYellow))
+                .foregroundStyle(.yellow)
         case .duplicate:
             EmptyView()
         }
@@ -109,7 +110,7 @@ struct ConnectionImportPreviewList: View {
     private func warningText(for status: ImportItemStatus) -> some View {
         if case .warnings(let messages) = status, let first = messages.first {
             Text(" — \(first)")
-                .foregroundStyle(Color(nsColor: .systemOrange))
+                .foregroundStyle(.orange)
         }
     }
 }

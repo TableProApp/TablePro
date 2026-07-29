@@ -3,11 +3,8 @@ title: Query Parameters
 description: Use :name placeholders in SQL queries, fill values in a panel, execute with prepared statements
 ---
 
-# Query Parameters
-
 Instead of editing your SQL every time you want to test a different value, use `:name` placeholders. TablePro detects them, shows a panel for entering values, and executes using prepared statements.
 
-{/* Screenshot: Query parameter panel with filled values */}
 <Frame caption="Query parameter panel">
   <img
     className="block dark:hidden"
@@ -35,7 +32,7 @@ WHERE customer_id = :customer_id
 
 Press `Cmd+Enter`. A panel appears with a field for each parameter. Fill in values, press `Cmd+Enter` again. Done.
 
-Works with **Execute All** (`Cmd+Shift+Enter`) too.
+Works with **Execute All Statements** (`Cmd+Shift+Enter`) too.
 
 ## The Panel
 
@@ -48,7 +45,11 @@ Each row has:
 | **Type** | String, Integer, Decimal, Date, or Boolean |
 | **NULL** | Check this to bind NULL |
 
+Rows appear in the order the names first appear in your SQL.
+
 **Clear All** empties all value fields. The X button hides the panel. It comes back on the next execute if the query still has parameters.
+
+Every parameter needs a value or the NULL checkbox. Executing with an empty value shows "Missing value for parameter: :name" instead of running.
 
 ## What Gets Detected
 
@@ -72,10 +73,12 @@ TablePro converts your `:name` placeholders to the database's native format befo
 - MySQL, SQLite: `?` placeholders via `mysql_stmt_bind_param` / `sqlite3_bind_text`
 - PostgreSQL: `$1`, `$2` via `PQexecParams`
 - DuckDB: `$1`, `$2` via prepared statements
-- ClickHouse, SQL Server, others: client-side substitution with proper escaping
+- ClickHouse: `{p1:String}` server-side query parameters
+- SQL Server: `sp_executesql` with declared parameters
+- Drivers with no parameter API: TablePro substitutes the values with escaping
 
 <Tip>
-This is real prepared statement binding, not string replacement. Quoting and SQL injection are handled for you.
+Where the driver has a parameter API, values are bound, not pasted into your SQL. Everywhere else TablePro escapes them. Either way, you never quote a value yourself.
 </Tip>
 
 ## Values Stick Around
@@ -101,6 +104,6 @@ Parameterized queries still go through [safe mode](/features/safe-mode) checks. 
 
 ## Settings
 
-**Settings** > **Editor** > **Query parameters (:name syntax)**. On by default.
+**Settings > Editor > Query parameters (:name syntax)**. On by default.
 
 Turn it off if you don't want parameter detection (`:name` will be sent to the database as-is).

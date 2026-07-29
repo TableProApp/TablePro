@@ -1,5 +1,6 @@
 import Foundation
 
+@frozen
 public enum SSLMode: String, Codable, CaseIterable, Sendable {
     case disabled = "Disabled"
     case preferred = "Preferred"

@@ -57,6 +57,11 @@ class LineFoldModel: NSObject, NSTextStorageDelegate, ObservableObject {
         foldCache.folds(in: range)
     }
 
+    /// Recomputes folds for the whole document. Used to catch up after the ribbon has been hidden and is shown again.
+    func refresh() {
+        textChangedStreamContinuation.yield()
+    }
+
     func textStorage(
         _ textStorage: NSTextStorage,
         didProcessEditing editedMask: NSTextStorageEditActions,
@@ -67,6 +72,9 @@ class LineFoldModel: NSObject, NSTextStorageDelegate, ObservableObject {
             return
         }
         foldCache.storageUpdated(editedRange: editedRange, changeInLength: delta)
+        // Recalculating folds walks the whole document. Skip it while the ribbon is hidden; `refresh()` rebuilds when
+        // it is shown again.
+        guard foldView?.isHidden != true else { return }
         textChangedStreamContinuation.yield()
     }
 

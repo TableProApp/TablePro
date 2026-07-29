@@ -7,8 +7,9 @@
 
 import Foundation
 import TableProPluginKit
-@testable import TablePro
 import Testing
+
+@testable import TablePro
 
 @Suite("Preview Tab")
 struct PreviewTabTests {
@@ -27,7 +28,7 @@ struct PreviewTabTests {
             tabType: .table,
             tableName: "users"
         )
-        let tab = QueryTab(from: persisted)
+        let tab = QueryTab(from: persisted, defaultPageSize: 1_000)
         #expect(tab.isPreview == false)
     }
 

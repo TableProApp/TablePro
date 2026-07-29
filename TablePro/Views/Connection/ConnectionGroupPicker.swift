@@ -153,13 +153,14 @@ struct CreateGroupSheet: View {
                 Button("Cancel") {
                     dismiss()
                 }
+                .keyboardShortcut(.cancelAction)
 
                 Button("Create") {
                     onSave(groupName, groupColor, selectedParentId)
                     dismiss()
                 }
-                .keyboardShortcut(.return)
                 .buttonStyle(.borderedProminent)
+                .keyboardShortcut(.defaultAction)
                 .disabled(groupName.trimmingCharacters(in: .whitespaces).isEmpty)
             }
         }

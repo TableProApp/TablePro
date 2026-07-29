@@ -11,7 +11,6 @@ import Testing
 
 @Suite("DatabaseConnection.additionalFields")
 struct DatabaseConnectionAdditionalFieldsTests {
-
     // MARK: - Defaults
 
     @Test("mongoAuthSource defaults to nil")
@@ -274,5 +273,29 @@ struct DatabaseConnectionAdditionalFieldsTests {
         #expect(decoded.mssqlSchema == nil)
         #expect(decoded.oracleServiceName == nil)
         #expect(decoded.redisDatabase == nil)
+    }
+
+    @Test("usesAWSIAM reflects the awsAuth field")
+    func usesAWSIAMReflectsField() {
+        func connection(_ awsAuth: String?) -> DatabaseConnection {
+            DatabaseConnection(name: "T", type: .mysql, additionalFields: awsAuth.map { ["awsAuth": $0] })
+        }
+        #expect(connection(nil).usesAWSIAM == false)
+        #expect(connection("off").usesAWSIAM == false)
+        #expect(connection("").usesAWSIAM == false)
+        #expect(connection("accessKey").usesAWSIAM == true)
+        #expect(connection("profile").usesAWSIAM == true)
+    }
+
+    @Test("Cassandra and ScyllaDB resolve AWS IAM in the driver, not via a token password")
+    func resolvesAWSIAMInDriverByType() {
+        func connection(_ type: DatabaseType) -> DatabaseConnection {
+            DatabaseConnection(name: "T", type: type, additionalFields: ["awsAuth": "accessKey"])
+        }
+        #expect(connection(.cassandra).resolvesAWSIAMInDriver == true)
+        #expect(connection(.scylladb).resolvesAWSIAMInDriver == true)
+        #expect(connection(.mysql).resolvesAWSIAMInDriver == false)
+        #expect(connection(.postgresql).resolvesAWSIAMInDriver == false)
+        #expect(connection(.redis).resolvesAWSIAMInDriver == false)
     }
 }

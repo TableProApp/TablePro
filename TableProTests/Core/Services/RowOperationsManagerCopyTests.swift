@@ -1,22 +1,32 @@
 import Foundation
-import TableProPluginKit
 @testable import TablePro
+import TableProPluginKit
 import Testing
 
 private final class MockClipboardProvider: ClipboardProvider {
     var lastWrittenText: String?
+    var lastWrittenGridRows: GridRowsClipboardPayload?
     var textToRead: String?
+    var gridRowsToRead: GridRowsClipboardPayload?
     var lastWasGridRows = false
 
     func readText() -> String? { textToRead }
+
+    func readGridRows() -> GridRowsClipboardPayload? { gridRowsToRead }
 
     func writeText(_ text: String) {
         lastWrittenText = text
         lastWasGridRows = false
     }
 
-    func writeRows(tsv: String, html: String?) {
+    func writeCsv(_ csv: String) {
+        lastWrittenText = csv
+        lastWasGridRows = false
+    }
+
+    func writeRows(tsv: String, html: String?, gridRows: GridRowsClipboardPayload) {
         lastWrittenText = tsv
+        lastWrittenGridRows = gridRows
         lastWasGridRows = true
     }
 
@@ -52,7 +62,8 @@ struct RowOperationsManagerCopyTests {
         indices: Set<Int>,
         rows: [[String?]],
         columns: [String]? = nil,
-        includeHeaders: Bool = false
+        includeHeaders: Bool = false,
+        visibleColumnIndices: [Int]? = nil
     ) -> String? {
         let clipboard = MockClipboardProvider()
         ClipboardService.shared = clipboard
@@ -60,7 +71,8 @@ struct RowOperationsManagerCopyTests {
         manager.copySelectedRowsToClipboard(
             selectedIndices: indices,
             tableRows: tableRows,
-            includeHeaders: includeHeaders
+            includeHeaders: includeHeaders,
+            visibleColumnIndices: visibleColumnIndices
         )
         return clipboard.lastWrittenText
     }
@@ -201,5 +213,135 @@ struct RowOperationsManagerCopyTests {
         let result = copyAndCapture(manager: manager, indices: [0], rows: rows)
 
         #expect(result == "NULL\tNULL\tNULL")
+    }
+
+    @Test("Hidden columns are excluded from copied values")
+    func hiddenColumnsExcluded() {
+        let (manager, _) = makeManager()
+        let rows: [[String?]] = [["1", "Alice", "alice@test.com"]]
+
+        let result = copyAndCapture(manager: manager, indices: [0], rows: rows, visibleColumnIndices: [0, 2])
+
+        #expect(result == "1\talice@test.com")
+    }
+
+    @Test("Hidden columns are excluded from headers too")
+    func hiddenColumnsExcludedFromHeaders() {
+        let (manager, _) = makeManager()
+        let rows: [[String?]] = [["1", "Alice", "alice@test.com"]]
+
+        let result = copyAndCapture(
+            manager: manager,
+            indices: [0],
+            rows: rows,
+            includeHeaders: true,
+            visibleColumnIndices: [0, 2]
+        )
+
+        let lines = result?.components(separatedBy: "\n") ?? []
+        #expect(lines.count == 2)
+        #expect(lines[0] == "id\temail")
+        #expect(lines[1] == "1\talice@test.com")
+    }
+
+    @Test("Copy follows visual column order")
+    func copyFollowsVisualOrder() {
+        let (manager, _) = makeManager()
+        let rows: [[String?]] = [["1", "Alice", "alice@test.com"]]
+
+        let result = copyAndCapture(
+            manager: manager,
+            indices: [0],
+            rows: rows,
+            includeHeaders: true,
+            visibleColumnIndices: [2, 0, 1]
+        )
+
+        let lines = result?.components(separatedBy: "\n") ?? []
+        #expect(lines[0] == "email\tid\tname")
+        #expect(lines[1] == "alice@test.com\t1\tAlice")
+    }
+
+    @Test("Nil visible indices copies every column unchanged")
+    func nilIndicesCopiesAllColumns() {
+        let (manager, _) = makeManager()
+        let rows: [[String?]] = [["1", "Alice", "alice@test.com"]]
+
+        let result = copyAndCapture(manager: manager, indices: [0], rows: rows, visibleColumnIndices: nil)
+
+        #expect(result == "1\tAlice\talice@test.com")
+    }
+
+    @Test("Copy writes structured grid rows with column names and raw cell values")
+    func copyWritesStructuredGridRows() {
+        let (manager, _) = makeManager()
+        let rows: [[String?]] = [["1", "Smith, John", nil]]
+        let clipboard = MockClipboardProvider()
+        ClipboardService.shared = clipboard
+        let tableRows = makeTableRows(rows: rows)
+
+        manager.copySelectedRowsToClipboard(selectedIndices: [0], tableRows: tableRows)
+
+        #expect(clipboard.lastWrittenGridRows?.columns == ["id", "name", "email"])
+        #expect(clipboard.lastWrittenGridRows?.rows == [[.text("1"), .text("Smith, John"), .null]])
+    }
+
+    @Test("Structured grid rows follow visible column projection and visual order")
+    func structuredGridRowsFollowProjection() {
+        let (manager, _) = makeManager()
+        let rows: [[String?]] = [["1", "Alice", "alice@test.com"]]
+        let clipboard = MockClipboardProvider()
+        ClipboardService.shared = clipboard
+        let tableRows = makeTableRows(rows: rows)
+
+        manager.copySelectedRowsToClipboard(selectedIndices: [0], tableRows: tableRows, visibleColumnIndices: [2, 0])
+
+        #expect(clipboard.lastWrittenGridRows?.columns == ["email", "id"])
+        #expect(clipboard.lastWrittenGridRows?.rows == [[.text("alice@test.com"), .text("1")]])
+    }
+
+    @Test("Copy under a display filter reads the underlying row, not the raw position")
+    func copyResolvesDisplayIndexUnderFilter() {
+        let (manager, _) = makeManager()
+        let rows: [[String?]] = [
+            ["1", "Alice", "a@test.com"],
+            ["2", "Bob", "b@test.com"],
+            ["3", "Carol", "c@test.com"],
+            ["4", "Dave", "d@test.com"],
+        ]
+        let clipboard = MockClipboardProvider()
+        ClipboardService.shared = clipboard
+        let tableRows = makeTableRows(rows: rows)
+        let displayIDs: [RowID] = [.existing(0), .existing(2), .existing(3)]
+
+        manager.copySelectedRowsToClipboard(
+            selectedIndices: [1],
+            tableRows: tableRows,
+            displayIDs: displayIDs
+        )
+
+        #expect(clipboard.lastWrittenText == "3\tCarol\tc@test.com")
+    }
+
+    @Test("Copy under a display filter emits rows in display order")
+    func copyEmitsDisplayOrderUnderFilter() {
+        let (manager, _) = makeManager()
+        let rows: [[String?]] = [
+            ["1", "Alice", "a@test.com"],
+            ["2", "Bob", "b@test.com"],
+            ["3", "Carol", "c@test.com"],
+        ]
+        let clipboard = MockClipboardProvider()
+        ClipboardService.shared = clipboard
+        let tableRows = makeTableRows(rows: rows)
+        let displayIDs: [RowID] = [.existing(2), .existing(0)]
+
+        manager.copySelectedRowsToClipboard(
+            selectedIndices: [0, 1],
+            tableRows: tableRows,
+            displayIDs: displayIDs
+        )
+
+        #expect(clipboard.lastWrittenText == "3\tCarol\tc@test.com\n1\tAlice\ta@test.com")
     }
 }

@@ -88,7 +88,7 @@ internal final class ServiceAccountAuthProvider: @unchecked Sendable, BigQueryAu
 
         self.clientEmail = email
         self.privateKeyPEM = key
-        self.projectId = overrideProjectId?.isEmpty == false ? overrideProjectId! : saProjectId
+        self.projectId = overrideProjectId.flatMap { $0.isEmpty ? nil : $0 } ?? saProjectId
 
         if self.projectId.isEmpty {
             throw BigQueryError.authFailed("No project ID found in service account JSON or connection settings")
@@ -349,9 +349,7 @@ internal final class ADCAuthProvider: @unchecked Sendable, BigQueryAuthProvider 
             }
 
             let quotaProject = json["quota_project_id"] as? String ?? ""
-            self.projectId = overrideProjectId?.isEmpty == false
-                ? overrideProjectId!
-                : quotaProject
+            self.projectId = overrideProjectId.flatMap { $0.isEmpty ? nil : $0 } ?? quotaProject
 
             if self.projectId.isEmpty {
                 throw BigQueryError.authFailed(
@@ -374,9 +372,7 @@ internal final class ADCAuthProvider: @unchecked Sendable, BigQueryAuthProvider 
             }
 
             // Resolve source credentials
-            let resolvedProjectId = overrideProjectId?.isEmpty == false
-                ? overrideProjectId!
-                : (json["quota_project_id"] as? String ?? "")
+            let resolvedProjectId = overrideProjectId.flatMap { $0.isEmpty ? nil : $0 } ?? (json["quota_project_id"] as? String ?? "")
 
             if resolvedProjectId.isEmpty {
                 throw BigQueryError.authFailed(
@@ -548,7 +544,6 @@ private final class ImpersonatedServiceAccountDelegate: @unchecked Sendable, Big
     }
 
     private func fetchImpersonatedToken() async throws -> String {
-        // Get source token
         let sourceToken = try await sourceProvider.accessToken()
 
         // Exchange for impersonated token
@@ -649,7 +644,6 @@ internal final class OAuthBrowserAuthProvider: @unchecked Sendable, BigQueryAuth
 
         let redirectUri = "http://127.0.0.1:\(port)"
 
-        // Build authorization URL
         var components = URLComponents(string: Self.authEndpoint)
         components?.queryItems = [
             URLQueryItem(name: "client_id", value: clientId),
@@ -665,7 +659,6 @@ internal final class OAuthBrowserAuthProvider: @unchecked Sendable, BigQueryAuth
             throw BigQueryError.authFailed("Failed to build OAuth authorization URL")
         }
 
-        // Open browser
         Self.logger.info("Opening browser for OAuth authorization")
         await NSWorkspace.shared.open(authUrl)
 
@@ -680,13 +673,10 @@ internal final class OAuthBrowserAuthProvider: @unchecked Sendable, BigQueryAuth
 
         Self.logger.info("Received OAuth authorization code")
 
-        // Exchange auth code for tokens
         let tokens = try await exchangeAuthCode(code, redirectUri: redirectUri)
 
-        // Store refresh token
         lock.withLock { _refreshToken = tokens.refreshToken }
 
-        // Cache access token
         let newToken = CachedToken(
             token: tokens.accessToken,
             expiresAt: Date().addingTimeInterval(Double(tokens.expiresIn))

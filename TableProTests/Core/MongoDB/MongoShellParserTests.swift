@@ -753,6 +753,166 @@ struct MongoShellParserTests {
         }
     }
 
+    @Test("bracket notation with backticks")
+    func testBracketNotationBackticks() throws {
+        let op = try MongoShellParser.parse("db[`my.collection`].find({})")
+        if case .find(let collection, let filter, _) = op {
+            #expect(collection == "my.collection")
+            #expect(filter == "{}")
+        } else {
+            Issue.record("Expected .find operation")
+        }
+    }
+
+    // MARK: - getCollection Accessor
+
+    @Test("getCollection with find returns the collection")
+    func testGetCollectionFind() throws {
+        let op = try MongoShellParser.parse("db.getCollection(\"users\").find({})")
+        if case .find(let collection, let filter, _) = op {
+            #expect(collection == "users")
+            #expect(filter == "{}")
+        } else {
+            Issue.record("Expected .find operation")
+        }
+    }
+
+    @Test("getCollection with single quotes")
+    func testGetCollectionSingleQuotes() throws {
+        let op = try MongoShellParser.parse("db.getCollection('users').find({})")
+        if case .find(let collection, _, _) = op {
+            #expect(collection == "users")
+        } else {
+            Issue.record("Expected .find operation")
+        }
+    }
+
+    @Test("getCollection with backticks")
+    func testGetCollectionBackticks() throws {
+        let op = try MongoShellParser.parse("db.getCollection(`users`).find({})")
+        if case .find(let collection, _, _) = op {
+            #expect(collection == "users")
+        } else {
+            Issue.record("Expected .find operation")
+        }
+    }
+
+    @Test("getCollection bare reference treated as find all")
+    func testGetCollectionBareReference() throws {
+        let op = try MongoShellParser.parse("db.getCollection(\"users\")")
+        if case .find(let collection, let filter, let options) = op {
+            #expect(collection == "users")
+            #expect(filter == "{}")
+            #expect(options.limit == nil)
+        } else {
+            Issue.record("Expected .find operation")
+        }
+    }
+
+    @Test("getCollection with chained options")
+    func testGetCollectionChainedOptions() throws {
+        let op = try MongoShellParser.parse(
+            "db.getCollection(\"users\").find({\"active\": true}).sort({\"name\": 1}).skip(5).limit(10)"
+        )
+        if case .find(let collection, let filter, let options) = op {
+            #expect(collection == "users")
+            #expect(filter == "{\"active\": true}")
+            #expect(options.sort == "{\"name\": 1}")
+            #expect(options.skip == 5)
+            #expect(options.limit == 10)
+        } else {
+            Issue.record("Expected .find operation")
+        }
+    }
+
+    @Test("getCollection keeps a dotted name as one collection")
+    func testGetCollectionDottedName() throws {
+        let op = try MongoShellParser.parse("db.getCollection(\"logs.2024.06\").find({})")
+        if case .find(let collection, _, _) = op {
+            #expect(collection == "logs.2024.06")
+        } else {
+            Issue.record("Expected .find operation")
+        }
+    }
+
+    @Test("getCollection reaches a name that collides with a database method")
+    func testGetCollectionNameCollidingWithDbMethod() throws {
+        let op = try MongoShellParser.parse("db.getCollection(\"stats\").find({})")
+        if case .find(let collection, _, _) = op {
+            #expect(collection == "stats")
+        } else {
+            Issue.record("Expected .find operation")
+        }
+    }
+
+    @Test("getCollection with an escaped quote in the name")
+    func testGetCollectionEscapedQuote() throws {
+        let op = try MongoShellParser.parse("db.getCollection(\"say\\\"hi\").find({})")
+        if case .find(let collection, _, _) = op {
+            #expect(collection == "say\"hi")
+        } else {
+            Issue.record("Expected .find operation")
+        }
+    }
+
+    @Test("getCollection with a write method")
+    func testGetCollectionDeleteMany() throws {
+        let op = try MongoShellParser.parse("db.getCollection(\"users\").deleteMany({\"active\": false})")
+        if case .deleteMany(let collection, let filter) = op {
+            #expect(collection == "users")
+            #expect(filter == "{\"active\": false}")
+        } else {
+            Issue.record("Expected .deleteMany operation")
+        }
+    }
+
+    @Test("getCollection tolerates whitespace before the argument list")
+    func testGetCollectionWhitespaceBeforeParen() throws {
+        let op = try MongoShellParser.parse("db.getCollection (\"users\").find({})")
+        if case .find(let collection, _, _) = op {
+            #expect(collection == "users")
+        } else {
+            Issue.record("Expected .find operation")
+        }
+    }
+
+    @Test("getCollection with no argument throws")
+    func testGetCollectionNoArgument() {
+        #expect(throws: MongoShellParseError.self) {
+            _ = try MongoShellParser.parse("db.getCollection().find({})")
+        }
+    }
+
+    @Test("getCollection with an unquoted argument throws")
+    func testGetCollectionUnquotedArgument() {
+        #expect(throws: MongoShellParseError.self) {
+            _ = try MongoShellParser.parse("db.getCollection(users).find({})")
+        }
+    }
+
+    @Test("getCollection with an unterminated name throws")
+    func testGetCollectionUnterminatedName() {
+        #expect(throws: MongoShellParseError.self) {
+            _ = try MongoShellParser.parse("db.getCollection(\"users).find({})")
+        }
+    }
+
+    @Test("getSiblingDB stays unsupported so queries never run against another database")
+    func testGetSiblingDBRemainsUnsupported() {
+        do {
+            _ = try MongoShellParser.parse("db.getSiblingDB(\"other\").getCollection(\"users\").find({})")
+            Issue.record("Expected a parse error")
+        } catch let error as MongoShellParseError {
+            guard case .unsupportedMethod(let method) = error else {
+                Issue.record("Expected .unsupportedMethod")
+                return
+            }
+            #expect(method == "getSiblingDB")
+        } catch {
+            Issue.record("Expected MongoShellParseError")
+        }
+    }
+
     // MARK: - Additional Special Commands
 
     @Test("raw JSON command with unquoted key")
@@ -1071,5 +1231,13 @@ struct MongoShellParserTests {
         } else {
             Issue.record("Expected .deleteOne operation")
         }
+    }
+
+    @Test("error descriptions substitute the interpolated value")
+    func testErrorDescriptionsFormatArgument() {
+        #expect(MongoShellParseError.invalidSyntax("bad{").errorDescription == "Invalid MongoDB syntax: bad{")
+        #expect(MongoShellParseError.unsupportedMethod("foo").errorDescription == "Unsupported MongoDB method: foo")
+        #expect(MongoShellParseError.invalidJson("oops").errorDescription == "Invalid JSON: oops")
+        #expect(MongoShellParseError.missingArgument("id").errorDescription == "Missing argument: id")
     }
 }

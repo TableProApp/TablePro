@@ -15,16 +15,9 @@ struct SmallWidgetView: View {
 
                 Spacer()
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(connection.name)
-                        .font(.headline)
-                        .lineLimit(1)
-
-                    Text(verbatim: "\(connection.host):\(connection.port)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
+                Text(connection.name)
+                    .font(.headline)
+                    .lineLimit(2)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .widgetURL(URL(string: "tablepro://connect/\(connection.id.uuidString)"))

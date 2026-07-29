@@ -5,6 +5,62 @@
 
 import SwiftUI
 
+/// The field actions (Set NULL/DEFAULT/EMPTY, copy, SQL functions). Shared by the
+/// hover menu button and the field's context menu so both stay in sync.
+internal struct FieldMenuContent: View {
+    let value: String
+    let columnType: ColumnType
+    let sqlFunctions: [SQLFunctionProvider.SQLFunction]
+    let isPendingNull: Bool
+    let isPendingDefault: Bool
+    let onSetNull: () -> Void
+    let onSetDefault: () -> Void
+    let onSetEmpty: () -> Void
+    let onSetFunction: (String) -> Void
+    let onClear: () -> Void
+
+    var body: some View {
+        Button("Set NULL") { onSetNull() }
+        Button("Set DEFAULT") { onSetDefault() }
+        Button("Set EMPTY") { onSetEmpty() }
+
+        Divider()
+
+        if columnType.isJsonType {
+            Button("Pretty Print") {
+                if let formatted = value.prettyPrintedAsJson() {
+                    ClipboardService.shared.writeText(formatted)
+                }
+            }
+        }
+
+        if BlobFormattingService.shared.requiresFormatting(columnType: columnType) {
+            Button("Copy as Hex") {
+                if let hex = BlobFormattingService.shared.format(value, for: .detail) {
+                    ClipboardService.shared.writeText(hex)
+                }
+            }
+        }
+
+        Button("Copy Value") {
+            ClipboardService.shared.writeText(value)
+        }
+
+        Divider()
+
+        Menu("SQL Functions") {
+            ForEach(sqlFunctions, id: \.expression) { function in
+                Button(function.label) { onSetFunction(function.expression) }
+            }
+        }
+
+        if isPendingNull || isPendingDefault {
+            Divider()
+            Button("Clear") { onClear() }
+        }
+    }
+}
+
 internal struct FieldMenuView: View {
     let value: String
     let columnType: ColumnType
@@ -19,44 +75,18 @@ internal struct FieldMenuView: View {
 
     var body: some View {
         Menu {
-            Button("Set NULL") { onSetNull() }
-            Button("Set DEFAULT") { onSetDefault() }
-            Button("Set EMPTY") { onSetEmpty() }
-
-            Divider()
-
-            if columnType.isJsonType {
-                Button("Pretty Print") {
-                    if let formatted = value.prettyPrintedAsJson() {
-                        ClipboardService.shared.writeText(formatted)
-                    }
-                }
-            }
-
-            if BlobFormattingService.shared.requiresFormatting(columnType: columnType) {
-                Button("Copy as Hex") {
-                    if let hex = BlobFormattingService.shared.format(value, for: .detail) {
-                        ClipboardService.shared.writeText(hex)
-                    }
-                }
-            }
-
-            Button("Copy Value") {
-                ClipboardService.shared.writeText(value)
-            }
-
-            Divider()
-
-            Menu("SQL Functions") {
-                ForEach(sqlFunctions, id: \.expression) { function in
-                    Button(function.label) { onSetFunction(function.expression) }
-                }
-            }
-
-            if isPendingNull || isPendingDefault {
-                Divider()
-                Button("Clear") { onClear() }
-            }
+            FieldMenuContent(
+                value: value,
+                columnType: columnType,
+                sqlFunctions: sqlFunctions,
+                isPendingNull: isPendingNull,
+                isPendingDefault: isPendingDefault,
+                onSetNull: onSetNull,
+                onSetDefault: onSetDefault,
+                onSetEmpty: onSetEmpty,
+                onSetFunction: onSetFunction,
+                onClear: onClear
+            )
         } label: {
             Image(systemName: "chevron.down")
                 .font(.caption)

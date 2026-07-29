@@ -47,11 +47,6 @@ struct DatabaseTypeTests {
         #expect(knownTypes.count >= 5)
     }
 
-    @Test("allCases shim matches allKnownTypes")
-    func testAllCasesShim() {
-        #expect(DatabaseType.allCases == DatabaseType.allKnownTypes)
-    }
-
     @Test("Raw value matches display name", arguments: [
         (DatabaseType.mysql, "MySQL"),
         (DatabaseType.mariadb, "MariaDB"),
@@ -65,7 +60,8 @@ struct DatabaseTypeTests {
         (DatabaseType.clickhouse, "ClickHouse"),
         (DatabaseType.duckdb, "DuckDB"),
         (DatabaseType.cassandra, "Cassandra"),
-        (DatabaseType.scylladb, "ScyllaDB")
+        (DatabaseType.scylladb, "ScyllaDB"),
+        (DatabaseType.beancount, "Beancount")
     ])
     func testRawValueMatchesDisplayName(dbType: DatabaseType, expectedRawValue: String) {
         #expect(dbType.rawValue == expectedRawValue)
@@ -120,6 +116,79 @@ struct DatabaseTypeTests {
     @Test("Struct equality via rawValue")
     func testStructEquality() {
         #expect(DatabaseType(rawValue: "MySQL") == .mysql)
+    }
+
+    // MARK: - Default SSL Mode Tests
+
+    @Test("libpq-family engines default SSL mode to preferred", arguments: [
+        DatabaseType.postgresql,
+        DatabaseType.redshift,
+        DatabaseType.cockroachdb
+    ])
+    func testLibPQEnginesDefaultSSLPreferred(type: DatabaseType) {
+        #expect(type.defaultSSLMode == .preferred)
+    }
+
+    @Test("SQL Server defaults SSL mode to preferred")
+    func testMSSQLDefaultSSLPreferred() {
+        #expect(DatabaseType.mssql.defaultSSLMode == .preferred)
+    }
+
+    @Test("libmariadb-family engines default SSL mode to preferred (2-pass connect)", arguments: [
+        DatabaseType.mysql,
+        DatabaseType.mariadb
+    ])
+    func testMariaDBClientEnginesDefaultSSLPreferred(type: DatabaseType) {
+        #expect(type.defaultSSLMode == .preferred)
+    }
+
+    @Test("Binary on/off engines default SSL mode to disabled", arguments: [
+        DatabaseType.mongodb,
+        DatabaseType.redis,
+        DatabaseType.cassandra,
+        DatabaseType.clickhouse,
+        DatabaseType.oracle
+    ])
+    func testBinaryEnginesDefaultSSLDisabled(type: DatabaseType) {
+        #expect(type.defaultSSLMode == .disabled)
+    }
+
+    @Test("Local file-based engines default SSL mode to disabled", arguments: [
+        DatabaseType.sqlite,
+        DatabaseType.duckdb
+    ])
+    func testLocalEnginesDefaultSSLDisabled(type: DatabaseType) {
+        #expect(type.defaultSSLMode == .disabled)
+    }
+
+    @Test("Unknown future engine defaults SSL mode to disabled")
+    func testUnknownEngineDefaultSSLDisabled() {
+        #expect(DatabaseType(rawValue: "FutureDB").defaultSSLMode == .disabled)
+    }
+
+    @Test("Drivers with native prefer support report supportsOpportunisticTLS=true", arguments: [
+        DatabaseType.postgresql,
+        DatabaseType.redshift,
+        DatabaseType.cockroachdb,
+        DatabaseType.mysql,
+        DatabaseType.mariadb,
+        DatabaseType.mssql
+    ])
+    func testOpportunisticTLSSupported(type: DatabaseType) {
+        #expect(type.supportsOpportunisticTLS == true)
+    }
+
+    @Test("Binary-TLS drivers report supportsOpportunisticTLS=false", arguments: [
+        DatabaseType.mongodb,
+        DatabaseType.redis,
+        DatabaseType.cassandra,
+        DatabaseType.scylladb,
+        DatabaseType.clickhouse,
+        DatabaseType.oracle,
+        DatabaseType.etcd
+    ])
+    func testOpportunisticTLSUnsupported(type: DatabaseType) {
+        #expect(type.supportsOpportunisticTLS == false)
     }
 
     @Test("Unknown type round-trips via rawValue")

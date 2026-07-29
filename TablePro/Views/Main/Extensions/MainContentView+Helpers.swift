@@ -22,38 +22,49 @@ extension MainContentView {
     func handleConnectionStatusChange() {
         let sessions = DatabaseManager.shared.activeSessions
         guard let session = sessions[connection.id] else { return }
-        if session.isConnected && coordinator.needsLazyLoad {
-            let hasPendingEdits =
-                changeManager.hasChanges
-                || (tabManager.selectedTab?.pendingChanges.hasChanges ?? false)
-            if !hasPendingEdits {
-                coordinator.needsLazyLoad = false
-                if let selectedTab = tabManager.selectedTab,
-                    !selectedTab.tableContext.databaseName.isEmpty,
-                    selectedTab.tableContext.databaseName != session.activeDatabase
-                {
-                    Task { await coordinator.switchDatabase(to: selectedTab.tableContext.databaseName) }
-                } else if let selectedTab = tabManager.selectedTab,
-                    let tabSchema = selectedTab.tableContext.schemaName,
-                    !tabSchema.isEmpty,
-                    tabSchema != session.currentSchema
-                {
-                    Task {
-                        await coordinator.restoreSchemaAndRunQuery(tabSchema)
-                    }
-                } else {
-                    coordinator.runQuery()
-                }
-            }
-        }
         if session.isConnected {
-            coordinator.lazyLoadCurrentTabIfNeeded()
+            if let trigger = coordinator.pendingLoadTrigger {
+                let hasPendingEdits =
+                    changeManager.hasChanges
+                    || (tabManager.selectedTab?.pendingChanges.hasChanges ?? false)
+                if !hasPendingEdits {
+                    coordinator.pendingLoadTrigger = nil
+                    consumePendingLoad(trigger: trigger, session: session)
+                }
+            } else {
+                coordinator.lazyLoadCurrentTabIfNeeded()
+            }
         }
         let mappedState = mapSessionStatus(session.status)
         if mappedState != toolbarState.connectionState {
             toolbarState.connectionState = mappedState
         }
         toolbarState.syncFromSession(for: connection)
+    }
+
+    private func consumePendingLoad(trigger: TableLoadTrigger, session: ConnectionSession) {
+        if let tabId = tabManager.selectedTab?.id {
+            coordinator.resolveTableTabSchemaIfNeeded(tabId: tabId)
+        }
+        if let selectedTab = tabManager.selectedTab,
+            !selectedTab.tableContext.databaseName.isEmpty,
+            selectedTab.tableContext.databaseName != session.activeDatabase
+        {
+            Task {
+                await coordinator.switchDatabase(to: selectedTab.tableContext.databaseName)
+                coordinator.lazyLoadCurrentTabIfNeeded(trigger: trigger)
+            }
+        } else if let selectedTab = tabManager.selectedTab,
+            let tabSchema = selectedTab.tableContext.schemaName,
+            !tabSchema.isEmpty,
+            tabSchema != session.currentSchema
+        {
+            Task {
+                await coordinator.restoreSchemaAndRunQuery(tabSchema, trigger: trigger)
+            }
+        } else {
+            coordinator.runQuery(trigger: trigger)
+        }
     }
 
     private func mapSessionStatus(_ status: ConnectionStatus) -> ToolbarConnectionState {
@@ -67,16 +78,13 @@ extension MainContentView {
 
     // MARK: - Inspector Context
 
-    func scheduleInspectorUpdate(lazyLoadExcludedColumns: Bool = false) {
+    func scheduleInspectorUpdate() {
         inspectorUpdateTask?.cancel()
         inspectorUpdateTask = Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(50))
             guard !Task.isCancelled else { return }
             updateSidebarEditState()
             updateInspectorContext()
-            if lazyLoadExcludedColumns {
-                lazyLoadExcludedColumnsIfNeeded()
-            }
         }
     }
 

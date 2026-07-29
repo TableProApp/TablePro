@@ -13,13 +13,21 @@ final class AnthropicProvider: ChatTransport {
     private let apiKey: String
     private let model: String
     private let maxOutputTokens: Int
+    private let configuredEffort: ReasoningEffort?
     private let session: URLSession
 
-    init(endpoint: String, apiKey: String, model: String = "", maxOutputTokens: Int = 4_096) {
+    init(
+        endpoint: String,
+        apiKey: String,
+        model: String = "",
+        maxOutputTokens: Int = 4_096,
+        reasoningEffort: ReasoningEffort? = nil
+    ) {
         self.endpoint = endpoint.normalizedEndpoint()
         self.apiKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         self.model = model.trimmingCharacters(in: .whitespacesAndNewlines)
         self.maxOutputTokens = maxOutputTokens
+        self.configuredEffort = reasoningEffort
         self.session = URLSession(configuration: .ephemeral)
     }
 
@@ -27,45 +35,14 @@ final class AnthropicProvider: ChatTransport {
         turns: [ChatTurnWire],
         options: ChatTransportOptions
     ) -> AsyncThrowingStream<ChatStreamEvent, Error> {
-        AsyncThrowingStream { continuation in
-            let task = Task {
-                do {
-                    let request = try buildMessagesRequest(turns: turns, options: options)
-                    let (bytes, response) = try await session.bytes(for: request)
-
-                    guard let httpResponse = response as? HTTPURLResponse else {
-                        throw AIProviderError.networkError("Invalid response")
-                    }
-
-                    guard httpResponse.statusCode == 200 else {
-                        let errorBody = try await collectErrorBody(from: bytes)
-                        throw AIProviderError.mapHTTPError(
-                            statusCode: httpResponse.statusCode,
-                            body: errorBody
-                        )
-                    }
-
-                    var state = AnthropicStreamState()
-                    for try await line in bytes.lines {
-                        if Task.isCancelled { break }
-                        guard let json = Self.decodeStreamLine(line) else { continue }
-                        let events = try Self.parseChunk(json, state: &state)
-                        for event in events { continuation.yield(event) }
-                    }
-                    if let usage = state.finalUsageEvent() {
-                        continuation.yield(usage)
-                    }
-
-                    continuation.finish()
-                } catch {
-                    continuation.finish(throwing: error)
-                }
-            }
-
-            continuation.onTermination = { _ in
-                task.cancel()
-            }
-        }
+        SSEEventStream.make(
+            session: session,
+            buildRequest: { [self] in try buildMessagesRequest(turns: turns, options: options) },
+            decodeLine: { Self.decodeStreamLine($0) },
+            makeState: { AnthropicStreamState() },
+            parse: { try Self.parseChunk($0, state: &$1) },
+            finalEvents: { state in state.finalUsageEvent().map { [$0] } ?? [] }
+        )
     }
 
     func fetchAvailableModels() async throws -> [String] {
@@ -150,14 +127,23 @@ final class AnthropicProvider: ChatTransport {
         request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
         request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
 
+        let effort = options.reasoningEffort ?? configuredEffort
+        let resolvedMaxTokens = options.maxOutputTokens
+            ?? effort?.autoScaledMaxOutputTokens
+            ?? maxOutputTokens
+
         var body: [String: Any] = [
             "model": options.model,
-            "max_tokens": options.maxOutputTokens ?? maxOutputTokens,
+            "max_tokens": resolvedMaxTokens,
             "stream": stream
         ]
 
         if let systemPrompt = options.systemPrompt {
             body["system"] = systemPrompt
+        }
+
+        if let effort {
+            body["thinking"] = thinkingBody(for: effort, model: options.model, maxTokens: resolvedMaxTokens)
         }
 
         if !options.tools.isEmpty {
@@ -173,10 +159,30 @@ final class AnthropicProvider: ChatTransport {
         return request
     }
 
-    /// Decodes one SSE line of the form `data: {...}` to a JSON object.
-    /// Returns `nil` for non-data lines, the `[DONE]` sentinel, and unparsable
-    /// payloads. Keeping this separate from `parseChunk` lets tests skip the
-    /// SSE framing and feed JSON dictionaries directly.
+    private func thinkingBody(for effort: ReasoningEffort, model: String, maxTokens: Int) -> [String: Any] {
+        if Self.modelSupportsAdaptiveThinking(model) {
+            var thinking: [String: Any] = ["type": "adaptive"]
+            if let adaptiveEffort = effort.anthropicAdaptiveEffort {
+                thinking["effort"] = adaptiveEffort
+            }
+            return thinking
+        }
+        let budget = min(effort.anthropicBudgetTokens ?? 4_096, max(maxTokens - 1, 1_024))
+        return [
+            "type": "enabled",
+            "budget_tokens": budget
+        ]
+    }
+
+    private static func modelSupportsAdaptiveThinking(_ model: String) -> Bool {
+        let lowered = model.lowercased()
+        if lowered.contains("opus-4-7") || lowered.contains("opus-4.7") { return true }
+        if lowered.contains("opus-4-6") || lowered.contains("opus-4.6") { return true }
+        if lowered.contains("sonnet-4-6") || lowered.contains("sonnet-4.6") { return true }
+        if lowered.contains("haiku-4-5") || lowered.contains("haiku-4.5") { return true }
+        return false
+    }
+
     static func decodeStreamLine(_ line: String) -> [String: Any]? {
         guard line.hasPrefix("data: ") else { return nil }
         let jsonString = String(line.dropFirst(6))
@@ -187,10 +193,6 @@ final class AnthropicProvider: ChatTransport {
         return json
     }
 
-    /// Translate a single Anthropic SSE event JSON into zero or more
-    /// `ChatStreamEvent`s. Mutates `state` to carry index→id mappings and
-    /// token counters across calls. Throws `AIProviderError.streamingFailed`
-    /// on `error` events.
     static func parseChunk(
         _ json: [String: Any],
         state: inout AnthropicStreamState
@@ -199,31 +201,76 @@ final class AnthropicProvider: ChatTransport {
         switch type {
         case "content_block_start":
             guard let index = json["index"] as? Int,
-                  let block = json["content_block"] as? [String: Any],
-                  (block["type"] as? String) == "tool_use",
-                  let blockId = block["id"] as? String,
-                  let blockName = block["name"] as? String
-            else { return [] }
-            state.toolUseIdsByIndex[index] = blockId
-            return [.toolUseStart(id: blockId, name: blockName)]
+                  let block = json["content_block"] as? [String: Any] else { return [] }
+            let blockType = block["type"] as? String
+            switch blockType {
+            case "tool_use":
+                guard let blockId = block["id"] as? String,
+                      let blockName = block["name"] as? String else { return [] }
+                state.toolUseIdsByIndex[index] = blockId
+                return [.toolUseStart(id: blockId, name: blockName)]
+            case "thinking", "redacted_thinking":
+                let synthID = "thinking_\(UUID().uuidString.prefix(8))"
+                let resolvedType = blockType ?? "thinking"
+                state.thinkingIdsByIndex[index] = synthID
+                state.thinkingTypeByIndex[index] = resolvedType
+                if resolvedType == "redacted_thinking", let initialData = block["data"] as? String {
+                    state.thinkingRedactedDataByIndex[index] = initialData
+                } else if let initialSignature = block["signature"] as? String {
+                    state.thinkingSignatureByIndex[index] = initialSignature
+                }
+                return [.reasoningStart(id: synthID)]
+            default:
+                return []
+            }
         case "content_block_delta":
             guard let delta = json["delta"] as? [String: Any] else { return [] }
-            if (delta["type"] as? String) == "input_json_delta" {
+            let deltaType = delta["type"] as? String
+            if deltaType == "input_json_delta" {
                 guard let index = json["index"] as? Int,
                       let id = state.toolUseIdsByIndex[index],
                       let partial = delta["partial_json"] as? String
                 else { return [] }
                 return [.toolUseDelta(id: id, inputJSONDelta: partial)]
             }
+            if deltaType == "thinking_delta" {
+                guard let index = json["index"] as? Int,
+                      let id = state.thinkingIdsByIndex[index],
+                      let thinking = delta["thinking"] as? String, !thinking.isEmpty
+                else { return [] }
+                return [.reasoningDelta(id: id, text: thinking)]
+            }
+            if deltaType == "signature_delta" {
+                guard let index = json["index"] as? Int,
+                      let signature = delta["signature"] as? String else { return [] }
+                state.thinkingSignatureByIndex[index, default: ""] += signature
+                return []
+            }
             if let text = delta["text"] as? String {
                 return [.textDelta(text)]
             }
             return []
         case "content_block_stop":
-            guard let index = json["index"] as? Int,
-                  let id = state.toolUseIdsByIndex.removeValue(forKey: index)
-            else { return [] }
-            return [.toolUseEnd(id: id)]
+            guard let index = json["index"] as? Int else { return [] }
+            if let toolID = state.toolUseIdsByIndex.removeValue(forKey: index) {
+                return [.toolUseEnd(id: toolID)]
+            }
+            if let thinkingID = state.thinkingIdsByIndex.removeValue(forKey: index) {
+                let blockType = state.thinkingTypeByIndex.removeValue(forKey: index) ?? "thinking"
+                let payload = blockType == "redacted_thinking"
+                    ? state.thinkingRedactedDataByIndex.removeValue(forKey: index) ?? ""
+                    : state.thinkingSignatureByIndex.removeValue(forKey: index) ?? ""
+                let opaque: ReasoningOpaque? = payload.isEmpty
+                    ? nil
+                    : ReasoningOpaque(
+                        kind: .anthropicSignature,
+                        itemID: thinkingID,
+                        value: payload,
+                        blockType: blockType
+                    )
+                return [.reasoningEnd(id: thinkingID, opaque: opaque)]
+            }
+            return []
         case "message_start":
             if let message = json["message"] as? [String: Any],
                let usage = message["usage"] as? [String: Any],
@@ -260,7 +307,7 @@ final class AnthropicProvider: ChatTransport {
         let blocks = turn.blocks
         let needsTypedBlocks = blocks.contains { block in
             switch block.kind {
-            case .toolUse, .toolResult:
+            case .toolUse, .toolResult, .reasoning, .image, .sqlWalkthrough:
                 return true
             case .text, .attachment:
                 return false
@@ -283,6 +330,10 @@ final class AnthropicProvider: ChatTransport {
         case .text(let text):
             guard !text.isEmpty else { return nil }
             return ["type": "text", "text": text]
+        case .sqlWalkthrough(let walkthrough):
+            let text = walkthrough.transcriptText
+            guard !text.isEmpty else { return nil }
+            return ["type": "text", "text": text]
         case .toolUse(let toolUse):
             return [
                 "type": "tool_use",
@@ -302,6 +353,37 @@ final class AnthropicProvider: ChatTransport {
             return encoded
         case .attachment:
             return nil
+        case .reasoning(let reasoning):
+            guard let opaque = reasoning.opaque, opaque.kind == .anthropicSignature else { return nil }
+            if opaque.blockType == "redacted_thinking" {
+                return ["type": "redacted_thinking", "data": opaque.value]
+            }
+            return [
+                "type": "thinking",
+                "thinking": reasoning.text ?? "",
+                "signature": opaque.value
+            ]
+        case .image(let input):
+            switch input.source {
+            case .cacheFile(let filename, let mediaType):
+                guard let data = AIImageCache.shared.read(filename: filename) else { return nil }
+                return [
+                    "type": "image",
+                    "source": [
+                        "type": "base64",
+                        "media_type": mediaType,
+                        "data": data.base64EncodedString()
+                    ] as [String: Any]
+                ]
+            case .remoteURL(let url, _):
+                return [
+                    "type": "image",
+                    "source": [
+                        "type": "url",
+                        "url": url.absoluteString
+                    ] as [String: Any]
+                ]
+            }
         }
     }
 }
@@ -311,6 +393,10 @@ struct AnthropicStreamState {
     var inputTokens: Int = 0
     var outputTokens: Int = 0
     var toolUseIdsByIndex: [Int: String] = [:]
+    var thinkingIdsByIndex: [Int: String] = [:]
+    var thinkingTypeByIndex: [Int: String] = [:]
+    var thinkingSignatureByIndex: [Int: String] = [:]
+    var thinkingRedactedDataByIndex: [Int: String] = [:]
 
     func finalUsageEvent() -> ChatStreamEvent? {
         guard inputTokens > 0 || outputTokens > 0 else { return nil }

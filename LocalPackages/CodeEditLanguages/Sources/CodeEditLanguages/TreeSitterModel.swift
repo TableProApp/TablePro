@@ -25,6 +25,8 @@ public class TreeSitterModel {
             return javascriptQuery
         case .jsx:
             return jsxQuery
+        case .json:
+            return jsonQuery
         case .sql:
             return sqlQuery
         default:
@@ -45,6 +47,11 @@ public class TreeSitterModel {
     /// Query for `JSX` files.
     public private(set) lazy var jsxQuery: Query? = {
         return queryFor(.jsx)
+    }()
+
+    /// Query for `JSON` files.
+    public private(set) lazy var jsonQuery: Query? = {
+        return queryFor(.json)
     }()
 
     /// Query for `SQL` files.

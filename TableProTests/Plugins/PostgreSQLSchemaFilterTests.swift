@@ -58,6 +58,17 @@ struct RedshiftListSchemasTests {
     }
 }
 
+@Suite("PostgreSQLSchemaQueries escape character")
+struct PostgreSQLSchemaEscapeTests {
+    @Test("schema queries avoid the backslash escape that Redshift rejects", arguments: [
+        PostgreSQLSchemaQueries.listSchemas, PostgreSQLSchemaQueries.listSchemasRedshift
+    ])
+    func usesNonBackslashEscape(query: String) {
+        #expect(!query.contains("ESCAPE '\\'"))
+        #expect(query.contains("ESCAPE '!'"))
+    }
+}
+
 private func filterRejects(_ name: String, query: String) -> Bool {
     if query.contains("'\(name)'") { return true }
 

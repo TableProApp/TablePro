@@ -4,8 +4,8 @@
 //
 
 import Foundation
-import TableProPluginKit
 @testable import TablePro
+import TableProPluginKit
 import Testing
 
 @Suite("ForeignAppImporterRegistry")
@@ -13,12 +13,15 @@ struct ForeignAppImporterRegistryTests {
     @Test("Registry contains all importers")
     func testRegistryContainsAllImporters() {
         let importers = ForeignAppImporterRegistry.all
-        #expect(importers.count == 3)
+        #expect(importers.count == 6)
 
         let ids = importers.map(\.id)
         #expect(ids.contains("tableplus"))
         #expect(ids.contains("sequelace"))
         #expect(ids.contains("dbeaver"))
+        #expect(ids.contains("datagrip"))
+        #expect(ids.contains("beekeeperstudio"))
+        #expect(ids.contains("navicat"))
     }
 
     @Test("All importers have unique IDs")
@@ -75,5 +78,39 @@ struct ForeignAppImporterRegistryTests {
         #expect(importer.id == "dbeaver")
         #expect(importer.displayName == "DBeaver")
         #expect(importer.appBundleIdentifier == "org.jkiss.dbeaver.core.product")
+    }
+
+    @Test("Beekeeper Studio importer has correct metadata")
+    func testBeekeeperStudioImporterMetadata() {
+        let importer = BeekeeperStudioImporter()
+        #expect(importer.id == "beekeeperstudio")
+        #expect(importer.displayName == "Beekeeper Studio")
+        #expect(importer.appBundleIdentifier == "io.beekeeperstudio.desktop")
+    }
+
+    @Test("Navicat importer has correct metadata")
+    func testNavicatImporterMetadata() {
+        let importer = NavicatImporter()
+        #expect(importer.id == "navicat")
+        #expect(importer.displayName == "Navicat")
+        #expect(importer.appBundleIdentifier == "com.navicat.NavicatPremium")
+        #expect(importer.importFileTypes != nil)
+    }
+
+    @Test("Importers declare whether passwords are read from the keychain")
+    func testReadsPasswordsFromKeychainFlags() {
+        #expect(TablePlusImporter().readsPasswordsFromKeychain == true)
+        #expect(SequelAceImporter().readsPasswordsFromKeychain == true)
+        #expect(DataGripImporter().readsPasswordsFromKeychain == true)
+        #expect(DBeaverImporter().readsPasswordsFromKeychain == false)
+        #expect(BeekeeperStudioImporter().readsPasswordsFromKeychain == false)
+        #expect(NavicatImporter().readsPasswordsFromKeychain == false)
+    }
+
+    @Test("Keychain confirmation applies only to keychain-based importers when importing passwords")
+    func testRequiresKeychainConfirmation() {
+        #expect(ImportFromAppSheet.requiresKeychainConfirmation(includePasswords: true, importer: TablePlusImporter()))
+        #expect(!ImportFromAppSheet.requiresKeychainConfirmation(includePasswords: true, importer: DBeaverImporter()))
+        #expect(!ImportFromAppSheet.requiresKeychainConfirmation(includePasswords: false, importer: TablePlusImporter()))
     }
 }

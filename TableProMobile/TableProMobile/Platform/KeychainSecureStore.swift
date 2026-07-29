@@ -1,47 +1,40 @@
 import Foundation
+import os
 import Security
 import TableProDatabase
 
 final class KeychainSecureStore: SecureStore {
+    private static let logger = Logger(subsystem: "com.TablePro", category: "KeychainSecureStore")
+
     private let serviceName = "com.TablePro"
-    private let accessGroup: String
+    private let accessGroup: String?
 
     private static var cachedAccessGroup: String?
 
-    private static func resolveAccessGroup() -> String {
+    private static func resolveAccessGroup() -> String? {
         if let cached = cachedAccessGroup { return cached }
 
-        // Read team ID prefix from provisioning at runtime
-        if let seedID = Bundle.main.infoDictionary?["AppIdentifierPrefix"] as? String {
-            let group = "\(seedID)com.TablePro.shared"
-            cachedAccessGroup = group
-            return group
+        guard let prefix = Bundle.main.infoDictionary?["AppIdentifierPrefix"] as? String,
+              !prefix.isEmpty,
+              !prefix.hasPrefix("$(") else {
+            logger.warning("AppIdentifierPrefix unavailable; using the app-local keychain without a shared access group (expected for unsigned or test builds; in a signed build, widget keychain sharing is off).")
+            return nil
         }
-        // Fallback: query Keychain for the app's default access group
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrAccount as String: "__accessgroup_probe__",
-            kSecReturnAttributes as String: true,
-        ]
-        var result: AnyObject?
-        SecItemAdd(query as CFDictionary, &result)
-        SecItemDelete(query as CFDictionary)
-        if let attrs = result as? [String: Any],
-           let group = attrs[kSecAttrAccessGroup as String] as? String {
-            let prefix = group.components(separatedBy: ".").first ?? ""
-            let resolved = "\(prefix).com.TablePro.shared"
-            cachedAccessGroup = resolved
-            return resolved
-        }
-        // Use non-shared access group as last resort — credentials won't sync
-        // across devices but the app still functions
-        let fallback = "com.TablePro.shared"
-        cachedAccessGroup = fallback
-        return fallback
+
+        let group = "\(prefix)com.TablePro.shared"
+        cachedAccessGroup = group
+        return group
     }
 
     init() {
         self.accessGroup = Self.resolveAccessGroup()
+    }
+
+    private func applyingAccessGroup(_ query: [String: Any]) -> [String: Any] {
+        guard let accessGroup else { return query }
+        var query = query
+        query[kSecAttrAccessGroup as String] = accessGroup
+        return query
     }
 
     func store(_ value: String, forKey key: String) throws {
@@ -51,23 +44,21 @@ final class KeychainSecureStore: SecureStore {
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: serviceName,
             kSecAttrAccount as String: key,
-            kSecAttrAccessGroup as String: accessGroup,
             kSecAttrSynchronizable as String: kSecAttrSynchronizableAny,
             kSecUseDataProtectionKeychain as String: true,
         ]
-        SecItemDelete(deleteQuery as CFDictionary)
+        SecItemDelete(applyingAccessGroup(deleteQuery) as CFDictionary)
 
         let addQuery: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: serviceName,
             kSecAttrAccount as String: key,
-            kSecAttrAccessGroup as String: accessGroup,
             kSecValueData as String: data,
             kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock,
             kSecAttrSynchronizable as String: true,
             kSecUseDataProtectionKeychain as String: true,
         ]
-        let status = SecItemAdd(addQuery as CFDictionary, nil)
+        let status = SecItemAdd(applyingAccessGroup(addQuery) as CFDictionary, nil)
         if status != errSecSuccess {
             throw KeychainError.storeFailed(status)
         }
@@ -78,7 +69,6 @@ final class KeychainSecureStore: SecureStore {
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: serviceName,
             kSecAttrAccount as String: key,
-            kSecAttrAccessGroup as String: accessGroup,
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne,
             kSecAttrSynchronizable as String: kSecAttrSynchronizableAny,
@@ -86,7 +76,7 @@ final class KeychainSecureStore: SecureStore {
         ]
 
         var result: AnyObject?
-        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        let status = SecItemCopyMatching(applyingAccessGroup(query) as CFDictionary, &result)
 
         if status == errSecItemNotFound { return nil }
         if status != errSecSuccess {
@@ -102,11 +92,10 @@ final class KeychainSecureStore: SecureStore {
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: serviceName,
             kSecAttrAccount as String: key,
-            kSecAttrAccessGroup as String: accessGroup,
             kSecAttrSynchronizable as String: kSecAttrSynchronizableAny,
             kSecUseDataProtectionKeychain as String: true,
         ]
-        let status = SecItemDelete(query as CFDictionary)
+        let status = SecItemDelete(applyingAccessGroup(query) as CFDictionary)
         if status != errSecSuccess && status != errSecItemNotFound {
             throw KeychainError.deleteFailed(status)
         }
@@ -119,14 +108,13 @@ final class KeychainSecureStore: SecureStore {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: serviceName,
-            kSecAttrAccessGroup as String: accessGroup,
             kSecReturnAttributes as String: true,
             kSecMatchLimit as String: kSecMatchLimitAll,
             kSecAttrSynchronizable as String: kSecAttrSynchronizableAny,
             kSecUseDataProtectionKeychain as String: true,
         ]
         var result: AnyObject?
-        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
+        guard SecItemCopyMatching(applyingAccessGroup(query) as CFDictionary, &result) == errSecSuccess,
               let items = result as? [[String: Any]] else { return }
 
         for item in items {

@@ -20,6 +20,7 @@ extension AIChatViewModel {
         let toolUseOrder: [String]
         let toolUseNames: [String: String]
         let toolUseInputs: [String: String]
+        let toolUseMetadata: [String: [String: String]]
         let cancelled: Bool
     }
 
@@ -94,7 +95,8 @@ extension AIChatViewModel {
                     promptContext: promptContext,
                     resolved: resolved,
                     assistantID: assistantID,
-                    settings: settings
+                    settings: settings,
+                    includeWalkthroughDirective: self.pendingWalkthroughBeforeSQL != nil
                 )
                 self.prepTask = nil
             }
@@ -106,13 +108,18 @@ extension AIChatViewModel {
         promptContext: PromptContext?,
         resolved: AIProviderFactory.ResolvedProvider,
         assistantID: UUID,
-        settings: AISettings
+        settings: AISettings,
+        includeWalkthroughDirective: Bool = false
     ) {
         let chatMode = settings.chatMode
         streamingTask = Task.detached(priority: .userInitiated) { [weak self] in
             var currentAssistantID = assistantID
             do {
-                let systemPrompt = Self.buildSystemPrompt(promptContext, mode: chatMode)
+                let systemPrompt = Self.buildSystemPrompt(
+                    promptContext,
+                    mode: chatMode,
+                    includeWalkthroughDirective: includeWalkthroughDirective
+                )
                 guard let self else { return }
                 let preflightOK = await self.preflightCheck(
                     systemPrompt: systemPrompt,
@@ -144,7 +151,8 @@ extension AIChatViewModel {
                     let assembled = Self.assembleToolUseBlocks(
                         order: round.toolUseOrder,
                         names: round.toolUseNames,
-                        inputs: round.toolUseInputs
+                        inputs: round.toolUseInputs,
+                        metadata: round.toolUseMetadata
                     )
                     let context = await MainActor.run {
                         ChatToolContext(
@@ -188,6 +196,7 @@ extension AIChatViewModel {
                 await MainActor.run { [weak self] in
                     guard let self else { return }
                     self.finalizeStreamingMessage(id: finalAssistantID)
+                    self.resolveWalkthroughIfNeeded(id: finalAssistantID)
                     self.streamingState = .idle
                     self.streamingTask = nil
                     self.persistCurrentConversation()
@@ -196,6 +205,7 @@ extension AIChatViewModel {
                 let failedAssistantID = currentAssistantID
                 await MainActor.run { [weak self] in
                     guard let self else { return }
+                    self.pendingWalkthroughBeforeSQL = nil
                     if !Task.isCancelled {
                         Self.logger.error("Streaming failed: \(error.localizedDescription)")
                         self.errorMessage = error.localizedDescription
@@ -221,6 +231,47 @@ extension AIChatViewModel {
         messages[idx].finishStreamingTextBlock()
     }
 
+    @MainActor
+    func resolveWalkthroughIfNeeded(id: UUID) {
+        guard let beforeSQL = pendingWalkthroughBeforeSQL else { return }
+        pendingWalkthroughBeforeSQL = nil
+        guard let idx = messages.firstIndex(where: { $0.id == id }) else { return }
+
+        let textBlocks = messages[idx].blocks.filter { block in
+            if case .text = block.kind { return true }
+            return false
+        }
+        guard let openOffset = textBlocks.firstIndex(where: { block in
+            if case .text(let text) = block.kind {
+                return text.contains(WalkthroughEnvelopeParser.openFence)
+            }
+            return false
+        }) else { return }
+
+        // A provider can split the envelope across text blocks, so parse the joined tail
+        // rather than only the block that happens to carry the opening fence.
+        let tail = Array(textBlocks[openOffset...])
+        let joined = tail.compactMap { block -> String? in
+            if case .text(let text) = block.kind { return text }
+            return nil
+        }.joined()
+
+        guard case .text(let openText) = tail[0].kind else { return }
+        let prose = WalkthroughEnvelopeParser.stripFence(from: openText)
+        let consumedIDs = Set(tail.dropFirst().map(\.id))
+        messages[idx].blocks.removeAll { consumedIDs.contains($0.id) }
+
+        if prose.isEmpty {
+            messages[idx].blocks.removeAll { $0.id == tail[0].id }
+        } else {
+            tail[0].setKind(.text(prose))
+        }
+
+        guard let envelope = WalkthroughEnvelopeParser.parse(from: joined) else { return }
+        let walkthrough = SqlWalkthroughBlock(beforeSQL: beforeSQL, envelope: envelope)
+        messages[idx].appendBlock(.sqlWalkthrough(walkthrough))
+    }
+
     private func consumeStreamRound(
         resolved: AIProviderFactory.ResolvedProvider,
         systemPrompt: String?,
@@ -234,7 +285,8 @@ extension AIChatViewModel {
             options: ChatTransportOptions(
                 model: resolved.model,
                 systemPrompt: systemPrompt,
-                tools: toolSpecs
+                tools: toolSpecs,
+                reasoningEffort: resolved.config.reasoningEffort
             )
         )
 
@@ -243,6 +295,8 @@ extension AIChatViewModel {
         var toolUseOrder: [String] = []
         var toolUseNames: [String: String] = [:]
         var toolUseInputs: [String: String] = [:]
+        var toolUseMetadata: [String: [String: String]] = [:]
+        var reasoningIDMap: [String: UUID] = [:]
         let flushInterval: ContinuousClock.Duration = .milliseconds(150)
         var lastFlushTime: ContinuousClock.Instant = .now
 
@@ -253,7 +307,7 @@ extension AIChatViewModel {
                 pendingContent += token
             case .usage(let usage):
                 pendingUsage = usage
-            case .toolUseStart(let id, let name):
+            case .toolUseStart(let id, let name, let providerMetadata):
                 if !pendingContent.isEmpty {
                     await self.flushPending(content: pendingContent, usage: pendingUsage, into: assistantID)
                     pendingContent = ""
@@ -268,6 +322,9 @@ extension AIChatViewModel {
                     toolUseInputs[id] = ""
                 }
                 toolUseNames[id] = name
+                if let providerMetadata, !providerMetadata.isEmpty {
+                    toolUseMetadata[id] = providerMetadata
+                }
             case .toolUseDelta(let id, let inputJSONDelta):
                 toolUseInputs[id, default: ""] += inputJSONDelta
             case .toolUseEnd:
@@ -277,6 +334,18 @@ extension AIChatViewModel {
                     block: block, replyToken: replyToken,
                     assistantID: assistantID, mode: chatMode
                 )
+            case .reasoningStart(let providerID):
+                if !pendingContent.isEmpty {
+                    await self.flushPending(content: pendingContent, usage: pendingUsage, into: assistantID)
+                    pendingContent = ""
+                    pendingUsage = nil
+                    lastFlushTime = .now
+                }
+                await self.startReasoning(providerID: providerID, assistantID: assistantID, idMap: &reasoningIDMap)
+            case .reasoningDelta(let providerID, let text):
+                await self.appendReasoning(providerID: providerID, text: text, assistantID: assistantID, idMap: &reasoningIDMap)
+            case .reasoningEnd(let providerID, let opaque):
+                await self.finalizeReasoning(providerID: providerID, opaque: opaque, assistantID: assistantID, idMap: &reasoningIDMap)
             }
 
             if ContinuousClock.now - lastFlushTime >= flushInterval {
@@ -295,11 +364,52 @@ extension AIChatViewModel {
             toolUseOrder: toolUseOrder,
             toolUseNames: toolUseNames,
             toolUseInputs: toolUseInputs,
+            toolUseMetadata: toolUseMetadata,
             cancelled: Task.isCancelled
         )
     }
 
-    nonisolated static func buildSystemPrompt(_ promptContext: PromptContext?, mode: AIChatMode) -> String? {
+    private func startReasoning(providerID: String, assistantID: UUID, idMap: inout [String: UUID]) async {
+        let captured = idMap
+        let updated = await MainActor.run { [weak self] () -> [String: UUID] in
+            guard let self,
+                  let idx = self.messages.firstIndex(where: { $0.id == assistantID }) else { return captured }
+            var localMap = captured
+            self.messages[idx].startReasoningBlock(providerBlockID: providerID, idMap: &localMap)
+            return localMap
+        }
+        idMap = updated
+    }
+
+    private func appendReasoning(providerID: String, text: String, assistantID: UUID, idMap: inout [String: UUID]) async {
+        let captured = idMap
+        let updated = await MainActor.run { [weak self] () -> [String: UUID] in
+            guard let self,
+                  let idx = self.messages.firstIndex(where: { $0.id == assistantID }) else { return captured }
+            var localMap = captured
+            _ = self.messages[idx].appendReasoningDelta(providerBlockID: providerID, text: text, idMap: &localMap)
+            return localMap
+        }
+        idMap = updated
+    }
+
+    private func finalizeReasoning(providerID: String, opaque: ReasoningOpaque?, assistantID: UUID, idMap: inout [String: UUID]) async {
+        let captured = idMap
+        let updated = await MainActor.run { [weak self] () -> [String: UUID] in
+            guard let self,
+                  let idx = self.messages.firstIndex(where: { $0.id == assistantID }) else { return captured }
+            var localMap = captured
+            self.messages[idx].finalizeReasoningBlock(providerBlockID: providerID, opaque: opaque, idMap: &localMap)
+            return localMap
+        }
+        idMap = updated
+    }
+
+    nonisolated static func buildSystemPrompt(
+        _ promptContext: PromptContext?,
+        mode: AIChatMode,
+        includeWalkthroughDirective: Bool = false
+    ) -> String? {
         let schemaPrompt = promptContext.map {
             AISchemaContext.buildSystemPrompt(
                 databaseType: $0.databaseType,
@@ -317,8 +427,16 @@ extension AIChatViewModel {
             )
         }
         let modeNote = mode.systemPromptNote
-        guard let schemaPrompt, !schemaPrompt.isEmpty else { return modeNote }
-        return "\(schemaPrompt)\n\n\(modeNote)"
+        let base: String?
+        if let schemaPrompt, !schemaPrompt.isEmpty {
+            base = "\(schemaPrompt)\n\n\(modeNote)"
+        } else {
+            base = modeNote
+        }
+        guard includeWalkthroughDirective else { return base }
+        let directive = AIPromptTemplates.walkthroughSystemDirective
+        guard let base, !base.isEmpty else { return directive }
+        return "\(base)\n\n\(directive)"
     }
 
     private func failTooManyRoundtrips(assistantID: UUID) async {
@@ -415,7 +533,8 @@ extension AIChatViewModel {
     nonisolated static func assembleToolUseBlocks(
         order: [String],
         names: [String: String],
-        inputs: [String: String]
+        inputs: [String: String],
+        metadata: [String: [String: String]] = [:]
     ) -> [ToolUseBlock] {
         order.compactMap { id -> ToolUseBlock? in
             guard let name = names[id] else { return nil }
@@ -429,7 +548,12 @@ extension AIChatViewModel {
             } else {
                 inputValue = .object([:])
             }
-            return ToolUseBlock(id: id, name: name, input: inputValue)
+            return ToolUseBlock(
+                id: id,
+                name: name,
+                input: inputValue,
+                providerMetadata: metadata[id]
+            )
         }
     }
 

@@ -59,13 +59,13 @@ public enum MongoShellParseError: Error, LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .invalidSyntax(let msg):
-            return String(localized: "Invalid MongoDB syntax: \(msg)")
+            return String(format: String(localized: "Invalid MongoDB syntax: %@"), msg)
         case .unsupportedMethod(let method):
-            return String(localized: "Unsupported MongoDB method: \(method)")
+            return String(format: String(localized: "Unsupported MongoDB method: %@"), method)
         case .invalidJson(let msg):
-            return String(localized: "Invalid JSON: \(msg)")
+            return String(format: String(localized: "Invalid JSON: %@"), msg)
         case .missingArgument(let msg):
-            return String(localized: "Missing argument: \(msg)")
+            return String(format: String(localized: "Missing argument: %@"), msg)
         }
     }
 }
@@ -123,65 +123,19 @@ public struct MongoShellParser {
     // MARK: - Private Parsing
 
     /// Parse db["collection"].method(args) bracket notation.
-    /// Supports both double and single quotes around the collection name.
+    /// Supports double quotes, single quotes and backticks around the collection name.
     private static func parseBracketExpression(_ input: String) throws -> MongoOperation {
-        // input starts with db[
-        let afterBracket = String(input.dropFirst(3)) // drop "db["
+        let nameStart = input.index(input.startIndex, offsetBy: 3)
+        let literal = try readStringLiteral(in: input, startingAt: nameStart)
 
-        // Determine quote character (" or ')
-        guard let quoteChar = afterBracket.first, quoteChar == "\"" || quoteChar == "'" else {
-            throw MongoShellParseError.invalidSyntax("Expected quoted collection name in db[...]")
+        guard literal.endIndex < input.endIndex, input[literal.endIndex] == "]" else {
+            throw MongoShellParseError.invalidSyntax(
+                String(localized: "Expected ']' after the collection name")
+            )
         }
 
-        // Find closing quote (handle escaped quotes)
-        var collectionName = ""
-        var i = afterBracket.index(after: afterBracket.startIndex)
-        var escapeNext = false
-        while i < afterBracket.endIndex {
-            let ch = afterBracket[i]
-            if escapeNext {
-                collectionName.append(ch)
-                escapeNext = false
-                i = afterBracket.index(after: i)
-                continue
-            }
-            if ch == "\\" {
-                escapeNext = true
-                i = afterBracket.index(after: i)
-                continue
-            }
-            if ch == quoteChar {
-                break
-            }
-            collectionName.append(ch)
-            i = afterBracket.index(after: i)
-        }
-
-        guard i < afterBracket.endIndex else {
-            throw MongoShellParseError.invalidSyntax("Unterminated string in db[...]")
-        }
-
-        // Move past closing quote and expect "]"
-        i = afterBracket.index(after: i)
-        guard i < afterBracket.endIndex, afterBracket[i] == "]" else {
-            throw MongoShellParseError.invalidSyntax("Expected ']' after collection name in db[...]")
-        }
-        i = afterBracket.index(after: i)
-
-        let remaining = String(afterBracket[i...]).trimmingCharacters(in: .whitespacesAndNewlines)
-
-        // No method chain — treat as find all
-        if remaining.isEmpty {
-            return .find(collection: collectionName, filter: "{}", options: MongoFindOptions())
-        }
-
-        // Expect ".method(args)" after db["collection"]
-        guard remaining.hasPrefix(".") else {
-            throw MongoShellParseError.invalidSyntax("Expected '.method()' after db[\"...\"]")
-        }
-
-        let methodChain = String(remaining.dropFirst())
-        return try parseMethodChain(collection: collectionName, chain: methodChain)
+        let chain = String(input[input.index(after: literal.endIndex)...])
+        return try parseAccessorChain(collection: literal.value, chain: chain)
     }
 
     private static func parseDbExpression(_ input: String) throws -> MongoOperation {
@@ -202,6 +156,9 @@ public struct MongoShellParser {
         // This correctly handles dotted collection names like "system.version".
         let beforeParen = afterDb[afterDb.startIndex..<firstParen]
         guard let lastDot = beforeParen.lastIndex(of: ".") else {
+            if beforeParen.trimmingCharacters(in: .whitespacesAndNewlines) == "getCollection" {
+                return try parseGetCollectionExpression(afterDb, openParen: firstParen)
+            }
             // No dot before paren — db-level method call like db.getCollectionNames()
             return try parseDbLevelMethod(afterDb)
         }
@@ -210,6 +167,51 @@ public struct MongoShellParser {
         let remainder = String(afterDb[afterDb.index(after: lastDot)...])
 
         return try parseMethodChain(collection: collection, chain: remainder)
+    }
+
+    private static func parseGetCollectionExpression(
+        _ input: String,
+        openParen: String.Index
+    ) throws -> MongoOperation {
+        let argAndRest = try extractParenthesizedArgAndRemainder(from: input, startingAt: openParen)
+        let argument = argAndRest.arg
+
+        guard !argument.isEmpty else {
+            throw MongoShellParseError.missingArgument(
+                String(localized: "getCollection requires a collection name")
+            )
+        }
+
+        let literal = try readStringLiteral(in: argument, startingAt: argument.startIndex)
+        let trailing = argument[literal.endIndex...].trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard trailing.isEmpty else {
+            throw MongoShellParseError.invalidSyntax(
+                String(localized: "getCollection takes a single quoted collection name")
+            )
+        }
+        guard !literal.value.isEmpty else {
+            throw MongoShellParseError.missingArgument(
+                String(localized: "getCollection requires a collection name")
+            )
+        }
+
+        return try parseAccessorChain(collection: literal.value, chain: argAndRest.remainder)
+    }
+
+    private static func parseAccessorChain(collection: String, chain: String) throws -> MongoOperation {
+        let trimmed = chain.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard !trimmed.isEmpty else {
+            return .find(collection: collection, filter: "{}", options: MongoFindOptions())
+        }
+        guard trimmed.hasPrefix(".") else {
+            throw MongoShellParseError.invalidSyntax(
+                String(localized: "Expected '.method()' after the collection reference")
+            )
+        }
+
+        return try parseMethodChain(collection: collection, chain: String(trimmed.dropFirst()))
     }
 
     /// Parse a db-level method call like db.getCollectionNames(), db.stats(), etc.
@@ -381,6 +383,53 @@ public struct MongoShellParser {
     }
 
     // MARK: - Argument Extraction Helpers
+
+    private struct StringLiteral {
+        let value: String
+        let endIndex: String.Index
+    }
+
+    /// Read a quoted JavaScript string literal, returning its unescaped value and the index after
+    /// the closing quote. Accepts double quotes, single quotes and backticks.
+    private static func readStringLiteral(in text: String, startingAt start: String.Index) throws -> StringLiteral {
+        guard start < text.endIndex, isStringDelimiter(text[start]) else {
+            throw MongoShellParseError.invalidSyntax(
+                String(localized: "Expected a quoted collection name")
+            )
+        }
+
+        let quote = text[start]
+        var value = ""
+        var index = text.index(after: start)
+        var escapeNext = false
+
+        while index < text.endIndex {
+            let character = text[index]
+            index = text.index(after: index)
+
+            if escapeNext {
+                value.append(character)
+                escapeNext = false
+                continue
+            }
+            if character == "\\" {
+                escapeNext = true
+                continue
+            }
+            if character == quote {
+                return StringLiteral(value: value, endIndex: index)
+            }
+            value.append(character)
+        }
+
+        throw MongoShellParseError.invalidSyntax(
+            String(localized: "Unterminated string in the collection reference")
+        )
+    }
+
+    private static func isStringDelimiter(_ character: Character) -> Bool {
+        character == "\"" || character == "'" || character == "`"
+    }
 
     /// Extract content inside balanced parentheses starting at the given index
     private static func extractParenthesizedArg(from str: String, startingAt openParen: String.Index) throws -> String {

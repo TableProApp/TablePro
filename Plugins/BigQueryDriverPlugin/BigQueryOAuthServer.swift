@@ -35,7 +35,6 @@ internal final class BigQueryOAuthServer: @unchecked Sendable {
     func waitForAuthCode() async throws -> String {
         try await withCheckedThrowingContinuation { cont in
             lock.withLock { continuation = cont }
-            // Start 2-minute timeout
             let task = Task {
                 try? await Task.sleep(nanoseconds: 120_000_000_000)
                 self.lock.withLock {

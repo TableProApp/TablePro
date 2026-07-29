@@ -8,6 +8,12 @@ import Combine
 
 @MainActor
 class DataGridRowView: NSTableRowView {
+    enum CopyContextTarget {
+        case cell(Int)
+        case row
+        case unresolved
+    }
+
     weak var coordinator: TableViewCoordinator?
     var rowIndex: Int = 0
 
@@ -85,9 +91,33 @@ class DataGridRowView: NSTableRowView {
 
     override func drawBackground(in dirtyRect: NSRect) {
         super.drawBackground(in: dirtyRect)
-        guard let rowTint, !isSelected else { return }
-        rowTint.setFill()
-        bounds.fill()
+        if let rowTint, !isSelected {
+            rowTint.setFill()
+            bounds.fill()
+        }
+        drawCellSelectionFill(in: dirtyRect)
+    }
+
+    private func drawCellSelectionFill(in dirtyRect: NSRect) {
+        guard let coordinator,
+              let tableView = coordinator.tableView else { return }
+        let selection = coordinator.selectionController.selection
+        guard !selection.isEmpty else { return }
+        let columns = selection.columns(in: rowIndex)
+        guard !columns.isEmpty else { return }
+
+        let fillColor: NSColor = isSelected
+            ? NSColor.unemphasizedSelectedContentBackgroundColor
+            : NSColor.selectedContentBackgroundColor.withAlphaComponent(0.28)
+        fillColor.setFill()
+
+        for dataColumn in columns {
+            guard let tableColumnIndex = coordinator.tableColumnIndex(for: dataColumn) else { continue }
+            let columnRect = tableView.rect(ofColumn: tableColumnIndex)
+            let localRect = NSRect(x: columnRect.minX, y: 0, width: columnRect.width, height: bounds.height)
+            guard localRect.intersects(dirtyRect) else { continue }
+            localRect.fill()
+        }
     }
 
     private func colorsEqual(_ lhs: NSColor?, _ rhs: NSColor?) -> Bool {
@@ -98,6 +128,43 @@ class DataGridRowView: NSTableRowView {
         }
     }
 
+    private func addForeignKeyMenuItems(to menu: NSMenu, dataColumnIndex: Int, tableRows: TableRows) {
+        guard let coordinator, dataColumnIndex >= 0, dataColumnIndex < tableRows.columns.count else { return }
+        let columnName = tableRows.columns[dataColumnIndex]
+        guard let fkInfo = tableRows.columnForeignKeys[columnName],
+              let cellValue = coordinator.cellValue(at: rowIndex, column: dataColumnIndex),
+              !cellValue.isEmpty else { return }
+
+        menu.addItem(NSMenuItem.separator())
+
+        let previewItem = NSMenuItem(
+            title: String(localized: "Preview Referenced Row"),
+            action: #selector(previewForeignKey(_:)),
+            keyEquivalent: ""
+        )
+        previewItem.representedObject = dataColumnIndex
+        previewItem.target = self
+        menu.addItem(previewItem)
+
+        let navItem = NSMenuItem(
+            title: String(format: String(localized: "Open %@"), fkInfo.referencedTable),
+            action: #selector(navigateToForeignKey(_:)),
+            keyEquivalent: ""
+        )
+        navItem.representedObject = dataColumnIndex
+        navItem.target = self
+        menu.addItem(navItem)
+
+        let navInNewTabItem = NSMenuItem(
+            title: String(format: String(localized: "Open %@ in New Tab"), fkInfo.referencedTable),
+            action: #selector(navigateToForeignKeyInNewTab(_:)),
+            keyEquivalent: ""
+        )
+        navInNewTabItem.representedObject = dataColumnIndex
+        navInNewTabItem.target = self
+        menu.addItem(navInNewTabItem)
+    }
+
     override func menu(for event: NSEvent) -> NSMenu? {
         guard let coordinator = coordinator,
               let tableView = coordinator.tableView else { return nil }
@@ -106,7 +173,7 @@ class DataGridRowView: NSTableRowView {
         let locationInTable = tableView.convert(locationInRow, from: self)
         let clickedColumn = tableView.column(at: locationInTable)
 
-        let dataColumnIndex: Int = clickedColumn > 0
+        let dataColumnIndex: Int = clickedColumn >= 0
             ? DataGridView.dataColumnIndex(for: clickedColumn, in: tableView, schema: coordinator.identitySchema) ?? -1
             : -1
 
@@ -119,21 +186,29 @@ class DataGridRowView: NSTableRowView {
             return menu
         }
 
+        let copyTarget: CopyContextTarget = if dataColumnIndex >= 0 {
+            .cell(dataColumnIndex)
+        } else if clickedColumn >= 0 {
+            .row
+        } else {
+            .unresolved
+        }
+
         let copyItem = NSMenuItem(
-            title: String(localized: "Copy"), action: #selector(copySelectedOrCurrentRow), keyEquivalent: "")
+            title: String(localized: "Copy"), action: #selector(copyFromContextMenu(_:)), keyEquivalent: "")
+        copyItem.representedObject = copyTarget
         copyItem.target = self
         menu.addItem(copyItem)
 
         let copyAsMenu = NSMenu()
 
-        if dataColumnIndex >= 0 {
-            let copyCellItem = NSMenuItem(
-                title: String(localized: "Cell Value"), action: #selector(copyCellValue(_:)),
-                keyEquivalent: "")
-            copyCellItem.representedObject = dataColumnIndex
-            copyCellItem.target = self
-            copyAsMenu.addItem(copyCellItem)
-        }
+        let copyRowsItem = NSMenuItem(
+            title: String(localized: "Rows"),
+            action: #selector(copySelectedOrCurrentRow),
+            keyEquivalent: ""
+        )
+        copyRowsItem.target = self
+        copyAsMenu.addItem(copyRowsItem)
 
         let copyWithHeadersItem = NSMenuItem(
             title: String(localized: "With Headers"),
@@ -148,6 +223,37 @@ class DataGridRowView: NSTableRowView {
             keyEquivalent: "")
         jsonItem.target = self
         copyAsMenu.addItem(jsonItem)
+
+        let csvItem = NSMenuItem(
+            title: String(localized: "CSV"),
+            action: #selector(copyAsCsv),
+            keyEquivalent: "")
+        csvItem.target = self
+        copyAsMenu.addItem(csvItem)
+
+        let csvHeadersItem = NSMenuItem(
+            title: String(localized: "CSV with Headers"),
+            action: #selector(copyAsCsvWithHeaders),
+            keyEquivalent: "")
+        csvHeadersItem.target = self
+        copyAsMenu.addItem(csvHeadersItem)
+
+        let markdownItem = NSMenuItem(
+            title: String(localized: "Markdown"),
+            action: #selector(copyAsMarkdown),
+            keyEquivalent: "")
+        markdownItem.target = self
+        copyAsMenu.addItem(markdownItem)
+
+        if dataColumnIndex >= 0 {
+            let inClauseItem = NSMenuItem(
+                title: String(localized: "IN Clause"),
+                action: #selector(copyAsInClause(_:)),
+                keyEquivalent: "")
+            inClauseItem.representedObject = dataColumnIndex
+            inClauseItem.target = self
+            copyAsMenu.addItem(inClauseItem)
+        }
 
         if let dbType = coordinator.databaseType,
            dbType != .mongodb && dbType != .redis,
@@ -181,32 +287,7 @@ class DataGridRowView: NSTableRowView {
         }
 
         let tableRows = coordinator.tableRowsProvider()
-        if dataColumnIndex >= 0, dataColumnIndex < tableRows.columns.count {
-            let columnName = tableRows.columns[dataColumnIndex]
-            if let fkInfo = tableRows.columnForeignKeys[columnName],
-               let cellValue = coordinator.cellValue(at: rowIndex, column: dataColumnIndex),
-               !cellValue.isEmpty {
-                menu.addItem(NSMenuItem.separator())
-
-                let previewItem = NSMenuItem(
-                    title: String(localized: "Preview Referenced Row"),
-                    action: #selector(previewForeignKey(_:)),
-                    keyEquivalent: ""
-                )
-                previewItem.representedObject = dataColumnIndex
-                previewItem.target = self
-                menu.addItem(previewItem)
-
-                let navItem = NSMenuItem(
-                    title: String(format: String(localized: "Open %@"), fkInfo.referencedTable),
-                    action: #selector(navigateToForeignKey(_:)),
-                    keyEquivalent: ""
-                )
-                navItem.representedObject = dataColumnIndex
-                navItem.target = self
-                menu.addItem(navItem)
-            }
-        }
+        addForeignKeyMenuItems(to: menu, dataColumnIndex: dataColumnIndex, tableRows: tableRows)
 
         if coordinator.isEditable {
             menu.addItem(NSMenuItem.separator())
@@ -228,7 +309,25 @@ class DataGridRowView: NSTableRowView {
         exportItem.target = self
         menu.addItem(exportItem)
 
+        if coordinator.delegate?.dataGridCanClearResults() == true {
+            let clearResultsItem = NSMenuItem(
+                title: String(localized: "Clear Results"),
+                action: #selector(clearResults),
+                keyEquivalent: ""
+            )
+            clearResultsItem.target = self
+            menu.addItem(clearResultsItem)
+        }
+
         if coordinator.isEditable {
+            let rowStructureItems = coordinator.delegate?.dataGridRowStructureMenuItems(forRow: rowIndex) ?? []
+            if !rowStructureItems.isEmpty {
+                menu.addItem(NSMenuItem.separator())
+                for item in rowStructureItems {
+                    menu.addItem(item)
+                }
+            }
+
             let duplicateItem = NSMenuItem(
                 title: String(localized: "Duplicate"), action: #selector(duplicateRow), keyEquivalent: "")
             duplicateItem.target = self
@@ -295,12 +394,8 @@ class DataGridRowView: NSTableRowView {
     }
 
     @objc private func deleteRow() {
-        let indices: Set<Int> = if let selected = coordinator?.selectedRowIndices, !selected.isEmpty {
-            selected
-        } else {
-            [rowIndex]
-        }
-        coordinator?.delegate?.dataGridDeleteRows(indices)
+        guard let coordinator else { return }
+        coordinator.delegate?.dataGridDeleteRows(coordinator.currentRowSelection(fallbackRow: rowIndex))
     }
 
     @objc private func duplicateRow() {
@@ -312,28 +407,48 @@ class DataGridRowView: NSTableRowView {
     }
 
     @objc private func copySelectedOrCurrentRowWithHeaders() {
-        guard let coordinator = coordinator else { return }
-        let indices: Set<Int> = !coordinator.selectedRowIndices.isEmpty
-            ? coordinator.selectedRowIndices
-            : [rowIndex]
-        coordinator.copyRowsWithHeaders(at: indices)
+        guard let coordinator else { return }
+        coordinator.copyRowsWithHeaders(at: coordinator.currentRowSelection(fallbackRow: rowIndex))
     }
 
     @objc private func copySelectedOrCurrentRow() {
-        guard let coordinator = coordinator else { return }
-        let indices: Set<Int> = !coordinator.selectedRowIndices.isEmpty
-            ? coordinator.selectedRowIndices
-            : [rowIndex]
-        coordinator.delegate?.dataGridCopyRows(indices)
+        guard let coordinator else { return }
+        coordinator.delegate?.dataGridCopyRows(coordinator.currentRowSelection(fallbackRow: rowIndex))
+    }
+
+    @objc private func copyFromContextMenu(_ sender: NSMenuItem) {
+        guard let coordinator else { return }
+        if !coordinator.selectionController.isEmpty {
+            coordinator.copyGridSelection(coordinator.selectionController.selection)
+            return
+        }
+        switch sender.representedObject as? CopyContextTarget {
+        case .cell(let columnIndex):
+            coordinator.copyCellValue(at: rowIndex, columnIndex: columnIndex)
+        case .unresolved:
+            if let columnIndex = focusedDataColumnIndex(in: coordinator) {
+                coordinator.copyCellValue(at: rowIndex, columnIndex: columnIndex)
+            } else {
+                copySelectedOrCurrentRow()
+            }
+        case .row, .none:
+            copySelectedOrCurrentRow()
+        }
     }
 
     @objc private func pasteRows() {
         coordinator?.delegate?.dataGridPasteRows()
     }
 
-    @objc private func copyCellValue(_ sender: NSMenuItem) {
-        guard let columnIndex = sender.representedObject as? Int else { return }
-        coordinator?.copyCellValue(at: rowIndex, columnIndex: columnIndex)
+    private func focusedDataColumnIndex(in coordinator: TableViewCoordinator) -> Int? {
+        guard let tableView = coordinator.tableView as? KeyHandlingTableView,
+              tableView.focusedRow == rowIndex,
+              DataGridView.isDataTableColumn(tableView.focusedColumn) else { return nil }
+        return DataGridView.dataColumnIndex(
+            for: tableView.focusedColumn,
+            in: tableView,
+            schema: coordinator.identitySchema
+        )
     }
 
     @objc private func setNullValue(_ sender: NSMenuItem) {
@@ -371,46 +486,68 @@ class DataGridRowView: NSTableRowView {
 
     @objc private func copyAsInsert() {
         guard let coordinator else { return }
-        let indices: Set<Int> = !coordinator.selectedRowIndices.isEmpty
-            ? coordinator.selectedRowIndices
-            : [rowIndex]
-        coordinator.copyRowsAsInsert(at: indices)
+        coordinator.copyRowsAsInsert(at: coordinator.currentRowSelection(fallbackRow: rowIndex))
     }
 
     @objc private func copyAsUpdate() {
         guard let coordinator else { return }
-        let indices: Set<Int> = !coordinator.selectedRowIndices.isEmpty
-            ? coordinator.selectedRowIndices
-            : [rowIndex]
-        coordinator.copyRowsAsUpdate(at: indices)
+        coordinator.copyRowsAsUpdate(at: coordinator.currentRowSelection(fallbackRow: rowIndex))
     }
 
     @objc private func exportResults() {
         AppCommands.shared.exportQueryResults.send(())
     }
 
+    @objc private func clearResults() {
+        coordinator?.delegate?.dataGridClearResults()
+    }
+
     @objc private func copyAsJson() {
         guard let coordinator else { return }
-        let indices: Set<Int> = !coordinator.selectedRowIndices.isEmpty
-            ? coordinator.selectedRowIndices
-            : [rowIndex]
-        coordinator.copyRowsAsJson(at: indices)
+        coordinator.copyRowsAsJson(at: coordinator.currentRowSelection(fallbackRow: rowIndex))
+    }
+
+    @objc private func copyAsCsv() {
+        guard let coordinator else { return }
+        coordinator.copyRowsAsCsv(at: coordinator.currentRowSelection(fallbackRow: rowIndex), includeHeaders: false)
+    }
+
+    @objc private func copyAsCsvWithHeaders() {
+        guard let coordinator else { return }
+        coordinator.copyRowsAsCsv(at: coordinator.currentRowSelection(fallbackRow: rowIndex), includeHeaders: true)
+    }
+
+    @objc private func copyAsMarkdown() {
+        guard let coordinator else { return }
+        coordinator.copyRowsAsMarkdown(at: coordinator.currentRowSelection(fallbackRow: rowIndex))
+    }
+
+    @objc private func copyAsInClause(_ sender: NSMenuItem) {
+        guard let coordinator, let columnIndex = sender.representedObject as? Int else { return }
+        coordinator.copyRowsAsInClause(
+            at: coordinator.currentRowSelection(fallbackRow: rowIndex),
+            columnIndex: columnIndex
+        )
     }
 
     @objc private func previewForeignKey(_ sender: NSMenuItem) {
         guard let columnIndex = sender.representedObject as? Int,
               let coordinator, let tableView = coordinator.tableView,
-              let column = DataGridView.tableColumnIndex(
-                for: columnIndex,
-                in: tableView,
-                schema: coordinator.identitySchema
-              ) else { return }
+              let column = coordinator.tableColumnIndex(for: columnIndex) else { return }
         coordinator.showForeignKeyPreview(
             tableView: tableView, row: rowIndex, column: column, columnIndex: columnIndex
         )
     }
 
     @objc private func navigateToForeignKey(_ sender: NSMenuItem) {
+        performForeignKeyNavigation(from: sender, openInNewTab: false)
+    }
+
+    @objc private func navigateToForeignKeyInNewTab(_ sender: NSMenuItem) {
+        performForeignKeyNavigation(from: sender, openInNewTab: true)
+    }
+
+    private func performForeignKeyNavigation(from sender: NSMenuItem, openInNewTab: Bool) {
         guard let columnIndex = sender.representedObject as? Int,
               let coordinator else { return }
         let tableRows = coordinator.tableRowsProvider()
@@ -418,7 +555,7 @@ class DataGridRowView: NSTableRowView {
         let columnName = tableRows.columns[columnIndex]
         guard let fkInfo = tableRows.columnForeignKeys[columnName],
               let value = coordinator.cellValue(at: rowIndex, column: columnIndex) else { return }
-        coordinator.delegate?.dataGridNavigateFK(value: value, fkInfo: fkInfo)
+        coordinator.delegate?.dataGridNavigateFK(value: value, fkInfo: fkInfo, openInNewTab: openInNewTab)
     }
 }
 

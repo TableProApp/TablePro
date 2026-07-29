@@ -15,6 +15,8 @@ struct DatabaseTypeTests {
         #expect(DatabaseType.mssql.rawValue == "SQL Server")
         #expect(DatabaseType.cloudflareD1.rawValue == "Cloudflare D1")
         #expect(DatabaseType.bigquery.rawValue == "BigQuery")
+        #expect(DatabaseType.snowflake.rawValue == "Snowflake")
+        #expect(DatabaseType.beancount.rawValue == "Beancount")
     }
 
     @Test("pluginTypeId maps multi-type databases")
@@ -51,10 +53,15 @@ struct DatabaseTypeTests {
 
     @Test("allKnownTypes contains all expected types")
     func allKnownTypesComplete() {
-        #expect(DatabaseType.allKnownTypes.count == 17)
+        #expect(DatabaseType.allKnownTypes.count == 22)
         #expect(DatabaseType.allKnownTypes.contains(.mysql))
         #expect(DatabaseType.allKnownTypes.contains(.bigquery))
+        #expect(DatabaseType.allKnownTypes.contains(.snowflake))
         #expect(DatabaseType.allKnownTypes.contains(.libsql))
+        #expect(DatabaseType.allKnownTypes.contains(.beancount))
+        #expect(DatabaseType.allKnownTypes.contains(.surrealdb))
+        #expect(DatabaseType.allKnownTypes.contains(.teradata))
+        #expect(DatabaseType.allKnownTypes.contains(.trino))
     }
 
     @Test("Hashable conformance")
@@ -63,5 +70,31 @@ struct DatabaseTypeTests {
         #expect(set.count == 2)
         set.insert(DatabaseType(rawValue: "MySQL"))
         #expect(set.count == 2)
+    }
+
+    @Test("Desktop-recognized constants have correct raw values")
+    func desktopConstants() {
+        #expect(DatabaseType.cockroachdb.rawValue == "CockroachDB")
+        #expect(DatabaseType.scylladb.rawValue == "ScyllaDB")
+        #expect(DatabaseType.turso.rawValue == "Turso")
+    }
+
+    @Test("Desktop-recognized constants stay out of the built-in allKnownTypes list")
+    func desktopConstantsNotInAllKnownTypes() {
+        #expect(!DatabaseType.allKnownTypes.contains(.cockroachdb))
+        #expect(!DatabaseType.allKnownTypes.contains(.scylladb))
+        #expect(!DatabaseType.allKnownTypes.contains(.turso))
+    }
+
+    @Test("Decodes a persisted connection type string")
+    func decodesPersistedTypeString() throws {
+        let decoded = try JSONDecoder().decode(DatabaseType.self, from: Data("\"MySQL\"".utf8))
+        #expect(decoded == .mysql)
+    }
+
+    @Test("Decodes an unknown persisted type string without loss")
+    func decodesUnknownPersistedTypeString() throws {
+        let decoded = try JSONDecoder().decode(DatabaseType.self, from: Data("\"FutureDB\"".utf8))
+        #expect(decoded.rawValue == "FutureDB")
     }
 }

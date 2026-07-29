@@ -15,6 +15,7 @@ public struct PluginCreateDatabaseFormSpec: Sendable {
         }
     }
 
+    @frozen
     public enum FieldKind: Sendable {
         case picker(options: [Option], defaultValue: String?)
         case searchable(options: [Option], defaultValue: String?)
@@ -52,12 +53,34 @@ public struct PluginCreateDatabaseFormSpec: Sendable {
         }
     }
 
+    public struct TextInput: Sendable {
+        public let id: String
+        public let label: String
+        public let placeholder: String?
+        public let isRequired: Bool
+
+        public init(id: String, label: String, placeholder: String? = nil, isRequired: Bool = false) {
+            self.id = id
+            self.label = label
+            self.placeholder = placeholder
+            self.isRequired = isRequired
+        }
+    }
+
     public let fields: [Field]
     public let footnote: String?
+    public let textInputs: [TextInput]
 
     public init(fields: [Field], footnote: String? = nil) {
         self.fields = fields
         self.footnote = footnote
+        self.textInputs = []
+    }
+
+    public init(fields: [Field], textInputs: [TextInput], footnote: String? = nil) {
+        self.fields = fields
+        self.footnote = footnote
+        self.textInputs = textInputs
     }
 }
 

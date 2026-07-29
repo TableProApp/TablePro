@@ -11,11 +11,9 @@ struct ColumnVisibilityPopover: View {
     let onToggleColumn: (String) -> Void
     let onShowAll: () -> Void
     let onHideAll: ([String]) -> Void
+    let onReset: () -> Void
 
     @State private var searchText = ""
-
-    private var hasHiddenColumns: Bool { !hiddenColumns.isEmpty }
-    private var hiddenCount: Int { hiddenColumns.count }
 
     private var filteredColumns: [String] {
         if searchText.isEmpty {
@@ -36,16 +34,32 @@ struct ColumnVisibilityPopover: View {
             }
 
             columnList
+
+            Divider()
+
+            footer
         }
         .frame(width: 260)
     }
 
-    private var headerTitle: String {
-        let visible = columns.count - hiddenCount
-        if hasHiddenColumns {
-            return "\(visible) of \(columns.count)"
+    private var footer: some View {
+        HStack {
+            Spacer()
+            Button("Reset Columns") { onReset() }
+                .buttonStyle(.link)
+                .controlSize(.small)
+                .help(String(localized: "Reset column widths, order, and visibility to defaults"))
         }
-        return String(localized: "Columns")
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+    }
+
+    private var headerTitle: String {
+        guard !hiddenColumns.isEmpty else {
+            return String(localized: "Columns")
+        }
+        let visible = columns.count - hiddenColumns.count
+        return String(format: String(localized: "%d of %d"), visible, columns.count)
     }
 
     private var header: some View {
@@ -59,12 +73,12 @@ struct ColumnVisibilityPopover: View {
             Button("Show All") { onShowAll() }
                 .buttonStyle(.link)
                 .controlSize(.small)
-                .disabled(!hasHiddenColumns)
+                .disabled(hiddenColumns.isEmpty)
 
             Button("Hide All") { onHideAll(columns) }
                 .buttonStyle(.link)
                 .controlSize(.small)
-                .disabled(hiddenCount == columns.count)
+                .disabled(hiddenColumns.count == columns.count)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)

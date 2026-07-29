@@ -24,7 +24,7 @@ struct SyncSection: View {
                         syncCoordinator.disableSync()
                     }
                 }
-                .help("Syncs connections, settings, and SSH profiles across your Macs via iCloud.")
+                .help("Syncs connections, table favorites, settings, and SSH profiles across your Macs via iCloud.")
                 .disabled(!isProAvailable)
         } header: {
             HStack(spacing: 6) {
@@ -49,7 +49,7 @@ struct SyncSection: View {
                 LabeledContent(String(localized: "Account:")) {
                     HStack(spacing: 4) {
                         Image(systemName: "checkmark.circle.fill")
-                            .foregroundStyle(Color(nsColor: .systemGreen))
+                            .foregroundStyle(.green)
                             .font(.caption)
                         Text(String(localized: "iCloud Connected"))
                     }
@@ -62,7 +62,7 @@ struct SyncSection: View {
 
                 Text("Sign in to iCloud in System Settings to enable sync.")
                     .font(.caption)
-                    .foregroundStyle(Color(nsColor: .systemOrange))
+                    .foregroundStyle(.orange)
             }
 
             if let lastSync = syncCoordinator.lastSyncDate {
@@ -85,7 +85,7 @@ struct SyncSection: View {
             if case .error(let error) = syncCoordinator.syncStatus {
                 Text(error.localizedDescription)
                     .font(.caption)
-                    .foregroundStyle(Color(nsColor: .systemRed))
+                    .foregroundStyle(.red)
             }
         }
     }
@@ -120,6 +120,8 @@ struct SyncSection: View {
             Toggle("Groups & Tags:", isOn: $settingsManager.sync.syncGroupsAndTags)
             Toggle("SSH Profiles:", isOn: $settingsManager.sync.syncSSHProfiles)
             Toggle("Settings:", isOn: $settingsManager.sync.syncSettings)
+            Toggle("Table Favorites:", isOn: $settingsManager.sync.syncTableFavorites)
+            Toggle("Saved Queries:", isOn: $settingsManager.sync.syncSQLFavorites)
         }
     }
 

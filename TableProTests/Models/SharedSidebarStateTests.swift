@@ -3,6 +3,8 @@
 //  TableProTests
 //
 //  Tests for SharedSidebarState — per-connection shared sidebar state registry.
+//  Window-scoped state (table selection) lives in WindowSidebarState; see
+//  WindowSidebarStateTests.
 //
 
 import Foundation
@@ -54,100 +56,68 @@ struct SharedSidebarStateTests {
         SharedSidebarState.removeConnection(UUID())
     }
 
-    // MARK: - Default State
+    // MARK: - Sidebar Tab Persistence
 
-    @Test("New instance has empty selectedTables")
+    @Test("selectedSidebarTab persists across registry lookups for same connection")
     @MainActor
-    func defaultSelectedTablesEmpty() {
-        let state = SharedSidebarState()
-        #expect(state.selectedTables.isEmpty)
+    func selectedSidebarTabPersists() {
+        let id = UUID()
+        let a = SharedSidebarState.forConnection(id)
+        a.selectedSidebarTab = .favorites
+        let b = SharedSidebarState.forConnection(id)
+        #expect(b.selectedSidebarTab == .favorites)
+        SharedSidebarState.removeConnection(id)
     }
 
-    @Test("New instance has empty searchText")
-    @MainActor
-    func defaultSearchTextEmpty() {
-        let state = SharedSidebarState()
-        #expect(state.searchText.isEmpty)
-    }
+    // MARK: - Filter Text
 
-    // MARK: - State Mutation
-
-    @Test("Setting selectedTables persists")
-    @MainActor
-    func selectedTablesPersists() {
-        let state = SharedSidebarState()
-        let table = TestFixtures.makeTableInfo(name: "users")
-        state.selectedTables = [table]
-        #expect(state.selectedTables.count == 1)
-        #expect(state.selectedTables.first?.name == "users")
-    }
-
-    @Test("Setting searchText persists")
+    @Test("searchText persists across registry lookups for same connection")
     @MainActor
     func searchTextPersists() {
-        let state = SharedSidebarState()
-        state.searchText = "user"
-        #expect(state.searchText == "user")
-    }
-
-    // MARK: - Shared Reference Semantics
-
-    @Test("Changes via one reference are visible through another")
-    @MainActor
-    func sharedReferenceSemantics() {
         let id = UUID()
         let a = SharedSidebarState.forConnection(id)
+        a.searchText = "users"
         let b = SharedSidebarState.forConnection(id)
-        let table = TestFixtures.makeTableInfo(name: "orders")
-        a.selectedTables = [table]
-        #expect(b.selectedTables.count == 1)
-        #expect(b.selectedTables.first?.name == "orders")
-        a.searchText = "ord"
-        #expect(b.searchText == "ord")
+        #expect(b.searchText == "users")
         SharedSidebarState.removeConnection(id)
     }
 
-    @Test("Clearing selectedTables is visible through shared reference")
+    @Test("favoritesSearchText persists across registry lookups for same connection")
     @MainActor
-    func clearingSelectionShared() {
+    func favoritesSearchTextPersists() {
         let id = UUID()
         let a = SharedSidebarState.forConnection(id)
+        a.favoritesSearchText = "daily"
         let b = SharedSidebarState.forConnection(id)
-        a.selectedTables = [TestFixtures.makeTableInfo(name: "users")]
-        #expect(!b.selectedTables.isEmpty)
-        a.selectedTables = []
-        #expect(b.selectedTables.isEmpty)
+        #expect(b.favoritesSearchText == "daily")
         SharedSidebarState.removeConnection(id)
     }
 
-    // MARK: - Disconnect Cleanup
-
-    @Test("removeConnection clears state for that connection")
+    @Test("filter text is independent across different connections")
     @MainActor
-    func removeConnectionClearsState() {
-        let id = UUID()
-        let state = SharedSidebarState.forConnection(id)
-        state.selectedTables = [TestFixtures.makeTableInfo(name: "users")]
-        state.searchText = "us"
-        SharedSidebarState.removeConnection(id)
-        // New instance should have clean state
-        let fresh = SharedSidebarState.forConnection(id)
-        #expect(fresh.selectedTables.isEmpty)
-        #expect(fresh.searchText.isEmpty)
-        SharedSidebarState.removeConnection(id)
-    }
-
-    @Test("removeConnection does not affect other connections")
-    @MainActor
-    func removeDoesNotAffectOthers() {
+    func filterTextIndependentAcrossConnections() {
         let id1 = UUID()
         let id2 = UUID()
-        let state1 = SharedSidebarState.forConnection(id1)
-        let state2 = SharedSidebarState.forConnection(id2)
-        state1.selectedTables = [TestFixtures.makeTableInfo(name: "a")]
-        state2.selectedTables = [TestFixtures.makeTableInfo(name: "b")]
+        let a = SharedSidebarState.forConnection(id1)
+        let b = SharedSidebarState.forConnection(id2)
+        a.searchText = "orders"
+        #expect(b.searchText.isEmpty)
         SharedSidebarState.removeConnection(id1)
-        #expect(state2.selectedTables.first?.name == "b")
         SharedSidebarState.removeConnection(id2)
+    }
+
+    // MARK: - Favorite Selection
+
+    @Test("selectedFavorite persists across registry lookups for same connection")
+    @MainActor
+    func selectedFavoritePersists() {
+        let id = UUID()
+        let selection = FavoriteSelection.node(id: "fav-\(id.uuidString)")
+        let a = SharedSidebarState.forConnection(id)
+        a.selectedFavorite = selection
+        let b = SharedSidebarState.forConnection(id)
+        #expect(b.selectedFavorite == selection)
+        a.selectedFavorite = nil
+        SharedSidebarState.removeConnection(id)
     }
 }

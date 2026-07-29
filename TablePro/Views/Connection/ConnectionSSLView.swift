@@ -15,8 +15,16 @@ struct ConnectionSSLView: View {
     @Binding var sslCaCertPath: String
     @Binding var sslClientCertPath: String
     @Binding var sslClientKeyPath: String
+    @Binding var sslClientKeyPassphrase: String
 
     private var supportsPerConnectionCertPaths: Bool { databaseType != .mssql }
+
+    private var noOpportunisticTLSWarning: String {
+        if databaseType == .oracle {
+            return String(localized: "Preferred connects in plain TCP for this driver. Use Required to enforce TCPS.")
+        }
+        return String(localized: "This driver has no TLS fallback. Preferred forces TLS, same as Required.")
+    }
 
     var body: some View {
         Form {
@@ -26,12 +34,22 @@ struct ConnectionSSLView: View {
                         Text(mode.displayLabel).tag(mode)
                     }
                 }
-            } footer: {
-                if sslMode != .disabled {
-                    Text(sslMode.description)
+                if sslMode == .preferred, !databaseType.supportsOpportunisticTLS {
+                    Label(noOpportunisticTLSWarning, systemImage: "exclamationmark.triangle.fill")
+                        .foregroundStyle(databaseType == .oracle ? .red : .orange)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
                 }
+            } footer: {
+                VStack(alignment: .leading, spacing: 6) {
+                    if !databaseType.sslPaneTooltip.isEmpty {
+                        Text(databaseType.sslPaneTooltip)
+                    }
+                    if sslMode != .disabled {
+                        Text(sslMode.description)
+                    }
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
             }
 
             if sslMode != .disabled {
@@ -84,6 +102,14 @@ struct ConnectionSSLView: View {
                                     browseForCertificate(binding: $sslClientKeyPath)
                                 }
                                 .controlSize(.small)
+                            }
+                        }
+                        if databaseType.supportsClientKeyPassphrase,
+                           !sslClientKeyPath.trimmingCharacters(in: .whitespaces).isEmpty {
+                            LabeledContent(String(localized: "Key Passphrase")) {
+                                SecureField(
+                                    "", text: $sslClientKeyPassphrase,
+                                    prompt: Text(String(localized: "Required only for an encrypted key")))
                             }
                         }
                     } header: {

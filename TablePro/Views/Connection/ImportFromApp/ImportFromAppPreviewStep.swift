@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import TableProImport
 
 struct ImportFromAppPreviewStep: View {
     let preview: ConnectionImportPreview
@@ -40,11 +41,11 @@ struct ImportFromAppPreviewStep: View {
                 .font(.caption)
         } icon: {
             Image(systemName: "key.slash")
-                .foregroundStyle(Color(nsColor: .systemOrange))
+                .foregroundStyle(.orange)
         }
         .padding(8)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(nsColor: .systemOrange).opacity(0.12))
+        .background(.orange.opacity(0.12))
     }
 
     // MARK: - Header
@@ -127,7 +128,7 @@ struct ImportFromAppPreviewStep: View {
         if preview.envelope.credentials != nil {
             ConnectionExportService.restoreCredentials(
                 from: preview.envelope,
-                connectionIdMap: result.connectionIdMap
+                connectionIdMap: result.newConnectionIdMap
             )
         }
 

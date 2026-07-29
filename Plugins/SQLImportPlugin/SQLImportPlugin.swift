@@ -33,6 +33,10 @@ final class SQLImportPlugin: ImportFormatPlugin, SettablePlugin {
         AnyView(SQLImportOptionsView(plugin: self))
     }
 
+    func resetSettingsToDefaults() {
+        settings = SQLImportOptions()
+    }
+
     func performImport(
         source: any PluginImportSource,
         sink: any PluginImportDataSink,

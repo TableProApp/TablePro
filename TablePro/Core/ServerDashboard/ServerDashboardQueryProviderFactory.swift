@@ -8,7 +8,7 @@ import Foundation
 enum ServerDashboardQueryProviderFactory {
     static func provider(for databaseType: DatabaseType) -> ServerDashboardQueryProvider? {
         switch databaseType {
-        case .postgresql, .redshift:
+        case .postgresql, .redshift, .cockroachdb:
             return PostgreSQLDashboardProvider()
         case .mysql, .mariadb:
             return MySQLDashboardProvider()

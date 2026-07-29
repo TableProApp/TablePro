@@ -45,6 +45,12 @@ final class MSSQLSchemaQueriesTests: XCTestCase {
         XCTAssertTrue(sql.contains("'dbo'"))
     }
 
+    func testForeignKeysQuerySelectsReferencedSchema() {
+        let sql = MSSQLSchemaQueries.foreignKeys(schema: "dbo", table: "Orders")
+        XCTAssertTrue(sql.contains("sr.name AS ref_schema"))
+        XCTAssertTrue(sql.contains("JOIN sys.schemas sr ON tr.schema_id = sr.schema_id"))
+    }
+
     func testParseTableRowDetectsView() {
         let row: [String?] = ["v_active_users", "VIEW"]
         XCTAssertEqual(MSSQLSchemaQueries.parseTableRow(row), MSSQLTableRow(name: "v_active_users", isView: true))
@@ -103,11 +109,70 @@ final class MSSQLSchemaQueriesTests: XCTestCase {
     }
 
     func testParseForeignKeyRowExtractsAll() {
-        let row: [String?] = ["FK_orders_users", "user_id", "users", "id"]
+        let row: [String?] = ["FK_orders_users", "user_id", "users", "id", "sales"]
         let parsed = MSSQLSchemaQueries.parseForeignKeyRow(row)
         XCTAssertEqual(parsed?.constraintName, "FK_orders_users")
         XCTAssertEqual(parsed?.columnName, "user_id")
         XCTAssertEqual(parsed?.referencedTable, "users")
         XCTAssertEqual(parsed?.referencedColumn, "id")
+        XCTAssertEqual(parsed?.referencedSchema, "sales")
+    }
+
+    func testParseForeignKeyRowWithoutReferencedSchema() {
+        let row: [String?] = ["FK_orders_users", "user_id", "users", "id"]
+        XCTAssertNil(MSSQLSchemaQueries.parseForeignKeyRow(row)?.referencedSchema)
+    }
+
+    func testQualifiedNamePrefixesSchema() {
+        XCTAssertEqual(MSSQLSchemaQueries.qualifiedName(schema: "sales", table: "routeCache"), "[sales].[routeCache]")
+    }
+
+    func testQualifiedNameOmitsSchemaWhenNilOrEmpty() {
+        XCTAssertEqual(MSSQLSchemaQueries.qualifiedName(schema: nil, table: "routeCache"), "[routeCache]")
+        XCTAssertEqual(MSSQLSchemaQueries.qualifiedName(schema: "", table: "routeCache"), "[routeCache]")
+    }
+
+    func testBrowseQualifiesNonDefaultSchema() {
+        let sql = MSSQLSchemaQueries.browse(
+            schema: "sales", table: "routeCache",
+            orderByClause: "ORDER BY (SELECT NULL)", offset: 0, limit: 200
+        )
+        XCTAssertEqual(
+            sql,
+            "SELECT * FROM [sales].[routeCache] ORDER BY (SELECT NULL) OFFSET 0 ROWS FETCH NEXT 200 ROWS ONLY"
+        )
+    }
+
+    func testBrowseWithoutSchemaStaysUnqualified() {
+        let sql = MSSQLSchemaQueries.browse(
+            schema: nil, table: "routeCache",
+            orderByClause: "ORDER BY (SELECT NULL)", offset: 10, limit: 50
+        )
+        XCTAssertEqual(
+            sql,
+            "SELECT * FROM [routeCache] ORDER BY (SELECT NULL) OFFSET 10 ROWS FETCH NEXT 50 ROWS ONLY"
+        )
+    }
+
+    func testFilteredQualifiesSchemaAndAppendsWhere() {
+        let sql = MSSQLSchemaQueries.filtered(
+            schema: "sales", table: "routeCache", whereClause: "[id] = 1",
+            orderByClause: "ORDER BY (SELECT NULL)", offset: 0, limit: 200
+        )
+        XCTAssertEqual(
+            sql,
+            "SELECT * FROM [sales].[routeCache] WHERE [id] = 1 ORDER BY (SELECT NULL) OFFSET 0 ROWS FETCH NEXT 200 ROWS ONLY"
+        )
+    }
+
+    func testFilteredOmitsWhenWhereClauseEmpty() {
+        let sql = MSSQLSchemaQueries.filtered(
+            schema: "sales", table: "routeCache", whereClause: "",
+            orderByClause: "ORDER BY (SELECT NULL)", offset: 0, limit: 200
+        )
+        XCTAssertEqual(
+            sql,
+            "SELECT * FROM [sales].[routeCache] ORDER BY (SELECT NULL) OFFSET 0 ROWS FETCH NEXT 200 ROWS ONLY"
+        )
     }
 }

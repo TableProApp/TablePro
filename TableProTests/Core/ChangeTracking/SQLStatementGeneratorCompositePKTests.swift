@@ -380,7 +380,7 @@ struct SQLStatementGeneratorCompositePKTests {
         #expect(sql.contains("`level` = ?"))
     }
 
-    @Test("No PK DELETE uses individual per-row statements with all columns")
+    @Test("No PK DELETE batches rows into one OR'd all-column statement")
     func noPKDeleteFallback() throws {
         let gen = try makeGenerator(
             tableName: "logs",
@@ -396,11 +396,13 @@ struct SQLStatementGeneratorCompositePKTests {
             deletedRowIndices: [0, 1]
         )
 
-        // No PK batch delete returns nil → individual deletes
-        #expect(stmts.count == 2)
-        #expect(stmts[0].sql.contains("`ts` = ?"))
-        #expect(stmts[0].sql.contains("`message` = ?"))
-        #expect(stmts[0].sql.contains("`level` = ?"))
+        #expect(stmts.count == 1)
+        let sql = stmts[0].sql
+        #expect(sql.contains("`ts` = ?"))
+        #expect(sql.contains("`message` = ?"))
+        #expect(sql.contains("`level` = ?"))
+        #expect(sql.contains(") OR ("))
+        #expect(stmts[0].parameters.count == 6)
     }
 
     @Test("No PK fallback handles NULL values with IS NULL")

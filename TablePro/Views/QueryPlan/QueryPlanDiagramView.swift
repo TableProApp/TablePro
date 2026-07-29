@@ -167,10 +167,10 @@ struct QueryPlanDiagramView: View {
     // MARK: - Color
 
     private func nodeColor(fraction: Double) -> Color {
-        if fraction > 0.5 { return Color(nsColor: .systemRed) }
-        if fraction > 0.2 { return Color(nsColor: .systemOrange) }
-        if fraction > 0.05 { return Color(nsColor: .systemYellow) }
-        return Color(nsColor: .systemGreen)
+        if fraction > 0.5 { return .red }
+        if fraction > 0.2 { return .orange }
+        if fraction > 0.05 { return .yellow }
+        return .green
     }
 
     // MARK: - Layout
@@ -258,7 +258,6 @@ struct QueryPlanDiagramView: View {
             path.addCurve(to: end, control1: CGPoint(x: start.x, y: midY), control2: CGPoint(x: end.x, y: midY))
             context.stroke(path, with: .color(.secondary.opacity(0.4)), lineWidth: 1)
 
-            // Arrowhead
             var arrow = Path()
             let s = PlanLayout.arrowHeadSize
             arrow.move(to: end)

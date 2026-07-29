@@ -18,7 +18,7 @@ extension PluginManager {
 
         if let driver = instance as? any DriverPlugin {
             if !declared.contains(.databaseDriver) {
-                Self.logger.warning("Plugin '\(pluginId)' conforms to DriverPlugin but does not declare .databaseDriver capability — registering anyway")
+                Self.logger.warning("Plugin '\(pluginId)' conforms to DriverPlugin but does not declare .databaseDriver capability - registering anyway")
             }
             do {
                 try validateDriverDescriptor(type(of: driver), pluginId: pluginId)
@@ -34,14 +34,16 @@ extension PluginManager {
                     driverPlugins[additionalId] = driver
                 }
 
-                // Self-register plugin metadata from the DriverPlugin protocol.
                 let snapshot = PluginMetadataRegistry.shared.buildMetadataSnapshot(
                     from: driverType,
                     isDownloadable: driverType.isDownloadable
                 )
+                if snapshot.schema.databaseGroupingStrategy == .hierarchicalSchema, snapshot.supportsDatabaseSwitching {
+                    Self.logger.warning("Plugin '\(pluginId)' declares hierarchicalSchema grouping together with supportsDatabaseSwitching; schema-only engines must declare supportsDatabaseSwitching = false or the container switcher misroutes")
+                }
                 PluginMetadataRegistry.shared.register(snapshot: snapshot, forTypeId: typeId, preserveIcon: true)
                 for additionalId in driverType.additionalDatabaseTypeIds {
-                    PluginMetadataRegistry.shared.register(snapshot: snapshot, forTypeId: additionalId, preserveIcon: true)
+                    PluginMetadataRegistry.shared.registerVariant(pluginSnapshot: snapshot, forTypeId: additionalId)
                     PluginMetadataRegistry.shared.registerTypeAlias(additionalId, primaryTypeId: typeId)
                 }
 
@@ -52,7 +54,7 @@ extension PluginManager {
 
         if let exportPlugin = instance as? any ExportFormatPlugin {
             if !declared.contains(.exportFormat) {
-                Self.logger.warning("Plugin '\(pluginId)' conforms to ExportFormatPlugin but does not declare .exportFormat capability — registering anyway")
+                Self.logger.warning("Plugin '\(pluginId)' conforms to ExportFormatPlugin but does not declare .exportFormat capability - registering anyway")
             }
             let formatId = type(of: exportPlugin).formatId
             exportPlugins[formatId] = exportPlugin
@@ -62,11 +64,21 @@ extension PluginManager {
 
         if let importPlugin = instance as? any ImportFormatPlugin {
             if !declared.contains(.importFormat) {
-                Self.logger.warning("Plugin '\(pluginId)' conforms to ImportFormatPlugin but does not declare .importFormat capability — registering anyway")
+                Self.logger.warning("Plugin '\(pluginId)' conforms to ImportFormatPlugin but does not declare .importFormat capability - registering anyway")
             }
             let formatId = type(of: importPlugin).formatId
             importPlugins[formatId] = importPlugin
             Self.logger.debug("Registered import plugin '\(pluginId)' for format '\(formatId)'")
+            registeredAny = true
+        }
+
+        if let inspectorPlugin = instance as? any DocumentInspectorPlugin {
+            if !declared.contains(.documentInspector) {
+                Self.logger.warning("Plugin '\(pluginId)' conforms to DocumentInspectorPlugin but does not declare .documentInspector capability - registering anyway")
+            }
+            let inspectorId = type(of: inspectorPlugin).inspectorId
+            inspectorPlugins[inspectorId] = inspectorPlugin
+            Self.logger.debug("Registered inspector plugin '\(pluginId)' for id '\(inspectorId)'")
             registeredAny = true
         }
 
@@ -80,6 +92,7 @@ extension PluginManager {
         let isDriver = pluginType is any DriverPlugin.Type
         let isExporter = pluginType is any ExportFormatPlugin.Type
         let isImporter = pluginType is any ImportFormatPlugin.Type
+        let isInspector = pluginType is any DocumentInspectorPlugin.Type
 
         if declared.contains(.databaseDriver) && !isDriver {
             Self.logger.warning("Plugin '\(pluginId)' declares .databaseDriver but does not conform to DriverPlugin")
@@ -89,6 +102,9 @@ extension PluginManager {
         }
         if declared.contains(.importFormat) && !isImporter {
             Self.logger.warning("Plugin '\(pluginId)' declares .importFormat but does not conform to ImportFormatPlugin")
+        }
+        if declared.contains(.documentInspector) && !isInspector {
+            Self.logger.warning("Plugin '\(pluginId)' declares .documentInspector but does not conform to DocumentInspectorPlugin")
         }
     }
 
@@ -243,6 +259,31 @@ extension PluginManager {
         return Array(importPlugins.values)
     }
 
+    func importPlugins(for databaseType: DatabaseType) -> [any ImportFormatPlugin] {
+        guard supportsImport(for: databaseType) else { return [] }
+        let typeId = databaseType.rawValue
+        return allImportPlugins()
+            .filter { plugin in
+                let supported = type(of: plugin).supportedDatabaseTypeIds
+                let excluded = type(of: plugin).excludedDatabaseTypeIds
+                if !supported.isEmpty && !supported.contains(typeId) { return false }
+                if excluded.contains(typeId) { return false }
+                return true
+            }
+            .sorted { lhs, rhs in
+                let lhsRowBased = type(of: lhs).requiresTargetTable
+                let rhsRowBased = type(of: rhs).requiresTargetTable
+                if lhsRowBased != rhsRowBased { return !lhsRowBased }
+                return type(of: lhs).formatDisplayName < type(of: rhs).formatDisplayName
+            }
+    }
+
+    func importFormatOptions(for databaseType: DatabaseType) -> [ImportFormatOption] {
+        importPlugins(for: databaseType).map {
+            ImportFormatOption(id: type(of: $0).formatId, name: type(of: $0).formatDisplayName)
+        }
+    }
+
     /// Returns a temporary plugin driver for query building (buildBrowseQuery), or nil
     /// if the plugin doesn't implement custom query building (NoSQL hooks).
     func queryBuildingDriver(for databaseType: DatabaseType) -> (any PluginDatabaseDriver)? {
@@ -297,6 +338,20 @@ extension PluginManager {
             .capabilities.supportsSchemaSwitching ?? false
     }
 
+    func containerSwitchTarget(for databaseType: DatabaseType) -> ContainerSwitchTarget? {
+        if supportsDatabaseSwitching(for: databaseType) {
+            return .database
+        }
+        if supportsSchemaSwitching(for: databaseType) {
+            return .schema
+        }
+        return nil
+    }
+
+    func supportsContainerSwitching(for databaseType: DatabaseType) -> Bool {
+        containerSwitchTarget(for: databaseType) != nil
+    }
+
     func supportsImport(for databaseType: DatabaseType) -> Bool {
         PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
             .capabilities.supportsImport ?? true
@@ -330,6 +385,25 @@ extension PluginManager {
     func tableEntityName(for databaseType: DatabaseType) -> String {
         PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
             .schema.tableEntityName ?? "Tables"
+    }
+
+    func containerEntityName(for databaseType: DatabaseType) -> String {
+        PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
+            .schema.containerEntityName ?? "Database"
+    }
+
+    func defaultUnixSocketPath(for databaseType: DatabaseType) -> String? {
+        PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
+            .connection.defaultUnixSocketPath
+    }
+
+    func containerEntityNamePlural(for databaseType: DatabaseType) -> String {
+        containerEntityName(for: databaseType) + "s"
+    }
+
+    func schemaEntityName(for databaseType: DatabaseType) -> String {
+        PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
+            .schema.schemaEntityName ?? "Schema"
     }
 
     func supportsCascadeDrop(for databaseType: DatabaseType) -> Bool {
@@ -387,6 +461,16 @@ extension PluginManager {
             .capabilities.supportsSSL ?? true
     }
 
+    func supportsCloudflareTunnel(for databaseType: DatabaseType) -> Bool {
+        PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
+            .capabilities.supportsCloudflareTunnel ?? true
+    }
+
+    func supportsSOCKSProxy(for databaseType: DatabaseType) -> Bool {
+        PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
+            .capabilities.supportsSOCKSProxy ?? true
+    }
+
     func supportsColumnReorder(for databaseType: DatabaseType) -> Bool {
         PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
             .supportsColumnReorder ?? false
@@ -422,6 +506,15 @@ extension PluginManager {
             .schema.databaseGroupingStrategy ?? .byDatabase
     }
 
+    func supportsDatabaseTree(for databaseType: DatabaseType) -> Bool {
+        guard connectionMode(for: databaseType) == .network,
+              supportsDatabaseSwitching(for: databaseType) else {
+            return false
+        }
+        let grouping = databaseGroupingStrategy(for: databaseType)
+        return grouping == .byDatabase || grouping == .bySchema
+    }
+
     func defaultGroupName(for databaseType: DatabaseType) -> String {
         PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
             .schema.defaultGroupName ?? "main"
@@ -442,6 +535,7 @@ extension PluginManager {
 
     func installMissingPlugin(
         for databaseType: DatabaseType,
+        registryClient: RegistryClient = .shared,
         progress: @escaping @MainActor @Sendable (Double) -> Void
     ) async throws {
         let pluginTypeId = databaseType.pluginTypeId
@@ -451,7 +545,6 @@ extension PluginManager {
         }) {
             if !existingEntry.isEnabled {
                 setEnabled(true, pluginId: existingEntry.id)
-                await loadPendingPluginsAsync()
             }
             if driverPlugins[pluginTypeId] != nil {
                 Self.logger.info("Re-enabled existing plugin '\(existingEntry.name)' for '\(databaseType.rawValue)'")
@@ -460,27 +553,33 @@ extension PluginManager {
             Self.logger.warning("Plugin '\(existingEntry.id)' exists but driver not registered, reinstalling")
             if existingEntry.source == .userInstalled {
                 do {
-                    try uninstallPlugin(id: existingEntry.id)
+                    try await uninstallPlugin(id: existingEntry.id)
                 } catch {
                     Self.logger.warning("Failed to uninstall plugin '\(existingEntry.id)' before reinstall: \(error.localizedDescription)")
                 }
             }
         }
 
-        let registryClient = RegistryClient.shared
-        await registryClient.fetchManifest()
+        await registryClient.ensureManifest(.ifStale)
+        var registryPlugin = Self.registryPlugin(forTypeId: pluginTypeId, in: registryClient.manifest)
 
-        guard let manifest = registryClient.manifest else {
-            throw PluginError.downloadFailed(String(localized: "Could not fetch plugin registry"))
+        if registryPlugin == nil {
+            await registryClient.ensureManifest(.mustBeCurrent)
+            registryPlugin = Self.registryPlugin(forTypeId: pluginTypeId, in: registryClient.manifest)
         }
 
-        guard let registryPlugin = manifest.plugins.first(where: { plugin in
-            plugin.databaseTypeIds?.contains(pluginTypeId) == true
-        }) else {
+        guard let registryPlugin else {
+            guard registryClient.fetchState == .loaded else {
+                throw PluginError.registryUnreachable
+            }
             throw PluginError.notFound
         }
 
-        let entry = try await installFromRegistry(registryPlugin, progress: progress)
+        let entry = try await installFromRegistry(registryPlugin, registryClient: registryClient, progress: progress)
         Self.logger.info("Installed missing plugin '\(entry.name)' for database type '\(databaseType.rawValue)'")
+    }
+
+    nonisolated static func registryPlugin(forTypeId pluginTypeId: String, in manifest: RegistryManifest?) -> RegistryPlugin? {
+        manifest?.plugins.first { $0.databaseTypeIds?.contains(pluginTypeId) == true }
     }
 }

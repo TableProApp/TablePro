@@ -20,7 +20,7 @@ struct PluginInstallStatusRow: View {
             } else if let error = coordinator.pluginInstallError {
                 HStack(spacing: 6) {
                     Label(error, systemImage: "exclamationmark.triangle.fill")
-                        .foregroundStyle(Color(nsColor: .systemOrange))
+                        .foregroundStyle(.orange)
                         .font(.caption)
                         .lineLimit(2)
                     Button(String(localized: "Retry")) {

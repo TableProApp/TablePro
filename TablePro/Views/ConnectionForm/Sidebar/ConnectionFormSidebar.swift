@@ -28,7 +28,7 @@ struct ConnectionFormSidebar: View {
                 Spacer(minLength: 4)
                 if let badgeIcon {
                     Image(systemName: badgeIcon)
-                        .foregroundStyle(Color(nsColor: .systemRed))
+                        .foregroundStyle(.red)
                         .font(.caption)
                 }
             }

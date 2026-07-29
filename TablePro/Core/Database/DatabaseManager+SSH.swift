@@ -6,8 +6,6 @@
 //
 
 import Foundation
-import os
-import TableProPluginKit
 
 // MARK: - SSH Tunnel Helper
 
@@ -24,6 +22,21 @@ extension DatabaseManager {
         for connection: DatabaseConnection,
         sshPasswordOverride: String? = nil
     ) async throws -> DatabaseConnection {
+        let enabledKinds = connection.enabledTunnelKinds
+        guard enabledKinds.count <= 1 else {
+            throw ConnectionTunnelError.mutualExclusivityViolation(enabledKinds)
+        }
+        switch enabledKinds.first {
+        case .cloudflare:
+            return try await buildCloudflareEffectiveConnection(for: connection)
+        case .cloudSQLProxy:
+            return try await buildCloudSQLProxyEffectiveConnection(for: connection)
+        case .socksProxy:
+            return try await buildSOCKSProxyEffectiveConnection(for: connection)
+        case .ssh, .none:
+            break
+        }
+
         let sshConfig = connection.resolvedSSHConfig
         guard sshConfig.enabled else { return connection }
 
@@ -45,6 +58,7 @@ extension DatabaseManager {
         }
 
         let sshPassword = sshPasswordOverride ?? storedSshPassword
+        let destination = connection.sshForwardDestination
 
         let tunnelPort = try await SSHTunnelManager.shared.createTunnel(
             connectionId: connection.id,
@@ -56,8 +70,7 @@ extension DatabaseManager {
             keyPassphrase: keyPassphrase,
             sshPassword: sshPassword,
             agentSocketPath: sshConfig.agentSocketPath,
-            remoteHost: connection.host,
-            remotePort: connection.port,
+            destination: destination,
             jumpHosts: sshConfig.jumpHosts,
             totpMode: sshConfig.totpMode,
             totpSecret: totpSecret,
@@ -66,37 +79,10 @@ extension DatabaseManager {
             totpPeriod: sshConfig.totpPeriod
         )
 
-        // Adapt SSL config for tunnel: SSH already authenticates the server,
-        // remote environment and aren't readable locally, so strip them and
-        // use at least .preferred so libpq negotiates SSL when the server
-        // requires it (SSH already authenticates the server itself).
-        var tunnelSSL = connection.sslConfig
-        if tunnelSSL.isEnabled {
-            if tunnelSSL.verifiesCertificate {
-                tunnelSSL.mode = .required
-            }
-            tunnelSSL.caCertificatePath = ""
-            tunnelSSL.clientCertificatePath = ""
-            tunnelSSL.clientKeyPath = ""
-        }
-
-        var effectiveFields = connection.additionalFields
-        if connection.usePgpass {
-            effectiveFields["pgpassOriginalHost"] = connection.host
-            effectiveFields["pgpassOriginalPort"] = String(connection.port)
-        }
-
-        return DatabaseConnection(
-            id: connection.id,
-            name: connection.name,
-            host: "127.0.0.1",
-            port: tunnelPort,
-            database: connection.database,
-            username: connection.username,
-            type: connection.type,
-            sshConfig: SSHConfiguration(),
-            sslConfig: tunnelSSL,
-            additionalFields: effectiveFields
+        return tunneledConnection(
+            from: connection,
+            localPort: tunnelPort,
+            forwardsToUnixSocket: destination.isUnixSocket
         )
     }
 
@@ -107,46 +93,10 @@ extension DatabaseManager {
     /// when both the keepalive death callback and the wake-from-sleep handler fire
     /// for the same connection.
     func handleSSHTunnelDied(connectionId: UUID) async {
-        guard let session = activeSessions[connectionId],
-              !recoveringConnectionIds.contains(connectionId) else { return }
-
-        recoveringConnectionIds.insert(connectionId)
-        defer { recoveringConnectionIds.remove(connectionId) }
-
-        Self.logger.warning("SSH tunnel died for connection: \(session.connection.name)")
-
-        // Stop health monitor before retrying to prevent stale pings during reconnect
-        await stopHealthMonitor(for: connectionId)
-
-        // Disconnect the stale driver and invalidate it so connectToSession
-        // creates a fresh connection instead of short-circuiting on driver != nil
-        activeSessions[connectionId]?.driver?.disconnect()
-        updateSession(connectionId) { session in
-            session.driver = nil
-            session.status = .connecting
-        }
-
-        let maxRetries = 10
-        for retryCount in 0..<maxRetries {
-            let delay = ExponentialBackoff.delay(for: retryCount + 1, maxDelay: 120)
-            Self.logger.info("SSH reconnect attempt \(retryCount + 1)/\(maxRetries) in \(delay)s for: \(session.connection.name)")
-            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
-
-            do {
-                try await connectToSession(session.connection)
-                Self.logger.info("Successfully reconnected SSH tunnel for: \(session.connection.name)")
-                return
-            } catch {
-                Self.logger.warning("SSH reconnect attempt \(retryCount + 1) failed: \(error.localizedDescription)")
-            }
-        }
-
-        Self.logger.error("All SSH reconnect attempts failed for: \(session.connection.name)")
-
-        // Mark as error and release stale cached data
-        updateSession(connectionId) { session in
-            session.status = .error("SSH tunnel disconnected. Click to reconnect.")
-            session.clearCachedData()
-        }
+        await recoverDeadTunnel(
+            connectionId: connectionId,
+            kind: "SSH",
+            disconnectedMessage: String(localized: "SSH tunnel disconnected. Click to reconnect.")
+        )
     }
 }

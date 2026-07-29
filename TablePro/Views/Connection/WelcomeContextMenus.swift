@@ -32,6 +32,18 @@ extension WelcomeWindowView {
 
         Divider()
 
+        let allFavorited = connections.allSatisfy(\.isFavorite)
+        Button { vm.toggleFavorite(connections) } label: {
+            Label(
+                allFavorited
+                    ? String(localized: "Remove from Favorites")
+                    : String(localized: "Add to Favorites"),
+                systemImage: allFavorited ? "star.slash" : "star"
+            )
+        }
+
+        Divider()
+
         Menu(String(localized: "Share")) {
             Button {
                 vm.exportConnections(connections)
@@ -40,6 +52,28 @@ extension WelcomeWindowView {
                     String(format: String(localized: "Export %d Connections to File..."), connections.count),
                     systemImage: "square.and.arrow.up"
                 )
+            }
+
+            if LicenseManager.shared.isFeatureAvailable(.teamCatalog) {
+                Button {
+                    vm.publishToTeamCatalog(connections)
+                } label: {
+                    Label(
+                        String(format: String(localized: "Publish %d Connections to Team Catalog..."), connections.count),
+                        systemImage: "person.2.fill"
+                    )
+                }
+            }
+
+            if LicenseManager.shared.isFeatureAvailable(.teamLibrary) {
+                Button {
+                    vm.publishConnectionsToTeamLibrary(connections)
+                } label: {
+                    Label(
+                        String(format: String(localized: "Publish %d Connections to Team Library..."), connections.count),
+                        systemImage: "books.vertical.fill"
+                    )
+                }
             }
         }
 
@@ -78,8 +112,7 @@ extension WelcomeWindowView {
         Divider()
 
         Button(role: .destructive) {
-            vm.connectionsToDelete = connections
-            vm.showDeleteConfirmation = true
+            vm.requestDeleteConnections(connections)
         } label: {
             Label(
                 String(format: String(localized: "Delete %d Connections"), connections.count),
@@ -105,6 +138,17 @@ extension WelcomeWindowView {
 
         Button { vm.duplicateConnection(connection) } label: {
             Label(String(localized: "Duplicate"), systemImage: "doc.on.doc")
+        }
+
+        Divider()
+
+        Button { vm.toggleFavorite([connection]) } label: {
+            Label(
+                connection.isFavorite
+                    ? String(localized: "Remove from Favorites")
+                    : String(localized: "Add to Favorites"),
+                systemImage: connection.isFavorite ? "star.slash" : "star"
+            )
         }
 
         Divider()
@@ -154,6 +198,22 @@ extension WelcomeWindowView {
             } label: {
                 Label(String(localized: "Export to File..."), systemImage: "square.and.arrow.up")
             }
+
+            if LicenseManager.shared.isFeatureAvailable(.teamCatalog) {
+                Button {
+                    vm.publishToTeamCatalog([connection])
+                } label: {
+                    Label(String(localized: "Publish to Team Catalog..."), systemImage: "person.2.fill")
+                }
+            }
+
+            if LicenseManager.shared.isFeatureAvailable(.teamLibrary) {
+                Button {
+                    vm.publishConnectionsToTeamLibrary([connection])
+                } label: {
+                    Label(String(localized: "Publish to Team Library..."), systemImage: "books.vertical.fill")
+                }
+            }
         }
 
         Divider()
@@ -187,8 +247,7 @@ extension WelcomeWindowView {
         Divider()
 
         Button(role: .destructive) {
-            vm.connectionsToDelete = [connection]
-            vm.showDeleteConfirmation = true
+            vm.requestDeleteConnections([connection])
         } label: {
             Label(String(localized: "Delete"), systemImage: "trash")
         }

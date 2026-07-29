@@ -14,45 +14,58 @@ import SwiftUI
 /// Adapts the existing CompletionEngine to CodeEditSourceEditor's suggestion system
 @MainActor
 final class SQLCompletionAdapter: CodeSuggestionDelegate {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "SQLCompletionAdapter")
-
     // MARK: - Properties
 
-    private var completionEngine: CompletionEngine?
+    private struct CompletionSession {
+        enum Phase {
+            case intermediate
+            case final
+        }
+
+        var phase: Phase
+        var context: CompletionContext
+    }
+
+    private var completionEngine: CompletionEngine
     private var favoriteKeywords: [String: (name: String, query: String)] = [:]
-    private var suppressNextCompletion = false
-    private var currentCompletionContext: CompletionContext?
-    private var debounceGeneration: UInt64 = 0
-    private let debounceNanoseconds: UInt64 = 50_000_000  // 50ms
+    private var session: CompletionSession?
+    private let debounceNanoseconds: UInt64 = 50_000_000
+    private let refilterDebounceNanoseconds: UInt64 = 30_000_000
+
+    private var cursorRefilterTask: Task<Void, Never>?
+    private var lastRefilterPrefix: String?
+    private var lastRefilterItems: [SQLCompletionItem]?
+
+    private static let logger = Logger(subsystem: "com.TablePro", category: "SQLCompletionAdapter")
 
     // MARK: - Initialization
 
     init(schemaProvider: SQLSchemaProvider?, databaseType: DatabaseType? = nil) {
-        if let provider = schemaProvider {
-            let dialect = databaseType.flatMap { PluginManager.shared.sqlDialect(for: $0) }
-            let completions = databaseType.flatMap { PluginManager.shared.statementCompletions(for: $0) } ?? []
-            self.completionEngine = CompletionEngine(
-                schemaProvider: provider, databaseType: databaseType,
-                dialect: dialect, statementCompletions: completions
-            )
-        }
+        self.completionEngine = Self.makeEngine(schemaProvider: schemaProvider, databaseType: databaseType)
     }
 
-    /// Update the schema provider (e.g. when connection changes)
-    func updateSchemaProvider(_ provider: SQLSchemaProvider, databaseType: DatabaseType? = nil) {
-        let dialect = databaseType.flatMap { PluginManager.shared.sqlDialect(for: $0) }
-        let completions = databaseType.flatMap { PluginManager.shared.statementCompletions(for: $0) } ?? []
-        self.completionEngine = CompletionEngine(
-            schemaProvider: provider, databaseType: databaseType,
-            dialect: dialect, statementCompletions: completions
-        )
-        completionEngine?.updateFavoriteKeywords(favoriteKeywords)
+    /// Rebuild the completion engine for the current connection (nil schema still yields keyword completion)
+    func configure(schemaProvider: SQLSchemaProvider?, databaseType: DatabaseType?) {
+        completionEngine = Self.makeEngine(schemaProvider: schemaProvider, databaseType: databaseType)
+        completionEngine.updateFavoriteKeywords(favoriteKeywords)
     }
 
     /// Update favorite keywords for autocomplete expansion
     func updateFavoriteKeywords(_ keywords: [String: (name: String, query: String)]) {
         favoriteKeywords = keywords
-        completionEngine?.updateFavoriteKeywords(keywords)
+        completionEngine.updateFavoriteKeywords(keywords)
+    }
+
+    private static func makeEngine(
+        schemaProvider: SQLSchemaProvider?,
+        databaseType: DatabaseType?
+    ) -> CompletionEngine {
+        let dialect = databaseType.flatMap { PluginManager.shared.sqlDialect(for: $0) }
+        let completions = databaseType.flatMap { PluginManager.shared.statementCompletions(for: $0) } ?? []
+        return CompletionEngine(
+            schemaProvider: schemaProvider, databaseType: databaseType,
+            dialect: dialect, statementCompletions: completions
+        )
     }
 
     // MARK: - CodeSuggestionDelegate
@@ -66,25 +79,18 @@ final class SQLCompletionAdapter: CodeSuggestionDelegate {
         cursorPosition: CursorPosition,
         isManualTrigger: Bool
     ) async -> (windowPosition: CursorPosition, items: [CodeSuggestionEntry])? {
-        guard let completionEngine else {
-            Self.logger.debug("Completion skipped: no engine (schema provider was nil at init)")
+        seedIntermediateSessionIfNeeded(textView: textView, cursorPosition: cursorPosition)
+
+        do {
+            try await Task.sleep(nanoseconds: debounceNanoseconds)
+        } catch {
             return nil
         }
 
-        if suppressNextCompletion {
-            suppressNextCompletion = false
-            return nil
-        }
-
-        // Debounce: wait briefly and check if a newer request arrived
-        debounceGeneration &+= 1
-        let myGeneration = debounceGeneration
-        try? await Task.sleep(nanoseconds: debounceNanoseconds)
-        guard myGeneration == debounceGeneration else { return nil }
-
+        let liveCursorPosition = textView.cursorPositions.first ?? cursorPosition
         let nsText = (textView.textView.textStorage?.string ?? "") as NSString
         let docLength = nsText.length
-        let offset = cursorPosition.range.location
+        let offset = liveCursorPosition.range.location
 
         // Don't show autocomplete right after semicolon or newline
         if offset > 0 {
@@ -115,7 +121,7 @@ final class SQLCompletionAdapter: CodeSuggestionDelegate {
         guard let context = await completionEngine.getCompletions(
             text: text,
             cursorPosition: adjustedOffset
-        ) else {
+        ), !Task.isCancelled else {
             return nil
         }
 
@@ -135,50 +141,155 @@ final class SQLCompletionAdapter: CodeSuggestionDelegate {
         }
 
         // Adjust replacement range from window-relative back to document coordinates
-        self.currentCompletionContext = CompletionContext(
-            items: context.items,
-            replacementRange: NSRange(
-                location: context.replacementRange.location + windowStart,
-                length: context.replacementRange.length
-            ),
-            sqlContext: context.sqlContext
+        cursorRefilterTask?.cancel()
+        cursorRefilterTask = nil
+        lastRefilterPrefix = nil
+        lastRefilterItems = nil
+        session = CompletionSession(
+            phase: .final,
+            context: CompletionContext(
+                items: context.items,
+                replacementRange: NSRange(
+                    location: context.replacementRange.location + windowStart,
+                    length: context.replacementRange.length
+                ),
+                sqlContext: context.sqlContext
+            )
         )
 
         let entries: [CodeSuggestionEntry] = context.items.map { item in
             SQLSuggestionEntry(item: item)
         }
 
-        return (windowPosition: cursorPosition, items: entries)
+        return (windowPosition: liveCursorPosition, items: entries)
+    }
+
+    private func seedIntermediateSessionIfNeeded(textView: TextViewController, cursorPosition: CursorPosition) {
+        guard session == nil else { return }
+
+        let keywordItems = completionEngine.keywordCompletions() + completionEngine.allFavoriteItems()
+        guard !keywordItems.isEmpty else { return }
+
+        let offset = cursorPosition.range.location
+        guard let nsText = textView.textView.textStorage?.string as NSString?,
+              offset >= 0, offset <= nsText.length else { return }
+
+        let prefixStart = SQLTokenBoundary.segmentStart(in: nsText, endingAt: offset)
+        session = CompletionSession(
+            phase: .intermediate,
+            context: CompletionContext(
+                items: keywordItems,
+                replacementRange: NSRange(location: prefixStart, length: offset - prefixStart),
+                sqlContext: SQLContext(
+                    clauseType: .unknown,
+                    prefix: "",
+                    prefixRange: prefixStart..<offset,
+                    dotPrefix: nil,
+                    tableReferences: [],
+                    isInsideString: false,
+                    isInsideComment: false
+                )
+            )
+        )
     }
 
     func completionOnCursorMove(
         textView: TextViewController,
         cursorPosition: CursorPosition
     ) -> [CodeSuggestionEntry]? {
-        guard let context = currentCompletionContext,
-              let provider = completionEngine?.provider else { return nil }
+        guard let context = session?.context else { return nil }
+        let provider = completionEngine.provider
 
         let offset = cursorPosition.range.location
-        let docLength = (textView.textView.textStorage?.string as NSString?)?.length ?? 0
+        guard let nsText = textView.textView.textStorage?.string as NSString?,
+              offset >= 0, offset <= nsText.length else { return nil }
 
-        let prefixStart = context.replacementRange.location
-        guard offset >= prefixStart, offset <= docLength else { return nil }
-
+        let prefixStart = SQLTokenBoundary.segmentStart(in: nsText, endingAt: offset)
         let prefixLength = offset - prefixStart
-        // Guard against stale replacementRange producing an unreasonably
-        // large prefix read. Normal prefixes are <200 chars even for
-        // qualified identifiers (schema.table.column).
         guard prefixLength > 0, prefixLength <= 500 else { return nil }
 
         let prefixRange = NSRange(location: prefixStart, length: prefixLength)
-        let currentPrefix = (textView.textView.textStorage?.string as NSString?)?
-            .substring(with: prefixRange).lowercased() ?? ""
+        let currentPrefix = nsText.substring(with: prefixRange).lowercased()
 
         guard !currentPrefix.isEmpty else { return nil }
 
-        let ranked = provider.filterAndRank(context.items, prefix: currentPrefix, context: context.sqlContext)
+        let synchronousItems = synchronousRefilter(
+            provider: provider,
+            fullItems: context.items,
+            sqlContext: context.sqlContext,
+            prefix: currentPrefix
+        )
 
-        return ranked.isEmpty ? nil : ranked.map { SQLSuggestionEntry(item: $0) }
+        scheduleRefilterTask(
+            provider: provider,
+            fullItems: context.items,
+            sqlContext: context.sqlContext,
+            prefix: currentPrefix
+        )
+
+        return synchronousItems?.map { SQLSuggestionEntry(item: $0) }
+    }
+
+    private func synchronousRefilter(
+        provider: SQLCompletionProvider,
+        fullItems: [SQLCompletionItem],
+        sqlContext: SQLContext,
+        prefix: String
+    ) -> [SQLCompletionItem]? {
+        if prefix == lastRefilterPrefix, let cached = lastRefilterItems {
+            return cached
+        }
+
+        if let lastPrefix = lastRefilterPrefix,
+           prefix.hasPrefix(lastPrefix),
+           let lastItems = lastRefilterItems {
+            let narrowed = provider.filterByPrefix(lastItems, prefix: prefix)
+            return narrowed.isEmpty ? nil : narrowed
+        }
+
+        let seeded = provider.filterByPrefix(fullItems, prefix: prefix)
+        return seeded.isEmpty ? nil : seeded
+    }
+
+    private func scheduleRefilterTask(
+        provider: SQLCompletionProvider,
+        fullItems: [SQLCompletionItem],
+        sqlContext: SQLContext,
+        prefix: String
+    ) {
+        cursorRefilterTask?.cancel()
+
+        cursorRefilterTask = Task { [weak self] in
+            guard let self else { return }
+
+            do {
+                try await Task.sleep(nanoseconds: self.refilterDebounceNanoseconds)
+            } catch {
+                return
+            }
+            guard !Task.isCancelled else { return }
+
+            let ranked = await Task.detached(priority: .userInitiated) {
+                provider.filterAndRank(fullItems, prefix: prefix, context: sqlContext)
+            }.value
+
+            guard !Task.isCancelled else { return }
+
+            await MainActor.run {
+                guard !Task.isCancelled else { return }
+                self.lastRefilterPrefix = prefix
+                self.lastRefilterItems = ranked
+                Self.logger.debug("refilter cached prefix='\(prefix)' count=\(ranked.count)")
+            }
+        }
+    }
+
+    func completionWindowDidClose() {
+        session = nil
+        cursorRefilterTask?.cancel()
+        cursorRefilterTask = nil
+        lastRefilterPrefix = nil
+        lastRefilterItems = nil
     }
 
     func completionWindowApplyCompletion(
@@ -186,32 +297,23 @@ final class SQLCompletionAdapter: CodeSuggestionDelegate {
         textView: TextViewController,
         cursorPosition: CursorPosition?
     ) {
-        guard let entry = item as? SQLSuggestionEntry,
-              let context = currentCompletionContext else { return }
+        guard !textView.textView.hasMarkedText(),
+              let entry = item as? SQLSuggestionEntry,
+              let context = session?.context else { return }
 
-        suppressNextCompletion = true
+        let replaceRange = SQLTokenBoundary.replacementRange(
+            in: textView.textView.textStorage?.string as NSString?,
+            cursor: cursorPosition?.range.location,
+            fallback: context.replacementRange
+        )
+        let resolution = SQLCompletionInsertion.resolve(for: entry.item)
 
-        // Extend replacement range from original start to current cursor position,
-        // since the user may have typed more characters since completions were triggered.
-        let originalStart = context.replacementRange.location
-        let currentEnd = cursorPosition?.range.location ?? (originalStart + context.replacementRange.length)
-        let replaceRange = NSRange(location: originalStart, length: currentEnd - originalStart)
-        let insertText = entry.item.insertText
-
-        // Replace text in the text view
         textView.textView.replaceCharacters(
             in: [replaceRange],
-            with: insertText
+            with: resolution.text
         )
 
-        // Move cursor: for function completions ending with "()", place cursor between parens
-        let insertLength = (insertText as NSString).length
-        let newPosition: Int
-        if insertText.hasSuffix("()") {
-            newPosition = replaceRange.location + insertLength - 1
-        } else {
-            newPosition = replaceRange.location + insertLength
-        }
+        let newPosition = replaceRange.location + resolution.cursorOffset
         textView.setCursorPositions([CursorPosition(range: NSRange(location: newPosition, length: 0))])
     }
 }

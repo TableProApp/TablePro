@@ -36,7 +36,7 @@ struct ImportFromURLSheet: View {
             if let parseError {
                 Label(parseError, systemImage: "exclamationmark.triangle.fill")
                     .font(.caption)
-                    .foregroundStyle(Color(nsColor: .systemOrange))
+                    .foregroundStyle(.orange)
             } else if let parsed = parsedURL {
                 previewView(parsed)
             }
@@ -97,7 +97,7 @@ struct ImportFromURLSheet: View {
     }
 
     private func previewView(_ parsed: ParsedConnectionURL) -> some View {
-        let snapshot = PluginMetadataRegistry.shared.snapshot(forTypeId: parsed.type.pluginTypeId)
+        let snapshot = PluginMetadataRegistry.shared.snapshot(forTypeId: parsed.type.rawValue)
         let mode = snapshot?.connectionMode ?? .network
 
         return VStack(alignment: .leading, spacing: 4) {

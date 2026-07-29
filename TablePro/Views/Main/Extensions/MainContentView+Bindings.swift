@@ -16,16 +16,17 @@ extension MainContentView {
     var selectedRowDataForSidebar: [(column: String, value: String?, type: String)]? {
         guard let tab = coordinator.tabManager.selectedTab,
               !coordinator.selectionState.indices.isEmpty,
-              let firstIndex = coordinator.selectionState.indices.min() else { return nil }
+              let firstDisplayIndex = coordinator.selectionState.indices.min() else { return nil }
         let tableRows = coordinator.tabSessionRegistry.tableRows(for: tab.id)
-        guard firstIndex < tableRows.rows.count else { return nil }
-
-        let row = tableRows.rows[firstIndex].values
+        guard let row = DisplayRowMapping.row(
+            forDisplay: firstDisplayIndex,
+            displayIDs: coordinator.activeGridDisplayIDs,
+            in: tableRows
+        )?.values else { return nil }
         var data: [(column: String, value: String?, type: String)] = []
 
         let service = ValueDisplayFormatService.shared
         let connId = coordinator.connection.id
-        let tblName = tab.tableContext.tableName
 
         for (i, col) in tableRows.columns.enumerated() {
             var value: String?
@@ -42,7 +43,7 @@ extension MainContentView {
             let type = i < tableRows.columnTypes.count ? tableRows.columnTypes[i].displayName : "string"
 
             if let rawValue = value {
-                let format = service.effectiveFormat(columnName: col, connectionId: connId, tableName: tblName)
+                let format = service.effectiveFormat(columnName: col, scope: tab.tableContext.scope(connectionId: connId))
                 if format != .raw {
                     value = ValueDisplayFormatService.applyFormat(rawValue, format: format)
                 }
@@ -137,4 +138,5 @@ struct PendingChangeTrigger: Equatable {
     let pendingDeletes: Set<String>
     let hasStructureChanges: Bool
     let isFileDirty: Bool
+    let hasCreateTablePending: Bool
 }

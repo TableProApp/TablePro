@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct ChatComposerView: View {
     @Binding var text: String
@@ -14,18 +15,49 @@ struct ChatComposerView: View {
     let onTextChange: (String, Int) -> Void
     let onSubmit: () -> Void
     let onAttach: (ContextItem) -> Void
+    let acceptsImages: Bool
+    let onAttachImages: ([ChatImageInput]) -> Void
+    let onImageAttachmentFailed: (String) -> Void
 
     @State private var isFocused: Bool = false
     @State private var isCommittingMention = false
+    @State private var isDropTargeted: Bool = false
+
+    init(
+        text: Binding<String>,
+        placeholder: String,
+        minLines: Int,
+        maxLines: Int,
+        mentionState: MentionPopoverState,
+        onTextChange: @escaping (String, Int) -> Void,
+        onSubmit: @escaping () -> Void,
+        onAttach: @escaping (ContextItem) -> Void,
+        acceptsImages: Bool = false,
+        onAttachImages: @escaping ([ChatImageInput]) -> Void = { _ in },
+        onImageAttachmentFailed: @escaping (String) -> Void = { _ in }
+    ) {
+        self._text = text
+        self.placeholder = placeholder
+        self.minLines = minLines
+        self.maxLines = maxLines
+        self.mentionState = mentionState
+        self.onTextChange = onTextChange
+        self.onSubmit = onSubmit
+        self.onAttach = onAttach
+        self.acceptsImages = acceptsImages
+        self.onAttachImages = onAttachImages
+        self.onImageAttachmentFailed = onImageAttachmentFailed
+    }
 
     var body: some View {
-        ChatComposerTextView(
+        let composerCore = ChatComposerTextView(
             text: $text,
             isFocused: $isFocused,
             placeholder: placeholder,
             minLines: minLines,
             maxLines: maxLines,
             isCommittingMention: isCommittingMention,
+            acceptsImages: acceptsImages,
             onTextChange: { newText, caret in
                 guard !isCommittingMention else { return }
                 onTextChange(newText, caret)
@@ -34,7 +66,8 @@ struct ChatComposerView: View {
             onCommitMention: { commitMentionIfVisible() },
             onArrow: { delta in moveMention(by: delta) },
             onTab: { commitMentionIfVisible() },
-            onEscape: { dismissMention() }
+            onEscape: { dismissMention() },
+            onPasteImageData: handlePastedImageData
         )
         .fixedSize(horizontal: false, vertical: true)
         .background(composerBackground)
@@ -47,6 +80,58 @@ struct ChatComposerView: View {
                 state: mentionState,
                 onSelect: { commitMention(at: $0) }
             )
+        }
+
+        return Group {
+            if acceptsImages {
+                composerCore
+                    .onDrop(
+                        of: [UTType.image, UTType.fileURL],
+                        isTargeted: $isDropTargeted,
+                        perform: handleDrop(providers:)
+                    )
+                    .overlay {
+                        if isDropTargeted {
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .strokeBorder(Color.accentColor.opacity(0.6), lineWidth: 2)
+                                .allowsHitTesting(false)
+                        }
+                    }
+            } else {
+                composerCore
+            }
+        }
+    }
+
+    private func handleDrop(providers: [NSItemProvider]) -> Bool {
+        guard acceptsImages, !providers.isEmpty else { return false }
+        Task { @MainActor in
+            var collected: [ChatImageInput] = []
+            var lastError: Error?
+            for provider in providers {
+                do {
+                    collected.append(try await ChatImageConverter.convert(itemProvider: provider))
+                } catch {
+                    lastError = error
+                }
+            }
+            if !collected.isEmpty {
+                onAttachImages(collected)
+            } else if let lastError {
+                onImageAttachmentFailed(lastError.localizedDescription)
+            }
+        }
+        return true
+    }
+
+    private func handlePastedImageData(_ data: Data, _ uti: String) {
+        Task { @MainActor in
+            do {
+                let input = try await ChatImageConverter.convert(data: data, sourceUTI: uti)
+                onAttachImages([input])
+            } catch {
+                onImageAttachmentFailed(error.localizedDescription)
+            }
         }
     }
 

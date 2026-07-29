@@ -2,13 +2,9 @@
 //  PluginMetadataRegistry.swift
 //  TablePro
 //
-//  Thread-safe, non-actor metadata cache populated at compile time.
-//  All static plugin metadata is served from here, eliminating metatype
-//  dispatch on dynamically loaded bundles (which can crash due to
-//  missing witness table entries).
-//
 
 import Foundation
+import os
 import TableProPluginKit
 
 struct PluginMetadataSnapshot: Sendable {
@@ -59,6 +55,16 @@ struct PluginMetadataSnapshot: Sendable {
         var supportsAddIndex: Bool = true
         var supportsDropIndex: Bool = true
         var supportsModifyPrimaryKey: Bool = true
+        var supportsTriggers: Bool = false
+        var supportsTriggerEditing: Bool = false
+        var defaultSSLMode: SSLMode = .disabled
+        var supportsOpportunisticTLS: Bool = true
+        var supportsCloudflareTunnel: Bool = true
+        var supportsClientKeyPassphrase: Bool = false
+        var supportsConnectionPooling: Bool = true
+        var authenticationIsDatabaseScoped: Bool = false
+
+        var supportsSOCKSProxy: Bool { supportsSSH }
 
         static let defaults = CapabilityFlags(
             supportsSchemaSwitching: false,
@@ -78,7 +84,10 @@ struct PluginMetadataSnapshot: Sendable {
             supportsRenameColumn: false,
             supportsAddIndex: true,
             supportsDropIndex: true,
-            supportsModifyPrimaryKey: true
+            supportsModifyPrimaryKey: true,
+            defaultSSLMode: .disabled,
+            supportsOpportunisticTLS: true,
+            supportsCloudflareTunnel: true
         )
     }
 
@@ -86,6 +95,8 @@ struct PluginMetadataSnapshot: Sendable {
         let defaultSchemaName: String
         let defaultGroupName: String
         let tableEntityName: String
+        let containerEntityName: String
+        let schemaEntityName: String
         let defaultPrimaryKeyColumn: String?
         let immutableColumns: [String]
         let systemDatabaseNames: [String]
@@ -94,10 +105,39 @@ struct PluginMetadataSnapshot: Sendable {
         let databaseGroupingStrategy: GroupingStrategy
         let structureColumnFields: [StructureColumnField]
 
+        init(
+            defaultSchemaName: String,
+            defaultGroupName: String,
+            tableEntityName: String,
+            containerEntityName: String,
+            schemaEntityName: String = "Schema",
+            defaultPrimaryKeyColumn: String?,
+            immutableColumns: [String],
+            systemDatabaseNames: [String],
+            systemSchemaNames: [String],
+            fileExtensions: [String],
+            databaseGroupingStrategy: GroupingStrategy,
+            structureColumnFields: [StructureColumnField]
+        ) {
+            self.defaultSchemaName = defaultSchemaName
+            self.defaultGroupName = defaultGroupName
+            self.tableEntityName = tableEntityName
+            self.containerEntityName = containerEntityName
+            self.schemaEntityName = schemaEntityName
+            self.defaultPrimaryKeyColumn = defaultPrimaryKeyColumn
+            self.immutableColumns = immutableColumns
+            self.systemDatabaseNames = systemDatabaseNames
+            self.systemSchemaNames = systemSchemaNames
+            self.fileExtensions = fileExtensions
+            self.databaseGroupingStrategy = databaseGroupingStrategy
+            self.structureColumnFields = structureColumnFields
+        }
+
         static let defaults = SchemaInfo(
             defaultSchemaName: "public",
             defaultGroupName: "main",
             tableEntityName: "Tables",
+            containerEntityName: "Database",
             defaultPrimaryKeyColumn: nil,
             immutableColumns: [],
             systemDatabaseNames: [],
@@ -132,15 +172,24 @@ struct PluginMetadataSnapshot: Sendable {
         let additionalConnectionFields: [ConnectionField]
         let category: DatabaseCategory
         let tagline: String
+        let hidesBuiltInPassword: Bool
+        let defaultUnixSocketPath: String?
+        let defaultHost: String?
 
         init(
             additionalConnectionFields: [ConnectionField] = [],
             category: DatabaseCategory = .other,
-            tagline: String = ""
+            tagline: String = "",
+            hidesBuiltInPassword: Bool = false,
+            defaultUnixSocketPath: String? = nil,
+            defaultHost: String? = nil
         ) {
             self.additionalConnectionFields = additionalConnectionFields
             self.category = category
             self.tagline = tagline
+            self.hidesBuiltInPassword = hidesBuiltInPassword
+            self.defaultUnixSocketPath = defaultUnixSocketPath
+            self.defaultHost = defaultHost
         }
 
         static let defaults = ConnectionConfig()
@@ -153,6 +202,23 @@ struct PluginMetadataSnapshot: Sendable {
             supportsSchemaEditing: supportsSchemaEditing, isDownloadable: isDownloadable,
             primaryUrlScheme: primaryUrlScheme, parameterStyle: parameterStyle,
             navigationModel: navigationModel, explainVariants: explainVariants,
+            pathFieldRole: pathFieldRole, supportsHealthMonitor: supportsHealthMonitor,
+            urlSchemes: urlSchemes, postConnectActions: postConnectActions,
+            brandColorHex: brandColorHex, queryLanguageName: queryLanguageName,
+            editorLanguage: editorLanguage, connectionMode: connectionMode,
+            supportsDatabaseSwitching: supportsDatabaseSwitching,
+            supportsColumnReorder: supportsColumnReorder,
+            capabilities: capabilities, schema: schema, editor: editor, connection: connection
+        )
+    }
+
+    func withExplainVariants(_ newExplainVariants: [ExplainVariant]) -> PluginMetadataSnapshot {
+        PluginMetadataSnapshot(
+            displayName: displayName, iconName: iconName, defaultPort: defaultPort,
+            requiresAuthentication: requiresAuthentication, supportsForeignKeys: supportsForeignKeys,
+            supportsSchemaEditing: supportsSchemaEditing, isDownloadable: isDownloadable,
+            primaryUrlScheme: primaryUrlScheme, parameterStyle: parameterStyle,
+            navigationModel: navigationModel, explainVariants: newExplainVariants,
             pathFieldRole: pathFieldRole, supportsHealthMonitor: supportsHealthMonitor,
             urlSchemes: urlSchemes, postConnectActions: postConnectActions,
             brandColorHex: brandColorHex, queryLanguageName: queryLanguageName,
@@ -194,6 +260,38 @@ struct PluginMetadataSnapshot: Sendable {
             supportsDatabaseSwitching: supportsDatabaseSwitching,
             supportsColumnReorder: supportsColumnReorder,
             capabilities: capabilities, schema: schema, editor: editor, connection: connection
+        )
+    }
+
+    func withSwitchRouting(from source: PluginMetadataSnapshot) -> PluginMetadataSnapshot {
+        PluginMetadataSnapshot(
+            displayName: displayName, iconName: iconName, defaultPort: defaultPort,
+            requiresAuthentication: requiresAuthentication, supportsForeignKeys: supportsForeignKeys,
+            supportsSchemaEditing: supportsSchemaEditing, isDownloadable: isDownloadable,
+            primaryUrlScheme: primaryUrlScheme, parameterStyle: parameterStyle,
+            navigationModel: navigationModel, explainVariants: explainVariants,
+            pathFieldRole: pathFieldRole, supportsHealthMonitor: supportsHealthMonitor,
+            urlSchemes: urlSchemes, postConnectActions: postConnectActions,
+            brandColorHex: brandColorHex, queryLanguageName: queryLanguageName,
+            editorLanguage: editorLanguage, connectionMode: connectionMode,
+            supportsDatabaseSwitching: source.supportsDatabaseSwitching,
+            supportsColumnReorder: supportsColumnReorder,
+            capabilities: capabilities,
+            schema: SchemaInfo(
+                defaultSchemaName: source.schema.defaultSchemaName,
+                defaultGroupName: schema.defaultGroupName,
+                tableEntityName: schema.tableEntityName,
+                containerEntityName: source.schema.containerEntityName,
+                schemaEntityName: source.schema.schemaEntityName,
+                defaultPrimaryKeyColumn: schema.defaultPrimaryKeyColumn,
+                immutableColumns: schema.immutableColumns,
+                systemDatabaseNames: schema.systemDatabaseNames,
+                systemSchemaNames: schema.systemSchemaNames,
+                fileExtensions: schema.fileExtensions,
+                databaseGroupingStrategy: source.schema.databaseGroupingStrategy,
+                structureColumnFields: schema.structureColumnFields
+            ),
+            editor: editor, connection: connection
         )
     }
 }
@@ -394,6 +492,16 @@ final class PluginMetadataRegistry: @unchecked Sendable {
             hidesPassword: true
         )
 
+        let connectionOptionsField = ConnectionField(
+            id: "connectionOptions",
+            label: String(localized: "Connection Options"),
+            placeholder: "--cluster=my-cluster",
+            fieldType: .text,
+            section: .advanced
+        )
+
+        let awsIAMFields = AWSAuthFields.standard() + [AWSAuthFields.rdsEndpointField()]
+
         let defaults: [(typeId: String, snapshot: PluginMetadataSnapshot)] = [
             ("MySQL", PluginMetadataSnapshot(
                 displayName: "MySQL", iconName: "mysql-icon", defaultPort: 3_306,
@@ -417,12 +525,16 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     supportsQueryProgress: false,
                     requiresReconnectForDatabaseSwitch: false,
                     supportsDropDatabase: true,
-                    supportsRenameColumn: true
+                    supportsRenameColumn: true,
+                    supportsTriggers: true,
+                    supportsTriggerEditing: true,
+                    defaultSSLMode: .preferred
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
                     defaultGroupName: "main",
                     tableEntityName: "Tables",
+                    containerEntityName: "Database",
                     defaultPrimaryKeyColumn: nil,
                     immutableColumns: [],
                     systemDatabaseNames: ["information_schema", "mysql", "performance_schema", "sys"],
@@ -437,8 +549,10 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     columnTypesByCategory: mysqlColumnTypes
                 ),
                 connection: PluginMetadataSnapshot.ConnectionConfig(
+                    additionalConnectionFields: awsIAMFields,
                     category: .relational,
-                    tagline: String(localized: "Most popular open-source SQL database")
+                    tagline: String(localized: "Most popular open-source SQL database"),
+                    defaultUnixSocketPath: "/var/run/mysqld/mysqld.sock"
                 )
             )),
             ("MariaDB", PluginMetadataSnapshot(
@@ -463,12 +577,16 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     supportsQueryProgress: false,
                     requiresReconnectForDatabaseSwitch: false,
                     supportsDropDatabase: true,
-                    supportsRenameColumn: true
+                    supportsRenameColumn: true,
+                    supportsTriggers: true,
+                    supportsTriggerEditing: true,
+                    defaultSSLMode: .preferred
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
                     defaultGroupName: "main",
                     tableEntityName: "Tables",
+                    containerEntityName: "Database",
                     defaultPrimaryKeyColumn: nil,
                     immutableColumns: [],
                     systemDatabaseNames: ["information_schema", "mysql", "performance_schema", "sys"],
@@ -483,8 +601,10 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     columnTypesByCategory: mysqlColumnTypes
                 ),
                 connection: PluginMetadataSnapshot.ConnectionConfig(
+                    additionalConnectionFields: awsIAMFields,
                     category: .relational,
-                    tagline: String(localized: "Open-source fork of MySQL")
+                    tagline: String(localized: "Open-source fork of MySQL"),
+                    defaultUnixSocketPath: "/var/run/mysqld/mysqld.sock"
                 )
             )),
             ("PostgreSQL", PluginMetadataSnapshot(
@@ -510,15 +630,19 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     supportsQueryProgress: false,
                     requiresReconnectForDatabaseSwitch: true,
                     supportsDropDatabase: true,
-                    supportsRenameColumn: true
+                    supportsRenameColumn: true,
+                    supportsTriggers: true,
+                    supportsTriggerEditing: true,
+                    defaultSSLMode: .preferred
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
                     defaultGroupName: "main",
                     tableEntityName: "Tables",
+                    containerEntityName: "Database",
                     defaultPrimaryKeyColumn: nil,
                     immutableColumns: [],
-                    systemDatabaseNames: ["postgres", "template0", "template1"],
+                    systemDatabaseNames: [],
                     systemSchemaNames: [],
                     fileExtensions: [],
                     databaseGroupingStrategy: .bySchema,
@@ -530,9 +654,10 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     columnTypesByCategory: postgresqlColumnTypes
                 ),
                 connection: PluginMetadataSnapshot.ConnectionConfig(
-                    additionalConnectionFields: [pgpassField],
+                    additionalConnectionFields: [pgpassField, connectionOptionsField] + awsIAMFields,
                     category: .relational,
-                    tagline: String(localized: "Advanced object-relational SQL")
+                    tagline: String(localized: "Advanced object-relational SQL"),
+                    defaultUnixSocketPath: "/var/run/postgresql/.s.PGSQL.5432"
                 )
             )),
             ("Redshift", PluginMetadataSnapshot(
@@ -557,15 +682,17 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     supportsReadOnlyMode: true,
                     supportsQueryProgress: false,
                     requiresReconnectForDatabaseSwitch: true,
-                    supportsDropDatabase: true
+                    supportsDropDatabase: true,
+                    defaultSSLMode: .preferred
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
                     defaultGroupName: "main",
                     tableEntityName: "Tables",
+                    containerEntityName: "Database",
                     defaultPrimaryKeyColumn: nil,
                     immutableColumns: [],
-                    systemDatabaseNames: ["postgres", "template0", "template1"],
+                    systemDatabaseNames: ["padb_harvest"],
                     systemSchemaNames: [],
                     fileExtensions: [],
                     databaseGroupingStrategy: .bySchema,
@@ -577,9 +704,126 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     columnTypesByCategory: postgresqlColumnTypes
                 ),
                 connection: PluginMetadataSnapshot.ConnectionConfig(
-                    additionalConnectionFields: [pgpassField],
+                    additionalConnectionFields: [pgpassField, connectionOptionsField],
                     category: .analytical,
                     tagline: String(localized: "Amazon's columnar warehouse on Postgres")
+                )
+            )),
+            ("CockroachDB", PluginMetadataSnapshot(
+                displayName: "CockroachDB", iconName: "cockroachdb-icon", defaultPort: 26_257,
+                requiresAuthentication: true, supportsForeignKeys: true, supportsSchemaEditing: false,
+                isDownloadable: false, primaryUrlScheme: "cockroachdb", parameterStyle: .dollar,
+                navigationModel: .standard,
+                explainVariants: [
+                    ExplainVariant(id: "explain", label: "EXPLAIN", sqlPrefix: "EXPLAIN"),
+                    ExplainVariant(id: "analyze", label: "EXPLAIN ANALYZE", sqlPrefix: "EXPLAIN ANALYZE"),
+                ],
+                pathFieldRole: .database,
+                supportsHealthMonitor: true, urlSchemes: ["cockroachdb", "cockroach"],
+                postConnectActions: [.selectSchemaFromLastSession],
+                brandColorHex: "#6933FF",
+                queryLanguageName: "SQL", editorLanguage: .sql,
+                connectionMode: .network, supportsDatabaseSwitching: true,
+                supportsColumnReorder: false,
+                capabilities: PluginMetadataSnapshot.CapabilityFlags(
+                    supportsSchemaSwitching: true,
+                    supportsImport: true,
+                    supportsExport: true,
+                    supportsSSH: true,
+                    supportsSSL: true,
+                    supportsCascadeDrop: true,
+                    supportsForeignKeyDisable: false,
+                    supportsReadOnlyMode: true,
+                    supportsQueryProgress: false,
+                    requiresReconnectForDatabaseSwitch: true,
+                    supportsDropDatabase: true,
+                    supportsAddColumn: false,
+                    supportsModifyColumn: false,
+                    supportsDropColumn: false,
+                    supportsRenameColumn: false,
+                    supportsAddIndex: false,
+                    supportsDropIndex: false,
+                    supportsModifyPrimaryKey: false,
+                    defaultSSLMode: .preferred
+                ),
+                schema: PluginMetadataSnapshot.SchemaInfo(
+                    defaultSchemaName: "public",
+                    defaultGroupName: "main",
+                    tableEntityName: "Tables",
+                    containerEntityName: "Database",
+                    defaultPrimaryKeyColumn: nil,
+                    immutableColumns: [],
+                    systemDatabaseNames: ["system"],
+                    systemSchemaNames: [],
+                    fileExtensions: [],
+                    databaseGroupingStrategy: .bySchema,
+                    structureColumnFields: [.name, .type, .nullable, .defaultValue, .autoIncrement, .comment]
+                ),
+                editor: PluginMetadataSnapshot.EditorConfig(
+                    sqlDialect: postgresqlDialect,
+                    statementCompletions: [],
+                    columnTypesByCategory: postgresqlColumnTypes
+                ),
+                connection: PluginMetadataSnapshot.ConnectionConfig(
+                    additionalConnectionFields: [pgpassField, connectionOptionsField],
+                    category: .relational,
+                    tagline: String(localized: "Distributed SQL, PostgreSQL-compatible")
+                )
+            )),
+            ("PGlite", PluginMetadataSnapshot(
+                displayName: "PGlite", iconName: "postgresql-icon", defaultPort: 5_432,
+                requiresAuthentication: true, supportsForeignKeys: true, supportsSchemaEditing: true,
+                isDownloadable: false, primaryUrlScheme: "pglite", parameterStyle: .dollar,
+                navigationModel: .standard, explainVariants: [], pathFieldRole: .database,
+                supportsHealthMonitor: true, urlSchemes: ["pglite"],
+                postConnectActions: [.selectSchemaFromLastSession],
+                brandColorHex: "#F4B942",
+                queryLanguageName: "SQL", editorLanguage: .sql,
+                connectionMode: .network, supportsDatabaseSwitching: true,
+                supportsColumnReorder: false,
+                capabilities: PluginMetadataSnapshot.CapabilityFlags(
+                    supportsSchemaSwitching: true,
+                    supportsImport: true,
+                    supportsExport: true,
+                    supportsSSH: false,
+                    supportsSSL: false,
+                    supportsCascadeDrop: true,
+                    supportsForeignKeyDisable: false,
+                    supportsReadOnlyMode: true,
+                    supportsQueryProgress: false,
+                    requiresReconnectForDatabaseSwitch: true,
+                    supportsDropDatabase: true,
+                    supportsRenameColumn: true,
+                    supportsTriggers: true,
+                    supportsTriggerEditing: true,
+                    defaultSSLMode: .disabled,
+                    supportsCloudflareTunnel: false,
+                    supportsConnectionPooling: false
+                ),
+                schema: PluginMetadataSnapshot.SchemaInfo(
+                    defaultSchemaName: "public",
+                    defaultGroupName: "main",
+                    tableEntityName: "Tables",
+                    containerEntityName: "Database",
+                    defaultPrimaryKeyColumn: nil,
+                    immutableColumns: [],
+                    systemDatabaseNames: [],
+                    systemSchemaNames: [],
+                    fileExtensions: [],
+                    databaseGroupingStrategy: .bySchema,
+                    structureColumnFields: [.name, .type, .nullable, .defaultValue, .autoIncrement, .comment]
+                ),
+                editor: PluginMetadataSnapshot.EditorConfig(
+                    sqlDialect: postgresqlDialect,
+                    statementCompletions: [],
+                    columnTypesByCategory: postgresqlColumnTypes
+                ),
+                connection: PluginMetadataSnapshot.ConnectionConfig(
+                    additionalConnectionFields: [],
+                    category: .relational,
+                    tagline: String(localized: "Embedded WASM Postgres over a socket server"),
+                    hidesBuiltInPassword: true,
+                    defaultHost: "127.0.0.1"
                 )
             )),
             ("SQLite", PluginMetadataSnapshot(
@@ -606,17 +850,21 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     supportsDropDatabase: false,
                     supportsModifyColumn: false,
                     supportsRenameColumn: true,
-                    supportsModifyPrimaryKey: false
+                    supportsModifyPrimaryKey: false,
+                    supportsTriggers: true,
+                    supportsTriggerEditing: true,
+                    supportsCloudflareTunnel: false
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
                     defaultGroupName: "main",
                     tableEntityName: "Tables",
+                    containerEntityName: "Database",
                     defaultPrimaryKeyColumn: nil,
                     immutableColumns: [],
                     systemDatabaseNames: [],
                     systemSchemaNames: [],
-                    fileExtensions: ["db", "sqlite", "sqlite3"],
+                    fileExtensions: ["db", "db3", "s3db", "sl3", "sqlite", "sqlite3", "sqlitedb"],
                     databaseGroupingStrategy: .flat,
                     structureColumnFields: [.name, .type, .nullable, .defaultValue, .autoIncrement, .comment]
                 ),
@@ -641,9 +889,10 @@ final class PluginMetadataRegistry: @unchecked Sendable {
             }
         }
 
-        // Built-in type aliases: multi-type plugins where an alias maps to a primary plugin type ID
         reverseTypeIndex["MariaDB"] = "MySQL"
         reverseTypeIndex["Redshift"] = "PostgreSQL"
+        reverseTypeIndex["CockroachDB"] = "PostgreSQL"
+        reverseTypeIndex["PGlite"] = "PostgreSQL"
         reverseTypeIndex["ScyllaDB"] = "Cassandra"
         reverseTypeIndex["Turso"] = "libSQL"
     }
@@ -651,17 +900,60 @@ final class PluginMetadataRegistry: @unchecked Sendable {
     func register(snapshot: PluginMetadataSnapshot, forTypeId typeId: String, preserveIcon: Bool = false) {
         lock.lock()
         defer { lock.unlock() }
+        registerLocked(snapshot: snapshot, forTypeId: typeId, preserveIcon: preserveIcon)
+    }
+
+    /// Registers an additional database type served by a multi-type plugin (Redshift,
+    /// CockroachDB, PGlite on the PostgreSQL plugin). A plugin's statics are per-class, so
+    /// they cannot express per-type facts like PGlite's disabled SSL or single-connection limit.
+    /// The curated built-in entry is therefore authoritative for a variant; the plugin only
+    /// fills the EXPLAIN variants the curated entry leaves open. A variant with no curated entry
+    /// falls back to deriving its snapshot from the plugin.
+    func registerVariant(pluginSnapshot: PluginMetadataSnapshot, forTypeId typeId: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let curated = defaultSnapshots[typeId] else {
+            registerLocked(snapshot: pluginSnapshot, forTypeId: typeId, preserveIcon: true)
+            return
+        }
+        let resolved = curated.explainVariants.isEmpty && !pluginSnapshot.explainVariants.isEmpty
+            ? curated.withExplainVariants(pluginSnapshot.explainVariants)
+            : curated
+        registerLocked(snapshot: resolved, forTypeId: typeId, preserveIcon: false)
+    }
+
+    private func registerLocked(snapshot: PluginMetadataSnapshot, forTypeId typeId: String, preserveIcon: Bool) {
         var resolved = snapshot
         if preserveIcon, let existing = snapshots[typeId] {
             resolved = resolved.withBranding(from: existing)
         }
         if let registryDefault = defaultSnapshots[typeId] {
             resolved = resolved.withIsDownloadable(registryDefault.isDownloadable)
+            if Self.declaresLegacySchemaOnlyRouting(resolved, registryDefault: registryDefault) {
+                Logger(subsystem: "com.TablePro", category: "PluginMetadataRegistry").notice(
+                    "Plugin '\(typeId, privacy: .public)' declares legacy two-tier switching for a schema-only engine; applying the app's switch routing"
+                )
+                resolved = resolved.withSwitchRouting(from: registryDefault)
+            }
         }
         snapshots[typeId] = resolved
         for scheme in resolved.urlSchemes {
             schemeIndex[scheme.lowercased()] = typeId
         }
+    }
+
+    /// A plugin built before its engine moved to schema-only switching still
+    /// declares database switching with bySchema grouping. The app's registry
+    /// default is the ground truth for routing, so its switch fields win.
+    static func declaresLegacySchemaOnlyRouting(
+        _ snapshot: PluginMetadataSnapshot,
+        registryDefault: PluginMetadataSnapshot
+    ) -> Bool {
+        !registryDefault.supportsDatabaseSwitching
+            && registryDefault.capabilities.supportsSchemaSwitching
+            && snapshot.supportsDatabaseSwitching
+            && snapshot.capabilities.supportsSchemaSwitching
+            && snapshot.schema.databaseGroupingStrategy == .bySchema
     }
 
     func unregister(typeId: String) {
@@ -789,12 +1081,20 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                 supportsRenameColumn: driverType.supportsRenameColumn,
                 supportsAddIndex: driverType.supportsAddIndex,
                 supportsDropIndex: driverType.supportsDropIndex,
-                supportsModifyPrimaryKey: driverType.supportsModifyPrimaryKey
+                supportsModifyPrimaryKey: driverType.supportsModifyPrimaryKey,
+                supportsTriggers: driverType.supportsTriggers,
+                supportsTriggerEditing: driverType.supportsTriggerEditing,
+                defaultSSLMode: existingSnapshot?.capabilities.defaultSSLMode ?? .disabled,
+                supportsOpportunisticTLS: existingSnapshot?.capabilities.supportsOpportunisticTLS ?? true,
+                supportsCloudflareTunnel: driverType.supportsSSH,
+                supportsClientKeyPassphrase: existingSnapshot?.capabilities.supportsClientKeyPassphrase ?? false
             ),
             schema: PluginMetadataSnapshot.SchemaInfo(
                 defaultSchemaName: driverType.defaultSchemaName,
                 defaultGroupName: driverType.defaultGroupName,
                 tableEntityName: driverType.tableEntityName,
+                containerEntityName: driverType.containerEntityName,
+                schemaEntityName: driverType.schemaEntityName,
                 defaultPrimaryKeyColumn: driverType.defaultPrimaryKeyColumn,
                 immutableColumns: driverType.immutableColumns,
                 systemDatabaseNames: driverType.systemDatabaseNames,
@@ -813,7 +1113,10 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                 category: existingSnapshot?.connection.category
                     ?? Self.fallbackCategory(forTypeId: driverType.databaseTypeId),
                 tagline: existingSnapshot?.connection.tagline
-                    ?? Self.fallbackTagline(forTypeId: driverType.databaseTypeId)
+                    ?? Self.fallbackTagline(forTypeId: driverType.databaseTypeId),
+                hidesBuiltInPassword: existingSnapshot?.connection.hidesBuiltInPassword ?? false,
+                defaultUnixSocketPath: existingSnapshot?.connection.defaultUnixSocketPath,
+                defaultHost: existingSnapshot?.connection.defaultHost
             )
         )
     }
@@ -828,7 +1131,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
             return .relational
         case "Redshift", "ClickHouse", "DuckDB", "BigQuery":
             return .analytical
-        case "MongoDB":
+        case "MongoDB", "Elasticsearch", "SurrealDB":
             return .document
         case "Redis":
             return .keyValue
@@ -853,6 +1156,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
         case "MSSQL":          return String(localized: "Microsoft's enterprise SQL database")
         case "Oracle":         return String(localized: "Enterprise SQL with PL/SQL")
         case "MongoDB":        return String(localized: "JSON-style document database")
+        case "Elasticsearch":  return String(localized: "Search and analytics engine")
         case "Redis":          return String(localized: "In-memory data store and cache")
         case "ClickHouse":     return String(localized: "Column-oriented OLAP for big data")
         case "DuckDB":         return String(localized: "Embedded analytical SQL")
@@ -863,6 +1167,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
         case "libSQL":         return String(localized: "Distributed SQLite by Turso")
         case "DynamoDB":       return String(localized: "AWS managed key-value/document store")
         case "BigQuery":       return String(localized: "Google Cloud serverless data warehouse")
+        case "SurrealDB":      return String(localized: "Multi-model database with SurrealQL")
         default:               return ""
         }
     }

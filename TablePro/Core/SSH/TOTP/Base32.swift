@@ -13,7 +13,6 @@ internal enum Base32 {
         for (index, char) in alphabet.enumerated() {
             let asciiValue = Int(char.asciiValue ?? 0)
             table[asciiValue] = UInt8(index)
-            // Lowercase mapping
             if let lower = Character(char.lowercased()).asciiValue {
                 table[Int(lower)] = UInt8(index)
             }
@@ -25,7 +24,6 @@ internal enum Base32 {
     /// - Parameter string: Base32-encoded string (case-insensitive, padding optional)
     /// - Returns: Decoded data, or nil if invalid
     static func decode(_ string: String) -> Data? {
-        // Strip whitespace, dashes, and padding
         let cleaned = string.filter { char in
             char != " " && char != "-" && char != "=" && char != "\n" && char != "\r" && char != "\t"
         }

@@ -11,6 +11,7 @@ struct MCPTokenRevealSheet: View {
     @State private var isTokenRevealed = false
     @State private var tokenCopied = false
     @State private var selectedClient: IntegrationClient = .claudeCode
+    @FocusState private var doneFocused: Bool
 
     var body: some View {
         VStack(spacing: 0) {
@@ -29,6 +30,7 @@ struct MCPTokenRevealSheet: View {
                 Spacer()
                 Button(String(localized: "Done")) { dismiss() }
                     .keyboardShortcut(.defaultAction)
+                    .focused($doneFocused)
             }
             .padding()
         }
@@ -41,14 +43,14 @@ struct MCPTokenRevealSheet: View {
                 .fontWeight(.medium)
         } icon: {
             Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(Color(nsColor: .systemOrange))
+                .foregroundStyle(.orange)
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .themeMaterial(.banner, .thinMaterial)
         .overlay(
             RoundedRectangle(cornerRadius: 8)
-                .strokeBorder(Color(nsColor: .systemOrange), lineWidth: 1)
+                .strokeBorder(.orange, lineWidth: 1)
         )
         .clipShape(RoundedRectangle(cornerRadius: 8))
     }

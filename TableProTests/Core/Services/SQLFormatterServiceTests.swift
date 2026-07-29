@@ -438,4 +438,196 @@ struct SQLFormatterServiceTests {
         FROM employees
         """)
     }
+
+    @Test("Window frame ROWS BETWEEN stays inline")
+    func windowFrameInline() throws {
+        let result = try format("select sum(x) over (order by id rows between unbounded preceding and current row) as running from t")
+        let lines = result.split(separator: "\n", omittingEmptySubsequences: false)
+        #expect(lines.count == 2)
+        #expect(lines[0].contains("ROWS BETWEEN"))
+        #expect(lines[1] == "FROM t")
+    }
+
+    // MARK: - Set Operations Inside Subqueries and CTEs
+
+    @Test("UNION inside a derived table keeps nesting and closes on its own line")
+    func unionInDerivedTable() throws {
+        let sql = "select country, avg(score) as score "
+            + "from (select yr, country, score from scores "
+            + "union select 2024, country, ladder from scores_current) as final "
+            + "group by country"
+        let result = try format(sql)
+        #expect(result == """
+        SELECT country,
+               avg(score) AS score
+        FROM (
+          SELECT yr,
+                 country,
+                 score
+          FROM scores
+          UNION
+          SELECT 2024,
+                 country,
+                 ladder
+          FROM scores_current
+        ) AS final
+        GROUP BY country
+        """)
+    }
+
+    @Test("UNION ALL inside a derived table")
+    func unionAllInDerivedTable() throws {
+        let result = try format("select * from (select id from a union all select id from b) as t")
+        #expect(result == """
+        SELECT *
+        FROM (
+          SELECT id
+          FROM a
+          UNION ALL
+          SELECT id
+          FROM b
+        ) AS t
+        """)
+    }
+
+    @Test("INTERSECT inside a derived table")
+    func intersectInDerivedTable() throws {
+        let result = try format("select * from (select id from a intersect select id from b) as t")
+        #expect(result == """
+        SELECT *
+        FROM (
+          SELECT id
+          FROM a
+          INTERSECT
+          SELECT id
+          FROM b
+        ) AS t
+        """)
+    }
+
+    @Test("EXCEPT inside a derived table")
+    func exceptInDerivedTable() throws {
+        let result = try format("select * from (select id from a except select id from b) as t")
+        #expect(result == """
+        SELECT *
+        FROM (
+          SELECT id
+          FROM a
+          EXCEPT
+          SELECT id
+          FROM b
+        ) AS t
+        """)
+    }
+
+    @Test("MINUS inside a derived table (Oracle)")
+    func minusInDerivedTable() throws {
+        let result = try formatter.format(
+            "select * from (select id from a minus select id from b) as t",
+            dialect: .oracle
+        ).formattedSQL
+        #expect(result == """
+        SELECT *
+        FROM (
+          SELECT id
+          FROM a
+          MINUS
+          SELECT id
+          FROM b
+        ) AS t
+        """)
+    }
+
+    @Test("UNION inside a CTE body")
+    func unionInsideCTE() throws {
+        let result = try format("with combined as (select id from a union select id from b) select * from combined")
+        #expect(result == """
+        WITH combined AS (
+          SELECT id
+          FROM a
+          UNION
+          SELECT id
+          FROM b
+        )
+        SELECT *
+        FROM combined
+        """)
+    }
+
+    @Test("UNION inside a nested subquery keeps both levels")
+    func unionInNestedSubquery() throws {
+        let result = try format("select * from (select id from (select id from t union select id from u) as iq) as oq")
+        #expect(result == """
+        SELECT *
+        FROM (
+          SELECT id
+          FROM (
+            SELECT id
+            FROM t
+            UNION
+            SELECT id
+            FROM u
+          ) AS iq
+        ) AS oq
+        """)
+    }
+
+    @Test("Chained top-level UNIONs keep blank-line separation")
+    func chainedTopLevelUnions() throws {
+        let result = try format("select 1 union select 2 union select 3")
+        #expect(result == """
+        SELECT 1
+
+        UNION
+
+        SELECT 2
+
+        UNION
+
+        SELECT 3
+        """)
+    }
+
+    @Test("Top-level INTERSECT keeps blank-line separation")
+    func topLevelIntersect() throws {
+        let result = try format("select id from a intersect select id from b")
+        #expect(result == """
+        SELECT id
+        FROM a
+
+        INTERSECT
+
+        SELECT id
+        FROM b
+        """)
+    }
+
+    @Test("INSERT ... SELECT")
+    func insertSelect() throws {
+        let result = try format("insert into t (a, b) select a, b from s")
+        #expect(result == """
+        INSERT INTO t (a, b)
+        SELECT a,
+               b
+        FROM s
+        """)
+    }
+
+    // MARK: - Idempotency of Nested Set Operations
+
+    @Test("UNION in derived table is idempotent")
+    func unionInDerivedTableIdempotent() throws {
+        let sql = "select * from (select id from a union select id from b) as t"
+        let first = try format(sql)
+        let second = try format(first)
+        #expect(first == second)
+    }
+
+    @Test("Nested subquery with UNION is idempotent")
+    func nestedUnionIdempotent() throws {
+        let sql = "select * from (select id from (select id from t union select id from u) as iq) as oq where id > 0"
+        let first = try format(sql)
+        let second = try format(first)
+        #expect(first == second)
+    }
 }

@@ -33,7 +33,6 @@ final class UpdaterBridge {
         // Apply stored setting so Sparkle checks automatically on launch
         controller.updater.automaticallyChecksForUpdates = AppSettingsManager.shared.general.automaticallyCheckForUpdates
 
-        // Observe canCheckForUpdates via KVO
         observation = controller.updater.observe(\.canCheckForUpdates, options: [.new]) { [weak self] _, change in
             let newValue = change.newValue ?? false
             Task { @MainActor [weak self] in

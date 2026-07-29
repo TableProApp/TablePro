@@ -18,13 +18,25 @@ extension TableViewCoordinator {
             return column.width
         }
 
-        let tableRows = tableRowsProvider()
-        let width = cellFactory.calculateFitToContentWidth(
+        return fitToContentWidth(for: column, dataColumnIndex: dataColumnIndex, tableRows: tableRowsProvider())
+    }
+
+    private var visibleGridWidth: CGFloat {
+        guard let tableView else { return 0 }
+        return tableView.enclosingScrollView?.contentView.bounds.width ?? tableView.visibleRect.width
+    }
+
+    private func fitToContentWidth(
+        for column: NSTableColumn,
+        dataColumnIndex: Int,
+        tableRows: TableRows
+    ) -> CGFloat {
+        cellFactory.calculateFitToContentWidth(
             for: dataColumnIndex < tableRows.columns.count ? tableRows.columns[dataColumnIndex] : column.title,
             columnIndex: dataColumnIndex,
-            tableRows: tableRows
+            tableRows: tableRows,
+            availableWidth: visibleGridWidth
         )
-        return width
     }
 
     // MARK: - NSMenuDelegate (Header Context Menu)
@@ -91,10 +103,67 @@ extension TableViewCoordinator {
         copyItem.target = self
         menu.addItem(copyItem)
 
+        if let dataColumnIndex = dataColumnIndex(from: column.identifier) {
+            let copyValuesItem = NSMenuItem(
+                title: String(localized: "Copy Column Values"),
+                action: #selector(copyColumnValues(_:)),
+                keyEquivalent: ""
+            )
+            copyValuesItem.representedObject = dataColumnIndex
+            copyValuesItem.target = self
+            menu.addItem(copyValuesItem)
+        }
+
+        if let dataColumnIndex = dataColumnIndex(from: column.identifier),
+           isEditable,
+           cachedRowCount > 0,
+           !primaryKeyColumns.contains(baseName) {
+            let fillItem = NSMenuItem(
+                title: String(localized: "Fill Column…"),
+                action: #selector(fillColumn(_:)),
+                keyEquivalent: ""
+            )
+            fillItem.representedObject = dataColumnIndex
+            fillItem.target = self
+            menu.addItem(fillItem)
+        }
+
         let filterItem = NSMenuItem(title: String(localized: "Filter with column"), action: #selector(filterWithColumn(_:)), keyEquivalent: "")
         filterItem.representedObject = baseName
         filterItem.target = self
         menu.addItem(filterItem)
+
+        if let dataColumnIndex = dataColumnIndex(from: column.identifier) {
+            let filterValuesItem = NSMenuItem(
+                title: String(localized: "Filter Values…"),
+                action: #selector(filterColumnValues(_:)),
+                keyEquivalent: ""
+            )
+            filterValuesItem.representedObject = dataColumnIndex
+            filterValuesItem.target = self
+            menu.addItem(filterValuesItem)
+
+            if valueFilterState.isActive(column: dataColumnIndex) {
+                let clearColumnItem = NSMenuItem(
+                    title: String(localized: "Clear Value Filter"),
+                    action: #selector(clearColumnValueFilter(_:)),
+                    keyEquivalent: ""
+                )
+                clearColumnItem.representedObject = dataColumnIndex
+                clearColumnItem.target = self
+                menu.addItem(clearColumnItem)
+            }
+        }
+
+        if valueFilterState.isActive {
+            let clearAllItem = NSMenuItem(
+                title: String(localized: "Clear All Value Filters"),
+                action: #selector(clearAllValueFiltersAction),
+                keyEquivalent: ""
+            )
+            clearAllItem.target = self
+            menu.addItem(clearAllItem)
+        }
 
         if let dataColumnIndex = dataColumnIndex(from: column.identifier) {
             let columnType = dataColumnIndex < tableRows.columnTypes.count ? tableRows.columnTypes[dataColumnIndex] : nil
@@ -103,8 +172,7 @@ extension TableViewCoordinator {
                 let displaySubmenu = NSMenu()
                 let currentFormat = ValueDisplayFormatService.shared.effectiveFormat(
                     columnName: baseName,
-                    connectionId: connectionId,
-                    tableName: tableName
+                    scope: tableScope
                 )
                 for format in applicableFormats {
                     let item = NSMenuItem(
@@ -155,6 +223,18 @@ extension TableViewCoordinator {
             showAllItem.target = self
             menu.addItem(showAllItem)
         }
+
+        appendColumnStructureItems(to: menu, forColumnIdentifier: column.identifier)
+    }
+
+    private func appendColumnStructureItems(to menu: NSMenu, forColumnIdentifier identifier: NSUserInterfaceItemIdentifier) {
+        guard let dataColumnIndex = dataColumnIndex(from: identifier),
+              let structureItems = delegate?.dataGridColumnStructureMenuItems(forColumn: dataColumnIndex),
+              !structureItems.isEmpty else { return }
+        menu.addItem(NSMenuItem.separator())
+        for item in structureItems {
+            menu.addItem(item)
+        }
     }
 
     @objc func sortAscending(_ sender: NSMenuItem) {
@@ -195,9 +275,33 @@ extension TableViewCoordinator {
         ClipboardService.shared.writeText(columnName)
     }
 
+    @objc func copyColumnValues(_ sender: NSMenuItem) {
+        guard let columnIndex = sender.representedObject as? Int else { return }
+        copyColumnValues(columnIndex: columnIndex)
+    }
+
     @objc func filterWithColumn(_ sender: NSMenuItem) {
         guard let columnName = sender.representedObject as? String else { return }
         delegate?.dataGridFilterColumn(columnName)
+    }
+
+    @objc func filterColumnValues(_ sender: NSMenuItem) {
+        guard let dataIndex = sender.representedObject as? Int,
+              let tableView,
+              let header = tableView.headerView as? SortableHeaderView,
+              let columnIndex = tableColumnIndex(for: dataIndex),
+              let cell = tableView.tableColumns[columnIndex].headerCell as? SortableHeaderCell else { return }
+        let anchor = cell.funnelRect(forBounds: header.headerRect(ofColumn: columnIndex))
+        presentValueFilterPopover(forColumn: dataIndex, anchor: anchor, in: header)
+    }
+
+    @objc func clearColumnValueFilter(_ sender: NSMenuItem) {
+        guard let dataIndex = sender.representedObject as? Int else { return }
+        applyValueFilter(nil, columnName: "", forColumn: dataIndex)
+    }
+
+    @objc func clearAllValueFiltersAction() {
+        clearAllValueFilters()
     }
 
     @objc func hideColumn(_ sender: NSMenuItem) {
@@ -213,13 +317,11 @@ extension TableViewCoordinator {
         let column = tableView.tableColumns[columnIndex]
         guard let dataColumnIndex = dataColumnIndex(from: column.identifier) else { return }
 
-        let tableRows = tableRowsProvider()
-        let width = cellFactory.calculateFitToContentWidth(
-            for: dataColumnIndex < tableRows.columns.count ? tableRows.columns[dataColumnIndex] : column.title,
-            columnIndex: dataColumnIndex,
-            tableRows: tableRows
+        column.width = fitToContentWidth(
+            for: column,
+            dataColumnIndex: dataColumnIndex,
+            tableRows: tableRowsProvider()
         )
-        column.width = width
     }
 
     @objc func sizeAllColumnsToFit(_ sender: NSMenuItem) {
@@ -227,15 +329,16 @@ extension TableViewCoordinator {
 
         let tableRows = tableRowsProvider()
         for column in tableView.tableColumns {
-            guard column.identifier != ColumnIdentitySchema.rowNumberIdentifier,
-                  let dataColumnIndex = dataColumnIndex(from: column.identifier) else { continue }
+            guard !column.isHidden,
+                  column.identifier != ColumnIdentitySchema.rowNumberIdentifier,
+                  let dataColumnIndex = dataColumnIndex(from: column.identifier),
+                  dataColumnIndex < tableRows.columns.count else { continue }
 
-            let width = cellFactory.calculateFitToContentWidth(
-                for: dataColumnIndex < tableRows.columns.count ? tableRows.columns[dataColumnIndex] : column.title,
-                columnIndex: dataColumnIndex,
+            column.width = fitToContentWidth(
+                for: column,
+                dataColumnIndex: dataColumnIndex,
                 tableRows: tableRows
             )
-            column.width = width
         }
     }
 
@@ -244,12 +347,11 @@ extension TableViewCoordinator {
 
         let formatToStore: ValueDisplayFormat? = (info.format == .raw) ? nil : info.format
 
-        if let connId = connectionId, let table = tableName {
+        if let scope = tableScope {
             ValueDisplayFormatService.shared.setOverride(
                 formatToStore,
                 columnName: info.columnName,
-                connectionId: connId,
-                tableName: table
+                scope: scope
             )
         }
 

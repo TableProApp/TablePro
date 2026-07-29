@@ -32,7 +32,6 @@ final class StructureChangeManager: ChangeManaging {
     var workingPrimaryKey: [String] = []
 
     var tableName: String?
-    var databaseType: DatabaseType = .mysql
 
     // MARK: - Undo/Redo Support
 
@@ -61,13 +60,10 @@ final class StructureChangeManager: ChangeManaging {
         columns: [ColumnInfo],
         indexes: [IndexInfo],
         foreignKeys: [ForeignKeyInfo],
-        primaryKey: [String],
-        databaseType: DatabaseType
+        primaryKey: [String]
     ) {
         self.tableName = tableName
-        self.databaseType = databaseType
 
-        // Convert to definitions
         self.currentColumns = columns.map { EditableColumnDefinition.from($0) }
 
         // Merge primary key info into columns (handles PostgreSQL where isPrimaryKey is always false)
@@ -94,7 +90,6 @@ final class StructureChangeManager: ChangeManaging {
         }
         self.currentPrimaryKey = primaryKey
 
-        // Reset working state
         resetWorkingState()
 
         pendingChanges.removeAll()
@@ -137,7 +132,6 @@ final class StructureChangeManager: ChangeManaging {
         }
         undoManager.setActionName(String(localized: "Add Column"))
         validate()
-        reloadVersion += 1
     }
 
     func addNewIndex() {
@@ -151,7 +145,6 @@ final class StructureChangeManager: ChangeManaging {
         }
         undoManager.setActionName(String(localized: "Add Index"))
         validate()
-        reloadVersion += 1
     }
 
     func addNewForeignKey() {
@@ -165,7 +158,6 @@ final class StructureChangeManager: ChangeManaging {
         }
         undoManager.setActionName(String(localized: "Add Foreign Key"))
         validate()
-        reloadVersion += 1
     }
 
     // MARK: - Paste Operations (public methods for adding copied items)
@@ -179,7 +171,6 @@ final class StructureChangeManager: ChangeManaging {
             target.applySchemaUndo(.columnAdd(column: column))
         }
         undoManager.setActionName(String(localized: "Add Column"))
-        reloadVersion += 1
     }
 
     func addIndex(_ index: EditableIndexDefinition) {
@@ -191,7 +182,6 @@ final class StructureChangeManager: ChangeManaging {
             target.applySchemaUndo(.indexAdd(index: index))
         }
         undoManager.setActionName(String(localized: "Add Index"))
-        reloadVersion += 1
     }
 
     func addForeignKey(_ foreignKey: EditableForeignKeyDefinition) {
@@ -203,7 +193,6 @@ final class StructureChangeManager: ChangeManaging {
             target.applySchemaUndo(.foreignKeyAdd(fk: foreignKey))
         }
         undoManager.setActionName(String(localized: "Add Foreign Key"))
-        reloadVersion += 1
     }
 
     // MARK: - Column Operations
@@ -240,7 +229,6 @@ final class StructureChangeManager: ChangeManaging {
         }
 
         validate()
-        reloadVersion += 1
     }
 
     func deleteColumn(id: UUID) {
@@ -266,7 +254,6 @@ final class StructureChangeManager: ChangeManaging {
         }
 
         validate()
-        reloadVersion += 1
     }
 
     // MARK: - Index Operations
@@ -303,7 +290,6 @@ final class StructureChangeManager: ChangeManaging {
         }
 
         validate()
-        reloadVersion += 1
     }
 
     func deleteIndex(id: UUID) {
@@ -329,7 +315,6 @@ final class StructureChangeManager: ChangeManaging {
         }
 
         validate()
-        reloadVersion += 1
     }
 
     // MARK: - Foreign Key Operations
@@ -366,7 +351,6 @@ final class StructureChangeManager: ChangeManaging {
         }
 
         validate()
-        reloadVersion += 1
     }
 
     func deleteForeignKey(id: UUID) {
@@ -392,7 +376,6 @@ final class StructureChangeManager: ChangeManaging {
         }
 
         validate()
-        reloadVersion += 1
     }
 
     // MARK: - Row-Specific Undo Delete
@@ -417,14 +400,13 @@ final class StructureChangeManager: ChangeManaging {
         case .foreignKeys:
             guard row < workingForeignKeys.count else { return }
             key = .foreignKey(workingForeignKeys[row].id)
-        case .ddl, .parts:
+        case .ddl, .parts, .triggers:
             return
         }
         guard pendingChanges[key]?.isDelete == true else { return }
         pendingChanges.removeValue(forKey: key)
         untrackChangeKey(key)
         validate()
-        reloadVersion += 1
     }
 
     // MARK: - Validation
@@ -432,14 +414,12 @@ final class StructureChangeManager: ChangeManaging {
     private func validate() {
         validationErrors.removeAll()
 
-        // Validate all columns have name and dataType (no invalid placeholders)
         for column in workingColumns {
             if !column.isValid {
                 validationErrors[.column(column.id)] = "Column must have a name and data type"
             }
         }
 
-        // Validate column names are unique
         let columnNames = workingColumns.filter { column in
             column.isValid && !isColumnPendingDeletion(column.id)
         }.map { $0.name }
@@ -453,21 +433,18 @@ final class StructureChangeManager: ChangeManaging {
             }
         }
 
-        // Validate all indexes have required fields
         for index in workingIndexes {
             if !index.isValid {
                 validationErrors[.index(index.id)] = "Index must have a name and at least one column"
             }
         }
 
-        // Validate all foreign keys have required fields
         for fk in workingForeignKeys {
             if !fk.isValid {
                 validationErrors[.foreignKey(fk.id)] = "Foreign key must have name, columns, and referenced table"
             }
         }
 
-        // Validate index names are unique
         let indexNames = workingIndexes.filter { $0.isValid }.map { $0.name }
         let duplicateIndexes = Dictionary(grouping: indexNames, by: { $0 })
             .filter { $0.value.count > 1 }
@@ -479,7 +456,6 @@ final class StructureChangeManager: ChangeManaging {
             }
         }
 
-        // Validate index columns exist
         for index in workingIndexes.filter({ $0.isValid }) {
             for columnName in index.columns {
                 if !columnNames.contains(columnName) {
@@ -488,7 +464,6 @@ final class StructureChangeManager: ChangeManaging {
             }
         }
 
-        // Validate foreign key columns exist
         for fk in workingForeignKeys.filter({ $0.isValid }) {
             for columnName in fk.columns {
                 if !columnNames.contains(columnName) {
@@ -497,7 +472,6 @@ final class StructureChangeManager: ChangeManaging {
             }
         }
 
-        // Validate primary key columns exist
         for columnName in workingPrimaryKey {
             if !columnNames.contains(columnName) {
                 validationErrors[.primaryKey] = "Primary key references non-existent column: \(columnName)"
@@ -568,7 +542,6 @@ final class StructureChangeManager: ChangeManaging {
         }
 
         validate()
-        reloadVersion += 1
     }
 
     private func applyColumnEditUndo(id: UUID, old: EditableColumnDefinition, new: EditableColumnDefinition) {
@@ -806,7 +779,7 @@ final class StructureChangeManager: ChangeManaging {
             let isDeleted = change?.isDelete ?? false
             let isInserted = !currentForeignKeys.contains(where: { $0.id == fk.id })
             return (isDeleted, isInserted)
-        case .ddl, .parts:
+        case .ddl, .parts, .triggers:
             return (false, false)
         }
     }

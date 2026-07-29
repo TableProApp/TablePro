@@ -4,6 +4,8 @@
 <dict>
 	<key>AnalyticsHMACSecret</key>
 	<string>$(ANALYTICS_HMAC_SECRET)</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>TablePro connects to database servers and SSH tunnels running on your local network, including Bonjour (.local) hostnames.</string>
 	<key>SUFeedURL</key>
 	<string>https://raw.githubusercontent.com/TableProApp/TablePro/main/appcast.xml</string>
 	<key>SUPublicEDKey</key>
@@ -14,19 +16,20 @@
 			<key>CFBundleTypeExtensions</key>
 			<array>
 				<string>sql</string>
+				<string>psql</string>
+				<string>pgsql</string>
 			</array>
-			<key>CFBundleTypeIconFile</key>
-			<string>SQLDocument</string>
+			<key>CFBundleTypeIconSystemGenerated</key>
+			<true/>
 			<key>CFBundleTypeName</key>
 			<string>SQL File</string>
 			<key>CFBundleTypeRole</key>
 			<string>Editor</string>
 			<key>LSHandlerRank</key>
-			<string>Owner</string>
+			<string>Default</string>
 			<key>LSItemContentTypes</key>
 			<array>
-				<string>com.tablepro.sql</string>
-				<string>public.sql</string>
+				<string>org.iso.sql</string>
 			</array>
 		</dict>
 		<dict>
@@ -50,23 +53,25 @@
 		<dict>
 			<key>CFBundleTypeExtensions</key>
 			<array>
-				<string>sqlite</string>
-				<string>sqlite3</string>
+				<string>db</string>
 				<string>db3</string>
 				<string>s3db</string>
 				<string>sl3</string>
+				<string>sqlite</string>
+				<string>sqlite3</string>
 				<string>sqlitedb</string>
 			</array>
+			<key>CFBundleTypeIconSystemGenerated</key>
+			<true/>
 			<key>CFBundleTypeName</key>
 			<string>SQLite Database</string>
 			<key>CFBundleTypeRole</key>
 			<string>Editor</string>
 			<key>LSHandlerRank</key>
-			<string>Default</string>
+			<string>Alternate</string>
 			<key>LSItemContentTypes</key>
 			<array>
-				<string>com.apple.sqlite3</string>
-				<string>com.tablepro.sqlite-db</string>
+				<string>org.sqlite.sqlite</string>
 			</array>
 		</dict>
 		<dict>
@@ -86,12 +91,14 @@
 			</array>
 		</dict>
 		<dict>
+			<key>CFBundleTypeIconSystemGenerated</key>
+			<true/>
 			<key>CFBundleTypeName</key>
 			<string>DuckDB Database</string>
 			<key>CFBundleTypeRole</key>
 			<string>Editor</string>
 			<key>LSHandlerRank</key>
-			<string>Owner</string>
+			<string>Default</string>
 			<key>CFBundleTypeExtensions</key>
 			<array>
 				<string>duckdb</string>
@@ -99,40 +106,86 @@
 			</array>
 			<key>LSItemContentTypes</key>
 			<array>
-				<string>com.tablepro.duckdb</string>
+				<string>org.duckdb.duckdb-database</string>
+			</array>
+		</dict>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Beancount Ledger</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Owner</string>
+			<key>CFBundleTypeExtensions</key>
+			<array>
+				<string>beancount</string>
+			</array>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>com.tablepro.beancount</string>
+			</array>
+		</dict>
+		<dict>
+			<key>CFBundleTypeExtensions</key>
+			<array>
+				<string>csv</string>
+			</array>
+			<key>CFBundleTypeName</key>
+			<string>CSV Document</string>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>LSHandlerRank</key>
+			<string>Default</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>public.comma-separated-values-text</string>
+			</array>
+		</dict>
+		<dict>
+			<key>CFBundleTypeExtensions</key>
+			<array>
+				<string>tsv</string>
+			</array>
+			<key>CFBundleTypeName</key>
+			<string>TSV Document</string>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>LSHandlerRank</key>
+			<string>Default</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>public.tab-separated-values-text</string>
 			</array>
 		</dict>
 	</array>
-	<key>UTExportedTypeDeclarations</key>
+	<key>UTImportedTypeDeclarations</key>
 	<array>
 		<dict>
 			<key>UTTypeIdentifier</key>
-			<string>com.tablepro.sql</string>
+			<string>org.iso.sql</string>
 			<key>UTTypeDescription</key>
 			<string>SQL File</string>
-			<key>UTTypeIconFile</key>
-			<string>SQLDocument</string>
 			<key>UTTypeConformsTo</key>
 			<array>
-				<string>public.sql</string>
-				<string>public.plain-text</string>
+				<string>public.source-code</string>
 			</array>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>
 				<array>
 					<string>sql</string>
+					<string>psql</string>
+					<string>pgsql</string>
 				</array>
 			</dict>
 		</dict>
 		<dict>
 			<key>UTTypeIdentifier</key>
-			<string>com.tablepro.sqlite-db</string>
+			<string>org.sqlite.sqlite</string>
 			<key>UTTypeDescription</key>
 			<string>SQLite Database</string>
 			<key>UTTypeConformsTo</key>
 			<array>
-				<string>com.apple.sqlite3</string>
 				<string>public.database</string>
 				<string>public.data</string>
 			</array>
@@ -140,18 +193,19 @@
 			<dict>
 				<key>public.filename-extension</key>
 				<array>
-					<string>sqlite</string>
-					<string>sqlite3</string>
+					<string>db</string>
 					<string>db3</string>
 					<string>s3db</string>
 					<string>sl3</string>
+					<string>sqlite</string>
+					<string>sqlite3</string>
 					<string>sqlitedb</string>
 				</array>
 			</dict>
 		</dict>
 		<dict>
 			<key>UTTypeIdentifier</key>
-			<string>com.tablepro.duckdb</string>
+			<string>org.duckdb.duckdb-database</string>
 			<key>UTTypeDescription</key>
 			<string>DuckDB Database</string>
 			<key>UTTypeConformsTo</key>
@@ -165,6 +219,27 @@
 				<array>
 					<string>duckdb</string>
 					<string>ddb</string>
+				</array>
+			</dict>
+		</dict>
+	</array>
+	<key>UTExportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>com.tablepro.beancount</string>
+			<key>UTTypeDescription</key>
+			<string>Beancount Ledger</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.plain-text</string>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>beancount</string>
 				</array>
 			</dict>
 		</dict>
@@ -205,6 +280,17 @@
 			</dict>
 		</dict>
 	</array>
+	<key>NSDesktopFolderUsageDescription</key>
+	<string>TablePro reads database settings from the project folder you choose.</string>
+	<key>NSDocumentsFolderUsageDescription</key>
+	<string>TablePro reads database settings from the project folder you choose.</string>
+	<key>NSDownloadsFolderUsageDescription</key>
+	<string>TablePro reads database settings from the project folder you choose.</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+	</dict>
 	<key>NSUserActivityTypes</key>
 	<array>
 		<string>com.TablePro.viewConnection</string>
@@ -236,6 +322,8 @@
 				<string>redis</string>
 				<string>rediss</string>
 				<string>redshift</string>
+				<string>cockroachdb</string>
+				<string>cockroach</string>
 				<string>mongodb+srv</string>
 				<string>mssql</string>
 				<string>sqlserver</string>
@@ -251,6 +339,7 @@
 				<string>etcds</string>
 				<string>d1</string>
 				<string>libsql</string>
+				<string>surrealdb</string>
 			</array>
 			<key>CFBundleTypeRole</key>
 			<string>Viewer</string>

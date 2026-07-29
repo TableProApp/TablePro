@@ -22,6 +22,8 @@ struct QueryResult {
     /// Optional status message from the plugin (e.g. server notices, warnings)
     var statusMessage: String?
 
+    var columnMeta: [ResultColumnMeta]?
+
     var isEmpty: Bool {
         rows.isEmpty
     }
@@ -42,6 +44,12 @@ struct QueryResult {
         executionTime: 0,
         error: nil
     )
+}
+
+struct ResultColumnMeta: Sendable {
+    let isPrimaryKey: Bool
+    let isNullable: Bool
+    let isAutoIncrement: Bool
 }
 
 /// Database error types
@@ -73,10 +81,17 @@ enum DatabaseError: Error, LocalizedError {
 
 /// Information about a database table
 struct TableInfo: Identifiable, Hashable, Sendable {
-    var id: String { "\(name)_\(type.rawValue)" }
+    var id: String {
+        if let schema, !schema.isEmpty {
+            return "\(schema).\(name)_\(type.rawValue)"
+        }
+        return "\(name)_\(type.rawValue)"
+    }
     let name: String
     let type: TableType
     let rowCount: Int?
+    let schema: String?
+    let comment: String?
 
     enum TableType: String, Sendable {
         case table = "TABLE"
@@ -84,15 +99,25 @@ struct TableInfo: Identifiable, Hashable, Sendable {
         case materializedView = "MATERIALIZED VIEW"
         case foreignTable = "FOREIGN TABLE"
         case systemTable = "SYSTEM TABLE"
+        case partitionedTable = "PARTITIONED TABLE"
+    }
+
+    init(name: String, type: TableType, rowCount: Int?, schema: String? = nil, comment: String? = nil) {
+        self.name = name
+        self.type = type
+        self.rowCount = rowCount
+        self.schema = schema
+        self.comment = comment
     }
 
     static func == (lhs: TableInfo, rhs: TableInfo) -> Bool {
-        lhs.name == rhs.name && lhs.type == rhs.type
+        lhs.name == rhs.name && lhs.type == rhs.type && lhs.schema == rhs.schema
     }
 
     func hash(into hasher: inout Hasher) {
         hasher.combine(name)
         hasher.combine(type)
+        hasher.combine(schema)
     }
 }
 
@@ -108,6 +133,31 @@ struct ColumnInfo: Identifiable, Hashable {
     let charset: String?
     let collation: String?
     let comment: String?
+    let allowedValues: [String]?
+
+    init(
+        name: String,
+        dataType: String,
+        isNullable: Bool,
+        isPrimaryKey: Bool,
+        defaultValue: String? = nil,
+        extra: String? = nil,
+        charset: String? = nil,
+        collation: String? = nil,
+        comment: String? = nil,
+        allowedValues: [String]? = nil
+    ) {
+        self.name = name
+        self.dataType = dataType
+        self.isNullable = isNullable
+        self.isPrimaryKey = isPrimaryKey
+        self.defaultValue = defaultValue
+        self.extra = extra
+        self.charset = charset
+        self.collation = collation
+        self.comment = comment
+        self.allowedValues = allowedValues
+    }
 }
 
 /// Information about a table index
@@ -167,6 +217,29 @@ struct ForeignKeyInfo: Identifiable, Hashable {
         self.referencedSchema = referencedSchema
         self.onDelete = onDelete
         self.onUpdate = onUpdate
+    }
+}
+
+struct TriggerInfo: Identifiable, Hashable {
+    var id: String { name }
+    let name: String
+    let timing: String
+    let event: String
+    let statement: String
+    let enabled: Bool?
+
+    init(
+        name: String,
+        timing: String,
+        event: String,
+        statement: String,
+        enabled: Bool? = nil
+    ) {
+        self.name = name
+        self.timing = timing
+        self.event = event
+        self.statement = statement
+        self.enabled = enabled
     }
 }
 

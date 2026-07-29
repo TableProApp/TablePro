@@ -1,0 +1,128 @@
+---
+title: Beancount
+description: Open Beancount ledgers with TablePro
+---
+
+TablePro opens `.beancount` ledgers as read-only, file-based connections. If the Beancount plugin is not installed yet, TablePro prompts you to download it before opening the ledger. The driver projects transactions, postings, accounts, prices, computed balances, balance assertions, and source files into SQL tables for browsing and exports.
+
+The plugin uses either `rledger` (the rustledger project) or Python Beancount to parse ledgers. TablePro does not bundle either one, so install one yourself before opening a ledger. When both are available, TablePro uses `rledger`; Python Beancount is the fallback for browsing projected SQL tables.
+
+The plugin also supports BQL queries through `rledger`. BQL requires the `rledger` executable even when the ledger was opened through Python Beancount.
+
+## Backend requirements
+
+Install the Python backend with pip:
+
+```bash
+pip3 install beancount
+```
+
+For `rledger`, build or download the rustledger project and put the executable on `PATH`, in `/opt/homebrew/bin`, or in `/usr/local/bin`.
+
+TablePro then discovers backends in this order:
+
+1. `rledger` from `TABLEPRO_RUSTLEDGER_BINARY`, then `PATH`, then `/opt/homebrew/bin` and `/usr/local/bin`.
+2. A `python3` that can `import beancount`, from `TABLEPRO_BEANCOUNT_PYTHON`, then `PATH`, then `/opt/homebrew/bin/python3`, `/usr/local/bin/python3`, and `/usr/bin/python3`.
+
+The names are exact: an executable called `rledger`, and a `python3` that imports `beancount`. Any other Beancount-compatible parser has to be installed under one of those names, or pointed at with the environment variables below.
+
+To verify `rledger`:
+
+```bash
+rledger --version
+```
+
+To verify Python Beancount:
+
+```bash
+python3 -c "import beancount"
+```
+
+If TablePro cannot find a supported backend, set the executable path before launching the app:
+
+```bash
+launchctl setenv TABLEPRO_RUSTLEDGER_BINARY /opt/homebrew/bin/rledger
+launchctl setenv TABLEPRO_BEANCOUNT_PYTHON /opt/homebrew/bin/python3
+```
+
+To force a backend:
+
+```bash
+launchctl setenv TABLEPRO_BEANCOUNT_BACKEND python
+```
+
+## Connecting to a Beancount ledger
+
+<Steps>
+  <Step title="Create a new connection">
+    Open TablePro and click **Create Connection...** or press **Cmd+N**.
+  </Step>
+  <Step title="Select Beancount">
+    Choose **Beancount** from the database type list.
+  </Step>
+  <Step title="Choose your ledger file">
+    Click **Browse...** and select a `.beancount` file.
+  </Step>
+  <Step title="Connect">
+    Click **Save & Connect** to open the ledger.
+  </Step>
+</Steps>
+
+<Frame caption="A Beancount ledger projected into SQL tables">
+  <img className="block dark:hidden" src="/images/beancount-ledger-tables.png" alt="Beancount ledger open in TablePro with projected tables in the sidebar" />
+  <img className="hidden dark:block" src="/images/beancount-ledger-tables-dark.png" alt="Beancount ledger open in TablePro with projected tables in the sidebar" />
+</Frame>
+
+## Connection URL
+
+```text
+beancount:///path/to/main.beancount
+```
+
+See [Connection URL Reference](/databases/connection-urls) for all parameters.
+
+## Tables
+
+| Table | Contents |
+|-------|----------|
+| `transactions` | Transaction date, flag, payee, and narration |
+| `postings` | Posting account, amount, commodity, and resolved cost basis (`cost_number`, `cost_currency`) |
+| `accounts` | Opened accounts and declared currencies |
+| `prices` | Price directives |
+| `balances` | Computed account balances by commodity |
+| `balance_assertions` | Beancount balance directives |
+| `source_files` | Parsed ledger and include files |
+
+Amounts come from whichever backend parsed the ledger, so thousands separators, arithmetic, cost (`{}`), and price (`@`/`@@`) annotations arrive already resolved to their booked values.
+
+## Includes
+
+The parser follows Beancount `include` directives. Literal includes and glob patterns such as `include "imports/*.beancount"` and `include "imports/**/*.beancount"` are supported.
+
+## BQL
+
+Prefix a query with `BQL:` to run it through your configured `rledger` executable:
+
+```sql
+BQL: SELECT account FROM accounts ORDER BY account
+```
+
+Table browsing, row counts, and pagination work for BQL results. BQL queries do not support SQL parameters.
+
+## Troubleshooting
+
+**Beancount needs rledger or Python Beancount**: No backend was found. An app launched from Finder does not inherit your shell's `PATH`, so `rledger --version` working in Terminal is not enough. Set `TABLEPRO_RUSTLEDGER_BINARY` or `TABLEPRO_BEANCOUNT_PYTHON` with `launchctl setenv`, then relaunch TablePro.
+
+**TABLEPRO_BEANCOUNT_PYTHON points to a Python executable that cannot import beancount**: Run `pip3 install beancount` with that exact interpreter, or point the variable at one that already has the package.
+
+**BQL queries need rledger**: BQL always runs through `rledger`, even when the ledger opened on the Python backend. Install `rledger`, or drop the `BQL:` prefix and query the projected tables instead.
+
+**File does not exist**: The ledger moved or was renamed. Re-pick it with **Browse...** in the connection form.
+
+**Beancount include cycle detected**: Two ledger files include each other. Break the loop in the source files.
+
+## Limitations
+
+- Beancount connections are read-only.
+- Schema editing, imports, SSH, SSL, and database switching are not available for ledgers.
+- The SQL projection covers common ledger directives; unsupported directives remain available in the original source files.

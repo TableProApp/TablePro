@@ -104,7 +104,7 @@ struct ForeignKeyPreviewView: View {
                 .frame(height: 60)
         } else if let errorMessage {
             Text(errorMessage)
-                .foregroundStyle(Color(nsColor: .systemRed))
+                .foregroundStyle(.red)
                 .font(.callout)
                 .padding(10)
         } else if values.isEmpty {
