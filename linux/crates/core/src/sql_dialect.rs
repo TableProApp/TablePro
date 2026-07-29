@@ -16,7 +16,7 @@ pub enum BuildSqlError {
 
 pub fn quote_ident(driver_id: &str, name: &str) -> String {
     match driver_id {
-        "mysql" => format!("`{}`", name.replace('`', "``")),
+        "mysql" | "clickhouse" => format!("`{}`", name.replace('`', "``")),
         "mssql" => format!("[{}]", name.replace(']', "]]")),
         _ => format!("\"{}\"", name.replace('"', "\"\"")),
     }
@@ -27,6 +27,18 @@ pub fn placeholder_for(driver_id: &str, index: usize) -> String {
         "postgres" => format!("${}", index + 1),
         "mssql" => format!("@P{}", index + 1),
         _ => "?".to_string(),
+    }
+}
+
+/// Render an `UPDATE`. ClickHouse only accepted standard `UPDATE`
+/// syntax from 25.7; the spelling that works across every supported
+/// release is `ALTER TABLE … UPDATE`, which the server applies as a
+/// mutation. `qualified_table`, `set_clause` and `where_clause` are
+/// pre-built SQL, not identifiers.
+pub fn build_update(driver_id: &str, qualified_table: &str, set_clause: &str, where_clause: &str) -> String {
+    match driver_id {
+        "clickhouse" => format!("ALTER TABLE {qualified_table} UPDATE {set_clause} WHERE {where_clause}"),
+        _ => format!("UPDATE {qualified_table} SET {set_clause} WHERE {where_clause}"),
     }
 }
 
@@ -90,12 +102,7 @@ pub fn build_single_cell_update(
         &mut params,
     );
 
-    let sql = format!(
-        "UPDATE {} SET {} WHERE {}",
-        quote_ident(driver_id, table),
-        set_clause,
-        where_clause
-    );
+    let sql = build_update(driver_id, &quote_ident(driver_id, table), &set_clause, &where_clause);
     Ok((sql, params))
 }
 
@@ -152,11 +159,11 @@ pub fn build_full_row_update(
         &mut params,
     );
 
-    let sql = format!(
-        "UPDATE {} SET {} WHERE {}",
-        quote_ident(driver_id, table),
-        set_clauses.join(", "),
-        where_clause
+    let sql = build_update(
+        driver_id,
+        &quote_ident(driver_id, table),
+        &set_clauses.join(", "),
+        &where_clause,
     );
     Ok((sql, params))
 }
@@ -269,6 +276,8 @@ mod tests {
         assert_eq!(quote_ident("postgres", "users"), "\"users\"");
         assert_eq!(quote_ident("sqlite", "users"), "\"users\"");
         assert_eq!(quote_ident("mysql", "users"), "`users`");
+        assert_eq!(quote_ident("clickhouse", "users"), "`users`");
+        assert_eq!(quote_ident("clickhouse", "a`b"), "`a``b`");
     }
 
     #[test]
@@ -359,6 +368,37 @@ mod tests {
             build_single_cell_update("mysql", "u", &columns, &original, 1, Value::Text("bob".into())).unwrap();
         assert_eq!(sql, "UPDATE `u` SET `name` = ? WHERE `id` = ?");
         assert_eq!(params, vec![Value::Text("bob".into()), Value::Int(7)]);
+    }
+
+    #[test]
+    fn single_cell_update_clickhouse() {
+        let columns = vec![col("id", true), col("name", false)];
+        let original = vec![Value::Int(7), Value::Text("alice".into())];
+        let (sql, params) =
+            build_single_cell_update("clickhouse", "u", &columns, &original, 1, Value::Text("bob".into())).unwrap();
+        assert_eq!(sql, "ALTER TABLE `u` UPDATE `name` = ? WHERE `id` = ?");
+        assert_eq!(params, vec![Value::Text("bob".into()), Value::Int(7)]);
+    }
+
+    #[test]
+    fn full_row_update_clickhouse() {
+        let columns = vec![col("id", true), col("a", false), col("b", false)];
+        let original = vec![Value::Int(1), Value::Text("x".into()), Value::Text("y".into())];
+        let new_values = vec![Value::Int(1), Value::Text("x2".into()), Value::Text("y2".into())];
+        let (sql, _) = build_full_row_update("clickhouse", "t", &columns, &original, &new_values).unwrap();
+        assert_eq!(sql, "ALTER TABLE `t` UPDATE `a` = ?, `b` = ? WHERE `id` = ?");
+    }
+
+    #[test]
+    fn build_update_keeps_standard_syntax_for_other_dialects() {
+        assert_eq!(
+            build_update("postgres", "\"t\"", "\"a\" = $1", "\"id\" = $2"),
+            "UPDATE \"t\" SET \"a\" = $1 WHERE \"id\" = $2"
+        );
+        assert_eq!(
+            build_update("clickhouse", "`t`", "`a` = ?", "`id` = ?"),
+            "ALTER TABLE `t` UPDATE `a` = ? WHERE `id` = ?"
+        );
     }
 
     #[test]

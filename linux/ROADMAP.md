@@ -244,7 +244,7 @@ Exit criterion: a developer can demo the basic flows (connect, browse, edit, que
 
 ### Additional drivers (parallelizable, ~1 week each)
 
-- [ ] ClickHouse via official `clickhouse` crate (or `clickhouse-arrow`)
+- [x] ClickHouse via the official `clickhouse` crate
 - [x] MSSQL via `tiberius`
 - [ ] Oracle via `oracle` crate (ODPI-C)
 - [ ] Redis via `fred`

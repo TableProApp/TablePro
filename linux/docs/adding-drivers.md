@@ -22,7 +22,7 @@ Each step is small. The whole task takes between half a day (PG-shaped engines) 
 | SQLite | `sqlx` with `sqlite` feature | File-based, no network. |
 | MSSQL | `tiberius` | Pure Rust TDS. Watch governance — `praxiomlabs/rust-mssql-driver` is a credible alternative. |
 | Oracle | `oracle` (rust-oracle, kubo) | Wraps ODPI-C. Requires Oracle Instant Client on the build host. |
-| ClickHouse | `clickhouse-arrow` | Faster than `clickhouse-rs`. |
+| ClickHouse | official `clickhouse` crate | HTTP interface (8123). Dynamic results streamed via `FORMAT JSONCompactEachRowWithNamesAndTypes`. |
 | Redis | `fred` | Modern tokio rewrite of redis-rs. |
 | MongoDB | official `mongodb` | Mature, OpenTelemetry support. |
 | DuckDB | `duckdb` (official) | Bundled native lib, edition 2024. |
@@ -60,7 +60,7 @@ path = "src/lib.rs"
 [dependencies]
 tablepro-core = { path = "../../core" }
 async-trait = "0.1"
-clickhouse-arrow = "0.x"
+clickhouse = { version = "0.15", default-features = false, features = ["rustls-tls"] }
 tokio = { version = "1", features = ["rt", "macros", "net", "time"] }
 thiserror = "2"
 ```
@@ -111,7 +111,7 @@ pub struct ClickhouseDriver;
 impl DatabaseDriver for ClickhouseDriver {
     fn id(&self) -> &'static str { "clickhouse" }
     fn display_name(&self) -> &'static str { "ClickHouse" }
-    fn default_port(&self) -> u16 { 9000 }
+    fn default_port(&self) -> u16 { 8123 }
 
     async fn connect(&self, opts: ConnectOptions) -> Result<Box<dyn Connection>, DriverError> {
         let client = build_client(opts).await?;
@@ -120,7 +120,7 @@ impl DatabaseDriver for ClickhouseDriver {
 }
 
 struct ClickhouseConnection {
-    client: clickhouse_arrow::Client,
+    client: clickhouse::Client,
 }
 
 #[async_trait]
@@ -139,6 +139,13 @@ Notes:
 - The `id()` is the stable string used in saved connection files. Once shipped, never change it. Pick something obvious and short (`postgres`, `mysql`, `clickhouse`).
 - `default_port()` is what the connection dialog pre-fills.
 - `DriverError` is a `thiserror` enum in `tablepro-core`. Map underlying crate errors into the variants. Add a new variant only after PR discussion.
+
+`DatabaseDriver` also has defaulted hooks for engines that break an assumption the app otherwise makes. Override one only when the default is wrong for your engine:
+
+- `ddl_is_transactional()`: the structure editor batches DDL into one transaction when true. False for engines that commit implicitly on every DDL statement.
+- `reports_rows_affected()`: the inline-edit Save path reads a zero `rows_affected` on an UPDATE or DELETE as another session having changed the row. Return false if the engine cannot produce a count, or every successful save warns about a lost update.
+
+If your engine needs a different SQL spelling for a statement the app builds centrally, add the dialect branch in `core::sql_dialect` (`quote_ident`, `placeholder_for`, `build_update`, `build_order_and_pagination`) rather than rewriting the SQL inside the driver. ClickHouse takes `build_update`'s `ALTER TABLE … UPDATE` branch for this reason.
 
 ## 4. Add the crate to the workspace
 
@@ -194,9 +201,9 @@ use testcontainers::images::generic::GenericImage;
 async fn list_tables_returns_seeded_tables() {
     let docker = Cli::default();
     let image = GenericImage::new("clickhouse/clickhouse-server", "latest")
-        .with_exposed_port(9000);
+        .with_exposed_port(8123);
     let node = docker.run(image);
-    let port = node.get_host_port_ipv4(9000);
+    let port = node.get_host_port_ipv4(8123);
 
     let driver = ClickhouseDriver;
     let conn = driver.connect(ConnectOptions {
