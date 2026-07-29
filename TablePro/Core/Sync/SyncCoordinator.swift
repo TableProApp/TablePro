@@ -361,10 +361,10 @@ final class SyncCoordinator {
             metadataStorage.removeTombstone(type: parsed.type, id: parsed.id)
         }
 
-        Self.logger.info(
-            "Push completed: \(outcome.savedRecords.count) saved, "
-                + "\(outcome.deletedRecordIDs.count) deleted, \(outcome.failures.count) rejected"
-        )
+        let savedCount = outcome.savedRecords.count
+        let deletedCount = outcome.deletedRecordIDs.count
+        let rejectedCount = outcome.failures.count
+        Self.logger.info("Push completed: \(savedCount) saved, \(deletedCount) deleted, \(rejectedCount) rejected")
 
         guard outcome.hasFailures else { return }
 
