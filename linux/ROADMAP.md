@@ -6,19 +6,19 @@
 
 The app connects to PostgreSQL, MySQL, SQLite, and Microsoft SQL Server; browses tables in a virtualized `GtkColumnView`; supports in-place cell edit with transactional save; hosts an `AdwTabView` workspace (editor / table / structure); filters rows; tunnels over SSH via `russh`; stores passwords in the Secret Service; and records query history in SQLite + FTS5. Drivers ship with testcontainers integration tests. Relm4 architecture is intact.
 
-This is **past demo-grade**, but still **not beta-shippable**. The gap between "works on the developer's machine" and "I would install this from Flathub and use it daily" remains — see [`docs/production-audit.md`](docs/production-audit.md) for the detailed gap analysis. Remaining big-ticket items:
+This is **past demo-grade**, but still **not beta-shippable**. The gap between "works on the developer's machine" and "I would install this from Flathub and use it daily" remains. See [`docs/production-audit.md`](docs/production-audit.md) for the detailed gap analysis. Remaining big-ticket items:
 
 | Concern | Status |
 |---|---|
-| Type system | `Value` covers Null/Bool/Int/Float/Text/Bytes/Date/Time/DateTime/TimestampTz/Decimal/Uuid/Json — done |
+| Type system | Done. `Value` covers Null/Bool/Int/Float/Text/Bytes/Date/Time/DateTime/TimestampTz/Decimal/Uuid/Json |
 | Result scaling | Streams via sqlx `fetch` with `MAX_QUERY_ROWS` cap; full result still held in the grid model |
-| Connection management | `DatabaseService` + `AdwTabView` workspace tabs — done; multi-window still open |
+| Connection management | `DatabaseService` + `AdwTabView` workspace tabs done; one active connection at a time, multi-window still open |
 | Network security | SSH tunnelling + TLS toggle present; cert-path / verify-mode UI still thin |
 | Distribution | Flatpak manifest + metainfo + desktop + icon present; never built end-to-end on CI |
-| Internationalization | gettext scaffolding + `tr!` macro; strings not yet fully extracted to `.po` |
+| Internationalization | gettext + `tr!` macro + `po/` template; the template has 227 strings against 390 in the app, and `POTFILES.in` is stale |
 | Accessibility | Untested with Orca / keyboard nav |
-| Integration tests | Postgres + MySQL (+ MSSQL) testcontainers suites; CI job exists |
-| Recovery | `connection_monitor` ping + reconnect loop; query cancel still open |
+| Integration tests | Postgres and MySQL suites run in CI; the MSSQL suite exists but no CI job runs it; SQLite has none |
+| Recovery | `connection_monitor` ping + reconnect loop; cancel drops the client future, the server-side query keeps running |
 
 **What "production-ready" means for this project**: a user on Fedora 41 or Ubuntu 24.04 can install from Flathub, connect to their everyday Postgres or MySQL database, browse and edit data correctly across all native types, run SQL queries, see schema, and trust the app to handle errors gracefully.
 
@@ -91,40 +91,47 @@ Exit criterion: a developer can demo the basic flows (connect, browse, edit, que
 - [x] `DatabaseService` owning active connection(s)
 - [x] `AdwTabView` for multiple open tables / queries within one connection
 - [x] Workspace tab persistence (`workspace_state.json`)
+- [ ] Switch the active connection without reconnecting (`DatabaseService` has no `set_active`)
 - [ ] Multi-window: each window holds its own active connection via `gtk::Application::add_window`
 
 ### Security baseline (partial)
 
 - [x] TLS toggle on connect options
 - [x] SSH tunnelling via `russh` (host, port, key / password auth)
+- [ ] SSH jump host
 - [x] Read-only mode toggle per connection
-- [ ] Cancel running query (button + Esc shortcut + `Connection::cancel` driver method)
+- [x] Cancel running query: button + Esc shortcut
+- [ ] `Connection::cancel` driver method, so cancelling stops the server-side query instead of dropping the client future
 - [x] Connection lost recovery: ping monitor + reconnect loop
 - [ ] Statement timeout configurable per connection
 - [ ] TLS cert path / verify mode / SNI override UI
 
-### Integration tests ✅
+### Integration tests (partial)
 
-- [x] Per-driver `tests/integration.rs` using `testcontainers-rs` (Postgres, MySQL; MSSQL present)
+- [x] `tests/integration.rs` using `testcontainers-rs` for Postgres, MySQL, MSSQL
+- [ ] SQLite suite (the crate has no `tests/` directory)
 - [x] Connect, list_tables, fetch_columns (PK detection), pagination, value round-trip, bad SQL
-- [x] CI integration job gated behind `--include-ignored`
+- [x] CI integration job gated behind `--include-ignored`, for Postgres and MySQL
+- [ ] Run the MSSQL suite in CI
+- [x] `smoke_local` test + `scripts/smoke-postgres.sh` for a Docker-free driver check
 
 **Exit criterion**: Connect to a 10M-row Postgres table, scroll, edit a date column, lose network mid-query, see a recoverable error, reconnect via the same UI flow.
 
 ---
 
-## Phase 3 — Beta release (4 weeks)
+## Phase 3 — Beta release (in progress)
 
 **Goal**: shippable to Flathub. A user installs and uses for real work.
 
 ### Browse UX (partial)
 
 - [x] Where-filter UI (`filter_strip`) with per-column operators
-- [ ] ORDER BY wired to `GtkColumnView` header click → server sort
-- [ ] Multi-row select via shift-click + Ctrl-click
-- [ ] Bulk delete with confirmation
-- [ ] Right-click context menu (copy cell, copy row as INSERT, copy column, set NULL, delete row)
+- [x] ORDER BY wired to `GtkColumnView` header click → server sort
+- [x] Multi-row select via shift-click + Ctrl-click
+- [x] Bulk delete with confirmation
+- [x] Right-click context menu (copy cell, copy row as INSERT, copy column, set NULL, delete row)
 - [x] Save column widths per (connection, table)
+- [ ] Save column order per (connection, table)
 
 ### Export / import (~1 week)
 
@@ -136,6 +143,8 @@ Exit criterion: a developer can demo the basic flows (connect, browse, edit, que
 ### Schema browser (partial)
 
 - [x] Structure tab: columns, indexes, foreign keys (edit + DDL diff)
+- [x] Column metadata: type, nullable, default
+- [ ] Column comments (`ColumnInfo` has no `comment` field and no driver reads one)
 - [ ] Sidebar tabs: Views, Triggers, Functions, Sequences
 - [ ] Click view → SELECT * FROM view (re-uses browse view)
 - [ ] Click index → show CREATE INDEX DDL + which columns
@@ -143,8 +152,9 @@ Exit criterion: a developer can demo the basic flows (connect, browse, edit, que
 
 ### Query history + saved queries (partial)
 
-- [x] SQLite FTS5 store at `$XDG_DATA_HOME/tablepro/history.db`
-- [x] Every executed query recorded with timestamp, duration, success, connection name
+- [x] SQLite FTS5 store at `$XDG_CONFIG_HOME/tablepro/history.db`
+- [x] SQL editor runs recorded with timestamp, duration, success, connection name
+- [ ] Record the SQL the app runs outside the editor (Structure tab DDL saves, grid row saves)
 - [x] History pane with full-text search
 - [ ] Saved queries: name + SQL, organized by connection
 
@@ -159,10 +169,11 @@ Exit criterion: a developer can demo the basic flows (connect, browse, edit, que
 ### Distribution scaffolding (~1 week)
 
 - [x] `com.tablepro.linux.metainfo.xml` skeleton
-- [x] App icon (scalable SVG)
+- [x] App icon: scalable SVG
+- [ ] Icon set: 16/32/48/64/128/256/512 PNG
 - [ ] 4–5 high-resolution screenshots showing key flows
 - [ ] Long description + short description polish in metainfo
-- [ ] ContentRating
+- [x] ContentRating (`oars-1.1` in the metainfo)
 - [ ] `cargo-sources.json` generation via `flatpak-builder-tools/cargo`
 - [ ] CI job: `flatpak-builder` builds the manifest end-to-end on each PR
 - [ ] Submit to Flathub `flathub/flathub` PR → review → first publish
@@ -170,6 +181,7 @@ Exit criterion: a developer can demo the basic flows (connect, browse, edit, que
 ### Observability (~0.5 weeks)
 
 - [x] Structured logging via `tracing-subscriber` (env-filter)
+- [ ] JSON log layer, env-toggleable (the `json` feature is not enabled, so `.json()` is not compiled in)
 - [ ] Crash reporter: panic hook captures backtrace, writes to log, optional anonymous upload (with explicit opt-in)
 - [ ] "Help → Report bug" UI helper that opens the issue tracker pre-filled with sanitized log excerpt
 
@@ -185,7 +197,10 @@ Exit criterion: a developer can demo the basic flows (connect, browse, edit, que
 
 - [x] `gettext` integration via `gettext-rs`
 - [x] `tr!` macro + locale bind in `i18n::init`
-- [ ] Extract all user-facing strings to `.pot` template
+- [x] `po/` scaffolding: `tablepro.pot`, `POTFILES.in`, `LINGUAS`
+- [x] Locale detection: `setlocale(LC_ALL, "")` in `i18n::init`
+- [ ] Extract all user-facing strings: 218 of the app's 390 `tr!` strings are missing from the template, and 55 of its 227 entries no longer exist in the source
+- [ ] Refresh `POTFILES.in`: it lists 3 files that no longer exist and misses 17 that call `tr!`
 - [ ] Build pipeline integrates `.po` → `.mo` compilation
 - [ ] Ship English-only at first; structure ready for translators
 
@@ -254,7 +269,8 @@ Exit criterion: a developer can demo the basic flows (connect, browse, edit, que
 ### Schema editor (~2 weeks)
 
 - [x] Create / alter / drop table via Structure tab + DDL materialization
-- [x] Add / remove / rename columns
+- [x] Add / remove columns
+- [ ] Rename columns (`build_rename_column` exists but has no caller; needs a `RenameColumn` op in `diff_to_ops` / `materialize_ops`)
 - [x] Add / remove indexes
 - [x] Add / remove foreign keys
 - [ ] Drag-drop column reordering with ALTER TABLE preview
@@ -341,10 +357,10 @@ This is a separate undertaking and is not blocking any phase. It moves only afte
 | Stage | Effort | Calendar |
 |---|---|---|
 | Phase 0 + 1 | done | done |
-| Phase 2 remainder (streaming backpressure, query cancel, multi-window, TLS UI polish) | ~2 weeks FT | next |
+| Phase 2 remainder (streaming backpressure, driver-side query cancel, multi-window, TLS UI polish) | ~2 weeks FT | next |
 | Phase 3 remainder — Beta release | ~3 weeks FT | following |
 | Phase 4 — Beta polish | 3 weeks FT | after Beta |
-| **Beta on Flathub** | **~8 weeks FT from this revision** | |
+| **Beta on Flathub** | **~8 weeks FT from this revision** | **after Phase 4** |
 | Phase 5 — GA expansion | 6 months FT | rolling |
 | Phase 6 — Parity ambitions | 12+ months FT | optional |
 
