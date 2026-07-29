@@ -231,7 +231,7 @@ enum SQLBuilder {
 
         let dialect = dialectDescriptor(for: type)
         let pattern = escapeLikePattern(trimmed, dialect: dialect)
-        let likeEscape: String = dialect.likeEscapeStyle == .explicit ? " ESCAPE '\\'" : ""
+        let likeEscape: String = dialect.likeEscapeStyle == .explicit ? " ESCAPE '!'" : ""
 
         let conditions = columns.map { col -> String in
             let quotedCol = quoteIdentifier(col.name, for: type)
@@ -259,11 +259,18 @@ enum SQLBuilder {
         var result = value
             .replacingOccurrences(of: "'", with: "''")
             .replacingOccurrences(of: "\0", with: "")
-        if dialect.requiresBackslashEscaping {
-            result = result.replacingOccurrences(of: "\\", with: "\\\\")
+        if dialect.likeEscapeStyle == .explicit {
+            result = result
+                .replacingOccurrences(of: "!", with: "!!")
+                .replacingOccurrences(of: "%", with: "!%")
+                .replacingOccurrences(of: "_", with: "!_")
+        } else {
+            if dialect.requiresBackslashEscaping {
+                result = result.replacingOccurrences(of: "\\", with: "\\\\")
+            }
+            result = result.replacingOccurrences(of: "%", with: "\\%")
+            result = result.replacingOccurrences(of: "_", with: "\\_")
         }
-        result = result.replacingOccurrences(of: "%", with: "\\%")
-        result = result.replacingOccurrences(of: "_", with: "\\_")
         return result
     }
 

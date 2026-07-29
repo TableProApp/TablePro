@@ -90,10 +90,8 @@ extension Int {
 // MARK: - Validation Constants
 
 enum SettingsValidationRules {
-    // String validation
     static let nullDisplayMaxLength = 20
 
-    // Int validation
     static let defaultPageSizeRange = 10...100_000
     static let queryResultRowCapRange: ClosedRange<Int> = 100...500_000
     static let minNonNegative = 0

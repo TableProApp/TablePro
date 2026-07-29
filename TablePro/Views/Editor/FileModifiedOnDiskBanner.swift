@@ -13,7 +13,7 @@ internal struct FileModifiedOnDiskBanner: View {
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(Color(nsColor: .systemYellow))
+                .foregroundStyle(.yellow)
                 .accessibilityHidden(true)
 
             Text(String(format: String(localized: "\"%@\" was modified on disk."), fileName))
@@ -41,6 +41,6 @@ internal struct FileModifiedOnDiskBanner: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
-        .background(Color(nsColor: .systemYellow).opacity(0.12))
+        .background(.yellow.opacity(0.12))
     }
 }

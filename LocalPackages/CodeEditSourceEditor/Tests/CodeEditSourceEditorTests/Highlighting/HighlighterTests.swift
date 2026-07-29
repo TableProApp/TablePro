@@ -247,7 +247,7 @@ final class HighlighterTests: XCTestCase {
             attributeProvider: attributeProvider
         )
         textView.addStorageDelegate(highlighter)
-        highlighter.setLanguage(language: .swift)
+        highlighter.setLanguage(language: .sql)
         highlighter.invalidate()
 
         // Delete Characters
@@ -276,5 +276,52 @@ final class HighlighterTests: XCTestCase {
         textView.replaceCharacters(in: textView.documentRange, with: "")
         textView.insertText("func helloWorld() {\n\tprint(\"Hello World!\")\n}")
         XCTAssertEqual(textView.string, "func helloWorld() {\n\tprint(\"Hello World!\")\n}")
+    }
+
+    @MainActor
+    func test_editDoesNotHighlightDocumentOverMaxLength() {
+        let highlightProvider = MockHighlightProvider(queryResponse: { .success([]) })
+        let textView = Mock.textView()
+        textView.frame = NSRect(x: 0, y: 0, width: 1000, height: 1000)
+        textView.setText(String(repeating: "a", count: 64))
+
+        let highlighter = Mock.highlighter(
+            textView: textView,
+            highlightProviders: [highlightProvider],
+            attributeProvider: attributeProvider
+        )
+        highlighter.maxHighlightableLength = 32
+
+        let baseline = highlightProvider.queryCount
+        textView.replaceCharacters(in: NSRange(location: 0, length: 0), with: "b")
+
+        XCTAssertEqual(
+            highlightProvider.queryCount,
+            baseline,
+            "Editing a document over maxHighlightableLength must not query highlights"
+        )
+    }
+
+    @MainActor
+    func test_editHighlightsDocumentUnderMaxLength() {
+        let highlightProvider = MockHighlightProvider(queryResponse: { .success([]) })
+        let textView = Mock.textView()
+        textView.frame = NSRect(x: 0, y: 0, width: 1000, height: 1000)
+        textView.setText("SELECT 1;")
+
+        let highlighter = Mock.highlighter(
+            textView: textView,
+            highlightProviders: [highlightProvider],
+            attributeProvider: attributeProvider
+        )
+        highlighter.maxHighlightableLength = 1_000
+
+        textView.replaceCharacters(in: NSRange(location: 0, length: 0), with: "x")
+
+        XCTAssertGreaterThan(
+            highlightProvider.queryCount,
+            0,
+            "A document under maxHighlightableLength should still be highlighted"
+        )
     }
 }

@@ -23,17 +23,20 @@ public struct MCPPrincipal: Sendable, Equatable, Hashable {
     public let tokenFingerprint: String
     public let tokenId: UUID?
     public let scopes: Set<MCPScope>
+    public let connectionAccess: ConnectionAccess
     public let metadata: MCPPrincipalMetadata
 
     public init(
         tokenFingerprint: String,
         tokenId: UUID? = nil,
         scopes: Set<MCPScope>,
+        connectionAccess: ConnectionAccess = .all,
         metadata: MCPPrincipalMetadata
     ) {
         self.tokenFingerprint = tokenFingerprint
         self.tokenId = tokenId
         self.scopes = scopes
+        self.connectionAccess = connectionAccess
         self.metadata = metadata
     }
 
@@ -41,6 +44,7 @@ public struct MCPPrincipal: Sendable, Equatable, Hashable {
         lhs.tokenFingerprint == rhs.tokenFingerprint
             && lhs.tokenId == rhs.tokenId
             && lhs.scopes == rhs.scopes
+            && lhs.connectionAccess == rhs.connectionAccess
             && lhs.metadata == rhs.metadata
     }
 

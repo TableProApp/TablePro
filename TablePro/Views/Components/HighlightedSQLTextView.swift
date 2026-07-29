@@ -23,7 +23,6 @@ struct HighlightedSQLTextView: NSViewRepresentable {
             return scrollView
         }
 
-        // Configure text view
         textView.isEditable = false
         textView.isSelectable = true
         textView.font = NSFont.monospacedSystemFont(ofSize: fontSize, weight: .regular)
@@ -45,7 +44,6 @@ struct HighlightedSQLTextView: NSViewRepresentable {
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         guard let textView = scrollView.documentView as? NSTextView else { return }
 
-        // Update font if changed
         if let currentFont = textView.font, currentFont.pointSize != fontSize {
             textView.font = NSFont.monospacedSystemFont(ofSize: fontSize, weight: .regular)
             if !textView.string.isEmpty {
@@ -53,7 +51,6 @@ struct HighlightedSQLTextView: NSViewRepresentable {
             }
         }
 
-        // Update text if changed
         if textView.string != sql {
             textView.string = sql
             if !sql.isEmpty {

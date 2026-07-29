@@ -4,25 +4,36 @@
 //
 
 import Foundation
+import os
 import TableProPluginKit
 
 extension MainContentCoordinator {
-    func resolveRowCap(sql: String, tabType: TabType) -> Int? {
-        queryExecutionCoordinator.resolveRowCap(sql: sql, tabType: tabType)
+    func fixErrorWithAI(query: String, error: String) {
+        showAIChatPanel()
+        aiViewModel?.handleFixError(query: query, error: error)
     }
 
-    func parseSchemaMetadata(_ schema: SchemaResult) -> ParsedSchemaMetadata {
+    func switchDatabaseBeforeExecution(to database: String, connectionId: UUID) async {
+        do {
+            try await DatabaseManager.shared.switchDatabase(to: database, for: connectionId, persist: false)
+            await MainActor.run { toolbarState.currentDatabase = database }
+            Task { [weak self] in
+                await SchemaService.shared.invalidate(connectionId: connectionId)
+                await self?.refreshTables(currentDatabaseOnly: true)
+            }
+        } catch {
+            Self.logger.warning(
+                "Pre-execute switch to \(database, privacy: .public) failed: \(error.localizedDescription, privacy: .public)"
+            )
+        }
+    }
+
+    func resolveRowCap(sql: String, tabType: TabType, bypassLimit: Bool = false) -> Int? {
+        queryExecutionCoordinator.resolveRowCap(sql: sql, tabType: tabType, bypassLimit: bypassLimit)
+    }
+
+    func parseSchemaMetadata(_ schema: FetchedTableSchema) -> ParsedSchemaMetadata {
         queryExecutionCoordinator.parseSchemaMetadata(schema)
-    }
-
-    func awaitSchemaResult(
-        parallelTask: Task<SchemaResult, Error>?,
-        tableName: String
-    ) async -> SchemaResult? {
-        await queryExecutionCoordinator.awaitSchemaResult(
-            parallelTask: parallelTask,
-            tableName: tableName
-        )
     }
 
     func isMetadataCached(tabId: UUID, tableName: String) -> Bool {
@@ -70,14 +81,14 @@ extension MainContentCoordinator {
         tabId: UUID,
         capturedGeneration: Int,
         connectionType: DatabaseType,
-        schemaResult: SchemaResult?
+        schemaTask: Task<FetchedTableSchema, Error>?
     ) {
         queryExecutionCoordinator.launchPhase2Work(
             tableName: tableName,
             tabId: tabId,
             capturedGeneration: capturedGeneration,
             connectionType: connectionType,
-            schemaResult: schemaResult
+            schemaTask: schemaTask
         )
     }
 
@@ -109,11 +120,7 @@ extension MainContentCoordinator {
         )
     }
 
-    func restoreSchemaAndRunQuery(_ schema: String) async {
-        await queryExecutionCoordinator.restoreSchemaAndRunQuery(schema)
-    }
-
-    func columnExclusions(for tableName: String) -> [ColumnExclusion] {
-        queryExecutionCoordinator.columnExclusions(for: tableName)
+    func restoreSchemaAndRunQuery(_ schema: String, trigger: TableLoadTrigger = .userInitiated) async {
+        await queryExecutionCoordinator.restoreSchemaAndRunQuery(schema, trigger: trigger)
     }
 }

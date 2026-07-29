@@ -1,17 +1,36 @@
 import CoreSpotlight
 import Foundation
 import Observation
+import os
 import TableProDatabase
 import TableProModels
 import WidgetKit
 
 @MainActor @Observable
 final class AppState {
-    var connections: [DatabaseConnection] = []
-    var groups: [ConnectionGroup] = []
-    var tags: [ConnectionTag] = []
+    private static let logger = Logger(subsystem: "com.TablePro", category: "AppState")
+
+    private var connectionsState: Loadable<[DatabaseConnection]> = .loading
+    private var groupsState: Loadable<[ConnectionGroup]> = .loading
+    private var tagsState: Loadable<[ConnectionTag]> = .loading
+
+    var connections: [DatabaseConnection] { connectionsState.value ?? [] }
+    var groups: [ConnectionGroup] { groupsState.value ?? [] }
+    var tags: [ConnectionTag] { tagsState.value ?? ConnectionTag.presets }
+
+    var loadStatus: LoadStatus {
+        if connectionsState.isFailed || groupsState.isFailed || tagsState.isFailed {
+            return .failed
+        }
+        if connectionsState.isLoaded && groupsState.isLoaded && tagsState.isLoaded {
+            return .ready
+        }
+        return .loading
+    }
+
     var pendingConnectionId: UUID?
     var pendingTableName: String?
+    var pendingImportURL: URL?
     let connectionManager: ConnectionManager
     let syncCoordinator = IOSSyncCoordinator()
     let sshProvider: IOSSSHProvider
@@ -32,15 +51,9 @@ final class AppState {
             secureStore: secureStore,
             sshProvider: sshProvider
         )
-        connections = storage.load()
-        groups = groupStorage.load()
-        tags = tagStorage.load()
+        loadPersistedData()
 
-        // Skip side-effecting callbacks (Spotlight, WidgetKit, sync wiring) when
-        // running unit tests inside the host app. These rely on entitlements
-        // that the CI simulator does not have and have caused the test runner
-        // to crash before it could connect to xctest.
-        guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
+        guard !TestRuntime.isActive else { return }
 
         secureStore.cleanOrphanedCredentials(validConnectionIds: Set(connections.map(\.id)))
         Task {
@@ -50,35 +63,96 @@ final class AppState {
 
         syncCoordinator.onConnectionsChanged = { [weak self] merged in
             guard let self else { return }
-            self.connections = merged
-            self.storage.save(merged)
+            guard merged != self.connections else { return }
+            self.persist(connections: merged)
             self.updateWidgetData()
             self.updateSpotlightIndex()
         }
 
         syncCoordinator.onGroupsChanged = { [weak self] merged in
             guard let self else { return }
-            self.groups = merged
-            self.groupStorage.save(merged)
+            guard merged != self.groups else { return }
+            self.persist(groups: merged)
         }
 
         syncCoordinator.onTagsChanged = { [weak self] merged in
             guard let self else { return }
-            self.tags = merged
-            self.tagStorage.save(merged)
+            guard merged != self.tags else { return }
+            self.persist(tags: merged)
         }
 
         syncCoordinator.getCurrentState = { [weak self] in
-            guard let self else { return ([], [], []) }
+            guard let self, self.loadStatus == .ready else { return nil }
             return (self.connections, self.groups, self.tags)
+        }
+    }
+
+    // MARK: - Load / Retry
+
+    func retryLoadIfFailed() {
+        guard loadStatus == .failed else { return }
+        Self.logger.info("Retrying persistence load after previous failure")
+        loadPersistedData()
+    }
+
+    private func loadPersistedData() {
+        do {
+            connectionsState = .loaded(try storage.load())
+        } catch {
+            connectionsState = .failed(error)
+            Self.logger.error("Connections load failed: \(error.localizedDescription, privacy: .public)")
+        }
+
+        do {
+            groupsState = .loaded(try groupStorage.load())
+        } catch {
+            groupsState = .failed(error)
+            Self.logger.error("Groups load failed: \(error.localizedDescription, privacy: .public)")
+        }
+
+        do {
+            tagsState = .loaded(try tagStorage.load())
+        } catch {
+            tagsState = .failed(error)
+            Self.logger.error("Tags load failed: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    // MARK: - Persistence Bridges
+
+    private func persist(connections: [DatabaseConnection]) {
+        connectionsState = .loaded(connections)
+        do {
+            try storage.save(connections)
+        } catch {
+            Self.logger.error("Failed to save connections: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    private func persist(groups: [ConnectionGroup]) {
+        groupsState = .loaded(groups)
+        do {
+            try groupStorage.save(groups)
+        } catch {
+            Self.logger.error("Failed to save groups: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    private func persist(tags: [ConnectionTag]) {
+        tagsState = .loaded(tags)
+        do {
+            try tagStorage.save(tags)
+        } catch {
+            Self.logger.error("Failed to save tags: \(error.localizedDescription, privacy: .public)")
         }
     }
 
     // MARK: - Connections
 
     func addConnection(_ connection: DatabaseConnection) {
-        connections.append(connection)
-        storage.save(connections)
+        var updated = connections
+        updated.append(connection)
+        persist(connections: updated)
         updateWidgetData()
         updateSpotlightIndex()
         syncCoordinator.markDirty(connection.id)
@@ -86,14 +160,14 @@ final class AppState {
     }
 
     func updateConnection(_ connection: DatabaseConnection) {
-        if let index = connections.firstIndex(where: { $0.id == connection.id }) {
-            connections[index] = connection
-            storage.save(connections)
-            updateWidgetData()
-            updateSpotlightIndex()
-            syncCoordinator.markDirty(connection.id)
-            syncCoordinator.scheduleSyncAfterChange()
-        }
+        var updated = connections
+        guard let index = updated.firstIndex(where: { $0.id == connection.id }) else { return }
+        updated[index] = connection
+        persist(connections: updated)
+        updateWidgetData()
+        updateSpotlightIndex()
+        syncCoordinator.markDirty(connection.id)
+        syncCoordinator.scheduleSyncAfterChange()
     }
 
     var hasCompletedOnboarding: Bool = UserDefaults.standard.bool(forKey: "com.TablePro.hasCompletedOnboarding") {
@@ -101,8 +175,7 @@ final class AppState {
     }
 
     func reorderConnections(_ reordered: [DatabaseConnection]) {
-        connections = reordered
-        storage.save(connections)
+        persist(connections: reordered)
         updateWidgetData()
         for connection in reordered {
             syncCoordinator.markDirty(connection.id)
@@ -111,13 +184,15 @@ final class AppState {
     }
 
     func removeConnection(_ connection: DatabaseConnection) {
-        connections.removeAll { $0.id == connection.id }
+        var updated = connections
+        updated.removeAll { $0.id == connection.id }
         try? connectionManager.deletePassword(for: connection.id)
         try? secureStore.delete(forKey: "com.TablePro.sshpassword.\(connection.id.uuidString)")
         try? secureStore.delete(forKey: "com.TablePro.keypassphrase.\(connection.id.uuidString)")
         try? secureStore.delete(forKey: "com.TablePro.sshkeydata.\(connection.id.uuidString)")
+        FileBookmarkStore().delete(for: connection.id)
         clearPerConnectionPreferences(for: connection.id)
-        storage.save(connections)
+        persist(connections: updated)
         updateWidgetData()
         updateSpotlightIndex()
         syncCoordinator.markDeleted(connection.id)
@@ -135,24 +210,24 @@ final class AppState {
     // MARK: - Groups
 
     func addGroup(_ group: ConnectionGroup) {
-        groups.append(group)
-        groupStorage.save(groups)
+        var updated = groups
+        updated.append(group)
+        persist(groups: updated)
         syncCoordinator.markDirtyGroup(group.id)
         syncCoordinator.scheduleSyncAfterChange()
     }
 
     func updateGroup(_ group: ConnectionGroup) {
-        if let index = groups.firstIndex(where: { $0.id == group.id }) {
-            groups[index] = group
-            groupStorage.save(groups)
-            syncCoordinator.markDirtyGroup(group.id)
-            syncCoordinator.scheduleSyncAfterChange()
-        }
+        var updated = groups
+        guard let index = updated.firstIndex(where: { $0.id == group.id }) else { return }
+        updated[index] = group
+        persist(groups: updated)
+        syncCoordinator.markDirtyGroup(group.id)
+        syncCoordinator.scheduleSyncAfterChange()
     }
 
     func reorderGroups(_ reordered: [ConnectionGroup]) {
-        groups = reordered
-        groupStorage.save(groups)
+        persist(groups: reordered)
         for group in reordered {
             syncCoordinator.markDirtyGroup(group.id)
         }
@@ -160,14 +235,16 @@ final class AppState {
     }
 
     func deleteGroup(_ groupId: UUID) {
-        groups.removeAll { $0.id == groupId }
-        groupStorage.save(groups)
+        var updatedGroups = groups
+        updatedGroups.removeAll { $0.id == groupId }
+        persist(groups: updatedGroups)
 
-        for index in connections.indices where connections[index].groupId == groupId {
-            connections[index].groupId = nil
-            syncCoordinator.markDirty(connections[index].id)
+        var updatedConnections = connections
+        for index in updatedConnections.indices where updatedConnections[index].groupId == groupId {
+            updatedConnections[index].groupId = nil
+            syncCoordinator.markDirty(updatedConnections[index].id)
         }
-        storage.save(connections)
+        persist(connections: updatedConnections)
         updateWidgetData()
 
         syncCoordinator.markDeletedGroup(groupId)
@@ -177,32 +254,35 @@ final class AppState {
     // MARK: - Tags
 
     func addTag(_ tag: ConnectionTag) {
-        tags.append(tag)
-        tagStorage.save(tags)
+        var updated = tags
+        updated.append(tag)
+        persist(tags: updated)
         syncCoordinator.markDirtyTag(tag.id)
         syncCoordinator.scheduleSyncAfterChange()
     }
 
     func updateTag(_ tag: ConnectionTag) {
-        if let index = tags.firstIndex(where: { $0.id == tag.id }) {
-            tags[index] = tag
-            tagStorage.save(tags)
-            syncCoordinator.markDirtyTag(tag.id)
-            syncCoordinator.scheduleSyncAfterChange()
-        }
+        var updated = tags
+        guard let index = updated.firstIndex(where: { $0.id == tag.id }) else { return }
+        updated[index] = tag
+        persist(tags: updated)
+        syncCoordinator.markDirtyTag(tag.id)
+        syncCoordinator.scheduleSyncAfterChange()
     }
 
     func deleteTag(_ tagId: UUID) {
         guard let tag = tags.first(where: { $0.id == tagId }), !tag.isPreset else { return }
 
-        tags.removeAll { $0.id == tagId }
-        tagStorage.save(tags)
+        var updatedTags = tags
+        updatedTags.removeAll { $0.id == tagId }
+        persist(tags: updatedTags)
 
-        for index in connections.indices where connections[index].tagId == tagId {
-            connections[index].tagId = nil
-            syncCoordinator.markDirty(connections[index].id)
+        var updatedConnections = connections
+        for index in updatedConnections.indices where updatedConnections[index].tagIds.contains(tagId) {
+            updatedConnections[index].tagIds.removeAll { $0 == tagId }
+            syncCoordinator.markDirty(updatedConnections[index].id)
         }
-        storage.save(connections)
+        persist(connections: updatedConnections)
         updateWidgetData()
 
         syncCoordinator.markDeletedTag(tagId)
@@ -239,8 +319,6 @@ final class AppState {
                     id: conn.id,
                     name: conn.name.isEmpty ? conn.host : conn.name,
                     type: conn.type.rawValue,
-                    host: conn.host,
-                    port: conn.port,
                     sortOrder: conn.sortOrder
                 )
             }
@@ -273,16 +351,18 @@ private struct ConnectionPersistence {
         return appDir.appendingPathComponent("connections.json")
     }
 
-    func save(_ connections: [DatabaseConnection]) {
-        guard let fileURL, let data = try? JSONEncoder().encode(connections) else { return }
-        try? data.write(to: fileURL, options: [.atomic, .completeFileProtection])
+    func save(_ connections: [DatabaseConnection]) throws {
+        guard let fileURL else { return }
+        let data = try JSONEncoder().encode(connections)
+        try data.write(to: fileURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
     }
 
-    func load() -> [DatabaseConnection] {
-        guard let fileURL, let data = try? Data(contentsOf: fileURL),
-              let connections = try? JSONDecoder().decode([DatabaseConnection].self, from: data) else {
+    func load() throws -> [DatabaseConnection] {
+        guard let fileURL else { return [] }
+        if !FileManager.default.fileExists(atPath: fileURL.path) {
             return []
         }
-        return connections
+        let data = try Data(contentsOf: fileURL)
+        return try JSONDecoder().decode([DatabaseConnection].self, from: data)
     }
 }

@@ -130,6 +130,7 @@ struct AIChatPanelView: View {
                         .id(message.id)
                     }
                 }
+                .frame(maxWidth: .infinity)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 8)
                 .scrollTargetLayout()
@@ -154,6 +155,7 @@ struct AIChatPanelView: View {
                     bottomVisibleMessageID = lastMessageID
                 }
             }
+            .environment(viewModel)
 
             if isUserScrolledUp {
                 Button {
@@ -181,7 +183,7 @@ struct AIChatPanelView: View {
     private func errorBanner(_ message: String) -> some View {
         HStack(spacing: 6) {
             Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(Color(nsColor: .systemYellow))
+                .foregroundStyle(.yellow)
             Text(message)
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -199,7 +201,7 @@ struct AIChatPanelView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
-        .background(Color(nsColor: .systemYellow).opacity(Self.warningBackgroundOpacity))
+        .background(.yellow.opacity(Self.warningBackgroundOpacity))
     }
 
     // MARK: - Input Area
@@ -212,6 +214,10 @@ struct AIChatPanelView: View {
                     items: viewModel.attachedContext,
                     onRemove: { viewModel.detach($0) }
                 )
+
+                if !viewModel.attachedImages.isEmpty {
+                    composerImageChipStrip
+                }
 
                 ChatComposerView(
                     text: $viewModel.inputText,
@@ -228,6 +234,15 @@ struct AIChatPanelView: View {
                     },
                     onAttach: { item in
                         viewModel.attach(item)
+                    },
+                    acceptsImages: viewModel.activeProviderSupportsImages,
+                    onAttachImages: { images in
+                        for image in images {
+                            viewModel.attachImage(image)
+                        }
+                    },
+                    onImageAttachmentFailed: { message in
+                        viewModel.reportImageAttachmentFailure(message)
                     }
                 )
 
@@ -236,11 +251,23 @@ struct AIChatPanelView: View {
                     slashCommandMenu
                     modeMenu
                     modelPicker
-                    Spacer()
                     sendOrStopButton
                 }
             }
             .padding(8)
+        }
+    }
+
+    private var composerImageChipStrip: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(Array(viewModel.attachedImages.enumerated()), id: \.offset) { index, image in
+                    AIChatComposerImageChip(input: image) {
+                        viewModel.detachImage(at: index)
+                    }
+                }
+            }
+            .padding(.horizontal, 2)
         }
     }
 
@@ -285,7 +312,7 @@ struct AIChatPanelView: View {
                 viewModel.cancelStream()
             } label: {
                 Image(systemName: "stop.circle.fill")
-                    .foregroundStyle(Color(nsColor: .systemRed))
+                    .foregroundStyle(.red)
             }
             .buttonStyle(.plain)
             .help(String(localized: "Stop Generating"))
@@ -339,9 +366,9 @@ struct AIChatPanelView: View {
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
             .menuStyle(.borderlessButton)
-            .fixedSize()
             .help(String(localized: "Choose AI provider and model"))
         }
     }
@@ -503,8 +530,8 @@ struct AIChatPanelView: View {
             let hasUserContent = message.blocks.contains { block in
                 switch block.kind {
                 case .text(let value): return !value.isEmpty
-                case .attachment: return true
-                case .toolUse, .toolResult: return false
+                case .attachment, .image: return true
+                case .toolUse, .toolResult, .reasoning, .sqlWalkthrough: return false
                 }
             }
             if !hasUserContent { return false }

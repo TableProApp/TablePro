@@ -45,6 +45,7 @@ final class DataGridCellRegistry {
             if type.isBooleanType { return .boolean }
             if type.isJsonType { return .json }
             if type.isBlobType { return .blob }
+            if type.isDateType { return .date }
         }
         return .text
     }

@@ -59,4 +59,44 @@ struct SSHTunnelErrorTests {
         let error = SSHTunnelError.connectionTimeout
         #expect(error.errorDescription != nil)
     }
+
+    @Test("SSHTunnelError.socketForwardingRefused names the socket and the sshd setting")
+    func socketForwardingRefusedDescription() {
+        let error = SSHTunnelError.socketForwardingRefused(
+            path: "/var/run/postgresql/.s.PGSQL.5432",
+            detail: "channel open failed"
+        )
+
+        #expect(error.errorDescription?.contains("/var/run/postgresql/.s.PGSQL.5432") == true)
+        #expect(error.errorDescription?.contains("AllowStreamLocalForwarding") == true)
+        #expect(error.errorDescription?.contains("channel open failed") == true)
+    }
+
+    @Test("SSHTunnelError.forwardRefused names the destination, the sshd setting, and the detail")
+    func forwardRefusedDescription() {
+        let error = SSHTunnelError.forwardRefused(
+            destination: "db.internal:3306",
+            detail: "channel open failure"
+        )
+
+        #expect(error.errorDescription?.contains("db.internal:3306") == true)
+        #expect(error.errorDescription?.contains("AllowTcpForwarding") == true)
+        #expect(error.errorDescription?.contains("channel open failure") == true)
+    }
+
+    @Test("SSHTunnelError.forwardRefused explains that the host resolves from the SSH server")
+    func forwardRefusedExplainsResolutionSide() {
+        let error = SSHTunnelError.forwardRefused(destination: "db.internal:3306", detail: "refused")
+
+        #expect(error.errorDescription?.contains("127.0.0.1") == true)
+        #expect(error.errorDescription?.contains("localhost") == true)
+    }
+
+    @Test("SSHTunnelError.forwardTimedOut names the destination and the seconds waited")
+    func forwardTimedOutDescription() {
+        let error = SSHTunnelError.forwardTimedOut(destination: "db.internal:3306", seconds: 6)
+
+        #expect(error.errorDescription?.contains("db.internal:3306") == true)
+        #expect(error.errorDescription?.contains("6") == true)
+    }
 }

@@ -6,6 +6,7 @@
 import Foundation
 import TableProPluginKit
 import Testing
+
 @testable import TablePro
 
 private final class RoutineMockDriver: DatabaseDriver, @unchecked Sendable {
@@ -153,6 +154,116 @@ private final class FailingRoutineDriver: DatabaseDriver, @unchecked Sendable {
     }
 }
 
+private actor AsyncGate {
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+    private var isOpen = false
+
+    func wait() async {
+        if isOpen {
+            return
+        }
+
+        await withCheckedContinuation { continuation in
+            waiters.append(continuation)
+        }
+    }
+
+    func open() {
+        guard !isOpen else { return }
+        isOpen = true
+        let currentWaiters = waiters
+        waiters.removeAll()
+        for continuation in currentWaiters {
+            continuation.resume()
+        }
+    }
+}
+
+private final class BlockingAuxiliaryDriver: DatabaseDriver, @unchecked Sendable {
+    let connection: DatabaseConnection
+    var status: ConnectionStatus = .connected
+    var serverVersion: String? { nil }
+
+    var tablesToReturn: [TableInfo] = []
+    var proceduresToReturn: [RoutineInfo] = []
+    var functionsToReturn: [RoutineInfo] = []
+    var schemasToReturn: [String] = []
+
+    let tablesGate = AsyncGate()
+    let routinesGate = AsyncGate()
+    let schemasGate = AsyncGate()
+
+    init(connection: DatabaseConnection = TestFixtures.makeConnection()) {
+        self.connection = connection
+    }
+
+    func connect() async throws {}
+    func disconnect() {}
+    func testConnection() async throws -> Bool { true }
+    func applyQueryTimeout(_ seconds: Int) async throws {}
+
+    func execute(query: String) async throws -> QueryResult {
+        QueryResult(columns: [], columnTypes: [], rows: [], rowsAffected: 0, executionTime: 0, error: nil)
+    }
+
+    func executeParameterized(query: String, parameters: [Any?]) async throws -> QueryResult {
+        QueryResult(columns: [], columnTypes: [], rows: [], rowsAffected: 0, executionTime: 0, error: nil)
+    }
+
+    func executeUserQuery(query: String, rowCap: Int?, parameters: [Any?]?) async throws -> QueryResult {
+        QueryResult(columns: [], columnTypes: [], rows: [], rowsAffected: 0, executionTime: 0, error: nil)
+    }
+
+    func fetchTables() async throws -> [TableInfo] {
+        await tablesGate.wait()
+        return tablesToReturn
+    }
+
+    func fetchColumns(table: String) async throws -> [ColumnInfo] { [] }
+    func fetchIndexes(table: String) async throws -> [IndexInfo] { [] }
+    func fetchForeignKeys(table: String) async throws -> [ForeignKeyInfo] { [] }
+    func fetchApproximateRowCount(table: String) async throws -> Int? { nil }
+    func fetchTableDDL(table: String) async throws -> String { "" }
+    func fetchViewDefinition(view: String) async throws -> String { "" }
+
+    func fetchTableMetadata(tableName: String) async throws -> TableMetadata {
+        TableMetadata(
+            tableName: tableName, dataSize: nil, indexSize: nil, totalSize: nil,
+            avgRowLength: nil, rowCount: nil, comment: nil, engine: nil,
+            collation: nil, createTime: nil, updateTime: nil
+        )
+    }
+
+    func fetchDatabases() async throws -> [String] { [] }
+
+    func fetchSchemas() async throws -> [String] {
+        await schemasGate.wait()
+        return schemasToReturn
+    }
+
+    func fetchDatabaseMetadata(_ database: String) async throws -> DatabaseMetadata {
+        DatabaseMetadata(
+            id: database, name: database, tableCount: nil, sizeBytes: nil,
+            lastAccessed: nil, isSystemDatabase: false, icon: "cylinder"
+        )
+    }
+
+    func cancelQuery() throws {}
+    func beginTransaction() async throws {}
+    func commitTransaction() async throws {}
+    func rollbackTransaction() async throws {}
+
+    func fetchProcedures(schema: String?) async throws -> [RoutineInfo] {
+        await routinesGate.wait()
+        return proceduresToReturn
+    }
+
+    func fetchFunctions(schema: String?) async throws -> [RoutineInfo] {
+        await routinesGate.wait()
+        return functionsToReturn
+    }
+}
+
 @Suite("SchemaService routines")
 @MainActor
 struct SchemaServiceRoutinesTests {
@@ -238,6 +349,51 @@ struct SchemaServiceRoutinesTests {
         #expect(service.tables(for: connectionId).isEmpty)
         #expect(service.procedures(for: connectionId).isEmpty)
         #expect(service.functions(for: connectionId).isEmpty)
+    }
+
+    @Test("table state becomes loaded before auxiliary metadata finishes")
+    func tableStateLoadsBeforeAuxiliaryMetadata() async {
+        let service = SchemaService()
+        let connectionId = UUID()
+        let connection = TestFixtures.makeConnection(id: connectionId, type: .postgresql)
+        let driver = BlockingAuxiliaryDriver(connection: connection)
+        driver.tablesToReturn = [TestFixtures.makeTableInfo(name: "users")]
+        driver.proceduresToReturn = [
+            RoutineInfo(name: "add_user", schema: "public", kind: .procedure, signature: nil)
+        ]
+        driver.functionsToReturn = [
+            RoutineInfo(name: "user_count", schema: "public", kind: .function, signature: "int")
+        ]
+        driver.schemasToReturn = ["public"]
+
+        let loadTask = Task {
+            await service.load(connectionId: connectionId, driver: driver, connection: connection)
+        }
+
+        await driver.tablesGate.open()
+        await waitForLoadedState(service, connectionId: connectionId)
+
+        #expect(service.tables(for: connectionId).map(\.name) == ["users"])
+        #expect(service.procedures(for: connectionId).isEmpty)
+        #expect(service.functions(for: connectionId).isEmpty)
+        #expect(service.schemas(for: connectionId).isEmpty)
+
+        await driver.routinesGate.open()
+        await driver.schemasGate.open()
+        await loadTask.value
+
+        #expect(service.procedures(for: connectionId).map(\.name) == ["add_user"])
+        #expect(service.functions(for: connectionId).map(\.name) == ["user_count"])
+        #expect(service.schemas(for: connectionId) == ["public"])
+    }
+
+    private func waitForLoadedState(_ service: SchemaService, connectionId: UUID) async {
+        while true {
+            if case .loaded = service.state(for: connectionId) {
+                return
+            }
+            await Task.yield()
+        }
     }
 
     @Test("reloadProcedures refreshes only procedures")

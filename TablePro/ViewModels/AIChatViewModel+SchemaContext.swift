@@ -29,19 +29,23 @@ extension AIChatViewModel {
             await inFlight.value
             return
         }
-        guard let connection,
-              let driver = services.databaseManager.driver(for: connection.id) else { return }
+        guard let connection else { return }
+        let connId = connection.id
         let task: Task<Void, Never> = Task { [weak self] in
             let columns: [ColumnInfo]
             do {
-                columns = try await driver.fetchColumns(table: tableName)
+                columns = try await DatabaseManager.shared.withMetadataDriver(connectionId: connId) { driver in
+                    try await driver.fetchColumns(table: tableName)
+                }
             } catch {
                 Self.logger.warning("Column fetch failed for \(tableName, privacy: .public): \(error.localizedDescription, privacy: .public)")
                 columns = []
             }
             let fkMap: [String: [ForeignKeyInfo]]
             do {
-                fkMap = try await driver.fetchForeignKeys(forTables: [tableName])
+                fkMap = try await DatabaseManager.shared.withMetadataDriver(connectionId: connId) { driver in
+                    try await driver.fetchForeignKeys(forTables: [tableName])
+                }
             } catch {
                 Self.logger.warning("Foreign key fetch failed for \(tableName, privacy: .public): \(error.localizedDescription, privacy: .public)")
                 fkMap = [:]
@@ -92,8 +96,8 @@ extension AIChatViewModel {
     }
 
     private func runSchemaLoad() async {
-        guard let connection,
-              let driver = services.databaseManager.driver(for: connection.id) else { return }
+        guard let connection else { return }
+        let connId = connection.id
         let settings = services.appSettings.ai
         let tablesToFetch = Array(tables.prefix(settings.maxSchemaTables))
         guard !tablesToFetch.isEmpty else { return }
@@ -103,7 +107,9 @@ extension AIChatViewModel {
                 let name = table.name
                 group.addTask {
                     do {
-                        let cols = try await driver.fetchColumns(table: name)
+                        let cols = try await DatabaseManager.shared.withMetadataDriver(connectionId: connId, workload: .bulk) { driver in
+                            try await driver.fetchColumns(table: name)
+                        }
                         return (name, cols)
                     } catch {
                         Self.logger.warning("Schema column fetch failed for \(name, privacy: .public): \(error.localizedDescription, privacy: .public)")
@@ -121,7 +127,9 @@ extension AIChatViewModel {
         let needsFKFetch = tablesToFetch.contains { foreignKeysByTable[$0.name] == nil }
         guard needsFKFetch else { return }
         do {
-            let fkMap = try await driver.fetchForeignKeys(forTables: tablesToFetch.map(\.name))
+            let fkMap = try await DatabaseManager.shared.withMetadataDriver(connectionId: connId, workload: .bulk) { driver in
+                try await driver.fetchForeignKeys(forTables: tablesToFetch.map(\.name))
+            }
             for (name, fks) in fkMap {
                 foreignKeysByTable[name] = fks
             }

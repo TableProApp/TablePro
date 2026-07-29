@@ -119,7 +119,6 @@ struct AISchemaContext {
             }
             lines.append(tableLine)
 
-            // Add columns
             if let columns = columnsByTable[table.name] {
                 for column in columns {
                     var colDesc = "  - \(column.name) \(column.dataType)"
@@ -132,7 +131,6 @@ struct AISchemaContext {
                 }
             }
 
-            // Add foreign keys
             if let fks = foreignKeys[table.name], !fks.isEmpty {
                 for fk in fks {
                     lines.append(

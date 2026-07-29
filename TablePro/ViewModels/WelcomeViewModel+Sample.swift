@@ -7,6 +7,7 @@ import AppKit
 import Combine
 import Foundation
 import os
+import TableProPluginKit
 
 @MainActor
 internal enum SampleDatabaseLauncher {
@@ -197,7 +198,7 @@ extension WelcomeViewModel {
     func openSampleDatabase() {
         SampleDatabaseLauncher.open { [weak self] error in
             guard let self else { return }
-            self.connectionError = error.localizedDescription
+            self.connectionError = SSLHandshakeError.formatted(error)
             self.showConnectionError = true
         }
     }

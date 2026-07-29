@@ -30,7 +30,7 @@ final class IOSSyncCoordinator {
     var onConnectionsChanged: (([DatabaseConnection]) -> Void)?
     var onGroupsChanged: (([ConnectionGroup]) -> Void)?
     var onTagsChanged: (([ConnectionTag]) -> Void)?
-    var getCurrentState: (() -> (connections: [DatabaseConnection], groups: [ConnectionGroup], tags: [ConnectionTag]))?
+    var getCurrentState: (() -> (connections: [DatabaseConnection], groups: [ConnectionGroup], tags: [ConnectionTag])?)?
 
     // MARK: - Sync
 
@@ -93,6 +93,26 @@ final class IOSSyncCoordinator {
         } catch {
             status = .error(error.localizedDescription)
         }
+    }
+
+    // MARK: - Token Reset
+
+    func resetSyncToken(
+        localConnections: [DatabaseConnection],
+        localGroups: [ConnectionGroup],
+        localTags: [ConnectionTag]
+    ) async {
+        debounceTask?.cancel()
+        metadata.saveToken(nil)
+        cachedRecords.removeAll()
+        cachedGroupRecords.removeAll()
+        cachedTagRecords.removeAll()
+        Self.logger.info("Sync token cleared; forcing full pull from iCloud")
+        await sync(
+            localConnections: localConnections,
+            localGroups: localGroups,
+            localTags: localTags
+        )
     }
 
     // MARK: - Dirty / Tombstone Tracking

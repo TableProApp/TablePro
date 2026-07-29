@@ -66,6 +66,10 @@ public class TextLayoutManager: NSObject {
 
     public let attachments: TextAttachmentManager = TextAttachmentManager()
 
+    /// When `false`, this layout manager ignores text storage edits. Used to suspend a secondary layout manager that
+    /// is not currently visible (such as a hidden minimap) so it does not rebuild its line storage on every edit.
+    public var processesEdits: Bool = true
+
     public weak var invisibleCharacterDelegate: InvisibleCharactersDelegate? {
         didSet {
             lineFragmentRenderer.invisibleCharacterDelegate = invisibleCharacterDelegate
@@ -178,10 +182,12 @@ public class TextLayoutManager: NSObject {
         #endif
     }
 
-    /// Resets the layout manager to an initial state.
-    func reset() {
+    /// Resets the layout manager to an initial state, rebuilding line storage from the current text storage.
+    public func reset() {
         lineStorage.removeAll()
         visibleLineIds.removeAll()
+        viewReuseQueue.usedViews.values.forEach { $0.removeFromSuperview() }
+        viewReuseQueue.queuedViews.forEach { $0.removeFromSuperview() }
         viewReuseQueue.queuedViews.removeAll()
         viewReuseQueue.usedViews.removeAll()
         maxLineWidth = 0

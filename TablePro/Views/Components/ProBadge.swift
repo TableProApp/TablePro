@@ -12,7 +12,7 @@ struct ProBadge: View {
             .foregroundStyle(.white)
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
-            .background(Color(nsColor: .systemOrange), in: Capsule())
+            .background(.orange, in: Capsule())
             .accessibilityLabel(Text("Pro feature"))
     }
 }

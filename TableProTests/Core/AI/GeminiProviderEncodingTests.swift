@@ -51,6 +51,34 @@ struct GeminiProviderEncodingTests {
         #expect(args?["connection_id"] as? String == "abc")
     }
 
+    @Test("toolUse echoes thoughtSignature alongside functionCall when present")
+    func toolUseRoundTripsThoughtSignature() throws {
+        let toolUse = ToolUseBlock(
+            id: "call_1",
+            name: "list_tables",
+            input: .object([:]),
+            providerMetadata: ["thoughtSignature": "sig-abc-123"]
+        )
+        let turn = ChatTurnWire(role: .assistant, blocks: [.toolUse(toolUse)])
+        let encoded = try #require(makeProvider().encodeTurn(turn, priorTurns: []))
+        let parts = encoded["parts"] as? [[String: Any]]
+        #expect((parts?[0])?["thoughtSignature"] as? String == "sig-abc-123")
+        #expect((parts?[0])?["functionCall"] != nil)
+    }
+
+    @Test("toolUse without thoughtSignature omits the field")
+    func toolUseOmitsSignatureWhenAbsent() throws {
+        let toolUse = ToolUseBlock(
+            id: "call_1",
+            name: "list_tables",
+            input: .object([:])
+        )
+        let turn = ChatTurnWire(role: .assistant, blocks: [.toolUse(toolUse)])
+        let encoded = try #require(makeProvider().encodeTurn(turn, priorTurns: []))
+        let parts = encoded["parts"] as? [[String: Any]]
+        #expect((parts?[0])?["thoughtSignature"] == nil)
+    }
+
     @Test("toolResult resolves the originating tool name from prior turns")
     func toolResultLookupAcrossTurns() throws {
         let toolUse = ToolUseBlock(id: "call_1", name: "list_tables", input: .object([:]))
@@ -91,5 +119,90 @@ struct GeminiProviderEncodingTests {
         let contents = makeProvider().encodeContents(turns: [system, user])
         #expect(contents.count == 1)
         #expect(contents[0]["role"] as? String == "user")
+    }
+}
+
+@Suite("GeminiProvider schema sanitization")
+struct GeminiProviderSchemaSanitizationTests {
+    @Test("Strips additionalProperties at any depth")
+    func stripsAdditionalProperties() {
+        let input = JsonValue.object([
+            "type": .string("object"),
+            "additionalProperties": .bool(false),
+            "properties": .object([
+                "nested": .object([
+                    "type": .string("object"),
+                    "additionalProperties": .bool(false)
+                ])
+            ])
+        ])
+        let output = GeminiProvider.sanitizeSchemaForGemini(input)
+        guard case .object(let root) = output else { Issue.record("expected object"); return }
+        #expect(root["additionalProperties"] == nil)
+        guard case .object(let props) = root["properties"],
+              case .object(let nested) = props["nested"] else { Issue.record("expected nested"); return }
+        #expect(nested["additionalProperties"] == nil)
+    }
+
+    @Test("Converts type:[X,null] to type:X plus nullable:true")
+    func rewritesOptionalType() {
+        let input = JsonValue.object([
+            "type": .array([.string("string"), .string("null")]),
+            "description": .string("optional field")
+        ])
+        let output = GeminiProvider.sanitizeSchemaForGemini(input)
+        guard case .object(let fields) = output else { Issue.record("expected object"); return }
+        #expect(fields["type"] == .string("string"))
+        #expect(fields["nullable"] == .bool(true))
+        #expect(fields["description"] == .string("optional field"))
+    }
+
+    @Test("Leaves non-nullable type unchanged")
+    func preservesNonNullableType() {
+        let input = JsonValue.object([
+            "type": .string("integer"),
+            "description": .string("count")
+        ])
+        let output = GeminiProvider.sanitizeSchemaForGemini(input)
+        guard case .object(let fields) = output else { Issue.record("expected object"); return }
+        #expect(fields["type"] == .string("integer"))
+        #expect(fields["nullable"] == nil)
+    }
+
+    @Test("Recurses into properties and array items")
+    func recursesIntoArrayItems() {
+        let input = JsonValue.object([
+            "type": .string("array"),
+            "items": .object([
+                "type": .array([.string("string"), .string("null")]),
+                "additionalProperties": .bool(false)
+            ])
+        ])
+        let output = GeminiProvider.sanitizeSchemaForGemini(input)
+        guard case .object(let root) = output,
+              case .object(let items) = root["items"] else { Issue.record("expected items object"); return }
+        #expect(items["type"] == .string("string"))
+        #expect(items["nullable"] == .bool(true))
+        #expect(items["additionalProperties"] == nil)
+    }
+
+    @Test("Preserves enum and required fields")
+    func preservesEnumAndRequired() {
+        let input = JsonValue.object([
+            "type": .string("object"),
+            "required": .array([.string("id")]),
+            "properties": .object([
+                "id": .object([
+                    "type": .string("string"),
+                    "enum": .array([.string("a"), .string("b")])
+                ])
+            ])
+        ])
+        let output = GeminiProvider.sanitizeSchemaForGemini(input)
+        guard case .object(let root) = output else { Issue.record("expected object"); return }
+        #expect(root["required"] == .array([.string("id")]))
+        guard case .object(let props) = root["properties"],
+              case .object(let id) = props["id"] else { Issue.record("expected id"); return }
+        #expect(id["enum"] == .array([.string("a"), .string("b")]))
     }
 }

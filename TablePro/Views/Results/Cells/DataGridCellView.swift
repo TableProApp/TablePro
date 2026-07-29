@@ -30,6 +30,7 @@ final class DataGridCellView: NSView {
     private var visualState: RowVisualState = .empty
     private var isFocusedCell: Bool = false
     private var onEmphasizedSelection: Bool = false
+    private var hasOverlay: Bool = false
 
     private var cachedLine: CTLine?
 
@@ -82,6 +83,12 @@ final class DataGridCellView: NSView {
         }
         cellRow = state.row
         cellColumnIndex = state.columnIndex
+
+        if hasOverlay {
+            hasOverlay = false
+            updateFocusPresentation()
+            needsRedraw = true
+        }
 
         let nextDisplayText: String
         let nextFont: NSFont
@@ -150,7 +157,6 @@ final class DataGridCellView: NSView {
             updateFocusPresentation()
             needsRedraw = true
         }
-
         setAccessibilityRowIndexRange(NSRange(location: state.row, length: 1))
         setAccessibilityColumnIndexRange(NSRange(location: state.columnIndex, length: 1))
 
@@ -176,18 +182,26 @@ final class DataGridCellView: NSView {
         updateFocusPresentation()
     }
 
+    func applyOverlayActive(_ value: Bool) {
+        guard hasOverlay != value else { return }
+        hasOverlay = value
+        updateFocusPresentation()
+        needsDisplay = true
+    }
+
     private func updateFocusPresentation() {
-        focusRingType = (isFocusedCell && !onEmphasizedSelection) ? .exterior : .none
+        let shouldShowRing = isFocusedCell && !onEmphasizedSelection && !hasOverlay
+        focusRingType = shouldShowRing ? .exterior : .none
         noteFocusRingMaskChanged()
         needsDisplay = true
     }
 
     override var focusRingMaskBounds: NSRect {
-        onEmphasizedSelection ? .zero : bounds
+        (onEmphasizedSelection || hasOverlay) ? .zero : bounds
     }
 
     override func drawFocusRingMask() {
-        guard !onEmphasizedSelection else { return }
+        guard !onEmphasizedSelection, !hasOverlay else { return }
         NSBezierPath(rect: bounds).fill()
     }
 
@@ -205,10 +219,13 @@ final class DataGridCellView: NSView {
         let accessoryRect = computeAccessoryRect()
         accessoryHitRect = accessoryRect
 
+        NSGraphicsContext.current?.saveGraphicsState()
+        NSBezierPath(rect: bounds).addClip()
         drawText(reservingTrailingWidth: accessoryRect.width)
         drawAccessory(in: accessoryRect)
+        NSGraphicsContext.current?.restoreGraphicsState()
 
-        if isFocusedCell && onEmphasizedSelection {
+        if isFocusedCell && onEmphasizedSelection && !hasOverlay {
             drawFocusBorder()
         }
     }
@@ -221,15 +238,15 @@ final class DataGridCellView: NSView {
 
         let fullLine = cachedCTLine()
         let typographicWidth = CTLineGetTypographicBounds(fullLine, nil, nil, nil)
-
-        let availableWidth: CGFloat = typographicWidth > Double(totalAvailable)
-            ? totalAvailable - trailing
-            : totalAvailable
+        let trailingGap: CGFloat = trailing > 0 ? trailing + 4 : 0
+        let availableWidth = max(0, totalAvailable - trailingGap)
+        let ellipsisLine = makeEllipsisLine()
+        let ellipsisWidth = CTLineGetTypographicBounds(ellipsisLine, nil, nil, nil)
+        guard Double(availableWidth) >= ellipsisWidth else { return }
 
         let lineToDraw: CTLine
         if typographicWidth > Double(availableWidth) {
-            let ellipsis = makeEllipsisLine()
-            lineToDraw = CTLineCreateTruncatedLine(fullLine, Double(availableWidth), .end, ellipsis) ?? fullLine
+            lineToDraw = CTLineCreateTruncatedLine(fullLine, Double(availableWidth), .end, ellipsisLine) ?? ellipsisLine
         } else {
             lineToDraw = fullLine
         }
@@ -280,33 +297,28 @@ final class DataGridCellView: NSView {
     }
 
     private func computeAccessoryRect() -> NSRect {
-        switch kind {
-        case .text:
-            return .zero
-        case .foreignKey:
+        if kind == .foreignKey {
             guard let raw = rawValue, !raw.isEmpty else { return .zero }
             let size = NSSize(width: 16, height: 16)
             let x = bounds.maxX - DataGridMetrics.cellHorizontalInset - size.width
             let y = (bounds.height - size.height) / 2
             return NSRect(x: x, y: y, width: size.width, height: size.height)
-        case .dropdown, .boolean, .json, .blob:
-            guard isEditableCell else { return .zero }
-            let size = NSSize(width: 12, height: 14)
-            let x = bounds.maxX - DataGridMetrics.cellHorizontalInset - size.width
-            let y = (bounds.height - size.height) / 2
-            return NSRect(x: x, y: y, width: size.width, height: size.height)
         }
+        guard kind.showsChevron, isEditableCell else { return .zero }
+        let size = NSSize(width: 12, height: 14)
+        let minRequired = size.width + 2 * DataGridMetrics.cellHorizontalInset
+        guard bounds.width >= minRequired else { return .zero }
+        let x = bounds.maxX - DataGridMetrics.cellHorizontalInset - size.width
+        let y = (bounds.height - size.height) / 2
+        return NSRect(x: x, y: y, width: size.width, height: size.height)
     }
 
     private func drawAccessory(in rect: NSRect) {
         guard !rect.isEmpty else { return }
         let image: CGImage?
-        switch kind {
-        case .text:
-            return
-        case .foreignKey:
+        if kind == .foreignKey {
             image = onEmphasizedSelection ? Self.fkArrowEmphasized : Self.fkArrowNormal
-        case .dropdown, .boolean, .json, .blob:
+        } else if kind.showsChevron {
             if visualState.isDeleted {
                 image = Self.chevronDisabled
             } else if onEmphasizedSelection {
@@ -314,6 +326,8 @@ final class DataGridCellView: NSView {
             } else {
                 image = Self.chevronNormal
             }
+        } else {
+            return
         }
         guard let cgImage = image, let context = NSGraphicsContext.current?.cgContext else { return }
         context.saveGState()
@@ -332,21 +346,26 @@ final class DataGridCellView: NSView {
 
     override func mouseDown(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
-        if !accessoryHitRect.isEmpty && accessoryHitRect.contains(point) {
-            switch kind {
-            case .foreignKey:
-                accessoryDelegate?.dataGridCellDidClickFKArrow(row: cellRow, columnIndex: cellColumnIndex)
+        guard !accessoryHitRect.isEmpty, accessoryHitRect.contains(point) else {
+            if event.clickCount == 2 {
+                accessoryDelegate?.dataGridCellDidDoubleClick(row: cellRow, columnIndex: cellColumnIndex)
                 return
-            case .dropdown, .boolean, .json, .blob:
-                guard !visualState.isDeleted else {
-                    super.mouseDown(with: event)
-                    return
-                }
-                accessoryDelegate?.dataGridCellDidClickChevron(row: cellRow, columnIndex: cellColumnIndex)
-                return
-            case .text:
-                break
             }
+            super.mouseDown(with: event)
+            return
+        }
+        if kind == .foreignKey {
+            let openInNewTab = event.modifierFlags.contains(.command)
+            accessoryDelegate?.dataGridCellDidClickFKArrow(
+                row: cellRow,
+                columnIndex: cellColumnIndex,
+                openInNewTab: openInNewTab
+            )
+            return
+        }
+        if kind.showsChevron, !visualState.isDeleted {
+            accessoryDelegate?.dataGridCellDidClickChevron(row: cellRow, columnIndex: cellColumnIndex)
+            return
         }
         super.mouseDown(with: event)
     }

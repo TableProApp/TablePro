@@ -42,6 +42,7 @@ final class MCPServerManager {
     private var internalBridgeToken: String?
     private var serverGeneration: Int = 0
     private var revocationObserverId: UUID?
+    private var lifecycleTask: Task<Void, Never>?
 
     var isRunning: Bool {
         if case .running = state { return true } else { return false }
@@ -97,9 +98,13 @@ final class MCPServerManager {
         let newRateLimiter = MCPRateLimiter()
         rateLimiter = newRateLimiter
 
-        let authenticator = MCPBearerTokenAuthenticator(
+        let bearerAuthenticator = MCPBearerTokenAuthenticator(
             tokenStore: newTokenStore,
             rateLimiter: newRateLimiter
+        )
+        let authenticator = MCPCompositeAuthenticator(
+            bearer: bearerAuthenticator,
+            requireAuthentication: settings.requireAuthentication
         )
 
         let newTransport = MCPHttpServerTransport(
@@ -138,7 +143,11 @@ final class MCPServerManager {
 
         startDispatchLoop(transport: newTransport, dispatcher: newDispatcher, generation: generation)
         startStateLoop(transport: newTransport, generation: generation)
-        startSessionEventsLoop(sessionStore: newSessionStore, generation: generation)
+        startSessionEventsLoop(
+            sessionStore: newSessionStore,
+            authPolicy: services.authPolicy,
+            generation: generation
+        )
         await registerRevocationObserver(
             tokenStore: newTokenStore,
             sessionStore: newSessionStore,
@@ -172,6 +181,32 @@ final class MCPServerManager {
     func restart(port: UInt16) async {
         await stop()
         await start(port: port)
+    }
+
+    func scheduleStart(port: UInt16) {
+        enqueueLifecycle { [weak self] in
+            await self?.start(port: port)
+        }
+    }
+
+    func scheduleStop() {
+        enqueueLifecycle { [weak self] in
+            await self?.stop()
+        }
+    }
+
+    func scheduleRestart(port: UInt16) {
+        enqueueLifecycle { [weak self] in
+            await self?.restart(port: port)
+        }
+    }
+
+    private func enqueueLifecycle(_ work: @escaping @MainActor () async -> Void) {
+        let previousTask = lifecycleTask
+        lifecycleTask = Task { @MainActor in
+            await previousTask?.value
+            await work()
+        }
     }
 
     func lazyStart() async {
@@ -242,7 +277,11 @@ final class MCPServerManager {
         }
     }
 
-    private func startSessionEventsLoop(sessionStore: MCPSessionStore, generation: Int) {
+    private func startSessionEventsLoop(
+        sessionStore: MCPSessionStore,
+        authPolicy: MCPAuthPolicy,
+        generation: Int
+    ) {
         sessionEventsTask?.cancel()
         sessionEventsTask = Task { [weak self] in
             let stream = await sessionStore.events
@@ -250,6 +289,9 @@ final class MCPServerManager {
                 guard let self else { return }
                 guard await self.isCurrentGeneration(generation) else { return }
                 Self.logger.debug("Session event: \(String(describing: event), privacy: .public)")
+                if case .terminated(let sessionId, _) = event {
+                    await authPolicy.clearSession(sessionId.rawValue)
+                }
                 await self.refreshClients()
             }
         }

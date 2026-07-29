@@ -83,7 +83,7 @@ enum AIProviderFactory {
         guard let config else { return nil }
         let apiKey: String?
         switch config.type.authStyle {
-        case .apiKey:
+        case .apiKey, .optionalApiKey:
             apiKey = AIKeyStorage.shared.loadAPIKey(for: config.id)
         case .oauth, .none:
             apiKey = nil

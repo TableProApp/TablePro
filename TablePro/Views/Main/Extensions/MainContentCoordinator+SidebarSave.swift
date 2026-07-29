@@ -47,7 +47,6 @@ extension MainContentCoordinator {
             )
         }
 
-        // Route through the unified statement generation pipeline
         let statements = try changeManager.generateSQL(for: changes)
         guard !statements.isEmpty else { return }
         try await executeSidebarChanges(statements: statements)

@@ -42,54 +42,20 @@ final class OpenAICompatibleProvider: ChatTransport {
         turns: [ChatTurnWire],
         options: ChatTransportOptions
     ) -> AsyncThrowingStream<ChatStreamEvent, Error> {
-        AsyncThrowingStream { continuation in
-            let task = Task {
-                do {
-                    let request = try buildChatCompletionRequest(turns: turns, options: options)
-                    let (bytes, response) = try await session.bytes(for: request)
-
-                    guard let httpResponse = response as? HTTPURLResponse else {
-                        throw AIProviderError.networkError("Invalid response")
-                    }
-
-                    guard httpResponse.statusCode == 200 else {
-                        let errorBody = try await collectErrorBody(from: bytes)
-                        throw AIProviderError.mapHTTPError(
-                            statusCode: httpResponse.statusCode,
-                            body: errorBody
-                        )
-                    }
-
-                    var state = OpenAIStreamState()
-                    for try await line in bytes.lines {
-                        if Task.isCancelled { break }
-                        guard let json = Self.decodeStreamLine(line, providerType: self.providerType) else {
-                            if line == "data: [DONE]" { break }
-                            continue
-                        }
-                        let result = Self.parseChunk(json, state: &state)
-                        for event in result.events { continuation.yield(event) }
-                        if result.shouldBreak { break }
-                    }
-                    if let usage = state.finalUsageEvent() {
-                        continuation.yield(usage)
-                    }
-
-                    continuation.finish()
-                } catch {
-                    continuation.finish(throwing: error)
-                }
+        let providerType = self.providerType
+        return SSEEventStream.make(
+            session: session,
+            buildRequest: { [self] in try buildChatCompletionRequest(turns: turns, options: options) },
+            decodeLine: { Self.decodeStreamLine($0, providerType: providerType) },
+            makeState: { OpenAIStreamState() },
+            parse: { Self.parseChunk($0, state: &$1).events },
+            finalEvents: { state in
+                var state = state
+                return [state.flushReasoningEnd(), state.finalUsageEvent()].compactMap { $0 }
             }
-
-            continuation.onTermination = { _ in
-                task.cancel()
-            }
-        }
+        )
     }
 
-    /// Decodes one streaming line. OpenAI/OpenRouter/Custom use SSE framing
-    /// (`data: {...}`); Ollama emits NDJSON (one JSON object per line). The
-    /// `[DONE]` sentinel returns nil; the caller should break on it.
     static func decodeStreamLine(_ line: String, providerType: AIProviderType) -> [String: Any]? {
         let jsonString: String
         if providerType == .ollama {
@@ -107,10 +73,6 @@ final class OpenAICompatibleProvider: ChatTransport {
         return json
     }
 
-    /// Translate one chunk JSON to events. Mutates state to thread tool-call
-    /// index→id mapping, ordering, and token counters across chunks.
-    /// Returns `(events, shouldBreak)` so the caller can stop the stream when
-    /// Ollama emits `done: true`.
     static func parseChunk(
         _ json: [String: Any],
         state: inout OpenAIStreamState
@@ -119,6 +81,19 @@ final class OpenAICompatibleProvider: ChatTransport {
         let choices = json["choices"] as? [[String: Any]]
         let firstChoice = choices?.first
         let delta = firstChoice?["delta"] as? [String: Any]
+
+        if let delta, let reasoningContent = delta["reasoning_content"] as? String, !reasoningContent.isEmpty {
+            let reasoningID: String
+            if let existing = state.reasoningBlockID {
+                reasoningID = existing
+            } else {
+                let newID = "reasoning_\(UUID().uuidString.prefix(8))"
+                state.reasoningBlockID = newID
+                events.append(.reasoningStart(id: newID))
+                reasoningID = newID
+            }
+            events.append(.reasoningDelta(id: reasoningID, text: reasoningContent))
+        }
 
         if let delta, let content = delta["content"] as? String, !content.isEmpty {
             events.append(.textDelta(content))
@@ -135,9 +110,13 @@ final class OpenAICompatibleProvider: ChatTransport {
             events.append(contentsOf: handleOllamaToolCalls(toolCalls, state: &state))
         }
 
-        if let finishReason = firstChoice?["finish_reason"] as? String,
-           finishReason == "tool_calls" {
-            events.append(contentsOf: state.flushToolUseEnds())
+        if let finishReason = firstChoice?["finish_reason"] as? String, !finishReason.isEmpty {
+            if let event = state.flushReasoningEnd() {
+                events.append(event)
+            }
+            if finishReason == "tool_calls" {
+                events.append(contentsOf: state.flushToolUseEnds())
+            }
         }
 
         if let usage = json["usage"] as? [String: Any],
@@ -152,9 +131,6 @@ final class OpenAICompatibleProvider: ChatTransport {
             state.outputTokens = evalCount
         }
 
-        // Ollama signals stream-end via `done: true`. We flush again here only
-        // when finish_reason didn't already drain the tool-call map (which
-        // typically isn't set on Ollama responses).
         let shouldBreak = (json["done"] as? Bool) == true
         if shouldBreak, !state.toolCallIndexToId.isEmpty {
             events.append(contentsOf: state.flushToolUseEnds())
@@ -252,8 +228,7 @@ final class OpenAICompatibleProvider: ChatTransport {
                 )
             }
         default:
-            let chatPath = "/v1/chat/completions"
-            guard let url = URL(string: "\(endpoint)\(chatPath)") else {
+            guard let url = URL(string: endpoint.openAIPath("chat/completions")) else {
                 throw AIProviderError.invalidEndpoint(endpoint)
             }
 
@@ -302,10 +277,10 @@ final class OpenAICompatibleProvider: ChatTransport {
         turns: [ChatTurnWire],
         options: ChatTransportOptions
     ) throws -> URLRequest {
-        let chatPath = providerType == .ollama
-            ? "/api/chat"
-            : "/v1/chat/completions"
-        guard let url = URL(string: "\(endpoint)\(chatPath)") else {
+        let urlString = providerType == .ollama
+            ? "\(endpoint)/api/chat"
+            : endpoint.openAIPath("chat/completions")
+        guard let url = URL(string: urlString) else {
             throw AIProviderError.invalidEndpoint(endpoint)
         }
 
@@ -360,7 +335,18 @@ final class OpenAICompatibleProvider: ChatTransport {
             if case .toolResult(let resultBlock) = block.kind { return resultBlock }
             return nil
         }
-        let textContent = turn.plainText
+        let imageBlocks = turn.blocks.compactMap { block -> ChatImageInput? in
+            if case .image(let input) = block.kind { return input }
+            return nil
+        }
+        let walkthroughText = turn.blocks.compactMap { block -> String? in
+            guard case .sqlWalkthrough(let walkthrough) = block.kind else { return nil }
+            let text = walkthrough.transcriptText
+            return text.isEmpty ? nil : text
+        }.joined(separator: "\n")
+        let textContent = [turn.plainText, walkthroughText]
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n")
 
         if turn.role == .assistant, !toolUseBlocks.isEmpty {
             var message: [String: Any] = ["role": "assistant"]
@@ -378,6 +364,10 @@ final class OpenAICompatibleProvider: ChatTransport {
                         "arguments": block.input.jsonString()
                     ]
                 ]
+            }
+            let reasoningText = Self.plainReasoningText(from: turn)
+            if !reasoningText.isEmpty {
+                message["reasoning_content"] = reasoningText
             }
             return [message]
         }
@@ -399,11 +389,55 @@ final class OpenAICompatibleProvider: ChatTransport {
             return messages
         }
 
+        if turn.role == .user, !imageBlocks.isEmpty {
+            var parts: [[String: Any]] = []
+            if !textContent.isEmpty {
+                parts.append(["type": "text", "text": textContent])
+            }
+            for image in imageBlocks {
+                if let part = chatCompletionsImagePart(image) {
+                    parts.append(part)
+                }
+            }
+            guard !parts.isEmpty else { return [] }
+            return [[
+                "role": "user",
+                "content": parts
+            ]]
+        }
+
         guard !textContent.isEmpty else { return [] }
-        return [[
+        var message: [String: Any] = [
             "role": turn.role.rawValue,
             "content": textContent
-        ]]
+        ]
+        if turn.role == .assistant {
+            let reasoningText = Self.plainReasoningText(from: turn)
+            if !reasoningText.isEmpty {
+                message["reasoning_content"] = reasoningText
+            }
+        }
+        return [message]
+    }
+
+    private static func plainReasoningText(from turn: ChatTurnWire) -> String {
+        turn.blocks.compactMap { block -> String? in
+            guard case .reasoning(let rb) = block.kind,
+                  rb.opaque == nil,
+                  let text = rb.text else { return nil }
+            return text
+        }.joined()
+    }
+
+    private func chatCompletionsImagePart(_ input: ChatImageInput) -> [String: Any]? {
+        guard let url = input.imageURLString() else { return nil }
+        return [
+            "type": "image_url",
+            "image_url": [
+                "url": url,
+                "detail": input.detailHint.rawValue
+            ] as [String: Any]
+        ]
     }
 
     func encodeTool(_ tool: ChatToolSpec) throws -> [String: Any] {
@@ -419,7 +453,7 @@ final class OpenAICompatibleProvider: ChatTransport {
     }
 
     private func fetchOpenAIModels() async throws -> [String] {
-        guard let url = URL(string: "\(endpoint)/v1/models") else {
+        guard let url = URL(string: endpoint.openAIPath("models")) else {
             throw AIProviderError.invalidEndpoint(endpoint)
         }
 
@@ -501,6 +535,13 @@ struct OpenAIStreamState {
     var outputTokens: Int = 0
     var toolCallIndexToId: [Int: String] = [:]
     var toolCallOrder: [Int] = []
+    var reasoningBlockID: String?
+
+    mutating func flushReasoningEnd() -> ChatStreamEvent? {
+        guard let id = reasoningBlockID else { return nil }
+        reasoningBlockID = nil
+        return .reasoningEnd(id: id, opaque: nil)
+    }
 
     /// Yield `.toolUseEnd` for every tracked tool call and clear the map.
     /// Called when the provider signals tool-call completion (`finish_reason`

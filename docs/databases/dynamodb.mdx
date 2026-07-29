@@ -3,54 +3,47 @@ title: Amazon DynamoDB
 description: Connect to Amazon DynamoDB with PartiQL queries, GSI/LSI browsing, and DynamoDB Local support
 ---
 
-# Amazon DynamoDB Connections
-
-TablePro supports Amazon DynamoDB, AWS's fully managed NoSQL key-value and document database. Connect using IAM credentials, AWS profiles, or SSO. Browse tables, run PartiQL queries, inspect GSI/LSI indexes, and edit items directly in the data grid.
+TablePro connects to Amazon DynamoDB over the AWS HTTP API. Sign in with IAM credentials, an AWS profile, or SSO. Browse tables, run PartiQL queries, inspect GSI and LSI indexes, and edit items in the data grid.
 
 ## Quick Setup
 
-Click **New Connection**, select **DynamoDB**, choose auth method (Access Key, AWS Profile, SSO), enter credentials and region. Plugin auto-installs or use **Settings** > **Plugins** > **Browse** > **DynamoDB Driver**.
+Click **New Connection**, select **DynamoDB**, choose an auth method, enter your credentials and region, then click **Save & Connect**. The plugin auto-installs when you pick DynamoDB, or install it from **Settings > Plugins > Browse > DynamoDB Driver**.
 
 ## Authentication Methods
 
-**Access Key + Secret Key**: IAM credentials. Optional session token for temporary creds from STS.
+**Access Key + Secret Key**: IAM credentials. Add a session token if you are using temporary credentials from STS.
 
-**AWS Profile**: Read from `~/.aws/credentials`. Format: `[profile_name]` with `aws_access_key_id`, `aws_secret_access_key`, optional `aws_session_token`.
+**AWS Profile**: Reads the named profile from both `~/.aws/config` and `~/.aws/credentials`, the same way the AWS CLI does. A profile can supply static keys (`aws_access_key_id`, `aws_secret_access_key`, optional `aws_session_token`) or a `credential_process` command. Profiles defined only in `~/.aws/config` (as `[profile name]`) resolve too.
 
-**AWS SSO**: Use cached credentials from `~/.aws/cli/cache/`. Run `aws sso login --profile my-sso-profile` before connecting. Credentials expire (re-login if auth fails).
+**AWS SSO**: Reads the cached SSO token from `~/.aws/sso/cache/`. Run `aws sso login --profile my-sso-profile` before connecting. Tokens expire; the connection re-resolves credentials automatically and tells you to re-run `aws sso login` when the session has ended.
 
 ## Connection Settings
 
-### Required Fields
-
 | Field | Description |
 |-------|-------------|
-| **Name** | Connection identifier |
 | **Auth Method** | Access Key + Secret Key, AWS Profile, or AWS SSO |
-| **Region** | AWS region where your tables are located |
-
-### Optional Fields
-
-| Field | Description |
-|-------|-------------|
-| **Custom Endpoint** | Override the DynamoDB endpoint URL (for DynamoDB Local) |
+| **Access Key ID** | IAM access key, e.g. `AKIA...`. Access Key auth only |
+| **Secret Access Key** | The matching secret. Access Key auth only |
+| **Session Token** | Optional token for temporary STS credentials. Access Key auth only |
+| **Profile Name** | Profile to read from `~/.aws/config` or `~/.aws/credentials`. AWS Profile and AWS SSO only |
+| **AWS Region** | Region your tables live in. Defaults to `us-east-1` |
+| **Custom Endpoint** | Overrides the DynamoDB endpoint URL. Leave it empty unless you run DynamoDB Local |
 
 ## DynamoDB Local
 
-Docker: `docker run -p 8000:8000 amazon/dynamodb-local`
-Config: Auth Method = Access Key, Access Key/Secret = any non-empty, Custom Endpoint = `http://localhost:8000`
+Start a local instance:
 
-## Example Configurations
+```bash
+docker run -p 8000:8000 amazon/dynamodb-local
+```
 
-**AWS Production**: Standard Access Key method with credentials from IAM
-**AWS Profile**: Select profile from `~/.aws/credentials`
-**DynamoDB Local**: Fake credentials (non-empty required), Custom Endpoint = `http://localhost:8000`
+Set **Auth Method** to Access Key + Secret Key, put any non-empty string in **Access Key ID** and **Secret Access Key**, and set **Custom Endpoint** to `http://localhost:8000`.
 
 ## Features
 
-**Table Browsing**: Sidebar lists all tables. Shows data (grid), structure (key schema with types S/N/B), indexes (primary, GSI, LSI), DDL (key schema, billing, throughput, count, size).
+**Table Browsing**: The sidebar lists every table. Open one to see its data, its structure (attribute names and types), its indexes (primary key, GSI, LSI), and its DDL (key schema, billing mode, throughput, item count, and size).
 
-**Schemaless Discovery**: Tables are schemaless. TablePro samples items to discover attributes, infers types by majority vote. Keys always first columns.
+**Schemaless Discovery**: DynamoDB tables have no fixed schema, so TablePro reads the attribute names from the items it fetched and picks each column's type by majority vote. The Structure tab samples up to 100 items. Partition and sort keys come first, then the other attributes in alphabetical order.
 
 **PartiQL Queries** ([reference](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/ql-reference.html)):
 
@@ -78,13 +71,13 @@ Table names in PartiQL must be quoted with double quotes: `"TableName"`. String 
 
 **Data Types**: S (string), N (number), B (binary), BOOL, NULL, L (JSON array), M (JSON object), SS (string set), NS (number set), BS (binary set).
 
-**Data Editing**: Edit cells, insert rows, delete rows. Generates PartiQL: `INSERT INTO "Table" VALUE { ... }`, `UPDATE "Table" SET attr = 'val' WHERE pk = 'pkVal'`, `DELETE FROM "Table" WHERE pk = 'pkVal'`. Keys cannot be modified (delete/re-insert).
+**Data Editing**: Edit cells, insert rows, and delete rows. TablePro generates PartiQL: `INSERT INTO "Table" VALUE { ... }`, `UPDATE "Table" SET attr = 'val' WHERE pk = 'pkVal'`, and `DELETE FROM "Table" WHERE pk = 'pkVal'`. Key attributes cannot be changed, so delete the item and insert it again.
 
-**Smart Optimization**: Partition key equality uses Query API (not Scan) for speed and lower read capacity.
+**Query Instead of Scan**: A filter that pins the partition key to a single value with `=` runs through the Query API instead of Scan. It returns faster and burns less read capacity.
 
-**Capacity/Metrics**: Billing mode (PAY_PER_REQUEST/PROVISIONED with RCU/WCU), approximate item count, table size, GSI/LSI details.
+**Capacity and Metrics**: Billing mode (`PAY_PER_REQUEST`, or `PROVISIONED` with read and write capacity units), approximate item count, table size, and GSI/LSI details.
 
-**Export**: CSV, JSON, SQL, other formats.
+**Export**: CSV, JSON, SQL, XLSX formats.
 
 ## IAM Permissions
 
@@ -120,12 +113,19 @@ For read-only access, remove the write actions (`PutItem`, `UpdateItem`, `Delete
 
 ## Troubleshooting
 
-**Auth failed**: Verify Access Key/Secret/profile/SSO credentials. For SSO, run `aws sso login`. For expired creds, refresh.
+**Auth failed**: Check the access key and secret, the profile name, or the SSO session. For SSO, run `aws sso login --profile my-sso-profile`. If you pasted a temporary session token, get a fresh one from STS.
 
-**Access denied**: Check IAM permissions, verify resource ARNs, check SCP/permission boundaries.
+**Access denied**: Check the IAM policy on the user or role, the resource ARNs it covers, and any service control policies or permission boundaries above it.
 
-**Region mismatch**: Verify correct region selected. Tables are region-specific.
+**Region mismatch**: Tables are region-specific. Make sure **AWS Region** matches the region the table was created in.
 
-**Throughput exceeded**: Wait and retry, switch to on-demand billing, use filters to reduce scans.
+**Throughput exceeded**: Wait and retry, switch the table to on-demand billing, or add filters so fewer items are scanned.
 
-**Limitations**: No persistent connections (independent HTTP requests), no schema editing (structure at creation), item counts updated ~6h, cursor-based pagination (scan to jump), no transactions in UI, no DAX/Global Tables, HTTPS only with SigV4.
+## Limitations
+
+- Every request is an independent HTTPS call signed with SigV4. There are no persistent connections and no SSH tunneling.
+- Table structure is fixed when the table is created. TablePro cannot edit it.
+- Item counts come from DynamoDB and refresh about every 6 hours, so they lag.
+- Pagination is cursor-based, so jumping to a far page re-scans from the start.
+- No transactions.
+- DAX endpoints are not supported. Connect to the standard DynamoDB endpoint.

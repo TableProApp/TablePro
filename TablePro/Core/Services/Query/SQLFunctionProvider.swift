@@ -18,7 +18,7 @@ internal enum SQLFunctionProvider {
                 SQLFunction(label: "UTC_TIMESTAMP()", expression: "UTC_TIMESTAMP()"),
                 SQLFunction(label: "UUID()", expression: "UUID()")
             ]
-        } else if databaseType == .postgresql || databaseType == .redshift {
+        } else if databaseType == .postgresql || databaseType == .redshift || databaseType == .cockroachdb {
             return [
                 SQLFunction(label: "now()", expression: "now()"),
                 SQLFunction(label: "CURRENT_TIMESTAMP", expression: "CURRENT_TIMESTAMP"),

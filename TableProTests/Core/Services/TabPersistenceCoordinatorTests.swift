@@ -186,8 +186,8 @@ struct TabPersistenceCoordinatorTests {
         #expect(afterClear.source == .none)
     }
 
-    @Test("Preview tabs are excluded from persistence")
-    func previewTabsExcludedFromPersistence() async {
+    @Test("Preview tabs are persisted and restored as permanent tabs")
+    func previewTabsRestoredAsPermanent() async {
         let coordinator = makeCoordinator()
         let normalTab = QueryTab(id: UUID(), title: "Normal", query: "SELECT 1", tabType: .query)
         var previewTab = QueryTab(id: UUID(), title: "Preview", query: "SELECT 2", tabType: .table, tableName: "users")
@@ -198,47 +198,44 @@ struct TabPersistenceCoordinatorTests {
 
         let result = await coordinator.restoreFromDisk()
 
-        #expect(result.tabs.count == 1)
-        #expect(result.tabs[0].id == normalTab.id)
-        #expect(result.tabs[0].title == "Normal")
+        #expect(result.tabs.count == 2)
+        #expect(result.tabs.contains { $0.id == previewTab.id })
+        #expect(result.tabs.allSatisfy { !$0.isPreview })
 
         coordinator.clearSavedState()
         await sleep()
     }
 
-    @Test("All-preview tabs clears saved state")
-    func allPreviewTabsClearsSavedState() async {
+    @Test("A lone preview tab is persisted")
+    func lonePreviewTabIsPersisted() async {
         let coordinator = makeCoordinator()
-        let normalTab = QueryTab(id: UUID(), title: "Normal", query: "SELECT 1", tabType: .query)
-
-        // First save a normal tab
-        coordinator.saveNow(tabs: [normalTab], selectedTabId: normalTab.id)
-        await sleep()
-
-        // Now save only preview tabs — should clear state
         var previewTab = QueryTab(id: UUID(), title: "Preview", query: "SELECT 2", tabType: .table, tableName: "users")
         previewTab.isPreview = true
+
         coordinator.saveNow(tabs: [previewTab], selectedTabId: previewTab.id)
         await sleep()
 
         let result = await coordinator.restoreFromDisk()
-        #expect(result.tabs.isEmpty)
-        #expect(result.source == .none)
+        #expect(result.tabs.count == 1)
+        #expect(result.tabs[0].id == previewTab.id)
+        #expect(result.tabs[0].isPreview == false)
+
+        coordinator.clearSavedState()
+        await sleep()
     }
 
-    @Test("selectedTabId normalizes when selected tab is preview")
-    func selectedTabIdNormalizesWhenPreview() async {
+    @Test("selectedTabId on a preview tab is preserved")
+    func selectedPreviewTabIdPreserved() async {
         let coordinator = makeCoordinator()
         let normalTab = QueryTab(id: UUID(), title: "Normal", query: "SELECT 1", tabType: .query)
         var previewTab = QueryTab(id: UUID(), title: "Preview", query: "SELECT 2", tabType: .table, tableName: "users")
         previewTab.isPreview = true
 
-        // Select the preview tab — should normalize to first non-preview tab
         coordinator.saveNow(tabs: [normalTab, previewTab], selectedTabId: previewTab.id)
         await sleep()
 
         let result = await coordinator.restoreFromDisk()
-        #expect(result.selectedTabId == normalTab.id)
+        #expect(result.selectedTabId == previewTab.id)
 
         coordinator.clearSavedState()
         await sleep()

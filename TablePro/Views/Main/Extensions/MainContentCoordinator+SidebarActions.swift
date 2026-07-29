@@ -13,6 +13,20 @@ import UniformTypeIdentifiers
 extension MainContentCoordinator {
     // MARK: - Result Set Operations
 
+    var canPinActiveResultSet: Bool {
+        guard let tab = tabManager.selectedTab else { return false }
+        return ResultTabBarPolicy.canPin(tabType: tab.tabType, display: tab.display)
+    }
+
+    var isActiveResultSetPinned: Bool {
+        tabManager.selectedTab?.display.activeResultSet?.isPinned == true
+    }
+
+    func togglePinResultSet(id: UUID) {
+        guard let tabIdx = tabManager.selectedTabIndex else { return }
+        tabManager.mutate(at: tabIdx) { $0.display.togglePin(resultSetId: id) }
+    }
+
     func closeResultSet(id: UUID) {
         guard let tabIdx = tabManager.selectedTabIndex else { return }
         let rs = tabManager.tabs[tabIdx].display.resultSets.first { $0.id == id }
@@ -35,6 +49,35 @@ extension MainContentCoordinator {
             }
             toolbarState.isResultsCollapsed = true
         }
+    }
+
+    var canClearActiveQueryResults: Bool {
+        guard let tab = tabManager.selectedTab, tab.tabType == .query else { return false }
+        return !tabSessionRegistry.tableRows(for: tab.id).rows.isEmpty || tab.execution.lastExecutedAt != nil
+    }
+
+    func clearActiveQueryResults() {
+        guard let tabIdx = tabManager.selectedTabIndex else { return }
+        let tabId = tabManager.tabs[tabIdx].id
+
+        if let lastPinned = tabManager.tabs[tabIdx].display.resultSets.last(where: \.isPinned) {
+            switchActiveResultSet(to: lastPinned.id, in: tabId)
+            tabManager.mutate(at: tabIdx) { $0.display.removeUnpinnedResults() }
+            return
+        }
+
+        setActiveTableRows(TableRows(), for: tabId)
+        tabManager.mutate(at: tabIdx) { tab in
+            tab.display.removeUnpinnedResults()
+            tab.execution.errorMessage = nil
+            tab.execution.rowsAffected = 0
+            tab.execution.executionTime = nil
+            tab.execution.statusMessage = nil
+            tab.execution.lastExecutedAt = nil
+            tab.schemaVersion += 1
+            tab.display.isResultsCollapsed = true
+        }
+        toolbarState.isResultsCollapsed = true
     }
 
     // MARK: - Table Operations
@@ -75,8 +118,9 @@ extension MainContentCoordinator {
     func editViewDefinition(_ viewName: String) {
         Task {
             do {
-                guard let driver = DatabaseManager.shared.driver(for: self.connection.id) else { return }
-                let definition = try await driver.fetchViewDefinition(view: viewName)
+                let definition = try await DatabaseManager.shared.withMetadataDriver(connectionId: self.connection.id) { driver in
+                    try await driver.fetchViewDefinition(view: viewName)
+                }
 
                 let payload = EditorTabPayload(
                     connectionId: connection.id,
@@ -113,39 +157,43 @@ extension MainContentCoordinator {
         activeSheet = .exportQueryResults
     }
 
-    func openImportDialog() {
+    func openImportDialog(formatId: String) {
         guard !safeModeLevel.blocksAllWrites else { return }
         guard PluginManager.shared.supportsImport(for: connection.type) else {
             AlertHelper.showErrorSheet(
                 title: String(localized: "Import Not Supported"),
-                message: String(format: String(localized: "SQL import is not supported for %@ connections."), connection.type.rawValue),
+                message: String(format: String(localized: "Import is not supported for %@ connections."), connection.type.rawValue),
                 window: nil
             )
             return
         }
+        guard let plugin = PluginManager.shared.importPlugin(forFormat: formatId) else { return }
+        let pluginType = type(of: plugin)
+
         let panel = NSOpenPanel()
         var contentTypes: [UTType] = []
-        for plugin in PluginManager.shared.allImportPlugins() {
-            for ext in type(of: plugin).acceptedFileExtensions {
-                if let utType = UTType(filenameExtension: ext) {
-                    contentTypes.append(utType)
-                }
+        for ext in pluginType.acceptedFileExtensions {
+            if let utType = UTType(filenameExtension: ext) {
+                contentTypes.append(utType)
             }
         }
-        if let gzType = UTType(filenameExtension: "gz") {
+        if !pluginType.requiresTargetTable, let gzType = UTType(filenameExtension: "gz") {
             contentTypes.append(gzType)
         }
         if !contentTypes.isEmpty {
             panel.allowedContentTypes = contentTypes
         }
         panel.allowsMultipleSelection = false
-        panel.message = "Select SQL file to import"
+        panel.message = String(format: String(localized: "Select %@ file to import"), pluginType.formatDisplayName)
 
         guard let window = contentWindow else { return }
         panel.beginSheetModal(for: window) { [weak self] response in
             guard response == .OK, let url = panel.url else { return }
             self?.importFileURL = url
-            self?.activeSheet = .importDialog
+            switch ImportRouting.route(formatId: formatId, requiresTargetTable: pluginType.requiresTargetTable) {
+            case .statement(let id): self?.activeSheet = .importDialog(formatId: id)
+            case .rowMapping(let id): self?.activeSheet = .rowImport(formatId: id)
+            }
         }
     }
 
@@ -168,6 +216,27 @@ extension MainContentCoordinator {
 
         Task { [weak self] in
             guard let self else { return }
+            let decision = await ExecutionGateProvider.shared.authorize(
+                OperationRequest(
+                    connectionId: self.connectionId,
+                    databaseType: self.connection.type,
+                    sql: statements.joined(separator: "\n"),
+                    kind: .maintenance,
+                    caller: .userInterface,
+                    capabilities: .interactiveUser,
+                    operationDescription: operation
+                )
+            )
+            guard case .authorized = decision else {
+                if let reason = decision.deniedReason {
+                    await AlertHelper.showErrorSheet(
+                        title: String(format: String(localized: "%@ failed"), operation),
+                        message: reason,
+                        window: self.contentWindow
+                    )
+                }
+                return
+            }
             do {
                 var lastResult: QueryResult?
                 for sql in statements {

@@ -48,12 +48,14 @@ final class DataChangeManager: ChangeManaging {
     var changes: [RowChange] { pending.changes }
     var rowChanges: [RowChange] { pending.changes }
     var insertedRowIndices: Set<Int> { pending.insertedRowIndices }
+    var deletedRowIndices: Set<Int> { pending.deletedRowIndices }
 
     var tableName: String = ""
+    var schemaName: String?
     var primaryKeyColumns: [String] = []
     /// First PK column, for contexts that need a single column (paste, filters)
     var primaryKeyColumn: String? { primaryKeyColumns.first }
-    var databaseType: DatabaseType = .mysql
+    var databaseType: DatabaseType?
     var pluginDriver: (any PluginDatabaseDriver)?
 
     var columns: [String] = []
@@ -70,8 +72,11 @@ final class DataChangeManager: ChangeManaging {
 
     private func registerUndo(actionName: String, _ handler: @escaping (DataChangeManager) -> Void) {
         guard let undoManager = undoManagerProvider?() else { return }
+        let opensOwnGroup = !undoManager.groupsByEvent && undoManager.groupingLevel == 0
+        if opensOwnGroup { undoManager.beginUndoGrouping() }
         undoManager.registerUndo(withTarget: self, handler: handler)
         undoManager.setActionName(actionName)
+        if opensOwnGroup { undoManager.endUndoGrouping() }
     }
 
     // MARK: - Configuration
@@ -89,12 +94,14 @@ final class DataChangeManager: ChangeManaging {
 
     func configureForTable(
         tableName: String,
+        schemaName: String? = nil,
         columns: [String],
         primaryKeyColumns: [String],
-        databaseType: DatabaseType = .mysql,
+        databaseType: DatabaseType,
         triggerReload: Bool = true
     ) {
         self.tableName = tableName
+        self.schemaName = schemaName
         self.columns = columns
         self.primaryKeyColumns = primaryKeyColumns
         self.databaseType = databaseType
@@ -106,6 +113,10 @@ final class DataChangeManager: ChangeManaging {
         if triggerReload {
             reloadVersion += 1
         }
+    }
+
+    func setPrimaryKeyColumns(_ primaryKeyColumns: [String]) {
+        self.primaryKeyColumns = primaryKeyColumns
     }
 
     // MARK: - Change Tracking
@@ -128,7 +139,6 @@ final class DataChangeManager: ChangeManaging {
         )
         guard recorded else {
             hasChanges = !pending.isEmpty
-            reloadVersion += 1
             return
         }
         registerUndo(actionName: String(localized: "Edit Cell")) { target in
@@ -138,7 +148,6 @@ final class DataChangeManager: ChangeManaging {
             ))
         }
         hasChanges = !pending.isEmpty
-        reloadVersion += 1
     }
 
     func recordRowDeletion(rowIndex: Int, originalRow: [PluginCellValue]) {
@@ -147,7 +156,6 @@ final class DataChangeManager: ChangeManaging {
             target.applyDataUndo(.rowDeletion(rowIndex: rowIndex, originalRow: originalRow))
         }
         hasChanges = true
-        reloadVersion += 1
     }
 
     func recordBatchRowDeletion(rows: [(rowIndex: Int, originalRow: [PluginCellValue])]) {
@@ -165,7 +173,6 @@ final class DataChangeManager: ChangeManaging {
             target.applyDataUndo(.batchRowDeletion(rows: batchData))
         }
         hasChanges = true
-        reloadVersion += 1
     }
 
     func recordRowInsertion(rowIndex: Int, values: [PluginCellValue]) {
@@ -174,7 +181,6 @@ final class DataChangeManager: ChangeManaging {
             target.applyDataUndo(.rowInsertion(rowIndex: rowIndex))
         }
         hasChanges = true
-        reloadVersion += 1
     }
 
     // MARK: - Undo Operations
@@ -182,13 +188,11 @@ final class DataChangeManager: ChangeManaging {
     func undoRowDeletion(rowIndex: Int) {
         guard pending.undoRowDeletion(rowIndex: rowIndex) else { return }
         hasChanges = !pending.isEmpty
-        reloadVersion += 1
     }
 
     func undoRowInsertion(rowIndex: Int) {
         guard pending.undoRowInsertion(rowIndex: rowIndex) else { return }
         hasChanges = !pending.isEmpty
-        reloadVersion += 1
     }
 
     func undoBatchRowInsertion(rowIndices: [Int]) {
@@ -199,7 +203,6 @@ final class DataChangeManager: ChangeManaging {
             target.applyDataUndo(.batchRowInsertion(rowIndices: validRows, rowValues: rowValues))
         }
         hasChanges = !pending.isEmpty
-        reloadVersion += 1
     }
 
     // MARK: - Core Undo Application
@@ -227,7 +230,6 @@ final class DataChangeManager: ChangeManaging {
         }
 
         hasChanges = !pending.isEmpty
-        reloadVersion += 1
 
         if let result = lastUndoResult {
             onUndoApplied?(result)
@@ -402,6 +404,7 @@ final class DataChangeManager: ChangeManaging {
             let pluginInsertedRowData: [Int: [PluginCellValue]] = insertedRowData
             if let statements = pluginDriver.generateStatements(
                 table: tableName,
+                schema: schemaName,
                 columns: columns,
                 primaryKeyColumns: primaryKeyColumns,
                 changes: pluginChanges,
@@ -413,9 +416,15 @@ final class DataChangeManager: ChangeManaging {
             }
         }
 
+        guard let databaseType else {
+            throw DatabaseError.queryFailed(
+                "Cannot generate statements: table dialect not configured"
+            )
+        }
+
         if PluginManager.shared.editorLanguage(for: databaseType) != .sql {
             throw DatabaseError.queryFailed(
-                "Cannot generate statements for \(databaseType.rawValue) — plugin driver not initialized"
+                "Cannot generate statements for \(databaseType.rawValue): plugin driver not initialized"
             )
         }
 
@@ -485,8 +494,9 @@ final class DataChangeManager: ChangeManaging {
         pending.snapshot(primaryKeyColumns: primaryKeyColumns, columns: columns)
     }
 
-    func restoreState(from state: TabChangeSnapshot, tableName: String, databaseType: DatabaseType) {
+    func restoreState(from state: TabChangeSnapshot, tableName: String, schemaName: String? = nil, databaseType: DatabaseType) {
         self.tableName = tableName
+        self.schemaName = schemaName
         self.columns = state.columns
         self.primaryKeyColumns = state.primaryKeyColumns
         self.databaseType = databaseType

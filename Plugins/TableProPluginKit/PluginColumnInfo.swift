@@ -17,6 +17,7 @@ public struct PluginColumnInfo: Codable, Sendable {
     public let comment: String?
     public let identityKind: IdentityKind?
     public let isGenerated: Bool
+    public let allowedValues: [String]?
 
     public var isIdentity: Bool { identityKind != nil }
 
@@ -31,7 +32,8 @@ public struct PluginColumnInfo: Codable, Sendable {
         collation: String? = nil,
         comment: String? = nil,
         identityKind: IdentityKind? = nil,
-        isGenerated: Bool = false
+        isGenerated: Bool = false,
+        allowedValues: [String]? = nil
     ) {
         self.name = name
         self.dataType = dataType
@@ -44,5 +46,6 @@ public struct PluginColumnInfo: Codable, Sendable {
         self.comment = comment
         self.identityKind = identityKind
         self.isGenerated = isGenerated
+        self.allowedValues = allowedValues
     }
 }

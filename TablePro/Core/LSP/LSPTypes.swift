@@ -69,11 +69,6 @@ struct LSPInlineCompletionParams: Codable, Sendable, Equatable {
     let formattingOptions: LSPFormattingOptions
 }
 
-struct LSPDidShowCompletionParams: Codable, Sendable {
-    let textDocument: LSPTextDocumentIdentifier
-    let items: [LSPInlineCompletionItem]
-}
-
 struct LSPClientInfo: Codable, Sendable, Equatable {
     let name: String
     let version: String
@@ -147,17 +142,6 @@ struct LSPJSONRPCNotification<P: Encodable>: Encodable {
     let jsonrpc: String = "2.0"
     let method: String
     let params: P?
-}
-
-struct LSPJSONRPCResponse<R: Decodable>: Decodable {
-    let id: Int?
-    let result: R?
-    let error: LSPJSONRPCError?
-}
-
-struct LSPJSONRPCError: Decodable, Sendable {
-    let code: Int
-    let message: String
 }
 
 // MARK: - Copilot Conversation Types
@@ -259,22 +243,6 @@ struct CopilotConversationTurnDeleteParams: Codable, Sendable {
     let conversationId: String
     let turnId: String
     let source: String
-}
-
-struct CopilotProgressParams: Codable, Sendable {
-    let token: String
-    let value: CopilotProgressValue
-}
-
-struct CopilotProgressValue: Codable, Sendable {
-    let kind: String
-    let title: String?
-    let reply: String?
-    let result: CopilotProgressResult?
-}
-
-struct CopilotProgressResult: Codable, Sendable {
-    let followUp: String?
 }
 
 struct CopilotModel: Codable, Sendable {

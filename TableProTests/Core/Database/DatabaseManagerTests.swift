@@ -6,8 +6,8 @@
 //
 
 import Foundation
-import TableProPluginKit
 @testable import TablePro
+import TableProPluginKit
 import Testing
 
 @Suite("DatabaseManager Session-Scoped Accessors")
@@ -30,5 +30,100 @@ struct DatabaseManagerSessionTests {
         let unknownId = UUID()
         let session = DatabaseManager.shared.activeSessions[unknownId]
         #expect(session == nil)
+    }
+
+    @Test("resolvedSchemaName keeps an explicit schema over the session's current schema")
+    func resolvedSchemaNameKeepsExplicitSchema() {
+        let connection = TestFixtures.makeConnection()
+        var session = ConnectionSession(connection: connection)
+        session.currentSchema = "sales"
+        DatabaseManager.shared.injectSession(session, for: connection.id)
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+
+        #expect(DatabaseManager.shared.resolvedSchemaName("audit", for: connection.id) == "audit")
+    }
+
+    @Test("resolvedSchemaName falls back to the session's current schema")
+    func resolvedSchemaNameFallsBackToSessionSchema() {
+        let connection = TestFixtures.makeConnection()
+        var session = ConnectionSession(connection: connection)
+        session.currentSchema = "sales"
+        DatabaseManager.shared.injectSession(session, for: connection.id)
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+
+        #expect(DatabaseManager.shared.resolvedSchemaName(nil, for: connection.id) == "sales")
+    }
+
+    @Test("resolvedSchemaName stays nil without a session")
+    func resolvedSchemaNameStaysNilWithoutSession() {
+        #expect(DatabaseManager.shared.resolvedSchemaName(nil, for: UUID()) == nil)
+    }
+
+    @Test("resolvedSchemaName stays nil for a schema-less session")
+    func resolvedSchemaNameStaysNilForSchemaLessSession() {
+        let connection = TestFixtures.makeConnection()
+        DatabaseManager.shared.injectSession(ConnectionSession(connection: connection), for: connection.id)
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+
+        #expect(DatabaseManager.shared.resolvedSchemaName(nil, for: connection.id) == nil)
+    }
+}
+
+private class DatabaseSwitchBaseDriver {
+    var supportsSchemas: Bool { true }
+    var supportsTransactions: Bool { false }
+    var currentSchema: String? { nil }
+    var serverVersion: String? { nil }
+
+    func connect() async throws {}
+    func disconnect() {}
+
+    func execute(query: String) async throws -> PluginQueryResult {
+        PluginQueryResult(columns: [], columnTypeNames: [], rows: [], rowsAffected: 0, executionTime: 0)
+    }
+
+    func fetchTables(schema: String?) async throws -> [PluginTableInfo] { [] }
+    func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] { [] }
+    func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] { [] }
+    func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] { [] }
+    func fetchTableDDL(table: String, schema: String?) async throws -> String { "" }
+    func fetchViewDefinition(view: String, schema: String?) async throws -> String { "" }
+    func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
+        PluginTableMetadata(tableName: table)
+    }
+
+    func fetchDatabases() async throws -> [String] { [] }
+    func fetchDatabaseMetadata(_ database: String) async throws -> PluginDatabaseMetadata {
+        PluginDatabaseMetadata(name: database)
+    }
+}
+
+private final class DatabaseSwitchingDriver: DatabaseSwitchBaseDriver, PluginDatabaseDriver {
+    private(set) var switchedDatabases: [String] = []
+
+    func switchDatabase(to database: String) async throws {
+        switchedDatabases.append(database)
+    }
+}
+
+@Suite("DatabaseManager database switch")
+@MainActor
+struct DatabaseManagerDatabaseSwitchTests {
+    @Test("bySchema engines reset the session schema to the plugin default")
+    func bySchemaSwitchResetsSchemaToDefault() async throws {
+        let connection = TestFixtures.makeConnection(type: .mssql)
+        let pluginDriver = DatabaseSwitchingDriver()
+        let adapter = PluginDriverAdapter(connection: connection, pluginDriver: pluginDriver)
+        var session = ConnectionSession(connection: connection, driver: adapter)
+        session.currentSchema = "sales"
+        DatabaseManager.shared.injectSession(session, for: connection.id)
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+
+        try await DatabaseManager.shared.switchDatabase(to: "other_db", for: connection.id, persist: false)
+
+        let updated = DatabaseManager.shared.session(for: connection.id)
+        #expect(pluginDriver.switchedDatabases == ["other_db"])
+        #expect(updated?.currentDatabase == "other_db")
+        #expect(updated?.currentSchema == "dbo")
     }
 }

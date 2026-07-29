@@ -877,4 +877,59 @@ struct ColumnTypeClassifierTests {
             #expect(isText(classifier.classify(rawTypeName: "unknown_type_xyz")))
         }
     }
+
+    @Suite("Trino Types")
+    struct TrinoTests {
+        private let classifier = ColumnTypeClassifier()
+
+        private func isText(_ type: ColumnType) -> Bool {
+            if case .text = type { return true }
+            return false
+        }
+
+        private func isTimestamp(_ type: ColumnType) -> Bool {
+            if case .timestamp = type { return true }
+            return false
+        }
+
+        @Test("array(varchar) classifies as json")
+        func arrayIsJson() {
+            #expect(classifier.classify(rawTypeName: "array(varchar)").isJsonType)
+        }
+
+        @Test("map(varchar, bigint) classifies as json")
+        func mapIsJson() {
+            #expect(classifier.classify(rawTypeName: "map(varchar, bigint)").isJsonType)
+        }
+
+        @Test("row(x integer, y varchar) classifies as json")
+        func rowIsJson() {
+            #expect(classifier.classify(rawTypeName: "row(x integer, y varchar)").isJsonType)
+        }
+
+        @Test("timestamp(3) with time zone classifies as timestamp")
+        func timestampTzIsTimestamp() {
+            #expect(isTimestamp(classifier.classify(rawTypeName: "timestamp(3) with time zone")))
+        }
+
+        @Test("time with time zone classifies as timestamp")
+        func timeWithTimeZoneIsTimestamp() {
+            #expect(isTimestamp(classifier.classify(rawTypeName: "time with time zone")))
+        }
+
+        @Test("varbinary classifies as blob")
+        func varbinaryIsBlob() {
+            #expect(classifier.classify(rawTypeName: "varbinary").isBlobType)
+        }
+
+        @Test("uuid classifies as text")
+        func uuidIsText() {
+            #expect(isText(classifier.classify(rawTypeName: "uuid")))
+        }
+
+        @Test("varchar(255) classifies as text")
+        func varcharIsText() {
+            #expect(isText(classifier.classify(rawTypeName: "varchar(255)")))
+        }
+    }
 }

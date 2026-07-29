@@ -1,59 +1,29 @@
 ---
 title: Introduction
-description: Native macOS database client for MySQL, PostgreSQL, SQLite, MongoDB, Redis, and a dozen more.
+description: Native macOS database client for MySQL, PostgreSQL, SQLite, MongoDB, Redis, and 20 more.
 ---
 
-# TablePro
+Native macOS client for 25 databases. Built with SwiftUI and AppKit, no Electron. The download is about 20 MB.
 
-Native macOS client for every database. Built on SwiftUI and AppKit. Ships under 50 MB, launches in under a second.
-
-{/* Screenshot: Main application window showing the SQL editor, sidebar with connections, and data grid */}
 <Frame caption="TablePro - Native macOS Database Client">
-  <img
-    className="block dark:hidden"
-    src="/images/app.png"
-    alt="TablePro main interface"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/app-dark.png"
-    alt="TablePro main interface"
-  />
+  <img className="block dark:hidden" src="/images/app.png" alt="TablePro main interface" />
+  <img className="hidden dark:block" src="/images/app-dark.png" alt="TablePro main interface" />
 </Frame>
 
-## Why TablePro?
+## Features
 
-<CardGroup cols={2}>
-  <Card title="Native Performance" icon="bolt">
-    Swift & Apple frameworks. No Electron. Pure macOS responsiveness.
-  </Card>
-  <Card title="Multiple Databases" icon="database">
-    17 databases: MySQL, PostgreSQL, SQLite, MongoDB, Redis, Oracle, and more.
-  </Card>
-  <Card title="Smart Autocomplete" icon="wand-magic-sparkles">
-    Context-aware autocomplete with schema and syntax awareness.
-  </Card>
-  <Card title="Secure Connections" icon="lock">
-    SSH tunnels with password and key authentication.
-  </Card>
-  <Card title="AI SQL Assistant" icon="sparkles">
-    Inline suggestions, chat, and context-menu actions. GitHub Copilot, Claude, OpenAI, Ollama, more.
-  </Card>
-</CardGroup>
-
-## Key Features
-
-**SQL Editor**: Syntax highlighting, autocomplete, Vim mode, multi-statement execution.
-**Data Grid**: Inline editing, sorting, filtering, change tracking with undo/redo.
-**Import & Export**: CSV, JSON, SQL, XLSX, MQL. Streaming export for large datasets.
-**AI Assistant**: Chat, inline suggestions, and Explain/Optimize via GitHub Copilot, Claude, OpenAI, or Ollama.
-**Terminal**: Built-in database CLI (mysql, psql, redis-cli, mongosh, etc.) with SSH and Docker support.
-**MCP Server**: Expose your connections to AI tools via the Model Context Protocol.
-**External API**: Drive TablePro from Raycast, Cursor, Claude Desktop, and other MCP clients. URL scheme, MCP, and one-click pairing.
-**Plugin System**: 5 bundled drivers (covering 7 databases) plus 10 more from the plugin registry. Third-party plugins supported.
-**iCloud Sync**: Sync connections, groups, tags, settings, and SSH profiles across Macs.
-**Safe Mode**: 6 per-connection protection levels from silent alerts to Touch ID and read-only.
-**Themes**: Light, dark, and custom editor themes. Per-connection color labels.
+**[SQL Editor](/features/sql-editor)**: Syntax highlighting, schema-aware autocomplete, Vim mode, multi-statement execution.
+**[Data Grid](/features/data-grid)**: Inline editing, sorting, filtering, change tracking with undo/redo.
+**[AI Assistant](/features/ai-assistant)**: Chat, inline suggestions, and Explain/Optimize across 13 providers, including GitHub Copilot, Claude, OpenAI, Gemini, xAI, and local llama.cpp, MLX, and Ollama.
+**[MCP Server](/features/mcp)**: Expose your connections to Claude Desktop, Cursor, Raycast, and other MCP clients. The [External API](/external-api/index) adds a `tablepro://` URL scheme and one-click pairing.
+**[Users & Roles](/features/users-roles)**: Manage database users, roles, and privileges on MySQL and PostgreSQL. Changes are staged, undoable, and shown as SQL before they run.
+**[Secure Connections](/databases/ssh-tunneling)**: SSH tunnels authenticate with a password, a private key, an SSH agent, keyboard-interactive, or no credentials at all. Passwords stay in the Keychain, or [resolve at connect time](/features/connection-sharing#password-sources) from a file, an environment variable, a command, 1Password, HashiCorp Vault, or AWS Secrets Manager.
+**[Safe Mode](/features/safe-mode)**: 6 per-connection protection levels, from no prompt at all to confirmation dialogs, Touch ID, and read-only.
+**[Import & Export](/features/import-export)**: CSV, JSON, SQL, XLSX, MQL. Streaming export for large datasets.
+**[CSV Inspector](/features/csv-inspector)**: Open `.csv` and `.tsv` files directly. Edit cells, insert and delete rows and columns, save in the original dialect.
+**[Plugin System](/features/plugins)**: 5 bundled drivers covering 9 databases, plus 16 more drivers installable from the plugin registry.
+**[iCloud Sync](/features/icloud-sync)**: Connections, groups, tags, settings, SSH profiles, saved queries and folders, favorite tables, and custom AI slash commands sync across Macs.
+**[Themes](/customization/appearance)**: Light, dark, and custom editor themes. Per-connection color labels.
 
 ## Supported Databases
 
@@ -64,35 +34,31 @@ Native macOS client for every database. Built on SwiftUI and AppKit. Ships under
 | PostgreSQL | 5432 | Built-in |
 | SQLite | N/A (file-based) | Built-in |
 | Amazon Redshift | 5439 | Built-in |
+| CockroachDB | 26257 | Built-in |
+| PGlite | 5432 | Built-in |
 | Microsoft SQL Server | 1433 | Plugin |
 | ClickHouse | 8123 | Built-in |
 | Redis | 6379 | Built-in |
 | MongoDB | 27017 | Plugin |
 | Oracle Database | 1521 | Plugin |
 | DuckDB | N/A (file-based) | Plugin |
+| Beancount | N/A (file-based) | Plugin |
 | Cassandra / ScyllaDB | 9042 | Plugin |
-| Etcd | 2379 | Plugin |
+| etcd | 2379 | Plugin |
 | Cloudflare D1 | N/A (API-based) | Plugin |
 | DynamoDB | N/A (API-based) | Plugin |
 | BigQuery | N/A (API-based) | Plugin |
+| Snowflake | N/A (API-based) | Plugin |
+| Teradata | 1025 | Plugin |
 | libSQL / Turso | N/A (API-based) | Plugin |
+| Elasticsearch | 9200 | Plugin |
+| SurrealDB | 8000 | Plugin |
+| Trino | 8080 | Plugin |
 
 ## System Requirements
 
 - **macOS**: 14.0 (Sonoma) or later
-- **Architecture**: Apple Silicon (arm64) or Intel (x86_64)
-- **Storage**: ~50 MB for the application (~200 MB recommended free disk space including data)
-
-## Getting Started
-
-<CardGroup cols={2}>
-  <Card title="Quick Start" icon="rocket" href="/quickstart">
-    Download and connect in 5 minutes
-  </Card>
-  <Card title="Installation" icon="download" href="/installation">
-    System requirements and setup
-  </Card>
-</CardGroup>
+- **Architecture**: Apple Silicon (arm64) or Intel (x86_64). Downloads are per-architecture, and Homebrew picks the right one.
 
 ## Open Source
 

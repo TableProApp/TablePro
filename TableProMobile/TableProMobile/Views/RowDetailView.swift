@@ -10,6 +10,7 @@ struct RowDetailView: View {
     @State private var hapticSuccess = false
     @State private var hapticError = false
     @State private var hapticSelection = 0
+    @State private var showSaveConfirmation = false
 
     init(
         columns: [ColumnInfo],
@@ -89,6 +90,14 @@ struct RowDetailView: View {
                 Text(viewModel.operationError?.message ?? "")
             }
         }
+        .alert("Save Changes?", isPresented: $showSaveConfirmation) {
+            Button(String(localized: "Save"), role: .destructive) {
+                Task { await executePendingSave() }
+            }
+            Button(String(localized: "Cancel"), role: .cancel) {}
+        } message: {
+            Text(String(format: String(localized: "This will update a row in %@. Continue?"), viewModel.table?.name ?? ""))
+        }
         .sheet(item: $fkPreviewItem) { item in
             FKPreviewView(
                 fk: item.fk,
@@ -115,15 +124,8 @@ struct RowDetailView: View {
         ToolbarItem(placement: .primaryAction) {
             if viewModel.canEdit {
                 if viewModel.isEditing {
-                    Button {
+                    ConfirmButton(title: "Save", isInProgress: viewModel.isSaving) {
                         Task { await handleSave() }
-                    } label: {
-                        if viewModel.isSaving {
-                            ProgressView()
-                                .controlSize(.small)
-                        } else {
-                            Text("Save")
-                        }
                     }
                     .disabled(viewModel.isSaving)
                 } else {
@@ -134,7 +136,7 @@ struct RowDetailView: View {
 
         if viewModel.isEditing {
             ToolbarItem(placement: .cancellationAction) {
-                Button("Cancel") { viewModel.cancelEditing() }
+                CancelButton { viewModel.cancelEditing() }
                     .disabled(viewModel.isSaving)
             }
         }
@@ -214,13 +216,13 @@ struct RowDetailView: View {
                             .contextMenu {
                                 if let value {
                                     Button {
-                                        UIPasteboard.general.string = value
+                                        ClipboardExporter.copyToClipboard(value)
                                     } label: {
                                         Label("Copy Value", systemImage: "doc.on.doc")
                                     }
                                 }
                                 Button {
-                                    UIPasteboard.general.string = column.name
+                                    ClipboardExporter.copyToClipboard(column.name)
                                 } label: {
                                     Label("Copy Column Name", systemImage: "textformat")
                                 }
@@ -346,6 +348,19 @@ struct RowDetailView: View {
 
     private func handleSave() async {
         let success = await viewModel.saveChanges()
+        if viewModel.pendingWriteConfirmation {
+            showSaveConfirmation = true
+            return
+        }
+        if success {
+            hapticSuccess.toggle()
+        } else {
+            hapticError.toggle()
+        }
+    }
+
+    private func executePendingSave() async {
+        let success = await viewModel.executePendingSave()
         if success {
             hapticSuccess.toggle()
         } else {

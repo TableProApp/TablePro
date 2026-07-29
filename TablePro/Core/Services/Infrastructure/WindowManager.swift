@@ -20,10 +20,10 @@ internal final class WindowManager {
 
     // MARK: - Open
 
-    internal func openTab(payload: EditorTabPayload) {
+    internal func openTab(payload: EditorTabPayload, activate: Bool = true) {
         let t0 = Date()
         Self.lifecycleLogger.info(
-            "[open] WindowManager.openTab start payloadId=\(payload.id, privacy: .public) connId=\(payload.connectionId, privacy: .public) intent=\(String(describing: payload.intent), privacy: .public) skipAutoExecute=\(payload.skipAutoExecute)"
+            "[open] WindowManager.openTab start payloadId=\(payload.id, privacy: .public) connId=\(payload.connectionId, privacy: .public) intent=\(String(describing: payload.intent), privacy: .public) skipAutoExecute=\(payload.skipAutoExecute) activate=\(activate)"
         )
 
         let resolvedConnection = DatabaseManager.shared.activeSessions[payload.connectionId]?.connection
@@ -66,13 +66,19 @@ internal final class WindowManager {
             }
             let target = sibling.tabbedWindows?.last ?? sibling
             target.addTabbedWindow(window, ordered: .above)
-            window.makeKeyAndOrderFront(nil)
+            if activate {
+                window.makeKeyAndOrderFront(nil)
+            }
             Self.lifecycleLogger.info(
                 "[open] WindowManager joined existing tab group payloadId=\(payload.id, privacy: .public) tabbingId=\(tabbingId, privacy: .public)"
             )
         } else {
-            window.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
+            if activate {
+                window.makeKeyAndOrderFront(nil)
+                NSApp.activate(ignoringOtherApps: true)
+            } else {
+                window.orderFront(nil)
+            }
             Self.lifecycleLogger.info(
                 "[open] WindowManager standalone window payloadId=\(payload.id, privacy: .public) tabbingId=\(tabbingId, privacy: .public)"
             )

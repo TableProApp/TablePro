@@ -243,6 +243,36 @@ struct TextLayoutManagerTests {
     }
 
     @Test
+    func rectForOffsetDoesNotThrowWhenLineStorageIsLongerThanText() throws {
+        // Reproduces the minimap desync: a layout manager whose line storage is transiently longer than the shared
+        // text storage. An offset that is valid for the line storage but past the string end must not raise, or
+        // rectForOffset breaks its optional contract and crashes AppKit when it runs inside drawRect.
+        let storage = NSTextStorage(string: "SELECT")
+        let manager = TextLayoutManager(
+            textStorage: storage,
+            lineHeightMultiplier: 1.0,
+            wrapLines: false,
+            textView: NSView(),
+            delegate: nil
+        )
+        manager.layoutLines(in: NSRect(x: 0, y: 0, width: 1000, height: 1000))
+
+        // Shrink the text without notifying the standalone manager, leaving its line storage stale and longer.
+        storage.mutableString.setString("S")
+
+        #expect(manager.lineStorage.length > storage.length)
+        for offset in 0..<manager.lineStorage.length {
+            #expect(manager.rectForOffset(offset) != nil, "rectForOffset failed at offset \(offset)")
+        }
+
+        // The range-based path (selection fill/highlight rects) must be safe against the same desync.
+        for length in 1...manager.lineStorage.length {
+            _ = manager.rectsFor(range: NSRange(location: 0, length: length))
+            _ = manager.roundedPathForRange(NSRange(location: 0, length: length))
+        }
+    }
+
+    @Test
     func textOffsetForPointReturnsValuesEverywhere() throws {
         layoutManager.layoutLines(in: NSRect(x: 0, y: 0, width: 1000, height: 1000))
 
@@ -268,5 +298,71 @@ struct TextLayoutManagerTests {
         ).map { $0.data.id }
 
         #expect(invalidatedLineIds.isSuperset(of: Set(expectedLineIds)))
+    }
+
+    private func makeLaidOutTextView(string: String) -> TextView {
+        let view = TextView(string: string)
+        view.frame = NSRect(x: 0, y: 0, width: 1000, height: 1000)
+        view.updateFrameIfNeeded()
+        return view
+    }
+
+    /// Pasting a large block of text into a document takes the incremental edit path, while opening a document takes
+    /// the bulk build path. Both must produce the same line index. This is the scenario behind the editor freezing on
+    /// a large SQL paste: the incremental path must stay correct after dropping its per-line allocations.
+    @Test(
+        arguments: [
+            ("\n", false),
+            ("\n", true),
+            ("\r\n", false),
+            ("\r\n", true),
+            ("\r", false)
+        ]
+    )
+    func largePasteMatchesFullRebuild(_ testItem: (String, Bool)) throws {
+        let (lineBreak, hasTrailingBreak) = testItem
+
+        var pasted = (0..<3_000)
+            .map { "SELECT * FROM table_\($0) WHERE id = \($0);" }
+            .joined(separator: lineBreak)
+        if hasTrailingBreak {
+            pasted += lineBreak
+        }
+
+        let pasteView = makeLaidOutTextView(string: "")
+        let pasteManager = try #require(pasteView.layoutManager)
+        pasteView.textStorage.replaceCharacters(in: NSRange(location: 0, length: 0), with: pasted)
+        pasteManager.lineStorage.validateInternalState()
+
+        let oracle = try #require(makeLaidOutTextView(string: pasted).layoutManager)
+
+        #expect(pasteManager.lineCount == oracle.lineCount)
+        #expect(pasteManager.lineStorage.length == oracle.lineStorage.length)
+
+        let pastedRanges = (0..<pasteManager.lineCount).compactMap {
+            pasteManager.lineStorage.getLine(atIndex: $0)?.range
+        }
+        let oracleRanges = (0..<oracle.lineCount).compactMap {
+            oracle.lineStorage.getLine(atIndex: $0)?.range
+        }
+        #expect(pastedRanges == oracleRanges)
+    }
+
+    /// A suspended layout manager (such as a hidden minimap) must ignore edits, and `reset()` must rebuild its line
+    /// storage to match the text storage once it is resumed.
+    @Test
+    func suspendedLayoutManagerSkipsEditsUntilReset() throws {
+        let view = makeLaidOutTextView(string: "A\nB\nC")
+        let manager = try #require(view.layoutManager)
+        let originalLength = manager.lineStorage.length
+
+        manager.processesEdits = false
+        view.textStorage.replaceCharacters(in: NSRange(location: 0, length: 0), with: "X\nY\n")
+        #expect(manager.lineStorage.length == originalLength, "A suspended layout manager must ignore edits")
+
+        manager.processesEdits = true
+        manager.reset()
+        manager.lineStorage.validateInternalState()
+        #expect(manager.lineStorage.length == view.textStorage.length)
     }
 }

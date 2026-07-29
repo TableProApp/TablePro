@@ -88,10 +88,10 @@ struct FilterSheetView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    CancelButton { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Apply") {
+                    ConfirmButton(title: "Apply") {
                         filters = draft
                         logicMode = draftLogicMode
                         onApply()

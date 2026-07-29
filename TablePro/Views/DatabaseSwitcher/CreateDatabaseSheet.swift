@@ -5,6 +5,7 @@ struct CreateDatabaseSheet: View {
 
     let databaseType: DatabaseType
     let viewModel: DatabaseSwitcherViewModel
+    var onCreated: ((String) -> Void)?
 
     @State private var loadState: LoadState = .loading
     @State private var databaseName = ""
@@ -21,103 +22,159 @@ struct CreateDatabaseSheet: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            header
+        VStack(alignment: .leading, spacing: 0) {
+            titleRow
+
             Divider()
+
             formBody
-            Divider()
-            footer
-        }
-        .frame(width: 420)
-        .onExitCommand {
-            if !isCreating {
-                dismiss()
+                .padding(.horizontal, 20)
+                .padding(.vertical, 16)
+
+            if let error = errorMessage {
+                Divider()
+                errorBanner(error)
             }
+
+            Divider()
+
+            buttonBar
+        }
+        .frame(width: 380)
+        .onExitCommand {
+            if !isCreating { dismiss() }
         }
         .task { await load() }
     }
 
-    private var header: some View {
-        Text(String(localized: "Create Database"))
-            .font(.body.weight(.semibold))
-            .padding(.vertical, 12)
+    private var titleRow: some View {
+        HStack {
+            Text(String(format: String(localized: "New %@"), containerEntityName))
+                .font(.headline)
+            Spacer()
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 14)
     }
 
+    private var containerEntityName: String {
+        PluginManager.shared.containerEntityName(for: databaseType)
+    }
+
+    @ViewBuilder
     private var formBody: some View {
         Form {
-            Section {
-                LabeledContent(String(localized: "Name")) {
-                    TextField(String(localized: "Enter database name"), text: $databaseName)
-                }
-            }
+            TextField(
+                String(localized: "Name"),
+                text: $databaseName,
+                prompt: Text(String(format: String(localized: "%@ name"), containerEntityName))
+            )
 
             switch loadState {
             case .loading:
-                Section { loadingView }
+                loadingRow
             case .ready(let spec):
-                Section {
-                    fieldsList(spec: spec)
-                } footer: {
-                    if let footnote = spec.footnote {
-                        Text(footnote)
-                    }
-                }
-            case .unsupported:
-                Section {
-                    Text(String(localized: "This engine does not support creating databases."))
+                textInputsList(spec: spec)
+                fieldsList(spec: spec)
+                if let footnote = spec.footnote {
+                    Text(footnote)
+                        .font(.callout)
                         .foregroundStyle(.secondary)
                 }
+            case .unsupported:
+                Text(String(localized: "This engine does not support creating databases."))
+                    .foregroundStyle(.secondary)
             case .failed(let message):
-                Section { failureView(message: message) }
-            }
-
-            if let error = errorMessage {
-                Section {
-                    Label(error, systemImage: "exclamationmark.triangle.fill")
-                        .foregroundStyle(Color(nsColor: .systemOrange))
-                }
+                failureRow(message: message)
             }
         }
-        .formStyle(.grouped)
-        .scrollContentBackground(.hidden)
+        .formStyle(.columns)
     }
 
-    private var loadingView: some View {
+    private var loadingRow: some View {
         HStack(spacing: 8) {
-            ProgressView().scaleEffect(0.7)
-            Text(String(localized: "Loading options..."))
-                .font(.subheadline)
+            ProgressView().controlSize(.small)
+            Text(String(localized: "Loading options…"))
                 .foregroundStyle(.secondary)
         }
     }
 
-    private func failureView(message: String) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+    private func failureRow(message: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
             Text(String(localized: "Failed to load options"))
-                .font(.subheadline.weight(.medium))
+                .font(.body.weight(.medium))
             Text(message)
-                .font(.subheadline)
+                .font(.callout)
                 .foregroundStyle(.secondary)
             Button(String(localized: "Retry")) {
                 Task { await load() }
             }
-            .buttonStyle(.bordered)
             .controlSize(.small)
         }
     }
 
-    private func fieldsList(spec: CreateDatabaseFormSpec) -> some View {
-        ForEach(visibleFields(in: spec)) { field in
-            fieldView(field: field, spec: spec)
+    private func errorBanner(_ message: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.orange)
+            Text(message)
+                .font(.callout)
+                .foregroundStyle(.primary)
+                .lineLimit(2)
+            Spacer()
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 10)
+    }
+
+    private var buttonBar: some View {
+        HStack {
+            Spacer()
+
+            Button(String(localized: "Cancel")) {
+                dismiss()
+            }
+            .keyboardShortcut(.cancelAction)
+
+            Button(String(localized: "Create")) {
+                submit()
+            }
+            .buttonStyle(.borderedProminent)
+            .keyboardShortcut(.defaultAction)
+            .disabled(!canSubmit)
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 14)
+    }
+
+    @ViewBuilder
+    private func textInputsList(spec: CreateDatabaseFormSpec) -> some View {
+        ForEach(spec.textInputs) { input in
+            TextField(
+                input.label,
+                text: textInputBinding(for: input),
+                prompt: input.placeholder.map { Text($0) }
+            )
         }
     }
 
-    private func fieldView(field: CreateDatabaseFormSpec.Field, spec: CreateDatabaseFormSpec) -> some View {
-        LabeledContent(field.label) {
-            picker(for: field, spec: spec)
-                .labelsHidden()
-                .pickerStyle(.menu)
+    private func textInputBinding(for input: CreateDatabaseFormSpec.TextInput) -> Binding<String> {
+        Binding<String>(
+            get: { values[input.id] ?? "" },
+            set: { values[input.id] = $0 }
+        )
+    }
+
+    @ViewBuilder
+    private func fieldsList(spec: CreateDatabaseFormSpec) -> some View {
+        ForEach(visibleFields(in: spec)) { field in
+            fieldRow(field: field, spec: spec)
         }
+    }
+
+    private func fieldRow(field: CreateDatabaseFormSpec.Field, spec: CreateDatabaseFormSpec) -> some View {
+        picker(for: field, spec: spec)
+            .pickerStyle(.menu)
     }
 
     private func picker(for field: CreateDatabaseFormSpec.Field, spec: CreateDatabaseFormSpec) -> some View {
@@ -131,35 +188,20 @@ struct CreateDatabaseSheet: View {
             }
         )
         let options = filteredOptions(for: field)
-        return Picker("", selection: binding) {
+        return Picker(field.label, selection: binding) {
             ForEach(options, id: \.value) { option in
                 Text(displayLabel(for: option)).tag(option.value)
             }
         }
     }
 
-    private var footer: some View {
-        HStack {
-            Button(String(localized: "Cancel")) {
-                dismiss()
-            }
-
-            Spacer()
-
-            Button(isCreating ? String(localized: "Creating...") : String(localized: "Create")) {
-                submit()
-            }
-            .buttonStyle(.borderedProminent)
-            .disabled(!canSubmit)
-            .keyboardShortcut(.return, modifiers: [])
-        }
-        .padding(12)
-    }
-
     private var canSubmit: Bool {
         guard !databaseName.isEmpty, !isCreating else { return false }
-        if case .ready = loadState { return true }
-        return false
+        guard case .ready(let spec) = loadState else { return false }
+        return spec.textInputs.allSatisfy { input in
+            guard input.isRequired else { return true }
+            return !(values[input.id] ?? "").trimmingCharacters(in: .whitespaces).isEmpty
+        }
     }
 
     private func visibleFields(in spec: CreateDatabaseFormSpec) -> [CreateDatabaseFormSpec.Field] {
@@ -169,6 +211,12 @@ struct CreateDatabaseSheet: View {
     private func isVisible(_ field: CreateDatabaseFormSpec.Field) -> Bool {
         guard let visibility = field.visibleWhen else { return true }
         return values[visibility.fieldId] == visibility.equals
+    }
+
+    private func shouldSubmit(_ fieldId: String, in spec: CreateDatabaseFormSpec) -> Bool {
+        if spec.textInputs.contains(where: { $0.id == fieldId }) { return true }
+        guard let field = spec.fields.first(where: { $0.id == fieldId }) else { return false }
+        return isVisible(field)
     }
 
     private func filteredOptions(for field: CreateDatabaseFormSpec.Field) -> [CreateDatabaseFormSpec.Option] {
@@ -252,15 +300,12 @@ struct CreateDatabaseSheet: View {
         errorMessage = nil
 
         let name = databaseName
-        let submissionValues = values.filter { entry in
-            spec.fields.first { $0.id == entry.key }
-                .map { isVisible($0) } ?? false
-        }
+        let submissionValues = values.filter { shouldSubmit($0.key, in: spec) }
 
         Task {
             do {
                 try await viewModel.createDatabase(name: name, values: submissionValues)
-                await viewModel.refreshDatabases()
+                onCreated?(name)
                 dismiss()
             } catch {
                 errorMessage = error.localizedDescription

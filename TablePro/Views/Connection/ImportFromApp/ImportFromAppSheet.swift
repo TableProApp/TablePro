@@ -5,6 +5,7 @@
 
 import AppKit
 import SwiftUI
+import TableProImport
 
 struct ImportFromAppSheet: View {
     var onImported: ((Int) -> Void)?
@@ -101,8 +102,13 @@ struct ImportFromAppSheet: View {
 
     // MARK: - Actions
 
+    static func requiresKeychainConfirmation(includePasswords: Bool, importer: any ForeignAppImporter) -> Bool {
+        includePasswords && importer.readsPasswordsFromKeychain
+    }
+
     private func beginImport(importer: any ForeignAppImporter, includePasswords: Bool) {
-        if includePasswords, !confirmKeychainPrompts(for: importer) {
+        if Self.requiresKeychainConfirmation(includePasswords: includePasswords, importer: importer),
+           !confirmKeychainPrompts(for: importer) {
             return
         }
         startImport(importer: importer, includePasswords: includePasswords)

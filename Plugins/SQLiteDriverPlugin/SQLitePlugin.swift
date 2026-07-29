@@ -32,9 +32,11 @@ final class SQLitePlugin: NSObject, TableProPlugin, DriverPlugin {
     static let pathFieldRole: PathFieldRole = .filePath
     static let connectionMode: ConnectionMode = .fileBased
     static let urlSchemes: [String] = ["sqlite"]
-    static let fileExtensions: [String] = ["db", "sqlite", "sqlite3"]
+    static let fileExtensions: [String] = ["db", "db3", "s3db", "sl3", "sqlite", "sqlite3", "sqlitedb"]
     static let brandColorHex = "#003B57"
     static let supportsDatabaseSwitching = false
+    static let supportsTriggers = true
+    static let supportsTriggerEditing = true
     static let databaseGroupingStrategy: GroupingStrategy = .flat
     static let columnTypesByCategory: [String: [String]] = [
         "Integer": ["INTEGER", "INT", "TINYINT", "SMALLINT", "MEDIUMINT", "BIGINT"],
@@ -517,9 +519,8 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func cancelQuery() throws {
         interruptLock.lock()
-        let db = _dbHandleForInterrupt
-        interruptLock.unlock()
-        guard let db else { return }
+        defer { interruptLock.unlock() }
+        guard let db = _dbHandleForInterrupt else { return }
         sqlite3_interrupt(db)
     }
 
@@ -823,6 +824,48 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 onUpdate: onUpdate
             )
         }
+    }
+
+    func fetchTriggers(table: String, schema: String?) async throws -> [PluginTriggerInfo] {
+        let safeTable = escapeStringLiteral(table)
+        let query = """
+            SELECT name, sql FROM sqlite_master
+            WHERE type = 'trigger' AND tbl_name = '\(safeTable)'
+            ORDER BY name
+            """
+        let result = try await execute(query: query)
+
+        return result.rows.compactMap { row -> PluginTriggerInfo? in
+            guard row.count >= 2,
+                  let name = row[0].asText,
+                  let sql = row[1].asText else {
+                return nil
+            }
+
+            let (timing, event) = TriggerSQLParser.timingAndEvent(from: sql)
+            return PluginTriggerInfo(
+                name: name,
+                timing: timing,
+                event: event,
+                statement: sql
+            )
+        }
+    }
+
+    var supportsTransactionalDDL: Bool { true }
+
+    func createTriggerTemplate(table: String, schema: String?) -> String? {
+        """
+        CREATE TRIGGER \(quoteIdentifier("trigger_name"))
+        AFTER INSERT ON \(quoteIdentifier(table))
+        BEGIN
+            -- INSERT INTO audit ...;
+        END;
+        """
+    }
+
+    func generateDropTriggerSQL(name: String, table: String, schema: String?) -> String? {
+        "DROP TRIGGER IF EXISTS \(quoteIdentifier(name))"
     }
 
     func fetchTableDDL(table: String, schema: String?) async throws -> String {

@@ -24,9 +24,9 @@ enum IntegrationsFormatting {
 
     static func outcomeTint(_ outcome: AuditOutcome?) -> Color {
         switch outcome {
-        case .success: Color(nsColor: .systemGreen)
-        case .denied, .rateLimited: Color(nsColor: .systemOrange)
-        case .error: Color(nsColor: .systemRed)
+        case .success: .green
+        case .denied, .rateLimited: .orange
+        case .error: .red
         case .none: Color(nsColor: .secondaryLabelColor)
         }
     }

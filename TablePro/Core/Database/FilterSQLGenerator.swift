@@ -42,7 +42,7 @@ struct FilterSQLGenerator {
         guard filter.isValid else { return nil }
 
         if filter.isRawSQL, let rawSQL = filter.rawSQL {
-            guard isRawSQLSafe(rawSQL) else { return nil }
+            guard SQLBoundaryValidator.isRawFilterConditionSafe(rawSQL) else { return nil }
             return "(\(rawSQL))"
         }
 
@@ -168,7 +168,7 @@ struct FilterSQLGenerator {
     /// Explicit style: requires an ESCAPE declaration.
     private var likeEscapeClause: String {
         if dialect.likeEscapeStyle == .implicit { return "" }
-        return " ESCAPE '\\'"
+        return " ESCAPE '!'"
     }
 
     private func generateLikeCondition(column: String, pattern: String) -> String {
@@ -213,7 +213,6 @@ struct FilterSQLGenerator {
             return "NULL"
         }
 
-        // Check for boolean literals
         if trimmed.caseInsensitiveCompare("TRUE") == .orderedSame {
             return dialect.booleanLiteralStyle == .truefalse ? "TRUE" : "1"
         }
@@ -221,17 +220,15 @@ struct FilterSQLGenerator {
             return dialect.booleanLiteralStyle == .truefalse ? "FALSE" : "0"
         }
 
-        // Try to detect numeric values
         if Int(trimmed) != nil || Double(trimmed) != nil {
             return trimmed
         }
 
-        // String value - escape and quote
         return "'\(escapeStringValue(trimmed))'"
     }
 
     /// Escape only single quotes for SQL string literal context.
-    /// Used for LIKE patterns where backslashes are already escaped
+    /// Used for LIKE patterns where wildcards are already escaped
     /// by escapeLikeWildcards for the ESCAPE clause.
     private func escapeSQLQuote(_ value: String) -> String {
         guard value.contains("'") else { return value }
@@ -255,9 +252,8 @@ struct FilterSQLGenerator {
     }
 
     private func escapeLikeWildcards(_ value: String) -> String {
-        guard value.contains("\\") || value.contains("%") || value.contains("_") else { return value }
-
         if dialect.likeEscapeStyle == .implicit {
+            guard value.contains("\\") || value.contains("%") || value.contains("_") else { return value }
             // MySQL uses \ as both string escape and default LIKE escape.
             // Need double backslash in SQL string so string layer yields single \
             // which LIKE then uses as escape char.
@@ -266,38 +262,11 @@ struct FilterSQLGenerator {
                 .replacingOccurrences(of: "%", with: "\\\\%")
                 .replacingOccurrences(of: "_", with: "\\\\_")
         }
+        guard value.contains("!") || value.contains("%") || value.contains("_") else { return value }
         return value
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "%", with: "\\%")
-            .replacingOccurrences(of: "_", with: "\\_")
-    }
-
-    // MARK: - Raw SQL Validation
-
-    private static let destructiveStatementPattern: NSRegularExpression? = {
-        let keywords = "DROP|DELETE|INSERT|UPDATE|ALTER|CREATE|TRUNCATE|GRANT|REVOKE|EXEC|EXECUTE"
-        let pattern = ";\\s*(\(keywords))\\b"
-        return try? NSRegularExpression(pattern: pattern, options: .caseInsensitive)
-    }()
-
-    private static let commentInjectionPattern: NSRegularExpression? = {
-        try? NSRegularExpression(pattern: "(?:^|\\s)--|\\/\\*", options: [])
-    }()
-
-    private func isRawSQLSafe(_ sql: String) -> Bool {
-        let range = NSRange(sql.startIndex..., in: sql)
-
-        if let pattern = Self.destructiveStatementPattern,
-           pattern.firstMatch(in: sql, range: range) != nil {
-            return false
-        }
-
-        if let pattern = Self.commentInjectionPattern,
-           pattern.firstMatch(in: sql, range: range) != nil {
-            return false
-        }
-
-        return true
+            .replacingOccurrences(of: "!", with: "!!")
+            .replacingOccurrences(of: "%", with: "!%")
+            .replacingOccurrences(of: "_", with: "!_")
     }
 
     // MARK: - List Parsing
@@ -317,6 +286,7 @@ extension FilterSQLGenerator {
     /// Generate a preview-friendly query string (for display, not execution)
     func generatePreviewSQL(
         tableName: String,
+        schemaName: String? = nil,
         filters: [TableFilter],
         logicMode: FilterLogicMode = .and,
         limit: Int = 1_000,
@@ -336,7 +306,7 @@ extension FilterSQLGenerator {
                     return (filter.columnName, filter.filterOperator.rawValue, value)
                 }
             if let result = pluginDriver.buildFilteredQuery(
-                table: tableName, filters: filterTuples,
+                table: tableName, schema: schemaName, filters: filterTuples,
                 logicMode: logicMode == .and ? "and" : "or",
                 sortColumns: [], columns: [],
                 limit: limit, offset: 0
@@ -345,7 +315,12 @@ extension FilterSQLGenerator {
             }
         }
 
-        let quotedTable = quoteIdentifierFn(tableName)
+        let quotedTable: String
+        if let schemaName, !schemaName.isEmpty {
+            quotedTable = "\(quoteIdentifierFn(schemaName)).\(quoteIdentifierFn(tableName))"
+        } else {
+            quotedTable = quoteIdentifierFn(tableName)
+        }
         var sql = "SELECT * FROM \(quotedTable)"
 
         let whereClause = generateWhereClause(from: filters, logicMode: logicMode)
@@ -355,7 +330,8 @@ extension FilterSQLGenerator {
 
         if dialect.paginationStyle == .offsetFetch {
             let orderBy = dialect.offsetFetchOrderBy
-            sql += "\n\(orderBy) OFFSET 0 ROWS FETCH NEXT \(limit) ROWS ONLY"
+            let orderByPrefix = orderBy.isEmpty ? "" : "\(orderBy) "
+            sql += "\n\(orderByPrefix)OFFSET 0 ROWS FETCH NEXT \(limit) ROWS ONLY"
         } else {
             sql += "\nLIMIT \(limit)"
         }

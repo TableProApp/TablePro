@@ -28,17 +28,25 @@ public struct ToolsCallHandler: MCPMethodHandler {
         }
 
         let toolType = type(of: tool)
+        let connectionId = Self.connectionId(in: arguments)
         if !toolType.requiredScopes.isSubset(of: context.principal.scopes) {
             MCPAuditLogger.logToolCalled(
                 tokenId: nil,
                 tokenName: context.principal.metadata.label,
                 toolName: toolName,
-                connectionId: Self.connectionId(in: arguments),
+                connectionId: connectionId,
                 outcome: .denied,
                 errorMessage: "missing_scope"
             )
             throw MCPProtocolError.forbidden(reason: "Tool '\(toolName)' requires additional scopes")
         }
+
+        try await authorizeConnectionAccess(
+            toolName: toolName,
+            arguments: arguments,
+            connectionId: connectionId,
+            context: context
+        )
 
         Self.logger.info("tools/call name=\(toolName, privacy: .public)")
 
@@ -48,7 +56,7 @@ public struct ToolsCallHandler: MCPMethodHandler {
                 tokenId: nil,
                 tokenName: context.principal.metadata.label,
                 toolName: toolName,
-                connectionId: Self.connectionId(in: arguments),
+                connectionId: connectionId,
                 outcome: result.isError ? .error : .success
             )
             return MCPMethodHandlerHelpers.successResponse(id: context.requestId, result: result.asJsonValue())
@@ -57,10 +65,40 @@ public struct ToolsCallHandler: MCPMethodHandler {
                 tokenId: nil,
                 tokenName: context.principal.metadata.label,
                 toolName: toolName,
-                connectionId: Self.connectionId(in: arguments),
+                connectionId: connectionId,
                 outcome: .error,
                 errorMessage: (error as? MCPProtocolError)?.message ?? error.localizedDescription
             )
+            throw error
+        }
+    }
+
+    private func authorizeConnectionAccess(
+        toolName: String,
+        arguments: JsonValue,
+        connectionId: UUID?,
+        context: MCPRequestContext
+    ) async throws {
+        do {
+            try await services.authPolicy.resolveAndAuthorize(
+                principal: context.principal,
+                tool: toolName,
+                connectionId: connectionId,
+                sql: Self.sqlArgument(in: arguments),
+                sessionId: context.sessionId.rawValue
+            )
+        } catch let error as MCPDataLayerError {
+            MCPAuditLogger.logToolCalled(
+                tokenId: nil,
+                tokenName: context.principal.metadata.label,
+                toolName: toolName,
+                connectionId: connectionId,
+                outcome: .denied,
+                errorMessage: error.message
+            )
+            if case .forbidden(let reason, _) = error {
+                throw MCPProtocolError.forbidden(reason: reason)
+            }
             throw error
         }
     }
@@ -69,5 +107,11 @@ public struct ToolsCallHandler: MCPMethodHandler {
         guard case .object(let object) = arguments,
               case .string(let value)? = object["connection_id"] else { return nil }
         return UUID(uuidString: value)
+    }
+
+    private static func sqlArgument(in arguments: JsonValue) -> String? {
+        guard case .object(let object) = arguments,
+              case .string(let value)? = object["query"] else { return nil }
+        return value
     }
 }

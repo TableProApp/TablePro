@@ -1,4 +1,5 @@
 import Foundation
+@_exported import TableProCoreTypes
 
 public struct DatabaseConnection: Identifiable, Hashable, Sendable {
     public var id: UUID
@@ -21,8 +22,13 @@ public struct DatabaseConnection: Identifiable, Hashable, Sendable {
     public var sslConfiguration: SSLConfiguration?
 
     public var groupId: UUID?
-    public var tagId: UUID?
+    public var tagIds: [UUID]
     public var sortOrder: Int
+
+    public var tagId: UUID? {
+        get { tagIds.first }
+        set { tagIds = newValue.map { [$0] } ?? [] }
+    }
 
     public init(
         id: UUID = UUID(),
@@ -42,7 +48,7 @@ public struct DatabaseConnection: Identifiable, Hashable, Sendable {
         sslEnabled: Bool = false,
         sslConfiguration: SSLConfiguration? = nil,
         groupId: UUID? = nil,
-        tagId: UUID? = nil,
+        tagIds: [UUID] = [],
         sortOrder: Int = 0
     ) {
         self.id = id
@@ -62,7 +68,7 @@ public struct DatabaseConnection: Identifiable, Hashable, Sendable {
         self.sslEnabled = sslEnabled
         self.sslConfiguration = sslConfiguration
         self.groupId = groupId
-        self.tagId = tagId
+        self.tagIds = tagIds
         self.sortOrder = sortOrder
     }
 
@@ -70,7 +76,7 @@ public struct DatabaseConnection: Identifiable, Hashable, Sendable {
         case id, name, type, host, port, username, database, colorTag
         case isReadOnly, safeModeLevel, queryTimeoutSeconds, additionalFields
         case sshEnabled, sshConfiguration, sslEnabled, sslConfiguration
-        case groupId, tagId, sortOrder
+        case groupId, tagId, tagIds, sortOrder
     }
 }
 
@@ -98,7 +104,12 @@ extension DatabaseConnection: Codable {
         sslEnabled = try container.decodeIfPresent(Bool.self, forKey: .sslEnabled) ?? false
         sslConfiguration = try container.decodeIfPresent(SSLConfiguration.self, forKey: .sslConfiguration)
         groupId = try container.decodeIfPresent(UUID.self, forKey: .groupId)
-        tagId = try container.decodeIfPresent(UUID.self, forKey: .tagId)
+        let decodedTagIds = try container.decodeIfPresent([UUID].self, forKey: .tagIds) ?? []
+        if decodedTagIds.isEmpty {
+            tagIds = try container.decodeIfPresent(UUID.self, forKey: .tagId).map { [$0] } ?? []
+        } else {
+            tagIds = decodedTagIds
+        }
         sortOrder = try container.decodeIfPresent(Int.self, forKey: .sortOrder) ?? 0
     }
 
@@ -121,7 +132,9 @@ extension DatabaseConnection: Codable {
         try container.encode(sslEnabled, forKey: .sslEnabled)
         try container.encodeIfPresent(sslConfiguration, forKey: .sslConfiguration)
         try container.encodeIfPresent(groupId, forKey: .groupId)
-        try container.encodeIfPresent(tagId, forKey: .tagId)
+        if !tagIds.isEmpty {
+            try container.encode(tagIds, forKey: .tagIds)
+        }
         try container.encode(sortOrder, forKey: .sortOrder)
     }
 }

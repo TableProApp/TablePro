@@ -2,8 +2,6 @@
 //  AIModels.swift
 //  TablePro
 //
-//  AI feature data models — provider configuration, chat messages, and settings.
-//
 
 import Foundation
 
@@ -11,58 +9,92 @@ import Foundation
 
 enum AIProviderType: String, Codable, CaseIterable, Identifiable, Sendable {
     case copilot
+    case chatgptCodex
+    case cursor
     case claude
     case openAI
     case openRouter
     case gemini
+    case xai
     case ollama
+    case llamaCpp
+    case mlx
+    case openCode
     case custom
 
     var id: String { rawValue }
 
     var displayName: String {
         switch self {
-        case .copilot:    return "GitHub Copilot"
-        case .claude:     return "Claude"
-        case .openAI:     return "OpenAI"
-        case .openRouter: return "OpenRouter"
-        case .gemini:     return "Gemini"
-        case .ollama:     return "Ollama"
-        case .custom:     return String(localized: "Custom")
+        case .copilot:      return "GitHub Copilot"
+        case .chatgptCodex: return "ChatGPT"
+        case .cursor:       return "Cursor"
+        case .claude:       return "Claude"
+        case .openAI:       return "OpenAI"
+        case .openRouter:   return "OpenRouter"
+        case .gemini:       return "Gemini"
+        case .xai:          return "xAI"
+        case .ollama:       return "Ollama"
+        case .llamaCpp:     return "llama.cpp"
+        case .mlx:          return "MLX"
+        case .openCode:     return "OpenCode Zen"
+        case .custom:       return String(localized: "Custom")
         }
     }
 
     var defaultEndpoint: String {
         switch self {
-        case .copilot:    return ""
-        case .claude:     return "https://api.anthropic.com"
-        case .openAI:     return "https://api.openai.com"
-        case .openRouter: return "https://openrouter.ai/api"
-        case .gemini:     return "https://generativelanguage.googleapis.com"
-        case .ollama:     return "http://localhost:11434"
-        case .custom:     return ""
+        case .copilot:      return ""
+        case .chatgptCodex: return ""
+        case .cursor:       return ""
+        case .claude:       return "https://api.anthropic.com"
+        case .openAI:       return "https://api.openai.com"
+        case .openRouter:   return "https://openrouter.ai/api"
+        case .gemini:       return "https://generativelanguage.googleapis.com"
+        case .xai:          return "https://api.x.ai"
+        case .ollama:       return "http://localhost:11434"
+        case .llamaCpp:     return "http://localhost:8080"
+        case .mlx:          return "http://localhost:8080"
+        case .openCode:     return "https://opencode.ai/zen"
+        case .custom:       return ""
         }
     }
 
-    enum AuthStyle: Sendable { case apiKey, oauth, none }
+    enum AuthStyle: Sendable {
+        case apiKey, optionalApiKey, oauth, none
+
+        var usesAPIKey: Bool { self == .apiKey || self == .optionalApiKey }
+    }
 
     var authStyle: AuthStyle {
         switch self {
-        case .copilot: return .oauth
-        case .ollama:  return .none
-        default:       return .apiKey
+        case .copilot:      return .oauth
+        case .chatgptCodex: return .oauth
+        case .cursor:       return .optionalApiKey
+        case .xai:          return .optionalApiKey
+        case .ollama:       return .none
+        case .llamaCpp:     return .none
+        case .mlx:          return .none
+        case .openCode:     return .optionalApiKey
+        default:            return .apiKey
         }
     }
 
     var symbolName: String {
         switch self {
-        case .copilot:    return "chevron.left.forwardslash.chevron.right"
-        case .claude:     return "brain"
-        case .openAI:     return "cpu"
-        case .openRouter: return "globe"
-        case .gemini:     return "wand.and.stars"
-        case .ollama:     return "desktopcomputer"
-        case .custom:     return "server.rack"
+        case .copilot:      return "chevron.left.forwardslash.chevron.right"
+        case .chatgptCodex: return "bubble.left.and.bubble.right"
+        case .cursor:       return "cursorarrow"
+        case .claude:       return "brain"
+        case .openAI:       return "cpu"
+        case .openRouter:   return "globe"
+        case .gemini:       return "wand.and.stars"
+        case .xai:          return "x.circle"
+        case .ollama:       return "desktopcomputer"
+        case .llamaCpp:     return "memorychip"
+        case .mlx:          return "m.square"
+        case .openCode:     return "sparkles"
+        case .custom:       return "server.rack"
         }
     }
 }
@@ -77,6 +109,7 @@ struct AIProviderConfig: Codable, Equatable, Identifiable, Sendable {
     var endpoint: String
     var maxOutputTokens: Int?
     var telemetryEnabled: Bool
+    var reasoningEffort: ReasoningEffort?
 
     init(
         id: UUID = UUID(),
@@ -85,7 +118,8 @@ struct AIProviderConfig: Codable, Equatable, Identifiable, Sendable {
         model: String = "",
         endpoint: String = "",
         maxOutputTokens: Int? = nil,
-        telemetryEnabled: Bool = false
+        telemetryEnabled: Bool = false,
+        reasoningEffort: ReasoningEffort? = nil
     ) {
         self.id = id
         self.name = name
@@ -94,6 +128,7 @@ struct AIProviderConfig: Codable, Equatable, Identifiable, Sendable {
         self.endpoint = endpoint.isEmpty ? type.defaultEndpoint : endpoint
         self.maxOutputTokens = maxOutputTokens
         self.telemetryEnabled = telemetryEnabled
+        self.reasoningEffort = reasoningEffort
     }
 
     init(from decoder: Decoder) throws {
@@ -106,6 +141,7 @@ struct AIProviderConfig: Codable, Equatable, Identifiable, Sendable {
         endpoint = rawEndpoint.isEmpty ? type.defaultEndpoint : rawEndpoint
         maxOutputTokens = try container.decodeIfPresent(Int.self, forKey: .maxOutputTokens)
         telemetryEnabled = try container.decodeIfPresent(Bool.self, forKey: .telemetryEnabled) ?? false
+        reasoningEffort = try container.decodeIfPresent(ReasoningEffort.self, forKey: .reasoningEffort)
     }
 
     var displayName: String {

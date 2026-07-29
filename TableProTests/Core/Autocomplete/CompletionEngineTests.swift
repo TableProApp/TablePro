@@ -166,4 +166,38 @@ struct CompletionEngineTests {
             }
         }
     }
+
+    @Test("Derived-table alias suggests the subquery's output columns")
+    func testDerivedTableAliasCompletion() async {
+        let driver = MockDatabaseDriver()
+        driver.tablesToReturn = [TestFixtures.makeTableInfo(name: "happiness_scores")]
+        await schemaProvider.loadSchema(using: driver, connection: TestFixtures.makeConnection())
+
+        let prefix = "SELECT ahs."
+        let text = prefix + " FROM happiness_scores hs "
+            + "LEFT JOIN (SELECT country, AVG(score) AS avg_score FROM happiness_scores GROUP BY country) ahs "
+            + "ON hs.country = ahs.country"
+        let result = await engine.getCompletions(text: text, cursorPosition: (prefix as NSString).length)
+
+        #expect(result != nil)
+        let labels = result?.items.map(\.label) ?? []
+        #expect(labels.contains("country"))
+        #expect(labels.contains("avg_score"))
+    }
+
+    @Test("CTE alias suggests the CTE's output columns")
+    func testCteAliasCompletion() async {
+        let driver = MockDatabaseDriver()
+        driver.tablesToReturn = [TestFixtures.makeTableInfo(name: "sales")]
+        await schemaProvider.loadSchema(using: driver, connection: TestFixtures.makeConnection())
+
+        let prefix = "WITH totals AS (SELECT region, SUM(amount) AS total FROM sales GROUP BY region) SELECT t."
+        let text = prefix + " FROM totals t"
+        let result = await engine.getCompletions(text: text, cursorPosition: (prefix as NSString).length)
+
+        #expect(result != nil)
+        let labels = result?.items.map(\.label) ?? []
+        #expect(labels.contains("region"))
+        #expect(labels.contains("total"))
+    }
 }

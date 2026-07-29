@@ -183,4 +183,23 @@ struct TableFilterTests {
         #expect(filter.isValid == false)
         #expect(filter.validationError == String(localized: "Raw SQL cannot be empty"))
     }
+
+    @Test("Plugin tuple forwards raw SQL content for a raw filter")
+    func pluginTupleForwardsRawSQL() {
+        let filter = TableFilter(
+            columnName: TableFilter.rawSQLColumn,
+            filterOperator: .equal,
+            value: "",
+            rawSQL: "name:Widget"
+        )
+        let tuple = filter.asPluginFilterTuple
+        #expect(tuple.column == TableFilter.rawSQLColumn)
+        #expect(tuple.value == "name:Widget")
+    }
+
+    @Test("Plugin tuple uses value for a column filter")
+    func pluginTupleUsesValueForColumn() {
+        let filter = TableFilter(columnName: "name", filterOperator: .equal, value: "Widget")
+        #expect(filter.asPluginFilterTuple.value == "Widget")
+    }
 }

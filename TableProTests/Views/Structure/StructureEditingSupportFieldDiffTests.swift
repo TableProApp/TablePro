@@ -251,8 +251,7 @@ struct StructureChangeManagerUndoDeleteTests {
             columns: columns,
             indexes: [],
             foreignKeys: [],
-            primaryKey: ["id"],
-            databaseType: .mysql
+            primaryKey: ["id"]
         )
         return manager
     }

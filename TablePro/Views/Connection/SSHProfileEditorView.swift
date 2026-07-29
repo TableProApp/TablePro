@@ -15,15 +15,12 @@ struct SSHProfileEditorView: View {
     var onSave: ((SSHProfile) -> Void)?
     var onDelete: (() -> Void)?
 
-    // Profile identity
     @State private var profileName: String = ""
 
-    // Server
     @State private var host: String = ""
     @State private var port: String = "22"
     @State private var username: String = ""
 
-    // Authentication
     @State private var authMethod: SSHAuthMethod = .password
     @State private var sshPassword: String = ""
     @State private var privateKeyPath: String = ""
@@ -31,21 +28,17 @@ struct SSHProfileEditorView: View {
     @State private var agentSocketOption: SSHAgentSocketOption = .systemDefault
     @State private var customAgentSocketPath: String = ""
 
-    // TOTP
     @State private var totpMode: TOTPMode = .none
     @State private var totpSecret: String = ""
     @State private var totpAlgorithm: TOTPAlgorithm = .sha1
     @State private var totpDigits: Int = 6
     @State private var totpPeriod: Int = 30
 
-    // Jump hosts
     @State private var jumpHosts: [SSHJumpHost] = []
 
-    // SSH config auto-fill
     @State private var sshConfigEntries: [SSHConfigEntry] = []
     @State private var selectedSSHConfigHost: String = ""
 
-    // Deletion
     @State private var showingDeleteConfirmation = false
     @State private var connectionsUsingProfile = 0
     @State private var isTesting = false
@@ -63,7 +56,7 @@ struct SSHProfileEditorView: View {
         let hostValid = !host.trimmingCharacters(in: .whitespaces).isEmpty
         let portValid = port.isEmpty || (Int(port).map { (1...65_535).contains($0) } ?? false)
         let authValid = authMethod == .password || authMethod == .sshAgent
-            || authMethod == .keyboardInteractive || !privateKeyPath.isEmpty
+            || authMethod == .keyboardInteractive || authMethod == .none || !privateKeyPath.isEmpty
         let jumpValid = jumpHosts.allSatisfy(\.isValid)
         return nameValid && hostValid && portValid && authValid && jumpValid
     }
@@ -82,7 +75,7 @@ struct SSHProfileEditorView: View {
                 serverSection
                 authenticationSection
 
-                if authMethod == .keyboardInteractive || authMethod == .password {
+                if authMethod.supportsTwoFactorAuthentication {
                     totpSection
                 }
 
@@ -174,6 +167,10 @@ struct SSHProfileEditorView: View {
                 Text(String(localized: "Password is sent via keyboard-interactive challenge-response."))
                     .font(.caption)
                     .foregroundStyle(.secondary)
+            } else if authMethod == .none {
+                Text("No credentials are sent. Use this when the server handles authentication itself, such as a Tailscale SSH host.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             } else {
                 LabeledContent(String(localized: "Key File")) {
                     HStack {
@@ -216,8 +213,8 @@ struct SSHProfileEditorView: View {
                     Text("30s").tag(30)
                     Text("60s").tag(60)
                 }
-            } else if totpMode == .promptAtConnect {
-                Text(String(localized: "You will be prompted for a verification code each time you connect."))
+            } else {
+                Text(String(localized: "If the SSH server asks for a verification code, TablePro prompts you for it when you connect."))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -276,7 +273,7 @@ struct SSHProfileEditorView: View {
                             } label: {
                                 Image(systemName: "minus.circle.fill")
                                     .frame(width: 24, height: 24)
-                                    .foregroundStyle(Color(nsColor: .systemRed))
+                                    .foregroundStyle(.red)
                             }
                             .buttonStyle(.plain)
                             .accessibilityLabel(String(localized: "Remove jump host"))
@@ -334,10 +331,10 @@ struct SSHProfileEditorView: View {
                             .controlSize(.small)
                     } else if testSucceeded {
                         Image(systemName: "checkmark.circle.fill")
-                            .foregroundStyle(Color(nsColor: .systemGreen))
+                            .foregroundStyle(.green)
                     } else if testError != nil {
                         Image(systemName: "xmark.circle.fill")
-                            .foregroundStyle(Color(nsColor: .systemRed))
+                            .foregroundStyle(.red)
                     } else {
                         Image(systemName: "antenna.radiowaves.left.and.right")
                             .foregroundStyle(.secondary)
@@ -350,11 +347,11 @@ struct SSHProfileEditorView: View {
             if testSucceeded {
                 Text(String(localized: "Connected"))
                     .font(.caption)
-                    .foregroundStyle(Color(nsColor: .systemGreen))
+                    .foregroundStyle(.green)
             } else if let testError {
                 Label(testError, systemImage: "exclamationmark.triangle.fill")
                     .font(.caption)
-                    .foregroundStyle(Color(nsColor: .systemOrange))
+                    .foregroundStyle(.orange)
                     .lineLimit(2)
                     .truncationMode(.tail)
             }
@@ -424,7 +421,6 @@ struct SSHProfileEditorView: View {
             SSHProfileStorage.shared.addProfile(profile)
         }
 
-        // Save secrets to Keychain
         if (authMethod == .password || authMethod == .keyboardInteractive) && !sshPassword.isEmpty {
             SSHProfileStorage.shared.saveSSHPassword(sshPassword, for: profileId)
         } else {
@@ -452,8 +448,6 @@ struct SSHProfileEditorView: View {
         testSucceeded = false
         testError = nil
 
-        let testTotpMode: TOTPMode = totpMode == .promptAtConnect ? .none : totpMode
-
         let config = SSHConfiguration(
             enabled: true,
             host: host,
@@ -463,7 +457,7 @@ struct SSHProfileEditorView: View {
             privateKeyPath: privateKeyPath,
             agentSocketPath: resolvedAgentSocketPath,
             jumpHosts: jumpHosts,
-            totpMode: testTotpMode,
+            totpMode: totpMode,
             totpAlgorithm: totpAlgorithm,
             totpDigits: totpDigits,
             totpPeriod: totpPeriod
@@ -473,7 +467,7 @@ struct SSHProfileEditorView: View {
             sshPassword: sshPassword.isEmpty ? nil : sshPassword,
             keyPassphrase: keyPassphrase.isEmpty ? nil : keyPassphrase,
             totpSecret: totpSecret.isEmpty ? nil : totpSecret,
-            totpProvider: nil
+            keyboardInteractivePromptProvider: nil
         )
 
         testTask = Task {

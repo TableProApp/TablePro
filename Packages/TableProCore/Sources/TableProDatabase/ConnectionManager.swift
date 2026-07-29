@@ -20,6 +20,7 @@ public final class ConnectionManager: @unchecked Sendable {
     }
 
     public func connect(_ connection: DatabaseConnection) async throws -> ConnectionSession {
+        await disconnect(connection.id)
         let password = try secureStore.retrieve(forKey: Self.passwordKey(for: connection.id))
 
         var effectiveHost = connection.host

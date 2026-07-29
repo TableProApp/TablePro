@@ -94,7 +94,7 @@ struct RestoreDatabaseFlow: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .frame(width: 420, alignment: .leading)
+        .frame(width: 480, alignment: .leading)
     }
 
     private var serviceState: PostgresDumpState { service.state }

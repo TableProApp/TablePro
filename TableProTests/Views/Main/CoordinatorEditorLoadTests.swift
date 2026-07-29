@@ -78,7 +78,7 @@ struct CoordinatorEditorLoadTests {
         #expect(tabManager.tabs[0].content.query == originalQuery)
     }
 
-    @Test("loadQueryIntoEditor does nothing when no tabs exist")
+    @Test("loadQueryIntoEditor adds a tab in place when no tabs exist")
     @MainActor
     func loadQueryNoTabs() {
         let (coordinator, tabManager) = makeCoordinator()
@@ -86,10 +86,11 @@ struct CoordinatorEditorLoadTests {
 
         #expect(tabManager.tabs.isEmpty)
 
-        // Falls through to WindowOpener path; no crash
         coordinator.loadQueryIntoEditor("SELECT 1")
 
-        #expect(tabManager.tabs.isEmpty)
+        #expect(tabManager.tabs.count == 1)
+        #expect(tabManager.tabs[0].tabType == .query)
+        #expect(tabManager.tabs[0].content.query == "SELECT 1")
     }
 
     // MARK: - insertQueryFromAI

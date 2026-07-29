@@ -190,12 +190,25 @@ enum SSHConfigResolver {
             ) else { continue }
 
             for directive in block.directives {
+                warnIfRoutingDirectiveIgnored(directive)
                 state.apply(directive)
             }
             if phase == .first {
                 workingHost = state.hostName ?? workingHost
             }
         }
+    }
+
+    /// Reports a directive that decides how the connection reaches the server and that TablePro
+    /// cannot honour. Dropping one without a word leaves a connection that works in Terminal and
+    /// fails here, with nothing pointing at `~/.ssh/config`.
+    private static func warnIfRoutingDirectiveIgnored(_ directive: SSHDirective) {
+        guard case .unrecognized(let key, _) = directive,
+              SSHUnsupportedDirective.changesRouting(key: key) else { return }
+
+        logger.warning(
+            "Ignoring \(key) from ssh_config: TablePro connects to the host directly, so this connection may not reach the same server ssh would"
+        )
     }
 
     private static func blockMatches(

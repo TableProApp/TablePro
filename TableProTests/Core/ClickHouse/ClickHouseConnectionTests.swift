@@ -3,7 +3,6 @@
 //  TableProTests
 //
 //  Tests for ClickHouse TSV parsing and query escaping fixes.
-//  These validate the TSV unescaping logic used by the ClickHouse plugin.
 //
 
 import Foundation
@@ -12,34 +11,8 @@ import Testing
 
 @Suite("ClickHouse Connection")
 struct ClickHouseConnectionTests {
-
-    /// Local copy of the TSV unescaping logic for testing purposes.
-    /// The actual implementation lives in the ClickHouseDriver plugin.
     private static func unescapeTsvField(_ field: String) -> String {
-        var result = ""
-        result.reserveCapacity((field as NSString).length)
-        var iterator = field.makeIterator()
-
-        while let char = iterator.next() {
-            if char == "\\" {
-                if let next = iterator.next() {
-                    switch next {
-                    case "\\": result.append("\\")
-                    case "t": result.append("\t")
-                    case "n": result.append("\n")
-                    default:
-                        result.append("\\")
-                        result.append(next)
-                    }
-                } else {
-                    result.append("\\")
-                }
-            } else {
-                result.append(char)
-            }
-        }
-
-        return result
+        ClickHouseResponseClassifier.unescapeTsvField(field)
     }
 
     // MARK: - TSV Field Unescaping

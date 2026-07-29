@@ -21,6 +21,7 @@ private extension MSSQLRawResult {
 final class MSSQLDriver: DatabaseDriver, @unchecked Sendable {
     private let conn: FreeTDSConnection
     private let host: String
+    private let authMethod: MSSQLAuthMethod
 
     var supportsSchemas: Bool { true }
     var supportsTransactions: Bool { true }
@@ -29,6 +30,7 @@ final class MSSQLDriver: DatabaseDriver, @unchecked Sendable {
     nonisolated(unsafe) private(set) var serverVersion: String?
 
     init(connection: DatabaseConnection, password: String?) {
+        let authMethod = MSSQLConnectionOptions.authMethod(from: connection.additionalFields)
         let options = MSSQLConnectionOptions(
             host: connection.host,
             port: connection.port,
@@ -36,21 +38,17 @@ final class MSSQLDriver: DatabaseDriver, @unchecked Sendable {
             password: password ?? "",
             database: connection.database,
             schema: MSSQLConnectionOptions.schema(from: connection.additionalFields),
-            encryptionFlag: Self.freetdsEncryptionFlag(for: connection.sslConfiguration),
-            loginTimeoutSeconds: Int(connection.additionalFields["mssqlLoginTimeout"] ?? "") ?? MSSQLConnectionOptions.defaultLoginTimeoutSeconds
+            encryptionFlag: DriverSSLConfiguration(
+                sslEnabled: connection.sslEnabled,
+                configuration: connection.sslConfiguration
+            ).freetdsEncryptionFlag,
+            loginTimeoutSeconds: Int(connection.additionalFields["mssqlLoginTimeout"] ?? "") ?? MSSQLConnectionOptions.defaultLoginTimeoutSeconds,
+            authMethod: authMethod
         )
         self.conn = FreeTDSConnection(options: options)
         self.host = connection.host
+        self.authMethod = authMethod
         self.currentSchema = options.schema
-    }
-
-    private static func freetdsEncryptionFlag(for ssl: SSLConfiguration?) -> String {
-        guard let mode = ssl?.mode else { return "off" }
-        switch mode {
-        case .disable: return "off"
-        case .require: return "require"
-        case .verifyCa, .verifyFull: return "require"
-        }
     }
 
     private var escapedSchema: String {
@@ -60,6 +58,9 @@ final class MSSQLDriver: DatabaseDriver, @unchecked Sendable {
     // MARK: - Connection
 
     func connect() async throws {
+        guard authMethod != .windows else {
+            throw DatabaseError(message: String(localized: "Windows Authentication (Kerberos) isn't supported on iOS yet. Use SQL Server Authentication, or connect from the Mac app."))
+        }
         try await LocalNetworkPermission.shared.ensureAccess(for: host)
         do {
             try await conn.connect()
@@ -275,8 +276,12 @@ final class MSSQLDriver: DatabaseDriver, @unchecked Sendable {
             return ConnectionError.notConnected
         case .connectionFailed(let msg):
             return DatabaseError(message: msg)
-        case .tlsHandshakeFailed(let msg):
-            return DatabaseError(message: "TLS handshake failed: \(msg)")
+        case .tlsHandshakeFailed(_, let serverMessage):
+            return DatabaseError(message: "TLS handshake failed: \(serverMessage)")
+        case .kerberosAuthFailed(_, let serverMessage):
+            return DatabaseError(message: "Kerberos authentication failed: \(serverMessage)")
+        case .connectionTimedOut:
+            return DatabaseError(message: error.localizedDescription)
         case .queryFailed(let msg):
             return DatabaseError(message: msg)
         case .cancelled:

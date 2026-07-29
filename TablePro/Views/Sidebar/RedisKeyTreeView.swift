@@ -17,13 +17,13 @@ internal struct RedisKeyTreeView: View {
             HStack(spacing: 6) {
                 ProgressView()
                     .controlSize(.small)
-                Text("Loading keys\u{2026}")
+                Text(String(localized: "Loading keys\u{2026}"))
                     .foregroundStyle(.secondary)
                     .font(.caption)
             }
             .padding(.vertical, 4)
         } else if nodes.isEmpty {
-            Text("No keys")
+            Text(String(localized: "No keys"))
                 .foregroundStyle(.secondary)
                 .font(.caption)
                 .padding(.vertical, 4)
@@ -32,7 +32,7 @@ internal struct RedisKeyTreeView: View {
                 row(for: node)
             }
             if isTruncated {
-                Text("Showing first 50,000 keys")
+                Text(String(localized: "Showing first 50,000 keys"))
                     .foregroundStyle(.secondary)
                     .font(.caption2)
                     .padding(.vertical, 2)

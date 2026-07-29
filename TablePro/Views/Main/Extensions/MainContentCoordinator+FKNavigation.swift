@@ -17,11 +17,11 @@ extension MainContentCoordinator {
     /// Navigate to the referenced table filtered by the FK value.
     /// Opens or switches to the referenced table tab with a pre-applied filter
     /// so only the matching row is shown.
-    func navigateToFKReference(value: String, fkInfo: ForeignKeyInfo) {
+    func navigateToFKReference(value: String, fkInfo: ForeignKeyInfo, openInNewTab: Bool) {
         let referencedTable = fkInfo.referencedTable
         let referencedColumn = fkInfo.referencedColumn
 
-        fkNavigationLogger.debug("FK navigate: \(referencedTable).\(referencedColumn) = \(value)")
+        fkNavigationLogger.debug("FK navigate: \(referencedTable).\(referencedColumn) = \(value) newTab=\(openInNewTab)")
 
         let filter = TableFilter(
             columnName: referencedColumn,
@@ -31,10 +31,10 @@ extension MainContentCoordinator {
 
         let currentDatabase = activeDatabaseName
 
-        let targetSchema = fkInfo.referencedSchema ?? DatabaseManager.shared.session(for: connectionId)?.currentSchema
+        let targetSchema = DatabaseManager.shared.resolvedSchemaName(fkInfo.referencedSchema, for: connectionId)
 
-        // Fast path: referenced table is already the active tab — just apply filter
-        if let current = tabManager.selectedTab,
+        if !openInNewTab,
+           let current = tabManager.selectedTab,
            current.tabType == .table,
            current.tableContext.tableName == referencedTable,
            current.tableContext.databaseName == currentDatabase,
@@ -43,22 +43,12 @@ extension MainContentCoordinator {
             return
         }
 
-        // If current tab has unsaved changes, open in a new native tab instead of replacing
-        if changeManager.hasChanges {
-            let fkFilterState = TabFilterState(
-                filters: [filter],
-                appliedFilters: [filter],
-                isVisible: true,
-                filterLogicMode: .and
-            )
-            let payload = EditorTabPayload(
-                connectionId: connection.id,
-                tabType: .table,
-                tableName: referencedTable,
+        if openInNewTab || changeManager.hasChanges {
+            let payload = makeFKReferencePayload(
+                filter: filter,
+                referencedTable: referencedTable,
                 databaseName: currentDatabase,
-                schemaName: targetSchema,
-                isView: false,
-                initialFilterState: fkFilterState
+                schemaName: targetSchema
             )
             WindowManager.shared.openTab(payload: payload)
             return
@@ -88,13 +78,11 @@ extension MainContentCoordinator {
         }
 
         if needsQuery {
-            NSApp.keyWindow?.title = referencedTable
-
             guard let (tab, tabIndex) = tabManager.selectedTabAndIndex else { return }
             let tableRows = tabSessionRegistry.tableRows(for: tab.id)
             let filteredQuery = queryBuilder.buildFilteredQuery(
                 tableName: referencedTable,
-                schemaName: fkInfo.referencedSchema,
+                schemaName: targetSchema,
                 filters: [filter],
                 columns: tableRows.columns,
                 limit: tab.pagination.pageSize,
@@ -108,6 +96,29 @@ extension MainContentCoordinator {
         } else {
             applyFKFilter(filter, for: referencedTable)
         }
+    }
+
+    func makeFKReferencePayload(
+        filter: TableFilter,
+        referencedTable: String,
+        databaseName: String?,
+        schemaName: String?
+    ) -> EditorTabPayload {
+        let fkFilterState = TabFilterState(
+            filters: [filter],
+            commit: .all,
+            isVisible: true,
+            filterLogicMode: .and
+        )
+        return EditorTabPayload(
+            connectionId: connection.id,
+            tabType: .table,
+            tableName: referencedTable,
+            databaseName: databaseName,
+            schemaName: schemaName,
+            isView: false,
+            initialFilterState: fkFilterState
+        )
     }
 
     /// Toggle FK preview for the currently focused cell in the data grid.

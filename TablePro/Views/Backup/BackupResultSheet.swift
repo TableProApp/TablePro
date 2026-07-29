@@ -48,7 +48,7 @@ struct BackupResultSheet: View {
                     onClose()
                 }
                 .buttonStyle(.borderedProminent)
-                .keyboardShortcut(.return)
+                .keyboardShortcut(.defaultAction)
             }
         }
         .padding(24)
@@ -103,9 +103,9 @@ struct BackupResultSheet: View {
 
     private var tintColor: Color {
         switch outcome {
-        case .backupSuccess, .restoreSuccess: return Color(nsColor: .systemGreen)
-        case .failure: return Color(nsColor: .systemOrange)
-        case .cancelled: return Color(nsColor: .systemGray)
+        case .backupSuccess, .restoreSuccess: return .green
+        case .failure: return .orange
+        case .cancelled: return .gray
         }
     }
 

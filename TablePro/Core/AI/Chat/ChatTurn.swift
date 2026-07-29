@@ -17,6 +17,9 @@ enum ChatContentBlockKind: Sendable, Equatable {
     case toolUse(ToolUseBlock)
     case toolResult(ToolResultBlock)
     case attachment(ContextItem)
+    case reasoning(ReasoningBlock)
+    case image(ChatImageInput)
+    case sqlWalkthrough(SqlWalkthroughBlock)
 }
 
 @MainActor @Observable
@@ -34,6 +37,18 @@ final class ChatContentBlock: Identifiable {
     func appendText(_ chunk: String) {
         guard !chunk.isEmpty, case .text(let existing) = kind else { return }
         kind = .text(existing + chunk)
+    }
+
+    func appendReasoningText(_ chunk: String) {
+        guard !chunk.isEmpty, case .reasoning(var block) = kind else { return }
+        block.text = (block.text ?? "") + chunk
+        kind = .reasoning(block)
+    }
+
+    func setReasoningOpaque(_ opaque: ReasoningOpaque?) {
+        guard case .reasoning(var block) = kind else { return }
+        block.opaque = opaque
+        kind = .reasoning(block)
     }
 
     func setKind(_ newKind: ChatContentBlockKind) {
@@ -64,6 +79,18 @@ extension ChatContentBlock {
 
     static func attachment(_ item: ContextItem) -> ChatContentBlock {
         ChatContentBlock(kind: .attachment(item))
+    }
+
+    static func reasoning(_ block: ReasoningBlock = ReasoningBlock(), isStreaming: Bool = false) -> ChatContentBlock {
+        ChatContentBlock(kind: .reasoning(block), isStreaming: isStreaming)
+    }
+
+    static func image(_ input: ChatImageInput) -> ChatContentBlock {
+        ChatContentBlock(kind: .image(input))
+    }
+
+    static func sqlWalkthrough(_ block: SqlWalkthroughBlock) -> ChatContentBlock {
+        ChatContentBlock(kind: .sqlWalkthrough(block))
     }
 }
 
@@ -147,6 +174,36 @@ struct ChatTurn: Identifiable {
         blocks.append(block)
     }
 
+    @discardableResult
+    mutating func appendReasoningDelta(providerBlockID: String, text: String, idMap: inout [String: UUID]) -> UUID {
+        if let existingUUID = idMap[providerBlockID],
+           let existingBlock = blocks.first(where: { $0.id == existingUUID }) {
+            existingBlock.appendReasoningText(text)
+            return existingUUID
+        }
+        finishStreamingTextBlock()
+        let newUUID = UUID()
+        idMap[providerBlockID] = newUUID
+        let initial = ReasoningBlock(text: text.isEmpty ? nil : text)
+        blocks.append(ChatContentBlock(id: newUUID, kind: .reasoning(initial), isStreaming: true))
+        return newUUID
+    }
+
+    mutating func startReasoningBlock(providerBlockID: String, idMap: inout [String: UUID]) {
+        if idMap[providerBlockID] != nil { return }
+        finishStreamingTextBlock()
+        let newUUID = UUID()
+        idMap[providerBlockID] = newUUID
+        blocks.append(ChatContentBlock(id: newUUID, kind: .reasoning(ReasoningBlock()), isStreaming: true))
+    }
+
+    mutating func finalizeReasoningBlock(providerBlockID: String, opaque: ReasoningOpaque?, idMap: inout [String: UUID]) {
+        guard let blockUUID = idMap.removeValue(forKey: providerBlockID),
+              let block = blocks.first(where: { $0.id == blockUUID }) else { return }
+        block.setReasoningOpaque(opaque)
+        block.finishStreaming()
+    }
+
     private static func coalesceAdjacentText(_ blocks: [ChatContentBlock]) -> [ChatContentBlock] {
         var result: [ChatContentBlock] = []
         result.reserveCapacity(blocks.count)
@@ -197,12 +254,24 @@ struct ChatContentBlockWire: Codable, Equatable, Sendable, Identifiable {
         ChatContentBlockWire(kind: .attachment(item))
     }
 
+    static func reasoning(_ block: ReasoningBlock) -> ChatContentBlockWire {
+        ChatContentBlockWire(kind: .reasoning(block))
+    }
+
+    static func image(_ input: ChatImageInput) -> ChatContentBlockWire {
+        ChatContentBlockWire(kind: .image(input))
+    }
+
+    static func sqlWalkthrough(_ block: SqlWalkthroughBlock) -> ChatContentBlockWire {
+        ChatContentBlockWire(kind: .sqlWalkthrough(block))
+    }
+
     private enum CodingKeys: String, CodingKey {
-        case blockId, kind, text, toolUse, toolResult, attachment
+        case blockId, kind, text, toolUse, toolResult, attachment, reasoning, image, sqlWalkthrough
     }
 
     private enum KindMarker: String, Codable {
-        case text, toolUse, toolResult, attachment
+        case text, toolUse, toolResult, attachment, reasoning, image, sqlWalkthrough
     }
 
     init(from decoder: Decoder) throws {
@@ -219,6 +288,12 @@ struct ChatContentBlockWire: Codable, Equatable, Sendable, Identifiable {
             resolvedKind = .toolResult(try container.decode(ToolResultBlock.self, forKey: .toolResult))
         case .attachment:
             resolvedKind = .attachment(try container.decode(ContextItem.self, forKey: .attachment))
+        case .reasoning:
+            resolvedKind = .reasoning(try container.decode(ReasoningBlock.self, forKey: .reasoning))
+        case .image:
+            resolvedKind = .image(try container.decode(ChatImageInput.self, forKey: .image))
+        case .sqlWalkthrough:
+            resolvedKind = .sqlWalkthrough(try container.decode(SqlWalkthroughBlock.self, forKey: .sqlWalkthrough))
         }
         self.init(id: resolvedID, kind: resolvedKind)
     }
@@ -239,6 +314,15 @@ struct ChatContentBlockWire: Codable, Equatable, Sendable, Identifiable {
         case .attachment(let item):
             try container.encode(KindMarker.attachment, forKey: .kind)
             try container.encode(item, forKey: .attachment)
+        case .reasoning(let block):
+            try container.encode(KindMarker.reasoning, forKey: .kind)
+            try container.encode(block, forKey: .reasoning)
+        case .image(let input):
+            try container.encode(KindMarker.image, forKey: .kind)
+            try container.encode(input, forKey: .image)
+        case .sqlWalkthrough(let block):
+            try container.encode(KindMarker.sqlWalkthrough, forKey: .kind)
+            try container.encode(block, forKey: .sqlWalkthrough)
         }
     }
 }
@@ -326,12 +410,23 @@ struct ToolUseBlock: Codable, Equatable, Sendable {
     let name: String
     let input: JsonValue
     var approvalState: ToolApprovalState
+    /// Opaque provider-specific data that must round-trip with the call (e.g., Gemini's
+    /// `thoughtSignature` required when echoing a function call alongside its response).
+    /// Keys are provider-defined; unknown providers ignore them.
+    var providerMetadata: [String: String]?
 
-    init(id: String, name: String, input: JsonValue, approvalState: ToolApprovalState = .approved) {
+    init(
+        id: String,
+        name: String,
+        input: JsonValue,
+        approvalState: ToolApprovalState = .approved,
+        providerMetadata: [String: String]? = nil
+    ) {
         self.id = id
         self.name = name
         self.input = input
         self.approvalState = approvalState
+        self.providerMetadata = providerMetadata
     }
 
     init(from decoder: Decoder) throws {
@@ -340,6 +435,7 @@ struct ToolUseBlock: Codable, Equatable, Sendable {
         name = try container.decode(String.self, forKey: .name)
         input = try container.decode(JsonValue.self, forKey: .input)
         approvalState = try container.decodeIfPresent(ToolApprovalState.self, forKey: .approvalState) ?? .approved
+        providerMetadata = try container.decodeIfPresent([String: String].self, forKey: .providerMetadata)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -348,10 +444,11 @@ struct ToolUseBlock: Codable, Equatable, Sendable {
         try container.encode(name, forKey: .name)
         try container.encode(input, forKey: .input)
         try container.encode(approvalState, forKey: .approvalState)
+        try container.encodeIfPresent(providerMetadata, forKey: .providerMetadata)
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, name, input, approvalState
+        case id, name, input, approvalState, providerMetadata
     }
 }
 

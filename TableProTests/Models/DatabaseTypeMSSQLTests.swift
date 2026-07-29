@@ -53,6 +53,6 @@ struct DatabaseTypeMSSQLTests {
 
     @Test("allCases shim contains mssql")
     func allCasesContainsMSSql() {
-        #expect(DatabaseType.allCases.contains(.mssql))
+        #expect(DatabaseType.allKnownTypes.contains(.mssql))
     }
 }

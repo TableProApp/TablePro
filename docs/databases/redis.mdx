@@ -3,9 +3,7 @@ title: Redis
 description: Browse keys by namespace, manage TTLs, and run Redis commands directly from the editor
 ---
 
-# Redis Connections
-
-TablePro supports Redis 6.0 and later. Keys are grouped by colon-separated namespaces in the sidebar. Values display with type-aware formatting in the data grid (strings, hashes, lists, sets, sorted sets, JSON).
+TablePro connects to standalone Redis servers with hiredis. Keys are grouped by colon-separated namespaces in the sidebar. Values display with type-aware formatting in the data grid (strings, hashes, lists, sets, sorted sets, streams).
 
 ## Quick Setup
 
@@ -24,20 +22,18 @@ TablePro supports Redis 6.0 and later. Keys are grouped by colon-separated names
 |-------|---------|-------|
 | **Host** | `localhost` | |
 | **Port** | `6379` | |
+| **Username** | - | Redis 6 ACL user, sent as `AUTH username password`. Leave empty for `requirepass` auth |
 | **Password** | - | Leave empty for local dev |
-| **Database** | `0` | 0-15 |
-| **Key Separator** | `:` | Groups keys by prefix in sidebar |
+| **Database Index** | `0` | 0-15 stepper, in the Advanced section |
+| **Key Separator** | `:` | Groups keys by prefix in sidebar (Advanced) |
 
 <Tip>
 Open URLs like `redis://:password@host:6379/0` or `rediss://` (TLS) from your browser. See [Connection URL Reference](/databases/connection-urls#redis).
 </Tip>
 
-## Example Configurations
+## Amazon ElastiCache (IAM)
 
-**Local**: host `localhost:6379`, no password
-**Docker**: host `localhost:6379` (or mapped port), password from `REDIS_PASSWORD` env
-**Redis Cloud**: Requires SSL/TLS, enable in connection form
-**Remote**: Use [SSH tunneling](/databases/ssh-tunneling) for production
+Set **Authentication** to an AWS IAM mode (Access Key, Profile, or SSO) to connect to an IAM-enabled ElastiCache cache. TablePro generates a short-lived IAM auth token and uses it as the Redis password; the username is your IAM-enabled Redis user. Enter the AWS region and the cache name (replication group ID), and enable TLS, which ElastiCache IAM requires. Profiles resolve from `~/.aws/config` and `~/.aws/credentials`, including `credential_process`, SSO, and assumed roles.
 
 ## SSL/TLS
 
@@ -49,57 +45,63 @@ Configure in the **SSL/TLS** pane of the connection form. Managed services like 
 | **Preferred** | TLS, do not verify peer | Same as Required on Redis (there is no fallback) |
 | **Required (skip verify)** | TLS, do not verify peer | Self-signed certs, Upstash, untrusted CAs |
 | **Verify CA** | TLS, verify peer with your CA cert | Private PKI; supply CA path |
-| **Verify Identity** | TLS, verify peer and hostname (SNI) | Strict prod |
+| **Verify Identity** | Same as Verify CA | No separate hostname check on Redis |
 
-For untrusted-CA endpoints (Upstash, internal load balancers), pick **Required (skip verify)**. For private CA setups, pick **Verify CA** or **Verify Identity** and provide the CA certificate path.
+For untrusted-CA endpoints (Upstash, internal load balancers), pick **Required (skip verify)**. For private CA setups, pick **Verify CA** and provide the CA certificate path. SNI is sent for every TLS mode; Verify Identity adds nothing over Verify CA on Redis.
 
 ## Features
 
-**Namespace Browsing**: Keys grouped by separator (default `:`) in sidebar tree. `user:1`, `user:2` appear under `user` folder. Multi-level nesting supported (e.g., `app:cache:session:1`). Change separator in Advanced settings.
+**Namespace Browsing**: The sidebar groups keys by separator (default `:`). `user:1` and `user:2` appear under a `user` folder, and nesting goes as deep as the key does (`app:cache:session:1`). Change the separator in Advanced settings.
 
-**Key-Value Viewing**: String (plain text), Hash (key-value rows), List (with index), Set (individual rows), Sorted Set (with scores), JSON (syntax-highlighted).
+<Frame caption="Keys grouped by namespace with type-aware values">
+  <img className="block dark:hidden" src="/images/redis-key-browser.png" alt="Redis keys grouped by namespace in the sidebar with values in the data grid" />
+  <img className="hidden dark:block" src="/images/redis-key-browser-dark.png" alt="Redis keys grouped by namespace in the sidebar with values in the data grid" />
+</Frame>
 
-**TTL Management**: View TTL for each key. `-1` = no expiration, `-2` = doesn't exist. Update TTL directly from interface.
+**Key-Value Viewing**: The grid has **Key**, **Type**, **TTL**, and **Value** columns. The Value column previews the key: strings as text, hashes as a JSON object, lists and sets as a JSON array, sorted sets as `member:score` pairs, streams as the newest 5 entries. Previews are cut off at 1,000 characters. Only a string Value cell can be edited in the grid; change the other types in the CLI.
 
-**Redis CLI** (execute commands directly):
+**TTL Management**: The TTL column shows seconds to expiry. `-1` means no expiration, `-2` means the key does not exist. Edit the cell to run `EXPIRE`, or set it to `-1` to run `PERSIST`.
+
+**Key Filtering**: Toggle the filter bar to search keys by pattern. Patterns use Redis glob syntax (`*` matches any sequence, `?` matches one character, `[ae]` matches a character set) and are case-sensitive, the same as `redis-cli`.
+
+- The type scope narrows results to String, Hash, List, Set, Sorted Set, or Stream.
+- Matching runs server-side with `SCAN MATCH` and `SCAN TYPE`, and stops after 10,000 matching keys.
+- Filtering by key value or TTL is not supported, since Redis has no server-side primitive for it.
+
+**Redis CLI**: Each statement is one Redis command. To run several in one go, separate them with `;`. TablePro passes each command through as-is, including commands it does not recognize; only the result formatting is type-aware. Redis has no comment syntax, and TablePro does not strip comments, so a `--` or `#` line inside a statement is sent to the server and fails.
+
+The blocks below list one command per line for reference.
+
+Key operations:
 
 ```redis
--- Key operations
 GET mykey
 SET mykey "hello" EX 60
 DEL mykey key2 key3
 KEYS user:*
+```
 
--- Hash operations
+Hash, list, set, and sorted set operations:
+
+```redis
 HGETALL myhash
 HSET myhash field1 "value1"
-HDEL myhash field1
-
--- List operations
 LRANGE mylist 0 -1
 LPUSH mylist "item1" "item2"
-LLEN mylist
-
--- Set operations
 SMEMBERS myset
 SADD myset "member1" "member2"
-SCARD myset
-
--- Sorted set operations
 ZRANGE myzset 0 -1 WITHSCORES
 ZADD myzset 1 "one" 2 "two"
-ZCARD myzset
+```
 
--- Scan for keys
+Scanning and server info:
+
+```redis
 SCAN 0 MATCH user:* COUNT 100
-
--- Server info
 PING
 INFO
 DBSIZE
 ```
-
-**Supported Commands**: String (GET, SET, INCR, DECR), Hash (HGET, HSET, HGETALL), List (LPUSH, RPUSH, LRANGE), Set (SADD, SMEMBERS), Sorted Set (ZADD, ZRANGE), Key (DEL, EXPIRE, SCAN), Server (PING, INFO). All commands sent to server.
 
 ## Troubleshooting
 
@@ -109,6 +111,11 @@ DBSIZE
 
 **Timeout**: Verify host/port, check network and firewall, whitelist IP for cloud-hosted Redis.
 
-**Limitations**: Cluster mode unsupported, Pub/Sub and Streams limited in grid (work in CLI), large keys paginated.
+**Slow key list**: `KEYS` blocks the server on a large keyspace. Browse by namespace instead, and use `SCAN` when you need a pattern match in the CLI. Check memory pressure with `INFO memory`.
 
-**Performance**: Use namespace browsing for filtering, use `SCAN` instead of `KEYS` in CLI, check memory with `INFO memory`.
+## Limitations
+
+- Cluster mode is not supported. Connect to a single node.
+- Pub/Sub has no grid support. `PUBLISH` runs in the CLI, but there is no subscriber view.
+- The grid previews a stream's newest 5 entries. Use `XRANGE` in the CLI for the rest.
+- The sidebar key tree loads at most 50,000 keys, and key filtering scans at most 10,000 matching keys.

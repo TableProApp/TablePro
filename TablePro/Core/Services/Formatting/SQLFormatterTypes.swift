@@ -26,7 +26,7 @@ struct SQLFormatterOptions {
 /// Result of a formatting operation with cursor mapping
 struct SQLFormatterResult {
     let formattedSQL: String
-    let cursorOffset: Int?  // New cursor position (nil if no cursor provided)
+    let cursorOffset: Int?
 
     init(formattedSQL: String, cursorOffset: Int? = nil) {
         self.formattedSQL = formattedSQL

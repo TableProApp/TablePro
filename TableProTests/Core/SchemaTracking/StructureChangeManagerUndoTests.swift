@@ -40,8 +40,7 @@ struct StructureChangeManagerUndoTests {
             columns: columns,
             indexes: indexes,
             foreignKeys: [],
-            primaryKey: ["id"],
-            databaseType: .mysql
+            primaryKey: ["id"]
         )
     }
 

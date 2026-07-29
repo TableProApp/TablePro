@@ -4,50 +4,33 @@
 //
 
 import Foundation
-import os
 
 internal final class LinkedSQLFolderStorage: @unchecked Sendable {
     static let shared = LinkedSQLFolderStorage()
-    private static let logger = Logger(subsystem: "com.TablePro", category: "LinkedSQLFolderStorage")
-    private let key = "com.TablePro.linkedSQLFolders"
 
-    private init() {}
+    private let store: CodableListPreferenceStore<LinkedSQLFolder>
+
+    init(defaults: KeyValueStore = UserDefaults.standard) {
+        store = CodableListPreferenceStore(key: PreferenceKeys.linkedSQLFolders, store: defaults)
+    }
 
     func loadFolders() -> [LinkedSQLFolder] {
-        guard let data = UserDefaults.standard.data(forKey: key) else { return [] }
-        do {
-            return try JSONDecoder().decode([LinkedSQLFolder].self, from: data)
-        } catch {
-            Self.logger.error("Failed to decode linked SQL folders: \(error.localizedDescription, privacy: .public)")
-            return []
-        }
+        store.load()
     }
 
     func saveFolders(_ folders: [LinkedSQLFolder]) {
-        do {
-            let data = try JSONEncoder().encode(folders)
-            UserDefaults.standard.set(data, forKey: key)
-        } catch {
-            Self.logger.error("Failed to encode linked SQL folders: \(error.localizedDescription, privacy: .public)")
-        }
+        store.save(folders)
     }
 
     func addFolder(_ folder: LinkedSQLFolder) {
-        var folders = loadFolders()
-        folders.append(folder)
-        saveFolders(folders)
+        store.add(folder)
     }
 
     func removeFolder(_ folder: LinkedSQLFolder) {
-        var folders = loadFolders()
-        folders.removeAll { $0.id == folder.id }
-        saveFolders(folders)
+        store.remove(id: folder.id)
     }
 
     func updateFolder(_ folder: LinkedSQLFolder) {
-        var folders = loadFolders()
-        guard let index = folders.firstIndex(where: { $0.id == folder.id }) else { return }
-        folders[index] = folder
-        saveFolders(folders)
+        store.update(folder)
     }
 }

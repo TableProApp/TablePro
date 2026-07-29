@@ -28,8 +28,11 @@ internal enum URLClassifier {
         if ext == "tablepro" {
             return .success(.openConnectionShare(url))
         }
-        if ext == "sql" {
+        if SQLFileService.supportedExtensions.contains(ext) {
             return .success(.openSQLFile(url))
+        }
+        if PluginManager.shared.allInspectorFileExtensions.contains(ext) {
+            return .success(.openInspectorFile(url))
         }
         if let dbType = PluginManager.shared.allRegisteredFileExtensions[ext] {
             return .success(.openDatabaseFile(url, dbType))

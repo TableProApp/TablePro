@@ -2,18 +2,61 @@
 //  SidebarViewModel.swift
 //  TablePro
 //
-//  ViewModel for SidebarView.
-//  Handles search filtering and batch operations.
-//
 
 import Observation
 import SwiftUI
 import TableProPluginKit
 
-// MARK: - SidebarViewModel
-
 @MainActor @Observable
 final class SidebarViewModel {
+    private static var registry: [UUID: SidebarViewModel] = [:]
+    private static let searchDebounceNanoseconds: UInt64 = 150_000_000
+
+    static func shared(
+        connectionId: UUID,
+        databaseType: DatabaseType,
+        selectedTables: Binding<Set<TableInfo>>,
+        pendingTruncates: Binding<Set<String>>,
+        pendingDeletes: Binding<Set<String>>,
+        tableOperationOptions: Binding<[String: TableOperationOptions]>
+    ) -> SidebarViewModel {
+        if let existing = registry[connectionId] {
+            existing.updateBindings(
+                selectedTables: selectedTables,
+                pendingTruncates: pendingTruncates,
+                pendingDeletes: pendingDeletes,
+                tableOperationOptions: tableOperationOptions
+            )
+            return existing
+        }
+        let viewModel = SidebarViewModel(
+            selectedTables: selectedTables,
+            pendingTruncates: pendingTruncates,
+            pendingDeletes: pendingDeletes,
+            tableOperationOptions: tableOperationOptions,
+            databaseType: databaseType,
+            connectionId: connectionId
+        )
+        registry[connectionId] = viewModel
+        return viewModel
+    }
+
+    static func removeConnection(_ connectionId: UUID) {
+        registry.removeValue(forKey: connectionId)
+    }
+
+    func updateBindings(
+        selectedTables: Binding<Set<TableInfo>>,
+        pendingTruncates: Binding<Set<String>>,
+        pendingDeletes: Binding<Set<String>>,
+        tableOperationOptions: Binding<[String: TableOperationOptions]>
+    ) {
+        selectedTablesBinding = selectedTables
+        pendingTruncatesBinding = pendingTruncates
+        pendingDeletesBinding = pendingDeletes
+        tableOperationOptionsBinding = tableOperationOptions
+    }
+
     // MARK: - Expansion State
 
     struct ExpansionState: Sendable {
@@ -35,9 +78,21 @@ final class SidebarViewModel {
 
     // MARK: - Published State
 
-    var searchText = "" {
+    var searchText: String {
+        get { sharedState.searchText }
+        set {
+            let oldValue = sharedState.searchText
+            sharedState.searchText = newValue
+            scheduleFilterQueryUpdate(oldValue: oldValue)
+        }
+    }
+
+    private(set) var filterQuery = "" {
         didSet { invalidateFilterCaches() }
     }
+
+    @ObservationIgnored private var filterDebounceTask: Task<Void, Never>?
+
     var expanded: ExpansionState {
         didSet { persistExpansion(oldValue: oldValue) }
     }
@@ -49,7 +104,18 @@ final class SidebarViewModel {
             )
         }
     }
-    var redisKeyTreeViewModel: RedisKeyTreeViewModel?
+    var isRecentsExpanded: Bool {
+        didSet {
+            UserDefaults.standard.set(
+                isRecentsExpanded,
+                forKey: SidebarPersistenceKey.recentsExpanded(connectionId: connectionId)
+            )
+        }
+    }
+    var redisKeyTreeViewModel: RedisKeyTreeViewModel? {
+        get { sharedState.redisKeyTreeViewModel }
+        set { sharedState.redisKeyTreeViewModel = newValue }
+    }
     var showOperationDialog = false
     var pendingOperationType: TableOperationType?
     var pendingOperationTables: [String] = []
@@ -65,6 +131,10 @@ final class SidebarViewModel {
     // MARK: - Dependencies
 
     private let connectionId: UUID
+
+    /// The single connection-scoped state holder. Search text and the Redis key
+    /// tree live here so this view model and the sidebar views share one source.
+    @ObservationIgnored let sharedState: SharedSidebarState
 
     // MARK: - Convenience Accessors
 
@@ -88,7 +158,6 @@ final class SidebarViewModel {
         set { tableOperationOptionsBinding.wrappedValue = newValue }
     }
 
-    // Maintained for backwards compatibility with call sites that read/write a single boolean.
     var isTablesExpanded: Bool {
         get { expanded[.table] }
         set { expanded[.table] = newValue }
@@ -110,10 +179,15 @@ final class SidebarViewModel {
         self.tableOperationOptionsBinding = tableOperationOptions
         self.databaseType = databaseType
         self.connectionId = connectionId
+        self.sharedState = SharedSidebarState.forConnection(connectionId)
         self.expanded = Self.loadInitialExpansion(connectionId: connectionId)
         self.isRedisKeysExpanded = Self.loadExpansion(
             perConnectionKey: SidebarPersistenceKey.redisKeysExpanded(connectionId: connectionId),
             legacyKey: SidebarPersistenceKey.legacyRedisKeysExpanded,
+            defaultValue: true
+        )
+        self.isRecentsExpanded = Self.loadExpansion(
+            perConnectionKey: SidebarPersistenceKey.recentsExpanded(connectionId: connectionId),
             defaultValue: true
         )
     }
@@ -150,14 +224,14 @@ final class SidebarViewModel {
 
     private static func loadExpansion(
         perConnectionKey: String,
-        legacyKey: String,
+        legacyKey: String? = nil,
         defaultValue: Bool
     ) -> Bool {
         let defaults = UserDefaults.standard
         if defaults.object(forKey: perConnectionKey) != nil {
             return defaults.bool(forKey: perConnectionKey)
         }
-        if defaults.object(forKey: legacyKey) != nil {
+        if let legacyKey, defaults.object(forKey: legacyKey) != nil {
             let seeded = defaults.bool(forKey: legacyKey)
             defaults.set(seeded, forKey: perConnectionKey)
             return seeded
@@ -271,42 +345,24 @@ final class SidebarViewModel {
 
     // MARK: - Filtering
 
-    @ObservationIgnored private var cachedFilteredTables: [TableInfo]?
-    @ObservationIgnored private var cachedFilterInputs: (count: Int, hash: Int, query: String)?
-
     @ObservationIgnored private var cachedKindBuckets: [SidebarObjectKind: [TableInfo]] = [:]
-    @ObservationIgnored private var cachedKindFingerprint: (count: Int, hash: Int)?
+    @ObservationIgnored private var cachedKindFingerprint: (count: Int, generation: Int)?
 
     @ObservationIgnored private var cachedFilteredByKind: [SidebarObjectKind: [TableInfo]] = [:]
-    @ObservationIgnored private var cachedFilteredByKindFingerprint: (count: Int, hash: Int, query: String)?
+    @ObservationIgnored private var cachedFilteredByKindFingerprint: (count: Int, generation: Int, query: String)?
 
     @ObservationIgnored private var cachedFilteredRoutines: [SidebarObjectKind: [RoutineInfo]] = [:]
-    @ObservationIgnored private var cachedFilteredRoutinesFingerprint: (count: Int, hash: Int, query: String)?
+    @ObservationIgnored private var cachedFilteredRoutinesFingerprint: (count: Int, generation: Int, query: String)?
 
-    func filteredTables(from tables: [TableInfo]) -> [TableInfo] {
-        let query = searchText
-        let fingerprint = (count: tables.count, hash: tables.hashValue, query: query)
-        if let cache = cachedFilteredTables,
-           let inputs = cachedFilterInputs,
-           inputs == fingerprint {
-            return cache
-        }
-        let result: [TableInfo]
-        if query.isEmpty {
-            result = tables
-        } else {
-            result = tables.filter { $0.name.localizedCaseInsensitiveContains(query) }
-        }
-        cachedFilteredTables = result
-        cachedFilterInputs = fingerprint
-        return result
+    private var schemaGeneration: Int {
+        SchemaService.shared.generationToken(for: connectionId)
     }
 
     func tables(of kind: SidebarObjectKind, from tables: [TableInfo]) -> [TableInfo] {
         guard !kind.isRoutine else { return [] }
-        let fingerprint = (count: tables.count, hash: tables.hashValue)
+        let fingerprint = (count: tables.count, generation: schemaGeneration)
         if cachedKindFingerprint?.count != fingerprint.count
-            || cachedKindFingerprint?.hash != fingerprint.hash {
+            || cachedKindFingerprint?.generation != fingerprint.generation {
             rebuildKindBuckets(from: tables)
             cachedKindFingerprint = fingerprint
         }
@@ -314,10 +370,10 @@ final class SidebarViewModel {
     }
 
     func filteredTables(of kind: SidebarObjectKind, from tables: [TableInfo]) -> [TableInfo] {
-        let query = searchText
-        let fingerprint = (count: tables.count, hash: tables.hashValue, query: query)
+        let query = filterQuery
+        let fingerprint = (count: tables.count, generation: schemaGeneration, query: query)
         if cachedFilteredByKindFingerprint?.count != fingerprint.count
-            || cachedFilteredByKindFingerprint?.hash != fingerprint.hash
+            || cachedFilteredByKindFingerprint?.generation != fingerprint.generation
             || cachedFilteredByKindFingerprint?.query != fingerprint.query {
             let bucket = self.tables(of: .table, from: tables)
             let bucketView = self.tables(of: .view, from: tables)
@@ -332,11 +388,17 @@ final class SidebarViewModel {
         return cachedFilteredByKind[kind] ?? []
     }
 
+    func filteredRecentTables(_ tables: [TableInfo]) -> [TableInfo] {
+        let query = filterQuery
+        guard !query.isEmpty else { return tables }
+        return tables.filter { SidebarNameFilter.matches(query: query, candidate: $0.name) }
+    }
+
     func filteredRoutines(of kind: SidebarObjectKind, from routines: [RoutineInfo]) -> [RoutineInfo] {
-        let query = searchText
-        let fingerprint = (count: routines.count, hash: routines.hashValue, query: query)
+        let query = filterQuery
+        let fingerprint = (count: routines.count, generation: schemaGeneration, query: query)
         if cachedFilteredRoutinesFingerprint?.count != fingerprint.count
-            || cachedFilteredRoutinesFingerprint?.hash != fingerprint.hash
+            || cachedFilteredRoutinesFingerprint?.generation != fingerprint.generation
             || cachedFilteredRoutinesFingerprint?.query != fingerprint.query {
             let procs = routines.filter { $0.kind == .procedure }
             let funcs = routines.filter { $0.kind == .function }
@@ -348,18 +410,16 @@ final class SidebarViewModel {
     }
 
     func effectiveExpanded(kind: SidebarObjectKind, hasMatches: Bool) -> Bool {
-        if !searchText.isEmpty && hasMatches { return true }
+        if !filterQuery.isEmpty && hasMatches { return true }
         return expanded[kind]
     }
 
     private func applyQuery(_ query: String, to tables: [TableInfo]) -> [TableInfo] {
-        guard !query.isEmpty else { return tables }
-        return tables.filter { $0.name.localizedCaseInsensitiveContains(query) }
+        SidebarNameFilter.ranked(tables, query: query, name: { $0.name })
     }
 
     private func applyRoutineQuery(_ query: String, to routines: [RoutineInfo]) -> [RoutineInfo] {
-        guard !query.isEmpty else { return routines }
-        return routines.filter { $0.name.localizedCaseInsensitiveContains(query) }
+        SidebarNameFilter.ranked(routines, query: query, name: { $0.name })
     }
 
     private func rebuildKindBuckets(from tables: [TableInfo]) {
@@ -384,11 +444,29 @@ final class SidebarViewModel {
     }
 
     private func invalidateFilterCaches() {
-        cachedFilteredTables = nil
-        cachedFilterInputs = nil
         cachedFilteredByKind = [:]
         cachedFilteredByKindFingerprint = nil
         cachedFilteredRoutines = [:]
         cachedFilteredRoutinesFingerprint = nil
+    }
+
+    private func scheduleFilterQueryUpdate(oldValue: String) {
+        if searchText.isEmpty || oldValue.isEmpty {
+            filterDebounceTask?.cancel()
+            filterDebounceTask = nil
+            filterQuery = searchText
+            return
+        }
+        filterDebounceTask?.cancel()
+        filterDebounceTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: Self.searchDebounceNanoseconds)
+            guard !Task.isCancelled else { return }
+            guard let self else { return }
+            self.filterQuery = self.searchText
+        }
+    }
+
+    deinit {
+        filterDebounceTask?.cancel()
     }
 }

@@ -32,10 +32,10 @@ struct TagFormSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    CancelButton { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
+                    ConfirmButton(title: "Save") {
                         var tag = existingTag ?? ConnectionTag()
                         tag.name = name
                         tag.color = color

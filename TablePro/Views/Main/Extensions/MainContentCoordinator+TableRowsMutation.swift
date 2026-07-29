@@ -36,7 +36,22 @@ extension MainContentCoordinator {
         tabManager.mutate(at: tabIdx) { $0.display.activeResultSetId = resultSetId }
         if let incoming = tabManager.tabs[tabIdx].display.activeResultSet {
             tabSessionRegistry.setTableRows(incoming.tableRows, for: tabId)
+            syncLoadMoreState(from: incoming, at: tabIdx)
             notifyFullReplaceIfActive(tabId: tabId)
+        }
+    }
+
+    private func syncLoadMoreState(from resultSet: ResultSet, at tabIdx: Int) {
+        guard tabManager.tabs[tabIdx].tabType == .query else { return }
+        tabManager.mutate(at: tabIdx) { tab in
+            if resultSet.isTruncated {
+                tab.pagination.hasMoreRows = true
+                tab.pagination.isLoadingMore = false
+            } else {
+                tab.pagination.resetLoadMore()
+            }
+            tab.pagination.baseQueryForMore = resultSet.baseQuery
+            tab.pagination.baseQueryParameterValues = resultSet.baseQueryParameterValues
         }
     }
 

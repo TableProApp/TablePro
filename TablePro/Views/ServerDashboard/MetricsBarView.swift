@@ -13,7 +13,7 @@ struct MetricsBarView: View {
                 if let error {
                     Label(error, systemImage: "exclamationmark.triangle")
                         .font(.caption)
-                        .foregroundStyle(Color(nsColor: .systemRed))
+                        .foregroundStyle(.red)
                 }
             }
             .padding(.horizontal, 12)

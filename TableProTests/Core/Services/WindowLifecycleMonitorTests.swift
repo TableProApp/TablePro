@@ -167,6 +167,48 @@ struct WindowLifecycleMonitorTests {
         #expect(monitor.findWindow(for: UUID()) == nil)
     }
 
+    // MARK: - activeWindow
+
+    @Test("activeWindow prefers the candidate when it belongs to the connection")
+    func activeWindowPrefersCandidate() {
+        let windowId = UUID()
+        let connectionId = UUID()
+        let window = NSWindow()
+
+        monitor.register(window: window, connectionId: connectionId, windowId: windowId)
+        defer { cleanup(windowId) }
+
+        #expect(monitor.activeWindow(for: connectionId, preferring: window) === window)
+    }
+
+    @Test("activeWindow ignores a candidate from a different connection")
+    func activeWindowIgnoresForeignCandidate() {
+        let windowIdA = UUID()
+        let windowIdB = UUID()
+        let connectionA = UUID()
+        let connectionB = UUID()
+        let windowA = NSWindow()
+        let windowB = NSWindow()
+
+        monitor.register(window: windowA, connectionId: connectionA, windowId: windowIdA)
+        monitor.register(window: windowB, connectionId: connectionB, windowId: windowIdB)
+        defer { cleanup(windowIdA, windowIdB) }
+
+        #expect(monitor.activeWindow(for: connectionA, preferring: windowB) !== windowB)
+    }
+
+    @Test("activeWindow falls back to findWindow when the candidate is nil")
+    func activeWindowNilCandidateFallsBack() {
+        let windowId = UUID()
+        let connectionId = UUID()
+        let window = NSWindow()
+
+        monitor.register(window: window, connectionId: connectionId, windowId: windowId)
+        defer { cleanup(windowId) }
+
+        #expect(monitor.activeWindow(for: connectionId, preferring: nil) === monitor.findWindow(for: connectionId))
+    }
+
     // MARK: - windows(for:) empty for unknown
 
     @Test("windows(for:) returns empty array for unknown connectionId")

@@ -15,6 +15,7 @@ struct BrowsePluginsView: View {
     @State private var selectedCategory: RegistryCategory?
     @State private var selectedPluginId: String?
     @State private var showErrorAlert = false
+    @State private var errorTitle = String(localized: "Operation Failed")
     @State private var errorMessage = ""
 
     private var selectedRegistryPlugin: RegistryPlugin? {
@@ -25,12 +26,10 @@ struct BrowsePluginsView: View {
     var body: some View {
         mainContent
         .task {
-            if registryClient.fetchState == .idle {
-                await registryClient.fetchManifest()
-            }
+            await registryClient.ensureManifest(.ifStale)
             await downloadCountService.fetchCounts(for: registryClient.manifest)
         }
-        .alert(String(localized: "Installation Failed"), isPresented: $showErrorAlert) {
+        .alert(errorTitle, isPresented: $showErrorAlert) {
             Button("OK") {}
         } message: {
             Text(errorMessage)
@@ -47,61 +46,97 @@ struct BrowsePluginsView: View {
 
     @ViewBuilder
     private var mainContent: some View {
-        switch registryClient.fetchState {
-        case .idle, .loading:
-            ProgressView()
+        if registryClient.manifest != nil {
+            loadedContent
+        } else {
+            switch registryClient.fetchState {
+            case .idle, .loading, .loaded, .loadedFromCache:
+                ProgressView()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            case .failed(let message):
+                ContentUnavailableView {
+                    Label("Failed to Load", systemImage: "wifi.slash")
+                } description: {
+                    Text(message)
+                } actions: {
+                    Button("Try Again") {
+                        refreshRegistry()
+                    }
+                    .buttonStyle(.bordered)
+                }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-        case .loaded:
-            let plugins = registryClient.search(query: searchText, category: selectedCategory)
-            HSplitView {
-                VStack(spacing: 0) {
-                    HStack(spacing: 6) {
-                        NativeSearchField(text: $searchText, placeholder: String(localized: "Search..."))
-                        Picker("", selection: $selectedCategory) {
-                            Text("All").tag(RegistryCategory?.none)
-                            ForEach(RegistryCategory.allCases) { category in
-                                Text(category.displayName).tag(RegistryCategory?.some(category))
-                            }
-                        }
-                        .labelsHidden()
-                        .fixedSize()
-                    }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 6)
-
-                    if plugins.isEmpty {
-                        ContentUnavailableView.search(text: searchText)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    } else {
-                        List(plugins, selection: $selectedPluginId) { plugin in
-                            browseRow(plugin)
-                                .tag(plugin.id)
-                        }
-                        .listStyle(.inset)
-                    }
-                }
-                .frame(minWidth: 200, idealWidth: 240, maxWidth: 280)
-
-                detailContent
-                    .frame(minWidth: 340)
             }
+        }
+    }
 
-        case .failed(let message):
-            ContentUnavailableView {
-                Label("Failed to Load", systemImage: "wifi.slash")
-            } description: {
-                Text(message)
-            } actions: {
-                Button("Try Again") {
-                    Task {
-                        await registryClient.fetchManifest(forceRefresh: true)
-                        await downloadCountService.fetchCounts(for: registryClient.manifest)
+    private var loadedContent: some View {
+        let plugins = registryClient.search(query: searchText, category: selectedCategory)
+        return HSplitView {
+            VStack(spacing: 0) {
+                HStack(spacing: 6) {
+                    NativeSearchField(text: $searchText, placeholder: String(localized: "Search..."))
+                    Picker("", selection: $selectedCategory) {
+                        Text("All").tag(RegistryCategory?.none)
+                        ForEach(RegistryCategory.allCases) { category in
+                            Text(category.displayName).tag(RegistryCategory?.some(category))
+                        }
                     }
+                    .labelsHidden()
+                    .fixedSize()
+
+                    Button {
+                        refreshRegistry()
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(registryClient.fetchState == .loading)
+                    .help("Refresh plugin list")
+                    .accessibilityLabel(String(localized: "Refresh plugin list"))
                 }
-                .buttonStyle(.bordered)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 6)
+
+                if case .loadedFromCache(let reason) = registryClient.fetchState {
+                    staleManifestBanner(reason)
+                }
+
+                if plugins.isEmpty {
+                    ContentUnavailableView.search(text: searchText)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    List(plugins, selection: $selectedPluginId) { plugin in
+                        browseRow(plugin)
+                            .tag(plugin.id)
+                    }
+                    .listStyle(.inset)
+                }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .frame(minWidth: 200, idealWidth: 240, maxWidth: 280)
+
+            detailContent
+                .frame(minWidth: 340)
+        }
+    }
+
+    private func staleManifestBanner(_ reason: String) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: "exclamationmark.triangle")
+                .foregroundStyle(.yellow)
+            Text(String(format: String(localized: "Showing saved plugin list. %@"), reason))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Spacer()
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+    }
+
+    private func refreshRegistry() {
+        Task {
+            await registryClient.ensureManifest(.mustBeCurrent)
+            await downloadCountService.fetchCounts(for: registryClient.manifest)
         }
     }
 
@@ -121,7 +156,7 @@ struct BrowsePluginsView: View {
                         .lineLimit(1)
                     if plugin.isVerified {
                         Image(systemName: "checkmark.seal.fill")
-                            .foregroundStyle(Color(nsColor: .systemBlue))
+                            .foregroundStyle(.blue)
                             .font(.caption2)
                     }
                 }
@@ -151,36 +186,7 @@ struct BrowsePluginsView: View {
 
     @ViewBuilder
     private func rowStatusBadge(for plugin: RegistryPlugin) -> some View {
-        if isPluginInstalled(plugin.id) {
-            if hasUpdate(for: plugin) {
-                if let progress = installTracker.state(for: plugin.id) {
-                    switch progress.phase {
-                    case .downloading(let fraction):
-                        ProgressView(value: fraction)
-                            .frame(width: 40)
-                            .progressViewStyle(.linear)
-                    case .installing:
-                        ProgressView()
-                            .controlSize(.mini)
-                    case .completed:
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundStyle(Color(nsColor: .systemGreen))
-                            .font(.caption)
-                    case .failed:
-                        Button("Retry") { updatePlugin(plugin) }
-                            .controlSize(.mini)
-                    }
-                } else {
-                    Button(String(localized: "Update")) { updatePlugin(plugin) }
-                        .buttonStyle(.bordered)
-                        .controlSize(.mini)
-                }
-            } else {
-                Text("Installed")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
-        } else if let progress = installTracker.state(for: plugin.id) {
+        if let progress = installTracker.state(for: plugin.id) {
             switch progress.phase {
             case .downloading(let fraction):
                 ProgressView(value: fraction)
@@ -189,18 +195,40 @@ struct BrowsePluginsView: View {
             case .installing:
                 ProgressView()
                     .controlSize(.mini)
+            case .stagedPendingActivation:
+                Image(systemName: "clock.arrow.circlepath")
+                    .foregroundStyle(.orange)
+                    .font(.caption)
             case .completed:
                 Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(Color(nsColor: .systemGreen))
+                    .foregroundStyle(.green)
                     .font(.caption)
             case .failed:
-                Button("Retry") { installPlugin(plugin) }
+                Button("Retry") { retryOperation(for: plugin) }
                     .controlSize(.mini)
+            }
+        } else if isPluginInstalled(plugin.id) {
+            if hasUpdate(for: plugin) {
+                Button(String(localized: "Update")) { updatePlugin(plugin) }
+                    .buttonStyle(.bordered)
+                    .controlSize(.mini)
+            } else {
+                Text("Installed")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
             }
         } else {
             Button("Install") { installPlugin(plugin) }
                 .buttonStyle(.bordered)
                 .controlSize(.mini)
+        }
+    }
+
+    private func retryOperation(for plugin: RegistryPlugin) {
+        if isPluginInstalled(plugin.id) {
+            updatePlugin(plugin)
+        } else {
+            installPlugin(plugin)
         }
     }
 
@@ -246,8 +274,7 @@ struct BrowsePluginsView: View {
     }
 
     private func hasUpdate(for plugin: RegistryPlugin) -> Bool {
-        guard let installed = pluginManager.plugins.first(where: { $0.id == plugin.id }) else { return false }
-        return plugin.version.compare(installed.version, options: .numeric) == .orderedDescending
+        pluginManager.registryUpdate(for: plugin.id) != nil
     }
 
     private func installPlugin(_ plugin: RegistryPlugin) {
@@ -261,11 +288,31 @@ struct BrowsePluginsView: View {
     }
 
     private func updatePlugin(_ plugin: RegistryPlugin) {
-        performTrackedOperation(pluginId: plugin.id) { progress in
+        Task {
             if plugin.category == .theme {
-                try await ThemeRegistryInstaller.shared.update(plugin, progress: progress)
-            } else {
-                _ = try await pluginManager.updateFromRegistry(plugin, progress: progress)
+                installTracker.beginInstall(pluginId: plugin.id)
+                do {
+                    try await ThemeRegistryInstaller.shared.update(plugin) { fraction in
+                        installTracker.updateProgress(pluginId: plugin.id, fraction: fraction)
+                        if fraction >= 1.0 {
+                            installTracker.markInstalling(pluginId: plugin.id)
+                        }
+                    }
+                    installTracker.completeInstall(pluginId: plugin.id)
+                } catch {
+                    installTracker.failInstall(pluginId: plugin.id, error: error.localizedDescription)
+                    errorTitle = String(localized: "Theme Update Failed")
+                    errorMessage = error.localizedDescription
+                    showErrorAlert = true
+                }
+                return
+            }
+
+            let result = await pluginManager.performRegistryUpdate(plugin)
+            if case .failed(let error) = result {
+                errorTitle = String(localized: "Plugin Update Failed")
+                errorMessage = error.localizedDescription
+                showErrorAlert = true
             }
         }
     }
@@ -286,6 +333,7 @@ struct BrowsePluginsView: View {
                 installTracker.completeInstall(pluginId: pluginId)
             } catch {
                 installTracker.failInstall(pluginId: pluginId, error: error.localizedDescription)
+                errorTitle = String(localized: "Installation Failed")
                 errorMessage = error.localizedDescription
                 showErrorAlert = true
             }

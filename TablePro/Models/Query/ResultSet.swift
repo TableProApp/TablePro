@@ -22,6 +22,9 @@ final class ResultSet: Identifiable {
     var tableName: String?
     var isEditable: Bool = false
     var isPinned: Bool = false
+    var isTruncated: Bool = false
+    var baseQuery: String?
+    var baseQueryParameterValues: [String?]?
     var metadataVersion: Int = 0
     var sortState = SortState()
     var pagination = PaginationState()

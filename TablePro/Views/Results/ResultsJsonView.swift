@@ -93,12 +93,17 @@ internal struct ResultsJsonView: View {
             }
             .buttonStyle(.borderless)
             .controlSize(.small)
+            .disabled(isInitialComputePending)
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
     }
 
     // MARK: - Content
+
+    private var isInitialComputePending: Bool {
+        prettyText.isEmpty
+    }
 
     @ViewBuilder
     private var content: some View {
@@ -108,14 +113,14 @@ internal struct ResultsJsonView: View {
                 systemImage: "curlybraces",
                 description: Text(String(localized: "Execute a query to view results as JSON"))
             )
+        } else if isInitialComputePending {
+            ProgressView()
+                .controlSize(.small)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             switch viewMode {
             case .text:
-                JSONSyntaxTextView(
-                    text: $prettyText,
-                    isEditable: false,
-                    wordWrap: true
-                )
+                JSONCodeEditor(text: $prettyText, isEditable: false)
             case .tree:
                 if let tree = parsedTree {
                     JSONTreeView(rootNode: tree, searchText: $treeSearchText)

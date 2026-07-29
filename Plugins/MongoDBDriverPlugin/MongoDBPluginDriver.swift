@@ -27,7 +27,7 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func defaultExportQuery(table: String) -> String? {
-        "db.getCollection(\"\(table)\").find({})"
+        MongoDBQueryBuilder().buildExportQuery(collection: table)
     }
 
     init(config: DriverConnectionConfig) {
@@ -68,6 +68,7 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             user: config.username,
             password: config.password,
             database: currentDb,
+            configuredDatabase: config.database,
             ssl: effectiveSSL,
             authSource: config.additionalFields["mongoAuthSource"],
             readPreference: config.additionalFields["mongoReadPreference"],
@@ -160,6 +161,8 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             filter: "{}", sort: nil, projection: nil, skip: 0, limit: 50
         ).docs
 
+        let enumMap = (try? await fetchJsonSchemaEnums(conn: conn, table: table)) ?? [:]
+
         if docs.isEmpty {
             return [
                 PluginColumnInfo(
@@ -176,9 +179,43 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             let typeName = bsonTypeToString(types[index])
             return PluginColumnInfo(
                 name: name, dataType: typeName, isNullable: name != "_id", isPrimaryKey: name == "_id",
-                defaultValue: nil, extra: nil, charset: nil, collation: nil, comment: nil
+                defaultValue: nil, extra: nil, charset: nil, collation: nil, comment: nil,
+                allowedValues: enumMap[name]
             )
         }
+    }
+
+    private func fetchJsonSchemaEnums(conn: MongoDBConnection, table: String) async throws -> [String: [String]] {
+        let escaped = escapeJsonString(table)
+        let result = try await conn.runCommand(
+            "{\"listCollections\": 1, \"filter\": {\"name\": \"\(escaped)\"}}",
+            database: currentDb
+        )
+        guard let firstDoc = result.first,
+              let cursor = firstDoc["cursor"] as? [String: Any],
+              let firstBatch = cursor["firstBatch"] as? [[String: Any]],
+              let collInfo = firstBatch.first,
+              let options = collInfo["options"] as? [String: Any],
+              let validator = options["validator"] as? [String: Any],
+              let jsonSchema = validator["$jsonSchema"] as? [String: Any],
+              let properties = jsonSchema["properties"] as? [String: Any]
+        else { return [:] }
+
+        var map: [String: [String]] = [:]
+        for (colName, spec) in properties {
+            guard let specDict = spec as? [String: Any] else { continue }
+            if let enumValues = extractStringEnum(specDict["enum"]) {
+                map[colName] = enumValues
+            }
+        }
+        return map
+    }
+
+    private func extractStringEnum(_ value: Any?) -> [String]? {
+        guard let array = value as? [Any], !array.isEmpty else { return nil }
+        guard array.allSatisfy({ $0 is String }) else { return nil }
+        let strings = array.compactMap { $0 as? String }
+        return strings.isEmpty ? nil : strings
     }
 
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
@@ -252,6 +289,20 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
 
         let count = try await conn.estimatedDocumentCount(database: currentDb, collection: table)
+        return Int(count)
+    }
+
+    func fetchFilteredRowCount(
+        table: String,
+        filters: [(column: String, op: String, value: String)],
+        logicMode: String
+    ) async throws -> Int? {
+        guard let conn = mongoConnection else {
+            throw MongoDBPluginError.notConnected
+        }
+
+        let filterJson = MongoDBQueryBuilder().buildFilterDocument(from: filters, logicMode: logicMode)
+        let count = try await conn.countDocuments(database: currentDb, collection: table, filter: filterJson)
         return Int(count)
     }
 
@@ -401,7 +452,18 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func createDatabaseFormSpec() async throws -> PluginCreateDatabaseFormSpec? {
-        PluginCreateDatabaseFormSpec(fields: [], footnote: nil)
+        PluginCreateDatabaseFormSpec(
+            fields: [],
+            textInputs: [
+                PluginCreateDatabaseFormSpec.TextInput(
+                    id: MongoDBCreateDatabasePlan.firstCollectionFieldId,
+                    label: String(localized: "First Collection"),
+                    placeholder: String(localized: "Collection name"),
+                    isRequired: true
+                )
+            ],
+            footnote: String(localized: "MongoDB stores a database only once it holds a collection, so a new database needs its first one.")
+        )
     }
 
     func createDatabase(_ request: PluginCreateDatabaseRequest) async throws {
@@ -409,8 +471,17 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             throw MongoDBPluginError.notConnected
         }
 
-        _ = try await conn.insertOne(database: request.name, collection: "__tablepro_init", document: "{\"_init\": true}")
-        _ = try await conn.runCommand("{\"drop\": \"__tablepro_init\"}", database: request.name)
+        try MongoDBNameValidator.validateDatabaseName(request.name)
+        let collection = MongoDBCreateDatabasePlan.firstCollectionName(
+            from: request.values,
+            databaseName: request.name
+        )
+        try MongoDBNameValidator.validateCollectionName(collection, inDatabase: request.name)
+
+        _ = try await conn.runCommand(
+            "{\"create\": \"\(escapeJsonString(collection))\"}",
+            database: request.name
+        )
     }
 
     func dropDatabase(name: String) async throws {
@@ -858,7 +929,9 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     private func prettyJson(_ value: Any) -> String {
-        guard let data = try? JSONSerialization.data(withJSONObject: value, options: [.sortedKeys, .prettyPrinted]),
+        let sanitized = BsonDocumentFlattener.sanitizeForJson(value)
+        guard JSONSerialization.isValidJSONObject(sanitized),
+              let data = try? JSONSerialization.data(withJSONObject: sanitized, options: [.sortedKeys, .prettyPrinted]),
               let json = String(data: data, encoding: .utf8) else {
             return String(describing: value)
         }

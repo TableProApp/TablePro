@@ -97,6 +97,12 @@ private struct ConnectionFormDetail: View {
                 GeneralPaneView(coordinator: coordinator)
             case .ssh:
                 SSHPaneView(coordinator: coordinator)
+            case .cloudflareTunnel:
+                CloudflareTunnelPaneView(coordinator: coordinator)
+            case .cloudSQLProxy:
+                CloudSQLProxyPaneView(coordinator: coordinator)
+            case .socksProxy:
+                SOCKSProxyPaneView(coordinator: coordinator)
             case .ssl:
                 SSLPaneView(coordinator: coordinator)
             case .customization:

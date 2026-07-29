@@ -13,8 +13,6 @@ internal struct FieldDetailView: View {
     let isPendingNull: Bool
     let isPendingDefault: Bool
     let isModified: Bool
-    let isTruncated: Bool
-    let isLoadingFullValue: Bool
     let databaseType: DatabaseType
     let onSetNull: () -> Void
     let onSetDefault: () -> Void
@@ -50,8 +48,6 @@ internal struct FieldDetailView: View {
                 PendingStateOverlay(
                     isPendingNull: isPendingNull,
                     isPendingDefault: isPendingDefault,
-                    isLoadingFullValue: isLoadingFullValue,
-                    isTruncated: isTruncated,
                     minHeight: editorMinHeight(for: kind)
                 ) {
                     resolvedEditor(for: kind)
@@ -77,6 +73,22 @@ internal struct FieldDetailView: View {
         }
         .labelsHidden()
         .onHover { isHovered = $0 }
+        .contextMenu {
+            if !context.isReadOnly {
+                FieldMenuContent(
+                    value: context.value.wrappedValue,
+                    columnType: context.columnType,
+                    sqlFunctions: SQLFunctionProvider.functions(for: databaseType),
+                    isPendingNull: isPendingNull,
+                    isPendingDefault: isPendingDefault,
+                    onSetNull: onSetNull,
+                    onSetDefault: onSetDefault,
+                    onSetEmpty: onSetEmpty,
+                    onSetFunction: onSetFunction,
+                    onClear: { context.value.wrappedValue = context.originalValue ?? "" }
+                )
+            }
+        }
     }
 
     // MARK: - Header
@@ -92,7 +104,7 @@ internal struct FieldDetailView: View {
             if isPrimaryKey {
                 Image(systemName: "key.fill")
                     .font(.caption2)
-                    .foregroundStyle(Color(nsColor: .systemYellow))
+                    .foregroundStyle(.yellow)
             } else if isForeignKey {
                 Image(systemName: "arrow.right.arrow.left")
                     .font(.caption2)
@@ -106,23 +118,16 @@ internal struct FieldDetailView: View {
             Spacer()
 
             TypeBadge(context.columnType.badgeLabel)
-
-            if isTruncated && !isLoadingFullValue {
-                Text("truncated")
-                    .font(.caption2.weight(.medium))
-                    .foregroundStyle(Color(nsColor: .systemOrange))
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 1)
-                    .background(Color(nsColor: .systemOrange).opacity(0.15))
-                    .clipShape(Capsule())
-            }
         }
+        .textSelection(.enabled)
     }
 
     private func editorMinHeight(for kind: FieldEditorKind) -> CGFloat? {
         switch kind {
         case .json:
             return context.isReadOnly ? 60 : 80
+        case .phpSerialized:
+            return 80
         case .blobHex:
             return 60
         default:
@@ -132,11 +137,19 @@ internal struct FieldDetailView: View {
 
     // MARK: - Editor Dispatch
 
-    @ViewBuilder
     private func resolvedEditor(for kind: FieldEditorKind) -> some View {
+        editorContent(for: kind)
+            .accessibilityLabel(context.columnName)
+            .accessibilityValue(context.value.wrappedValue)
+    }
+
+    @ViewBuilder
+    private func editorContent(for kind: FieldEditorKind) -> some View {
         switch kind {
         case .json:
             JsonEditorView(context: context, onExpand: onExpand, onPopOut: onPopOut)
+        case .phpSerialized:
+            PhpSerializedFieldView(context: context, onExpand: onExpand, onPopOut: onPopOut)
         case .blobHex:
             BlobHexEditorView(context: context)
         case .boolean:

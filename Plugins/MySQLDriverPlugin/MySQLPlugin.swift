@@ -22,7 +22,8 @@ final class MySQLPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let databaseDisplayName = "MySQL"
     static let iconName = "mysql-icon"
     static let defaultPort = 3306
-    static let additionalConnectionFields: [ConnectionField] = []
+    static let additionalConnectionFields: [ConnectionField] =
+        AWSAuthFields.standard() + [AWSAuthFields.rdsEndpointField()]
     static let additionalDatabaseTypeIds: [String] = ["MariaDB"]
 
     // MARK: - UI/Capability Metadata
@@ -95,6 +96,8 @@ final class MySQLPlugin: NSObject, TableProPlugin, DriverPlugin {
     )
 
     static let supportsDropDatabase = true
+    static let supportsTriggers = true
+    static let supportsTriggerEditing = true
 
     func createDriver(config: DriverConnectionConfig) -> any PluginDatabaseDriver {
         MySQLPluginDriver(config: config)

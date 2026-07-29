@@ -28,6 +28,7 @@ final class DataGridColumnPool {
         tableView: NSTableView,
         schema: ColumnIdentitySchema,
         columnTypes: [ColumnType],
+        columnComments: [String: String] = [:],
         savedLayout: ColumnLayoutState?,
         isEditable: Bool,
         hiddenColumnNames: Set<String>,
@@ -40,18 +41,22 @@ final class DataGridColumnPool {
 
         let willRestoreWidths = !(savedLayout?.columnWidths.isEmpty ?? true)
         let hiddenFromLayout = savedLayout?.hiddenColumns ?? []
+        var comments: [NSUserInterfaceItemIdentifier: String] = [:]
+        var showsComments = false
 
         for slot in 0..<pooledColumns.count {
             let column = pooledColumns[slot]
             if slot < visibleCount {
                 let columnName = schema.columnNames[slot]
                 let resolvedWidth = willRestoreWidths
-                    ? (savedLayout?.columnWidths[columnName] ?? 100)
+                    ? (savedLayout?.columnWidths[columnName] ?? widthCalculator(columnName, slot))
                     : widthCalculator(columnName, slot)
+                let comment = displayableComment(columnComments[columnName])
                 configureColumn(
                     column,
                     name: columnName,
                     columnType: slot < columnTypes.count ? columnTypes[slot] : nil,
+                    comment: comment,
                     width: resolvedWidth,
                     isEditable: isEditable
                 )
@@ -59,10 +64,17 @@ final class DataGridColumnPool {
                 if column.isHidden != hidden {
                     column.isHidden = hidden
                 }
+                if let comment {
+                    comments[column.identifier] = comment
+                    if !hidden {
+                        showsComments = true
+                    }
+                }
             } else if !column.isHidden {
                 column.isHidden = true
             }
         }
+        applyComments(comments, showsComments: showsComments, in: tableView)
 
         let targetOrder = computeTargetOrder(
             visibleCount: visibleCount,
@@ -81,7 +93,8 @@ final class DataGridColumnPool {
         while pooledColumns.count < count {
             let slot = pooledColumns.count
             let column = NSTableColumn(identifier: ColumnIdentitySchema.slotIdentifier(slot))
-            column.minWidth = 30
+            column.minWidth = DataGridMetrics.dataColumnMinWidth
+            column.maxWidth = DataGridMetrics.dataColumnMaxWidth
             column.resizingMask = .userResizingMask
             column.isEditable = true
             column.isHidden = true
@@ -177,6 +190,7 @@ final class DataGridColumnPool {
         _ column: NSTableColumn,
         name: String,
         columnType: ColumnType?,
+        comment: String?,
         width: CGFloat,
         isEditable: Bool
     ) {
@@ -187,17 +201,20 @@ final class DataGridColumnPool {
             column.headerCell = cell
         }
 
-        let tooltip: String
+        var tooltip: String
         if let typeName = columnType?.rawType ?? columnType?.displayName {
             tooltip = "\(name) (\(typeName))"
         } else {
             tooltip = name
         }
+        if let comment {
+            tooltip += "\n\(comment)"
+        }
         if column.headerToolTip != tooltip {
             column.headerToolTip = tooltip
         }
 
-        let label = String(format: String(localized: "Column: %@"), name)
+        let label = accessibilityLabel(name: name, comment: comment)
         if column.headerCell.accessibilityLabel() != label {
             column.headerCell.setAccessibilityLabel(label)
         }
@@ -211,5 +228,27 @@ final class DataGridColumnPool {
         if column.sortDescriptorPrototype?.key != name {
             column.sortDescriptorPrototype = NSSortDescriptor(key: name, ascending: true)
         }
+    }
+
+    private func accessibilityLabel(name: String, comment: String?) -> String {
+        let label = String(format: String(localized: "Column: %@"), name)
+        guard let comment else { return label }
+        return "\(label), \(comment)"
+    }
+
+    private func displayableComment(_ comment: String?) -> String? {
+        guard let comment else { return nil }
+        let trimmed = comment.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private func applyComments(
+        _ comments: [NSUserInterfaceItemIdentifier: String],
+        showsComments: Bool,
+        in tableView: NSTableView
+    ) {
+        guard let headerView = tableView.headerView as? SortableHeaderView else { return }
+        headerView.showsComments = showsComments
+        headerView.updateComments(comments)
     }
 }

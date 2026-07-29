@@ -74,7 +74,7 @@ struct TagManagementView: View {
                     } label: {
                         Image(systemName: "plus")
                     }
-                    Button("Done") { dismiss() }
+                    CloseButton { dismiss() }
                 }
             }
             .sheet(isPresented: $showingAddTag) {

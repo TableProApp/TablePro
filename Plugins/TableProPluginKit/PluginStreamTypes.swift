@@ -14,6 +14,7 @@ public struct PluginStreamHeader: Sendable {
     }
 }
 
+@frozen
 public enum PluginStreamElement: Sendable {
     case header(PluginStreamHeader)
     case rows([PluginRow])

@@ -68,7 +68,6 @@ enum PreConnectHookRunner {
 
             try process.run()
 
-            // 10-second timeout on a separate detached task
             let timeoutTask = Task.detached {
                 try await Task.sleep(nanoseconds: 10_000_000_000)
                 if process.isRunning {

@@ -24,13 +24,13 @@ struct ImportSuccessView: View {
                     .font(.largeTitle)
                     .imageScale(.large)
                     .symbolRenderingMode(.hierarchical)
-                    .foregroundStyle(Color(nsColor: .systemYellow))
+                    .foregroundStyle(.yellow)
             } else {
                 Image(systemName: "checkmark.circle.fill")
                     .font(.largeTitle)
                     .imageScale(.large)
                     .symbolRenderingMode(.hierarchical)
-                    .foregroundStyle(Color(nsColor: .systemGreen))
+                    .foregroundStyle(.green)
             }
 
             VStack(spacing: 6) {

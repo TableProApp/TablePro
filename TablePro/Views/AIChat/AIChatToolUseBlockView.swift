@@ -33,9 +33,12 @@ struct AIChatToolUseBlockView: View {
                     HStack(spacing: 4) {
                         Text(callingLabel)
                             .foregroundStyle(.secondary)
+                            .fixedSize()
                         Text(block.name)
                             .fontWeight(.semibold)
                             .foregroundStyle(.primary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
                     }
                     .font(.caption)
                     if hasInput && !isPending {

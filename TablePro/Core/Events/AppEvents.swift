@@ -22,9 +22,9 @@ final class AppEvents {
 
     let dataGridSettingsChanged = PassthroughSubject<Void, Never>()
 
-    let aiSettingsChanged = PassthroughSubject<Void, Never>()
+    let currentSchemaChanged = PassthroughSubject<UUID, Never>()
 
-    let terminalSettingsChanged = PassthroughSubject<Void, Never>()
+    let aiSettingsChanged = PassthroughSubject<Void, Never>()
 
     // MARK: - Connections
 
@@ -60,6 +60,8 @@ final class AppEvents {
     let sqlFavoritesDidUpdate = PassthroughSubject<UUID?, Never>()
 
     let linkedFoldersDidUpdate = PassthroughSubject<Void, Never>()
+
+    let teamLibraryDidUpdate = PassthroughSubject<Void, Never>()
 
     /// Linked SQL folder rescan completed; cached file index changed.
     /// Senders are bulk rescans across all enabled folders, so payload is always `nil`.

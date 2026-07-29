@@ -1,16 +1,16 @@
 ---
 title: Development Setup
-description: Get TablePro building on your machine in under 5 minutes
+description: Clone, configure signing, and build TablePro in Xcode
 ---
-
-# Development Setup
 
 ## Prerequisites
 
 | Software | Version | Notes |
 |----------|---------|-------|
-| macOS | 14.0+ (Sonoma) | Target platform |
-| Xcode | 15.0+ | Includes Swift 5.9 |
+| Xcode | 26.0+ | Ships the macOS 26 SDK the app builds against. Every CI job pins 26.4.1. |
+| Swift | 5.9 language mode | Comes with Xcode, set by `SWIFT_VERSION` in the project |
+
+The app references macOS 26 SDK symbols (`NSGlassEffectView` in the quick switcher), so an older Xcode cannot compile it. The deployment target stays at macOS 14.0 Sonoma, which is what the built app runs on, not what you build on.
 
 Optional but recommended:
 
@@ -34,7 +34,7 @@ Optional but recommended:
     scripts/download-libs.sh
     ```
 
-    This pulls pre-built `.a` files (libmariadb, libpq, etc.) from GitHub Releases into `Libs/`. Takes a few seconds.
+    This pulls two archives from the `libs-v1` GitHub Release into `Libs/`: the macOS `.a` files (libmariadb, libpq, libduckdb, libmongoc, and others) and the iOS xcframeworks. About 257 MB downloaded, 620 MB on disk once expanded. Expect a minute or two.
 
     <Warning>
     Skipping this step causes linker errors. The static libraries are not checked into git.
@@ -63,8 +63,21 @@ Optional but recommended:
 
   <Step title="Configure signing">
     1. Select the **TablePro** target
-    2. Go to **Signing & Capabilities**
-    3. Change **Team** to your Apple Developer account (free account works)
+    2. Go to **Signing & Capabilities**, **Debug** sub-tab
+    3. Change **Team** to your Apple Developer account (a free personal team works)
+    4. Change the **Bundle Identifier** from `com.TablePro` to something unique, for example `com.yourhandle.TablePro`
+
+    The Debug configuration signs with `TablePro.Debug.entitlements`, which drops
+    the iCloud capability, so a free personal team can sign it without a paid
+    Apple Developer Program membership. If another target still shows a team
+    error (a driver plugin or the MCP server), set its **Team** the same way.
+
+    Do not commit the resulting `project.pbxproj` changes; they break official
+    Release signing. Hide them locally:
+
+    ```bash
+    git update-index --skip-worktree TablePro.xcodeproj/project.pbxproj
+    ```
   </Step>
 
   <Step title="Build and run">
@@ -75,10 +88,15 @@ Optional but recommended:
     ```bash
     xcodebuild -project TablePro.xcodeproj -scheme TablePro -configuration Debug build -skipPackagePluginValidation
     ```
+
+    `Cmd+R` writes the app to DerivedData
+    (`~/Library/Developer/Xcode/DerivedData/TablePro-*/Build/Products/Debug`). The
+    `xcodebuild` command above writes to `build/Debug/TablePro.app` inside the repo instead.
   </Step>
 </Steps>
 
-{/* Screenshot: Xcode with scheme selected */}
+Writing a driver plugin? See [Plugin Development](/development/plugin-development) to build one and [Testing a Custom Plugin](/development/testing-plugins) to run it in your local build.
+
 <Frame caption="Xcode project setup">
   <img
     className="block dark:hidden"
@@ -111,10 +129,20 @@ Optional but recommended:
   <Tree.Folder name="Plugins">
     <Tree.File name=".tableplugin bundles + TableProPluginKit framework" />
   </Tree.Folder>
+  <Tree.Folder name="Packages">
+    <Tree.File name="TableProCore: shared SwiftPM modules used by the macOS and iOS apps" />
+  </Tree.Folder>
+  <Tree.Folder name="LocalPackages">
+    <Tree.File name="Vendored CodeEditSourceEditor, CodeEditTextView, CodeEditLanguages" />
+  </Tree.Folder>
   <Tree.Folder name="Libs">
     <Tree.File name="Pre-built static libraries (downloaded, not in git)" />
   </Tree.Folder>
+  <Tree.Folder name="TableProMobile">
+    <Tree.File name="iOS app" />
+  </Tree.Folder>
   <Tree.Folder name="TableProTests" />
+  <Tree.Folder name="TableProUITests" />
   <Tree.Folder name="docs">
     <Tree.File name="Mintlify docs site" />
   </Tree.Folder>
@@ -123,39 +151,26 @@ Optional but recommended:
   </Tree.Folder>
 </Tree>
 
+`Packages/TableProCore/Sources/TableProPluginKit` is a symlink to `Plugins/TableProPluginKit`. Edit the files under `Plugins/` only.
+
 ## Running Tests
 
 ```bash
-# All tests
 xcodebuild -project TablePro.xcodeproj -scheme TablePro test -skipPackagePluginValidation
-
-# Specific test class
-xcodebuild -project TablePro.xcodeproj -scheme TablePro test -skipPackagePluginValidation \
-    -only-testing:TableProTests/TestClassName
-
-# Specific test method
-xcodebuild -project TablePro.xcodeproj -scheme TablePro test -skipPackagePluginValidation \
-    -only-testing:TableProTests/TestClassName/testMethodName
 ```
 
-Or in Xcode: `Cmd+U`.
+Or in Xcode: `Cmd+U`. To run a single class or method, pass `-only-testing:TableProTests/TestClassName` or `-only-testing:TableProTests/TestClassName/testMethodName`.
 
 ## Linting and Formatting
 
+Before committing:
+
 ```bash
-# Check for issues
-swiftlint lint
-
-# Auto-fix
-swiftlint --fix
-
-# Format all code
+swiftlint lint --strict
 swiftformat .
 ```
 
-<Tip>
-Run `swiftlint --fix && swiftformat .` before committing.
-</Tip>
+CI rejects warnings, so plain `swiftlint lint` is not enough. Full tooling reference: [Code Style](/development/code-style).
 
 ## Troubleshooting
 
@@ -168,5 +183,5 @@ Run `swiftlint --fix && swiftformat .` before committing.
 | Code signing errors | Change Team in Signing & Capabilities |
 
 <Note>
-The `-skipPackagePluginValidation` flag is required because CodeEditSourceEditor (an SPM dependency) bundles a SwiftLint plugin. Without this flag, CLI builds fail with a validation error.
+Pass `-skipPackagePluginValidation` on every `xcodebuild` invocation so the build does not stop on package plugin validation. `scripts/build-release.sh`, `scripts/build-plugin.sh`, `scripts/check-pluginkit-abi.sh`, and CI all pass it.
 </Note>

@@ -238,28 +238,4 @@ final class AlertHelper {
             alert.runModal()
         }
     }
-
-    // MARK: - Query Error with AI Option
-
-    static func showQueryErrorWithAIOption(
-        title: String,
-        message: String,
-        window: NSWindow?
-    ) async -> Bool {
-        let alert = NSAlert()
-        alert.messageText = title
-        alert.informativeText = message
-        alert.alertStyle = .critical
-        alert.addButton(withTitle: String(localized: "OK"))
-        alert.addButton(withTitle: String(localized: "Ask AI to Fix"))
-
-        if let window = resolveWindow(window) {
-            return await withCheckedContinuation { continuation in
-                alert.beginSheetModal(for: window) { response in
-                    continuation.resume(returning: response == .alertSecondButtonReturn)
-                }
-            }
-        }
-        return alert.runModal() == .alertSecondButtonReturn
-    }
 }

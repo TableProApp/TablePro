@@ -175,9 +175,9 @@ private struct MCPTokenRow: View {
 
     private var permissionColor: Color {
         switch token.permissions {
-        case .readOnly: Color(nsColor: .systemBlue)
-        case .readWrite: Color(nsColor: .systemOrange)
-        case .fullAccess: Color(nsColor: .systemRed)
+        case .readOnly: .blue
+        case .readWrite: .orange
+        case .fullAccess: .red
         }
     }
 }

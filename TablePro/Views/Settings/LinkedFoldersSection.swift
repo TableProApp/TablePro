@@ -8,6 +8,7 @@
 
 import AppKit
 import SwiftUI
+import TableProImport
 
 struct LinkedFoldersSection: View {
     @State private var folders: [LinkedFolder] = LinkedFolderStorage.shared.loadFolders()

@@ -105,4 +105,81 @@ struct ExportModelsTests {
         let table = ExportTableItem(name: "users", type: .table, isSelected: true, optionValues: [true, false, true])
         #expect(table.optionValues == [true, false, true])
     }
+
+    @Test("Normalizing a preselected table with empty option values applies plugin defaults")
+    func normalizedMaterializesDefaultsForPreselectedTable() {
+        let table = ExportTableItem(name: "users", type: .table, isSelected: true)
+        let normalized = table.normalized(forOptionColumnCount: 3, defaultOptionValues: [true, true, true])
+        #expect(normalized.optionValues == [true, true, true])
+        #expect(normalized.isSelected)
+    }
+
+    @Test("Normalizing preserves a partial option selection")
+    func normalizedPreservesPartialSelection() {
+        let table = ExportTableItem(name: "users", type: .table, isSelected: true, optionValues: [true, false, true])
+        let normalized = table.normalized(forOptionColumnCount: 3, defaultOptionValues: [true, true, true])
+        #expect(normalized.optionValues == [true, false, true])
+    }
+
+    @Test("Normalizing a selected table with all-false option values re-applies defaults")
+    func normalizedRepairsAllFalseSelection() {
+        let table = ExportTableItem(name: "users", type: .table, isSelected: true, optionValues: [false, false, false])
+        let normalized = table.normalized(forOptionColumnCount: 3, defaultOptionValues: [true, true, true])
+        #expect(normalized.optionValues == [true, true, true])
+    }
+
+    @Test("Normalizing an unselected table with all-false option values leaves them alone")
+    func normalizedLeavesUnselectedAllFalseAlone() {
+        let table = ExportTableItem(name: "users", type: .table, isSelected: false, optionValues: [false, false, false])
+        let normalized = table.normalized(forOptionColumnCount: 3, defaultOptionValues: [true, true, true])
+        #expect(normalized.optionValues == [false, false, false])
+    }
+
+    @Test("Normalizing an unselected table with empty option values still fixes the shape")
+    func normalizedFixesShapeForUnselectedTable() {
+        let table = ExportTableItem(name: "users", type: .table, isSelected: false)
+        let normalized = table.normalized(forOptionColumnCount: 3, defaultOptionValues: [true, true, true])
+        #expect(normalized.optionValues.count == 3)
+    }
+
+    @Test("Normalizing with zero option columns leaves option values untouched")
+    func normalizedNoOpForFormatsWithoutOptionColumns() {
+        let table = ExportTableItem(name: "users", type: .table, isSelected: true)
+        let normalized = table.normalized(forOptionColumnCount: 0, defaultOptionValues: [])
+        #expect(normalized.optionValues.isEmpty)
+    }
+
+    @Test("Normalizing falls back to all-true when plugin defaults have the wrong length")
+    func normalizedFallsBackWhenDefaultsMismatched() {
+        let table = ExportTableItem(name: "users", type: .table, isSelected: true)
+        let normalized = table.normalized(forOptionColumnCount: 3, defaultOptionValues: [true])
+        #expect(normalized.optionValues == [true, true, true])
+    }
+
+    @Test("Normalizing database items materializes every preselected table and preserves identity")
+    func normalizingDatabaseItemsMatchesPreselectionFlow() {
+        let tables = [
+            ExportTableItem(name: "users", type: .table, isSelected: true),
+            ExportTableItem(name: "posts", type: .table, isSelected: true),
+            ExportTableItem(name: "logs", type: .table, isSelected: false),
+        ]
+        let original = [ExportDatabaseItem(name: "app_db", tables: tables)]
+        let normalized = original.normalizingOptionValues(optionColumnCount: 3, defaultOptionValues: [true, true, true])
+        #expect(normalized[0].id == original[0].id)
+        #expect(normalized[0].tables[0].id == original[0].tables[0].id)
+        let preselected = normalized[0].tables.filter(\.isSelected)
+        #expect(preselected.count == 2)
+        #expect(preselected.allSatisfy { $0.optionValues.contains(true) })
+    }
+
+    @Test("Resetting option values overwrites every table regardless of prior content")
+    func resettingOptionValuesOverwritesAll() {
+        let tables = [
+            ExportTableItem(name: "users", type: .table, isSelected: true, optionValues: [true, false, true]),
+            ExportTableItem(name: "posts", type: .table, isSelected: false, optionValues: [false, false, false]),
+        ]
+        let original = [ExportDatabaseItem(name: "app_db", tables: tables)]
+        let reset = original.resettingOptionValues(to: [true, true, true])
+        #expect(reset[0].tables.allSatisfy { $0.optionValues == [true, true, true] })
+    }
 }

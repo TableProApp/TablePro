@@ -15,7 +15,7 @@ extension TabPersistenceCoordinator {
             clearSavedState()
         } else {
             let selectedId = MainContentCoordinator.aggregatedSelectedTabId(for: connectionId)
-            saveNow(tabs: aggregatedTabs, selectedTabId: selectedId)
+            saveNow(windowedTabs: aggregatedTabs, selectedTabId: selectedId)
         }
     }
 
@@ -27,7 +27,7 @@ extension TabPersistenceCoordinator {
             saveNowSync(tabs: [], selectedTabId: nil)
         } else {
             let selectedId = MainContentCoordinator.aggregatedSelectedTabId(for: connectionId)
-            saveNowSync(tabs: aggregatedTabs, selectedTabId: selectedId)
+            saveNowSync(windowedTabs: aggregatedTabs, selectedTabId: selectedId)
         }
     }
 }

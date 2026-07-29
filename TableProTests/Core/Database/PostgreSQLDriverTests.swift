@@ -163,7 +163,7 @@ struct PostgreSQLDDLAssembly {
 
 // MARK: - DDL Loading Flow Mock
 
-private final class MockPostgreSQLDriver: DatabaseDriver {
+private final class MockPostgreSQLDriver: DatabaseDriver, @unchecked Sendable {
     let connection: DatabaseConnection
     var status: ConnectionStatus = .connected
     var serverVersion: String? = "16.0.0"

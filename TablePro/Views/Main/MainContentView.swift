@@ -30,6 +30,7 @@ struct MainContentView: View {
 
     // Shared state from parent
     @Binding var windowTitle: String
+    @Binding var windowSubtitle: String
     @Bindable var schemaService = SchemaService.shared
     var sidebarState: SharedSidebarState
     @Binding var pendingTruncates: Set<String>
@@ -53,7 +54,6 @@ struct MainContentView: View {
     @State var commandActions: MainContentCommandActions?
     @State var queryResultsSummaryCache: (tabId: UUID, version: Int, summary: String?)?
     @State var inspectorUpdateTask: Task<Void, Never>?
-    @State var lazyLoadTask: Task<Void, Never>?
     /// Stable identifier for this window in WindowLifecycleMonitor
     @State var windowId = UUID()
     @State var hasInitialized = false
@@ -69,6 +69,7 @@ struct MainContentView: View {
         connection: DatabaseConnection,
         payload: EditorTabPayload?,
         windowTitle: Binding<String>,
+        windowSubtitle: Binding<String>,
         sidebarState: SharedSidebarState,
         pendingTruncates: Binding<Set<String>>,
         pendingDeletes: Binding<Set<String>>,
@@ -82,6 +83,7 @@ struct MainContentView: View {
         self.connection = connection
         self.payload = payload
         self._windowTitle = windowTitle
+        self._windowSubtitle = windowSubtitle
         self.sidebarState = sidebarState
         self._pendingTruncates = pendingTruncates
         self._pendingDeletes = pendingDeletes
@@ -100,7 +102,51 @@ struct MainContentView: View {
             .sheet(item: Bindable(coordinator).activeSheet) { sheet in
                 sheetContent(for: sheet)
             }
+            .confirmationDialog(
+                dropConfirmationTitle,
+                isPresented: dropConfirmationBinding,
+                titleVisibility: .visible,
+                presenting: coordinator.databaseToDrop
+            ) { name in
+                Button(String(format: String(localized: "Drop %@"), containerEntityName), role: .destructive) {
+                    Task { await dropDatabase(name: name) }
+                }
+                Button(String(localized: "Cancel"), role: .cancel) {
+                    coordinator.databaseToDrop = nil
+                }
+            } message: { _ in
+                Text(String(localized: "All tables and data will be permanently deleted."))
+            }
             .modifier(FocusedCommandActionsModifier(actions: commandActions))
+    }
+
+    private var dropConfirmationBinding: Binding<Bool> {
+        Binding(
+            get: { coordinator.databaseToDrop != nil },
+            set: { newValue in
+                if !newValue { coordinator.databaseToDrop = nil }
+            }
+        )
+    }
+
+    private var dropConfirmationTitle: String {
+        if let name = coordinator.databaseToDrop {
+            return String(
+                format: String(localized: "Drop %1$@ “%2$@”?"),
+                containerEntityName.lowercased(),
+                name
+            )
+        }
+        return ""
+    }
+
+    private var containerEntityName: String {
+        PluginManager.shared.containerEntityName(for: coordinator.connection.type)
+    }
+
+    private func dropDatabase(name: String) async {
+        await coordinator.dropDatabase(name: name)
+        coordinator.databaseToDrop = nil
     }
 
     // MARK: - Sheet Content
@@ -131,23 +177,17 @@ struct MainContentView: View {
         )
 
         switch sheet {
-        case .databaseSwitcher:
-            let session = DatabaseManager.shared.session(for: connection.id)
-            let activeDatabase = session?.currentDatabase ?? connection.database
-            let activeSchema = session?.currentSchema
-            let currentSelection =
-                PluginManager.shared.supportsSchemaSwitching(for: connection.type)
-                ? (activeSchema ?? activeDatabase)
-                : activeDatabase
-            DatabaseSwitcherSheet(
-                isPresented: dismissBinding,
-                currentDatabase: currentSelection,
-                currentSchema: activeSchema,
-                databaseType: connection.type,
+        case .createDatabase:
+            let viewModel = DatabaseSwitcherViewModel(
                 connectionId: connection.id,
-                onSelect: switchDatabase,
-                onSelectSchema: { schema in
-                    Task { await coordinator.switchSchema(to: schema) }
+                currentDatabase: nil,
+                databaseType: connection.type
+            )
+            CreateDatabaseSheet(
+                databaseType: connection.type,
+                viewModel: viewModel,
+                onCreated: { newDatabaseName in
+                    Task { await coordinator.switchContainer(to: newDatabaseName) }
                 }
             )
         case .exportDialog:
@@ -157,7 +197,7 @@ struct MainContentView: View {
                 mode: .tables(
                     connection: exportConnection,
                     preselectedTables: coordinator.exportPreselectedTableNames
-                        ?? Set(sidebarState.selectedTables.map(\.name))
+                        ?? Set(coordinator.windowSidebarState.selectedTables.map(\.name))
                 ),
                 sidebarTables: tables
             )
@@ -184,7 +224,7 @@ struct MainContentView: View {
                     )
                 }
             }
-        case .importDialog:
+        case .importDialog(let formatId):
             let importDismiss = Binding<Bool>(
                 get: { coordinator.activeSheet != nil },
                 set: { if !$0 {
@@ -196,8 +236,26 @@ struct MainContentView: View {
             ImportDialog(
                 isPresented: importDismiss,
                 connection: connection,
-                initialFileURL: coordinator.importFileURL
+                initialFileURL: coordinator.importFileURL,
+                initialFormatId: formatId
             )
+        case .rowImport(let formatId):
+            let rowDismiss = Binding<Bool>(
+                get: { coordinator.activeSheet != nil },
+                set: { if !$0 {
+                    coordinator.activeSheet = nil
+                    coordinator.importFileURL = nil
+                }
+                }
+            )
+            if let url = coordinator.importFileURL {
+                RowImportSheet(
+                    isPresented: rowDismiss,
+                    connection: connection,
+                    fileURL: url,
+                    formatId: formatId
+                )
+            }
         case .backupDatabase:
             BackupDatabaseFlow(
                 isPresented: dismissBinding,
@@ -220,16 +278,6 @@ struct MainContentView: View {
                 databaseType: connection.type,
                 onExecute: coordinator.executeMaintenance
             )
-        case .quickSwitcher:
-            QuickSwitcherSheet(
-                isPresented: dismissBinding,
-                schemaProvider: SchemaProviderRegistry.shared.getOrCreate(for: connection.id),
-                connectionId: connection.id,
-                databaseType: connection.type,
-                onSelect: coordinator.handleQuickSwitcherSelection
-            )
-        case .connectionSwitcher:
-            ConnectionSwitcherSheet(isPresented: dismissBinding)
         case .sqlPreview:
             SQLReviewSheet(
                 isPresented: dismissBinding,
@@ -248,7 +296,8 @@ struct MainContentView: View {
             pendingTruncates: pendingTruncates,
             pendingDeletes: pendingDeletes,
             hasStructureChanges: toolbarState.hasStructureChanges,
-            isFileDirty: tabManager.selectedTab?.content.isFileDirty ?? false
+            isFileDirty: tabManager.selectedTab?.content.isFileDirty ?? false,
+            hasCreateTablePending: toolbarState.hasCreateTablePending
         )
     }
 
@@ -349,9 +398,9 @@ struct MainContentView: View {
                 handleConnectionStatusChange()
             }
 
-            .onChange(of: sidebarState.selectedTables) { oldTables, newTables in
+            .onChange(of: coordinator.windowSidebarState.selectedTables) { oldTables, newTables in
                 guard !coordinator.isTearingDown else {
-                    Self.lifecycleLogger.debug("[switch] sidebarState.selectedTables SKIPPED (tearingDown) windowId=\(windowId, privacy: .public)")
+                    Self.lifecycleLogger.debug("[switch] windowSidebarState.selectedTables SKIPPED (tearingDown) windowId=\(windowId, privacy: .public)")
                     return
                 }
                 handleTableSelectionChange(from: oldTables, to: newTables)
@@ -359,13 +408,13 @@ struct MainContentView: View {
             .onChange(of: tables) { _, newTables in
                 let syncAction = SidebarSyncAction.resolveOnTablesLoad(
                     newTables: newTables,
-                    selectedTables: sidebarState.selectedTables,
+                    selectedTables: coordinator.windowSidebarState.selectedTables,
                     currentTabTableName: tabManager.selectedTab?.tableContext.tableName
                 )
                 if case .select(let tableName) = syncAction,
                     let match = newTables.first(where: { $0.name == tableName })
                 {
-                    sidebarState.selectedTables = [match]
+                    coordinator.windowSidebarState.selectedTables = [match]
                 }
             }
     }
@@ -403,7 +452,7 @@ struct MainContentView: View {
                 {
                     coordinator.inspectorProxy?.showInspector()
                 }
-                scheduleInspectorUpdate(lazyLoadExcludedColumns: true)
+                scheduleInspectorUpdate()
             },
             onFilterColumn: { columnName in
                 coordinator.addFilterForColumn(columnName)
@@ -413,9 +462,6 @@ struct MainContentView: View {
             },
             onClearFilters: {
                 coordinator.clearFiltersAndReload()
-            },
-            onRefresh: {
-                coordinator.runQuery()
             },
             onFirstPage: {
                 coordinator.goToFirstPage()
@@ -429,14 +475,14 @@ struct MainContentView: View {
             onLastPage: {
                 coordinator.goToLastPage()
             },
-            onLimitChange: { newLimit in
-                coordinator.updatePageSize(newLimit)
+            onPageSizeChange: { newSize in
+                coordinator.updatePageSize(newSize)
             },
-            onOffsetChange: { newOffset in
-                coordinator.updateOffset(newOffset)
+            onShowAll: {
+                coordinator.showAllRows()
             },
-            onPaginationGo: {
-                coordinator.applyPaginationSettings()
+            onGoToPage: { page in
+                coordinator.goToPage(page)
             }
         )
     }

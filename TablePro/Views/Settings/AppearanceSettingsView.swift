@@ -2,47 +2,38 @@
 //  AppearanceSettingsView.swift
 //  TablePro
 //
-//  Settings for theme browsing, customization, and accent color.
+//  Settings for theme browsing and customization.
 //
 
 import SwiftUI
 
+enum ThemeEditSlot: Hashable {
+    case light
+    case dark
+}
+
 struct AppearanceSettingsView: View {
     @Binding var settings: AppearanceSettings
+    @State private var chosenSlot: ThemeEditSlot?
 
-    /// Computed binding that reads/writes the correct preferred theme slot.
-    /// On read: returns the theme for the current effective appearance.
-    /// On write: uses the selected theme's appearance metadata to determine the correct slot,
-    /// and switches the appearance mode so the user sees the change immediately.
-    private var effectiveThemeIdBinding: Binding<String> {
+    /// The slot currently being edited. Defaults to the active appearance so the
+    /// pane opens on the theme in use, but the user can switch to edit the other
+    /// slot without changing the app's appearance mode.
+    private var editSlot: ThemeEditSlot {
+        chosenSlot ?? (ThemeEngine.shared.effectiveAppearance == .dark ? .dark : .light)
+    }
+
+    private var slotThemeBinding: Binding<String> {
         Binding(
             get: {
-                ThemeEngine.shared.effectiveAppearance == .dark
-                    ? settings.preferredDarkThemeId
-                    : settings.preferredLightThemeId
+                editSlot == .dark ? settings.preferredDarkThemeId : settings.preferredLightThemeId
             },
             set: { newId in
-                guard let theme = ThemeEngine.shared.availableThemes
-                    .first(where: { $0.id == newId }) else { return }
-
-                // Assign to the correct slot based on the theme's appearance and
-                // switch mode to match so the user sees the change immediately.
-                // Mutate a local copy so didSet fires only once.
                 var updated = settings
-                switch theme.appearance {
-                case .dark:
+                if editSlot == .dark {
                     updated.preferredDarkThemeId = newId
-                    updated.appearanceMode = .dark
-                case .light:
+                } else {
                     updated.preferredLightThemeId = newId
-                    updated.appearanceMode = .light
-                case .auto:
-                    updated.appearanceMode = .auto
-                    if ThemeEngine.shared.effectiveAppearance == .dark {
-                        updated.preferredDarkThemeId = newId
-                    } else {
-                        updated.preferredLightThemeId = newId
-                    }
                 }
                 settings = updated
             }
@@ -65,6 +56,17 @@ struct AppearanceSettingsView: View {
                 .fixedSize()
 
                 Spacer()
+
+                Text("Editing")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+
+                Picker("", selection: Binding(get: { editSlot }, set: { chosenSlot = $0 })) {
+                    Text("Light").tag(ThemeEditSlot.light)
+                    Text("Dark").tag(ThemeEditSlot.dark)
+                }
+                .pickerStyle(.segmented)
+                .fixedSize()
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 8)
@@ -72,10 +74,10 @@ struct AppearanceSettingsView: View {
             Divider()
 
             HSplitView {
-                ThemeListView(selectedThemeId: effectiveThemeIdBinding)
+                ThemeListView(selectedThemeId: slotThemeBinding)
                     .frame(minWidth: 180, idealWidth: 210, maxWidth: 250)
 
-                ThemeEditorView(selectedThemeId: effectiveThemeIdBinding)
+                ThemeEditorView(selectedThemeId: slotThemeBinding)
                     .frame(minWidth: 400)
             }
         }

@@ -37,7 +37,11 @@ internal final class TabRouter {
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "TabRouter")
 
-    private init() {}
+    private let externalConnectionGate: ExternalConnectionGate
+
+    private init(externalConnectionGate: ExternalConnectionGate? = nil) {
+        self.externalConnectionGate = externalConnectionGate ?? ExternalConnectionGate()
+    }
 
     internal func route(_ intent: LaunchIntent) async throws {
         switch intent {
@@ -62,9 +66,26 @@ internal final class TabRouter {
         case .openSQLFile(let url):
             try await openSQLFile(url)
 
+        case .reopenClosedTab(let entry):
+            try await reopenClosedTab(entry)
+
         default:
             throw TabRouterError.unsupportedIntent(String(describing: intent))
         }
+    }
+
+    // MARK: - Recently Closed
+
+    private func reopenClosedTab(_ entry: RecentlyClosedTabEntry) async throws {
+        guard let connection = ConnectionStorage.shared.loadConnections()
+            .first(where: { $0.id == entry.connectionId }) else {
+            throw TabRouterError.connectionNotFound(entry.connectionId)
+        }
+        try await runPreConnectScriptIfNeeded(connection)
+        try await DatabaseManager.shared.ensureConnected(connection)
+        RecentlyClosedTabReopener.openWindowTab(for: entry)
+        NSApp.activate(ignoringOtherApps: true)
+        closeWelcomeWindows()
     }
 
     // MARK: - Connection
@@ -98,7 +119,8 @@ internal final class TabRouter {
 
     private func openTable(
         connectionId: UUID, transientConnection: DatabaseConnection? = nil,
-        database: String?, schema: String?, table: String, isView: Bool
+        database: String?, schema: String?, table: String, isView: Bool,
+        passwordOverride: String? = nil, sshPasswordOverride: String? = nil
     ) async throws {
         let connection: DatabaseConnection
         if let transientConnection {
@@ -109,7 +131,11 @@ internal final class TabRouter {
             throw TabRouterError.connectionNotFound(connectionId)
         }
         try await runPreConnectScriptIfNeeded(connection)
-        try await DatabaseManager.shared.ensureConnected(connection)
+        try await DatabaseManager.shared.ensureConnected(
+            connection,
+            passwordOverride: passwordOverride,
+            sshPasswordOverride: sshPasswordOverride
+        )
 
         if let schema {
             await switchSchemaOrDatabase(connectionId: connectionId, target: schema)
@@ -152,11 +178,7 @@ internal final class TabRouter {
                 } ?? true
                 return databaseMatches && schemaMatches
             }) else { continue }
-            coordinator.tabManager.selectedTabId = match.id
-            if let windowId = coordinator.windowId,
-               let window = WindowLifecycleMonitor.shared.window(for: windowId) {
-                window.makeKeyAndOrderFront(nil)
-            }
+            coordinator.selectTabAndFocusWindow(match.id)
             return true
         }
         return false
@@ -251,45 +273,43 @@ internal final class TabRouter {
             isTransient = true
         }
 
-        if !parsed.password.isEmpty {
-            ConnectionStorage.shared.savePassword(parsed.password, for: connection.id)
-        }
-        if let sshPass = parsed.sshPassword, !sshPass.isEmpty {
-            ConnectionStorage.shared.saveSSHPassword(sshPass, for: connection.id)
+        guard await externalConnectionGate.authorize(connection, scopeName: parsed.connectionName) else {
+            throw TabRouterError.userCancelled
         }
 
-        do {
-            if let table = parsed.tableName {
-                try await openTable(
-                    connectionId: connection.id,
-                    transientConnection: isTransient ? connection : nil,
-                    database: parsed.database.isEmpty ? nil : parsed.database,
-                    schema: parsed.schema,
-                    table: table,
-                    isView: parsed.isView
-                )
-                if parsed.filterColumn != nil || parsed.filterCondition != nil {
-                    try await applyFilterFromParsedURL(parsed: parsed, connectionId: connection.id)
-                }
-                return
-            }
+        let passwordOverride = parsed.password.isEmpty ? nil : parsed.password
+        let sshPasswordOverride = parsed.sshPassword.flatMap { $0.isEmpty ? nil : $0 }
 
-            try await runPreConnectScriptIfNeeded(connection)
-            let payload = EditorTabPayload(connectionId: connection.id, intent: .restoreOrDefault)
-            WindowManager.shared.openTab(payload: payload)
-            NSApp.activate(ignoringOtherApps: true)
-            try await DatabaseManager.shared.ensureConnected(connection)
-            closeWelcomeWindows()
+        if let table = parsed.tableName {
+            try await openTable(
+                connectionId: connection.id,
+                transientConnection: isTransient ? connection : nil,
+                database: parsed.database.isEmpty ? nil : parsed.database,
+                schema: parsed.schema,
+                table: table,
+                isView: parsed.isView,
+                passwordOverride: passwordOverride,
+                sshPasswordOverride: sshPasswordOverride
+            )
+            if parsed.filterColumn != nil || parsed.filterCondition != nil {
+                try await applyFilterFromParsedURL(parsed: parsed, connectionId: connection.id)
+            }
+            return
+        }
 
-            if let schema = parsed.schema {
-                await switchSchemaOrDatabase(connectionId: connection.id, target: schema)
-            }
-        } catch {
-            if isTransient {
-                ConnectionStorage.shared.deletePassword(for: connection.id)
-                ConnectionStorage.shared.deleteSSHPassword(for: connection.id)
-            }
-            throw error
+        try await runPreConnectScriptIfNeeded(connection)
+        let payload = EditorTabPayload(connectionId: connection.id, intent: .restoreOrDefault)
+        WindowManager.shared.openTab(payload: payload)
+        NSApp.activate(ignoringOtherApps: true)
+        try await DatabaseManager.shared.ensureConnected(
+            connection,
+            passwordOverride: passwordOverride,
+            sshPasswordOverride: sshPasswordOverride
+        )
+        closeWelcomeWindows()
+
+        if let schema = parsed.schema {
+            await switchSchemaOrDatabase(connectionId: connection.id, target: schema)
         }
     }
 

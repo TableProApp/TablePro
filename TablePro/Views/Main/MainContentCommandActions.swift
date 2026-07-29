@@ -22,6 +22,11 @@ import UniformTypeIdentifiers
 final class MainContentCommandActions {
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "MainContentCommandActions")
 
+    enum WindowCloseOutcome {
+        case closed
+        case cancelled
+    }
+
     // MARK: - Dependencies
 
     @ObservationIgnored private weak var coordinator: MainContentCoordinator?
@@ -158,29 +163,8 @@ final class MainContentCommandActions {
         setupFileOpenObservers()
     }
 
-    /// Observers for notifications still posted by non-menu views (DataGrid, SidebarView,
-    /// context menus, QueryEditorView, ConnectionStatusView). These bridge AppKit/non-menu
-    /// notification posts to the same command action methods used by @FocusedValue callers.
     private func setupNonMenuNotificationObservers() {
-        observeKeyWindowOnly(AppCommands.shared.addNewRow) { [weak self] _ in self?.addNewRow() }
-
-        observeKeyWindowOnly(AppCommands.shared.deleteSelectedRows) { [weak self] _ in
-            self?.deleteSelectedRows()
-        }
-
-        observeKeyWindowOnly(AppCommands.shared.duplicateRow) { [weak self] _ in self?.duplicateRow() }
-
         observeKeyWindowOnly(AppCommands.shared.exportQueryResults) { [weak self] _ in self?.exportQueryResults() }
-
-        observeKeyWindowOnly(AppCommands.shared.copySelectedRows) { [weak self] _ in
-            guard let self else { return }
-            let indices = self.selectionState.indices
-            self.coordinator?.copySelectedRowsToClipboard(indices: indices)
-        }
-
-        observeKeyWindowOnly(AppCommands.shared.pasteRows) { [weak self] _ in
-            self?.coordinator?.pasteRows()
-        }
     }
 
     // MARK: - Row Operations (Group A — Called Directly)
@@ -197,10 +181,19 @@ final class MainContentCommandActions {
         }
     }
 
+    private func resolvedRowSelection() -> Set<Int> {
+        coordinator?.dataTabDelegate?.tableViewCoordinator?.currentRowSelection() ?? selectionState.indices
+    }
+
     func deleteSelectedRows(rowIndices: Set<Int>? = nil) {
         let fromDataGrid = rowIndices != nil
 
-        let indices = rowIndices ?? selectionState.indices
+        if coordinator?.tabManager.selectedTab?.display.resultsViewMode == .structure {
+            coordinator?.structureActions?.removeRow?()
+            return
+        }
+
+        let indices = rowIndices ?? resolvedRowSelection()
         if !indices.isEmpty {
             coordinator?.deleteSelectedRows(indices: indices)
         } else if !fromDataGrid, !selectedTables.wrappedValue.isEmpty {
@@ -233,19 +226,16 @@ final class MainContentCommandActions {
         if coordinator?.tabManager.selectedTab?.display.resultsViewMode == .structure {
             coordinator?.structureActions?.copyRows?()
         } else {
-            let indices = selectionState.indices
-            coordinator?.copySelectedRowsToClipboard(indices: indices)
+            coordinator?.copySelectedRowsToClipboard(indices: resolvedRowSelection())
         }
     }
 
     func copySelectedRowsWithHeaders() {
-        let indices = selectionState.indices
-        coordinator?.copySelectedRowsWithHeaders(indices: indices)
+        coordinator?.copySelectedRowsWithHeaders(indices: resolvedRowSelection())
     }
 
     func copySelectedRowsAsJson() {
-        let indices = selectionState.indices
-        coordinator?.copySelectedRowsAsJson(indices: indices)
+        coordinator?.copySelectedRowsAsJson(indices: resolvedRowSelection())
     }
 
     func pasteRows() {
@@ -261,7 +251,7 @@ final class MainContentCommandActions {
     var isConnected: Bool { coordinator != nil }
     var isQueryExecuting: Bool { coordinator?.toolbarState.isExecuting ?? false }
 
-    var safeModeLevel: SafeModeLevel { connection.safeModeLevel }
+    var safeModeLevel: SafeModeLevel { coordinator?.toolbarState.safeModeLevel ?? connection.safeModeLevel }
 
     var isReadOnly: Bool { safeModeLevel.blocksAllWrites }
 
@@ -271,8 +261,26 @@ final class MainContentCommandActions {
 
     var currentDatabaseType: DatabaseType { connection.type }
 
-    var supportsDatabaseSwitching: Bool {
-        PluginManager.shared.supportsDatabaseSwitching(for: connection.type)
+    var connectionId: UUID { connection.id }
+
+    var activeDatabaseName: String { coordinator?.activeDatabaseName ?? "" }
+
+    var openTabCount: Int { coordinator?.tabManager.tabs.count ?? 0 }
+
+    var supportsContainerSwitching: Bool {
+        PluginManager.shared.supportsContainerSwitching(for: connection.type)
+    }
+
+    var canSwitchSidebarLayout: Bool {
+        PluginManager.shared.supportsDatabaseTree(for: connection.type)
+    }
+
+    var sidebarLayout: SidebarLayout {
+        SharedSidebarState.forConnection(connection.id).sidebarLayout
+    }
+
+    func setSidebarLayout(_ layout: SidebarLayout) {
+        SharedSidebarState.forConnection(connection.id).sidebarLayout = layout
     }
 
     var isCurrentTabEditable: Bool {
@@ -284,7 +292,7 @@ final class MainContentCommandActions {
     }
 
     var hasRowSelection: Bool {
-        !selectionState.indices.isEmpty
+        !resolvedRowSelection().isEmpty
     }
 
     var hasTableSelection: Bool {
@@ -314,13 +322,28 @@ final class MainContentCommandActions {
 
     // MARK: - Unsaved Changes Check
 
-    private var hasUnsavedChanges: Bool {
-        let hasEditedCells = coordinator?.changeManager.hasChanges ?? false
-        let hasPendingTableOps = !pendingTruncates.wrappedValue.isEmpty
-            || !pendingDeletes.wrappedValue.isEmpty
-        let hasSidebarEdits = rightPanelState.editState.hasEdits
-        let hasFileDirty = coordinator?.tabManager.selectedTab?.content.isFileDirty ?? false
-        return hasEditedCells || hasPendingTableOps || hasSidebarEdits || hasFileDirty
+    /// Scoped to the whole window, not the selected tab: closing a window closes every tab in it,
+    /// so a tab the user is not looking at must still get its prompt.
+    private var hasUnsavedWorkInWindow: Bool {
+        coordinator?.hasAnyUnsavedWork() ?? false
+    }
+
+    private var isUsersRolesTab: Bool {
+        coordinator?.tabManager.selectedTab?.tabType == .usersRoles
+    }
+
+    var undoMenuTitle: String {
+        guard isUsersRolesTab, let actions = coordinator?.usersRolesActions, actions.canUndo() else {
+            return String(localized: "Undo")
+        }
+        return actions.undoMenuTitle()
+    }
+
+    var redoMenuTitle: String {
+        guard isUsersRolesTab, let actions = coordinator?.usersRolesActions, actions.canRedo() else {
+            return String(localized: "Redo")
+        }
+        return actions.redoMenuTitle()
     }
 
     // MARK: - Editor Query Loading (Group A — Called Directly)
@@ -339,7 +362,8 @@ final class MainContentCommandActions {
         if let coordinator, coordinator.tabManager.tabs.isEmpty {
             coordinator.tabManager.addTab(
                 initialQuery: initialQuery,
-                databaseName: coordinator.activeDatabaseName
+                databaseName: coordinator.activeDatabaseName,
+                claimFocus: true
             )
             return
         }
@@ -352,67 +376,125 @@ final class MainContentCommandActions {
     }
 
     func closeTab() {
-        let seq = MainContentCoordinator.nextSwitchSeq()
-        Self.logger.info("[close] closeTab seq=\(seq) hasUnsavedChanges=\(self.hasUnsavedChanges)")
-        if hasUnsavedChanges {
-            Task {
-                let keyWindow = NSApp.keyWindow
-                let result = await AlertHelper.confirmSaveChanges(
-                    message: String(localized: "Your changes will be lost if you don't save them."),
-                    window: keyWindow
-                )
+        Task { await closeWindowAwaiting() }
+    }
 
-                switch result {
-                case .save:
-                    await saveAndClose()
-                case .dontSave:
-                    discardAndClose()
-                case .cancel:
-                    break
-                }
-            }
-        } else {
-            performClose()
+    /// The single close primitive. `asBatchSurvivor` is `nil` for a lone close gesture, which lets
+    /// the window decide for itself whether it can go away; a batch passes `true` for the one
+    /// window it keeps blank and `false` for every window it tears down.
+    @discardableResult
+    func closeWindowAwaiting(asBatchSurvivor: Bool? = nil) async -> WindowCloseOutcome {
+        let seq = MainContentCoordinator.nextSwitchSeq()
+        Self.logger.info("[close] closeWindowAwaiting seq=\(seq) hasUnsavedWork=\(self.hasUnsavedWorkInWindow)")
+
+        guard hasUnsavedWorkInWindow else {
+            finish(asBatchSurvivor: asBatchSurvivor)
+            return .closed
+        }
+
+        selectInTabGroup()
+        let result = await AlertHelper.confirmSaveChanges(
+            message: String(localized: "Your changes will be lost if you don't save them."),
+            window: closeAnchorWindow
+        )
+
+        switch result {
+        case .save:
+            return await saveAndClose(asBatchSurvivor: asBatchSurvivor) ? .closed : .cancelled
+        case .dontSave:
+            discardAndClose(asBatchSurvivor: asBatchSurvivor)
+            return .closed
+        case .cancel:
+            return .cancelled
         }
     }
 
-    private func performClose() {
+    var closeAnchorWindow: NSWindow? {
+        coordinator?.contentWindow ?? window ?? NSApp.keyWindow
+    }
+
+    /// A background tabbed window is occluded by the selected tab, so its confirmation sheet would
+    /// animate onto a surface the user cannot see. Bring it forward first.
+    private func selectInTabGroup() {
+        guard let target = coordinator?.contentWindow ?? window,
+              let tabGroup = target.tabGroup,
+              tabGroup.selectedWindow !== target else { return }
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0
+            tabGroup.selectedWindow = target
+        }
+    }
+
+    /// Every close gesture funnels here, so this is the one place that can guarantee a closing
+    /// tab's content outlives the window. It runs before the branch dispatch below because two of
+    /// the three branches tear the window down without another chance to capture anything.
+    private func captureClosingTabsForRecovery() {
+        guard let coordinator else { return }
+        for tab in coordinator.tabsForRecoveryCapture() {
+            RecentlyClosedTabStore.shared.push(tab: tab, connection: connection)
+        }
+    }
+
+    private func finish(asBatchSurvivor: Bool?) {
         let t0 = Date()
         guard let window = coordinator?.contentWindow ?? NSApp.keyWindow else { return }
-        let visibleTabbedWindows = (window.tabbedWindows ?? [window]).filter(\.isVisible)
-        Self.logger.info("[close] performClose visibleTabs=\(visibleTabbedWindows.count) tabManagerTabs=\(self.coordinator?.tabManager.tabs.count ?? 0)")
+        captureClosingTabsForRecovery()
 
-        if visibleTabbedWindows.count > 1 {
-            window.close()
-        } else if coordinator?.tabManager.tabs.isEmpty == true {
+        if let asBatchSurvivor {
+            Self.logger.info("[close] finish batch survivor=\(asBatchSurvivor)")
+            if asBatchSurvivor {
+                clearTabsInPlace()
+            } else {
+                window.close()
+            }
+            return
+        }
+
+        let visibleTabbedWindows = (window.tabbedWindows ?? [window]).filter(\.isVisible)
+        Self.logger.info("[close] finish visibleTabs=\(visibleTabbedWindows.count) tabManagerTabs=\(self.coordinator?.tabManager.tabs.count ?? 0)")
+
+        if visibleTabbedWindows.count > 1 || coordinator?.tabManager.tabs.isEmpty == true {
             window.close()
         } else {
-            if let coordinator {
-                for tab in coordinator.tabManager.tabs {
-                    coordinator.tabSessionRegistry.removeTableRows(for: tab.id)
-                    if let url = tab.content.sourceFileURL {
-                        WindowLifecycleMonitor.shared.unregisterSourceFile(url)
-                    }
-                }
-                coordinator.tabManager.tabs.removeAll()
-                coordinator.tabManager.selectedTabId = nil
-                coordinator.toolbarState.isTableTab = false
-            }
+            clearTabsInPlace()
         }
-        Self.logger.info("[close] performClose done ms=\(Int(Date().timeIntervalSince(t0) * 1_000))")
+        Self.logger.info("[close] finish done ms=\(Int(Date().timeIntervalSince(t0) * 1_000))")
     }
 
-    private func saveAndClose() async {
+    /// Empties the window instead of closing it, which is how the last tab of a group lands on the
+    /// no-tabs state with its connection still live.
+    private func clearTabsInPlace() {
+        guard let coordinator else { return }
+        for tab in coordinator.tabManager.tabs {
+            coordinator.tabSessionRegistry.removeTableRows(for: tab.id)
+            if let url = tab.content.sourceFileURL {
+                WindowLifecycleMonitor.shared.unregisterSourceFile(url)
+            }
+        }
+        coordinator.tabManager.tabs.removeAll()
+        coordinator.tabManager.selectedTabId = nil
+        coordinator.toolbarState.isTableTab = false
+    }
+
+    private func saveAndClose(asBatchSurvivor: Bool?) async -> Bool {
         guard let coordinator = coordinator else {
-            performClose()
-            return
+            finish(asBatchSurvivor: asBatchSurvivor)
+            return true
+        }
+
+        // User and role changes can only be applied after the SQL is reviewed, so Save opens the
+        // review sheet and cancels the close. Falling through here would close the window and
+        // destroy every staged change.
+        if isUsersRolesTab, coordinator.usersRolesActions?.hasChanges() == true {
+            coordinator.usersRolesActions?.reviewAndApply()
+            return false
         }
 
         // Structure view saves via direct coordinator call
         if coordinator.tabManager.selectedTab?.display.resultsViewMode == .structure {
             coordinator.structureActions?.saveChanges?()
-            performClose()
-            return
+            finish(asBatchSurvivor: asBatchSurvivor)
+            return true
         }
 
         // Data grid changes or pending table operations take priority
@@ -425,26 +507,27 @@ final class MainContentCommandActions {
                 saveChanges()
             }
             if saved {
-                performClose()
+                finish(asBatchSurvivor: asBatchSurvivor)
             }
-            return
+            return saved
         }
 
         // Sidebar-only edits (made directly in the inspector panel)
         if rightPanelState.editState.hasEdits {
             rightPanelState.onSave?()
-            performClose()
-            return
+            finish(asBatchSurvivor: asBatchSurvivor)
+            return true
         }
 
         // File save (query editor with source file)
         if coordinator.tabManager.selectedTab?.content.isFileDirty == true {
             saveFileToSourceURL()
-            performClose()
-            return
+            finish(asBatchSurvivor: asBatchSurvivor)
+            return true
         }
 
-        performClose()
+        finish(asBatchSurvivor: asBatchSurvivor)
+        return true
     }
 
     private func saveFileToSourceURL() {
@@ -516,12 +599,12 @@ final class MainContentCommandActions {
         }
     }
 
-    private func discardAndClose() {
+    private func discardAndClose(asBatchSurvivor: Bool?) {
         coordinator?.changeManager.clearChangesAndUndoHistory()
         pendingTruncates.wrappedValue.removeAll()
         pendingDeletes.wrappedValue.removeAll()
         rightPanelState.editState.clearEdits()
-        performClose()
+        finish(asBatchSurvivor: asBatchSurvivor)
     }
 
     func copyTableNames() {
@@ -549,13 +632,20 @@ final class MainContentCommandActions {
         coordinator?.showServerDashboard()
     }
 
-    func openTerminal() {
-        coordinator?.openTerminal()
-    }
-
     var supportsServerDashboard: Bool {
         guard let type = coordinator?.connection.type else { return false }
         return ServerDashboardQueryProviderFactory.provider(for: type) != nil
+    }
+
+    func showUsersAndRoles() {
+        coordinator?.showUsersAndRoles()
+    }
+
+    var supportsUserManagement: Bool {
+        guard let connectionId = coordinator?.connectionId,
+              let adapter = DatabaseManager.shared.driver(for: connectionId) as? PluginDriverAdapter
+        else { return false }
+        return adapter.schemaPluginDriver.capabilities.contains(.userManagement)
     }
 
     // MARK: - Tab Navigation (Group A — Called Directly)
@@ -592,7 +682,14 @@ final class MainContentCommandActions {
     // MARK: - Data Operations (Group A — Called Directly)
 
     func saveChanges() {
-        // Check if we're in structure view mode
+        if isUsersRolesTab {
+            coordinator?.usersRolesActions?.reviewAndApply()
+            return
+        }
+        if coordinator?.tabManager.selectedTab?.tabType == .createTable {
+            coordinator?.createTableActions?.createTable?()
+            return
+        }
         if coordinator?.tabManager.selectedTab?.display.resultsViewMode == .structure {
             coordinator?.structureActions?.saveChanges?()
         } else if coordinator?.changeManager.hasChanges == true
@@ -644,6 +741,7 @@ final class MainContentCommandActions {
                     mutTab.content.savedFileContent = content
                     mutTab.title = url.deletingPathExtension().lastPathComponent
                 }
+                coordinator?.tabManager.markTabRenamed(tabId)
             } catch {
                 Self.logger.error("Failed to save file: \(error.localizedDescription)")
             }
@@ -685,8 +783,12 @@ final class MainContentCommandActions {
         coordinator?.openExportQueryResultsDialog()
     }
 
-    func importTables() {
-        coordinator?.openImportDialog()
+    func importTables(formatId: String) {
+        coordinator?.openImportDialog(formatId: formatId)
+    }
+
+    var availableImportFormats: [ImportFormatOption] {
+        PluginManager.shared.importFormatOptions(for: currentDatabaseType)
     }
 
     func backupDatabase() {
@@ -753,6 +855,10 @@ final class MainContentCommandActions {
         coordinator?.runQuery()
     }
 
+    func runQueryWithoutLimit() {
+        coordinator?.runQuery(bypassRowLimit: true)
+    }
+
     func runAllStatements() {
         coordinator?.runAllStatements()
     }
@@ -762,23 +868,7 @@ final class MainContentCommandActions {
     }
 
     func formatQuery() {
-        guard let coordinator,
-              let (tab, tabIndex) = coordinator.tabManager.selectedTabAndIndex else { return }
-        let dbType = connection.type
-        let formatter = SQLFormatterService()
-        let options = SQLFormatterOptions.default
-
-        do {
-            let result = try formatter.format(
-                tab.content.query,
-                dialect: dbType,
-                cursorOffset: 0,
-                options: options
-            )
-            coordinator.tabManager.mutate(at: tabIndex) { $0.content.query = result.formattedSQL }
-        } catch {
-            Self.logger.error("SQL Formatting error: \(error.localizedDescription, privacy: .public)")
-        }
+        EditorEventRouter.shared.performFormatSQLForKeyWindow()
     }
 
     // MARK: - UI Operations (Group A — Called Directly)
@@ -789,6 +879,30 @@ final class MainContentCommandActions {
 
     func toggleRightSidebar() {
         coordinator?.inspectorProxy?.toggleInspector()
+    }
+
+    func goToPreviousPage() {
+        coordinator?.goToPreviousPage()
+    }
+
+    func goToNextPage() {
+        coordinator?.goToNextPage()
+    }
+
+    func goToFirstPage() {
+        coordinator?.goToFirstPage()
+    }
+
+    func goToLastPage() {
+        coordinator?.goToLastPage()
+    }
+
+    func focusSidebarSearch() {
+        coordinator?.splitViewController?.focusSidebarSearch()
+    }
+
+    func showSidebarTab(_ tab: SidebarTab) {
+        coordinator?.splitViewController?.setSidebarTab(tab)
     }
 
     func toggleResults() {
@@ -818,6 +932,20 @@ final class MainContentCommandActions {
         coordinator.switchActiveResultSet(to: tab.display.resultSets[currentIndex + 1].id, in: tab.id)
     }
 
+    var canPinResultTab: Bool {
+        coordinator?.canPinActiveResultSet ?? false
+    }
+
+    var isResultTabPinned: Bool {
+        coordinator?.isActiveResultSetPinned ?? false
+    }
+
+    func pinResultTab() {
+        guard let coordinator,
+              let activeId = coordinator.tabManager.selectedTab?.display.activeResultSet?.id else { return }
+        coordinator.togglePinResultSet(id: activeId)
+    }
+
     func closeResultTab() {
         guard let coordinator else { return }
         let tab = coordinator.tabManager.selectedTab
@@ -828,7 +956,12 @@ final class MainContentCommandActions {
     // MARK: - Database Operations (Group A — Called Directly)
 
     func openDatabaseSwitcher() {
-        coordinator?.activeSheet = .databaseSwitcher
+        guard let coordinator else { return }
+        let type = coordinator.connection.type
+        guard PluginManager.shared.supportsContainerSwitching(for: type) else { return }
+        guard PluginManager.shared.connectionMode(for: type) != .fileBased else { return }
+        coordinator.contentWindow?.makeFirstResponder(nil)
+        coordinator.isDatabaseSwitcherShown = true
     }
 
     func openQuickSwitcher() {
@@ -836,12 +969,17 @@ final class MainContentCommandActions {
     }
 
     func openConnectionSwitcher() {
-        coordinator?.activeSheet = .connectionSwitcher
+        coordinator?.contentWindow?.makeFirstResponder(nil)
+        coordinator?.isConnectionSwitcherShown = true
     }
 
     // MARK: - Undo/Redo (Group A — Called Directly)
 
     func undoChange() {
+        if isUsersRolesTab {
+            coordinator?.usersRolesActions?.undo()
+            return
+        }
         if coordinator?.tabManager.selectedTab?.display.resultsViewMode == .structure {
             coordinator?.structureActions?.undo?()
             return
@@ -853,6 +991,10 @@ final class MainContentCommandActions {
     }
 
     func redoChange() {
+        if isUsersRolesTab {
+            coordinator?.usersRolesActions?.redo()
+            return
+        }
         if coordinator?.tabManager.selectedTab?.display.resultsViewMode == .structure {
             coordinator?.structureActions?.redo?()
             return
@@ -867,34 +1009,36 @@ final class MainContentCommandActions {
 
     // MARK: Data Broadcasts
 
+    func refresh() {
+        guard let coordinator else { return }
+        coordinator.requestRefresh(
+            hasPendingTableOps: hasPendingTableOps,
+            onDiscard: { [weak self] in self?.clearPendingTableOps() }
+        )
+    }
+
+    private var hasPendingTableOps: Bool {
+        !pendingTruncates.wrappedValue.isEmpty || !pendingDeletes.wrappedValue.isEmpty
+    }
+
+    private func clearPendingTableOps() {
+        pendingTruncates.wrappedValue.removeAll()
+        pendingDeletes.wrappedValue.removeAll()
+    }
+
     private func setupDataBroadcastObservers() {
         AppCommands.shared.refreshData
             .receive(on: RunLoop.main)
-            .sink { [weak self] target in
-                guard let self else { return }
-                if let target, target != self.connection.id {
-                    return
-                }
-                if target == nil && !self.isKeyWindow() {
-                    return
-                }
-                self.handleRefreshData()
+            .sink { [weak self] changedConnectionId in
+                guard let self, changedConnectionId == self.connection.id,
+                      let coordinator = self.coordinator else { return }
+                coordinator.reloadActiveTableData(
+                    hasPendingTableOps: self.hasPendingTableOps,
+                    onDiscard: { [weak self] in self?.clearPendingTableOps() }
+                )
+                Task { await coordinator.refreshTables() }
             }
             .store(in: &eventCancellables)
-    }
-
-    private func handleRefreshData() {
-        let hasPendingTableOps = !pendingTruncates.wrappedValue.isEmpty || !pendingDeletes.wrappedValue.isEmpty
-        coordinator?.handleRefresh(
-            hasPendingTableOps: hasPendingTableOps,
-            onDiscard: { [weak self] in
-                self?.pendingTruncates.wrappedValue.removeAll()
-                self?.pendingDeletes.wrappedValue.removeAll()
-            }
-        )
-        if let coordinator {
-            Task { await coordinator.refreshTables() }
-        }
     }
 
     // MARK: Tab Broadcasts

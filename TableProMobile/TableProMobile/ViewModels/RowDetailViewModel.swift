@@ -23,8 +23,11 @@ final class RowDetailViewModel {
     private(set) var loadingCell: Int?
     private(set) var fullValueOverrides: [Int: [Int: String?]] = [:]
     private(set) var isSaving = false
+    private(set) var pendingWriteConfirmation = false
     var operationError: AppError?
     private(set) var showSaveSuccess = false
+
+    @ObservationIgnored private var pendingSaveSQL: String?
 
     @ObservationIgnored let onSaved: (() -> Void)?
     @ObservationIgnored let loadFullValueProvider: ((CellRef) async throws -> String?)?
@@ -140,8 +143,8 @@ final class RowDetailViewModel {
     func saveChanges() async -> Bool {
         guard let session, let table else { return false }
 
-        isSaving = true
-        defer { isSaving = false }
+        pendingWriteConfirmation = false
+        pendingSaveSQL = nil
 
         let pkValues: [(column: String, value: String)] = columnDetails.compactMap { col in
             guard col.isPrimaryKey else { return nil }
@@ -184,6 +187,29 @@ final class RowDetailViewModel {
             changes: changes,
             primaryKeys: pkValues
         )
+
+        switch safeModeLevel.writePermission {
+        case .blocked:
+            return false
+        case .requiresConfirmation:
+            pendingSaveSQL = sql
+            pendingWriteConfirmation = true
+            return false
+        case .proceed:
+            return await execute(sql: sql, session: session)
+        }
+    }
+
+    func executePendingSave() async -> Bool {
+        pendingWriteConfirmation = false
+        guard let session, let sql = pendingSaveSQL else { return false }
+        pendingSaveSQL = nil
+        return await execute(sql: sql, session: session)
+    }
+
+    private func execute(sql: String, session: ConnectionSession) async -> Bool {
+        isSaving = true
+        defer { isSaving = false }
 
         do {
             _ = try await session.driver.execute(query: sql)

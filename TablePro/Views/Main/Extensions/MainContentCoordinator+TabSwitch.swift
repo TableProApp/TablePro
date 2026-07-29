@@ -38,10 +38,13 @@ extension MainContentCoordinator {
             if let tableName = tabManager.tabs[oldIndex].tableContext.tableName {
                 FilterSettingsStorage.shared.saveLastFilters(
                     tabManager.tabs[oldIndex].filterState.appliedFilters,
-                    for: tableName
+                    logicMode: tabManager.tabs[oldIndex].filterState.filterLogicMode,
+                    for: tableName,
+                    connectionId: connectionId,
+                    databaseName: tabManager.tabs[oldIndex].tableContext.databaseName,
+                    schemaName: tabManager.tabs[oldIndex].tableContext.schemaName
                 )
             }
-            persistOutgoingTabHiddenColumns(oldIndex: oldIndex)
         }
         let saveMs = Int(Date().timeIntervalSince(saveStart) * 1_000)
 
@@ -67,14 +70,18 @@ extension MainContentCoordinator {
 
             let pendingState = newTab.pendingChanges
             if pendingState.hasChanges {
-                changeManager.restoreState(from: pendingState, tableName: newTab.tableContext.tableName ?? "", databaseType: connection.type)
+                changeManager.restoreState(
+                    from: pendingState,
+                    tableName: newTab.tableContext.tableName ?? "",
+                    schemaName: newTab.tableContext.schemaName,
+                    databaseType: connection.type
+                )
             } else {
                 changeManager.configureForTable(
                     tableName: newTab.tableContext.tableName ?? "",
+                    schemaName: newTab.tableContext.schemaName,
                     columns: newRows.columns,
-                    primaryKeyColumns: newTab.tableContext.primaryKeyColumns.isEmpty
-                        ? newRows.columns.prefix(1).map { $0 }
-                        : newTab.tableContext.primaryKeyColumns,
+                    primaryKeyColumns: newTab.tableContext.primaryKeyColumns,
                     databaseType: connection.type,
                     triggerReload: false
                 )
@@ -95,8 +102,9 @@ extension MainContentCoordinator {
                     changeManager.reloadVersion += 1
                     Task {
                         await switchDatabase(to: newTab.tableContext.databaseName)
+                        lazyLoadCurrentTabIfNeeded()
                     }
-                    return  // switchDatabase will re-execute the query
+                    return
                 }
             }
 

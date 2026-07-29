@@ -10,22 +10,20 @@ import Foundation
 import os
 import TableProPluginKit
 
-final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
-    private let config: DriverConnectionConfig
-    private var libpqConnection: LibPQPluginConnection?
-    private var _currentSchema: String = "public"
+class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
+    let core: LibPQDriverCore
 
     private static let logger = Logger(subsystem: "com.TablePro.PostgreSQLDriver", category: "PostgreSQLPluginDriver")
 
-    var currentSchema: String? { _currentSchema }
-    var supportsSchemas: Bool { true }
-    var supportsTransactions: Bool { true }
-    var serverVersion: String? { libpqConnection?.serverVersion() }
-    var serverVersionNumber: Int32 { libpqConnection?.serverVersionNumber() ?? 0 }
+    private static let undefinedTableSQLState = PostgreSQLTableListingLadder.undefinedTableSQLState
+    private static let undefinedFunctionSQLState = PostgreSQLTableListingLadder.undefinedFunctionSQLState
+
+    private var catalogPresence: PostgreSQLCatalogPresence?
+
+    var serverVersionNumber: Int32 { core.serverVersionNumber }
     var versionedCapabilities: PostgreSQLCapabilities {
-        PostgreSQLCapabilities(serverVersion: serverVersionNumber)
+        PostgreSQLCapabilities(serverVersion: core.serverVersionNumber)
     }
-    var parameterStyle: ParameterStyle { .dollar }
 
     var capabilities: PluginCapabilities {
         [
@@ -38,138 +36,62 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             .materializedViews,
             .foreignTables,
             .storedProcedures,
-            .userFunctions
+            .userFunctions,
+            .userManagement
         ]
     }
 
-    init(config: DriverConnectionConfig) {
-        self.config = config
-    }
-
-    private var escapedSchema: String {
-        escapeLiteral(_currentSchema)
-    }
-
-    private func escapeLiteral(_ str: String) -> String {
-        var result = str
-        result = result.replacingOccurrences(of: "'", with: "''")
-        result = result.replacingOccurrences(of: "\0", with: "")
-        return result
+    init(config: DriverConnectionConfig, singleConnectionMode: Bool = false) {
+        self.core = LibPQDriverCore(config: config, singleConnectionMode: singleConnectionMode)
     }
 
     // MARK: - Connection
 
     func connect() async throws {
-        let sslConfig = config.ssl
-
-        let pqConn = LibPQPluginConnection(
-            host: config.host,
-            port: config.port,
-            user: config.username,
-            password: config.password.isEmpty ? nil : config.password,
-            database: config.database,
-            sslConfig: sslConfig
-        )
-
-        try await pqConn.connect()
-        self.libpqConnection = pqConn
-
-        if let schemaResult = try? await pqConn.executeQuery("SELECT current_schema()"),
-           let schema = schemaResult.rows.first?.first?.asText {
-            _currentSchema = schema
+        core.onPostConnect = { [weak self] in
+            await self?.probeCatalogPresence()
+            await self?.probePostgisOids()
         }
+        try await core.connect()
     }
 
-    func disconnect() {
-        libpqConnection?.disconnect()
-        libpqConnection = nil
-    }
-
-    func ping() async throws {
-        _ = try await execute(query: "SELECT 1")
-    }
-
-    // MARK: - Query Execution
-
-    func execute(query: String) async throws -> PluginQueryResult {
-        try await executeWithReconnect(query: query, isRetry: false)
-    }
-
-    private func executeWithReconnect(query: String, isRetry: Bool) async throws -> PluginQueryResult {
-        guard let pqConn = libpqConnection else {
-            throw LibPQPluginError.notConnected
-        }
-
-        let startTime = Date()
-
+    private func probeCatalogPresence() async {
         do {
-            let result = try await pqConn.executeQuery(query)
-            return PluginQueryResult(
-                columns: result.columns,
-                columnTypeNames: result.columnTypeNames,
-                rows: result.rows,
-                rowsAffected: result.affectedRows,
-                executionTime: Date().timeIntervalSince(startTime),
-                isTruncated: result.isTruncated
-            )
-        } catch let error as NSError where !isRetry && isConnectionLostError(error) {
-            try await reconnect()
-            return try await executeWithReconnect(query: query, isRetry: true)
+            let result = try await core.execute(query: PostgreSQLCatalogPresence.probeQuery)
+            let relationNames = result.rows.compactMap { $0.first?.asText }
+            catalogPresence = PostgreSQLCatalogPresence(relationNames: relationNames)
+        } catch {
+            Self.logger.debug("Catalog presence probe failed; using version-based capabilities: \(error.localizedDescription)")
         }
     }
 
-    func executeParameterized(query: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult {
-        guard let pqConn = libpqConnection else {
-            throw LibPQPluginError.notConnected
+    private func probePostgisOids() async {
+        do {
+            let result = try await core.execute(query: PostGISSpatialRewrite.probeQuery)
+            var map: [UInt32: String] = [:]
+            for row in result.rows {
+                guard row.count >= 2,
+                      let oidText = row[0].asText,
+                      let oid = UInt32(oidText),
+                      let typname = row[1].asText else { continue }
+                map[oid] = typname
+            }
+            core.setPostgisOidMap(map)
+        } catch {
+            Self.logger.debug("PostGIS OID probe failed; spatial rewrite disabled for this session: \(error.localizedDescription)")
         }
-
-        let startTime = Date()
-        let result = try await pqConn.executeParameterizedQuery(query, parameters: parameters)
-        return PluginQueryResult(
-            columns: result.columns,
-            columnTypeNames: result.columnTypeNames,
-            rows: result.rows,
-            rowsAffected: result.affectedRows,
-            executionTime: Date().timeIntervalSince(startTime),
-            isTruncated: result.isTruncated
-        )
     }
 
-    // MARK: - Streaming
-
-    func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
-        guard let pqConn = libpqConnection else {
-            return AsyncThrowingStream { $0.finish(throwing: LibPQPluginError.notConnected) }
-        }
-        return pqConn.streamQuery(query)
+    private func includesMaterializedViews() -> Bool {
+        catalogPresence?.hasMaterializedViews ?? versionedCapabilities.hasMaterializedViewsCatalog
     }
 
-    // MARK: - Reconnect
-
-    private func isConnectionLostError(_ error: NSError) -> Bool {
-        let errorMessage = error.localizedDescription.lowercased()
-        return errorMessage.contains("connection") &&
-            (errorMessage.contains("lost") ||
-                errorMessage.contains("closed") ||
-                errorMessage.contains("no connection") ||
-                errorMessage.contains("could not send"))
+    private func includesForeignTables() -> Bool {
+        catalogPresence?.hasForeignTables ?? versionedCapabilities.hasForeignTablesCatalog
     }
 
-    private func reconnect() async throws {
-        libpqConnection?.disconnect()
-        libpqConnection = nil
-        try await connect()
-    }
-
-    // MARK: - Cancellation
-
-    func cancelQuery() throws {
-        libpqConnection?.cancelCurrentQuery()
-    }
-
-    func applyQueryTimeout(_ seconds: Int) async throws {
-        let ms = seconds * 1_000
-        _ = try await execute(query: "SET statement_timeout = '\(ms)'")
+    private func includesSequencesCatalog() -> Bool {
+        catalogPresence?.hasSequences ?? versionedCapabilities.hasSequencesCatalog
     }
 
     // MARK: - EXPLAIN
@@ -233,55 +155,66 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Schema
 
     func fetchTables(schema: String?) async throws -> [PluginTableInfo] {
-        let schemaLiteral = escapeLiteral(schema ?? _currentSchema)
-        let caps = versionedCapabilities
-
-        var unions: [String] = [
-            """
-            SELECT table_name, table_type FROM information_schema.tables
-            WHERE table_schema = '\(schemaLiteral)'
-              AND table_type IN ('BASE TABLE', 'VIEW')
-            """
-        ]
-
-        if caps.hasMaterializedViewsCatalog {
-            unions.append(
-                """
-                SELECT matviewname AS table_name, 'MATERIALIZED VIEW' AS table_type
-                FROM pg_matviews
-                WHERE schemaname = '\(schemaLiteral)'
-                """
+        let schemaLiteral = escapeLiteral(schema ?? core.currentSchema)
+        func query(_ attempt: PostgreSQLTableListingAttempt) -> String {
+            PostgreSQLSchemaQueries.fetchTables(
+                schemaLiteral: schemaLiteral,
+                includeMaterializedViews: attempt.includeOptionalCatalogs && includesMaterializedViews(),
+                includeForeignTables: attempt.includeOptionalCatalogs && includesForeignTables(),
+                includeComments: attempt.includeComments,
+                includePartitionAwareness: attempt.includePartitionAwareness
             )
         }
 
-        if caps.hasForeignTablesCatalog {
-            unions.append(
-                """
-                SELECT c.relname AS table_name, 'FOREIGN TABLE' AS table_type
-                FROM pg_foreign_table ft
-                JOIN pg_class c ON c.oid = ft.ftrelid
-                JOIN pg_namespace n ON n.oid = c.relnamespace
-                WHERE n.nspname = '\(schemaLiteral)'
-                """
-            )
+        var result: PluginQueryResult?
+        for attempt in PostgreSQLTableListingLadder.degradableAttempts where result == nil {
+            do {
+                result = try await execute(query: query(attempt))
+            } catch let error as LibPQPluginError where PostgreSQLTableListingLadder.isDegradable(sqlState: error.sqlState) {
+                Self.logger.debug("Table listing degrading past \(attempt.label, privacy: .public): \(error.localizedDescription)")
+            }
+        }
+        if result == nil {
+            result = try await execute(query: query(PostgreSQLTableListingLadder.leastCapableAttempt))
         }
 
-        let query = unions.joined(separator: "\nUNION ALL\n") + "\nORDER BY table_name"
-        let result = try await execute(query: query)
+        guard let result else { return [] }
         return result.rows.compactMap { row -> PluginTableInfo? in
             guard let name = row[0].asText else { return nil }
             let typeStr = row[1].asText ?? "BASE TABLE"
             let type: String
             switch typeStr {
+            case "PARTITIONED TABLE": type = "PARTITIONED TABLE"
             case "MATERIALIZED VIEW": type = "MATERIALIZED VIEW"
             case "FOREIGN TABLE":     type = "FOREIGN TABLE"
             case "VIEW":              type = "VIEW"
             default:                  type = "TABLE"
             }
-            return PluginTableInfo(name: name, type: type)
+            let comment = row[safe: 2]?.asText?.nilIfEmpty
+            return PluginTableInfo(name: name, type: type, comment: comment)
         }
     }
 
+    func fetchPartitions(table: String, schema: String?) async throws -> [PluginTableInfo] {
+        guard versionedCapabilities.hasDeclarativePartitioning else { return [] }
+        let schemaLiteral = escapeLiteral(schema ?? core.currentSchema)
+        let result = try await execute(
+            query: PostgreSQLSchemaQueries.fetchPartitions(
+                schemaLiteral: schemaLiteral,
+                tableLiteral: escapeLiteral(table)
+            )
+        )
+        return result.rows.compactMap { row -> PluginTableInfo? in
+            guard let name = row[0].asText else { return nil }
+            let isSubpartitioned = row[safe: 1]?.asText == "p"
+            return PluginTableInfo(
+                name: name,
+                type: isSubpartitioned ? "PARTITIONED TABLE" : "TABLE",
+                schema: schema ?? core.currentSchema,
+                comment: nil
+            )
+        }
+    }
 
     func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] {
         let columnOrdering = versionedCapabilities.hasArrayPosition
@@ -323,32 +256,46 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] {
+        let schemaLiteral = escapeLiteral(schema ?? core.currentSchema)
         let query = """
             SELECT
-                tc.constraint_name,
-                kcu.column_name,
-                ccu.table_name AS referenced_table,
-                ccu.column_name AS referenced_column,
-                ccu.table_schema AS referenced_schema,
-                rc.delete_rule,
-                rc.update_rule
-            FROM information_schema.table_constraints tc
-            JOIN information_schema.key_column_usage kcu
-                ON tc.constraint_name = kcu.constraint_name
-                AND tc.table_schema = kcu.table_schema
-            JOIN information_schema.referential_constraints rc
-                ON tc.constraint_name = rc.constraint_name
-                AND tc.constraint_schema = rc.constraint_schema
-            JOIN information_schema.constraint_column_usage ccu
-                ON rc.unique_constraint_name = ccu.constraint_name
-                AND rc.unique_constraint_schema = ccu.constraint_schema
-            WHERE tc.table_name = '\(escapeLiteral(table))'
-                AND tc.table_schema = '\(escapedSchema)'
-                AND tc.constraint_type = 'FOREIGN KEY'
-            ORDER BY tc.constraint_name
+                con.conname,
+                src_col.attname,
+                ref_cl.relname AS referenced_table,
+                ref_col.attname AS referenced_column,
+                ref_ns.nspname AS referenced_schema,
+                CASE con.confdeltype
+                    WHEN 'c' THEN 'CASCADE'
+                    WHEN 'n' THEN 'SET NULL'
+                    WHEN 'd' THEN 'SET DEFAULT'
+                    WHEN 'r' THEN 'RESTRICT'
+                    ELSE 'NO ACTION'
+                END AS delete_rule,
+                CASE con.confupdtype
+                    WHEN 'c' THEN 'CASCADE'
+                    WHEN 'n' THEN 'SET NULL'
+                    WHEN 'd' THEN 'SET DEFAULT'
+                    WHEN 'r' THEN 'RESTRICT'
+                    ELSE 'NO ACTION'
+                END AS update_rule
+            FROM pg_catalog.pg_constraint con
+            JOIN pg_catalog.pg_class src_cl ON src_cl.oid = con.conrelid
+            JOIN pg_catalog.pg_namespace src_ns ON src_ns.oid = src_cl.relnamespace
+            JOIN pg_catalog.pg_class ref_cl ON ref_cl.oid = con.confrelid
+            JOIN pg_catalog.pg_namespace ref_ns ON ref_ns.oid = ref_cl.relnamespace
+            CROSS JOIN LATERAL unnest(con.conkey, con.confkey)
+                WITH ORDINALITY AS cols(src_attnum, ref_attnum, ord)
+            JOIN pg_catalog.pg_attribute src_col
+                ON src_col.attrelid = con.conrelid AND src_col.attnum = cols.src_attnum
+            JOIN pg_catalog.pg_attribute ref_col
+                ON ref_col.attrelid = con.confrelid AND ref_col.attnum = cols.ref_attnum
+            WHERE con.contype = 'f'
+                AND src_cl.relname = '\(escapeLiteral(table))'
+                AND src_ns.nspname = '\(schemaLiteral)'
+            ORDER BY con.conname, cols.ord
             """
         let result = try await execute(query: query)
-        return result.rows.compactMap { row -> PluginForeignKeyInfo? in
+        let foreignKeys: [PluginForeignKeyInfo] = result.rows.compactMap { row -> PluginForeignKeyInfo? in
             guard row.count >= 7,
                   let name = row[0].asText,
                   let column = row[1].asText,
@@ -365,32 +312,162 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 onUpdate: row[6].asText ?? "NO ACTION"
             )
         }
+        Self.logger.info("[fk] postgres fetchForeignKeys schema=\(schema ?? self.core.currentSchema, privacy: .public) table=\(table, privacy: .public) rows=\(result.rows.count) parsed=\(foreignKeys.count)")
+        return foreignKeys
+    }
+
+    func fetchTriggers(table: String, schema: String?) async throws -> [PluginTriggerInfo] {
+        let resolvedSchema = schema ?? core.currentSchema
+        let schemaLiteral = escapeLiteral(resolvedSchema)
+        let tableLiteral = escapeLiteral(table)
+        let query = """
+            SELECT
+                t.tgname,
+                CASE WHEN (t.tgtype & 64) != 0 THEN 'INSTEAD OF'
+                     WHEN (t.tgtype & 2)  != 0 THEN 'BEFORE'
+                     ELSE 'AFTER' END AS timing,
+                CASE WHEN (t.tgtype & 4) != 0 AND (t.tgtype & 8) != 0 AND (t.tgtype & 16) != 0
+                          THEN 'INSERT OR UPDATE OR DELETE'
+                     WHEN (t.tgtype & 4) != 0 AND (t.tgtype & 8) != 0  THEN 'INSERT OR UPDATE'
+                     WHEN (t.tgtype & 4) != 0 AND (t.tgtype & 16) != 0 THEN 'INSERT OR DELETE'
+                     WHEN (t.tgtype & 8) != 0 AND (t.tgtype & 16) != 0 THEN 'UPDATE OR DELETE'
+                     WHEN (t.tgtype & 4) != 0  THEN 'INSERT'
+                     WHEN (t.tgtype & 8) != 0  THEN 'UPDATE'
+                     WHEN (t.tgtype & 16) != 0 THEN 'DELETE'
+                     WHEN (t.tgtype & 32) != 0 THEN 'TRUNCATE'
+                     ELSE '' END AS event,
+                t.tgenabled <> 'D' AS enabled,
+                pg_get_triggerdef(t.oid) AS definition
+            FROM pg_catalog.pg_trigger t
+            JOIN pg_catalog.pg_class c ON c.oid = t.tgrelid
+            JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+            WHERE c.relname = '\(tableLiteral)'
+                AND n.nspname = '\(schemaLiteral)'
+                AND NOT t.tgisinternal
+            ORDER BY t.tgname
+            """
+        let result = try await execute(query: query)
+        let triggers: [PluginTriggerInfo] = result.rows.compactMap { row -> PluginTriggerInfo? in
+            guard row.count >= 5,
+                  let name = row[0].asText,
+                  let timing = row[1].asText,
+                  let event = row[2].asText,
+                  let definition = row[4].asText
+            else { return nil }
+            return PluginTriggerInfo(
+                name: name,
+                timing: timing,
+                event: event,
+                statement: definition,
+                enabled: row[3].asText == "t"
+            )
+        }
+        Self.logger.info("[trigger] postgres fetchTriggers schema=\(resolvedSchema, privacy: .public) table=\(table, privacy: .public) rows=\(result.rows.count) parsed=\(triggers.count)")
+        return triggers
+    }
+
+    var triggerEditUsesReplace: Bool { true }
+
+    var supportsTransactionalDDL: Bool { true }
+
+    private func qualifiedTable(_ table: String, schema: String?) -> String {
+        let resolved = schema ?? core.currentSchema
+        return "\(quoteIdentifier(resolved)).\(quoteIdentifier(table))"
+    }
+
+    func createTriggerTemplate(table: String, schema: String?) -> String? {
+        let qualified = qualifiedTable(table, schema: schema)
+        let fn = qualifiedTable("trigger_function", schema: schema)
+        return """
+        CREATE OR REPLACE FUNCTION \(fn)()
+        RETURNS trigger
+        LANGUAGE plpgsql
+        AS $function$
+        BEGIN
+            -- NEW.updated_at := now();
+            RETURN NEW;
+        END;
+        $function$;
+
+        CREATE OR REPLACE TRIGGER \(quoteIdentifier("trigger_name"))
+            BEFORE INSERT ON \(qualified)
+            FOR EACH ROW
+            EXECUTE FUNCTION \(fn)();
+        """
+    }
+
+    func fetchTriggerDefinition(name: String, table: String, schema: String?) async throws -> String? {
+        let resolvedSchema = schema ?? core.currentSchema
+        let query = """
+            SELECT pg_get_functiondef(t.tgfoid), pg_get_triggerdef(t.oid)
+            FROM pg_catalog.pg_trigger t
+            JOIN pg_catalog.pg_class c ON c.oid = t.tgrelid
+            JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+            WHERE t.tgname = '\(escapeLiteral(name))'
+                AND c.relname = '\(escapeLiteral(table))'
+                AND n.nspname = '\(escapeLiteral(resolvedSchema))'
+                AND NOT t.tgisinternal
+            LIMIT 1
+            """
+        let result = try await execute(query: query)
+        guard let row = result.rows.first, row.count >= 2,
+              let functionDef = row[0].asText,
+              let triggerDef = row[1].asText else { return nil }
+        let editableTrigger: String
+        if triggerDef.range(of: "CREATE CONSTRAINT TRIGGER", options: .caseInsensitive) != nil {
+            let drop = generateDropTriggerSQL(name: name, table: table, schema: schema) ?? ""
+            editableTrigger = "\(drop);\n\(triggerDef)"
+        } else {
+            editableTrigger = triggerDef.replacingOccurrences(
+                of: "CREATE TRIGGER ",
+                with: "CREATE OR REPLACE TRIGGER "
+            )
+        }
+        return "\(functionDef);\n\n\(editableTrigger);"
+    }
+
+    func generateDropTriggerSQL(name: String, table: String, schema: String?) -> String? {
+        "DROP TRIGGER IF EXISTS \(quoteIdentifier(name)) ON \(qualifiedTable(table, schema: schema))"
     }
 
     func fetchAllForeignKeys(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {
+        let schemaLiteral = escapeLiteral(schema ?? core.currentSchema)
         let query = """
             SELECT
-                tc.table_name,
-                tc.constraint_name,
-                kcu.column_name,
-                ccu.table_name AS referenced_table,
-                ccu.column_name AS referenced_column,
-                ccu.table_schema AS referenced_schema,
-                rc.delete_rule,
-                rc.update_rule
-            FROM information_schema.table_constraints tc
-            JOIN information_schema.key_column_usage kcu
-                ON tc.constraint_name = kcu.constraint_name
-                AND tc.table_schema = kcu.table_schema
-            JOIN information_schema.referential_constraints rc
-                ON tc.constraint_name = rc.constraint_name
-                AND tc.constraint_schema = rc.constraint_schema
-            JOIN information_schema.constraint_column_usage ccu
-                ON rc.unique_constraint_name = ccu.constraint_name
-                AND rc.unique_constraint_schema = ccu.constraint_schema
-            WHERE tc.table_schema = '\(escapedSchema)'
-                AND tc.constraint_type = 'FOREIGN KEY'
-            ORDER BY tc.table_name, tc.constraint_name
+                src_cl.relname AS table_name,
+                con.conname,
+                src_col.attname,
+                ref_cl.relname AS referenced_table,
+                ref_col.attname AS referenced_column,
+                ref_ns.nspname AS referenced_schema,
+                CASE con.confdeltype
+                    WHEN 'c' THEN 'CASCADE'
+                    WHEN 'n' THEN 'SET NULL'
+                    WHEN 'd' THEN 'SET DEFAULT'
+                    WHEN 'r' THEN 'RESTRICT'
+                    ELSE 'NO ACTION'
+                END AS delete_rule,
+                CASE con.confupdtype
+                    WHEN 'c' THEN 'CASCADE'
+                    WHEN 'n' THEN 'SET NULL'
+                    WHEN 'd' THEN 'SET DEFAULT'
+                    WHEN 'r' THEN 'RESTRICT'
+                    ELSE 'NO ACTION'
+                END AS update_rule
+            FROM pg_catalog.pg_constraint con
+            JOIN pg_catalog.pg_class src_cl ON src_cl.oid = con.conrelid
+            JOIN pg_catalog.pg_namespace src_ns ON src_ns.oid = src_cl.relnamespace
+            JOIN pg_catalog.pg_class ref_cl ON ref_cl.oid = con.confrelid
+            JOIN pg_catalog.pg_namespace ref_ns ON ref_ns.oid = ref_cl.relnamespace
+            CROSS JOIN LATERAL unnest(con.conkey, con.confkey)
+                WITH ORDINALITY AS cols(src_attnum, ref_attnum, ord)
+            JOIN pg_catalog.pg_attribute src_col
+                ON src_col.attrelid = con.conrelid AND src_col.attnum = cols.src_attnum
+            JOIN pg_catalog.pg_attribute ref_col
+                ON ref_col.attrelid = con.confrelid AND ref_col.attnum = cols.ref_attnum
+            WHERE con.contype = 'f'
+                AND src_ns.nspname = '\(schemaLiteral)'
+            ORDER BY src_cl.relname, con.conname, cols.ord
             """
         let result = try await execute(query: query)
         var grouped: [String: [PluginForeignKeyInfo]] = [:]
@@ -432,7 +509,9 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func fetchTableDDL(table: String, schema: String?) async throws -> String {
         let safeTable = escapeLiteral(table)
-        let quotedTable = "\"\(table.replacingOccurrences(of: "\"", with: "\"\""))\""
+        let resolvedSchema = schema ?? core.currentSchema
+        let schemaLiteral = escapeLiteral(resolvedSchema)
+        let quotedTable = quoteIdentifier(table)
         let caps = versionedCapabilities
 
         let identityClause: String = caps.hasIdentityColumns ? """
@@ -478,7 +557,7 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             JOIN pg_namespace n ON n.oid = c.relnamespace
             LEFT JOIN pg_attrdef d ON d.adrelid = c.oid AND d.adnum = a.attnum
             WHERE c.relname = '\(safeTable)'
-              AND n.nspname = '\(escapedSchema)'
+              AND n.nspname = '\(schemaLiteral)'
               AND a.attnum > 0
               AND NOT a.attisdropped
             ORDER BY a.attnum
@@ -491,7 +570,7 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             JOIN pg_class c ON c.oid = con.conrelid
             JOIN pg_namespace n ON n.oid = c.relnamespace
             WHERE c.relname = '\(safeTable)'
-              AND n.nspname = '\(escapedSchema)'
+              AND n.nspname = '\(schemaLiteral)'
               AND con.contype IN ('p', 'u', 'c')
             ORDER BY
               CASE con.contype WHEN 'p' THEN 0 WHEN 'u' THEN 1 WHEN 'c' THEN 2 END
@@ -501,13 +580,13 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             SELECT indexdef
             FROM pg_indexes
             WHERE tablename = '\(safeTable)'
-              AND schemaname = '\(escapedSchema)'
+              AND schemaname = '\(schemaLiteral)'
               AND indexname NOT IN (
                 SELECT conname FROM pg_constraint
                 JOIN pg_class ON pg_class.oid = conrelid
                 JOIN pg_namespace ON pg_namespace.oid = pg_class.relnamespace
                 WHERE pg_class.relname = '\(safeTable)'
-                  AND pg_namespace.nspname = '\(escapedSchema)'
+                  AND pg_namespace.nspname = '\(schemaLiteral)'
               )
             ORDER BY indexname
             """
@@ -527,7 +606,7 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         var parts = columnDefs
         parts.append(contentsOf: constraints)
 
-        let quotedSchema = "\"\(_currentSchema.replacingOccurrences(of: "\"", with: "\"\""))\""
+        let quotedSchema = quoteIdentifier(resolvedSchema)
         let ddl = "CREATE TABLE \(quotedSchema).\(quotedTable) (\n  " +
             parts.joined(separator: ",\n  ") +
             "\n);"
@@ -538,11 +617,12 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func fetchViewDefinition(view: String, schema: String?) async throws -> String {
+        let schemaLiteral = escapeLiteral(schema ?? core.currentSchema)
         let query = """
             SELECT 'CREATE OR REPLACE VIEW ' || quote_ident(schemaname) || '.' || quote_ident(viewname) || ' AS ' || E'\\n' || definition AS ddl
             FROM pg_views
             WHERE viewname = '\(escapeLiteral(view))'
-              AND schemaname = '\(escapedSchema)'
+              AND schemaname = '\(schemaLiteral)'
             """
         let result = try await execute(query: query)
         guard let firstRow = result.rows.first, let ddl = firstRow[0].asText else {
@@ -552,6 +632,7 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
+        let schemaLiteral = escapeLiteral(schema ?? core.currentSchema)
         let query = """
             SELECT
                 pg_total_relation_size(c.oid) AS total_size,
@@ -562,7 +643,7 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             FROM pg_class c
             JOIN pg_namespace n ON n.oid = c.relnamespace
             WHERE c.relname = '\(escapeLiteral(table))'
-              AND n.nspname = '\(escapedSchema)'
+              AND n.nspname = '\(schemaLiteral)'
             """
         let result = try await execute(query: query)
         guard let row = result.rows.first else {
@@ -596,19 +677,24 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return result.rows.compactMap { row in row.first?.asText }
     }
 
-    func switchSchema(to schema: String) async throws {
-        let escapedName = schema.replacingOccurrences(of: "\"", with: "\"\"")
-        _ = try await execute(query: "SET search_path TO \"\(escapedName)\", public")
-        _currentSchema = schema
-    }
-
     func fetchDatabaseMetadata(_ database: String) async throws -> PluginDatabaseMetadata {
         let escapedDbLiteral = escapeLiteral(database)
         let query = """
             SELECT
                 (SELECT COUNT(*)
-                 FROM information_schema.tables
-                 WHERE table_schema = 'public' AND table_catalog = '\(escapedDbLiteral)'),
+                 FROM information_schema.tables t
+                 WHERE t.table_catalog = '\(escapedDbLiteral)'
+                   AND t.table_schema NOT LIKE 'pg!_%' ESCAPE '!'
+                   AND t.table_schema <> 'information_schema'
+                   AND NOT EXISTS (
+                         SELECT 1
+                         FROM pg_catalog.pg_inherits i
+                         JOIN pg_catalog.pg_class parent ON parent.oid = i.inhparent
+                         JOIN pg_catalog.pg_class child ON child.oid = i.inhrelid
+                         JOIN pg_catalog.pg_namespace cn ON cn.oid = child.relnamespace
+                         WHERE cn.nspname = t.table_schema
+                           AND child.relname = t.table_name
+                           AND parent.relkind IN ('p', 'I'))),
                 pg_database_size('\(escapedDbLiteral)')
         """
         let result = try await execute(query: query)
@@ -616,19 +702,15 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let tableCount = Int(row?[0].asText ?? "0") ?? 0
         let sizeBytes = Int64(row?[1].asText ?? "0") ?? 0
 
-        let systemDatabases = ["postgres", "template0", "template1"]
-        let isSystem = systemDatabases.contains(database)
-
         return PluginDatabaseMetadata(
             name: database,
             tableCount: tableCount,
             sizeBytes: sizeBytes,
-            isSystemDatabase: isSystem
+            isSystemDatabase: PostgreSQLSystemDatabases.postgreSQL.contains(database)
         )
     }
 
     func fetchAllDatabaseMetadata() async throws -> [PluginDatabaseMetadata] {
-        let systemDatabases = ["postgres", "template0", "template1"]
         let query = """
             SELECT d.datname, pg_database_size(d.datname)
             FROM pg_database d
@@ -639,13 +721,17 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return result.rows.compactMap { row -> PluginDatabaseMetadata? in
             guard let dbName = row[0].asText else { return nil }
             let sizeBytes = Int64(row[1].asText ?? "0") ?? 0
-            let isSystem = systemDatabases.contains(dbName)
-            return PluginDatabaseMetadata(name: dbName, sizeBytes: sizeBytes, isSystemDatabase: isSystem)
+            return PluginDatabaseMetadata(
+                name: dbName,
+                sizeBytes: sizeBytes,
+                isSystemDatabase: PostgreSQLSystemDatabases.postgreSQL.contains(dbName)
+            )
         }
     }
 
     func fetchDependentTypes(table: String, schema: String?) async throws -> [(name: String, labels: [String])] {
         let safeTable = escapeLiteral(table)
+        let schemaLiteral = escapeLiteral(schema ?? core.currentSchema)
         let query = """
             SELECT DISTINCT t.typname,
                    array_agg(e.enumlabel ORDER BY e.enumsortorder)
@@ -655,7 +741,7 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             JOIN pg_type t ON t.oid = a.atttypid
             JOIN pg_enum e ON e.enumtypid = t.oid
             WHERE c.relname = '\(safeTable)'
-              AND n.nspname = '\(escapedSchema)'
+              AND n.nspname = '\(schemaLiteral)'
               AND a.attnum > 0
               AND NOT a.attisdropped
             GROUP BY t.typname
@@ -672,8 +758,10 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func fetchDependentSequences(table: String, schema: String?) async throws -> [(name: String, ddl: String)] {
-        guard versionedCapabilities.hasSequencesCatalog else { return [] }
+        guard includesSequencesCatalog() else { return [] }
         let safeTable = escapeLiteral(table)
+        let schemaName = schema ?? core.currentSchema
+        let schemaLiteral = escapeLiteral(schemaName)
         let query = """
             SELECT s.sequencename,
                    s.start_value,
@@ -688,11 +776,10 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             JOIN pg_sequences s ON s.schemaname = n.nspname
                  AND pg_get_expr(ad.adbin, ad.adrelid) LIKE '%' || quote_ident(s.sequencename) || '%'
             WHERE c.relname = '\(safeTable)'
-              AND n.nspname = '\(escapedSchema)'
+              AND n.nspname = '\(schemaLiteral)'
               AND pg_get_expr(ad.adbin, ad.adrelid) LIKE '%nextval%'
             """
         let result = try await execute(query: query)
-        let schemaName = schema ?? _currentSchema
         return result.rows.compactMap { row -> (name: String, ddl: String)? in
             guard let seqName = row[0].asText else { return nil }
             let startVal = row[1].asText ?? "1"
@@ -701,9 +788,9 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             let incrementBy = row[4].asText ?? "1"
             let cycle = row[5].asText == "t" ? " CYCLE" : ""
             let lastValue = row.count > 6 ? row[6].asText : nil
-            let quotedSeqName = "\"\(seqName.replacingOccurrences(of: "\"", with: "\"\""))\""
-            let escapedSchemaForLiteral = schemaName.replacingOccurrences(of: "'", with: "''")
-            let escapedSeqForLiteral = seqName.replacingOccurrences(of: "'", with: "''")
+            let quotedSeqName = quoteIdentifier(seqName)
+            let escapedSchemaForLiteral = escapeStringLiteral(schemaName)
+            let escapedSeqForLiteral = escapeStringLiteral(seqName)
             var ddl = "CREATE SEQUENCE \(quotedSeqName) INCREMENT BY \(incrementBy)"
                 + " MINVALUE \(minVal) MAXVALUE \(maxVal)"
                 + " START WITH \(startVal)\(cycle);"
@@ -794,7 +881,7 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func createDatabase(_ request: PluginCreateDatabaseRequest) async throws {
-        let quotedName = request.name.replacingOccurrences(of: "\"", with: "\"\"")
+        let quotedName = quoteIdentifier(request.name)
 
         guard let encoding = request.values["encoding"] else {
             throw LibPQPluginError(
@@ -811,7 +898,7 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             )
         }
 
-        var sql = "CREATE DATABASE \"\(quotedName)\" ENCODING '\(encoding)'"
+        var sql = "CREATE DATABASE \(quotedName) ENCODING '\(encoding)'"
 
         let supportsProvider = versionedCapabilities.hasDatabaseICULocale
         let provider = supportsProvider ? (request.values["provider"] ?? "libc") : "libc"
@@ -891,8 +978,7 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func dropDatabase(name: String) async throws {
-        let escapedName = name.replacingOccurrences(of: "\"", with: "\"\"")
-        _ = try await execute(query: "DROP DATABASE \"\(escapedName)\"")
+        _ = try await execute(query: "DROP DATABASE \(quoteIdentifier(name))")
     }
 
     private struct Template1Defaults {
@@ -988,7 +1074,7 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     func generateCreateTableSQL(definition: PluginCreateTableDefinition) -> String? {
         guard !definition.columns.isEmpty else { return nil }
 
-        let schema = _currentSchema
+        let schema = core.currentSchema
         let qualifiedTable = "\(quoteIdentifier(schema)).\(quoteIdentifier(definition.tableName))"
         let pkColumns = definition.columns.filter { $0.isPrimaryKey }
         let inlinePK = pkColumns.count == 1
@@ -1109,7 +1195,7 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - ALTER TABLE DDL
 
     private func qualifiedTableName(_ table: String) -> String {
-        "\(quoteIdentifier(_currentSchema)).\(quoteIdentifier(table))"
+        "\(quoteIdentifier(core.currentSchema)).\(quoteIdentifier(table))"
     }
 
     func generateAddColumnSQL(table: String, column: PluginColumnDefinition) -> String? {
@@ -1163,7 +1249,7 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func generateDropIndexSQL(table: String, indexName: String) -> String? {
-        "DROP INDEX \(quoteIdentifier(_currentSchema)).\(quoteIdentifier(indexName))"
+        "DROP INDEX \(quoteIdentifier(core.currentSchema)).\(quoteIdentifier(indexName))"
     }
 
     func generateAddForeignKeySQL(table: String, fk: PluginForeignKeyDefinition) -> String? {

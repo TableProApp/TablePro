@@ -78,6 +78,9 @@ public class GutterView: NSView {
     public var showFoldingRibbon: Bool = true {
         didSet {
             foldingRibbon.isHidden = !showFoldingRibbon
+            if showFoldingRibbon {
+                foldingRibbon.model?.refresh()
+            }
         }
     }
 
@@ -182,6 +185,12 @@ public class GutterView: NSView {
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+
+    /// The gutter floats on top of the text view, so a right-click on the line numbers resolves to the
+    /// gutter rather than the editor. Forward the menu so the editor answers for its own ruler.
+    override public func menu(for event: NSEvent) -> NSMenu? {
+        textView?.menu(for: event)
     }
 
     /// Updates the width of the gutter if needed to match the maximum line number found as well as the folding ribbon.

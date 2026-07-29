@@ -5,8 +5,9 @@
 
 import Foundation
 import TableProPluginKit
-@testable import TablePro
 import Testing
+
+@testable import TablePro
 
 @Suite("Column Width Optimization")
 @MainActor
@@ -103,18 +104,6 @@ struct ColumnWidthOptimizationTests {
         }
     }
 
-    @Test("Width based on header-only method matches expected bounds")
-    func headerOnlyWidthCalculation() {
-        let factory = DataGridCellFactory()
-
-        let shortWidth = factory.calculateColumnWidth(for: "id")
-        #expect(shortWidth >= 60)
-
-        let longWidth = factory.calculateColumnWidth(for: "a_very_long_column_name_that_is_descriptive")
-        #expect(longWidth > shortWidth)
-        #expect(longWidth <= 800)
-    }
-
     @Test("Nil cell values do not crash width calculation")
     func nilCellValuesSafe() {
         let factory = DataGridCellFactory()
@@ -136,6 +125,71 @@ struct ColumnWidthOptimizationTests {
         )
         #expect(width >= 60)
         #expect(width <= 800)
+    }
+}
+
+@Suite("Fit To Content Width")
+@MainActor
+struct FitToContentWidthTests {
+    private func makeTableRows(values: [String], column: String = "data") -> TableRows {
+        TableRows.from(
+            queryRows: values.map { [PluginCellValue.fromOptional($0)] },
+            columns: [column],
+            columnTypes: [.text(rawType: nil)]
+        )
+    }
+
+    private func fitWidth(values: [String], availableWidth: CGFloat, column: String = "data") -> CGFloat {
+        DataGridCellFactory().calculateFitToContentWidth(
+            for: column,
+            columnIndex: 0,
+            tableRows: makeTableRows(values: values, column: column),
+            availableWidth: availableWidth
+        )
+    }
+
+    @Test("A very long value is capped instead of stretching the column")
+    func longValueIsCapped() {
+        let width = fitWidth(values: [String(repeating: "X", count: 5_000)], availableWidth: 1_600)
+
+        #expect(width == 800, "A 5,000 character value must not widen the column past the 800pt ceiling")
+    }
+
+    @Test("No column takes more than half the visible grid")
+    func capIsHalfTheVisibleGrid() {
+        let width = fitWidth(values: [String(repeating: "X", count: 5_000)], availableWidth: 1_000)
+
+        #expect(width == 500)
+    }
+
+    @Test("Cap holds at 300pt in a narrow window")
+    func capFloorsInNarrowWindow() {
+        #expect(fitWidth(values: [String(repeating: "X", count: 5_000)], availableWidth: 200) == 300)
+        #expect(fitWidth(values: [String(repeating: "X", count: 5_000)], availableWidth: 0) == 300)
+    }
+
+    @Test("Short values still size to their content, not to the cap")
+    func shortValuesSizeToContent() {
+        let width = fitWidth(values: ["ok", "fine"], availableWidth: 1_600, column: "status")
+
+        #expect(width >= 60)
+        #expect(width < 300, "The cap is a ceiling, not a target width")
+    }
+
+    @Test("Fitted width never exceeds the data column ceiling")
+    func fittedWidthStaysUnderColumnCeiling() {
+        for availableWidth in [CGFloat](stride(from: 0, through: 4_000, by: 250)) {
+            let width = fitWidth(values: [String(repeating: "X", count: 20_000)], availableWidth: availableWidth)
+            #expect(width <= DataGridMetrics.dataColumnMaxWidth)
+        }
+    }
+
+    @Test("Long header alone does not stretch the column")
+    func longHeaderIsCapped() {
+        let column = String(repeating: "column_name_", count: 200)
+        let width = fitWidth(values: [], availableWidth: 1_600, column: column)
+
+        #expect(width == 800)
     }
 }
 

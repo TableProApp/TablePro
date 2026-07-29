@@ -18,8 +18,6 @@ internal final class WindowOpener {
     @ObservationIgnored private var openConnectionFormAction: ((UUID?) -> Void)?
     @ObservationIgnored private var openIntegrationsActivityAction: (() -> Void)?
     @ObservationIgnored private var openSettingsAction: (() -> Void)?
-    @ObservationIgnored
-    private var presentTypeChooserAction: ((DatabaseType?, @escaping (DatabaseType) -> Void) -> Void)?
     @ObservationIgnored private var pendingCalls: [() -> Void] = []
     @ObservationIgnored private var isWired = false
 
@@ -29,9 +27,9 @@ internal final class WindowOpener {
         run { $0.openWelcomeAction?() }
     }
 
-    internal func openSettings(tab: SettingsTab? = nil) {
+    internal func openSettings(tab: SettingsPane? = nil) {
         if let tab {
-            UserDefaults.standard.set(tab.rawValue, forKey: "selectedSettingsTab")
+            UserDefaults.standard.set(tab.rawValue, forKey: PreferenceKeys.selectedSettingsPane.name)
         }
         run { $0.openSettingsAction?() }
     }
@@ -53,10 +51,8 @@ internal final class WindowOpener {
             run { $0.openConnectionFormAction?(connectionId) }
             return
         }
-        run { opener in
-            opener.presentTypeChooser(initialType: nil) { selected in
-                opener.openConnectionForm(editing: nil, withType: selected)
-            }
+        presentTypeChooser(initialType: nil) { selected in
+            WindowOpener.shared.openConnectionForm(editing: nil, withType: selected)
         }
     }
 
@@ -74,7 +70,8 @@ internal final class WindowOpener {
         initialType: DatabaseType?,
         onSelected: @escaping (DatabaseType) -> Void
     ) {
-        run { $0.presentTypeChooserAction?(initialType, onSelected) }
+        let payload = DatabaseTypeChooserPayload(initialType: initialType, onSelected: onSelected)
+        WelcomeRouter.shared.route(.chooseDatabaseType(payload))
     }
 
     internal func openIntegrationsActivity() {
@@ -85,14 +82,12 @@ internal final class WindowOpener {
         openWelcome: @escaping () -> Void,
         openConnectionForm: @escaping (UUID?) -> Void,
         openIntegrationsActivity: @escaping () -> Void,
-        openSettings: @escaping () -> Void,
-        presentTypeChooser: @escaping (DatabaseType?, @escaping (DatabaseType) -> Void) -> Void
+        openSettings: @escaping () -> Void
     ) {
         openWelcomeAction = openWelcome
         openConnectionFormAction = openConnectionForm
         openIntegrationsActivityAction = openIntegrationsActivity
         openSettingsAction = openSettings
-        presentTypeChooserAction = presentTypeChooser
         isWired = true
         let drained = pendingCalls
         pendingCalls.removeAll()

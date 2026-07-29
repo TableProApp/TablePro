@@ -60,8 +60,8 @@ struct AIChatToolResultBlockView: View {
 
     private var accentColor: Color {
         block.isError
-            ? Color(nsColor: .systemRed)
-            : Color(nsColor: .systemGreen)
+            ? .red
+            : .green
     }
 
     private var headerLabel: String {

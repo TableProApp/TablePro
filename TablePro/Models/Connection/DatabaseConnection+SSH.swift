@@ -4,6 +4,17 @@
 //
 
 extension DatabaseConnection {
+    static let sshForwardUnixSocketPathKey = "sshForwardUnixSocketPath"
+
+    /// Where the SSH server should connect once the tunnel is up. A socket path takes
+    /// precedence over `host`/`port`, which the SSH server never uses in that case.
+    var sshForwardDestination: SSHForwardDestination {
+        if let path = sshForwardUnixSocketPath {
+            return .unixSocket(path: path)
+        }
+        return .tcp(host: host, port: port)
+    }
+
     /// The resolved SSH configuration, derived from `sshTunnelMode`.
     var resolvedSSHConfig: SSHConfiguration {
         switch sshTunnelMode {

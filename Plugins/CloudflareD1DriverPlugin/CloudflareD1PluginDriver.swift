@@ -80,7 +80,7 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
 
             guard let match = databases.first(where: { $0.name == databaseName }) else {
                 throw CloudflareD1Error(
-                    message: String(localized: "Database '\(databaseName)' not found in account")
+                    message: String(format: String(localized: "Database '%@' not found in account"), databaseName)
                 )
             }
             databaseId = match.uuid
@@ -180,6 +180,13 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
         lock.lock()
         httpClient?.cancelCurrentTask()
         lock.unlock()
+    }
+
+    func applyQueryTimeout(_ seconds: Int) async throws {
+        lock.lock()
+        let client = httpClient
+        lock.unlock()
+        client?.setQueryTimeout(seconds)
     }
 
     // MARK: - Streaming
@@ -426,6 +433,41 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
         }
     }
 
+    func fetchTriggers(table: String, schema: String?) async throws -> [PluginTriggerInfo] {
+        let safeTable = escapeStringLiteral(table)
+        let query = """
+            SELECT name, sql FROM sqlite_master
+            WHERE type = 'trigger' AND tbl_name = '\(safeTable)'
+                AND name NOT GLOB '_cf_*'
+            ORDER BY name
+            """
+        let result = try await execute(query: query)
+
+        return result.rows.compactMap { row -> PluginTriggerInfo? in
+            guard row.count >= 2,
+                  let name = row[0].asText,
+                  let sql = row[1].asText else {
+                return nil
+            }
+            let (timing, event) = TriggerSQLParser.timingAndEvent(from: sql)
+            return PluginTriggerInfo(name: name, timing: timing, event: event, statement: sql)
+        }
+    }
+
+    func createTriggerTemplate(table: String, schema: String?) -> String? {
+        """
+        CREATE TRIGGER \(quoteIdentifier("trigger_name"))
+        AFTER INSERT ON \(quoteIdentifier(table))
+        BEGIN
+            -- INSERT INTO audit ...;
+        END;
+        """
+    }
+
+    func generateDropTriggerSQL(name: String, table: String, schema: String?) -> String? {
+        "DROP TRIGGER IF EXISTS \(quoteIdentifier(name))"
+    }
+
     func fetchTableDDL(table: String, schema: String?) async throws -> String {
         let safeTable = escapeStringLiteral(table)
         let query = """
@@ -561,7 +603,7 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
 
         guard let resolvedUuid = uuid else {
             throw CloudflareD1Error(
-                message: String(localized: "Database '\(database)' not found")
+                message: String(format: String(localized: "Database '%@' not found"), database)
             )
         }
 

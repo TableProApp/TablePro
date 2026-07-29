@@ -56,6 +56,8 @@ struct ColumnIdentitySchema: Equatable {
         slotByColumnName[name]
     }
 
+    var totalDataColumns: Int { columnNames.count }
+
     static func slotIdentifier(_ slot: Int) -> NSUserInterfaceItemIdentifier {
         NSUserInterfaceItemIdentifier("\(dataColumnPrefix)\(slot)")
     }

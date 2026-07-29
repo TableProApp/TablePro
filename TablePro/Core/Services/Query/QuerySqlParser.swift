@@ -1,4 +1,5 @@
 import Foundation
+import TableProPluginKit
 
 enum QuerySqlParser {
     private static let tableNameRegex = try? NSRegularExpression(
@@ -70,6 +71,6 @@ enum QuerySqlParser {
             return nil
         }
         let valuesString = nsString.substring(with: match.range(at: 1))
-        return ColumnType.parseEnumValues(from: "ENUM(\(valuesString))")
+        return EnumValueParser.parseMySQLEnumOrSet(from: "ENUM(\(valuesString))")
     }
 }

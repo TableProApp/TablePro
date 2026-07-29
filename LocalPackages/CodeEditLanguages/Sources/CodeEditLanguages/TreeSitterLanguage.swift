@@ -13,6 +13,7 @@ public enum TreeSitterLanguage: String {
     case html
     case javascript
     case jsdoc
+    case json
     case jsx
     case python
     case ruby

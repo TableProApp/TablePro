@@ -233,18 +233,26 @@ struct IntegrationsActivityLogPane: View {
         panel.canCreateDirectories = true
         panel.title = String(localized: "Export Activity Log")
 
-        guard panel.runModal() == .OK, let url = panel.url else { return }
+        if let window = AlertHelper.resolveWindow(nil) {
+            panel.beginSheetModal(for: window) { response in
+                guard response == .OK, let url = panel.url else { return }
+                writeActivityLog(to: url)
+            }
+        } else {
+            guard panel.runModal() == .OK, let url = panel.url else { return }
+            writeActivityLog(to: url)
+        }
+    }
 
-        let csv = csvString(for: filteredEntries)
+    private func writeActivityLog(to url: URL) {
         do {
-            try csv.write(to: url, atomically: true, encoding: .utf8)
+            try csvString(for: filteredEntries).write(to: url, atomically: true, encoding: .utf8)
         } catch {
-            let alert = NSAlert()
-            alert.messageText = String(localized: "Could not export activity log")
-            alert.informativeText = error.localizedDescription
-            alert.alertStyle = .warning
-            alert.addButton(withTitle: String(localized: "OK"))
-            alert.runModal()
+            AlertHelper.showErrorSheet(
+                title: String(localized: "Could not export activity log"),
+                message: error.localizedDescription,
+                window: nil
+            )
         }
     }
 

@@ -14,6 +14,7 @@ struct ClickHousePartsView: View {
 
     let tableName: String
     let connectionId: UUID
+    let reloadToken: Int
 
     @State private var parts: [ClickHousePartInfo] = []
     @State private var isLoading = true
@@ -29,7 +30,7 @@ struct ClickHousePartsView: View {
                 VStack(spacing: 8) {
                     Image(systemName: "exclamationmark.triangle")
                         .font(.largeTitle)
-                        .foregroundStyle(Color(nsColor: .systemOrange))
+                        .foregroundStyle(.orange)
                         .accessibilityHidden(true)
                     Text(error)
                         .foregroundStyle(.secondary)
@@ -50,7 +51,7 @@ struct ClickHousePartsView: View {
                 partsTable
             }
         }
-        .task { await loadParts() }
+        .task(id: reloadToken) { await loadParts() }
     }
 
     private var partsToolbar: some View {
@@ -98,7 +99,7 @@ struct ClickHousePartsView: View {
                 .width(min: 100, ideal: 160)
             TableColumn("Active") { part in
                 Image(systemName: part.active ? "checkmark.circle.fill" : "xmark.circle")
-                    .foregroundStyle(part.active ? Color(nsColor: .systemGreen) : .secondary)
+                    .foregroundStyle(part.active ? .green : .secondary)
             }
             .width(min: 50, ideal: 60)
         }
@@ -109,8 +110,7 @@ struct ClickHousePartsView: View {
     private func optimizeTable() {
         Task {
             guard let driver = DatabaseManager.shared.driver(for: connectionId) else { return }
-            let escapedTable = tableName.replacingOccurrences(of: "`", with: "``")
-            let sql = "OPTIMIZE TABLE `\(escapedTable)` FINAL"
+            let sql = "OPTIMIZE TABLE \(driver.quoteIdentifier(tableName)) FINAL"
             do {
                 _ = try await driver.execute(query: sql)
                 await loadParts()
@@ -135,8 +135,7 @@ struct ClickHousePartsView: View {
             guard confirmed else { return }
 
             guard let driver = DatabaseManager.shared.driver(for: connectionId) else { return }
-            let escapedTable = tableName.replacingOccurrences(of: "`", with: "``")
-            let sql = "ALTER TABLE `\(escapedTable)` DROP PARTITION '\(partitionValue.replacingOccurrences(of: "'", with: "''"))'"
+            let sql = "ALTER TABLE \(driver.quoteIdentifier(tableName)) DROP PARTITION '\(driver.escapeStringLiteral(partitionValue))'"
             do {
                 _ = try await driver.execute(query: sql)
                 selection.removeAll()
@@ -162,8 +161,7 @@ struct ClickHousePartsView: View {
             guard confirmed else { return }
 
             guard let driver = DatabaseManager.shared.driver(for: connectionId) else { return }
-            let escapedTable = tableName.replacingOccurrences(of: "`", with: "``")
-            let sql = "ALTER TABLE `\(escapedTable)` DETACH PARTITION '\(partitionValue.replacingOccurrences(of: "'", with: "''"))'"
+            let sql = "ALTER TABLE \(driver.quoteIdentifier(tableName)) DETACH PARTITION '\(driver.escapeStringLiteral(partitionValue))'"
             do {
                 _ = try await driver.execute(query: sql)
                 selection.removeAll()
@@ -194,12 +192,11 @@ struct ClickHousePartsView: View {
         }
 
         do {
-            let escapedTable = tableName.replacingOccurrences(of: "'", with: "''")
             let sql = """
                 SELECT partition, name, rows, bytes_on_disk,
                        toString(modification_time) AS mod_time, active
                 FROM system.parts
-                WHERE database = currentDatabase() AND table = '\(escapedTable)'
+                WHERE database = currentDatabase() AND table = '\(driver.escapeStringLiteral(tableName))'
                 ORDER BY partition, name
                 """
             let result = try await driver.execute(query: sql)

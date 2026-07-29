@@ -130,6 +130,93 @@ struct PluginSettingsStorageTests {
     }
 }
 
+@Suite("SettablePlugin snapshot and restore", .serialized)
+struct SettablePluginSnapshotTests {
+    private struct TestOptions: Codable, Equatable {
+        var flag = false
+        var count = 0
+    }
+
+    private final class TestSettablePlugin: SettablePlugin {
+        static let settingsStorageId = "test.settable.snapshot"
+
+        var settings = TestOptions() {
+            didSet { saveSettings() }
+        }
+
+        func resetSettingsToDefaults() {
+            settings = TestOptions()
+        }
+    }
+
+    private func cleanup() {
+        PluginSettingsStorage(pluginId: TestSettablePlugin.settingsStorageId).removeAll()
+    }
+
+    @Test("snapshotSettingsData encodes current settings")
+    func snapshotEncodesCurrentSettings() throws {
+        defer { cleanup() }
+        let plugin = TestSettablePlugin()
+        plugin.settings = TestOptions(flag: true, count: 7)
+
+        let data = try #require(plugin.snapshotSettingsData())
+        let decoded = try JSONDecoder().decode(TestOptions.self, from: data)
+
+        #expect(decoded == plugin.settings)
+    }
+
+    @Test("restoreSettingsData restores settings and persists the restored value")
+    func restoreRevertsSettingsAndStorage() throws {
+        defer { cleanup() }
+        let plugin = TestSettablePlugin()
+        plugin.settings = TestOptions(flag: true, count: 1)
+        let snapshot = try #require(plugin.snapshotSettingsData())
+
+        plugin.settings = TestOptions(flag: false, count: 99)
+        plugin.restoreSettingsData(snapshot)
+
+        #expect(plugin.settings == TestOptions(flag: true, count: 1))
+        let storage = PluginSettingsStorage(pluginId: TestSettablePlugin.settingsStorageId)
+        #expect(storage.load(TestOptions.self) == TestOptions(flag: true, count: 1))
+    }
+
+    @Test("restoreSettingsData ignores invalid data")
+    func restoreIgnoresInvalidData() {
+        defer { cleanup() }
+        let plugin = TestSettablePlugin()
+        plugin.settings = TestOptions(flag: true, count: 5)
+
+        plugin.restoreSettingsData(Data("not json".utf8))
+
+        #expect(plugin.settings == TestOptions(flag: true, count: 5))
+    }
+
+    @Test("resetSettingsToDefaults restores default values")
+    func resetRestoresDefaults() {
+        defer { cleanup() }
+        let plugin = TestSettablePlugin()
+        plugin.settings = TestOptions(flag: true, count: 42)
+
+        plugin.resetSettingsToDefaults()
+
+        #expect(plugin.settings == TestOptions())
+    }
+
+    @Test("snapshot and restore dispatch through the type-erased protocol")
+    func typeErasedDispatch() throws {
+        defer { cleanup() }
+        let plugin = TestSettablePlugin()
+        plugin.settings = TestOptions(flag: true, count: 3)
+        let discoverable: any SettablePluginDiscoverable = plugin
+
+        let snapshot = try #require(discoverable.snapshotSettingsData())
+        plugin.settings = TestOptions(flag: false, count: 0)
+        discoverable.restoreSettingsData(snapshot)
+
+        #expect(plugin.settings == TestOptions(flag: true, count: 3))
+    }
+}
+
 @Suite("PluginCapability")
 struct PluginCapabilityTests {
 

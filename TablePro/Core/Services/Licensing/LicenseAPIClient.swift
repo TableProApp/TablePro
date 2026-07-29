@@ -14,7 +14,6 @@ final class LicenseAPIClient {
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "LicenseAPIClient")
 
-    // swiftlint:disable:next force_unwrapping
     private let baseURL = URL(string: "https://api.tablepro.app/v1/license")!
 
     private let session: URLSession
@@ -43,6 +42,12 @@ final class LicenseAPIClient {
     /// Activate a license key on this machine
     func activate(request: LicenseActivationRequest) async throws -> SignedLicensePayload {
         let url = baseURL.appendingPathComponent("activate")
+        return try await post(url: url, body: request)
+    }
+
+    /// Accept a team invitation, activating this machine as a member
+    func acceptInvite(request: LicenseAcceptInviteRequest) async throws -> SignedLicensePayload {
+        let url = baseURL.appendingPathComponent("accept-invite")
         return try await post(url: url, body: request)
     }
 
@@ -109,11 +114,9 @@ final class LicenseAPIClient {
             throw LicenseError.invalidKey
 
         case 409:
-            // Conflict — activation limit reached
             throw LicenseError.activationLimitReached
 
         case 403:
-            // Parse error message to determine specific error
             if let errorResponse = try? decoder.decode(LicenseAPIErrorResponse.self, from: data) {
                 let msg = errorResponse.message.lowercased()
                 if msg.contains("suspend") {

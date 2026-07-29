@@ -45,6 +45,30 @@ struct LicensePayloadData: Codable, Equatable {
     let expiresAt: String?
     let issuedAt: String
     let tier: String
+    let teamId: String?
+    let role: String?
+
+    init(
+        billingCycle: String?,
+        licenseKey: String,
+        email: String,
+        status: String,
+        expiresAt: String?,
+        issuedAt: String,
+        tier: String,
+        teamId: String? = nil,
+        role: String? = nil
+    ) {
+        self.billingCycle = billingCycle
+        self.licenseKey = licenseKey
+        self.email = email
+        self.status = status
+        self.expiresAt = expiresAt
+        self.issuedAt = issuedAt
+        self.tier = tier
+        self.teamId = teamId
+        self.role = role
+    }
 
     private enum CodingKeys: String, CodingKey {
         case billingCycle = "billing_cycle"
@@ -54,11 +78,17 @@ struct LicensePayloadData: Codable, Equatable {
         case expiresAt = "expires_at"
         case issuedAt = "issued_at"
         case tier
+        case teamId = "team_id"
+        case role
     }
 
     /// Custom encode to explicitly write null for nil optionals.
     /// The auto-synthesized Codable uses encodeIfPresent which omits nil keys,
     /// but PHP's json_encode includes null values — the signed JSON must match exactly.
+    ///
+    /// `team_id` and `role` are the exception: the server omits them for non-Team licenses, so
+    /// they use encodeIfPresent (dropped when nil). This keeps a payload signed before teams
+    /// existed verifying byte-for-byte against a build that knows about the new keys.
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         if let billingCycle {
@@ -76,6 +106,8 @@ struct LicensePayloadData: Codable, Equatable {
         }
         try container.encode(issuedAt, forKey: .issuedAt)
         try container.encode(tier, forKey: .tier)
+        try container.encodeIfPresent(teamId, forKey: .teamId)
+        try container.encodeIfPresent(role, forKey: .role)
     }
 }
 
@@ -97,6 +129,23 @@ struct LicenseActivationRequest: Codable {
 
     private enum CodingKeys: String, CodingKey {
         case licenseKey = "license_key"
+        case machineId = "machine_id"
+        case machineName = "machine_name"
+        case appVersion = "app_version"
+        case osVersion = "os_version"
+    }
+}
+
+/// Request body for accepting a team invitation (activation via invite code)
+struct LicenseAcceptInviteRequest: Codable {
+    let token: String
+    let machineId: String
+    let machineName: String
+    let appVersion: String
+    let osVersion: String
+
+    private enum CodingKeys: String, CodingKey {
+        case token
         case machineId = "machine_id"
         case machineName = "machine_name"
         case appVersion = "app_version"

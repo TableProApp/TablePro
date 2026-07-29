@@ -18,7 +18,7 @@ struct ImportErrorView: View {
                 .font(.largeTitle)
                 .imageScale(.large)
                 .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(Color(nsColor: .systemRed))
+                .foregroundStyle(.red)
 
             VStack(spacing: 6) {
                 Text("Import Failed")
@@ -45,7 +45,7 @@ struct ImportErrorView: View {
                                 .padding(.top, 8)
                             Text(underlyingError.localizedDescription)
                                 .font(.subheadline)
-                                .foregroundStyle(Color(nsColor: .systemRed))
+                                .foregroundStyle(.red)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)

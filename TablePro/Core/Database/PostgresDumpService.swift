@@ -41,11 +41,8 @@ enum PostgresDumpError: LocalizedError, Equatable {
         switch self {
         case .binaryNotFound(let name):
             return String(
-                format: String(localized: """
-                    %@ was not found on this system. Install it with `brew install libpq` and \
-                    link it, or set a custom path under Settings > Terminal > CLI Paths > %@.
-                    """),
-                name, name
+                format: String(localized: "%@ was not found on this system. Install it with `brew install libpq` and link it."),
+                name
             )
         case .unsupportedDatabase:
             return String(localized: "Dump operations are only supported for PostgreSQL and Redshift connections.")
@@ -138,8 +135,8 @@ final class PostgresDumpService {
     /// progress bar (used by backup; restore stays indeterminate).
     ///
     /// This entry point resolves dependencies from app singletons
-    /// (`DatabaseManager`, `ConnectionStorage`, `AppSettingsManager`,
-    /// `CLICommandResolver`). Tests should use `run(command:database:fileURL:totalBytesEstimate:)`
+    /// (`DatabaseManager`, `ConnectionStorage`, `CLIExecutableFinder`).
+    /// Tests should use `run(command:database:fileURL:totalBytesEstimate:)`
     /// directly with a fake runner.
     func start(
         connection: DatabaseConnection,
@@ -166,18 +163,14 @@ final class PostgresDumpService {
         let effective = session?.effectiveConnection ?? connection
         let password = ConnectionStorage.shared.loadPassword(for: connection.id) ?? session?.cachedPassword
 
-        let cliKey: String
         let binaryName: String
         switch kind {
         case .backup:
-            cliKey = TerminalSettings.pgDumpCliPathKey
             binaryName = "pg_dump"
         case .restore:
-            cliKey = TerminalSettings.pgRestoreCliPathKey
             binaryName = "pg_restore"
         }
-        let customPath = AppSettingsManager.shared.terminal.cliPaths[cliKey]?.nilIfEmpty
-        guard let resolvedPath = CLICommandResolver.findExecutable(binaryName, customPath: customPath) else {
+        guard let resolvedPath = CLIExecutableFinder.findExecutable(binaryName) else {
             throw PostgresDumpError.binaryNotFound(name: binaryName)
         }
 

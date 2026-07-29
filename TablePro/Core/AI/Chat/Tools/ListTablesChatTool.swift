@@ -11,10 +11,14 @@ struct ListTablesChatTool: ChatTool {
     let inputSchema: JsonValue = ChatToolSchemaBuilder.object(
         properties: [
             "connection_id": ChatToolSchemaBuilder.connectionId,
-            "database": ChatToolSchemaBuilder.string(description: "Database name (uses current if omitted)"),
+            "database": ChatToolSchemaBuilder.string(
+                description: "Database name. Pass null to use current.",
+                optional: true
+            ),
             "schema": ChatToolSchemaBuilder.schemaName,
             "include_row_counts": ChatToolSchemaBuilder.boolean(
-                description: "Include approximate row counts (default false)"
+                description: "Include approximate row counts. Pass null to use default false.",
+                optional: true
             )
         ]
     )

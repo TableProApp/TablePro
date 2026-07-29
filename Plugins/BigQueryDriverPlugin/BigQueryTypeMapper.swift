@@ -41,44 +41,49 @@ internal struct BigQueryTypeMapper {
     private static func convertCellValue(_ value: BQCellValue?, field: BQTableFieldSchema) -> String? {
         guard let value else { return nil }
 
-        let isRepeated = field.mode?.uppercased() == "REPEATED"
-
         switch value {
         case .null:
             return nil
 
         case .string(let str):
-            if isRepeated {
-                return "[\(str)]"
-            }
             return convertScalarString(str, type: field.type)
 
-        case .record(let record):
-            if let subFields = field.fields, let cells = record.f {
-                let subRow = flattenRow(cells: cells, fields: subFields)
-                return structToJson(subRow, fields: subFields)
-            }
-            return nil
+        case .record, .array:
+            return jsonValue(for: value, field: field)?.serialized
+        }
+    }
+
+    private static func jsonValue(for value: BQCellValue, field: BQTableFieldSchema) -> BQJsonValue? {
+        switch value {
+        case .null:
+            return .null
+
+        case .string(let str):
+            guard let scalar = convertScalarString(str, type: field.type) else { return .null }
+            return isJsonLiteral(type: field.type) ? .literal(scalar) : .text(scalar)
 
         case .array(let items):
-            let converted = items.map { item -> String in
-                switch item {
-                case .null:
-                    return "null"
-                case .string(let s):
-                    let converted = convertScalarString(s, type: field.type) ?? "null"
-                    return jsonQuoteIfNeeded(converted, type: field.type)
-                case .record(let record):
-                    if let subFields = field.fields, let cells = record.f {
-                        let subRow = flattenRow(cells: cells, fields: subFields)
-                        return structToJson(subRow, fields: subFields) ?? "null"
-                    }
-                    return "null"
-                case .array:
-                    return "[]"
+            return .array(items.map { jsonValue(for: $0, field: field) ?? .null })
+
+        case .record(let record):
+            guard let subFields = field.fields else { return nil }
+            let members = subFields.enumerated().map { index, subField -> BQJsonValue.Member in
+                let cell: BQCellValue? = index < record.f.count ? record.f[index].v : nil
+                guard let cell, let json = jsonValue(for: cell, field: subField) else {
+                    return BQJsonValue.Member(name: subField.name, value: .null)
                 }
+                return BQJsonValue.Member(name: subField.name, value: json)
             }
-            return "[\(converted.joined(separator: ","))]"
+            return .object(members)
+        }
+    }
+
+    private static func isJsonLiteral(type: String) -> Bool {
+        switch type.uppercased() {
+        case "INT64", "FLOAT64", "NUMERIC", "BIGNUMERIC", "BOOLEAN", "BOOL":
+            return true
+        default:
+            return false
         }
     }
 
@@ -110,34 +115,6 @@ internal struct BigQueryTypeMapper {
         default:
             return str
         }
-    }
-
-    private static func jsonQuoteIfNeeded(_ value: String, type: String) -> String {
-        let upper = type.uppercased()
-        if upper == "INT64" || upper == "FLOAT64" || upper == "NUMERIC" ||
-            upper == "BIGNUMERIC" || upper == "BOOLEAN" || upper == "BOOL"
-        {
-            return value
-        }
-        let escaped = value
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\\\"")
-        return "\"\(escaped)\""
-    }
-
-    private static func structToJson(_ row: [String?], fields: [BQTableFieldSchema]) -> String? {
-        var pairs: [String] = []
-        for (index, field) in fields.enumerated() {
-            let value = index < row.count ? row[index] : nil
-            let key = "\"\(field.name)\""
-            if let value {
-                let jsonVal = jsonQuoteIfNeeded(value, type: field.type)
-                pairs.append("\(key):\(jsonVal)")
-            } else {
-                pairs.append("\(key):null")
-            }
-        }
-        return "{\(pairs.joined(separator: ","))}"
     }
 
     // MARK: - Column Type Names
@@ -176,5 +153,60 @@ internal struct BigQueryTypeMapper {
                 comment: field.description
             )
         }
+    }
+}
+
+private enum BQJsonValue {
+    case null
+    case literal(String)
+    case text(String)
+    case array([BQJsonValue])
+    case object([Member])
+
+    struct Member {
+        let name: String
+        let value: BQJsonValue
+    }
+
+    var serialized: String {
+        switch self {
+        case .null:
+            return "null"
+        case .literal(let value):
+            return value
+        case .text(let value):
+            return "\"\(BQJsonValue.escaped(value))\""
+        case .array(let items):
+            return "[\(items.map(\.serialized).joined(separator: ","))]"
+        case .object(let members):
+            let pairs = members.map { "\"\(BQJsonValue.escaped($0.name))\":\($0.value.serialized)" }
+            return "{\(pairs.joined(separator: ","))}"
+        }
+    }
+
+    private static func escaped(_ text: String) -> String {
+        var result = ""
+        result.reserveCapacity((text as NSString).length)
+        for scalar in text.unicodeScalars {
+            switch scalar {
+            case "\"":
+                result.append("\\\"")
+            case "\\":
+                result.append("\\\\")
+            case "\n":
+                result.append("\\n")
+            case "\r":
+                result.append("\\r")
+            case "\t":
+                result.append("\\t")
+            default:
+                if scalar.value < 0x20 {
+                    result.append(String(format: "\\u%04x", scalar.value))
+                } else {
+                    result.unicodeScalars.append(scalar)
+                }
+            }
+        }
+        return result
     }
 }

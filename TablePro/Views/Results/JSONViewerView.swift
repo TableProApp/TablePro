@@ -16,7 +16,7 @@ internal struct JSONViewerView: View {
     @State private var treeSearchText = ""
     @State private var parsedTree: JSONTreeNode?
     @State private var parseError: JSONTreeParseError?
-    @State private var prettyText = ""
+    @State private var displayText: String
     @State private var showInvalidAlert = false
 
     init(
@@ -31,7 +31,12 @@ internal struct JSONViewerView: View {
         self.onDismiss = onDismiss
         self.onCommit = onCommit
         self.onPopOut = onPopOut
+        self._displayText = State(wrappedValue: JsonReindenter.reindent(text.wrappedValue))
         self._viewMode = State(initialValue: AppSettingsManager.shared.editor.jsonViewerPreferredMode)
+    }
+
+    private var isLiveBinding: Bool {
+        isEditable && onCommit == nil
     }
 
     var body: some View {
@@ -45,12 +50,13 @@ internal struct JSONViewerView: View {
             }
         }
         .onAppear { initializeView() }
-        .onChange(of: text) { reparseIfNeeded() }
+        .onChange(of: text) { syncFromExternal() }
+        .onChange(of: displayText) { handleDisplayTextChange() }
         .onChange(of: viewMode) {
             AppSettingsManager.shared.editor.jsonViewerPreferredMode = viewMode
         }
         .alert("Invalid JSON", isPresented: $showInvalidAlert) {
-            Button(String(localized: "Save Anyway")) { commitAndClose(text) }
+            Button(String(localized: "Save Anyway")) { commitAndClose(displayText) }
             Button(String(localized: "Cancel"), role: .cancel) { }
         } message: {
             Text("The text is not valid JSON. Save anyway?")
@@ -69,22 +75,11 @@ internal struct JSONViewerView: View {
             .fixedSize()
             Spacer()
             if let onPopOut {
-                Button { onPopOut(text) } label: {
+                Button { onPopOut(displayText) } label: {
                     Image(systemName: "arrow.up.forward.app")
                 }
                 .buttonStyle(.borderless)
                 .help(String(localized: "Open in Window"))
-            }
-            if viewMode == .text && isEditable {
-                Button {
-                    if let formatted = text.prettyPrintedAsJson() {
-                        text = formatted
-                    }
-                } label: {
-                    Image(systemName: "curlybraces")
-                }
-                .buttonStyle(.borderless)
-                .help(String(localized: "Format JSON"))
             }
         }
         .padding(.horizontal, 10)
@@ -97,11 +92,7 @@ internal struct JSONViewerView: View {
     private var viewerContent: some View {
         switch viewMode {
         case .text:
-            JSONSyntaxTextView(
-                text: isEditable ? $text : $prettyText,
-                isEditable: isEditable,
-                wordWrap: true
-            )
+            JSONCodeEditor(text: $displayText, isEditable: isEditable)
         case .tree:
             if let tree = parsedTree {
                 JSONTreeView(rootNode: tree, searchText: $treeSearchText)
@@ -147,19 +138,24 @@ internal struct JSONViewerView: View {
     // MARK: - Logic
 
     private func initializeView() {
-        prettyText = text.prettyPrintedAsJson() ?? text
+        displayText = JsonReindenter.reindent(text)
         parseTree()
     }
 
-    private func reparseIfNeeded() {
-        if !isEditable {
-            prettyText = text.prettyPrintedAsJson() ?? text
-        }
+    private func syncFromExternal() {
+        guard JsonReindenter.normalize(text) != JsonReindenter.normalize(displayText) else { return }
+        displayText = JsonReindenter.reindent(text)
+    }
+
+    private func handleDisplayTextChange() {
         parseTree()
+        guard isLiveBinding,
+              JsonReindenter.normalize(displayText) != JsonReindenter.normalize(text) else { return }
+        text = displayText
     }
 
     private func parseTree() {
-        switch JSONTreeParser.parse(text) {
+        switch JSONTreeParser.parse(displayText) {
         case .success(let tree):
             parsedTree = tree
             parseError = nil
@@ -170,34 +166,19 @@ internal struct JSONViewerView: View {
     }
 
     private func saveJSON() {
-        guard !text.isEmpty else {
-            commitAndClose(text)
+        guard !displayText.isEmpty else {
+            commitAndClose("")
             return
         }
-        guard let data = text.data(using: .utf8),
-              (try? JSONSerialization.jsonObject(with: data)) != nil else {
+        guard JsonSyntaxParser.parse(displayText) != nil else {
             showInvalidAlert = true
             return
         }
-        commitAndClose(text)
+        commitAndClose(displayText)
     }
 
     private func commitAndClose(_ value: String) {
-        let saveValue = Self.compact(value) ?? value
-        onCommit?(saveValue)
+        onCommit?(JsonReindenter.normalize(value))
         onDismiss?()
-    }
-
-    static func compact(_ jsonString: String?) -> String? {
-        guard let data = jsonString?.data(using: .utf8),
-              let jsonObject = try? JSONSerialization.jsonObject(with: data),
-              let compactData = try? JSONSerialization.data(
-                  withJSONObject: jsonObject,
-                  options: [.sortedKeys, .withoutEscapingSlashes]
-              ),
-              let compactString = String(data: compactData, encoding: .utf8) else {
-            return nil
-        }
-        return compactString
     }
 }

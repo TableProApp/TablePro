@@ -24,7 +24,6 @@ struct OnboardingContentView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Main content area
             ZStack {
                 switch currentPage {
                 case 0:
@@ -40,7 +39,6 @@ struct OnboardingContentView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-            // Bottom navigation bar
             navigationBar
         }
         .onKeyPress(.leftArrow) {
@@ -153,7 +151,7 @@ struct OnboardingContentView: View {
                 .font(.largeTitle)
                 .imageScale(.large)
                 .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(Color(nsColor: .systemGreen))
+                .foregroundStyle(.green)
 
             Text("You're all set!")
                 .font(.title2.weight(.bold))
@@ -202,6 +200,7 @@ struct OnboardingContentView: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
+                    .keyboardShortcut(.defaultAction)
                     .transition(.opacity)
                 } else {
                     Button("Get Started") {
@@ -209,6 +208,7 @@ struct OnboardingContentView: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
+                    .keyboardShortcut(.defaultAction)
                     .transition(.opacity)
                 }
             }

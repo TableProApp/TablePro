@@ -10,6 +10,7 @@ import Combine
 import CryptoKit
 import Foundation
 import os
+import TableProImport
 
 struct LinkedConnection: Identifiable {
     let id: UUID
@@ -105,7 +106,7 @@ final class LinkedFolderWatcher {
 
                 if ConnectionExportCrypto.isEncrypted(data) { continue }
 
-                guard let envelope = try? ConnectionExportService.decodeData(data) else { continue }
+                guard let envelope = try? ConnectionImportDecoder.decodeData(data) else { continue }
 
                 for exportable in envelope.connections {
                     let stableId = stableId(folderId: folder.id, connection: exportable)

@@ -9,38 +9,53 @@ let package = Package(
         .iOS(.v17)
     ],
     products: [
+        .library(name: "TableProCoreTypes", targets: ["TableProCoreTypes"]),
         .library(name: "TableProPluginKit", targets: ["TableProPluginKit"]),
         .library(name: "TableProModels", targets: ["TableProModels"]),
+        .library(name: "TableProImport", targets: ["TableProImport"]),
         .library(name: "TableProDatabase", targets: ["TableProDatabase"]),
         .library(name: "TableProQuery", targets: ["TableProQuery"]),
         .library(name: "TableProSync", targets: ["TableProSync"]),
         .library(name: "TableProAnalytics", targets: ["TableProAnalytics"]),
-        .library(name: "TableProMSSQLCore", targets: ["TableProMSSQLCore"])
+        .library(name: "TableProMSSQLCore", targets: ["TableProMSSQLCore"]),
+        .library(name: "TableProTeradataCore", targets: ["TableProTeradataCore"]),
+        .library(name: "TableProTrinoCore", targets: ["TableProTrinoCore"])
     ],
     targets: [
         .target(
+            name: "TableProCoreTypes",
+            dependencies: [],
+            path: "Sources/TableProCoreTypes"
+        ),
+        .target(
             name: "TableProPluginKit",
             dependencies: [],
-            path: "Sources/TableProPluginKit"
+            path: "Sources/TableProPluginKit",
+            exclude: ["Info.plist"]
         ),
         .target(
             name: "TableProModels",
-            dependencies: ["TableProPluginKit"],
+            dependencies: ["TableProPluginKit", "TableProCoreTypes"],
             path: "Sources/TableProModels"
         ),
         .target(
+            name: "TableProImport",
+            dependencies: [],
+            path: "Sources/TableProImport"
+        ),
+        .target(
             name: "TableProDatabase",
-            dependencies: ["TableProModels"],
+            dependencies: ["TableProModels", "TableProCoreTypes"],
             path: "Sources/TableProDatabase"
         ),
         .target(
             name: "TableProQuery",
-            dependencies: ["TableProModels", "TableProPluginKit"],
+            dependencies: ["TableProModels", "TableProPluginKit", "TableProCoreTypes"],
             path: "Sources/TableProQuery"
         ),
         .target(
             name: "TableProSync",
-            dependencies: ["TableProModels"],
+            dependencies: ["TableProModels", "TableProCoreTypes"],
             path: "Sources/TableProSync"
         ),
         .target(
@@ -53,10 +68,25 @@ let package = Package(
             dependencies: [],
             path: "Sources/TableProMSSQLCore"
         ),
+        .target(
+            name: "TableProTeradataCore",
+            dependencies: [],
+            path: "Sources/TableProTeradataCore"
+        ),
+        .target(
+            name: "TableProTrinoCore",
+            dependencies: [],
+            path: "Sources/TableProTrinoCore"
+        ),
         .testTarget(
             name: "TableProModelsTests",
             dependencies: ["TableProModels", "TableProPluginKit"],
             path: "Tests/TableProModelsTests"
+        ),
+        .testTarget(
+            name: "TableProImportTests",
+            dependencies: ["TableProImport"],
+            path: "Tests/TableProImportTests"
         ),
         .testTarget(
             name: "TableProDatabaseTests",
@@ -77,6 +107,26 @@ let package = Package(
             name: "TableProMSSQLCoreTests",
             dependencies: ["TableProMSSQLCore"],
             path: "Tests/TableProMSSQLCoreTests"
+        ),
+        .testTarget(
+            name: "TableProTeradataCoreTests",
+            dependencies: ["TableProTeradataCore"],
+            path: "Tests/TableProTeradataCoreTests"
+        ),
+        .testTarget(
+            name: "TableProTrinoCoreTests",
+            dependencies: ["TableProTrinoCore"],
+            path: "Tests/TableProTrinoCoreTests"
+        ),
+        .testTarget(
+            name: "TableProSyncTests",
+            dependencies: ["TableProSync", "TableProModels"],
+            path: "Tests/TableProSyncTests"
+        ),
+        .testTarget(
+            name: "TableProPluginKitTests",
+            dependencies: ["TableProPluginKit"],
+            path: "Tests/TableProPluginKitTests"
         )
     ]
 )

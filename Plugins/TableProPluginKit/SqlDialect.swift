@@ -27,6 +27,10 @@ public enum SqlDialect: String, Sendable, CaseIterable {
         self == .postgres
     }
 
+    public var supportsHashLineComments: Bool {
+        self == .mysql
+    }
+
     public var supportsEscapeStringPrefix: Bool {
         self == .postgres
     }

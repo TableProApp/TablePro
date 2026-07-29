@@ -14,9 +14,14 @@ final class NetworkPaneViewModel {
     var host: String = ""
     var port: String = ""
     var database: String = ""
+    var sshForwardUnixSocketPath: String = ""
     var additionalFieldValues: [String: String] = [:]
 
     var coordinator: WeakCoordinatorRef?
+
+    var forwardsToUnixSocket: Bool {
+        !sshForwardUnixSocketPath.trimmingCharacters(in: .whitespaces).isEmpty
+    }
 
     var connectionMode: ConnectionMode {
         PluginManager.shared.connectionMode(for: type)
@@ -37,6 +42,18 @@ final class NetworkPaneViewModel {
     var defaultPort: String {
         let port = type.defaultPort
         return port == 0 ? "" : String(port)
+    }
+
+    var socketPathPrompt: String {
+        PluginManager.shared.defaultUnixSocketPath(for: type) ?? "/path/to/database.sock"
+    }
+
+    var resolvedHost: String {
+        host.trimmingCharacters(in: .whitespaces).isEmpty ? (type.defaultHost ?? "localhost") : host
+    }
+
+    var resolvedPort: Int {
+        Int(port) ?? type.defaultPort
     }
 
     var supportsDatabaseField: Bool {
@@ -77,6 +94,9 @@ final class NetworkPaneViewModel {
 
     func applyTypeDefaults(forNewType newType: DatabaseType) {
         port = String(newType.defaultPort)
+        if host.trimmingCharacters(in: .whitespaces).isEmpty, let defaultHost = newType.defaultHost {
+            host = defaultHost
+        }
         var values: [String: String] = [:]
         for field in PluginManager.shared.additionalConnectionFields(for: newType)
             where field.section == .connection
@@ -107,6 +127,7 @@ final class NetworkPaneViewModel {
         port = connection.port > 0 ? String(connection.port) : ""
         database = connection.database
         type = connection.type
+        sshForwardUnixSocketPath = connection.sshForwardUnixSocketPath ?? ""
 
         var values: [String: String] = [:]
         let allFields = PluginManager.shared.additionalConnectionFields(for: connection.type)
@@ -130,5 +151,31 @@ final class NetworkPaneViewModel {
         for (key, value) in additionalFieldValues {
             fields[key] = value
         }
+        let socketPath = sshForwardUnixSocketPath.trimmingCharacters(in: .whitespaces)
+        if !socketPath.isEmpty {
+            fields[DatabaseConnection.sshForwardUnixSocketPathKey] = socketPath
+        }
+    }
+}
+
+/// Advisory only. `ssh -L` needs the socket file itself, while libpq's own `host` convention
+/// names the directory holding it, and mixing the two up is the usual mistake. Save is never
+/// blocked on this: the SSH server is the only authority on whether the path resolves.
+enum SSHForwardSocketPathIssue: Equatable {
+    case notAbsolute
+    case looksLikeDirectory
+}
+
+extension NetworkPaneViewModel {
+    nonisolated static func socketPathIssue(for rawPath: String) -> SSHForwardSocketPathIssue? {
+        let path = rawPath.trimmingCharacters(in: .whitespaces)
+        guard !path.isEmpty else { return nil }
+        guard path.hasPrefix("/") else { return .notAbsolute }
+        guard !path.hasSuffix("/") else { return .looksLikeDirectory }
+        return nil
+    }
+
+    var socketPathIssue: SSHForwardSocketPathIssue? {
+        Self.socketPathIssue(for: sshForwardUnixSocketPath)
     }
 }

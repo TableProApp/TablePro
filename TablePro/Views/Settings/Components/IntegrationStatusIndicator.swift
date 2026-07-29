@@ -54,17 +54,17 @@ struct IntegrationStatusIndicator: View {
     private var tint: Color {
         switch status {
         case .running, .success, .active:
-            return Color(nsColor: .systemGreen)
+            return .green
         case .stopped:
             return Color(nsColor: .secondaryLabelColor)
         case .starting:
-            return Color(nsColor: .systemOrange)
+            return .orange
         case .failed, .error:
-            return Color(nsColor: .systemRed)
+            return .red
         case .warning, .expired:
-            return Color(nsColor: .systemOrange)
+            return .orange
         case .revoked:
-            return Color(nsColor: .systemRed)
+            return .red
         }
     }
 

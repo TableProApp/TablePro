@@ -24,6 +24,9 @@ public actor MCPHttpServerTransport {
     private var sseWriters: [UUID: MCPSseWriter] = [:]
     private var sseConnectionsBySession: [MCPSessionId: UUID] = [:]
     private var sessionEventsTask: Task<Void, Never>?
+    private var readyContinuation: CheckedContinuation<Void, Error>?
+    private var readyTimeoutTask: Task<Void, Never>?
+    private static let readyTimeout: Duration = .seconds(5)
 
     nonisolated public let exchanges: AsyncStream<MCPInboundExchange>
     nonisolated private let exchangesContinuation: AsyncStream<MCPInboundExchange>.Continuation
@@ -71,32 +74,63 @@ public actor MCPHttpServerTransport {
         emitState(.starting)
 
         let parameters: NWParameters = makeParameters()
-
+        let newListener: NWListener
         do {
-            let newListener = try NWListener(using: parameters)
-            listener = newListener
-
-            newListener.stateUpdateHandler = { [weak self] state in
-                guard let self else { return }
-                Task { await self.handleListenerState(state) }
-            }
-
-            newListener.newConnectionHandler = { [weak self] connection in
-                guard let self else { return }
-                Task { await self.handleNewConnection(connection) }
-            }
-
-            newListener.start(queue: .global(qos: .userInitiated))
-            startSessionEventListener()
+            newListener = try NWListener(using: parameters)
         } catch {
             emitState(.failed(reason: error.localizedDescription))
+            throw MCPHttpServerError.bindFailed(reason: error.localizedDescription)
+        }
+        listener = newListener
+
+        newListener.stateUpdateHandler = { [weak self] state in
+            guard let self else { return }
+            Task { await self.handleListenerState(state) }
+        }
+
+        newListener.newConnectionHandler = { [weak self] connection in
+            guard let self else { return }
+            Task { await self.handleNewConnection(connection) }
+        }
+
+        do {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                readyContinuation = continuation
+                readyTimeoutTask = Task { [weak self] in
+                    try? await Task.sleep(for: Self.readyTimeout)
+                    await self?.handleReadyTimeout()
+                }
+                newListener.start(queue: .global(qos: .userInitiated))
+                startSessionEventListener()
+            }
+        } catch {
+            readyTimeoutTask?.cancel()
+            readyTimeoutTask = nil
+            emitState(.failed(reason: error.localizedDescription))
+            newListener.cancel()
             listener = nil
             throw MCPHttpServerError.bindFailed(reason: error.localizedDescription)
         }
     }
 
+    private func resumeReady(with result: Result<Void, Error>) {
+        guard let continuation = readyContinuation else { return }
+        readyContinuation = nil
+        readyTimeoutTask?.cancel()
+        readyTimeoutTask = nil
+        continuation.resume(with: result)
+    }
+
+    private func handleReadyTimeout() {
+        guard readyContinuation != nil else { return }
+        Self.logger.error("MCP HTTP listener did not reach .ready within timeout")
+        resumeReady(with: .failure(MCPHttpServerError.bindFailed(reason: "listener startup timed out")))
+    }
+
     public func stop() async {
         Self.logger.info("Stopping MCP HTTP server")
+
+        resumeReady(with: .failure(MCPHttpServerError.bindFailed(reason: "stop() called before listener ready")))
 
         sessionEventsTask?.cancel()
         sessionEventsTask = nil
@@ -181,15 +215,18 @@ public actor MCPHttpServerTransport {
             let port = listener?.port?.rawValue ?? configuration.port
             Self.logger.info("MCP HTTP server listening on port \(port, privacy: .public)")
             emitState(.running(port: port))
+            resumeReady(with: .success(()))
 
         case .failed(let error):
             Self.logger.error("MCP HTTP listener failed: \(error.localizedDescription, privacy: .public)")
             emitState(.failed(reason: error.localizedDescription))
             listener?.cancel()
             listener = nil
+            resumeReady(with: .failure(error))
 
         case .cancelled:
             Self.logger.debug("MCP HTTP listener cancelled")
+            resumeReady(with: .failure(MCPHttpServerError.bindFailed(reason: "listener cancelled before ready")))
 
         default:
             break

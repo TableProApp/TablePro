@@ -110,3 +110,44 @@ struct ExportDatabaseItem: Identifiable {
         tables.filter { $0.isSelected }
     }
 }
+
+extension ExportTableItem {
+    func normalized(forOptionColumnCount optionColumnCount: Int, defaultOptionValues: [Bool]) -> ExportTableItem {
+        guard optionColumnCount > 0 else { return self }
+        let fallback = defaultOptionValues.count == optionColumnCount
+            ? defaultOptionValues
+            : Array(repeating: true, count: optionColumnCount)
+        var normalizedItem = self
+        if normalizedItem.optionValues.count != optionColumnCount {
+            normalizedItem.optionValues = fallback
+        }
+        if normalizedItem.isSelected, !normalizedItem.optionValues.contains(true) {
+            normalizedItem.optionValues = fallback
+        }
+        return normalizedItem
+    }
+}
+
+extension [ExportDatabaseItem] {
+    func normalizingOptionValues(optionColumnCount: Int, defaultOptionValues: [Bool]) -> [ExportDatabaseItem] {
+        map { database in
+            var normalizedDatabase = database
+            normalizedDatabase.tables = database.tables.map {
+                $0.normalized(forOptionColumnCount: optionColumnCount, defaultOptionValues: defaultOptionValues)
+            }
+            return normalizedDatabase
+        }
+    }
+
+    func resettingOptionValues(to values: [Bool]) -> [ExportDatabaseItem] {
+        map { database in
+            var resetDatabase = database
+            resetDatabase.tables = database.tables.map { table in
+                var resetTable = table
+                resetTable.optionValues = values
+                return resetTable
+            }
+            return resetDatabase
+        }
+    }
+}

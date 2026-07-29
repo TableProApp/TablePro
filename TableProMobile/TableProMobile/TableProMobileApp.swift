@@ -41,6 +41,10 @@ struct TableProMobileApp: App {
             }
             .animation(.default, value: lockState.isLocked)
             .onOpenURL { url in
+                if url.isFileURL, url.pathExtension.lowercased() == "tablepro" {
+                    appState.pendingImportURL = url
+                    return
+                }
                 guard url.scheme == "tablepro",
                       url.host(percentEncoded: false) == "connect",
                       let uuidString = url.pathComponents.dropFirst().first,
@@ -65,14 +69,15 @@ struct TableProMobileApp: App {
             }
         }
         .onChange(of: scenePhase) { _, phase in
-            // Skip lifecycle side-effects under XCTest so unit tests do not
+            // Skip lifecycle side-effects under tests so unit tests do not
             // boot CloudKit sync, analytics, or biometric checks.
-            guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
+            guard !TestRuntime.isActive else { return }
             lockState.handleScenePhase(phase)
             switch phase {
             case .active:
                 MemoryPressureMonitor.shared.start()
-                if AppPreferences.isCloudSyncEnabled {
+                appState.retryLoadIfFailed()
+                if AppPreferences.isCloudSyncEnabled && appState.loadStatus == .ready {
                     syncTask?.cancel()
                     syncTask = Task {
                         await appState.syncCoordinator.sync(
@@ -121,6 +126,12 @@ struct TableProMobileApp: App {
     private func runBackgroundSync() async {
         scheduleBackgroundSync()
         guard AppPreferences.isCloudSyncEnabled else { return }
+        await MainActor.run { appState.retryLoadIfFailed() }
+        let status = await MainActor.run { appState.loadStatus }
+        guard status == .ready else {
+            Self.backgroundLogger.warning("Background sync skipped: persistence load not ready (likely device locked)")
+            return
+        }
         Self.backgroundLogger.info("Background sync starting")
         await appState.syncCoordinator.sync(
             localConnections: appState.connections,

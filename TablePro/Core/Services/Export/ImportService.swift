@@ -52,7 +52,9 @@ final class ImportService {
         encoding: String.Encoding,
         decompressedURL: URL? = nil,
         ownsDecompressedFile: Bool = false,
-        knownStatementCount: Int? = nil
+        knownStatementCount: Int? = nil,
+        targetTable: String? = nil,
+        columnMapping: [String: String] = [:]
     ) async throws -> PluginImportResult {
         guard let plugin = PluginManager.shared.importPlugin(forFormat: formatId) else {
             throw PluginImportError.importFailed("Import format '\(formatId)' not found")
@@ -62,25 +64,34 @@ final class ImportService {
             throw DatabaseError.notConnected
         }
 
-        // Reset state
         state = ImportState(isImporting: true)
         defer {
             state.isImporting = false
             currentProgress = nil
         }
 
-        let sink = ImportDataSinkAdapter(driver: driver, databaseType: connection.type)
-        let dialect = SqlDialect.from(databaseTypeId: connection.type.rawValue)
-        let source = SqlFileImportSource(
-            url: url,
-            encoding: encoding,
-            dialect: dialect,
-            decompressedURL: decompressedURL,
-            ownsDecompressedFile: ownsDecompressedFile
+        let sink = ImportDataSinkAdapter(
+            driver: driver,
+            databaseType: connection.type,
+            targetTable: targetTable,
+            columnMapping: columnMapping
         )
+
+        let source: any PluginImportSource
+        if type(of: plugin).requiresTargetTable {
+            source = PlainFileImportSource(url: decompressedURL ?? url)
+        } else {
+            let dialect = SqlDialect.from(databaseTypeId: connection.type.rawValue)
+            source = SqlFileImportSource(
+                url: url,
+                encoding: encoding,
+                dialect: dialect,
+                decompressedURL: decompressedURL,
+                ownsDecompressedFile: ownsDecompressedFile
+            )
+        }
         defer { source.cleanup() }
 
-        // Create progress tracker
         let initialTotal = Int64(knownStatementCount ?? 0)
         let nsProgress = Progress(totalUnitCount: initialTotal)
         let progress = PluginImportProgress(progress: nsProgress)
@@ -122,7 +133,6 @@ final class ImportService {
         } catch {
             state.errorMessage = error.localizedDescription
 
-            // Record failed import history
             QueryHistoryManager.shared.recordQuery(
                 query: "-- Import from \(url.lastPathComponent) (\(progress.processedStatements) statements before failure)",
                 connectionId: connection.id,
@@ -136,13 +146,11 @@ final class ImportService {
             throw error
         }
 
-        // Update final state
         state.processedStatements = result.executedStatements
         state.skippedStatements = result.skippedStatements
         state.estimatedTotalStatements = result.executedStatements + result.skippedStatements
         state.progress = 1.0
 
-        // Record success history
         QueryHistoryManager.shared.recordQuery(
             query: "-- Import from \(url.lastPathComponent) (\(result.executedStatements) statements)",
             connectionId: connection.id,

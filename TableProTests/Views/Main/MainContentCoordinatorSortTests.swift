@@ -99,22 +99,14 @@ struct MainContentCoordinatorSortTests {
         ])
     }
 
-    @Test("Applying an empty state clears the sort and removes the cache entry")
-    func emptyStateClearsSortAndCache() {
+    @Test("Applying an empty state clears the sort")
+    func emptyStateClearsSort() {
         let (coordinator, tabManager, tabId) = makeCoordinator()
         seedRows(coordinator, for: tabId)
 
         coordinator.handleSortStateChanged(sortState([(0, .ascending)]))
-        coordinator.querySortCache[tabId] = QuerySortCacheEntry(
-            sortedIDs: [.existing(0), .existing(1), .existing(2)],
-            columnIndex: 0,
-            direction: .ascending,
-            schemaVersion: 0
-        )
-
         coordinator.handleSortStateChanged(SortState())
 
-        #expect(coordinator.querySortCache[tabId] == nil)
         guard let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else {
             Issue.record("Expected tab to exist")
             return
@@ -140,27 +132,61 @@ struct MainContentCoordinatorSortTests {
         #expect(tabManager.tabs[idx].hasUserInteraction == firstInteractionTimestamp)
     }
 
-    @Test("cleanupSortCache drops entries for tabs that are no longer open")
-    func cleanupSortCacheDropsClosedTabs() {
-        let (coordinator, _, tabId) = makeCoordinator()
-        let strayTabId = UUID()
-        coordinator.querySortCache[tabId] = QuerySortCacheEntry(
-            sortedIDs: [.existing(0)],
-            columnIndex: 0,
-            direction: .ascending,
-            schemaVersion: 0
-        )
-        coordinator.querySortCache[strayTabId] = QuerySortCacheEntry(
-            sortedIDs: [.existing(0)],
-            columnIndex: 0,
-            direction: .ascending,
-            schemaVersion: 0
-        )
 
-        coordinator.cleanupSortCache(openTabIds: [tabId])
+    @Test("Sorting a paginated query result does not overwrite the editor query")
+    func paginatedSortPreservesContentQuery() {
+        let (coordinator, tabManager, tabId) = makeCoordinator()
+        seedRows(coordinator, for: tabId)
+        guard let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else {
+            Issue.record("Expected tab to exist")
+            return
+        }
+        let originalQuery = tabManager.tabs[idx].content.query
+        tabManager.tabs[idx].pagination.hasMoreRows = true
+        tabManager.tabs[idx].pagination.baseQueryForMore = originalQuery
 
-        #expect(coordinator.querySortCache[tabId] != nil)
-        #expect(coordinator.querySortCache[strayTabId] == nil)
+        coordinator.handleSortStateChanged(sortState([(0, .ascending)]))
+
+        #expect(tabManager.tabs[idx].content.query == originalQuery)
+    }
+
+    @Test("Sorting a file-backed paginated query tab does not mark it dirty")
+    func paginatedSortKeepsFileTabClean() {
+        let (coordinator, tabManager, tabId) = makeCoordinator()
+        seedRows(coordinator, for: tabId)
+        guard let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else {
+            Issue.record("Expected tab to exist")
+            return
+        }
+        let originalQuery = tabManager.tabs[idx].content.query
+        tabManager.tabs[idx].content.sourceFileURL = URL(fileURLWithPath: "/tmp/query.sql")
+        tabManager.tabs[idx].content.savedFileContent = originalQuery
+        tabManager.tabs[idx].pagination.hasMoreRows = true
+        tabManager.tabs[idx].pagination.baseQueryForMore = originalQuery
+
+        coordinator.handleSortStateChanged(sortState([(1, .descending)]))
+
+        #expect(tabManager.tabs[idx].content.query == originalQuery)
+        #expect(tabManager.tabs[idx].content.isFileDirty == false)
+    }
+
+    @Test("Clearing sort on a paginated query tab keeps the editor query intact")
+    func clearingSortPaginatedPreservesContentQuery() {
+        let (coordinator, tabManager, tabId) = makeCoordinator()
+        seedRows(coordinator, for: tabId)
+        guard let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else {
+            Issue.record("Expected tab to exist")
+            return
+        }
+        let originalQuery = tabManager.tabs[idx].content.query
+        tabManager.tabs[idx].sortState = sortState([(0, .ascending)])
+        tabManager.tabs[idx].pagination.hasMoreRows = true
+        tabManager.tabs[idx].pagination.baseQueryForMore = originalQuery
+
+        coordinator.handleSortStateChanged(SortState())
+
+        #expect(tabManager.tabs[idx].content.query == originalQuery)
+        #expect(tabManager.tabs[idx].sortState.columns.isEmpty)
     }
 
     @Test("Sort resets pagination on the active tab")
@@ -179,5 +205,69 @@ struct MainContentCoordinatorSortTests {
 
         #expect(tabManager.tabs[idx].pagination.currentPage == 1)
         #expect(tabManager.tabs[idx].pagination.currentOffset == 0)
+    }
+
+    private func makeTableCoordinator(
+        pageSize: Int,
+        tableName: String = "users"
+    ) -> (MainContentCoordinator, QueryTabManager, UUID) {
+        let tabManager = QueryTabManager()
+        let coordinator = MainContentCoordinator(
+            connection: TestFixtures.makeConnection(),
+            tabManager: tabManager,
+            changeManager: DataChangeManager(),
+            toolbarState: ConnectionToolbarState()
+        )
+        var tab = QueryTab(title: tableName, query: "SELECT * FROM \(tableName)", tabType: .table)
+        tab.tableContext.tableName = tableName
+        tab.pagination = PaginationState(totalRowCount: 100, pageSize: pageSize, currentPage: 1)
+        tab.execution.lastExecutedAt = Date()
+        tabManager.tabs.append(tab)
+        tabManager.selectedTabId = tab.id
+
+        let columns = ["id", "name"]
+        let rows = (0..<pageSize).map { i in columns.map { "\($0)_\(i)" as String? } }
+        let columnTypes: [ColumnType] = Array(repeating: .text(rawType: nil), count: columns.count)
+        let tableRows = TableRows.from(
+            queryRows: rows.map { row in row.map(PluginCellValue.fromOptional) },
+            columns: columns,
+            columnTypes: columnTypes
+        )
+        coordinator.setActiveTableRows(tableRows, for: tab.id)
+        return (coordinator, tabManager, tab.id)
+    }
+
+    @Test("Table tab keeps the rows-per-page LIMIT through ascending, descending, and cleared sort")
+    func tableTabSortPreservesPageSize() {
+        let (coordinator, tabManager, tabId) = makeTableCoordinator(pageSize: 10)
+        func query() -> String { tabManager.tabs.first { $0.id == tabId }?.content.query ?? "" }
+        func pagination() -> PaginationState? { tabManager.tabs.first { $0.id == tabId }?.pagination }
+
+        coordinator.handleSortStateChanged(sortState([(0, .ascending)]))
+        #expect(query().contains("LIMIT 10 OFFSET 0"))
+        #expect(query().localizedCaseInsensitiveContains("ORDER BY"))
+
+        coordinator.handleSortStateChanged(sortState([(0, .descending)]))
+        #expect(query().contains("LIMIT 10 OFFSET 0"))
+        #expect(query().localizedCaseInsensitiveContains("ORDER BY"))
+
+        coordinator.handleSortStateChanged(SortState())
+        #expect(query().contains("LIMIT 10 OFFSET 0"))
+        #expect(!query().localizedCaseInsensitiveContains("ORDER BY"))
+        #expect(pagination()?.pageSize == 10)
+        #expect(pagination()?.currentOffset == 0)
+    }
+
+    @Test("Sorting a table whose name contains a SQL keyword keeps the identifier intact")
+    func tableTabSortDoesNotSplitKeywordTableName() {
+        let (coordinator, tabManager, tabId) = makeTableCoordinator(pageSize: 10, tableName: "user_rate_limits")
+
+        coordinator.handleSortStateChanged(sortState([(0, .descending)]))
+
+        let sql = tabManager.tabs.first { $0.id == tabId }?.content.query ?? ""
+        #expect(sql.contains("user_rate_limits"))
+        #expect(!sql.contains("user_rate_ "))
+        #expect(sql.localizedCaseInsensitiveContains("ORDER BY"))
+        #expect(sql.contains("LIMIT 10 OFFSET 0"))
     }
 }

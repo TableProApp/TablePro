@@ -14,6 +14,8 @@ struct DataGridConfiguration: Equatable {
     var connectionId: UUID?
     var databaseType: DatabaseType?
     var tableName: String?
+    var databaseName: String?
+    var schemaName: String?
     var primaryKeyColumns: [String] = []
     var tabType: TabType?
     var showRowNumbers: Bool = true

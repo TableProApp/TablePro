@@ -13,6 +13,13 @@ import UniformTypeIdentifiers
 enum SQLFileService {
     private static let logger = Logger(subsystem: "com.TablePro", category: "SQLFileService")
 
+    static let supportedExtensions: Set<String> = ["sql", "psql", "pgsql"]
+
+    private static var allowedContentTypes: [UTType] {
+        let types = Set(supportedExtensions.compactMap { UTType(filenameExtension: $0) })
+        return types.isEmpty ? [.plainText] : Array(types)
+    }
+
     /// Reads a SQL file from disk.
     static func readFile(url: URL) async throws -> String {
         try await Task.detached {
@@ -34,7 +41,7 @@ enum SQLFileService {
     @MainActor
     static func showOpenPanel() async -> [URL]? {
         let panel = NSOpenPanel()
-        panel.allowedContentTypes = [UTType(filenameExtension: "sql") ?? .plainText]
+        panel.allowedContentTypes = allowedContentTypes
         panel.allowsMultipleSelection = true
         panel.message = String(localized: "Select SQL files to open")
         let response = await panel.begin()
@@ -46,7 +53,7 @@ enum SQLFileService {
     @MainActor
     static func showSavePanel(suggestedName: String = "query.sql") async -> URL? {
         let panel = NSSavePanel()
-        panel.allowedContentTypes = [UTType(filenameExtension: "sql") ?? .plainText]
+        panel.allowedContentTypes = allowedContentTypes
         panel.canCreateDirectories = true
         panel.nameFieldStringValue = suggestedName
         panel.message = String(localized: "Save SQL file")

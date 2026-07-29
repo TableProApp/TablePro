@@ -151,6 +151,32 @@ final class RowOperationsManager {
         )
     }
 
+    func deleteRows(
+        existingRows: [(displayIndex: Int, originalRow: [PluginCellValue])],
+        insertedStorageIndices: [Int],
+        tableRows: inout TableRows
+    ) -> DeleteRowsResult {
+        let sortedInsertedRows = insertedStorageIndices.sorted(by: >)
+
+        var delta: Delta = .none
+        if !sortedInsertedRows.isEmpty {
+            delta = tableRows.remove(at: IndexSet(sortedInsertedRows))
+            changeManager.undoBatchRowInsertion(rowIndices: sortedInsertedRows)
+        }
+
+        if !existingRows.isEmpty {
+            changeManager.recordBatchRowDeletion(
+                rows: existingRows.map { (rowIndex: $0.displayIndex, originalRow: $0.originalRow) }
+            )
+        }
+
+        return DeleteRowsResult(
+            nextRowToSelect: -1,
+            physicallyRemovedIndices: sortedInsertedRows,
+            delta: delta
+        )
+    }
+
     func applyUndoResult(_ result: UndoResult, tableRows: inout TableRows) -> UndoApplicationResult {
         switch result.action {
         case .cellEdit(let rowIndex, let columnIndex, _, let previousValue, _, _):
@@ -231,7 +257,9 @@ final class RowOperationsManager {
     func copySelectedRowsToClipboard(
         selectedIndices: Set<Int>,
         tableRows: TableRows,
-        includeHeaders: Bool = false
+        displayIDs: [RowID]? = nil,
+        includeHeaders: Bool = false,
+        visibleColumnIndices: [Int]? = nil
     ) {
         guard !selectedIndices.isEmpty else { return }
 
@@ -247,22 +275,28 @@ final class RowOperationsManager {
 
         let indicesToCopy = isTruncated ? Array(sortedIndices.prefix(Self.maxClipboardRows)) : sortedIndices
 
-        let columnCount = tableRows.rows.first?.values.count ?? 1
-        let estimatedRowLength = columnCount * 12
+        let projection = VisibleColumnProjection(indices: visibleColumnIndices)
+        let columns = projection.columns(tableRows.columns)
+        let estimatedRowLength = max(columns.count, 1) * 12
         var result = ""
         result.reserveCapacity(indicesToCopy.count * estimatedRowLength)
+        var structuredRows: [[PluginCellValue]] = []
+        structuredRows.reserveCapacity(indicesToCopy.count)
 
-        if includeHeaders, !tableRows.columns.isEmpty {
-            for (colIdx, col) in tableRows.columns.enumerated() {
+        if includeHeaders, !columns.isEmpty {
+            for (colIdx, col) in columns.enumerated() {
                 if colIdx > 0 { result.append("\t") }
                 result.append(col)
             }
         }
 
-        for rowIndex in indicesToCopy {
-            guard rowIndex < tableRows.count else { continue }
+        for displayIndex in indicesToCopy {
+            guard let row = DisplayRowMapping.row(forDisplay: displayIndex, displayIDs: displayIDs, in: tableRows)
+            else { continue }
             if !result.isEmpty { result.append("\n") }
-            for (colIdx, cell) in tableRows.rows[rowIndex].values.enumerated() {
+            let cells = projection.values(Array(row.values))
+            structuredRows.append(cells)
+            for (colIdx, cell) in cells.enumerated() {
                 if colIdx > 0 { result.append("\t") }
                 switch cell {
                 case .null:
@@ -279,7 +313,8 @@ final class RowOperationsManager {
             result.append("\n(truncated, showing first \(Self.maxClipboardRows) of \(totalSelected) rows)")
         }
 
-        ClipboardService.shared.writeRows(tsv: result, html: nil)
+        let payload = GridRowsClipboardPayload(columns: columns, rows: structuredRows)
+        ClipboardService.shared.writeRows(tsv: result, html: nil, gridRows: payload)
     }
 
     func pasteRowsFromClipboard(
@@ -290,14 +325,19 @@ final class RowOperationsManager {
         parser: RowDataParser? = nil
     ) -> PasteRowsResult {
         let clipboardProvider = clipboard ?? ClipboardService.shared
-        guard let clipboardText = clipboardProvider.readText() else {
-            return PasteRowsResult(pastedRows: [], delta: .none)
-        }
-
         let schema = TableSchema(
             columns: columns,
             primaryKeyColumns: primaryKeyColumns
         )
+
+        if parser == nil, let payload = clipboardProvider.readGridRows() {
+            let parsedRows = Self.reconcileStructuredRows(payload, schema: schema)
+            return insertParsedRows(parsedRows, into: &tableRows)
+        }
+
+        guard let clipboardText = clipboardProvider.readText() else {
+            return PasteRowsResult(pastedRows: [], delta: .none)
+        }
 
         let rowParser = parser ?? Self.detectParser(for: clipboardText)
         let parseResult = rowParser.parse(clipboardText, schema: schema)
@@ -312,47 +352,54 @@ final class RowOperationsManager {
         }
     }
 
+    private static func reconcileStructuredRows(
+        _ payload: GridRowsClipboardPayload,
+        schema: TableSchema
+    ) -> [ParsedRow] {
+        let sourceForDestination = sourceColumnIndices(from: payload.columns, to: schema.columns)
+
+        return payload.rows.enumerated().map { index, row in
+            var values: [PluginCellValue] = sourceForDestination.map { sourceIndex in
+                guard let sourceIndex, sourceIndex < row.count else { return .null }
+                return row[sourceIndex]
+            }
+
+            if let pkIndex = schema.primaryKeyIndex, pkIndex < values.count {
+                values[pkIndex] = .text("__DEFAULT__")
+            }
+
+            return ParsedRow(values: values, sourceLineNumber: index + 1)
+        }
+    }
+
+    private static func sourceColumnIndices(from source: [String], to destination: [String]) -> [Int?] {
+        var sourceIndexByName: [String: Int] = [:]
+        for (index, name) in source.enumerated() where sourceIndexByName[name] == nil {
+            sourceIndexByName[name] = index
+        }
+
+        let byName = destination.map { sourceIndexByName[$0] }
+        guard byName.allSatisfy({ $0 == nil }) else { return byName }
+
+        return destination.indices.map { $0 < source.count ? $0 : nil }
+    }
+
     static func detectParser(for text: String) -> RowDataParser {
-        var tabLines = 0
-        var commaLines = 0
-        var nonEmptyLines = 0
-        var lineHasTab = false
-        var lineHasComma = false
-        var lineIsEmpty = true
+        var containsTab = false
+        var containsComma = false
 
         for char in text {
-            if char.isNewline {
-                if !lineIsEmpty {
-                    nonEmptyLines += 1
-                    if lineHasTab { tabLines += 1 }
-                    if lineHasComma { commaLines += 1 }
-                }
-                lineHasTab = false
-                lineHasComma = false
-                lineIsEmpty = true
-            } else {
-                if !char.isWhitespace { lineIsEmpty = false }
-                if char == "\t" { lineHasTab = true }
-                if char == "," { lineHasComma = true }
+            if char == "\t" {
+                containsTab = true
+                break
             }
-        }
-        if !lineIsEmpty {
-            nonEmptyLines += 1
-            if lineHasTab { tabLines += 1 }
-            if lineHasComma { commaLines += 1 }
+            if char == "," { containsComma = true }
         }
 
-        guard nonEmptyLines > 0 else { return TSVRowParser() }
-
-        let tabCount = tabLines
-        let commaCount = commaLines
-
-        if tabCount > commaCount {
+        if containsTab {
             return TSVRowParser()
-        } else if commaCount > 0 {
-            return CSVRowParser()
         }
-        return TSVRowParser()
+        return containsComma ? CSVRowParser() : TSVRowParser()
     }
 
     private func insertParsedRows(

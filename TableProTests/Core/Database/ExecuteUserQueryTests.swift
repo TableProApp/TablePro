@@ -79,6 +79,19 @@ struct ExecuteUserQueryTests {
         #expect(driver.lastExecutedQuery == userSql)
     }
 
+    @Test("Passes SQL with an app-appended LIMIT through byte-for-byte and still caps post-fetch")
+    func passesInjectedLimitSqlUnchanged() async throws {
+        let rows = (1...6).map { ["row_\($0)"] }
+        let driver = StubPluginDriver(rows: rows)
+        let injectedSql = "SELECT * FROM t LIMIT 6"
+
+        let result = try await driver.executeUserQuery(query: injectedSql, rowCap: 5, parameters: nil)
+
+        #expect(driver.lastExecutedQuery == injectedSql)
+        #expect(result.rows.count == 5)
+        #expect(result.isTruncated)
+    }
+
     @Test("Routes parameterized queries through executeParameterized with the same SQL")
     func parameterizedRoutesCorrectly() async throws {
         let driver = StubPluginDriver(rows: [["x"]])

@@ -22,16 +22,13 @@ struct ExportProgressView: View {
 
     var body: some View {
         VStack(spacing: 20) {
-            // Title
             Text(totalTables > 1
                 ? String(localized: "Export multiple tables")
                 : String(localized: "Export table"))
                 .font(.title3.weight(.semibold))
 
-            // Table info and row count
             VStack(spacing: 8) {
                 HStack {
-                    // Show status message if set, otherwise show table name
                     if !statusMessage.isEmpty {
                         Text(statusMessage)
                             .font(.body)
@@ -52,7 +49,6 @@ struct ExportProgressView: View {
                     }
                 }
 
-                // Progress bar - indeterminate when status message is shown
                 if !statusMessage.isEmpty {
                     ProgressView()
                         .progressViewStyle(.linear)

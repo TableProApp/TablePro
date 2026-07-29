@@ -3,23 +3,22 @@
 //  TableProTests
 //
 //  Tests for SidebarNavigationResult — the pure decision logic that controls
-//  whether a sidebar click navigates in-place, opens a new native tab, or is
-//  a no-op programmatic sync.
+//  whether a sidebar single-click replaces the focused window's active tab in
+//  place or opens a new native tab.
 //
-//  These tests encode the "no-flash contract": when a table is clicked that is
-//  NOT the active tab and the window already has tabs, the result must be
-//  .revertAndOpenNewWindow — the sidebar reverts synchronously so SwiftUI never
-//  renders the [B] selection state.
+//  The rule is window-local: a click reuses the active tab when it is reusable
+//  (a preview tab or a blank query tab), opens the first tab in an empty window,
+//  and otherwise opens a new tab. Tab count is never the deciding factor.
 //
 
 import Foundation
 import TableProPluginKit
 import Testing
+
 @testable import TablePro
 
 @Suite("SidebarNavigationResult")
 struct SidebarNavigationResultTests {
-
     // MARK: - .skip (programmatic sync, no navigation)
 
     @Test("Skip when clicked table matches active tab and tabs exist")
@@ -27,7 +26,8 @@ struct SidebarNavigationResultTests {
         let result = SidebarNavigationResult.resolve(
             clickedTableName: "users",
             currentTabTableName: "users",
-            hasExistingTabs: true
+            hasExistingTabs: true,
+            isActiveTabReusable: false
         )
         #expect(result == .skip)
     }
@@ -37,135 +37,134 @@ struct SidebarNavigationResultTests {
         let result = SidebarNavigationResult.resolve(
             clickedTableName: "orders",
             currentTabTableName: "orders",
-            hasExistingTabs: false
+            hasExistingTabs: false,
+            isActiveTabReusable: false
         )
         #expect(result == .skip)
     }
 
     @Test("Skip is case-sensitive — different case is NOT a match")
     func skipIsCaseSensitive() {
-        // Table names are case-sensitive; "Users" ≠ "users"
         let result = SidebarNavigationResult.resolve(
             clickedTableName: "Users",
             currentTabTableName: "users",
-            hasExistingTabs: true
+            hasExistingTabs: true,
+            isActiveTabReusable: false
         )
         #expect(result != .skip)
     }
 
-    // MARK: - .openInPlace (empty window, navigate in-place)
+    // MARK: - .reuseActiveTab (empty window opens first tab in place)
 
-    @Test("Open in-place when tabs are empty and no current tab")
-    func openInPlaceWhenTabsEmpty() {
+    @Test("Reuse active tab when window is empty and no current tab")
+    func reuseActiveTabWhenTabsEmpty() {
         let result = SidebarNavigationResult.resolve(
             clickedTableName: "products",
             currentTabTableName: nil,
-            hasExistingTabs: false
+            hasExistingTabs: false,
+            isActiveTabReusable: false
         )
-        #expect(result == .openInPlace)
+        #expect(result == .reuseActiveTab)
     }
 
-    @Test("Open in-place when tabs are empty even if current tab name matches different value")
-    func openInPlaceWhenTabsEmptyWithCurrentTabName() {
-        // hasExistingTabs is the authoritative flag; if false, always openInPlace
+    @Test("Reuse active tab when window is empty even if a stale tab name is supplied")
+    func reuseActiveTabWhenTabsEmptyWithCurrentTabName() {
         let result = SidebarNavigationResult.resolve(
             clickedTableName: "products",
             currentTabTableName: "users",
-            hasExistingTabs: false
+            hasExistingTabs: false,
+            isActiveTabReusable: false
         )
-        #expect(result == .openInPlace)
+        #expect(result == .reuseActiveTab)
     }
 
-    @Test("Open in-place when tabs are empty with an empty string table name")
-    func openInPlaceWithEmptyStringTableName() {
+    // MARK: - .reuseActiveTab (active tab is reusable)
+
+    @Test("Reuse active tab when tabs exist and the active tab is reusable")
+    func reuseActiveTabWhenReusable() {
         let result = SidebarNavigationResult.resolve(
-            clickedTableName: "",
-            currentTabTableName: nil,
-            hasExistingTabs: false
+            clickedTableName: "orders",
+            currentTabTableName: "users",
+            hasExistingTabs: true,
+            isActiveTabReusable: true
         )
-        #expect(result == .openInPlace)
+        #expect(result == .reuseActiveTab)
     }
 
-    // MARK: - .revertAndOpenNewWindow (no-flash contract)
+    @Test("Reuse active tab when current tab is a reusable blank query tab (nil name)")
+    func reuseActiveTabWhenReusableQueryTab() {
+        let result = SidebarNavigationResult.resolve(
+            clickedTableName: "orders",
+            currentTabTableName: nil,
+            hasExistingTabs: true,
+            isActiveTabReusable: true
+        )
+        #expect(result == .reuseActiveTab)
+    }
 
-    @Test("Revert and open new window when tabs exist and different table is clicked")
-    func revertAndOpenNewWindowWhenTabsExistDifferentTable() {
+    // MARK: - .openNewTab (active tab is protected)
+
+    @Test("Open new tab when tabs exist and the active tab is not reusable")
+    func openNewTabWhenNotReusable() {
         let result = SidebarNavigationResult.resolve(
             clickedTableName: "products",
             currentTabTableName: "users",
-            hasExistingTabs: true
+            hasExistingTabs: true,
+            isActiveTabReusable: false
         )
-        #expect(result == .revertAndOpenNewWindow)
+        #expect(result == .openNewTab)
     }
 
-    @Test("Revert and open new window when tabs exist and current tab is a query tab (nil name)")
-    func revertAndOpenNewWindowWhenCurrentTabIsQueryTab() {
-        // A query tab has no tableName (nil); clicking any table should open new window
+    @Test("Open new tab when current tab is a non-reusable query tab")
+    func openNewTabWhenQueryTabNotReusable() {
         let result = SidebarNavigationResult.resolve(
             clickedTableName: "orders",
             currentTabTableName: nil,
-            hasExistingTabs: true
+            hasExistingTabs: true,
+            isActiveTabReusable: false
         )
-        #expect(result == .revertAndOpenNewWindow)
+        #expect(result == .openNewTab)
     }
 
-    @Test("Revert and open new window with empty current tab name")
-    func revertAndOpenNewWindowWithEmptyCurrentTabName() {
-        let result = SidebarNavigationResult.resolve(
-            clickedTableName: "orders",
-            currentTabTableName: "",
-            hasExistingTabs: true
-        )
-        #expect(result == .revertAndOpenNewWindow)
-    }
+    // MARK: - Invariants
 
-    // MARK: - No-flash contract (critical invariants)
-
-    @Test("Never skips when different table is clicked and tabs exist")
-    func noFlashContract_differentTableWithTabsMustNotSkip() {
-        let result = SidebarNavigationResult.resolve(
-            clickedTableName: "orders",
-            currentTabTableName: "users",
-            hasExistingTabs: true
-        )
-        #expect(result != .skip)
-        #expect(result == .revertAndOpenNewWindow)
-    }
-
-    @Test("Never opens in-place when tabs already exist")
-    func noFlashContract_tabsExistMustNotOpenInPlace() {
-        let result = SidebarNavigationResult.resolve(
-            clickedTableName: "orders",
-            currentTabTableName: "users",
-            hasExistingTabs: true
-        )
-        #expect(result != .openInPlace)
-    }
-
-    @Test("Never opens new window when tables are empty — always in-place")
-    func noFlashContract_emptyTabsMustNotOpenNewWindow() {
+    @Test("Never opens a new tab when the window is empty; always reuse in place")
+    func emptyWindowNeverOpensNewTab() {
         let result = SidebarNavigationResult.resolve(
             clickedTableName: "orders",
             currentTabTableName: nil,
-            hasExistingTabs: false
+            hasExistingTabs: false,
+            isActiveTabReusable: false
         )
-        #expect(result != .revertAndOpenNewWindow)
-        #expect(result == .openInPlace)
+        #expect(result != .openNewTab)
+        #expect(result == .reuseActiveTab)
+    }
+
+    @Test("A protected active tab is never silently replaced")
+    func protectedTabNeverReused() {
+        let result = SidebarNavigationResult.resolve(
+            clickedTableName: "orders",
+            currentTabTableName: "users",
+            hasExistingTabs: true,
+            isActiveTabReusable: false
+        )
+        #expect(result != .reuseActiveTab)
+        #expect(result == .openNewTab)
     }
 
     // MARK: - QueryTabManager integration
 
-    @Test("Resolves to openInPlace for fresh QueryTabManager with no tabs")
+    @Test("Resolves to reuseActiveTab for a fresh QueryTabManager with no tabs")
     @MainActor
     func resolveWithFreshTabManager() {
         let manager = QueryTabManager()
-        // Fresh manager has no tabs
         let result = SidebarNavigationResult.resolve(
             clickedTableName: "users",
             currentTabTableName: manager.selectedTab?.tableContext.tableName,
-            hasExistingTabs: !manager.tabs.isEmpty
+            hasExistingTabs: !manager.tabs.isEmpty,
+            isActiveTabReusable: false
         )
-        #expect(result == .openInPlace)
+        #expect(result == .reuseActiveTab)
     }
 
     @Test("Resolves to skip when clicking the active table in QueryTabManager")
@@ -176,35 +175,38 @@ struct SidebarNavigationResultTests {
         let result = SidebarNavigationResult.resolve(
             clickedTableName: "users",
             currentTabTableName: manager.selectedTab?.tableContext.tableName,
-            hasExistingTabs: !manager.tabs.isEmpty
+            hasExistingTabs: !manager.tabs.isEmpty,
+            isActiveTabReusable: false
         )
         #expect(result == .skip)
     }
 
-    @Test("Resolves to revertAndOpenNewWindow when clicking a different table in non-empty window")
+    @Test("Resolves to openNewTab when clicking a different table while the active tab is protected")
     @MainActor
-    func resolveNewWindowWhenClickingDifferentTable() throws {
+    func resolveNewTabWhenActiveTabProtected() throws {
         let manager = QueryTabManager()
         try manager.addTableTab(tableName: "users", databaseType: .mysql, databaseName: "mydb")
         let result = SidebarNavigationResult.resolve(
             clickedTableName: "orders",
             currentTabTableName: manager.selectedTab?.tableContext.tableName,
-            hasExistingTabs: !manager.tabs.isEmpty
+            hasExistingTabs: !manager.tabs.isEmpty,
+            isActiveTabReusable: false
         )
-        #expect(result == .revertAndOpenNewWindow)
+        #expect(result == .openNewTab)
     }
 
-    @Test("Resolves to revertAndOpenNewWindow when current tab is a query tab but window has tabs")
+    @Test("Resolves to reuseActiveTab when clicking a different table while the active tab is a preview")
     @MainActor
-    func resolveNewWindowWhenCurrentTabIsQueryTabButWindowHasTabs() {
+    func resolveReuseWhenActiveTabIsPreview() throws {
         let manager = QueryTabManager()
-        manager.addTab(databaseName: "mydb")   // query tab — no tableName
+        try manager.addPreviewTableTab(tableName: "users", databaseType: .mysql, databaseName: "mydb")
         let result = SidebarNavigationResult.resolve(
-            clickedTableName: "products",
-            currentTabTableName: manager.selectedTab?.tableContext.tableName,  // nil for query tab
-            hasExistingTabs: !manager.tabs.isEmpty
+            clickedTableName: "orders",
+            currentTabTableName: manager.selectedTab?.tableContext.tableName,
+            hasExistingTabs: !manager.tabs.isEmpty,
+            isActiveTabReusable: true
         )
-        #expect(result == .revertAndOpenNewWindow)
+        #expect(result == .reuseActiveTab)
     }
 
     // MARK: - syncSidebarToCurrentTab logic
@@ -234,16 +236,6 @@ struct SidebarNavigationResultTests {
         #expect(match == nil)
     }
 
-    @Test("Sync should clear selection when tab has no table name")
-    @MainActor
-    func syncClearsSelectionForQueryTab() {
-        let manager = QueryTabManager()
-        manager.addTab(databaseName: "mydb")          // query tab: tableName == nil
-        let currentTableName = manager.selectedTab?.tableContext.tableName
-        // When tableName is nil, syncSidebarToCurrentTab sets selectedTables = []
-        #expect(currentTableName == nil)
-    }
-
     @Test("Sync should set selection to active table name")
     @MainActor
     func syncSetsSelectionForTableTab() throws {
@@ -251,90 +243,5 @@ struct SidebarNavigationResultTests {
         try manager.addTableTab(tableName: "users", databaseType: .mysql, databaseName: "mydb")
         let currentTableName = manager.selectedTab?.tableContext.tableName
         #expect(currentTableName == "users")
-        // syncSidebarToCurrentTab will find "users" in tables and set selectedTables = [users]
-    }
-
-    // MARK: - Database switch scenarios
-
-    @Test("Skip when table matches current tab during database switch")
-    func skipWhenTableMatchesDuringDatabaseSwitch() {
-        let result = SidebarNavigationResult.resolve(
-            clickedTableName: "users",
-            currentTabTableName: "users",
-            hasExistingTabs: true
-        )
-        #expect(result == .skip)
-    }
-
-    @Test("Open in-place when no existing tabs during database switch")
-    func openInPlaceWhenNoTabsDuringSwitch() {
-        let result = SidebarNavigationResult.resolve(
-            clickedTableName: "orders",
-            currentTabTableName: nil,
-            hasExistingTabs: false
-        )
-        #expect(result == .openInPlace)
-    }
-
-    // MARK: - Preview tab mode
-
-    @Test("Preview mode disabled returns existing behavior")
-    func previewModeDisabledReturnsExistingBehavior() {
-        let result = SidebarNavigationResult.resolve(
-            clickedTableName: "orders",
-            currentTabTableName: "users",
-            hasExistingTabs: true,
-            isPreviewTabMode: false,
-            hasPreviewTab: false
-        )
-        #expect(result == .revertAndOpenNewWindow)
-    }
-
-    @Test("Preview mode enabled with existing preview tab returns replacePreviewTab")
-    func previewModeWithExistingPreviewTab() {
-        let result = SidebarNavigationResult.resolve(
-            clickedTableName: "orders",
-            currentTabTableName: "users",
-            hasExistingTabs: true,
-            isPreviewTabMode: true,
-            hasPreviewTab: true
-        )
-        #expect(result == .replacePreviewTab)
-    }
-
-    @Test("Preview mode enabled without preview tab returns openNewPreviewTab")
-    func previewModeWithoutPreviewTab() {
-        let result = SidebarNavigationResult.resolve(
-            clickedTableName: "orders",
-            currentTabTableName: "users",
-            hasExistingTabs: true,
-            isPreviewTabMode: true,
-            hasPreviewTab: false
-        )
-        #expect(result == .openNewPreviewTab)
-    }
-
-    @Test("Preview mode skip still works when table matches")
-    func previewModeSkipWhenTableMatches() {
-        let result = SidebarNavigationResult.resolve(
-            clickedTableName: "users",
-            currentTabTableName: "users",
-            hasExistingTabs: true,
-            isPreviewTabMode: true,
-            hasPreviewTab: true
-        )
-        #expect(result == .skip)
-    }
-
-    @Test("Preview mode with no existing tabs still opens in-place")
-    func previewModeNoExistingTabsOpensInPlace() {
-        let result = SidebarNavigationResult.resolve(
-            clickedTableName: "orders",
-            currentTabTableName: nil,
-            hasExistingTabs: false,
-            isPreviewTabMode: true,
-            hasPreviewTab: false
-        )
-        #expect(result == .openInPlace)
     }
 }

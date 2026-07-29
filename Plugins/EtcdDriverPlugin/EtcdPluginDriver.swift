@@ -131,7 +131,6 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             )
         }
 
-        // Check for tagged browsing queries
         if EtcdQueryBuilder.isTaggedQuery(trimmed) {
             return try await executeTaggedQuery(trimmed, client: client, startTime: startTime)
         }
@@ -264,7 +263,9 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         httpClient?.cancelCurrentRequest()
     }
 
-    func applyQueryTimeout(_ seconds: Int) async throws {}
+    func applyQueryTimeout(_ seconds: Int) async throws {
+        httpClient?.setQueryTimeout(seconds)
+    }
 
     // MARK: - Schema Operations
 
@@ -925,7 +926,6 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             }
         }
 
-        // Apply pagination
         let total = kvs.count
         guard offset < total else {
             return emptyResult(startTime: startTime)

@@ -113,6 +113,42 @@ struct MCPHttpServerTransportTests {
         return (envelope.id, envelope.error.code, envelope.error.message)
     }
 
+    private func makeRequest(port: UInt16, path: String, method: String, body: Data? = nil) -> URLRequest {
+        guard let url = URL(string: "http://127.0.0.1:\(port)\(path)") else {
+            fatalError("Failed to construct test URL")
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = method
+        request.setValue("Bearer test", forHTTPHeaderField: "Authorization")
+        if let body {
+            request.httpBody = body
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        }
+        return request
+    }
+
+    private func decodeJsonObject(_ data: Data) throws -> [String: Any] {
+        guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw TestError.malformedJsonBody
+        }
+        return object
+    }
+
+    private func expectPlainError(
+        data: Data,
+        response: URLResponse?,
+        status: Int,
+        error: String,
+        label: String
+    ) throws {
+        let http = try #require(response as? HTTPURLResponse, "\(label): expected an HTTP response")
+        #expect(http.statusCode == status, "\(label): expected status \(status)")
+        let object = try decodeJsonObject(data)
+        #expect(object["jsonrpc"] == nil, "\(label): must not be a JSON-RPC envelope")
+        #expect((object["error"] as? String) == error, "\(label): error must be the string \"\(error)\"")
+        #expect((object["error_description"] as? String)?.isEmpty == false, "\(label): needs an error_description")
+    }
+
     private func runEchoLoop(
         transport: MCPHttpServerTransport,
         consumer: StubExchangeConsumer,
@@ -336,8 +372,8 @@ struct MCPHttpServerTransportTests {
         #expect(http.statusCode == 413)
     }
 
-    @Test("Method not found at unknown path returns 404 with JSON-RPC error envelope")
-    func unknownPathReturns404() async throws {
+    @Test("Unknown HTTP paths return a plain 404, not a JSON-RPC envelope, so OAuth clients get a clear error")
+    func unknownPathsReturnPlainNotFound() async throws {
         let auth = StubAlwaysAllowAuthenticator()
         let (transport, _, port) = try await startedTransport(authenticator: auth)
         defer { Task { await transport.stop() } }
@@ -346,19 +382,52 @@ struct MCPHttpServerTransportTests {
         await runEchoLoop(transport: transport, consumer: consumer)
         defer { Task { await consumer.stop() } }
 
-        guard let url = URL(string: "http://127.0.0.1:\(port)/foo") else {
-            Issue.record("Failed to construct URL")
-            return
-        }
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.setValue("Bearer test", forHTTPHeaderField: "Authorization")
-        let (data, response) = try await URLSession.shared.data(for: request)
-        let http = try #require(response as? HTTPURLResponse)
+        let cases: [(path: String, method: String, body: Data?)] = [
+            ("/foo", "GET", nil),
+            ("/foo", "POST", Data("{}".utf8)),
+            ("/foo", "DELETE", nil),
+            ("/foo", "PUT", Data("{}".utf8)),
+            ("/.well-known/oauth-protected-resource", "GET", nil),
+            ("/.well-known/oauth-authorization-server", "GET", nil),
+            ("/register", "POST", Data("{}".utf8))
+        ]
 
-        #expect(http.statusCode == 404)
-        let parsed = try parseJsonRpcError(data)
-        #expect(parsed.code == JsonRpcErrorCode.methodNotFound)
+        for testCase in cases {
+            let request = makeRequest(port: port, path: testCase.path, method: testCase.method, body: testCase.body)
+            let (data, response) = try await URLSession.shared.data(for: request)
+            try expectPlainError(
+                data: data,
+                response: response,
+                status: 404,
+                error: "not_found",
+                label: "\(testCase.method) \(testCase.path)"
+            )
+        }
+    }
+
+    @Test("Unsupported HTTP method returns a plain 405, not a JSON-RPC envelope")
+    func unsupportedMethodReturnsPlain405() async throws {
+        let auth = StubAlwaysAllowAuthenticator()
+        let (transport, _, port) = try await startedTransport(authenticator: auth)
+        defer { Task { await transport.stop() } }
+
+        let consumer = StubExchangeConsumer()
+        await runEchoLoop(transport: transport, consumer: consumer)
+        defer { Task { await consumer.stop() } }
+
+        let request = makeRequest(port: port, path: "/mcp", method: "PUT", body: Data("{}".utf8))
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try expectPlainError(
+            data: data,
+            response: response,
+            status: 405,
+            error: "method_not_allowed",
+            label: "PUT /mcp"
+        )
+        let http = try #require(response as? HTTPURLResponse)
+        let allow = http.value(forHTTPHeaderField: "Allow")
+        #expect(allow?.contains("POST") == true)
+        #expect(allow?.contains("GET") == true)
     }
 
     @Test("OPTIONS request returns 204 with CORS headers reflecting allowed origin")
@@ -589,4 +658,5 @@ struct MCPHttpServerTransportTests {
 private enum TestError: Error {
     case serverDidNotStart
     case expectedErrorEnvelope
+    case malformedJsonBody
 }

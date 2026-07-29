@@ -448,6 +448,7 @@ struct DataBrowserView: View {
             columnDetails: viewModel.columnDetails,
             session: session,
             databaseType: connection.type,
+            safeModeLevel: connection.safeModeLevel,
             onInserted: { Task { await viewModel.load() } }
         )
     }

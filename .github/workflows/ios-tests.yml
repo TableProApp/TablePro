@@ -24,7 +24,7 @@ concurrency:
 env:
   XCODE_PROJECT: TableProMobile/TableProMobile.xcodeproj
   XCODE_SCHEME: TableProMobile
-  TEST_DESTINATION: "platform=iOS Simulator,name=iPhone 17 Pro,OS=26.5"
+  TEST_DESTINATION: "platform=iOS Simulator,name=iPhone 17 Pro,OS=latest"
 
 jobs:
   test:
@@ -38,15 +38,30 @@ jobs:
       - name: Select Xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: '26.5-beta'
+          xcode-version: '26.4.1'
 
       - name: Install xcbeautify
         run: brew list xcbeautify &>/dev/null || brew install xcbeautify
 
       # macos-26 lazy-loads simulator runtimes; -downloadPlatform pulls the runtime
-      # matching Xcode's SDK and is a no-op when it is already present.
+      # matching Xcode's SDK and is a no-op when it is already present. The download
+      # endpoint flakes on hosted runners, so a failure falls back to checking whether
+      # the test device already exists before failing the job.
       - name: Install iOS simulator runtime
-        run: sudo xcodebuild -downloadPlatform iOS
+        run: |
+          if sudo xcodebuild -downloadPlatform iOS; then
+            exit 0
+          fi
+
+          echo "::warning::xcodebuild -downloadPlatform iOS failed; checking for an existing simulator"
+          device_name="$(echo "$TEST_DESTINATION" | sed -n 's/.*name=\([^,]*\).*/\1/p')"
+          if xcrun simctl list devices available | grep -qF "$device_name ("; then
+            echo "$device_name simulator is already available; continuing."
+            exit 0
+          fi
+
+          echo "::error::$device_name simulator is not available and the runtime download failed."
+          exit 1
 
       # Secrets.xcconfig is gitignored. Tests do not need analytics keys, so the
       # checked-in example template is enough for the project to resolve.
@@ -57,9 +72,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: Libs
-          # Include the FreeTDS stub header in the cache key so iOS xcframework refreshes
-          # whenever the C bridge surface (e.g. new symbol declarations) changes.
-          key: ${{ runner.os }}-libs-${{ hashFiles('Libs/checksums.sha256', 'Plugins/MSSQLDriverPlugin/CFreeTDS/include/sybdb.h') }}
+          # Include C bridge stub headers in the cache key so the iOS xcframework set
+          # refreshes whenever a bridge surface (e.g. a new driver's headers) changes.
+          key: ${{ runner.os }}-libs-${{ hashFiles('Libs/checksums.sha256', 'Plugins/MSSQLDriverPlugin/CFreeTDS/include/sybdb.h', 'TableProMobile/TableProMobile/CBridges/CDuckDB/CDuckDB.h') }}
 
       - name: Download static libraries
         env:

@@ -11,16 +11,19 @@ import os
 /// Why an SSH authentication attempt failed. Drives the user-facing error string so the
 /// alert points at the actual cause (wrong OTP, missing key, agent rejection) instead of
 /// the catch-all "credentials or private key" message.
-enum AuthFailureReason: Sendable, Equatable {
+enum AuthFailureReason: Sendable, Equatable, CaseIterable {
     case password
     case verificationCode
     case privateKey
     case agentRejected
+    case passwordlessRejected
+    case keyboardInteractive
+    case cancelled
     case generic
 }
 
 /// Error types for SSH tunnel operations
-enum SSHTunnelError: Error, LocalizedError, Equatable {
+enum SSHTunnelError: Error, LocalizedError, Equatable, Sendable {
     case tunnelCreationFailed(String)
     case tunnelAlreadyExists(UUID)
     case noAvailablePort
@@ -28,6 +31,9 @@ enum SSHTunnelError: Error, LocalizedError, Equatable {
     case connectionTimeout
     case hostKeyVerificationFailed
     case channelOpenFailed
+    case socketForwardingRefused(path: String, detail: String)
+    case forwardRefused(destination: String, detail: String)
+    case forwardTimedOut(destination: String, seconds: Int)
 
     var errorDescription: String? {
         switch self {
@@ -47,6 +53,12 @@ enum SSHTunnelError: Error, LocalizedError, Equatable {
                 return String(localized: "SSH private key rejected. Check the key file or passphrase.")
             case .agentRejected:
                 return String(localized: "SSH agent did not authenticate. Run ssh-add -l to check loaded keys.")
+            case .passwordlessRejected:
+                return String(localized: "The SSH server did not accept passwordless authentication. Choose Password, Private Key, or SSH Agent.")
+            case .keyboardInteractive:
+                return String(localized: "SSH verification rejected. Check your response and try again.")
+            case .cancelled:
+                return String(localized: "SSH authentication cancelled.")
             case .generic:
                 return String(localized: "SSH authentication failed. Check your credentials or private key.")
             }
@@ -56,12 +68,53 @@ enum SSHTunnelError: Error, LocalizedError, Equatable {
             return String(localized: "SSH host key verification failed")
         case .channelOpenFailed:
             return String(localized: "Failed to open SSH channel for port forwarding")
+        case .socketForwardingRefused(let path, let detail):
+            return String(
+                format: String(
+                    localized: """
+                    The SSH server would not forward the socket %@. Check that the path exists on the server \
+                    and that sshd allows socket forwarding (AllowStreamLocalForwarding). (%@)
+                    """
+                ),
+                path,
+                detail
+            )
+        case .forwardRefused(let destination, let detail):
+            return String(
+                format: String(
+                    localized: """
+                    The SSH server could not reach %@. That address is resolved from the SSH server, not from \
+                    your Mac, so a database that only listens on 127.0.0.1 needs Host set to localhost. Also \
+                    check that sshd allows TCP forwarding (AllowTcpForwarding). (%@)
+                    """
+                ),
+                destination,
+                detail
+            )
+        case .forwardTimedOut(let destination, let seconds):
+            return String(
+                format: String(
+                    localized: """
+                    The SSH server did not open a forwarding channel to %@ within %d seconds. Check for a \
+                    firewall between the SSH server and that address.
+                    """
+                ),
+                destination,
+                seconds
+            )
         }
     }
 }
 
+extension SSHTunnelError {
+    var isUserCancelledAuthentication: Bool {
+        guard case .authenticationFailed(reason: .cancelled) = self else { return false }
+        return true
+    }
+}
+
 /// Manages SSH tunnels for database connections using libssh2
-actor SSHTunnelManager {
+actor SSHTunnelManager: TunnelManaging {
     static let shared = SSHTunnelManager()
     private static let logger = Logger(subsystem: "com.TablePro", category: "SSHTunnelManager")
 
@@ -89,8 +142,7 @@ actor SSHTunnelManager {
         keyPassphrase: String? = nil,
         sshPassword: String? = nil,
         agentSocketPath: String? = nil,
-        remoteHost: String,
-        remotePort: Int,
+        destination: SSHForwardDestination,
         jumpHosts: [SSHJumpHost] = [],
         totpMode: TOTPMode = .none,
         totpSecret: String? = nil,
@@ -98,7 +150,6 @@ actor SSHTunnelManager {
         totpDigits: Int = 6,
         totpPeriod: Int = 30
     ) async throws -> Int {
-        // Close existing tunnel if any
         if tunnels[connectionId] != nil {
             try await closeTunnel(connectionId: connectionId)
         }
@@ -122,7 +173,7 @@ actor SSHTunnelManager {
             sshPassword: sshPassword,
             keyPassphrase: keyPassphrase,
             totpSecret: totpSecret,
-            totpProvider: nil
+            keyboardInteractivePromptProvider: nil
         )
 
         // Try ports until one works
@@ -133,8 +184,7 @@ actor SSHTunnelManager {
                         connectionId: connectionId,
                         config: config,
                         credentials: credentials,
-                        remoteHost: remoteHost,
-                        remotePort: remotePort,
+                        destination: destination,
                         localPort: localPort
                     )
                 }.value
@@ -148,7 +198,7 @@ actor SSHTunnelManager {
                 tunnels[connectionId] = tunnel
                 Self.tunnelRegistry.withLock { $0[connectionId] = tunnel }
 
-                tunnel.startForwarding(remoteHost: remoteHost, remotePort: remotePort)
+                tunnel.startForwarding(destination: destination)
                 tunnel.startKeepAlive()
 
                 updateAppNapState()
@@ -225,6 +275,13 @@ actor SSHTunnelManager {
             return nil
         }
         return tunnel.localPort
+    }
+
+    /// The reason this tunnel last failed to open a forwarding channel, cleared as it is read.
+    /// The connect path reports it in place of the database driver's error, which can only ever
+    /// name a timeout because the driver sees an accepted socket that stayed silent.
+    func consumeLastForwardFailure(connectionId: UUID) -> SSHTunnelError? {
+        tunnels[connectionId]?.consumeLastForwardFailure()
     }
 
     /// Check if an error message indicates a local port bind failure

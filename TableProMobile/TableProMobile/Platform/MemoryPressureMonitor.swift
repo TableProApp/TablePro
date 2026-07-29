@@ -23,14 +23,21 @@ final class MemoryPressureMonitor {
         guard source == nil else { return }
 
         let newSource = DispatchSource.makeMemoryPressureSource(
-            eventMask: [.warning, .critical],
+            eventMask: [.normal, .warning, .critical],
             queue: .global(qos: .utility)
         )
 
         newSource.setEventHandler { [weak self] in
             let event = newSource.data
-            let level: Level = event.contains(.critical) ? .critical : .warning
-            Self.logger.warning("Memory pressure event: \(String(describing: level), privacy: .public)")
+            let level: Level
+            if event.contains(.critical) {
+                level = .critical
+            } else if event.contains(.warning) {
+                level = .warning
+            } else {
+                level = .normal
+            }
+            Self.logger.log("Memory pressure level: \(String(describing: level), privacy: .public)")
             Task { @MainActor in
                 self?.currentLevel = level
             }
@@ -38,10 +45,6 @@ final class MemoryPressureMonitor {
 
         newSource.activate()
         source = newSource
-    }
-
-    func reset() {
-        currentLevel = .normal
     }
 
     nonisolated func availableMemoryBytes() -> Int {

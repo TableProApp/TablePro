@@ -36,11 +36,13 @@ struct ColorPaletteView: View {
     var body: some View {
         HStack(spacing: size.spacing) {
             ForEach(colors) { color in
+                let isSelected = selectedColor == color
                 Button { selectedColor = color } label: {
-                    ColorSwatch(color: color, isSelected: selectedColor == color, size: size)
+                    ColorSwatch(color: color, isSelected: isSelected, size: size)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(String(format: String(localized: "Color %@"), color.rawValue))
+                .accessibilityAddTraits(isSelected ? [.isSelected] : [])
             }
         }
     }

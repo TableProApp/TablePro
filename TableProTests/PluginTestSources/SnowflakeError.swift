@@ -1,0 +1,1 @@
+../../Plugins/SnowflakeDriverPlugin/SnowflakeError.swift

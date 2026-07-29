@@ -18,19 +18,44 @@ final class OraclePlugin: NSObject, TableProPlugin, DriverPlugin, PluginDiagnost
     static let iconName = "oracle-icon"
     static let defaultPort = 1_521
     static let additionalConnectionFields: [ConnectionField] = [
-        ConnectionField(id: "oracleServiceName", label: "Service Name", placeholder: "ORCL")
+        ConnectionField(
+            id: "oracleConnectionType",
+            label: "Connection Type",
+            defaultValue: "service",
+            fieldType: .dropdown(options: [
+                ConnectionField.DropdownOption(value: "service", label: "Service Name"),
+                ConnectionField.DropdownOption(value: "sid", label: "SID")
+            ])
+        ),
+        ConnectionField(
+            id: "oracleServiceName",
+            label: "Service Name",
+            placeholder: "ORCL",
+            visibleWhen: FieldVisibilityRule(fieldId: "oracleConnectionType", values: ["service"])
+        ),
+        ConnectionField(
+            id: "oracleSID",
+            label: "SID",
+            placeholder: "XE",
+            visibleWhen: FieldVisibilityRule(fieldId: "oracleConnectionType", values: ["sid"])
+        )
     ]
 
     // MARK: - UI/Capability Metadata
 
     static let isDownloadable = true
+    static let supportsTriggers = true
+    static let supportsTriggerEditing = true
     static let pathFieldRole: PathFieldRole = .serviceName
     static let supportsForeignKeyDisable = false
+    static let supportsDatabaseSwitching = false
     static let supportsSchemaSwitching = true
+    static let defaultSchemaName = ""
+    static let containerEntityName = "Schema"
     static let postConnectActions: [PostConnectAction] = [.selectSchemaFromLastSession]
     static let brandColorHex = "#C3160B"
     static let systemDatabaseNames: [String] = ["SYS", "SYSTEM", "OUTLN", "DBSNMP", "APPQOSSYS", "WMSYS", "XDB"]
-    static let databaseGroupingStrategy: GroupingStrategy = .bySchema
+    static let databaseGroupingStrategy: GroupingStrategy = .hierarchicalSchema
     static let columnTypesByCategory: [String: [String]] = [
         "Integer": ["NUMBER", "INTEGER", "INT", "SMALLINT"],
         "Float": ["FLOAT", "BINARY_FLOAT", "BINARY_DOUBLE", "DECIMAL", "NUMERIC", "REAL", "DOUBLE PRECISION"],
@@ -118,15 +143,17 @@ final class OraclePlugin: NSObject, TableProPlugin, DriverPlugin, PluginDiagnost
                 ],
                 supportURL: issuesURL
             )
-        case .authConnectionDropped:
+        case .authConnectionDropped(let phase):
             return PluginDiagnostic(
                 title: String(localized: "Connection Dropped During Handshake"),
                 message: oracleError.message,
                 suggestedActions: [
-                    String(localized: "If the same connection works in DBeaver or sqlplus, this is likely an OOB compatibility issue with cloud-hosted Oracle."),
-                    String(localized: "TablePro 1.2.0 already gates OOB on the server flag, so most cases are resolved. If you still hit this, file an issue."),
-                    String(localized: "Try disabling SSH tunnel or load balancer firewall rules between client and server.")
+                    String(localized: "Check for a firewall, VPN, or load balancer between you and the server that closes connections mid-handshake."),
+                    String(localized: "If the listener endpoint is TLS-only (TCPS), set the SSL mode in the connection's SSL settings."),
+                    String(localized: "Confirm the host and port reach the database listener directly, not a proxy that resets unknown traffic."),
+                    String(localized: "If this is Oracle 11g, open an issue and include the handshake phase shown below.")
                 ],
+                diagnosticInfo: phase.map { [DiagnosticEntry(label: String(localized: "Handshake phase"), value: $0)] } ?? [],
                 supportURL: URL(string: "https://github.com/TableProApp/TablePro/issues/483")
             )
         case .authVersionNotSupported:
@@ -134,9 +161,50 @@ final class OraclePlugin: NSObject, TableProPlugin, DriverPlugin, PluginDiagnost
                 title: String(localized: "Server Version Not Supported"),
                 message: oracleError.message,
                 suggestedActions: [
-                    String(localized: "TablePro requires Oracle 12c or later via the OracleNIO Swift driver."),
-                    String(localized: "Check the user account's password_versions; only 10G, 11G, and 12C are supported."),
-                    String(localized: "Rotate the password under modern auth if password_versions contains an unrecognized verifier.")
+                    String(localized: "TablePro supports Oracle Database 11.1 and later. This server reports an older release (10g or earlier)."),
+                    String(localized: "Upgrade the database to 11.2 or later, or connect with a client that bundles Oracle's OCI client such as SQL Developer or DataGrip.")
+                ],
+                supportURL: issuesURL
+            )
+        case .protocolError:
+            return PluginDiagnostic(
+                title: String(localized: "Connection Reset"),
+                message: oracleError.message,
+                suggestedActions: [
+                    String(localized: "Run the query again. TablePro reconnects to the server automatically."),
+                    String(localized: "If the same query keeps failing, the server may be returning data the driver cannot decode. File an issue with your Oracle version.")
+                ],
+                supportURL: URL(string: "https://github.com/TableProApp/TablePro/issues/483")
+            )
+        case .nativeEncryptionFailed:
+            return PluginDiagnostic(
+                title: String(localized: "Native Network Encryption Not Completed"),
+                message: oracleError.message,
+                suggestedActions: [
+                    String(localized: "The server requires Oracle native network encryption, and negotiating it with this server did not complete."),
+                    String(localized: "Ask the DBA which encryption and checksum algorithms the server requires. The driver supports AES with a SHA-2 checksum."),
+                    String(localized: "File an issue with your Oracle version and the details below so the driver can add support.")
+                ],
+                supportURL: issuesURL
+            )
+        case .loginTimedOut:
+            return PluginDiagnostic(
+                title: String(localized: "Login Handshake Timed Out"),
+                message: oracleError.message,
+                suggestedActions: [
+                    String(localized: "Check for a firewall, VPN, or proxy between you and the server that stalls connections after the TCP handshake."),
+                    String(localized: "Confirm the host and port reach the database listener directly.")
+                ],
+                supportURL: issuesURL
+            )
+        case .queryTimedOut:
+            return PluginDiagnostic(
+                title: String(localized: "Query Timed Out"),
+                message: oracleError.message,
+                suggestedActions: [
+                    String(localized: "Run the query again. TablePro reconnects to the server automatically."),
+                    String(localized: "If the query legitimately needs more time, raise the query timeout in Settings > General."),
+                    String(localized: "If a metadata query timed out, the schema may hold a very large number of objects; try again once the server is less busy.")
                 ],
                 supportURL: issuesURL
             )
@@ -185,14 +253,19 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Connection
 
     func connect() async throws {
-        let serviceName = config.additionalFields["oracleServiceName"] ?? ""
+        let useSID = config.additionalFields["oracleConnectionType"] == "sid"
+        let identifier = useSID
+            ? config.additionalFields["oracleSID"] ?? ""
+            : config.additionalFields["oracleServiceName"] ?? ""
         let conn = OracleConnectionWrapper(
             host: config.host,
             port: config.port,
             user: config.username,
             password: config.password,
             database: config.database,
-            serviceName: serviceName
+            serviceName: identifier,
+            useSID: useSID,
+            sslConfig: config.ssl
         )
         try await conn.connect()
         self.oracleConn = conn
@@ -217,6 +290,10 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func ping() async throws {
         _ = try await execute(query: "SELECT 1 FROM DUAL")
+    }
+
+    func applyQueryTimeout(_ seconds: Int) async throws {
+        oracleConn?.applyQueryTimeout(seconds)
     }
 
     // MARK: - Transaction Management
@@ -412,7 +489,8 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 acc.COLUMN_NAME,
                 rc.TABLE_NAME AS REF_TABLE,
                 rcc.COLUMN_NAME AS REF_COLUMN,
-                ac.DELETE_RULE
+                ac.DELETE_RULE,
+                rc.OWNER AS REF_SCHEMA
             FROM ALL_CONSTRAINTS ac
             JOIN ALL_CONS_COLUMNS acc ON ac.CONSTRAINT_NAME = acc.CONSTRAINT_NAME
                 AND ac.OWNER = acc.OWNER
@@ -437,10 +515,74 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 column: columnName,
                 referencedTable: refTable,
                 referencedColumn: refColumn,
+                referencedSchema: row[safe: 5]?.asText,
                 onDelete: deleteRule,
                 onUpdate: "NO ACTION"
             )
         }
+    }
+
+    func fetchTriggers(table: String, schema: String?) async throws -> [PluginTriggerInfo] {
+        let escapedTable = table.replacingOccurrences(of: "'", with: "''")
+        let escaped = effectiveSchemaEscaped(schema)
+        let sql = """
+            SELECT TRIGGER_NAME, TRIGGER_TYPE, TRIGGERING_EVENT, STATUS, WHEN_CLAUSE
+            FROM ALL_TRIGGERS
+            WHERE TABLE_OWNER = '\(escaped)'
+              AND TABLE_NAME = '\(escapedTable)'
+            ORDER BY TRIGGER_NAME
+            """
+        let result = try await execute(query: sql)
+        return result.rows.compactMap { row -> PluginTriggerInfo? in
+            guard let name = row[safe: 0]?.asText else { return nil }
+            let triggerType = (row[safe: 1]?.asText ?? "").uppercased()
+            let event = row[safe: 2]?.asText ?? ""
+            let timing: String
+            if triggerType.contains("INSTEAD OF") {
+                timing = "INSTEAD OF"
+            } else if triggerType.hasPrefix("BEFORE") {
+                timing = "BEFORE"
+            } else {
+                timing = "AFTER"
+            }
+            let isRowLevel = triggerType.contains("EACH ROW")
+            let enabled = (row[safe: 3]?.asText ?? "").uppercased() == "ENABLED"
+            let whenClause = row[safe: 4]?.asText
+            let quotedName = "\"\(name.replacingOccurrences(of: "\"", with: "\"\""))\""
+            let quotedTable = "\"\(table.replacingOccurrences(of: "\"", with: "\"\""))\""
+            let forEach = isRowLevel ? " FOR EACH ROW" : ""
+            let whenLine = (whenClause?.isEmpty == false) ? "\n    WHEN (\(whenClause ?? ""))" : ""
+            let statement = """
+                CREATE OR REPLACE TRIGGER \(quotedName)
+                    \(timing) \(event) ON \(quotedTable)\(forEach)\(whenLine)
+                """
+            return PluginTriggerInfo(
+                name: name,
+                timing: timing,
+                event: event,
+                statement: statement,
+                enabled: enabled
+            )
+        }
+    }
+
+    var triggerEditUsesReplace: Bool { true }
+
+    func createTriggerTemplate(table: String, schema: String?) -> String? {
+        let quotedTable = "\"\(table.replacingOccurrences(of: "\"", with: "\"\""))\""
+        return """
+        CREATE OR REPLACE TRIGGER \("\"TRIGGER_NAME\"")
+        BEFORE INSERT ON \(quotedTable)
+        FOR EACH ROW
+        BEGIN
+            -- :NEW.column := ...;
+            NULL;
+        END;
+        """
+    }
+
+    func generateDropTriggerSQL(name: String, table: String, schema: String?) -> String? {
+        "DROP TRIGGER \"\(name.replacingOccurrences(of: "\"", with: "\"\""))\""
     }
 
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
@@ -501,7 +643,8 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 acc.COLUMN_NAME,
                 rc.TABLE_NAME AS REF_TABLE,
                 rcc.COLUMN_NAME AS REF_COLUMN,
-                ac.DELETE_RULE
+                ac.DELETE_RULE,
+                rc.OWNER AS REF_SCHEMA
             FROM ALL_CONSTRAINTS ac
             JOIN ALL_CONS_COLUMNS acc ON ac.CONSTRAINT_NAME = acc.CONSTRAINT_NAME
                 AND ac.OWNER = acc.OWNER
@@ -526,6 +669,7 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 column: columnName,
                 referencedTable: refTable,
                 referencedColumn: refColumn,
+                referencedSchema: row[safe: 6]?.asText,
                 onDelete: deleteRule,
                 onUpdate: "NO ACTION"
             )
@@ -679,6 +823,24 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         deletedRowIndices: Set<Int>,
         insertedRowIndices: Set<Int>
     ) -> [(statement: String, parameters: [PluginCellValue])]? {
+        generateStatements(
+            table: table, schema: nil, columns: columns, primaryKeyColumns: primaryKeyColumns,
+            changes: changes, insertedRowData: insertedRowData,
+            deletedRowIndices: deletedRowIndices, insertedRowIndices: insertedRowIndices
+        )
+    }
+
+    func generateStatements(
+        table: String,
+        schema: String?,
+        columns: [String],
+        primaryKeyColumns: [String],
+        changes: [PluginRowChange],
+        insertedRowData: [Int: [PluginCellValue]],
+        deletedRowIndices: Set<Int>,
+        insertedRowIndices: Set<Int>
+    ) -> [(statement: String, parameters: [PluginCellValue])]? {
+        let qualifiedTable = oracleQualifiedName(schema: schema, table: table)
         var statements: [(statement: String, parameters: [PluginCellValue])] = []
 
         for change in changes {
@@ -686,17 +848,17 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             case .insert:
                 guard insertedRowIndices.contains(change.rowIndex) else { continue }
                 if let values = insertedRowData[change.rowIndex] {
-                    if let stmt = generateOracleInsert(table: table, columns: columns, values: values) {
+                    if let stmt = generateOracleInsert(qualifiedTable: qualifiedTable, columns: columns, values: values) {
                         statements.append(stmt)
                     }
                 }
             case .update:
-                if let stmt = generateOracleUpdate(table: table, columns: columns, change: change) {
+                if let stmt = generateOracleUpdate(qualifiedTable: qualifiedTable, columns: columns, change: change) {
                     statements.append(stmt)
                 }
             case .delete:
                 guard deletedRowIndices.contains(change.rowIndex) else { continue }
-                if let stmt = generateOracleDelete(table: table, columns: columns, change: change) {
+                if let stmt = generateOracleDelete(qualifiedTable: qualifiedTable, columns: columns, change: change) {
                     statements.append(stmt)
                 }
             }
@@ -710,7 +872,7 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     private func generateOracleInsert(
-        table: String,
+        qualifiedTable: String,
         columns: [String],
         values: [PluginCellValue]
     ) -> (statement: String, parameters: [PluginCellValue])? {
@@ -733,18 +895,17 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
         let columnList = insertColumns.joined(separator: ", ")
         let valueList = valuesSQL.joined(separator: ", ")
-        let sql = "INSERT INTO \(escapeOracleIdentifier(table)) (\(columnList)) VALUES (\(valueList))"
+        let sql = "INSERT INTO \(qualifiedTable) (\(columnList)) VALUES (\(valueList))"
         return (statement: sql, parameters: parameters)
     }
 
     private func generateOracleUpdate(
-        table: String,
+        qualifiedTable: String,
         columns: [String],
         change: PluginRowChange
     ) -> (statement: String, parameters: [PluginCellValue])? {
         guard !change.cellChanges.isEmpty, let originalRow = change.originalRow else { return nil }
 
-        let escapedTable = escapeOracleIdentifier(table)
         var parameters: [PluginCellValue] = []
 
         let setClauses = change.cellChanges.map { cellChange -> String in
@@ -769,18 +930,17 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         guard !conditions.isEmpty else { return nil }
 
         let whereClause = conditions.joined(separator: " AND ")
-        let sql = "UPDATE \(escapedTable) SET \(setClauses) WHERE \(whereClause) AND ROWNUM = 1"
+        let sql = "UPDATE \(qualifiedTable) SET \(setClauses) WHERE \(whereClause) AND ROWNUM = 1"
         return (statement: sql, parameters: parameters)
     }
 
     private func generateOracleDelete(
-        table: String,
+        qualifiedTable: String,
         columns: [String],
         change: PluginRowChange
     ) -> (statement: String, parameters: [PluginCellValue])? {
         guard let originalRow = change.originalRow else { return nil }
 
-        let escapedTable = escapeOracleIdentifier(table)
         var parameters: [PluginCellValue] = []
         var conditions: [String] = []
 
@@ -799,7 +959,7 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         guard !conditions.isEmpty else { return nil }
 
         let whereClause = conditions.joined(separator: " AND ")
-        let sql = "DELETE FROM \(escapedTable) WHERE \(whereClause) AND ROWNUM = 1"
+        let sql = "DELETE FROM \(qualifiedTable) WHERE \(whereClause) AND ROWNUM = 1"
         return (statement: sql, parameters: parameters)
     }
 
@@ -976,6 +1136,7 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let escaped = schema.replacingOccurrences(of: "\"", with: "\"\"")
         _ = try await execute(query: "ALTER SESSION SET CURRENT_SCHEMA = \"\(escaped)\"")
         _currentSchema = schema
+        oracleConn?.noteSessionSchema(schema)
     }
 
     /// Oracle has no real database concept; "switch database" is a schema switch.
@@ -1010,10 +1171,24 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         limit: Int,
         offset: Int
     ) -> String? {
-        let quotedTable = oracleQuoteIdentifier(table)
-        var query = "SELECT * FROM \(quotedTable)"
-        let orderBy = oracleBuildOrderByClause(sortColumns: sortColumns, columns: columns)
-            ?? "ORDER BY 1"
+        buildBrowseQuery(
+            table: table, schema: nil, sortColumns: sortColumns,
+            columns: columns, limit: limit, offset: offset
+        )
+    }
+
+    func buildBrowseQuery(
+        table: String,
+        schema: String?,
+        sortColumns: [(columnIndex: Int, ascending: Bool)],
+        columns: [String],
+        limit: Int,
+        offset: Int
+    ) -> String? {
+        var query = "SELECT * FROM \(oracleQualifiedName(schema: schema, table: table))"
+        let orderBy = PluginSQLFilter.buildOrderByClause(
+            sortColumns: sortColumns, columns: columns, quoteIdentifier: oracleQuoteIdentifier
+        ) ?? "ORDER BY 1"
         query += " \(orderBy) OFFSET \(offset) ROWS FETCH NEXT \(limit) ROWS ONLY"
         return query
     }
@@ -1027,45 +1202,53 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         limit: Int,
         offset: Int
     ) -> String? {
-        let quotedTable = oracleQuoteIdentifier(table)
-        var query = "SELECT * FROM \(quotedTable)"
-        let whereClause = oracleBuildWhereClause(filters: filters, logicMode: logicMode)
+        buildFilteredQuery(
+            table: table, schema: nil, filters: filters, logicMode: logicMode,
+            sortColumns: sortColumns, columns: columns, limit: limit, offset: offset
+        )
+    }
+
+    func buildFilteredQuery(
+        table: String,
+        schema: String?,
+        filters: [(column: String, op: String, value: String)],
+        logicMode: String,
+        sortColumns: [(columnIndex: Int, ascending: Bool)],
+        columns: [String],
+        limit: Int,
+        offset: Int
+    ) -> String? {
+        var query = "SELECT * FROM \(oracleQualifiedName(schema: schema, table: table))"
+        let whereClause = PluginSQLFilter.buildWhereClause(
+            filters: filters,
+            logicMode: logicMode,
+            quoteIdentifier: oracleQuoteIdentifier,
+            escapeValue: oracleEscapeValue,
+            regexCondition: { quoted, value in
+                "REGEXP_LIKE(\(quoted), '\(value.replacingOccurrences(of: "'", with: "''"))')"
+            }
+        )
         if !whereClause.isEmpty {
             query += " WHERE \(whereClause)"
         }
-        let orderBy = oracleBuildOrderByClause(sortColumns: sortColumns, columns: columns)
-            ?? "ORDER BY 1"
+        let orderBy = PluginSQLFilter.buildOrderByClause(
+            sortColumns: sortColumns, columns: columns, quoteIdentifier: oracleQuoteIdentifier
+        ) ?? "ORDER BY 1"
         query += " \(orderBy) OFFSET \(offset) ROWS FETCH NEXT \(limit) ROWS ONLY"
         return query
     }
 
     // MARK: - Query Building Helpers
 
+    private func oracleQualifiedName(schema: String?, table: String) -> String {
+        guard let schema, !schema.isEmpty else {
+            return oracleQuoteIdentifier(table)
+        }
+        return "\(oracleQuoteIdentifier(schema)).\(oracleQuoteIdentifier(table))"
+    }
+
     private func oracleQuoteIdentifier(_ identifier: String) -> String {
         "\"\(identifier.replacingOccurrences(of: "\"", with: "\"\""))\""
-    }
-
-    private func oracleBuildOrderByClause(
-        sortColumns: [(columnIndex: Int, ascending: Bool)],
-        columns: [String]
-    ) -> String? {
-        let parts = sortColumns.compactMap { sortCol -> String? in
-            guard sortCol.columnIndex >= 0, sortCol.columnIndex < columns.count else { return nil }
-            let columnName = columns[sortCol.columnIndex]
-            let direction = sortCol.ascending ? "ASC" : "DESC"
-            let quotedColumn = oracleQuoteIdentifier(columnName)
-            return "\(quotedColumn) \(direction)"
-        }
-        guard !parts.isEmpty else { return nil }
-        return "ORDER BY " + parts.joined(separator: ", ")
-    }
-
-    private func oracleEscapeForLike(_ text: String) -> String {
-        text
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "%", with: "\\%")
-            .replacingOccurrences(of: "_", with: "\\_")
-            .replacingOccurrences(of: "'", with: "''")
     }
 
     private func oracleEscapeValue(_ value: String) -> String {
@@ -1075,65 +1258,6 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return "'\(trimmed.replacingOccurrences(of: "'", with: "''"))'"
     }
 
-    private func oracleBuildWhereClause(
-        filters: [(column: String, op: String, value: String)],
-        logicMode: String
-    ) -> String {
-        let conditions = filters.compactMap { filter -> String? in
-            oracleBuildFilterCondition(column: filter.column, op: filter.op, value: filter.value)
-        }
-        guard !conditions.isEmpty else { return "" }
-        let separator = logicMode == "and" ? " AND " : " OR "
-        return conditions.joined(separator: separator)
-    }
-
-    private func oracleBuildFilterCondition(column: String, op: String, value: String) -> String? {
-        let quoted = oracleQuoteIdentifier(column)
-        switch op {
-        case "=": return "\(quoted) = \(oracleEscapeValue(value))"
-        case "!=": return "\(quoted) != \(oracleEscapeValue(value))"
-        case ">": return "\(quoted) > \(oracleEscapeValue(value))"
-        case ">=": return "\(quoted) >= \(oracleEscapeValue(value))"
-        case "<": return "\(quoted) < \(oracleEscapeValue(value))"
-        case "<=": return "\(quoted) <= \(oracleEscapeValue(value))"
-        case "IS NULL": return "\(quoted) IS NULL"
-        case "IS NOT NULL": return "\(quoted) IS NOT NULL"
-        case "IS EMPTY": return "(\(quoted) IS NULL OR \(quoted) = '')"
-        case "IS NOT EMPTY": return "(\(quoted) IS NOT NULL AND \(quoted) != '')"
-        case "CONTAINS":
-            let escaped = oracleEscapeForLike(value)
-            return "\(quoted) LIKE '%\(escaped)%' ESCAPE '\\'"
-        case "NOT CONTAINS":
-            let escaped = oracleEscapeForLike(value)
-            return "\(quoted) NOT LIKE '%\(escaped)%' ESCAPE '\\'"
-        case "STARTS WITH":
-            let escaped = oracleEscapeForLike(value)
-            return "\(quoted) LIKE '\(escaped)%' ESCAPE '\\'"
-        case "ENDS WITH":
-            let escaped = oracleEscapeForLike(value)
-            return "\(quoted) LIKE '%\(escaped)' ESCAPE '\\'"
-        case "IN":
-            let values = value.split(separator: ",")
-                .map { oracleEscapeValue($0.trimmingCharacters(in: .whitespaces)) }
-                .joined(separator: ", ")
-            return values.isEmpty ? nil : "\(quoted) IN (\(values))"
-        case "NOT IN":
-            let values = value.split(separator: ",")
-                .map { oracleEscapeValue($0.trimmingCharacters(in: .whitespaces)) }
-                .joined(separator: ", ")
-            return values.isEmpty ? nil : "\(quoted) NOT IN (\(values))"
-        case "BETWEEN":
-            let parts = value.split(separator: ",", maxSplits: 1)
-            guard parts.count == 2 else { return nil }
-            let v1 = oracleEscapeValue(parts[0].trimmingCharacters(in: .whitespaces))
-            let v2 = oracleEscapeValue(parts[1].trimmingCharacters(in: .whitespaces))
-            return "\(quoted) BETWEEN \(v1) AND \(v2)"
-        case "REGEX":
-            let escaped = value.replacingOccurrences(of: "'", with: "''")
-            return "REGEXP_LIKE(\(quoted), '\(escaped)')"
-        default: return nil
-        }
-    }
 
     // MARK: - Private Helpers
 

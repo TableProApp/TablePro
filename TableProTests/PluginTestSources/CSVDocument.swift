@@ -1,0 +1,1 @@
+../../Plugins/CSVInspectorPlugin/CSVDocument.swift

@@ -50,6 +50,13 @@ struct FilterSQLGeneratorTests {
         offsetFetchOrderBy: "ORDER BY 1"
     )
 
+    private static let trinoDialect = SQLDialectDescriptor(
+        identifierQuote: "\"", keywords: [], functions: [], dataTypes: [],
+        regexSyntax: .regexpLike, booleanLiteralStyle: .truefalse,
+        likeEscapeStyle: .explicit, paginationStyle: .offsetFetch,
+        offsetFetchOrderBy: ""
+    )
+
     // MARK: - Per-Operator Tests (MySQL)
 
     @Test("Equal operator generates correct condition")
@@ -61,7 +68,6 @@ struct FilterSQLGeneratorTests {
             filterOperator: .equal,
             value: "test",
             secondValue: nil,
-            isSelected: true,
             isEnabled: true,
             rawSQL: nil
         )
@@ -78,7 +84,6 @@ struct FilterSQLGeneratorTests {
             filterOperator: .notEqual,
             value: "test",
             secondValue: nil,
-            isSelected: true,
             isEnabled: true,
             rawSQL: nil
         )
@@ -95,7 +100,6 @@ struct FilterSQLGeneratorTests {
             filterOperator: .contains,
             value: "test",
             secondValue: nil,
-            isSelected: true,
             isEnabled: true,
             rawSQL: nil
         )
@@ -112,7 +116,6 @@ struct FilterSQLGeneratorTests {
             filterOperator: .notContains,
             value: "test",
             secondValue: nil,
-            isSelected: true,
             isEnabled: true,
             rawSQL: nil
         )
@@ -129,7 +132,6 @@ struct FilterSQLGeneratorTests {
             filterOperator: .startsWith,
             value: "test",
             secondValue: nil,
-            isSelected: true,
             isEnabled: true,
             rawSQL: nil
         )
@@ -146,7 +148,6 @@ struct FilterSQLGeneratorTests {
             filterOperator: .endsWith,
             value: "test",
             secondValue: nil,
-            isSelected: true,
             isEnabled: true,
             rawSQL: nil
         )
@@ -163,7 +164,6 @@ struct FilterSQLGeneratorTests {
             filterOperator: .greaterThan,
             value: "18",
             secondValue: nil,
-            isSelected: true,
             isEnabled: true,
             rawSQL: nil
         )
@@ -180,7 +180,6 @@ struct FilterSQLGeneratorTests {
             filterOperator: .greaterOrEqual,
             value: "18",
             secondValue: nil,
-            isSelected: true,
             isEnabled: true,
             rawSQL: nil
         )
@@ -197,7 +196,6 @@ struct FilterSQLGeneratorTests {
             filterOperator: .lessThan,
             value: "65",
             secondValue: nil,
-            isSelected: true,
             isEnabled: true,
             rawSQL: nil
         )
@@ -214,7 +212,6 @@ struct FilterSQLGeneratorTests {
             filterOperator: .lessOrEqual,
             value: "65",
             secondValue: nil,
-            isSelected: true,
             isEnabled: true,
             rawSQL: nil
         )
@@ -231,7 +228,6 @@ struct FilterSQLGeneratorTests {
             filterOperator: .isNull,
             value: "",
             secondValue: nil,
-            isSelected: true,
             isEnabled: true,
             rawSQL: nil
         )
@@ -248,7 +244,6 @@ struct FilterSQLGeneratorTests {
             filterOperator: .isNotNull,
             value: "",
             secondValue: nil,
-            isSelected: true,
             isEnabled: true,
             rawSQL: nil
         )
@@ -265,7 +260,6 @@ struct FilterSQLGeneratorTests {
             filterOperator: .isEmpty,
             value: "",
             secondValue: nil,
-            isSelected: true,
             isEnabled: true,
             rawSQL: nil
         )
@@ -282,7 +276,6 @@ struct FilterSQLGeneratorTests {
             filterOperator: .isNotEmpty,
             value: "",
             secondValue: nil,
-            isSelected: true,
             isEnabled: true,
             rawSQL: nil
         )
@@ -299,7 +292,6 @@ struct FilterSQLGeneratorTests {
             filterOperator: .inList,
             value: "a, b, c",
             secondValue: nil,
-            isSelected: true,
             isEnabled: true,
             rawSQL: nil
         )
@@ -316,7 +308,6 @@ struct FilterSQLGeneratorTests {
             filterOperator: .notInList,
             value: "a, b, c",
             secondValue: nil,
-            isSelected: true,
             isEnabled: true,
             rawSQL: nil
         )
@@ -333,7 +324,6 @@ struct FilterSQLGeneratorTests {
             filterOperator: .between,
             value: "18",
             secondValue: "65",
-            isSelected: true,
             isEnabled: true,
             rawSQL: nil
         )
@@ -350,7 +340,6 @@ struct FilterSQLGeneratorTests {
             filterOperator: .regex,
             value: "^[a-z]+@",
             secondValue: nil,
-            isSelected: true,
             isEnabled: true,
             rawSQL: nil
         )
@@ -359,23 +348,6 @@ struct FilterSQLGeneratorTests {
     }
 
     // MARK: - Value Type Detection
-
-    @Test("NULL literal generates unquoted NULL")
-    func testNullLiteral() {
-        let generator = FilterSQLGenerator(dialect: Self.mysqlDialect)
-        let filter = TableFilter(
-            id: UUID(),
-            columnName: "name",
-            filterOperator: .equal,
-            value: "NULL",
-            secondValue: nil,
-            isSelected: true,
-            isEnabled: true,
-            rawSQL: nil
-        )
-        let result = generator.generateCondition(from: filter)
-        #expect(result == "`name` = NULL")
-    }
 
     @Test("TRUE literal generates 1 for MySQL")
     func testTrueLiteralMySQL() {
@@ -386,7 +358,6 @@ struct FilterSQLGeneratorTests {
             filterOperator: .equal,
             value: "TRUE",
             secondValue: nil,
-            isSelected: true,
             isEnabled: true,
             rawSQL: nil
         )
@@ -403,7 +374,6 @@ struct FilterSQLGeneratorTests {
             filterOperator: .equal,
             value: "FALSE",
             secondValue: nil,
-            isSelected: true,
             isEnabled: true,
             rawSQL: nil
         )
@@ -420,7 +390,6 @@ struct FilterSQLGeneratorTests {
             filterOperator: .equal,
             value: "42",
             secondValue: nil,
-            isSelected: true,
             isEnabled: true,
             rawSQL: nil
         )
@@ -437,7 +406,6 @@ struct FilterSQLGeneratorTests {
             filterOperator: .equal,
             value: "hello",
             secondValue: nil,
-            isSelected: true,
             isEnabled: true,
             rawSQL: nil
         )
@@ -457,7 +425,6 @@ struct FilterSQLGeneratorTests {
                 filterOperator: .greaterThan,
                 value: "18",
                 secondValue: nil,
-                isSelected: true,
                 isEnabled: true,
                 rawSQL: nil
             ),
@@ -467,7 +434,6 @@ struct FilterSQLGeneratorTests {
                 filterOperator: .equal,
                 value: "active",
                 secondValue: nil,
-                isSelected: true,
                 isEnabled: true,
                 rawSQL: nil
             )
@@ -486,7 +452,6 @@ struct FilterSQLGeneratorTests {
                 filterOperator: .greaterThan,
                 value: "18",
                 secondValue: nil,
-                isSelected: true,
                 isEnabled: true,
                 rawSQL: nil
             ),
@@ -496,7 +461,6 @@ struct FilterSQLGeneratorTests {
                 filterOperator: .equal,
                 value: "active",
                 secondValue: nil,
-                isSelected: true,
                 isEnabled: true,
                 rawSQL: nil
             )
@@ -523,7 +487,6 @@ struct FilterSQLGeneratorTests {
                 filterOperator: .greaterThan,
                 value: "18",
                 secondValue: nil,
-                isSelected: true,
                 isEnabled: true,
                 rawSQL: nil
             )
@@ -542,7 +505,6 @@ struct FilterSQLGeneratorTests {
                 filterOperator: .equal,
                 value: "test",
                 secondValue: nil,
-                isSelected: true,
                 isEnabled: true,
                 rawSQL: nil
             ),
@@ -552,7 +514,6 @@ struct FilterSQLGeneratorTests {
                 filterOperator: .equal,
                 value: "active",
                 secondValue: nil,
-                isSelected: true,
                 isEnabled: true,
                 rawSQL: nil
             )
@@ -572,7 +533,6 @@ struct FilterSQLGeneratorTests {
             filterOperator: .equal,
             value: "O'Brien",
             secondValue: nil,
-            isSelected: true,
             isEnabled: true,
             rawSQL: nil
         )
@@ -589,7 +549,6 @@ struct FilterSQLGeneratorTests {
             filterOperator: .equal,
             value: "test",
             secondValue: nil,
-            isSelected: true,
             isEnabled: true,
             rawSQL: nil
         )
@@ -606,7 +565,6 @@ struct FilterSQLGeneratorTests {
             filterOperator: .equal,
             value: "",
             secondValue: nil,
-            isSelected: true,
             isEnabled: true,
             rawSQL: "age > 18"
         )
@@ -668,7 +626,6 @@ struct FilterSQLGeneratorTests {
             filterOperator: .equal,
             value: "test",
             secondValue: nil,
-            isSelected: true,
             isEnabled: true,
             rawSQL: nil
         )
@@ -685,7 +642,6 @@ struct FilterSQLGeneratorTests {
             filterOperator: .equal,
             value: "test",
             secondValue: nil,
-            isSelected: true,
             isEnabled: true,
             rawSQL: nil
         )
@@ -702,7 +658,6 @@ struct FilterSQLGeneratorTests {
             filterOperator: .equal,
             value: "test",
             secondValue: nil,
-            isSelected: true,
             isEnabled: true,
             rawSQL: nil
         )
@@ -719,7 +674,6 @@ struct FilterSQLGeneratorTests {
             filterOperator: .equal,
             value: "test",
             secondValue: nil,
-            isSelected: true,
             isEnabled: true,
             rawSQL: nil
         )
@@ -738,7 +692,6 @@ struct FilterSQLGeneratorTests {
             filterOperator: .contains,
             value: "50%",
             secondValue: nil,
-            isSelected: true,
             isEnabled: true,
             rawSQL: nil
         )
@@ -755,7 +708,6 @@ struct FilterSQLGeneratorTests {
             filterOperator: .contains,
             value: "test_value",
             secondValue: nil,
-            isSelected: true,
             isEnabled: true,
             rawSQL: nil
         )
@@ -772,7 +724,6 @@ struct FilterSQLGeneratorTests {
             filterOperator: .startsWith,
             value: "test_%",
             secondValue: nil,
-            isSelected: true,
             isEnabled: true,
             rawSQL: nil
         )
@@ -791,7 +742,6 @@ struct FilterSQLGeneratorTests {
             filterOperator: .regex,
             value: "^[a-z]+@",
             secondValue: nil,
-            isSelected: true,
             isEnabled: true,
             rawSQL: nil
         )
@@ -808,7 +758,6 @@ struct FilterSQLGeneratorTests {
             filterOperator: .regex,
             value: "^[a-z]+@",
             secondValue: nil,
-            isSelected: true,
             isEnabled: true,
             rawSQL: nil
         )
@@ -825,7 +774,6 @@ struct FilterSQLGeneratorTests {
             filterOperator: .regex,
             value: "test",
             secondValue: nil,
-            isSelected: true,
             isEnabled: true,
             rawSQL: nil
         )
@@ -845,7 +793,6 @@ struct FilterSQLGeneratorTests {
                 filterOperator: .greaterThan,
                 value: "18",
                 secondValue: nil,
-                isSelected: true,
                 isEnabled: true,
                 rawSQL: nil
             )
@@ -868,6 +815,43 @@ struct FilterSQLGeneratorTests {
         #expect(result.contains("LIMIT 1000"))
     }
 
+    @Test("Preview SQL qualifies the table with the schema")
+    func testPreviewSQLWithSchema() {
+        let generator = FilterSQLGenerator(dialect: Self.mysqlDialect)
+        let result = generator.generatePreviewSQL(
+            tableName: "users", schemaName: "sales", filters: [], limit: 1_000
+        )
+        #expect(result.contains("SELECT * FROM `sales`.`users`"))
+    }
+
+    @Test("Preview SQL with an empty schema stays unqualified")
+    func testPreviewSQLWithEmptySchema() {
+        let generator = FilterSQLGenerator(dialect: Self.mysqlDialect)
+        let result = generator.generatePreviewSQL(
+            tableName: "users", schemaName: "", filters: [], limit: 1_000
+        )
+        #expect(result.contains("SELECT * FROM `users`"))
+    }
+
+    @Test("Trino paging emits OFFSET before FETCH FIRST with no synthetic ORDER BY")
+    func testPreviewSQLTrinoOffsetFetch() {
+        let generator = FilterSQLGenerator(dialect: Self.trinoDialect)
+        let result = generator.generatePreviewSQL(
+            tableName: "pseudo_columns", schemaName: "jdbc", filters: [], limit: 1_000
+        )
+        #expect(result.contains("OFFSET 0 ROWS FETCH NEXT 1000 ROWS ONLY"))
+        #expect(!result.contains("LIMIT"))
+        #expect(!result.contains("ORDER BY"))
+    }
+
+    @Test("Oracle paging keeps its default ORDER BY before OFFSET and FETCH FIRST")
+    func testPreviewSQLOracleOffsetFetch() {
+        let generator = FilterSQLGenerator(dialect: Self.oracleDialect)
+        let result = generator.generatePreviewSQL(tableName: "users", filters: [], limit: 1_000)
+        #expect(result.contains("ORDER BY 1 OFFSET 0 ROWS FETCH NEXT 1000 ROWS ONLY"))
+        #expect(!result.contains("LIMIT"))
+    }
+
     // MARK: - Edge Cases
 
     @Test("Between with missing secondValue returns nil")
@@ -879,7 +863,6 @@ struct FilterSQLGeneratorTests {
             filterOperator: .between,
             value: "18",
             secondValue: nil,
-            isSelected: true,
             isEnabled: true,
             rawSQL: nil
         )
@@ -896,7 +879,6 @@ struct FilterSQLGeneratorTests {
             filterOperator: .inList,
             value: "",
             secondValue: nil,
-            isSelected: true,
             isEnabled: true,
             rawSQL: nil
         )
@@ -913,7 +895,6 @@ struct FilterSQLGeneratorTests {
             filterOperator: .equal,
             value: "TRUE",
             secondValue: nil,
-            isSelected: true,
             isEnabled: true,
             rawSQL: nil
         )
@@ -930,7 +911,6 @@ struct FilterSQLGeneratorTests {
             filterOperator: .equal,
             value: "FALSE",
             secondValue: nil,
-            isSelected: true,
             isEnabled: true,
             rawSQL: nil
         )
@@ -949,7 +929,6 @@ struct FilterSQLGeneratorTests {
             filterOperator: .equal,
             value: "test",
             secondValue: nil,
-            isSelected: true,
             isEnabled: true,
             rawSQL: nil
         )
@@ -966,7 +945,6 @@ struct FilterSQLGeneratorTests {
             filterOperator: .regex,
             value: "^[a-z]+@",
             secondValue: nil,
-            isSelected: true,
             isEnabled: true,
             rawSQL: nil
         )
@@ -983,7 +961,6 @@ struct FilterSQLGeneratorTests {
             filterOperator: .equal,
             value: "TRUE",
             secondValue: nil,
-            isSelected: true,
             isEnabled: true,
             rawSQL: nil
         )
@@ -1000,7 +977,6 @@ struct FilterSQLGeneratorTests {
             filterOperator: .equal,
             value: "FALSE",
             secondValue: nil,
-            isSelected: true,
             isEnabled: true,
             rawSQL: nil
         )
@@ -1008,7 +984,7 @@ struct FilterSQLGeneratorTests {
         #expect(result == "\"active\" = FALSE")
     }
 
-    @Test("Redshift LIKE uses ESCAPE clause")
+    @Test("Redshift LIKE uses a non-backslash ESCAPE clause")
     func testRedshiftLikeEscape() {
         let generator = FilterSQLGenerator(dialect: Self.postgresqlDialect)
         let filter = TableFilter(
@@ -1017,12 +993,28 @@ struct FilterSQLGeneratorTests {
             filterOperator: .contains,
             value: "50%",
             secondValue: nil,
-            isSelected: true,
             isEnabled: true,
             rawSQL: nil
         )
         let result = generator.generateCondition(from: filter)
-        #expect(result?.contains("ESCAPE") == true)
+        #expect(result?.contains("ESCAPE '!'") == true)
+        #expect(result?.contains("ESCAPE '\\'") == false)
+    }
+
+    @Test("Explicit-dialect LIKE escapes a literal exclamation mark in the value")
+    func testExplicitLikeEscapesExclamation() {
+        let generator = FilterSQLGenerator(dialect: Self.postgresqlDialect)
+        let filter = TableFilter(
+            id: UUID(),
+            columnName: "name",
+            filterOperator: .contains,
+            value: "a!b",
+            secondValue: nil,
+            isEnabled: true,
+            rawSQL: nil
+        )
+        let result = generator.generateCondition(from: filter)
+        #expect(result?.contains("a!!b") == true)
     }
 
     @Test("Redshift AND mode with 2 filters generates AND clause")
@@ -1035,7 +1027,6 @@ struct FilterSQLGeneratorTests {
                 filterOperator: .greaterThan,
                 value: "18",
                 secondValue: nil,
-                isSelected: true,
                 isEnabled: true,
                 rawSQL: nil
             ),
@@ -1045,7 +1036,6 @@ struct FilterSQLGeneratorTests {
                 filterOperator: .equal,
                 value: "active",
                 secondValue: nil,
-                isSelected: true,
                 isEnabled: true,
                 rawSQL: nil
             )
@@ -1064,7 +1054,6 @@ struct FilterSQLGeneratorTests {
                 filterOperator: .greaterThan,
                 value: "18",
                 secondValue: nil,
-                isSelected: true,
                 isEnabled: true,
                 rawSQL: nil
             ),
@@ -1074,7 +1063,6 @@ struct FilterSQLGeneratorTests {
                 filterOperator: .equal,
                 value: "active",
                 secondValue: nil,
-                isSelected: true,
                 isEnabled: true,
                 rawSQL: nil
             )
@@ -1090,7 +1078,7 @@ struct FilterSQLGeneratorTests {
         let generator = FilterSQLGenerator(dialect: Self.mysqlDialect)
         let filter = TableFilter(
             id: UUID(), columnName: "name", filterOperator: .equal,
-            value: "NULL", secondValue: nil, isSelected: true, isEnabled: true, rawSQL: nil
+            value: "NULL", secondValue: nil, isEnabled: true, rawSQL: nil
         )
         let result = generator.generateCondition(from: filter)
         #expect(result == "`name` IS NULL")
@@ -1101,7 +1089,7 @@ struct FilterSQLGeneratorTests {
         let generator = FilterSQLGenerator(dialect: Self.mysqlDialect)
         let filter = TableFilter(
             id: UUID(), columnName: "name", filterOperator: .equal,
-            value: "null", secondValue: nil, isSelected: true, isEnabled: true, rawSQL: nil
+            value: "null", secondValue: nil, isEnabled: true, rawSQL: nil
         )
         let result = generator.generateCondition(from: filter)
         #expect(result == "`name` IS NULL")
@@ -1112,7 +1100,7 @@ struct FilterSQLGeneratorTests {
         let generator = FilterSQLGenerator(dialect: Self.mysqlDialect)
         let filter = TableFilter(
             id: UUID(), columnName: "name", filterOperator: .notEqual,
-            value: "NULL", secondValue: nil, isSelected: true, isEnabled: true, rawSQL: nil
+            value: "NULL", secondValue: nil, isEnabled: true, rawSQL: nil
         )
         let result = generator.generateCondition(from: filter)
         #expect(result == "`name` IS NOT NULL")
@@ -1123,7 +1111,7 @@ struct FilterSQLGeneratorTests {
         let generator = FilterSQLGenerator(dialect: Self.mysqlDialect)
         let filter = TableFilter(
             id: UUID(), columnName: "name", filterOperator: .equal,
-            value: "hello", secondValue: nil, isSelected: true, isEnabled: true, rawSQL: nil
+            value: "hello", secondValue: nil, isEnabled: true, rawSQL: nil
         )
         let result = generator.generateCondition(from: filter)
         #expect(result == "`name` = 'hello'")
@@ -1136,7 +1124,7 @@ struct FilterSQLGeneratorTests {
         let generator = FilterSQLGenerator(dialect: Self.mysqlDialect)
         let filter = TableFilter(
             id: UUID(), columnName: "status", filterOperator: .inList,
-            value: "1, NULL, 3", secondValue: nil, isSelected: true, isEnabled: true, rawSQL: nil
+            value: "1, NULL, 3", secondValue: nil, isEnabled: true, rawSQL: nil
         )
         let result = generator.generateCondition(from: filter)
         #expect(result == "(`status` IN (1, 3) OR `status` IS NULL)")
@@ -1147,7 +1135,7 @@ struct FilterSQLGeneratorTests {
         let generator = FilterSQLGenerator(dialect: Self.mysqlDialect)
         let filter = TableFilter(
             id: UUID(), columnName: "status", filterOperator: .notInList,
-            value: "1, NULL, 3", secondValue: nil, isSelected: true, isEnabled: true, rawSQL: nil
+            value: "1, NULL, 3", secondValue: nil, isEnabled: true, rawSQL: nil
         )
         let result = generator.generateCondition(from: filter)
         #expect(result == "(`status` NOT IN (1, 3) AND `status` IS NOT NULL)")
@@ -1158,7 +1146,7 @@ struct FilterSQLGeneratorTests {
         let generator = FilterSQLGenerator(dialect: Self.mysqlDialect)
         let filter = TableFilter(
             id: UUID(), columnName: "id", filterOperator: .inList,
-            value: "1, 2, 3", secondValue: nil, isSelected: true, isEnabled: true, rawSQL: nil
+            value: "1, 2, 3", secondValue: nil, isEnabled: true, rawSQL: nil
         )
         let result = generator.generateCondition(from: filter)
         #expect(result == "`id` IN (1, 2, 3)")
@@ -1169,7 +1157,7 @@ struct FilterSQLGeneratorTests {
         let generator = FilterSQLGenerator(dialect: Self.mysqlDialect)
         let filter = TableFilter(
             id: UUID(), columnName: "status", filterOperator: .inList,
-            value: "NULL", secondValue: nil, isSelected: true, isEnabled: true, rawSQL: nil
+            value: "NULL", secondValue: nil, isEnabled: true, rawSQL: nil
         )
         let result = generator.generateCondition(from: filter)
         #expect(result == "`status` IS NULL")

@@ -278,7 +278,6 @@ internal struct UIThemeColors: Codable, Equatable, Sendable {
     var primaryText: String?
     var secondaryText: String?
     var tertiaryText: String?
-    var accentColor: String?
     var selectionBackground: String?
     var hoverBackground: String?
     var status: StatusColors
@@ -292,7 +291,6 @@ internal struct UIThemeColors: Codable, Equatable, Sendable {
         primaryText: nil,
         secondaryText: nil,
         tertiaryText: nil,
-        accentColor: nil,
         selectionBackground: nil,
         hoverBackground: nil,
         status: .defaultLight,
@@ -307,7 +305,6 @@ internal struct UIThemeColors: Codable, Equatable, Sendable {
         primaryText: String?,
         secondaryText: String?,
         tertiaryText: String?,
-        accentColor: String?,
         selectionBackground: String?,
         hoverBackground: String?,
         status: StatusColors,
@@ -320,7 +317,6 @@ internal struct UIThemeColors: Codable, Equatable, Sendable {
         self.primaryText = primaryText
         self.secondaryText = secondaryText
         self.tertiaryText = tertiaryText
-        self.accentColor = accentColor
         self.selectionBackground = selectionBackground
         self.hoverBackground = hoverBackground
         self.status = status
@@ -338,7 +334,6 @@ internal struct UIThemeColors: Codable, Equatable, Sendable {
         primaryText = try container.decodeIfPresent(String.self, forKey: .primaryText)
         secondaryText = try container.decodeIfPresent(String.self, forKey: .secondaryText)
         tertiaryText = try container.decodeIfPresent(String.self, forKey: .tertiaryText)
-        accentColor = try container.decodeIfPresent(String.self, forKey: .accentColor)
         selectionBackground = try container.decodeIfPresent(String.self, forKey: .selectionBackground)
         hoverBackground = try container.decodeIfPresent(String.self, forKey: .hoverBackground)
         status = try container.decodeIfPresent(StatusColors.self, forKey: .status) ?? fallback.status

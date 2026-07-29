@@ -47,6 +47,7 @@ struct UnifiedRightPanelView: View {
             case .aiChat:  aiChatView
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     private var inspectorHeader: some View {

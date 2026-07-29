@@ -120,6 +120,15 @@ extension EmptyStateView {
         )
     }
 
+    /// Empty state for triggers
+    static func triggers() -> EmptyStateView {
+        EmptyStateView(
+            icon: "bolt",
+            title: String(localized: "No Triggers"),
+            description: String(localized: "This table has no triggers. Triggers run automatically when rows are inserted, updated, or deleted.")
+        )
+    }
+
     /// Empty state for check constraints
     static func checkConstraints(onAdd: @escaping () -> Void) -> EmptyStateView {
         EmptyStateView(

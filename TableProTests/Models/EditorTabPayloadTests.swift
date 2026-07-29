@@ -135,10 +135,25 @@ struct EditorTabPayloadTests {
         let payload = EditorTabPayload(from: tab, connectionId: connectionId)
         #expect(payload.connectionId == connectionId)
         #expect(payload.tabType == tab.tabType)
+        #expect(payload.tabTitle == tab.title)
         #expect(payload.tableName == tab.tableContext.tableName)
         #expect(payload.databaseName == tab.tableContext.databaseName)
         #expect(payload.initialQuery == tab.content.query)
         #expect(payload.isView == tab.tableContext.isView)
         #expect(payload.showStructure == (tab.display.resultsViewMode == .structure))
+    }
+
+    @Test("Init from a file-backed query tab preserves the file title")
+    @MainActor
+    func initFromFileBackedQueryTab() throws {
+        let tabManager = QueryTabManager()
+        let url = URL(fileURLWithPath: "/tmp/report.sql")
+        tabManager.addTab(initialQuery: "SELECT 1", sourceFileURL: url)
+        let tab = try #require(tabManager.tabs.first)
+        let connectionId = UUID()
+        let payload = EditorTabPayload(from: tab, connectionId: connectionId)
+        #expect(payload.sourceFileURL == url)
+        #expect(payload.tabTitle == tab.title)
+        #expect(payload.tabTitle == QueryTab.fileDisplayTitle(for: url))
     }
 }

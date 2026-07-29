@@ -5,6 +5,7 @@
 
 import Foundation
 import os
+import TableProPluginKit
 
 // MARK: - Hrana Protocol Types
 
@@ -114,16 +115,21 @@ final class HranaHttpClient: @unchecked Sendable {
     private let lock = NSLock()
     private var session: URLSession?
     private var currentTask: URLSessionDataTask?
+    private let queryTimeout = HttpQueryTimeoutBox()
 
     init(baseUrl: URL, authToken: String?) {
         self.baseUrl = baseUrl
         self.authToken = authToken
     }
 
+    func setQueryTimeout(_ seconds: Int) {
+        queryTimeout.set(serverTimeoutSeconds: seconds)
+    }
+
     func createSession() {
         let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = 30
-        config.timeoutIntervalForResource = 300
+        config.timeoutIntervalForRequest = HttpQueryTimeout.sessionBootstrapRequestTimeout
+        config.timeoutIntervalForResource = HttpQueryTimeout.sessionResourceTimeout
 
         lock.lock()
         session = URLSession(configuration: config)
@@ -211,6 +217,7 @@ final class HranaHttpClient: @unchecked Sendable {
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
+        request.timeoutInterval = queryTimeout.requestTimeoutInterval
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         if let token = authToken {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")

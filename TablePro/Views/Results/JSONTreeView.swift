@@ -200,7 +200,7 @@ private struct JSONTreeRowView: View {
             if let key = node.key {
                 Text(key)
                     .font(.system(.body, design: .monospaced).weight(.medium))
-                    .foregroundStyle(Color(nsColor: .systemBlue))
+                    .foregroundStyle(.blue)
                     .lineLimit(1)
                 Text(":")
                     .foregroundStyle(.secondary)

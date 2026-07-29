@@ -124,7 +124,6 @@ final class VimTextBufferAdapter: VimTextBuffer {
 
         if nsString.length == 0 { return (0, 0) }
 
-        // Find line start for the clamped offset
         let safeOffset = min(clampedOffset, max(0, nsString.length - 1))
         let lineRange = nsString.lineRange(for: NSRange(location: safeOffset, length: 0))
         let column = clampedOffset - lineRange.location
@@ -188,11 +187,9 @@ final class VimTextBufferAdapter: VimTextBuffer {
                     pos += 1
                 }
             } else {
-                // Skip same-class characters
                 while pos < nsString.length && charClass(nsString.character(at: pos)) == startClass {
                     pos += 1
                 }
-                // Skip whitespace between words
                 while pos < nsString.length && charClass(nsString.character(at: pos)) == .whitespace {
                     pos += 1
                 }
@@ -201,11 +198,9 @@ final class VimTextBufferAdapter: VimTextBuffer {
         } else {
             var pos = min(offset, nsString.length)
             if pos > 0 { pos -= 1 }
-            // Skip whitespace backward
             while pos > 0 && charClass(nsString.character(at: pos)) == .whitespace {
                 pos -= 1
             }
-            // Skip same-class characters backward
             let cls = charClass(nsString.character(at: pos))
             while pos > 0 && charClass(nsString.character(at: pos - 1)) == cls {
                 pos -= 1
@@ -220,12 +215,10 @@ final class VimTextBufferAdapter: VimTextBuffer {
         guard nsString.length > 0 else { return 0 }
 
         var pos = min(offset + 1, nsString.length - 1)
-        // Skip whitespace
         while pos < nsString.length && charClass(nsString.character(at: pos)) == .whitespace {
             pos += 1
         }
         guard pos < nsString.length else { return nsString.length - 1 }
-        // Go to end of same-class run
         let cls = charClass(nsString.character(at: pos))
         while pos < nsString.length - 1 && charClass(nsString.character(at: pos + 1)) == cls {
             pos += 1

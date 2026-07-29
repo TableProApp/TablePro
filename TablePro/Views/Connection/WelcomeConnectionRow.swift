@@ -8,18 +8,39 @@ import SwiftUI
 struct WelcomeConnectionRow: View {
     let connection: DatabaseConnection
     let sshProfile: SSHProfile?
+    let isSelected: Bool
+    let onToggleFavorite: () -> Void
+    @State private var isHovering = false
+    private let pluginManager = PluginManager.shared
 
-    private var displayTag: ConnectionTag? {
-        guard let tagId = connection.tagId else { return nil }
-        return TagStorage.shared.tag(for: tagId)
+    private var metadata: (tags: [ConnectionTag], group: ConnectionGroup?) {
+        ConnectionMetadata.resolve(
+            connection: connection,
+            tags: TagStorage.shared.loadTags(),
+            groups: GroupStorage.shared.loadGroups()
+        )
     }
 
     private var showsLocalOnly: Bool {
         connection.localOnly && !connection.isSample
     }
 
+    private var isDriverRejected: Bool {
+        let typeId = connection.type.pluginTypeId
+        return pluginManager.rejectedPlugins.contains { rejected in
+            rejected.bundleId == typeId || rejected.registryId == typeId
+        }
+    }
+
+    private var toggleFavoriteActionName: String {
+        connection.isFavorite
+            ? String(localized: "Remove from Favorites")
+            : String(localized: "Add to Favorites")
+    }
+
     var body: some View {
-        HStack {
+        let meta = metadata
+        return HStack {
             connection.type.iconImage
                 .renderingMode(.template)
                 .font(.title3)
@@ -31,25 +52,44 @@ struct WelcomeConnectionRow: View {
                     .font(.body)
                     .foregroundStyle(.primary)
 
-                Text(subtitleText)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                    .help(subtitleText)
+                HStack(spacing: 6) {
+                    Text(connection.connectionSubtitle)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .help(connection.connectionSubtitle)
+
+                    if let group = meta.group {
+                        ConnectionGroupBadge(group: group)
+                            .layoutPriority(1)
+                    }
+                }
             }
 
             Spacer(minLength: 8)
 
-            trailingAccessories
+            trailingAccessories(tags: meta.tags)
         }
         .contentShape(Rectangle())
+        .onHover { hovering in isHovering = hovering }
         .accessibilityElement(children: .combine)
+        .accessibilityAction(named: Text(toggleFavoriteActionName)) {
+            onToggleFavorite()
+        }
     }
 
     @ViewBuilder
-    private var trailingAccessories: some View {
+    private func trailingAccessories(tags: [ConnectionTag]) -> some View {
         HStack(spacing: 8) {
+            if isDriverRejected {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .imageScale(.small)
+                    .foregroundStyle(.yellow)
+                    .help(String(localized: "Driver plugin not loaded. Open Settings to update."))
+                    .accessibilityLabel(String(localized: "Plugin not loaded"))
+            }
+
             if showsLocalOnly {
                 Image(systemName: "icloud.slash")
                     .imageScale(.small)
@@ -58,57 +98,36 @@ struct WelcomeConnectionRow: View {
                     .accessibilityLabel(String(localized: "Local only"))
             }
 
-            if let tag = displayTag {
-                HStack(spacing: 4) {
-                    Circle()
-                        .fill(tag.color.color)
-                        .frame(width: 8, height: 8)
-                    Text(tag.name)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-                .accessibilityElement(children: .combine)
-                .accessibilityLabel(String(format: String(localized: "Tag: %@"), tag.name))
-            }
+            ConnectionTagsBadge(tags: tags)
+
+            favoriteButton
         }
     }
 
-    private var subtitleText: String {
-        var components: [String] = [primaryEndpoint]
-        if let viaText = sshViaText {
-            components.append(viaText)
+    private var favoriteButton: some View {
+        let visible = connection.isFavorite || isHovering || isSelected
+        return Button(action: onToggleFavorite) {
+            favoriteStarImage
         }
-        if connection.isSample {
-            components.append(String(localized: "Sample"))
-        }
-        return components.joined(separator: " · ")
+        .buttonStyle(.borderless)
+        .opacity(visible ? 1 : 0)
+        .allowsHitTesting(visible)
+        .help(toggleFavoriteActionName)
+        .accessibilityHidden(!connection.isFavorite)
+        .accessibilityLabel(String(localized: "Favorited"))
+        .frame(width: 16, alignment: .center)
     }
 
-    private var primaryEndpoint: String {
-        if connection.host.isEmpty {
-            return connection.database.isEmpty ? connection.type.rawValue : connection.database
+    @ViewBuilder
+    private var favoriteStarImage: some View {
+        if connection.isFavorite {
+            Image(systemName: "star.fill")
+                .imageScale(.small)
+                .foregroundStyle(.yellow)
+        } else {
+            Image(systemName: "star")
+                .imageScale(.small)
+                .foregroundStyle(.tertiary)
         }
-        if connection.host.hasPrefix("/") {
-            return (connection.host as NSString).abbreviatingWithTildeInPath
-        }
-        if let mongoHosts = connection.additionalFields["mongoHosts"], mongoHosts.contains(",") {
-            let count = mongoHosts.split(separator: ",").count
-            return String(format: String(localized: "%@ (+%d more)"), hostWithOptionalPort, count - 1)
-        }
-        return hostWithOptionalPort
-    }
-
-    private var hostWithOptionalPort: String {
-        if connection.port == connection.type.defaultPort {
-            return connection.host
-        }
-        return "\(connection.host):\(connection.port)"
-    }
-
-    private var sshViaText: String? {
-        let ssh = connection.resolvedSSHConfig
-        guard ssh.enabled, !ssh.host.isEmpty else { return nil }
-        return String(format: String(localized: "via %@"), ssh.host)
     }
 }

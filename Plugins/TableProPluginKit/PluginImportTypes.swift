@@ -5,10 +5,33 @@
 
 import Foundation
 
+@frozen
 public enum ImportErrorHandling: String, Codable, CaseIterable, Sendable {
     case stopAndRollback
     case stopAndCommit
     case skipAndContinue
+}
+
+public enum PluginImportFieldType: String, Sendable {
+    case text
+    case integer
+    case real
+    case boolean
+    case json
+}
+
+public struct PluginImportField: Sendable, Identifiable {
+    public let name: String
+    public let sampleValue: String?
+    public let inferredType: PluginImportFieldType
+
+    public var id: String { name }
+
+    public init(name: String, sampleValue: String?, inferredType: PluginImportFieldType) {
+        self.name = name
+        self.sampleValue = sampleValue
+        self.inferredType = inferredType
+    }
 }
 
 public struct PluginImportResult: Sendable {

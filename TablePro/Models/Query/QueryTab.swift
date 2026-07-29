@@ -32,6 +32,15 @@ struct QueryTab: Identifiable, Equatable {
     var paginationVersion: Int
     var loadEpoch: Int = 0
 
+    var pendingRestoredSort: [PersistedSortColumn]?
+    var restoredPage: Int?
+    var restoredCursorOffset: Int?
+
+    private static func clampedCursorOffset(_ offset: Int?, in query: String) -> Int? {
+        guard let offset, offset >= 0 else { return nil }
+        return min(offset, (query as NSString).length)
+    }
+
     init(
         id: UUID = UUID(),
         title: String = "Query",
@@ -58,9 +67,12 @@ struct QueryTab: Identifiable, Equatable {
         self.metadataVersion = 0
         self.paginationVersion = 0
         self.loadEpoch = 0
+        self.pendingRestoredSort = nil
+        self.restoredPage = nil
+        self.restoredCursorOffset = nil
     }
 
-    init(from persisted: PersistedTab) {
+    init(from persisted: PersistedTab, defaultPageSize: Int) {
         self.id = persisted.id
         self.title = persisted.title
         self.tabType = persisted.tabType
@@ -83,13 +95,16 @@ struct QueryTab: Identifiable, Equatable {
         self.selectedRowIndices = []
         self.sortState = SortState()
         self.filterState = TabFilterState()
-        self.columnLayout = ColumnLayoutState()
-        self.pagination = PaginationState()
+        self.columnLayout = ColumnLayoutState(columnWidths: persisted.columnWidths ?? [:])
+        self.pagination = PaginationState(pageSize: defaultPageSize)
         self.hasUserInteraction = false
         self.schemaVersion = 0
         self.metadataVersion = 0
         self.paginationVersion = 0
         self.loadEpoch = 0
+        self.pendingRestoredSort = persisted.sortColumns
+        self.restoredPage = persisted.restoredPage.map { max(1, $0) }
+        self.restoredCursorOffset = Self.clampedCursorOffset(persisted.cursorOffset, in: persisted.query)
     }
 
     @MainActor static func buildBaseTableQuery(
@@ -102,7 +117,7 @@ struct QueryTab: Identifiable, Equatable {
 
         if let pluginDriver = PluginManager.shared.queryBuildingDriver(for: databaseType),
            let pluginQuery = pluginDriver.buildBrowseQuery(
-               table: tableName, sortColumns: [], columns: [], limit: pageSize, offset: 0
+               table: tableName, schema: schemaName, sortColumns: [], columns: [], limit: pageSize, offset: 0
            ) {
             return pluginQuery
         }
@@ -115,30 +130,43 @@ struct QueryTab: Identifiable, Equatable {
             return "SCAN 0 MATCH * COUNT \(pageSize)"
         default:
             let dialect = try resolveSQLDialect(for: databaseType)
-            let quote = quoteIdentifier ?? quoteIdentifierFromDialect(dialect)
-            let qualifiedName: String
-            if let schema = schemaName, !schema.isEmpty {
-                qualifiedName = "\(quote(schema)).\(quote(tableName))"
-            } else {
-                qualifiedName = quote(tableName)
-            }
-            switch PluginManager.shared.paginationStyle(for: databaseType) {
-            case .offsetFetch:
-                let orderBy = PluginManager.shared.offsetFetchOrderBy(for: databaseType)
-                return "SELECT * FROM \(qualifiedName) \(orderBy) OFFSET 0 ROWS FETCH NEXT \(pageSize) ROWS ONLY;"
-            case .limit:
-                return "SELECT * FROM \(qualifiedName) LIMIT \(pageSize);"
-            }
+            let builder = TableQueryBuilder(
+                databaseType: databaseType,
+                pluginDriver: nil,
+                dialect: dialect,
+                dialectQuote: quoteIdentifier ?? quoteIdentifierFromDialect(dialect)
+            )
+            return builder.buildBaseQuery(
+                tableName: tableName,
+                schemaName: schemaName,
+                limit: pageSize,
+                offset: 0
+            )
         }
     }
 
-    func toPersistedTab() -> PersistedTab {
-        let persistedQuery: String
-        if (content.query as NSString).length > TabQueryContent.maxPersistableQuerySize {
-            persistedQuery = ""
-        } else {
-            persistedQuery = content.query
-        }
+    static func fileDisplayTitle(for url: URL) -> String {
+        FileManager.default.displayName(atPath: url.path(percentEncoded: false))
+    }
+
+    var hasUserActiveSort: Bool {
+        sortState.isSorting && sortState.source == .user
+    }
+
+    func toPersistedTab(windowGroupIndex: Int? = nil) -> PersistedTab {
+        let queryLength = (content.query as NSString).length
+        let persistedQuery = queryLength > TabQueryContent.maxPersistableQuerySize ? "" : content.query
+
+        let persistedSort: [PersistedSortColumn]? = {
+            let resolved = sortState.columns.compactMap { column -> PersistedSortColumn? in
+                guard let name = column.columnName else { return nil }
+                return PersistedSortColumn(columnName: name, direction: column.direction)
+            }
+            return resolved.isEmpty ? nil : resolved
+        }()
+
+        let restoredPage = (tabType == .table && pagination.currentPage > 1) ? pagination.currentPage : nil
+        let widths = columnLayout.columnWidths.isEmpty ? nil : columnLayout.columnWidths
 
         return PersistedTab(
             id: id,
@@ -151,7 +179,12 @@ struct QueryTab: Identifiable, Equatable {
             schemaName: tableContext.schemaName,
             sourceFileURL: content.sourceFileURL,
             erDiagramSchemaKey: display.erDiagramSchemaKey,
-            queryParameters: content.queryParameters.isEmpty ? nil : content.queryParameters
+            queryParameters: content.queryParameters.isEmpty ? nil : content.queryParameters,
+            sortColumns: persistedSort,
+            restoredPage: restoredPage,
+            cursorOffset: Self.clampedCursorOffset(restoredCursorOffset, in: persistedQuery),
+            columnWidths: widths,
+            windowGroupIndex: windowGroupIndex
         )
     }
 

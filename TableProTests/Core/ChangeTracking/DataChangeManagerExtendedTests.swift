@@ -25,7 +25,8 @@ struct DataChangeManagerExtendedTests {
         manager.configureForTable(
             tableName: "test_table",
             columns: columns,
-            primaryKeyColumns: [pk].compactMap { $0 }
+            primaryKeyColumns: [pk].compactMap { $0 },
+            databaseType: .mysql
         )
         return manager
     }
@@ -694,6 +695,7 @@ struct DataChangeManagerExtendedTests {
             tableName: "test",
             columns: ["a", "b"],
             primaryKeyColumns: ["a"],
+            databaseType: .mysql,
             triggerReload: false
         )
         #expect(manager.reloadVersion == before)

@@ -215,6 +215,9 @@ create_universal() {
                 "$LIBS_DIR/${lib}_arm64.a" \
                 "$LIBS_DIR/${lib}_x86_64.a" \
                 -output "$LIBS_DIR/${lib}_universal.a"
+            if ! [ "$LIBS_DIR/${lib}_universal.a" -ef "$LIBS_DIR/${lib}.a" ]; then
+                cp "$LIBS_DIR/${lib}_universal.a" "$LIBS_DIR/${lib}.a"
+            fi
             echo "   ${lib}_universal.a ($(ls -lh "$LIBS_DIR/${lib}_universal.a" | awk '{print $5}'))"
         fi
     done
@@ -237,13 +240,13 @@ verify_tls_backend() {
 
     local symbols
     symbols=$(nm "$lib" 2>/dev/null || true)
-    if echo "$symbols" | grep -q "_SSL_CTX_new"; then
+    if grep -q "_SSL_CTX_new" <<< "$symbols"; then
         echo "   ✅ libmongoc references OpenSSL symbols (SSL_CTX_new)"
     else
         echo "   ❌ libmongoc does NOT reference OpenSSL symbols"
         exit 1
     fi
-    if echo "$symbols" | grep -qE "_SSLHandshake|_SSLCreateContext"; then
+    if grep -qE "_SSLHandshake|_SSLCreateContext" <<< "$symbols"; then
         echo "   ❌ libmongoc still references Secure Transport symbols"
         exit 1
     fi

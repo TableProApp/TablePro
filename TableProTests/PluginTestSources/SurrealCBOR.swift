@@ -1,0 +1,1 @@
+../../Plugins/SurrealDBDriverPlugin/SurrealCBOR.swift

@@ -17,6 +17,10 @@ struct ConnectionSession: Identifiable {
     var status: ConnectionStatus = .disconnected
     var lastError: String?
 
+    /// Live write-protection level. Seeded from the saved default; the toolbar
+    /// updates this, so reading `connection.safeModeLevel` is wrong afterwards.
+    var safeModeLevel: SafeModeLevel
+
     // Per-connection state
     var selectedTables: Set<TableInfo> = []
     var pendingTruncates: Set<String> = []
@@ -45,6 +49,7 @@ struct ConnectionSession: Identifiable {
         self.id = connection.id
         self.connection = connection
         self.driver = driver
+        self.safeModeLevel = connection.safeModeLevel
         self.connectedAt = Date()
         self.lastActiveAt = Date()
     }

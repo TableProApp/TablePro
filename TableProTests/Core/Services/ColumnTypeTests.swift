@@ -7,8 +7,9 @@
 
 import Foundation
 import TableProPluginKit
-@testable import TablePro
 import Testing
+
+@testable import TablePro
 
 @Suite("Column Type")
 struct ColumnTypeTests {
@@ -121,6 +122,21 @@ struct ColumnTypeTests {
         #expect(!ColumnType.text(rawType: "TIME").isTimeOnly)
     }
 
+    @Test("timestamp with TIME and precision reports isTimeOnly true")
+    func timeWithPrecisionIsTimeOnly() {
+        #expect(ColumnType.timestamp(rawType: "TIME(6)").isTimeOnly)
+    }
+
+    @Test("timestamp with TIMESTAMP and precision reports isTimeOnly false")
+    func timestampWithPrecisionIsNotTimeOnly() {
+        #expect(!ColumnType.timestamp(rawType: "TIMESTAMP(6)").isTimeOnly)
+    }
+
+    @Test("timestamptz reports isTimeOnly false")
+    func timestamptzIsNotTimeOnly() {
+        #expect(!ColumnType.timestamp(rawType: "TIMESTAMPTZ").isTimeOnly)
+    }
+
     // MARK: - enumValues Property
 
     @Test("enumType with values returns those values")
@@ -163,50 +179,68 @@ struct ColumnTypeTests {
 
     @Test("parses ENUM with multiple values")
     func parseEnumMultipleValues() {
-        let result = ColumnType.parseEnumValues(from: "ENUM('a','b','c')")
+        let result = EnumValueParser.parseMySQLEnumOrSet(from: "ENUM('a','b','c')")
         #expect(result == ["a", "b", "c"])
     }
 
     @Test("parses SET with multiple values")
     func parseSetMultipleValues() {
-        let result = ColumnType.parseEnumValues(from: "SET('x','y')")
+        let result = EnumValueParser.parseMySQLEnumOrSet(from: "SET('x','y')")
         #expect(result == ["x", "y"])
     }
 
     @Test("parses enum prefix case-insensitively")
     func parseEnumCaseInsensitive() {
-        let result = ColumnType.parseEnumValues(from: "enum('Active','Inactive')")
+        let result = EnumValueParser.parseMySQLEnumOrSet(from: "enum('Active','Inactive')")
         #expect(result == ["Active", "Inactive"])
     }
 
     @Test("parses values with spaces")
     func parseValuesWithSpaces() {
-        let result = ColumnType.parseEnumValues(from: "ENUM('hello world','foo bar')")
+        let result = EnumValueParser.parseMySQLEnumOrSet(from: "ENUM('hello world','foo bar')")
         #expect(result == ["hello world", "foo bar"])
     }
 
     @Test("parses values with escaped quotes")
     func parseValuesWithEscapedQuotes() {
-        let result = ColumnType.parseEnumValues(from: "ENUM('it\\'s','ok')")
+        let result = EnumValueParser.parseMySQLEnumOrSet(from: "ENUM('it\\'s','ok')")
         #expect(result == ["it's", "ok"])
     }
 
     @Test("returns nil for empty parentheses")
     func parseEmptyParens() {
-        let result = ColumnType.parseEnumValues(from: "ENUM()")
+        let result = EnumValueParser.parseMySQLEnumOrSet(from: "ENUM()")
         #expect(result == nil)
     }
 
     @Test("returns nil for non-enum type string")
     func parseNonEnumPrefix() {
-        let result = ColumnType.parseEnumValues(from: "VARCHAR(255)")
+        let result = EnumValueParser.parseMySQLEnumOrSet(from: "VARCHAR(255)")
         #expect(result == nil)
     }
 
     @Test("parses single value")
     func parseSingleValue() {
-        let result = ColumnType.parseEnumValues(from: "ENUM('only')")
+        let result = EnumValueParser.parseMySQLEnumOrSet(from: "ENUM('only')")
         #expect(result == ["only"])
+    }
+
+    @Test("parses values with SQL doubled-quote escape")
+    func parseValuesWithDoubledQuote() {
+        let result = EnumValueParser.parseMySQLEnumOrSet(from: "ENUM('a''b','c')")
+        #expect(result == ["a'b", "c"])
+    }
+
+    @Test("parses ClickHouse enum with doubled-quote escape")
+    func parseClickHouseDoubledQuote() {
+        let result = EnumValueParser.parseClickHouseEnum(from: "Enum8('a''b' = 1, 'c' = 2)")
+        #expect(result == ["a'b", "c"])
+    }
+
+    @Test("stray backslash outside quotes does not corrupt parse")
+    func parseStrayBackslashOutsideQuotes() {
+        let result = EnumValueParser.parseMySQLEnumOrSet(from: "ENUM('a'\\,'b')")
+        #expect(result == ["a", "b"])
     }
 
     // MARK: - Other Type Properties Are False for Enum/Set
@@ -303,49 +337,49 @@ struct ColumnTypeTests {
 
     @Test("parses Enum8 with values and assignments")
     func parseEnum8Values() {
-        let result = ColumnType.parseClickHouseEnumValues(from: "Enum8('active' = 1, 'inactive' = 2)")
+        let result = EnumValueParser.parseClickHouseEnum(from: "Enum8('active' = 1, 'inactive' = 2)")
         #expect(result == ["active", "inactive"])
     }
 
     @Test("parses Enum16 with single value")
     func parseEnum16SingleValue() {
-        let result = ColumnType.parseClickHouseEnumValues(from: "Enum16('only' = 1)")
+        let result = EnumValueParser.parseClickHouseEnum(from: "Enum16('only' = 1)")
         #expect(result == ["only"])
     }
 
     @Test("parses Enum8 with escaped quotes")
     func parseEnum8EscapedQuotes() {
-        let result = ColumnType.parseClickHouseEnumValues(from: "Enum8('it\\'s' = 1, 'ok' = 2)")
+        let result = EnumValueParser.parseClickHouseEnum(from: "Enum8('it\\'s' = 1, 'ok' = 2)")
         #expect(result == ["it's", "ok"])
     }
 
     @Test("parses Enum8 with negative assignments")
     func parseEnum8NegativeAssignments() {
-        let result = ColumnType.parseClickHouseEnumValues(from: "Enum8('a' = -1, 'b' = 0, 'c' = 1)")
+        let result = EnumValueParser.parseClickHouseEnum(from: "Enum8('a' = -1, 'b' = 0, 'c' = 1)")
         #expect(result == ["a", "b", "c"])
     }
 
     @Test("parses Enum8 with spaces in values")
     func parseEnum8WithSpaces() {
-        let result = ColumnType.parseClickHouseEnumValues(from: "Enum8('hello world' = 1, 'foo bar' = 2)")
+        let result = EnumValueParser.parseClickHouseEnum(from: "Enum8('hello world' = 1, 'foo bar' = 2)")
         #expect(result == ["hello world", "foo bar"])
     }
 
     @Test("returns nil for regular ENUM prefix")
     func parseClickHouseReturnsNilForRegularEnum() {
-        let result = ColumnType.parseClickHouseEnumValues(from: "ENUM('a','b')")
+        let result = EnumValueParser.parseClickHouseEnum(from: "ENUM('a','b')")
         #expect(result == nil)
     }
 
     @Test("returns nil for non-enum type")
     func parseClickHouseReturnsNilForNonEnum() {
-        let result = ColumnType.parseClickHouseEnumValues(from: "String")
+        let result = EnumValueParser.parseClickHouseEnum(from: "String")
         #expect(result == nil)
     }
 
     @Test("returns nil for empty Enum8")
     func parseClickHouseEmptyEnum() {
-        let result = ColumnType.parseClickHouseEnumValues(from: "Enum8()")
+        let result = EnumValueParser.parseClickHouseEnum(from: "Enum8()")
         #expect(result == nil)
     }
 }

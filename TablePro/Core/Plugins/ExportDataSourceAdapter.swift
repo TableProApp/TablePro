@@ -23,7 +23,7 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
     func streamRows(table: String, databaseName: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
         let query: String
         if let pluginDriver = (driver as? PluginDriverAdapter)?.schemaPluginDriver,
-           let customQuery = pluginDriver.defaultExportQuery(table: table) {
+           let customQuery = pluginDriver.defaultExportQuery(table: table, schema: databaseName.isEmpty ? nil : databaseName) {
             query = customQuery
         } else {
             let tableRef = qualifiedTableRef(table: table, databaseName: databaseName)

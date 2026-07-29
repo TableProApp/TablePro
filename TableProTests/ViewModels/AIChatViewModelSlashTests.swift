@@ -4,8 +4,8 @@
 //
 
 import Foundation
-import TableProPluginKit
 @testable import TablePro
+import TableProPluginKit
 import Testing
 
 @Suite("AIChatViewModel runSlashCommand")
@@ -90,12 +90,10 @@ struct AIChatViewModelSlashTests {
     @Test("runSlashCommand clears inputText and errorMessage")
     func runSlashCommandClearsTransientState() {
         let vm = AIChatViewModel()
-        vm.connection = TestFixtures.makeConnection(type: .mysql)
-        vm.currentQuery = "SELECT 1"
-        vm.inputText = "/explain"
+        vm.inputText = "/help"
         vm.errorMessage = "stale"
 
-        vm.runSlashCommand(.explain)
+        vm.runSlashCommand(.help)
 
         #expect(vm.inputText.isEmpty)
         #expect(vm.errorMessage == nil)

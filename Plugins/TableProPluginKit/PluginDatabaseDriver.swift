@@ -1,11 +1,52 @@
 import Foundation
 
+public enum PluginNumericLiteral {
+    public static func isValid(_ value: String) -> Bool {
+        guard !value.isEmpty else { return false }
+        var scanner = value.makeIterator()
+        var hasDigit = false
+        var hasDot = false
+        var hasE = false
+
+        var first = true
+        while let c = scanner.next() {
+            if first {
+                first = false
+                if c == "-" || c == "+" { continue }
+            }
+            if c.isNumber {
+                hasDigit = true
+                continue
+            }
+            if c == "." && !hasDot && !hasE {
+                hasDot = true
+                continue
+            }
+            if (c == "e" || c == "E") && hasDigit && !hasE {
+                hasE = true
+                hasDigit = false
+                if let next = scanner.next() {
+                    if next == "+" || next == "-" || next.isNumber {
+                        if next.isNumber { hasDigit = true }
+                        continue
+                    }
+                }
+                return false
+            }
+            return false
+        }
+        return hasDigit
+    }
+}
+
+@frozen
 public enum ParameterStyle: String, Sendable {
     case questionMark  // ?
     case dollar        // $1, $2
 }
 
 public struct PluginRowChange: Sendable {
+    @frozen
     public enum ChangeType: Sendable {
         case insert
         case update
@@ -33,39 +74,35 @@ public struct PluginRowChange: Sendable {
 public protocol PluginDatabaseDriver: AnyObject, Sendable {
     var capabilities: PluginCapabilities { get }
 
-    // Connection
     func connect() async throws
     func disconnect()
     func ping() async throws
 
-    // Queries
     func execute(query: String) async throws -> PluginQueryResult
     func executeUserQuery(query: String, rowCap: Int?, parameters: [PluginCellValue]?) async throws -> PluginQueryResult
 
-    // Schema
     func fetchTables(schema: String?) async throws -> [PluginTableInfo]
+    func fetchPartitions(table: String, schema: String?) async throws -> [PluginTableInfo]
     func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo]
     func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo]
     func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo]
+    func fetchTriggers(table: String, schema: String?) async throws -> [PluginTriggerInfo]
     func fetchTableDDL(table: String, schema: String?) async throws -> String
     func fetchViewDefinition(view: String, schema: String?) async throws -> String
     func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata
     func fetchDatabases() async throws -> [String]
     func fetchDatabaseMetadata(_ database: String) async throws -> PluginDatabaseMetadata
 
-    // Schema navigation
     var supportsSchemas: Bool { get }
     func fetchSchemas() async throws -> [String]
     func switchSchema(to schema: String) async throws
     var currentSchema: String? { get }
 
-    // Transactions
     var supportsTransactions: Bool { get }
     func beginTransaction() async throws
     func commitTransaction() async throws
     func rollbackTransaction() async throws
 
-    // Execution control
     func cancelQuery() throws
     func applyQueryTimeout(_ seconds: Int) async throws
     var serverVersion: String? { get }
@@ -73,7 +110,6 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
 
     var requiresBackslashEscapingInLiterals: Bool { get }
 
-    // Batch operations
     func fetchApproximateRowCount(table: String, schema: String?) async throws -> Int?
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]]
     func fetchAllForeignKeys(schema: String?) async throws -> [String: [PluginForeignKeyInfo]]
@@ -85,11 +121,20 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     func dropDatabase(name: String) async throws
     func executeParameterized(query: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult
 
+    // Session contexts (optional, switchable session dimensions such as a warehouse or role)
+    func fetchSessionContexts() async throws -> [PluginSessionContext]?
+    func switchSessionContext(id: String, to value: String) async throws
+
     // Query building (optional, for NoSQL plugins)
     func buildBrowseQuery(table: String, sortColumns: [(columnIndex: Int, ascending: Bool)], columns: [String], limit: Int, offset: Int) -> String?
     func buildFilteredQuery(table: String, filters: [(column: String, op: String, value: String)], logicMode: String, sortColumns: [(columnIndex: Int, ascending: Bool)], columns: [String], limit: Int, offset: Int) -> String?
+    func buildBrowseQuery(table: String, schema: String?, sortColumns: [(columnIndex: Int, ascending: Bool)], columns: [String], limit: Int, offset: Int) -> String?
+    func buildFilteredQuery(table: String, schema: String?, filters: [(column: String, op: String, value: String)], logicMode: String, sortColumns: [(columnIndex: Int, ascending: Bool)], columns: [String], limit: Int, offset: Int) -> String?
+    // Filtered row count (optional, for NoSQL plugins; SQL plugins use COUNT(*) WHERE)
+    func fetchFilteredRowCount(table: String, filters: [(column: String, op: String, value: String)], logicMode: String) async throws -> Int?
     // Statement generation (optional, for NoSQL plugins)
     func generateStatements(table: String, columns: [String], primaryKeyColumns: [String], changes: [PluginRowChange], insertedRowData: [Int: [PluginCellValue]], deletedRowIndices: Set<Int>, insertedRowIndices: Set<Int>) -> [(statement: String, parameters: [PluginCellValue])]?
+    func generateStatements(table: String, schema: String?, columns: [String], primaryKeyColumns: [String], changes: [PluginRowChange], insertedRowData: [Int: [PluginCellValue]], deletedRowIndices: Set<Int>, insertedRowIndices: Set<Int>) -> [(statement: String, parameters: [PluginCellValue])]?
 
     // Database switching (SQL Server USE, ClickHouse database switch, etc.)
     func switchDatabase(to database: String) async throws
@@ -124,21 +169,29 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     // EXPLAIN query building (optional)
     func buildExplainQuery(_ sql: String) -> String?
 
-    // Identifier quoting
+    func injectRowLimit(_ sql: String, limit: Int) -> String?
+
     func quoteIdentifier(_ name: String) -> String
 
-    // String escaping
     func escapeStringLiteral(_ value: String) -> String
 
     func createViewTemplate() -> String?
     func editViewFallbackTemplate(viewName: String) -> String?
     func castColumnToText(_ column: String) -> String
 
+    // Trigger editing (optional — return nil when unsupported)
+    func createTriggerTemplate(table: String, schema: String?) -> String?
+    func fetchTriggerDefinition(name: String, table: String, schema: String?) async throws -> String?
+    func generateDropTriggerSQL(name: String, table: String, schema: String?) -> String?
+    var triggerEditUsesReplace: Bool { get }
+    var supportsTransactionalDDL: Bool { get }
+
     // All-tables metadata SQL (optional — returns nil for non-SQL databases)
     func allTablesMetadataSQL(schema: String?) -> String?
 
     // Default export query (optional — returns nil to use app-level fallback)
     func defaultExportQuery(table: String) -> String?
+    func defaultExportQuery(table: String, schema: String?) -> String?
 
     // Streaming row fetch for export
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error>
@@ -146,6 +199,18 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
 
 public extension PluginDatabaseDriver {
     var capabilities: PluginCapabilities { [] }
+
+    func fetchTriggers(table: String, schema: String?) async throws -> [PluginTriggerInfo] { [] }
+
+    /// Engines whose partitions are metadata on one table object, rather than
+    /// separate relations, have nothing to nest and keep the empty default.
+    func fetchPartitions(table: String, schema: String?) async throws -> [PluginTableInfo] { [] }
+
+    func createTriggerTemplate(table: String, schema: String?) -> String? { nil }
+    func fetchTriggerDefinition(name: String, table: String, schema: String?) async throws -> String? { nil }
+    func generateDropTriggerSQL(name: String, table: String, schema: String?) -> String? { nil }
+    var triggerEditUsesReplace: Bool { false }
+    var supportsTransactionalDDL: Bool { false }
 
     var supportsSchemas: Bool { false }
 
@@ -249,7 +314,20 @@ public extension PluginDatabaseDriver {
 
     func buildBrowseQuery(table: String, sortColumns: [(columnIndex: Int, ascending: Bool)], columns: [String], limit: Int, offset: Int) -> String? { nil }
     func buildFilteredQuery(table: String, filters: [(column: String, op: String, value: String)], logicMode: String, sortColumns: [(columnIndex: Int, ascending: Bool)], columns: [String], limit: Int, offset: Int) -> String? { nil }
+    func buildBrowseQuery(table: String, schema: String?, sortColumns: [(columnIndex: Int, ascending: Bool)], columns: [String], limit: Int, offset: Int) -> String? {
+        buildBrowseQuery(table: table, sortColumns: sortColumns, columns: columns, limit: limit, offset: offset)
+    }
+    func buildFilteredQuery(table: String, schema: String?, filters: [(column: String, op: String, value: String)], logicMode: String, sortColumns: [(columnIndex: Int, ascending: Bool)], columns: [String], limit: Int, offset: Int) -> String? {
+        buildFilteredQuery(table: table, filters: filters, logicMode: logicMode, sortColumns: sortColumns, columns: columns, limit: limit, offset: offset)
+    }
+    func fetchFilteredRowCount(table: String, filters: [(column: String, op: String, value: String)], logicMode: String) async throws -> Int? { nil }
     func generateStatements(table: String, columns: [String], primaryKeyColumns: [String], changes: [PluginRowChange], insertedRowData: [Int: [PluginCellValue]], deletedRowIndices: Set<Int>, insertedRowIndices: Set<Int>) -> [(statement: String, parameters: [PluginCellValue])]? { nil }
+    func generateStatements(table: String, schema: String?, columns: [String], primaryKeyColumns: [String], changes: [PluginRowChange], insertedRowData: [Int: [PluginCellValue]], deletedRowIndices: Set<Int>, insertedRowIndices: Set<Int>) -> [(statement: String, parameters: [PluginCellValue])]? {
+        generateStatements(
+            table: table, columns: columns, primaryKeyColumns: primaryKeyColumns, changes: changes,
+            insertedRowData: insertedRowData, deletedRowIndices: deletedRowIndices, insertedRowIndices: insertedRowIndices
+        )
+    }
 
     func generateAddColumnSQL(table: String, column: PluginColumnDefinition) -> String? { nil }
     func generateModifyColumnSQL(table: String, oldColumn: PluginColumnDefinition, newColumn: PluginColumnDefinition) -> String? { nil }
@@ -276,11 +354,14 @@ public extension PluginDatabaseDriver {
 
     func buildExplainQuery(_ sql: String) -> String? { nil }
 
+    func injectRowLimit(_ sql: String, limit: Int) -> String? { nil }
+
     func createViewTemplate() -> String? { nil }
     func editViewFallbackTemplate(viewName: String) -> String? { nil }
     func castColumnToText(_ column: String) -> String { column }
     func allTablesMetadataSQL(schema: String?) -> String? { nil }
     func defaultExportQuery(table: String) -> String? { nil }
+    func defaultExportQuery(table: String, schema: String?) -> String? { defaultExportQuery(table: table) }
 
     func quoteIdentifier(_ name: String) -> String {
         let escaped = name.replacingOccurrences(of: "\"", with: "\"\"")
@@ -314,6 +395,10 @@ public extension PluginDatabaseDriver {
         result = result.replacingOccurrences(of: "\0", with: "")
         return result
     }
+
+    func fetchSessionContexts() async throws -> [PluginSessionContext]? { nil }
+
+    func switchSessionContext(id: String, to value: String) async throws {}
 
     func executeParameterized(query: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult {
         guard !parameters.isEmpty else {
@@ -520,40 +605,7 @@ public extension PluginDatabaseDriver {
     }
 
     static func isNumericLiteral(_ value: String) -> Bool {
-        guard !value.isEmpty else { return false }
-        var scanner = value.makeIterator()
-        var hasDigit = false
-        var hasDot = false
-        var hasE = false
-
-        var first = true
-        while let c = scanner.next() {
-            if first {
-                first = false
-                if c == "-" || c == "+" { continue }
-            }
-            if c.isNumber {
-                hasDigit = true
-                continue
-            }
-            if c == "." && !hasDot && !hasE {
-                hasDot = true
-                continue
-            }
-            if (c == "e" || c == "E") && hasDigit && !hasE {
-                hasE = true
-                hasDigit = false
-                if let next = scanner.next() {
-                    if next == "+" || next == "-" || next.isNumber {
-                        if next.isNumber { hasDigit = true }
-                        continue
-                    }
-                }
-                return false
-            }
-            return false
-        }
-        return hasDigit
+        PluginNumericLiteral.isValid(value)
     }
 
     func executeUserQuery(query: String, rowCap: Int?, parameters: [PluginCellValue]?) async throws -> PluginQueryResult {
@@ -575,5 +627,101 @@ public extension PluginDatabaseDriver {
             isTruncated: true,
             statusMessage: raw.statusMessage
         )
+    }
+}
+
+public enum PluginSQLFilter {
+    public static func escapeForLike(_ text: String) -> String {
+        text
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "%", with: "\\%")
+            .replacingOccurrences(of: "_", with: "\\_")
+            .replacingOccurrences(of: "'", with: "''")
+    }
+
+    public static func buildOrderByClause(
+        sortColumns: [(columnIndex: Int, ascending: Bool)],
+        columns: [String],
+        quoteIdentifier: (String) -> String
+    ) -> String? {
+        let parts = sortColumns.compactMap { sortCol -> String? in
+            guard sortCol.columnIndex >= 0, sortCol.columnIndex < columns.count else { return nil }
+            let direction = sortCol.ascending ? "ASC" : "DESC"
+            return "\(quoteIdentifier(columns[sortCol.columnIndex])) \(direction)"
+        }
+        guard !parts.isEmpty else { return nil }
+        return "ORDER BY " + parts.joined(separator: ", ")
+    }
+
+    public static func buildWhereClause(
+        filters: [(column: String, op: String, value: String)],
+        logicMode: String,
+        quoteIdentifier: (String) -> String,
+        escapeValue: (String) -> String,
+        regexCondition: (_ quotedColumn: String, _ value: String) -> String?
+    ) -> String {
+        let conditions = filters.compactMap { filter in
+            buildFilterCondition(
+                column: filter.column,
+                op: filter.op,
+                value: filter.value,
+                quoteIdentifier: quoteIdentifier,
+                escapeValue: escapeValue,
+                regexCondition: regexCondition
+            )
+        }
+        guard !conditions.isEmpty else { return "" }
+        let separator = logicMode == "and" ? " AND " : " OR "
+        return conditions.joined(separator: separator)
+    }
+
+    public static func buildFilterCondition(
+        column: String,
+        op: String,
+        value: String,
+        quoteIdentifier: (String) -> String,
+        escapeValue: (String) -> String,
+        regexCondition: (_ quotedColumn: String, _ value: String) -> String?
+    ) -> String? {
+        let quoted = quoteIdentifier(column)
+        switch op {
+        case "=": return "\(quoted) = \(escapeValue(value))"
+        case "!=": return "\(quoted) != \(escapeValue(value))"
+        case ">": return "\(quoted) > \(escapeValue(value))"
+        case ">=": return "\(quoted) >= \(escapeValue(value))"
+        case "<": return "\(quoted) < \(escapeValue(value))"
+        case "<=": return "\(quoted) <= \(escapeValue(value))"
+        case "IS NULL": return "\(quoted) IS NULL"
+        case "IS NOT NULL": return "\(quoted) IS NOT NULL"
+        case "IS EMPTY": return "(\(quoted) IS NULL OR \(quoted) = '')"
+        case "IS NOT EMPTY": return "(\(quoted) IS NOT NULL AND \(quoted) != '')"
+        case "CONTAINS":
+            return "\(quoted) LIKE '%\(escapeForLike(value))%' ESCAPE '\\'"
+        case "NOT CONTAINS":
+            return "\(quoted) NOT LIKE '%\(escapeForLike(value))%' ESCAPE '\\'"
+        case "STARTS WITH":
+            return "\(quoted) LIKE '\(escapeForLike(value))%' ESCAPE '\\'"
+        case "ENDS WITH":
+            return "\(quoted) LIKE '%\(escapeForLike(value))' ESCAPE '\\'"
+        case "IN":
+            let values = value.split(separator: ",")
+                .map { escapeValue($0.trimmingCharacters(in: .whitespaces)) }
+                .joined(separator: ", ")
+            return values.isEmpty ? nil : "\(quoted) IN (\(values))"
+        case "NOT IN":
+            let values = value.split(separator: ",")
+                .map { escapeValue($0.trimmingCharacters(in: .whitespaces)) }
+                .joined(separator: ", ")
+            return values.isEmpty ? nil : "\(quoted) NOT IN (\(values))"
+        case "BETWEEN":
+            let parts = value.split(separator: ",", maxSplits: 1)
+            guard parts.count == 2 else { return nil }
+            let v1 = escapeValue(parts[0].trimmingCharacters(in: .whitespaces))
+            let v2 = escapeValue(parts[1].trimmingCharacters(in: .whitespaces))
+            return "\(quoted) BETWEEN \(v1) AND \(v2)"
+        case "REGEX":
+            return regexCondition(quoted, value)
+        default: return nil
+        }
     }
 }

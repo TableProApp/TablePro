@@ -26,6 +26,7 @@ enum AppLanguage: String, Codable, CaseIterable, Identifiable {
     case english = "en"
     case vietnamese = "vi"
     case chineseSimplified = "zh-Hans"
+    case chineseTraditional = "zh-Hant"
     case turkish = "tr"
 
     var id: String { rawValue }
@@ -36,6 +37,7 @@ enum AppLanguage: String, Codable, CaseIterable, Identifiable {
         case .english: return "English"
         case .vietnamese: return "Tiếng Việt"
         case .chineseSimplified: return "简体中文"
+        case .chineseTraditional: return "繁體中文"
         case .turkish: return "Türkçe"
         }
     }
@@ -61,26 +63,38 @@ struct GeneralSettings: Codable, Equatable {
     /// Whether to share anonymous usage analytics
     var shareAnalytics: Bool
 
+    /// Whether the sidebar shows a Recent section with recently opened tables
+    var showRecentTables: Bool
+
+    /// Whether to show database object comments in the sidebar and data grid headers
+    var showObjectComments: Bool
+
     static let `default` = GeneralSettings(
-        startupBehavior: .showWelcome,
+        startupBehavior: .reopenLast,
         language: .system,
         automaticallyCheckForUpdates: true,
         queryTimeoutSeconds: 60,
-        shareAnalytics: true
+        shareAnalytics: true,
+        showRecentTables: false,
+        showObjectComments: true
     )
 
     init(
-        startupBehavior: StartupBehavior = .showWelcome,
+        startupBehavior: StartupBehavior = .reopenLast,
         language: AppLanguage = .system,
         automaticallyCheckForUpdates: Bool = true,
         queryTimeoutSeconds: Int = 60,
-        shareAnalytics: Bool = true
+        shareAnalytics: Bool = true,
+        showRecentTables: Bool = false,
+        showObjectComments: Bool = true
     ) {
         self.startupBehavior = startupBehavior
         self.language = language
         self.automaticallyCheckForUpdates = automaticallyCheckForUpdates
         self.queryTimeoutSeconds = queryTimeoutSeconds
         self.shareAnalytics = shareAnalytics
+        self.showRecentTables = showRecentTables
+        self.showObjectComments = showObjectComments
     }
 
     init(from decoder: Decoder) throws {
@@ -90,5 +104,7 @@ struct GeneralSettings: Codable, Equatable {
         automaticallyCheckForUpdates = try container.decodeIfPresent(Bool.self, forKey: .automaticallyCheckForUpdates) ?? true
         queryTimeoutSeconds = try container.decodeIfPresent(Int.self, forKey: .queryTimeoutSeconds) ?? 60
         shareAnalytics = try container.decodeIfPresent(Bool.self, forKey: .shareAnalytics) ?? true
+        showRecentTables = try container.decodeIfPresent(Bool.self, forKey: .showRecentTables) ?? false
+        showObjectComments = try container.decodeIfPresent(Bool.self, forKey: .showObjectComments) ?? true
     }
 }

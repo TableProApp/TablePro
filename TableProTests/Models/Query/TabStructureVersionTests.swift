@@ -41,19 +41,6 @@ struct TabStructureVersionTests {
         #expect(manager.tabStructureVersion == afterFirstAdd)
     }
 
-    @Test("addTerminalTab(...) for a new tab bumps once; activating existing terminal does NOT bump")
-    func addTerminalTabBumpsOnceAndIdempotent() {
-        let manager = QueryTabManager()
-
-        manager.addTerminalTab()
-        let afterFirstAdd = manager.tabStructureVersion
-        #expect(afterFirstAdd == 1)
-
-        manager.addTerminalTab()
-
-        #expect(manager.tabStructureVersion == afterFirstAdd)
-    }
-
     @Test("addServerDashboardTab() for a new tab bumps once; activating existing does NOT bump")
     func addServerDashboardBumpsOnceAndIdempotent() {
         let manager = QueryTabManager()

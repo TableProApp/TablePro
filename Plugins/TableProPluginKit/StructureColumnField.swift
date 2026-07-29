@@ -1,5 +1,6 @@
 import Foundation
 
+@frozen
 public enum StructureColumnField: String, Sendable, CaseIterable {
     case name
     case type

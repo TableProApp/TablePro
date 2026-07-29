@@ -10,69 +10,6 @@ import AppKit
 import Foundation
 
 extension MainContentCoordinator {
-    // MARK: - Dangerous Query Confirmation
-
-    /// Check if query needs confirmation and show alert if needed
-    /// - Parameter sql: SQL query to check
-    /// - Returns: true if safe to execute, false if user cancelled
-    func confirmDangerousQueryIfNeeded(_ sql: String, window: NSWindow? = nil) async -> Bool {
-        guard isDangerousQuery(sql) else { return true }
-
-        let message = dangerousQueryMessage(for: sql)
-        return await AlertHelper.confirmCritical(
-            title: String(localized: "Potentially Dangerous Query"),
-            message: message,
-            confirmButton: String(localized: "Execute"),
-            cancelButton: String(localized: "Cancel"),
-            window: window
-        )
-    }
-
-    /// Generate appropriate message for dangerous query type
-    private func dangerousQueryMessage(for sql: String) -> String {
-        let uppercased = sql.uppercased().trimmingCharacters(in: .whitespacesAndNewlines)
-
-        if uppercased.hasPrefix("DROP ") {
-            return String(localized: "This DROP query will permanently remove database objects. This action cannot be undone.")
-        } else if uppercased.hasPrefix("TRUNCATE ") {
-            return String(localized: "This TRUNCATE query will permanently delete all rows in the table. This action cannot be undone.")
-        } else if uppercased.hasPrefix("DELETE ") {
-            return String(localized: "This DELETE query has no WHERE clause and will delete ALL rows in the table. This action cannot be undone.")
-        }
-
-        return String(localized: "This query may permanently modify or delete data.")
-    }
-
-    /// Check multiple queries for dangerous operations and show a single batch confirmation
-    /// - Parameter statements: Array of dangerous SQL statements
-    /// - Returns: true if user confirmed, false if cancelled
-    func confirmDangerousQueries(_ statements: [String], window: NSWindow? = nil) async -> Bool {
-        guard !statements.isEmpty else { return true }
-
-        let querySummaries = statements.map { stmt -> String in
-            let trimmed = stmt.trimmingCharacters(in: .whitespacesAndNewlines)
-            // Show first 80 chars of each query
-            if (trimmed as NSString).length > 80 {
-                return String(trimmed.prefix(80)) + "..."
-            }
-            return trimmed
-        }
-
-        let queryList = querySummaries.joined(separator: "\n")
-        let format = String(
-            localized: "The following %d queries may permanently modify or delete data. This action cannot be undone.\n\n%@"
-        )
-        let message = String(format: format, statements.count, queryList)
-
-        return await AlertHelper.confirmCritical(
-            title: String(localized: "Potentially Dangerous Queries"),
-            message: message,
-            confirmButton: String(localized: "Execute All"),
-            cancelButton: String(localized: "Cancel"),
-            window: window
-        )
-    }
-
     // MARK: - Discard Changes Confirmation
 
     /// Confirm discarding unsaved changes

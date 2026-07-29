@@ -17,14 +17,16 @@ final class DataBrowserViewModel {
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "DataBrowserViewModel")
 
-    private(set) var columns: [ColumnInfo] = []
-    private(set) var window: RowWindow
-    private(set) var legacyRows: [[String?]] = []
+    private let buffer: StreamingResultBuffer
     private(set) var totalRows: Int?
     private(set) var phase: Phase = .idle
-    private(set) var rowsAffected: Int?
-    private(set) var statusMessage: String?
     private(set) var executionTime: TimeInterval = 0
+
+    var columns: [ColumnInfo] { buffer.columns }
+    var window: RowWindow { buffer.window }
+    var legacyRows: [[String?]] { buffer.legacyRows }
+    var rowsAffected: Int? { buffer.rowsAffected }
+    var statusMessage: String? { buffer.statusMessage }
 
     private(set) var columnDetails: [ColumnInfo] = []
     private(set) var foreignKeys: [ForeignKeyInfo] = []
@@ -43,16 +45,11 @@ final class DataBrowserViewModel {
     @ObservationIgnored private var table: TableInfo?
     @ObservationIgnored private var databaseType: DatabaseType = .mysql
     @ObservationIgnored private var host: String = ""
-    @ObservationIgnored private var pendingRows: [Row] = []
-    @ObservationIgnored private var flushTask: Task<Void, Never>?
     @ObservationIgnored private var fetchTask: Task<Void, Never>?
     @ObservationIgnored private var searchTask: Task<Void, Never>?
 
-    private static let flushBatchSize = 200
-    private static let flushInterval: Duration = .milliseconds(50)
-
     init(windowCapacity: Int = 1_000) {
-        self.window = RowWindow(capacity: windowCapacity)
+        self.buffer = StreamingResultBuffer(capacity: windowCapacity)
         self.pagination = PaginationState(pageSize: AppPreferences.defaultPageSize, currentPage: 0)
     }
 
@@ -377,15 +374,13 @@ final class DataBrowserViewModel {
                 break
             case .warning:
                 Self.logger.warning("Memory pressure warning: shrinking window to 100 rows")
-                self.window.shrink(to: 100)
-                self.shrinkLegacyRows(to: 100)
-                if !self.legacyRows.isEmpty {
+                self.buffer.shrink(to: 100)
+                if !self.buffer.isEmpty {
                     self.memoryWarning = String(localized: "Results trimmed due to memory pressure.")
                 }
             case .critical:
                 Self.logger.error("Memory pressure critical: shrinking window to 50 rows and cancelling")
-                self.window.shrink(to: 50)
-                self.shrinkLegacyRows(to: 50)
+                self.buffer.shrink(to: 50)
                 self.fetchTask?.cancel()
                 self.memoryWarning = String(localized: "Results trimmed due to memory pressure.")
             }
@@ -393,8 +388,8 @@ final class DataBrowserViewModel {
     }
 
     func handleSystemMemoryWarning() async {
-        guard !legacyRows.isEmpty else { return }
-        Self.logger.warning("System memory warning: shrinking window from \(self.legacyRows.count) rows")
+        guard !buffer.isEmpty else { return }
+        Self.logger.warning("System memory warning: shrinking window from \(self.buffer.count) rows")
         await handlePressure(.warning)
     }
 
@@ -418,12 +413,7 @@ final class DataBrowserViewModel {
             lazyContext: lazyContext
         )
         phase = .loading
-        columns = []
-        window.clear()
-        legacyRows.removeAll(keepingCapacity: true)
-        rowsAffected = nil
-        statusMessage = nil
-        pendingRows.removeAll(keepingCapacity: true)
+        buffer.reset()
 
         let start = Date()
         let task = Task { [weak self] in
@@ -431,15 +421,17 @@ final class DataBrowserViewModel {
             do {
                 for try await element in driver.executeStreaming(query: query, options: options) {
                     if Task.isCancelled { break }
-                    self.apply(element: element)
+                    self.buffer.apply(element)
                 }
-                self.flushPendingRows()
+                self.buffer.flush()
                 self.executionTime = Date().timeIntervalSince(start)
-                if case .loading = self.phase {
+                if let reason = self.buffer.truncation {
+                    self.phase = .truncated(reason: reason)
+                } else if case .loading = self.phase {
                     self.phase = .loaded
                 }
             } catch {
-                self.flushPendingRows()
+                self.buffer.flush()
                 self.phase = .error(self.classify(error: error))
             }
         }
@@ -449,61 +441,9 @@ final class DataBrowserViewModel {
 
     func cancel() {
         fetchTask?.cancel()
-        flushTask?.cancel()
+        buffer.cancelFlush()
         searchTask?.cancel()
-        flushTask = nil
         searchTask = nil
-    }
-
-    private func apply(element: StreamElement) {
-        switch element {
-        case .columns(let cols):
-            columns = cols
-        case .row(let row):
-            pendingRows.append(row)
-            scheduleFlushIfNeeded()
-        case .rowsAffected(let count):
-            flushPendingRows()
-            rowsAffected = count
-        case .statusMessage(let message):
-            flushPendingRows()
-            statusMessage = message
-        case .truncated(let reason):
-            flushPendingRows()
-            phase = .truncated(reason: reason)
-        }
-    }
-
-    private func scheduleFlushIfNeeded() {
-        if pendingRows.count >= Self.flushBatchSize {
-            flushPendingRows()
-            return
-        }
-        if flushTask == nil {
-            flushTask = Task { [weak self] in
-                try? await Task.sleep(for: Self.flushInterval)
-                guard !Task.isCancelled else { return }
-                self?.flushPendingRows()
-            }
-        }
-    }
-
-    private func flushPendingRows() {
-        flushTask?.cancel()
-        flushTask = nil
-        guard !pendingRows.isEmpty else { return }
-        let legacyBatch = pendingRows.map(\.legacyValues)
-        window.append(contentsOf: pendingRows)
-        legacyRows.append(contentsOf: legacyBatch)
-        if legacyRows.count > window.count {
-            legacyRows.removeFirst(legacyRows.count - window.count)
-        }
-        pendingRows.removeAll(keepingCapacity: true)
-    }
-
-    private func shrinkLegacyRows(to count: Int) {
-        guard legacyRows.count > count else { return }
-        legacyRows.removeFirst(legacyRows.count - count)
     }
 
     private func classify(error: Error) -> AppError {

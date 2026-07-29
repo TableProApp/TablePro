@@ -1049,4 +1049,150 @@ struct SQLCompletionProviderTests {
         let hasStar = items.contains { $0.label == "*" }
         #expect(hasStar, "COUNT( should suggest *")
     }
+
+    // MARK: - Favorite keyword expansion
+
+    @Test("Favorite keyword expands at statement start")
+    func testFavoriteKeywordExpandsAtStatementStart() async {
+        provider.updateFavoriteKeywords(["report": (name: "Daily Report", query: "SELECT * FROM reports")])
+        let text = "rep"
+        let (items, _) = await provider.getCompletions(text: text, cursorPosition: text.count)
+        let favorite = items.first { $0.kind == .favorite }
+        #expect(favorite?.label == "report", "Typing the keyword prefix should surface the favorite")
+        #expect(favorite?.insertText == "SELECT * FROM reports", "Selecting it inserts the full query")
+        #expect(favorite?.detail == "Daily Report", "The favorite name is shown as detail")
+    }
+
+    @Test("Favorite keyword survives clause branches that rebuild candidates")
+    func testFavoriteKeywordSurvivesClauseRebuild() async {
+        provider.updateFavoriteKeywords(["usr": (name: "Users", query: "SELECT * FROM users")])
+        let text = "usr"
+        let (items, _) = await provider.getCompletions(text: text, cursorPosition: text.count)
+        let hasFavorite = items.contains { $0.kind == .favorite && $0.label == "usr" }
+        #expect(hasFavorite, "Favorite must not be discarded by the candidate switch")
+    }
+
+    @Test("Favorite keyword not offered after a dot prefix")
+    func testFavoriteKeywordNotOfferedAfterDot() async {
+        provider.updateFavoriteKeywords(["col": (name: "Columns", query: "SELECT 1")])
+        let text = "users.col"
+        let (items, _) = await provider.getCompletions(text: text, cursorPosition: text.count)
+        let hasFavorite = items.contains { $0.kind == .favorite }
+        #expect(!hasFavorite, "Column completion after a dot must not expand favorites")
+    }
+
+    @Test("Non-matching prefix does not surface favorites")
+    func testFavoriteKeywordRequiresPrefixMatch() async {
+        provider.updateFavoriteKeywords(["report": (name: "Daily Report", query: "SELECT 1")])
+        let text = "SEL"
+        let (items, _) = await provider.getCompletions(text: text, cursorPosition: text.count)
+        let hasFavorite = items.contains { $0.kind == .favorite }
+        #expect(!hasFavorite, "Favorites appear only when the typed token matches their keyword")
+    }
+
+    @Test("Favorites and keywords complete without a schema provider")
+    func testFavoriteKeywordWithoutSchemaProvider() async {
+        let schemalessProvider = SQLCompletionProvider(schemaProvider: nil, databaseType: .mysql)
+        schemalessProvider.updateFavoriteKeywords(["report": (name: "Daily Report", query: "SELECT * FROM reports")])
+        let text = "rep"
+        let (items, _) = await schemalessProvider.getCompletions(text: text, cursorPosition: text.count)
+        let favorite = items.first { $0.kind == .favorite }
+        #expect(favorite?.label == "report", "Favorites need no schema and must work without a connection")
+        #expect(items.contains { $0.kind == .keyword }, "SQL keywords must also complete without a connection")
+    }
+
+    @Test("allFavoriteItems returns every favorite for session seeding")
+    func testAllFavoriteItems() {
+        provider.updateFavoriteKeywords([
+            "report": (name: "Daily Report", query: "SELECT 1"),
+            "usr": (name: "Users", query: "SELECT 2")
+        ])
+        let items = provider.allFavoriteItems()
+        #expect(items.count == 2)
+        #expect(items.allSatisfy { $0.kind == .favorite })
+    }
+
+    @Test("Favorite items keep the raw cursor marker in insertText")
+    func testFavoriteKeepsRawCursorMarker() async {
+        provider.updateFavoriteKeywords([
+            "slc": (name: "Count", query: "SELECT COUNT(*) FROM t WHERE x = ;;")
+        ])
+        let text = "slc"
+        let (items, _) = await provider.getCompletions(text: text, cursorPosition: text.count)
+        let favorite = items.first { $0.kind == .favorite }
+        #expect(
+            favorite?.insertText.contains(SQLSnippetMarker.token) == true,
+            "Marker stripping happens at accept time, not at item construction"
+        )
+    }
+
+    // MARK: - Tables after JOIN (#1646)
+
+    @Test("JOIN after an ON condition suggests available tables")
+    func testJoinAfterOnSuggestsTables() async {
+        await schemaProvider.updateTables([
+            TestFixtures.makeTableInfo(name: "happiness_scores"),
+            TestFixtures.makeTableInfo(name: "country_stats"),
+            TestFixtures.makeTableInfo(name: "inflation_rates")
+        ])
+        let text = "SELECT * FROM happiness_scores hs " +
+            "INNER JOIN country_stats cs ON hs.country = cs.country INNER JOIN "
+        let (items, context) = await provider.getCompletions(text: text, cursorPosition: text.count)
+
+        #expect(context.clauseType == .join)
+        #expect(items.contains { $0.kind == .table && $0.label == "inflation_rates" })
+    }
+
+    @Test("Tables rank first when the cursor is in the JOIN operand slot")
+    func testTablesRankFirstAfterJoin() async {
+        await schemaProvider.updateTables([
+            TestFixtures.makeTableInfo(name: "country_stats"),
+            TestFixtures.makeTableInfo(name: "inflation_rates")
+        ])
+        let text = "SELECT * FROM happiness_scores hs " +
+            "INNER JOIN country_stats cs ON hs.country = cs.country INNER JOIN "
+        let (items, _) = await provider.getCompletions(text: text, cursorPosition: text.count)
+
+        #expect(items.first?.kind == .table)
+    }
+
+    @Test("ON clause offers clause-transition keywords for the next join or filter")
+    func testOnClauseOffersTransitionKeywords() async {
+        let text = "SELECT * FROM a JOIN b ON a.id = b.id "
+        let (items, context) = await provider.getCompletions(text: text, cursorPosition: text.count)
+
+        #expect(context.clauseType == .on)
+        #expect(items.contains { $0.label == "INNER JOIN" })
+        #expect(items.contains { $0.label == "WHERE" })
+    }
+
+    @Test("Typing a second join after an ON condition surfaces INNER JOIN first")
+    func testSecondJoinKeywordSurfacesAfterOn() async {
+        let text = "SELECT * FROM a JOIN b ON a.id = b.id INNE"
+        let (items, context) = await provider.getCompletions(text: text, cursorPosition: text.count)
+
+        #expect(context.clauseType == .on)
+        #expect(items.first?.label == "INNER JOIN")
+    }
+
+    @Test("Comma-separated FROM scopes columns to every listed table")
+    func testCommaFromScopesColumnsToAllTables() async {
+        let driver = MockDatabaseDriver()
+        driver.tablesToReturn = [
+            TestFixtures.makeTableInfo(name: "users"),
+            TestFixtures.makeTableInfo(name: "orders")
+        ]
+        driver.columnsToReturn = [
+            "users": [TestFixtures.makeColumnInfo(name: "user_name")],
+            "orders": [TestFixtures.makeColumnInfo(name: "order_total")]
+        ]
+        await schemaProvider.loadSchema(using: driver, connection: TestFixtures.makeConnection())
+
+        let text = "SELECT * FROM users u, orders o WHERE "
+        let (items, context) = await provider.getCompletions(text: text, cursorPosition: text.count)
+
+        #expect(context.clauseType == .where_)
+        #expect(items.contains { $0.kind == .column && $0.label == "user_name" })
+        #expect(items.contains { $0.kind == .column && $0.label == "order_total" })
+    }
 }

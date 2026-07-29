@@ -102,4 +102,13 @@ extension MCPBridgeHandshake {
         let scheme = (tls ?? false) ? "https" : "http"
         return URL(string: "\(scheme)://127.0.0.1:\(port)/mcp")
     }
+
+    func credentials() -> MCPUpstreamCredentials? {
+        guard let endpoint = endpoint() else { return nil }
+        return MCPUpstreamCredentials(
+            endpoint: endpoint,
+            bearerToken: token,
+            tlsCertFingerprint: tlsCertFingerprint
+        )
+    }
 }

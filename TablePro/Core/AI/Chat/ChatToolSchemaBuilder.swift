@@ -6,44 +6,58 @@
 import Foundation
 
 enum ChatToolSchemaBuilder {
-    static func object(properties: [String: JsonValue], required: [String] = []) -> JsonValue {
-        var fields: [String: JsonValue] = [
+    static func object(
+        properties: [String: JsonValue],
+        required: [String]? = nil
+    ) -> JsonValue {
+        let resolvedRequired = required ?? Array(properties.keys)
+        return .object([
             "type": .string("object"),
-            "properties": .object(properties)
+            "properties": .object(properties),
+            "required": .array(resolvedRequired.map(JsonValue.string)),
+            "additionalProperties": .bool(false)
+        ])
+    }
+
+    static func string(description: String, optional: Bool = false) -> JsonValue {
+        scalar("string", description: description, optional: optional)
+    }
+
+    static func enumString(_ values: [String], description: String, optional: Bool = false) -> JsonValue {
+        var members = values.map(JsonValue.string)
+        if optional {
+            members.append(.null)
+        }
+        return scalar("string", description: description, optional: optional, extras: [
+            "enum": .array(members)
+        ])
+    }
+
+    static func boolean(description: String, optional: Bool = false) -> JsonValue {
+        scalar("boolean", description: description, optional: optional)
+    }
+
+    static func integer(description: String, optional: Bool = false) -> JsonValue {
+        scalar("integer", description: description, optional: optional)
+    }
+
+    private static func scalar(
+        _ typeName: String,
+        description: String,
+        optional: Bool,
+        extras: [String: JsonValue] = [:]
+    ) -> JsonValue {
+        let baseType: JsonValue = optional
+            ? .array([.string(typeName), .string("null")])
+            : .string(typeName)
+        var fields: [String: JsonValue] = [
+            "type": baseType,
+            "description": .string(description)
         ]
-        if !required.isEmpty {
-            fields["required"] = .array(required.map(JsonValue.string))
+        for (key, value) in extras {
+            fields[key] = value
         }
         return .object(fields)
-    }
-
-    static func string(description: String) -> JsonValue {
-        .object([
-            "type": .string("string"),
-            "description": .string(description)
-        ])
-    }
-
-    static func enumString(_ values: [String], description: String) -> JsonValue {
-        .object([
-            "type": .string("string"),
-            "enum": .array(values.map(JsonValue.string)),
-            "description": .string(description)
-        ])
-    }
-
-    static func boolean(description: String) -> JsonValue {
-        .object([
-            "type": .string("boolean"),
-            "description": .string(description)
-        ])
-    }
-
-    static func integer(description: String) -> JsonValue {
-        .object([
-            "type": .string("integer"),
-            "description": .string(description)
-        ])
     }
 }
 
@@ -53,6 +67,6 @@ extension ChatToolSchemaBuilder {
     }
 
     static var schemaName: JsonValue {
-        string(description: "Schema name (uses current if omitted)")
+        string(description: "Schema name (uses current if omitted)", optional: true)
     }
 }

@@ -124,6 +124,63 @@ struct RowDetailViewModelTests {
         #expect(query.contains("WHERE"))
     }
 
+    @Test("saveChanges under confirmWrites defers execution and requests confirmation")
+    func saveConfirmWritesDefers() async {
+        let driver = MockDatabaseDriver()
+        let vm = RowDetailViewModel(
+            columns: makeColumns(), rows: makeRows(), initialIndex: 0,
+            table: TableInfo(name: "users"), session: makeSession(driver: driver),
+            columnDetails: makeColumns(), safeModeLevel: .confirmWrites
+        )
+        vm.startEditing()
+        vm.setEditedValue("Charlie", at: 1)
+
+        let success = await vm.saveChanges()
+        #expect(success == false)
+        #expect(vm.pendingWriteConfirmation == true)
+        #expect(vm.isEditing == true, "stays in edit mode until confirmed")
+        #expect(driver.executedQueries.isEmpty, "no UPDATE runs before confirmation")
+    }
+
+    @Test("executePendingSave runs the deferred UPDATE after confirmation")
+    func executePendingSaveRunsUpdate() async {
+        let driver = MockDatabaseDriver()
+        driver.scriptedExecuteResults = [
+            .success(QueryResult(columns: [], rows: [], rowsAffected: 1, executionTime: 0))
+        ]
+        let vm = RowDetailViewModel(
+            columns: makeColumns(), rows: makeRows(), initialIndex: 0,
+            table: TableInfo(name: "users"), session: makeSession(driver: driver),
+            columnDetails: makeColumns(), safeModeLevel: .confirmWrites
+        )
+        vm.startEditing()
+        vm.setEditedValue("Charlie", at: 1)
+        _ = await vm.saveChanges()
+
+        let success = await vm.executePendingSave()
+        #expect(success == true)
+        #expect(vm.pendingWriteConfirmation == false)
+        #expect(driver.executedQueries.count == 1)
+        #expect(driver.executedQueries[0].uppercased().hasPrefix("UPDATE"))
+    }
+
+    @Test("saveChanges under readOnly never executes")
+    func saveReadOnlyBlocks() async {
+        let driver = MockDatabaseDriver()
+        let vm = RowDetailViewModel(
+            columns: makeColumns(), rows: makeRows(), initialIndex: 0,
+            table: TableInfo(name: "users"), session: makeSession(driver: driver),
+            columnDetails: makeColumns(), safeModeLevel: .readOnly
+        )
+        vm.startEditing()
+        vm.setEditedValue("Charlie", at: 1)
+
+        let success = await vm.saveChanges()
+        #expect(success == false)
+        #expect(vm.pendingWriteConfirmation == false)
+        #expect(driver.executedQueries.isEmpty)
+    }
+
     @Test("saveChanges fails when no primary key value present")
     func saveWithoutPrimaryKey() async {
         let driver = MockDatabaseDriver()

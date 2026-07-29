@@ -106,6 +106,23 @@ struct SQLEscapingTests {
         #expect(result == "\\''")
     }
 
+    // MARK: - quoteIdentifier Tests (ANSI SQL)
+
+    @Test("Plain identifier wrapped in double quotes")
+    func testQuoteIdentifierPlain() {
+        #expect(SQLEscaping.quoteIdentifier("users") == "\"users\"")
+    }
+
+    @Test("Embedded double quote is doubled")
+    func testQuoteIdentifierEmbeddedQuote() {
+        #expect(SQLEscaping.quoteIdentifier("we\"ird") == "\"we\"\"ird\"")
+    }
+
+    @Test("Empty identifier yields empty quotes")
+    func testQuoteIdentifierEmpty() {
+        #expect(SQLEscaping.quoteIdentifier("") == "\"\"")
+    }
+
     // MARK: - escapeLikeWildcards Tests
 
     @Test("LIKE plain string unchanged")

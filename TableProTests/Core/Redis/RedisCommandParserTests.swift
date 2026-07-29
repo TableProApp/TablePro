@@ -680,6 +680,50 @@ struct RedisCommandParserTokenizerTests {
     }
 }
 
+@Suite("RedisCommandParser - KEYBROWSE round-trip")
+struct RedisKeyBrowseRoundTripTests {
+    private let builder = RedisQueryBuilder()
+
+    @Test("A built key-browse command parses back to its pattern, type, limit, and offset")
+    func keyBrowseRoundTrips() throws {
+        let command = builder.buildKeyBrowseQuery(pattern: "user:*", typeScope: "hash", limit: 100, offset: 200)
+        let op = try TestRedisCommandParser.parse(command)
+        guard case .keyBrowse(let pattern, let typeScope, let limit, let offset) = op else {
+            Issue.record("Expected .keyBrowse, got \(op)")
+            return
+        }
+        #expect(pattern == "user:*")
+        #expect(typeScope == "hash")
+        #expect(limit == 100)
+        #expect(offset == 200)
+    }
+
+    @Test("A pattern with quotes and spaces survives the build and parse round-trip")
+    func quotedPatternRoundTrips() throws {
+        let raw = #"a "b" c*"#
+        let command = builder.buildKeyBrowseQuery(pattern: raw, typeScope: nil, limit: 200, offset: 0)
+        let op = try TestRedisCommandParser.parse(command)
+        guard case .keyBrowse(let pattern, let typeScope, _, _) = op else {
+            Issue.record("Expected .keyBrowse, got \(op)")
+            return
+        }
+        #expect(pattern == raw)
+        #expect(typeScope == nil)
+    }
+
+    @Test("A type-only key-browse command parses with no pattern")
+    func typeOnlyRoundTrips() throws {
+        let command = builder.buildKeyBrowseQuery(pattern: nil, typeScope: "stream", limit: 200, offset: 0)
+        let op = try TestRedisCommandParser.parse(command)
+        guard case .keyBrowse(let pattern, let typeScope, _, _) = op else {
+            Issue.record("Expected .keyBrowse, got \(op)")
+            return
+        }
+        #expect(pattern == nil)
+        #expect(typeScope == "stream")
+    }
+}
+
 // MARK: - Private Local Helpers (copied from RedisDriverPlugin)
 
 private enum TestRedisOperation {
@@ -688,6 +732,7 @@ private enum TestRedisOperation {
     case del(keys: [String])
     case keys(pattern: String)
     case scan(cursor: Int, pattern: String?, count: Int?)
+    case keyBrowse(pattern: String?, typeScope: String?, limit: Int, offset: Int)
     case type(key: String)
     case ttl(key: String)
     case pttl(key: String)
@@ -778,9 +823,47 @@ private struct TestRedisCommandParser {
         case "PING", "INFO", "DBSIZE", "FLUSHDB", "SELECT", "CONFIG",
              "MULTI", "EXEC", "DISCARD":
             return try parseServerCommand(command, args: args, tokens: tokens)
+        case "KEYBROWSE":
+            return parseKeyBrowse(args)
         default:
             return .command(args: tokens)
         }
+    }
+
+    private static func parseKeyBrowse(_ args: [String]) -> TestRedisOperation {
+        var pattern: String?
+        var typeScope: String?
+        var limit = 200
+        var offset = 0
+        var i = 0
+        while i < args.count {
+            switch args[i].uppercased() {
+            case "MATCH":
+                if i + 1 < args.count {
+                    pattern = args[i + 1]
+                    i += 1
+                }
+            case "TYPE":
+                if i + 1 < args.count {
+                    typeScope = args[i + 1]
+                    i += 1
+                }
+            case "LIMIT":
+                if i + 1 < args.count, let value = Int(args[i + 1]) {
+                    limit = value
+                    i += 1
+                }
+            case "OFFSET":
+                if i + 1 < args.count, let value = Int(args[i + 1]) {
+                    offset = value
+                    i += 1
+                }
+            default:
+                break
+            }
+            i += 1
+        }
+        return .keyBrowse(pattern: pattern, typeScope: typeScope, limit: limit, offset: offset)
     }
 
     private static func parseKeyCommand(_ command: String, args: [String]) throws -> TestRedisOperation {

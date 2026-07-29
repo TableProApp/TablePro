@@ -28,14 +28,14 @@ final class ConnectionStorage {
 
     private let fileURL: URL
 
-    private let keychain: KeychainHelper
+    private let keychain: any KeychainStoring
 
     init(
         fileURL: URL = ConnectionStorage.defaultFileURL(),
         userDefaults: UserDefaults = .standard,
         syncTracker: SyncChangeTracker = .shared,
         appSettings: @escaping @autoclosure () -> AppSettingsStorage = .shared,
-        keychain: KeychainHelper = .shared
+        keychain: any KeychainStoring = KeychainHelper.shared
     ) {
         self.fileURL = fileURL
         self.defaults = userDefaults
@@ -107,6 +107,10 @@ final class ConnectionStorage {
         }
     }
 
+    func loadConnection(id: UUID) -> DatabaseConnection? {
+        loadConnections().first { $0.id == id }
+    }
+
     /// Save all connections. Returns `true` if persisted, `false` if encoding or
     /// the atomic write failed. Callers that mutate dependent state (sync tracker,
     /// keychain entries) MUST check the return value and abort on `false`.
@@ -173,6 +177,69 @@ final class ConnectionStorage {
         }
     }
 
+    /// Update multiple connections in a single file write, marking each dirty for sync.
+    @discardableResult
+    func updateConnections(_ updates: [DatabaseConnection]) -> Bool {
+        guard !updates.isEmpty else { return true }
+        var connections = loadConnections()
+        let updatesById = Dictionary(updates.map { ($0.id, $0) }, uniquingKeysWith: { _, last in last })
+        var didMutate = false
+        for index in connections.indices {
+            if let replacement = updatesById[connections[index].id] {
+                connections[index] = replacement
+                didMutate = true
+            }
+        }
+        guard didMutate, saveConnections(connections) else {
+            return false
+        }
+        let dirtyIds = updatesById.values
+            .filter { !$0.localOnly && !$0.isSample }
+            .map { $0.id.uuidString }
+        syncTracker.markDirty(.connection, ids: dirtyIds)
+        return true
+    }
+
+    @discardableResult
+    func removeTagId(_ tagId: UUID) -> Bool {
+        let affected = loadConnections()
+            .filter { $0.tagIds.contains(tagId) }
+            .map { connection -> DatabaseConnection in
+                var updated = connection
+                updated.tagIds.removeAll { $0 == tagId }
+                return updated
+            }
+        return updateConnections(affected)
+    }
+
+    @discardableResult
+    func updateSafeModeLevel(_ level: SafeModeLevel, for connectionId: UUID) -> Bool {
+        var connections = loadConnections()
+        guard let index = connections.firstIndex(where: { $0.id == connectionId }) else {
+            Self.logger.notice(
+                "Skipped updateSafeModeLevel: connection not found for \(connectionId, privacy: .public)"
+            )
+            return false
+        }
+
+        guard connections[index].safeModeLevel != level else { return true }
+
+        connections[index].safeModeLevel = level
+        guard saveConnections(connections) else {
+            Self.logger.error(
+                "Aborted updateSafeModeLevel: persistence failed for \(connectionId, privacy: .public)"
+            )
+            return false
+        }
+
+        let updatedConnection = connections[index]
+        if !updatedConnection.localOnly && !updatedConnection.isSample {
+            syncTracker.markDirty(.connection, id: updatedConnection.id.uuidString)
+        }
+
+        return true
+    }
+
     /// Delete a connection
     func deleteConnection(_ connection: DatabaseConnection) {
         var connections = loadConnections()
@@ -187,7 +254,12 @@ final class ConnectionStorage {
         deletePassword(for: connection.id)
         deleteSSHPassword(for: connection.id)
         deleteKeyPassphrase(for: connection.id)
+        deleteSSLClientKeyPassphrase(for: connection.id)
         deleteTOTPSecret(for: connection.id)
+        deleteCloudflareTokenId(for: connection.id)
+        deleteCloudflareTokenSecret(for: connection.id)
+        deleteCloudSQLProxyServiceAccountKey(for: connection.id)
+        deleteSOCKSProxyPassword(for: connection.id)
 
         let secureFieldIds = Self.secureFieldIds(for: connection.type)
         deleteAllPluginSecureFields(for: connection.id, fieldIds: secureFieldIds)
@@ -195,6 +267,14 @@ final class ConnectionStorage {
         let appSettings = appSettingsProvider()
         appSettings.saveLastDatabase(nil, for: connection.id)
         appSettings.saveLastSchema(nil, for: connection.id)
+
+        FavoriteTablesStorage.shared.removeFavorites(for: connection.id)
+        FilterSettingsStorage.shared.removeFilters(for: connection.id)
+        DatabaseTreeFilterStorage.shared.removeFilter(for: connection.id)
+        RecentlyClosedTabStore.shared.removeEntries(for: connection.id)
+        Task {
+            await SQLFavoriteManager.shared.removeFavoritesAndFolders(for: connection.id)
+        }
     }
 
     /// Batch-delete multiple connections and clean up their Keychain entries
@@ -213,12 +293,26 @@ final class ConnectionStorage {
             deletePassword(for: conn.id)
             deleteSSHPassword(for: conn.id)
             deleteKeyPassphrase(for: conn.id)
+            deleteSSLClientKeyPassphrase(for: conn.id)
             deleteTOTPSecret(for: conn.id)
+            deleteCloudflareTokenId(for: conn.id)
+            deleteCloudflareTokenSecret(for: conn.id)
+            deleteCloudSQLProxyServiceAccountKey(for: conn.id)
+            deleteSOCKSProxyPassword(for: conn.id)
             let fields = Self.secureFieldIds(for: conn.type)
             deleteAllPluginSecureFields(for: conn.id, fieldIds: fields)
             let appSettings = appSettingsProvider()
             appSettings.saveLastDatabase(nil, for: conn.id)
             appSettings.saveLastSchema(nil, for: conn.id)
+            FavoriteTablesStorage.shared.removeFavorites(for: conn.id)
+        }
+        FilterSettingsStorage.shared.removeFilters(for: idsToDelete)
+        DatabaseTreeFilterStorage.shared.removeFilters(for: idsToDelete)
+        RecentlyClosedTabStore.shared.removeEntries(for: idsToDelete)
+        Task {
+            for conn in connectionsToDelete {
+                await SQLFavoriteManager.shared.removeFavoritesAndFolders(for: conn.id)
+            }
         }
     }
 
@@ -227,7 +321,6 @@ final class ConnectionStorage {
     func duplicateConnection(_ connection: DatabaseConnection) -> DatabaseConnection {
         let newId = UUID()
 
-        // Create duplicate with new ID and "(Copy)" suffix
         let duplicate = DatabaseConnection(
             id: newId,
             name: String(format: String(localized: "%@ (Copy)"), connection.name),
@@ -239,10 +332,13 @@ final class ConnectionStorage {
             sshConfig: connection.sshConfig,
             sslConfig: connection.sslConfig,
             color: connection.color,
-            tagId: connection.tagId,
+            tagIds: connection.tagIds,
             groupId: connection.groupId,
             sshProfileId: connection.sshProfileId,
             sshTunnelMode: connection.sshTunnelMode,
+            cloudflareTunnelMode: connection.cloudflareTunnelMode,
+            cloudSQLProxyMode: connection.cloudSQLProxyMode,
+            socksProxyMode: connection.socksProxyMode,
             safeModeLevel: connection.safeModeLevel,
             aiPolicy: connection.aiPolicy,
             aiRules: connection.aiRules,
@@ -251,10 +347,10 @@ final class ConnectionStorage {
             startupCommands: connection.startupCommands,
             sortOrder: connection.sortOrder,
             localOnly: connection.localOnly,
+            passwordSource: connection.passwordSource,
             additionalFields: connection.additionalFields.isEmpty ? nil : connection.additionalFields
         )
 
-        // Save the duplicate connection
         var connections = loadConnections()
         connections.append(duplicate)
         guard saveConnections(connections) else {
@@ -275,8 +371,23 @@ final class ConnectionStorage {
         if let keyPassphrase = loadKeyPassphrase(for: connection.id) {
             saveKeyPassphrase(keyPassphrase, for: newId)
         }
+        if let sslKeyPassphrase = loadSSLClientKeyPassphrase(for: connection.id) {
+            saveSSLClientKeyPassphrase(sslKeyPassphrase, for: newId)
+        }
         if let totpSecret = loadTOTPSecret(for: connection.id) {
             saveTOTPSecret(totpSecret, for: newId)
+        }
+        if let cloudflareTokenId = loadCloudflareTokenId(for: connection.id) {
+            saveCloudflareTokenId(cloudflareTokenId, for: newId)
+        }
+        if let cloudflareTokenSecret = loadCloudflareTokenSecret(for: connection.id) {
+            saveCloudflareTokenSecret(cloudflareTokenSecret, for: newId)
+        }
+        if let serviceAccountKey = loadCloudSQLProxyServiceAccountKey(for: connection.id) {
+            saveCloudSQLProxyServiceAccountKey(serviceAccountKey, for: newId)
+        }
+        if let socksProxyPassword = loadSOCKSProxyPassword(for: connection.id) {
+            saveSOCKSProxyPassword(socksProxyPassword, for: newId)
         }
 
         let secureFieldIds = Self.secureFieldIds(for: connection.type)
@@ -340,6 +451,23 @@ final class ConnectionStorage {
         keychain.delete(forKey: key)
     }
 
+    // MARK: - SSL Client Key Passphrase Storage
+
+    func saveSSLClientKeyPassphrase(_ passphrase: String, for connectionId: UUID) {
+        let key = "com.TablePro.sslkeypassphrase.\(connectionId.uuidString)"
+        keychain.writeString(passphrase, forKey: key)
+    }
+
+    func loadSSLClientKeyPassphrase(for connectionId: UUID) -> String? {
+        let key = "com.TablePro.sslkeypassphrase.\(connectionId.uuidString)"
+        return resolveString(.init(label: "SSL client key passphrase", connectionId: connectionId), forKey: key)
+    }
+
+    func deleteSSLClientKeyPassphrase(for connectionId: UUID) {
+        let key = "com.TablePro.sslkeypassphrase.\(connectionId.uuidString)"
+        keychain.delete(forKey: key)
+    }
+
     // MARK: - Plugin Secure Field Storage
 
     func savePluginSecureField(_ value: String, fieldId: String, for connectionId: UUID) {
@@ -380,32 +508,80 @@ final class ConnectionStorage {
         keychain.delete(forKey: key)
     }
 
+    // MARK: - Cloudflare Service Token Storage
+
+    func saveCloudflareTokenId(_ tokenId: String, for connectionId: UUID) {
+        let key = "com.TablePro.cloudflaretokenid.\(connectionId.uuidString)"
+        keychain.writeString(tokenId, forKey: key)
+    }
+
+    func loadCloudflareTokenId(for connectionId: UUID) -> String? {
+        let key = "com.TablePro.cloudflaretokenid.\(connectionId.uuidString)"
+        return resolveString(.init(label: "Cloudflare token ID", connectionId: connectionId), forKey: key)
+    }
+
+    func deleteCloudflareTokenId(for connectionId: UUID) {
+        let key = "com.TablePro.cloudflaretokenid.\(connectionId.uuidString)"
+        keychain.delete(forKey: key)
+    }
+
+    func saveCloudflareTokenSecret(_ tokenSecret: String, for connectionId: UUID) {
+        let key = "com.TablePro.cloudflaretokensecret.\(connectionId.uuidString)"
+        keychain.writeString(tokenSecret, forKey: key)
+    }
+
+    func loadCloudflareTokenSecret(for connectionId: UUID) -> String? {
+        let key = "com.TablePro.cloudflaretokensecret.\(connectionId.uuidString)"
+        return resolveString(.init(label: "Cloudflare token secret", connectionId: connectionId), forKey: key)
+    }
+
+    func deleteCloudflareTokenSecret(for connectionId: UUID) {
+        let key = "com.TablePro.cloudflaretokensecret.\(connectionId.uuidString)"
+        keychain.delete(forKey: key)
+    }
+
+    // MARK: - Cloud SQL Auth Proxy Credential Storage
+
+    func saveCloudSQLProxyServiceAccountKey(_ key: String, for connectionId: UUID) {
+        let storageKey = "com.TablePro.cloudsqlproxyserviceaccountkey.\(connectionId.uuidString)"
+        keychain.writeString(key, forKey: storageKey)
+    }
+
+    func loadCloudSQLProxyServiceAccountKey(for connectionId: UUID) -> String? {
+        let storageKey = "com.TablePro.cloudsqlproxyserviceaccountkey.\(connectionId.uuidString)"
+        return resolveString(.init(label: "Cloud SQL service account key", connectionId: connectionId), forKey: storageKey)
+    }
+
+    func deleteCloudSQLProxyServiceAccountKey(for connectionId: UUID) {
+        let storageKey = "com.TablePro.cloudsqlproxyserviceaccountkey.\(connectionId.uuidString)"
+        keychain.delete(forKey: storageKey)
+    }
+
+    // MARK: - SOCKS Proxy Password Storage
+
+    func saveSOCKSProxyPassword(_ password: String, for connectionId: UUID) {
+        let key = "com.TablePro.socksproxypassword.\(connectionId.uuidString)"
+        keychain.writeString(password, forKey: key)
+    }
+
+    func loadSOCKSProxyPassword(for connectionId: UUID) -> String? {
+        let key = "com.TablePro.socksproxypassword.\(connectionId.uuidString)"
+        return resolveString(.init(label: "SOCKS proxy password", connectionId: connectionId), forKey: key)
+    }
+
+    func deleteSOCKSProxyPassword(for connectionId: UUID) {
+        let key = "com.TablePro.socksproxypassword.\(connectionId.uuidString)"
+        keychain.delete(forKey: key)
+    }
+
     private struct SecretContext {
         let label: String
         let connectionId: UUID
     }
 
     private func resolveString(_ context: SecretContext, forKey key: String) -> String? {
-        let label = context.label
-        let connId = context.connectionId.uuidString
-        switch keychain.readStringResult(forKey: key) {
-        case .found(let value):
-            return value
-        case .notFound:
-            return nil
-        case .locked:
-            Self.logger.warning("\(label, privacy: .public) unavailable: Keychain locked (connId=\(connId, privacy: .public))")
-            return nil
-        case .userCancelled:
-            Self.logger.notice("\(label, privacy: .public) prompt cancelled (connId=\(connId, privacy: .public))")
-            return nil
-        case .authFailed:
-            Self.logger.warning("\(label, privacy: .public) auth failed (connId=\(connId, privacy: .public))")
-            return nil
-        case .error(let status):
-            Self.logger.error("\(label, privacy: .public) read error \(status) (connId=\(connId, privacy: .public))")
-            return nil
-        }
+        keychain.readStringResult(forKey: key)
+            .value(label: "\(context.label) (connId=\(context.connectionId.uuidString))", logger: Self.logger)
     }
 
     // MARK: - Plugin Secure Field Migration
@@ -443,384 +619,5 @@ final class ConnectionStorage {
                 Self.logger.error("Failed to persist plugin secure field migration; will retry on next launch")
             }
         }
-    }
-}
-
-// MARK: - Stored Connection (Codable wrapper)
-
-private struct StoredConnection: Codable {
-    let id: UUID
-    let name: String
-    let host: String
-    let port: Int
-    let database: String
-    let username: String
-    let type: String
-
-    // SSH Configuration
-    let sshEnabled: Bool
-    let sshHost: String
-    let sshPort: Int?
-    let sshUsername: String
-    let sshAuthMethod: String
-    let sshPrivateKeyPath: String
-    let sshAgentSocketPath: String
-
-    // SSL Configuration
-    let sslMode: String
-    let sslCaCertificatePath: String
-    let sslClientCertificatePath: String
-    let sslClientKeyPath: String
-
-    // Color, Tag, and Group
-    let color: String
-    let tagId: String?
-    let groupId: String?
-    let sshProfileId: String?
-
-    // Safe mode level
-    let safeModeLevel: String
-
-    // AI policy
-    let aiPolicy: String?
-
-    // AI rules text included in the system prompt for this connection
-    let aiRules: String?
-
-    // AI tools whitelisted for this connection
-    let aiAlwaysAllowedTools: [String]?
-
-    // MongoDB-specific
-    let mongoAuthSource: String?
-    let mongoReadPreference: String?
-    let mongoWriteConcern: String?
-
-    // Redis-specific
-    let redisDatabase: Int?
-
-    // MSSQL schema
-    let mssqlSchema: String?
-
-    // Oracle service name
-    let oracleServiceName: String?
-
-    // Startup commands
-    let startupCommands: String?
-
-    // Sort order for sync
-    let sortOrder: Int
-
-    // Local-only (excluded from iCloud sync)
-    let localOnly: Bool
-
-    let isSample: Bool
-
-    // TOTP configuration
-    let totpMode: String
-    let totpAlgorithm: String
-    let totpDigits: Int
-    let totpPeriod: Int
-
-    // SSH tunnel mode (v2 JSON blob preserving jump hosts + profile links)
-    let sshTunnelModeJson: Data?
-
-    // Plugin-driven additional fields
-    let additionalFields: [String: String]?
-
-    init(from connection: DatabaseConnection) {
-        self.id = connection.id
-        self.name = connection.name
-        self.host = connection.host
-        self.port = connection.port
-        self.database = connection.database
-        self.username = connection.username
-        self.type = connection.type.rawValue
-
-        // SSH Configuration
-        self.sshEnabled = connection.sshConfig.enabled
-        self.sshHost = connection.sshConfig.host
-        self.sshPort = connection.sshConfig.port
-        self.sshUsername = connection.sshConfig.username
-        self.sshAuthMethod = connection.sshConfig.authMethod.rawValue
-        self.sshPrivateKeyPath = connection.sshConfig.privateKeyPath
-        self.sshAgentSocketPath = connection.sshConfig.agentSocketPath
-
-        // TOTP configuration
-        self.totpMode = connection.sshConfig.totpMode.rawValue
-        self.totpAlgorithm = connection.sshConfig.totpAlgorithm.rawValue
-        self.totpDigits = connection.sshConfig.totpDigits
-        self.totpPeriod = connection.sshConfig.totpPeriod
-
-        // SSL Configuration
-        self.sslMode = connection.sslConfig.mode.rawValue
-        self.sslCaCertificatePath = connection.sslConfig.caCertificatePath
-        self.sslClientCertificatePath = connection.sslConfig.clientCertificatePath
-        self.sslClientKeyPath = connection.sslConfig.clientKeyPath
-
-        // Color, Tag, and Group
-        self.color = connection.color.rawValue
-        self.tagId = connection.tagId?.uuidString
-        self.groupId = connection.groupId?.uuidString
-        self.sshProfileId = connection.sshProfileId?.uuidString
-
-        // Safe mode level
-        self.safeModeLevel = connection.safeModeLevel.rawValue
-
-        // AI policy
-        self.aiPolicy = connection.aiPolicy?.rawValue
-        self.aiRules = connection.aiRules
-        self.aiAlwaysAllowedTools = connection.aiAlwaysAllowedTools.isEmpty
-            ? nil
-            : Array(connection.aiAlwaysAllowedTools).sorted()
-
-        // MongoDB-specific
-        self.mongoAuthSource = connection.mongoAuthSource
-        self.mongoReadPreference = connection.mongoReadPreference
-        self.mongoWriteConcern = connection.mongoWriteConcern
-
-        // Redis-specific
-        self.redisDatabase = connection.redisDatabase
-
-        // MSSQL schema
-        self.mssqlSchema = connection.mssqlSchema
-
-        // Oracle service name
-        self.oracleServiceName = connection.oracleServiceName
-
-        // Startup commands
-        self.startupCommands = connection.startupCommands
-
-        // Sort order
-        self.sortOrder = connection.sortOrder
-
-        // Local-only
-        self.localOnly = connection.localOnly
-
-        // Sample marker
-        self.isSample = connection.isSample
-
-        // SSH tunnel mode (v2 format preserving jump hosts, profiles, etc.)
-        self.sshTunnelModeJson = try? JSONEncoder().encode(connection.sshTunnelMode)
-
-        // Plugin-driven additional fields
-        self.additionalFields = connection.additionalFields.isEmpty ? nil : connection.additionalFields
-    }
-
-    private enum CodingKeys: String, CodingKey {
-        case id, name, host, port, database, username, type
-        case sshEnabled, sshHost, sshPort, sshUsername, sshAuthMethod, sshPrivateKeyPath
-        case sshAgentSocketPath
-        case totpMode, totpAlgorithm, totpDigits, totpPeriod
-        case sslMode, sslCaCertificatePath, sslClientCertificatePath, sslClientKeyPath
-        case color, tagId, groupId, sshProfileId
-        case safeModeLevel
-        case isReadOnly // Legacy key for migration reading only
-        case aiPolicy
-        case aiRules
-        case aiAlwaysAllowedTools
-        case mongoAuthSource, mongoReadPreference, mongoWriteConcern, redisDatabase
-        case mssqlSchema, oracleServiceName, startupCommands, sortOrder
-        case sshTunnelModeJson
-        case additionalFields
-        case localOnly
-        case isSample
-    }
-
-    func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(id, forKey: .id)
-        try container.encode(name, forKey: .name)
-        try container.encode(host, forKey: .host)
-        try container.encode(port, forKey: .port)
-        try container.encode(database, forKey: .database)
-        try container.encode(username, forKey: .username)
-        try container.encode(type, forKey: .type)
-        try container.encode(sshEnabled, forKey: .sshEnabled)
-        try container.encode(sshHost, forKey: .sshHost)
-        try container.encodeIfPresent(sshPort, forKey: .sshPort)
-        try container.encode(sshUsername, forKey: .sshUsername)
-        try container.encode(sshAuthMethod, forKey: .sshAuthMethod)
-        try container.encode(sshPrivateKeyPath, forKey: .sshPrivateKeyPath)
-        try container.encode(sshAgentSocketPath, forKey: .sshAgentSocketPath)
-        try container.encode(totpMode, forKey: .totpMode)
-        try container.encode(totpAlgorithm, forKey: .totpAlgorithm)
-        try container.encode(totpDigits, forKey: .totpDigits)
-        try container.encode(totpPeriod, forKey: .totpPeriod)
-        try container.encode(sslMode, forKey: .sslMode)
-        try container.encode(sslCaCertificatePath, forKey: .sslCaCertificatePath)
-        try container.encode(sslClientCertificatePath, forKey: .sslClientCertificatePath)
-        try container.encode(sslClientKeyPath, forKey: .sslClientKeyPath)
-        try container.encode(color, forKey: .color)
-        try container.encodeIfPresent(tagId, forKey: .tagId)
-        try container.encodeIfPresent(groupId, forKey: .groupId)
-        try container.encodeIfPresent(sshProfileId, forKey: .sshProfileId)
-        try container.encode(safeModeLevel, forKey: .safeModeLevel)
-        try container.encodeIfPresent(aiPolicy, forKey: .aiPolicy)
-        try container.encodeIfPresent(aiRules, forKey: .aiRules)
-        try container.encodeIfPresent(aiAlwaysAllowedTools, forKey: .aiAlwaysAllowedTools)
-        try container.encodeIfPresent(redisDatabase, forKey: .redisDatabase)
-        try container.encodeIfPresent(startupCommands, forKey: .startupCommands)
-        try container.encode(sortOrder, forKey: .sortOrder)
-        try container.encodeIfPresent(sshTunnelModeJson, forKey: .sshTunnelModeJson)
-        try container.encodeIfPresent(additionalFields, forKey: .additionalFields)
-        try container.encode(localOnly, forKey: .localOnly)
-        try container.encode(isSample, forKey: .isSample)
-    }
-
-    // Custom decoder to handle migration from old format
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-
-        id = try container.decode(UUID.self, forKey: .id)
-        name = try container.decode(String.self, forKey: .name)
-        host = try container.decode(String.self, forKey: .host)
-        port = try container.decode(Int.self, forKey: .port)
-        database = try container.decode(String.self, forKey: .database)
-        username = try container.decode(String.self, forKey: .username)
-        type = try container.decode(String.self, forKey: .type)
-
-        sshEnabled = try container.decode(Bool.self, forKey: .sshEnabled)
-        sshHost = try container.decode(String.self, forKey: .sshHost)
-        sshPort = try container.decodeIfPresent(Int.self, forKey: .sshPort)
-        sshUsername = try container.decode(String.self, forKey: .sshUsername)
-        sshAuthMethod = try container.decode(String.self, forKey: .sshAuthMethod)
-        sshPrivateKeyPath = try container.decode(String.self, forKey: .sshPrivateKeyPath)
-        sshAgentSocketPath = try container.decodeIfPresent(String.self, forKey: .sshAgentSocketPath) ?? ""
-
-        // TOTP configuration (migration: use defaults if missing)
-        totpMode = try container.decodeIfPresent(String.self, forKey: .totpMode) ?? TOTPMode.none.rawValue
-        totpAlgorithm = try container.decodeIfPresent(
-            String.self, forKey: .totpAlgorithm
-        ) ?? TOTPAlgorithm.sha1.rawValue
-        let decodedDigits = try container.decodeIfPresent(Int.self, forKey: .totpDigits) ?? 6
-        totpDigits = max(6, min(8, decodedDigits))
-        let decodedPeriod = try container.decodeIfPresent(Int.self, forKey: .totpPeriod) ?? 30
-        totpPeriod = max(15, min(120, decodedPeriod))
-
-        // SSL Configuration (migration: use defaults if missing)
-        sslMode = try container.decodeIfPresent(String.self, forKey: .sslMode) ?? SSLMode.disabled.rawValue
-        sslCaCertificatePath = try container.decodeIfPresent(String.self, forKey: .sslCaCertificatePath) ?? ""
-        sslClientCertificatePath = try container.decodeIfPresent(
-            String.self, forKey: .sslClientCertificatePath
-        ) ?? ""
-        sslClientKeyPath = try container.decodeIfPresent(String.self, forKey: .sslClientKeyPath) ?? ""
-
-        // Migration: use defaults if fields are missing
-        color = try container.decodeIfPresent(String.self, forKey: .color) ?? ConnectionColor.none.rawValue
-        tagId = try container.decodeIfPresent(String.self, forKey: .tagId)
-        groupId = try container.decodeIfPresent(String.self, forKey: .groupId)
-        sshProfileId = try container.decodeIfPresent(String.self, forKey: .sshProfileId)
-        // Migration: read new safeModeLevel first, fall back to old isReadOnly boolean
-        if let levelString = try container.decodeIfPresent(String.self, forKey: .safeModeLevel) {
-            safeModeLevel = levelString
-        } else {
-            let wasReadOnly = try container.decodeIfPresent(Bool.self, forKey: .isReadOnly) ?? false
-            safeModeLevel = wasReadOnly ? SafeModeLevel.readOnly.rawValue : SafeModeLevel.silent.rawValue
-        }
-        aiPolicy = try container.decodeIfPresent(String.self, forKey: .aiPolicy)
-        aiRules = try container.decodeIfPresent(String.self, forKey: .aiRules)
-        aiAlwaysAllowedTools = try container.decodeIfPresent([String].self, forKey: .aiAlwaysAllowedTools)
-        mongoAuthSource = try container.decodeIfPresent(String.self, forKey: .mongoAuthSource)
-        mongoReadPreference = try container.decodeIfPresent(String.self, forKey: .mongoReadPreference)
-        mongoWriteConcern = try container.decodeIfPresent(String.self, forKey: .mongoWriteConcern)
-        redisDatabase = try container.decodeIfPresent(Int.self, forKey: .redisDatabase)
-        mssqlSchema = try container.decodeIfPresent(String.self, forKey: .mssqlSchema)
-        oracleServiceName = try container.decodeIfPresent(String.self, forKey: .oracleServiceName)
-        startupCommands = try container.decodeIfPresent(String.self, forKey: .startupCommands)
-        sortOrder = try container.decodeIfPresent(Int.self, forKey: .sortOrder) ?? 0
-        sshTunnelModeJson = try container.decodeIfPresent(Data.self, forKey: .sshTunnelModeJson)
-        additionalFields = try container.decodeIfPresent([String: String].self, forKey: .additionalFields)
-        localOnly = try container.decodeIfPresent(Bool.self, forKey: .localOnly) ?? false
-        isSample = try container.decodeIfPresent(Bool.self, forKey: .isSample) ?? false
-    }
-
-    func toConnection() -> DatabaseConnection {
-        var sshConfig = SSHConfiguration(
-            enabled: sshEnabled,
-            host: sshHost,
-            port: sshPort,
-            username: sshUsername,
-            authMethod: SSHAuthMethod(rawValue: sshAuthMethod) ?? .password,
-            privateKeyPath: sshPrivateKeyPath,
-            agentSocketPath: sshAgentSocketPath
-        )
-        sshConfig.totpMode = TOTPMode(rawValue: totpMode) ?? .none
-        sshConfig.totpAlgorithm = TOTPAlgorithm(rawValue: totpAlgorithm) ?? .sha1
-        sshConfig.totpDigits = totpDigits
-        sshConfig.totpPeriod = totpPeriod
-
-        // Prefer sshTunnelModeJson (v2 format) over legacy flat fields
-        let resolvedTunnelMode: SSHTunnelMode
-        if let json = sshTunnelModeJson,
-           let decoded = try? JSONDecoder().decode(SSHTunnelMode.self, from: json) {
-            resolvedTunnelMode = decoded
-            switch decoded {
-            case .disabled:
-                break
-            case .inline(let config):
-                sshConfig = config
-            case .profile(_, let snapshot):
-                sshConfig = snapshot
-            }
-        } else {
-            resolvedTunnelMode = .disabled
-        }
-
-        let sslConfig = SSLConfiguration(
-            mode: SSLMode(rawValue: sslMode) ?? .disabled,
-            caCertificatePath: sslCaCertificatePath,
-            clientCertificatePath: sslClientCertificatePath,
-            clientKeyPath: sslClientKeyPath
-        )
-
-        let parsedColor = ConnectionColor(rawValue: color) ?? .none
-        let parsedTagId = tagId.flatMap { UUID(uuidString: $0) }
-        let parsedGroupId = groupId.flatMap { UUID(uuidString: $0) }
-        let parsedSSHProfileId = sshProfileId.flatMap { UUID(uuidString: $0) }
-        let parsedAIPolicy = aiPolicy.flatMap { AIConnectionPolicy(rawValue: $0) }
-
-        // Merge legacy named keys into additionalFields as fallback
-        let mergedFields: [String: String]? = {
-            var fields = additionalFields ?? [:]
-            if fields["mongoAuthSource"] == nil, let v = mongoAuthSource { fields["mongoAuthSource"] = v }
-            if fields["mongoReadPreference"] == nil, let v = mongoReadPreference {
-                fields["mongoReadPreference"] = v
-            }
-            if fields["mongoWriteConcern"] == nil, let v = mongoWriteConcern {
-                fields["mongoWriteConcern"] = v
-            }
-            if fields["mssqlSchema"] == nil, let v = mssqlSchema { fields["mssqlSchema"] = v }
-            if fields["oracleServiceName"] == nil, let v = oracleServiceName {
-                fields["oracleServiceName"] = v
-            }
-            return fields.isEmpty ? nil : fields
-        }()
-
-        return DatabaseConnection(
-            id: id,
-            name: name,
-            host: host,
-            port: port,
-            database: database,
-            username: username,
-            type: DatabaseType(rawValue: type),
-            sshConfig: sshConfig,
-            sslConfig: sslConfig,
-            color: parsedColor,
-            tagId: parsedTagId,
-            groupId: parsedGroupId,
-            sshProfileId: parsedSSHProfileId,
-            sshTunnelMode: resolvedTunnelMode,
-            safeModeLevel: SafeModeLevel(rawValue: safeModeLevel) ?? .silent,
-            aiPolicy: parsedAIPolicy,
-            aiRules: aiRules,
-            aiAlwaysAllowedTools: Set(aiAlwaysAllowedTools ?? []),
-            redisDatabase: redisDatabase,
-            startupCommands: startupCommands,
-            sortOrder: sortOrder,
-            localOnly: localOnly,
-            isSample: isSample,
-            additionalFields: mergedFields
-        )
     }
 }

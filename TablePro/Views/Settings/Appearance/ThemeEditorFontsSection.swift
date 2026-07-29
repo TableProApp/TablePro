@@ -111,7 +111,7 @@ struct ThemeEditorFontsSection: View {
             set: { onChange($0) }
         )) {
             ForEach(range, id: \.self) { size in
-                Text("\(size) pt").tag(size)
+                Text(verbatim: "\(size) pt").tag(size)
             }
         }
     }
@@ -123,7 +123,6 @@ struct ThemeEditorFontsSection: View {
             var copy = engine.duplicateTheme(base, newName: base.name + " (Custom)")
             mutate(&copy.fonts)
             try? engine.saveUserTheme(copy)
-            engine.activateTheme(copy)
             editingTheme = copy
             onThemeDuplicated?(copy)
         } else {

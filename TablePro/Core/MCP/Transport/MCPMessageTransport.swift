@@ -14,5 +14,6 @@ public enum MCPTransportError: Error, Sendable, Equatable {
     case invalidEndpoint
     case authentication(httpStatus: Int, message: String)
     case sessionExpired
+    case unreachable(detail: String)
     case timeout
 }

@@ -13,9 +13,10 @@ final class SQLCompletionProvider {
     // MARK: - Properties
 
     private let contextAnalyzer = SQLContextAnalyzer()
-    private let schemaProvider: SQLSchemaProvider
+    private let schemaProvider: SQLSchemaProvider?
     private var databaseType: DatabaseType?
     private var cachedDialect: SQLDialectDescriptor?
+    private var cachedFunctionItems: [SQLCompletionItem]?
     private var cachedStatementCompletions: [CompletionEntry] = []
     private var favoriteKeywords: [String: (name: String, query: String)] = [:]
 
@@ -39,7 +40,7 @@ final class SQLCompletionProvider {
 
     // MARK: - Init
 
-    init(schemaProvider: SQLSchemaProvider, databaseType: DatabaseType? = nil,
+    init(schemaProvider: SQLSchemaProvider?, databaseType: DatabaseType? = nil,
          dialect: SQLDialectDescriptor? = nil, statementCompletions: [CompletionEntry] = []) {
         self.schemaProvider = schemaProvider
         self.databaseType = databaseType
@@ -51,6 +52,7 @@ final class SQLCompletionProvider {
     func setDatabaseType(_ type: DatabaseType, dialect: SQLDialectDescriptor? = nil, statementCompletions: [CompletionEntry] = []) {
         self.databaseType = type
         self.cachedDialect = dialect
+        self.cachedFunctionItems = nil
         self.cachedStatementCompletions = statementCompletions
     }
 
@@ -60,40 +62,55 @@ final class SQLCompletionProvider {
     }
 
     func retrySchemaIfNeeded() async {
-        await schemaProvider.retryLoadSchemaIfNeeded()
+        await schemaProvider?.retryLoadSchemaIfNeeded()
     }
 
     // MARK: - Public API
 
-    /// Get completion suggestions for the current cursor position
+    /// Get completion suggestions for the current cursor position.
+    /// `forcedTableReferences` overrides the tables in scope, used when the caller
+    /// already knows the table (e.g. a single-table filter expression) rather than
+    /// relying on a FROM clause in the analyzed text.
     func getCompletions(
         text: String,
-        cursorPosition: Int
+        cursorPosition: Int,
+        forcedTableReferences: [TableReference]? = nil
     ) async -> (items: [SQLCompletionItem], context: SQLContext) {
-        // Analyze context
-        let context = contextAnalyzer.analyze(query: text, cursorPosition: cursorPosition)
+        var context = contextAnalyzer.analyze(query: text, cursorPosition: cursorPosition)
+        if let forcedTableReferences {
+            context = context.replacingTableReferences(forcedTableReferences)
+        }
 
-        // Don't complete inside strings or comments
         if context.isInsideString || context.isInsideComment {
             return ([], context)
         }
 
-        // Get candidates based on context
         var candidates = await getCandidates(for: context)
 
-        // Filter by prefix and compute match highlight ranges
         if !context.prefix.isEmpty {
             candidates = filterByPrefix(candidates, prefix: context.prefix)
-            populateMatchRanges(&candidates, prefix: context.prefix)
         }
 
-        // Rank results
         candidates = rankResults(candidates, prefix: context.prefix, context: context)
 
-        // Limit results
         let limited = Array(candidates.prefix(maxSuggestions(for: context.clauseType)))
 
         return (limited, context)
+    }
+
+    /// Generic SQL functions plus the active dialect's own functions (deduplicated).
+    /// Cached per dialect; invalidated in `setDatabaseType`.
+    private func functionItems() -> [SQLCompletionItem] {
+        if let cachedFunctionItems { return cachedFunctionItems }
+        var items = SQLKeywords.functionItems()
+        if let dialect = cachedDialect, !dialect.functions.isEmpty {
+            var seen = Set(items.map { $0.label.uppercased() })
+            for name in dialect.functions.sorted() where seen.insert(name.uppercased()).inserted {
+                items.append(SQLCompletionItem.function(name, signature: "\(name)(…)"))
+            }
+        }
+        cachedFunctionItems = items
+        return items
     }
 
     // MARK: - Candidate Generation
@@ -104,28 +121,37 @@ final class SQLCompletionProvider {
     ) async -> [SQLCompletionItem] {
         var items: [SQLCompletionItem] = []
 
-        // Check for favorite keyword matches first (highest priority)
-        if !favoriteKeywords.isEmpty && !context.prefix.isEmpty {
-            let lowerPrefix = context.prefix.lowercased()
-            for (keyword, value) in favoriteKeywords where keyword.lowercased().hasPrefix(lowerPrefix) {
-                items.append(.favorite(keyword: keyword, name: value.name, query: value.query))
-            }
-        }
-
-        // If we have a dot prefix, we're looking for columns of a specific table
+        // If we have a dot prefix, resolve it as table/alias columns first, then as
+        // a schema (suggest its tables) or database (suggest its schemas). The
+        // namespace fallback also covers aliases that spuriously resolve to a
+        // schema name parsed out of the FROM clause itself.
         if let dotPrefix = context.dotPrefix {
-            // Resolve the table name from alias or direct reference
+            guard let schemaProvider else { return [] }
+            if let derived = context.tableReferences.first(where: {
+                $0.isDerived && $0.identifier.caseInsensitiveCompare(dotPrefix) == .orderedSame
+            }), let columns = derived.derivedColumns, !columns.isEmpty {
+                return columns.map { SQLCompletionItem.column($0, dataType: nil, tableName: derived.identifier) }
+            }
             if let tableName = await schemaProvider.resolveAlias(dotPrefix, in: context.tableReferences) {
-                items = await schemaProvider.columnCompletionItems(for: tableName)
+                let schema = context.tableReferences.first {
+                    $0.tableName.caseInsensitiveCompare(tableName) == .orderedSame
+                }?.schema
+                items = await schemaProvider.columnCompletionItems(for: tableName, schema: schema)
+            }
+            if items.isEmpty {
+                if await schemaProvider.isKnownSchema(dotPrefix) {
+                    items = await schemaProvider.tableCompletionItems(inSchema: dotPrefix)
+                } else if await schemaProvider.isKnownDatabase(dotPrefix) {
+                    items = await schemaProvider.schemaCompletionItems()
+                }
             }
             return items
         }
 
-        // Add items based on clause type
         switch context.clauseType {
         case .from, .join:
-            // Tables + JOIN/clause transition keywords
-            items = await schemaProvider.tableCompletionItems()
+            items = await schemaProvider?.tableCompletionItems() ?? []
+            items += await schemaProvider?.namespaceCompletionItems() ?? []
             items += filterKeywords([
                 "INNER JOIN", "LEFT JOIN", "RIGHT JOIN", "FULL JOIN",
                 "LEFT OUTER JOIN", "RIGHT OUTER JOIN", "FULL OUTER JOIN",
@@ -135,8 +161,7 @@ final class SQLCompletionProvider {
             ])
 
         case .into:
-            // Tables + INSERT continuation keywords
-            items = await schemaProvider.tableCompletionItems()
+            items = await schemaProvider?.tableCompletionItems() ?? []
             items += filterKeywords([
                 "VALUES", "SELECT", "SET",
                 "INNER JOIN", "LEFT JOIN", "RIGHT JOIN", "FULL JOIN",
@@ -148,7 +173,6 @@ final class SQLCompletionProvider {
 
         case .select:
             if let funcName = context.currentFunction {
-                // Inside function arguments within SELECT context
                 let upperFunc = funcName.uppercased()
                 if upperFunc == "COUNT" {
                     // COUNT() special: suggest * and DISTINCT as top items
@@ -165,15 +189,13 @@ final class SQLCompletionProvider {
                     distinctItem.sortPriority = 20
                     items.append(distinctItem)
                 }
-                // Function-arg items: columns, functions, value keywords
                 items += await columnItems(for: context.tableReferences)
-                items += SQLKeywords.functionItems()
+                items += functionItems()
                 items += filterKeywords(["NULL", "TRUE", "FALSE"])
                 if funcName.uppercased() != "COUNT" {
                     items += filterKeywords(["DISTINCT"])
                 }
             } else {
-                // Normal SELECT list: star wildcard + columns + functions + keywords
                 items.append(SQLCompletionItem(
                     label: "*",
                     kind: .keyword,
@@ -193,7 +215,7 @@ final class SQLCompletionProvider {
                     ))
                 }
                 items += await columnItems(for: context.tableReferences)
-                items += SQLKeywords.functionItems()
+                items += functionItems()
                 items += filterKeywords([
                     "DISTINCT", "ALL", "AS", "FROM", "CASE", "WHEN",
                     "INTO", "UNION", "INTERSECT", "EXCEPT"
@@ -203,10 +225,9 @@ final class SQLCompletionProvider {
         case .on:
             // HP-3: ON clause — prioritize columns from joined tables
             items += await columnItems(for: context.tableReferences)
-            // Add qualified column suggestions (table.column) for join conditions
             for ref in context.tableReferences {
                 let qualifier = ref.alias ?? ref.tableName
-                let cols = await schemaProvider.columnCompletionItems(for: ref.tableName)
+                let cols = await schemaProvider?.columnCompletionItems(for: ref.tableName, schema: ref.schema) ?? []
                 for col in cols {
                     items.append(SQLCompletionItem(
                         label: "\(qualifier).\(col.label)",
@@ -222,6 +243,16 @@ final class SQLCompletionProvider {
             items += filterKeywords([
                 "AND", "OR", "NOT", "IS", "NULL", "TRUE", "FALSE"
             ])
+            // Continuations once the join condition is written: another join or
+            // the next clause. Without these, typing the next keyword (e.g. a
+            // second INNER JOIN) only fuzzy-matches columns.
+            items += filterKeywords([
+                "INNER JOIN", "LEFT JOIN", "RIGHT JOIN", "FULL JOIN",
+                "LEFT OUTER JOIN", "RIGHT OUTER JOIN", "FULL OUTER JOIN",
+                "CROSS JOIN", "NATURAL JOIN", "JOIN",
+                "WHERE", "ORDER BY", "GROUP BY", "HAVING", "LIMIT",
+                "UNION", "INTERSECT", "EXCEPT"
+            ])
 
         case .where_, .and, .having:
             // HP-8: Columns, operators, logical keywords + clause transitions
@@ -233,15 +264,13 @@ final class SQLCompletionProvider {
                 "ANY", "ALL", "SOME", "REGEXP", "RLIKE", "SIMILAR TO",
                 "IS NULL", "IS NOT NULL"
             ])
-            items += SQLKeywords.functionItems()
-            // Clause transitions after WHERE conditions
+            items += functionItems()
             items += filterKeywords([
                 "ORDER BY", "GROUP BY", "HAVING", "LIMIT",
                 "UNION", "INTERSECT", "EXCEPT"
             ])
 
         case .groupBy:
-            // Columns + clause transitions
             items += await columnItems(for: context.tableReferences)
             items += filterKeywords([
                 "HAVING", "ORDER BY", "LIMIT",
@@ -249,7 +278,6 @@ final class SQLCompletionProvider {
             ])
 
         case .orderBy:
-            // Columns + sort direction + clause transitions
             items += await columnItems(for: context.tableReferences)
             items += filterKeywords([
                 "ASC", "DESC", "NULLS FIRST", "NULLS LAST",
@@ -258,28 +286,24 @@ final class SQLCompletionProvider {
             ])
 
         case .set:
-            // Columns for UPDATE SET clause + transition keywords
             if let firstTable = context.tableReferences.first {
-                items = await schemaProvider.columnCompletionItems(for: firstTable.tableName)
+                items = await schemaProvider?.columnCompletionItems(for: firstTable.tableName, schema: firstTable.schema) ?? []
             }
             items += filterKeywords(["WHERE", "RETURNING"])
 
         case .insertColumns:
-            // Columns for INSERT column list
             if let firstTable = context.tableReferences.first {
-                items = await schemaProvider.columnCompletionItems(for: firstTable.tableName)
+                items = await schemaProvider?.columnCompletionItems(for: firstTable.tableName, schema: firstTable.schema) ?? []
             }
 
         case .values:
-            // Functions and keywords for VALUES + post-values transitions
-            items = SQLKeywords.functionItems()
+            items = functionItems()
             items += filterKeywords([
                 "NULL", "DEFAULT", "TRUE", "FALSE",
                 "ON CONFLICT", "ON DUPLICATE KEY UPDATE", "RETURNING"
             ])
 
         case .functionArg:
-            // Inside function arguments - suggest columns and other functions
             let isCountFunction = context.currentFunction?.uppercased() == "COUNT"
             if isCountFunction {
                 // COUNT() special: suggest * as top item
@@ -298,7 +322,7 @@ final class SQLCompletionProvider {
                 items.append(distinctItem)
             }
             items += await columnItems(for: context.tableReferences)
-            items += SQLKeywords.functionItems()
+            items += functionItems()
             if isCountFunction {
                 // DISTINCT already added above with boosted priority
                 items += filterKeywords(["NULL", "TRUE", "FALSE"])
@@ -307,24 +331,21 @@ final class SQLCompletionProvider {
             }
 
         case .caseExpression:
-            // Inside CASE expression
             items += await columnItems(for: context.tableReferences)
             items += filterKeywords(["WHEN", "THEN", "ELSE", "END", "AND", "OR", "IS", "NULL", "TRUE", "FALSE"])
             items += SQLKeywords.operatorItems()
-            items += SQLKeywords.functionItems()
+            items += functionItems()
 
         case .inList:
-            // Inside IN (...) list - suggest values, subqueries, columns
             items += await columnItems(for: context.tableReferences)
             items += filterKeywords(["SELECT", "NULL", "TRUE", "FALSE"])
-            items += SQLKeywords.functionItems()
+            items += functionItems()
 
         case .limit:
             // After LIMIT/OFFSET - typically just numbers, but could include variables
             items += filterKeywords(["OFFSET", "FETCH", "NEXT", "ROWS", "ONLY"])
 
         case .alterTable:
-            // After ALTER TABLE tablename - suggest DDL operations and constraint types
             items = filterKeywords([
                 "ADD", "DROP", "MODIFY", "CHANGE", "RENAME",
                 "COLUMN", "INDEX", "PRIMARY", "FOREIGN", "KEY",
@@ -334,14 +355,12 @@ final class SQLCompletionProvider {
             ])
 
         case .alterTableColumn:
-            // After ALTER TABLE tablename DROP/MODIFY/CHANGE/RENAME or AFTER/BEFORE - suggest column names
             if let firstTable = context.tableReferences.first {
-                items = await schemaProvider.columnCompletionItems(for: firstTable.tableName)
+                items = await schemaProvider?.columnCompletionItems(for: firstTable.tableName, schema: firstTable.schema) ?? []
             }
 
         case .createTable:
             if context.nestingLevel >= 1 {
-                // Inside CREATE TABLE (...) — column definitions
                 // Boost FK-related keywords so they appear within the 20-item limit
                 items = boostedKeywords([
                     "REFERENCES", "ON DELETE", "ON UPDATE",
@@ -366,7 +385,6 @@ final class SQLCompletionProvider {
             }
 
         case .columnDef:
-            // Typing column data type (after ADD COLUMN name)
             items = dataTypeKeywords()
             items += filterKeywords([
                 "NOT", "NULL", "DEFAULT", "AUTO_INCREMENT", "SERIAL",
@@ -377,20 +395,16 @@ final class SQLCompletionProvider {
             ])
 
         case .returning:
-            // After RETURNING (PostgreSQL) - suggest columns
             items += await columnItems(for: context.tableReferences)
             items += filterKeywords(["*"])
 
         case .union:
-            // After UNION/INTERSECT/EXCEPT - suggest SELECT
             items = filterKeywords(["SELECT", "ALL"])
 
         case .using:
-            // After USING in JOIN - suggest columns
             items += await columnItems(for: context.tableReferences)
 
         case .window:
-            // After OVER/PARTITION BY - suggest columns and window keywords
             items += await columnItems(for: context.tableReferences)
             items += filterKeywords([
                 "PARTITION BY", "ORDER BY", "ASC", "DESC",
@@ -399,57 +413,45 @@ final class SQLCompletionProvider {
             ])
 
         case .dropObject:
-            // After DROP TABLE/INDEX/VIEW - suggest tables
-            items = await schemaProvider.tableCompletionItems()
+            items = await schemaProvider?.tableCompletionItems() ?? []
             items += filterKeywords(["IF EXISTS", "CASCADE", "RESTRICT"])
 
         case .createIndex:
             if context.tableReferences.isEmpty {
-                // Before ON tablename — suggest tables and ON keyword
-                items = await schemaProvider.tableCompletionItems()
+                items = await schemaProvider?.tableCompletionItems() ?? []
                 items += filterKeywords(["ON"])
             } else {
-                // After ON tablename (inside parens) — suggest columns
                 items = await columnItems(for: context.tableReferences)
                 items += filterKeywords(["USING", "BTREE", "HASH", "GIN", "GIST"])
             }
 
         case .createView:
-            // After CREATE VIEW - suggest SELECT
             items = filterKeywords(["SELECT", "AS"])
-            items += await schemaProvider.tableCompletionItems()
+            items += await schemaProvider?.tableCompletionItems() ?? []
 
         case .unknown:
-            if !cachedStatementCompletions.isEmpty {
-                items = cachedStatementCompletions.map { entry in
-                    SQLCompletionItem(
-                        label: entry.label,
-                        kind: .keyword,
-                        insertText: entry.insertText
-                    )
-                }
-            } else {
-                items = filterKeywords([
-                    // DML
-                    "SELECT", "INSERT", "UPDATE", "DELETE", "REPLACE", "MERGE", "UPSERT",
-                    // DDL
-                    "CREATE", "ALTER", "DROP", "TRUNCATE", "RENAME",
-                    // Database operations
-                    "SHOW", "DESCRIBE", "DESC", "EXPLAIN", "ANALYZE",
-                    // Transaction control
-                    "BEGIN", "COMMIT", "ROLLBACK", "SAVEPOINT", "START TRANSACTION",
-                    // CTEs and advanced
-                    "WITH", "RECURSIVE",
-                    // Database/schema
-                    "USE", "SET", "GRANT", "REVOKE",
-                    // Utility
-                    "CALL", "EXECUTE", "PREPARE"
-                ])
-            }
-            items += await schemaProvider.tableCompletionItems()
+            items = statementStartCompletionItems()
+            items += await schemaProvider?.tableCompletionItems() ?? []
         }
 
+        items += favoriteCompletions(matching: context.prefix)
+
         return items
+    }
+
+    func allFavoriteItems() -> [SQLCompletionItem] {
+        favoriteKeywords
+            .sorted { $0.key.localizedCaseInsensitiveCompare($1.key) == .orderedAscending }
+            .map { SQLCompletionItem.favorite(keyword: $0.key, name: $0.value.name, query: $0.value.query) }
+    }
+
+    private func favoriteCompletions(matching prefix: String) -> [SQLCompletionItem] {
+        guard !prefix.isEmpty, !favoriteKeywords.isEmpty else { return [] }
+        let lowerPrefix = prefix.lowercased()
+        return favoriteKeywords
+            .filter { $0.key.lowercased().hasPrefix(lowerPrefix) }
+            .sorted { $0.key.localizedCaseInsensitiveCompare($1.key) == .orderedAscending }
+            .map { SQLCompletionItem.favorite(keyword: $0.key, name: $0.value.name, query: $0.value.query) }
     }
 
     /// SQL data type keywords (database-aware), with a slight priority boost
@@ -482,14 +484,37 @@ final class SQLCompletionProvider {
     /// Columns from explicit table references, or all cached schema columns as fallback
     private func columnItems(for references: [TableReference]) async -> [SQLCompletionItem] {
         if references.isEmpty {
-            return await schemaProvider.allColumnsFromCachedTables()
+            return await schemaProvider?.allColumnsFromCachedTables() ?? []
         }
-        return await schemaProvider.allColumnsInScope(for: references)
+        return await schemaProvider?.allColumnsInScope(for: references) ?? []
     }
 
     /// Filter to specific keywords
     private func filterKeywords(_ keywords: [String]) -> [SQLCompletionItem] {
         keywords.map { SQLCompletionItem.keyword($0) }
+    }
+
+    private static let statementStartKeywords = [
+        "SELECT", "INSERT", "UPDATE", "DELETE", "REPLACE", "MERGE", "UPSERT",
+        "CREATE", "ALTER", "DROP", "TRUNCATE", "RENAME",
+        "SHOW", "DESCRIBE", "DESC", "EXPLAIN", "ANALYZE",
+        "BEGIN", "COMMIT", "ROLLBACK", "SAVEPOINT", "START TRANSACTION",
+        "WITH", "RECURSIVE",
+        "USE", "SET", "GRANT", "REVOKE",
+        "CALL", "EXECUTE", "PREPARE"
+    ]
+
+    func statementStartCompletionItems() -> [SQLCompletionItem] {
+        guard cachedStatementCompletions.isEmpty else {
+            return cachedStatementCompletions.map { entry in
+                SQLCompletionItem(
+                    label: entry.label,
+                    kind: .keyword,
+                    insertText: entry.insertText
+                )
+            }
+        }
+        return filterKeywords(Self.statementStartKeywords)
     }
 
     /// Create keyword items with boosted (lower) sort priority
@@ -505,89 +530,65 @@ final class SQLCompletionProvider {
 
     /// Filter and rank items by prefix, returning sorted results with match ranges
     func filterAndRank(_ items: [SQLCompletionItem], prefix: String, context: SQLContext) -> [SQLCompletionItem] {
-        var filtered = filterByPrefix(items, prefix: prefix)
-        // Clear stale match ranges before recomputing
-        for i in filtered.indices { filtered[i].matchedRanges = [] }
-        populateMatchRanges(&filtered, prefix: prefix)
+        let filtered = filterByPrefix(items, prefix: prefix)
         return rankResults(filtered, prefix: prefix, context: context)
     }
 
-    /// Filter candidates by prefix (case-insensitive) with fuzzy matching support
+    /// Filter candidates by prefix (case-insensitive) with fuzzy matching support.
+    /// Resolves `matchedRanges` and the fuzzy-only `fuzzyPenalty` in one pass per
+    /// candidate so `rankResults` never recomputes a fuzzy match. Both fields are
+    /// assigned (never accumulated), so re-filtering a prior result is idempotent.
     func filterByPrefix(_ items: [SQLCompletionItem], prefix: String) -> [SQLCompletionItem] {
-        guard !prefix.isEmpty else { return items }
+        guard !prefix.isEmpty else {
+            var reset = items
+            for i in reset.indices {
+                reset[i].matchedRanges = []
+                reset[i].fuzzyPenalty = 0
+            }
+            return reset
+        }
 
         let lowerPrefix = prefix.lowercased()
+        let nsPrefix = lowerPrefix as NSString
 
-        return items.filter { item in
-            // Exact prefix match
-            if item.filterText.hasPrefix(lowerPrefix) {
-                return true
+        var kept: [SQLCompletionItem] = []
+        kept.reserveCapacity(items.count)
+
+        for var item in items {
+            let nsFilterText = item.filterText as NSString
+
+            if nsFilterText.range(of: lowerPrefix, options: .anchored).location != NSNotFound {
+                item.matchedRanges = [0..<nsPrefix.length]
+                item.fuzzyPenalty = 0
+            } else if let containsRange = optionalRange(of: lowerPrefix, in: nsFilterText) {
+                item.matchedRanges = [containsRange]
+                item.fuzzyPenalty = 0
+            } else if let resolution = resolveFuzzyMatch(pattern: lowerPrefix, target: item.filterText) {
+                item.matchedRanges = indicesToRanges(resolution.indices)
+                item.fuzzyPenalty = resolution.penalty
+            } else {
+                continue
             }
 
-            // Contains match
-            if item.filterText.contains(lowerPrefix) {
-                return true
-            }
-
-            // Fuzzy match: check if all characters appear in order
-            return fuzzyMatch(pattern: lowerPrefix, target: item.filterText)
-        }
-    }
-
-    /// Fuzzy matching with scoring: returns penalty score (higher = worse),
-    /// nil = no match. Uses NSString character-at-index for O(1) random
-    /// access instead of Swift String indexing (LP-9).
-    func fuzzyMatchScore(pattern: String, target: String) -> Int? {
-        let nsPattern = pattern as NSString
-        let nsTarget = target as NSString
-        let patternLen = nsPattern.length
-        let targetLen = nsTarget.length
-
-        guard patternLen > 0, targetLen > 0 else { return nil }
-
-        var patternIdx = 0
-        var targetIdx = 0
-        var gaps = 0
-        var consecutiveMatches = 0
-        var maxConsecutive = 0
-        var lastMatchIdx = -1
-
-        while patternIdx < patternLen && targetIdx < targetLen {
-            let pChar = nsPattern.character(at: patternIdx)
-            let tChar = nsTarget.character(at: targetIdx)
-
-            if pChar == tChar {
-                if lastMatchIdx == targetIdx - 1 {
-                    consecutiveMatches += 1
-                    maxConsecutive = max(maxConsecutive, consecutiveMatches)
-                } else {
-                    if lastMatchIdx >= 0 {
-                        gaps += targetIdx - lastMatchIdx - 1
-                    }
-                    consecutiveMatches = 1
-                }
-                lastMatchIdx = targetIdx
-                patternIdx += 1
-            }
-            targetIdx += 1
+            kept.append(item)
         }
 
-        guard patternIdx == patternLen else { return nil }
-
-        // Score: base penalty + gap penalty - consecutive bonus
-        let basePenalty = 50
-        let gapPenalty = gaps * 10
-        let consecutiveBonus = maxConsecutive * 15
-        return max(0, basePenalty + gapPenalty - consecutiveBonus)
+        return kept
     }
 
-    /// Backward-compatible fuzzy matching (Bool) for filterByPrefix
-    private func fuzzyMatch(pattern: String, target: String) -> Bool {
-        fuzzyMatchScore(pattern: pattern, target: target) != nil
+    /// NSString.range(of:) without the anchored option, returning a Swift Range
+    /// or nil when not found. Avoids re-bridging the result through NSNotFound.
+    private func optionalRange(of substring: String, in target: NSString) -> Range<Int>? {
+        let range = target.range(of: substring)
+        guard range.location != NSNotFound else { return nil }
+        return range.location..<(range.location + range.length)
     }
 
-    /// Fuzzy matching that returns both score and matched character indices
-    private func fuzzyMatchWithIndices(pattern: String, target: String) -> (score: Int, indices: [Int])? {
+    /// Single fuzzy pass that resolves match state, penalty score, and matched
+    /// character indices in one traversal. `filterByPrefix` calls this once per
+    /// candidate. Uses NSString character-at-index for O(1) random access instead
+    /// of Swift String indexing (LP-9).
+    private func resolveFuzzyMatch(pattern: String, target: String) -> (penalty: Int, indices: [Int])? {
         let nsPattern = pattern as NSString
         let nsTarget = target as NSString
         let patternLen = nsPattern.length
@@ -602,6 +603,7 @@ final class SQLCompletionProvider {
         var maxConsecutive = 0
         var lastMatchIdx = -1
         var matchedIndices: [Int] = []
+        matchedIndices.reserveCapacity(min(patternLen, targetLen))
 
         while patternIdx < patternLen && targetIdx < targetLen {
             let pChar = nsPattern.character(at: patternIdx)
@@ -629,30 +631,14 @@ final class SQLCompletionProvider {
         let basePenalty = 50
         let gapPenalty = gaps * 10
         let consecutiveBonus = maxConsecutive * 15
-        let score = max(0, basePenalty + gapPenalty - consecutiveBonus)
-        return (score, matchedIndices)
+        let penalty = max(0, basePenalty + gapPenalty - consecutiveBonus)
+        return (penalty, matchedIndices)
     }
 
-    /// Populate matchedRanges on each item based on how it matched the prefix
-    private func populateMatchRanges(_ items: inout [SQLCompletionItem], prefix: String) {
-        guard !prefix.isEmpty else { return }
-        let lowerPrefix = prefix.lowercased()
-        let nsPrefix = lowerPrefix as NSString
-
-        for i in items.indices {
-            let nsFilterText = items[i].filterText as NSString
-            let prefixRange = nsFilterText.range(of: lowerPrefix, options: .anchored)
-            if prefixRange.location != NSNotFound {
-                items[i].matchedRanges = [0..<nsPrefix.length]
-            } else {
-                let containsRange = nsFilterText.range(of: lowerPrefix)
-                if containsRange.location != NSNotFound {
-                    items[i].matchedRanges = [containsRange.location..<(containsRange.location + containsRange.length)]
-                } else if let result = fuzzyMatchWithIndices(pattern: lowerPrefix, target: items[i].filterText) {
-                    items[i].matchedRanges = indicesToRanges(result.indices)
-                }
-            }
-        }
+    /// Fuzzy matching with scoring: returns penalty score (higher = worse),
+    /// nil = no match.
+    func fuzzyMatchScore(pattern: String, target: String) -> Int? {
+        resolveFuzzyMatch(pattern: pattern, target: target)?.penalty
     }
 
     /// Convert sorted individual character indices into contiguous ranges
@@ -687,25 +673,30 @@ final class SQLCompletionProvider {
         }
     }
 
-    /// Calculate ranking score for an item (lower = better)
+    /// Calculate ranking score for an item (lower = better).
+    /// The fuzzy-only penalty is precomputed into `fuzzyPenalty` by `filterByPrefix`
+    /// so the ranking comparator does not invoke fuzzy matching again.
     func calculateScore(for item: SQLCompletionItem, prefix: String, context: SQLContext) -> Int {
-        var score = item.sortPriority
+        var score = item.sortPriority + item.fuzzyPenalty
 
-        // Exact prefix match bonus
         if item.filterText.hasPrefix(prefix) {
             score -= 500
         }
 
-        // Exact match bonus
         if item.filterText == prefix {
             score -= 1_000
         }
 
-        // When prefix is empty and tables are in scope, user is at a clause
-        // transition point (e.g., "FROM users |" or "WHERE id > 1 |").
-        // Boost keywords so they appear alongside context-specific items.
+        // When prefix is empty and tables are in scope, the user is either in a
+        // table-operand slot (e.g. "... JOIN |") or at a clause transition point
+        // (e.g. "FROM users |" or "WHERE id > 1 |"). In the operand slot, tables
+        // lead; otherwise keywords lead so clause transitions surface.
         if prefix.isEmpty && !context.tableReferences.isEmpty && !context.isAfterComma {
-            if item.kind == .keyword {
+            if context.expectsObjectName {
+                if item.kind == .table || item.kind == .view || item.kind == .schema {
+                    score -= 300
+                }
+            } else if item.kind == .keyword {
                 score -= 300
             }
         } else {
@@ -731,17 +722,6 @@ final class SQLCompletionProvider {
 
         // Shorter names slightly preferred
         score += (item.label as NSString).length
-
-        // Fuzzy match penalty — items matched only by fuzzy get demoted
-        if !prefix.isEmpty {
-            let filterText = item.filterText
-            if !filterText.hasPrefix(prefix) && !filterText.contains(prefix) {
-                // This is a fuzzy-only match — apply penalty
-                if let fuzzyPenalty = fuzzyMatchScore(pattern: prefix, target: filterText) {
-                    score += fuzzyPenalty
-                }
-            }
-        }
 
         return score
     }

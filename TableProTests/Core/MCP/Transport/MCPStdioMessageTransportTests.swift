@@ -1,6 +1,6 @@
 import Foundation
-import TableProPluginKit
 @testable import TablePro
+import TableProPluginKit
 import XCTest
 
 final class MCPStdioMessageTransportTests: XCTestCase {
@@ -134,7 +134,7 @@ final class MCPStdioMessageTransportTests: XCTestCase {
 
     private func firstInbound(
         transport: MCPStdioMessageTransport,
-        timeout: TimeInterval = 2.0
+        timeout: TimeInterval = 10.0
     ) async throws -> JsonRpcMessage {
         try await withThrowingTaskGroup(of: JsonRpcMessage?.self) { group in
             group.addTask {

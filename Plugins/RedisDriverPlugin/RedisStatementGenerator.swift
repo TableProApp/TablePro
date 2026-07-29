@@ -65,7 +65,6 @@ struct RedisStatementGenerator {
             }
         }
 
-        // Batch deletes into a single DEL command
         if !deleteKeys.isEmpty {
             let keyList = deleteKeys.map { escapeArgument($0) }.joined(separator: " ")
             let cmd = "DEL \(keyList)"
@@ -168,7 +167,6 @@ struct RedisStatementGenerator {
 
         var statements: [(statement: String, parameters: [PluginCellValue])] = []
 
-        // Check for key rename
         if let keyChange = change.cellChanges.first(where: { $0.columnName == "Key" }),
            let newKey = keyChange.newValue.asText, newKey != key {
             let renameCmd = "RENAME \(escapeArgument(key)) \(escapeArgument(newKey))"
@@ -183,7 +181,6 @@ struct RedisStatementGenerator {
             return key
         }()
 
-        // Determine the Redis type from the original row data
         let redisType: String? = {
             guard let ti = typeColumnIndex,
                   let originalRow = change.originalRow,

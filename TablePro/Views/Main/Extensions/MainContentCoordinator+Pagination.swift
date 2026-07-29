@@ -22,15 +22,15 @@ extension MainContentCoordinator {
         paginationCoordinator.goToLastPage()
     }
 
+    func goToPage(_ page: Int) {
+        paginationCoordinator.goToPage(page)
+    }
+
     func updatePageSize(_ newSize: Int) {
         paginationCoordinator.updatePageSize(newSize)
     }
 
-    func updateOffset(_ newOffset: Int) {
-        paginationCoordinator.updateOffset(newOffset)
-    }
-
-    func applyPaginationSettings() {
-        paginationCoordinator.applyPaginationSettings()
+    func showAllRows() {
+        paginationCoordinator.showAllRows()
     }
 }

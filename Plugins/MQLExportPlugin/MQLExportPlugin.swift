@@ -45,6 +45,10 @@ final class MQLExportPlugin: ExportFormatPlugin, SettablePlugin {
         AnyView(MQLExportOptionsView(plugin: self))
     }
 
+    func resetSettingsToDefaults() {
+        settings = MQLExportOptions()
+    }
+
     func export(
         tables: [PluginExportTable],
         dataSource: any PluginExportDataSource,

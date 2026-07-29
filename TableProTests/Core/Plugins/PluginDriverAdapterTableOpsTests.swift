@@ -71,6 +71,24 @@ struct PluginDriverAdapterTableOpsTests {
         #expect(result == "DROP VIEW \"active_users\"")
     }
 
+    @Test("Fallback produces DROP MATERIALIZED VIEW for materialized views")
+    func dropMaterializedViewFallback() {
+        let adapter = makeAdapter(driver: StubTableOpsDriver())
+        let result = adapter.dropObjectStatement(
+            name: "daily_sales", objectType: "MATERIALIZED VIEW", schema: "public", cascade: false
+        )
+        #expect(result == "DROP MATERIALIZED VIEW \"public\".\"daily_sales\"")
+    }
+
+    @Test("Fallback produces DROP FOREIGN TABLE for foreign tables")
+    func dropForeignTableFallback() {
+        let adapter = makeAdapter(driver: StubTableOpsDriver())
+        let result = adapter.dropObjectStatement(
+            name: "remote_orders", objectType: "FOREIGN TABLE", schema: nil, cascade: false
+        )
+        #expect(result == "DROP FOREIGN TABLE \"remote_orders\"")
+    }
+
     @Test("Fallback appends CASCADE when requested")
     func dropWithCascade() {
         let adapter = makeAdapter(driver: StubTableOpsDriver())

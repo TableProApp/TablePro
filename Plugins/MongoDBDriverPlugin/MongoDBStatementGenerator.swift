@@ -247,10 +247,7 @@ struct MongoDBStatementGenerator {
         if value == "null" {
             return "null"
         }
-        if Int64(value) != nil {
-            return value
-        }
-        if Double(value) != nil, value.contains(".") {
+        if MongoDBJsonNumber.isValid(value) {
             return value
         }
         // JSON object or array

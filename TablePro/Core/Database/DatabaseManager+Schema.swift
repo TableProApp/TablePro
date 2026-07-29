@@ -61,6 +61,27 @@ extension DatabaseManager {
             )
             let statements = try generator.generate(changes: changes)
 
+            let combinedSQL = statements.map(\.sql).joined(separator: "\n")
+            let schemaKind: OperationKind =
+                QueryClassifier.classifyTier(combinedSQL, databaseType: databaseType) == .destructive
+                ? .destructiveQuery : .schemaMutation
+            let authorization = await ExecutionGateProvider.shared.authorize(
+                OperationRequest(
+                    connectionId: connectionId,
+                    databaseType: databaseType,
+                    sql: combinedSQL,
+                    kind: schemaKind,
+                    caller: .userInterface,
+                    capabilities: .interactiveUser,
+                    operationDescription: String(localized: "Apply Schema Changes")
+                )
+            )
+            guard case .authorized = authorization else {
+                throw DatabaseError.queryFailed(
+                    authorization.deniedReason ?? String(localized: "Schema change was not authorized")
+                )
+            }
+
             let useTransaction = driver.supportsTransactions
 
             if useTransaction {
@@ -76,7 +97,6 @@ extension DatabaseManager {
                     try await driver.commitTransaction()
                 }
 
-                // Record each statement in query history
                 let connId = connectionId
                 let dbName = self.activeSessions[connectionId]?.activeDatabase ?? ""
                 for stmt in statements {
@@ -91,7 +111,7 @@ extension DatabaseManager {
                 }
 
                 await MainActor.run {
-                    AppCommands.shared.refreshData.send(nil)
+                    AppCommands.shared.refreshData.send(connectionId)
                 }
             } catch {
                 if useTransaction {
@@ -116,7 +136,8 @@ extension DatabaseManager {
         driver: DatabaseDriver
     ) async -> String? {
         // Only needed for PostgreSQL PK modifications
-        guard databaseType == .postgresql || databaseType == .redshift || databaseType == .duckdb else { return nil }
+        guard databaseType == .postgresql || databaseType == .redshift
+            || databaseType == .cockroachdb || databaseType == .duckdb else { return nil }
         guard
             changes.contains(where: {
                 if case .modifyPrimaryKey = $0 { return true }
@@ -126,7 +147,6 @@ extension DatabaseManager {
             return nil
         }
 
-        // Query the actual constraint name from pg_constraint
         let escapedTable = tableName.replacingOccurrences(of: "'", with: "''")
         let schema: String
         if let schemaDriver = driver as? SchemaSwitchable,

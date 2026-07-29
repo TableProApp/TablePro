@@ -55,6 +55,7 @@ typedef struct loginrec LOGINREC;
 #define DBSETPACKET     11
 #define DBSETENCRYPT    12
 #define DBSETDBNAME     14
+#define DBSETSERVERPRINCIPAL 103
 
 // Convenience macros (match FreeTDS sybdb.h)
 #define DBSETLHOST(x, y)    dbsetlname((x), (y), DBSETHOST)

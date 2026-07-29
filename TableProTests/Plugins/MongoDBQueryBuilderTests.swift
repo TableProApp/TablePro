@@ -6,8 +6,8 @@
 //
 
 import Foundation
-import Testing
 import TableProPluginKit
+import Testing
 
 @Suite("MongoDB Query Builder")
 struct MongoDBQueryBuilderTests {
@@ -366,6 +366,55 @@ struct MongoDBQueryBuilderTests {
         #expect(doc.contains("\"price\": 19.99"))
     }
 
+    @Test("Filter document emits JSON-valid scientific numbers")
+    func filterDocumentScientificNumber() {
+        let doc = builder.buildFilterDocument(
+            from: [(column: "score", op: "=", value: "1.5e-3")]
+        )
+        let parsed = parseFilter(doc)
+        #expect(parsed?["score"] as? Double == 0.0015)
+    }
+
+    @Test("Filter document quotes non-JSON numeric spellings")
+    func filterDocumentQuotesNonJsonNumericSpellings() {
+        let values = [".5", "1.", "+7", "01", "NaN", "Infinity"]
+        for value in values {
+            let doc = builder.buildFilterDocument(
+                from: [(column: "score", op: "=", value: value)]
+            )
+            let parsed = parseFilter(doc)
+            #expect(parsed?["score"] as? String == value)
+        }
+    }
+
+    @Test("Filter document quotes integers that overflow Int64 to preserve precision")
+    func filterDocumentQuotesInt64Overflow() {
+        let doc = builder.buildFilterDocument(
+            from: [(column: "code", op: "=", value: "12345678901234567890")]
+        )
+        let parsed = parseFilter(doc)
+        #expect(parsed?["code"] as? String == "12345678901234567890")
+    }
+
+    @Test("Filter document quotes exponents that overflow Double instead of emitting Infinity")
+    func filterDocumentQuotesOutOfRangeExponent() {
+        for value in ["1e400", "-1e400", "1.5e400"] {
+            let doc = builder.buildFilterDocument(
+                from: [(column: "score", op: "=", value: value)]
+            )
+            let parsed = parseFilter(doc)
+            #expect(parsed?["score"] as? String == value)
+        }
+    }
+
+    @Test("Filter document emits the largest Int64 integer unquoted")
+    func filterDocumentEmitsMaxInt64() {
+        let doc = builder.buildFilterDocument(
+            from: [(column: "code", op: "=", value: "9223372036854775807")]
+        )
+        #expect(doc.contains("\"code\": 9223372036854775807"))
+    }
+
     @Test("Filter document with null literal")
     func filterDocumentNullLiteral() {
         let doc = builder.buildFilterDocument(
@@ -428,5 +477,252 @@ struct MongoDBQueryBuilderTests {
         let query = builder.buildCountQuery(collection: "my.data")
         #expect(query.hasPrefix("db[\"my.data\"]"))
         #expect(query.contains(".countDocuments({})"))
+    }
+
+    // MARK: - Export Query
+
+    @Test("Export query streams the whole collection")
+    func exportQueryHasNoLimit() {
+        let query = builder.buildExportQuery(collection: "users")
+        #expect(query == "db.users.find({})")
+    }
+
+    @Test("Export query brackets a dotted collection name")
+    func exportQueryDottedCollection() {
+        let query = builder.buildExportQuery(collection: "logs.2024.06")
+        #expect(query == "db[\"logs.2024.06\"].find({})")
+    }
+
+    @Test("Export query escapes quotes and backslashes in the collection name")
+    func exportQueryEscapesCollectionName() {
+        let query = builder.buildExportQuery(collection: "say\"hi\\bye")
+        #expect(query == "db[\"say\\\"hi\\\\bye\"].find({})")
+    }
+
+    @Test("Export query parses back to a find on the same collection")
+    func exportQueryRoundTripsThroughTheParser() throws {
+        for collection in ["users", "logs.2024.06", "stats", "2024_orders", "say\"hi"] {
+            let operation = try MongoShellParser.parse(builder.buildExportQuery(collection: collection))
+            if case .find(let parsed, let filter, let options) = operation {
+                #expect(parsed == collection)
+                #expect(filter == "{}")
+                #expect(options.limit == nil)
+            } else {
+                Issue.record("Expected .find operation for \(collection)")
+            }
+        }
+    }
+
+    // MARK: - ObjectId Matching
+
+    @Test("Equals on an ObjectId value matches both the ObjectId and the string form")
+    func equalsObjectIdDualMatch() {
+        let doc = builder.buildFilterDocument(
+            from: [(column: "_id", op: "=", value: "66c0fa26dfcb27034e646356")]
+        )
+        let parsed = parseFilter(doc)
+        let branches = parsed?["$or"] as? [[String: Any]]
+        #expect(branches?.count == 2)
+        let oid = (branches?.first?["_id"] as? [String: Any])?["$oid"] as? String
+        #expect(oid == "66c0fa26dfcb27034e646356")
+        #expect(branches?.last?["_id"] as? String == "66c0fa26dfcb27034e646356")
+    }
+
+    @Test("Equals on a non-ObjectId string stays a plain string match")
+    func equalsNonObjectIdString() {
+        let doc = builder.buildFilterDocument(
+            from: [(column: "_id", op: "=", value: "user-123")]
+        )
+        #expect(!doc.contains("$or"))
+        #expect(!doc.contains("$oid"))
+        #expect(doc.contains("\"_id\": \"user-123\""))
+    }
+
+    @Test("Equals on a 23-character hex value is not treated as an ObjectId")
+    func equalsShortHexNotObjectId() {
+        let doc = builder.buildFilterDocument(
+            from: [(column: "_id", op: "=", value: "66c0fa26dfcb27034e64635")]
+        )
+        #expect(!doc.contains("$oid"))
+    }
+
+    @Test("Equals on a 24-character non-hex value is not treated as an ObjectId")
+    func equalsNonHexNotObjectId() {
+        let doc = builder.buildFilterDocument(
+            from: [(column: "_id", op: "=", value: "zzc0fa26dfcb27034e646356")]
+        )
+        #expect(!doc.contains("$oid"))
+    }
+
+    @Test("ObjectId matching applies to non-_id reference fields too")
+    func equalsObjectIdReferenceField() {
+        let doc = builder.buildFilterDocument(
+            from: [(column: "userId", op: "=", value: "66c0fa26dfcb27034e646356")]
+        )
+        let branches = parseFilter(doc)?["$or"] as? [[String: Any]]
+        let oid = (branches?.first?["userId"] as? [String: Any])?["$oid"] as? String
+        #expect(oid == "66c0fa26dfcb27034e646356")
+    }
+
+    @Test("Not-equals on an ObjectId value excludes both the ObjectId and the string form")
+    func notEqualsObjectIdDualMatch() {
+        let doc = builder.buildFilterDocument(
+            from: [(column: "_id", op: "!=", value: "66c0fa26dfcb27034e646356")]
+        )
+        let nin = (parseFilter(doc)?["_id"] as? [String: Any])?["$nin"] as? [Any]
+        #expect(nin?.count == 2)
+        let oid = (nin?.first as? [String: Any])?["$oid"] as? String
+        #expect(oid == "66c0fa26dfcb27034e646356")
+        #expect(nin?.last as? String == "66c0fa26dfcb27034e646356")
+    }
+
+    @Test("IN expands an ObjectId item to both forms and leaves plain items alone")
+    func inExpandsObjectIdItems() {
+        let doc = builder.buildFilterDocument(
+            from: [(column: "_id", op: "IN", value: "66c0fa26dfcb27034e646356, plain-id")]
+        )
+        let inArray = (parseFilter(doc)?["_id"] as? [String: Any])?["$in"] as? [Any]
+        #expect(inArray?.count == 3)
+        let oid = (inArray?.first as? [String: Any])?["$oid"] as? String
+        #expect(oid == "66c0fa26dfcb27034e646356")
+        let strings = inArray?.compactMap { $0 as? String }
+        #expect(strings?.contains("66c0fa26dfcb27034e646356") == true)
+        #expect(strings?.contains("plain-id") == true)
+    }
+
+    @Test("NOT IN expands an ObjectId item to both forms")
+    func notInExpandsObjectIdItems() {
+        let doc = builder.buildFilterDocument(
+            from: [(column: "_id", op: "NOT IN", value: "66c0fa26dfcb27034e646356, plain-id")]
+        )
+        let ninArray = (parseFilter(doc)?["_id"] as? [String: Any])?["$nin"] as? [Any]
+        #expect(ninArray?.count == 3)
+        let oid = (ninArray?.first as? [String: Any])?["$oid"] as? String
+        #expect(oid == "66c0fa26dfcb27034e646356")
+        let strings = ninArray?.compactMap { $0 as? String }
+        #expect(strings?.contains("plain-id") == true)
+    }
+
+    @Test("An ObjectId equals combined with another filter stays valid JSON under $and")
+    func objectIdEqualsCombinedWithAndFilter() {
+        let doc = builder.buildFilterDocument(
+            from: [
+                (column: "_id", op: "=", value: "66c0fa26dfcb27034e646356"),
+                (column: "shop", op: "=", value: "acme")
+            ],
+            logicMode: "and"
+        )
+        let branches = parseFilter(doc)?["$and"] as? [[String: Any]]
+        #expect(branches?.count == 2)
+        let or = branches?.first?["$or"] as? [[String: Any]]
+        let oid = (or?.first?["_id"] as? [String: Any])?["$oid"] as? String
+        #expect(oid == "66c0fa26dfcb27034e646356")
+        #expect(branches?.last?["shop"] as? String == "acme")
+    }
+
+    // MARK: - Security (NoSQL injection)
+
+    private func parseFilter(_ json: String) -> [String: Any]? {
+        guard let data = json.data(using: .utf8) else { return nil }
+        return try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+    }
+
+    @Test("REGEX value cannot break out of the regex string to inject operators")
+    func regexInjectionContained() {
+        let payload = ".*\"}, \"$where\": \"function(){return true}\", \"_\":{\"a\":\""
+        let doc = parseFilter(
+            builder.buildFilterDocument(from: [(column: "name", op: "REGEX", value: payload)])
+        )
+        #expect(doc != nil)
+        #expect(doc.map { Array($0.keys) } == ["name"])
+        let inner = doc?["name"] as? [String: Any]
+        #expect(inner.map { Array($0.keys).sorted() } == ["$options", "$regex"])
+        #expect(inner?["$regex"] as? String == payload)
+        #expect(inner?["$options"] as? String == "i")
+    }
+
+    @Test("CONTAINS value cannot break out of the regex string to inject operators")
+    func containsInjectionContained() {
+        let payload = "\"}, \"$where\": \"return true"
+        let doc = parseFilter(
+            builder.buildFilterDocument(from: [(column: "name", op: "CONTAINS", value: payload)])
+        )
+        #expect(doc != nil)
+        #expect(doc.map { Array($0.keys) } == ["name"])
+        let regex = (doc?["name"] as? [String: Any])?["$regex"] as? String
+        #expect(regex?.contains("$where") == true)
+    }
+
+    @Test("NOT CONTAINS value cannot break out of the nested regex string")
+    func notContainsInjectionContained() {
+        let payload = "\"}}, \"$where\": \"1==1"
+        let doc = parseFilter(
+            builder.buildFilterDocument(from: [(column: "name", op: "NOT CONTAINS", value: payload)])
+        )
+        #expect(doc != nil)
+        #expect(doc.map { Array($0.keys) } == ["name"])
+        let not = (doc?["name"] as? [String: Any])?["$not"] as? [String: Any]
+        #expect((not?["$regex"] as? String)?.contains("$where") == true)
+    }
+
+    @Test("STARTS WITH escapes embedded double quotes as data")
+    func startsWithEscapesQuote() {
+        let doc = parseFilter(
+            builder.buildFilterDocument(from: [(column: "name", op: "STARTS WITH", value: "Al\"ce")])
+        )
+        #expect(doc != nil)
+        let inner = doc?["name"] as? [String: Any]
+        #expect(inner?["$regex"] as? String == "^Al\"ce")
+    }
+
+    @Test("ENDS WITH escapes embedded double quotes as data")
+    func endsWithEscapesQuote() {
+        let doc = parseFilter(
+            builder.buildFilterDocument(from: [(column: "name", op: "ENDS WITH", value: "ce\"Al")])
+        )
+        #expect(doc != nil)
+        let inner = doc?["name"] as? [String: Any]
+        #expect(inner?["$regex"] as? String == "ce\"Al$")
+    }
+
+    @Test("CONTAINS escapes a backslash to a literal-backslash regex")
+    func containsEscapesBackslash() {
+        let doc = parseFilter(
+            builder.buildFilterDocument(from: [(column: "path", op: "CONTAINS", value: "\\")])
+        )
+        #expect(doc != nil)
+        let inner = doc?["path"] as? [String: Any]
+        #expect(inner?["$regex"] as? String == "\\\\")
+    }
+
+    @Test("REGEX preserves regex metacharacters literally")
+    func regexPreservesMetacharacters() {
+        let value = "^[A-Z].*\\d$"
+        let doc = parseFilter(
+            builder.buildFilterDocument(from: [(column: "name", op: "REGEX", value: value)])
+        )
+        #expect(doc != nil)
+        let inner = doc?["name"] as? [String: Any]
+        #expect(inner?["$regex"] as? String == value)
+    }
+
+    @Test("REGEX keeps an embedded double quote as data")
+    func regexEscapesQuote() {
+        let doc = parseFilter(
+            builder.buildFilterDocument(from: [(column: "name", op: "REGEX", value: "a\"b")])
+        )
+        #expect(doc != nil)
+        let inner = doc?["name"] as? [String: Any]
+        #expect(inner?["$regex"] as? String == "a\"b")
+    }
+
+    @Test("CONTAINS treats regex metacharacters as literals")
+    func containsTreatsMetacharactersLiterally() {
+        let doc = parseFilter(
+            builder.buildFilterDocument(from: [(column: "name", op: "CONTAINS", value: "a.b")])
+        )
+        #expect(doc != nil)
+        let inner = doc?["name"] as? [String: Any]
+        #expect(inner?["$regex"] as? String == "a\\.b")
     }
 }

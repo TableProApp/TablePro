@@ -12,8 +12,8 @@ import TableProPluginKit
 struct RedisQueryBuilder {
     // MARK: - Base Query
 
-    /// Build a SCAN command for browsing keys in a namespace.
-    /// Returns: SCAN 0 MATCH namespace:* COUNT limit
+    /// Build a key-browse command for a namespace. KEYBROWSE iterates the SCAN cursor
+    /// to completion (bounded) and honors LIMIT/OFFSET, so paging returns every key.
     func buildBaseQuery(
         namespace: String,
         sortColumns: [(columnIndex: Int, ascending: Bool)] = [],
@@ -21,26 +21,41 @@ struct RedisQueryBuilder {
         limit: Int = 200,
         offset: Int = 0
     ) -> String {
-        let pattern = namespace.isEmpty ? "*" : "\(namespace)*"
-        return "SCAN 0 MATCH \"\(pattern)\" COUNT \(limit)"
+        let pattern = namespace.isEmpty ? nil : "\(namespace)*"
+        return buildKeyBrowseQuery(pattern: pattern, typeScope: nil, limit: limit, offset: offset)
     }
 
-    /// Build a SCAN command with filters applied.
-    /// Redis does not support server-side filtering beyond pattern matching;
-    /// complex filters are applied client-side after SCAN results are returned.
+    /// Build a key-browse command from filter tuples.
+    /// A ("Key", "MATCH", glob) tuple is a raw glob typed by the user and passed verbatim.
+    /// A ("Type", "=", type) tuple selects a server-side SCAN TYPE scope.
+    /// Legacy Key operators (CONTAINS, STARTS WITH, ...) still resolve to an escaped glob.
     func buildFilteredQuery(
         namespace: String,
         filters: [(column: String, op: String, value: String)],
         logicMode: String = "and",
-        limit: Int = 200
+        limit: Int = 200,
+        offset: Int = 0
     ) -> String {
-        // Check if any filter targets the Key column with a pattern-compatible operator
-        let keyPattern = extractKeyPattern(from: filters, namespace: namespace)
-        if let pattern = keyPattern {
-            return "SCAN 0 MATCH \"\(pattern)\" COUNT \(limit)"
+        let pattern = extractBrowsePattern(from: filters, namespace: namespace)
+        let typeScope = extractTypeScope(from: filters)
+
+        guard pattern != nil || typeScope != nil else {
+            return buildBaseQuery(namespace: namespace, limit: limit, offset: offset)
         }
 
-        return buildBaseQuery(namespace: namespace, limit: limit)
+        return buildKeyBrowseQuery(pattern: pattern, typeScope: typeScope, limit: limit, offset: offset)
+    }
+
+    func buildKeyBrowseQuery(pattern: String?, typeScope: String?, limit: Int, offset: Int) -> String {
+        var command = "KEYBROWSE"
+        if let pattern, !pattern.isEmpty {
+            command += " MATCH \"\(quoteForCommand(pattern))\""
+        }
+        if let typeScope, !typeScope.isEmpty {
+            command += " TYPE \(typeScope)"
+        }
+        command += " LIMIT \(limit) OFFSET \(offset)"
+        return command
     }
 
     /// Build a count command for a namespace.
@@ -56,6 +71,43 @@ struct RedisQueryBuilder {
     }
 
     // MARK: - Private Helpers
+
+    /// Resolve the SCAN MATCH glob from key-column filters.
+    /// A MATCH op carries a raw glob the user typed; legacy operators build an escaped glob.
+    private func extractBrowsePattern(
+        from filters: [(column: String, op: String, value: String)],
+        namespace: String
+    ) -> String? {
+        let keyFilters = filters.filter { $0.column == "Key" }
+        guard keyFilters.count == 1, let filter = keyFilters.first else { return nil }
+
+        let prefix = namespace.isEmpty ? "" : namespace
+
+        if filter.op == "MATCH" {
+            return prefix.isEmpty ? filter.value : "\(prefix)\(filter.value)"
+        }
+        return extractKeyPattern(from: filters, namespace: namespace)
+    }
+
+    private func extractTypeScope(
+        from filters: [(column: String, op: String, value: String)]
+    ) -> String? {
+        let typeFilters = filters.filter { $0.column == "Type" && $0.op == "=" }
+        guard typeFilters.count == 1, let filter = typeFilters.first, !filter.value.isEmpty else { return nil }
+        return filter.value.lowercased()
+    }
+
+    private func quoteForCommand(_ str: String) -> String {
+        var result = ""
+        for char in str {
+            switch char {
+            case "\\": result += "\\\\"
+            case "\"": result += "\\\""
+            default: result.append(char)
+            }
+        }
+        return result
+    }
 
     /// Try to extract a SCAN-compatible glob pattern from key-column filters
     private func extractKeyPattern(

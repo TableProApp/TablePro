@@ -3,9 +3,20 @@ title: Vim Mode
 description: Modal editing in the SQL editor.
 ---
 
-# Vim Mode
-
 Turn on vim mode in **Settings > Editor > Vim mode**. A badge next to the editor shows the current mode.
+
+<Frame caption="Mode badge in the SQL editor">
+  <img
+    className="block dark:hidden"
+    src="/images/vim-mode-badge.png"
+    alt="Vim mode badge"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/vim-mode-badge-dark.png"
+    alt="Vim mode badge"
+  />
+</Frame>
 
 ## Modes
 
@@ -39,7 +50,7 @@ Turn on vim mode in **Settings > Editor > Vim mode**. A badge next to the editor
 | `W` `B` `E` | Same, whitespace-only word boundary |
 | `ge` `gE` | Prev word end, prev WORD end |
 
-### Lines and pages
+### Lines
 
 | Key | Goes to |
 |-----|---------|
@@ -47,6 +58,7 @@ Turn on vim mode in **Settings > Editor > Vim mode**. A badge next to the editor
 | `G` | Last line |
 | `5G` | Line 5 |
 | `H` `M` `L` | Top, middle, bottom of view |
+| `gj` `gk` | Same as `j` `k` (logical lines, not wrapped display lines) |
 | `%` | Matching `()`, `[]`, `{}` |
 
 ### Find a character
@@ -156,7 +168,7 @@ Marks shift when you insert or delete text before them.
 | `n` `N` | Next, previous match |
 | `*` `#` | Search word under cursor, forward or back |
 
-Searches wrap around.
+The pattern is a literal, case-sensitive substring, not a regex. Searches wrap around.
 
 ## Repeat and undo
 
@@ -181,15 +193,17 @@ Searches wrap around.
 
 Recursion is capped at 50 to keep self-calling macros safe.
 
-## Scroll
+## Control keys
 
-| Key | Action |
-|-----|--------|
-| `Ctrl+D` `Ctrl+U` | Half page down, up |
-| `Ctrl+F` `Ctrl+B` | Full page down, up |
-| `Ctrl+E` `Ctrl+Y` | One line down, up |
-| `zt` `zz` `zb` | Put current line at top, middle, bottom |
-| `gj` `gk` | Down, up by visual line |
+`Ctrl+R` in normal mode is the only control combination vim mode intercepts. It redoes.
+
+Every other control combination passes straight through to the editor, which applies its own binding:
+
+- No scrolling from the keyboard. `Ctrl+D`, `Ctrl+U`, `Ctrl+F`, `Ctrl+B`, `Ctrl+E`, and `Ctrl+Y` do not move the viewport. `Ctrl+D` deletes the character after the cursor and `Ctrl+E` jumps to the end of the paragraph.
+- No increment or decrement. `Ctrl+A` and `Ctrl+X` leave the number under the cursor alone; `Ctrl+A` jumps to the start of the paragraph.
+- No insert-mode editing keys. `Ctrl+W`, `Ctrl+U`, `Ctrl+T`, and `Ctrl+D` do not delete a word, delete to line start, indent, or outdent. `Ctrl+H` still backspaces, through the editor's binding rather than vim's.
+
+`zt`, `zz`, and `zb` are swallowed without moving the viewport.
 
 ## Visual mode
 
@@ -203,25 +217,15 @@ Motions extend the selection. Then:
 | `J` `gJ` | Join lines |
 | `~` `u` `U` | Toggle, lower, upper case |
 | `r{c}` | Replace each char with `{c}` |
-| `>` `<` | Indent, outdent |
 | `o` | Move cursor to the other end |
 | `I` `A` | Insert at start, end of selection |
 | `gv` | Reselect the last visual selection |
 
-## Insert mode shortcuts
+Indent and outdent work in normal mode only (`>>`, `<<`, `>{m}`, `<{m}`).
 
-| Key | Action |
-|-----|--------|
-| `Ctrl+W` | Delete the previous word |
-| `Ctrl+U` | Delete back to line start |
-| `Ctrl+H` | Backspace |
-| `Ctrl+T` | Indent line |
-| `Ctrl+D` | Outdent line |
-| `Esc` | Back to normal |
+## Insert mode
 
-## Numbers
-
-`Ctrl+A` adds one to the next number on the line. `Ctrl+X` subtracts one. Both honour a count (`5 Ctrl+A`), negative numbers, and `0x` hex.
+`Esc` goes back to normal mode. Nothing else is intercepted while you type; see [Control keys](#control-keys).
 
 ## Command line
 
@@ -229,6 +233,5 @@ Motions extend the selection. Then:
 |---------|--------|
 | `:w` | Run the current query |
 | `:q` | Close the tab |
-| `:wq` `:x` | Both |
 
-`/` and `?` are search. Other `:` commands are parsed and ignored.
+`/` and `?` are search. Other `:` commands, including `:wq` and `:x`, are parsed and ignored.

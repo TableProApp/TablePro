@@ -14,6 +14,7 @@ extension TableViewCoordinator {
 
     func tableViewColumnDidMove(_ notification: Notification) {
         guard !isRebuildingColumns else { return }
+        invalidateColumnIndexCache()
         layoutPersistTask?.cancel()
         persistColumnLayoutToStorage()
     }
@@ -27,16 +28,33 @@ extension TableViewCoordinator {
         }
     }
 
+    func currentRowSelection(fallbackRow: Int? = nil) -> Set<Int> {
+        if !selectionController.isEmpty {
+            return Set(selectionController.selection.affectedRows)
+        }
+        if !selectedRowIndices.isEmpty {
+            return selectedRowIndices
+        }
+        if let fallbackRow, fallbackRow >= 0 {
+            return [fallbackRow]
+        }
+        return []
+    }
+
     func tableViewSelectionDidChange(_ notification: Notification) {
         guard let tableView = notification.object as? NSTableView else { return }
 
         let previousSelection = selectedRowIndices
         let newSelection = Set(tableView.selectedRowIndexes.map { $0 })
-        if !isSyncingSelection && newSelection != previousSelection {
+        if newSelection != previousSelection {
             selectedRowIndices = newSelection
         }
 
         guard let keyTableView = tableView as? KeyHandlingTableView else { return }
+
+        if !isApplyingProgrammaticRowSelection, !newSelection.isEmpty, !selectionController.isEmpty {
+            selectionController.clear()
+        }
 
         let newFocus = resolvedFocus(
             previous: previousSelection,

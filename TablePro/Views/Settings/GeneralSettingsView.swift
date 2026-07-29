@@ -9,12 +9,12 @@ import SwiftUI
 struct GeneralSettingsView: View {
     @Binding var settings: GeneralSettings
     @Binding var tabSettings: TabSettings
-    @Binding var historySettings: HistorySettings
     var updaterBridge: UpdaterBridge
     var onResetAll: () -> Void
 
     @State private var initialLanguage: AppLanguage?
     @State private var showResetConfirmation = false
+    @AppStorage(SidebarPersistenceKey.defaultLayout) private var defaultSidebarLayout: SidebarLayout = .flat
 
     private static let standardTimeouts = [10, 20, 30, 40, 50, 60, 90, 120, 180, 300, 600]
 
@@ -54,6 +54,20 @@ struct GeneralSettingsView: View {
                     .help("When enabled, tabs from different connections share the same window instead of opening separate windows.")
             }
 
+            Section("Sidebar") {
+                Toggle("Show recent tables", isOn: $settings.showRecentTables)
+                    .help("Adds a Recent section at the top of the Tables sidebar with the last tables you opened per connection and database.")
+
+                Toggle("Show object comments", isOn: $settings.showObjectComments)
+                    .help("Shows database object comments next to tables in the sidebar and in grid column headers.")
+
+                Picker("Default layout for new connections:", selection: $defaultSidebarLayout) {
+                    Text("List").tag(SidebarLayout.flat)
+                    Text("Tree").tag(SidebarLayout.tree)
+                }
+                .help(String(localized: "Layout for new connections on servers that support a database tree. Switch the current connection from the View menu."))
+            }
+
             Section("Query Execution") {
                 Picker("Query timeout:", selection: $settings.queryTimeoutSeconds) {
                     Text("No limit").tag(0)
@@ -64,7 +78,9 @@ struct GeneralSettingsView: View {
                 .help(String(localized: "Maximum time to wait for a query to complete. Set to 0 for no limit. Applied to new connections."))
             }
 
-            HistorySection(settings: $historySettings)
+            CommandLineToolSection()
+
+            TrustedExternalConnectionsSection()
 
             Section("Software Update") {
                 Toggle("Automatically check for updates", isOn: $settings.automaticallyCheckForUpdates)
@@ -111,7 +127,6 @@ struct GeneralSettingsView: View {
     GeneralSettingsView(
         settings: .constant(.default),
         tabSettings: .constant(.default),
-        historySettings: .constant(.default),
         updaterBridge: UpdaterBridge.shared,
         onResetAll: {}
     )

@@ -35,6 +35,7 @@ extension TextLayoutManager: NSTextStorageDelegate {
         range editedRange: NSRange,
         changeInLength delta: Int
     ) {
+        guard processesEdits else { return }
         guard editedMask.contains(.editedCharacters) else {
             if editedMask.contains(.editedAttributes) && delta == 0 {
                 invalidateLayoutForRange(editedRange)
@@ -80,42 +81,44 @@ extension TextLayoutManager: NSTextStorageDelegate {
     /// - Parameter range: The range of the string that was inserted into the text storage.
     private func insertNewLines(for range: NSRange) {
         guard !range.isEmpty, let string = textStorage?.substring(from: range) as? NSString else { return }
-        // Loop through each line being inserted, inserting & splitting where necessary
+        // Loop through each line being inserted, inserting & splitting where necessary. Each line is described by its
+        // length and whether it ends in a line break rather than a materialized substring, so a large paste does not
+        // allocate one bridged `String` per line just to test its terminator.
         var index = 0
         while let nextLine = string.getNextLine(startingAt: index) {
-            let lineRange = NSRange(start: index, end: nextLine.max)
-            applyLineInsert(string.substring(with: lineRange) as NSString, at: range.location + index)
+            applyLineInsert(length: nextLine.max - index, endsInLineBreak: true, at: range.location + index)
             index = nextLine.max
         }
 
         if index < string.length {
             // Get the last line.
-            applyLineInsert(string.substring(from: index) as NSString, at: range.location + index)
+            applyLineInsert(length: string.length - index, endsInLineBreak: false, at: range.location + index)
         }
     }
 
     /// Applies a line insert to the internal line storage tree.
     /// - Parameters:
-    ///   - insertedString: The string being inserted.
+    ///   - length: The length of the line being inserted.
+    ///   - endsInLineBreak: Whether the inserted line is terminated by a line break.
     ///   - location: The location the string is being inserted into.
-    private func applyLineInsert(_ insertedString: NSString, at location: Int) {
-        if LineEnding(line: insertedString as String) != nil {
+    private func applyLineInsert(length: Int, endsInLineBreak: Bool, at location: Int) {
+        if endsInLineBreak {
             if location == lineStorage.length {
                 // Insert a new line at the end of the document, need to insert a new line 'cause there's nothing to
                 // split. Also, append the new text to the last line.
-                lineStorage.update(atOffset: location, delta: insertedString.length, deltaHeight: 0.0)
+                lineStorage.update(atOffset: location, delta: length, deltaHeight: 0.0)
                 lineStorage.insert(
                     line: TextLine(),
-                    atOffset: location + insertedString.length,
+                    atOffset: location + length,
                     length: 0,
                     height: estimateLineHeight()
                 )
             } else {
                 // Need to split the line inserting into and create a new line with the split section of the line
                 guard let linePosition = lineStorage.getLine(atOffset: location) else { return }
-                let splitLocation = location + insertedString.length
+                let splitLocation = location + length
                 let splitLength = linePosition.range.max - location
-                let lineDelta = insertedString.length - splitLength // The difference in the line being edited
+                let lineDelta = length - splitLength // The difference in the line being edited
                 if lineDelta != 0 {
                     lineStorage.update(atOffset: location, delta: lineDelta, deltaHeight: 0.0)
                 }
@@ -128,7 +131,7 @@ extension TextLayoutManager: NSTextStorageDelegate {
                 )
             }
         } else {
-            lineStorage.update(atOffset: location, delta: insertedString.length, deltaHeight: 0.0)
+            lineStorage.update(atOffset: location, delta: length, deltaHeight: 0.0)
         }
     }
 }

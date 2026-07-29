@@ -77,7 +77,7 @@ public struct FilterSQLGenerator: Sendable {
     private var likeEscape: String {
         switch dialect.likeEscapeStyle {
         case .explicit:
-            return " ESCAPE '\\'"
+            return " ESCAPE '!'"
         case .implicit:
             return ""
         }
@@ -103,11 +103,20 @@ public struct FilterSQLGenerator: Sendable {
         var result = value
             .replacingOccurrences(of: "'", with: "''")
             .replacingOccurrences(of: "\0", with: "")
-        if dialect.requiresBackslashEscaping {
-            result = result.replacingOccurrences(of: "\\", with: "\\\\")
+        switch dialect.likeEscapeStyle {
+        case .explicit:
+            result = result
+                .replacingOccurrences(of: "!", with: "!!")
+                .replacingOccurrences(of: "%", with: "!%")
+                .replacingOccurrences(of: "_", with: "!_")
+        case .implicit:
+            if dialect.requiresBackslashEscaping {
+                result = result.replacingOccurrences(of: "\\", with: "\\\\")
+            }
+            result = result
+                .replacingOccurrences(of: "%", with: "\\%")
+                .replacingOccurrences(of: "_", with: "\\_")
         }
-        result = result.replacingOccurrences(of: "%", with: "\\%")
-        result = result.replacingOccurrences(of: "_", with: "\\_")
         return result
     }
 

@@ -22,11 +22,11 @@ internal enum EtcdError: Error, LocalizedError {
         case .notConnected:
             return String(localized: "Not connected to etcd")
         case .connectionFailed(let detail):
-            return String(localized: "Connection failed: \(detail)")
+            return String(format: String(localized: "Connection failed: %@"), detail)
         case .serverError(let detail):
-            return String(localized: "Server error: \(detail)")
+            return String(format: String(localized: "Server error: %@"), detail)
         case .authFailed(let detail):
-            return String(localized: "Authentication failed: \(detail)")
+            return String(format: String(localized: "Authentication failed: %@"), detail)
         case .requestCancelled:
             return String(localized: "Request was cancelled")
         }
@@ -315,11 +315,16 @@ internal final class EtcdHttpClient: @unchecked Sendable {
     private var authToken: String?
     private var _isAuthenticating = false
     private var apiPrefix = "v3"
+    private let queryTimeout = HttpQueryTimeoutBox()
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "EtcdHttpClient")
 
     init(config: DriverConnectionConfig) {
         self.config = config
+    }
+
+    func setQueryTimeout(_ seconds: Int) {
+        queryTimeout.set(serverTimeoutSeconds: seconds)
     }
 
     // MARK: - Base URL
@@ -347,8 +352,8 @@ internal final class EtcdHttpClient: @unchecked Sendable {
         let tlsMode = config.additionalFields["etcdTlsMode"] ?? "Disabled"
 
         let urlConfig = URLSessionConfiguration.default
-        urlConfig.timeoutIntervalForRequest = 30
-        urlConfig.timeoutIntervalForResource = 300
+        urlConfig.timeoutIntervalForRequest = HttpQueryTimeout.sessionBootstrapRequestTimeout
+        urlConfig.timeoutIntervalForResource = HttpQueryTimeout.sessionResourceTimeout
 
         let delegate: URLSessionDelegate?
         switch tlsMode {
@@ -718,6 +723,7 @@ internal final class EtcdHttpClient: @unchecked Sendable {
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
+        request.timeoutInterval = queryTimeout.requestTimeoutInterval
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         if let token {
             request.setValue(token, forHTTPHeaderField: "Authorization")
@@ -1060,7 +1066,8 @@ internal final class EtcdHttpClient: @unchecked Sendable {
             guard status == errSecSuccess,
                   let itemArray = items as? [[String: Any]],
                   let firstItem = itemArray.first,
-                  let identityRef = firstItem[kSecImportItemIdentity as String] else {
+                  let identityRef = firstItem[kSecImportItemIdentity as String],
+                  CFGetTypeID(identityRef as CFTypeRef) == SecIdentityGetTypeID() else {
                 completionHandler(.cancelAuthenticationChallenge, nil)
                 return
             }

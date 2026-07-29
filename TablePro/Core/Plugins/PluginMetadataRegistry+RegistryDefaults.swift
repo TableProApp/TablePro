@@ -9,502 +9,12 @@ import TableProPluginKit
 extension PluginMetadataRegistry {
     // swiftlint:disable function_body_length
     func registryPluginDefaults() -> [(typeId: String, snapshot: PluginMetadataSnapshot)] {
-        let clickhouseDialect = SQLDialectDescriptor(
-            identifierQuote: "`",
-            keywords: [
-                "SELECT", "FROM", "WHERE", "JOIN", "INNER", "LEFT", "RIGHT", "OUTER", "CROSS", "FULL",
-                "ON", "USING", "AND", "OR", "NOT", "IN", "LIKE", "BETWEEN", "AS",
-                "ORDER", "BY", "GROUP", "HAVING", "LIMIT", "OFFSET",
-                "INSERT", "INTO", "VALUES", "UPDATE", "SET", "DELETE",
-                "CREATE", "ALTER", "DROP", "TABLE", "INDEX", "VIEW", "DATABASE", "SCHEMA",
-                "PRIMARY", "KEY", "FOREIGN", "REFERENCES", "UNIQUE", "CONSTRAINT",
-                "ADD", "MODIFY", "COLUMN", "RENAME",
-                "NULL", "IS", "ASC", "DESC", "DISTINCT", "ALL", "ANY", "SOME",
-                "CASE", "WHEN", "THEN", "ELSE", "END", "COALESCE",
-                "UNION", "INTERSECT", "EXCEPT",
-                "FINAL", "SAMPLE", "PREWHERE", "GLOBAL", "FORMAT", "SETTINGS",
-                "OPTIMIZE", "SYSTEM", "PARTITION", "TTL", "ENGINE", "CODEC",
-                "MATERIALIZED", "WITH"
-            ],
-            functions: [
-                "COUNT", "SUM", "AVG", "MAX", "MIN",
-                "CONCAT", "SUBSTRING", "LEFT", "RIGHT", "LENGTH", "LOWER", "UPPER",
-                "TRIM", "LTRIM", "RTRIM", "REPLACE",
-                "NOW", "TODAY", "YESTERDAY",
-                "CAST",
-                "UNIQ", "UNIQEXACT", "ARGMIN", "ARGMAX", "GROUPARRAY",
-                "TOSTRING", "TOINT32", "FORMATDATETIME",
-                "IF", "MULTIIF",
-                "ARRAYMAP", "ARRAYJOIN",
-                "MATCH", "CURRENTDATABASE", "VERSION",
-                "QUANTILE", "TOPK"
-            ],
-            dataTypes: [
-                "INT8", "INT16", "INT32", "INT64", "INT128", "INT256",
-                "UINT8", "UINT16", "UINT32", "UINT64", "UINT128", "UINT256",
-                "FLOAT32", "FLOAT64",
-                "DECIMAL", "DECIMAL32", "DECIMAL64", "DECIMAL128", "DECIMAL256",
-                "STRING", "FIXEDSTRING", "UUID",
-                "DATE", "DATE32", "DATETIME", "DATETIME64",
-                "ARRAY", "TUPLE", "MAP",
-                "NULLABLE", "LOWCARDINALITY",
-                "ENUM8", "ENUM16",
-                "IPV4", "IPV6",
-                "JSON", "BOOL"
-            ],
-            tableOptions: [
-                "ENGINE=MergeTree()", "ORDER BY", "PARTITION BY", "SETTINGS"
-            ],
-            regexSyntax: .match,
-            booleanLiteralStyle: .numeric,
-            likeEscapeStyle: .implicit,
-            paginationStyle: .limit,
-            requiresBackslashEscaping: true
-        )
-
-        let clickhouseColumnTypes: [String: [String]] = [
-            "Integer": [
-                "UInt8", "UInt16", "UInt32", "UInt64", "UInt128", "UInt256",
-                "Int8", "Int16", "Int32", "Int64", "Int128", "Int256"
-            ],
-            "Float": ["Float32", "Float64", "Decimal", "Decimal32", "Decimal64", "Decimal128", "Decimal256"],
-            "String": ["String", "FixedString", "Enum8", "Enum16"],
-            "Date": ["Date", "Date32", "DateTime", "DateTime64"],
-            "Binary": [],
-            "Boolean": ["Bool"],
-            "JSON": ["JSON"],
-            "UUID": ["UUID"],
-            "Array": ["Array"],
-            "Map": ["Map"],
-            "Tuple": ["Tuple"],
-            "IP": ["IPv4", "IPv6"],
-            "Geo": ["Point", "Ring", "Polygon", "MultiPolygon"]
-        ]
-
-        let mssqlDialect = SQLDialectDescriptor(
-            identifierQuote: "[",
-            keywords: [
-                "SELECT", "FROM", "WHERE", "JOIN", "INNER", "LEFT", "RIGHT", "OUTER", "CROSS", "FULL",
-                "ON", "USING", "AND", "OR", "NOT", "IN", "LIKE", "BETWEEN", "AS",
-                "ORDER", "BY", "GROUP", "HAVING", "TOP", "OFFSET", "FETCH", "NEXT", "ROWS", "ONLY",
-                "INSERT", "INTO", "VALUES", "UPDATE", "SET", "DELETE",
-                "CREATE", "ALTER", "DROP", "TABLE", "INDEX", "VIEW", "DATABASE", "SCHEMA",
-                "PRIMARY", "KEY", "FOREIGN", "REFERENCES", "UNIQUE", "CONSTRAINT",
-                "ADD", "COLUMN", "RENAME", "EXEC",
-                "NULL", "IS", "ASC", "DESC", "DISTINCT", "ALL", "ANY", "SOME",
-                "IDENTITY", "NOLOCK", "WITH", "ROWCOUNT", "NEWID",
-                "CASE", "WHEN", "THEN", "ELSE", "END", "COALESCE", "NULLIF", "IIF",
-                "UNION", "INTERSECT", "EXCEPT",
-                "DECLARE", "BEGIN", "COMMIT", "ROLLBACK", "TRANSACTION",
-                "PRINT", "GO", "EXECUTE",
-                "OVER", "PARTITION", "ROW_NUMBER", "RANK", "DENSE_RANK",
-                "RETURNING", "OUTPUT", "INSERTED", "DELETED"
-            ],
-            functions: [
-                "COUNT", "SUM", "AVG", "MAX", "MIN", "STRING_AGG",
-                "CONCAT", "SUBSTRING", "LEFT", "RIGHT", "LEN", "LOWER", "UPPER",
-                "TRIM", "LTRIM", "RTRIM", "REPLACE", "CHARINDEX", "PATINDEX",
-                "STUFF", "FORMAT",
-                "GETDATE", "GETUTCDATE", "SYSDATETIME", "CURRENT_TIMESTAMP",
-                "DATEADD", "DATEDIFF", "DATENAME", "DATEPART",
-                "CONVERT", "CAST",
-                "ROUND", "CEILING", "FLOOR", "ABS", "POWER", "SQRT", "RAND",
-                "ISNULL", "ISNUMERIC", "ISDATE", "COALESCE", "NEWID",
-                "OBJECT_ID", "OBJECT_NAME", "SCHEMA_NAME", "DB_NAME",
-                "SCOPE_IDENTITY", "@@IDENTITY", "@@ROWCOUNT"
-            ],
-            dataTypes: [
-                "INT", "INTEGER", "TINYINT", "SMALLINT", "BIGINT",
-                "DECIMAL", "NUMERIC", "FLOAT", "REAL", "MONEY", "SMALLMONEY",
-                "CHAR", "VARCHAR", "NCHAR", "NVARCHAR", "TEXT", "NTEXT",
-                "BINARY", "VARBINARY", "IMAGE",
-                "DATE", "TIME", "DATETIME", "DATETIME2", "SMALLDATETIME", "DATETIMEOFFSET",
-                "BIT", "UNIQUEIDENTIFIER", "XML", "SQL_VARIANT",
-                "ROWVERSION", "TIMESTAMP", "HIERARCHYID"
-            ],
-            tableOptions: [
-                "ON", "CLUSTERED", "NONCLUSTERED", "WITH", "TEXTIMAGE_ON"
-            ],
-            regexSyntax: .unsupported,
-            booleanLiteralStyle: .numeric,
-            likeEscapeStyle: .explicit,
-            paginationStyle: .offsetFetch,
-            autoLimitStyle: .top
-        )
-
-        let mssqlColumnTypes: [String: [String]] = [
-            "Integer": ["TINYINT", "SMALLINT", "INT", "BIGINT"],
-            "Float": ["FLOAT", "REAL", "DECIMAL", "NUMERIC", "MONEY", "SMALLMONEY"],
-            "String": ["CHAR", "VARCHAR", "TEXT", "NCHAR", "NVARCHAR", "NTEXT"],
-            "Date": ["DATE", "TIME", "DATETIME", "DATETIME2", "SMALLDATETIME", "DATETIMEOFFSET"],
-            "Binary": ["BINARY", "VARBINARY", "IMAGE"],
-            "Boolean": ["BIT"],
-            "XML": ["XML"],
-            "UUID": ["UNIQUEIDENTIFIER"],
-            "Spatial": ["GEOMETRY", "GEOGRAPHY"],
-            "Other": ["SQL_VARIANT", "TIMESTAMP", "ROWVERSION", "CURSOR", "TABLE", "HIERARCHYID"]
-        ]
-
-        let oracleDialect = SQLDialectDescriptor(
-            identifierQuote: "\"",
-            keywords: [
-                "SELECT", "FROM", "WHERE", "JOIN", "INNER", "LEFT", "RIGHT", "OUTER", "CROSS", "FULL",
-                "ON", "USING", "AND", "OR", "NOT", "IN", "LIKE", "BETWEEN", "AS",
-                "ORDER", "BY", "GROUP", "HAVING", "FETCH", "FIRST", "ROWS", "ONLY", "OFFSET",
-                "INSERT", "INTO", "VALUES", "UPDATE", "SET", "DELETE", "MERGE",
-                "CREATE", "ALTER", "DROP", "TABLE", "INDEX", "VIEW", "DATABASE", "SCHEMA",
-                "PRIMARY", "KEY", "FOREIGN", "REFERENCES", "UNIQUE", "CONSTRAINT",
-                "ADD", "MODIFY", "COLUMN", "RENAME",
-                "NULL", "IS", "ASC", "DESC", "DISTINCT", "ALL", "ANY", "SOME",
-                "SEQUENCE", "SYNONYM", "GRANT", "REVOKE", "TRIGGER", "PROCEDURE",
-                "CASE", "WHEN", "THEN", "ELSE", "END", "COALESCE", "NULLIF", "DECODE",
-                "UNION", "INTERSECT", "MINUS",
-                "DECLARE", "BEGIN", "COMMIT", "ROLLBACK", "SAVEPOINT",
-                "EXECUTE", "IMMEDIATE",
-                "OVER", "PARTITION", "ROW_NUMBER", "RANK", "DENSE_RANK",
-                "RETURNING", "CONNECT", "LEVEL", "START", "WITH", "PRIOR",
-                "ROWNUM", "ROWID", "DUAL", "SYSDATE", "SYSTIMESTAMP"
-            ],
-            functions: [
-                "COUNT", "SUM", "AVG", "MAX", "MIN", "LISTAGG",
-                "CONCAT", "SUBSTR", "INSTR", "LENGTH", "LOWER", "UPPER",
-                "TRIM", "LTRIM", "RTRIM", "REPLACE", "LPAD", "RPAD",
-                "INITCAP", "TRANSLATE",
-                "SYSDATE", "SYSTIMESTAMP", "CURRENT_DATE", "CURRENT_TIMESTAMP",
-                "ADD_MONTHS", "MONTHS_BETWEEN", "LAST_DAY", "NEXT_DAY",
-                "EXTRACT", "TO_DATE", "TO_CHAR", "TO_NUMBER", "TO_TIMESTAMP",
-                "TRUNC", "ROUND",
-                "CEIL", "FLOOR", "ABS", "POWER", "SQRT", "MOD", "SIGN",
-                "NVL", "NVL2", "DECODE", "COALESCE", "NULLIF",
-                "GREATEST", "LEAST", "CAST",
-                "SYS_GUID", "DBMS_RANDOM.VALUE", "USER", "SYS_CONTEXT"
-            ],
-            dataTypes: [
-                "NUMBER", "INTEGER", "SMALLINT", "FLOAT", "BINARY_FLOAT", "BINARY_DOUBLE",
-                "CHAR", "VARCHAR2", "NCHAR", "NVARCHAR2", "CLOB", "NCLOB", "LONG",
-                "BLOB", "RAW", "LONG RAW", "BFILE",
-                "DATE", "TIMESTAMP", "TIMESTAMP WITH TIME ZONE", "TIMESTAMP WITH LOCAL TIME ZONE",
-                "INTERVAL YEAR TO MONTH", "INTERVAL DAY TO SECOND",
-                "BOOLEAN", "ROWID", "UROWID", "XMLTYPE", "SDO_GEOMETRY"
-            ],
-            tableOptions: [
-                "TABLESPACE", "PCTFREE", "INITRANS"
-            ],
-            regexSyntax: .regexpLike,
-            booleanLiteralStyle: .numeric,
-            likeEscapeStyle: .explicit,
-            paginationStyle: .offsetFetch,
-            offsetFetchOrderBy: "ORDER BY 1",
-            autoLimitStyle: .fetchFirst
-        )
-
-        let oracleColumnTypes: [String: [String]] = [
-            "Integer": ["NUMBER", "INTEGER", "INT", "SMALLINT"],
-            "Float": ["FLOAT", "BINARY_FLOAT", "BINARY_DOUBLE", "DECIMAL", "NUMERIC", "REAL", "DOUBLE PRECISION"],
-            "String": ["VARCHAR2", "NVARCHAR2", "CHAR", "NCHAR", "CLOB", "NCLOB", "LONG"],
-            "Date": [
-                "DATE", "TIMESTAMP", "TIMESTAMP WITH TIME ZONE", "TIMESTAMP WITH LOCAL TIME ZONE",
-                "INTERVAL YEAR TO MONTH", "INTERVAL DAY TO SECOND"
-            ],
-            "Binary": ["RAW", "LONG RAW", "BLOB", "BFILE"],
-            "Boolean": [],
-            "XML": ["XMLTYPE"],
-            "Spatial": ["SDO_GEOMETRY"],
-            "Other": ["ROWID", "UROWID"]
-        ]
-
-        let duckdbDialect = SQLDialectDescriptor(
-            identifierQuote: "\"",
-            keywords: [
-                "SELECT", "FROM", "WHERE", "JOIN", "INNER", "LEFT", "RIGHT", "OUTER", "CROSS", "FULL",
-                "ON", "USING", "AND", "OR", "NOT", "IN", "LIKE", "ILIKE", "BETWEEN", "AS",
-                "ORDER", "BY", "GROUP", "HAVING", "LIMIT", "OFFSET", "FETCH", "FIRST", "ROWS", "ONLY",
-                "INSERT", "INTO", "VALUES", "UPDATE", "SET", "DELETE",
-                "CREATE", "ALTER", "DROP", "TABLE", "INDEX", "VIEW", "DATABASE", "SCHEMA",
-                "PRIMARY", "KEY", "FOREIGN", "REFERENCES", "UNIQUE", "CONSTRAINT",
-                "ADD", "MODIFY", "COLUMN", "RENAME",
-                "NULL", "IS", "ASC", "DESC", "DISTINCT", "ALL", "ANY", "SOME",
-                "CASE", "WHEN", "THEN", "ELSE", "END", "COALESCE", "NULLIF",
-                "UNION", "INTERSECT", "EXCEPT",
-                "COPY", "PRAGMA", "DESCRIBE", "SUMMARIZE", "PIVOT", "UNPIVOT",
-                "QUALIFY", "SAMPLE", "TABLESAMPLE", "RETURNING",
-                "INSTALL", "LOAD", "FORCE", "ATTACH", "DETACH",
-                "EXPORT", "IMPORT",
-                "WITH", "RECURSIVE", "MATERIALIZED",
-                "EXPLAIN", "ANALYZE",
-                "WINDOW", "OVER", "PARTITION"
-            ],
-            functions: [
-                "COUNT", "SUM", "AVG", "MAX", "MIN",
-                "LIST_AGG", "STRING_AGG", "ARRAY_AGG",
-                "CONCAT", "SUBSTRING", "LEFT", "RIGHT", "LENGTH", "LOWER", "UPPER",
-                "TRIM", "LTRIM", "RTRIM", "REPLACE", "SPLIT_PART",
-                "NOW", "CURRENT_DATE", "CURRENT_TIME", "CURRENT_TIMESTAMP",
-                "DATE_TRUNC", "EXTRACT", "AGE", "TO_CHAR", "TO_DATE",
-                "EPOCH_MS",
-                "ROUND", "CEIL", "CEILING", "FLOOR", "ABS", "MOD", "POW", "POWER", "SQRT",
-                "CAST",
-                "REGEXP_MATCHES", "READ_CSV", "READ_PARQUET", "READ_JSON",
-                "GLOB", "STRUCT_PACK", "LIST_VALUE", "MAP", "UNNEST",
-                "GENERATE_SERIES", "RANGE"
-            ],
-            dataTypes: [
-                "INTEGER", "BIGINT", "HUGEINT", "UHUGEINT",
-                "DOUBLE", "FLOAT", "DECIMAL",
-                "VARCHAR", "TEXT", "BLOB",
-                "BOOLEAN",
-                "DATE", "TIME", "TIMESTAMP", "TIMESTAMP WITH TIME ZONE", "INTERVAL",
-                "UUID", "JSON",
-                "LIST", "MAP", "STRUCT", "UNION", "ENUM", "BIT"
-            ],
-            regexSyntax: .regexpMatches,
-            booleanLiteralStyle: .truefalse,
-            likeEscapeStyle: .explicit,
-            paginationStyle: .limit
-        )
-
-        let duckdbColumnTypes: [String: [String]] = [
-            "Integer": [
-                "TINYINT", "SMALLINT", "INTEGER", "BIGINT", "HUGEINT",
-                "UTINYINT", "USMALLINT", "UINTEGER", "UBIGINT"
-            ],
-            "Float": ["FLOAT", "DOUBLE", "DECIMAL", "NUMERIC"],
-            "String": ["VARCHAR", "TEXT", "CHAR", "BPCHAR"],
-            "Date": [
-                "DATE", "TIME", "TIMESTAMP", "TIMESTAMPTZ",
-                "TIMESTAMP_S", "TIMESTAMP_MS", "TIMESTAMP_NS", "INTERVAL"
-            ],
-            "Binary": ["BLOB", "BYTEA", "BIT", "BITSTRING"],
-            "Boolean": ["BOOLEAN"],
-            "JSON": ["JSON"],
-            "UUID": ["UUID"],
-            "List": ["LIST"],
-            "Struct": ["STRUCT"],
-            "Map": ["MAP"],
-            "Union": ["UNION"],
-            "Enum": ["ENUM"]
-        ]
-
-        let cassandraDialect = SQLDialectDescriptor(
-            identifierQuote: "\"",
-            keywords: [
-                "SELECT", "FROM", "WHERE", "AND", "OR", "NOT", "IN", "AS",
-                "ORDER", "BY", "LIMIT",
-                "INSERT", "INTO", "VALUES", "UPDATE", "SET", "DELETE",
-                "CREATE", "ALTER", "DROP", "TABLE", "INDEX", "VIEW",
-                "PRIMARY", "KEY", "ADD", "COLUMN", "RENAME",
-                "NULL", "IS", "ASC", "DESC", "DISTINCT",
-                "CASE", "WHEN", "THEN", "ELSE", "END",
-                "KEYSPACE", "USE", "TRUNCATE", "BATCH", "GRANT", "REVOKE",
-                "CLUSTERING", "PARTITION", "TTL", "WRITETIME",
-                "ALLOW FILTERING", "IF NOT EXISTS", "IF EXISTS",
-                "USING TIMESTAMP", "USING TTL",
-                "MATERIALIZED VIEW", "CONTAINS", "FROZEN", "COUNTER", "TOKEN"
-            ],
-            functions: [
-                "COUNT", "SUM", "AVG", "MAX", "MIN",
-                "NOW", "UUID", "TOTIMESTAMP", "TOKEN", "TTL", "WRITETIME",
-                "MINTIMEUUID", "MAXTIMEUUID", "TODATE", "TOUNIXTIMESTAMP",
-                "CAST"
-            ],
-            dataTypes: [
-                "TEXT", "VARCHAR", "ASCII",
-                "INT", "BIGINT", "SMALLINT", "TINYINT", "VARINT",
-                "FLOAT", "DOUBLE", "DECIMAL",
-                "BOOLEAN", "UUID", "TIMEUUID",
-                "TIMESTAMP", "DATE", "TIME",
-                "BLOB", "INET", "COUNTER",
-                "LIST", "SET", "MAP", "TUPLE", "FROZEN"
-            ],
-            regexSyntax: .unsupported,
-            booleanLiteralStyle: .truefalse,
-            likeEscapeStyle: .explicit,
-            paginationStyle: .limit,
-            autoLimitStyle: .limit
-        )
-
-        let cassandraColumnTypes: [String: [String]] = [
-            "Numeric": [
-                "TINYINT", "SMALLINT", "INT", "BIGINT", "VARINT",
-                "FLOAT", "DOUBLE", "DECIMAL", "COUNTER"
-            ],
-            "String": ["TEXT", "VARCHAR", "ASCII"],
-            "Date": ["TIMESTAMP", "DATE", "TIME"],
-            "Binary": ["BLOB"],
-            "Boolean": ["BOOLEAN"],
-            "Other": ["UUID", "TIMEUUID", "INET", "LIST", "SET", "MAP", "TUPLE", "FROZEN"]
-        ]
-
-        let mongoCompletions: [CompletionEntry] = [
-            CompletionEntry(label: "db.", insertText: "db."),
-            CompletionEntry(label: "db.runCommand", insertText: "db.runCommand"),
-            CompletionEntry(label: "db.adminCommand", insertText: "db.adminCommand"),
-            CompletionEntry(label: "db.createView", insertText: "db.createView"),
-            CompletionEntry(label: "db.createCollection", insertText: "db.createCollection"),
-            CompletionEntry(label: "show dbs", insertText: "show dbs"),
-            CompletionEntry(label: "show collections", insertText: "show collections"),
-            CompletionEntry(label: ".find", insertText: ".find"),
-            CompletionEntry(label: ".findOne", insertText: ".findOne"),
-            CompletionEntry(label: ".aggregate", insertText: ".aggregate"),
-            CompletionEntry(label: ".insertOne", insertText: ".insertOne"),
-            CompletionEntry(label: ".insertMany", insertText: ".insertMany"),
-            CompletionEntry(label: ".updateOne", insertText: ".updateOne"),
-            CompletionEntry(label: ".updateMany", insertText: ".updateMany"),
-            CompletionEntry(label: ".deleteOne", insertText: ".deleteOne"),
-            CompletionEntry(label: ".deleteMany", insertText: ".deleteMany"),
-            CompletionEntry(label: ".replaceOne", insertText: ".replaceOne"),
-            CompletionEntry(label: ".findOneAndUpdate", insertText: ".findOneAndUpdate"),
-            CompletionEntry(label: ".findOneAndReplace", insertText: ".findOneAndReplace"),
-            CompletionEntry(label: ".findOneAndDelete", insertText: ".findOneAndDelete"),
-            CompletionEntry(label: ".countDocuments", insertText: ".countDocuments"),
-            CompletionEntry(label: ".createIndex", insertText: ".createIndex")
-        ]
-
-        let mongoColumnTypes: [String: [String]] = [
-            "String": ["string", "objectId", "regex"],
-            "Number": ["int", "long", "double", "decimal"],
-            "Date": ["date", "timestamp"],
-            "Binary": ["binData"],
-            "Boolean": ["bool"],
-            "Array": ["array"],
-            "Object": ["object"],
-            "Null": ["null"],
-            "Other": ["javascript", "minKey", "maxKey"]
-        ]
-
-        let etcdCompletions: [CompletionEntry] = [
-            CompletionEntry(label: "get", insertText: "get"),
-            CompletionEntry(label: "put", insertText: "put"),
-            CompletionEntry(label: "del", insertText: "del"),
-            CompletionEntry(label: "watch", insertText: "watch"),
-            CompletionEntry(label: "lease grant", insertText: "lease grant"),
-            CompletionEntry(label: "lease revoke", insertText: "lease revoke"),
-            CompletionEntry(label: "lease timetolive", insertText: "lease timetolive"),
-            CompletionEntry(label: "lease list", insertText: "lease list"),
-            CompletionEntry(label: "lease keep-alive", insertText: "lease keep-alive"),
-            CompletionEntry(label: "member list", insertText: "member list"),
-            CompletionEntry(label: "endpoint status", insertText: "endpoint status"),
-            CompletionEntry(label: "endpoint health", insertText: "endpoint health"),
-            CompletionEntry(label: "compaction", insertText: "compaction"),
-            CompletionEntry(label: "auth enable", insertText: "auth enable"),
-            CompletionEntry(label: "auth disable", insertText: "auth disable"),
-            CompletionEntry(label: "user add", insertText: "user add"),
-            CompletionEntry(label: "user delete", insertText: "user delete"),
-            CompletionEntry(label: "user list", insertText: "user list"),
-            CompletionEntry(label: "role add", insertText: "role add"),
-            CompletionEntry(label: "role delete", insertText: "role delete"),
-            CompletionEntry(label: "role list", insertText: "role list"),
-            CompletionEntry(label: "user grant-role", insertText: "user grant-role"),
-            CompletionEntry(label: "user revoke-role", insertText: "user revoke-role"),
-            CompletionEntry(label: "--prefix", insertText: "--prefix"),
-            CompletionEntry(label: "--limit", insertText: "--limit="),
-            CompletionEntry(label: "--keys-only", insertText: "--keys-only"),
-            CompletionEntry(label: "--lease", insertText: "--lease="),
-        ]
-
-        let redisCompletions: [CompletionEntry] = [
-            CompletionEntry(label: "GET", insertText: "GET"),
-            CompletionEntry(label: "SET", insertText: "SET"),
-            CompletionEntry(label: "DEL", insertText: "DEL"),
-            CompletionEntry(label: "EXISTS", insertText: "EXISTS"),
-            CompletionEntry(label: "KEYS", insertText: "KEYS"),
-            CompletionEntry(label: "HGET", insertText: "HGET"),
-            CompletionEntry(label: "HSET", insertText: "HSET"),
-            CompletionEntry(label: "HGETALL", insertText: "HGETALL"),
-            CompletionEntry(label: "HDEL", insertText: "HDEL"),
-            CompletionEntry(label: "LPUSH", insertText: "LPUSH"),
-            CompletionEntry(label: "RPUSH", insertText: "RPUSH"),
-            CompletionEntry(label: "LRANGE", insertText: "LRANGE"),
-            CompletionEntry(label: "LLEN", insertText: "LLEN"),
-            CompletionEntry(label: "SADD", insertText: "SADD"),
-            CompletionEntry(label: "SMEMBERS", insertText: "SMEMBERS"),
-            CompletionEntry(label: "SREM", insertText: "SREM"),
-            CompletionEntry(label: "SCARD", insertText: "SCARD"),
-            CompletionEntry(label: "ZADD", insertText: "ZADD"),
-            CompletionEntry(label: "ZRANGE", insertText: "ZRANGE"),
-            CompletionEntry(label: "ZREM", insertText: "ZREM"),
-            CompletionEntry(label: "ZSCORE", insertText: "ZSCORE"),
-            CompletionEntry(label: "EXPIRE", insertText: "EXPIRE"),
-            CompletionEntry(label: "TTL", insertText: "TTL"),
-            CompletionEntry(label: "PERSIST", insertText: "PERSIST"),
-            CompletionEntry(label: "TYPE", insertText: "TYPE"),
-            CompletionEntry(label: "SCAN", insertText: "SCAN"),
-            CompletionEntry(label: "HSCAN", insertText: "HSCAN"),
-            CompletionEntry(label: "SSCAN", insertText: "SSCAN"),
-            CompletionEntry(label: "ZSCAN", insertText: "ZSCAN"),
-            CompletionEntry(label: "INFO", insertText: "INFO"),
-            CompletionEntry(label: "DBSIZE", insertText: "DBSIZE"),
-            CompletionEntry(label: "FLUSHDB", insertText: "FLUSHDB"),
-            CompletionEntry(label: "SELECT", insertText: "SELECT"),
-            CompletionEntry(label: "INCR", insertText: "INCR"),
-            CompletionEntry(label: "DECR", insertText: "DECR"),
-            CompletionEntry(label: "APPEND", insertText: "APPEND"),
-            CompletionEntry(label: "MGET", insertText: "MGET"),
-            CompletionEntry(label: "MSET", insertText: "MSET")
-        ]
-
-        let redisColumnTypes: [String: [String]] = [
-            "String": ["string"],
-            "List": ["list"],
-            "Set": ["set"],
-            "Sorted Set": ["zset"],
-            "Hash": ["hash"],
-            "Stream": ["stream"],
-            "HyperLogLog": ["hyperloglog"],
-            "Bitmap": ["bitmap"],
-            "Geospatial": ["geo"]
-        ]
-
-        let d1Dialect = SQLDialectDescriptor(
-            identifierQuote: "\"",
-            keywords: [
-                "SELECT", "FROM", "WHERE", "JOIN", "INNER", "LEFT", "RIGHT", "OUTER", "CROSS",
-                "ON", "AND", "OR", "NOT", "IN", "LIKE", "GLOB", "BETWEEN", "AS",
-                "ORDER", "BY", "GROUP", "HAVING", "LIMIT", "OFFSET",
-                "INSERT", "INTO", "VALUES", "UPDATE", "SET", "DELETE",
-                "CREATE", "ALTER", "DROP", "TABLE", "INDEX", "VIEW", "TRIGGER",
-                "PRIMARY", "KEY", "FOREIGN", "REFERENCES", "UNIQUE", "CONSTRAINT",
-                "ADD", "COLUMN", "RENAME",
-                "NULL", "IS", "ASC", "DESC", "DISTINCT", "ALL",
-                "CASE", "WHEN", "THEN", "ELSE", "END", "COALESCE", "IFNULL", "NULLIF",
-                "UNION", "INTERSECT", "EXCEPT",
-                "AUTOINCREMENT", "WITHOUT", "ROWID", "PRAGMA",
-                "REPLACE", "ABORT", "FAIL", "IGNORE", "ROLLBACK",
-                "TEMP", "TEMPORARY", "VACUUM", "EXPLAIN", "QUERY", "PLAN"
-            ],
-            functions: [
-                "COUNT", "SUM", "AVG", "MAX", "MIN", "GROUP_CONCAT", "TOTAL",
-                "LENGTH", "SUBSTR", "SUBSTRING", "LOWER", "UPPER", "TRIM", "LTRIM", "RTRIM",
-                "REPLACE", "INSTR", "PRINTF",
-                "DATE", "TIME", "DATETIME", "JULIANDAY", "STRFTIME",
-                "ABS", "ROUND", "RANDOM",
-                "CAST", "TYPEOF",
-                "COALESCE", "IFNULL", "NULLIF", "HEX", "QUOTE"
-            ],
-            dataTypes: [
-                "INTEGER", "REAL", "TEXT", "BLOB", "NUMERIC",
-                "INT", "TINYINT", "SMALLINT", "MEDIUMINT", "BIGINT",
-                "UNSIGNED", "BIG", "INT2", "INT8",
-                "CHARACTER", "VARCHAR", "VARYING", "NCHAR", "NATIVE",
-                "NVARCHAR", "CLOB",
-                "DOUBLE", "PRECISION", "FLOAT",
-                "DECIMAL", "BOOLEAN", "DATE", "DATETIME"
-            ],
-            tableOptions: ["WITHOUT ROWID", "STRICT"],
-            regexSyntax: .unsupported,
-            booleanLiteralStyle: .numeric,
-            likeEscapeStyle: .explicit,
-            paginationStyle: .limit
-        )
-
-        let d1ColumnTypes: [String: [String]] = [
-            "Integer": ["INTEGER", "INT", "TINYINT", "SMALLINT", "MEDIUMINT", "BIGINT"],
-            "Float": ["REAL", "DOUBLE", "FLOAT", "NUMERIC", "DECIMAL"],
-            "String": ["TEXT", "VARCHAR", "CHARACTER", "CHAR", "CLOB", "NVARCHAR", "NCHAR"],
-            "Date": ["DATE", "TIME", "DATETIME", "TIMESTAMP"],
-            "Binary": ["BLOB"],
-            "Boolean": ["BOOLEAN"]
-        ]
+        let (
+            clickhouseDialect, clickhouseColumnTypes, mssqlDialect, mssqlColumnTypes,
+            oracleDialect, oracleColumnTypes, duckdbDialect, duckdbColumnTypes,
+            cassandraDialect, cassandraColumnTypes, mongoCompletions, mongoColumnTypes,
+            etcdCompletions, redisCompletions, redisColumnTypes, d1Dialect, d1ColumnTypes
+        ) = registryDefaultIngredients()
 
         return [
             ("MongoDB", PluginMetadataSnapshot(
@@ -528,12 +38,15 @@ extension PluginMetadataRegistry {
                     supportsReadOnlyMode: false,
                     supportsQueryProgress: false,
                     requiresReconnectForDatabaseSwitch: false,
-                    supportsDropDatabase: true
+                    supportsDropDatabase: true,
+                    supportsOpportunisticTLS: false,
+                    authenticationIsDatabaseScoped: true
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
                     defaultGroupName: "main",
                     tableEntityName: "Collections",
+                    containerEntityName: "Database",
                     defaultPrimaryKeyColumn: "_id",
                     immutableColumns: ["_id"],
                     systemDatabaseNames: ["admin", "local", "config"],
@@ -609,12 +122,14 @@ extension PluginMetadataRegistry {
                     supportsReadOnlyMode: false,
                     supportsQueryProgress: false,
                     requiresReconnectForDatabaseSwitch: false,
-                    supportsDropDatabase: false
+                    supportsDropDatabase: false,
+                    supportsOpportunisticTLS: false
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
                     defaultGroupName: "db0",
                     tableEntityName: "Keys",
+                    containerEntityName: "Database",
                     defaultPrimaryKeyColumn: "Key",
                     immutableColumns: [],
                     systemDatabaseNames: [],
@@ -638,7 +153,8 @@ extension PluginMetadataRegistry {
                         )
                     ],
                     category: .keyValue,
-                    tagline: String(localized: "In-memory data store and cache")
+                    tagline: String(localized: "In-memory data store and cache"),
+                    defaultUnixSocketPath: "/var/run/redis/redis.sock"
                 )
             )),
             ("SQL Server", PluginMetadataSnapshot(
@@ -664,12 +180,14 @@ extension PluginMetadataRegistry {
                     supportsQueryProgress: false,
                     requiresReconnectForDatabaseSwitch: false,
                     supportsDropDatabase: true,
-                    supportsRenameColumn: true
+                    supportsRenameColumn: true,
+                    defaultSSLMode: .preferred
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "dbo",
                     defaultGroupName: "main",
                     tableEntityName: "Tables",
+                    containerEntityName: "Database",
                     defaultPrimaryKeyColumn: nil,
                     immutableColumns: [],
                     systemDatabaseNames: ["master", "tempdb", "model", "msdb"],
@@ -686,11 +204,243 @@ extension PluginMetadataRegistry {
                 connection: PluginMetadataSnapshot.ConnectionConfig(
                     additionalConnectionFields: [
                         ConnectionField(
+                            id: "mssqlAuthMethod",
+                            label: String(localized: "Authentication"),
+                            defaultValue: "sql",
+                            fieldType: .dropdown(options: [
+                                .init(value: "sql", label: "SQL Server Authentication"),
+                                .init(value: "windows", label: "Windows Authentication (Kerberos)")
+                            ]),
+                            section: .authentication
+                        ),
+                        ConnectionField(
+                            id: "mssqlKerberosPrincipal",
+                            label: String(localized: "Kerberos Principal"),
+                            placeholder: "user@REALM.COM",
+                            section: .authentication,
+                            visibleWhen: FieldVisibilityRule(fieldId: "mssqlAuthMethod", values: ["windows"])
+                        ).withHidesUsername(true),
+                        ConnectionField(
+                            id: "mssqlKerberosPassword",
+                            label: String(localized: "Password"),
+                            fieldType: .secure,
+                            section: .authentication,
+                            hidesPassword: true,
+                            visibleWhen: FieldVisibilityRule(fieldId: "mssqlAuthMethod", values: ["windows"])
+                        ),
+                        ConnectionField(
                             id: "mssqlSchema", label: "Schema", placeholder: "dbo", defaultValue: "dbo"
                         )
                     ],
                     category: .relational,
                     tagline: String(localized: "Microsoft's enterprise SQL database")
+                )
+            )),
+            ("Teradata", PluginMetadataSnapshot(
+                displayName: "Teradata", iconName: "teradata-icon", defaultPort: 1_025,
+                requiresAuthentication: true, supportsForeignKeys: true, supportsSchemaEditing: true,
+                isDownloadable: true, primaryUrlScheme: "teradata", parameterStyle: .questionMark,
+                navigationModel: .standard, explainVariants: [], pathFieldRole: .database,
+                supportsHealthMonitor: false, urlSchemes: ["teradata"],
+                postConnectActions: [.selectDatabaseFromLastSession],
+                brandColorHex: "#F37440",
+                queryLanguageName: "SQL", editorLanguage: .sql,
+                connectionMode: .network, supportsDatabaseSwitching: true,
+                supportsColumnReorder: false,
+                capabilities: PluginMetadataSnapshot.CapabilityFlags(
+                    supportsSchemaSwitching: false,
+                    supportsImport: true,
+                    supportsExport: true,
+                    supportsSSH: true,
+                    supportsSSL: true,
+                    supportsCascadeDrop: false,
+                    supportsForeignKeyDisable: false,
+                    supportsReadOnlyMode: true,
+                    supportsQueryProgress: false,
+                    requiresReconnectForDatabaseSwitch: false,
+                    supportsDropDatabase: false,
+                    supportsRenameColumn: false,
+                    defaultSSLMode: .disabled
+                ),
+                schema: PluginMetadataSnapshot.SchemaInfo(
+                    defaultSchemaName: "",
+                    defaultGroupName: "main",
+                    tableEntityName: "Tables",
+                    containerEntityName: "Database",
+                    defaultPrimaryKeyColumn: nil,
+                    immutableColumns: [],
+                    systemDatabaseNames: ["DBC", "Sys", "SysAdmin", "SystemFe", "SYSLIB", "SYSUDTLIB", "TDStats", "PUBLIC", "All", "Default"],
+                    systemSchemaNames: [],
+                    fileExtensions: [],
+                    databaseGroupingStrategy: .byDatabase,
+                    structureColumnFields: [.name, .type, .nullable, .defaultValue]
+                ),
+                editor: PluginMetadataSnapshot.EditorConfig(
+                    sqlDialect: SQLDialectDescriptor(
+                        identifierQuote: "\"",
+                        keywords: [
+                            "SELECT", "FROM", "WHERE", "GROUP", "BY", "HAVING", "ORDER", "TOP", "QUALIFY",
+                            "JOIN", "INNER", "LEFT", "RIGHT", "FULL", "OUTER", "ON", "AND", "OR", "NOT",
+                            "INSERT", "UPDATE", "DELETE", "CREATE", "ALTER", "DROP", "TABLE", "VIEW",
+                            "DATABASE", "USER", "MACRO", "VOLATILE", "MULTISET", "SET", "AS", "SAMPLE",
+                            "HELP", "SHOW", "EXPLAIN", "COLLECT", "STATISTICS", "LOCKING", "FOR", "ACCESS",
+                        ],
+                        functions: [
+                            "COUNT", "SUM", "AVG", "MIN", "MAX", "CAST", "TRIM", "SUBSTRING",
+                            "COALESCE", "NULLIFZERO", "ZEROIFNULL", "OREPLACE", "OTRANSLATE",
+                            "CURRENT_DATE", "CURRENT_TIMESTAMP", "EXTRACT", "ADD_MONTHS",
+                        ],
+                        dataTypes: [
+                            "BYTEINT", "SMALLINT", "INTEGER", "BIGINT", "DECIMAL", "NUMBER", "FLOAT",
+                            "CHAR", "VARCHAR", "CLOB", "BYTE", "VARBYTE", "BLOB",
+                            "DATE", "TIME", "TIMESTAMP", "INTERVAL", "PERIOD", "JSON", "XML",
+                        ],
+                        autoLimitStyle: .top
+                    ),
+                    statementCompletions: [],
+                    columnTypesByCategory: [
+                        "Integer": ["BYTEINT", "SMALLINT", "INTEGER", "BIGINT"],
+                        "Float": ["FLOAT", "DECIMAL", "NUMBER"],
+                        "String": ["CHAR", "VARCHAR", "CLOB"],
+                        "Date": ["DATE", "TIME", "TIMESTAMP"],
+                        "Binary": ["BYTE", "VARBYTE", "BLOB"],
+                    ]
+                ),
+                connection: PluginMetadataSnapshot.ConnectionConfig(
+                    additionalConnectionFields: [
+                        ConnectionField(
+                            id: "teradataLogMech", label: "Logon Mechanism", placeholder: "TD2", defaultValue: "TD2"),
+                        ConnectionField(
+                            id: "teradataTMode", label: "Transaction Mode", placeholder: "DEFAULT", defaultValue: "DEFAULT"),
+                    ],
+                    category: .relational,
+                    tagline: String(localized: "Teradata Vantage data warehouse")
+                )
+            )),
+            ("Trino", PluginMetadataSnapshot(
+                displayName: "Trino", iconName: "trino-icon", defaultPort: 8_080,
+                requiresAuthentication: false, supportsForeignKeys: false, supportsSchemaEditing: true,
+                isDownloadable: true, primaryUrlScheme: "trino", parameterStyle: .questionMark,
+                navigationModel: .standard,
+                explainVariants: [
+                    ExplainVariant(id: "logical", label: "Explain (Logical)", sqlPrefix: "EXPLAIN"),
+                    ExplainVariant(id: "distributed", label: "Explain (Distributed)", sqlPrefix: "EXPLAIN (TYPE DISTRIBUTED)"),
+                    ExplainVariant(id: "io", label: "Explain (IO)", sqlPrefix: "EXPLAIN (TYPE IO)"),
+                    ExplainVariant(id: "validate", label: "Explain (Validate)", sqlPrefix: "EXPLAIN (TYPE VALIDATE)"),
+                    ExplainVariant(id: "analyze", label: "Explain Analyze", sqlPrefix: "EXPLAIN ANALYZE"),
+                ],
+                pathFieldRole: .database,
+                supportsHealthMonitor: true, urlSchemes: ["trino"],
+                postConnectActions: [.selectSchemaFromLastSession],
+                brandColorHex: "#DD5F3B",
+                queryLanguageName: "SQL", editorLanguage: .sql,
+                connectionMode: .network, supportsDatabaseSwitching: true,
+                supportsColumnReorder: false,
+                capabilities: PluginMetadataSnapshot.CapabilityFlags(
+                    supportsSchemaSwitching: true,
+                    supportsImport: false,
+                    supportsExport: true,
+                    supportsSSH: true,
+                    supportsSSL: true,
+                    supportsCascadeDrop: false,
+                    supportsForeignKeyDisable: false,
+                    supportsReadOnlyMode: true,
+                    supportsQueryProgress: false,
+                    requiresReconnectForDatabaseSwitch: false,
+                    supportsDropDatabase: false,
+                    supportsRenameColumn: false,
+                    defaultSSLMode: .disabled
+                ),
+                schema: PluginMetadataSnapshot.SchemaInfo(
+                    defaultSchemaName: "",
+                    defaultGroupName: "default",
+                    tableEntityName: "Tables",
+                    containerEntityName: "Catalog",
+                    defaultPrimaryKeyColumn: nil,
+                    immutableColumns: [],
+                    systemDatabaseNames: [],
+                    systemSchemaNames: ["information_schema"],
+                    fileExtensions: [],
+                    databaseGroupingStrategy: .hierarchicalSchema,
+                    structureColumnFields: [.name, .type, .nullable, .defaultValue, .comment]
+                ),
+                editor: PluginMetadataSnapshot.EditorConfig(
+                    sqlDialect: SQLDialectDescriptor(
+                        identifierQuote: "\"",
+                        keywords: [
+                            "SELECT", "FROM", "WHERE", "GROUP", "BY", "HAVING", "ORDER", "LIMIT", "OFFSET",
+                            "JOIN", "INNER", "LEFT", "RIGHT", "FULL", "CROSS", "ON", "USING", "AND", "OR", "NOT",
+                            "IN", "LIKE", "BETWEEN", "AS", "DISTINCT", "UNION", "INTERSECT", "EXCEPT", "WITH",
+                            "INSERT", "INTO", "UPDATE", "SET", "DELETE", "CREATE", "ALTER", "DROP", "TABLE",
+                            "VIEW", "SCHEMA", "CATALOG", "CASE", "WHEN", "THEN", "ELSE", "END", "CAST", "TRY_CAST",
+                            "SHOW", "CATALOGS", "SCHEMAS", "TABLES", "COLUMNS", "DESCRIBE", "EXPLAIN", "ANALYZE",
+                            "USE", "UNNEST", "OVER", "PARTITION", "QUALIFY",
+                        ],
+                        functions: [
+                            "COUNT", "SUM", "AVG", "MIN", "MAX", "ARRAY_AGG", "APPROX_DISTINCT", "CARDINALITY",
+                            "ELEMENT_AT", "JSON_EXTRACT", "JSON_EXTRACT_SCALAR", "REGEXP_LIKE", "REGEXP_REPLACE",
+                            "SUBSTR", "LENGTH", "LOWER", "UPPER", "TRIM", "SPLIT", "CONCAT", "COALESCE",
+                            "DATE_TRUNC", "DATE_DIFF", "DATE_FORMAT", "FROM_UNIXTIME", "TO_UNIXTIME",
+                            "ROW_NUMBER", "RANK", "DENSE_RANK", "LAG", "LEAD",
+                        ],
+                        dataTypes: [
+                            "BOOLEAN", "TINYINT", "SMALLINT", "INTEGER", "BIGINT", "REAL", "DOUBLE", "DECIMAL",
+                            "VARCHAR", "CHAR", "VARBINARY", "JSON", "DATE", "TIME", "TIMESTAMP", "INTERVAL",
+                            "ARRAY", "MAP", "ROW", "IPADDRESS", "UUID",
+                        ],
+                        regexSyntax: .regexpLike,
+                        booleanLiteralStyle: .truefalse,
+                        likeEscapeStyle: .explicit,
+                        paginationStyle: .offsetFetch,
+                        offsetFetchOrderBy: ""
+                    ),
+                    statementCompletions: [],
+                    columnTypesByCategory: [
+                        "Boolean": ["boolean"],
+                        "Integer": ["tinyint", "smallint", "integer", "bigint"],
+                        "Floating": ["real", "double", "decimal"],
+                        "String": ["varchar", "char"],
+                        "Binary": ["varbinary"],
+                        "Date/Time": ["date", "time", "timestamp"],
+                        "Complex": ["array", "map", "row", "json"],
+                    ]
+                ),
+                connection: PluginMetadataSnapshot.ConnectionConfig(
+                    additionalConnectionFields: [
+                        ConnectionField(
+                            id: "trinoAuthMethod",
+                            label: String(localized: "Auth Method"),
+                            defaultValue: "password",
+                            fieldType: .dropdown(options: [
+                                .init(value: "password", label: "Username & Password"),
+                                .init(value: "jwt", label: "JWT Access Token"),
+                            ]),
+                            section: .authentication
+                        ),
+                        ConnectionField(
+                            id: "trinoJwtToken",
+                            label: String(localized: "Access Token"),
+                            placeholder: "JWT bearer token",
+                            fieldType: .secure,
+                            section: .authentication,
+                            hidesPassword: true,
+                            visibleWhen: FieldVisibilityRule(fieldId: "trinoAuthMethod", values: ["jwt"])
+                        ),
+                        ConnectionField(
+                            id: "trinoSchema",
+                            label: String(localized: "Schema"),
+                            placeholder: "Default schema (optional)",
+                            section: .connection
+                        ),
+                        ConnectionField(
+                            id: "trinoTimeZone",
+                            label: String(localized: "Time Zone"),
+                            placeholder: "Optional (e.g. America/New_York)",
+                            section: .advanced
+                        ),
+                    ],
+                    category: .analytical,
+                    tagline: String(localized: "Distributed SQL query engine for data lakes")
                 )
             )),
             ("Oracle", PluginMetadataSnapshot(
@@ -702,7 +452,7 @@ extension PluginMetadataRegistry {
                 postConnectActions: [.selectSchemaFromLastSession],
                 brandColorHex: "#C3160B",
                 queryLanguageName: "SQL", editorLanguage: .sql,
-                connectionMode: .network, supportsDatabaseSwitching: true,
+                connectionMode: .network, supportsDatabaseSwitching: false,
                 supportsColumnReorder: false,
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
                     supportsSchemaSwitching: true,
@@ -716,12 +466,14 @@ extension PluginMetadataRegistry {
                     supportsQueryProgress: false,
                     requiresReconnectForDatabaseSwitch: false,
                     supportsDropDatabase: false,
-                    supportsRenameColumn: true
+                    supportsRenameColumn: true,
+                    supportsOpportunisticTLS: false
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
-                    defaultSchemaName: "public",
+                    defaultSchemaName: "",
                     defaultGroupName: "main",
                     tableEntityName: "Tables",
+                    containerEntityName: "Schema",
                     defaultPrimaryKeyColumn: nil,
                     immutableColumns: [],
                     systemDatabaseNames: [
@@ -729,7 +481,7 @@ extension PluginMetadataRegistry {
                     ],
                     systemSchemaNames: [],
                     fileExtensions: [],
-                    databaseGroupingStrategy: .bySchema,
+                    databaseGroupingStrategy: .hierarchicalSchema,
                     structureColumnFields: [.name, .type, .nullable, .defaultValue, .autoIncrement, .comment]
                 ),
                 editor: PluginMetadataSnapshot.EditorConfig(
@@ -776,12 +528,14 @@ extension PluginMetadataRegistry {
                     supportsQueryProgress: true,
                     requiresReconnectForDatabaseSwitch: false,
                     supportsDropDatabase: true,
-                    supportsModifyPrimaryKey: false
+                    supportsModifyPrimaryKey: false,
+                    supportsOpportunisticTLS: false
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
                     defaultGroupName: "main",
                     tableEntityName: "Tables",
+                    containerEntityName: "Database",
                     defaultPrimaryKeyColumn: nil,
                     immutableColumns: [],
                     systemDatabaseNames: ["information_schema", "INFORMATION_SCHEMA", "system"],
@@ -801,18 +555,18 @@ extension PluginMetadataRegistry {
                 )
             )),
             ("DuckDB", PluginMetadataSnapshot(
-                displayName: "DuckDB", iconName: "duckdb-icon", defaultPort: 0,
+                displayName: "DuckDB", iconName: "duckdb-icon", defaultPort: 9_494,
                 requiresAuthentication: false, supportsForeignKeys: true, supportsSchemaEditing: true,
                 isDownloadable: true, primaryUrlScheme: "duckdb", parameterStyle: .dollar,
                 navigationModel: .standard,
                 explainVariants: [
                     ExplainVariant(id: "explain", label: "EXPLAIN", sqlPrefix: "EXPLAIN"),
                 ],
-                pathFieldRole: .filePath,
-                supportsHealthMonitor: false, urlSchemes: ["duckdb"], postConnectActions: [],
+                pathFieldRole: .database,
+                supportsHealthMonitor: false, urlSchemes: ["duckdb", "quack"], postConnectActions: [],
                 brandColorHex: "#FFD900",
                 queryLanguageName: "SQL", editorLanguage: .sql,
-                connectionMode: .fileBased, supportsDatabaseSwitching: false,
+                connectionMode: .apiOnly, supportsDatabaseSwitching: false,
                 supportsColumnReorder: false,
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
                     supportsSchemaSwitching: false,
@@ -832,6 +586,7 @@ extension PluginMetadataRegistry {
                     defaultSchemaName: "public",
                     defaultGroupName: "main",
                     tableEntityName: "Tables",
+                    containerEntityName: "Database",
                     defaultPrimaryKeyColumn: nil,
                     immutableColumns: [],
                     systemDatabaseNames: ["information_schema", "pg_catalog"],
@@ -846,8 +601,88 @@ extension PluginMetadataRegistry {
                     columnTypesByCategory: duckdbColumnTypes
                 ),
                 connection: PluginMetadataSnapshot.ConnectionConfig(
+                    additionalConnectionFields: Self.duckdbConnectionFields,
                     category: .analytical,
-                    tagline: String(localized: "Embedded analytical SQL")
+                    tagline: String(localized: "Embedded and remote analytical SQL"),
+                    hidesBuiltInPassword: true
+                )
+            )),
+            ("Beancount", PluginMetadataSnapshot(
+                displayName: "Beancount", iconName: "beancount-icon", defaultPort: 0,
+                requiresAuthentication: false, supportsForeignKeys: false, supportsSchemaEditing: false,
+                isDownloadable: true, primaryUrlScheme: "beancount", parameterStyle: .questionMark,
+                navigationModel: .standard, explainVariants: [], pathFieldRole: .filePath,
+                supportsHealthMonitor: false, urlSchemes: ["beancount"], postConnectActions: [],
+                brandColorHex: "#3F7D20",
+                queryLanguageName: "SQL", editorLanguage: .sql,
+                connectionMode: .fileBased, supportsDatabaseSwitching: false,
+                supportsColumnReorder: false,
+                capabilities: PluginMetadataSnapshot.CapabilityFlags(
+                    supportsSchemaSwitching: false,
+                    supportsImport: false,
+                    supportsExport: true,
+                    supportsSSH: false,
+                    supportsSSL: false,
+                    supportsCascadeDrop: false,
+                    supportsForeignKeyDisable: false,
+                    supportsReadOnlyMode: true,
+                    supportsQueryProgress: false,
+                    requiresReconnectForDatabaseSwitch: false,
+                    supportsDropDatabase: false,
+                    supportsAddColumn: false,
+                    supportsModifyColumn: false,
+                    supportsDropColumn: false,
+                    supportsRenameColumn: false,
+                    supportsAddIndex: false,
+                    supportsDropIndex: false,
+                    supportsModifyPrimaryKey: false
+                ),
+                schema: PluginMetadataSnapshot.SchemaInfo(
+                    defaultSchemaName: "public",
+                    defaultGroupName: "main",
+                    tableEntityName: "Ledger Tables",
+                    containerEntityName: "Ledger",
+                    defaultPrimaryKeyColumn: nil,
+                    immutableColumns: [
+                        "id", "transaction_id", "date", "flag", "payee", "narration",
+                        "account", "amount", "commodity", "cost_number", "cost_currency",
+                        "currency", "currencies", "name", "open_date", "path"
+                    ],
+                    systemDatabaseNames: [],
+                    systemSchemaNames: [],
+                    fileExtensions: ["beancount"],
+                    databaseGroupingStrategy: .flat,
+                    structureColumnFields: [.name, .type, .nullable, .comment]
+                ),
+                editor: PluginMetadataSnapshot.EditorConfig(
+                    sqlDialect: SQLDialectDescriptor(
+                        identifierQuote: "\"",
+                        keywords: [
+                            "SELECT", "FROM", "WHERE", "JOIN", "INNER", "LEFT", "RIGHT", "OUTER",
+                            "ON", "AND", "OR", "NOT", "IN", "LIKE", "BETWEEN", "AS",
+                            "ORDER", "BY", "GROUP", "HAVING", "LIMIT", "OFFSET",
+                            "WITH", "UNION", "INTERSECT", "EXCEPT",
+                            "CASE", "WHEN", "THEN", "ELSE", "END", "NULL", "IS",
+                            "ASC", "DESC", "DISTINCT"
+                        ],
+                        functions: ["COUNT", "SUM", "AVG", "MAX", "MIN", "ROUND", "DATE", "STRFTIME"],
+                        dataTypes: ["INTEGER", "TEXT", "DATE", "DECIMAL"],
+                        regexSyntax: .unsupported,
+                        booleanLiteralStyle: .numeric,
+                        likeEscapeStyle: .explicit,
+                        paginationStyle: .limit
+                    ),
+                    statementCompletions: [],
+                    columnTypesByCategory: [
+                        "Integer": ["INTEGER"],
+                        "String": ["TEXT"],
+                        "Date": ["DATE"],
+                        "Decimal": ["DECIMAL"]
+                    ]
+                ),
+                connection: PluginMetadataSnapshot.ConnectionConfig(
+                    category: .analytical,
+                    tagline: String(localized: "Plain-text accounting ledgers")
                 )
             )),
             ("Cassandra", PluginMetadataSnapshot(
@@ -876,12 +711,15 @@ extension PluginMetadataRegistry {
                     supportsModifyColumn: false,
                     supportsAddIndex: false,
                     supportsDropIndex: false,
-                    supportsModifyPrimaryKey: false
+                    supportsModifyPrimaryKey: false,
+                    supportsOpportunisticTLS: false,
+                    supportsClientKeyPassphrase: true
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
                     defaultGroupName: "default",
                     tableEntityName: "Tables",
+                    containerEntityName: "Keyspace",
                     defaultPrimaryKeyColumn: nil,
                     immutableColumns: [],
                     systemDatabaseNames: [
@@ -937,12 +775,15 @@ extension PluginMetadataRegistry {
                     supportsModifyColumn: false,
                     supportsAddIndex: false,
                     supportsDropIndex: false,
-                    supportsModifyPrimaryKey: false
+                    supportsModifyPrimaryKey: false,
+                    supportsOpportunisticTLS: false,
+                    supportsClientKeyPassphrase: true
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
                     defaultGroupName: "default",
                     tableEntityName: "Tables",
+                    containerEntityName: "Keyspace",
                     defaultPrimaryKeyColumn: nil,
                     immutableColumns: [],
                     systemDatabaseNames: [
@@ -993,12 +834,14 @@ extension PluginMetadataRegistry {
                     supportsReadOnlyMode: false,
                     supportsQueryProgress: false,
                     requiresReconnectForDatabaseSwitch: false,
-                    supportsDropDatabase: false
+                    supportsDropDatabase: false,
+                    supportsOpportunisticTLS: false
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
                     defaultGroupName: "main",
                     tableEntityName: "Keys",
+                    containerEntityName: "Database",
                     defaultPrimaryKeyColumn: "Key",
                     immutableColumns: ["Version", "ModRevision", "CreateRevision"],
                     systemDatabaseNames: [],
@@ -1084,6 +927,7 @@ extension PluginMetadataRegistry {
                     defaultSchemaName: "main",
                     defaultGroupName: "main",
                     tableEntityName: "Tables",
+                    containerEntityName: "Database",
                     defaultPrimaryKeyColumn: nil,
                     immutableColumns: [],
                     systemDatabaseNames: [],
@@ -1143,6 +987,7 @@ extension PluginMetadataRegistry {
                     defaultSchemaName: "main",
                     defaultGroupName: "main",
                     tableEntityName: "Tables",
+                    containerEntityName: "Database",
                     defaultPrimaryKeyColumn: nil,
                     immutableColumns: [],
                     systemDatabaseNames: [],
@@ -1159,18 +1004,44 @@ extension PluginMetadataRegistry {
                 connection: PluginMetadataSnapshot.ConnectionConfig(
                     additionalConnectionFields: [
                         ConnectionField(
+                            id: "libsqlMode",
+                            label: String(localized: "Connection Mode"),
+                            defaultValue: "remote",
+                            fieldType: .dropdown(options: [
+                                ConnectionField.DropdownOption(
+                                    value: "remote",
+                                    label: String(localized: "Remote (Turso)")
+                                ),
+                                ConnectionField.DropdownOption(
+                                    value: "local",
+                                    label: String(localized: "Local File")
+                                )
+                            ]),
+                            section: .authentication,
+                            hidesPassword: true
+                        ),
+                        ConnectionField(
                             id: "databaseUrl",
                             label: String(localized: "Database URL"),
                             placeholder: "https://your-db.turso.io",
                             required: true,
-                            section: .authentication
+                            section: .authentication,
+                            visibleWhen: FieldVisibilityRule(fieldId: "libsqlMode", values: ["remote"])
+                        ),
+                        ConnectionField(
+                            id: "libsqlFilePath",
+                            label: String(localized: "Database File"),
+                            placeholder: "/path/to/database.db",
+                            required: true,
+                            section: .authentication,
+                            visibleWhen: FieldVisibilityRule(fieldId: "libsqlMode", values: ["local"])
                         )
                     ],
                     category: .cloud,
                     tagline: String(localized: "Distributed SQLite by Turso")
                 )
             )),
-        ] + cloudPluginDefaults()
+        ] + cloudPluginDefaults() + elasticsearchPluginDefaults() + surrealDBPluginDefaults()
     }
     // swiftlint:enable function_body_length
 }

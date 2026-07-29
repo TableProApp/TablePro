@@ -66,6 +66,20 @@ enum Mock {
         )
     }
 
+    @MainActor
+    static func windowedTextViewController(theme: EditorTheme) -> (NSWindow, TextViewController) {
+        let controller = textViewController(theme: theme)
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 400, height: 300),
+            styleMask: [.titled, .closable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.isReleasedWhenClosed = false
+        window.contentViewController = controller
+        return (window, controller)
+    }
+
     static func theme() -> EditorTheme {
         EditorTheme(
             text: EditorTheme.Attribute(color: .textColor),

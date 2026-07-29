@@ -46,7 +46,6 @@ enum SyncError: LocalizedError, Equatable {
             return syncError
         }
 
-        // Map CKError codes to SyncError
         if let ckError = error as? CKError {
             switch ckError.code {
             case .networkUnavailable, .networkFailure:

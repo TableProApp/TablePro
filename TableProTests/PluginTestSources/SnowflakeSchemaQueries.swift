@@ -1,0 +1,1 @@
+../../Plugins/SnowflakeDriverPlugin/SnowflakeSchemaQueries.swift

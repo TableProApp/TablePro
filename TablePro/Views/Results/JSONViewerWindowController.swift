@@ -96,7 +96,7 @@ private struct JSONViewerWindowContent: View {
         self.isEditable = isEditable
         self.onCommit = onCommit
         self.onDismiss = onDismiss
-        self._text = State(initialValue: initialValue?.prettyPrintedAsJson() ?? initialValue ?? "")
+        self._text = State(initialValue: initialValue ?? "")
     }
 
     var body: some View {
@@ -106,9 +106,7 @@ private struct JSONViewerWindowContent: View {
             onDismiss: onDismiss,
             onCommit: isEditable ? { newValue in
                 if newValue.isEmpty && initialValue == nil { return }
-                let normalizedNew = JSONViewerView.compact(newValue)
-                let normalizedOld = JSONViewerView.compact(initialValue)
-                if normalizedNew != normalizedOld {
+                if newValue != JsonReindenter.normalize(initialValue ?? "") {
                     onCommit?(newValue)
                 }
             } : nil

@@ -40,14 +40,35 @@ final class AuthPaneViewModel {
             .filter { $0.section == .authentication }
     }
 
+    var resolvedUsername: String {
+        username.trimmingCharacters(in: .whitespaces)
+    }
+
+    var hidesBuiltInPassword: Bool {
+        guard let type = coordinator?.value?.network.type else { return false }
+        return PluginMetadataRegistry.shared.snapshot(forTypeId: type.pluginTypeId)?
+            .connection.hidesBuiltInPassword ?? false
+    }
+
     var hidesPassword: Bool {
-        authFields.contains { field in
-            guard field.hidesPassword else { return false }
-            if case .toggle = field.fieldType {
-                return additionalFieldValues[field.id] == "true"
-            }
-            return true
+        if hidesBuiltInPassword { return true }
+        guard let type = coordinator?.value?.network.type else {
+            return authFields.hidesPassword(forValues: additionalFieldValues)
         }
+        return PluginManager.shared.additionalConnectionFields(for: type)
+            .hidesPassword(forValues: additionalFieldValues)
+    }
+
+    var hidesUsername: Bool {
+        guard let type = coordinator?.value?.network.type else {
+            return authFields.hidesUsername(forValues: additionalFieldValues)
+        }
+        return PluginManager.shared.additionalConnectionFields(for: type)
+            .hidesUsername(forValues: additionalFieldValues)
+    }
+
+    var effectivePromptForPassword: Bool {
+        promptForPassword && !hidesPassword
     }
 
     var usePgpass: Bool {
@@ -68,12 +89,9 @@ final class AuthPaneViewModel {
     }
 
     func isFieldVisible(_ field: ConnectionField) -> Bool {
-        guard let rule = field.visibleWhen else { return true }
         let type = coordinator?.value?.network.type ?? .mysql
-        let registry = PluginManager.shared.additionalConnectionFields(for: type)
-        let defaultValue = registry.first { $0.id == rule.fieldId }?.defaultValue ?? ""
-        let currentValue = additionalFieldValues[rule.fieldId] ?? defaultValue
-        return rule.values.contains(currentValue)
+        return PluginManager.shared.additionalConnectionFields(for: type)
+            .isVisible(field, forValues: additionalFieldValues)
     }
 
     func resetForType(_ newType: DatabaseType) {
@@ -107,6 +125,12 @@ final class AuthPaneViewModel {
                 values[field.id] = secureValue
             }
         }
+        if connection.type.pluginTypeId == "DuckDB",
+           (values["duckdbFilePath"] ?? "").isEmpty,
+           !connection.database.isEmpty {
+            values["duckdbFilePath"] = connection.database
+        }
+
         additionalFieldValues = values
 
         if let savedPassword = storage.loadPassword(for: connection.id) {
@@ -126,10 +150,11 @@ final class AuthPaneViewModel {
             pgpassStatus = .notChecked
             return
         }
-        let host = coordinator.network.host.isEmpty ? "localhost" : coordinator.network.host
-        let port = Int(coordinator.network.port) ?? coordinator.network.type.defaultPort
-        let database = coordinator.network.database
-        let username = self.username.isEmpty ? "root" : self.username
-        pgpassStatus = PgpassStatus.check(host: host, port: port, database: database, username: username)
+        pgpassStatus = PgpassStatus.check(
+            host: coordinator.network.resolvedHost,
+            port: coordinator.network.resolvedPort,
+            database: coordinator.network.database,
+            username: PgpassReader.effectiveUsername(resolvedUsername)
+        )
     }
 }

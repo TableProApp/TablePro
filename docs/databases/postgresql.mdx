@@ -1,22 +1,9 @@
 ---
 title: PostgreSQL
-description: Connect to PostgreSQL 12+ with schema browsing, JSONB display, and full libpq driver support
+description: Connect to PostgreSQL 12 and later with the libpq driver, including PostGIS display, AWS IAM auth, and pg_dump backups
 ---
 
-# PostgreSQL Connections
-
-TablePro supports PostgreSQL 12 and later via the libpq C connector. Schema browsing, rich type display (JSONB, arrays, UUID, inet), and all standard PostgreSQL query features work out of the box.
-
-## Quick Setup
-
-<Steps>
-  <Step title="Create Connection">
-    Click **New Connection**, pick **PostgreSQL** in the chooser sheet, fill in host/port/username/password/database, and click **Save & Connect**
-  </Step>
-  <Step title="Test Connection">
-    Click **Test Connection** to verify
-  </Step>
-</Steps>
+TablePro supports PostgreSQL 12 and later via the libpq C connector. The same driver powers [Amazon Redshift](/databases/redshift), [CockroachDB](/databases/cockroachdb), and [PGlite](/databases/pglite) connections.
 
 ## Connection Settings
 
@@ -24,99 +11,62 @@ TablePro supports PostgreSQL 12 and later via the libpq C connector. Schema brow
 |-------|---------|-------|
 | **Host** | `localhost` | |
 | **Port** | `5432` | |
-| **Username** | `postgres` | |
+| **Username** | - | Not pre-filled; most servers use `postgres` |
 | **Database** | - | **Required** (unlike MySQL) |
 
-<Tip>
-Open URLs like `postgresql://user:pass@host/db` directly to connect. See [Connection URL Reference](/databases/connection-urls).
-</Tip>
+Fill in the form and click **Save & Connect**. For remote servers use [SSH tunneling](/databases/ssh-tunneling); Google Cloud SQL instances can connect through the [Cloud SQL Auth Proxy](/databases/cloud-sql-proxy).
 
-{/* Screenshot: PostgreSQL connection form */}
 <Frame caption="PostgreSQL connection form">
-  <img
-    className="block dark:hidden"
-    src="/images/postgresql-connection-form.png"
-    alt="PostgreSQL connection form"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/postgresql-connection-form-dark.png"
-    alt="PostgreSQL connection form"
-  />
+  <img className="block dark:hidden" src="/images/postgresql-connection-form.png" alt="PostgreSQL connection form" />
+  <img className="hidden dark:block" src="/images/postgresql-connection-form-dark.png" alt="PostgreSQL connection form" />
 </Frame>
 
-## Example Configurations
+## Connection URL
 
-**Local**: host `localhost:5432`, user `postgres`, "trust" auth (no password) with Homebrew
-**Docker**: host `localhost:5432`, password from `POSTGRES_PASSWORD` env
-**AWS RDS**: Use endpoint hostname, standard credentials
-**Heroku**: Parse `DATABASE_URL` for credentials
-**Remote**: Use [SSH tunneling](/databases/ssh-tunneling) for secure access
+```text
+postgresql://user:password@host:5432/database
+```
+
+`postgres://` also works. Opening a URL connects directly. See [Connection URL Reference](/databases/connection-urls).
+
+## AWS IAM Authentication
+
+Connect to RDS or Aurora with your AWS identity instead of a static password: set **Authentication** to an AWS IAM option and set **Username** to a database role granted `rds_iam`. See [AWS IAM Authentication](/databases/aws-iam) for setup, credential sources, and troubleshooting.
 
 ## Features
 
-Sidebar displays all accessible schemas and tables. Switch databases/schemas with **Cmd+K**. Table info shows structure (columns, indexes, constraints) and DDL. Full PostgreSQL syntax support:
+**Schemas**: The sidebar shows all accessible schemas and tables. Cmd+K switches databases; pick the active schema from the schema menu at the bottom of the sidebar. Table info shows columns, indexes, constraints, and DDL.
 
-```sql
--- JSONB queries
-SELECT data->>'name' as name, data->'address'->>'city' as city
-FROM customers
-WHERE data @> '{"active": true}'::jsonb;
+**Databases**: Every database on the server is listed, including `postgres`. It is an ordinary database that `initdb` creates for users and applications, not a system database. `template0` and `template1` are not listed.
 
--- Array operations
-SELECT name, tags
-FROM products
-WHERE 'electronics' = ANY(tags);
+**Partitioned tables**: A partitioned table is listed once, under its own icon. Its partitions are not listed beside it; expand the table in the sidebar to see them, and expand a partition again if it is subpartitioned. Opening a partition works like opening any other table. Tables that use the older `INHERITS` inheritance are listed normally, since a child there is a table in its own right. Requires PostgreSQL 10 or later, which is where declarative partitioning was added.
 
--- Window functions
-SELECT
-    department,
-    employee,
-    salary,
-    salary - LAG(salary) OVER (PARTITION BY department ORDER BY hire_date) as salary_change
-FROM employees;
+**Types**: `jsonb` renders as formatted JSON. `array`, `uuid`, `inet`, `timestamp with time zone`, `interval`, and `bytea` display natively.
 
--- CTEs with RETURNING
-WITH inserted AS (
-    INSERT INTO orders (customer_id, total)
-    VALUES (1, 99.99)
-    RETURNING *
-)
-SELECT * FROM inserted;
+**EXPLAIN**: `EXPLAIN` and `EXPLAIN ANALYZE` run with `FORMAT JSON` and render as a plan diagram or tree. See [EXPLAIN Visualization](/features/explain-visualization).
 
--- Full-text search
-SELECT title, ts_rank(search_vector, query) as rank
-FROM articles, to_tsquery('english', 'database & performance') query
-WHERE search_vector @@ query
-ORDER BY rank DESC;
-```
+**PostGIS**: `geometry` and `geography` columns render as EWKT with the SRID preserved (`SRID=4326;POINT(-73 40.7237)`) instead of the raw EWKB hex libpq returns. TablePro detects spatial columns from a one-time `pg_type` lookup at connect time and converts fetched values with `ST_AsEWKT(...)`. Your query is never re-run, so parameterized and multi-statement queries render EWKT too. If conversion fails, the raw hex is kept without an error.
 
-### PostgreSQL-Specific Types
+**Users & Roles**: Manage database users, roles, and privileges under **View > Users & Roles**: see where each privilege comes from, then grant or revoke it. See [Users & Roles](/features/users-roles).
 
-Supports `jsonb` (formatted JSON), `array`, `uuid`, `inet` (IP), `timestamp with time zone`, `interval`, `bytea` (binary).
+**Backup & Restore**: **Backup Dump** and **Restore Dump** run `pg_dump` and `pg_restore`. Among TablePro's databases this is available for PostgreSQL and Redshift only. See [Backup & Restore](/features/backup-restore).
+
+## Advanced
+
+**~/.pgpass**: format `hostname:port:database:username:password`, wildcards (`*`) allowed. libpq silently ignores the file unless its permissions are `0600`.
+
+**Startup Commands** (Advanced tab): SQL that runs on every connect, e.g. `SET timezone = 'UTC'; SET search_path TO myschema, public;`.
+
+**Pre-Connect Script** (Advanced tab): a shell script that runs before connecting, e.g. to refresh credentials from a secrets manager. 10-second timeout.
+
+## SSL/TLS
+
+New connections default to **Preferred** (libpq `sslmode=prefer`), which tries TLS first and falls back to plain. Pick **Verify CA** to validate the server certificate. See [SSL/TLS](/features/ssl).
 
 ## Troubleshooting
 
-**Connection refused**: Check server is running (`brew services start postgresql@16`), verify `listen_addresses` in `postgresql.conf`, ensure firewall allows port 5432.
+**Connection refused**: check the server is running, `listen_addresses` in `postgresql.conf` allows remote connections, and the firewall allows port 5432.
 
-**Auth failed**: Check `pg_hba.conf` for correct auth method (`md5`/`scram-sha-256` for passwords, `trust` for local dev). Reset password with `ALTER USER postgres WITH PASSWORD 'newpassword';`
+**Auth failed**: check `pg_hba.conf` for the auth method (`scram-sha-256` or `md5` for passwords, `trust` for local dev).
 
-**Database doesn't exist**: Connect to `postgres` database and create it with `CREATE DATABASE myapp;`
-
-**Permission denied**: Grant access with `GRANT ALL ON DATABASE/SCHEMA/TABLES TO username;`
-
-**SSL/TLS**: Cloud providers (AWS RDS, Heroku, Supabase) typically require SSL. Use **Required** or **Verify CA**. For unencrypted alternatives, use [SSH tunneling](/databases/ssh-tunneling).
-
-## Advanced Configuration
-
-**Startup Commands** (Advanced tab): Set session variables like `SET timezone = 'UTC'; SET search_path TO myschema, public;` to apply automatically on connect.
-
-**~/.pgpass Support**: Use format `hostname:port:database:username:password` with wildcards (`*`). Must have `chmod 0600` permissions.
-
-**Pre-Connect Script** (Advanced tab): Run a shell script before connecting (e.g., to refresh credentials from a secrets manager). 10-second timeout.
-
-**PostgreSQL Extensions**: PostGIS, hstore, ltree work out of the box. Check with `SELECT * FROM pg_extension;`
-
-**Performance**: Use `EXPLAIN ANALYZE` for query optimization. `LIMIT` large exploratory queries, create indexes, enable pagination.
-
-**MySQL Migration Notes**: Use `SERIAL` (not `AUTO_INCREMENT`), `LIMIT y OFFSET x` syntax, double quotes for identifiers, `GENERATED AS IDENTITY` for new schemas.
+**Postgres-compatible engines**: connect wire-compatible engines using the PostgreSQL type. TablePro probes which system catalogs the server provides, so engines that omit catalogs like `pg_matviews` still load their tables; object kinds the server does not expose just won't appear.

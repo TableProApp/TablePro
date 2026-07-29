@@ -10,11 +10,11 @@
 import Foundation
 import TableProPluginKit
 import Testing
+
 @testable import TablePro
 
 @Suite("Multi-Connection Navigation")
 struct MultiConnectionNavigationTests {
-
     // MARK: - Helpers
 
     @MainActor
@@ -138,7 +138,8 @@ struct MultiConnectionNavigationTests {
         let result = SidebarNavigationResult.resolve(
             clickedTableName: "users",
             currentTabTableName: manager.selectedTab?.tableContext.tableName,
-            hasExistingTabs: !manager.tabs.isEmpty
+            hasExistingTabs: !manager.tabs.isEmpty,
+            isActiveTabReusable: false
         )
         #expect(result == .skip)
     }
@@ -151,7 +152,8 @@ struct MultiConnectionNavigationTests {
         let result = SidebarNavigationResult.resolve(
             clickedTableName: "accounts",
             currentTabTableName: manager.selectedTab?.tableContext.tableName,
-            hasExistingTabs: !manager.tabs.isEmpty
+            hasExistingTabs: !manager.tabs.isEmpty,
+            isActiveTabReusable: false
         )
         #expect(result == .skip)
     }
@@ -164,41 +166,45 @@ struct MultiConnectionNavigationTests {
         let result = SidebarNavigationResult.resolve(
             clickedTableName: "items",
             currentTabTableName: manager.selectedTab?.tableContext.tableName,
-            hasExistingTabs: !manager.tabs.isEmpty
+            hasExistingTabs: !manager.tabs.isEmpty,
+            isActiveTabReusable: false
         )
         #expect(result == .skip)
     }
 
-    // MARK: - SidebarNavigationResult: openInPlace for all database types with no tabs
+    // MARK: - SidebarNavigationResult: reuseActiveTab for all database types with no tabs
 
-    @Test("resolve returns openInPlace for mysql with no existing tabs")
-    func resolveOpenInPlaceForMysqlNoTabs() {
+    @Test("resolve returns reuseActiveTab for mysql with no existing tabs")
+    func resolveReuseActiveTabForMysqlNoTabs() {
         let result = SidebarNavigationResult.resolve(
             clickedTableName: "users",
             currentTabTableName: nil,
-            hasExistingTabs: false
+            hasExistingTabs: false,
+            isActiveTabReusable: false
         )
-        #expect(result == .openInPlace)
+        #expect(result == .reuseActiveTab)
     }
 
-    @Test("resolve returns openInPlace for postgresql with no existing tabs")
-    func resolveOpenInPlaceForPostgresqlNoTabs() {
+    @Test("resolve returns reuseActiveTab for postgresql with no existing tabs")
+    func resolveReuseActiveTabForPostgresqlNoTabs() {
         let result = SidebarNavigationResult.resolve(
             clickedTableName: "accounts",
             currentTabTableName: nil,
-            hasExistingTabs: false
+            hasExistingTabs: false,
+            isActiveTabReusable: false
         )
-        #expect(result == .openInPlace)
+        #expect(result == .reuseActiveTab)
     }
 
-    @Test("resolve returns openInPlace for sqlite with no existing tabs")
-    func resolveOpenInPlaceForSqliteNoTabs() {
+    @Test("resolve returns reuseActiveTab for sqlite with no existing tabs")
+    func resolveReuseActiveTabForSqliteNoTabs() {
         let result = SidebarNavigationResult.resolve(
             clickedTableName: "items",
             currentTabTableName: nil,
-            hasExistingTabs: false
+            hasExistingTabs: false,
+            isActiveTabReusable: false
         )
-        #expect(result == .openInPlace)
+        #expect(result == .reuseActiveTab)
     }
 
     // MARK: - Coordinator connection scoping
@@ -241,5 +247,59 @@ struct MultiConnectionNavigationTests {
         #expect(tabManagerA.tabs.count == 1)
         #expect(tabManagerB.tabs.count == tabCountBefore)
         #expect(tabManagerB.tabs.first?.tableContext.tableName == "orders")
+    }
+
+    // MARK: - Cross-window deduplication (issue #1613)
+
+    @Test("openTableTab activates a sibling window's tab instead of duplicating when the table is already open")
+    @MainActor
+    func openTableTabActivatesSiblingInsteadOfDuplicating() throws {
+        let connectionId = UUID()
+        let (coordinatorA, tabManagerA) = makeCoordinator(id: connectionId, name: "Conn", database: "db_a")
+        let (coordinatorB, tabManagerB) = makeCoordinator(id: connectionId, name: "Conn", database: "db_a")
+        coordinatorA.registerEagerly()
+        coordinatorB.registerEagerly()
+        defer {
+            coordinatorA.teardown()
+            coordinatorB.teardown()
+        }
+
+        try tabManagerA.addTableTab(tableName: "users", databaseType: .mysql, databaseName: "db_a")
+        try tabManagerA.addTableTab(tableName: "accounts", databaseType: .mysql, databaseName: "db_a")
+        #expect(tabManagerA.selectedTab?.tableContext.tableName == "accounts")
+        try tabManagerB.addTableTab(tableName: "orders", databaseType: .mysql, databaseName: "db_a")
+
+        coordinatorB.openTableTab("users")
+
+        #expect(tabManagerB.tabs.count == 1)
+        #expect(tabManagerB.tabs.first?.tableContext.tableName == "orders")
+        #expect(tabManagerA.selectedTab?.tableContext.tableName == "users")
+    }
+
+    @Test("openTableTab does not dedupe against a sibling on a different connection")
+    @MainActor
+    func openTableTabIgnoresSiblingOnDifferentConnection() throws {
+        let (coordinatorA, tabManagerA) = makeCoordinator(name: "ConnA", database: "db_a")
+        let (coordinatorB, tabManagerB) = makeCoordinator(name: "ConnB", database: "db_b")
+        coordinatorA.registerEagerly()
+        coordinatorB.registerEagerly()
+        defer {
+            coordinatorA.teardown()
+            coordinatorB.teardown()
+        }
+
+        try tabManagerA.addTableTab(tableName: "users", databaseType: .mysql, databaseName: "db_a")
+
+        let activated = coordinatorB.activateIfAlreadyOpen(
+            tableName: "users",
+            databaseName: "db_b",
+            schemaName: nil,
+            showStructure: false,
+            activateGridFocus: false,
+            includeSiblings: true
+        )
+
+        #expect(activated == false)
+        #expect(tabManagerB.tabs.isEmpty)
     }
 }

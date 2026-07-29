@@ -11,7 +11,8 @@ struct SSHPaneView: View {
     var body: some View {
         ConnectionSSHTunnelView(
             sshState: $coordinator.ssh.state,
-            databaseType: coordinator.network.type
+            databaseType: coordinator.network.type,
+            coordinator: coordinator
         )
     }
 }

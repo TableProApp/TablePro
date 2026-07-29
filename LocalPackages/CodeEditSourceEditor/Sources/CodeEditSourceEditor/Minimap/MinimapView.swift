@@ -72,6 +72,18 @@ public class MinimapView: FlippedNSView {
         scrollView.visibleRect.height - scrollView.contentInsets.vertical
     }
 
+    /// Suspends the minimap's line storage updates while it is hidden so it does not rebuild on every edit. When the
+    /// minimap becomes visible again, its line storage is rebuilt to catch up on the edits it skipped.
+    override public var isHidden: Bool {
+        didSet {
+            guard isHidden != oldValue else { return }
+            layoutManager?.processesEdits = !isHidden
+            if !isHidden {
+                layoutManager?.reset()
+            }
+        }
+    }
+
     // MARK: - Init
 
     /// Creates a minimap view with the text view to track, and an initial theme.

@@ -80,7 +80,6 @@ internal struct AgentAuthenticator: SSHAuthenticator {
             throw SSHTunnelError.tunnelCreationFailed("Failed to list SSH agent identities")
         }
 
-        // Iterate through available identities and try each
         var previousIdentity: UnsafeMutablePointer<libssh2_agent_publickey>?
         var currentIdentity: UnsafeMutablePointer<libssh2_agent_publickey>?
 

@@ -19,12 +19,6 @@ actor MCPAuditLogStorage {
     private var dbPath: String?
     private let testDatabaseSuffix: String?
 
-    enum TimeRange: Equatable {
-        case lastHours(Int)
-        case lastDays(Int)
-        case all
-    }
-
     init() {
         self.testDatabaseSuffix = nil
         setupDatabase()

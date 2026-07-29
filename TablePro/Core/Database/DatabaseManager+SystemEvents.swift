@@ -25,26 +25,33 @@ extension DatabaseManager {
     }
 
     @objc private func handleSystemDidWake(_ notification: Notification) {
-        Self.logger.info("System woke from sleep — validating SSH-tunneled sessions")
+        Self.logger.info("System woke from sleep, validating tunneled sessions")
 
         Task { @MainActor [weak self] in
             guard let self else { return }
-            await self.validateSSHTunneledSessions()
+            await self.validateTunneledSessions()
         }
     }
 
-    /// After waking from sleep, proactively check all SSH-tunneled sessions.
+    /// After waking from sleep, proactively check all tunneled sessions.
     /// If the tunnel is dead, trigger an immediate reconnect rather than waiting
     /// for the next 30-second health monitor ping.
-    private func validateSSHTunneledSessions() async {
-        for (connectionId, session) in activeSessions {
-            guard session.connection.resolvedSSHConfig.enabled,
-                  session.isConnected else { continue }
-
-            let tunnelAlive = await SSHTunnelManager.shared.hasTunnel(connectionId: connectionId)
-            if !tunnelAlive {
-                Self.logger.warning("SSH tunnel missing after wake for: \(session.connection.name)")
+    private func validateTunneledSessions() async {
+        for (connectionId, session) in activeSessions where session.isConnected {
+            guard let kind = session.connection.activeTunnelKind,
+                  let manager = activeTunnelManager(for: session.connection) else { continue }
+            let tunnelAlive = await manager.hasTunnel(connectionId: connectionId)
+            guard !tunnelAlive else { continue }
+            Self.logger.warning("\(kind.displayName) missing after wake for: \(session.connection.name)")
+            switch kind {
+            case .ssh:
                 await handleSSHTunnelDied(connectionId: connectionId)
+            case .cloudflare:
+                await handleCloudflareTunnelDied(connectionId: connectionId)
+            case .cloudSQLProxy:
+                await handleCloudSQLProxyTunnelDied(connectionId: connectionId)
+            case .socksProxy:
+                await handleSOCKSProxyTunnelDied(connectionId: connectionId)
             }
         }
     }

@@ -68,6 +68,13 @@ curl -fSL "https://github.com/libssh2/libssh2/releases/download/libssh2-$LIBSSH2
 echo "$LIBSSH2_SHA256  $BUILD_DIR/libssh2.tar.gz" | shasum -a 256 -c - > /dev/null
 tar xzf "$BUILD_DIR/libssh2.tar.gz" -C "$BUILD_DIR"
 LIBSSH2_SRC="$BUILD_DIR/libssh2-$LIBSSH2_VERSION"
+
+for patch in "$SCRIPT_DIR/../patches"/*.patch; do
+    [ -e "$patch" ] || continue
+    echo "=> Applying $(basename "$patch")"
+    patch -p1 -d "$LIBSSH2_SRC" -i "$patch"
+done
+
 echo "   Done."
 
 # --- Build function ---

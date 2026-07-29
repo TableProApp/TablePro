@@ -14,17 +14,19 @@ extension RowEditingCoordinator {
 
     func executeSidebarChanges(statements: [ParameterizedStatement]) async throws {
         let sqlPreview = statements.map(\.sql).joined(separator: "\n")
-        let window = await MainActor.run { NSApp.keyWindow }
-        let permission = await SafeModeGuard.checkPermission(
-            level: parent.safeModeLevel,
-            isWriteOperation: true,
-            sql: sqlPreview,
-            operationDescription: String(localized: "Save Sidebar Changes"),
-            window: window,
-            databaseType: parent.connection.type
+        let decision = await ExecutionGateProvider.shared.authorize(
+            OperationRequest(
+                connectionId: parent.connectionId,
+                databaseType: parent.connection.type,
+                sql: sqlPreview,
+                kind: OperationKind.from(QueryClassifier.classifyTier(sqlPreview, databaseType: parent.connection.type)),
+                caller: .userInterface,
+                capabilities: .interactiveUser,
+                operationDescription: String(localized: "Save Sidebar Changes")
+            )
         )
-        if case .blocked = permission {
-            return
+        guard case .authorized = decision else {
+            throw DatabaseError.queryFailed(decision.deniedReason ?? String(localized: "Operation not permitted"))
         }
 
         guard let driver = DatabaseManager.shared.driver(for: parent.connectionId) else {

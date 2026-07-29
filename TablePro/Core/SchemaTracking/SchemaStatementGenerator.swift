@@ -9,11 +9,14 @@
 import Foundation
 import TableProPluginKit
 
-/// A schema SQL statement with metadata
+/// A schema SQL statement with metadata.
+/// `carriesCredentials` marks statements whose SQL embeds a plaintext password, so they are never
+/// written to the on-disk query history.
 struct SchemaStatement {
     let sql: String
     let description: String
     let isDestructive: Bool
+    var carriesCredentials = false
 }
 
 /// Generates SQL statements for schema modifications by delegating to the plugin driver.

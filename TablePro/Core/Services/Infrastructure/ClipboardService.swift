@@ -2,27 +2,38 @@
 //  ClipboardService.swift
 //  TablePro
 //
-//  Abstraction over clipboard operations for testability.
-//  Provides protocol-based access to pasteboard data.
-//
 
 import AppKit
+import TableProPluginKit
 import UniformTypeIdentifiers
+
+struct GridRowsClipboardPayload: Codable, Equatable {
+    let columns: [String]
+    let rows: [[PluginCellValue]]
+}
 
 protocol ClipboardProvider {
     func readText() -> String?
+    func readGridRows() -> GridRowsClipboardPayload?
     func writeText(_ text: String)
-    func writeRows(tsv: String, html: String?)
+    func writeCsv(_ csv: String)
+    func writeRows(tsv: String, html: String?, gridRows: GridRowsClipboardPayload)
     var hasText: Bool { get }
     var hasGridRows: Bool { get }
 }
 
 struct NSPasteboardClipboardProvider: ClipboardProvider {
     private static let tsvType = NSPasteboard.PasteboardType("public.utf8-tab-separated-values-text")
+    private static let csvType = NSPasteboard.PasteboardType("public.comma-separated-values-text")
     private static let gridRowsType = NSPasteboard.PasteboardType("com.TablePro.gridRows")
 
     func readText() -> String? {
         NSPasteboard.general.string(forType: .string)
+    }
+
+    func readGridRows() -> GridRowsClipboardPayload? {
+        guard let data = NSPasteboard.general.data(forType: Self.gridRowsType) else { return nil }
+        return try? JSONDecoder().decode(GridRowsClipboardPayload.self, from: data)
     }
 
     func writeText(_ text: String) {
@@ -32,7 +43,15 @@ struct NSPasteboardClipboardProvider: ClipboardProvider {
         pb.setString(text, forType: NSPasteboard.PasteboardType(UTType.utf8PlainText.identifier))
     }
 
-    func writeRows(tsv: String, html: String?) {
+    func writeCsv(_ csv: String) {
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(csv, forType: .string)
+        pb.setString(csv, forType: NSPasteboard.PasteboardType(UTType.utf8PlainText.identifier))
+        pb.setString(csv, forType: Self.csvType)
+    }
+
+    func writeRows(tsv: String, html: String?, gridRows: GridRowsClipboardPayload) {
         let pb = NSPasteboard.general
         pb.clearContents()
         pb.setString(tsv, forType: .string)
@@ -40,7 +59,9 @@ struct NSPasteboardClipboardProvider: ClipboardProvider {
         if let html {
             pb.setString(html, forType: .html)
         }
-        pb.setString("1", forType: Self.gridRowsType)
+        if let data = try? JSONEncoder().encode(gridRows) {
+            pb.setData(data, forType: Self.gridRowsType)
+        }
     }
 
     var hasText: Bool {

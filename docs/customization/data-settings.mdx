@@ -1,0 +1,60 @@
+---
+title: Data Settings
+description: Data grid, pagination, query result cap, JSON viewer, query history, and saved customizations
+---
+
+Open **Settings > Data** (`Cmd+,`). This tab holds the data grid, pagination, query result cap, JSON viewer, query history, and saved per-table customizations.
+
+Data grid fonts are per-theme. Edit them on the theme's Fonts tab under [Appearance](/customization/appearance).
+
+## Data Grid
+
+| Setting | Default | Notes |
+|---------|---------|-------|
+| Row height | Normal | Compact, Normal, Comfortable, Spacious |
+| Date format | ISO 8601 | ISO 8601, ISO Date, US Long, US Short, EU Long, EU Short |
+| NULL display | `NULL` | Text shown for NULL cells, up to 20 characters |
+| Show alternate row backgrounds | On | |
+| Show row numbers | On | |
+| Auto-show inspector on row select | Off | Opens the row details inspector when you select a row |
+| Smart value detection | On | Renders UUID, Unix timestamp, JSON, and PHP serialized columns in readable form. Override per column with Display As, see [Data Grid](/features/data-grid) |
+| Default row sort | No sorting (engine order) | Or Primary key, First column. Applied when a table first opens; clicking a column header overrides it |
+
+## Pagination
+
+| Setting | Default | Options |
+|---------|---------|---------|
+| Default page size | 1,000 rows | 100, 500, 1,000, 5,000, 10,000 |
+| Count rows if estimate less than | 100,000 | 1,000; 10,000; 100,000; 1,000,000; Always count |
+
+Tables with more estimated rows than the threshold show an approximate count instead of running a slow `COUNT(*)`.
+
+## Query Result Row Cap
+
+| Setting | Default | Options |
+|---------|---------|---------|
+| Truncate query results | On | |
+| Row cap | 10,000 | 100; 1,000; 5,000; 10,000; 50,000; 100,000; 500,000 |
+
+When on, `SELECT` queries without their own `LIMIT` run with the cap applied to the rows TablePro reads back. The SQL sent to the server is always the query you wrote. Capped results show a **Fetch All** button, and **Execute Without Limit** skips the cap for one run.
+
+## JSON Viewer
+
+| Setting | Default | Options |
+|---------|---------|---------|
+| Default view | Text | Text, Tree |
+
+The mode the JSON viewer opens in. Switching modes inside the viewer writes the choice back to this setting. See [JSON Viewer](/features/json-viewer).
+
+## Query History
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| **Maximum entries** | 10,000 | 100 to 10,000, or Unlimited |
+| **Keep entries for** | 90 days | 7 days to 1 year, or Forever |
+| **Auto cleanup on startup** | On | Remove old entries automatically |
+| **Clear History...** | - | Wipe all history after confirmation |
+
+## Saved Customizations
+
+Lists every table where you set column widths, order, visibility, or a filter. Each row shows the table and what it saved (Columns, Filters), with **Reset** to return that table to defaults and **Reset All Customizations** to clear them all. You edit these inline in the grid and filter bar; this pane only reviews and resets them.

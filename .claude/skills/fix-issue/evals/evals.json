@@ -1,0 +1,57 @@
+{
+  "skill_name": "fix-issue",
+  "notes": "Plan-first skill. The graded output is the implementation blueprint each run produces, not committed code. with_skill runs follow SKILL.md and stop at the plan gate; baseline runs get the same prompt with no skill. Two prompts are symptom-only (no file/invariant named) to test whether the workflow rediscovers the cause; one is a bare GitHub issue number to test the fetch path.",
+  "evals": [
+    {
+      "id": 1,
+      "name": "active-connections-modal-dismiss",
+      "source_issue": 1350,
+      "input_mode": "chat-symptom-only",
+      "prompt": "In TablePro, the Active Connections panel dims the background when it opens but I can't tell how to close it. There's no close button anywhere. Make it dismiss properly, the native macOS way.",
+      "expected_output": "A blueprint that locates the Active Connections sheet (ConnectionSwitcherSheet.swift), cites macOS HIG conventions for dismissing a sheet/panel, and covers all three dismissal paths from the issue: a visible close control, Escape, and click-outside. Stops at the plan for approval rather than blindly editing.",
+      "files": [],
+      "expectations": [
+        "Identifies the Active Connections sheet component (ConnectionSwitcherSheet.swift or equivalent) as the place to fix",
+        "Cites a specific macOS HIG convention or native dismissal API (e.g. SwiftUI dismiss, sheet/NSPanel, Escape via cancelAction) rather than inventing an approach",
+        "Addresses the full scope of dismissal, not just adding a button: visible close control AND Escape AND click-outside",
+        "States the root cause (no dismissal affordance) distinctly from the symptom",
+        "Presents a plan and pauses for approval before implementing, instead of immediately writing code",
+        "Includes a CHANGELOG entry and a test in the plan per TablePro mandatory rules"
+      ]
+    },
+    {
+      "id": 2,
+      "name": "table-selection-tab-consistency",
+      "source_issue": 1348,
+      "input_mode": "chat-symptom-only",
+      "prompt": "When I click a table in the sidebar, the behaviour is inconsistent. The first click replaces the current tab, but once I've opened a second tab, clicking another table keeps opening brand-new tabs instead of replacing the active one. It should be predictable. Fix it properly so it behaves like a native macOS app would.",
+      "expected_output": "A blueprint that traces openTableTab in MainContentCoordinator+Navigation, rediscovers the tab replacement guard invariant documented in CLAUDE.md, explains why the branch flips after the second tab, and proposes one consistent preview-tab rule (single-click reuses/replaces the active preview tab; an explicit action opens a new tab) matching native preview-tab UX.",
+      "files": [],
+      "expectations": [
+        "Traces the cause to openTableTab in MainContentCoordinator+Navigation (or the table-selection path) with file evidence",
+        "Surfaces the tab replacement guard invariant from CLAUDE.md, or otherwise explains the preview-tab vs new-tab branch precisely",
+        "Explains the root cause: why selection replaces the tab initially but opens new tabs after a second tab exists",
+        "Proposes one consistent rule (single-click reuses/replaces the preview tab; explicit action opens a new tab), referencing native preview-tab UX from Xcode/Finder/competitor clients",
+        "Makes an explicit refactor-vs-patch decision rather than bolting on a special case",
+        "Presents a plan and pauses for approval before implementing"
+      ]
+    },
+    {
+      "id": 3,
+      "name": "raw-sql-filter-completion-after-and",
+      "source_issue": 1346,
+      "input_mode": "github-issue-number",
+      "prompt": "fix issue #1346 in TablePro",
+      "expected_output": "A blueprint that fetches the issue, traces raw SQL filter completion (FilterCoordinator plus the CompletionEngine / SQL context analysis), identifies that completion only fires for the leading token instead of re-running per clause, and proposes column completion at every column-valid position (after AND/OR), with tests.",
+      "files": [],
+      "expectations": [
+        "Fetches the GitHub issue content (e.g. via gh) before planning",
+        "Traces completion through FilterCoordinator and the CompletionEngine / SQL context analyzer with file evidence",
+        "States the root cause as completion firing only for the leading token / not re-running per clause, not a surface workaround",
+        "Covers the full scope: column completion at every valid position including after AND and OR, not only after AND",
+        "Specifies a test that exercises completion after AND/OR in the raw SQL filter",
+        "Presents a plan and pauses for approval before implementing"
+      ]
+    }
+  ]
+}

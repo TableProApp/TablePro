@@ -53,24 +53,20 @@ internal struct DynamoDBPartiQLParser {
 
         switch firstUpper {
         case "SELECT":
-            // Find FROM keyword and take the next token
             if let fromIndex = tokens.firstIndex(where: { $0.uppercased() == "FROM" }),
                fromIndex + 1 < tokens.count
             {
                 return normalizeIdentifierToken(tokens[fromIndex + 1])
             }
         case "INSERT":
-            // INSERT INTO "table" ...
             if tokens.count >= 3, tokens[1].uppercased() == "INTO" {
                 return normalizeIdentifierToken(tokens[2])
             }
         case "UPDATE":
-            // UPDATE "table" ...
             if tokens.count >= 2 {
                 return normalizeIdentifierToken(tokens[1])
             }
         case "DELETE":
-            // DELETE FROM "table" ...
             if tokens.count >= 3, tokens[1].uppercased() == "FROM" {
                 return normalizeIdentifierToken(tokens[2])
             }

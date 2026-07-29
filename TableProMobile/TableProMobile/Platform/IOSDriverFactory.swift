@@ -3,10 +3,21 @@ import TableProDatabase
 import TableProModels
 
 final class IOSDriverFactory: DriverFactory {
+    private let bookmarkStore: FileBookmarkStore
+
+    init(bookmarkStore: FileBookmarkStore = FileBookmarkStore()) {
+        self.bookmarkStore = bookmarkStore
+    }
+
     func createDriver(for connection: DatabaseConnection, password: String?) throws -> any DatabaseDriver {
         switch connection.type {
         case .sqlite:
             return SQLiteDriver(path: connection.database)
+        case .duckdb:
+            let bookmark = connection.database == DuckDBDriver.inMemoryPath
+                ? nil
+                : bookmarkStore.bookmark(for: connection.id)
+            return DuckDBDriver(path: connection.database, bookmark: bookmark)
         case .mysql, .mariadb:
             return MySQLDriver(
                 host: connection.host,
@@ -14,7 +25,7 @@ final class IOSDriverFactory: DriverFactory {
                 user: connection.username,
                 password: password ?? "",
                 database: connection.database,
-                sslEnabled: connection.sslEnabled
+                ssl: DriverSSLConfiguration(sslEnabled: connection.sslEnabled, configuration: connection.sslConfiguration)
             )
         case .postgresql, .redshift:
             return PostgreSQLDriver(
@@ -23,7 +34,7 @@ final class IOSDriverFactory: DriverFactory {
                 user: connection.username,
                 password: password ?? "",
                 database: connection.database,
-                sslEnabled: connection.sslEnabled
+                ssl: DriverSSLConfiguration(sslEnabled: connection.sslEnabled, configuration: connection.sslConfiguration)
             )
         case .redis:
             let dbIndex = Int(connection.database) ?? 0
@@ -32,7 +43,7 @@ final class IOSDriverFactory: DriverFactory {
                 port: connection.port,
                 password: password,
                 database: dbIndex,
-                sslEnabled: connection.sslEnabled
+                ssl: DriverSSLConfiguration(sslEnabled: connection.sslEnabled, configuration: connection.sslConfiguration)
             )
         case .mssql:
             return MSSQLDriver(connection: connection, password: password)
@@ -42,6 +53,6 @@ final class IOSDriverFactory: DriverFactory {
     }
 
     func supportedTypes() -> [DatabaseType] {
-        [.sqlite, .mysql, .mariadb, .postgresql, .redshift, .redis, .mssql]
+        [.sqlite, .duckdb, .mysql, .mariadb, .postgresql, .redshift, .redis, .mssql]
     }
 }

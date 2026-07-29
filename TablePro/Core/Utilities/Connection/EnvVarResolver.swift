@@ -70,23 +70,19 @@ internal enum EnvVarResolver {
         resolved.database = resolve(connection.database)
         resolved.username = resolve(connection.username)
 
-        // SSH fields
         resolved.sshConfig.host = resolve(connection.sshConfig.host)
         resolved.sshConfig.username = resolve(connection.sshConfig.username)
         resolved.sshConfig.privateKeyPath = resolve(connection.sshConfig.privateKeyPath)
         resolved.sshConfig.agentSocketPath = resolve(connection.sshConfig.agentSocketPath)
 
-        // SSL certificate paths
         resolved.sslConfig.caCertificatePath = resolve(connection.sslConfig.caCertificatePath)
         resolved.sslConfig.clientCertificatePath = resolve(connection.sslConfig.clientCertificatePath)
         resolved.sslConfig.clientKeyPath = resolve(connection.sslConfig.clientKeyPath)
 
-        // Startup commands
         if let commands = connection.startupCommands {
             resolved.startupCommands = resolve(commands)
         }
 
-        // Additional fields values
         var resolvedFields: [String: String] = [:]
         for (key, value) in connection.additionalFields {
             resolvedFields[key] = resolve(value)

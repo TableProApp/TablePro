@@ -8,6 +8,49 @@
 import AppKit
 import SwiftUI
 
+private final class IntrinsicHeightSearchField: NSSearchField {
+    var focusOnAppear = false
+    private var windowKeyObserver: NSObjectProtocol?
+
+    override var intrinsicContentSize: NSSize {
+        let cellHeight = cell?.cellSize.height ?? super.intrinsicContentSize.height
+        return NSSize(width: NSView.noIntrinsicMetric, height: cellHeight)
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        removeWindowKeyObserver()
+        guard focusOnAppear, acceptsFirstResponder, let window else { return }
+        if window.isKeyWindow {
+            window.makeFirstResponder(self)
+            return
+        }
+        windowKeyObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.didBecomeKeyNotification,
+            object: window,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.removeWindowKeyObserver()
+                self.window?.makeFirstResponder(self)
+            }
+        }
+    }
+
+    private func removeWindowKeyObserver() {
+        guard let token = windowKeyObserver else { return }
+        NotificationCenter.default.removeObserver(token)
+        windowKeyObserver = nil
+    }
+
+    deinit {
+        if let token = windowKeyObserver {
+            NotificationCenter.default.removeObserver(token)
+        }
+    }
+}
+
 struct NativeSearchField: NSViewRepresentable {
     @Binding var text: String
     var placeholder: String
@@ -18,31 +61,32 @@ struct NativeSearchField: NSViewRepresentable {
     var focusOnAppear: Bool = false
     var focusTrigger: Int = 0
     var maxWidth: CGFloat?
+    var accessibilityIdentifier: String = "sidebar-filter"
 
     func makeNSView(context: Context) -> NSSearchField {
-        let field = NSSearchField()
+        let field = IntrinsicHeightSearchField()
         field.placeholderString = placeholder
         field.delegate = context.coordinator
         field.controlSize = controlSize
         field.sendsSearchStringImmediately = true
-        field.setAccessibilityIdentifier("sidebar-filter")
+        field.setAccessibilityIdentifier(accessibilityIdentifier)
         field.cell?.usesSingleLineMode = true
         if let maxWidth {
             field.preferredMaxLayoutWidth = maxWidth
             field.widthAnchor.constraint(lessThanOrEqualToConstant: maxWidth).isActive = true
         }
         context.coordinator.lastFocusTrigger = focusTrigger
-        if focusOnAppear {
-            DispatchQueue.main.async {
-                field.window?.makeFirstResponder(field)
-            }
-        }
+        field.focusOnAppear = focusOnAppear
         return field
     }
 
     func updateNSView(_ field: NSSearchField, context: Context) {
         if field.stringValue != text {
             field.stringValue = text
+        }
+        if field.controlSize != controlSize {
+            field.controlSize = controlSize
+            field.invalidateIntrinsicContentSize()
         }
         field.placeholderString = placeholder
         context.coordinator.onMoveUp = onMoveUp
@@ -83,13 +127,12 @@ struct NativeSearchField: NSViewRepresentable {
 
         func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
             if commandSelector == #selector(NSResponder.cancelOperation(_:)) {
-                guard let field = control as? NSSearchField else { return false }
-                if !field.stringValue.isEmpty {
-                    field.stringValue = ""
-                    text.wrappedValue = ""
-                    return true
+                guard let field = control as? NSSearchField, !field.stringValue.isEmpty else {
+                    return false
                 }
-                return false
+                field.stringValue = ""
+                text.wrappedValue = ""
+                return true
             }
             if commandSelector == #selector(NSResponder.moveUp(_:)), let onMoveUp {
                 onMoveUp()

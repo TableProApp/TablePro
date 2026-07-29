@@ -108,6 +108,121 @@ struct QueryExecutorTests {
         #expect(!QueryExecutor.isDDLStatement("DELETE FROM foo"))
     }
 
+    // MARK: - Row cap qualification
+
+    @Test("qualifiesForRowCap accepts SELECT and WITH queries on query tabs")
+    func qualifiesForRowCapSelects() {
+        #expect(QueryExecutor.qualifiesForRowCap(
+            sql: "SELECT * FROM users", tabType: .query, databaseType: .mysql
+        ))
+        #expect(QueryExecutor.qualifiesForRowCap(
+            sql: "WITH cte AS (SELECT 1) SELECT * FROM cte", tabType: .query, databaseType: .postgresql
+        ))
+    }
+
+    @Test("qualifiesForRowCap accepts SELECT followed by newline, tab, or punctuation")
+    func qualifiesForRowCapKeywordBoundaries() {
+        #expect(QueryExecutor.qualifiesForRowCap(
+            sql: "SELECT\n  *\nFROM big_table", tabType: .query, databaseType: .mysql
+        ))
+        #expect(QueryExecutor.qualifiesForRowCap(
+            sql: "SELECT\t* FROM t", tabType: .query, databaseType: .mysql
+        ))
+        #expect(QueryExecutor.qualifiesForRowCap(
+            sql: "SELECT*FROM t", tabType: .query, databaseType: .mysql
+        ))
+        #expect(!QueryExecutor.qualifiesForRowCap(
+            sql: "SELECTX FROM t", tabType: .query, databaseType: .mysql
+        ))
+    }
+
+    @Test("qualifiesForRowCap accepts SELECT queries preceded by comments")
+    func qualifiesForRowCapCommentPrefixed() {
+        #expect(QueryExecutor.qualifiesForRowCap(
+            sql: "-- top users\nSELECT * FROM users", tabType: .query, databaseType: .mysql
+        ))
+        #expect(QueryExecutor.qualifiesForRowCap(
+            sql: "/* audit */ SELECT * FROM users", tabType: .query, databaseType: .mysql
+        ))
+    }
+
+    @Test("qualifiesForRowCap rejects writes, DDL, EXPLAIN, and table tabs")
+    func qualifiesForRowCapRejections() {
+        #expect(!QueryExecutor.qualifiesForRowCap(
+            sql: "DELETE FROM users", tabType: .query, databaseType: .mysql
+        ))
+        #expect(!QueryExecutor.qualifiesForRowCap(
+            sql: "CREATE TABLE foo (id INT)", tabType: .query, databaseType: .mysql
+        ))
+        #expect(!QueryExecutor.qualifiesForRowCap(
+            sql: "EXPLAIN SELECT * FROM users", tabType: .query, databaseType: .mysql
+        ))
+        #expect(!QueryExecutor.qualifiesForRowCap(
+            sql: "SELECT * FROM users", tabType: .table, databaseType: .mysql
+        ))
+        #expect(!QueryExecutor.qualifiesForRowCap(
+            sql: "WITH cte AS (SELECT 1) DELETE FROM users", tabType: .query, databaseType: .postgresql
+        ))
+    }
+
+    @Test("qualifiesForRowCap accepts a SELECT ending in ORDER BY")
+    func qualifiesForRowCapOrderBy() {
+        #expect(QueryExecutor.qualifiesForRowCap(
+            sql: "SELECT * FROM alert_events ORDER BY alert_time", tabType: .query, databaseType: .mysql
+        ))
+        #expect(QueryExecutor.qualifiesForRowCap(
+            sql: "SELECT * FROM t WHERE created_at >= '2026-01-01' ORDER BY id DESC",
+            tabType: .query, databaseType: .mysql
+        ))
+    }
+
+    // MARK: - Row cap resolution
+
+    private func withRowCapSettings(truncate: Bool, cap: Int, _ body: () -> Void) {
+        let previousTruncate = AppSettingsManager.shared.dataGrid.truncateQueryResults
+        let previousCap = AppSettingsManager.shared.dataGrid.queryResultRowCap
+        AppSettingsManager.shared.dataGrid.truncateQueryResults = truncate
+        AppSettingsManager.shared.dataGrid.queryResultRowCap = cap
+        defer {
+            AppSettingsManager.shared.dataGrid.truncateQueryResults = previousTruncate
+            AppSettingsManager.shared.dataGrid.queryResultRowCap = previousCap
+        }
+        body()
+    }
+
+    @Test("resolveRowCap returns nil when the row cap is unlimited")
+    func resolveRowCapUnlimitedReturnsNil() {
+        withRowCapSettings(truncate: true, cap: 0) {
+            #expect(QueryExecutor.resolveRowCap(
+                sql: "SELECT * FROM alert_events ORDER BY alert_time",
+                tabType: .query,
+                databaseType: .mysql
+            ) == nil)
+        }
+    }
+
+    @Test("resolveRowCap returns the configured cap for a capped SELECT")
+    func resolveRowCapReturnsConfiguredCap() {
+        withRowCapSettings(truncate: true, cap: 10_000) {
+            #expect(QueryExecutor.resolveRowCap(
+                sql: "SELECT * FROM alert_events ORDER BY alert_time",
+                tabType: .query,
+                databaseType: .mysql
+            ) == 10_000)
+        }
+    }
+
+    @Test("resolveRowCap returns nil when truncation is disabled")
+    func resolveRowCapTruncationDisabled() {
+        withRowCapSettings(truncate: false, cap: 10_000) {
+            #expect(QueryExecutor.resolveRowCap(
+                sql: "SELECT * FROM users",
+                tabType: .query,
+                databaseType: .mysql
+            ) == nil)
+        }
+    }
+
     // MARK: - Parameter detection
 
     @Test("detectAndReconcileParameters returns empty when SQL has no placeholders")
@@ -178,7 +293,7 @@ struct QueryExecutorTests {
                 referencedTable: "roles", referencedColumn: "id"
             )
         ]
-        let schema: SchemaResult = (columnInfo: columns, fkInfo: fks, approximateRowCount: 1_234)
+        let schema = FetchedTableSchema(columns: columns, foreignKeys: fks, approximateRowCount: 1_234)
 
         let parsed = QueryExecutor.parseSchemaMetadata(schema)
 
@@ -187,7 +302,7 @@ struct QueryExecutorTests {
         #expect(parsed.columnDefaults["name"] == .some("guest"))
         #expect(parsed.columnNullable["id"] == false)
         #expect(parsed.columnNullable["name"] == true)
-        #expect(parsed.columnForeignKeys["role_id"]?.referencedTable == "roles")
+        #expect(parsed.columnForeignKeys?["role_id"]?.referencedTable == "roles")
         #expect(parsed.approximateRowCount == 1_234)
     }
 
@@ -201,30 +316,77 @@ struct QueryExecutorTests {
                 defaultValue: nil, extra: nil, charset: nil, collation: nil, comment: nil
             )
         ]
-        let schema: SchemaResult = (columnInfo: columns, fkInfo: [], approximateRowCount: nil)
+        let schema = FetchedTableSchema(columns: columns, foreignKeys: [], approximateRowCount: nil)
 
         let parsed = QueryExecutor.parseSchemaMetadata(schema)
 
         #expect(parsed.columnEnumValues["status"] == ["open", "closed", "archived"])
     }
 
+
+    @Test("parseSchemaMetadata keeps a failed foreign key fetch distinguishable from zero foreign keys")
+    func parseSchemaMetadataNilForeignKeys() {
+        let schema = FetchedTableSchema(columns: [], foreignKeys: nil, approximateRowCount: nil)
+        let parsed = QueryExecutor.parseSchemaMetadata(schema)
+        #expect(parsed.columnForeignKeys == nil)
+    }
+
     @Test("parseSchemaMetadata returns empty containers when input is empty")
     func parseSchemaMetadataEmpty() {
-        let schema: SchemaResult = (columnInfo: [], fkInfo: [], approximateRowCount: nil)
+        let schema = FetchedTableSchema(columns: [], foreignKeys: [], approximateRowCount: nil)
         let parsed = QueryExecutor.parseSchemaMetadata(schema)
         #expect(parsed.primaryKeyColumns.isEmpty)
         #expect(parsed.columnDefaults.isEmpty)
         #expect(parsed.columnNullable.isEmpty)
-        #expect(parsed.columnForeignKeys.isEmpty)
+        #expect(parsed.columnForeignKeys?.isEmpty == true)
         #expect(parsed.columnEnumValues.isEmpty)
         #expect(parsed.approximateRowCount == nil)
     }
 
-    // TODO: integration test for `QueryExecutor.executeQuery` orchestration
-    // (parallel schema fetch, cancel-on-fetch-error, parameterised path).
-    // Requires either a `DatabaseDriver` mock registered with
-    // `DatabaseManager.shared` or a DI refactor of `QueryExecutor` to accept
-    // an injected driver. Static helpers above already cover SQL parsing,
-    // metadata parsing, parameter reconciliation, DDL detection, and row-cap
-    // policy.
+    // MARK: - Inline result-set metadata
+
+    @Test("inlineMetadata extracts primary keys and nullability from result flags")
+    func inlineMetadataExtractsFlags() throws {
+        let meta = [
+            ResultColumnMeta(isPrimaryKey: true, isNullable: false, isAutoIncrement: true),
+            ResultColumnMeta(isPrimaryKey: false, isNullable: true, isAutoIncrement: false)
+        ]
+        let parsed = try #require(QueryExecutor.inlineMetadata(from: meta, columns: ["id", "name"]))
+        #expect(parsed.primaryKeyColumns == ["id"])
+        #expect(parsed.columnNullable["id"] == false)
+        #expect(parsed.columnNullable["name"] == true)
+        #expect(parsed.columnDefaults.isEmpty)
+        #expect(parsed.columnForeignKeys == nil)
+        #expect(parsed.approximateRowCount == nil)
+    }
+
+    @Test("inlineMetadata reports a composite primary key in column order")
+    func inlineMetadataCompositePrimaryKey() throws {
+        let meta = [
+            ResultColumnMeta(isPrimaryKey: true, isNullable: false, isAutoIncrement: false),
+            ResultColumnMeta(isPrimaryKey: true, isNullable: false, isAutoIncrement: false),
+            ResultColumnMeta(isPrimaryKey: false, isNullable: true, isAutoIncrement: false)
+        ]
+        let parsed = try #require(QueryExecutor.inlineMetadata(from: meta, columns: ["order_id", "product_id", "qty"]))
+        #expect(parsed.primaryKeyColumns == ["order_id", "product_id"])
+    }
+
+    @Test("inlineMetadata returns nil when result metadata is absent or empty")
+    func inlineMetadataNilWhenAbsent() {
+        #expect(QueryExecutor.inlineMetadata(from: nil, columns: ["id"]) == nil)
+        #expect(QueryExecutor.inlineMetadata(from: [], columns: ["id"]) == nil)
+    }
+
+    @Test("inlineMetadata returns nil when metadata count does not match columns")
+    func inlineMetadataNilOnCountMismatch() {
+        let meta = [ResultColumnMeta(isPrimaryKey: true, isNullable: false, isAutoIncrement: false)]
+        #expect(QueryExecutor.inlineMetadata(from: meta, columns: ["id", "name"]) == nil)
+    }
+
+    // TODO: integration test for the execute -> Phase 1 render -> Phase 2 metadata
+    // flow in QueryExecutionCoordinator (rows render without awaiting schema; the
+    // schema task applies metadata and bumps metadataVersion afterwards). Requires
+    // a `DatabaseDriver` mock registered with `DatabaseManager.shared` or a DI
+    // refactor. Static helpers above cover SQL parsing, metadata parsing, inline
+    // result-set metadata, parameter reconciliation, DDL detection, and row-cap policy.
 }

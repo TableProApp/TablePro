@@ -26,7 +26,7 @@ struct JSONEditorContentView: View {
         self.onCommit = onCommit
         self.onDismiss = onDismiss
         self.onPopOut = onPopOut
-        self._text = State(initialValue: initialValue?.prettyPrintedAsJson() ?? initialValue ?? "")
+        self._text = State(initialValue: initialValue ?? "")
     }
 
     var body: some View {
@@ -36,9 +36,7 @@ struct JSONEditorContentView: View {
             onDismiss: onDismiss,
             onCommit: { newValue in
                 if newValue.isEmpty && initialValue == nil { return }
-                let normalizedNew = JSONViewerView.compact(newValue)
-                let normalizedOld = JSONViewerView.compact(initialValue)
-                if normalizedNew != normalizedOld {
+                if newValue != JsonReindenter.normalize(initialValue ?? "") {
                     onCommit(newValue)
                 }
             },

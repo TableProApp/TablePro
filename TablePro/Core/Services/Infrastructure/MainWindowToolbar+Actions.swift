@@ -16,7 +16,7 @@ extension MainWindowToolbar {
     }
 
     @objc func performRefresh(_ sender: Any?) {
-        AppCommands.shared.refreshData.send(nil)
+        coordinator?.commandActions?.refresh()
     }
 
     @objc func performSaveChanges(_ sender: Any?) {
@@ -51,7 +51,9 @@ extension MainWindowToolbar {
         coordinator?.commandActions?.exportTables()
     }
 
-    @objc func performImport(_ sender: Any?) {
-        coordinator?.commandActions?.importTables()
+    @objc func performImportFormat(_ sender: Any?) {
+        guard let menuItem = sender as? NSMenuItem,
+              let formatId = menuItem.representedObject as? String else { return }
+        coordinator?.commandActions?.importTables(formatId: formatId)
     }
 }

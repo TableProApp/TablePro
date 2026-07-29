@@ -1,0 +1,425 @@
+//
+//  AWSIAMAuthTests.swift
+//  TableProTests
+//
+//  Covers the pure, deterministic parts of RDS IAM authentication: the SigV4
+//  primitives against published test vectors, the presigned token structure,
+//  region derivation from RDS hostnames, the access-key credential resolver,
+//  and the AWS config INI parser. Profile/SSO resolution and the live SSO
+//  network exchange require the filesystem/AWS and are not unit-tested.
+//
+
+import Foundation
+import TableProPluginKit
+import Testing
+
+@testable import TablePro
+
+@Suite("AWS SigV4 primitives")
+struct AWSSigV4Tests {
+    @Test("SHA-256 matches NIST vectors")
+    func sha256Vectors() {
+        #expect(AWSSigV4.sha256Hex(Data()) == "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855")
+        #expect(AWSSigV4.sha256Hex(Data("abc".utf8)) == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
+    }
+
+    @Test("HMAC-SHA256 matches RFC 4231 test case 1")
+    func hmacVector() {
+        let key = Data(repeating: 0x0b, count: 20)
+        let data = Data("Hi There".utf8)
+        #expect(AWSSigV4.hmacHex(key: key, data: data) == "b0344c61d8db38535ca8afceaf0bf12b881dc200c9833da726e9376c2e32cff7")
+    }
+
+    @Test("URI encoding percent-encodes reserved characters")
+    func uriEncoding() {
+        #expect(AWSSigV4.uriEncode("a/b") == "a%2Fb")
+        #expect(AWSSigV4.uriEncode("us-east-1/rds-db") == "us-east-1%2Frds-db")
+        #expect(AWSSigV4.uriEncode("safe-._~AZ09") == "safe-._~AZ09")
+    }
+}
+
+@Suite("RDS auth token")
+struct RDSAuthTokenGeneratorTests {
+    private let credentials = AWSCredentials(
+        accessKeyId: "AKIDEXAMPLE",
+        secretAccessKey: "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY",
+        sessionToken: nil
+    )
+    private let fixedDate = Date(timeIntervalSince1970: 1_440_938_160)
+
+    private func makeToken(sessionToken: String? = nil) -> String {
+        RDSAuthTokenGenerator.generateToken(
+            host: "mydb.us-east-1.rds.amazonaws.com",
+            port: 5_432,
+            region: "us-east-1",
+            username: "iam_user",
+            credentials: AWSCredentials(
+                accessKeyId: credentials.accessKeyId,
+                secretAccessKey: credentials.secretAccessKey,
+                sessionToken: sessionToken
+            ),
+            now: fixedDate
+        )
+    }
+
+    @Test("Token has the documented shape and no scheme")
+    func tokenShape() {
+        let token = makeToken()
+        #expect(!token.hasPrefix("https://"))
+        #expect(token.hasPrefix("mydb.us-east-1.rds.amazonaws.com:5432/?"))
+        #expect(token.contains("Action=connect"))
+        #expect(token.contains("DBUser=iam_user"))
+        #expect(token.contains("X-Amz-Algorithm=AWS4-HMAC-SHA256"))
+        #expect(token.contains("X-Amz-Expires=900"))
+        #expect(token.contains("X-Amz-Credential=AKIDEXAMPLE%2F"))
+        #expect(token.contains("%2Frds-db%2Faws4_request"))
+        #expect(token.contains("X-Amz-Signature="))
+    }
+
+    @Test("Same inputs produce the same token")
+    func deterministic() {
+        let first = makeToken()
+        let second = makeToken()
+        #expect(first == second)
+    }
+
+    @Test("Session token is included only for temporary credentials")
+    func sessionToken() {
+        #expect(!makeToken().contains("X-Amz-Security-Token"))
+        #expect(makeToken(sessionToken: "FQoGZXIvYXdzEXAMPLE").contains("X-Amz-Security-Token=FQoGZXIvYXdzEXAMPLE"))
+    }
+}
+
+@Suite("RDS endpoint region")
+struct RDSEndpointTests {
+    @Test("Derives region from cluster hostname")
+    func clusterHostname() {
+        #expect(RDSEndpoint.region(forHost: "mydb.cluster-abc123.us-east-1.rds.amazonaws.com") == "us-east-1")
+    }
+
+    @Test("Derives region from instance hostname")
+    func instanceHostname() {
+        #expect(RDSEndpoint.region(forHost: "mydb.abc123.us-west-2.rds.amazonaws.com") == "us-west-2")
+    }
+
+    @Test("Derives region from China partition hostname")
+    func chinaHostname() {
+        #expect(RDSEndpoint.region(forHost: "mydb.abc.cn-north-1.rds.amazonaws.com.cn") == "cn-north-1")
+    }
+
+    @Test("Returns nil for non-RDS hosts")
+    func nonRDSHost() {
+        #expect(RDSEndpoint.region(forHost: "localhost") == nil)
+        #expect(RDSEndpoint.region(forHost: "db.example.com") == nil)
+    }
+}
+
+@Suite("RDS signing endpoint")
+struct RDSSigningEndpointResolverTests {
+    private func resolve(
+        host: String = "mydb.abc123.us-east-1.rds.amazonaws.com",
+        port: Int = 5_432,
+        preTunnelHost: String? = nil,
+        preTunnelPort: Int? = nil,
+        override: String? = nil,
+        defaultPort: Int = 5_432
+    ) throws -> RDSSigningEndpoint {
+        try RDSSigningEndpointResolver.resolve(
+            configuredHost: host,
+            configuredPort: port,
+            preTunnelHost: preTunnelHost,
+            preTunnelPort: preTunnelPort,
+            override: override,
+            defaultPort: defaultPort
+        )
+    }
+
+    @Test("A direct connection signs its own endpoint")
+    func directConnection() throws {
+        let endpoint = try resolve()
+        #expect(endpoint == RDSSigningEndpoint(host: "mydb.abc123.us-east-1.rds.amazonaws.com", port: 5_432))
+    }
+
+    @Test("A tunneled connection signs the endpoint from before the rewrite")
+    func tunneledConnection() throws {
+        let endpoint = try resolve(
+            host: "127.0.0.1",
+            port: 62_000,
+            preTunnelHost: "mydb.abc123.us-east-1.rds.amazonaws.com",
+            preTunnelPort: 5_432
+        )
+        #expect(endpoint == RDSSigningEndpoint(host: "mydb.abc123.us-east-1.rds.amazonaws.com", port: 5_432))
+    }
+
+    @Test("The endpoint override wins over the tunnel and the configured host")
+    func overrideWins() throws {
+        let endpoint = try resolve(
+            host: "127.0.0.1",
+            port: 62_000,
+            preTunnelHost: "old.abc123.us-east-1.rds.amazonaws.com",
+            preTunnelPort: 5_432,
+            override: "mydb.abc123.ap-south-1.rds.amazonaws.com:5433"
+        )
+        #expect(endpoint == RDSSigningEndpoint(host: "mydb.abc123.ap-south-1.rds.amazonaws.com", port: 5_433))
+    }
+
+    @Test("An override without a port falls back to the engine default")
+    func overrideWithoutPort() throws {
+        let endpoint = try resolve(
+            host: "127.0.0.1",
+            port: 54_321,
+            override: "mydb.abc123.ap-south-1.rds.amazonaws.com",
+            defaultPort: 5_432
+        )
+        #expect(endpoint == RDSSigningEndpoint(host: "mydb.abc123.ap-south-1.rds.amazonaws.com", port: 5_432))
+    }
+
+    @Test("A blank override is ignored")
+    func blankOverrideIgnored() throws {
+        let endpoint = try resolve(override: "   ")
+        #expect(endpoint.host == "mydb.abc123.us-east-1.rds.amazonaws.com")
+    }
+
+    @Test("An override keeps only the host and port of a pasted URL")
+    func overrideStripsSchemeAndPath() throws {
+        let endpoint = try resolve(override: "postgresql://mydb.abc123.us-east-1.rds.amazonaws.com:5432/postgres")
+        #expect(endpoint == RDSSigningEndpoint(host: "mydb.abc123.us-east-1.rds.amazonaws.com", port: 5_432))
+    }
+
+    @Test("A local forward with no override is rejected before the token is signed")
+    func loopbackIsRejected() {
+        for host in ["127.0.0.1", "localhost", "::1", "127.0.0.53"] {
+            #expect(throws: AWSAuthError.rdsEndpointUnresolved(host: host)) {
+                _ = try resolve(host: host, port: 54_321)
+            }
+        }
+    }
+
+    @Test("A tunnel to a loopback destination is rejected too")
+    func loopbackPreTunnelHostIsRejected() {
+        #expect(throws: AWSAuthError.rdsEndpointUnresolved(host: "localhost")) {
+            _ = try resolve(host: "127.0.0.1", port: 62_000, preTunnelHost: "localhost", preTunnelPort: 5_432)
+        }
+    }
+
+    @Test("A malformed override is rejected with the value the user typed")
+    func malformedOverrideIsRejected() {
+        for value in ["mydb.rds.amazonaws.com:port", "mydb.rds.amazonaws.com:0", ":5432", "127.0.0.1:5432"] {
+            #expect(throws: AWSAuthError.rdsEndpointInvalid(value)) {
+                _ = try resolve(override: value)
+            }
+        }
+    }
+
+    @Test("The region comes from the signing host, not the local forward")
+    func regionFollowsSigningHost() throws {
+        let endpoint = try resolve(
+            host: "127.0.0.1",
+            port: 62_000,
+            preTunnelHost: "mydb.abc123.ap-south-1.rds.amazonaws.com",
+            preTunnelPort: 5_432
+        )
+        #expect(RDSEndpoint.region(forHost: endpoint.host) == "ap-south-1")
+    }
+}
+
+@Suite("AWS credential resolver")
+struct AWSCredentialResolverTests {
+    @Test("Resolves static access-key credentials")
+    func staticCredentials() async throws {
+        let credentials = try await AWSCredentialResolver.resolve(
+            source: "accessKey",
+            fields: ["awsAccessKeyId": "AKID", "awsSecretAccessKey": "SECRET", "awsSessionToken": "TOKEN"]
+        )
+        #expect(credentials.accessKeyId == "AKID")
+        #expect(credentials.secretAccessKey == "SECRET")
+        #expect(credentials.sessionToken == "TOKEN")
+    }
+
+    @Test("Treats an empty session token as absent")
+    func emptySessionToken() async throws {
+        let credentials = try await AWSCredentialResolver.resolve(
+            source: "accessKey",
+            fields: ["awsAccessKeyId": "AKID", "awsSecretAccessKey": "SECRET", "awsSessionToken": ""]
+        )
+        #expect(credentials.sessionToken == nil)
+    }
+
+    @Test("Throws when access keys are missing")
+    func missingKeys() async {
+        await #expect(throws: AWSAuthError.missingAccessKey) {
+            _ = try await AWSCredentialResolver.resolve(source: "accessKey", fields: [:])
+        }
+    }
+}
+
+@Suite("AWS config INI parsing")
+struct AWSSSOParsingTests {
+    private let config = """
+    [default]
+    region = us-east-1
+
+    [profile dev]
+    sso_session = my-sso
+    sso_account_id = 111122223333
+    sso_role_name = Developer
+
+    [sso-session my-sso]
+    sso_start_url = https://example.awsapps.com/start
+    sso_region = us-east-1
+    """
+
+    @Test("Resolves a profile that references an sso-session")
+    func profileWithSession() throws {
+        let settings = try AWSSSO.parseProfileSettings(configContent: config, profileName: "dev")
+        #expect(settings.accountId == "111122223333")
+        #expect(settings.roleName == "Developer")
+        #expect(settings.startUrl == "https://example.awsapps.com/start")
+        #expect(settings.region == "us-east-1")
+        #expect(settings.ssoSession == "my-sso")
+    }
+
+    @Test("Throws for a profile that is not present")
+    func profileNotFound() {
+        #expect(throws: AWSSSOError.profileNotFound("missing")) {
+            _ = try AWSSSO.parseProfileSettings(configContent: config, profileName: "missing")
+        }
+    }
+
+    @Test("Throws when the sso-session is missing required fields")
+    func sessionMissingFields() {
+        let broken = """
+        [profile dev]
+        sso_session = my-sso
+        sso_account_id = 111122223333
+        sso_role_name = Developer
+
+        [sso-session my-sso]
+        sso_start_url = https://example.awsapps.com/start
+        """
+        #expect(throws: AWSSSOError.sessionMissingFields(session: "my-sso")) {
+            _ = try AWSSSO.parseProfileSettings(configContent: broken, profileName: "dev")
+        }
+    }
+}
+
+@Suite("AWS IAM connection fields in the plugin metadata registry")
+@MainActor
+struct RegistryAWSIAMFieldsTests {
+    private func fieldIds(forTypeId typeId: String) -> [String] {
+        PluginMetadataRegistry.shared.snapshot(forTypeId: typeId)?
+            .connection.additionalConnectionFields.map(\.id) ?? []
+    }
+
+    @Test("MySQL, MariaDB, and PostgreSQL expose the AWS IAM auth fields")
+    func iamFieldsPresent() {
+        for typeId in ["MySQL", "MariaDB", "PostgreSQL"] {
+            let ids = fieldIds(forTypeId: typeId)
+            #expect(ids.contains("awsAuth"), "\(typeId) is missing the awsAuth field")
+            #expect(ids.contains("awsRegion"), "\(typeId) is missing awsRegion")
+            #expect(ids.contains("awsAccessKeyId"), "\(typeId) is missing awsAccessKeyId")
+            #expect(ids.contains("awsSecretAccessKey"), "\(typeId) is missing awsSecretAccessKey")
+            #expect(ids.contains("awsProfileName"), "\(typeId) is missing awsProfileName")
+            #expect(ids.contains("awsRDSEndpoint"), "\(typeId) is missing awsRDSEndpoint")
+        }
+    }
+
+    @Test("The profile field offers the profiles found on disk")
+    func profileFieldHasDynamicOptions() {
+        for typeId in ["MySQL", "MariaDB", "PostgreSQL"] {
+            let field = PluginMetadataRegistry.shared.snapshot(forTypeId: typeId)?
+                .connection.additionalConnectionFields.first { $0.id == "awsProfileName" }
+            #expect(field?.dynamicOptions == .awsProfiles, "\(typeId) profile field has no profile list")
+        }
+    }
+
+    @Test("The shared AWS fields carry no RDS endpoint, so ElastiCache and Keyspaces never show one")
+    func sharedFieldsExcludeRDSEndpoint() {
+        #expect(!AWSAuthFields.standard().map(\.id).contains("awsRDSEndpoint"))
+        #expect(AWSAuthFields.rdsEndpointField().section == .authentication)
+    }
+
+    @Test("The secret access key field is Keychain-backed (secure)")
+    func secretFieldIsSecure() {
+        let field = PluginMetadataRegistry.shared.snapshot(forTypeId: "MySQL")?
+            .connection.additionalConnectionFields.first { $0.id == "awsSecretAccessKey" }
+        #expect(field?.isSecure == true)
+    }
+
+    @Test("Redshift and CockroachDB do not offer AWS IAM auth")
+    func excludedTypesHaveNoIAM() {
+        #expect(!fieldIds(forTypeId: "Redshift").contains("awsAuth"))
+        #expect(!fieldIds(forTypeId: "CockroachDB").contains("awsAuth"))
+    }
+}
+
+@Suite("AWS credential_process")
+struct AWSCredentialProcessTests {
+    @Test("Tokenizes a plain command into arguments")
+    func tokenizePlain() {
+        let argv = AWSCredentialResolver.tokenizeCommand(
+            "aws configure export-credentials --profile c9 --format process"
+        )
+        #expect(argv == ["aws", "configure", "export-credentials", "--profile", "c9", "--format", "process"])
+    }
+
+    @Test("Keeps double-quoted arguments that contain spaces intact")
+    func tokenizeQuoted() {
+        let argv = AWSCredentialResolver.tokenizeCommand("\"/Users/Dave/path to/creds.sh\" plain \"arg with spaces\"")
+        #expect(argv == ["/Users/Dave/path to/creds.sh", "plain", "arg with spaces"])
+    }
+
+    @Test("Collapses repeated spaces and returns empty for blank input")
+    func tokenizeEdges() {
+        #expect(AWSCredentialResolver.tokenizeCommand("  aws   sts  ") == ["aws", "sts"])
+        #expect(AWSCredentialResolver.tokenizeCommand("").isEmpty)
+        #expect(AWSCredentialResolver.tokenizeCommand("   ").isEmpty)
+    }
+
+    private func output(_ json: String) -> Data { Data(json.utf8) }
+
+    @Test("Parses Version 1 output with a session token")
+    func parseTemporary() throws {
+        let creds = try AWSCredentialResolver.parseCredentialProcessOutput(
+            output(
+                #"{"Version":1,"AccessKeyId":"AKID","SecretAccessKey":"SECRET","SessionToken":"TOKEN","Expiration":"2026-01-01T00:00:00Z"}"#
+            ),
+            profileName: "c9"
+        )
+        #expect(creds.accessKeyId == "AKID")
+        #expect(creds.secretAccessKey == "SECRET")
+        #expect(creds.sessionToken == "TOKEN")
+    }
+
+    @Test("Parses long-term output without a session token")
+    func parseLongTerm() throws {
+        let creds = try AWSCredentialResolver.parseCredentialProcessOutput(
+            output(#"{"Version":1,"AccessKeyId":"AKID","SecretAccessKey":"SECRET"}"#),
+            profileName: "c9"
+        )
+        #expect(creds.sessionToken == nil)
+    }
+
+    @Test("Rejects a Version other than 1")
+    func parseUnsupportedVersion() {
+        #expect(throws: AWSAuthError.credentialProcessUnsupportedVersion(profile: "c9", version: 2)) {
+            _ = try AWSCredentialResolver.parseCredentialProcessOutput(
+                output(#"{"Version":2,"AccessKeyId":"AKID","SecretAccessKey":"SECRET"}"#),
+                profileName: "c9"
+            )
+        }
+    }
+
+    @Test("Rejects malformed or incomplete output")
+    func parseBadOutput() {
+        #expect(throws: AWSAuthError.credentialProcessBadOutput("c9")) {
+            _ = try AWSCredentialResolver.parseCredentialProcessOutput(output("not json"), profileName: "c9")
+        }
+        #expect(throws: AWSAuthError.credentialProcessBadOutput("c9")) {
+            _ = try AWSCredentialResolver.parseCredentialProcessOutput(
+                output(#"{"Version":1,"AccessKeyId":"","SecretAccessKey":"SECRET"}"#),
+                profileName: "c9"
+            )
+        }
+    }
+}

@@ -15,35 +15,49 @@ final class QueryEditorViewModel {
     }
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "QueryEditorViewModel")
+    static let maxBufferedRows = 10_000
+    private static let memorySafetyMarginBytes = 64 * 1_024 * 1_024
+    private static let budgetCheckInterval = 500
 
-    private(set) var columns: [ColumnInfo] = []
-    private(set) var window: RowWindow
-    private(set) var legacyRows: [[String?]] = []
-    private(set) var rowsReceived: Int = 0
+    private let buffer: StreamingResultBuffer
     private(set) var phase: Phase = .idle
-    private(set) var rowsAffected: Int?
-    private(set) var statusMessage: String?
     private(set) var executionTime: TimeInterval = 0
 
-    @ObservationIgnored private var pendingRows: [Row] = []
-    @ObservationIgnored private var pendingRowsReceived: Int = 0
-    @ObservationIgnored private var flushTask: Task<Void, Never>?
     @ObservationIgnored private var fetchTask: Task<Void, Never>?
     @ObservationIgnored private var startedAt: Date?
 
-    private static let flushBatchSize = 200
-    private static let flushInterval: Duration = .milliseconds(50)
-
-    init(windowCapacity: Int = 100_000) {
-        self.window = RowWindow(capacity: windowCapacity)
+    init(windowCapacity: Int = QueryEditorViewModel.maxBufferedRows) {
+        self.buffer = StreamingResultBuffer(capacity: windowCapacity)
     }
+
+    var columns: [ColumnInfo] { buffer.columns }
+    var window: RowWindow { buffer.window }
+    var legacyRows: [[String?]] { buffer.legacyRows }
+    var rowsAffected: Int? { buffer.rowsAffected }
+    var statusMessage: String? { buffer.statusMessage }
+    var truncationReason: TruncationReason? { buffer.truncation }
 
     var isRunning: Bool {
         if case .running = phase { return true }
         return false
     }
 
-    func run(driver: DatabaseDriver, query: String, maxRows: Int = 100_000) async {
+    var truncationMessage: String? {
+        guard let truncationReason else { return nil }
+        let shown = buffer.legacyRows.count
+        switch truncationReason {
+        case .rowCap:
+            return String(format: String(localized: "Showing the first %d rows. Add LIMIT to fetch more."), shown)
+        case .memoryPressure:
+            return String(format: String(localized: "Stopped at %d rows to stay within memory limits. Add LIMIT to fetch fewer."), shown)
+        case .cancelled:
+            return String(format: String(localized: "Stopped. Showing %d rows."), shown)
+        case .driverLimit:
+            return String(format: String(localized: "The database limited the result. Showing %d rows."), shown)
+        }
+    }
+
+    func run(driver: DatabaseDriver, query: String, maxRows: Int = QueryEditorViewModel.maxBufferedRows) async {
         fetchTask?.cancel()
         let options = StreamOptions(
             textTruncationBytes: 4_096,
@@ -52,35 +66,36 @@ final class QueryEditorViewModel {
             lazyContext: nil
         )
         phase = .running
-        columns = []
-        window.clear()
-        legacyRows.removeAll(keepingCapacity: true)
-        rowsReceived = 0
-        rowsAffected = nil
-        statusMessage = nil
+        buffer.reset()
         executionTime = 0
-        pendingRows.removeAll(keepingCapacity: true)
-        pendingRowsReceived = 0
         startedAt = Date()
 
         let task = Task { [weak self] in
             guard let self else { return }
             do {
+                var sinceBudgetCheck = 0
                 for try await element in driver.executeStreaming(query: query, options: options) {
                     if Task.isCancelled { break }
-                    self.apply(element: element)
+                    self.buffer.apply(element)
+                    guard case .row = element else { continue }
+                    sinceBudgetCheck += 1
+                    if sinceBudgetCheck >= Self.budgetCheckInterval {
+                        sinceBudgetCheck = 0
+                        if self.isMemoryConstrained() {
+                            self.buffer.markTruncated(.memoryPressure)
+                            break
+                        }
+                    }
                 }
-                self.flushPendingRows()
+                self.buffer.flush()
                 self.finalizeTiming()
-                if case .running = self.phase {
-                    self.phase = .finished
-                }
+                self.resolvePhase()
             } catch is CancellationError {
-                self.flushPendingRows()
+                self.buffer.flush()
                 self.finalizeTiming()
-                self.phase = .truncated(reason: .cancelled)
+                self.phase = .truncated(reason: self.buffer.truncation ?? .cancelled)
             } catch {
-                self.flushPendingRows()
+                self.buffer.flush()
                 self.finalizeTiming()
                 self.phase = .error(self.classify(error: error))
             }
@@ -95,17 +110,8 @@ final class QueryEditorViewModel {
 
     func reset() {
         fetchTask?.cancel()
-        flushTask?.cancel()
-        flushTask = nil
-        columns = []
-        window.clear()
-        legacyRows.removeAll(keepingCapacity: true)
-        rowsReceived = 0
-        rowsAffected = nil
-        statusMessage = nil
+        buffer.reset()
         executionTime = 0
-        pendingRows.removeAll(keepingCapacity: true)
-        pendingRowsReceived = 0
         phase = .idle
     }
 
@@ -113,72 +119,28 @@ final class QueryEditorViewModel {
         await MainActor.run {
             switch level {
             case .normal:
-                break
-            case .warning:
-                Self.logger.warning("Memory pressure warning: shrinking editor window to 100 rows")
-                self.window.shrink(to: 100)
-                self.shrinkLegacyRows(to: 100)
-            case .critical:
-                Self.logger.error("Memory pressure critical: cancelling editor stream and shrinking to 50 rows")
-                self.window.shrink(to: 50)
-                self.shrinkLegacyRows(to: 50)
+                return
+            case .warning, .critical:
+                guard case .running = self.phase else { return }
+                Self.logger.warning("Memory pressure: stopping query stream to stay within limits")
                 self.fetchTask?.cancel()
+                guard !self.buffer.isEmpty else { return }
+                self.buffer.markTruncated(.memoryPressure)
+                self.phase = .truncated(reason: .memoryPressure)
             }
         }
     }
 
-    private func shrinkLegacyRows(to count: Int) {
-        guard legacyRows.count > count else { return }
-        legacyRows.removeFirst(legacyRows.count - count)
+    private func isMemoryConstrained() -> Bool {
+        !MemoryPressureMonitor.shared.hasHeadroom(forBytes: Self.memorySafetyMarginBytes)
     }
 
-    private func apply(element: StreamElement) {
-        switch element {
-        case .columns(let cols):
-            columns = cols
-        case .row(let row):
-            pendingRows.append(row)
-            pendingRowsReceived += 1
-            scheduleFlushIfNeeded()
-        case .rowsAffected(let count):
-            flushPendingRows()
-            rowsAffected = count
-        case .statusMessage(let message):
-            flushPendingRows()
-            statusMessage = message
-        case .truncated(let reason):
-            flushPendingRows()
+    private func resolvePhase() {
+        if let reason = buffer.truncation {
             phase = .truncated(reason: reason)
+        } else if case .running = phase {
+            phase = .finished
         }
-    }
-
-    private func scheduleFlushIfNeeded() {
-        if pendingRows.count >= Self.flushBatchSize {
-            flushPendingRows()
-            return
-        }
-        if flushTask == nil {
-            flushTask = Task { [weak self] in
-                try? await Task.sleep(for: Self.flushInterval)
-                guard !Task.isCancelled else { return }
-                self?.flushPendingRows()
-            }
-        }
-    }
-
-    private func flushPendingRows() {
-        flushTask?.cancel()
-        flushTask = nil
-        guard !pendingRows.isEmpty else { return }
-        let legacyBatch = pendingRows.map(\.legacyValues)
-        window.append(contentsOf: pendingRows)
-        legacyRows.append(contentsOf: legacyBatch)
-        if legacyRows.count > window.count {
-            let drop = legacyRows.count - window.count
-            legacyRows.removeFirst(drop)
-        }
-        rowsReceived = pendingRowsReceived
-        pendingRows.removeAll(keepingCapacity: true)
     }
 
     private func finalizeTiming() {

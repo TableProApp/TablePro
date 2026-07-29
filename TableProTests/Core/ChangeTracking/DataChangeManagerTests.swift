@@ -40,13 +40,31 @@ struct DataChangeManagerTests {
         #expect(manager.databaseType == .postgresql)
     }
 
+    @Test("generateSQL throws when the table dialect is not configured")
+    func generateSQLThrowsWhenDialectNotConfigured() {
+        let manager = DataChangeManager()
+        manager.recordCellChange(
+            rowIndex: 0,
+            columnIndex: 1,
+            columnName: "name",
+            oldValue: "Alice",
+            newValue: "Bob"
+        )
+
+        #expect(manager.databaseType == nil)
+        #expect(throws: (any Error).self) {
+            _ = try manager.generateSQL()
+        }
+    }
+
     @Test("configureForTable clears existing changes")
     func configureForTableClearsChanges() async {
         let manager = DataChangeManager()
         manager.configureForTable(
             tableName: "users",
             columns: ["id", "name"],
-            primaryKeyColumns: ["id"]
+            primaryKeyColumns: ["id"],
+            databaseType: .mysql
         )
 
         manager.recordCellChange(
@@ -61,7 +79,8 @@ struct DataChangeManagerTests {
         manager.configureForTable(
             tableName: "products",
             columns: ["id", "title"],
-            primaryKeyColumns: ["id"]
+            primaryKeyColumns: ["id"],
+            databaseType: .mysql
         )
 
         #expect(!manager.hasChanges)
@@ -86,7 +105,8 @@ struct DataChangeManagerTests {
         manager.configureForTable(
             tableName: "users",
             columns: ["id", "name"],
-            primaryKeyColumns: ["id"]
+            primaryKeyColumns: ["id"],
+            databaseType: .mysql
         )
 
         manager.recordCellChange(
@@ -106,7 +126,8 @@ struct DataChangeManagerTests {
         manager.configureForTable(
             tableName: "users",
             columns: ["id", "name"],
-            primaryKeyColumns: ["id"]
+            primaryKeyColumns: ["id"],
+            databaseType: .mysql
         )
 
         manager.recordCellChange(
@@ -132,7 +153,8 @@ struct DataChangeManagerTests {
         manager.configureForTable(
             tableName: "users",
             columns: ["id", "name"],
-            primaryKeyColumns: ["id"]
+            primaryKeyColumns: ["id"],
+            databaseType: .mysql
         )
 
         manager.recordCellChange(
@@ -153,7 +175,8 @@ struct DataChangeManagerTests {
         manager.configureForTable(
             tableName: "users",
             columns: ["id", "name"],
-            primaryKeyColumns: ["id"]
+            primaryKeyColumns: ["id"],
+            databaseType: .mysql
         )
 
         manager.recordCellChange(
@@ -184,7 +207,8 @@ struct DataChangeManagerTests {
         manager.configureForTable(
             tableName: "users",
             columns: ["id", "name"],
-            primaryKeyColumns: ["id"]
+            primaryKeyColumns: ["id"],
+            databaseType: .mysql
         )
 
         manager.recordCellChange(
@@ -214,7 +238,8 @@ struct DataChangeManagerTests {
         manager.configureForTable(
             tableName: "users",
             columns: ["id", "name"],
-            primaryKeyColumns: ["id"]
+            primaryKeyColumns: ["id"],
+            databaseType: .mysql
         )
 
         manager.recordCellChange(
@@ -246,7 +271,8 @@ struct DataChangeManagerTests {
         manager.configureForTable(
             tableName: "users",
             columns: ["id", "name"],
-            primaryKeyColumns: ["id"]
+            primaryKeyColumns: ["id"],
+            databaseType: .mysql
         )
 
         manager.recordRowDeletion(rowIndex: 0, originalRow: ["1", "Alice"])
@@ -260,7 +286,8 @@ struct DataChangeManagerTests {
         manager.configureForTable(
             tableName: "users",
             columns: ["id", "name"],
-            primaryKeyColumns: ["id"]
+            primaryKeyColumns: ["id"],
+            databaseType: .mysql
         )
 
         manager.recordCellChange(
@@ -286,7 +313,8 @@ struct DataChangeManagerTests {
         manager.configureForTable(
             tableName: "users",
             columns: ["id", "name"],
-            primaryKeyColumns: ["id"]
+            primaryKeyColumns: ["id"],
+            databaseType: .mysql
         )
 
         manager.recordRowDeletion(rowIndex: 2, originalRow: ["3", "Charlie"])
@@ -303,7 +331,8 @@ struct DataChangeManagerTests {
         manager.configureForTable(
             tableName: "users",
             columns: ["id", "name"],
-            primaryKeyColumns: ["id"]
+            primaryKeyColumns: ["id"],
+            databaseType: .mysql
         )
 
         let rows: [(rowIndex: Int, originalRow: [PluginCellValue])] = [
@@ -327,7 +356,8 @@ struct DataChangeManagerTests {
         manager.configureForTable(
             tableName: "users",
             columns: ["id", "name"],
-            primaryKeyColumns: ["id"]
+            primaryKeyColumns: ["id"],
+            databaseType: .mysql
         )
 
         manager.recordCellChange(
@@ -352,7 +382,8 @@ struct DataChangeManagerTests {
         manager.configureForTable(
             tableName: "users",
             columns: ["id", "name"],
-            primaryKeyColumns: ["id"]
+            primaryKeyColumns: ["id"],
+            databaseType: .mysql
         )
 
         manager.recordCellChange(
@@ -377,7 +408,8 @@ struct DataChangeManagerTests {
         manager.configureForTable(
             tableName: "users",
             columns: ["id", "name"],
-            primaryKeyColumns: ["id"]
+            primaryKeyColumns: ["id"],
+            databaseType: .mysql
         )
 
         manager.recordCellChange(
@@ -397,7 +429,8 @@ struct DataChangeManagerTests {
         manager.configureForTable(
             tableName: "users",
             columns: ["id", "name"],
-            primaryKeyColumns: ["id"]
+            primaryKeyColumns: ["id"],
+            databaseType: .mysql
         )
 
         manager.recordCellChange(
@@ -421,7 +454,8 @@ struct DataChangeManagerTests {
         manager.configureForTable(
             tableName: "users",
             columns: ["id", "name"],
-            primaryKeyColumns: ["id"]
+            primaryKeyColumns: ["id"],
+            databaseType: .mysql
         )
 
         manager.recordCellChange(
@@ -443,7 +477,8 @@ struct DataChangeManagerTests {
         manager.configureForTable(
             tableName: "users",
             columns: ["id", "name"],
-            primaryKeyColumns: ["id"]
+            primaryKeyColumns: ["id"],
+            databaseType: .mysql
         )
 
         manager.recordCellChange(
@@ -484,7 +519,8 @@ struct DataChangeManagerTests {
         manager.configureForTable(
             tableName: "users",
             columns: ["id", "name"],
-            primaryKeyColumns: ["id"]
+            primaryKeyColumns: ["id"],
+            databaseType: .mysql
         )
 
         let initialVersion = manager.reloadVersion
@@ -506,7 +542,8 @@ struct DataChangeManagerTests {
         manager.configureForTable(
             tableName: "users",
             columns: ["id", "name"],
-            primaryKeyColumns: ["id"]
+            primaryKeyColumns: ["id"],
+            databaseType: .mysql
         )
 
         manager.recordCellChange(

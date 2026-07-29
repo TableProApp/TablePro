@@ -30,9 +30,11 @@ final class AppSettingsStorage {
         static let keyboard = "com.TablePro.settings.keyboard"
         static let ai = "com.TablePro.settings.ai"
         static let sync = "com.TablePro.settings.sync"
-        static let terminal = "com.TablePro.settings.terminal"
         static let mcp = "com.TablePro.settings.mcp"
         static let hasCompletedOnboarding = "com.TablePro.settings.hasCompletedOnboarding"
+        static let startupReopenMigration = "com.TablePro.settings.didMigrateStartupToReopenLast"
+        static let jsonFieldHeightMigration = "com.TablePro.settings.didMigrateJsonFieldHeightKey"
+        static let legacyJsonFieldHeight = "rightSidebar.jsonFieldHeight"
     }
 
     init(userDefaults: UserDefaults = .standard) {
@@ -47,6 +49,28 @@ final class AppSettingsStorage {
 
     func saveGeneral(_ settings: GeneralSettings) {
         save(settings, key: Keys.general)
+    }
+
+    func migrateStartupBehaviorToReopenLastIfNeeded() {
+        guard !defaults.bool(forKey: Keys.startupReopenMigration) else { return }
+        defaults.set(true, forKey: Keys.startupReopenMigration)
+
+        guard defaults.data(forKey: Keys.general) != nil else { return }
+        var general = loadGeneral()
+        guard general.startupBehavior == .showWelcome else { return }
+        general.startupBehavior = .reopenLast
+        saveGeneral(general)
+    }
+
+    func migrateJsonFieldHeightKeyIfNeeded() {
+        guard !defaults.bool(forKey: Keys.jsonFieldHeightMigration) else { return }
+        defaults.set(true, forKey: Keys.jsonFieldHeightMigration)
+
+        let newKey = PreferenceKeys.rowInspectorJsonFieldHeight.name
+        guard defaults.object(forKey: Keys.legacyJsonFieldHeight) != nil,
+              defaults.object(forKey: newKey) == nil else { return }
+        defaults.set(defaults.double(forKey: Keys.legacyJsonFieldHeight), forKey: newKey)
+        defaults.removeObject(forKey: Keys.legacyJsonFieldHeight)
     }
 
     // MARK: - Appearance Settings
@@ -103,7 +127,7 @@ final class AppSettingsStorage {
     // MARK: - Keyboard Settings
 
     func loadKeyboard() -> KeyboardSettings {
-        load(key: Keys.keyboard, default: .default)
+        load(key: Keys.keyboard, default: KeyboardSettings.default).sanitized()
     }
 
     func saveKeyboard(_ settings: KeyboardSettings) {
@@ -128,16 +152,6 @@ final class AppSettingsStorage {
 
     func saveSync(_ settings: SyncSettings) {
         save(settings, key: Keys.sync)
-    }
-
-    // MARK: - Terminal Settings
-
-    func loadTerminal() -> TerminalSettings {
-        load(key: Keys.terminal, default: .default)
-    }
-
-    func saveTerminal(_ settings: TerminalSettings) {
-        save(settings, key: Keys.terminal)
     }
 
     // MARK: - MCP Settings
@@ -203,8 +217,10 @@ final class AppSettingsStorage {
         saveKeyboard(.default)
         saveAI(.default)
         saveSync(.default)
-        saveTerminal(.default)
         saveMCP(.default)
+        defaults.removeObject(forKey: PreferenceKeys.selectedSettingsPane.name)
+        defaults.removeObject(forKey: PreferenceKeys.rowInspectorJsonFieldHeight.name)
+        defaults.removeObject(forKey: SidebarPersistenceKey.defaultLayout)
     }
 
     // MARK: - Helpers

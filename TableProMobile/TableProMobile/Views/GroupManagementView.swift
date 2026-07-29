@@ -96,7 +96,7 @@ struct GroupManagementView: View {
                     } label: {
                         Image(systemName: "plus")
                     }
-                    Button("Done") { dismiss() }
+                    CloseButton { dismiss() }
                 }
             }
             .sheet(isPresented: $showingAddGroup) {

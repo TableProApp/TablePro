@@ -74,7 +74,7 @@ struct MainContentCoordinatorLazyLoadTests {
     func skipsWhenNoSelectedTab() {
         let (coordinator, _) = makeCoordinator()
         coordinator.lazyLoadCurrentTabIfNeeded()
-        #expect(coordinator.needsLazyLoad == false)
+        #expect(coordinator.pendingLoadTrigger == nil)
     }
 
     @Test("Returns early when selected tab is a query tab (not a table tab)")
@@ -82,7 +82,7 @@ struct MainContentCoordinatorLazyLoadTests {
         let (coordinator, tabManager) = makeCoordinator()
         _ = addQueryTab(to: tabManager)
         coordinator.lazyLoadCurrentTabIfNeeded()
-        #expect(coordinator.needsLazyLoad == false)
+        #expect(coordinator.pendingLoadTrigger == nil)
     }
 
     @Test("Returns early when tab has an error message")
@@ -95,7 +95,7 @@ struct MainContentCoordinatorLazyLoadTests {
         }
         tabManager.tabs[idx].execution.errorMessage = "boom"
         coordinator.lazyLoadCurrentTabIfNeeded()
-        #expect(coordinator.needsLazyLoad == false)
+        #expect(coordinator.pendingLoadTrigger == nil)
     }
 
     @Test("Returns early when tab query is whitespace-only")
@@ -103,7 +103,7 @@ struct MainContentCoordinatorLazyLoadTests {
         let (coordinator, tabManager) = makeCoordinator()
         _ = addTableTab(to: tabManager, query: "    ")
         coordinator.lazyLoadCurrentTabIfNeeded()
-        #expect(coordinator.needsLazyLoad == false)
+        #expect(coordinator.pendingLoadTrigger == nil)
     }
 
     @Test("Returns early when tab has fresh row data already loaded")
@@ -118,7 +118,7 @@ struct MainContentCoordinatorLazyLoadTests {
         tabManager.tabs[idx].execution.lastExecutedAt = Date()
 
         coordinator.lazyLoadCurrentTabIfNeeded()
-        #expect(coordinator.needsLazyLoad == false)
+        #expect(coordinator.pendingLoadTrigger == nil)
         #expect(coordinator.tabSessionRegistry.tableRows(for: tabId).rows.count == 5)
     }
 
@@ -134,37 +134,101 @@ struct MainContentCoordinatorLazyLoadTests {
         tabManager.tabs[idx].pendingChanges.deletedRowIndices = [0]
 
         coordinator.lazyLoadCurrentTabIfNeeded()
-        #expect(coordinator.needsLazyLoad == false)
+        #expect(coordinator.pendingLoadTrigger == nil)
     }
 
-    @Test("Returns early when tab is already executing")
-    func skipsWhenAlreadyExecuting() {
+    @Test("Returns early when a load Task is already registered for this tab")
+    func skipsWhenLoadTaskRegistered() {
         let (coordinator, tabManager) = makeCoordinator()
         let tabId = addTableTab(to: tabManager)
-        seedRows(coordinator, for: tabId, rowCount: 1)
-        guard let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else {
-            Issue.record("expected tab to exist")
-            return
-        }
-        tabManager.tabs[idx].execution.lastExecutedAt = Date()
-        tabManager.tabs[idx].execution.isExecuting = true
-        coordinator.tabSessionRegistry.evict(for: tabId)
+        let inFlight = Task<Void, Never> { _ = try? await Task.sleep(for: .seconds(60)) }
+        defer { inFlight.cancel() }
+        coordinator.tableLoadTasks[tabId] = (UUID(), inFlight)
 
         coordinator.lazyLoadCurrentTabIfNeeded()
-        #expect(coordinator.needsLazyLoad == false)
+
+        #expect(coordinator.tableLoadTasks.count == 1)
+        #expect(coordinator.tableLoadTasks[tabId] != nil)
+        #expect(coordinator.pendingLoadTrigger == nil)
     }
 
     // MARK: - Connection guard
 
-    @Test("Sets needsLazyLoad when a fresh table tab is not connected")
+    @Test("Sets pendingLoadTrigger when a fresh table tab is not connected")
     func defersWhenDisconnected() {
         let (coordinator, tabManager) = makeCoordinator()
         _ = addTableTab(to: tabManager)
-        coordinator.needsLazyLoad = false
+        coordinator.pendingLoadTrigger = nil
 
         coordinator.lazyLoadCurrentTabIfNeeded()
 
-        #expect(coordinator.needsLazyLoad == true)
+        #expect(coordinator.pendingLoadTrigger == .userInitiated)
+    }
+
+    @Test("Carries the restore trigger into pendingLoadTrigger when disconnected")
+    func carriesRestoreTriggerWhenDisconnected() {
+        let (coordinator, tabManager) = makeCoordinator()
+        _ = addTableTab(to: tabManager)
+        coordinator.pendingLoadTrigger = nil
+
+        coordinator.lazyLoadCurrentTabIfNeeded(trigger: .restore)
+
+        #expect(coordinator.pendingLoadTrigger == .restore)
+    }
+
+    @Test("A deferred restore tab does not load until its window becomes key")
+    func deferredRestoreTabDoesNotLoadEagerly() {
+        let (coordinator, tabManager) = makeCoordinator()
+        let tabId = addTableTab(to: tabManager)
+        coordinator.deferredRestoreLoadTabId = tabId
+        coordinator.pendingLoadTrigger = nil
+
+        coordinator.lazyLoadCurrentTabIfNeeded(trigger: .restore)
+
+        #expect(coordinator.pendingLoadTrigger == nil)
+        #expect(coordinator.tableLoadTasks[tabId] == nil)
+    }
+
+    @Test("consumeDeferredRestoreLoadIfNeeded is a no-op while the window is not key")
+    func consumeDeferredIsNoOpWhenNotKey() {
+        let (coordinator, tabManager) = makeCoordinator()
+        let tabId = addTableTab(to: tabManager)
+        coordinator.deferredRestoreLoadTabId = tabId
+        coordinator.isKeyWindow = false
+        coordinator.pendingLoadTrigger = nil
+
+        coordinator.consumeDeferredRestoreLoadIfNeeded()
+
+        #expect(coordinator.deferredRestoreLoadTabId == tabId)
+        #expect(coordinator.pendingLoadTrigger == nil)
+        #expect(coordinator.tableLoadTasks[tabId] == nil)
+    }
+
+    @Test("handleWindowDidBecomeKey consumes a deferred restore load with the restore trigger")
+    func windowDidBecomeKeyConsumesDeferredRestoreLoad() {
+        let (coordinator, tabManager) = makeCoordinator()
+        let tabId = addTableTab(to: tabManager)
+        coordinator.deferredRestoreLoadTabId = tabId
+        coordinator.pendingLoadTrigger = nil
+
+        coordinator.handleWindowDidBecomeKey()
+
+        #expect(coordinator.deferredRestoreLoadTabId == nil)
+        #expect(coordinator.pendingLoadTrigger == .restore)
+    }
+
+    @Test("restoreSchemaAndRunQuery defers via pendingLoadTrigger instead of running a query when the driver is not ready")
+    func restoreSchemaDefersWhenDriverNil() async {
+        let (coordinator, tabManager) = makeCoordinator()
+        let tabId = addTableTab(to: tabManager)
+        coordinator.pendingLoadTrigger = nil
+
+        await coordinator.restoreSchemaAndRunQuery("public")
+
+        #expect(coordinator.pendingLoadTrigger == .userInitiated)
+        if let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) {
+            #expect(tabManager.tabs[idx].execution.isExecuting == false)
+        }
     }
 
     // MARK: - Idempotency
@@ -184,7 +248,24 @@ struct MainContentCoordinatorLazyLoadTests {
             coordinator.lazyLoadCurrentTabIfNeeded()
         }
         #expect(coordinator.tabSessionRegistry.tableRows(for: tabId).rows.count == 4)
-        #expect(coordinator.needsLazyLoad == false)
+        #expect(coordinator.pendingLoadTrigger == nil)
+    }
+
+    @Test("Clears an abandoned executing flag when no in-flight task remains")
+    func recoversAbandonedExecutingFlag() {
+        let (coordinator, tabManager) = makeCoordinator()
+        let tabId = addTableTab(to: tabManager)
+        guard let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else {
+            Issue.record("expected tab to exist")
+            return
+        }
+        tabManager.tabs[idx].execution.isExecuting = true
+        coordinator.currentQueryTask = nil
+
+        coordinator.lazyLoadCurrentTabIfNeeded()
+
+        #expect(tabManager.tabs[idx].execution.isExecuting == false)
+        #expect(coordinator.pendingLoadTrigger == .userInitiated)
     }
 
     // MARK: - loadEpoch bump triggers reload after eviction

@@ -52,7 +52,7 @@ final class HighlightProviderStateTest: XCTestCase {
             highlightProvider: mockProvider,
             textView: textView,
             visibleRangeProvider: rangeProvider,
-            language: .swift
+            language: .sql
         )
 
         wait(for: [setUpExpectation], timeout: 1.0)
@@ -66,9 +66,9 @@ final class HighlightProviderStateTest: XCTestCase {
         let mockProvider = Mock.highlightProvider(
             onSetUp: { language in
                 switch language {
-                case .c:
+                case .json:
                     firstSetUpExpectation.fulfill()
-                case .swift:
+                case .sql:
                     secondSetUpExpectation.fulfill()
                 default:
                     XCTFail("Unexpected language: \(language)")
@@ -84,12 +84,12 @@ final class HighlightProviderStateTest: XCTestCase {
             highlightProvider: mockProvider,
             textView: textView,
             visibleRangeProvider: rangeProvider,
-            language: .c
+            language: .json
         )
 
         wait(for: [firstSetUpExpectation], timeout: 1.0)
 
-        state.setLanguage(language: .swift)
+        state.setLanguage(language: .sql)
 
         wait(for: [secondSetUpExpectation], timeout: 1.0)
     }
@@ -113,7 +113,7 @@ final class HighlightProviderStateTest: XCTestCase {
             highlightProvider: mockProvider,
             textView: textView,
             visibleRangeProvider: rangeProvider,
-            language: .swift
+            language: .sql
         )
 
         // These reflect values like `NSTextStorage` outputs, and differ from ranges used in other tests.

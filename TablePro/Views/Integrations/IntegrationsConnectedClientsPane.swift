@@ -147,7 +147,7 @@ private struct ConnectedClientsTable: View {
             Text(client.clientName)
         } icon: {
             Image(systemName: "checkmark.circle.fill")
-                .foregroundStyle(Color(nsColor: .systemGreen))
+                .foregroundStyle(.green)
         }
     }
 

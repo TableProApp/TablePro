@@ -23,11 +23,8 @@ enum PluginFieldRendering {
         type: DatabaseType,
         values: [String: String]
     ) -> Bool {
-        guard let rule = field.visibleWhen else { return true }
-        let registry = PluginManager.shared.additionalConnectionFields(for: type)
-        let defaultValue = registry.first { $0.id == rule.fieldId }?.defaultValue ?? ""
-        let currentValue = values[rule.fieldId] ?? defaultValue
-        return rule.values.contains(currentValue)
+        PluginManager.shared.additionalConnectionFields(for: type)
+            .isVisible(field, forValues: values)
     }
 
     static func defaultFieldValue(

@@ -79,7 +79,7 @@ struct RegistryPluginDetailView: View {
                             Text("Status")
                                 .foregroundStyle(.secondary)
                             Label("Verified", systemImage: "checkmark.seal.fill")
-                                .foregroundStyle(Color(nsColor: .systemBlue))
+                                .foregroundStyle(.blue)
                         }
                     }
                 }
@@ -94,7 +94,7 @@ struct RegistryPluginDetailView: View {
                 } else {
                     Divider()
                     Label("Installed", systemImage: "checkmark.circle.fill")
-                        .foregroundStyle(Color(nsColor: .systemGreen))
+                        .foregroundStyle(.green)
                         .font(.callout)
                 }
             }
@@ -123,9 +123,16 @@ struct RegistryPluginDetailView: View {
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 }
+            case .stagedPendingActivation(let newVersion):
+                Label(
+                    String(format: String(localized: "v%@ ready to activate"), newVersion),
+                    systemImage: "clock.arrow.circlepath"
+                )
+                .foregroundStyle(.orange)
+                .font(.callout)
             case .completed:
                 Label("Installed", systemImage: "checkmark.circle.fill")
-                    .foregroundStyle(Color(nsColor: .systemGreen))
+                    .foregroundStyle(.green)
                     .font(.callout)
             case .failed:
                 Button("Retry Install") { onInstall() }
@@ -162,9 +169,16 @@ struct RegistryPluginDetailView: View {
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 }
+            case .stagedPendingActivation(let newVersion):
+                Label(
+                    String(format: String(localized: "v%@ ready to activate"), newVersion),
+                    systemImage: "clock.arrow.circlepath"
+                )
+                .foregroundStyle(.orange)
+                .font(.callout)
             case .completed:
                 Label("Updated", systemImage: "checkmark.circle.fill")
-                    .foregroundStyle(Color(nsColor: .systemGreen))
+                    .foregroundStyle(.green)
                     .font(.callout)
             case .failed:
                 Button(String(localized: "Retry Update")) { onUpdate() }

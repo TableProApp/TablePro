@@ -9,11 +9,29 @@ import AppKit
 final class SortableHeaderCell: NSTableHeaderCell {
     var sortDirection: SortDirection?
     var sortPriority: Int?
+    var isColumnSelected: Bool = false
+    var isValueFiltered: Bool = false
+    var isFunnelVisible: Bool = false
+    var supportsValueFilter: Bool = true
 
     private static let indicatorPadding: CGFloat = 4
     private static let indicatorSpacing: CGFloat = 2
     private static let priorityFontSize: CGFloat = 9
+    private static let commentFontSize: CGFloat = 10
+    private static let commentLineSpacing: CGFloat = 1
     private static let defaultIndicatorSize = NSSize(width: 9, height: 6)
+    private static let funnelSize = NSSize(width: 13, height: 13)
+    private static let funnelPointSize: CGFloat = 11
+
+    private static let commentFont = NSFont.systemFont(ofSize: commentFontSize)
+
+    static let commentLineHeight: CGFloat = {
+        let lineHeight = NSAttributedString(
+            string: "X",
+            attributes: [.font: commentFont]
+        ).size().height
+        return (lineHeight + commentLineSpacing).rounded(.up)
+    }()
 
     override init(textCell string: String) {
         super.init(textCell: string)
@@ -30,13 +48,45 @@ final class SortableHeaderCell: NSTableHeaderCell {
     }
 
     override func drawInterior(withFrame cellFrame: NSRect, in controlView: NSView) {
-        drawTitle(in: titleRect(forBounds: cellFrame), font: titleFont(isSorted: sortDirection != nil))
+        if isColumnSelected {
+            NSColor.selectedContentBackgroundColor.setFill()
+            cellFrame.fill()
+        }
+
+        let foreground = foregroundColor(emphasized: isColumnSelected)
+        drawTitle(
+            in: titleRect(forBounds: cellFrame),
+            font: titleFont(isSorted: sortDirection != nil),
+            color: foreground,
+            comment: visibleComment(in: controlView),
+            commentColor: commentColor(emphasized: isColumnSelected)
+        )
+
+        var trailingCursorX = cellFrame.maxX - Self.indicatorPadding
+
+        if supportsValueFilter {
+            if isValueFiltered || isFunnelVisible {
+                let funnelImage = Self.funnelImage(
+                    active: isValueFiltered,
+                    color: funnelColor(active: isValueFiltered, emphasized: isColumnSelected)
+                )
+                let drawSize = funnelImage?.size ?? Self.funnelSize
+                let funnelRect = NSRect(
+                    x: trailingCursorX - drawSize.width,
+                    y: cellFrame.midY - drawSize.height / 2,
+                    width: drawSize.width,
+                    height: drawSize.height
+                )
+                Self.drawIndicator(image: funnelImage, in: funnelRect)
+            }
+            trailingCursorX -= Self.funnelSize.width + Self.indicatorSpacing
+        }
 
         guard let direction = sortDirection else { return }
 
-        let indicatorImage = Self.indicatorImage(for: direction)
+        let indicatorImage = Self.indicatorImage(for: direction, color: foreground)
         let indicatorSize = indicatorImage?.size ?? Self.defaultIndicatorSize
-        let indicatorOriginX = cellFrame.maxX - Self.indicatorPadding - indicatorSize.width
+        let indicatorOriginX = trailingCursorX - indicatorSize.width
         let indicatorOriginY = cellFrame.midY - indicatorSize.height / 2
         let indicatorRect = NSRect(
             x: indicatorOriginX,
@@ -47,7 +97,7 @@ final class SortableHeaderCell: NSTableHeaderCell {
         Self.drawIndicator(image: indicatorImage, in: indicatorRect)
 
         if let priorityText = priorityNumberString() {
-            let priorityWidth = Self.measureWidth(of: priorityText)
+            let priorityWidth = Self.measureWidth(of: priorityText, color: foreground)
             let textOriginX = indicatorOriginX - Self.indicatorSpacing - priorityWidth
             let textRect = NSRect(
                 x: textOriginX,
@@ -55,8 +105,19 @@ final class SortableHeaderCell: NSTableHeaderCell {
                 width: priorityWidth,
                 height: cellFrame.height
             )
-            Self.drawPriorityText(priorityText, in: textRect)
+            Self.drawPriorityText(priorityText, in: textRect, color: foreground)
         }
+    }
+
+    func funnelRect(forBounds rect: NSRect) -> NSRect {
+        guard supportsValueFilter else { return .null }
+        let size = Self.funnelSize
+        return NSRect(
+            x: rect.maxX - Self.indicatorPadding - size.width,
+            y: rect.midY - size.height / 2,
+            width: size.width,
+            height: size.height
+        )
     }
 
     override func titleRect(forBounds rect: NSRect) -> NSRect {
@@ -71,12 +132,32 @@ final class SortableHeaderCell: NSTableHeaderCell {
     }
 
     private func reservedTrailingWidth() -> CGFloat {
-        guard let direction = sortDirection else { return 0 }
-        let indicatorWidth = Self.indicatorImage(for: direction)?.size.width
-            ?? Self.defaultIndicatorSize.width
-        let priorityText = priorityNumberString()
-        let priorityComponent = priorityText.map { Self.measureWidth(of: $0) + Self.indicatorSpacing } ?? 0
-        return indicatorWidth + Self.indicatorPadding * 2 + priorityComponent
+        var width: CGFloat = 0
+        if supportsValueFilter {
+            width += Self.funnelSize.width + Self.indicatorSpacing
+        }
+        if let direction = sortDirection {
+            width += Self.indicatorImage(for: direction, color: .secondaryLabelColor)?.size.width
+                ?? Self.defaultIndicatorSize.width
+            if let priorityText = priorityNumberString() {
+                width += Self.measureWidth(of: priorityText, color: .secondaryLabelColor) + Self.indicatorSpacing
+            }
+        }
+        guard width > 0 else { return 0 }
+        return width + Self.indicatorPadding * 2
+    }
+
+    private func funnelColor(active: Bool, emphasized: Bool) -> NSColor {
+        if emphasized { return .alternateSelectedControlTextColor }
+        return active ? .controlAccentColor : .secondaryLabelColor
+    }
+
+    private static func funnelImage(active: Bool, color: NSColor) -> NSImage? {
+        let symbolName = active ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle"
+        let configuration = NSImage.SymbolConfiguration(pointSize: funnelPointSize, weight: .regular)
+            .applying(.init(hierarchicalColor: color))
+        return NSImage(systemSymbolName: symbolName, accessibilityDescription: nil)?
+            .withSymbolConfiguration(configuration)
     }
 
     private func titleFont(isSorted: Bool) -> NSFont {
@@ -85,26 +166,74 @@ final class SortableHeaderCell: NSTableHeaderCell {
         return NSFontManager.shared.convert(baseFont, toHaveTrait: .boldFontMask)
     }
 
-    private func drawTitle(in rect: NSRect, font titleFont: NSFont) {
+    private func visibleComment(in controlView: NSView?) -> String? {
+        guard let headerView = controlView as? SortableHeaderView else { return nil }
+        return headerView.comment(for: self)
+    }
+
+    private func foregroundColor(emphasized: Bool) -> NSColor {
+        emphasized ? .alternateSelectedControlTextColor : .headerTextColor
+    }
+
+    private func commentColor(emphasized: Bool) -> NSColor {
+        emphasized ? .alternateSelectedControlTextColor : .secondaryLabelColor
+    }
+
+    private func drawTitle(
+        in rect: NSRect,
+        font titleFont: NSFont,
+        color: NSColor,
+        comment: String?,
+        commentColor: NSColor
+    ) {
         let paragraph = NSMutableParagraphStyle()
         paragraph.alignment = alignment
         paragraph.lineBreakMode = .byTruncatingTail
 
-        let attributes: [NSAttributedString.Key: Any] = [
+        let titleAttributes: [NSAttributedString.Key: Any] = [
             .font: titleFont,
-            .foregroundColor: NSColor.headerTextColor,
+            .foregroundColor: color,
             .paragraphStyle: paragraph
         ]
 
-        let title = NSAttributedString(string: stringValue, attributes: attributes)
+        let title = NSAttributedString(string: stringValue, attributes: titleAttributes)
         let textHeight = title.size().height
+        guard let comment else {
+            let drawRect = NSRect(
+                x: rect.minX,
+                y: rect.midY - textHeight / 2,
+                width: rect.width,
+                height: textHeight
+            )
+            title.draw(in: drawRect)
+            return
+        }
+
+        let commentAttributes: [NSAttributedString.Key: Any] = [
+            .font: Self.commentFont,
+            .foregroundColor: commentColor,
+            .paragraphStyle: paragraph
+        ]
+        let commentText = NSAttributedString(string: comment, attributes: commentAttributes)
+        let commentHeight = commentText.size().height
+        let stackHeight = textHeight + Self.commentLineSpacing + commentHeight
+        let stackMinY = rect.midY - stackHeight / 2
+
         let drawRect = NSRect(
             x: rect.minX,
-            y: rect.midY - textHeight / 2,
+            y: stackMinY,
             width: rect.width,
             height: textHeight
         )
         title.draw(in: drawRect)
+
+        let commentRect = NSRect(
+            x: rect.minX,
+            y: stackMinY + textHeight + Self.commentLineSpacing,
+            width: rect.width,
+            height: commentHeight
+        )
+        commentText.draw(in: commentRect)
     }
 
     override func drawSortIndicator(
@@ -115,20 +244,22 @@ final class SortableHeaderCell: NSTableHeaderCell {
     ) {}
 
     override func accessibilityLabel() -> String? {
-        let baseLabel = super.accessibilityLabel() ?? stringValue
-        guard let direction = sortDirection else { return baseLabel }
-        let directionSuffix: String
-        switch direction {
-        case .ascending:
-            directionSuffix = String(localized: "Sorted ascending")
-        case .descending:
-            directionSuffix = String(localized: "Sorted descending")
+        var components = [super.accessibilityLabel() ?? stringValue]
+        if let direction = sortDirection {
+            switch direction {
+            case .ascending:
+                components.append(String(localized: "Sorted ascending"))
+            case .descending:
+                components.append(String(localized: "Sorted descending"))
+            }
+            if let sortPriority, sortPriority >= 2 {
+                components.append(String(format: String(localized: "Priority %d"), sortPriority))
+            }
         }
-        guard let sortPriority, sortPriority >= 2 else {
-            return "\(baseLabel), \(directionSuffix)"
+        if isValueFiltered {
+            components.append(String(localized: "Filtered"))
         }
-        let prioritySuffix = String(format: String(localized: "Priority %d"), sortPriority)
-        return "\(baseLabel), \(directionSuffix), \(prioritySuffix)"
+        return components.joined(separator: ", ")
     }
 
     private func priorityNumberString() -> String? {
@@ -136,10 +267,10 @@ final class SortableHeaderCell: NSTableHeaderCell {
         return String(sortPriority)
     }
 
-    private static func indicatorImage(for direction: SortDirection) -> NSImage? {
+    private static func indicatorImage(for direction: SortDirection, color: NSColor) -> NSImage? {
         let symbolName = direction == .ascending ? "chevron.up" : "chevron.down"
         let configuration = NSImage.SymbolConfiguration(pointSize: priorityFontSize, weight: .semibold)
-            .applying(.init(hierarchicalColor: .secondaryLabelColor))
+            .applying(.init(hierarchicalColor: color))
         return NSImage(systemSymbolName: symbolName, accessibilityDescription: nil)?
             .withSymbolConfiguration(configuration)
     }
@@ -156,8 +287,8 @@ final class SortableHeaderCell: NSTableHeaderCell {
         )
     }
 
-    private static func drawPriorityText(_ text: String, in rect: NSRect) {
-        let attributes = priorityAttributes()
+    private static func drawPriorityText(_ text: String, in rect: NSRect, color: NSColor) {
+        let attributes = priorityAttributes(color: color)
         let textSize = (text as NSString).size(withAttributes: attributes)
         let drawRect = NSRect(
             x: rect.minX,
@@ -168,14 +299,14 @@ final class SortableHeaderCell: NSTableHeaderCell {
         (text as NSString).draw(in: drawRect, withAttributes: attributes)
     }
 
-    private static func measureWidth(of text: String) -> CGFloat {
-        (text as NSString).size(withAttributes: priorityAttributes()).width
+    private static func measureWidth(of text: String, color: NSColor) -> CGFloat {
+        (text as NSString).size(withAttributes: priorityAttributes(color: color)).width
     }
 
-    private static func priorityAttributes() -> [NSAttributedString.Key: Any] {
+    private static func priorityAttributes(color: NSColor) -> [NSAttributedString.Key: Any] {
         [
             .font: NSFont.systemFont(ofSize: priorityFontSize, weight: .medium),
-            .foregroundColor: NSColor.secondaryLabelColor
+            .foregroundColor: color
         ]
     }
 }

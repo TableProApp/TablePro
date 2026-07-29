@@ -197,7 +197,7 @@ internal enum BQCellValue: Codable, Sendable {
     case array([BQCellValue])
 
     struct BQRecordValue: Codable, Sendable {
-        let f: [BQQueryResponse.BQCell]?
+        let f: [BQQueryResponse.BQCell]
     }
 
     init(from decoder: Decoder) throws {
@@ -206,16 +206,16 @@ internal enum BQCellValue: Codable, Sendable {
             self = .null
             return
         }
-        if let str = try? container.decode(String.self) {
-            self = .string(str)
+        if let string = try? container.decode(String.self) {
+            self = .string(string)
+            return
+        }
+        if let cells = try? container.decode([BQQueryResponse.BQCell].self) {
+            self = .array(cells.map { $0.v ?? .null })
             return
         }
         if let record = try? container.decode(BQRecordValue.self) {
             self = .record(record)
-            return
-        }
-        if let array = try? container.decode([BQCellValue].self) {
-            self = .array(array)
             return
         }
         self = .null
@@ -224,14 +224,14 @@ internal enum BQCellValue: Codable, Sendable {
     func encode(to encoder: Encoder) throws {
         var container = encoder.singleValueContainer()
         switch self {
-        case .string(let s):
-            try container.encode(s)
+        case .string(let string):
+            try container.encode(string)
         case .null:
             try container.encodeNil()
-        case .record(let r):
-            try container.encode(r)
-        case .array(let a):
-            try container.encode(a)
+        case .record(let record):
+            try container.encode(record)
+        case .array(let values):
+            try container.encode(values.map { BQQueryResponse.BQCell(v: $0) })
         }
     }
 }
@@ -284,6 +284,7 @@ internal final class BigQueryConnection: @unchecked Sendable {
     private var _currentJobId: String?
     private var _currentJobLocation: String?
     private var _queryTimeoutSeconds: Int = 300
+    private let _queryTimeout = HttpQueryTimeoutBox()
     private let location: String?
     private static let logger = Logger(subsystem: "com.TablePro", category: "BigQueryConnection")
     private static let baseUrl = "https://bigquery.googleapis.com/bigquery/v2"
@@ -294,6 +295,7 @@ internal final class BigQueryConnection: @unchecked Sendable {
 
     func setQueryTimeout(_ seconds: Int) {
         lock.withLock { _queryTimeoutSeconds = max(seconds, 30) }
+        _queryTimeout.set(serverTimeoutSeconds: seconds)
     }
 
     init(config: DriverConnectionConfig) {
@@ -306,8 +308,8 @@ internal final class BigQueryConnection: @unchecked Sendable {
         let authProvider = try createAuthProvider()
 
         let sessionConfig = URLSessionConfiguration.default
-        sessionConfig.timeoutIntervalForRequest = 60
-        sessionConfig.timeoutIntervalForResource = 300
+        sessionConfig.timeoutIntervalForRequest = HttpQueryTimeout.sessionBootstrapRequestTimeout
+        sessionConfig.timeoutIntervalForResource = HttpQueryTimeout.sessionResourceTimeout
         let urlSession = URLSession(configuration: sessionConfig)
 
         lock.withLock {
@@ -315,7 +317,6 @@ internal final class BigQueryConnection: @unchecked Sendable {
             _session = urlSession
         }
 
-        // Test connectivity
         do {
             _ = try await executeQuery("SELECT 1")
         } catch {
@@ -426,7 +427,6 @@ internal final class BigQueryConnection: @unchecked Sendable {
             _currentJobLocation = jobRef.location
         }
 
-        // Poll for completion if not done
         let finalJobResponse: BQJobResponse
         if let state = jobResponse.status?.state, state != "DONE" {
             finalJobResponse = try await pollJobCompletion(
@@ -439,7 +439,6 @@ internal final class BigQueryConnection: @unchecked Sendable {
             finalJobResponse = jobResponse
         }
 
-        // Extract DML affected rows from job statistics
         let dmlAffectedRows: Int
         if let numStr = finalJobResponse.statistics?.query?.numDmlAffectedRows {
             dmlAffectedRows = Int(numStr) ?? 0
@@ -451,7 +450,6 @@ internal final class BigQueryConnection: @unchecked Sendable {
         let totalBytesBilled = finalJobResponse.statistics?.query?.totalBytesBilled
         let cacheHit = finalJobResponse.statistics?.query?.cacheHit
 
-        // Fetch first page of results
         let firstPage = try await getQueryResults(
             jobId: jobId, location: jobRef.location, auth: auth, session: session
         )
@@ -836,8 +834,10 @@ internal final class BigQueryConnection: @unchecked Sendable {
         _ request: URLRequest,
         session: URLSession
     ) async throws -> (Data, URLResponse) {
-        try await withCheckedThrowingContinuation { continuation in
-            let task = session.dataTask(with: request) { [weak self] data, response, error in
+        var timedRequest = request
+        timedRequest.timeoutInterval = _queryTimeout.requestTimeoutInterval
+        return try await withCheckedThrowingContinuation { continuation in
+            let task = session.dataTask(with: timedRequest) { [weak self] data, response, error in
                 self?.lock.withLock { self?._currentTask = nil }
                 if let error {
                     if (error as? URLError)?.code == .cancelled {

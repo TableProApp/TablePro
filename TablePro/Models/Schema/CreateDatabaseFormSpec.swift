@@ -26,8 +26,16 @@ internal struct CreateDatabaseFormSpec: Sendable {
         internal let groupedBy: String?
     }
 
+    internal struct TextInput: Sendable, Identifiable {
+        internal let id: String
+        internal let label: String
+        internal let placeholder: String?
+        internal let isRequired: Bool
+    }
+
     internal let fields: [Field]
     internal let footnote: String?
+    internal let textInputs: [TextInput]
 }
 
 internal struct CreateDatabaseRequest: Sendable {

@@ -82,13 +82,15 @@ public struct CodeLanguage {
             .appendingPathComponent("Resources/tree-sitter-\(tsName)/\(highlights).scm")
     }
 
-    /// Gets the TSLanguage from `tree-sitter` — only SQL, Bash, and JavaScript are supported
+    /// Gets the TSLanguage from `tree-sitter`. Only SQL, Bash, JavaScript, and JSON are supported
     private var tsLanguage: OpaquePointer? {
         switch id {
         case .bash:
             return tree_sitter_bash()
         case .javascript, .jsx:
             return tree_sitter_javascript()
+        case .json:
+            return tree_sitter_json()
         case .sql:
             return tree_sitter_sql()
         default:

@@ -48,6 +48,9 @@ enum SSHTunnelFactory {
                 throw SSHTunnelError.authenticationFailed("No private key provided")
             }
 
+        case .none:
+            try await tunnel.authenticateNone(username: config.username)
+
         default:
             throw SSHTunnelError.authenticationFailed(
                 "Auth method \(config.authMethod.rawValue) not supported on iOS"

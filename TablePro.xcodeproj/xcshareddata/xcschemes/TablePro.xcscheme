@@ -41,6 +41,17 @@
                ReferencedContainer = "container:TablePro.xcodeproj">
             </BuildableReference>
          </TestableReference>
+         <TestableReference
+            skipped = "NO"
+            parallelizable = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "5AF00A142FB9000000000001"
+               BuildableName = "TableProUITests.xctest"
+               BlueprintName = "TableProUITests"
+               ReferencedContainer = "container:TablePro.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
       </Testables>
    </TestAction>
    <LaunchAction

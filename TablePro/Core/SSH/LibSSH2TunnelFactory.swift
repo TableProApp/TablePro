@@ -13,7 +13,7 @@ internal struct SSHTunnelCredentials: Sendable {
     let sshPassword: String?
     let keyPassphrase: String?
     let totpSecret: String?
-    let totpProvider: (any TOTPProvider)?
+    let keyboardInteractivePromptProvider: (any KeyboardInteractivePromptProvider)?
 }
 
 /// Creates fully-connected and authenticated SSH tunnels using libssh2.
@@ -21,6 +21,17 @@ internal enum LibSSH2TunnelFactory {
     private static let logger = Logger(subsystem: "com.TablePro", category: "LibSSH2TunnelFactory")
 
     private static let connectionTimeout: Int32 = 10 // seconds
+
+    /// A single session opens more than one connection through the tunnel: the query
+    /// connection plus the metadata pool. A backlog that cannot hold them resets the
+    /// overflow before the accept loop reaches it.
+    private static let listenBacklogSize: Int32 = 16
+
+    /// Bounds the connect-time forward probe. Independent of the per-client open deadline in
+    /// `LibSSH2Tunnel`: this one runs before any database driver has started its own clock, so
+    /// it is free to wait as long as the SSH connect itself does.
+    private static let forwardProbeDeadlineSeconds: TimeInterval = 10
+    private static let probePollTimeoutMs: Int32 = 5_000
 
     // MARK: - Global Init
 
@@ -35,8 +46,7 @@ internal enum LibSSH2TunnelFactory {
         connectionId: UUID,
         config: SSHConfiguration,
         credentials: SSHTunnelCredentials,
-        remoteHost: String,
-        remotePort: Int,
+        destination: SSHForwardDestination,
         localPort: Int
     ) async throws -> LibSSH2Tunnel {
         _ = initialized
@@ -48,7 +58,12 @@ internal enum LibSSH2TunnelFactory {
         )
 
         do {
-            // Bind local listening socket
+            try probeForwardDestination(
+                session: chain.session,
+                socketFD: chain.socketFD,
+                destination: destination
+            )
+
             let listenFD = try bindListenSocket(port: localPort)
 
             let tunnel = LibSSH2Tunnel(
@@ -68,7 +83,7 @@ internal enum LibSSH2TunnelFactory {
             )
 
             logger.info(
-                "Tunnel created: \(config.host) -> 127.0.0.1:\(localPort) -> \(remoteHost):\(remotePort)"
+                "Tunnel created: \(config.host) -> 127.0.0.1:\(localPort) -> \(destination.logDescription)"
             )
 
             return tunnel
@@ -292,7 +307,6 @@ internal enum LibSSH2TunnelFactory {
 
     /// Clean up all resources in an authenticated chain.
     private static func cleanupChain(_ chain: AuthenticatedChain, reason: String) {
-        // Disconnect the final session
         tablepro_libssh2_session_disconnect(chain.session, reason)
         libssh2_session_free(chain.session)
         if chain.socketFD != chain.initialSocketFD {
@@ -334,7 +348,6 @@ internal enum LibSSH2TunnelFactory {
         }
         defer { freeaddrinfo(result) }
 
-        // Iterate through all addresses returned by getaddrinfo
         var currentAddr: UnsafeMutablePointer<addrinfo>? = firstAddr
         var lastError: String = "No address found"
 
@@ -459,6 +472,8 @@ internal enum LibSSH2TunnelFactory {
         resolved: ResolvedSSHTarget,
         credentials: SSHTunnelCredentials
     ) throws -> any SSHAuthenticator {
+        let promptProvider = credentials.keyboardInteractivePromptProvider ?? PromptKeyboardInteractiveProvider()
+
         switch config.authMethod {
         case .password:
             // Always pair password with a keyboard-interactive fallback that reuses the same
@@ -470,10 +485,13 @@ internal enum LibSSH2TunnelFactory {
                 logger.error("SSH password is nil (Keychain lookup may have failed) for \(resolved.host)")
                 throw SSHTunnelError.authenticationFailed(reason: .password)
             }
-            let totpProvider = buildTOTPProvider(config: config, credentials: credentials)
             return CompositeAuthenticator(authenticators: [
                 PasswordAuthenticator(password: sshPassword),
-                KeyboardInteractiveAuthenticator(password: sshPassword, totpProvider: totpProvider),
+                KeyboardInteractiveAuthenticator(
+                    password: sshPassword,
+                    totpProvider: buildTOTPProvider(config: config, credentials: credentials),
+                    promptProvider: promptProvider
+                ),
             ])
 
         case .privateKey:
@@ -489,15 +507,12 @@ internal enum LibSSH2TunnelFactory {
                     canPrompt: true
                 )
             }
-            if config.totpMode != .none {
-                authenticators.append(KeyboardInteractiveAuthenticator(
-                    password: nil,
-                    totpProvider: buildTOTPProvider(config: config, credentials: credentials)
-                ))
-            }
-            return authenticators.count == 1
-                ? authenticators[0]
-                : CompositeAuthenticator(authenticators: authenticators)
+            authenticators.append(KeyboardInteractiveAuthenticator(
+                password: nil,
+                totpProvider: buildTOTPProvider(config: config, credentials: credentials),
+                promptProvider: promptProvider
+            ))
+            return CompositeAuthenticator(authenticators: authenticators)
 
         case .sshAgent:
             let socketPath: String? = resolved.agentSocketPath.isEmpty
@@ -515,23 +530,23 @@ internal enum LibSSH2TunnelFactory {
                 ))
             }
 
-            if config.totpMode != .none {
-                authenticators.append(KeyboardInteractiveAuthenticator(
-                    password: nil,
-                    totpProvider: buildTOTPProvider(config: config, credentials: credentials)
-                ))
-            }
+            authenticators.append(KeyboardInteractiveAuthenticator(
+                password: nil,
+                totpProvider: buildTOTPProvider(config: config, credentials: credentials),
+                promptProvider: promptProvider
+            ))
 
-            return authenticators.count == 1
-                ? authenticators[0]
-                : CompositeAuthenticator(authenticators: authenticators)
+            return CompositeAuthenticator(authenticators: authenticators)
 
         case .keyboardInteractive:
-            let totpProvider = buildTOTPProvider(config: config, credentials: credentials)
             return KeyboardInteractiveAuthenticator(
                 password: credentials.sshPassword,
-                totpProvider: totpProvider
+                totpProvider: buildTOTPProvider(config: config, credentials: credentials),
+                promptProvider: promptProvider
             )
+
+        case .none:
+            return NoneAuthenticator()
         }
     }
 
@@ -595,7 +610,13 @@ internal enum LibSSH2TunnelFactory {
                 addToAgentIfNeeded(path: expandedPath)
                 return
             } catch {
-                // Auth failed — key likely needs a passphrase we don't have yet
+                // A wire-level rejection (or a partial success the server accepted as one
+                // factor of publickey,keyboard-interactive) reports AUTHENTICATION_FAILED. No
+                // passphrase can change that, so rethrow instead of prompting; any other errno
+                // means the local key file needs a passphrase we don't have yet.
+                guard libssh2_session_last_errno(session) != LIBSSH2_ERROR_AUTHENTICATION_FAILED else {
+                    throw error
+                }
             }
 
             // 2. Prompt the user if allowed (key is encrypted, no stored passphrase)
@@ -678,26 +699,69 @@ internal enum LibSSH2TunnelFactory {
         config: SSHConfiguration,
         credentials: SSHTunnelCredentials
     ) -> (any TOTPProvider)? {
-        switch config.totpMode {
-        case .none:
+        guard config.totpMode == .autoGenerate else { return nil }
+        guard let secret = credentials.totpSecret,
+              let generator = TOTPGenerator.fromBase32Secret(
+                  secret,
+                  algorithm: config.totpAlgorithm.toGeneratorAlgorithm,
+                  digits: config.totpDigits,
+                  period: config.totpPeriod
+              ) else {
             return nil
-        case .autoGenerate:
-            guard let secret = credentials.totpSecret,
-                  let generator = TOTPGenerator.fromBase32Secret(
-                      secret,
-                      algorithm: config.totpAlgorithm.toGeneratorAlgorithm,
-                      digits: config.totpDigits,
-                      period: config.totpPeriod
-                  ) else {
-                return nil
-            }
-            return AutoTOTPProvider(generator: generator)
-        case .promptAtConnect:
-            return credentials.totpProvider ?? PromptTOTPProvider()
         }
+        return AutoTOTPProvider(generator: generator)
     }
 
     // MARK: - Channel Operations
+
+    /// Confirms the SSH server can actually reach the forward destination before a tunnel port
+    /// is handed back. Creating a tunnel otherwise only proves the SSH hop works: a destination
+    /// the server cannot reach stays invisible until the database driver dials the local port,
+    /// where it surfaces as an accepted socket that goes silent and the driver reports as a
+    /// greeting timeout naming no cause (#1981). Covers TCP as well as sockets, because the
+    /// common case is a database bound to 127.0.0.1 behind a host field holding the server's
+    /// public address, which no amount of driver-side timeout tuning can explain to the user.
+    /// Bounded by the same deadline and poll pattern a per-client open uses, so a destination
+    /// that never answers cannot hang tunnel creation.
+    private static func probeForwardDestination(
+        session: OpaquePointer,
+        socketFD: Int32,
+        destination: SSHForwardDestination
+    ) throws {
+        let probeQueue = DispatchQueue(label: "com.TablePro.ssh.probe")
+        probeQueue.sync { libssh2_session_set_blocking(session, 0) }
+        defer { probeQueue.sync { libssh2_session_set_blocking(session, 1) } }
+
+        let pump = SSHForwardChannelOpenPump(
+            opener: LibSSH2ForwardChannelOpener(
+                session: session,
+                destination: destination,
+                originPort: 0,
+                sessionQueue: probeQueue
+            ),
+            isActive: { true },
+            deadline: Date().addingTimeInterval(Self.forwardProbeDeadlineSeconds),
+            pollForReadiness: { directions in
+                pollReady(fd: socketFD, directions: directions, timeoutMs: Self.probePollTimeoutMs)
+            }
+        )
+
+        let outcome = pump.run()
+        if case .opened(let channel) = outcome {
+            probeQueue.sync {
+                libssh2_channel_close(channel)
+                libssh2_channel_free(channel)
+            }
+            return
+        }
+
+        let error = outcome.tunnelError(
+            destination: destination,
+            deadlineSeconds: Int(Self.forwardProbeDeadlineSeconds)
+        ) ?? SSHTunnelError.channelOpenFailed
+        logger.error("Forward probe to \(destination.logDescription) failed: \(error.localizedDescription)")
+        throw error
+    }
 
     private static func openChannel(
         session: OpaquePointer,
@@ -738,75 +802,23 @@ internal enum LibSSH2TunnelFactory {
         return Task.detached {
             await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
                 relayQueue.async {
-                    let bufferSize = 32_768
-                    let buffer = UnsafeMutablePointer<CChar>.allocate(capacity: bufferSize)
-                    defer {
-                        buffer.deallocate()
-                        Darwin.close(socketFD)
-                        continuation.resume()
-                    }
+                    let relay = SSHChannelRelay(
+                        localFD: socketFD,
+                        transportFD: sshSocketFD,
+                        channelIO: LibSSH2ChannelIO(
+                            channel: channel,
+                            session: session,
+                            sessionQueue: sessionQueue
+                        ),
+                        bufferSize: 32_768,
+                        isActive: { !Task.isCancelled }
+                    )
 
-                    while !Task.isCancelled {
-                        var pollFDs = [
-                            pollfd(fd: socketFD, events: Int16(POLLIN), revents: 0),
-                            pollfd(fd: sshSocketFD, events: Int16(POLLIN), revents: 0),
-                        ]
+                    _ = relay.run()
 
-                        let pollResult = poll(&pollFDs, 2, 500)
-                        if pollResult < 0 { break }
-
-                        // Channel -> socketpair (serialized libssh2 call)
-                        if pollFDs[1].revents & Int16(POLLIN) != 0 || pollResult == 0 {
-                            let channelRead: Int = sessionQueue.sync {
-                                Int(tablepro_libssh2_channel_read(channel, buffer, bufferSize))
-                            }
-                            if channelRead > 0 {
-                                var totalSent = 0
-                                while totalSent < channelRead {
-                                    let sent = send(
-                                        socketFD,
-                                        buffer.advanced(by: totalSent),
-                                        channelRead - totalSent,
-                                        0
-                                    )
-                                    if sent <= 0 { return }
-                                    totalSent += sent
-                                }
-                            } else if channelRead == 0
-                                || sessionQueue.sync(execute: { libssh2_channel_eof(channel) }) != 0 {
-                                return
-                            } else if channelRead != Int(LIBSSH2_ERROR_EAGAIN) {
-                                return
-                            }
-                        }
-
-                        // Socketpair -> channel
-                        if pollFDs[0].revents & Int16(POLLIN) != 0 {
-                            let socketRead = recv(socketFD, buffer, bufferSize, 0)
-                            if socketRead <= 0 { return }
-
-                            var totalWritten = 0
-                            while totalWritten < Int(socketRead) {
-                                let written: Int = sessionQueue.sync {
-                                    Int(tablepro_libssh2_channel_write(
-                                        channel,
-                                        buffer.advanced(by: totalWritten),
-                                        Int(socketRead) - totalWritten
-                                    ))
-                                }
-                                if written > 0 {
-                                    totalWritten += written
-                                } else if written == Int(LIBSSH2_ERROR_EAGAIN) {
-                                    var writePollFD = pollfd(
-                                        fd: sshSocketFD, events: Int16(POLLOUT), revents: 0
-                                    )
-                                    _ = poll(&writePollFD, 1, 1_000)
-                                } else {
-                                    return
-                                }
-                            }
-                        }
-                    }
+                    shutdown(socketFD, SHUT_RDWR)
+                    Darwin.close(socketFD)
+                    continuation.resume()
                 }
             }
         }
@@ -839,7 +851,7 @@ internal enum LibSSH2TunnelFactory {
             throw SSHTunnelError.tunnelCreationFailed("Port \(port) already in use")
         }
 
-        guard listen(listenFD, 5) == 0 else {
+        guard listen(listenFD, Self.listenBacklogSize) == 0 else {
             Darwin.close(listenFD)
             throw SSHTunnelError.tunnelCreationFailed("Failed to listen on port \(port)")
         }

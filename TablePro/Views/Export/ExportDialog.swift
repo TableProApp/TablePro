@@ -26,6 +26,8 @@ struct ExportDialog: View {
     @State private var showProgressDialog = false
     @State private var showSuccessDialog = false
     @State private var exportedFileURL: URL?
+    @State private var settingsSnapshot: PluginSettingsSnapshot?
+    @State private var exportSucceeded = false
 
     // MARK: - User Preferences
 
@@ -70,17 +72,14 @@ struct ExportDialog: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Content
             HStack(spacing: 0) {
                 if !isQueryResultsMode {
-                    // Left: Table tree view
                     tableSelectionView
                         .frame(minWidth: leftPanelWidth)
 
                     Divider()
                 }
 
-                // Right: Export options
                 exportOptionsView
                     .frame(width: 280)
             }
@@ -88,17 +87,24 @@ struct ExportDialog: View {
 
             Divider()
 
-            // Footer
             footerView
         }
         .frame(width: dialogWidth)
         .background(Color(nsColor: .windowBackgroundColor))
         .onAppear {
             let available = availableFormats
-            if !available.contains(where: { type(of: $0).formatId == config.formatId }) {
-                if let first = available.first {
-                    config.formatId = type(of: first).formatId
-                }
+            if let lastFormatId = TransferDialogStorage.shared.loadLastExportFormatId(),
+               available.contains(where: { type(of: $0).formatId == lastFormatId }) {
+                config.formatId = lastFormatId
+            } else if !available.contains(where: { type(of: $0).formatId == config.formatId }),
+                      let first = available.first {
+                config.formatId = type(of: first).formatId
+            }
+            captureSettingsSnapshot()
+        }
+        .onDisappear {
+            if !exportSucceeded {
+                restoreSettingsSnapshot()
             }
         }
         .onChange(of: config.formatId) {
@@ -184,6 +190,15 @@ struct ExportDialog: View {
         PluginManager.shared.exportPlugin(forFormat: config.formatId)
     }
 
+    private var currentOptionColumnCount: Int {
+        guard let plugin = currentPlugin else { return 0 }
+        return type(of: plugin).perTableOptionColumns.count
+    }
+
+    private var currentDefaultOptionValues: [Bool] {
+        currentPlugin?.defaultTableOptionValues() ?? []
+    }
+
     // MARK: - Layout Constants
 
     private var leftPanelWidth: CGFloat {
@@ -199,7 +214,6 @@ struct ExportDialog: View {
 
     private var tableSelectionView: some View {
         VStack(spacing: 0) {
-            // Header with title and selection count
             HStack {
                 Text("Items")
                     .font(.subheadline.weight(.medium))
@@ -222,7 +236,6 @@ struct ExportDialog: View {
 
             Divider()
 
-            // Tree view or loading indicator
             if isLoading {
                 VStack {
                     Spacer()
@@ -260,7 +273,6 @@ struct ExportDialog: View {
 
     private var exportOptionsView: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Format picker with selection count
             VStack(alignment: .leading, spacing: 12) {
                 if availableFormats.isEmpty {
                     HStack {
@@ -311,7 +323,7 @@ struct ExportDialog: View {
                         if let plugin = currentPlugin, !type(of: plugin).perTableOptionColumns.isEmpty, exportableCount < selectedCount {
                             Text("\(selectedCount - exportableCount) skipped (no options)")
                                 .font(.subheadline)
-                                .foregroundStyle(Color(nsColor: .systemOrange))
+                                .foregroundStyle(.orange)
                         }
                     }
                 }
@@ -323,12 +335,21 @@ struct ExportDialog: View {
 
             Divider()
 
-            // Format-specific options
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     if let settable = currentPlugin as? any SettablePluginDiscoverable,
                        let optionsView = settable.settingsView() {
                         optionsView
+
+                        HStack {
+                            Spacer()
+                            Button("Reset to Defaults") {
+                                resetCurrentFormatSettings()
+                            }
+                            .buttonStyle(.link)
+                            .font(.callout)
+                        }
+                        .padding(.top, 8)
                     }
                 }
                 .padding(.horizontal, 16)
@@ -339,7 +360,6 @@ struct ExportDialog: View {
 
             Divider()
 
-            // File name section
             VStack(alignment: .leading, spacing: 6) {
                 Text("File name")
                     .font(.subheadline)
@@ -357,11 +377,10 @@ struct ExportDialog: View {
                         .fixedSize()
                 }
 
-                // Show validation error if filename is invalid
                 if let validationError = fileNameValidationError {
                     Text(validationError)
                         .font(.subheadline)
-                        .foregroundStyle(Color(nsColor: .systemRed))
+                        .foregroundStyle(.red)
                 }
             }
             .padding(16)
@@ -399,7 +418,7 @@ struct ExportDialog: View {
                 }
             }
             .buttonStyle(.borderedProminent)
-            .keyboardShortcut(.return, modifiers: [])
+            .keyboardShortcut(.defaultAction)
             .disabled(isExportDisabled)
         }
         .padding(.horizontal, 16)
@@ -486,7 +505,6 @@ struct ExportDialog: View {
             return String(localized: "Filename cannot be '.' or '..' or contain path traversal")
         }
 
-        // Check for Windows reserved device names (case-insensitive)
         let baseName = name.components(separatedBy: ".").first ?? name
         if Self.windowsReservedNames.contains(baseName.uppercased()) {
             return String(format: String(localized: "'%@' is a reserved Windows device name"), baseName)
@@ -506,15 +524,33 @@ struct ExportDialog: View {
     }
 
     private func resetOptionValues() {
-        let defaults = currentPlugin?.defaultTableOptionValues() ?? []
-        for dbIndex in databaseItems.indices {
-            for tableIndex in databaseItems[dbIndex].tables.indices {
-                databaseItems[dbIndex].tables[tableIndex].optionValues = defaults
-            }
-        }
+        databaseItems = databaseItems.resettingOptionValues(to: currentDefaultOptionValues)
     }
 
     // MARK: - Actions
+
+    private func captureSettingsSnapshot() {
+        settingsSnapshot = PluginSettingsSnapshot(
+            plugins: availableFormats.compactMap { $0 as? any SettablePluginDiscoverable }
+        )
+    }
+
+    private func restoreSettingsSnapshot() {
+        settingsSnapshot?.restore()
+        settingsSnapshot = nil
+    }
+
+    private func resetCurrentFormatSettings() {
+        guard let settable = currentPlugin as? any SettablePluginDiscoverable else { return }
+        settable.resetSettingsToDefaults()
+        settingsSnapshot?.recapture(settable)
+    }
+
+    private func recordSuccessfulExport() {
+        exportSucceeded = true
+        TransferDialogStorage.shared.saveLastExportFormatId(config.formatId)
+        settingsSnapshot = nil
+    }
 
     /// Instantly populate the current database from sidebar tables (no network).
     private func populateFromSidebarTables() {
@@ -533,35 +569,34 @@ struct ExportDialog: View {
             tables: tableItems,
             isExpanded: true
         )
-        databaseItems = [item]
+        databaseItems = [item].normalizingOptionValues(
+            optionColumnCount: currentOptionColumnCount,
+            defaultOptionValues: currentDefaultOptionValues
+        )
         isLoading = false
     }
 
-    /// Build a lookup of user-toggled selection state from current `databaseItems`.
-    private func currentSelectionState() -> [String: Bool] {
-        var state: [String: Bool] = [:]
-        for db in databaseItems {
-            for table in db.tables {
-                state["\(db.name).\(table.name)"] = table.isSelected
+    private struct ExportRowSnapshot {
+        let isSelected: Bool
+        let optionValues: [Bool]
+    }
+
+    private func priorRowSnapshots() -> [String: ExportRowSnapshot] {
+        var snapshots: [String: ExportRowSnapshot] = [:]
+        for database in databaseItems {
+            for table in database.tables {
+                snapshots["\(database.name).\(table.name)"] = ExportRowSnapshot(
+                    isSelected: table.isSelected,
+                    optionValues: table.optionValues
+                )
             }
         }
-        return state
+        return snapshots
     }
 
     @MainActor
     private func loadDatabaseItems() async {
-        guard let driver = DatabaseManager.shared.driver(for: connection.id) else {
-            isLoading = false
-            AlertHelper.showErrorSheet(
-                title: String(localized: "Export Error"),
-                message: String(localized: "Not connected to database"),
-                window: nil
-            )
-            return
-        }
-
-        // Snapshot user-toggled selections before replacing items
-        let priorSelections = currentSelectionState()
+        let priorRows = priorRowSnapshots()
 
         do {
             var items: [ExportDatabaseItem] = []
@@ -569,21 +604,24 @@ struct ExportDialog: View {
             let dbType = connection.type
             let grouping = PluginManager.shared.databaseGroupingStrategy(for: dbType)
             switch grouping {
-            case .bySchema:
-                let schemas = try await driver.fetchSchemas()
+            case .bySchema, .hierarchicalSchema:
+                let schemas = try await DatabaseManager.shared.withMetadataDriver(connectionId: connection.id, workload: .bulk) { driver in
+                    try await driver.fetchSchemas()
+                }
                 let defaultSchema = PluginManager.shared.defaultSchemaName(for: dbType)
                 for schema in schemas {
-                    let tables = try await fetchTablesForSchema(schema, driver: driver)
+                    let tables = try await fetchTablesForSchema(schema)
                     let isDefaultSchema = schema.caseInsensitiveCompare(defaultSchema) == .orderedSame
                     let tableItems = tables.map { table in
-                        let key = "\(schema).\(table.name)"
-                        let selected = priorSelections[key]
+                        let priorRow = priorRows["\(schema).\(table.name)"]
+                        let selected = priorRow?.isSelected
                             ?? (isDefaultSchema && preselectedTables.contains(table.name))
                         return ExportTableItem(
                             name: table.name,
                             databaseName: schema,
                             type: table.type,
-                            isSelected: selected
+                            isSelected: selected,
+                            optionValues: priorRow?.optionValues ?? []
                         )
                     }
                     if !tableItems.isEmpty {
@@ -602,25 +640,27 @@ struct ExportDialog: View {
             case .flat:
                 let fallbackName = PluginManager.shared.defaultGroupName(for: dbType)
                 let dbItem = try await buildFlatDatabaseItem(
-                    driver: driver,
                     name: connection.database.isEmpty ? fallbackName : connection.database,
-                    priorSelections: priorSelections
+                    priorRows: priorRows
                 )
                 if let dbItem { items.append(dbItem) }
             case .byDatabase:
-                let databases = try await driver.fetchDatabases()
+                let databases = try await DatabaseManager.shared.withMetadataDriver(connectionId: connection.id, workload: .bulk) { driver in
+                    try await driver.fetchDatabases()
+                }
                 for dbName in databases {
-                    let tables = try await fetchTablesForDatabase(dbName, driver: driver)
+                    let tables = try await fetchTablesForDatabase(dbName)
                     let isCurrentDB = dbName == connection.database
                     let tableItems = tables.map { table in
-                        let key = "\(dbName).\(table.name)"
-                        let selected = priorSelections[key]
+                        let priorRow = priorRows["\(dbName).\(table.name)"]
+                        let selected = priorRow?.isSelected
                             ?? (isCurrentDB && preselectedTables.contains(table.name))
                         return ExportTableItem(
                             name: table.name,
                             databaseName: dbName,
                             type: table.type,
-                            isSelected: selected
+                            isSelected: selected,
+                            optionValues: priorRow?.optionValues ?? []
                         )
                     }
                     if !tableItems.isEmpty {
@@ -638,10 +678,12 @@ struct ExportDialog: View {
                 }
             }
 
-            databaseItems = items
+            databaseItems = items.normalizingOptionValues(
+                optionColumnCount: currentOptionColumnCount,
+                defaultOptionValues: currentDefaultOptionValues
+            )
             isLoading = false
 
-            // Set default filename based on selection
             if preselectedTables.count == 1, let first = preselectedTables.first {
                 config.fileName = first
             } else if !connection.database.isEmpty {
@@ -658,83 +700,52 @@ struct ExportDialog: View {
     }
 
     private func buildFlatDatabaseItem(
-        driver: DatabaseDriver,
         name: String,
-        priorSelections: [String: Bool] = [:]
+        priorRows: [String: ExportRowSnapshot] = [:]
     ) async throws -> ExportDatabaseItem? {
-        let tables = try await driver.fetchTables()
+        let tables = try await DatabaseManager.shared.withMetadataDriver(connectionId: connection.id, workload: .bulk) { driver in
+            try await driver.fetchTables()
+        }
         let tableItems = tables.map { table in
-            let key = "\(name).\(table.name)"
-            let selected = priorSelections[key] ?? preselectedTables.contains(table.name)
+            let priorRow = priorRows["\(name).\(table.name)"]
             return ExportTableItem(
                 name: table.name,
                 databaseName: "",
                 type: table.type,
-                isSelected: selected
+                isSelected: priorRow?.isSelected ?? preselectedTables.contains(table.name),
+                optionValues: priorRow?.optionValues ?? []
             )
         }
         guard !tableItems.isEmpty else { return nil }
         return ExportDatabaseItem(name: name, tables: tableItems, isExpanded: true)
     }
 
-    private func fetchTablesForSchema(_ schema: String, driver: DatabaseDriver) async throws -> [TableInfo] {
-        // Oracle does not have information_schema — use ALL_TABLES/ALL_VIEWS
-        if connection.type.pluginTypeId == "Oracle" {
-            let escapedSchema = schema.replacingOccurrences(of: "'", with: "''")
-            let query = """
-                SELECT TABLE_NAME, 'BASE TABLE' AS TABLE_TYPE FROM ALL_TABLES WHERE OWNER = '\(escapedSchema)'
-                UNION ALL
-                SELECT VIEW_NAME, 'VIEW' FROM ALL_VIEWS WHERE OWNER = '\(escapedSchema)'
-                ORDER BY 1
-                """
-            let result = try await driver.execute(query: query)
-            return result.rows.compactMap { row -> TableInfo? in
-                guard let name = row[safe: 0]?.asText else { return nil }
-                let typeStr = row[safe: 1]?.asText ?? "BASE TABLE"
-                let type: TableInfo.TableType = typeStr.uppercased().contains("VIEW") ? .view : .table
-                return TableInfo(name: name, type: type, rowCount: nil)
-            }
-        }
-
-        let query = """
-            SELECT table_schema, table_name, table_type
-            FROM information_schema.tables
-            ORDER BY table_name
-            """
-        let result = try await driver.execute(query: query)
-        return result.rows.compactMap { row -> TableInfo? in
-            guard row.count >= 2,
-                  let rowSchema = row[0].asText,
-                  rowSchema == schema,
-                  let name = row[1].asText else {
-                return nil
-            }
-            let typeStr = row.count > 2 ? (row[2].asText ?? "BASE TABLE") : "BASE TABLE"
-            let type: TableInfo.TableType = typeStr.uppercased().contains("VIEW") ? .view : .table
-            return TableInfo(name: name, type: type, rowCount: nil)
+    private func fetchTablesForSchema(_ schema: String) async throws -> [TableInfo] {
+        try await DatabaseManager.shared.withMetadataDriver(connectionId: connection.id, workload: .bulk) { driver in
+            try await driver.fetchTables(schema: schema)
         }
     }
 
-    private func fetchTablesForDatabase(_ database: String, driver: DatabaseDriver) async throws -> [TableInfo] {
-        // Fetch tables from information_schema and filter by database in Swift to avoid SQL interpolation.
-        // MySQL/MariaDB: information_schema.TABLES contains TABLE_SCHEMA, TABLE_NAME, and TABLE_TYPE.
-        let query = """
-            SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE
-            FROM information_schema.TABLES
-            ORDER BY TABLE_NAME
-            """
-        let result = try await driver.execute(query: query)
+    private func fetchTablesForDatabase(_ database: String) async throws -> [TableInfo] {
+        try await DatabaseManager.shared.withMetadataDriver(connectionId: connection.id, workload: .bulk) { driver in
+            let query = """
+                SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE
+                FROM information_schema.TABLES
+                ORDER BY TABLE_NAME
+                """
+            let result = try await driver.execute(query: query)
 
-        return result.rows.compactMap { row -> TableInfo? in
-            guard row.count >= 2,
-                  let rowSchema = row[0].asText,
-                  rowSchema == database,
-                  let name = row[1].asText else {
-                return nil
+            return result.rows.compactMap { row -> TableInfo? in
+                guard row.count >= 2,
+                      let rowSchema = row[0].asText,
+                      rowSchema == database,
+                      let name = row[1].asText else {
+                    return nil
+                }
+                let typeStr = row.count > 2 ? (row[2].asText ?? "BASE TABLE") : "BASE TABLE"
+                let type: TableInfo.TableType = typeStr.uppercased().contains("VIEW") ? .view : .table
+                return TableInfo(name: name, type: type, rowCount: nil)
             }
-            let typeStr = row.count > 2 ? (row[2].asText ?? "BASE TABLE") : "BASE TABLE"
-            let type: TableInfo.TableType = typeStr.uppercased().contains("VIEW") ? .view : .table
-            return TableInfo(name: name, type: type, rowCount: nil)
         }
     }
 
@@ -807,6 +818,7 @@ struct ExportDialog: View {
 
             showProgressDialog = false
             isExporting = false
+            recordSuccessfulExport()
 
             if hideSuccessDialog {
                 isPresented = false
@@ -851,6 +863,7 @@ struct ExportDialog: View {
 
             showProgressDialog = false
             isExporting = false
+            recordSuccessfulExport()
 
             if hideSuccessDialog {
                 isPresented = false

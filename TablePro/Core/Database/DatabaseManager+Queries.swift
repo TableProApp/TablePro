@@ -93,21 +93,21 @@ extension DatabaseManager {
             )
             result = try await driver.testConnection()
         } catch {
-            if tunnelWasCreated {
+            if tunnelWasCreated, let tunnelManager = activeTunnelManager(for: connection) {
                 do {
-                    try await SSHTunnelManager.shared.closeTunnel(connectionId: connection.id)
+                    try await tunnelManager.closeTunnel(connectionId: connection.id)
                 } catch {
-                    Self.logger.warning("SSH tunnel cleanup failed for \(connection.name): \(error.localizedDescription)")
+                    Self.logger.warning("Tunnel cleanup failed for \(connection.name): \(error.localizedDescription)")
                 }
             }
             throw error
         }
 
-        if tunnelWasCreated {
+        if tunnelWasCreated, let tunnelManager = activeTunnelManager(for: connection) {
             do {
-                try await SSHTunnelManager.shared.closeTunnel(connectionId: connection.id)
+                try await tunnelManager.closeTunnel(connectionId: connection.id)
             } catch {
-                Self.logger.warning("SSH tunnel cleanup failed for \(connection.name): \(error.localizedDescription)")
+                Self.logger.warning("Tunnel cleanup failed for \(connection.name): \(error.localizedDescription)")
             }
         }
 

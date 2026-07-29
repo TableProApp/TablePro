@@ -15,17 +15,6 @@ extension RowEditingCoordinator {
         pendingDeletes: inout Set<String>,
         tableOperationOptions: inout [String: TableOperationOptions]
     ) {
-        guard !parent.safeModeLevel.blocksAllWrites else {
-            if let index = parent.tabManager.selectedTabIndex {
-                parent.tabManager.mutate(at: index) {
-                    $0.execution.errorMessage = String(localized: "Cannot save changes: connection is read only")
-                }
-            }
-            parent.saveCompletionContinuation?.resume(returning: false)
-            parent.saveCompletionContinuation = nil
-            return
-        }
-
         let hasEditedCells = parent.changeManager.hasChanges
         let hasPendingTableOps = !pendingTruncates.isEmpty || !pendingDeletes.isEmpty
 
@@ -62,44 +51,31 @@ extension RowEditingCoordinator {
             return
         }
 
-        let level = parent.safeModeLevel
-        if level.requiresConfirmation {
-            let sqlPreview = allStatements.map(\.sql).joined(separator: "\n")
-            let snapshotTruncates = pendingTruncates
-            let snapshotDeletes = pendingDeletes
-            let snapshotOptions = tableOperationOptions
-            if hasPendingTableOps {
-                pendingTruncates.removeAll()
-                pendingDeletes.removeAll()
-                for table in snapshotTruncates.union(snapshotDeletes) {
-                    tableOperationOptions.removeValue(forKey: table)
-                }
+        let sqlPreview = allStatements.map(\.sql).joined(separator: "\n")
+        let snapshotTruncates = pendingTruncates
+        let snapshotDeletes = pendingDeletes
+        let snapshotOptions = tableOperationOptions
+        if hasPendingTableOps {
+            pendingTruncates.removeAll()
+            pendingDeletes.removeAll()
+            for table in snapshotTruncates.union(snapshotDeletes) {
+                tableOperationOptions.removeValue(forKey: table)
             }
-            let connId = parent.connection.id
-            Task { [weak self, parent] in
-                guard let self else { return }
-                let window = NSApp.keyWindow
-                let permission = await SafeModeGuard.checkPermission(
-                    level: level,
-                    isWriteOperation: true,
-                    sql: sqlPreview,
-                    operationDescription: String(localized: "Save Changes"),
-                    window: window,
-                    databaseType: parent.connection.type
+        }
+        let connId = parent.connection.id
+        let kind: OperationKind = hasPendingTableOps ? .destructiveQuery : .writeQuery
+        let deleteConfirmation = BulkDeleteConfirmation(deletedRowCount: parent.changeManager.deletedRowIndices.count)
+        Task { [weak self, parent] in
+            guard let self else { return }
+
+            if deleteConfirmation.isRequired {
+                let confirmed = await AlertHelper.confirmDestructive(
+                    title: deleteConfirmation.title,
+                    message: deleteConfirmation.message,
+                    confirmButton: deleteConfirmation.confirmButtonTitle,
+                    window: parent.contentWindow
                 )
-                switch permission {
-                case .allowed:
-                    var truncs = snapshotTruncates
-                    var dels = snapshotDeletes
-                    var opts = snapshotOptions
-                    executeCommitStatements(
-                        allStatements,
-                        clearTableOps: hasPendingTableOps,
-                        pendingTruncates: &truncs,
-                        pendingDeletes: &dels,
-                        tableOperationOptions: &opts
-                    )
-                case .blocked:
+                guard confirmed else {
                     if hasPendingTableOps {
                         DatabaseManager.shared.updateSession(connId) { session in
                             session.pendingTruncates = snapshotTruncates
@@ -111,18 +87,50 @@ extension RowEditingCoordinator {
                     }
                     parent.saveCompletionContinuation?.resume(returning: false)
                     parent.saveCompletionContinuation = nil
+                    return
                 }
             }
-            return
-        }
 
-        executeCommitStatements(
-            allStatements,
-            clearTableOps: hasPendingTableOps,
-            pendingTruncates: &pendingTruncates,
-            pendingDeletes: &pendingDeletes,
-            tableOperationOptions: &tableOperationOptions
-        )
+            let decision = await ExecutionGateProvider.shared.authorize(
+                OperationRequest(
+                    connectionId: connId,
+                    databaseType: parent.connection.type,
+                    sql: sqlPreview,
+                    kind: kind,
+                    caller: .userInterface,
+                    capabilities: .interactiveUser,
+                    operationDescription: String(localized: "Save Changes")
+                )
+            )
+            switch decision {
+            case .authorized:
+                var truncs = snapshotTruncates
+                var dels = snapshotDeletes
+                var opts = snapshotOptions
+                executeCommitStatements(
+                    allStatements,
+                    clearTableOps: hasPendingTableOps,
+                    pendingTruncates: &truncs,
+                    pendingDeletes: &dels,
+                    tableOperationOptions: &opts
+                )
+            case .denied(let reason):
+                if hasPendingTableOps {
+                    DatabaseManager.shared.updateSession(connId) { session in
+                        session.pendingTruncates = snapshotTruncates
+                        session.pendingDeletes = snapshotDeletes
+                        for (table, opts) in snapshotOptions {
+                            session.tableOperationOptions[table] = opts
+                        }
+                    }
+                }
+                if let index = parent.tabManager.selectedTabIndex {
+                    parent.tabManager.mutate(at: index) { $0.execution.errorMessage = reason }
+                }
+                parent.saveCompletionContinuation?.resume(returning: false)
+                parent.saveCompletionContinuation = nil
+            }
+        }
     }
 
     private func executeCommitStatements(

@@ -20,10 +20,7 @@ extension MainContentCoordinator {
     }
 
     static func hasAnyUnsavedChanges() -> Bool {
-        activeCoordinators.values.contains { coordinator in
-            coordinator.changeManager.hasChanges
-                || coordinator.tabManager.tabs.contains { $0.pendingChanges.hasChanges }
-        }
+        activeCoordinators.values.contains { $0.hasAnyUnsavedWork() }
     }
 
     static func allTabs(for connectionId: UUID) -> [QueryTab] {

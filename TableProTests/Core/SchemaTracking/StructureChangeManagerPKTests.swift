@@ -57,8 +57,7 @@ struct StructureChangeManagerPKTests {
             columns: sampleColumns(),
             indexes: sampleIndexes(),
             foreignKeys: [],
-            primaryKey: ["id"],
-            databaseType: .mysql
+            primaryKey: ["id"]
         )
 
         let idCol = manager.workingColumns.first { $0.name == "id" }
@@ -83,8 +82,7 @@ struct StructureChangeManagerPKTests {
             columns: sampleColumnsNoPK(),
             indexes: sampleIndexes(),
             foreignKeys: [],
-            primaryKey: ["id"],
-            databaseType: .postgresql
+            primaryKey: ["id"]
         )
 
         // The working columns should have isPrimaryKey set based on the primaryKey parameter
@@ -115,8 +113,7 @@ struct StructureChangeManagerPKTests {
             columns: columns,
             indexes: [],
             foreignKeys: [],
-            primaryKey: ["tenant_id", "user_id"],
-            databaseType: .postgresql
+            primaryKey: ["tenant_id", "user_id"]
         )
 
         let tenantCol = manager.workingColumns.first { $0.name == "tenant_id" }
@@ -140,8 +137,7 @@ struct StructureChangeManagerPKTests {
             columns: sampleColumnsNoPK(),
             indexes: [],
             foreignKeys: [],
-            primaryKey: [],
-            databaseType: .postgresql
+            primaryKey: []
         )
 
         for col in manager.workingColumns {

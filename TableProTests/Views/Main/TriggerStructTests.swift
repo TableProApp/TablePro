@@ -6,8 +6,8 @@
 //
 
 import Foundation
-import TableProPluginKit
 @testable import TablePro
+import TableProPluginKit
 import Testing
 
 // MARK: - InspectorTrigger Tests
@@ -61,45 +61,70 @@ struct InspectorTriggerTests {
 
 @Suite("PendingChangeTrigger")
 struct PendingChangeTriggerTests {
+    private func makeTrigger(
+        hasDataChanges: Bool = false,
+        pendingTruncates: Set<String> = [],
+        pendingDeletes: Set<String> = [],
+        hasStructureChanges: Bool = false,
+        isFileDirty: Bool = false,
+        hasCreateTablePending: Bool = false
+    ) -> PendingChangeTrigger {
+        PendingChangeTrigger(
+            hasDataChanges: hasDataChanges,
+            pendingTruncates: pendingTruncates,
+            pendingDeletes: pendingDeletes,
+            hasStructureChanges: hasStructureChanges,
+            isFileDirty: isFileDirty,
+            hasCreateTablePending: hasCreateTablePending
+        )
+    }
+
     @Test("Same values are equal")
     func sameValuesAreEqual() {
-        let a = PendingChangeTrigger(hasDataChanges: true, pendingTruncates: ["t1"], pendingDeletes: ["t2"], hasStructureChanges: false, isFileDirty: false)
-        let b = PendingChangeTrigger(hasDataChanges: true, pendingTruncates: ["t1"], pendingDeletes: ["t2"], hasStructureChanges: false, isFileDirty: false)
+        let a = makeTrigger(hasDataChanges: true, pendingTruncates: ["t1"], pendingDeletes: ["t2"])
+        let b = makeTrigger(hasDataChanges: true, pendingTruncates: ["t1"], pendingDeletes: ["t2"])
         #expect(a == b)
     }
 
     @Test("Empty sets are equal")
     func emptySetsAreEqual() {
-        let a = PendingChangeTrigger(hasDataChanges: false, pendingTruncates: [], pendingDeletes: [], hasStructureChanges: false, isFileDirty: false)
-        let b = PendingChangeTrigger(hasDataChanges: false, pendingTruncates: [], pendingDeletes: [], hasStructureChanges: false, isFileDirty: false)
+        let a = makeTrigger()
+        let b = makeTrigger()
         #expect(a == b)
     }
 
     @Test("Different hasDataChanges produces unequal triggers")
     func differentHasDataChanges() {
-        let a = PendingChangeTrigger(hasDataChanges: true, pendingTruncates: [], pendingDeletes: [], hasStructureChanges: false, isFileDirty: false)
-        let b = PendingChangeTrigger(hasDataChanges: false, pendingTruncates: [], pendingDeletes: [], hasStructureChanges: false, isFileDirty: false)
+        let a = makeTrigger(hasDataChanges: true)
+        let b = makeTrigger(hasDataChanges: false)
         #expect(a != b)
     }
 
     @Test("Different pendingTruncates produces unequal triggers")
     func differentPendingTruncates() {
-        let a = PendingChangeTrigger(hasDataChanges: false, pendingTruncates: ["t1"], pendingDeletes: [], hasStructureChanges: false, isFileDirty: false)
-        let b = PendingChangeTrigger(hasDataChanges: false, pendingTruncates: ["t2"], pendingDeletes: [], hasStructureChanges: false, isFileDirty: false)
+        let a = makeTrigger(pendingTruncates: ["t1"])
+        let b = makeTrigger(pendingTruncates: ["t2"])
         #expect(a != b)
     }
 
     @Test("Different pendingDeletes produces unequal triggers")
     func differentPendingDeletes() {
-        let a = PendingChangeTrigger(hasDataChanges: false, pendingTruncates: [], pendingDeletes: ["d1"], hasStructureChanges: false, isFileDirty: false)
-        let b = PendingChangeTrigger(hasDataChanges: false, pendingTruncates: [], pendingDeletes: ["d2"], hasStructureChanges: false, isFileDirty: false)
+        let a = makeTrigger(pendingDeletes: ["d1"])
+        let b = makeTrigger(pendingDeletes: ["d2"])
         #expect(a != b)
     }
 
     @Test("Different hasStructureChanges produces unequal triggers")
     func differentHasStructureChanges() {
-        let a = PendingChangeTrigger(hasDataChanges: false, pendingTruncates: [], pendingDeletes: [], hasStructureChanges: true, isFileDirty: false)
-        let b = PendingChangeTrigger(hasDataChanges: false, pendingTruncates: [], pendingDeletes: [], hasStructureChanges: false, isFileDirty: false)
+        let a = makeTrigger(hasStructureChanges: true)
+        let b = makeTrigger(hasStructureChanges: false)
+        #expect(a != b)
+    }
+
+    @Test("Different hasCreateTablePending produces unequal triggers")
+    func differentHasCreateTablePending() {
+        let a = makeTrigger(hasCreateTablePending: true)
+        let b = makeTrigger(hasCreateTablePending: false)
         #expect(a != b)
     }
 }

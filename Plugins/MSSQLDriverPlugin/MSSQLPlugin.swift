@@ -44,15 +44,32 @@ private extension MSSQLPluginError {
             self = .queryFailed(m)
         case .cancelled:
             self = .queryFailed(String(localized: "Query was cancelled"))
-        case .tlsHandshakeFailed(let m):
-            self = .connectionFailed(String(format: String(localized: "TLS: %@"), m))
+        case .tlsHandshakeFailed(_, let serverMessage):
+            self = .connectionFailed(String(format: String(localized: "TLS: %@"), serverMessage))
+        case let .kerberosAuthFailed(kind, serverMessage):
+            self = .connectionFailed(MSSQLKerberosMessage.describe(kind: kind, serverMessage: serverMessage))
+        case .connectionTimedOut:
+            self = .connectionFailed(coreError.localizedDescription)
+        }
+    }
+}
+
+private extension MSSQLTLSFailureKind {
+    func sslHandshakeError(serverMessage: String) -> SSLHandshakeError {
+        switch self {
+        case .serverRejectedPlaintext: return .serverRejectedPlaintext(serverMessage: serverMessage)
+        case .serverRequiresPlaintext: return .serverRequiresPlaintext(serverMessage: serverMessage)
+        case .untrustedCertificate: return .untrustedCertificate(serverMessage: serverMessage)
+        case .hostnameMismatch: return .hostnameMismatch(serverMessage: serverMessage)
+        case .clientCertRequired: return .clientCertRequired(serverMessage: serverMessage)
+        case .cipherMismatch: return .cipherMismatch(serverMessage: serverMessage)
         }
     }
 }
 
 final class MSSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let pluginName = "MSSQL Driver"
-    static let pluginVersion = "1.0.0"
+    static let pluginVersion = "1.1.0"
     static let pluginDescription = "Microsoft SQL Server support via FreeTDS db-lib"
     static let capabilities: [PluginCapability] = [.databaseDriver]
 
@@ -61,6 +78,37 @@ final class MSSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let iconName = "mssql-icon"
     static let defaultPort = 1433
     static let additionalConnectionFields: [ConnectionField] = [
+        ConnectionField(
+            id: MSSQLConnectionOptions.AdditionalFieldKey.authMethod,
+            label: String(localized: "Authentication"),
+            defaultValue: "sql",
+            fieldType: .dropdown(options: [
+                .init(value: "sql", label: "SQL Server Authentication"),
+                .init(value: "windows", label: "Windows Authentication (Kerberos)")
+            ]),
+            section: .authentication
+        ),
+        ConnectionField(
+            id: MSSQLKerberosField.principal,
+            label: String(localized: "Kerberos Principal"),
+            placeholder: "user@REALM.COM",
+            section: .authentication,
+            visibleWhen: FieldVisibilityRule(
+                fieldId: MSSQLConnectionOptions.AdditionalFieldKey.authMethod,
+                values: ["windows"]
+            )
+        ).withHidesUsername(true),
+        ConnectionField(
+            id: MSSQLKerberosField.password,
+            label: String(localized: "Password"),
+            fieldType: .secure,
+            section: .authentication,
+            hidesPassword: true,
+            visibleWhen: FieldVisibilityRule(
+                fieldId: MSSQLConnectionOptions.AdditionalFieldKey.authMethod,
+                values: ["windows"]
+            )
+        ),
         ConnectionField(id: "mssqlSchema", label: "Schema", placeholder: "dbo", defaultValue: "dbo")
     ]
 
@@ -137,6 +185,8 @@ final class MSSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
     )
 
     static let supportsDropDatabase = true
+    static let supportsTriggers = true
+    static let supportsTriggerEditing = true
 
     func createDriver(config: DriverConnectionConfig) -> any PluginDatabaseDriver {
         MSSQLPluginDriver(config: config)
@@ -147,18 +197,26 @@ final class MSSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
 
 final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private let config: DriverConnectionConfig
-    private var freeTDSConn: FreeTDSConnection?
-    private var _currentSchema: String
+    var freeTDSConn: FreeTDSConnection?
+    var _currentSchema: String
     private var _serverVersion: String?
 
     /// IDENTITY columns observed during `fetchColumns`, keyed by table name.
     /// `generateMssqlInsert` reads this to skip IDENTITY columns: SQL Server
     /// rejects explicit values for IDENTITY columns unless IDENTITY_INSERT is ON,
     /// and the value the user typed is server-allocated anyway.
-    private var identityColumnsByTable: [String: Set<String>] = [:]
-    private let identityCacheLock = NSLock()
+    var identityColumnsByTable: [String: Set<String>] = [:]
+    let identityCacheLock = NSLock()
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "MSSQLPluginDriver")
+
+    private static let kerberosResolveQueue = DispatchQueue(
+        label: "com.TablePro.mssql.kerberos-resolve",
+        qos: .userInitiated
+    )
+    private static let kerberosResolveTimeoutSeconds = 5
+
+    private struct KerberosRealmResolutionTimeout: Error {}
 
     var currentSchema: String? { _currentSchema }
     var serverVersion: String? { _serverVersion }
@@ -204,9 +262,7 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     init(config: DriverConnectionConfig) {
         self.config = config
-        self._currentSchema = config.additionalFields["mssqlSchema"]?.isEmpty == false
-            ? config.additionalFields["mssqlSchema"]!
-            : "dbo"
+        self._currentSchema = config.additionalFields["mssqlSchema"].flatMap { $0.isEmpty ? nil : $0 } ?? "dbo"
     }
 
     private var escapedSchema: String {
@@ -216,20 +272,36 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Connection
 
     func connect() async throws {
-        let options = MSSQLConnectionOptions(
-            host: config.host,
-            port: config.port,
-            user: config.username,
-            password: config.password,
-            database: config.database,
-            schema: _currentSchema,
-            encryptionFlag: MSSQLSSLMapping.freetdsEncryptionFlag(for: config.ssl.mode)
-        )
-        let conn = FreeTDSConnection(options: options)
+        let authMethod = MSSQLConnectionOptions.authMethod(from: config.additionalFields)
+        let conn: FreeTDSConnection
         do {
+            let kerberosCachePath = try await acquireKerberosTicketIfNeeded(authMethod: authMethod)
+            let kerberosServicePrincipal = try await resolveKerberosServicePrincipal(authMethod: authMethod)
+            let options = MSSQLConnectionOptions(
+                host: config.host,
+                port: config.port,
+                user: config.username,
+                password: config.password,
+                database: config.database,
+                schema: _currentSchema,
+                encryptionFlag: MSSQLSSLMapping.freetdsEncryptionFlag(for: config.ssl.mode),
+                authMethod: authMethod,
+                kerberosCachePath: kerberosCachePath,
+                kerberosServicePrincipal: kerberosServicePrincipal
+            )
+            conn = FreeTDSConnection(options: options)
             try await conn.connect()
         } catch let error as MSSQLCoreError {
-            throw MSSQLPluginError(coreError: error)
+            switch error {
+            case let .tlsHandshakeFailed(kind, serverMessage):
+                throw kind.sslHandshakeError(serverMessage: serverMessage)
+            case let .kerberosAuthFailed(kind, serverMessage):
+                throw MSSQLPluginError.connectionFailed(
+                    MSSQLKerberosMessage.describe(kind: kind, serverMessage: serverMessage)
+                )
+            default:
+                throw MSSQLPluginError(coreError: error)
+            }
         }
         self.freeTDSConn = conn
 
@@ -250,6 +322,39 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
            let versionStr = result.rows.first?.first?.asText {
             _serverVersion = String(versionStr.prefix(50))
         }
+    }
+
+    private func resolveKerberosServicePrincipal(authMethod: MSSQLAuthMethod) async throws -> String? {
+        guard authMethod == .windows else { return nil }
+        let host = config.host
+        let port = config.port
+        do {
+            return try await runCancellableBlocking(
+                on: Self.kerberosResolveQueue,
+                deadline: .seconds(Self.kerberosResolveTimeoutSeconds),
+                timeoutError: { KerberosRealmResolutionTimeout() },
+                work: {
+                    MSSQLKerberosRealmResolver.canonicalService(forHost: host)
+                        .flatMap { MSSQLKerberosSPN.build(host: $0.host, port: port, realm: $0.realm) }
+                }
+            )
+        } catch is KerberosRealmResolutionTimeout {
+            Self.logger.warning("Kerberos realm resolution timed out; using the default service principal")
+            return nil
+        }
+    }
+
+    private func acquireKerberosTicketIfNeeded(authMethod: MSSQLAuthMethod) async throws -> String? {
+        guard authMethod == .windows else { return nil }
+        let principal = (config.additionalFields[MSSQLKerberosField.principal] ?? "")
+            .trimmingCharacters(in: .whitespaces)
+        let password = config.additionalFields[MSSQLKerberosField.password] ?? ""
+        guard !principal.isEmpty, !password.isEmpty else { return nil }
+        return try await MSSQLKerberosCredentials.acquireTicket(
+            principal: principal,
+            password: password,
+            timeoutSeconds: MSSQLConnectionOptions.defaultLoginTimeoutSeconds
+        )
     }
 
     private func executeInternal(_ query: String) async throws -> PluginQueryResult {
@@ -297,6 +402,24 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         deletedRowIndices: Set<Int>,
         insertedRowIndices: Set<Int>
     ) -> [(statement: String, parameters: [PluginCellValue])]? {
+        generateStatements(
+            table: table, schema: nil, columns: columns, primaryKeyColumns: primaryKeyColumns,
+            changes: changes, insertedRowData: insertedRowData,
+            deletedRowIndices: deletedRowIndices, insertedRowIndices: insertedRowIndices
+        )
+    }
+
+    func generateStatements(
+        table: String,
+        schema: String?,
+        columns: [String],
+        primaryKeyColumns: [String],
+        changes: [PluginRowChange],
+        insertedRowData: [Int: [PluginCellValue]],
+        deletedRowIndices: Set<Int>,
+        insertedRowIndices: Set<Int>
+    ) -> [(statement: String, parameters: [PluginCellValue])]? {
+        let qualifiedTable = MSSQLSchemaQueries.qualifiedName(schema: schema, table: table)
         var statements: [(statement: String, parameters: [PluginCellValue])] = []
 
         var deleteChanges: [PluginRowChange] = []
@@ -306,13 +429,15 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             case .insert:
                 guard insertedRowIndices.contains(change.rowIndex) else { continue }
                 if let values = insertedRowData[change.rowIndex] {
-                    if let stmt = generateMssqlInsert(table: table, columns: columns, values: values) {
+                    if let stmt = generateMssqlInsert(
+                        table: table, qualifiedTable: qualifiedTable, columns: columns, values: values
+                    ) {
                         statements.append(stmt)
                     }
                 }
             case .update:
                 if let stmt = generateMssqlUpdate(
-                    table: table, columns: columns,
+                    qualifiedTable: qualifiedTable, columns: columns,
                     primaryKeyColumns: primaryKeyColumns, change: change
                 ) {
                     statements.append(stmt)
@@ -326,7 +451,7 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         if !deleteChanges.isEmpty {
             for change in deleteChanges {
                 if let stmt = generateMssqlDelete(
-                    table: table, columns: columns,
+                    qualifiedTable: qualifiedTable, columns: columns,
                     primaryKeyColumns: primaryKeyColumns, change: change
                 ) {
                     statements.append(stmt)
@@ -339,6 +464,7 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     private func generateMssqlInsert(
         table: String,
+        qualifiedTable: String,
         columns: [String],
         values: [PluginCellValue]
     ) -> (statement: String, parameters: [PluginCellValue])? {
@@ -362,13 +488,12 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
         let columnList = nonDefaultColumns.joined(separator: ", ")
         let placeholders = parameters.map { _ in "?" }.joined(separator: ", ")
-        let escapedTable = "[\(table.replacingOccurrences(of: "]", with: "]]"))]"
-        let sql = "INSERT INTO \(escapedTable) (\(columnList)) VALUES (\(placeholders))"
+        let sql = "INSERT INTO \(qualifiedTable) (\(columnList)) VALUES (\(placeholders))"
         return (statement: sql, parameters: parameters)
     }
 
     private func generateMssqlUpdate(
-        table: String,
+        qualifiedTable: String,
         columns: [String],
         primaryKeyColumns: [String],
         change: PluginRowChange
@@ -376,7 +501,6 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         guard !change.cellChanges.isEmpty else { return nil }
         guard let originalRow = change.originalRow else { return nil }
 
-        let escapedTable = "[\(table.replacingOccurrences(of: "]", with: "]]"))]"
         var parameters: [PluginCellValue] = []
 
         let setClauses = change.cellChanges.map { cellChange -> String in
@@ -406,19 +530,18 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
         let whereClause = conditions.joined(separator: " AND ")
         let topClause = primaryKeyColumns.isEmpty ? "TOP (1) " : ""
-        let sql = "UPDATE \(topClause)\(escapedTable) SET \(setClauses) WHERE \(whereClause)"
+        let sql = "UPDATE \(topClause)\(qualifiedTable) SET \(setClauses) WHERE \(whereClause)"
         return (statement: sql, parameters: parameters)
     }
 
     private func generateMssqlDelete(
-        table: String,
+        qualifiedTable: String,
         columns: [String],
         primaryKeyColumns: [String],
         change: PluginRowChange
     ) -> (statement: String, parameters: [PluginCellValue])? {
         guard let originalRow = change.originalRow else { return nil }
 
-        let escapedTable = "[\(table.replacingOccurrences(of: "]", with: "]]"))]"
         var parameters: [PluginCellValue] = []
         var conditions: [String] = []
 
@@ -442,7 +565,7 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
         let whereClause = conditions.joined(separator: " AND ")
         let topClause = primaryKeyColumns.isEmpty ? "TOP (1) " : ""
-        let sql = "DELETE \(topClause)FROM \(escapedTable) WHERE \(whereClause)"
+        let sql = "DELETE \(topClause)FROM \(qualifiedTable) WHERE \(whereClause)"
         return (statement: sql, parameters: parameters)
     }
 
@@ -513,7 +636,6 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             query: query, parameters: parameters.map { $0.asText }
         )
 
-        // If no placeholders were found, execute the query as-is
         guard !paramDecls.isEmpty else {
             return try await execute(query: query)
         }
@@ -538,527 +660,6 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return nil
     }
 
-    // MARK: - Schema Operations
-
-    func fetchTables(schema: String?) async throws -> [PluginTableInfo] {
-        let esc = effectiveSchemaEscaped(schema)
-        let sql = """
-            SELECT t.TABLE_NAME, t.TABLE_TYPE
-            FROM INFORMATION_SCHEMA.TABLES t
-            WHERE t.TABLE_SCHEMA = '\(esc)'
-              AND t.TABLE_TYPE IN ('BASE TABLE', 'VIEW')
-            ORDER BY t.TABLE_NAME
-            """
-        let result = try await execute(query: sql)
-        return result.rows.compactMap { row -> PluginTableInfo? in
-            guard let name = row[safe: 0]?.asText else { return nil }
-            let rawType = row[safe: 1]?.asText
-            let tableType = (rawType == "VIEW") ? "VIEW" : "TABLE"
-            return PluginTableInfo(name: name, type: tableType)
-        }
-    }
-
-    func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] {
-        let escapedTable = table.replacingOccurrences(of: "'", with: "''")
-        let esc = effectiveSchemaEscaped(schema)
-        let sql = """
-            SELECT
-                c.COLUMN_NAME,
-                c.DATA_TYPE,
-                c.CHARACTER_MAXIMUM_LENGTH,
-                c.NUMERIC_PRECISION,
-                c.NUMERIC_SCALE,
-                c.IS_NULLABLE,
-                c.COLUMN_DEFAULT,
-                COLUMNPROPERTY(OBJECT_ID(c.TABLE_SCHEMA + '.' + c.TABLE_NAME), c.COLUMN_NAME, 'IsIdentity') AS IS_IDENTITY,
-                CASE WHEN pk.COLUMN_NAME IS NOT NULL THEN 1 ELSE 0 END AS IS_PK
-            FROM INFORMATION_SCHEMA.COLUMNS c
-            LEFT JOIN (
-                SELECT kcu.COLUMN_NAME
-                FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc
-                JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE kcu
-                    ON tc.CONSTRAINT_NAME = kcu.CONSTRAINT_NAME
-                    AND tc.TABLE_SCHEMA = kcu.TABLE_SCHEMA
-                WHERE tc.CONSTRAINT_TYPE = 'PRIMARY KEY'
-                    AND tc.TABLE_SCHEMA = '\(esc)'
-                    AND tc.TABLE_NAME = '\(escapedTable)'
-            ) pk ON c.COLUMN_NAME = pk.COLUMN_NAME
-            WHERE c.TABLE_NAME = '\(escapedTable)'
-              AND c.TABLE_SCHEMA = '\(esc)'
-            ORDER BY c.ORDINAL_POSITION
-            """
-        let result = try await execute(query: sql)
-        var identityColumns: Set<String> = []
-        let columns: [PluginColumnInfo] = result.rows.compactMap { row -> PluginColumnInfo? in
-            guard let name = row[safe: 0]?.asText else { return nil }
-            let dataType = row[safe: 1]?.asText
-            let charLen = row[safe: 2]?.asText
-            let numPrecision = row[safe: 3]?.asText
-            let numScale = row[safe: 4]?.asText
-            let isNullable = (row[safe: 5]?.asText) == "YES"
-            let defaultValue = row[safe: 6]?.asText
-            let isIdentity = (row[safe: 7]?.asText) == "1"
-            let isPk = (row[safe: 8]?.asText) == "1"
-
-            if isIdentity {
-                identityColumns.insert(name)
-            }
-
-            let baseType = (dataType ?? "nvarchar").lowercased()
-            let fixedSizeTypes: Set<String> = [
-                "int", "bigint", "smallint", "tinyint", "bit",
-                "money", "smallmoney", "float", "real",
-                "datetime", "datetime2", "smalldatetime", "date", "time",
-                "uniqueidentifier", "text", "ntext", "image", "xml",
-                "timestamp", "rowversion"
-            ]
-            var fullType = baseType
-            if fixedSizeTypes.contains(baseType) {
-                // No suffix
-            } else if let charLen, let len = Int(charLen), len > 0 {
-                fullType += "(\(len))"
-            } else if charLen == "-1" {
-                fullType += "(max)"
-            } else if let prec = numPrecision, let scale = numScale,
-                      let p = Int(prec), let s = Int(scale) {
-                fullType += "(\(p),\(s))"
-            }
-
-            return PluginColumnInfo(
-                name: name,
-                dataType: fullType,
-                isNullable: isNullable,
-                isPrimaryKey: isPk,
-                defaultValue: defaultValue,
-                extra: isIdentity ? "IDENTITY" : nil
-            )
-        }
-        identityCacheLock.lock()
-        identityColumnsByTable[table] = identityColumns
-        identityCacheLock.unlock()
-        return columns
-    }
-
-    /// Snapshot of IDENTITY columns observed by the most recent `fetchColumns` for the table.
-    /// Returns an empty set when `fetchColumns` hasn't run for this table yet, so callers
-    /// fall through to including every typed value (matching pre-cache behavior).
-    internal func cachedIdentityColumns(for table: String) -> Set<String> {
-        identityCacheLock.lock()
-        defer { identityCacheLock.unlock() }
-        return identityColumnsByTable[table] ?? []
-    }
-
-    /// Test seam: pre-populate the cache so generateMssqlInsert can be exercised
-    /// without going through a live `fetchColumns` round-trip.
-    internal func setIdentityColumnsForTesting(_ columns: Set<String>, table: String) {
-        identityCacheLock.lock()
-        identityColumnsByTable[table] = columns
-        identityCacheLock.unlock()
-    }
-
-    func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] {
-        let esc = (schema ?? _currentSchema).replacingOccurrences(of: "]", with: "]]")
-        let bracketedTable = table.replacingOccurrences(of: "]", with: "]]")
-        let bracketedFull = "[\(esc)].[\(bracketedTable)]"
-        let sql = """
-            SELECT i.name, i.is_unique, i.is_primary_key, c.name AS column_name
-            FROM sys.indexes i
-            JOIN sys.index_columns ic
-                ON i.object_id = ic.object_id AND i.index_id = ic.index_id
-            JOIN sys.columns c
-                ON ic.object_id = c.object_id AND ic.column_id = c.column_id
-            WHERE i.object_id = OBJECT_ID('\(bracketedFull)')
-              AND i.name IS NOT NULL
-            ORDER BY i.index_id, ic.key_ordinal
-            """
-        let result = try await execute(query: sql)
-        var indexMap: [String: (unique: Bool, primary: Bool, columns: [String])] = [:]
-        for row in result.rows {
-            guard let idxName = row[safe: 0]?.asText,
-                  let colName = row[safe: 3]?.asText else { continue }
-            let isUnique = (row[safe: 1]?.asText) == "1"
-            let isPrimary = (row[safe: 2]?.asText) == "1"
-            if indexMap[idxName] == nil {
-                indexMap[idxName] = (unique: isUnique, primary: isPrimary, columns: [])
-            }
-            indexMap[idxName]?.columns.append(colName)
-        }
-        return indexMap.map { name, info in
-            PluginIndexInfo(
-                name: name,
-                columns: info.columns,
-                isUnique: info.unique,
-                isPrimary: info.primary,
-                type: "CLUSTERED"
-            )
-        }.sorted { $0.name < $1.name }
-    }
-
-    func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] {
-        let escapedTable = table.replacingOccurrences(of: "'", with: "''")
-        let esc = effectiveSchemaEscaped(schema)
-        let sql = """
-            SELECT
-                fk.name AS constraint_name,
-                cp.name AS column_name,
-                tr.name AS ref_table,
-                cr.name AS ref_column
-            FROM sys.foreign_keys fk
-            JOIN sys.foreign_key_columns fkc ON fk.object_id = fkc.constraint_object_id
-            JOIN sys.tables tp ON fkc.parent_object_id = tp.object_id
-            JOIN sys.schemas s ON tp.schema_id = s.schema_id
-            JOIN sys.columns cp
-                ON fkc.parent_object_id = cp.object_id AND fkc.parent_column_id = cp.column_id
-            JOIN sys.tables tr ON fkc.referenced_object_id = tr.object_id
-            JOIN sys.columns cr
-                ON fkc.referenced_object_id = cr.object_id AND fkc.referenced_column_id = cr.column_id
-            WHERE tp.name = '\(escapedTable)' AND s.name = '\(esc)'
-            ORDER BY fk.name
-            """
-        let result = try await execute(query: sql)
-        return result.rows.compactMap { row -> PluginForeignKeyInfo? in
-            guard let constraintName = row[safe: 0]?.asText,
-                  let columnName = row[safe: 1]?.asText,
-                  let refTable = row[safe: 2]?.asText,
-                  let refColumn = row[safe: 3]?.asText else { return nil }
-            return PluginForeignKeyInfo(
-                name: constraintName,
-                column: columnName,
-                referencedTable: refTable,
-                referencedColumn: refColumn
-            )
-        }
-    }
-
-    func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
-        let esc = effectiveSchemaEscaped(schema)
-        let sql = """
-            SELECT
-                c.TABLE_NAME,
-                c.COLUMN_NAME,
-                c.DATA_TYPE,
-                c.CHARACTER_MAXIMUM_LENGTH,
-                c.NUMERIC_PRECISION,
-                c.NUMERIC_SCALE,
-                c.IS_NULLABLE,
-                c.COLUMN_DEFAULT,
-                COLUMNPROPERTY(OBJECT_ID(c.TABLE_SCHEMA + '.' + c.TABLE_NAME), c.COLUMN_NAME, 'IsIdentity') AS IS_IDENTITY,
-                CASE WHEN pk.COLUMN_NAME IS NOT NULL THEN 1 ELSE 0 END AS IS_PK
-            FROM INFORMATION_SCHEMA.COLUMNS c
-            LEFT JOIN (
-                SELECT kcu.TABLE_NAME, kcu.COLUMN_NAME
-                FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc
-                JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE kcu
-                    ON tc.CONSTRAINT_NAME = kcu.CONSTRAINT_NAME
-                    AND tc.TABLE_SCHEMA = kcu.TABLE_SCHEMA
-                WHERE tc.CONSTRAINT_TYPE = 'PRIMARY KEY'
-                    AND tc.TABLE_SCHEMA = '\(esc)'
-            ) pk ON c.TABLE_NAME = pk.TABLE_NAME AND c.COLUMN_NAME = pk.COLUMN_NAME
-            WHERE c.TABLE_SCHEMA = '\(esc)'
-            ORDER BY c.TABLE_NAME, c.ORDINAL_POSITION
-            """
-        let result = try await execute(query: sql)
-        var columnsByTable: [String: [PluginColumnInfo]] = [:]
-        for row in result.rows {
-            guard let tableName = row[safe: 0]?.asText,
-                  let name = row[safe: 1]?.asText else { continue }
-            let dataType = row[safe: 2]?.asText
-            let charLen = row[safe: 3]?.asText
-            let numPrecision = row[safe: 4]?.asText
-            let numScale = row[safe: 5]?.asText
-            let isNullable = (row[safe: 6]?.asText) == "YES"
-            let defaultValue = row[safe: 7]?.asText
-            let isIdentity = (row[safe: 8]?.asText) == "1"
-            let isPk = (row[safe: 9]?.asText) == "1"
-
-            let baseType = (dataType ?? "nvarchar").lowercased()
-            let fixedSizeTypes: Set<String> = [
-                "int", "bigint", "smallint", "tinyint", "bit",
-                "money", "smallmoney", "float", "real",
-                "datetime", "datetime2", "smalldatetime", "date", "time",
-                "uniqueidentifier", "text", "ntext", "image", "xml",
-                "timestamp", "rowversion"
-            ]
-            var fullType = baseType
-            if fixedSizeTypes.contains(baseType) {
-                // No suffix
-            } else if let charLen, let len = Int(charLen), len > 0 {
-                fullType += "(\(len))"
-            } else if charLen == "-1" {
-                fullType += "(max)"
-            } else if let prec = numPrecision, let scale = numScale,
-                      let p = Int(prec), let s = Int(scale) {
-                fullType += "(\(p),\(s))"
-            }
-
-            let col = PluginColumnInfo(
-                name: name,
-                dataType: fullType,
-                isNullable: isNullable,
-                isPrimaryKey: isPk,
-                defaultValue: defaultValue,
-                extra: isIdentity ? "IDENTITY" : nil
-            )
-            columnsByTable[tableName, default: []].append(col)
-        }
-        return columnsByTable
-    }
-
-    func fetchAllForeignKeys(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {
-        let esc = effectiveSchemaEscaped(schema)
-        let sql = """
-            SELECT
-                tp.name AS table_name,
-                fk.name AS constraint_name,
-                cp.name AS column_name,
-                tr.name AS ref_table,
-                cr.name AS ref_column
-            FROM sys.foreign_keys fk
-            JOIN sys.foreign_key_columns fkc ON fk.object_id = fkc.constraint_object_id
-            JOIN sys.tables tp ON fkc.parent_object_id = tp.object_id
-            JOIN sys.schemas s ON tp.schema_id = s.schema_id
-            JOIN sys.columns cp
-                ON fkc.parent_object_id = cp.object_id AND fkc.parent_column_id = cp.column_id
-            JOIN sys.tables tr ON fkc.referenced_object_id = tr.object_id
-            JOIN sys.columns cr
-                ON fkc.referenced_object_id = cr.object_id AND fkc.referenced_column_id = cr.column_id
-            WHERE s.name = '\(esc)'
-            ORDER BY tp.name, fk.name
-            """
-        let result = try await execute(query: sql)
-        var fksByTable: [String: [PluginForeignKeyInfo]] = [:]
-        for row in result.rows {
-            guard let tableName = row[safe: 0]?.asText,
-                  let constraintName = row[safe: 1]?.asText,
-                  let columnName = row[safe: 2]?.asText,
-                  let refTable = row[safe: 3]?.asText,
-                  let refColumn = row[safe: 4]?.asText else { continue }
-            let fk = PluginForeignKeyInfo(
-                name: constraintName,
-                column: columnName,
-                referencedTable: refTable,
-                referencedColumn: refColumn
-            )
-            fksByTable[tableName, default: []].append(fk)
-        }
-        return fksByTable
-    }
-
-    func fetchAllDatabaseMetadata() async throws -> [PluginDatabaseMetadata] {
-        let sql = """
-            SELECT d.name,
-                   SUM(mf.size) * 8 * 1024 AS size_bytes
-            FROM sys.databases d
-            LEFT JOIN sys.master_files mf ON d.database_id = mf.database_id
-            GROUP BY d.name
-            ORDER BY d.name
-            """
-        do {
-            let result = try await execute(query: sql)
-            var metadata = result.rows.compactMap { row -> PluginDatabaseMetadata? in
-                guard let name = row[safe: 0]?.asText else { return nil }
-                let sizeBytes = (row[safe: 1]?.asText).flatMap { Int64($0) }
-                return PluginDatabaseMetadata(name: name, sizeBytes: sizeBytes)
-            }
-
-            for i in metadata.indices {
-                let dbName = metadata[i].name.replacingOccurrences(of: "]", with: "]]")
-                do {
-                    let countResult = try await execute(
-                        query: "SELECT COUNT(*) FROM [\(dbName)].sys.tables"
-                    )
-                    if let countStr = countResult.rows.first?[safe: 0]?.asText,
-                       let count = Int(countStr) {
-                        metadata[i] = PluginDatabaseMetadata(
-                            name: metadata[i].name,
-                            tableCount: count,
-                            sizeBytes: metadata[i].sizeBytes
-                        )
-                    }
-                } catch {
-                    // Database offline or permission denied — leave tableCount as nil
-                }
-            }
-
-            return metadata
-        } catch {
-            // Fall back to N+1 if permission denied on sys.master_files
-            let dbs = try await fetchDatabases()
-            var result: [PluginDatabaseMetadata] = []
-            for db in dbs {
-                do {
-                    result.append(try await fetchDatabaseMetadata(db))
-                } catch {
-                    result.append(PluginDatabaseMetadata(name: db))
-                }
-            }
-            return result
-        }
-    }
-
-    func fetchTableDDL(table: String, schema: String?) async throws -> String {
-        let escapedTable = table.replacingOccurrences(of: "'", with: "''")
-        let esc = effectiveSchemaEscaped(schema)
-        let cols = try await fetchColumns(table: table, schema: schema)
-        let indexes = try await fetchIndexes(table: table, schema: schema)
-        let fks = try await fetchForeignKeys(table: table, schema: schema)
-
-        var ddl = "CREATE TABLE [\(esc)].[\(escapedTable)] (\n"
-        let colDefs = cols.map { col -> String in
-            var def = "    [\(col.name)] \(col.dataType.uppercased())"
-            if col.extra == "IDENTITY" { def += " IDENTITY(1,1)" }
-            def += col.isNullable ? " NULL" : " NOT NULL"
-            if let d = col.defaultValue { def += " DEFAULT \(d)" }
-            return def
-        }
-
-        let pkCols = indexes.filter(\.isPrimary).flatMap(\.columns)
-        var parts = colDefs
-        if !pkCols.isEmpty {
-            let pkName = "PK_\(table)"
-            let pkDef = "    CONSTRAINT [\(pkName)] PRIMARY KEY (\(pkCols.map { "[\($0)]" }.joined(separator: ", ")))"
-            parts.append(pkDef)
-        }
-
-        for fk in fks {
-            let fkDef = "    CONSTRAINT [\(fk.name)] FOREIGN KEY ([\(fk.column)]) REFERENCES [\(fk.referencedTable)] ([\(fk.referencedColumn)])"
-            parts.append(fkDef)
-        }
-
-        ddl += parts.joined(separator: ",\n")
-        ddl += "\n);"
-        return ddl
-    }
-
-    func fetchViewDefinition(view: String, schema: String?) async throws -> String {
-        let esc = effectiveSchemaEscaped(schema)
-        let escapedView = "\(esc).\(view.replacingOccurrences(of: "'", with: "''"))"
-        let sql = "SELECT definition FROM sys.sql_modules WHERE object_id = OBJECT_ID('\(escapedView)')"
-        let result = try await execute(query: sql)
-        return result.rows.first?.first?.asText ?? ""
-    }
-
-    func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
-        let escapedTable = table.replacingOccurrences(of: "'", with: "''")
-        let esc = effectiveSchemaEscaped(schema)
-        let sql = """
-            SELECT
-                SUM(p.rows) AS row_count,
-                8 * SUM(a.used_pages) AS size_kb,
-                ep.value AS comment
-            FROM sys.tables t
-            JOIN sys.schemas s ON t.schema_id = s.schema_id
-            JOIN sys.partitions p
-                ON t.object_id = p.object_id AND p.index_id IN (0, 1)
-            JOIN sys.allocation_units a ON p.partition_id = a.container_id
-            LEFT JOIN sys.extended_properties ep
-                ON ep.major_id = t.object_id AND ep.minor_id = 0 AND ep.name = 'MS_Description'
-            WHERE t.name = '\(escapedTable)' AND s.name = '\(esc)'
-            GROUP BY ep.value
-            """
-        let result = try await execute(query: sql)
-        if let row = result.rows.first {
-            let rowCount = (row[safe: 0]?.asText).flatMap { Int64($0) }
-            let sizeKb = (row[safe: 1]?.asText).flatMap { Int64($0) } ?? 0
-            let comment = row[safe: 2]?.asText
-            return PluginTableMetadata(
-                tableName: table,
-                dataSize: sizeKb * 1_024,
-                totalSize: sizeKb * 1_024,
-                rowCount: rowCount,
-                comment: comment
-            )
-        }
-        return PluginTableMetadata(tableName: table)
-    }
-
-    func fetchDatabases() async throws -> [String] {
-        let sql = "SELECT name FROM sys.databases ORDER BY name"
-        let result = try await execute(query: sql)
-        return result.rows.compactMap { $0.first?.asText }
-    }
-
-    func fetchSchemas() async throws -> [String] {
-        let sql = """
-            SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA
-            WHERE SCHEMA_NAME NOT IN (
-                'information_schema','sys','db_owner','db_accessadmin',
-                'db_securityadmin','db_ddladmin','db_backupoperator',
-                'db_datareader','db_datawriter','db_denydatareader',
-                'db_denydatawriter','guest'
-            )
-            ORDER BY SCHEMA_NAME
-            """
-        let result = try await execute(query: sql)
-        return result.rows.compactMap { $0.first?.asText }
-    }
-
-    func switchSchema(to schema: String) async throws {
-        _currentSchema = schema
-    }
-
-    func switchDatabase(to database: String) async throws {
-        guard let conn = freeTDSConn else {
-            throw MSSQLPluginError.notConnected
-        }
-        try await conn.switchDatabase(database)
-    }
-
-    func fetchDatabaseMetadata(_ database: String) async throws -> PluginDatabaseMetadata {
-        let sql = """
-            SELECT
-                SUM(size) * 8.0 / 1024 AS size_mb,
-                (SELECT COUNT(*) FROM sys.tables) AS table_count
-            FROM sys.database_files
-            """
-        let result = try await execute(query: sql)
-        if let row = result.rows.first {
-            let sizeMb = (row[safe: 0]?.asText).flatMap { Double($0) } ?? 0
-            let tableCount = (row[safe: 1]?.asText).flatMap { Int($0) } ?? 0
-            return PluginDatabaseMetadata(
-                name: database,
-                tableCount: tableCount,
-                sizeBytes: Int64(sizeMb * 1_024 * 1_024)
-            )
-        }
-        return PluginDatabaseMetadata(name: database)
-    }
-
-    func createDatabaseFormSpec() async throws -> PluginCreateDatabaseFormSpec? {
-        PluginCreateDatabaseFormSpec(fields: [], footnote: nil)
-    }
-
-    func createDatabase(_ request: PluginCreateDatabaseRequest) async throws {
-        let quotedName = "[\(request.name.replacingOccurrences(of: "]", with: "]]"))]"
-        _ = try await execute(query: "CREATE DATABASE \(quotedName)")
-    }
-
-    func dropDatabase(name: String) async throws {
-        let quotedName = "[\(name.replacingOccurrences(of: "]", with: "]]"))]"
-        _ = try await execute(query: "DROP DATABASE \(quotedName)")
-    }
-
-    // MARK: - All Tables Metadata
-
-    func allTablesMetadataSQL(schema: String?) -> String? {
-        """
-        SELECT
-            s.name as schema_name,
-            t.name as name,
-            CASE WHEN v.object_id IS NOT NULL THEN 'VIEW' ELSE 'TABLE' END as kind,
-            p.rows as estimated_rows,
-            CAST(ROUND(SUM(a.total_pages) * 8 / 1024.0, 2) AS VARCHAR) + ' MB' as total_size
-        FROM sys.tables t
-        INNER JOIN sys.schemas s ON t.schema_id = s.schema_id
-        INNER JOIN sys.indexes i ON t.object_id = i.object_id AND i.index_id IN (0, 1)
-        INNER JOIN sys.partitions p ON i.object_id = p.object_id AND i.index_id = p.index_id
-        INNER JOIN sys.allocation_units a ON p.partition_id = a.container_id
-        LEFT JOIN sys.views v ON t.object_id = v.object_id
-        GROUP BY s.name, t.name, p.rows, v.object_id
-        ORDER BY t.name
-        """
-    }
-
     // MARK: - Query Building
 
     func buildBrowseQuery(
@@ -1068,12 +669,26 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         limit: Int,
         offset: Int
     ) -> String? {
-        let quotedTable = mssqlQuoteIdentifier(table)
-        var query = "SELECT * FROM \(quotedTable)"
-        let orderBy = mssqlBuildOrderByClause(sortColumns: sortColumns, columns: columns)
-            ?? "ORDER BY (SELECT NULL)"
-        query += " \(orderBy) OFFSET \(offset) ROWS FETCH NEXT \(limit) ROWS ONLY"
-        return query
+        buildBrowseQuery(
+            table: table, schema: nil, sortColumns: sortColumns,
+            columns: columns, limit: limit, offset: offset
+        )
+    }
+
+    func buildBrowseQuery(
+        table: String,
+        schema: String?,
+        sortColumns: [(columnIndex: Int, ascending: Bool)],
+        columns: [String],
+        limit: Int,
+        offset: Int
+    ) -> String? {
+        let orderBy = PluginSQLFilter.buildOrderByClause(
+            sortColumns: sortColumns, columns: columns, quoteIdentifier: mssqlQuoteIdentifier
+        ) ?? "ORDER BY (SELECT NULL)"
+        return MSSQLSchemaQueries.browse(
+            schema: schema, table: table, orderByClause: orderBy, offset: offset, limit: limit
+        )
     }
 
     func buildFilteredQuery(
@@ -1085,45 +700,44 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         limit: Int,
         offset: Int
     ) -> String? {
-        let quotedTable = mssqlQuoteIdentifier(table)
-        var query = "SELECT * FROM \(quotedTable)"
-        let whereClause = mssqlBuildWhereClause(filters: filters, logicMode: logicMode)
-        if !whereClause.isEmpty {
-            query += " WHERE \(whereClause)"
-        }
-        let orderBy = mssqlBuildOrderByClause(sortColumns: sortColumns, columns: columns)
-            ?? "ORDER BY (SELECT NULL)"
-        query += " \(orderBy) OFFSET \(offset) ROWS FETCH NEXT \(limit) ROWS ONLY"
-        return query
+        buildFilteredQuery(
+            table: table, schema: nil, filters: filters, logicMode: logicMode,
+            sortColumns: sortColumns, columns: columns, limit: limit, offset: offset
+        )
+    }
+
+    func buildFilteredQuery(
+        table: String,
+        schema: String?,
+        filters: [(column: String, op: String, value: String)],
+        logicMode: String,
+        sortColumns: [(columnIndex: Int, ascending: Bool)],
+        columns: [String],
+        limit: Int,
+        offset: Int
+    ) -> String? {
+        let whereClause = PluginSQLFilter.buildWhereClause(
+            filters: filters,
+            logicMode: logicMode,
+            quoteIdentifier: mssqlQuoteIdentifier,
+            escapeValue: mssqlEscapeValue,
+            regexCondition: { quoted, value in
+                "\(quoted) LIKE '%\(value.replacingOccurrences(of: "'", with: "''"))%'"
+            }
+        )
+        let orderBy = PluginSQLFilter.buildOrderByClause(
+            sortColumns: sortColumns, columns: columns, quoteIdentifier: mssqlQuoteIdentifier
+        ) ?? "ORDER BY (SELECT NULL)"
+        return MSSQLSchemaQueries.filtered(
+            schema: schema, table: table, whereClause: whereClause,
+            orderByClause: orderBy, offset: offset, limit: limit
+        )
     }
 
     // MARK: - Query Building Helpers
 
     private func mssqlQuoteIdentifier(_ identifier: String) -> String {
         quoteIdentifier(identifier)
-    }
-
-    private func mssqlBuildOrderByClause(
-        sortColumns: [(columnIndex: Int, ascending: Bool)],
-        columns: [String]
-    ) -> String? {
-        let parts = sortColumns.compactMap { sortCol -> String? in
-            guard sortCol.columnIndex >= 0, sortCol.columnIndex < columns.count else { return nil }
-            let columnName = columns[sortCol.columnIndex]
-            let direction = sortCol.ascending ? "ASC" : "DESC"
-            let quotedColumn = mssqlQuoteIdentifier(columnName)
-            return "\(quotedColumn) \(direction)"
-        }
-        guard !parts.isEmpty else { return nil }
-        return "ORDER BY " + parts.joined(separator: ", ")
-    }
-
-    private func mssqlEscapeForLike(_ text: String) -> String {
-        text
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "%", with: "\\%")
-            .replacingOccurrences(of: "_", with: "\\_")
-            .replacingOccurrences(of: "'", with: "''")
     }
 
     private func mssqlEscapeValue(_ value: String) -> String {
@@ -1135,65 +749,6 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return "'\(trimmed.replacingOccurrences(of: "'", with: "''"))'"
     }
 
-    private func mssqlBuildWhereClause(
-        filters: [(column: String, op: String, value: String)],
-        logicMode: String
-    ) -> String {
-        let conditions = filters.compactMap { filter -> String? in
-            mssqlBuildFilterCondition(column: filter.column, op: filter.op, value: filter.value)
-        }
-        guard !conditions.isEmpty else { return "" }
-        let separator = logicMode == "and" ? " AND " : " OR "
-        return conditions.joined(separator: separator)
-    }
-
-    private func mssqlBuildFilterCondition(column: String, op: String, value: String) -> String? {
-        let quoted = mssqlQuoteIdentifier(column)
-        switch op {
-        case "=": return "\(quoted) = \(mssqlEscapeValue(value))"
-        case "!=": return "\(quoted) != \(mssqlEscapeValue(value))"
-        case ">": return "\(quoted) > \(mssqlEscapeValue(value))"
-        case ">=": return "\(quoted) >= \(mssqlEscapeValue(value))"
-        case "<": return "\(quoted) < \(mssqlEscapeValue(value))"
-        case "<=": return "\(quoted) <= \(mssqlEscapeValue(value))"
-        case "IS NULL": return "\(quoted) IS NULL"
-        case "IS NOT NULL": return "\(quoted) IS NOT NULL"
-        case "IS EMPTY": return "(\(quoted) IS NULL OR \(quoted) = '')"
-        case "IS NOT EMPTY": return "(\(quoted) IS NOT NULL AND \(quoted) != '')"
-        case "CONTAINS":
-            let escaped = mssqlEscapeForLike(value)
-            return "\(quoted) LIKE '%\(escaped)%' ESCAPE '\\'"
-        case "NOT CONTAINS":
-            let escaped = mssqlEscapeForLike(value)
-            return "\(quoted) NOT LIKE '%\(escaped)%' ESCAPE '\\'"
-        case "STARTS WITH":
-            let escaped = mssqlEscapeForLike(value)
-            return "\(quoted) LIKE '\(escaped)%' ESCAPE '\\'"
-        case "ENDS WITH":
-            let escaped = mssqlEscapeForLike(value)
-            return "\(quoted) LIKE '%\(escaped)' ESCAPE '\\'"
-        case "IN":
-            let values = value.split(separator: ",")
-                .map { mssqlEscapeValue($0.trimmingCharacters(in: .whitespaces)) }
-                .joined(separator: ", ")
-            return values.isEmpty ? nil : "\(quoted) IN (\(values))"
-        case "NOT IN":
-            let values = value.split(separator: ",")
-                .map { mssqlEscapeValue($0.trimmingCharacters(in: .whitespaces)) }
-                .joined(separator: ", ")
-            return values.isEmpty ? nil : "\(quoted) NOT IN (\(values))"
-        case "BETWEEN":
-            let parts = value.split(separator: ",", maxSplits: 1)
-            guard parts.count == 2 else { return nil }
-            let v1 = mssqlEscapeValue(parts[0].trimmingCharacters(in: .whitespaces))
-            let v2 = mssqlEscapeValue(parts[1].trimmingCharacters(in: .whitespaces))
-            return "\(quoted) BETWEEN \(v1) AND \(v2)"
-        case "REGEX":
-            let escaped = value.replacingOccurrences(of: "'", with: "''")
-            return "\(quoted) LIKE '%\(escaped)%'"
-        default: return nil
-        }
-    }
 
     // MARK: - Private Helpers
 
@@ -1261,183 +816,49 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         value.replacingOccurrences(of: "'", with: "''")
     }
 
-    private func effectiveSchemaEscaped(_ schema: String?) -> String {
+    func effectiveSchemaEscaped(_ schema: String?) -> String {
         let raw = schema ?? _currentSchema
         return raw.replacingOccurrences(of: "'", with: "''")
     }
 
-    // MARK: - Create Table DDL
+}
 
-    func generateCreateTableSQL(definition: PluginCreateTableDefinition) -> String? {
-        guard !definition.columns.isEmpty else { return nil }
+// MARK: - Kerberos
 
-        let schema = _currentSchema
-        let qualifiedTable = "\(quoteIdentifier(schema)).\(quoteIdentifier(definition.tableName))"
-        let pkColumns = definition.columns.filter { $0.isPrimaryKey }
-        let inlinePK = pkColumns.count == 1
-        var parts: [String] = definition.columns.map { mssqlColumnDefinition($0, inlinePK: inlinePK) }
+enum MSSQLKerberosField {
+    static let principal = "mssqlKerberosPrincipal"
+    static let password = "mssqlKerberosPassword"
+}
 
-        if pkColumns.count > 1 {
-            let pkCols = pkColumns.map { quoteIdentifier($0.name) }.joined(separator: ", ")
-            parts.append("PRIMARY KEY (\(pkCols))")
+enum MSSQLKerberosMessage {
+    static func describe(kind: MSSQLKerberosFailureKind, serverMessage: String) -> String {
+        let summary: String
+        let suggestion: String
+        switch kind {
+        case .noCredential:
+            summary = String(localized: "No Kerberos ticket was found.")
+            suggestion = String(localized: "Run kinit user@REALM.COM in Terminal, or enter a Kerberos principal and password, then reconnect.")
+        case .principalUnknown:
+            summary = String(localized: "The Kerberos principal is unknown to the domain.")
+            suggestion = String(localized: "Check the principal spelling and realm, for example user@REALM.COM with the realm in uppercase.")
+        case .wrongPassword:
+            summary = String(localized: "The Kerberos password was rejected.")
+            suggestion = String(localized: "Re-enter the domain password for this principal.")
+        case .spnNotFound:
+            summary = String(localized: "The SQL Server Kerberos service principal name is not registered.")
+            suggestion = String(localized: "Ask your administrator to register the SPN, for example MSSQLSvc/host.domain.com:1433, and connect by hostname rather than IP address.")
+        case .clockSkew:
+            summary = String(localized: "This Mac's clock is too far out of sync with the domain controller.")
+            suggestion = String(localized: "Turn on Set time automatically in System Settings > General > Date & Time, then reconnect.")
+        case .realmNotResolved:
+            summary = String(localized: "The Kerberos realm could not be resolved.")
+            suggestion = String(localized: "Confirm this network resolves the domain, or add the realm to /etc/krb5.conf.")
+        case .ticketExpired:
+            summary = String(localized: "The Kerberos ticket has expired.")
+            suggestion = String(localized: "Run kinit user@REALM.COM to renew it, then reconnect.")
         }
-
-        for fk in definition.foreignKeys {
-            parts.append(mssqlForeignKeyDefinition(fk))
-        }
-
-        var sql = "CREATE TABLE \(qualifiedTable) (\n  " +
-            parts.joined(separator: ",\n  ") +
-            "\n);"
-
-        var indexStatements: [String] = []
-        for index in definition.indexes {
-            indexStatements.append(mssqlIndexDefinition(index, qualifiedTable: qualifiedTable))
-        }
-        if !indexStatements.isEmpty {
-            sql += "\n\n" + indexStatements.joined(separator: ";\n") + ";"
-        }
-
-        return sql
+        return "\(summary) \(suggestion) (\(serverMessage))"
     }
-
-    private func mssqlColumnDefinition(_ col: PluginColumnDefinition, inlinePK: Bool) -> String {
-        var def = "\(quoteIdentifier(col.name)) \(col.dataType)"
-        if col.autoIncrement {
-            def += " IDENTITY(1,1)"
-        }
-        if col.isNullable {
-            def += " NULL"
-        } else {
-            def += " NOT NULL"
-        }
-        if let defaultValue = col.defaultValue {
-            def += " DEFAULT \(mssqlDefaultValue(defaultValue))"
-        }
-        if inlinePK && col.isPrimaryKey {
-            def += " PRIMARY KEY"
-        }
-        return def
-    }
-
-    private func mssqlDefaultValue(_ value: String) -> String {
-        let upper = value.uppercased()
-        if upper == "NULL" || upper == "GETDATE()" || upper == "NEWID()" || upper == "GETUTCDATE()"
-            || value.hasPrefix("'") || value.hasPrefix("(") || Int64(value) != nil || Double(value) != nil {
-            return value
-        }
-        return "'\(escapeStringLiteral(value))'"
-    }
-
-    private func mssqlIndexDefinition(_ index: PluginIndexDefinition, qualifiedTable: String) -> String {
-        let cols = index.columns.map { quoteIdentifier($0) }.joined(separator: ", ")
-        let unique = index.isUnique ? "UNIQUE " : ""
-        var def = "CREATE \(unique)INDEX \(quoteIdentifier(index.name)) ON \(qualifiedTable) (\(cols))"
-        if let type = index.indexType?.uppercased(), type == "CLUSTERED" {
-            def = "CREATE \(unique)CLUSTERED INDEX \(quoteIdentifier(index.name)) ON \(qualifiedTable) (\(cols))"
-        } else if let type = index.indexType?.uppercased(), type == "NONCLUSTERED" {
-            def = "CREATE \(unique)NONCLUSTERED INDEX \(quoteIdentifier(index.name)) ON \(qualifiedTable) (\(cols))"
-        }
-        return def
-    }
-
-    private func mssqlForeignKeyDefinition(_ fk: PluginForeignKeyDefinition) -> String {
-        let cols = fk.columns.map { quoteIdentifier($0) }.joined(separator: ", ")
-        let refCols = fk.referencedColumns.map { quoteIdentifier($0) }.joined(separator: ", ")
-        var def = "CONSTRAINT \(quoteIdentifier(fk.name)) FOREIGN KEY (\(cols)) REFERENCES \(quoteIdentifier(fk.referencedTable)) (\(refCols))"
-        if fk.onDelete != "NO ACTION" {
-            def += " ON DELETE \(fk.onDelete)"
-        }
-        if fk.onUpdate != "NO ACTION" {
-            def += " ON UPDATE \(fk.onUpdate)"
-        }
-        return def
-    }
-
-    // MARK: - ALTER TABLE DDL
-
-    private func mssqlQualifiedTable(_ table: String) -> String {
-        "\(quoteIdentifier(_currentSchema)).\(quoteIdentifier(table))"
-    }
-
-    func generateAddColumnSQL(table: String, column: PluginColumnDefinition) -> String? {
-        "ALTER TABLE \(mssqlQualifiedTable(table)) ADD \(mssqlColumnDefinition(column, inlinePK: false))"
-    }
-
-    func generateModifyColumnSQL(table: String, oldColumn: PluginColumnDefinition, newColumn: PluginColumnDefinition) -> String? {
-        let qt = mssqlQualifiedTable(table)
-        var stmts: [String] = []
-        let needsTypeChange = oldColumn.dataType != newColumn.dataType || oldColumn.isNullable != newColumn.isNullable
-        let defaultChanged = oldColumn.defaultValue != newColumn.defaultValue
-
-        // Rename column first so subsequent statements reference the correct name
-        if oldColumn.name != newColumn.name {
-            let escapedPath = "\(escapeStringLiteral(_currentSchema)).\(escapeStringLiteral(table)).\(escapeStringLiteral(oldColumn.name))"
-            stmts.append("EXEC sp_rename '\(escapedPath)', '\(escapeStringLiteral(newColumn.name))', 'COLUMN'")
-        }
-
-        let colName = quoteIdentifier(newColumn.name)
-
-        // Drop existing default constraint before ALTER COLUMN or default change
-        if (defaultChanged || needsTypeChange) && oldColumn.defaultValue != nil {
-            let objectId = escapeStringLiteral("\(_currentSchema).\(table)")
-            stmts.append("""
-                DECLARE @dfName NVARCHAR(256); \
-                SELECT @dfName = dc.name FROM sys.default_constraints dc \
-                JOIN sys.columns c ON dc.parent_column_id = c.column_id AND dc.parent_object_id = c.object_id \
-                WHERE c.name = '\(escapeStringLiteral(newColumn.name))' \
-                AND dc.parent_object_id = OBJECT_ID('\(objectId)'); \
-                IF @dfName IS NOT NULL EXEC('ALTER TABLE \(qt) DROP CONSTRAINT [' + @dfName + ']')
-                """)
-        }
-
-        if needsTypeChange {
-            let nullable = newColumn.isNullable ? "NULL" : "NOT NULL"
-            stmts.append("ALTER TABLE \(qt) ALTER COLUMN \(colName) \(newColumn.dataType) \(nullable)")
-        }
-
-        if defaultChanged, let defaultValue = newColumn.defaultValue {
-            stmts.append("ALTER TABLE \(qt) ADD DEFAULT \(mssqlDefaultValue(defaultValue)) FOR \(colName)")
-        }
-
-        return stmts.isEmpty ? nil : stmts.joined(separator: ";\n")
-    }
-
-    func generateDropColumnSQL(table: String, columnName: String) -> String? {
-        "ALTER TABLE \(mssqlQualifiedTable(table)) DROP COLUMN \(quoteIdentifier(columnName))"
-    }
-
-    func generateAddIndexSQL(table: String, index: PluginIndexDefinition) -> String? {
-        mssqlIndexDefinition(index, qualifiedTable: mssqlQualifiedTable(table))
-    }
-
-    func generateDropIndexSQL(table: String, indexName: String) -> String? {
-        "DROP INDEX \(quoteIdentifier(indexName)) ON \(mssqlQualifiedTable(table))"
-    }
-
-    func generateAddForeignKeySQL(table: String, fk: PluginForeignKeyDefinition) -> String? {
-        "ALTER TABLE \(mssqlQualifiedTable(table)) ADD \(mssqlForeignKeyDefinition(fk))"
-    }
-
-    func generateDropForeignKeySQL(table: String, constraintName: String) -> String? {
-        "ALTER TABLE \(mssqlQualifiedTable(table)) DROP CONSTRAINT \(quoteIdentifier(constraintName))"
-    }
-
-    func generateModifyPrimaryKeySQL(table: String, oldColumns: [String], newColumns: [String], constraintName: String?) -> [String]? {
-        let qt = mssqlQualifiedTable(table)
-        var stmts: [String] = []
-        if !oldColumns.isEmpty {
-            let name = constraintName.map { quoteIdentifier($0) } ?? "/* unknown constraint */"
-            stmts.append("ALTER TABLE \(qt) DROP CONSTRAINT \(name)")
-        }
-        if !newColumns.isEmpty {
-            let cols = newColumns.map { quoteIdentifier($0) }.joined(separator: ", ")
-            let pkName = constraintName.map { quoteIdentifier($0) } ?? quoteIdentifier("PK_\(table)")
-            stmts.append("ALTER TABLE \(qt) ADD CONSTRAINT \(pkName) PRIMARY KEY (\(cols))")
-        }
-        return stmts.isEmpty ? nil : stmts
-    }
-
 }
 
 // MARK: - Errors

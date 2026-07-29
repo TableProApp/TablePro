@@ -61,7 +61,7 @@ struct TableListView: View {
                         }
                         .contextMenu {
                             Button {
-                                UIPasteboard.general.string = table.name
+                                ClipboardExporter.copyToClipboard(table.name)
                             } label: {
                                 Label("Copy Name", systemImage: "doc.on.doc")
                             }

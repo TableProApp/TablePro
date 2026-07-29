@@ -9,6 +9,17 @@ import SwiftUI
 /// Type-erased witness for runtime discovery (needed because SettablePlugin has associated type).
 public protocol SettablePluginDiscoverable: AnyObject {
     func settingsView() -> AnyView?
+    func snapshotSettingsData() -> Data?
+    func restoreSettingsData(_ data: Data)
+    func resetSettingsToDefaults()
+}
+
+public extension SettablePluginDiscoverable {
+    func snapshotSettingsData() -> Data? { nil }
+
+    func restoreSettingsData(_ data: Data) {}
+
+    func resetSettingsToDefaults() {}
 }
 
 /// Opt-in protocol for plugins with user-configurable settings.
@@ -24,6 +35,15 @@ public protocol SettablePlugin: SettablePluginDiscoverable {
 
 public extension SettablePlugin {
     func settingsView() -> AnyView? { nil }
+
+    func snapshotSettingsData() -> Data? {
+        try? JSONEncoder().encode(settings)
+    }
+
+    func restoreSettingsData(_ data: Data) {
+        guard let restored = try? JSONDecoder().decode(Settings.self, from: data) else { return }
+        settings = restored
+    }
 
     func loadSettings() {
         let storage = PluginSettingsStorage(pluginId: Self.settingsStorageId)
