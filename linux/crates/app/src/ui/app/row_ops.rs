@@ -108,7 +108,7 @@ impl App {
             .iter()
             .map(|c| tablepro_core::sql_dialect::quote_ident(&driver_id, &c.name))
             .collect();
-        let values: Vec<String> = row.iter().map(format_sql_literal).collect();
+        let values: Vec<String> = row.iter().map(super::export::format_sql_literal).collect();
         let sql = format!(
             "INSERT INTO {} ({}) VALUES ({});",
             tablepro_core::sql_dialect::quote_ident(&driver_id, &table),
@@ -159,27 +159,6 @@ fn compute_concurrency_warning(statements: &[(String, Vec<Value>)], affected: &[
         crate::tr!("{n} rows could not be located. They may have been changed by another session. Refresh and review.")
             .replace("{n}", &total.to_string()),
     )
-}
-
-/// Render a `Value` as a SQL literal — used by the "Copy row as
-/// INSERT" clipboard helper to produce a self-contained statement
-/// that round-trips through any SQL client.
-fn format_sql_literal(v: &Value) -> String {
-    match v {
-        Value::Null => "NULL".into(),
-        Value::Bool(b) => b.to_string(),
-        Value::Int(i) => i.to_string(),
-        Value::Float(f) => f.to_string(),
-        Value::Decimal(d) => d.to_string(),
-        Value::Text(s) => format!("'{}'", s.replace('\'', "''")),
-        Value::Bytes(_) => "/* bytes omitted */ NULL".into(),
-        Value::Date(d) => format!("'{}'", d.format("%Y-%m-%d")),
-        Value::Time(t) => format!("'{}'", t.format("%H:%M:%S")),
-        Value::DateTime(dt) => format!("'{}'", dt.format("%Y-%m-%d %H:%M:%S")),
-        Value::TimestampTz(ts) => format!("'{}'", ts.to_rfc3339()),
-        Value::Uuid(u) => format!("'{u}'"),
-        Value::Json(j) => format!("'{}'", j.to_string().replace('\'', "''")),
-    }
 }
 
 #[cfg(test)]

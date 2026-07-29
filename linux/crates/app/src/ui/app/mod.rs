@@ -1,5 +1,6 @@
 mod browse;
 mod connection;
+mod export;
 mod row_ops;
 mod status_pages;
 mod structure;
@@ -322,6 +323,8 @@ pub enum AppMsg {
     RowCountLoaded(Uuid, u64),
     ExportCsv,
     ExportJson,
+    ExportSqlInsert,
+    ExportMarkdown,
     CopyToClipboard(String),
     CopyRowAsInsert {
         tab_id: Uuid,
@@ -508,12 +511,6 @@ pub enum AppMsg {
     /// Ctrl+F → open the filter strip for the active Browse tab.
     /// No-op when the active tab isn't a Browse / Table tab.
     ShowFilterDialog,
-}
-
-#[derive(Debug, Clone, Copy)]
-enum ExportFormat {
-    Csv,
-    Json,
 }
 
 /// Determines which icon and styling adw::StatusPage uses.
@@ -1432,8 +1429,10 @@ impl SimpleComponent for App {
             AppMsg::ShowShortcuts => self.on_show_shortcuts(),
             AppMsg::ShowAbout => self.on_show_about(),
             AppMsg::ShowPreferences => super::preferences::present(&self.window),
-            AppMsg::ExportCsv => self.on_export(ExportFormat::Csv),
-            AppMsg::ExportJson => self.on_export(ExportFormat::Json),
+            AppMsg::ExportCsv => self.on_export(export::ExportFormat::Csv),
+            AppMsg::ExportJson => self.on_export(export::ExportFormat::Json),
+            AppMsg::ExportSqlInsert => self.on_export(export::ExportFormat::SqlInsert),
+            AppMsg::ExportMarkdown => self.on_export(export::ExportFormat::Markdown),
             AppMsg::CopyToClipboard(text) => self.on_copy_to_clipboard(text),
             AppMsg::CopyRowAsInsert { tab_id, row_position } => self.on_copy_row_as_insert(tab_id, row_position),
             AppMsg::DeleteConnection(id) => self.on_delete_connection(id, sender),
@@ -1441,66 +1440,6 @@ impl SimpleComponent for App {
             AppMsg::ReopenClosedTab => self.on_reopen_closed_tab(sender),
             AppMsg::ShowFilterDialog => self.on_show_filter_dialog(),
         }
-    }
-}
-
-fn render_csv(result: &QueryResult) -> Vec<u8> {
-    let mut out = String::new();
-    let cols: Vec<&str> = result.columns.iter().map(|c| c.name.as_str()).collect();
-    out.push_str(&cols.iter().map(|c| csv_escape(c)).collect::<Vec<_>>().join(","));
-    out.push('\n');
-    for row in &result.rows {
-        let cells: Vec<String> = row
-            .iter()
-            .map(|v| csv_escape(&super::grid::value_to_display_text(v)))
-            .collect();
-        out.push_str(&cells.join(","));
-        out.push('\n');
-    }
-    out.into_bytes()
-}
-
-fn csv_escape(s: &str) -> String {
-    if s.contains(',') || s.contains('"') || s.contains('\n') || s.contains('\r') {
-        format!("\"{}\"", s.replace('"', "\"\""))
-    } else {
-        s.to_string()
-    }
-}
-
-fn render_json(result: &QueryResult) -> Vec<u8> {
-    let cols: Vec<&str> = result.columns.iter().map(|c| c.name.as_str()).collect();
-    let rows: Vec<serde_json::Value> = result
-        .rows
-        .iter()
-        .map(|row| {
-            let mut obj = serde_json::Map::new();
-            for (i, col) in cols.iter().enumerate() {
-                let v = row.get(i).cloned().unwrap_or(Value::Null);
-                obj.insert((*col).to_string(), value_to_json(&v));
-            }
-            serde_json::Value::Object(obj)
-        })
-        .collect();
-    serde_json::to_vec_pretty(&rows).unwrap_or_default()
-}
-
-fn value_to_json(v: &Value) -> serde_json::Value {
-    use serde_json::Value as J;
-    match v {
-        Value::Null => J::Null,
-        Value::Bool(b) => J::Bool(*b),
-        Value::Int(i) => J::from(*i),
-        Value::Float(f) => J::from(*f),
-        Value::Text(s) => J::String(s.clone()),
-        Value::Bytes(b) => J::String(format!("<{} bytes>", b.len())),
-        Value::Date(d) => J::String(d.to_string()),
-        Value::Time(t) => J::String(t.to_string()),
-        Value::DateTime(dt) => J::String(dt.to_string()),
-        Value::TimestampTz(ts) => J::String(ts.to_rfc3339()),
-        Value::Decimal(d) => J::String(d.to_string()),
-        Value::Uuid(u) => J::String(u.to_string()),
-        Value::Json(j) => j.clone(),
     }
 }
 
@@ -1563,6 +1502,8 @@ fn install_window_actions(window: &adw::ApplicationWindow, sender: ComponentSend
         input_action!("refresh-page", AppMsg::RefreshPage),
         input_action!("export-csv", AppMsg::ExportCsv),
         input_action!("export-json", AppMsg::ExportJson),
+        input_action!("export-sql", AppMsg::ExportSqlInsert),
+        input_action!("export-markdown", AppMsg::ExportMarkdown),
         input_action!("save-changes", AppMsg::SaveActiveBrowseTab),
         input_action!("undo-change", AppMsg::UndoActiveBrowseTab),
         input_action!("redo-change", AppMsg::RedoActiveBrowseTab),

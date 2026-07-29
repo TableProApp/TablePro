@@ -458,12 +458,14 @@ impl BrowseTab {
         // background, and high-contrast theming come for free.
         let paginator_bar = gtk::ActionBar::new();
 
-        // Export menu uses win.export-csv / win.export-json (App-level
-        // actions); they read the active tab's snapshot so the buttons
-        // implicitly target this tab when this tab is active.
+        // Export menu uses win.export-* (App-level actions); they read
+        // the active tab's snapshot so the buttons implicitly target
+        // this tab when this tab is active.
         let export_menu = gtk::gio::Menu::new();
         export_menu.append(Some(&crate::tr!("Export as CSV…")), Some("win.export-csv"));
         export_menu.append(Some(&crate::tr!("Export as JSON…")), Some("win.export-json"));
+        export_menu.append(Some(&crate::tr!("Export as SQL INSERT…")), Some("win.export-sql"));
+        export_menu.append(Some(&crate::tr!("Export as Markdown…")), Some("win.export-markdown"));
         let export_button = gtk::MenuButton::builder()
             .icon_name("document-save-symbolic")
             .tooltip_text(crate::tr!("Export results"))

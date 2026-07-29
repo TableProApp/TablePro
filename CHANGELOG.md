@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Linux browse export can write the current page as CSV, JSON, SQL INSERT, or Markdown. CSV opens an options dialog for headers, line endings, quote style, and a UTF-8 BOM.
 - **File > Close All Tabs**, **Close Other Tabs**, and **Close Tabs for Other Databases** close a group of tabs in one step instead of one at a time. Closing every tab leaves the window open on its empty state with the connection still live, and each closed tab stays in **Recently Closed**. None of the three has a shortcut out of the box; bind them in **Settings > Keyboard**. (#1972)
 - AI Explain, Optimize, and Fix Error now answer with a walkthrough in the chat panel: a before/after SQL diff you can switch between unified and split, numbered steps anchored to the lines they change, and a follow-up prompt on any step. Optimize and Fix add an Apply to Editor button that asks before replacing your query. (#1945)
 - Create a connection from a project folder. Pick one from the welcome screen or File > Open Project Folder..., and TablePro reads the database settings it finds in `.env` files, `wp-config.php`, `prisma/schema.prisma`, `config/database.yml`, `docker-compose.yml`, `application.properties`, `application.yml`, and `appsettings.json`. A project that uses more than one engine gets a row for each. Review what it found, pick one, and the connection form opens filled in. Nothing is saved or connected until you save it. (#1959)

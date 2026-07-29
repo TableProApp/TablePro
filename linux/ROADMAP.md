@@ -135,8 +135,8 @@ Exit criterion: a developer can demo the basic flows (connect, browse, edit, que
 
 ### Export / import (~1 week)
 
-- [ ] Export current grid to CSV / JSON / SQL INSERT / Markdown
-- [ ] Export with options: include headers, quote style, line endings, UTF-8 BOM toggle
+- [x] Export current grid to CSV / JSON / SQL INSERT / Markdown
+- [x] Export with options: include headers, quote style, line endings, UTF-8 BOM toggle
 - [ ] Import CSV → table (with column mapping dialog)
 - [ ] Run SQL file (load + execute via SQL editor)
 

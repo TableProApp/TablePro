@@ -8,7 +8,20 @@ use uuid::Uuid;
 use crate::services::database_service;
 use crate::ui::browse_tab::BrowseTabInput;
 
-use super::{App, AppMsg, ExportFormat, OpenMode, render_csv, render_json};
+use super::export::{
+    CsvOptions, CsvQuoteStyle, ExportFormat, LineEnding, render_csv, render_json, render_markdown,
+    render_sql_insert,
+};
+use super::{App, AppMsg, OpenMode};
+
+struct ExportRequest {
+    format: ExportFormat,
+    result: QueryResult,
+    driver_id: String,
+    schema: Option<String>,
+    table: String,
+    csv_options: CsvOptions,
+}
 
 impl App {
     /// Sidebar click — routes via OpenMode (smart switch / new tab).
@@ -245,16 +258,167 @@ impl App {
             self.show_toast(&crate::tr!("Nothing to export"));
             return;
         };
-        let result = {
+        let (result, driver_id) = {
             let tabs = self.workspace_tabs.borrow();
-            tabs.get(&active_id)
-                .and_then(|t| t.browse_controller())
-                .and_then(|c| c.model().snapshot())
+            match tabs.get(&active_id).and_then(|t| t.browse_controller()) {
+                Some(controller) => {
+                    let model = controller.model();
+                    (model.snapshot(), model.driver_id().to_string())
+                }
+                None => (None, String::new()),
+            }
         };
         let Some(result) = result else {
             self.show_toast(&crate::tr!("Nothing to export"));
             return;
         };
+        if matches!(format, ExportFormat::Csv) {
+            self.present_csv_export_options(result, schema, table);
+            return;
+        }
+        self.run_export_file_dialog(ExportRequest {
+            format,
+            result,
+            driver_id,
+            schema,
+            table,
+            csv_options: CsvOptions::default(),
+        });
+    }
+
+    fn present_csv_export_options(
+        &self,
+        result: QueryResult,
+        schema: Option<String>,
+        table: String,
+    ) {
+        let dialog = adw::Dialog::builder()
+            .title(crate::tr!("Export as CSV"))
+            .content_width(420)
+            .build();
+
+        let header = adw::HeaderBar::new();
+        let cancel = gtk::Button::builder().label(crate::tr!("Cancel")).build();
+        cancel.add_css_class("flat");
+        let export_btn = gtk::Button::builder()
+            .label(crate::tr!("Export…"))
+            .build();
+        export_btn.add_css_class("suggested-action");
+        header.pack_start(&cancel);
+        header.pack_end(&export_btn);
+
+        let group = adw::PreferencesGroup::builder()
+            .title(crate::tr!("Options"))
+            .build();
+
+        let headers_row = adw::SwitchRow::builder()
+            .title(crate::tr!("Include headers"))
+            .subtitle(crate::tr!("Write column names as the first row"))
+            .active(true)
+            .build();
+
+        let bom_row = adw::SwitchRow::builder()
+            .title(crate::tr!("UTF-8 BOM"))
+            .subtitle(crate::tr!("Helps Excel recognize UTF-8 encoding"))
+            .active(false)
+            .build();
+
+        let endings = gtk::StringList::new(&[&crate::tr!("LF (Unix)"), &crate::tr!("CRLF (Windows)")]);
+        let ending_row = adw::ComboRow::builder()
+            .title(crate::tr!("Line endings"))
+            .model(&endings)
+            .selected(0)
+            .build();
+
+        let quotes = gtk::StringList::new(&[
+            &crate::tr!("Minimal (only when needed)"),
+            &crate::tr!("Always quote fields"),
+        ]);
+        let quote_row = adw::ComboRow::builder()
+            .title(crate::tr!("Quote style"))
+            .model(&quotes)
+            .selected(0)
+            .build();
+
+        group.add(&headers_row);
+        group.add(&bom_row);
+        group.add(&ending_row);
+        group.add(&quote_row);
+
+        let content = gtk::Box::builder()
+            .orientation(gtk::Orientation::Vertical)
+            .spacing(12)
+            .margin_top(12)
+            .margin_bottom(18)
+            .margin_start(18)
+            .margin_end(18)
+            .build();
+        content.append(&group);
+
+        let toolbar = adw::ToolbarView::new();
+        toolbar.add_top_bar(&header);
+        toolbar.set_content(Some(&content));
+        dialog.set_child(Some(&toolbar));
+
+        let parent = self.window.clone();
+        let toast_overlay = self.toast_overlay.clone();
+        let dialog_close = dialog.clone();
+        cancel.connect_clicked(move |_| {
+            dialog_close.close();
+        });
+
+        let dialog_export = dialog.clone();
+        let parent_for_save = parent.clone();
+        export_btn.connect_clicked(move |_| {
+            let options = CsvOptions {
+                include_headers: headers_row.is_active(),
+                utf8_bom: bom_row.is_active(),
+                line_ending: if ending_row.selected() == 1 {
+                    LineEnding::Crlf
+                } else {
+                    LineEnding::Lf
+                },
+                quote_style: if quote_row.selected() == 1 {
+                    CsvQuoteStyle::Always
+                } else {
+                    CsvQuoteStyle::Minimal
+                },
+            };
+            dialog_export.close();
+            App::run_export_file_dialog_static(
+                &parent_for_save,
+                &toast_overlay,
+                ExportRequest {
+                    format: ExportFormat::Csv,
+                    result: result.clone(),
+                    driver_id: String::new(),
+                    schema: schema.clone(),
+                    table: table.clone(),
+                    csv_options: options,
+                },
+            );
+        });
+
+        dialog.present(Some(&parent));
+    }
+
+    fn run_export_file_dialog(&self, request: ExportRequest) {
+        Self::run_export_file_dialog_static(&self.window, &self.toast_overlay, request);
+    }
+
+    fn run_export_file_dialog_static(
+        parent: &adw::ApplicationWindow,
+        toast_overlay: &adw::ToastOverlay,
+        request: ExportRequest,
+    ) {
+        let ExportRequest {
+            format,
+            result,
+            driver_id,
+            schema,
+            table,
+            csv_options,
+        } = request;
         let table_label = match &schema {
             Some(s) => format!("{s}.{table}"),
             None => table.clone(),
@@ -262,6 +426,8 @@ impl App {
         let suggested = match format {
             ExportFormat::Csv => format!("{table_label}.csv"),
             ExportFormat::Json => format!("{table_label}.json"),
+            ExportFormat::SqlInsert => format!("{table_label}.sql"),
+            ExportFormat::Markdown => format!("{table_label}.md"),
         };
         let filter = gtk::FileFilter::new();
         match format {
@@ -275,6 +441,16 @@ impl App {
                 filter.add_mime_type("application/json");
                 filter.add_suffix("json");
             }
+            ExportFormat::SqlInsert => {
+                filter.set_name(Some(&crate::tr!("SQL files")));
+                filter.add_mime_type("application/sql");
+                filter.add_suffix("sql");
+            }
+            ExportFormat::Markdown => {
+                filter.set_name(Some(&crate::tr!("Markdown files")));
+                filter.add_mime_type("text/markdown");
+                filter.add_suffix("md");
+            }
         };
         let filters = gio::ListStore::new::<gtk::FileFilter>();
         filters.append(&filter);
@@ -282,30 +458,33 @@ impl App {
             .title(match format {
                 ExportFormat::Csv => crate::tr!("Export as CSV"),
                 ExportFormat::Json => crate::tr!("Export as JSON"),
+                ExportFormat::SqlInsert => crate::tr!("Export as SQL INSERT"),
+                ExportFormat::Markdown => crate::tr!("Export as Markdown"),
             })
             .modal(true)
             .initial_name(&suggested)
             .default_filter(&filter)
             .filters(&filters)
             .build();
-        let parent = self.window.clone();
+        let parent = parent.clone();
         let parent_for_alert = parent.clone();
-        let toast_overlay = self.toast_overlay.clone();
+        let toast_overlay = toast_overlay.clone();
+        let schema_for_sql = schema.clone();
         dialog.save(Some(&parent), gtk::gio::Cancellable::NONE, move |outcome| {
             let Ok(file) = outcome else { return };
             let Some(path) = file.path() else { return };
             let bytes = match format {
-                ExportFormat::Csv => render_csv(&result),
+                ExportFormat::Csv => render_csv(&result, csv_options),
                 ExportFormat::Json => render_json(&result),
+                ExportFormat::SqlInsert => {
+                    render_sql_insert(&result, &driver_id, schema_for_sql.as_deref(), &table)
+                }
+                ExportFormat::Markdown => render_markdown(&result),
             };
             match std::fs::write(&path, bytes) {
                 Ok(()) => toast_overlay.add_toast(relm4::adw::Toast::new(
                     &crate::tr!("Exported to {path}").replace("{path}", &path.display().to_string()),
                 )),
-                // Failures use AdwAlertDialog instead of a transient
-                // toast — the user needs time to read the IO error
-                // (and probably copy the path to retry elsewhere).
-                // Matches the Save / Drop error-handling pattern.
                 Err(e) => {
                     let alert = adw::AlertDialog::new(
                         Some(&crate::tr!("Couldn't export")),
