@@ -144,6 +144,104 @@ struct ResultPinningTests {
         #expect(result.isPinned == false)
     }
 
+    @Test("Pinning moves the result in front of the unpinned ones")
+    @MainActor
+    func pinningMovesResultToTheFront() {
+        var display = TabDisplayState()
+        let first = Self.makeResultSet(label: "first")
+        let second = Self.makeResultSet(label: "second")
+        let third = Self.makeResultSet(label: "third")
+        display.resultSets = [first, second, third]
+        display.activeResultSetId = second.id
+
+        display.togglePin(resultSetId: third.id)
+
+        #expect(display.resultSets.map(\.id) == [third.id, first.id, second.id])
+        #expect(third.isPinned)
+        #expect(display.activeResultSetId == second.id)
+    }
+
+    @Test("Unpinning moves the result back behind the pinned ones")
+    @MainActor
+    func unpinningMovesResultBehindPinned() {
+        var display = TabDisplayState()
+        let kept = Self.makeResultSet(label: "kept", isPinned: true)
+        let released = Self.makeResultSet(label: "released", isPinned: true)
+        let scratch = Self.makeResultSet(label: "scratch")
+        display.resultSets = [kept, released, scratch]
+
+        display.togglePin(resultSetId: released.id)
+
+        #expect(display.resultSets.map(\.id) == [kept.id, released.id, scratch.id])
+        #expect(released.isPinned == false)
+    }
+
+    @Test("Toggling pin on an unknown result changes nothing")
+    @MainActor
+    func togglePinIgnoresUnknownResult() {
+        var display = TabDisplayState()
+        let result = Self.makeResultSet(label: "Result")
+        display.resultSets = [result]
+        display.activeResultSetId = result.id
+
+        display.togglePin(resultSetId: UUID())
+
+        #expect(display.resultSets.map(\.id) == [result.id])
+        #expect(result.isPinned == false)
+    }
+
+    @Test("Pinning does not switch which result is active")
+    @MainActor
+    func pinningKeepsActiveResult() throws {
+        let coordinator = Self.makeCoordinator()
+        defer { coordinator.teardown() }
+
+        coordinator.tabManager.addTab(databaseName: "db")
+        let tabId = try #require(coordinator.tabManager.selectedTab?.id)
+        let index = try #require(coordinator.tabManager.selectedTabIndex)
+
+        let first = ResultSet(label: "first", tableRows: TestFixtures.makeTableRows(rowCount: 3))
+        let second = ResultSet(label: "second", tableRows: TestFixtures.makeTableRows(rowCount: 7))
+        coordinator.tabManager.mutate(at: index) { tab in
+            tab.display.resultSets = [first, second]
+            tab.display.activeResultSetId = second.id
+        }
+        coordinator.setActiveTableRows(second.tableRows, for: tabId)
+
+        coordinator.togglePinResultSet(id: first.id)
+
+        let tab = try #require(coordinator.tabManager.selectedTab)
+        #expect(tab.display.activeResultSetId == second.id)
+        #expect(coordinator.tabSessionRegistry.tableRows(for: tabId).rows.count == 7)
+    }
+
+    @Test("The View menu and the result strip agree on when a result can be pinned")
+    @MainActor
+    func pinGatingMatchesTheStrip() throws {
+        let coordinator = Self.makeCoordinator()
+        defer { coordinator.teardown() }
+
+        coordinator.tabManager.addTab(databaseName: "db")
+        let index = try #require(coordinator.tabManager.selectedTabIndex)
+        let result = Self.makeResultSet(label: "Result")
+
+        for mode in [ResultsViewMode.data, .json, .structure] {
+            for explainText in [nil, "plan"] as [String?] {
+                coordinator.tabManager.mutate(at: index) { tab in
+                    tab.display.resultSets = [result]
+                    tab.display.activeResultSetId = result.id
+                    tab.display.resultsViewMode = mode
+                    tab.display.explainText = explainText
+                }
+                let tab = try #require(coordinator.tabManager.selectedTab)
+                #expect(
+                    coordinator.canPinActiveResultSet
+                        == ResultTabBarPolicy.canPin(tabType: tab.tabType, display: tab.display)
+                )
+            }
+        }
+    }
+
     @Test("A single result can be pinned; a table tab result cannot")
     @MainActor
     func pinGating() throws {

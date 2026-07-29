@@ -470,6 +470,13 @@ struct TabDisplayState: Equatable {
         activeResultSetId = resultSets.last?.id
     }
 
+    @MainActor
+    mutating func togglePin(resultSetId: UUID) {
+        guard let target = resultSets.first(where: { $0.id == resultSetId }) else { return }
+        target.isPinned.toggle()
+        resultSets = resultSets.filter(\.isPinned) + resultSets.filter { !$0.isPinned }
+    }
+
     static func == (lhs: TabDisplayState, rhs: TabDisplayState) -> Bool {
         lhs.resultsViewMode == rhs.resultsViewMode
             && lhs.isResultsCollapsed == rhs.isResultsCollapsed
