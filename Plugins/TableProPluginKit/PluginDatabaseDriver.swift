@@ -82,6 +82,7 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     func executeUserQuery(query: String, rowCap: Int?, parameters: [PluginCellValue]?) async throws -> PluginQueryResult
 
     func fetchTables(schema: String?) async throws -> [PluginTableInfo]
+    func fetchPartitions(table: String, schema: String?) async throws -> [PluginTableInfo]
     func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo]
     func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo]
     func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo]
@@ -200,6 +201,10 @@ public extension PluginDatabaseDriver {
     var capabilities: PluginCapabilities { [] }
 
     func fetchTriggers(table: String, schema: String?) async throws -> [PluginTriggerInfo] { [] }
+
+    /// Engines whose partitions are metadata on one table object, rather than
+    /// separate relations, have nothing to nest and keep the empty default.
+    func fetchPartitions(table: String, schema: String?) async throws -> [PluginTableInfo] { [] }
 
     func createTriggerTemplate(table: String, schema: String?) -> String? { nil }
     func fetchTriggerDefinition(name: String, table: String, schema: String?) async throws -> String? { nil }

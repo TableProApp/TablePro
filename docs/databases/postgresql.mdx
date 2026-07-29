@@ -39,6 +39,8 @@ Connect to RDS or Aurora with your AWS identity instead of a static password: se
 
 **Databases**: Every database on the server is listed, including `postgres`. It is an ordinary database that `initdb` creates for users and applications, not a system database. `template0` and `template1` are not listed.
 
+**Partitioned tables**: A partitioned table is listed once, under its own icon. Its partitions are not listed beside it; expand the table in the sidebar to see them, and expand a partition again if it is subpartitioned. Opening a partition works like opening any other table. Tables that use the older `INHERITS` inheritance are listed normally, since a child there is a table in its own right. Requires PostgreSQL 10 or later, which is where declarative partitioning was added.
+
 **Types**: `jsonb` renders as formatted JSON. `array`, `uuid`, `inet`, `timestamp with time zone`, `interval`, and `bytea` display natively.
 
 **EXPLAIN**: `EXPLAIN` and `EXPLAIN ANALYZE` run with `FORMAT JSON` and render as a plan diagram or tree. See [EXPLAIN Visualization](/features/explain-visualization).

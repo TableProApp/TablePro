@@ -721,42 +721,8 @@ struct ExportDialog: View {
     }
 
     private func fetchTablesForSchema(_ schema: String) async throws -> [TableInfo] {
-        let isOracle = connection.type.pluginTypeId == "Oracle"
-        return try await DatabaseManager.shared.withMetadataDriver(connectionId: connection.id, workload: .bulk) { driver in
-            if isOracle {
-                let escapedSchema = schema.replacingOccurrences(of: "'", with: "''")
-                let query = """
-                    SELECT TABLE_NAME, 'BASE TABLE' AS TABLE_TYPE FROM ALL_TABLES WHERE OWNER = '\(escapedSchema)'
-                    UNION ALL
-                    SELECT VIEW_NAME, 'VIEW' FROM ALL_VIEWS WHERE OWNER = '\(escapedSchema)'
-                    ORDER BY 1
-                    """
-                let result = try await driver.execute(query: query)
-                return result.rows.compactMap { row -> TableInfo? in
-                    guard let name = row[safe: 0]?.asText else { return nil }
-                    let typeStr = row[safe: 1]?.asText ?? "BASE TABLE"
-                    let type: TableInfo.TableType = typeStr.uppercased().contains("VIEW") ? .view : .table
-                    return TableInfo(name: name, type: type, rowCount: nil)
-                }
-            }
-
-            let query = """
-                SELECT table_schema, table_name, table_type
-                FROM information_schema.tables
-                ORDER BY table_name
-                """
-            let result = try await driver.execute(query: query)
-            return result.rows.compactMap { row -> TableInfo? in
-                guard row.count >= 2,
-                      let rowSchema = row[0].asText,
-                      rowSchema == schema,
-                      let name = row[1].asText else {
-                    return nil
-                }
-                let typeStr = row.count > 2 ? (row[2].asText ?? "BASE TABLE") : "BASE TABLE"
-                let type: TableInfo.TableType = typeStr.uppercased().contains("VIEW") ? .view : .table
-                return TableInfo(name: name, type: type, rowCount: nil)
-            }
+        try await DatabaseManager.shared.withMetadataDriver(connectionId: connection.id, workload: .bulk) { driver in
+            try await driver.fetchTables(schema: schema)
         }
     }
 

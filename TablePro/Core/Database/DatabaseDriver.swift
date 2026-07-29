@@ -69,6 +69,9 @@ protocol DatabaseDriver: AnyObject, Sendable {
 
     func fetchTables(schema: String?) async throws -> [TableInfo]
 
+    /// Fetch the direct partitions of one partitioned table
+    func fetchPartitions(table: String, schema: String?) async throws -> [TableInfo]
+
     /// Fetch columns for a specific table
     func fetchColumns(table: String) async throws -> [ColumnInfo]
 
@@ -251,6 +254,8 @@ extension DatabaseDriver {
     func fetchColumns(table: String, schema: String?) async throws -> [ColumnInfo] {
         try await fetchColumns(table: table)
     }
+
+    func fetchPartitions(table: String, schema: String?) async throws -> [TableInfo] { [] }
 
     func fetchTriggers(table: String) async throws -> [TriggerInfo] { [] }
 
