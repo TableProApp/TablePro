@@ -29,7 +29,7 @@
             "name": "gtksourceview5",
             "buildsystem": "meson",
             "config-opts": [
-                "-Dgtk_doc=false",
+                "-Ddocumentation=false",
                 "-Dvapi=false",
                 "-Dintrospection=enabled"
             ],
