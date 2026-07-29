@@ -3,5 +3,4 @@ target/
 .DS_Store
 
 docs/audit-*.md
-target/
 packaging/out/
