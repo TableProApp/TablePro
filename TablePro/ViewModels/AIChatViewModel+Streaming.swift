@@ -5,10 +5,11 @@
 
 import Foundation
 import os
+import SwiftUI
 import TableProPluginKit
 
 extension AIChatViewModel {
-    static let maxToolRoundtrips = 10
+    static let hardToolRoundtripCeiling = 500
 
     struct ToolRoundtripContinuation {
         let nextAssistantID: UUID
@@ -31,7 +32,12 @@ extension AIChatViewModel {
     }
 
     func startStreaming() {
-        guard case .idle = streamingState else { return }
+        switch streamingState {
+        case .idle, .pausedAtToolLimit:
+            break
+        case .loading, .streaming, .awaitingApproval, .failed:
+            return
+        }
 
         let settings = services.appSettings.ai
 
@@ -60,6 +66,39 @@ extension AIChatViewModel {
             }
         }
 
+        beginStreamingTurn(
+            resolved: resolved,
+            settings: settings,
+            includeWalkthroughDirective: pendingWalkthroughBeforeSQL != nil
+        )
+    }
+
+    func continueToolLoop() {
+        guard case .pausedAtToolLimit = streamingState else { return }
+
+        let settings = services.appSettings.ai
+        let resolved = AIProviderFactory.resolve(
+            settings: settings,
+            overrideProviderId: selectedProviderId,
+            overrideModel: selectedModel
+        )
+        guard let resolved else {
+            errorMessage = String(localized: "No AI provider configured. Go to Settings > AI to add one.")
+            return
+        }
+
+        beginStreamingTurn(
+            resolved: resolved,
+            settings: settings,
+            includeWalkthroughDirective: pendingWalkthroughBeforeSQL != nil
+        )
+    }
+
+    private func beginStreamingTurn(
+        resolved: AIProviderFactory.ResolvedProvider,
+        settings: AISettings,
+        includeWalkthroughDirective: Bool
+    ) {
         let assistantMessage = ChatTurn(
             role: .assistant,
             blocks: [],
@@ -96,7 +135,7 @@ extension AIChatViewModel {
                     resolved: resolved,
                     assistantID: assistantID,
                     settings: settings,
-                    includeWalkthroughDirective: self.pendingWalkthroughBeforeSQL != nil
+                    includeWalkthroughDirective: includeWalkthroughDirective
                 )
                 self.prepTask = nil
             }
@@ -109,9 +148,14 @@ extension AIChatViewModel {
         resolved: AIProviderFactory.ResolvedProvider,
         assistantID: UUID,
         settings: AISettings,
-        includeWalkthroughDirective: Bool = false
+        includeWalkthroughDirective: Bool = false,
+        registry: ChatToolRegistry? = nil
     ) {
         let chatMode = settings.chatMode
+        let roundtripLimit = min(
+            settings.effectiveMaxToolRoundtrips ?? Self.hardToolRoundtripCeiling,
+            Self.hardToolRoundtripCeiling
+        )
         streamingTask = Task.detached(priority: .userInitiated) { [weak self] in
             var currentAssistantID = assistantID
             do {
@@ -128,10 +172,21 @@ extension AIChatViewModel {
                 )
                 guard preflightOK else { return }
 
-                let toolSpecs = await MainActor.run { ChatToolRegistry.shared.allSpecs(for: chatMode) }
+                let toolSpecs = await MainActor.run {
+                    (registry ?? ChatToolRegistry.shared).allSpecs(for: chatMode)
+                }
                 var workingTurns = chatMessages
+                var executedRoundtrips = 0
 
-                for roundtrip in 0..<Self.maxToolRoundtrips {
+                while true {
+                    if executedRoundtrips >= roundtripLimit {
+                        await self.pauseAtToolLimit(
+                            assistantID: currentAssistantID,
+                            count: executedRoundtrips
+                        )
+                        return
+                    }
+
                     let round = try await self.consumeStreamRound(
                         resolved: resolved,
                         systemPrompt: systemPrompt,
@@ -142,11 +197,6 @@ extension AIChatViewModel {
                     )
                     if round.cancelled { return }
                     if round.toolUseOrder.isEmpty { break }
-
-                    if roundtrip == Self.maxToolRoundtrips - 1 {
-                        await self.failTooManyRoundtrips(assistantID: currentAssistantID)
-                        break
-                    }
 
                     let assembled = Self.assembleToolUseBlocks(
                         order: round.toolUseOrder,
@@ -163,7 +213,8 @@ extension AIChatViewModel {
                     }
                     let toolUseBlocks = await self.resolveAndAwaitApprovals(
                         assembledBlocks: assembled,
-                        assistantID: currentAssistantID
+                        assistantID: currentAssistantID,
+                        registry: registry
                     )
                     guard !Task.isCancelled else { return }
 
@@ -172,7 +223,7 @@ extension AIChatViewModel {
                         return false
                     }
                     let executedResults = await Self.executeToolUses(
-                        approvedBlocks, mode: chatMode, context: context
+                        approvedBlocks, mode: chatMode, context: context, registry: registry
                     )
                     guard !Task.isCancelled else { return }
 
@@ -189,6 +240,7 @@ extension AIChatViewModel {
                     currentAssistantID = continuation.nextAssistantID
                     workingTurns.append(continuation.assistantTurn)
                     workingTurns.append(continuation.userTurn)
+                    executedRoundtrips += 1
                 }
 
                 guard !Task.isCancelled else { return }
@@ -439,18 +491,20 @@ extension AIChatViewModel {
         return "\(base)\n\n\(directive)"
     }
 
-    private func failTooManyRoundtrips(assistantID: UUID) async {
+    private func pauseAtToolLimit(assistantID: UUID, count: Int) async {
         await MainActor.run { [weak self] in
             guard let self else { return }
-            self.errorMessage = String(
-                localized: "AI made too many tool calls in one response. Try simplifying the request."
-            )
             self.finalizeStreamingMessage(id: assistantID)
             if let idx = self.messages.firstIndex(where: { $0.id == assistantID }),
                self.messages[idx].blocks.isEmpty {
                 self.messages.remove(at: idx)
             }
-            self.streamingState = .failed(nil)
+            self.streamingState = .pausedAtToolLimit(count: count)
+            self.streamingTask = nil
+            self.persistCurrentConversation()
+            AccessibilityNotification.Announcement(
+                String(format: String(localized: "Paused after %d tool calls."), count)
+            ).post()
         }
     }
 

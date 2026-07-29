@@ -38,7 +38,7 @@ Open the inspector (`Cmd+Option+I` or the toolbar inspector button) and switch t
   <img className="hidden dark:block" src="/images/ai-chat-panel-dark.png" alt="AI chat panel" />
 </Frame>
 
-Type a question and press Return. Code blocks have **Copy** and **Insert** buttons; Insert fills the current query tab if it is empty, otherwise opens a new tab. Token counts show below each response. Failed responses show **Retry**, successful ones **Regenerate**, and **Stop** cancels a streaming reply.
+Type a question and press Return. Code blocks have **Copy** and **Insert** buttons; Insert fills the current query tab if it is empty, otherwise opens a new tab. Token counts show below each response. Failed responses show **Retry**, successful ones **Regenerate**, a reply paused at the tool call limit shows **Continue**, and **Stop** cancels a streaming reply.
 
 Conversations auto-save and auto-title from your first message. The clock icon in the inspector header opens recent conversations; the pencil-and-square icon starts a new one. Editing a previously sent message puts its text and context attachments back in the composer and removes that turn and everything after it; send to re-run.
 
@@ -52,7 +52,7 @@ The mode picker in the composer footer controls which tools the AI can call. The
 |------|----------------|-------------|
 | **Ask** | Read-only schema lookups: `list_connections`, `get_connection_status`, `list_databases`, `list_schemas`, `list_tables`, `describe_table`, `get_table_ddl`. | Questions, exploration, drafting queries you run yourself. |
 | **Edit** | All Ask tools, plus `execute_query` for `SELECT`, `INSERT`, `UPDATE`, `DELETE`. Destructive DDL (`DROP`, `TRUNCATE`, `ALTER...DROP`) stays blocked. | Letting the AI run the queries it proposes. |
-| **Agent** | All tools, plus `confirm_destructive_operation` for destructive DDL. Runs tools in a loop, up to 10 round trips per turn. | Multi-step migrations and schema changes. |
+| **Agent** | All tools, plus `confirm_destructive_operation` for destructive DDL. Runs tools in a loop, up to 25 tool calls per turn by default. | Multi-step migrations and schema changes. |
 
 Mode and [safe mode](/features/safe-mode) are independent gates. Agent mode does not bypass safe mode.
 
@@ -72,6 +72,12 @@ In Edit and Agent modes, each tool call appears as a card in the reply. Read-onl
 If the connection's safe-mode level is **Silent**, write tools auto-approve. If it is **Read-Only**, they auto-deny. Destructive operations are the exception: `confirm_destructive_operation` always requires a per-call click. Silent mode does not auto-approve it, and **Always for this connection** is refused for it. The tool also requires the model to pass the verbatim phrase `I understand this is irreversible`.
 
 Provider support for tool calling: every provider except Cursor. Ollama, llama.cpp, MLX, and custom endpoints depend on the model.
+
+#### Tool Call Limit
+
+A reply may make 25 tool calls before it pauses. The pause keeps every tool call and result already in the reply, and shows **Continue** to carry on with a fresh budget, plus **Adjust Limit** to open the setting. Change the number, or turn the limit off, under **Agent** in [Settings > AI](/customization/settings#agent). A higher limit costs more tokens per reply and can dilute the answer as the conversation grows.
+
+GitHub Copilot runs its own tool loop, so the limit and the pause do not apply to it.
 
 ### Attach Context with `@`
 

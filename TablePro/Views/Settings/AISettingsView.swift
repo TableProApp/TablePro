@@ -26,6 +26,7 @@ struct AISettingsView: View {
                 activeProviderSection
                 providersSection
                 inlineSuggestionsSection
+                agentSection
                 contextSection
                 CustomSlashCommandsSection(storage: CustomSlashCommandStorage.shared)
                 privacySection
@@ -243,6 +244,27 @@ struct AISettingsView: View {
             Text("Inline Suggestions")
         } footer: {
             Text("Inline SQL suggestions appear as you type. Press Tab to accept, Escape to dismiss.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    // MARK: - Agent
+
+    private var agentSection: some View {
+        Section {
+            Toggle("Limit tool calls per reply", isOn: $settings.maxToolRoundtripsEnabled)
+            Stepper(
+                String(format: String(localized: "Tool call limit: %d"), settings.maxToolRoundtrips),
+                value: $settings.maxToolRoundtrips,
+                in: AISettings.maxToolRoundtripsRange,
+                step: 5
+            )
+            .disabled(!settings.maxToolRoundtripsEnabled)
+        } header: {
+            Text("Agent")
+        } footer: {
+            Text("Agent mode calls tools in a loop until it finishes or hits this limit, then pauses so you can continue. Raising it costs more tokens per reply.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
