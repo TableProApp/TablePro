@@ -111,6 +111,14 @@ extension MongoDBConnection {
         }
         defer { bson_destroy(optsBson) }
 
+        let session = attachCancellableSession(client: client, opts: optsBson)
+        defer {
+            if let session {
+                releaseSessionLsid()
+                mongoc_client_session_destroy(session)
+            }
+        }
+
         let col = try getCollection(client, database: database, collection: collection)
         defer { mongoc_collection_destroy(col) }
 
@@ -122,6 +130,20 @@ extension MongoDBConnection {
         defer { mongoc_cursor_destroy(cursor) }
 
         return try iterateCursor(cursor)
+    }
+
+    /// Binds the operation to a server-side session so `cancelCurrentQuery` can abort it with
+    /// `killSessions`. Returns nil when the deployment does not support sessions, in which case the
+    /// operation still runs, just without server-side cancellation.
+    func attachCancellableSession(client: OpaquePointer, opts: OpaquePointer) -> OpaquePointer? {
+        var error = bson_error_t()
+        guard let session = mongoc_client_start_session(client, nil, &error) else { return nil }
+        guard mongoc_client_session_append(session, opts, &error) else {
+            mongoc_client_session_destroy(session)
+            return nil
+        }
+        adoptSessionLsid(session)
+        return session
     }
 
     func aggregateSync(
@@ -157,7 +179,8 @@ extension MongoDBConnection {
     }
 
     func countDocumentsSync(
-        client: OpaquePointer, database: String, collection: String, filter: String
+        client: OpaquePointer, database: String, collection: String,
+        filter: String, background: Bool
     ) throws -> Int64 {
         try checkCancelled()
 
@@ -169,19 +192,61 @@ extension MongoDBConnection {
         let col = try getCollection(client, database: database, collection: collection)
         defer { mongoc_collection_destroy(col) }
 
-        let timeoutMS = queryTimeoutMS
-        var optsBson: OpaquePointer?
-        if timeoutMS > 0 {
-            optsBson = jsonToBson("{\"maxTimeMS\": \(timeoutMS)}")
+        let maxTimeMS = effectiveMaxTimeMS(background: background)
+        let isUnfiltered = filter.trimmingCharacters(in: .whitespacesAndNewlines) == "{}"
+
+        let hinted = try runCountDocuments(
+            collection: col, filter: filterBson, maxTimeMS: maxTimeMS, hintIdIndex: isUnfiltered
+        )
+        try checkCancelled()
+        switch hinted {
+        case .count(let value):
+            return value
+        case .failed(let error):
+            guard isUnfiltered, MongoDBTimeoutPolicy.shouldRetryWithoutHint(errorCode: error.code) else {
+                throw error
+            }
         }
-        defer { if let opts = optsBson { bson_destroy(opts) } }
+
+        let unhinted = try runCountDocuments(
+            collection: col, filter: filterBson, maxTimeMS: maxTimeMS, hintIdIndex: false
+        )
+        try checkCancelled()
+        switch unhinted {
+        case .count(let value):
+            return value
+        case .failed(let error):
+            throw error
+        }
+    }
+
+    private enum CountOutcome {
+        case count(Int64)
+        case failed(MongoDBError)
+    }
+
+    private func runCountDocuments(
+        collection col: OpaquePointer, filter: OpaquePointer,
+        maxTimeMS: Int32?, hintIdIndex: Bool
+    ) throws -> CountOutcome {
+        var optsFields: [String] = []
+        if let maxTimeMS {
+            optsFields.append("\"maxTimeMS\": \(maxTimeMS)")
+        }
+        if hintIdIndex {
+            optsFields.append("\"hint\": \"_id_\"")
+        }
+
+        var optsBson: OpaquePointer?
+        if !optsFields.isEmpty {
+            optsBson = jsonToBson("{\(optsFields.joined(separator: ", "))}")
+        }
+        defer { if let optsBson { bson_destroy(optsBson) } }
 
         var error = bson_error_t()
-        let count = mongoc_collection_count_documents(col, filterBson, optsBson, nil, nil, &error)
-
-        try checkCancelled()
-        guard count >= 0 else { throw makeError(error) }
-        return count
+        let count = mongoc_collection_count_documents(col, filter, optsBson, nil, nil, &error)
+        guard count >= 0 else { return .failed(makeError(error)) }
+        return .count(count)
     }
 
     func insertOneSync(
@@ -367,6 +432,7 @@ extension MongoDBConnection {
         var docPtr: OpaquePointer?
         var sample: [[String: Any]] = []
         var projection: MongoStreamProjection?
+        var emitted = 0
 
         while mongoc_cursor_next(cursor, &docPtr) {
             if Task.isCancelled {
@@ -380,12 +446,18 @@ extension MongoDBConnection {
 
             if let projection {
                 continuation.yield(.rows([projection.row(for: dict, convert: streamCellValue)]))
+                emitted += 1
+                if emitted >= PluginRowLimits.emergencyMax {
+                    logger.warning("Streamed result truncated at \(PluginRowLimits.emergencyMax) documents")
+                    break
+                }
                 continue
             }
 
             sample.append(dict)
             if sample.count >= MongoStreamProjection.sampleSize {
                 projection = openStream(sample: sample, continuation: continuation)
+                emitted += sample.count
                 sample = []
             }
         }

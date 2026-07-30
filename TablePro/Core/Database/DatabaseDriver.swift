@@ -115,6 +115,10 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// Returns nil when the driver can't count a filtered set, so the caller falls back.
     func fetchFilteredRowCount(table: String, filters: [TableFilter], logicMode: FilterLogicMode) async throws -> Int?
 
+    /// Fetch an exact row count for a user-initiated request. Drivers that cap their automatic
+    /// counts to keep browsing responsive must not apply that cap here.
+    func fetchExactRowCount(table: String, filters: [TableFilter], logicMode: FilterLogicMode) async throws -> Int?
+
     /// Fetch the DDL (CREATE TABLE statement) for a specific table
     func fetchTableDDL(table: String) async throws -> String
 
@@ -406,6 +410,9 @@ extension DatabaseDriver {
 
     func fetchApproximateRowCount(table: String) async throws -> Int? { nil }
     func fetchFilteredRowCount(table: String, filters: [TableFilter], logicMode: FilterLogicMode) async throws -> Int? { nil }
+    func fetchExactRowCount(table: String, filters: [TableFilter], logicMode: FilterLogicMode) async throws -> Int? {
+        try await fetchFilteredRowCount(table: table, filters: filters, logicMode: logicMode)
+    }
 
     func supportedMaintenanceOperations() -> [String]? { nil }
     func maintenanceStatements(operation: String, table: String?, options: [String: String]) -> [String]? { nil }

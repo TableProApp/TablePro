@@ -27,7 +27,8 @@ struct MainStatusBarLayoutTests {
                 onLast: {},
                 onPageSizeChange: { _ in },
                 onShowAll: {},
-                onGoToPage: { _ in }
+                onGoToPage: { _ in },
+                onRequestExactCount: {}
             ),
             columnState: StatusBarColumnState(
                 hidden: [],

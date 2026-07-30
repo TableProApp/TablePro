@@ -68,12 +68,17 @@ final class MongoDBConnection: @unchecked Sendable {
     private let replicaSet: String?
     private let extraUriParams: [String: String]
 
+    private let controlQueue = DispatchQueue(label: "com.TablePro.mongodb.control", qos: .userInitiated)
+
     private let stateLock = NSLock()
     private var _isConnected: Bool = false
     private var _isShuttingDown: Bool = false
     private var _cachedServerVersion: String?
     private var _isCancelled: Bool = false
     private var _queryTimeoutMS: Int32 = 0
+    #if canImport(CLibMongoc)
+    private var _activeSessionLsid: OpaquePointer?
+    #endif
 
     var isConnected: Bool {
         stateLock.lock()
@@ -104,6 +109,10 @@ final class MongoDBConnection: @unchecked Sendable {
         stateLock.lock()
         _queryTimeoutMS = Int32(seconds * 1_000)
         stateLock.unlock()
+    }
+
+    func effectiveMaxTimeMS(background: Bool) -> Int32? {
+        MongoDBTimeoutPolicy.resolveMaxTimeMS(ambientMS: queryTimeoutMS, background: background)
     }
 
     // MARK: - Initialization
@@ -339,6 +348,8 @@ final class MongoDBConnection: @unchecked Sendable {
         #if canImport(CLibMongoc)
         let handle = client
         client = nil
+        let staleLsid = _activeSessionLsid
+        _activeSessionLsid = nil
         #endif
         _isConnected = false
         _cachedServerVersion = nil
@@ -347,6 +358,7 @@ final class MongoDBConnection: @unchecked Sendable {
         stateLock.unlock()
 
         #if canImport(CLibMongoc)
+        if let staleLsid { bson_destroy(staleLsid) }
         if let handle = handle {
             queue.async { mongoc_client_destroy(handle) }
         }
@@ -358,8 +370,63 @@ final class MongoDBConnection: @unchecked Sendable {
     func cancelCurrentQuery() {
         stateLock.lock()
         _isCancelled = true
+        #if canImport(CLibMongoc)
+        let lsid = _activeSessionLsid.map { bson_copy($0) }
+        #endif
         stateLock.unlock()
+
+        #if canImport(CLibMongoc)
+        guard let lsid else { return }
+        killSession(lsid: lsid)
+        #endif
     }
+
+    #if canImport(CLibMongoc)
+    func adoptSessionLsid(_ session: OpaquePointer) {
+        guard let lsid = mongoc_client_session_get_lsid(session) else { return }
+        let copy = bson_copy(lsid)
+        stateLock.lock()
+        let previous = _activeSessionLsid
+        _activeSessionLsid = copy
+        stateLock.unlock()
+        if let previous { bson_destroy(previous) }
+    }
+
+    func releaseSessionLsid() {
+        stateLock.lock()
+        let previous = _activeSessionLsid
+        _activeSessionLsid = nil
+        stateLock.unlock()
+        if let previous { bson_destroy(previous) }
+    }
+
+    /// Aborts the in-flight operation server-side. The connection's own queue is blocked inside a
+    /// libmongoc call at this point, so the `killSessions` command needs its own client.
+    private func killSession(lsid: OpaquePointer) {
+        let uriString = buildUri()
+        controlQueue.async {
+            defer { bson_destroy(lsid) }
+            guard let controlClient = mongoc_client_new(uriString) else { return }
+            defer { mongoc_client_destroy(controlClient) }
+
+            let command = bson_new()
+            defer { bson_destroy(command) }
+            let sessions = bson_new()
+            defer { bson_destroy(sessions) }
+
+            bson_append_document(sessions, "0", -1, lsid)
+            bson_append_array(command, "killSessions", -1, sessions)
+
+            let reply = bson_new()
+            defer { bson_destroy(reply) }
+            var error = bson_error_t()
+            let killed = mongoc_client_command_simple(controlClient, "admin", command, nil, reply, &error)
+            if !killed {
+                logger.warning("killSessions failed with code \(error.code, privacy: .public)")
+            }
+        }
+    }
+    #endif
 
     /// Throws if cancellation was requested, resetting the flag atomically.
     /// Safe to call from any thread.
@@ -493,7 +560,12 @@ final class MongoDBConnection: @unchecked Sendable {
         #endif
     }
 
-    func countDocuments(database: String, collection: String, filter: String) async throws -> Int64 {
+    func countDocuments(
+        database: String,
+        collection: String,
+        filter: String,
+        background: Bool
+    ) async throws -> Int64 {
         #if canImport(CLibMongoc)
         resetCancellation()
         return try await pluginDispatchAsync(on: queue) { [self] in
@@ -502,7 +574,8 @@ final class MongoDBConnection: @unchecked Sendable {
             }
             try checkCancelled()
             let count = try countDocumentsSync(
-                client: client, database: database, collection: collection, filter: filter
+                client: client, database: database, collection: collection,
+                filter: filter, background: background
             )
             try checkCancelled()
             return count
@@ -512,7 +585,11 @@ final class MongoDBConnection: @unchecked Sendable {
         #endif
     }
 
-    func estimatedDocumentCount(database: String, collection: String) async throws -> Int64 {
+    func estimatedDocumentCount(
+        database: String,
+        collection: String,
+        background: Bool
+    ) async throws -> Int64 {
         #if canImport(CLibMongoc)
         resetCancellation()
         return try await pluginDispatchAsync(on: queue) { [self] in
@@ -523,8 +600,14 @@ final class MongoDBConnection: @unchecked Sendable {
             let col = try getCollection(client, database: database, collection: collection)
             defer { mongoc_collection_destroy(col) }
 
+            var opts: OpaquePointer?
+            if let maxTimeMS = effectiveMaxTimeMS(background: background) {
+                opts = jsonToBson("{\"maxTimeMS\": \(maxTimeMS)}")
+            }
+            defer { if let opts { bson_destroy(opts) } }
+
             var error = bson_error_t()
-            let count = mongoc_collection_estimated_document_count(col, nil, nil, nil, &error)
+            let count = mongoc_collection_estimated_document_count(col, opts, nil, nil, &error)
             if count < 0 {
                 throw makeError(error)
             }
@@ -639,7 +722,9 @@ final class MongoDBConnection: @unchecked Sendable {
         collection: String,
         filter: String,
         sort: String?,
-        projection: String?
+        projection: String?,
+        skip: Int = 0,
+        limit: Int? = nil
     ) -> AsyncThrowingStream<PluginStreamElement, Error> {
         #if canImport(CLibMongoc)
         let queue = self.queue
@@ -682,6 +767,12 @@ final class MongoDBConnection: @unchecked Sendable {
                     if let projection = projection, let data = projection.data(using: .utf8),
                        let obj = try? JSONSerialization.jsonObject(with: data) {
                         optsJson["projection"] = obj
+                    }
+                    if skip > 0 {
+                        optsJson["skip"] = skip
+                    }
+                    if let limit, limit > 0 {
+                        optsJson["limit"] = limit
                     }
                     let timeoutMS = queryTimeoutMS
                     if timeoutMS > 0 {

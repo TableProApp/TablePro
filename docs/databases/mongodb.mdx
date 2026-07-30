@@ -127,6 +127,10 @@ db.users.countDocuments({"role": "admin"})
 
 **Timeout**: Verify host/port, check network and firewall, whitelist your IP in MongoDB Atlas.
 
+**A collection is slow to open**: A sort or a filter on a field with no index makes MongoDB read every document, even when you only ask for 20 rows, because it has to look at all of them to find which 20 come first. Check the Structure tab for an index on the field you sorted or filtered by, and add one if it is missing. `Cmd+.` stops the query on the server.
+
+**The row total shows `~`**: That is an estimate read from collection metadata, which is instant. TablePro caps the automatic count at 5 seconds and keeps the estimate if the server takes longer, so browsing is never held up by counting. **Count exactly** runs a real count with your configured query timeout. Views and time-series collections have no metadata count, so their estimate can be missing.
+
 ## Limitations
 
 - Transactions are not exposed. Statements always run standalone, on any topology.

@@ -185,6 +185,7 @@ struct PaginationState: Equatable {
     var currentOffset: Int = 0       // Current OFFSET for SQL query
     var isLoading: Bool = false
     var isApproximateRowCount: Bool = false  // True when totalRowCount is from fast estimate
+    var isCountingExact: Bool = false        // True while a user-requested exact count is running
 
     // Result truncation state (query tabs)
     var hasMoreRows: Bool = false

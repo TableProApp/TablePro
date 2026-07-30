@@ -316,6 +316,18 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
         )
     }
 
+    func fetchExactRowCount(table: String, filters: [TableFilter], logicMode: FilterLogicMode) async throws -> Int? {
+        let tuples = filters
+            .filter { $0.isEnabled && !$0.columnName.isEmpty }
+            .map(\.asPluginFilterTuple)
+        return try await pluginDriver.fetchExactRowCount(
+            table: table,
+            schema: pluginDriver.currentSchema,
+            filters: tuples,
+            logicMode: logicMode == .and ? "and" : "or"
+        )
+    }
+
     func fetchTableDDL(table: String) async throws -> String {
         try await pluginDriver.fetchTableDDL(table: table, schema: pluginDriver.currentSchema)
     }

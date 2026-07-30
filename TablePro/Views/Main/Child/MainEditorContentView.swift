@@ -799,7 +799,8 @@ struct MainEditorContentView: View {
                 onLast: onLastPage,
                 onPageSizeChange: onPageSizeChange,
                 onShowAll: onShowAll,
-                onGoToPage: onGoToPage
+                onGoToPage: onGoToPage,
+                onRequestExactCount: { coordinator.paginationCoordinator.requestExactRowCount() }
             ),
             columnState: StatusBarColumnState(
                 hidden: tab.columnLayout.hiddenColumns,

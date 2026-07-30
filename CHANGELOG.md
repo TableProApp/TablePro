@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Count exactly** next to an estimated row total, to replace the estimate with a real count when you want it.
+
+### Fixed
+
+- Opening a large MongoDB collection no longer hangs. Row counts that back the pagination display now give up after 5 seconds and leave the estimate in place instead of holding the tab.
+- Stop now cancels a running MongoDB query on the server, rather than leaving it running until it finishes on its own.
+- A MongoDB query that runs out of time now says so, and points at the missing index that usually causes it.
+- Running a MongoDB query with no limit no longer pulls the whole collection into memory before applying the row limit.
+- Exporting a MongoDB query that has a skip or limit now exports that range, not the whole collection.
+- A row count estimate of zero from a table that was never analyzed no longer displays as an empty table.
+
 ## [0.61.0] - 2026-07-30
 
 ### Added

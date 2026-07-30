@@ -82,3 +82,45 @@ struct RowCountPlanTests {
         #expect(plan == .filteredNonSQL(filters: state.appliedFilters, logicMode: state.filterLogicMode))
     }
 }
+
+@Suite("RowCountOutcome")
+struct RowCountOutcomeTests {
+    @Test("A positive estimate is applied and stays marked approximate")
+    func positiveEstimateApplies() {
+        let applied = RowCountOutcome.count(4_600_000, isApproximate: true).appliedTotal
+        #expect(applied.total == 4_600_000)
+        #expect(applied.isApproximate)
+    }
+
+    @Test("An estimate of zero means unknown, not an empty table")
+    func zeroEstimateIsUnknown() {
+        let applied = RowCountOutcome.count(0, isApproximate: true).appliedTotal
+        #expect(applied.total == nil)
+        #expect(!applied.isApproximate)
+    }
+
+    @Test("A negative estimate is never shown as a total")
+    func negativeEstimateIsUnknown() {
+        let applied = RowCountOutcome.count(-1, isApproximate: true).appliedTotal
+        #expect(applied.total == nil)
+    }
+
+    @Test("An exact zero is trustworthy and reported as an empty table")
+    func exactZeroIsApplied() {
+        let applied = RowCountOutcome.count(0, isApproximate: false).appliedTotal
+        #expect(applied.total == 0)
+        #expect(!applied.isApproximate)
+    }
+
+    @Test("A negative exact count is still rejected")
+    func negativeExactIsUnknown() {
+        #expect(RowCountOutcome.count(-5, isApproximate: false).appliedTotal.total == nil)
+    }
+
+    @Test("Clearing reports an unknown total")
+    func clearIsUnknown() {
+        let applied = RowCountOutcome.clear.appliedTotal
+        #expect(applied.total == nil)
+        #expect(!applied.isApproximate)
+    }
+}

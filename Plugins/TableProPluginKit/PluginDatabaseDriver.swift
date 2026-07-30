@@ -132,6 +132,8 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     func buildFilteredQuery(table: String, schema: String?, filters: [(column: String, op: String, value: String)], logicMode: String, sortColumns: [(columnIndex: Int, ascending: Bool)], columns: [String], limit: Int, offset: Int) -> String?
     // Filtered row count (optional, for NoSQL plugins; SQL plugins use COUNT(*) WHERE)
     func fetchFilteredRowCount(table: String, filters: [(column: String, op: String, value: String)], logicMode: String) async throws -> Int?
+    // User-initiated exact row count (allowed to be slow; background count caps must not apply)
+    func fetchExactRowCount(table: String, schema: String?, filters: [(column: String, op: String, value: String)], logicMode: String) async throws -> Int?
     // Statement generation (optional, for NoSQL plugins)
     func generateStatements(table: String, columns: [String], primaryKeyColumns: [String], changes: [PluginRowChange], insertedRowData: [Int: [PluginCellValue]], deletedRowIndices: Set<Int>, insertedRowIndices: Set<Int>) -> [(statement: String, parameters: [PluginCellValue])]?
     func generateStatements(table: String, schema: String?, columns: [String], primaryKeyColumns: [String], changes: [PluginRowChange], insertedRowData: [Int: [PluginCellValue]], deletedRowIndices: Set<Int>, insertedRowIndices: Set<Int>) -> [(statement: String, parameters: [PluginCellValue])]?
@@ -321,6 +323,9 @@ public extension PluginDatabaseDriver {
         buildFilteredQuery(table: table, filters: filters, logicMode: logicMode, sortColumns: sortColumns, columns: columns, limit: limit, offset: offset)
     }
     func fetchFilteredRowCount(table: String, filters: [(column: String, op: String, value: String)], logicMode: String) async throws -> Int? { nil }
+    func fetchExactRowCount(table: String, schema: String?, filters: [(column: String, op: String, value: String)], logicMode: String) async throws -> Int? {
+        try await fetchFilteredRowCount(table: table, filters: filters, logicMode: logicMode)
+    }
     func generateStatements(table: String, columns: [String], primaryKeyColumns: [String], changes: [PluginRowChange], insertedRowData: [Int: [PluginCellValue]], deletedRowIndices: Set<Int>, insertedRowIndices: Set<Int>) -> [(statement: String, parameters: [PluginCellValue])]? { nil }
     func generateStatements(table: String, schema: String?, columns: [String], primaryKeyColumns: [String], changes: [PluginRowChange], insertedRowData: [Int: [PluginCellValue]], deletedRowIndices: Set<Int>, insertedRowIndices: Set<Int>) -> [(statement: String, parameters: [PluginCellValue])]? {
         generateStatements(
