@@ -1,6 +1,7 @@
 import Foundation
 @testable import TablePro
 import Testing
+import TableProSyncTransport
 
 @Suite("FavoriteTablesStorage")
 struct FavoriteTablesStorageTests {

@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProSyncTransport
 import os
 
 @MainActor

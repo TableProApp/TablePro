@@ -59,7 +59,7 @@ final class SyncCoordinator {
         // If local storage is empty (fresh install or wiped), clear the sync token
         // to force a full fetch instead of a delta that returns nothing
         if services.connectionStorage.loadConnections().isEmpty {
-            metadataStorage.clearSyncToken()
+            metadataStorage.saveToken(nil)
             Self.logger.info("No local connections — cleared sync token for full fetch")
         }
 
@@ -140,7 +140,7 @@ final class SyncCoordinator {
         Self.logger.info("enableSync() called")
 
         // Clear token to force a full fetch on first sync after enabling
-        metadataStorage.clearSyncToken()
+        metadataStorage.saveToken(nil)
 
         // Mark ALL existing local data as dirty so it gets pushed on first sync
         markAllLocalDataDirty()
@@ -284,7 +284,7 @@ final class SyncCoordinator {
         let settings = services.appSettingsStorage.loadSync()
         var recordsToSave: [CKRecord] = []
         var recordIDsToDelete: [CKRecord.ID] = []
-        let zoneID = await engine.zoneID
+        let zoneID = await engine.currentZoneID
 
         if settings.syncConnections {
             let dirtyConnectionIds = changeTracker.dirtyRecords(for: .connection)
@@ -358,7 +358,7 @@ final class SyncCoordinator {
 
         for recordID in outcome.deletedRecordIDs {
             guard let parsed = SyncRecordMapper.parse(recordName: recordID.recordName) else { continue }
-            metadataStorage.removeTombstone(type: parsed.type, id: parsed.id)
+            metadataStorage.removeTombstone(parsed.id, type: parsed.type)
         }
 
         let savedCount = outcome.savedRecords.count
@@ -374,17 +374,21 @@ final class SyncCoordinator {
 
     // MARK: - Pull
 
+    nonisolated static func isTokenExpired(_ error: Error) -> Bool {
+        (error as? SyncError) == .tokenExpired
+    }
+
     private func performPull() async {
-        let token = metadataStorage.loadSyncToken()
+        let token = metadataStorage.loadToken()
         let tokenStatus = token == nil ? "nil (full fetch)" : "present (delta)"
         Self.logger.info("Pull starting, token: \(tokenStatus)")
 
         do {
             let result = try await engine.pull(since: token)
             applyPullResult(result)
-        } catch let error as CKError where error.code == .changeTokenExpired {
+        } catch let error where Self.isTokenExpired(error) {
             Self.logger.warning("Change token expired, clearing and retrying with full fetch")
-            metadataStorage.clearSyncToken()
+            metadataStorage.saveToken(nil)
             do {
                 let result = try await engine.pull(since: nil)
                 applyPullResult(result)
@@ -398,7 +402,7 @@ final class SyncCoordinator {
 
     private func applyPullResult(_ result: PullResult) {
         if let newToken = result.newToken {
-            metadataStorage.saveSyncToken(newToken)
+            metadataStorage.saveToken(newToken)
         }
 
         applyRemoteChanges(result)
@@ -769,7 +773,7 @@ final class SyncCoordinator {
 
     private func checkAccountStatus() async {
         do {
-            let status = try await engine.checkAccountStatus()
+            let status = try await engine.accountStatus()
             iCloudAccountAvailable = (status == .available)
 
             if iCloudAccountAvailable {

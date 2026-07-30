@@ -1,4 +1,5 @@
 import Foundation
+import TableProSyncTransport
 import os
 
 extension Notification.Name {

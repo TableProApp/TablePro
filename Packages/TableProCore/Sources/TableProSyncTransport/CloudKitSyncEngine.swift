@@ -1,6 +1,7 @@
 import CloudKit
 import Foundation
 import os
+import Security
 
 public struct PullResult: Sendable {
     public let changedRecords: [CKRecord]
@@ -17,21 +18,36 @@ public struct PullResult: Sendable {
 public actor CloudKitSyncEngine {
     private static let logger = Logger(subsystem: "com.TablePro", category: "CloudKitSyncEngine")
 
-    private let container: CKContainer
-    private let database: CKDatabase
+    private let container: CKContainer?
+    private let database: CKDatabase?
     private let zoneID: CKRecordZone.ID
 
     public static let zoneName = "TableProSync"
     public static let defaultContainerID = "iCloud.com.TablePro"
 
-    /// CloudKit allows at most 400 items (saves + deletions) per modify operation
     private static let maxBatchSize = 400
     private static let maxRetries = 3
 
+    public static func hasICloudEntitlement() -> Bool {
+        #if os(macOS)
+        guard let task = SecTaskCreateFromSelf(nil) else { return false }
+        return SecTaskCopyValueForEntitlement(task, "com.apple.developer.icloud-services" as CFString, nil) != nil
+        #else
+        return true
+        #endif
+    }
+
     public init(containerIdentifier: String = defaultContainerID) {
-        self.container = CKContainer(identifier: containerIdentifier)
-        self.database = container.privateCloudDatabase
-        self.zoneID = CKRecordZone.ID(zoneName: Self.zoneName, ownerName: CKCurrentUserDefaultName)
+        if Self.hasICloudEntitlement() {
+            let container = CKContainer(identifier: containerIdentifier)
+            self.container = container
+            database = container.privateCloudDatabase
+        } else {
+            container = nil
+            database = nil
+            Self.logger.warning("iCloud entitlement missing: CloudKit sync disabled")
+        }
+        zoneID = CKRecordZone.ID(zoneName: Self.zoneName, ownerName: CKCurrentUserDefaultName)
     }
 
     public var currentZoneID: CKRecordZone.ID { zoneID }
@@ -39,12 +55,19 @@ public actor CloudKitSyncEngine {
     // MARK: - Account Status
 
     public func accountStatus() async throws -> CKAccountStatus {
-        try await container.accountStatus()
+        guard let container else { throw SyncError.accountUnavailable }
+        return try await container.accountStatus()
+    }
+
+    public func currentAccountId() async throws -> String? {
+        guard let container else { throw SyncError.accountUnavailable }
+        return try await container.userRecordID().recordName
     }
 
     // MARK: - Zone Management
 
     public func ensureZoneExists() async throws {
+        guard let database else { throw SyncError.accountUnavailable }
         let zone = CKRecordZone(zoneID: zoneID)
         _ = try await database.save(zone)
         Self.logger.trace("Created or confirmed sync zone: \(Self.zoneName)")
@@ -85,7 +108,8 @@ public actor CloudKitSyncEngine {
     }
 
     private func pushBatch(records: [CKRecord], deletions: [CKRecord.ID]) async throws -> PushOutcome {
-        try await withRetry {
+        guard let database else { throw SyncError.accountUnavailable }
+        return try await withRetry {
             let operation = CKModifyRecordsOperation(
                 recordsToSave: records,
                 recordIDsToDelete: deletions
@@ -128,7 +152,7 @@ public actor CloudKitSyncEngine {
                     }
                 }
 
-                self.database.add(operation)
+                database.add(operation)
             }
         }
     }
@@ -165,6 +189,7 @@ public actor CloudKitSyncEngine {
     }
 
     private func performPull(since token: CKServerChangeToken?) async throws -> PullPage {
+        guard let database else { throw SyncError.accountUnavailable }
         let configuration = CKFetchRecordZoneChangesOperation.ZoneConfiguration()
         configuration.previousServerChangeToken = token
 
@@ -200,8 +225,6 @@ public actor CloudKitSyncEngine {
                     moreComing = hasMore
                 case .failure(let error):
                     Self.logger.warning("Zone fetch result error: \(error.localizedDescription)")
-                    // Zone-level failure with records collected so far is acceptable:
-                    // newToken stays nil, forcing a full re-fetch on next sync cycle.
                 }
             }
 
@@ -217,12 +240,11 @@ public actor CloudKitSyncEngine {
                         moreComing: moreComing
                     ))
                 case .failure(let error):
-                    // Map CKError.changeTokenExpired to SyncError.tokenExpired
-                    if let ckError = error as? CKError, ckError.code == .changeTokenExpired {
-                        continuation.resume(throwing: SyncError.tokenExpired)
-                    } else {
+                    guard let ckError = error as? CKError, ckError.code == .changeTokenExpired else {
                         continuation.resume(throwing: error)
+                        return
                     }
+                    continuation.resume(throwing: SyncError.tokenExpired)
                 }
             }
 
@@ -250,7 +272,7 @@ public actor CloudKitSyncEngine {
             }
         }
 
-        throw lastError ?? SyncError.unknownError("Max retries exceeded")
+        throw lastError ?? SyncError.unknown("Max retries exceeded")
     }
 
     private func isTransientError(_ error: CKError) -> Bool {

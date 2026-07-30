@@ -6,6 +6,7 @@
 @testable import TablePro
 import TableProPluginKit
 import XCTest
+import TableProSyncTransport
 
 @MainActor
 final class WelcomeViewModelTests: XCTestCase {

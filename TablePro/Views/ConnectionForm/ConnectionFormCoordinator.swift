@@ -5,6 +5,7 @@
 
 import AppKit
 import Combine
+import TableProSyncTransport
 import os
 import SwiftUI
 import TableProPluginKit

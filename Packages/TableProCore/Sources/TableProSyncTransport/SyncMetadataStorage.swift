@@ -12,15 +12,16 @@ public struct Tombstone: Codable, Sendable {
     }
 }
 
-@MainActor
-public final class SyncMetadataStorage {
+public final class SyncMetadataStorage: @unchecked Sendable {
+    public static let shared = SyncMetadataStorage()
+
     private static let logger = Logger(subsystem: "com.TablePro", category: "SyncMetadataStorage")
 
     private let defaults: UserDefaults
     private let prefix: String
 
-    public init(defaults: UserDefaults = .standard, prefix: String = "com.TablePro.sync") {
-        self.defaults = defaults
+    public init(userDefaults: UserDefaults = .standard, prefix: String = "com.TablePro.sync") {
+        defaults = userDefaults
         self.prefix = prefix
     }
 
@@ -51,34 +52,30 @@ public final class SyncMetadataStorage {
 
     // MARK: - Dirty Tracking
 
-    public func dirtyIDs(for type: SyncRecordType) -> Set<String> {
-        Set(defaults.stringArray(forKey: key("dirty.\(type.rawValue)")) ?? [])
+    public func dirtyIds(for type: SyncRecordType) -> Set<String> {
+        Set(defaults.stringArray(forKey: dirtyKey(type)) ?? [])
     }
 
     public func markDirty(_ id: String, type: SyncRecordType) {
-        var ids = dirtyIDs(for: type)
+        var ids = dirtyIds(for: type)
         ids.insert(id)
-        defaults.set(Array(ids), forKey: key("dirty.\(type.rawValue)"))
+        saveDirtyIds(ids, for: type)
     }
 
     public func removeDirty(_ id: String, type: SyncRecordType) {
-        var ids = dirtyIDs(for: type)
+        var ids = dirtyIds(for: type)
         ids.remove(id)
-        if ids.isEmpty {
-            defaults.removeObject(forKey: key("dirty.\(type.rawValue)"))
-        } else {
-            defaults.set(Array(ids), forKey: key("dirty.\(type.rawValue)"))
-        }
+        saveDirtyIds(ids, for: type)
     }
 
     public func clearDirty(type: SyncRecordType) {
-        defaults.removeObject(forKey: key("dirty.\(type.rawValue)"))
+        defaults.removeObject(forKey: dirtyKey(type))
     }
 
     // MARK: - Tombstones
 
     public func tombstones(for type: SyncRecordType) -> [Tombstone] {
-        guard let data = defaults.data(forKey: key("tombstones.\(type.rawValue)")) else { return [] }
+        guard let data = defaults.data(forKey: tombstoneKey(type)) else { return [] }
         do {
             return try JSONDecoder().decode([Tombstone].self, from: data)
         } catch {
@@ -100,7 +97,7 @@ public final class SyncMetadataStorage {
     }
 
     public func clearTombstones(type: SyncRecordType) {
-        defaults.removeObject(forKey: key("tombstones.\(type.rawValue)"))
+        defaults.removeObject(forKey: tombstoneKey(type))
     }
 
     public func pruneTombstones(olderThan days: Int) {
@@ -109,9 +106,8 @@ public final class SyncMetadataStorage {
             var current = tombstones(for: type)
             let before = current.count
             current.removeAll { $0.deletedAt < cutoff }
-            if current.count != before {
-                saveTombstones(current, for: type)
-            }
+            guard current.count != before else { continue }
+            saveTombstones(current, for: type)
         }
     }
 
@@ -122,15 +118,25 @@ public final class SyncMetadataStorage {
         set { defaults.set(newValue, forKey: key("lastSyncDate")) }
     }
 
+    // MARK: - Account ID
+
+    public var lastAccountId: String? {
+        get { defaults.string(forKey: key("lastAccountId")) }
+        set { defaults.set(newValue, forKey: key("lastAccountId")) }
+    }
+
     // MARK: - Reset
 
     public func clearAll() {
         saveToken(nil)
+        defaults.removeObject(forKey: key("lastSyncDate"))
+        defaults.removeObject(forKey: key("lastAccountId"))
+
         for type in SyncRecordType.allCases {
             clearDirty(type: type)
             clearTombstones(type: type)
         }
-        defaults.removeObject(forKey: key("lastSyncDate"))
+
         Self.logger.trace("Cleared all sync metadata")
     }
 
@@ -140,15 +146,30 @@ public final class SyncMetadataStorage {
         "\(prefix).\(suffix)"
     }
 
+    private func dirtyKey(_ type: SyncRecordType) -> String {
+        key("dirty.\(type.rawValue)")
+    }
+
+    private func tombstoneKey(_ type: SyncRecordType) -> String {
+        key("tombstones.\(type.rawValue)")
+    }
+
+    private func saveDirtyIds(_ ids: Set<String>, for type: SyncRecordType) {
+        guard !ids.isEmpty else {
+            defaults.removeObject(forKey: dirtyKey(type))
+            return
+        }
+        defaults.set(Array(ids), forKey: dirtyKey(type))
+    }
+
     private func saveTombstones(_ tombstones: [Tombstone], for type: SyncRecordType) {
-        let storageKey = key("tombstones.\(type.rawValue)")
-        if tombstones.isEmpty {
-            defaults.removeObject(forKey: storageKey)
+        guard !tombstones.isEmpty else {
+            defaults.removeObject(forKey: tombstoneKey(type))
             return
         }
         do {
             let data = try JSONEncoder().encode(tombstones)
-            defaults.set(data, forKey: storageKey)
+            defaults.set(data, forKey: tombstoneKey(type))
         } catch {
             Self.logger.error("Failed to encode tombstones for \(type.rawValue): \(error.localizedDescription)")
         }

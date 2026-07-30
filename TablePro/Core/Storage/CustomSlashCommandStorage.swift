@@ -5,6 +5,7 @@
 
 import Foundation
 import Observation
+import TableProSyncTransport
 import os
 
 enum CustomSlashCommandError: LocalizedError, Equatable {

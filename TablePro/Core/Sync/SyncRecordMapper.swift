@@ -12,18 +12,6 @@ import TableProImport
 import TableProPluginKit
 import TableProSyncTransport
 
-/// CloudKit record types for sync
-enum SyncRecordType: String, CaseIterable {
-    case connection = "Connection"
-    case group = "ConnectionGroup"
-    case tag = "ConnectionTag"
-    case settings = "AppSettings"
-    case favorite = "SQLFavorite"
-    case favoriteFolder = "SQLFavoriteFolder"
-    case tableFavorite = "FavoriteTable"
-    case sshProfile = "SSHProfile"
-}
-
 enum SyncDecodeError: Error, LocalizedError {
     case missingRequiredField(String)
     case decodeFailure(field: String, underlying: Error)
@@ -50,35 +38,11 @@ struct SyncRecordMapper {
     // MARK: - Record Name Helpers
 
     static func recordID(type: SyncRecordType, id: String, in zone: CKRecordZone.ID) -> CKRecord.ID {
-        let recordName: String
-        switch type {
-        case .connection: recordName = "Connection_\(id)"
-        case .group: recordName = "Group_\(id)"
-        case .tag: recordName = "Tag_\(id)"
-        case .settings: recordName = "Settings_\(id)"
-        case .favorite: recordName = "Favorite_\(id)"
-        case .favoriteFolder: recordName = "FavoriteFolder_\(id)"
-        case .tableFavorite: recordName = "FavoriteTable_\(id)"
-        case .sshProfile: recordName = "SSHProfile_\(id)"
-        }
-        return CKRecord.ID(recordName: recordName, zoneID: zone)
+        CKRecord.ID(recordName: type.recordName(for: id), zoneID: zone)
     }
 
     static func parse(recordName: String) -> (type: SyncRecordType, id: String)? {
-        let prefixes: [(SyncRecordType, String)] = [
-            (.connection, "Connection_"),
-            (.group, "Group_"),
-            (.tag, "Tag_"),
-            (.settings, "Settings_"),
-            (.favoriteFolder, "FavoriteFolder_"),
-            (.tableFavorite, "FavoriteTable_"),
-            (.favorite, "Favorite_"),
-            (.sshProfile, "SSHProfile_")
-        ]
-        for (type, prefix) in prefixes where recordName.hasPrefix(prefix) {
-            return (type, String(recordName.dropFirst(prefix.count)))
-        }
-        return nil
+        SyncRecordType.parse(recordName: recordName)
     }
 
     // MARK: - Connection

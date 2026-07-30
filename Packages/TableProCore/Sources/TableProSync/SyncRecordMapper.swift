@@ -15,25 +15,11 @@ public enum SyncRecordMapper {
     // MARK: - Record Name Helpers
 
     public static func recordID(type: SyncRecordType, id: String, in zone: CKRecordZone.ID) -> CKRecord.ID {
-        let recordName: String
-        switch type {
-        case .connection: recordName = "Connection_\(id)"
-        case .group: recordName = "Group_\(id)"
-        case .tag: recordName = "Tag_\(id)"
-        }
-        return CKRecord.ID(recordName: recordName, zoneID: zone)
+        CKRecord.ID(recordName: type.recordName(for: id), zoneID: zone)
     }
 
     public static func parse(recordName: String) -> (type: SyncRecordType, id: String)? {
-        let prefixes: [(SyncRecordType, String)] = [
-            (.connection, "Connection_"),
-            (.group, "Group_"),
-            (.tag, "Tag_")
-        ]
-        for (type, prefix) in prefixes where recordName.hasPrefix(prefix) {
-            return (type, String(recordName.dropFirst(prefix.count)))
-        }
-        return nil
+        SyncRecordType.parse(recordName: recordName)
     }
 
     // MARK: - Connection -> CKRecord

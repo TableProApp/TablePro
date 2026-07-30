@@ -49,7 +49,7 @@ final class IOSSyncCoordinator {
         do {
             let accountStatus = try await getEngine().accountStatus()
             guard accountStatus == .available else {
-                status = .error("iCloud account not available")
+                status = .error(.accountUnavailable)
                 return
             }
 
@@ -83,7 +83,7 @@ final class IOSSyncCoordinator {
             status = .idle
         } catch let error as SyncError where error == .tokenExpired {
             guard !isRetry else {
-                status = .error("Sync failed after token refresh")
+                status = .error(.tokenExpired)
                 return
             }
             metadata.saveToken(nil)
@@ -94,7 +94,7 @@ final class IOSSyncCoordinator {
                 isRetry: true
             )
         } catch {
-            status = .error(error.localizedDescription)
+            status = .error(SyncError.from(error))
         }
     }
 
@@ -177,7 +177,7 @@ final class IOSSyncCoordinator {
         var allDeletions: [CKRecord.ID] = []
 
         // Dirty connections
-        let dirtyConnIDs = metadata.dirtyIDs(for: .connection)
+        let dirtyConnIDs = metadata.dirtyIds(for: .connection)
         for connection in localConnections where dirtyConnIDs.contains(connection.id.uuidString) {
             let recordID = SyncRecordMapper.recordID(type: .connection, id: connection.id.uuidString, in: zoneID)
             if let existing = recordCache.record(for: recordID) {
@@ -190,11 +190,11 @@ final class IOSSyncCoordinator {
 
         // Connection tombstones
         for tombstone in metadata.tombstones(for: .connection) {
-            allDeletions.append(CKRecord.ID(recordName: "Connection_\(tombstone.id)", zoneID: zoneID))
+            allDeletions.append(SyncRecordMapper.recordID(type: .connection, id: tombstone.id, in: zoneID))
         }
 
         // Dirty groups
-        let dirtyGroupIDs = metadata.dirtyIDs(for: .group)
+        let dirtyGroupIDs = metadata.dirtyIds(for: .group)
         for group in localGroups where dirtyGroupIDs.contains(group.id.uuidString) {
             let recordID = SyncRecordMapper.recordID(type: .group, id: group.id.uuidString, in: zoneID)
             if let existing = recordCache.record(for: recordID) {
@@ -207,11 +207,11 @@ final class IOSSyncCoordinator {
 
         // Group tombstones
         for tombstone in metadata.tombstones(for: .group) {
-            allDeletions.append(CKRecord.ID(recordName: "Group_\(tombstone.id)", zoneID: zoneID))
+            allDeletions.append(SyncRecordMapper.recordID(type: .group, id: tombstone.id, in: zoneID))
         }
 
         // Dirty tags
-        let dirtyTagIDs = metadata.dirtyIDs(for: .tag)
+        let dirtyTagIDs = metadata.dirtyIds(for: .tag)
         for tag in localTags where dirtyTagIDs.contains(tag.id.uuidString) {
             let recordID = SyncRecordMapper.recordID(type: .tag, id: tag.id.uuidString, in: zoneID)
             if let existing = recordCache.record(for: recordID) {
@@ -224,7 +224,7 @@ final class IOSSyncCoordinator {
 
         // Tag tombstones
         for tombstone in metadata.tombstones(for: .tag) {
-            allDeletions.append(CKRecord.ID(recordName: "Tag_\(tombstone.id)", zoneID: zoneID))
+            allDeletions.append(SyncRecordMapper.recordID(type: .tag, id: tombstone.id, in: zoneID))
         }
 
         guard !allRecords.isEmpty || !allDeletions.isEmpty else { return }
@@ -250,7 +250,10 @@ final class IOSSyncCoordinator {
             Self.logger.error("iCloud rejected \(recordID.recordName): \(failure.message)")
         }
 
-        throw SyncError.pushFailed(outcome.failures.values.first?.message ?? "")
+        throw SyncError.pushRejected(
+            count: outcome.failures.count,
+            detail: outcome.failures.values.first?.message ?? ""
+        )
     }
 
     // MARK: - Pull
@@ -295,22 +298,17 @@ final class IOSSyncCoordinator {
         }
 
         for recordID in result.deletedRecordIDs {
-            let name = recordID.recordName
-            if name.hasPrefix("Connection_") {
-                let uuidStr = String(name.dropFirst("Connection_".count))
-                if let uuid = UUID(uuidString: uuidStr) {
-                    changes.deletedConnectionIDs.insert(uuid)
-                }
-            } else if name.hasPrefix("Group_") {
-                let uuidStr = String(name.dropFirst("Group_".count))
-                if let uuid = UUID(uuidString: uuidStr) {
-                    changes.deletedGroupIDs.insert(uuid)
-                }
-            } else if name.hasPrefix("Tag_") {
-                let uuidStr = String(name.dropFirst("Tag_".count))
-                if let uuid = UUID(uuidString: uuidStr) {
-                    changes.deletedTagIDs.insert(uuid)
-                }
+            guard let parsed = SyncRecordType.parse(recordName: recordID.recordName),
+                  let uuid = UUID(uuidString: parsed.id) else { continue }
+            switch parsed.type {
+            case .connection:
+                changes.deletedConnectionIDs.insert(uuid)
+            case .group:
+                changes.deletedGroupIDs.insert(uuid)
+            case .tag:
+                changes.deletedTagIDs.insert(uuid)
+            default:
+                break
             }
         }
 
@@ -327,7 +325,7 @@ final class IOSSyncCoordinator {
     private func mergeConnections(local: [DatabaseConnection], remote: PullChanges) -> [DatabaseConnection] {
         var result = local.filter { !remote.deletedConnectionIDs.contains($0.id) }
         let localMap = Dictionary(uniqueKeysWithValues: result.map { ($0.id, $0) })
-        let dirtyIDs = metadata.dirtyIDs(for: .connection)
+        let dirtyIDs = metadata.dirtyIds(for: .connection)
 
         for remoteConn in remote.changedConnections {
             if localMap[remoteConn.id] != nil {
@@ -353,7 +351,7 @@ final class IOSSyncCoordinator {
     private func mergeGroups(local: [ConnectionGroup], remote: PullChanges) -> [ConnectionGroup] {
         var result = local.filter { !remote.deletedGroupIDs.contains($0.id) }
         let localMap = Dictionary(uniqueKeysWithValues: result.map { ($0.id, $0) })
-        let dirtyIDs = metadata.dirtyIDs(for: .group)
+        let dirtyIDs = metadata.dirtyIds(for: .group)
 
         for remoteGroup in remote.changedGroups {
             if localMap[remoteGroup.id] != nil {
@@ -377,7 +375,7 @@ final class IOSSyncCoordinator {
     private func mergeTags(local: [ConnectionTag], remote: PullChanges) -> [ConnectionTag] {
         var result = local.filter { !remote.deletedTagIDs.contains($0.id) }
         let localMap = Dictionary(uniqueKeysWithValues: result.map { ($0.id, $0) })
-        let dirtyIDs = metadata.dirtyIDs(for: .tag)
+        let dirtyIDs = metadata.dirtyIds(for: .tag)
 
         for remoteTag in remote.changedTags {
             if localMap[remoteTag.id] != nil {

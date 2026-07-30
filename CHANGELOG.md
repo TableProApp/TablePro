@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - The welcome screen groups the ways to add an existing connection into one **Add from Existing** menu, next to **Create Connection**. Import from URL now has a home in that menu and in the File menu, where it had none. **Try Sample Database** moved to the connection list, which already offers it when the list is empty.
+- A failed iCloud sync on iPhone and iPad now says what went wrong instead of showing a raw error. Out of storage, no network, and a rejected change each get their own message, the same ones the Mac already showed. The Mac and the mobile app now run the same sync engine, so a sync fix on one reaches the other. (#1990)
 
 ### Fixed
 

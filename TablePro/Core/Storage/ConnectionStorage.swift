@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import TableProSyncTransport
 import os
 import TableProPluginKit
 

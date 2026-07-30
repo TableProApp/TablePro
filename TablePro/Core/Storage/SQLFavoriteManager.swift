@@ -5,6 +5,7 @@
 
 import Combine
 import Foundation
+import TableProSyncTransport
 import os
 
 /// Manages SQL favorites with notifications
