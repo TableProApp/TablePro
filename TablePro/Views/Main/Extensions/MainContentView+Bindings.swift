@@ -10,11 +10,34 @@ import SwiftUI
 import TableProPluginKit
 
 extension MainContentView {
+    // MARK: - Inspector Selection
+
+    /// Which grid owns the current selection. `GridSelectionState` is shared by the data
+    /// grid, the structure grid, and the new-table grid, so its indices only address the
+    /// data tab's rows when the data grid is the one on screen.
+    var gridSelectionOwner: GridSelectionOwner {
+        GridSelectionOwner.resolve(
+            tabType: coordinator.tabManager.selectedTab?.tabType,
+            resultsViewMode: coordinator.tabManager.selectedTab?.display.resultsViewMode
+        )
+    }
+
+    var selectedInspectorRow: InspectorRow? {
+        guard gridSelectionOwner == .schemaGrid,
+              let displayRow = coordinator.selectionState.indices.min() else { return nil }
+        return coordinator.inspectorRowSource?.inspectorRow(atDisplayRow: displayRow)
+    }
+
     // MARK: - Selected Row Data for Sidebar
 
     /// Compute selected row data for right sidebar display
     var selectedRowDataForSidebar: [(column: String, value: String?, type: String)]? {
-        guard let tab = coordinator.tabManager.selectedTab,
+        if gridSelectionOwner == .schemaGrid {
+            guard let row = selectedInspectorRow else { return nil }
+            return row.fields.map { (column: $0.name, value: $0.value, type: "string") }
+        }
+        guard gridSelectionOwner == .dataGrid,
+              let tab = coordinator.tabManager.selectedTab,
               !coordinator.selectionState.indices.isEmpty,
               let firstDisplayIndex = coordinator.selectionState.indices.min() else { return nil }
         let tableRows = coordinator.tabSessionRegistry.tableRows(for: tab.id)
@@ -59,7 +82,11 @@ extension MainContentView {
 
     /// Determine if sidebar should be in editable mode
     var isSidebarEditable: Bool {
-        guard !coordinator.safeModeLevel.blocksAllWrites,
+        if gridSelectionOwner == .schemaGrid {
+            return selectedInspectorRow?.isEditable ?? false
+        }
+        guard gridSelectionOwner == .dataGrid,
+              !coordinator.safeModeLevel.blocksAllWrites,
               let tab = coordinator.tabManager.selectedTab,
               tab.tabType == .table || tab.tableContext.tableName != nil,
               !coordinator.selectionState.indices.isEmpty else {
@@ -69,7 +96,8 @@ extension MainContentView {
     }
 
     var isSelectedRowDeleted: Bool {
-        guard let firstIndex = coordinator.selectionState.indices.min() else { return false }
+        guard gridSelectionOwner == .dataGrid,
+              let firstIndex = coordinator.selectionState.indices.min() else { return false }
         return coordinator.changeManager.isRowDeleted(firstIndex)
     }
 
@@ -119,7 +147,9 @@ extension MainContentView {
         InspectorTrigger(
             tableName: currentTab?.tableContext.tableName,
             schemaVersion: currentTab?.schemaVersion ?? -1,
-            metadataVersion: currentTab?.metadataVersion ?? -1
+            metadataVersion: currentTab?.metadataVersion ?? -1,
+            resultsViewMode: currentTab?.display.resultsViewMode ?? .data,
+            inspectorRowSourceRevision: coordinator.inspectorRowSourceRevision
         )
     }
 }
@@ -128,6 +158,8 @@ struct InspectorTrigger: Equatable {
     let tableName: String?
     let schemaVersion: Int
     let metadataVersion: Int
+    let resultsViewMode: ResultsViewMode
+    let inspectorRowSourceRevision: Int
 }
 
 /// Lightweight equatable value combining all pending-change sources

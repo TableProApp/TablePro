@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Create a connection from a project folder, filled in from `.env`, `wp-config.php`, `prisma/schema.prisma`, `config/database.yml`, `docker-compose.yml`, `application.properties`, `application.yml`, or `appsettings.json`. (#1959)
 - An AI tool call limit in **Settings > AI**, now 25 per reply instead of a fixed 10, with **Continue** to resume a paused reply. (#1987)
 - A pin button on result tabs. (#1982)
+- The inspector edits the selected column, index, or foreign key in the Structure tab, and its edits join the grid's pending changes.
 
 ### Changed
 
@@ -22,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Selecting a row in the Structure tab shows that row in the inspector instead of the data row in the same position. An edit made in the inspector there, and Duplicate Row and Copy with Headers, no longer act on a data row you never selected.
 - Editing a connection on two devices no longer overwrites the field the other one changed. (#643)
 - A per-connection query timeout set on iPhone or iPad no longer stops that connection from syncing. (#643)
 - iCloud Sync downloads every page of changes when catching up, instead of only the first. (#643)

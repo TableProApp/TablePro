@@ -4,19 +4,26 @@
 
 import Foundation
 
-internal enum FieldEditorKind: Equatable {
-    case json
-    case phpSerialized
-    case blobHex
-    case boolean
-    case enumPicker(values: [String])
-    case setPicker(values: [String])
-    case multiLine
-    case singleLine
-}
-
 @MainActor
 internal enum FieldEditorResolver {
+    static func resolve(field: FieldEditState) -> FieldEditorKind {
+        if let editor = field.editor { return editor }
+        return resolve(
+            for: field.columnTypeEnum,
+            isLongText: field.isLongText,
+            originalValue: field.originalValue
+        )
+    }
+
+    static func resolve(context: FieldEditorContext) -> FieldEditorKind {
+        if let editor = context.editor { return editor }
+        return resolve(
+            for: context.columnType,
+            isLongText: context.isLongText,
+            originalValue: context.originalValue
+        )
+    }
+
     static func resolve(
         for type: ColumnType,
         isLongText: Bool,

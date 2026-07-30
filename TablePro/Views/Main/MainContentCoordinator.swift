@@ -127,6 +127,14 @@ final class MainContentCoordinator {
     /// `TableStructureView` writes to this; `MainStatusBarView` reads from it.
     let structureFooterState = StructureFooterState()
 
+    /// The grid that owns the current selection when it is not the data grid, so the
+    /// inspector reads the selected row from it instead of the data tab's rows.
+    /// Set by `TableStructureView` and `CreateTableView` on appear.
+    weak var inspectorRowSource: (any InspectorRowSource)?
+
+    /// Bumped whenever a published schema row changes, so the inspector re-reads it.
+    var inspectorRowSourceRevision: Int = 0
+
     /// Direct reference to AI chat viewmodel — eliminates notification broadcasts
     weak var aiViewModel: AIChatViewModel?
 

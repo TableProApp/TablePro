@@ -104,6 +104,9 @@ struct TableStructureView: View {
         .onAppear {
             coordinator?.toolbarState.hasStructureChanges = structureChangeManager.hasChanges
 
+            selectionState.indices = []
+            coordinator?.inspectorRowSource = gridDelegate
+
             gridDelegate.onSelectedRowsChanged = { self.selectedRows = $0 }
             gridDelegate.coordinator = coordinator
             gridDelegate.sortHandler = { [self] column, ascending in
@@ -135,6 +138,9 @@ struct TableStructureView: View {
             coordinator?.toolbarState.hasStructureChanges = false
             coordinator?.structureActions = nil
             coordinator?.structureFooterState.deactivate(owner: footerOwnerId)
+            if coordinator?.inspectorRowSource === gridDelegate {
+                coordinator?.inspectorRowSource = nil
+            }
             selectionState.indices = []
         }
         .onChange(of: structureChangeManager.hasChanges) { _, newValue in
@@ -343,6 +349,7 @@ struct TableStructureView: View {
         gridDelegate.selectedTab = selectedTab
         gridDelegate.currentProvider = provider
         gridDelegate.orderedFields = provider.orderedColumnFields
+        coordinator?.inspectorRowSourceRevision += 1
 
         let moveRowHandler: ((Int, Int) -> Void)? = {
             guard selectedTab == .columns,

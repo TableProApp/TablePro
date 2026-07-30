@@ -185,6 +185,15 @@ final class MainContentCommandActions {
         coordinator?.dataTabDelegate?.tableViewCoordinator?.currentRowSelection() ?? selectionState.indices
     }
 
+    /// `selectionState` is shared with the structure and new-table grids, so a row command
+    /// has to confirm the data grid owns the selection before it acts on data rows.
+    private var dataGridOwnsSelection: Bool {
+        GridSelectionOwner.resolve(
+            tabType: coordinator?.tabManager.selectedTab?.tabType,
+            resultsViewMode: coordinator?.tabManager.selectedTab?.display.resultsViewMode
+        ) == .dataGrid
+    }
+
     func deleteSelectedRows(rowIndices: Set<Int>? = nil) {
         let fromDataGrid = rowIndices != nil
 
@@ -217,6 +226,7 @@ final class MainContentCommandActions {
     }
 
     func duplicateRow() {
+        guard dataGridOwnsSelection else { return }
         let indices = selectionState.indices
         guard let selectedIndex = indices.first, indices.count == 1 else { return }
         coordinator?.duplicateSelectedRow(index: selectedIndex)
@@ -231,6 +241,7 @@ final class MainContentCommandActions {
     }
 
     func copySelectedRowsWithHeaders() {
+        guard dataGridOwnsSelection else { return }
         coordinator?.copySelectedRowsWithHeaders(indices: resolvedRowSelection())
     }
 

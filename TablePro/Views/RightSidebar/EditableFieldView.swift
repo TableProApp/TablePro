@@ -25,12 +25,12 @@ internal struct FieldDetailView: View {
 
     @State private var isHovered = false
 
+    private var offersNullAndDefault: Bool {
+        !context.isReadOnly && context.allowsNullAndDefault
+    }
+
     var body: some View {
-        let kind = FieldEditorResolver.resolve(
-            for: context.columnType,
-            isLongText: context.isLongText,
-            originalValue: context.originalValue
-        )
+        let kind = FieldEditorResolver.resolve(context: context)
 
         let isPickerField: Bool = {
             switch kind {
@@ -38,6 +38,7 @@ internal struct FieldDetailView: View {
             default: return false
             }
         }()
+        let showsFieldMenu = offersNullAndDefault
 
         VStack(alignment: .leading, spacing: 4) {
             fieldHeader
@@ -53,7 +54,7 @@ internal struct FieldDetailView: View {
                     resolvedEditor(for: kind)
                 }
                 .overlay(alignment: .topTrailing) {
-                    if !context.isReadOnly && isHovered {
+                    if showsFieldMenu && isHovered {
                         FieldMenuView(
                             value: context.value.wrappedValue,
                             columnType: context.columnType,
@@ -74,7 +75,7 @@ internal struct FieldDetailView: View {
         .labelsHidden()
         .onHover { isHovered = $0 }
         .contextMenu {
-            if !context.isReadOnly {
+            if showsFieldMenu {
                 FieldMenuContent(
                     value: context.value.wrappedValue,
                     columnType: context.columnType,
@@ -117,7 +118,9 @@ internal struct FieldDetailView: View {
 
             Spacer()
 
-            TypeBadge(context.columnType.badgeLabel)
+            if context.showsTypeBadge {
+                TypeBadge(context.columnType.badgeLabel)
+            }
         }
         .textSelection(.enabled)
     }
@@ -157,8 +160,8 @@ internal struct FieldDetailView: View {
                 context: context,
                 isPendingNull: isPendingNull,
                 isPendingDefault: isPendingDefault,
-                onSetNull: context.isReadOnly ? nil : onSetNull,
-                onSetDefault: context.isReadOnly ? nil : onSetDefault
+                onSetNull: offersNullAndDefault ? onSetNull : nil,
+                onSetDefault: offersNullAndDefault ? onSetDefault : nil
             )
         case .enumPicker(let values):
             EnumPickerView(
@@ -166,8 +169,8 @@ internal struct FieldDetailView: View {
                 values: values,
                 isPendingNull: isPendingNull,
                 isPendingDefault: isPendingDefault,
-                onSetNull: context.isReadOnly ? nil : onSetNull,
-                onSetDefault: context.isReadOnly ? nil : onSetDefault
+                onSetNull: offersNullAndDefault ? onSetNull : nil,
+                onSetDefault: offersNullAndDefault ? onSetDefault : nil
             )
         case .setPicker(let values):
             SetPickerView(
@@ -175,9 +178,13 @@ internal struct FieldDetailView: View {
                 values: values,
                 isPendingNull: isPendingNull,
                 isPendingDefault: isPendingDefault,
-                onSetNull: context.isReadOnly ? nil : onSetNull,
-                onSetDefault: context.isReadOnly ? nil : onSetDefault
+                onSetNull: offersNullAndDefault ? onSetNull : nil,
+                onSetDefault: offersNullAndDefault ? onSetDefault : nil
             )
+        case .typePicker:
+            TypePickerFieldView(context: context, databaseType: databaseType)
+        case .schemaText:
+            SchemaTextFieldView(context: context)
         case .multiLine:
             MultiLineEditorView(context: context)
         case .singleLine:
