@@ -17,7 +17,15 @@ struct FilterRowView: View {
     let onApply: () -> Void
     let onSubmit: () -> Void
     let onCancel: () -> Void
+    let isReorderEnabled: Bool
+    let canMoveUp: Bool
+    let canMoveDown: Bool
+    let onMoveUp: () -> Void
+    let onMoveDown: () -> Void
+    let onDropFilter: (UUID) -> Void
     @Binding var focusedFilterId: UUID?
+
+    @State private var isDropTargeted = false
 
     private let rowButtonGlyphSize: CGFloat = 14
 
@@ -41,6 +49,8 @@ struct FilterRowView: View {
 
     var body: some View {
         HStack(spacing: 4) {
+            dragHandle
+
             enabledToggle
 
             Group {
@@ -58,7 +68,71 @@ struct FilterRowView: View {
         }
         .padding(.vertical, 4)
         .padding(.horizontal, 8)
+        .background(dropHighlight)
+        .dropDestination(for: FilterRowTransfer.self) { items, _ in
+            guard let dragged = items.first else { return false }
+            onDropFilter(dragged.filterID)
+            return true
+        } isTargeted: { targeted in
+            isDropTargeted = targeted
+        }
         .contextMenu { rowContextMenu }
+        .accessibilityElement(children: .contain)
+        .accessibilityActions {
+            if canMoveUp {
+                Button(String(localized: "Move Filter Up"), action: onMoveUp)
+            }
+            if canMoveDown {
+                Button(String(localized: "Move Filter Down"), action: onMoveDown)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var dragHandle: some View {
+        if isReorderEnabled {
+            FilterRowDragHandle()
+                .draggable(FilterRowTransfer(filterID: filter.id)) {
+                    dragPreview
+                }
+        } else {
+            Color.clear
+                .frame(width: FilterRowDragHandle.gutterWidth, height: 1)
+        }
+    }
+
+    private var dragPreview: some View {
+        HStack(spacing: 4) {
+            Text(filter.isRawSQL ? String(localized: "Raw SQL") : filter.columnName)
+
+            if !filter.isRawSQL {
+                Text(filter.filterOperator.symbol.isEmpty
+                    ? filter.filterOperator.displayName
+                    : filter.filterOperator.symbol)
+                    .foregroundStyle(.secondary)
+            }
+
+            Text(previewValue)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+        .font(.callout)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 6))
+    }
+
+    private var previewValue: String {
+        if filter.isRawSQL {
+            return filter.rawSQL ?? ""
+        }
+        guard filter.filterOperator.requiresValue else { return "" }
+        return filter.value
+    }
+
+    private var dropHighlight: some View {
+        RoundedRectangle(cornerRadius: 4)
+            .fill(Color.accentColor.opacity(isDropTargeted ? 0.18 : 0))
     }
 
     private var enabledToggle: some View {
@@ -203,6 +277,22 @@ struct FilterRowView: View {
         } label: {
             Label(String(localized: "Duplicate Filter"), systemImage: "doc.on.doc")
         }
+
+        Divider()
+
+        Button {
+            onMoveUp()
+        } label: {
+            Label(String(localized: "Move Up"), systemImage: "arrow.up")
+        }
+        .disabled(!canMoveUp)
+
+        Button {
+            onMoveDown()
+        } label: {
+            Label(String(localized: "Move Down"), systemImage: "arrow.down")
+        }
+        .disabled(!canMoveDown)
 
         Divider()
 

@@ -227,6 +227,16 @@
 	<array>
 		<dict>
 			<key>UTTypeIdentifier</key>
+			<string>com.tablepro.filter-row</string>
+			<key>UTTypeDescription</key>
+			<string>TablePro Filter Row</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+		</dict>
+		<dict>
+			<key>UTTypeIdentifier</key>
 			<string>com.tablepro.beancount</string>
 			<key>UTTypeDescription</key>
 			<string>Beancount Ledger</string>

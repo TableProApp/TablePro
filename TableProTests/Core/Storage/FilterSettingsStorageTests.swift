@@ -34,6 +34,29 @@ struct FilterSettingsStorageTests {
         )
     }
 
+    @Test("Saving then loading preserves the order of several filters")
+    func roundTripsFilterOrder() {
+        let (storage, directory) = makeStorage()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let connectionId = UUID()
+        let filters = [
+            TestFixtures.makeTableFilter(column: "id", value: "42"),
+            TestFixtures.makeTableFilter(column: "name", op: .contains, value: "ana"),
+            TestFixtures.makeTableFilter(column: "age", op: .greaterThan, value: "18"),
+        ]
+
+        storage.saveLastFilters(filters, for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil)
+
+        let loaded = storage.loadLastFilters(
+            for: "users",
+            connectionId: connectionId,
+            databaseName: "db",
+            schemaName: nil
+        )
+        #expect(loaded == filters)
+        #expect(loaded.map(\.columnName) == ["id", "name", "age"])
+    }
+
     @Test("Loading an unsaved table returns no filters")
     func loadReturnsEmptyForMissing() {
         let (storage, directory) = makeStorage()

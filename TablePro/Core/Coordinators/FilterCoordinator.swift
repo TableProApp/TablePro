@@ -340,6 +340,71 @@ final class FilterCoordinator {
         }
     }
 
+    enum FilterMoveDirection {
+        case up
+        case down
+    }
+
+    struct FilterMove: Equatable {
+        let source: IndexSet
+        let destination: Int
+    }
+
+    static func filterMove(
+        in filters: [TableFilter],
+        moving draggedID: UUID,
+        onto targetID: UUID
+    ) -> FilterMove? {
+        guard draggedID != targetID,
+              let from = filters.firstIndex(where: { $0.id == draggedID }),
+              let target = filters.firstIndex(where: { $0.id == targetID }) else { return nil }
+        return FilterMove(source: IndexSet(integer: from), destination: from < target ? target + 1 : target)
+    }
+
+    static func filterMove(
+        in filters: [TableFilter],
+        moving filterID: UUID,
+        direction: FilterMoveDirection
+    ) -> FilterMove? {
+        guard let from = filters.firstIndex(where: { $0.id == filterID }) else { return nil }
+        switch direction {
+        case .up:
+            guard from > 0 else { return nil }
+            return FilterMove(source: IndexSet(integer: from), destination: from - 1)
+        case .down:
+            guard from < filters.count - 1 else { return nil }
+            return FilterMove(source: IndexSet(integer: from), destination: from + 2)
+        }
+    }
+
+    func moveFilter(_ draggedID: UUID, onto targetID: UUID) {
+        guard let move = Self.filterMove(
+            in: selectedTabFilterState.filters,
+            moving: draggedID,
+            onto: targetID
+        ) else { return }
+        applyFilterMove(move)
+    }
+
+    func moveFilter(_ filterID: UUID, direction: FilterMoveDirection) {
+        guard let move = Self.filterMove(
+            in: selectedTabFilterState.filters,
+            moving: filterID,
+            direction: direction
+        ) else { return }
+        applyFilterMove(move)
+    }
+
+    func canMoveFilter(_ filterID: UUID, direction: FilterMoveDirection) -> Bool {
+        Self.filterMove(in: selectedTabFilterState.filters, moving: filterID, direction: direction) != nil
+    }
+
+    private func applyFilterMove(_ move: FilterMove) {
+        mutateSelectedTabFilterState { state in
+            state.filters.move(fromOffsets: move.source, toOffset: move.destination)
+        }
+    }
+
     func filterBinding(for filter: TableFilter) -> Binding<TableFilter> {
         Binding(
             get: { [weak self] in
