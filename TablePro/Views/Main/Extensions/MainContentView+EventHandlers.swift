@@ -60,7 +60,7 @@ extension MainContentView {
             coordinator.promotePreviewTab()
         }
 
-        coordinator.persistence.saveOrClearAggregated()
+        coordinator.persistence.saveAggregated()
         MainContentView.lifecycleLogger.debug(
             "[switch] handleStructureChange tabCount=\(tabManager.tabs.count) ms=\(Int(Date().timeIntervalSince(t0) * 1_000))"
         )

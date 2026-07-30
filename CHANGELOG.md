@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Quitting no longer loses unsaved SQL editor tabs. A window with no tabs loaded yet, such as one still waiting on its connection, could erase the saved tabs for that connection, so nothing came back on relaunch. Editors are also saved about a second after you stop typing instead of waiting up to 30 seconds, and a query over 500KB is kept in full rather than restored empty. (#1997)
 - Opening a large MongoDB collection no longer hangs. Row counts that back the pagination display now give up after 5 seconds and leave the estimate in place instead of holding the tab.
 - Stop now cancels a running MongoDB query on the server, rather than leaving it running until it finishes on its own.
 - A MongoDB query that runs out of time now says so, and points at the missing index that usually causes it.

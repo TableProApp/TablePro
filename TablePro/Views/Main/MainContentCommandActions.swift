@@ -1096,7 +1096,7 @@ final class MainContentCommandActions {
             .sink { [weak self] _ in
                 guard let coordinator = self?.coordinator else { return }
                 guard !MainContentCoordinator.isAppTerminating else { return }
-                coordinator.persistence.saveOrClearAggregated()
+                coordinator.persistence.saveAggregated()
             }
             .store(in: &eventCancellables)
     }

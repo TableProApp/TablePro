@@ -40,6 +40,9 @@ struct PersistedTab: Codable {
     var columnWidths: [String: CGFloat]?
     var windowGroupIndex: Int?
 
+    /// Set when the query was too large for the tab-state JSON and lives in a sidecar file.
+    var overflowFileName: String?
+
     init(
         id: UUID,
         title: String,
@@ -80,6 +83,7 @@ struct PersistedTab: Codable {
         case id, title, query, tabType, tableName, isView, databaseName, schemaName
         case sourceFileURL, erDiagramSchemaKey, queryParameters
         case sortColumns, restoredPage, cursorOffset, columnWidths, windowGroupIndex
+        case overflowFileName
     }
 
     init(from decoder: Decoder) throws {
@@ -100,6 +104,7 @@ struct PersistedTab: Codable {
         cursorOffset = try container.decodeIfPresent(Int.self, forKey: .cursorOffset)
         columnWidths = try container.decodeIfPresent([String: CGFloat].self, forKey: .columnWidths)
         windowGroupIndex = try container.decodeIfPresent(Int.self, forKey: .windowGroupIndex)
+        overflowFileName = try container.decodeIfPresent(String.self, forKey: .overflowFileName)
     }
 }
 

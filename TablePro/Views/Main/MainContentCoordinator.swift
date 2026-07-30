@@ -199,6 +199,7 @@ final class MainContentCoordinator {
     @ObservationIgnored internal var redisDatabaseSwitchTask: Task<Void, Never>?
     @ObservationIgnored private var changeManagerUpdateTask: Task<Void, Never>?
     @ObservationIgnored private var periodicSaveTask: Task<Void, Never>?
+    @ObservationIgnored private var draftSaveTask: Task<Void, Never>?
     @ObservationIgnored private var terminationObserver: NSObjectProtocol?
     @ObservationIgnored private var postConnectCancellable: AnyCancellable?
     @ObservationIgnored private var externalFileModCancellable: AnyCancellable?
@@ -371,6 +372,21 @@ final class MainContentCoordinator {
     }
 
     private static let periodicSaveInterval: Duration = .seconds(30)
+    private static let draftSaveDebounce: Duration = .seconds(1)
+
+    /// Persist shortly after the user stops typing. Editing query text changes no tab
+    /// identity, so it drives none of the structural saves, and without this a scratch
+    /// query lives only in memory until the 30 second timer or the quit-time flush.
+    func scheduleDraftSave() {
+        guard !Self.isAppTerminating, !isTearingDown else { return }
+        draftSaveTask?.cancel()
+        draftSaveTask = Task { [weak self] in
+            try? await Task.sleep(for: Self.draftSaveDebounce)
+            guard let self, !Task.isCancelled, !Self.isAppTerminating, !self.isTearingDown else { return }
+            guard self.isFirstCoordinatorForConnection() else { return }
+            self.persistence.saveAggregated()
+        }
+    }
 
     private func startPeriodicSave() {
         guard periodicSaveTask == nil else { return }
@@ -379,7 +395,7 @@ final class MainContentCoordinator {
                 try? await Task.sleep(for: Self.periodicSaveInterval)
                 guard let self, !Task.isCancelled, !Self.isAppTerminating, !self.isTearingDown else { return }
                 guard self.isFirstCoordinatorForConnection() else { continue }
-                self.persistence.saveOrClearAggregated()
+                self.persistence.saveAggregated()
             }
         }
     }
@@ -717,6 +733,8 @@ final class MainContentCoordinator {
         changeManagerUpdateTask = nil
         periodicSaveTask?.cancel()
         periodicSaveTask = nil
+        draftSaveTask?.cancel()
+        draftSaveTask = nil
         redisDatabaseSwitchTask?.cancel()
         redisDatabaseSwitchTask = nil
 
