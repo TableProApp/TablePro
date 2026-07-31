@@ -554,6 +554,11 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         return indices
     }
 
+    private func invalidateDisplayCache(forDisplayRow displayIndex: Int) {
+        guard let row = displayRow(at: displayIndex) else { return }
+        displayCache.clearValues(forID: row.id)
+    }
+
     private func invalidateDisplayCache(forDisplayRow displayIndex: Int, column: Int) {
         guard let row = displayRow(at: displayIndex) else { return }
         guard let box = displayCache.box(forID: row.id),
@@ -652,6 +657,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         guard let tableView else { return }
         let visibleRange = tableView.rows(in: tableView.visibleRect)
         guard visibleRange.length > 0 else { return }
+        invalidateDisplayCache()
         tableView.reloadData(
             forRowIndexes: IndexSet(integersIn: visibleRange.location..<(visibleRange.location + visibleRange.length)),
             columnIndexes: IndexSet(integersIn: 0..<tableView.numberOfColumns)
@@ -664,6 +670,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     /// undo delete).
     func reloadRowAndState(at row: Int) {
         guard let tableView, row >= 0, row < tableView.numberOfRows else { return }
+        invalidateDisplayCache(forDisplayRow: row)
         tableView.reloadData(
             forRowIndexes: IndexSet(integer: row),
             columnIndexes: IndexSet(integersIn: 0..<tableView.numberOfColumns)

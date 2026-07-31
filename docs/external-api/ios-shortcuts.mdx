@@ -3,8 +3,6 @@ title: iOS Shortcuts
 description: Add rows to a table or open a connection from the Shortcuts app on iPhone and iPad
 ---
 
-# iOS Shortcuts
-
 TablePro for iOS exposes App Intents, so you can add data to a database table from the Shortcuts app, the Share Sheet, or by voice. The insert actions connect to a saved connection and insert the rows in the background, without opening the app.
 
 This is iOS only. On macOS, use the [URL scheme](/external-api/url-scheme) and [MCP](/external-api/mcp-tools).
@@ -19,7 +17,7 @@ This is iOS only. On macOS, use the [URL scheme](/external-api/url-scheme) and [
 
 Open Connection launches the app on the chosen connection. The two insert actions run in the background and share the same pickers:
 
-- **Connection**: one of your saved connections. Relational databases only (MySQL, MariaDB, PostgreSQL, Redshift, SQL Server, SQLite, DuckDB).
+- **Connection**: the picker lists every saved connection. Inserts work on MySQL, MariaDB, PostgreSQL, Redshift, SQL Server, SQLite, and DuckDB. Pick any other type, Redis for example, and the action fails with an unsupported database type error.
 - **Database or Schema**: optional. Leave it empty to use the connection's configured database. On schema databases like PostgreSQL it lists schemas; on others it lists databases.
 - **Table**: the table to insert into. The list is read from the chosen connection.
 

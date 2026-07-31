@@ -3,8 +3,6 @@ title: Versioning
 description: Stability policy for the URL scheme, MCP tools, and resource catalog
 ---
 
-# Versioning
-
 The External API follows TablePro's semver. The contract is the URL scheme, the MCP tool catalog, the resource list, and the pairing flow.
 
 The MCP server accepts three versions from the [MCP spec](https://modelcontextprotocol.io): `2025-03-26`, `2025-06-18`, and `2025-11-25`. On `initialize` the server echoes the version the client asked for. If the client asks for something else, the server returns `2025-11-25` and the client decides whether to use it.

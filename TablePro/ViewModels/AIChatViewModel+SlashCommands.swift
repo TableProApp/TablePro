@@ -32,16 +32,25 @@ extension AIChatViewModel {
         case .explain:
             guard let query = resolveQuery(body: body, command: command) else { return }
             messages.append(ChatTurn(role: .user, blocks: [.text(invocationText)]))
-            sendWithContext(prompt: AIPromptTemplates.explainQuery(query, databaseType: databaseType))
+            sendWithWalkthroughContext(
+                prompt: AIPromptTemplates.explainQuery(query, databaseType: databaseType),
+                beforeSQL: query
+            )
         case .optimize:
             guard let query = resolveQuery(body: body, command: command) else { return }
             messages.append(ChatTurn(role: .user, blocks: [.text(invocationText)]))
-            sendWithContext(prompt: AIPromptTemplates.optimizeQuery(query, databaseType: databaseType))
+            sendWithWalkthroughContext(
+                prompt: AIPromptTemplates.optimizeQuery(query, databaseType: databaseType),
+                beforeSQL: query
+            )
         case .fix:
             guard let query = resolveQuery(body: body, command: command) else { return }
             messages.append(ChatTurn(role: .user, blocks: [.text(invocationText)]))
             let lastError = queryResults ?? ""
-            sendWithContext(prompt: AIPromptTemplates.fixError(query: query, error: lastError, databaseType: databaseType))
+            sendWithWalkthroughContext(
+                prompt: AIPromptTemplates.fixError(query: query, error: lastError, databaseType: databaseType),
+                beforeSQL: query
+            )
         }
     }
 
@@ -73,7 +82,7 @@ extension AIChatViewModel {
         startNewConversation()
         let databaseType = connection?.type ?? .mysql
         let prompt = AIPromptTemplates.explainQuery(selectedText, databaseType: databaseType)
-        sendWithContext(prompt: prompt)
+        sendWithWalkthroughContext(prompt: prompt, beforeSQL: selectedText)
     }
 
     func handleOptimizeSelection(_ selectedText: String) {
@@ -81,7 +90,7 @@ extension AIChatViewModel {
         startNewConversation()
         let databaseType = connection?.type ?? .mysql
         let prompt = AIPromptTemplates.optimizeQuery(selectedText, databaseType: databaseType)
-        sendWithContext(prompt: prompt)
+        sendWithWalkthroughContext(prompt: prompt, beforeSQL: selectedText)
     }
 
     private func resolveQuery(body: String, command: SlashCommand) -> String? {

@@ -19,7 +19,7 @@ enum SidebarContextMenuLogic {
         switch type {
         case .view, .materializedView, .foreignTable, .systemTable:
             return true
-        case .table, .none:
+        case .table, .partitionedTable, .none:
             return false
         }
     }
@@ -39,7 +39,7 @@ enum SidebarContextMenuLogic {
         case .materializedView: return String(localized: "Drop Materialized View")
         case .foreignTable:     return String(localized: "Drop Foreign Table")
         case .systemTable:      return String(localized: "Drop")
-        case .table, .none:     return String(localized: "Delete")
+        case .table, .partitionedTable, .none: return String(localized: "Delete")
         }
     }
 

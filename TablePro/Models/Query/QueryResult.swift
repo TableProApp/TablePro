@@ -99,6 +99,7 @@ struct TableInfo: Identifiable, Hashable, Sendable {
         case materializedView = "MATERIALIZED VIEW"
         case foreignTable = "FOREIGN TABLE"
         case systemTable = "SYSTEM TABLE"
+        case partitionedTable = "PARTITIONED TABLE"
     }
 
     init(name: String, type: TableType, rowCount: Int?, schema: String? = nil, comment: String? = nil) {

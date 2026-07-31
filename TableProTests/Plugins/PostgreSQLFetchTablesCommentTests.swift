@@ -15,15 +15,18 @@ struct PostgreSQLFetchTablesCommentTests {
         #expect(query.contains("obj_description"))
     }
 
-    @Test("Base query does not reference pg_class/pg_namespace so the portability fallback stays minimal")
-    func baseQueryStaysPortable() {
+    @Test("Fully degraded query does not reference pg_class/pg_namespace so the portability fallback stays minimal")
+    func fallbackQueryStaysPortable() {
         let query = PostgreSQLSchemaQueries.fetchTables(
             schemaLiteral: "public",
             includeMaterializedViews: false,
-            includeForeignTables: false
+            includeForeignTables: false,
+            includeComments: false,
+            includePartitionAwareness: false
         )
         #expect(!query.contains("pg_catalog.pg_class"))
         #expect(!query.contains("pg_catalog.pg_namespace"))
+        #expect(!query.contains("pg_catalog.pg_inherits"))
     }
 
     @Test("Every union branch projects a comment column so columns stay aligned")

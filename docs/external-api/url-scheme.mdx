@@ -3,8 +3,6 @@ title: URL Scheme
 description: Every tablepro:// deep link action with parameters and examples
 ---
 
-# URL Scheme
-
 The `tablepro://` URL scheme drives the TablePro GUI from outside the app. Use it from the shell with `open`, from another app with `NSWorkspace.shared.open(url:)`, or from a Raycast extension with `open()` from `@raycast/api`.
 
 The scheme covers two kinds of actions:
@@ -18,7 +16,7 @@ Data exchange is not part of the URL scheme. For that, use [MCP](/external-api/m
 
 Connection paths use the connection's UUID, not its display name.
 
-```
+```text
 tablepro://connect/9f1f0c3e-2e3d-4b14-9c3a-1d2f4ad1f6f1
 ```
 
@@ -30,7 +28,7 @@ Pre-0.38 builds accepted `tablepro://connect/<name>/...` paths. Name-based paths
 
 ## Open a connection
 
-```
+```text
 tablepro://connect/<connection-uuid>
 ```
 
@@ -44,7 +42,7 @@ open "tablepro://connect/9f1f0c3e-2e3d-4b14-9c3a-1d2f4ad1f6f1"
 
 ## Open a table
 
-```
+```text
 tablepro://connect/<connection-uuid>/table/<table-name>
 tablepro://connect/<connection-uuid>/database/<db>/table/<table-name>
 tablepro://connect/<connection-uuid>/database/<db>/schema/<schema>/table/<table-name>
@@ -67,11 +65,11 @@ open "tablepro://connect/9f1f0c3e-2e3d-4b14-9c3a-1d2f4ad1f6f1/database/app/schem
 
 ## Run a query
 
-```
+```text
 tablepro://connect/<connection-uuid>/query?sql=<percent-encoded-sql>
 ```
 
-Opens a new query tab with the SQL pre-filled. TablePro always shows a confirmation dialog first, previewing the first 300 characters of the SQL. The query does not auto-execute; the user runs it from the editor. The SQL has a 51,200-character cap.
+Opens a query tab with the SQL pre-filled. TablePro always shows a confirmation dialog first, previewing the first 300 characters of the SQL. A tab that already holds exactly this SQL comes to front instead of a second tab opening. The query does not auto-execute; the user runs it from the editor. The SQL has a 51,200-character cap.
 
 To run SQL from a script and read rows back, use the MCP [`execute_query`](/external-api/mcp-tools) tool instead. The URL scheme is for handing SQL into the GUI, not for headless execution.
 
@@ -85,7 +83,7 @@ open "tablepro://connect/9f1f0c3e-2e3d-4b14-9c3a-1d2f4ad1f6f1/query?sql=SELECT%2
 
 ## Start pairing
 
-```
+```text
 tablepro://integrations/pair?client=<name>&challenge=<base64url>&redirect=<url>&scopes=<scope>&connection-ids=<csv>
 ```
 
@@ -119,7 +117,7 @@ See [Pairing](/external-api/pairing) for the full sequence and the exchange step
 
 ## Lazy-start the MCP server
 
-```
+```text
 tablepro://integrations/start-mcp
 ```
 
@@ -133,7 +131,7 @@ open "tablepro://integrations/start-mcp"
 
 ## Import a connection
 
-```
+```text
 tablepro://import?name=<n>&host=<h>&port=<p>&type=<t>&username=<u>&database=<db>
 ```
 
@@ -174,7 +172,7 @@ Set `ssh=1` to enable SSH tunneling.
 | `sshHost` | SSH server hostname. |
 | `sshPort` | SSH port. Default `22`. |
 | `sshUsername` | SSH username. |
-| `sshAuthMethod` | `Password`, `Private Key`, `SSH Agent`, or `Keyboard Interactive`. Unrecognized values fall back to `Password`. |
+| `sshAuthMethod` | `Password`, `Private Key`, `SSH Agent`, `Keyboard Interactive`, or `None`. Unrecognized values fall back to `Password`. |
 | `sshPrivateKeyPath` | Path to private key file. |
 | `sshAgentSocketPath` | Custom SSH agent socket path. |
 | `sshJumpHosts` | JSON array of jump hosts. |

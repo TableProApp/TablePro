@@ -154,8 +154,7 @@ struct QueryTab: Identifiable, Equatable {
     }
 
     func toPersistedTab(windowGroupIndex: Int? = nil) -> PersistedTab {
-        let queryLength = (content.query as NSString).length
-        let persistedQuery = queryLength > TabQueryContent.maxPersistableQuerySize ? "" : content.query
+        let persistedQuery = content.query
 
         let persistedSort: [PersistedSortColumn]? = {
             let resolved = sortState.columns.compactMap { column -> PersistedSortColumn? in

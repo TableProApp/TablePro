@@ -3,8 +3,6 @@ title: Cloudflare Tunnel
 description: Reach a database behind Cloudflare Access by letting TablePro manage the cloudflared process
 ---
 
-# Cloudflare Tunnel
-
 Cloudflare Tunnel routes your database connection through `cloudflared access tcp` so you can reach a database published behind [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/). Instead of running cloudflared by hand in a terminal before every session, TablePro starts it when you connect and stops it when you disconnect, the same way it manages [SSH tunnels](/databases/ssh-tunneling).
 
 ## How it works
@@ -41,11 +39,11 @@ TablePro looks for cloudflared on your `PATH` and in the common Homebrew locatio
 
 ## Setting up
 
-The Cloudflare Tunnel pane appears for the same databases that support SSH tunneling. SQLite and cloud-managed databases like BigQuery, DynamoDB, and Snowflake don't show it.
+The Cloudflare Tunnel pane appears for the same databases that support [SSH tunneling](/databases/ssh-tunneling), so file-based and HTTP-API databases such as SQLite, BigQuery, DynamoDB, and Snowflake don't show it.
 
 Open the connection form, switch to the **Cloudflare Tunnel** pane, toggle **Enable Cloudflare Tunnel** on, enter the Access **hostname**, choose how to authenticate, then go back to **General** and click **Test Connection**.
 
-A connection uses one tunnel at a time. If the SSH Tunnel is enabled, the pane offers to turn it off.
+A connection uses one connection method at a time. If an SSH tunnel, Cloud SQL Auth Proxy, or SOCKS proxy is already enabled, the pane shows a button to disable it.
 
 ## Options
 
@@ -58,13 +56,13 @@ A connection uses one tunnel at a time. If the SSH Tunnel is enabled, the pane o
 ### Authentication
 
 <Tabs>
-  <Tab title="Browser sign-in">
-    cloudflared signs in through your browser and caches a token under `~/.cloudflared`. Click **Sign In with Browser** once so the login happens up front; after that, connecting uses the cached token without opening a browser.
+  <Tab title="Browser Sign-In">
+    cloudflared signs in through your browser and caches a token under `~/.cloudflared`. Click **Sign In with Browser...** once so the login happens up front; after that, connecting uses the cached token without opening a browser.
 
     If you connect without a cached token, TablePro detects the sign-in prompt and asks you to sign in, rather than appearing to hang.
   </Tab>
-  <Tab title="Service token">
-    For unattended connections, enter a Cloudflare Access **service token** (Client ID and Client Secret). TablePro stores them in the macOS Keychain and passes them to cloudflared as environment variables, never on the command line.
+  <Tab title="Service Token">
+    For unattended connections, enter a Cloudflare Access service token (**Client ID** and **Client Secret**). TablePro stores them in the macOS Keychain and passes them to cloudflared as environment variables, never on the command line.
 
     <Warning>
     The Access application policy must use a **Service Auth** rule. If the policy only allows an identity provider, Cloudflare still prompts for a browser sign-in even when a service token is set. This is configured in your Cloudflare Zero Trust dashboard, not in TablePro.
@@ -82,7 +80,7 @@ A connection uses one tunnel at a time. If the SSH Tunnel is enabled, the pane o
 
 ### cloudflared binary
 
-Leave the path blank to auto-detect. The pane shows the detected path, or a hint to install cloudflared if it isn't found. Use **Choose** to point at a specific binary.
+Leave the path blank to auto-detect. The pane shows the detected path, or a hint to install cloudflared if it isn't found. Use **Choose...** to point at a specific binary.
 
 ## Troubleshooting
 

@@ -25,12 +25,13 @@ extension AIChatViewModel {
 
     func resolveAndAwaitApprovals(
         assembledBlocks: [ToolUseBlock],
-        assistantID: UUID
+        assistantID: UUID,
+        registry: ChatToolRegistry? = nil
     ) async -> [ToolUseBlock] {
         let initialBlocks = await MainActor.run { [weak self] () -> [ToolUseBlock] in
             guard let self else { return assembledBlocks }
             let initial = assembledBlocks.map { block -> ToolUseBlock in
-                let state = self.computeInitialApprovalState(for: block.name)
+                let state = self.computeInitialApprovalState(for: block.name, registry: registry)
                 return ToolUseBlock(
                     id: block.id,
                     name: block.name,
@@ -77,8 +78,11 @@ extension AIChatViewModel {
     }
 
     @MainActor
-    func computeInitialApprovalState(for toolName: String) -> ToolApprovalState {
-        let tool = ChatToolRegistry.shared.tool(named: toolName)
+    func computeInitialApprovalState(
+        for toolName: String,
+        registry: ChatToolRegistry? = nil
+    ) -> ToolApprovalState {
+        let tool = (registry ?? ChatToolRegistry.shared).tool(named: toolName)
         let toolMode = tool?.mode
 
         if toolMode == .readOnly {

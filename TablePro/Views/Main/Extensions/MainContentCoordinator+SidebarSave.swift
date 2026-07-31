@@ -16,7 +16,11 @@ extension MainContentCoordinator {
     ) async throws {
         guard let tab = tabManager.selectedTab,
             !selectionState.indices.isEmpty,
-            tab.tableContext.tableName != nil
+            tab.tableContext.tableName != nil,
+            GridSelectionOwner.resolve(
+                tabType: tab.tabType,
+                resultsViewMode: tab.display.resultsViewMode
+            ) == .dataGrid
         else {
             return
         }
@@ -25,9 +29,14 @@ extension MainContentCoordinator {
         guard !editedFields.isEmpty else { return }
 
         let tableRows = tabSessionRegistry.tableRows(for: tab.id)
+        let displayIDs = activeGridDisplayIDs
         let changes: [RowChange] = selectionState.indices.sorted().compactMap { rowIndex -> RowChange? in
-            guard rowIndex < tableRows.rows.count else { return nil }
-            let originalRow = Array(tableRows.rows[rowIndex].values)
+            guard let resolvedRow = DisplayRowMapping.row(
+                forDisplay: rowIndex,
+                displayIDs: displayIDs,
+                in: tableRows
+            ) else { return nil }
+            let originalRow = Array(resolvedRow.values)
             return RowChange(
                 rowIndex: rowIndex,
                 type: .update,

@@ -1,0 +1,152 @@
+DEFINE SCHEMA
+
+    RECORD TYPE AppSettings (
+        "___createTime" TIMESTAMP,
+        "___createdBy"  REFERENCE,
+        "___etag"       STRING,
+        "___modTime"    TIMESTAMP,
+        "___modifiedBy" REFERENCE,
+        "___recordID"   REFERENCE,
+        category        STRING QUERYABLE SEARCHABLE SORTABLE,
+        modifiedAtLocal TIMESTAMP QUERYABLE SORTABLE,
+        schemaVersion   INT64 QUERYABLE SORTABLE,
+        settingsJson    BYTES QUERYABLE SORTABLE,
+        GRANT WRITE TO "_creator",
+        GRANT CREATE TO "_icloud",
+        GRANT READ TO "_world"
+    );
+
+    RECORD TYPE Connection (
+        "___createTime"      TIMESTAMP,
+        "___createdBy"       REFERENCE,
+        "___etag"            STRING,
+        "___modTime"         TIMESTAMP,
+        "___modifiedBy"      REFERENCE,
+        "___recordID"        REFERENCE QUERYABLE,
+        additionalFieldsJson BYTES QUERYABLE SORTABLE,
+        aiPolicy             STRING QUERYABLE SEARCHABLE SORTABLE,
+        color                STRING QUERYABLE SEARCHABLE SORTABLE,
+        colorTag             STRING QUERYABLE SEARCHABLE SORTABLE,
+        connectionId         STRING QUERYABLE SEARCHABLE SORTABLE,
+        database             STRING QUERYABLE SEARCHABLE SORTABLE,
+        groupId              STRING QUERYABLE SEARCHABLE SORTABLE,
+        host                 STRING QUERYABLE SEARCHABLE SORTABLE,
+        isReadOnly           INT64 QUERYABLE SORTABLE,
+        modifiedAtLocal      TIMESTAMP QUERYABLE SORTABLE,
+        name                 STRING QUERYABLE SEARCHABLE SORTABLE,
+        port                 INT64 QUERYABLE SORTABLE,
+        redisDatabase        INT64 QUERYABLE SORTABLE,
+        safeModeLevel        STRING QUERYABLE SEARCHABLE SORTABLE,
+        schemaVersion        INT64 QUERYABLE SORTABLE,
+        sortOrder            INT64 QUERYABLE SORTABLE,
+        sshConfigJson        BYTES QUERYABLE SORTABLE,
+        sshEnabled           INT64 QUERYABLE SORTABLE,
+        sshProfileId         STRING QUERYABLE SEARCHABLE SORTABLE,
+        sslConfigJson        BYTES QUERYABLE SORTABLE,
+        sslEnabled           INT64 QUERYABLE SORTABLE,
+        startupCommands      STRING QUERYABLE SEARCHABLE SORTABLE,
+        tagId                STRING QUERYABLE SEARCHABLE SORTABLE,
+        type                 STRING QUERYABLE SEARCHABLE SORTABLE,
+        username             STRING QUERYABLE SEARCHABLE SORTABLE,
+        GRANT WRITE TO "_creator",
+        GRANT CREATE TO "_icloud",
+        GRANT READ TO "_world"
+    );
+
+    RECORD TYPE ConnectionGroup (
+        "___createTime" TIMESTAMP,
+        "___createdBy"  REFERENCE,
+        "___etag"       STRING,
+        "___modTime"    TIMESTAMP,
+        "___modifiedBy" REFERENCE,
+        "___recordID"   REFERENCE,
+        color           STRING QUERYABLE SEARCHABLE SORTABLE,
+        groupId         STRING QUERYABLE SEARCHABLE SORTABLE,
+        modifiedAtLocal TIMESTAMP QUERYABLE SORTABLE,
+        name            STRING QUERYABLE SEARCHABLE SORTABLE,
+        parentId        STRING QUERYABLE SEARCHABLE SORTABLE,
+        schemaVersion   INT64 QUERYABLE SORTABLE,
+        sortOrder       INT64 QUERYABLE SORTABLE,
+        GRANT WRITE TO "_creator",
+        GRANT CREATE TO "_icloud",
+        GRANT READ TO "_world"
+    );
+
+    RECORD TYPE ConnectionTag (
+        "___createTime" TIMESTAMP,
+        "___createdBy"  REFERENCE,
+        "___etag"       STRING,
+        "___modTime"    TIMESTAMP,
+        "___modifiedBy" REFERENCE,
+        "___recordID"   REFERENCE,
+        color           STRING QUERYABLE SEARCHABLE SORTABLE,
+        isPreset        INT64 QUERYABLE SORTABLE,
+        modifiedAtLocal TIMESTAMP QUERYABLE SORTABLE,
+        name            STRING QUERYABLE SEARCHABLE SORTABLE,
+        schemaVersion   INT64 QUERYABLE SORTABLE,
+        tagId           STRING QUERYABLE SEARCHABLE SORTABLE,
+        GRANT WRITE TO "_creator",
+        GRANT CREATE TO "_icloud",
+        GRANT READ TO "_world"
+    );
+
+    RECORD TYPE QueryHistory (
+        "___createTime" TIMESTAMP,
+        "___createdBy"  REFERENCE,
+        "___etag"       STRING,
+        "___modTime"    TIMESTAMP,
+        "___modifiedBy" REFERENCE,
+        "___recordID"   REFERENCE,
+        connectionId    STRING QUERYABLE SEARCHABLE SORTABLE,
+        databaseName    STRING QUERYABLE SEARCHABLE SORTABLE,
+        entryId         STRING QUERYABLE SEARCHABLE SORTABLE,
+        errorMessage    STRING QUERYABLE SEARCHABLE SORTABLE,
+        executedAt      TIMESTAMP QUERYABLE SORTABLE,
+        executionTime   DOUBLE QUERYABLE SORTABLE,
+        query           STRING QUERYABLE SEARCHABLE SORTABLE,
+        rowCount        INT64 QUERYABLE SORTABLE,
+        schemaVersion   INT64 QUERYABLE SORTABLE,
+        wasSuccessful   INT64 QUERYABLE SORTABLE,
+        GRANT WRITE TO "_creator",
+        GRANT CREATE TO "_icloud",
+        GRANT READ TO "_world"
+    );
+
+    RECORD TYPE SSHProfile (
+        "___createTime" TIMESTAMP,
+        "___createdBy"  REFERENCE,
+        "___etag"       STRING,
+        "___modTime"    TIMESTAMP,
+        "___modifiedBy" REFERENCE,
+        "___recordID"   REFERENCE,
+        agentSocketPath STRING QUERYABLE SEARCHABLE SORTABLE,
+        authMethod      STRING QUERYABLE SEARCHABLE SORTABLE,
+        host            STRING QUERYABLE SEARCHABLE SORTABLE,
+        modifiedAtLocal TIMESTAMP QUERYABLE SORTABLE,
+        name            STRING QUERYABLE SEARCHABLE SORTABLE,
+        port            INT64 QUERYABLE SORTABLE,
+        privateKeyPath  STRING QUERYABLE SEARCHABLE SORTABLE,
+        profileId       STRING QUERYABLE SEARCHABLE SORTABLE,
+        schemaVersion   INT64 QUERYABLE SORTABLE,
+        totpAlgorithm   STRING QUERYABLE SEARCHABLE SORTABLE,
+        totpDigits      INT64 QUERYABLE SORTABLE,
+        totpMode        STRING QUERYABLE SEARCHABLE SORTABLE,
+        totpPeriod      INT64 QUERYABLE SORTABLE,
+        useSSHConfig    INT64 QUERYABLE SORTABLE,
+        username        STRING QUERYABLE SEARCHABLE SORTABLE,
+        GRANT WRITE TO "_creator",
+        GRANT CREATE TO "_icloud",
+        GRANT READ TO "_world"
+    );
+
+    RECORD TYPE Users (
+        "___createTime" TIMESTAMP,
+        "___createdBy"  REFERENCE,
+        "___etag"       STRING,
+        "___modTime"    TIMESTAMP,
+        "___modifiedBy" REFERENCE,
+        "___recordID"   REFERENCE,
+        roles           LIST<INT64>,
+        GRANT WRITE TO "_creator",
+        GRANT READ TO "_world"
+    );

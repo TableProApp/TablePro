@@ -3,8 +3,6 @@ title: Tokens
 description: Token model, scopes, connection allowlists, expiry, revocation, and the audit log
 ---
 
-# Tokens
-
 Bearer tokens authenticate external requests to the MCP server. Each token carries a scope, an optional connection allowlist, and an optional expiry. TablePro stores only the SHA-256 hash plus a per-token salt at `~/Library/Application Support/TablePro/mcp-tokens.json` with `0600` permissions. The plaintext is shown once at creation and never again.
 
 ## Require authentication

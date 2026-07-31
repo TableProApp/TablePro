@@ -17,6 +17,7 @@ final class AIChatViewModel {
         case loading
         case streaming(assistantID: UUID)
         case awaitingApproval
+        case pausedAtToolLimit(count: Int)
         case failed(AIProviderError?)
     }
 
@@ -51,7 +52,7 @@ final class AIChatViewModel {
         switch streamingState {
         case .loading, .streaming:
             return true
-        case .idle, .awaitingApproval, .failed:
+        case .idle, .awaitingApproval, .pausedAtToolLimit, .failed:
             return false
         }
     }
@@ -60,6 +61,13 @@ final class AIChatViewModel {
         if case .failed = streamingState { return true }
         return false
     }
+
+    var toolLimitPauseCount: Int? {
+        if case .pausedAtToolLimit(let count) = streamingState { return count }
+        return nil
+    }
+
+    var isPausedAtToolLimit: Bool { toolLimitPauseCount != nil }
 
     var lastError: AIProviderError? {
         if case .failed(let error) = streamingState { return error }
@@ -70,6 +78,7 @@ final class AIChatViewModel {
         lastError?.isRetryable ?? true
     }
 
+    @ObservationIgnored var pendingWalkthroughBeforeSQL: String?
     @ObservationIgnored var inFlightColumnFetches: [String: Task<Void, Never>] = [:]
     @ObservationIgnored var inFlightSchemaLoad: Task<Void, Never>?
     @ObservationIgnored nonisolated(unsafe) var streamingTask: Task<Void, Never>?
@@ -151,6 +160,11 @@ final class AIChatViewModel {
         startStreaming()
     }
 
+    func sendWithWalkthroughContext(prompt: String, beforeSQL: String) {
+        pendingWalkthroughBeforeSQL = beforeSQL
+        sendWithContext(prompt: prompt)
+    }
+
     func attach(_ item: ContextItem) {
         guard !attachedContext.contains(where: { $0.stableKey == item.stableKey }) else { return }
         attachedContext.append(item)
@@ -162,6 +176,7 @@ final class AIChatViewModel {
     }
 
     func cancelStream() {
+        pendingWalkthroughBeforeSQL = nil
         prepTask?.cancel()
         prepTask = nil
         streamingTask?.cancel()
@@ -246,6 +261,7 @@ final class AIChatViewModel {
         inFlightSchemaLoad = nil
         currentQuery = nil
         queryResults = nil
+        pendingWalkthroughBeforeSQL = nil
         messages = []
         errorMessage = nil
         activeConversationID = nil
@@ -263,7 +279,7 @@ final class AIChatViewModel {
         startNewConversation()
         let databaseType = connection?.type ?? .mysql
         let prompt = AIPromptTemplates.fixError(query: query, error: error, databaseType: databaseType)
-        sendWithContext(prompt: prompt)
+        sendWithWalkthroughContext(prompt: prompt, beforeSQL: query)
     }
 
     func loadAvailableModels() async {

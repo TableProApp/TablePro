@@ -4,6 +4,42 @@ description: "Product updates and announcements for TablePro"
 rss: true
 ---
 
+<Update label="July 30, 2026" description="v0.61.0">
+  ### New Features
+
+  - **Connect from a project folder**: Pick a folder from the welcome screen or File > Open Project Folder, and TablePro reads the database settings it finds in `.env`, `wp-config.php`, `prisma/schema.prisma`, `config/database.yml`, `docker-compose.yml`, `application.properties`, `application.yml`, or `appsettings.json`. Review what it found and the connection form opens filled in (#1959)
+  - **AI walkthroughs**: Explain, Optimize, and Fix Error now answer with numbered steps and a before/after SQL diff you can apply to the editor (#1945)
+  - **Close tabs in groups**: Close All Tabs, Close Other Tabs, and Close Tabs for Other Databases in the File menu. None has a shortcut out of the box; bind them in Settings > Keyboard (#1972)
+  - **Structure editing in the inspector**: Select a column, index, or foreign key in the Structure tab and edit it in the inspector, with the same type list and YES/NO menus the grid offers
+  - **AI tool call limit**: A limit you can raise or turn off in Settings > AI, now 25 per reply instead of a fixed 10. Reaching it pauses the reply and keeps what the AI found, with Continue to carry on (#1987)
+  - **Pin button on result tabs**: Pinning was already there, but only in a right-click menu and the View menu (#1982)
+
+  ### Improvements
+
+  - The welcome screen groups Import from Other App, Open Project Folder, Import Connections, and Import from URL into one Add from Existing menu
+  - A failed iCloud sync on iPhone and iPad names the cause: out of storage, no network, or a rejected change (#1990)
+  - An SSH tunnel that cannot reach the database reports whether the connection was refused or timed out, instead of leaving the driver to report a handshake timeout. The usual cause is Host holding the server's public address when the database only listens on `127.0.0.1` (#1981)
+  - The macOS local network prompt now says why TablePro needs access, so it is no longer a generic prompt that is easy to deny
+
+  ### Bug Fixes
+
+  - iCloud Sync now sends only the fields that changed, so editing a connection on two devices no longer overwrites the field the other one changed. It also reports a failed sync instead of always reporting success, downloads every page when catching up, and retries the changes iCloud rejected instead of dropping them (#643)
+  - Connection changes made on the Mac reach the iPhone and iPad app again, and a synced connection keeps its safe mode setting and its colour tag (#643)
+  - Primary Key, Nullable, Auto Inc, and the index Unique flag now change when you pick a value, and no longer offer Set NULL (#1991)
+  - A PostgreSQL partitioned table is listed once, with its partitions under it, so hundreds of partitions no longer bury the rest of the schema or fill up autocomplete (#1984)
+  - The inspector shows the Structure row you selected, not the data row in the same position
+  - An SSH tunnel no longer drops under heavy traffic, and a `ProxyCommand` line in `~/.ssh/config` is logged as skipped instead of ignored without a word
+  - MongoDB authenticates against the database set on the connection, not the one you are browsing, and creating a database now asks for its first collection so it is kept (#1970)
+  - Exporting a MongoDB collection works again, includes fields that first appear after the opening document, and `db.getCollection("name")` is accepted in the query editor (#1971)
+  - `postgres`, CockroachDB's `defaultdb`, and Redshift's `dev` are no longer hidden as system databases, and the database a connection is using always shows in the sidebar and switchers (#1967)
+  - File > New Connection, ⌘N, and the other File menu connection commands work once a connection is open (#1975)
+  - The license activation sheet opens when you click Activate License
+  - Right-clicking below the SQL editor opens the menu for the result tabs, data grid, or status bar instead of the editor's, and View > Pin Result is enabled only when there is a result tab to pin (#1982)
+  - Closing a window asks about unsaved changes in every tab, not just the one on screen (#1972)
+  - The AI chat panel stays inside the right panel at narrow widths, and a message sent right after launch is no longer replaced by the restored conversation (#1956)
+  - BigQuery `REPEATED` columns no longer show every element as `null`, and `STRUCT` cells show nested structs and arrays as JSON instead of escaped text (#1963)
+</Update>
+
 <Update label="July 25, 2026" description="v0.60.1">
   ### New Features
 
@@ -1123,7 +1159,7 @@ rss: true
 </Update>
 
 <Update label="April 17, 2026" description="v0.32.1">
-  ### Changed
+  ### Improvements
 
   - Revert in-app tab bar refactor to restore native macOS window tabs (stability)
 </Update>
@@ -2198,16 +2234,16 @@ rss: true
 <Update label="February 8, 2026" description="v0.1.0">
   The first public release of TablePro: a native macOS database client built with SwiftUI and AppKit.
 
-  ### Features
+  ### New Features
 
   - **Multi-Database Support**: Connect to MySQL, PostgreSQL, and SQLite databases
-  - **SQL Editor**: Full-featured editor with syntax highlighting, autocomplete, and line numbers
+  - **SQL Editor**: Syntax highlighting, autocomplete, and line numbers
   - **Data Grid**: Browse and edit table data with sorting, filtering, and pagination
   - **SSH Tunneling**: Secure database connections via SSH tunnels
   - **Query History**: Track and replay your SQL queries
   - **Table Structure**: View and modify table schemas, indexes, and constraints
   - **Import/Export**: Import SQL files and export data in CSV, JSON, and SQL formats
-  - **Keyboard Shortcuts**: Keyboard navigation for power users
+  - **Keyboard Shortcuts**: Keyboard navigation for the grid, sidebar, and editor
   - **Native Tab Bar**: AppKit-powered tab bar with drag-to-reorder support
   - **Dock Menu**: Quick access to welcome window and recent connections
   - **License Activation**: RSA-signed license verification with offline support

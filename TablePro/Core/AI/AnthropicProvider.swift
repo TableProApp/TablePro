@@ -307,7 +307,7 @@ final class AnthropicProvider: ChatTransport {
         let blocks = turn.blocks
         let needsTypedBlocks = blocks.contains { block in
             switch block.kind {
-            case .toolUse, .toolResult, .reasoning, .image:
+            case .toolUse, .toolResult, .reasoning, .image, .sqlWalkthrough:
                 return true
             case .text, .attachment:
                 return false
@@ -328,6 +328,10 @@ final class AnthropicProvider: ChatTransport {
     static func encodeBlock(_ block: ChatContentBlockWire) throws -> [String: Any]? {
         switch block.kind {
         case .text(let text):
+            guard !text.isEmpty else { return nil }
+            return ["type": "text", "text": text]
+        case .sqlWalkthrough(let walkthrough):
+            let text = walkthrough.transcriptText
             guard !text.isEmpty else { return nil }
             return ["type": "text", "text": text]
         case .toolUse(let toolUse):

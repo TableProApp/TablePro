@@ -15,8 +15,8 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
 
     private static let logger = Logger(subsystem: "com.TablePro.PostgreSQLDriver", category: "PostgreSQLPluginDriver")
 
-    private static let undefinedTableSQLState = "42P01"
-    private static let undefinedFunctionSQLState = "42883"
+    private static let undefinedTableSQLState = PostgreSQLTableListingLadder.undefinedTableSQLState
+    private static let undefinedFunctionSQLState = PostgreSQLTableListingLadder.undefinedFunctionSQLState
 
     private var catalogPresence: PostgreSQLCatalogPresence?
 
@@ -156,29 +156,35 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
 
     func fetchTables(schema: String?) async throws -> [PluginTableInfo] {
         let schemaLiteral = escapeLiteral(schema ?? core.currentSchema)
-        func query(includeOptionalCatalogs: Bool, includeComments: Bool) -> String {
+        func query(_ attempt: PostgreSQLTableListingAttempt) -> String {
             PostgreSQLSchemaQueries.fetchTables(
                 schemaLiteral: schemaLiteral,
-                includeMaterializedViews: includeOptionalCatalogs && includesMaterializedViews(),
-                includeForeignTables: includeOptionalCatalogs && includesForeignTables(),
-                includeComments: includeComments
+                includeMaterializedViews: attempt.includeOptionalCatalogs && includesMaterializedViews(),
+                includeForeignTables: attempt.includeOptionalCatalogs && includesForeignTables(),
+                includeComments: attempt.includeComments,
+                includePartitionAwareness: attempt.includePartitionAwareness
             )
         }
 
-        let result: PluginQueryResult
-        do {
-            result = try await execute(query: query(includeOptionalCatalogs: true, includeComments: true))
-        } catch let error as LibPQPluginError where error.sqlState == Self.undefinedTableSQLState {
-            result = try await execute(query: query(includeOptionalCatalogs: false, includeComments: true))
-        } catch let error as LibPQPluginError where error.sqlState == Self.undefinedFunctionSQLState {
-            result = try await execute(query: query(includeOptionalCatalogs: false, includeComments: false))
+        var result: PluginQueryResult?
+        for attempt in PostgreSQLTableListingLadder.degradableAttempts where result == nil {
+            do {
+                result = try await execute(query: query(attempt))
+            } catch let error as LibPQPluginError where PostgreSQLTableListingLadder.isDegradable(sqlState: error.sqlState) {
+                Self.logger.debug("Table listing degrading past \(attempt.label, privacy: .public): \(error.localizedDescription)")
+            }
+        }
+        if result == nil {
+            result = try await execute(query: query(PostgreSQLTableListingLadder.leastCapableAttempt))
         }
 
+        guard let result else { return [] }
         return result.rows.compactMap { row -> PluginTableInfo? in
             guard let name = row[0].asText else { return nil }
             let typeStr = row[1].asText ?? "BASE TABLE"
             let type: String
             switch typeStr {
+            case "PARTITIONED TABLE": type = "PARTITIONED TABLE"
             case "MATERIALIZED VIEW": type = "MATERIALIZED VIEW"
             case "FOREIGN TABLE":     type = "FOREIGN TABLE"
             case "VIEW":              type = "VIEW"
@@ -189,6 +195,26 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         }
     }
 
+    func fetchPartitions(table: String, schema: String?) async throws -> [PluginTableInfo] {
+        guard versionedCapabilities.hasDeclarativePartitioning else { return [] }
+        let schemaLiteral = escapeLiteral(schema ?? core.currentSchema)
+        let result = try await execute(
+            query: PostgreSQLSchemaQueries.fetchPartitions(
+                schemaLiteral: schemaLiteral,
+                tableLiteral: escapeLiteral(table)
+            )
+        )
+        return result.rows.compactMap { row -> PluginTableInfo? in
+            guard let name = row[0].asText else { return nil }
+            let isSubpartitioned = row[safe: 1]?.asText == "p"
+            return PluginTableInfo(
+                name: name,
+                type: isSubpartitioned ? "PARTITIONED TABLE" : "TABLE",
+                schema: schema ?? core.currentSchema,
+                comment: nil
+            )
+        }
+    }
 
     func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] {
         let columnOrdering = versionedCapabilities.hasArrayPosition
@@ -656,10 +682,19 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         let query = """
             SELECT
                 (SELECT COUNT(*)
-                 FROM information_schema.tables
-                 WHERE table_catalog = '\(escapedDbLiteral)'
-                   AND table_schema NOT LIKE 'pg!_%' ESCAPE '!'
-                   AND table_schema <> 'information_schema'),
+                 FROM information_schema.tables t
+                 WHERE t.table_catalog = '\(escapedDbLiteral)'
+                   AND t.table_schema NOT LIKE 'pg!_%' ESCAPE '!'
+                   AND t.table_schema <> 'information_schema'
+                   AND NOT EXISTS (
+                         SELECT 1
+                         FROM pg_catalog.pg_inherits i
+                         JOIN pg_catalog.pg_class parent ON parent.oid = i.inhparent
+                         JOIN pg_catalog.pg_class child ON child.oid = i.inhrelid
+                         JOIN pg_catalog.pg_namespace cn ON cn.oid = child.relnamespace
+                         WHERE cn.nspname = t.table_schema
+                           AND child.relname = t.table_name
+                           AND parent.relkind IN ('p', 'I'))),
                 pg_database_size('\(escapedDbLiteral)')
         """
         let result = try await execute(query: query)
@@ -667,19 +702,15 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         let tableCount = Int(row?[0].asText ?? "0") ?? 0
         let sizeBytes = Int64(row?[1].asText ?? "0") ?? 0
 
-        let systemDatabases = ["postgres", "template0", "template1"]
-        let isSystem = systemDatabases.contains(database)
-
         return PluginDatabaseMetadata(
             name: database,
             tableCount: tableCount,
             sizeBytes: sizeBytes,
-            isSystemDatabase: isSystem
+            isSystemDatabase: PostgreSQLSystemDatabases.postgreSQL.contains(database)
         )
     }
 
     func fetchAllDatabaseMetadata() async throws -> [PluginDatabaseMetadata] {
-        let systemDatabases = ["postgres", "template0", "template1"]
         let query = """
             SELECT d.datname, pg_database_size(d.datname)
             FROM pg_database d
@@ -690,8 +721,11 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         return result.rows.compactMap { row -> PluginDatabaseMetadata? in
             guard let dbName = row[0].asText else { return nil }
             let sizeBytes = Int64(row[1].asText ?? "0") ?? 0
-            let isSystem = systemDatabases.contains(dbName)
-            return PluginDatabaseMetadata(name: dbName, sizeBytes: sizeBytes, isSystemDatabase: isSystem)
+            return PluginDatabaseMetadata(
+                name: dbName,
+                sizeBytes: sizeBytes,
+                isSystemDatabase: PostgreSQLSystemDatabases.postgreSQL.contains(dbName)
+            )
         }
     }
 

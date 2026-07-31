@@ -4,7 +4,6 @@
 //
 
 import Foundation
-import os
 
 enum CursorAgentError: Error, LocalizedError {
     case notInstalled
@@ -23,117 +22,63 @@ enum CursorAgentError: Error, LocalizedError {
 struct CursorAgentCLI: Sendable {
     static let installCommand = "curl https://cursor.com/install -fsS | bash"
 
-    private static let logger = Logger(subsystem: "com.TablePro", category: "CursorAgentCLI")
+    private static let process = AgentCLIProcess(label: "agent")
+
+    static var discovery: AgentCLIDiscovery {
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        return AgentCLIDiscovery(
+            candidatePaths: [
+                "\(home)/.local/bin/agent",
+                "/usr/local/bin/agent",
+                "/opt/homebrew/bin/agent"
+            ],
+            preferredPathDirectories: [
+                "\(home)/.local/bin", "/opt/homebrew/bin", "/usr/local/bin",
+                "/usr/bin", "/bin", "/usr/sbin", "/sbin"
+            ]
+        )
+    }
 
     static func executableURL() -> URL? {
-        let home = FileManager.default.homeDirectoryForCurrentUser
-        let candidates = [
-            home.appending(path: ".local/bin/agent"),
-            URL(fileURLWithPath: "/usr/local/bin/agent"),
-            URL(fileURLWithPath: "/opt/homebrew/bin/agent")
-        ]
-        return candidates.first { FileManager.default.isExecutableFile(atPath: $0.path) }
+        discovery.resolveExecutable(override: nil)
     }
 
     var isInstalled: Bool { Self.executableURL() != nil }
 
     func run(_ arguments: [String]) async throws -> (code: Int32, output: String) {
-        guard let executable = Self.executableURL() else { throw CursorAgentError.notInstalled }
-        let process = Process()
-        Self.configure(process, executable: executable, arguments: arguments)
-        let stdout = Pipe()
-        process.standardOutput = stdout
-        process.standardError = stdout
-        Self.logger.debug("Running agent \(arguments.first ?? "", privacy: .public)")
-        return try await withTaskCancellationHandler {
-            try await withCheckedThrowingContinuation { continuation in
-                process.terminationHandler = { proc in
-                    let data = (try? stdout.fileHandleForReading.readToEnd() ?? Data()) ?? Data()
-                    continuation.resume(returning: (proc.terminationStatus, String(data: data, encoding: .utf8) ?? ""))
-                }
-                do {
-                    try process.run()
-                } catch {
-                    process.terminationHandler = nil
-                    continuation.resume(throwing: CursorAgentError.launchFailed(error.localizedDescription))
-                }
-            }
-        } onCancel: {
-            if process.isRunning { process.terminate() }
+        do {
+            return try await Self.process.run(try Self.makeLaunch(arguments))
+        } catch {
+            throw Self.translate(error)
         }
     }
 
     func stream(_ arguments: [String]) -> AsyncThrowingStream<String, Error> {
-        AsyncThrowingStream { continuation in
-            guard let executable = Self.executableURL() else {
-                continuation.finish(throwing: CursorAgentError.notInstalled)
-                return
-            }
-            let process = Process()
-            Self.configure(process, executable: executable, arguments: arguments)
-            let stdout = Pipe()
-            let stderr = Pipe()
-            process.standardOutput = stdout
-            process.standardError = stderr
-
-            let stderrReader = Task {
-                do {
-                    for try await line in stderr.fileHandleForReading.bytes.lines where !line.isEmpty {
-                        Self.logger.error("agent stderr: \(line, privacy: .public)")
-                    }
-                } catch {}
-            }
-            process.terminationHandler = { proc in
-                Self.logger.debug("agent exited code=\(proc.terminationStatus)")
-            }
-
-            Self.logger.debug("Streaming agent (\(arguments.count) args)")
-            do {
-                try process.run()
-            } catch {
-                stderrReader.cancel()
-                continuation.finish(throwing: CursorAgentError.launchFailed(error.localizedDescription))
-                return
-            }
-
-            let reader = Task {
-                do {
-                    for try await line in stdout.fileHandleForReading.bytes.lines {
-                        if Task.isCancelled { break }
-                        continuation.yield(line)
-                    }
-                    continuation.finish()
-                } catch {
-                    continuation.finish(throwing: error)
-                }
-            }
-
-            continuation.onTermination = { _ in
-                reader.cancel()
-                stderrReader.cancel()
-                if process.isRunning { process.terminate() }
-            }
+        do {
+            return Self.process.streamLines(try Self.makeLaunch(arguments))
+        } catch {
+            let translated = Self.translate(error)
+            return AsyncThrowingStream { $0.finish(throwing: translated) }
         }
     }
 
-    private static func configure(_ process: Process, executable: URL, arguments: [String]) {
-        process.executableURL = executable
-        process.arguments = arguments
-        process.standardInput = FileHandle.nullDevice
-        process.environment = makeEnvironment()
+    private static func makeLaunch(_ arguments: [String]) throws -> AgentCLILaunch {
+        guard let executable = executableURL() else { throw CursorAgentError.notInstalled }
+        return AgentCLILaunch(
+            executable: executable,
+            arguments: arguments,
+            environment: discovery.makeEnvironment()
+        )
     }
 
-    private static func makeEnvironment() -> [String: String] {
-        var environment = ProcessInfo.processInfo.environment
-        let home = FileManager.default.homeDirectoryForCurrentUser.path
-        let preferred = [
-            "\(home)/.local/bin", "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"
-        ]
-        let current = (environment["PATH"] ?? "").split(separator: ":").map(String.init)
-        var seen = Set<String>()
-        environment["PATH"] = (preferred + current)
-            .filter { seen.insert($0).inserted }
-            .joined(separator: ":")
-        return environment
+    private static func translate(_ error: Error) -> Error {
+        switch error {
+        case AgentCLIError.notInstalled:
+            return CursorAgentError.notInstalled
+        case AgentCLIError.launchFailed(let detail):
+            return CursorAgentError.launchFailed(detail)
+        default:
+            return error
+        }
     }
 }

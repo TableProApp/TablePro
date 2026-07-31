@@ -3,15 +3,13 @@ title: MySQL
 description: Connect to MySQL 5.7 and later with the bundled MariaDB Connector/C driver
 ---
 
-# MySQL Connections
-
 TablePro connects to MySQL 5.7 and later through its bundled driver, built on MariaDB Connector/C. MySQL 8's `caching_sha2_password` auth works out of the box. MariaDB uses the same driver; MariaDB-specific notes are on [MariaDB](/databases/mariadb).
 
 ## Quick Setup
 
 <Steps>
   <Step title="Create Connection">
-    Click **Create Connection** on the welcome window, pick **MySQL**, and fill in host, port, and credentials
+    Click **Create Connection...** on the welcome window, pick **MySQL**, and fill in host, port, and credentials
   </Step>
   <Step title="Test and Save">
     Click **Test Connection** to verify, then **Save & Connect**
@@ -24,12 +22,16 @@ TablePro connects to MySQL 5.7 and later through its bundled driver, built on Ma
 |-------|---------|-------|
 | **Host** | `localhost` | |
 | **Port** | `3306` | |
-| **Username** | empty | Leave empty to let the server pick its own default |
+| **Username** | empty | An empty field connects as your macOS login name |
 | **Database** | empty | Optional. Leave empty to browse all databases |
 
-<Tip>
-URLs like `mysql://user:pass@host/db` open a connection directly. See [Connection URL Reference](/databases/connection-urls).
-</Tip>
+## Connection URL
+
+```text
+mysql://user:password@host:3306/database
+```
+
+Opening a URL connects directly. See [Connection URL Reference](/databases/connection-urls).
 
 ## Common Setups
 

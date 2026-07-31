@@ -34,7 +34,8 @@ final class DatabaseTreeNode {
     var isExpandable: Bool {
         switch kind {
         case .recentSection, .database, .schema: return true
-        case .recentTable, .table, .routine, .status: return false
+        case .table(let ref): return ref.table.type == .partitionedTable
+        case .recentTable, .routine, .status: return false
         }
     }
 

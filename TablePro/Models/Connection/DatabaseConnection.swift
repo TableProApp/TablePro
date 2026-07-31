@@ -122,6 +122,11 @@ extension DatabaseType {
         PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.capabilities.supportsConnectionPooling ?? true
     }
 
+    var authenticationIsDatabaseScoped: Bool {
+        PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?
+            .capabilities.authenticationIsDatabaseScoped ?? false
+    }
+
     var defaultHost: String? {
         PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.connection.defaultHost
     }

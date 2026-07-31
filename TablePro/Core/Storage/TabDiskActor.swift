@@ -92,7 +92,11 @@ internal actor TabDiskActor {
         lastActiveSchema: String? = nil
     ) throws {
         let state = TabDiskState(
-            tabs: tabs,
+            tabs: TabQueryOverflowStore.externalize(
+                tabs,
+                connectionId: connectionId,
+                tabStateDirectory: tabStateDirectory
+            ),
             selectedTabId: selectedTabId,
             lastActiveDatabase: lastActiveDatabase,
             lastActiveSchema: lastActiveSchema
@@ -111,7 +115,13 @@ internal actor TabDiskActor {
 
         do {
             let data = try Data(contentsOf: fileURL)
-            return try decoder.decode(TabDiskState.self, from: data)
+            let state = try decoder.decode(TabDiskState.self, from: data)
+            return TabDiskState(
+                tabs: TabQueryOverflowStore.inline(state.tabs, tabStateDirectory: tabStateDirectory),
+                selectedTabId: state.selectedTabId,
+                lastActiveDatabase: state.lastActiveDatabase,
+                lastActiveSchema: state.lastActiveSchema
+            )
         } catch {
             Self.logger.error("Failed to load tab state for \(connectionId): \(error.localizedDescription)")
             return nil
@@ -119,6 +129,7 @@ internal actor TabDiskActor {
     }
 
     internal func clear(connectionId: UUID) {
+        TabQueryOverflowStore.removeAll(connectionId: connectionId, tabStateDirectory: tabStateDirectory)
         let fileURL = tabStateFileURL(for: connectionId)
 
         guard FileManager.default.fileExists(atPath: fileURL.path) else { return }
@@ -154,8 +165,13 @@ internal actor TabDiskActor {
         lastActiveDatabase: String? = nil,
         lastActiveSchema: String? = nil
     ) {
+        let directory = resolvedTabStateDirectory()
         let state = TabDiskState(
-            tabs: tabs,
+            tabs: TabQueryOverflowStore.externalize(
+                tabs,
+                connectionId: connectionId,
+                tabStateDirectory: directory
+            ),
             selectedTabId: selectedTabId,
             lastActiveDatabase: lastActiveDatabase,
             lastActiveSchema: lastActiveSchema
@@ -164,7 +180,6 @@ internal actor TabDiskActor {
 
         do {
             let data = try encoder.encode(state)
-            let directory = resolvedTabStateDirectory()
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             let fileURL = tabStateFileURL(for: connectionId)
             try data.write(to: fileURL, options: .atomic)
@@ -174,6 +189,10 @@ internal actor TabDiskActor {
     }
 
     nonisolated internal static func clearSync(connectionId: UUID) {
+        TabQueryOverflowStore.removeAll(
+            connectionId: connectionId,
+            tabStateDirectory: resolvedTabStateDirectory()
+        )
         let fileURL = tabStateFileURL(for: connectionId)
         guard FileManager.default.fileExists(atPath: fileURL.path) else { return }
         do {

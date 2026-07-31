@@ -3,9 +3,7 @@ title: PostgreSQL
 description: Connect to PostgreSQL 12 and later with the libpq driver, including PostGIS display, AWS IAM auth, and pg_dump backups
 ---
 
-# PostgreSQL Connections
-
-TablePro supports PostgreSQL 12 and later via the libpq C connector. The same driver powers [Amazon Redshift](/databases/redshift) and [CockroachDB](/databases/cockroachdb) connections.
+TablePro supports PostgreSQL 12 and later via the libpq C connector. The same driver powers [Amazon Redshift](/databases/redshift), [CockroachDB](/databases/cockroachdb), and [PGlite](/databases/pglite) connections.
 
 ## Connection Settings
 
@@ -16,12 +14,20 @@ TablePro supports PostgreSQL 12 and later via the libpq C connector. The same dr
 | **Username** | - | Not pre-filled; most servers use `postgres` |
 | **Database** | - | **Required** (unlike MySQL) |
 
-Fill in the form and click **Save & Connect**. Open URLs like `postgresql://user:pass@host/db` to connect directly, see [Connection URL Reference](/databases/connection-urls). For remote servers use [SSH tunneling](/databases/ssh-tunneling); Google Cloud SQL instances can connect through the [Cloud SQL Auth Proxy](/databases/cloud-sql-proxy).
+Fill in the form and click **Save & Connect**. For remote servers use [SSH tunneling](/databases/ssh-tunneling); Google Cloud SQL instances can connect through the [Cloud SQL Auth Proxy](/databases/cloud-sql-proxy).
 
 <Frame caption="PostgreSQL connection form">
   <img className="block dark:hidden" src="/images/postgresql-connection-form.png" alt="PostgreSQL connection form" />
   <img className="hidden dark:block" src="/images/postgresql-connection-form-dark.png" alt="PostgreSQL connection form" />
 </Frame>
+
+## Connection URL
+
+```text
+postgresql://user:password@host:5432/database
+```
+
+`postgres://` also works. Opening a URL connects directly. See [Connection URL Reference](/databases/connection-urls).
 
 ## AWS IAM Authentication
 
@@ -29,9 +35,15 @@ Connect to RDS or Aurora with your AWS identity instead of a static password: se
 
 ## Features
 
-**Schemas**: The sidebar shows all accessible schemas and tables. Switch databases and schemas with Cmd+K. Table info shows columns, indexes, constraints, and DDL.
+**Schemas**: The sidebar shows all accessible schemas and tables. Cmd+K switches databases; pick the active schema from the schema menu at the bottom of the sidebar. Table info shows columns, indexes, constraints, and DDL.
+
+**Databases**: Every database on the server is listed, including `postgres`. It is an ordinary database that `initdb` creates for users and applications, not a system database. `template0` and `template1` are not listed.
+
+**Partitioned tables**: A partitioned table is listed once, under its own icon. Its partitions are not listed beside it; expand the table in the sidebar to see them, and expand a partition again if it is subpartitioned. Opening a partition works like opening any other table. Tables that use the older `INHERITS` inheritance are listed normally, since a child there is a table in its own right. Requires PostgreSQL 10 or later, which is where declarative partitioning was added.
 
 **Types**: `jsonb` renders as formatted JSON. `array`, `uuid`, `inet`, `timestamp with time zone`, `interval`, and `bytea` display natively.
+
+**EXPLAIN**: `EXPLAIN` and `EXPLAIN ANALYZE` run with `FORMAT JSON` and render as a plan diagram or tree. See [EXPLAIN Visualization](/features/explain-visualization).
 
 **PostGIS**: `geometry` and `geography` columns render as EWKT with the SRID preserved (`SRID=4326;POINT(-73 40.7237)`) instead of the raw EWKB hex libpq returns. TablePro detects spatial columns from a one-time `pg_type` lookup at connect time and converts fetched values with `ST_AsEWKT(...)`. Your query is never re-run, so parameterized and multi-statement queries render EWKT too. If conversion fails, the raw hex is kept without an error.
 
@@ -47,12 +59,14 @@ Connect to RDS or Aurora with your AWS identity instead of a static password: se
 
 **Pre-Connect Script** (Advanced tab): a shell script that runs before connecting, e.g. to refresh credentials from a secrets manager. 10-second timeout.
 
+## SSL/TLS
+
+New connections default to **Preferred** (libpq `sslmode=prefer`), which tries TLS first and falls back to plain. Pick **Verify CA** to validate the server certificate. See [SSL/TLS](/features/ssl).
+
 ## Troubleshooting
 
 **Connection refused**: check the server is running, `listen_addresses` in `postgresql.conf` allows remote connections, and the firewall allows port 5432.
 
 **Auth failed**: check `pg_hba.conf` for the auth method (`scram-sha-256` or `md5` for passwords, `trust` for local dev).
-
-**SSL/TLS**: new connections default to **Preferred** (libpq `sslmode=prefer`), which tries TLS first and falls back to plain. Pick **Verify CA** to validate the server certificate. See [SSL/TLS](/features/ssl).
 
 **Postgres-compatible engines**: connect wire-compatible engines using the PostgreSQL type. TablePro probes which system catalogs the server provides, so engines that omit catalogs like `pg_matviews` still load their tables; object kinds the server does not expose just won't appear.

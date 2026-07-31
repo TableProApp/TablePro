@@ -1,9 +1,7 @@
 ---
 title: Settings
-description: Every settings tab, its controls, and their defaults.
+description: Every settings tab, its controls, and their defaults
 ---
-
-# Settings
 
 Open with `Cmd+,`. Settings are grouped into nine tabs.
 
@@ -103,7 +101,7 @@ Powered by [Sparkle](https://sparkle-project.org/). Also available from the **Ta
 
 **Enable AI Features** is the master switch; turning it off hides the other AI sections and disables chat, inline suggestions, and editor actions. **Active Provider** picks the default provider; the chat composer's model picker can override it per turn.
 
-**Add Provider…** offers GitHub Copilot, ChatGPT, Cursor, Claude, OpenAI, OpenRouter, OpenCode Zen, Gemini, xAI, Ollama, and a custom OpenAI-compatible endpoint. Click a provider row to open its detail sheet:
+**Add Provider…** lists GitHub Copilot, ChatGPT, Cursor, Claude, OpenAI, OpenRouter, Gemini, xAI, Ollama, llama.cpp, MLX, and OpenCode Zen. **Add Custom Provider…** below the divider takes any OpenAI-compatible endpoint. Click a provider row to open its detail sheet:
 
 - **Test Connection** verifies the key, sign-in, or endpoint.
 - **Model** lists curated models plus models fetched from the provider; pick **Other…** to type a custom model ID.
@@ -117,6 +115,15 @@ API keys are stored in the macOS Keychain; removing a provider deletes its key.
 |---------|---------|-------------|
 | **Enable inline suggestions while typing** | Off | Ghost-text SQL completions. Requires an active provider. Tab accepts, Escape dismisses |
 | **Debounce** | 500 ms | Pause after typing before requesting a suggestion, 100 to 3,000 ms in 50 ms steps |
+
+### Agent
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| **Limit tool calls per reply** | On | Turn off to let the agent keep calling tools until it finishes |
+| **Tool call limit** | 25 | Tool calls the AI may make in one reply before pausing, 5 to 200 in steps of 5 |
+
+Reaching the limit pauses the reply instead of failing it. Everything the AI found so far stays in the chat, and **Continue** picks up where it stopped with a fresh budget. GitHub Copilot manages its own tool loop, so this setting does not apply to it.
 
 ### Context
 
@@ -150,23 +157,22 @@ The **Integrations** tab runs the MCP server. **Enable MCP Server** (default off
 
 ### Authentication
 
-**Require authentication** defaults to on. Turning it on with no tokens generates a full-access token named "Default token" and reveals it once; copy it then. Generate, revoke, and delete tokens in the list below the toggle. See [Tokens](/external-api/tokens).
+**Require authentication** defaults to on. If you switch it on with no tokens saved, TablePro generates a full-access token named "Default token" and shows it once. Copy it before closing the sheet. Generate, revoke, and delete tokens in the list below the toggle. See [Tokens](/external-api/tokens).
 
 ### Network
 
 **Allow remote connections** defaults to off. Enabling it makes the server reachable from other devices and turns on authentication and TLS automatically.
 
-### Clients and activity
+### Clients and Activity
 
 **Connect a Client…** shows setup steps and config snippets for Claude Code, Claude Desktop, Cursor, and Zed. **View Activity…** opens the Integrations Activity window with authentication events, tool calls, and connected clients.
 
 ## Plugins
 
-Split view: plugin list on the left, details on the right.
+Two sub-tabs, each a split view with the plugin list on the left and details on the right.
 
-- **Installed**: bundled plugins (MySQL, PostgreSQL, SQLite, ClickHouse, and Redis drivers; CSV, JSON, SQL, XLSX, and MQL exporters; SQL, JSON, and CSV importers; CSV Inspector) plus anything you installed. Toggle a plugin on or off in the detail pane. Bundled plugins can be disabled but not uninstalled.
-- **Browse**: install from the registry, with search and a category filter (Database Drivers, Export Formats, Import Formats, Themes, Other). Registry drivers: MongoDB, Oracle, DuckDB, SQL Server, Cassandra, Etcd, Cloudflare D1, DynamoDB, BigQuery, Snowflake, Elasticsearch, LibSQL, SurrealDB, and Beancount.
-- **Sideload**: click **+** or drag a `.tableplugin` / `.zip` onto the view. TablePro verifies the code signature.
+- **Installed**: bundled plugins (MySQL, PostgreSQL, SQLite, ClickHouse, and Redis drivers; CSV, JSON, SQL, XLSX, and MQL exporters; SQL, JSON, and CSV importers; CSV Inspector) plus anything you installed. Toggle a plugin on or off in the detail pane. Bundled plugins can be disabled but not uninstalled. To install from a file, click **+** below the list or drag a `.tableplugin` or `.zip` onto it. TablePro verifies the code signature before loading.
+- **Browse**: install from the registry, with search and a category filter (Database Drivers, Export Formats, Import Formats, Themes, Other). Registry drivers: MongoDB, Oracle, DuckDB, SQL Server, Cassandra, Etcd, Cloudflare D1, DynamoDB, BigQuery, Snowflake, Elasticsearch, LibSQL, SurrealDB, Beancount, Teradata, and Trino.
 
 See [Plugins & Themes](/features/plugins) for installing, updating, and managing plugins.
 

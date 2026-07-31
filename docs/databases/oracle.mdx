@@ -3,8 +3,6 @@ title: Oracle Database
 description: Connect to Oracle Database with TablePro
 ---
 
-# Oracle Database Connections
-
 TablePro supports Oracle Database 11.1 and later. It speaks the Oracle TNS wire protocol directly in Swift, so no Oracle Instant Client or other external library is required. This covers Oracle Database instances running on-premises, in Docker, or Oracle Cloud.
 
 <Note>
@@ -15,9 +13,9 @@ Servers behind a RAC SCAN listener, shared server, or a load balancer are suppor
 
 ## Install Plugin
 
-The Oracle driver is available as a downloadable plugin. When you select Oracle in the connection form, TablePro will prompt you to install it automatically. You can also install it manually:
+The Oracle driver is a downloadable plugin. When you select Oracle in the connection form, TablePro prompts you to install it. You can also install it manually:
 
-1. Open **Settings** > **Plugins** > **Browse**
+1. Open **Settings > Plugins > Browse**
 2. Find **Oracle Driver** and click **Install**
 3. The plugin downloads and loads immediately, no restart needed
 
@@ -47,7 +45,9 @@ Enter host, port, username, password, and service name, then click **Save & Conn
 
 **Oracle Cloud (ADB)**: Copy host, port, and service name (format `mydb_tp`) from the TLS connection string in the Oracle Cloud Console, then set SSL mode to **Required** (or **Verify CA** with the CA certificate). No wallet needed: the connection uses one-way TLS, and the driver does not read Oracle wallet files.
 
-**SSL/TLS**: OracleNIO has no TLS fallback. **Preferred** connects in plain TCP (the SSL pane shows a warning). Use **Required** for TCPS, **Verify CA** with a CA certificate path for strict validation. See [SSL/TLS](/features/ssl) for details.
+## SSL/TLS
+
+OracleNIO has no TLS fallback. **Preferred** connects in plain TCP (the SSL pane shows a warning). Use **Required** for TCPS, **Verify CA** with a CA certificate path for strict validation. See [SSL/TLS](/features/ssl) for details.
 
 ## Connection URL
 
@@ -74,11 +74,14 @@ OFFSET 0 ROWS FETCH NEXT 50 ROWS ONLY;
 
 **Schema Editing**: ALTER TABLE with double quotes for case-sensitive names. Supports ADD, RENAME COLUMN, MODIFY, DROP, CREATE INDEX.
 
-**Authentication**: Username/password only (no OS auth or wallet). Create user: `CREATE USER app_user IDENTIFIED BY "Password1!"; GRANT CREATE SESSION, SELECT ANY TABLE TO app_user;`
-
 ## Auth Compatibility
 
-TablePro authenticates via `OracleNIO`, a pure-Swift implementation of the Oracle TNS wire protocol (no Oracle Instant Client needed).
+TablePro authenticates via `OracleNIO`, a pure-Swift implementation of the Oracle TNS wire protocol (no Oracle Instant Client needed). Username and password are the only credentials it accepts; OS auth and Oracle wallets are not supported. Create a user with:
+
+```sql
+CREATE USER app_user IDENTIFIED BY "Password1!";
+GRANT CREATE SESSION, SELECT ANY TABLE TO app_user;
+```
 
 | `dba_users.password_versions` | Status |
 |---|---|
@@ -89,7 +92,7 @@ TablePro authenticates via `OracleNIO`, a pure-Swift implementation of the Oracl
 | `10G` only (deprecated) | ✓ Supported, but consider rotation |
 | External / Kerberos / LDAP-managed | ✗ Not supported. File an issue. |
 
-10G hash is supported for compatibility with legacy environments. It uses DES-based hashing without modern salting and is deprecated by Oracle. We recommend rotating affected accounts under modern auth so `password_versions` contains only `11G` or `12C`:
+10G hash is supported for compatibility with legacy environments. It uses DES-based hashing without modern salting and is deprecated by Oracle. Rotate affected accounts under modern auth so `password_versions` contains only `11G` or `12C`:
 
 ```sql
 ALTER USER <USER> IDENTIFIED BY <new-secure-password>;
@@ -118,16 +121,20 @@ If the connection fails with "Unsupported Password Verifier", check `password_ve
 
 Columns with types not yet supported render as `<unsupported: type>` rather than crashing or corrupting data. Report unsupported types via [GitHub Issues](https://github.com/TableProApp/TablePro/issues).
 
+## Limitations
+
+- Username and password auth only. No OS auth, wallets, Kerberos, or LDAP.
+- BFILE columns show the locator only. Fetching content through `DBMS_LOB` is not supported.
+- PL/SQL runs as anonymous blocks only.
+
 ## Troubleshooting
 
-**Connection refused**: Check listener running (`lsnrctl status`), verify port 1521 open, if Docker check `docker start oracle-xe`
+**Connection refused**: check the listener is running with `lsnrctl status`, confirm port 1521 is open, and on Docker confirm the container is up (`docker start oracle-xe`).
 
-**Invalid service name**: Verify service exists: `SELECT value FROM v$parameter WHERE name = 'service_names';` List services: `lsnrctl services`
+**Invalid service name**: confirm the service exists with `SELECT value FROM v$parameter WHERE name = 'service_names';`, or list what the listener serves with `lsnrctl services`.
 
-**Connection dropped during handshake**: The server closed the connection mid-login. The error dialog shows the handshake phase it stopped at (for example `advancedNegotiation`, `dataTypeNegotiation`, or `authentication`). Check for a firewall, VPN, or proxy that resets traffic, and confirm the host and port reach the listener directly.
+**Connection dropped during handshake**: the server closed the connection mid-login. The error dialog shows the handshake phase it stopped at (for example `advancedNegotiation`, `dataTypeNegotiation`, or `authentication`). Check for a firewall, VPN, or proxy that resets traffic, and confirm the host and port reach the listener directly.
 
-**Native network encryption not completed**: The server requires native network encryption and the negotiation did not finish. The server likely requires an encryption or checksum algorithm the driver does not support; the error dialog shows the reason. File an issue with your Oracle version and that reason. For encryption in transit you can also use TLS by setting an SSL mode in the SSL settings.
+**Native network encryption not completed**: the server requires native network encryption and the negotiation did not finish. The server likely requires an encryption or checksum algorithm the driver does not support; the error dialog shows the reason. File an issue with your Oracle version and that reason. For encryption in transit you can also use TLS by setting an SSL mode in the SSL settings.
 
-**Login handshake timed out**: The TCP connection is accepted but login never finishes, so the connect stops after 30 seconds instead of waiting for the server to reset. Check for a firewall, VPN, or proxy that stalls traffic after the TCP handshake, and confirm the host and port reach the listener directly.
-
-**Limitations**: Username/password only, BFILE shows locator metadata only (content fetch via DBMS_LOB not supported), PL/SQL limited to anonymous blocks.
+**Login handshake timed out**: the TCP connection is accepted but login never finishes, so the connect stops after 30 seconds instead of waiting for the server to reset. Check for a firewall, VPN, or proxy that stalls traffic after the TCP handshake, and confirm the host and port reach the listener directly.

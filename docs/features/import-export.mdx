@@ -3,8 +3,6 @@ title: Import & Export
 description: Export to CSV, JSON, SQL, MQL, or XLSX. Import SQL, JSON, and CSV files with column mapping and transaction safety.
 ---
 
-# Import & Export
-
 Export data in five formats (CSV, JSON, SQL, MQL, XLSX), import SQL, JSON, and CSV files (gzip supported for SQL), and paste tabular data from the clipboard into the grid.
 
 ## Export Data
@@ -20,7 +18,6 @@ TablePro remembers the last format and options you exported with. Option changes
 **MongoDB**: SQL export is not available. Use MQL, which generates `db.collection.insertMany([...])` scripts for `mongosh`. **Redis**: SQL and MQL exports are not available.
 </Note>
 
-{/* Screenshot: Export dialog with format options and table tree */}
 <Frame caption="Export dialog">
   <img className="block dark:hidden" src="/images/export-dialog.png" alt="Export dialog" />
   <img className="hidden dark:block" src="/images/export-dialog-dark.png" alt="Export dialog" />
@@ -119,7 +116,6 @@ Import `.sql` and `.sql.gz` files (statements execute directly against your data
   </Step>
 </Steps>
 
-{/* Screenshot: Import dialog with SQL preview and options */}
 <Frame caption="Import dialog with SQL file preview">
   <img className="block dark:hidden" src="/images/import-dialog.png" alt="Import dialog" />
   <img className="hidden dark:block" src="/images/import-dialog-dark.png" alt="Import dialog" />

@@ -3,23 +3,24 @@ title: Cassandra / ScyllaDB
 description: Connect to Cassandra and ScyllaDB clusters, browse keyspaces, and run CQL queries
 ---
 
-# Cassandra / ScyllaDB Connections
-
 TablePro supports Apache Cassandra 3.0+ and ScyllaDB via the CQL native protocol. The driver requires the `system_schema` keyspace, introduced in Cassandra 3.0. Browse keyspaces and tables, inspect table structure, and run CQL in the editor.
 
-## Quick setup
+## Quick Setup
 
-Click **New Connection**, select **Cassandra** or **ScyllaDB** (both entries use the same driver), enter host, port, credentials, and keyspace, and connect. The plugin auto-installs from the registry, or use **Settings** > **Plugins** > **Browse** > **Cassandra Driver**.
+Click **New Connection**, select **Cassandra** or **ScyllaDB** (both entries use the same driver), enter host, port, and credentials, and connect.
 
-## Connection settings
+Cassandra is a registry plugin. Picking it in the **Choose a Database** sheet prompts to install; connecting to a saved Cassandra connection installs it without asking. You can also install **Cassandra Driver** from **Settings > Plugins > Browse**.
+
+## Connection Settings
 
 | Field | Default | Notes |
 |-------|---------|-------|
 | **Host** | `localhost` | CQL contact point |
 | **Port** | `9042` | CQL native port |
-| **Keyspace** | - | Leave empty for local dev |
 | **Username** | - | Only if authentication is enabled |
 | **Password** | - | |
+
+The form has no Keyspace field. Pick a keyspace in the sidebar after connecting, or put one in the URL path (`cassandra://user:pass@host:9042/keyspace`) and import that URL.
 
 ## Connection URLs
 
@@ -30,17 +31,21 @@ scylladb://user:password@host:9042/keyspace
 
 `cql://` and `scylla://` work too. See [Connection URL Reference](/databases/connection-urls#cassandra--scylladb).
 
-## Example configurations
+## Example Configurations
 
 **Local**: host `localhost:9042`, no auth
+
 **Docker**: `cassandra:latest`, user/pass `cassandra:cassandra`
+
 **Remote**: use [SSH tunneling](/databases/ssh-tunneling) for production clusters
 
 ## Amazon Keyspaces (IAM)
 
 Set **Authentication** to an AWS IAM mode (Access Key, Profile, or SSO) to connect to Amazon Keyspaces with SigV4 signing instead of a password. Enter the AWS region and enable TLS, which Keyspaces requires (use the `cassandra.{region}.amazonaws.com` endpoint on port 9142). Profiles resolve from `~/.aws/config` and `~/.aws/credentials`, including `credential_process`, SSO, and assumed roles.
 
-**SSL/TLS**: The Cassandra driver has no TLS fallback. **Preferred** behaves the same as **Required** (the SSL pane shows a warning). Use **Verify CA** with a CA certificate path for private PKI. For mutual TLS, set the client certificate and key paths; if the key is encrypted, enter its passphrase in the **Key Passphrase** field (stored in the Keychain). See [SSL/TLS](/features/ssl) for details.
+## SSL/TLS
+
+The Cassandra driver has no TLS fallback. **Preferred** behaves the same as **Required** (the SSL pane shows a warning). Use **Verify CA** with a CA certificate path for private PKI. For mutual TLS, set the client certificate and key paths; if the key is encrypted, enter its passphrase in the **Key Passphrase** field (stored in the Keychain). See [SSL/TLS](/features/ssl) for details.
 
 ## Features
 
@@ -55,7 +60,7 @@ Set **Authentication** to an AWS IAM mode (Access Key, Profile, or SSO) to conne
   <img className="hidden dark:block" src="/images/cassandra-keyspace-browser-dark.png" alt="Cassandra keyspace and tables in the sidebar with table data in the grid" />
 </Frame>
 
-### CQL editor
+### CQL Editor
 
 ```sql
 SELECT * FROM users WHERE user_id = 123e4567-e89b-12d3-a456-426614174000;
@@ -78,7 +83,7 @@ CREATE TABLE IF NOT EXISTS events (
 CREATE INDEX ON users (email);
 ```
 
-## CQL notes
+## CQL Notes
 
 - No JOINs or subqueries: denormalize, or run sequential statements.
 - Every SELECT needs the full partition key in WHERE, or `ALLOW FILTERING` (a cluster scan, slow in production).
@@ -100,5 +105,5 @@ CREATE INDEX ON users (email);
 - Materialized views, UDTs, UDFs, and UDAs do not appear in the sidebar. Query `system_schema` tables in the CQL editor instead.
 - Table options (compaction, compression, gc_grace_seconds) and clustering order are not shown in the structure view.
 - DataStax Astra DB is not supported: the driver cannot load a Secure Connect Bundle.
-- Counter columns are read-only in the grid; update them in the editor.
+- Counter columns cannot be set with a plain `UPDATE`. The grid lets you edit one, but the statement it generates is rejected. Use `UPDATE ... SET c = c + 1` in the CQL editor instead.
 - Multi-DC settings are not configurable.

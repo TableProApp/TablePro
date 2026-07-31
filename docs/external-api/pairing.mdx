@@ -3,8 +3,6 @@ title: Pairing
 description: One-click flow that issues a scoped MCP token to an extension through a PKCE-style code exchange
 ---
 
-# Pairing
-
 Pairing is how an extension gets a TablePro token without the user copying one by hand. The extension opens a `tablepro://integrations/pair` deep link, the user approves scopes and connections in TablePro, and the extension exchanges a one-time code for the token over localhost HTTP.
 
 The flow is PKCE-style: the extension generates a verifier, hashes it into a challenge, and TablePro releases the token only to the caller that presents the verifier. An app that intercepts the redirect cannot exchange the code.
@@ -83,7 +81,7 @@ Store the token in the macOS Keychain. In Raycast, write it to a password prefer
 
 ## What TablePro does on approval
 
-The approval sheet shows the client name, a scope picker (defaults to the requested scope, downgradeable), a connections multi-select (defaults to all unless `connection-ids` was provided), and an expiry picker (defaults to never). The query parameters are a request, not a grant.
+The approval sheet shows the client name, a scope picker (starts at the requested scope; the user can pick any level), a connections multi-select (defaults to all unless `connection-ids` was provided), and an expiry picker (defaults to never). The query parameters are a request, not a grant.
 
 On approve, TablePro:
 

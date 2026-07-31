@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import TableProSyncTransport
 
 struct SyncSection: View {
     @Bindable private var settingsManager = AppSettingsManager.shared

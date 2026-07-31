@@ -46,7 +46,7 @@ final class PostgreSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
 
     static let urlSchemes: [String] = ["postgresql", "postgres"]
     static let brandColorHex = "#336791"
-    static let systemDatabaseNames: [String] = ["postgres", "template0", "template1"]
+    static let systemDatabaseNames: [String] = PostgreSQLSystemDatabases.postgreSQL
     static let supportsSchemaSwitching = true
     static let postConnectActions: [PostConnectAction] = [.selectSchemaFromLastSession]
     static let explainVariants: [ExplainVariant] = [

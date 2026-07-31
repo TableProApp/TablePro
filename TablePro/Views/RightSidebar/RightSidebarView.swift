@@ -316,11 +316,7 @@ struct RightSidebarView: View {
 
     @ViewBuilder
     private func fieldDetailRow(_ field: FieldEditState, at index: Int, isEditable: Bool) -> some View {
-        let kind = FieldEditorResolver.resolve(
-            for: field.columnTypeEnum,
-            isLongText: field.isLongText,
-            originalValue: field.originalValue
-        )
+        let kind = FieldEditorResolver.resolve(field: field)
         let isJsonField = kind == .json
         let isPhpField = kind == .phpSerialized
         let isStructuredField = isJsonField || isPhpField
@@ -337,11 +333,14 @@ struct RightSidebarView: View {
                 originalValue: field.originalValue,
                 hasMultipleValues: field.hasMultipleValues,
                 isReadOnly: !isEditable || isPhpField,
-                commitBytes: isEditable ? { data in editState.setFieldToBytes(at: index, data: data) } : nil
+                commitBytes: isEditable ? { data in editState.setFieldToBytes(at: index, data: data) } : nil,
+                editor: field.editor,
+                allowsNullAndDefault: !field.isSchemaField,
+                showsTypeBadge: !field.isSchemaField
             ),
             isPendingNull: field.isPendingNull,
             isPendingDefault: field.isPendingDefault,
-            isModified: field.hasEdit,
+            isModified: field.hasEdit || field.hasCommittedEdit,
             databaseType: databaseType,
             onSetNull: { editState.setFieldToNull(at: index) },
             onSetDefault: { editState.setFieldToDefault(at: index) },

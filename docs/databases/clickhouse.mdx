@@ -3,8 +3,6 @@ title: ClickHouse
 description: Connect to ClickHouse over its HTTP interface with TablePro
 ---
 
-# ClickHouse Connections
-
 TablePro connects to ClickHouse over its HTTP interface (port 8123 by default), not the native TCP protocol. The driver ships inside the app; there is nothing to install.
 
 ## Quick Setup
@@ -17,10 +15,10 @@ Click **New Connection**, select **ClickHouse**, enter host, port, credentials, 
 |-------|---------|-------|
 | **Host** | `localhost` | |
 | **Port** | `8123` | HTTP port (not 9000 native TCP) |
-| **Username** | `default` | Set a password in production |
-| **Database** | `default` | Leave empty to browse all databases. Switch with Cmd+K |
+| **Username** | `default` | Leave empty and TablePro sends `default`. Set a password in production |
+| **Database** | `default` | Leave empty and the server uses `default`. Switch with Cmd+K |
 
-**SSL/TLS**: Setting any non-Disabled SSL Mode switches the URL scheme to `https`. **Required** skips certificate verification, **Verify CA** validates against the supplied CA file, **Verify Identity** uses system default HTTPS trust (certificate chain plus hostname). Use **Required** for ClickHouse Cloud (port 8443). See [SSL/TLS](/features/ssl).
+**SSL/TLS**: Setting any non-Disabled SSL Mode switches the URL scheme to `https`. **Preferred** and **Required** skip certificate verification, **Verify CA** validates against the supplied CA file, **Verify Identity** uses system default HTTPS trust (certificate chain plus hostname). Use **Verify Identity** for ClickHouse Cloud (port 8443); its certificates chain to a public CA. Use **Required** only for a self-signed certificate you have no CA file for. See [SSL/TLS](/features/ssl).
 
 For unencrypted HTTP to a remote server, use [SSH tunneling](/databases/ssh-tunneling).
 
@@ -36,12 +34,12 @@ See [Connection URL Reference](/databases/connection-urls) for all parameters.
 
 ### Database and Table Browsing
 
-The sidebar lists all databases on the server. Expand one to see its tables, views, and materialized views. Press Cmd+K or click the database name in the toolbar to switch.
+The sidebar lists the current database's tables, views, and materialized views. Press Cmd+K or click the database name in the toolbar to switch databases. Choose **View > Sidebar as Tree** to list every database and expand them in place.
 
 For each table, TablePro shows:
 
 - **Structure**: Columns with ClickHouse data types, default expressions, and comments
-- **Indexes**: Data-skipping indices (minmax, set, bloom_filter, and others)
+- **Indexes**: The sorting key, listed as `PRIMARY (sorting key)`, plus data-skipping indices (minmax, set, bloom_filter, and others)
 - **DDL**: The full CREATE TABLE statement including engine and settings
 - **Parts**: Partition and part details from `system.parts` (rows, disk size, active status), with Optimize Table, Drop Partition, and Detach Partition actions
 
@@ -80,7 +78,7 @@ ClickHouse mutations (UPDATE and DELETE) are asynchronous. They run in the backg
 
 ### Export and Import
 
-Export query results or table data to CSV, JSON, and other formats. Import data from CSV files. See [Import and Export](/features/import-export).
+Export query results or table data to CSV, JSON, SQL, and XLSX. Import SQL, JSON, and CSV files. See [Import and Export](/features/import-export).
 
 ## Troubleshooting
 
@@ -90,7 +88,7 @@ Export query results or table data to CSV, JSON, and other formats. Import data 
 
 **Connection timeout**: Verify host, port, firewall rules, and, for cloud-hosted ClickHouse, that your IP is in the allowed list.
 
-## Known Limitations
+## Limitations
 
 - No foreign keys or multi-statement transactions
 - No auto-increment; primary key and sorting key are immutable after creation

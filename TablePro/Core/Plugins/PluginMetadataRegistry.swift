@@ -62,6 +62,7 @@ struct PluginMetadataSnapshot: Sendable {
         var supportsCloudflareTunnel: Bool = true
         var supportsClientKeyPassphrase: Bool = false
         var supportsConnectionPooling: Bool = true
+        var authenticationIsDatabaseScoped: Bool = false
 
         var supportsSOCKSProxy: Bool { supportsSSH }
 
@@ -641,7 +642,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     containerEntityName: "Database",
                     defaultPrimaryKeyColumn: nil,
                     immutableColumns: [],
-                    systemDatabaseNames: ["postgres", "template0", "template1"],
+                    systemDatabaseNames: [],
                     systemSchemaNames: [],
                     fileExtensions: [],
                     databaseGroupingStrategy: .bySchema,
@@ -691,7 +692,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     containerEntityName: "Database",
                     defaultPrimaryKeyColumn: nil,
                     immutableColumns: [],
-                    systemDatabaseNames: ["postgres", "template0", "template1"],
+                    systemDatabaseNames: ["padb_harvest"],
                     systemSchemaNames: [],
                     fileExtensions: [],
                     databaseGroupingStrategy: .bySchema,
@@ -752,7 +753,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     containerEntityName: "Database",
                     defaultPrimaryKeyColumn: nil,
                     immutableColumns: [],
-                    systemDatabaseNames: ["postgres", "system", "defaultdb"],
+                    systemDatabaseNames: ["system"],
                     systemSchemaNames: [],
                     fileExtensions: [],
                     databaseGroupingStrategy: .bySchema,
@@ -806,7 +807,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     containerEntityName: "Database",
                     defaultPrimaryKeyColumn: nil,
                     immutableColumns: [],
-                    systemDatabaseNames: ["postgres", "template0", "template1"],
+                    systemDatabaseNames: [],
                     systemSchemaNames: [],
                     fileExtensions: [],
                     databaseGroupingStrategy: .bySchema,

@@ -81,6 +81,8 @@ struct CreateTableView: View {
         }
         .navigationTitle(String(localized: "Create Table"))
         .onAppear {
+            selectionState.indices = []
+            coordinator?.inspectorRowSource = gridDelegate
             gridDelegate.onSelectedRowsChanged = { self.selectedRows = $0 }
             updateGridDelegate()
             if structureChangeManager.workingColumns.isEmpty {
@@ -94,6 +96,9 @@ struct CreateTableView: View {
             selectionState.indices = []
             coordinator?.createTableActions = nil
             coordinator?.toolbarState.hasCreateTablePending = false
+            if coordinator?.inspectorRowSource === gridDelegate {
+                coordinator?.inspectorRowSource = nil
+            }
         }
         .onChange(of: selectedRows) { _, newRows in selectionState.indices = newRows }
         .onChange(of: selectedTab) { updateGridDelegate() }
@@ -243,6 +248,7 @@ struct CreateTableView: View {
         )
         gridDelegate.structureTab = structureTab
         gridDelegate.orderedFields = provider.orderedColumnFields
+        coordinator?.inspectorRowSourceRevision += 1
     }
 
     private var structureGrid: some View {

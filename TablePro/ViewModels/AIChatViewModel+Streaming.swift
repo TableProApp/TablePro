@@ -5,10 +5,11 @@
 
 import Foundation
 import os
+import SwiftUI
 import TableProPluginKit
 
 extension AIChatViewModel {
-    static let maxToolRoundtrips = 10
+    static let hardToolRoundtripCeiling = 500
 
     struct ToolRoundtripContinuation {
         let nextAssistantID: UUID
@@ -31,7 +32,12 @@ extension AIChatViewModel {
     }
 
     func startStreaming() {
-        guard case .idle = streamingState else { return }
+        switch streamingState {
+        case .idle, .pausedAtToolLimit:
+            break
+        case .loading, .streaming, .awaitingApproval, .failed:
+            return
+        }
 
         let settings = services.appSettings.ai
 
@@ -60,6 +66,39 @@ extension AIChatViewModel {
             }
         }
 
+        beginStreamingTurn(
+            resolved: resolved,
+            settings: settings,
+            includeWalkthroughDirective: pendingWalkthroughBeforeSQL != nil
+        )
+    }
+
+    func continueToolLoop() {
+        guard case .pausedAtToolLimit = streamingState else { return }
+
+        let settings = services.appSettings.ai
+        let resolved = AIProviderFactory.resolve(
+            settings: settings,
+            overrideProviderId: selectedProviderId,
+            overrideModel: selectedModel
+        )
+        guard let resolved else {
+            errorMessage = String(localized: "No AI provider configured. Go to Settings > AI to add one.")
+            return
+        }
+
+        beginStreamingTurn(
+            resolved: resolved,
+            settings: settings,
+            includeWalkthroughDirective: pendingWalkthroughBeforeSQL != nil
+        )
+    }
+
+    private func beginStreamingTurn(
+        resolved: AIProviderFactory.ResolvedProvider,
+        settings: AISettings,
+        includeWalkthroughDirective: Bool
+    ) {
         let assistantMessage = ChatTurn(
             role: .assistant,
             blocks: [],
@@ -95,7 +134,8 @@ extension AIChatViewModel {
                     promptContext: promptContext,
                     resolved: resolved,
                     assistantID: assistantID,
-                    settings: settings
+                    settings: settings,
+                    includeWalkthroughDirective: includeWalkthroughDirective
                 )
                 self.prepTask = nil
             }
@@ -107,13 +147,23 @@ extension AIChatViewModel {
         promptContext: PromptContext?,
         resolved: AIProviderFactory.ResolvedProvider,
         assistantID: UUID,
-        settings: AISettings
+        settings: AISettings,
+        includeWalkthroughDirective: Bool = false,
+        registry: ChatToolRegistry? = nil
     ) {
         let chatMode = settings.chatMode
+        let roundtripLimit = min(
+            settings.effectiveMaxToolRoundtrips ?? Self.hardToolRoundtripCeiling,
+            Self.hardToolRoundtripCeiling
+        )
         streamingTask = Task.detached(priority: .userInitiated) { [weak self] in
             var currentAssistantID = assistantID
             do {
-                let systemPrompt = Self.buildSystemPrompt(promptContext, mode: chatMode)
+                let systemPrompt = Self.buildSystemPrompt(
+                    promptContext,
+                    mode: chatMode,
+                    includeWalkthroughDirective: includeWalkthroughDirective
+                )
                 guard let self else { return }
                 let preflightOK = await self.preflightCheck(
                     systemPrompt: systemPrompt,
@@ -122,10 +172,21 @@ extension AIChatViewModel {
                 )
                 guard preflightOK else { return }
 
-                let toolSpecs = await MainActor.run { ChatToolRegistry.shared.allSpecs(for: chatMode) }
+                let toolSpecs = await MainActor.run {
+                    (registry ?? ChatToolRegistry.shared).allSpecs(for: chatMode)
+                }
                 var workingTurns = chatMessages
+                var executedRoundtrips = 0
 
-                for roundtrip in 0..<Self.maxToolRoundtrips {
+                while true {
+                    if executedRoundtrips >= roundtripLimit {
+                        await self.pauseAtToolLimit(
+                            assistantID: currentAssistantID,
+                            count: executedRoundtrips
+                        )
+                        return
+                    }
+
                     let round = try await self.consumeStreamRound(
                         resolved: resolved,
                         systemPrompt: systemPrompt,
@@ -136,11 +197,6 @@ extension AIChatViewModel {
                     )
                     if round.cancelled { return }
                     if round.toolUseOrder.isEmpty { break }
-
-                    if roundtrip == Self.maxToolRoundtrips - 1 {
-                        await self.failTooManyRoundtrips(assistantID: currentAssistantID)
-                        break
-                    }
 
                     let assembled = Self.assembleToolUseBlocks(
                         order: round.toolUseOrder,
@@ -157,7 +213,8 @@ extension AIChatViewModel {
                     }
                     let toolUseBlocks = await self.resolveAndAwaitApprovals(
                         assembledBlocks: assembled,
-                        assistantID: currentAssistantID
+                        assistantID: currentAssistantID,
+                        registry: registry
                     )
                     guard !Task.isCancelled else { return }
 
@@ -166,7 +223,7 @@ extension AIChatViewModel {
                         return false
                     }
                     let executedResults = await Self.executeToolUses(
-                        approvedBlocks, mode: chatMode, context: context
+                        approvedBlocks, mode: chatMode, context: context, registry: registry
                     )
                     guard !Task.isCancelled else { return }
 
@@ -183,6 +240,7 @@ extension AIChatViewModel {
                     currentAssistantID = continuation.nextAssistantID
                     workingTurns.append(continuation.assistantTurn)
                     workingTurns.append(continuation.userTurn)
+                    executedRoundtrips += 1
                 }
 
                 guard !Task.isCancelled else { return }
@@ -190,6 +248,7 @@ extension AIChatViewModel {
                 await MainActor.run { [weak self] in
                     guard let self else { return }
                     self.finalizeStreamingMessage(id: finalAssistantID)
+                    self.resolveWalkthroughIfNeeded(id: finalAssistantID)
                     self.streamingState = .idle
                     self.streamingTask = nil
                     self.persistCurrentConversation()
@@ -198,6 +257,7 @@ extension AIChatViewModel {
                 let failedAssistantID = currentAssistantID
                 await MainActor.run { [weak self] in
                     guard let self else { return }
+                    self.pendingWalkthroughBeforeSQL = nil
                     if !Task.isCancelled {
                         Self.logger.error("Streaming failed: \(error.localizedDescription)")
                         self.errorMessage = error.localizedDescription
@@ -221,6 +281,47 @@ extension AIChatViewModel {
     func finalizeStreamingMessage(id: UUID) {
         guard let idx = messages.firstIndex(where: { $0.id == id }) else { return }
         messages[idx].finishStreamingTextBlock()
+    }
+
+    @MainActor
+    func resolveWalkthroughIfNeeded(id: UUID) {
+        guard let beforeSQL = pendingWalkthroughBeforeSQL else { return }
+        pendingWalkthroughBeforeSQL = nil
+        guard let idx = messages.firstIndex(where: { $0.id == id }) else { return }
+
+        let textBlocks = messages[idx].blocks.filter { block in
+            if case .text = block.kind { return true }
+            return false
+        }
+        guard let openOffset = textBlocks.firstIndex(where: { block in
+            if case .text(let text) = block.kind {
+                return text.contains(WalkthroughEnvelopeParser.openFence)
+            }
+            return false
+        }) else { return }
+
+        // A provider can split the envelope across text blocks, so parse the joined tail
+        // rather than only the block that happens to carry the opening fence.
+        let tail = Array(textBlocks[openOffset...])
+        let joined = tail.compactMap { block -> String? in
+            if case .text(let text) = block.kind { return text }
+            return nil
+        }.joined()
+
+        guard case .text(let openText) = tail[0].kind else { return }
+        let prose = WalkthroughEnvelopeParser.stripFence(from: openText)
+        let consumedIDs = Set(tail.dropFirst().map(\.id))
+        messages[idx].blocks.removeAll { consumedIDs.contains($0.id) }
+
+        if prose.isEmpty {
+            messages[idx].blocks.removeAll { $0.id == tail[0].id }
+        } else {
+            tail[0].setKind(.text(prose))
+        }
+
+        guard let envelope = WalkthroughEnvelopeParser.parse(from: joined) else { return }
+        let walkthrough = SqlWalkthroughBlock(beforeSQL: beforeSQL, envelope: envelope)
+        messages[idx].appendBlock(.sqlWalkthrough(walkthrough))
     }
 
     private func consumeStreamRound(
@@ -356,7 +457,11 @@ extension AIChatViewModel {
         idMap = updated
     }
 
-    nonisolated static func buildSystemPrompt(_ promptContext: PromptContext?, mode: AIChatMode) -> String? {
+    nonisolated static func buildSystemPrompt(
+        _ promptContext: PromptContext?,
+        mode: AIChatMode,
+        includeWalkthroughDirective: Bool = false
+    ) -> String? {
         let schemaPrompt = promptContext.map {
             AISchemaContext.buildSystemPrompt(
                 databaseType: $0.databaseType,
@@ -374,22 +479,32 @@ extension AIChatViewModel {
             )
         }
         let modeNote = mode.systemPromptNote
-        guard let schemaPrompt, !schemaPrompt.isEmpty else { return modeNote }
-        return "\(schemaPrompt)\n\n\(modeNote)"
+        let base: String?
+        if let schemaPrompt, !schemaPrompt.isEmpty {
+            base = "\(schemaPrompt)\n\n\(modeNote)"
+        } else {
+            base = modeNote
+        }
+        guard includeWalkthroughDirective else { return base }
+        let directive = AIPromptTemplates.walkthroughSystemDirective
+        guard let base, !base.isEmpty else { return directive }
+        return "\(base)\n\n\(directive)"
     }
 
-    private func failTooManyRoundtrips(assistantID: UUID) async {
+    private func pauseAtToolLimit(assistantID: UUID, count: Int) async {
         await MainActor.run { [weak self] in
             guard let self else { return }
-            self.errorMessage = String(
-                localized: "AI made too many tool calls in one response. Try simplifying the request."
-            )
             self.finalizeStreamingMessage(id: assistantID)
             if let idx = self.messages.firstIndex(where: { $0.id == assistantID }),
                self.messages[idx].blocks.isEmpty {
                 self.messages.remove(at: idx)
             }
-            self.streamingState = .failed(nil)
+            self.streamingState = .pausedAtToolLimit(count: count)
+            self.streamingTask = nil
+            self.persistCurrentConversation()
+            AccessibilityNotification.Announcement(
+                String(format: String(localized: "Paused after %d tool calls."), count)
+            ).post()
         }
     }
 

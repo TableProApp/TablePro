@@ -30,8 +30,12 @@ final class DatabaseSwitcherViewModel {
     private let sidebarState: SharedSidebarState?
 
     private var treeVisibleDatabases: [DatabaseMetadata] {
-        guard switchTarget == .database, let sidebarState else { return databases }
-        return DatabaseTreeVisibility.visible(databases: databases, selected: sidebarState.databaseFilterSelected)
+        guard switchTarget == .database else { return databases }
+        return DatabaseTreeVisibility.visible(
+            databases: databases,
+            selected: sidebarState?.databaseFilterSelected ?? [],
+            activeDatabase: currentDatabase
+        )
     }
 
     var filteredDatabases: [DatabaseMetadata] {

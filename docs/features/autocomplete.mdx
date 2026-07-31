@@ -3,11 +3,8 @@ title: Autocomplete
 description: Schema-aware SQL autocomplete for keywords, tables, columns, and functions
 ---
 
-# SQL Autocomplete
-
 Autocomplete suggests keywords, tables, columns, and functions based on where your cursor is and what tables are in scope.
 
-{/* Screenshot: Autocomplete popup showing mixed suggestions */}
 <Frame caption="Context-aware autocomplete">
   <img
     className="block dark:hidden"
@@ -137,7 +134,7 @@ SELECT * FROM ANALYTICS_PROD.DBT_MARTS.ORDERS o WHERE o.|  -- columns
 
 On connection, TablePro fetches table names and loads columns in the background. The column cache holds up to 50 tables with LRU eviction. There is no time-based expiry: cached columns stay until you switch databases or refresh the connection. A failed schema load waits 30 seconds before retrying, to avoid hammering the server.
 
-After external schema changes (migrations, CLI work), right-click the connection and select **Refresh** to reload.
+After external schema changes (migrations, CLI work), press `Cmd+R` (**Query > Refresh**) to reload it. Right-clicking the sidebar's Tables header and choosing **Refresh** does the same.
 
 ## Performance
 

@@ -3,9 +3,7 @@ title: Keyboard Shortcuts
 description: Every keyboard shortcut in TablePro, plus how to rebind them in Settings > Keyboard
 ---
 
-# Keyboard Shortcuts
-
-Defaults are listed below. Most shortcuts are rebindable in **Settings** > **Keyboard**; see [Customizing shortcuts](#customizing-shortcuts). The same key can do different things depending on focus: `Cmd+[` indents in the editor and pages back in the data grid.
+Defaults are listed below. Most shortcuts are rebindable in **Settings > Keyboard**; see [Customizing shortcuts](#customizing-shortcuts). The same key can do different things depending on focus: `Cmd+[` indents in the editor and pages back in the data grid.
 
 ## Essential
 
@@ -87,11 +85,13 @@ Every row except Find Next and Find Previous is built into the editor and cannot
 | Add row | `Cmd+Shift+N` |
 | Duplicate row | `Cmd+Shift+D` |
 | Delete selected rows | `Delete` or `Cmd+Delete` |
-| Truncate table | `Option+Delete` |
+| Truncate table (tables selected in the sidebar) | `Option+Delete` |
 | Preview FK reference | `Space` |
 | Commit changes | `Cmd+S` |
 | Undo change | `Cmd+Z` |
 | Redo change | `Cmd+Shift+Z` |
+
+Truncate table opens a dialog with **Cascade** and **Ignore foreign key checks**, then marks the tables as a pending truncate that `Cmd+S` runs.
 
 ### Clipboard
 
@@ -141,6 +141,9 @@ See [Filtering](/features/filtering) for the filter panel itself.
 |--------|----------|
 | New tab | `Cmd+T` |
 | Close tab / window | `Cmd+W` |
+| Close other tabs | none by default, rebindable |
+| Close tabs for other databases | none by default, rebindable |
+| Close all tabs | none by default, rebindable |
 | Reopen closed tab | `Cmd+Shift+T` |
 | Select tab 1-9 | `Cmd+1` through `Cmd+9` |
 | Previous tab | `Cmd+Shift+[` |
@@ -155,13 +158,14 @@ See [Filtering](/features/filtering) for the filter panel itself.
 | Manage connections | none by default, rebindable |
 | Switch connection | `Ctrl+Cmd+C` |
 | Open database switcher | `Cmd+K` |
+| New database (database switcher open) | `Cmd+N` |
 | Refresh | `Cmd+R` |
 
 ## Sidebar, Panels, and View
 
 | Action | Shortcut |
 |--------|----------|
-| Toggle sidebar | `Cmd+0` |
+| Toggle sidebar (listed as Toggle Table Browser in **Settings > Keyboard**) | `Cmd+0` |
 | Focus sidebar filter | `Cmd+Option+F` |
 | Show Tables sidebar | `Cmd+Option+1` |
 | Show Favorites sidebar | `Cmd+Option+2` |
@@ -219,11 +223,11 @@ See [CSV Inspector](/features/csv-inspector).
 
 ## Vim Mode
 
-Turn on Vim mode in **Settings** > **Editor**. Vim keys apply only in the SQL editor; the data grid keeps its shortcuts, and `Cmd+Enter` runs the query in any mode. See [Vim Mode](/features/vim-mode) for the key reference.
+Turn on Vim mode in **Settings > Editor**. Vim keys apply only in the SQL editor; the data grid keeps its shortcuts, and `Cmd+Enter` runs the query in any mode. See [Vim Mode](/features/vim-mode) for the key reference.
 
 ## Customizing Shortcuts
 
-Open **Settings** (`Cmd+,`) > **Keyboard**. Each action has a recorder field: click it and press the new combination. The menu bar updates immediately. Use the search field to filter actions, press `Delete` in a recorder field to clear a binding, click the curved-arrow button next to a changed shortcut to restore that one action, or **Reset to Defaults** to restore all. See [Settings](/customization/settings) for the other tabs.
+Open **Settings > Keyboard** (`Cmd+,`). Each action has a recorder field: click it and press the new combination. The menu bar updates immediately. Use the search field to filter actions, press `Delete` in a recorder field to clear a binding, click the curved-arrow button next to a changed shortcut to restore that one action, or **Reset to Defaults** to restore all. See [Settings](/customization/settings) for the other tabs.
 
 <Frame caption="Keyboard shortcut customization">
   <img className="block dark:hidden" src="/images/settings-keyboard.png" alt="Keyboard settings" />

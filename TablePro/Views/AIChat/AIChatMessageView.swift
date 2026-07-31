@@ -15,6 +15,9 @@ struct AIChatMessageView: View {
     var onRetry: (() -> Void)?
     var onRegenerate: (() -> Void)?
     var onEdit: (() -> Void)?
+    var onContinue: (() -> Void)?
+    var onAdjustToolLimit: (() -> Void)?
+    var pausedToolCallCount: Int?
 
     private var attachedContextItems: [ContextItem] {
         message.blocks.compactMap { block in
@@ -113,7 +116,36 @@ struct AIChatMessageView: View {
                 .buttonStyle(.plain)
                 .padding(.horizontal, 8)
             }
+
+            toolLimitPauseRow
         }
+    }
+
+    @ViewBuilder
+    private var toolLimitPauseRow: some View {
+        if let onContinue, let onAdjustToolLimit, let pausedToolCallCount {
+            HStack(spacing: 8) {
+                Image(systemName: "pause.circle")
+                    .foregroundStyle(.secondary)
+                Text(pausedDescription(count: pausedToolCallCount))
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 0)
+                Button(String(localized: "Adjust Limit")) { onAdjustToolLimit() }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Color.accentColor)
+                    .help(String(localized: "Open AI settings to change the tool call limit."))
+                Button(String(localized: "Continue")) { onContinue() }
+                    .controlSize(.small)
+                    .help(String(localized: "Resume with a fresh tool call budget."))
+            }
+            .font(.caption)
+            .padding(.horizontal, 8)
+            .padding(.top, 2)
+        }
+    }
+
+    private func pausedDescription(count: Int) -> String {
+        String(format: String(localized: "Paused after %d tool calls."), count)
     }
 
     private var roleHeader: some View {
@@ -141,6 +173,8 @@ struct AIChatMessageView: View {
             case .reasoning(let reasoning):
                 return block.isStreaming || (reasoning.text?.isEmpty == false)
             case .image:
+                return true
+            case .sqlWalkthrough:
                 return true
             }
         }
@@ -179,6 +213,9 @@ private struct AIChatBlockView: View {
                 .padding(.horizontal, 8)
         case .image(let input):
             AIChatImageBlockView(input: input)
+                .padding(.horizontal, 8)
+        case .sqlWalkthrough:
+            AIChatWalkthroughBlockView(block: block)
                 .padding(.horizontal, 8)
         }
     }

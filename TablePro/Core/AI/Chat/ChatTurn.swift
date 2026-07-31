@@ -19,6 +19,7 @@ enum ChatContentBlockKind: Sendable, Equatable {
     case attachment(ContextItem)
     case reasoning(ReasoningBlock)
     case image(ChatImageInput)
+    case sqlWalkthrough(SqlWalkthroughBlock)
 }
 
 @MainActor @Observable
@@ -86,6 +87,10 @@ extension ChatContentBlock {
 
     static func image(_ input: ChatImageInput) -> ChatContentBlock {
         ChatContentBlock(kind: .image(input))
+    }
+
+    static func sqlWalkthrough(_ block: SqlWalkthroughBlock) -> ChatContentBlock {
+        ChatContentBlock(kind: .sqlWalkthrough(block))
     }
 }
 
@@ -257,12 +262,16 @@ struct ChatContentBlockWire: Codable, Equatable, Sendable, Identifiable {
         ChatContentBlockWire(kind: .image(input))
     }
 
+    static func sqlWalkthrough(_ block: SqlWalkthroughBlock) -> ChatContentBlockWire {
+        ChatContentBlockWire(kind: .sqlWalkthrough(block))
+    }
+
     private enum CodingKeys: String, CodingKey {
-        case blockId, kind, text, toolUse, toolResult, attachment, reasoning, image
+        case blockId, kind, text, toolUse, toolResult, attachment, reasoning, image, sqlWalkthrough
     }
 
     private enum KindMarker: String, Codable {
-        case text, toolUse, toolResult, attachment, reasoning, image
+        case text, toolUse, toolResult, attachment, reasoning, image, sqlWalkthrough
     }
 
     init(from decoder: Decoder) throws {
@@ -283,6 +292,8 @@ struct ChatContentBlockWire: Codable, Equatable, Sendable, Identifiable {
             resolvedKind = .reasoning(try container.decode(ReasoningBlock.self, forKey: .reasoning))
         case .image:
             resolvedKind = .image(try container.decode(ChatImageInput.self, forKey: .image))
+        case .sqlWalkthrough:
+            resolvedKind = .sqlWalkthrough(try container.decode(SqlWalkthroughBlock.self, forKey: .sqlWalkthrough))
         }
         self.init(id: resolvedID, kind: resolvedKind)
     }
@@ -309,6 +320,9 @@ struct ChatContentBlockWire: Codable, Equatable, Sendable, Identifiable {
         case .image(let input):
             try container.encode(KindMarker.image, forKey: .kind)
             try container.encode(input, forKey: .image)
+        case .sqlWalkthrough(let block):
+            try container.encode(KindMarker.sqlWalkthrough, forKey: .kind)
+            try container.encode(block, forKey: .sqlWalkthrough)
         }
     }
 }

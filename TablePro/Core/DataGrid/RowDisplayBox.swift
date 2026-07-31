@@ -58,6 +58,11 @@ final class RowDisplayBox {
             cost -= previous.utf8.count
         }
     }
+
+    func removeAllValues() {
+        valuesByColumn.removeAll(keepingCapacity: true)
+        cost = 0
+    }
 }
 
 @MainActor
@@ -99,6 +104,17 @@ final class RowDisplayCache {
         insertionOrder.removeAll(keepingCapacity: true)
         insertionHead = 0
         totalCost = 0
+    }
+
+    /// Drops one row's formatted values while keeping its box, so the next read
+    /// reformats from the current cell values. Row ids are positional, so a row
+    /// whose content changed in place keeps its id and would otherwise be served
+    /// its pre-edit text.
+    func clearValues(forID id: RowID) {
+        guard let entry = storage[id] else { return }
+        totalCost -= entry.cost
+        entry.box.removeAllValues()
+        storage[id] = Entry(box: entry.box, cost: entry.box.cost)
     }
 
     private func evictIfNeeded() {

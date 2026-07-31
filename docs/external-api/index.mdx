@@ -3,13 +3,11 @@ title: External API
 description: URL scheme, MCP server, pairing flow, terminal, and iOS Shortcuts for driving TablePro from other apps
 ---
 
-# External API
-
 The TablePro External API is the public contract that lets other apps drive TablePro. Raycast, Cursor, Claude Desktop, shell scripts, and DDEV all use the same surface. This page is the entry point. Pick the subpage that matches what you want to do.
 
-## Three pillars
+## Layers
 
-The External API has three independent layers. Most clients use a mix of all three.
+The URL scheme drives the GUI, MCP exchanges data, and pairing bootstraps trust. The three are independent, and most clients use a mix.
 
 <CardGroup cols={3}>
   <Card title="URL scheme" icon="link" href="/external-api/url-scheme">
@@ -23,7 +21,7 @@ The External API has three independent layers. Most clients use a mix of all thr
   </Card>
 </CardGroup>
 
-Two more surfaces build on these. TablePro also opens plain database URLs (`mysql://...`) handed to it by macOS, which is what [Terminal and DDEV](/external-api/terminal) uses. On iPhone and iPad, TablePro exposes App Intents for [iOS Shortcuts](/external-api/ios-shortcuts).
+Two more surfaces build on these. TablePro also opens plain database URLs (`mysql://...`) handed to it by macOS, which is how the [Terminal and DDEV](/external-api/terminal) integration works. On iPhone and iPad, TablePro exposes App Intents for [iOS Shortcuts](/external-api/ios-shortcuts).
 
 ## When to use which
 
@@ -36,8 +34,6 @@ Two more surfaces build on these. TablePro also opens plain database URLs (`mysq
 | Issue a token to a Raycast or Cursor extension | Pairing |
 | Navigate to a tab the user already has open | MCP `list_recent_tabs` + `focus_query_tab` |
 | Insert rows from iPhone or iPad | [iOS Shortcuts](/external-api/ios-shortcuts) |
-
-URL scheme drives the GUI. MCP exchanges data. Pairing bootstraps trust.
 
 ## Security model
 

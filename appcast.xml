@@ -3,6 +3,123 @@
     <channel>
         <title>TablePro</title>
         <item>
+            <title>0.61.0</title>
+            <pubDate>Thu, 30 Jul 2026 15:00:56 +0000</pubDate>
+            <sparkle:version>114</sparkle:version>
+            <sparkle:shortVersionString>0.61.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <description><![CDATA[<h3>Added</h3>
+<ul>
+<li>**Close All Tabs**, **Close Other Tabs**, and **Close Tabs for Other Databases** in the File menu, bindable in **Settings > Keyboard**. (#1972)</li>
+<li>AI Explain, Optimize, and Fix Error answer with numbered steps and a before/after SQL diff you can apply to the editor. (#1945)</li>
+<li>Create a connection from a project folder, filled in from `.env`, `wp-config.php`, `prisma/schema.prisma`, `config/database.yml`, `docker-compose.yml`, `application.properties`, `application.yml`, or `appsettings.json`. (#1959)</li>
+<li>An AI tool call limit in **Settings > AI**, now 25 per reply instead of a fixed 10, with **Continue** to resume a paused reply. (#1987)</li>
+<li>A pin button on result tabs. (#1982)</li>
+<li>The inspector edits the column, index, or foreign key you select in the Structure tab.</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>The welcome screen groups Import from Other App, Open Project Folder, Import Connections, and Import from URL into one **Add from Existing** menu, and offers **Try Sample Database** in the connection list.</li>
+<li>A failed iCloud sync on iPhone and iPad names the cause: out of storage, no network, or a rejected change. (#1990)</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>The inspector shows the Structure row you selected, not the data row in the same position. Duplicate Row and Copy with Headers no longer act on a data row there either.</li>
+<li>Editing a connection on two devices no longer overwrites the field the other one changed. (#643)</li>
+<li>A per-connection query timeout set on iPhone or iPad no longer stops that connection from syncing. (#643)</li>
+<li>iCloud Sync downloads every page of changes when catching up, instead of only the first. (#643)</li>
+<li>iCloud Sync reports a failed sync instead of always reporting success. (#643)</li>
+<li>A change iCloud rejects no longer stops the rest of its batch from syncing. (#643)</li>
+<li>Connection changes made on the Mac reach the iPhone and iPad app again. (#643)</li>
+<li>A connection synced from iPhone or iPad keeps its safe mode setting on the Mac. (#643)</li>
+<li>A connection's colour tag set on iPhone or iPad no longer overwrites its colour label on the Mac. (#643)</li>
+<li>**Primary Key**, **Nullable**, **Auto Inc**, and the index **Unique** flag now change when you pick a value, and no longer offer Set NULL. (#1991)</li>
+<li>A message sent in the AI panel right after launch is no longer replaced by the restored conversation.</li>
+<li>A PostgreSQL partitioned table is listed once, with its partitions nested under it. (#1984)</li>
+<li>An SSH tunnel that cannot reach the database reports whether the connection was refused or timed out. (#1981)</li>
+<li>The macOS local network prompt says why TablePro needs access.</li>
+<li>An SSH tunnel no longer drops under heavy traffic.</li>
+<li>A `ProxyCommand` line in `~/.ssh/config` is logged as skipped instead of ignored without a word.</li>
+<li>Right-clicking below the SQL editor opens the menu for the result tabs, data grid, or status bar instead of the editor's. (#1982)</li>
+<li>**View > Pin Result** is enabled only when there is a result tab to pin, and result tabs now show in JSON view. (#1982)</li>
+<li>Closing a window asks about unsaved changes in every tab, not just the one on screen. (#1972)</li>
+<li>MongoDB authenticates against the database set on the connection, not the one you are browsing. (#1970)</li>
+<li>Creating a MongoDB database asks for its first collection, so the database is kept. (#1970)</li>
+<li>A MongoDB authentication error names the user and the database it tried. (#1970)</li>
+<li>Exporting a MongoDB collection works again, and `db.getCollection("name")` is accepted in the query editor. (#1971)</li>
+<li>A MongoDB export includes fields that first appear after the opening document. (#1971)</li>
+<li>`postgres`, CockroachDB's `defaultdb`, and Redshift's `dev` are no longer hidden as system databases. (#1967)</li>
+<li>The database a connection is using always shows in the sidebar and the database switchers. (#1967)</li>
+<li>The license activation sheet opens when you click **Activate License**.</li>
+<li>File > New Connection..., ⌘N, and the other File menu connection commands work once a connection is open. (#1975)</li>
+<li>The tooltip on the welcome screen's **+** button shows the shortcut bound to New Connection.</li>
+<li>The AI chat panel stays inside the right panel at narrow widths. (#1956)</li>
+<li>BigQuery `REPEATED` columns (including repeated `STRUCT`) no longer show every element as `null`. (#1963)</li>
+<li>BigQuery `STRUCT` cells show nested structs and arrays as JSON instead of escaped text. (#1963)</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.61.0/TablePro-0.61.0-arm64.zip" length="21128604" type="application/octet-stream" sparkle:edSignature="WKcSdVnjYrutOxeh2qE6rV+0yH8O2ztRp5/uGWgdw68iv/kwPudJ9ap4OdgxgRyw1U8M8t2BM2FJaE/hkCzlDQ=="/>
+        </item>
+        <item>
+            <title>0.61.0</title>
+            <pubDate>Thu, 30 Jul 2026 15:00:57 +0000</pubDate>
+            <sparkle:version>114</sparkle:version>
+            <sparkle:shortVersionString>0.61.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[<h3>Added</h3>
+<ul>
+<li>**Close All Tabs**, **Close Other Tabs**, and **Close Tabs for Other Databases** in the File menu, bindable in **Settings > Keyboard**. (#1972)</li>
+<li>AI Explain, Optimize, and Fix Error answer with numbered steps and a before/after SQL diff you can apply to the editor. (#1945)</li>
+<li>Create a connection from a project folder, filled in from `.env`, `wp-config.php`, `prisma/schema.prisma`, `config/database.yml`, `docker-compose.yml`, `application.properties`, `application.yml`, or `appsettings.json`. (#1959)</li>
+<li>An AI tool call limit in **Settings > AI**, now 25 per reply instead of a fixed 10, with **Continue** to resume a paused reply. (#1987)</li>
+<li>A pin button on result tabs. (#1982)</li>
+<li>The inspector edits the column, index, or foreign key you select in the Structure tab.</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>The welcome screen groups Import from Other App, Open Project Folder, Import Connections, and Import from URL into one **Add from Existing** menu, and offers **Try Sample Database** in the connection list.</li>
+<li>A failed iCloud sync on iPhone and iPad names the cause: out of storage, no network, or a rejected change. (#1990)</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>The inspector shows the Structure row you selected, not the data row in the same position. Duplicate Row and Copy with Headers no longer act on a data row there either.</li>
+<li>Editing a connection on two devices no longer overwrites the field the other one changed. (#643)</li>
+<li>A per-connection query timeout set on iPhone or iPad no longer stops that connection from syncing. (#643)</li>
+<li>iCloud Sync downloads every page of changes when catching up, instead of only the first. (#643)</li>
+<li>iCloud Sync reports a failed sync instead of always reporting success. (#643)</li>
+<li>A change iCloud rejects no longer stops the rest of its batch from syncing. (#643)</li>
+<li>Connection changes made on the Mac reach the iPhone and iPad app again. (#643)</li>
+<li>A connection synced from iPhone or iPad keeps its safe mode setting on the Mac. (#643)</li>
+<li>A connection's colour tag set on iPhone or iPad no longer overwrites its colour label on the Mac. (#643)</li>
+<li>**Primary Key**, **Nullable**, **Auto Inc**, and the index **Unique** flag now change when you pick a value, and no longer offer Set NULL. (#1991)</li>
+<li>A message sent in the AI panel right after launch is no longer replaced by the restored conversation.</li>
+<li>A PostgreSQL partitioned table is listed once, with its partitions nested under it. (#1984)</li>
+<li>An SSH tunnel that cannot reach the database reports whether the connection was refused or timed out. (#1981)</li>
+<li>The macOS local network prompt says why TablePro needs access.</li>
+<li>An SSH tunnel no longer drops under heavy traffic.</li>
+<li>A `ProxyCommand` line in `~/.ssh/config` is logged as skipped instead of ignored without a word.</li>
+<li>Right-clicking below the SQL editor opens the menu for the result tabs, data grid, or status bar instead of the editor's. (#1982)</li>
+<li>**View > Pin Result** is enabled only when there is a result tab to pin, and result tabs now show in JSON view. (#1982)</li>
+<li>Closing a window asks about unsaved changes in every tab, not just the one on screen. (#1972)</li>
+<li>MongoDB authenticates against the database set on the connection, not the one you are browsing. (#1970)</li>
+<li>Creating a MongoDB database asks for its first collection, so the database is kept. (#1970)</li>
+<li>A MongoDB authentication error names the user and the database it tried. (#1970)</li>
+<li>Exporting a MongoDB collection works again, and `db.getCollection("name")` is accepted in the query editor. (#1971)</li>
+<li>A MongoDB export includes fields that first appear after the opening document. (#1971)</li>
+<li>`postgres`, CockroachDB's `defaultdb`, and Redshift's `dev` are no longer hidden as system databases. (#1967)</li>
+<li>The database a connection is using always shows in the sidebar and the database switchers. (#1967)</li>
+<li>The license activation sheet opens when you click **Activate License**.</li>
+<li>File > New Connection..., ⌘N, and the other File menu connection commands work once a connection is open. (#1975)</li>
+<li>The tooltip on the welcome screen's **+** button shows the shortcut bound to New Connection.</li>
+<li>The AI chat panel stays inside the right panel at narrow widths. (#1956)</li>
+<li>BigQuery `REPEATED` columns (including repeated `STRUCT`) no longer show every element as `null`. (#1963)</li>
+<li>BigQuery `STRUCT` cells show nested structs and arrays as JSON instead of escaped text. (#1963)</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.61.0/TablePro-0.61.0-x86_64.zip" length="22387221" type="application/octet-stream" sparkle:edSignature="mkg1TzLfigDtTX+xb+StWzdONjNT8uFHSBtSv1asqjsKbG1glO204GZIjUriT+qM8+KmvRY+JPIehWM+lBlpBQ=="/>
+        </item>
+        <item>
             <title>0.60.1</title>
             <pubDate>Sat, 25 Jul 2026 08:09:47 +0000</pubDate>
             <sparkle:version>113</sparkle:version>

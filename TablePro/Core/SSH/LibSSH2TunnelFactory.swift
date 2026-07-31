@@ -27,6 +27,12 @@ internal enum LibSSH2TunnelFactory {
     /// overflow before the accept loop reaches it.
     private static let listenBacklogSize: Int32 = 16
 
+    /// Bounds the connect-time forward probe. Independent of the per-client open deadline in
+    /// `LibSSH2Tunnel`: this one runs before any database driver has started its own clock, so
+    /// it is free to wait as long as the SSH connect itself does.
+    private static let forwardProbeDeadlineSeconds: TimeInterval = 10
+    private static let probePollTimeoutMs: Int32 = 5_000
+
     // MARK: - Global Init
 
     private static let initialized: Bool = {
@@ -52,7 +58,11 @@ internal enum LibSSH2TunnelFactory {
         )
 
         do {
-            try verifyUnixSocketDestination(session: chain.session, destination: destination)
+            try probeForwardDestination(
+                session: chain.session,
+                socketFD: chain.socketFD,
+                destination: destination
+            )
 
             let listenFD = try bindListenSocket(port: localPort)
 
@@ -704,35 +714,53 @@ internal enum LibSSH2TunnelFactory {
 
     // MARK: - Channel Operations
 
-    /// A refused streamlocal forward is otherwise invisible until the database driver dials
-    /// the local port, where it surfaces as an unexplained dropped connection. `sshd` gates
-    /// socket forwarding behind `AllowStreamLocalForwarding`, separately from TCP forwarding,
-    /// so probing once at connect time turns that into an actionable error. TCP destinations
-    /// keep their existing behaviour: probing them would open and drop a real database
-    /// connection on every connect.
-    private static func verifyUnixSocketDestination(
+    /// Confirms the SSH server can actually reach the forward destination before a tunnel port
+    /// is handed back. Creating a tunnel otherwise only proves the SSH hop works: a destination
+    /// the server cannot reach stays invisible until the database driver dials the local port,
+    /// where it surfaces as an accepted socket that goes silent and the driver reports as a
+    /// greeting timeout naming no cause (#1981). Covers TCP as well as sockets, because the
+    /// common case is a database bound to 127.0.0.1 behind a host field holding the server's
+    /// public address, which no amount of driver-side timeout tuning can explain to the user.
+    /// Bounded by the same deadline and poll pattern a per-client open uses, so a destination
+    /// that never answers cannot hang tunnel creation.
+    private static func probeForwardDestination(
         session: OpaquePointer,
+        socketFD: Int32,
         destination: SSHForwardDestination
     ) throws {
-        guard case .unixSocket(let path) = destination else { return }
+        let probeQueue = DispatchQueue(label: "com.TablePro.ssh.probe")
+        probeQueue.sync { libssh2_session_set_blocking(session, 0) }
+        defer { probeQueue.sync { libssh2_session_set_blocking(session, 1) } }
 
-        libssh2_session_set_blocking(session, 1)
-        defer { libssh2_session_set_blocking(session, 0) }
+        let pump = SSHForwardChannelOpenPump(
+            opener: LibSSH2ForwardChannelOpener(
+                session: session,
+                destination: destination,
+                originPort: 0,
+                sessionQueue: probeQueue
+            ),
+            isActive: { true },
+            deadline: Date().addingTimeInterval(Self.forwardProbeDeadlineSeconds),
+            pollForReadiness: { directions in
+                pollReady(fd: socketFD, directions: directions, timeoutMs: Self.probePollTimeoutMs)
+            }
+        )
 
-        guard let channel = LibSSH2ForwardChannel.open(
-            session: session,
-            destination: destination,
-            originPort: 0
-        ) else {
-            var msgPtr: UnsafeMutablePointer<CChar>?
-            var msgLen: Int32 = 0
-            libssh2_session_last_error(session, &msgPtr, &msgLen, 0)
-            let detail = msgPtr.map { String(cString: $0) } ?? "Unknown error"
-            throw SSHTunnelError.socketForwardingRefused(path: path, detail: detail)
+        let outcome = pump.run()
+        if case .opened(let channel) = outcome {
+            probeQueue.sync {
+                libssh2_channel_close(channel)
+                libssh2_channel_free(channel)
+            }
+            return
         }
 
-        libssh2_channel_close(channel)
-        libssh2_channel_free(channel)
+        let error = outcome.tunnelError(
+            destination: destination,
+            deadlineSeconds: Int(Self.forwardProbeDeadlineSeconds)
+        ) ?? SSHTunnelError.channelOpenFailed
+        logger.error("Forward probe to \(destination.logDescription) failed: \(error.localizedDescription)")
+        throw error
     }
 
     private static func openChannel(

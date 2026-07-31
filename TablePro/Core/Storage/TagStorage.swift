@@ -7,6 +7,7 @@
 
 import Foundation
 import os
+import TableProSyncTransport
 
 /// Service for persisting the global tag library
 @MainActor

@@ -7,8 +7,8 @@ import Testing
 struct SyncRecordMapperTagTests {
     private let zoneID = CKRecordZone.ID(zoneName: "TestZone", ownerName: CKCurrentUserDefaultName)
 
-    @Test("Writes both tagIds array and legacy tagId")
-    func writesBothFields() {
+    @Test("Writes legacy tagId only while tagIds is unverified in the production schema")
+    func writesLegacyTagIdOnly() {
         let a = UUID()
         let b = UUID()
         var connection = DatabaseConnection(name: "Local")
@@ -16,17 +16,18 @@ struct SyncRecordMapperTagTests {
 
         let record = SyncRecordMapper.toCKRecord(connection, in: zoneID)
 
-        #expect(record["tagIds"] as? [String] == [a.uuidString, b.uuidString])
         #expect(record["tagId"] as? String == a.uuidString)
+        #expect(record["tagIds"] == nil)
     }
 
-    @Test("Prefers tagIds array when reading a record")
+    @Test("Prefers tagIds array when a record carries one")
     func prefersTagIds() throws {
         let a = UUID()
         let b = UUID()
         var connection = DatabaseConnection(name: "Local")
         connection.tagIds = [a, b]
         let record = SyncRecordMapper.toCKRecord(connection, in: zoneID)
+        record["tagIds"] = [a.uuidString, b.uuidString] as CKRecordValue
 
         let decoded = try SyncRecordMapper.toConnection(record)
         #expect(decoded.tagIds == [a, b])

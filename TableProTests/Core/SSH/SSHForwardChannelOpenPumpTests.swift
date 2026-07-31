@@ -28,12 +28,12 @@ struct SSHForwardChannelOpenPumpTests {
 
     @Test("A non-EAGAIN failure returns immediately without polling")
     func failsFastWithoutPolling() {
-        let opener = FakeChannelOpener(attempts: [.failed(42)])
+        let opener = FakeChannelOpener(attempts: [.failed(code: 42, message: "channel open failure")])
         let polls = CountBox()
 
         let outcome = makePump(opener: opener, polls: polls).run()
 
-        #expect(outcome == .failed(42))
+        #expect(outcome == .failed(code: 42, message: "channel open failure"))
         #expect(opener.attemptCount == 1)
         #expect(polls.value == 0)
     }
@@ -154,7 +154,7 @@ struct HandleChannelOpenOutcomeTests {
 
     @Test("A libssh2 failure closes the local socket so the client fails fast")
     func failedClosesSocket() {
-        expectLocalSocketClosed(for: .failed(42))
+        expectLocalSocketClosed(for: .failed(code: 42, message: "channel open failure"))
     }
 
     @Test("A channel open that hits the deadline closes the local socket")
@@ -178,6 +178,64 @@ struct HandleChannelOpenOutcomeTests {
 
         var byte: UInt8 = 0
         #expect(recv(pair.b, &byte, 1, 0) == 0)
+    }
+}
+
+/// The mapping that carries a channel-open failure out to the user. Without it the reason is
+/// computed and dropped, and the database driver reports a read timeout naming no cause (#1981).
+@Suite("ChannelOpenOutcome.tunnelError")
+struct ChannelOpenOutcomeTunnelErrorTests {
+    private static let tcp = SSHForwardDestination.tcp(host: "db.internal", port: 3_306)
+    private static let socket = SSHForwardDestination.unixSocket(path: "/var/run/mysqld/mysqld.sock")
+
+    @Test("An opened channel has no failure to report")
+    func openedHasNoError() {
+        let channel = OpaquePointer(bitPattern: 0xBEEF)!
+        #expect(ChannelOpenOutcome.opened(channel).tunnelError(destination: Self.tcp, deadlineSeconds: 6) == nil)
+    }
+
+    @Test("A cancelled open has no failure to report")
+    func cancelledHasNoError() {
+        #expect(ChannelOpenOutcome.cancelled.tunnelError(destination: Self.tcp, deadlineSeconds: 6) == nil)
+    }
+
+    @Test("A refused TCP forward names the destination and carries the libssh2 detail")
+    func failedTCPMapsToForwardRefused() {
+        let outcome = ChannelOpenOutcome.failed(code: -21, message: "channel open failure")
+
+        #expect(
+            outcome.tunnelError(destination: Self.tcp, deadlineSeconds: 6)
+                == .forwardRefused(destination: "db.internal:3306", detail: "channel open failure")
+        )
+    }
+
+    @Test("A refused socket forward keeps the socket-specific error and its path")
+    func failedSocketMapsToSocketForwardingRefused() {
+        let outcome = ChannelOpenOutcome.failed(code: -21, message: "channel open failure")
+
+        #expect(
+            outcome.tunnelError(destination: Self.socket, deadlineSeconds: 6)
+                == .socketForwardingRefused(
+                    path: "/var/run/mysqld/mysqld.sock",
+                    detail: "channel open failure"
+                )
+        )
+    }
+
+    @Test("A timed-out open reports the destination and the budget that expired")
+    func timedOutMapsToForwardTimedOut() {
+        #expect(
+            ChannelOpenOutcome.timedOut.tunnelError(destination: Self.tcp, deadlineSeconds: 6)
+                == .forwardTimedOut(destination: "db.internal:3306", seconds: 6)
+        )
+    }
+
+    @Test("A timed-out socket forward reports a timeout, not a refusal")
+    func timedOutSocketReportsTimeout() {
+        #expect(
+            ChannelOpenOutcome.timedOut.tunnelError(destination: Self.socket, deadlineSeconds: 10)
+                == .forwardTimedOut(destination: "/var/run/mysqld/mysqld.sock", seconds: 10)
+        )
     }
 }
 

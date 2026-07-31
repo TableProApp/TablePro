@@ -3,8 +3,6 @@ title: Table Structure
 description: Browse and edit columns, indexes, foreign keys, triggers, and DDL with a visual structure editor
 ---
 
-# Table Structure
-
 Browse and edit columns, indexes, foreign keys, triggers, and DDL for any table.
 
 <Frame caption="Table structure view">
@@ -21,6 +19,7 @@ Tabs: **Columns**, **Indexes**, **Foreign Keys**, **Triggers**, **DDL**, and **P
 Columns are edited inline in the grid:
 
 - **Nullable**, **Primary Key**, and **Auto Inc** are YES/NO dropdowns.
+- Setting **Primary Key** to YES sets **Nullable** to NO. A primary key column cannot hold NULL, so Nullable stays NO until you turn the primary key off.
 - **Type** opens a picker with the database's types grouped by category. Search to filter, or type a parametric value such as `VARCHAR(255)` or `DECIMAL(10,2)` and press Return to use it as written.
 - **Charset** and **Collation** columns appear for MySQL and MariaDB.
 
@@ -33,7 +32,7 @@ Add a column with the **Add Column** button in the status bar or `Cmd+Shift+N`. 
 
 ### Primary Keys
 
-Toggle the **Primary Key** flag on one or more columns; multiple flagged columns produce a composite key in a single `PRIMARY KEY (col1, col2)` clause. Changing the key on an existing table runs a drop-and-add sequence. Primary key changes are disabled on SQLite, ClickHouse, CockroachDB, Cassandra, and ScyllaDB.
+Toggle the **Primary Key** flag on one or more columns; multiple flagged columns produce a composite key in a single `PRIMARY KEY (col1, col2)` clause. Changing the key on an existing table runs a drop-and-add sequence on MySQL, MariaDB, PostgreSQL, PGlite, SQL Server, DuckDB, and Snowflake. Other engines, SQLite, ClickHouse, Cassandra, ScyllaDB, and Oracle among them, cannot alter a primary key in place: the dropdown stays editable but the change generates no SQL.
 
 ### Reordering Columns
 
@@ -104,16 +103,16 @@ Click the **+** button at the bottom of the sidebar and choose **New Table**. Th
 Click **Create Table** (`Cmd+Return` or `Cmd+S`) to execute. TablePro opens the new table and refreshes the sidebar.
 
 <Note>
-Visual table creation is supported for MySQL, MariaDB, PostgreSQL, SQLite, SQL Server, ClickHouse, DuckDB, Oracle, Snowflake, libSQL, and Cloudflare D1.
+Visual table creation is supported for MySQL, MariaDB, PostgreSQL, PGlite, SQLite, SQL Server, ClickHouse, DuckDB, Oracle, Snowflake, libSQL, Cloudflare D1, Trino, and Teradata.
 </Note>
 
-## Database Limits
+## Limitations
 
 TablePro disables operations the database cannot perform:
 
 - **SQLite**: columns can be renamed but not otherwise modified.
 - **Cassandra / ScyllaDB**: add and drop column only; no index editing.
-- **Redshift, CockroachDB, Beancount**: structure is read-only.
+- **Redshift, CockroachDB, Cloudflare D1, Beancount**: structure is read-only.
 - **Redis, etcd, DynamoDB**: no table schema to edit.
 
 ## MongoDB Collections

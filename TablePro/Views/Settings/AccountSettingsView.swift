@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import TableProSyncTransport
 
 struct AccountSettingsView: View {
     @Bindable private var syncCoordinator = SyncCoordinator.shared

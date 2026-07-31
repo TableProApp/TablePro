@@ -40,6 +40,9 @@ struct PersistedTab: Codable {
     var columnWidths: [String: CGFloat]?
     var windowGroupIndex: Int?
 
+    /// Set when the query was too large for the tab-state JSON and lives in a sidecar file.
+    var overflowFileName: String?
+
     init(
         id: UUID,
         title: String,
@@ -80,6 +83,7 @@ struct PersistedTab: Codable {
         case id, title, query, tabType, tableName, isView, databaseName, schemaName
         case sourceFileURL, erDiagramSchemaKey, queryParameters
         case sortColumns, restoredPage, cursorOffset, columnWidths, windowGroupIndex
+        case overflowFileName
     }
 
     init(from decoder: Decoder) throws {
@@ -100,6 +104,7 @@ struct PersistedTab: Codable {
         cursorOffset = try container.decodeIfPresent(Int.self, forKey: .cursorOffset)
         columnWidths = try container.decodeIfPresent([String: CGFloat].self, forKey: .columnWidths)
         windowGroupIndex = try container.decodeIfPresent(Int.self, forKey: .windowGroupIndex)
+        overflowFileName = try container.decodeIfPresent(String.self, forKey: .overflowFileName)
     }
 }
 
@@ -185,6 +190,7 @@ struct PaginationState: Equatable {
     var currentOffset: Int = 0       // Current OFFSET for SQL query
     var isLoading: Bool = false
     var isApproximateRowCount: Bool = false  // True when totalRowCount is from fast estimate
+    var isCountingExact: Bool = false        // True while a user-requested exact count is running
 
     // Result truncation state (query tabs)
     var hasMoreRows: Bool = false
@@ -468,6 +474,13 @@ struct TabDisplayState: Equatable {
     mutating func removeUnpinnedResults() {
         resultSets = resultSets.filter(\.isPinned)
         activeResultSetId = resultSets.last?.id
+    }
+
+    @MainActor
+    mutating func togglePin(resultSetId: UUID) {
+        guard let target = resultSets.first(where: { $0.id == resultSetId }) else { return }
+        target.isPinned.toggle()
+        resultSets = resultSets.filter(\.isPinned) + resultSets.filter { !$0.isPinned }
     }
 
     static func == (lhs: TabDisplayState, rhs: TabDisplayState) -> Bool {

@@ -14,46 +14,64 @@ import Testing
 
 @Suite("InspectorTrigger")
 struct InspectorTriggerTests {
+    private func trigger(
+        tableName: String? = "users",
+        schemaVersion: Int = 1,
+        metadataVersion: Int = 0,
+        resultsViewMode: ResultsViewMode = .data,
+        inspectorRowSourceRevision: Int = 0
+    ) -> InspectorTrigger {
+        InspectorTrigger(
+            tableName: tableName,
+            schemaVersion: schemaVersion,
+            metadataVersion: metadataVersion,
+            resultsViewMode: resultsViewMode,
+            inspectorRowSourceRevision: inspectorRowSourceRevision
+        )
+    }
+
     @Test("Same values are equal")
     func sameValuesAreEqual() {
-        let a = InspectorTrigger(tableName: "users", schemaVersion: 1, metadataVersion: 0)
-        let b = InspectorTrigger(tableName: "users", schemaVersion: 1, metadataVersion: 0)
+        let a = trigger()
+        let b = trigger()
         #expect(a == b)
     }
 
     @Test("Both nil fields are equal")
     func bothNilFieldsAreEqual() {
-        let a = InspectorTrigger(tableName: nil, schemaVersion: 0, metadataVersion: 0)
-        let b = InspectorTrigger(tableName: nil, schemaVersion: 0, metadataVersion: 0)
+        let a = trigger(tableName: nil, schemaVersion: 0)
+        let b = trigger(tableName: nil, schemaVersion: 0)
         #expect(a == b)
     }
 
     @Test("Different tableName produces unequal triggers")
     func differentTableName() {
-        let a = InspectorTrigger(tableName: "users", schemaVersion: 1, metadataVersion: 0)
-        let b = InspectorTrigger(tableName: "orders", schemaVersion: 1, metadataVersion: 0)
-        #expect(a != b)
+        #expect(trigger(tableName: "users") != trigger(tableName: "orders"))
     }
 
     @Test("nil vs non-nil tableName produces unequal triggers")
     func nilVsNonNilTableName() {
-        let a = InspectorTrigger(tableName: nil, schemaVersion: 1, metadataVersion: 0)
-        let b = InspectorTrigger(tableName: "users", schemaVersion: 1, metadataVersion: 0)
-        #expect(a != b)
+        #expect(trigger(tableName: nil) != trigger(tableName: "users"))
     }
 
     @Test("Different schemaVersion produces unequal triggers")
     func differentSchemaVersion() {
-        let a = InspectorTrigger(tableName: "users", schemaVersion: 1, metadataVersion: 0)
-        let b = InspectorTrigger(tableName: "users", schemaVersion: 2, metadataVersion: 0)
-        #expect(a != b)
+        #expect(trigger(schemaVersion: 1) != trigger(schemaVersion: 2))
     }
 
     @Test("Different metadataVersion produces unequal triggers")
     func differentMetadataVersion() {
-        let a = InspectorTrigger(tableName: "users", schemaVersion: 1, metadataVersion: 0)
-        let b = InspectorTrigger(tableName: "users", schemaVersion: 1, metadataVersion: 1)
-        #expect(a != b)
+        #expect(trigger(metadataVersion: 0) != trigger(metadataVersion: 1))
+    }
+
+    @Test("Switching results view mode produces unequal triggers")
+    func differentResultsViewMode() {
+        #expect(trigger(resultsViewMode: .data) != trigger(resultsViewMode: .structure))
+    }
+
+    @Test("A changed schema row produces unequal triggers")
+    func differentRowSourceRevision() {
+        #expect(trigger(inspectorRowSourceRevision: 0) != trigger(inspectorRowSourceRevision: 1))
     }
 }
 

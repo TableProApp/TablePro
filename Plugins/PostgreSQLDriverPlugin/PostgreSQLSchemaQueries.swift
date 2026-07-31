@@ -76,23 +76,62 @@ enum PostgreSQLSchemaQueries {
     /// `includeComments` projects each table's comment via `obj_description` /
     /// `to_regclass`. Engines that lack those functions fail the whole listing,
     /// so the caller passes `false` to fall back to a comment-free listing.
+    ///
+    /// `includePartitionAwareness` labels a declarative partition parent as
+    /// `PARTITIONED TABLE` and drops its partition children, which
+    /// `information_schema.tables` reports as plain `BASE TABLE` rows
+    /// indistinguishable from the parent. The test is `pg_inherits` joined to
+    /// the parent's `relkind`, not `pg_class.relispartition`: `relispartition`
+    /// only exists from PostgreSQL 10, and referencing a missing column fails
+    /// at parse time, which would break the listing outright on older servers.
+    /// Comparing `relkind` against `'p'`/`'I'` is a value test on a column
+    /// present since PostgreSQL 8, so it parses everywhere and simply matches
+    /// nothing before declarative partitioning existed. Rows still come from
+    /// `information_schema.tables`, which keeps its privilege filtering; the
+    /// catalog joins only label and exclude rows it already returned. The
+    /// caller passes `false` for engines without these catalogs.
+    ///
+    /// Legacy `INHERITS` children stay listed on purpose. Their parent is an
+    /// ordinary table (`relkind = 'r'`), and they are independently useful
+    /// tables rather than an implementation detail of one parent.
     static func fetchTables(
         schemaLiteral: String,
         includeMaterializedViews: Bool,
         includeForeignTables: Bool,
-        includeComments: Bool = true
+        includeComments: Bool = true,
+        includePartitionAwareness: Bool = true
     ) -> String {
         func commentColumn(_ expression: String) -> String {
             includeComments ? expression : "NULL::text"
         }
 
+        let partitionJoin = includePartitionAwareness ? """
+
+            LEFT JOIN pg_catalog.pg_namespace pn ON pn.nspname = t.table_schema
+            LEFT JOIN pg_catalog.pg_class pc ON pc.relnamespace = pn.oid AND pc.relname = t.table_name
+            """ : ""
+
+        let tableTypeColumn = includePartitionAwareness
+            ? "CASE WHEN pc.relkind = 'p' THEN 'PARTITIONED TABLE' ELSE t.table_type END"
+            : "t.table_type"
+
+        let partitionFilter = includePartitionAwareness ? """
+
+              AND NOT EXISTS (
+                    SELECT 1
+                    FROM pg_catalog.pg_inherits i
+                    JOIN pg_catalog.pg_class parent ON parent.oid = i.inhparent
+                    WHERE i.inhrelid = pc.oid
+                      AND parent.relkind IN ('p', 'I'))
+            """ : ""
+
         var unions: [String] = [
             """
-            SELECT t.table_name, t.table_type,
+            SELECT t.table_name, \(tableTypeColumn) AS table_type,
                    \(commentColumn("obj_description(to_regclass(quote_ident(t.table_schema) || '.' || quote_ident(t.table_name)), 'pg_class')")) AS table_comment
-            FROM information_schema.tables t
+            FROM information_schema.tables t\(partitionJoin)
             WHERE t.table_schema = '\(schemaLiteral)'
-              AND t.table_type IN ('BASE TABLE', 'VIEW')
+              AND t.table_type IN ('BASE TABLE', 'VIEW')\(partitionFilter)
             """
         ]
 
@@ -121,6 +160,27 @@ enum PostgreSQLSchemaQueries {
         }
 
         return unions.joined(separator: "\nUNION ALL\n") + "\nORDER BY table_name"
+    }
+
+    /// Lists one partitioned table's direct partitions, ordered so the DEFAULT
+    /// partition sorts last. A child that is itself subpartitioned comes back
+    /// with `relkind = 'p'` so it can be expanded in turn.
+    ///
+    /// `relpartbound` exists only from PostgreSQL 10, so unlike `fetchTables`
+    /// this query cannot be issued against an older server. The caller gates it
+    /// on `PostgreSQLCapabilities.hasDeclarativePartitioning`.
+    static func fetchPartitions(schemaLiteral: String, tableLiteral: String) -> String {
+        """
+        SELECT cc.relname, cc.relkind
+        FROM pg_catalog.pg_inherits i
+        JOIN pg_catalog.pg_class parent ON parent.oid = i.inhparent
+        JOIN pg_catalog.pg_namespace pn ON pn.oid = parent.relnamespace
+        JOIN pg_catalog.pg_class cc ON cc.oid = i.inhrelid
+        WHERE pn.nspname = '\(schemaLiteral)'
+          AND parent.relname = '\(tableLiteral)'
+          AND parent.relkind = 'p'
+        ORDER BY pg_catalog.pg_get_expr(cc.relpartbound, cc.oid) = 'DEFAULT', cc.relname
+        """
     }
 
     static func setSearchPath(toSchema schema: String) -> String {

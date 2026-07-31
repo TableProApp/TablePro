@@ -404,7 +404,7 @@ extension QueryExecutionCoordinator {
     ) {
         let isNonSQL = PluginManager.shared.editorLanguage(for: connectionType) != .sql
 
-        Task(priority: .utility) { [weak self, parent] in
+        parent.currentRowCountTask = Task(priority: .utility) { [weak self, parent] in
             guard let self else { return }
             guard !parent.isTearingDown else { return }
 
@@ -465,14 +465,9 @@ extension QueryExecutionCoordinator {
             await MainActor.run {
                 guard capturedGeneration == parent.queryGeneration else { return }
                 parent.tabManager.mutate(tabId: tabId) { tab in
-                    switch outcome {
-                    case let .count(value, isApproximate):
-                        tab.pagination.totalRowCount = value
-                        tab.pagination.isApproximateRowCount = isApproximate
-                    case .clear:
-                        tab.pagination.totalRowCount = nil
-                        tab.pagination.isApproximateRowCount = false
-                    }
+                    let applied = outcome.appliedTotal
+                    tab.pagination.totalRowCount = applied.total
+                    tab.pagination.isApproximateRowCount = applied.isApproximate
                 }
             }
         }
@@ -555,7 +550,15 @@ enum RowCountPlan: Equatable {
     case filteredNonSQL(filters: [TableFilter], logicMode: FilterLogicMode)
 }
 
-private enum RowCountOutcome {
+enum RowCountOutcome: Equatable {
     case count(Int, isApproximate: Bool)
     case clear
+
+    /// An estimate of zero or less means "unknown", never "this table is empty": an un-analyzed
+    /// table reports 0 or -1 while holding millions of rows. An exact zero is trustworthy.
+    var appliedTotal: (total: Int?, isApproximate: Bool) {
+        guard case let .count(value, isApproximate) = self else { return (nil, false) }
+        guard value > 0 || (value == 0 && !isApproximate) else { return (nil, false) }
+        return (value, isApproximate)
+    }
 }

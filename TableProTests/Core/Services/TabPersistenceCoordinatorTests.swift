@@ -64,7 +64,7 @@ struct TabPersistenceCoordinatorTests {
             #expect(restored.tabType == original.tabType)
         }
 
-        coordinator.clearSavedState()
+        coordinator.clearForUserClosedAllTabs()
         await sleep()
     }
 
@@ -76,7 +76,7 @@ struct TabPersistenceCoordinatorTests {
         coordinator.saveNow(tabs: tabs, selectedTabId: tabs[0].id)
         await sleep()
 
-        coordinator.clearSavedState()
+        coordinator.clearForUserClosedAllTabs()
         await sleep()
 
         let result = await coordinator.restoreFromDisk()
@@ -100,12 +100,12 @@ struct TabPersistenceCoordinatorTests {
         #expect(result.selectedTabId == selectedId)
         #expect(result.source == .disk)
 
-        coordinator.clearSavedState()
+        coordinator.clearForUserClosedAllTabs()
         await sleep()
     }
 
-    @Test("Large query over 500KB is truncated to empty string in persisted tab")
-    func largeQueryIsTruncated() async {
+    @Test("A query over 500KB survives a save and restore through its sidecar")
+    func largeQueryRoundTripsThroughOverflowFile() async {
         let coordinator = makeCoordinator()
         let largeQuery = String(repeating: "A", count: 600_000)
         var tab = QueryTab(id: UUID(), title: "Big", query: largeQuery, tabType: .query)
@@ -117,10 +117,10 @@ struct TabPersistenceCoordinatorTests {
         let result = await coordinator.restoreFromDisk()
 
         #expect(result.tabs.count == 1)
-        #expect(result.tabs[0].content.query == "")
+        #expect(result.tabs[0].content.query == largeQuery)
         #expect(result.tabs[0].title == "Big")
 
-        coordinator.clearSavedState()
+        coordinator.clearForUserClosedAllTabs()
         await sleep()
     }
 
@@ -136,7 +136,7 @@ struct TabPersistenceCoordinatorTests {
 
         #expect(result.source == .disk)
 
-        coordinator.clearSavedState()
+        coordinator.clearForUserClosedAllTabs()
         await sleep()
     }
 
@@ -162,7 +162,7 @@ struct TabPersistenceCoordinatorTests {
             #expect(restored.id == original.id)
         }
 
-        coordinator.clearSavedState()
+        coordinator.clearForUserClosedAllTabs()
         await sleep()
     }
 
@@ -178,7 +178,7 @@ struct TabPersistenceCoordinatorTests {
         let beforeClear = await coordinator.restoreFromDisk()
         #expect(beforeClear.tabs.count == 2)
 
-        coordinator.clearSavedState()
+        coordinator.clearForUserClosedAllTabs()
         await sleep()
 
         let afterClear = await coordinator.restoreFromDisk()
@@ -202,7 +202,7 @@ struct TabPersistenceCoordinatorTests {
         #expect(result.tabs.contains { $0.id == previewTab.id })
         #expect(result.tabs.allSatisfy { !$0.isPreview })
 
-        coordinator.clearSavedState()
+        coordinator.clearForUserClosedAllTabs()
         await sleep()
     }
 
@@ -220,7 +220,7 @@ struct TabPersistenceCoordinatorTests {
         #expect(result.tabs[0].id == previewTab.id)
         #expect(result.tabs[0].isPreview == false)
 
-        coordinator.clearSavedState()
+        coordinator.clearForUserClosedAllTabs()
         await sleep()
     }
 
@@ -237,7 +237,7 @@ struct TabPersistenceCoordinatorTests {
         let result = await coordinator.restoreFromDisk()
         #expect(result.selectedTabId == previewTab.id)
 
-        coordinator.clearSavedState()
+        coordinator.clearForUserClosedAllTabs()
         await sleep()
     }
 
@@ -257,7 +257,7 @@ struct TabPersistenceCoordinatorTests {
         #expect(result.tabs[0].content.sourceFileURL == url)
         #expect(result.tabs[0].id == tab.id)
 
-        coordinator.clearSavedState()
+        coordinator.clearForUserClosedAllTabs()
         await sleep()
     }
 
@@ -283,7 +283,7 @@ struct TabPersistenceCoordinatorTests {
             #expect(restored.content.sourceFileURL == original.content.sourceFileURL)
         }
 
-        coordinator.clearSavedState()
+        coordinator.clearForUserClosedAllTabs()
         await sleep()
     }
 
@@ -308,7 +308,75 @@ struct TabPersistenceCoordinatorTests {
         #expect(restored.id == tab.id)
         #expect(restored.tabType == .table)
 
-        coordinator.clearSavedState()
+        coordinator.clearForUserClosedAllTabs()
         await sleep()
+    }
+
+    // MARK: - Empty tab lists must never delete saved work (#1997)
+
+    @Test("An empty async save leaves saved tabs on disk")
+    func emptyAsyncSaveDoesNotDeleteSavedTabs() async {
+        let coordinator = makeCoordinator()
+        let tabs = makeTabs(count: 2)
+        coordinator.saveNow(tabs: tabs, selectedTabId: tabs[0].id)
+        await sleep()
+
+        coordinator.saveNow(tabs: [], selectedTabId: nil)
+        await sleep()
+
+        let result = await coordinator.restoreFromDisk()
+        #expect(result.tabs.count == 2)
+        #expect(result.source == .disk)
+
+        coordinator.clearForUserClosedAllTabs()
+        await sleep()
+    }
+
+    @Test("An empty quit-time save leaves saved tabs on disk")
+    func emptySyncSaveDoesNotDeleteSavedTabs() async {
+        let coordinator = makeCoordinator()
+        let tabs = makeTabs(count: 3)
+        coordinator.saveNowSync(tabs: tabs, selectedTabId: tabs[1].id)
+
+        coordinator.saveNowSync(tabs: [], selectedTabId: nil)
+
+        let result = await coordinator.restoreFromDisk()
+        #expect(result.tabs.count == 3)
+        #expect(result.selectedTabId == tabs[1].id)
+
+        coordinator.clearForUserClosedAllTabs()
+        await sleep()
+    }
+
+    @Test("An unsaved query survives a quit-time save that follows an empty one")
+    func draftSurvivesEmptySaveThenRestore() async {
+        let coordinator = makeCoordinator()
+        var draft = QueryTab(id: UUID(), title: "Query 1", query: "", tabType: .query)
+        draft.content.query = "SELECT * FROM never_saved_to_a_file"
+        coordinator.saveNowSync(tabs: [draft], selectedTabId: draft.id)
+
+        coordinator.saveNowSync(tabs: [], selectedTabId: nil)
+        coordinator.saveNow(tabs: [], selectedTabId: nil)
+        await sleep()
+
+        let result = await coordinator.restoreFromDisk()
+        #expect(result.tabs.count == 1)
+        #expect(result.tabs[0].content.query == "SELECT * FROM never_saved_to_a_file")
+
+        coordinator.clearForUserClosedAllTabs()
+        await sleep()
+    }
+
+    @Test("Closing every tab still discards the saved state")
+    func userClosingAllTabsClearsSavedState() async {
+        let coordinator = makeCoordinator()
+        let tabs = makeTabs(count: 2)
+        coordinator.saveNowSync(tabs: tabs, selectedTabId: tabs[0].id)
+
+        coordinator.clearForUserClosedAllTabs()
+
+        let result = await coordinator.restoreFromDisk()
+        #expect(result.tabs.isEmpty)
+        #expect(result.source == .none)
     }
 }

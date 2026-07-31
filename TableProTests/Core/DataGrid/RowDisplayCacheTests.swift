@@ -95,6 +95,73 @@ struct RowDisplayCacheTests {
         #expect(cache.box(forID: .existing(100))?.value(at: 0) == "fresh")
     }
 
+    @Test("Clearing a row drops its formatted values and keeps the box")
+    func clearValuesDropsFormattedText() throws {
+        let cache = RowDisplayCache()
+        let id = RowID.existing(1)
+        let box = makeBox(["old", "VARCHAR(255)", "YES"])
+        cache.setBox(box, forID: id)
+
+        cache.clearValues(forID: id)
+
+        let cleared = try #require(cache.box(forID: id))
+        #expect(cleared === box)
+        #expect(cleared.cachedColumnCount == 0)
+        #expect(!cleared.containsValue(at: 0))
+    }
+
+    @Test("Clearing one row leaves the others formatted")
+    func clearValuesLeavesOtherRows() throws {
+        let cache = RowDisplayCache()
+        cache.setBox(makeBox(["a"]), forID: .existing(0))
+        cache.setBox(makeBox(["b"]), forID: .existing(1))
+
+        cache.clearValues(forID: .existing(1))
+
+        let kept = try #require(cache.box(forID: .existing(0)))
+        #expect(kept.value(at: 0) == "a")
+        let cleared = try #require(cache.box(forID: .existing(1)))
+        #expect(!cleared.containsValue(at: 0))
+    }
+
+    @Test("Clearing a row releases its recorded cost")
+    func clearValuesReleasesCost() {
+        let cache = RowDisplayCache(countLimit: 10, costLimit: 6)
+        let clearedID = RowID.existing(0)
+        cache.setBox(makeBox(["12345"]), forID: clearedID)
+
+        cache.clearValues(forID: clearedID)
+        cache.setBox(makeBox(["67890"]), forID: .existing(1))
+
+        #expect(cache.box(forID: clearedID) != nil)
+        #expect(cache.box(forID: .existing(1)) != nil)
+    }
+
+    @Test("Clearing an uncached row does nothing")
+    func clearValuesForUnknownRow() {
+        let cache = RowDisplayCache()
+        cache.setBox(makeBox(["a"]), forID: .existing(0))
+
+        cache.clearValues(forID: .existing(9))
+
+        #expect(cache.box(forID: .existing(9)) == nil)
+        #expect(cache.box(forID: .existing(0))?.value(at: 0) == "a")
+    }
+
+    @Test("A cleared row accepts fresh values and keeps serving them")
+    func clearedRowRefills() {
+        let cache = RowDisplayCache()
+        let id = RowID.existing(2)
+        let box = makeBox(["old"])
+        cache.setBox(box, forID: id)
+        cache.clearValues(forID: id)
+
+        box.setValue("new", at: 0)
+        cache.setBox(box, forID: id)
+
+        #expect(cache.box(forID: id)?.value(at: 0) == "new")
+    }
+
     @Test("Inserted row IDs of both kinds round-trip")
     func mixedRowIDKinds() {
         let cache = RowDisplayCache()

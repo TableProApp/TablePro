@@ -3,8 +3,6 @@ title: SSH Profiles
 description: Save SSH tunnel configurations as reusable profiles shared across connections
 ---
 
-# SSH Profiles
-
 Define an SSH tunnel config once, then reuse it across multiple connections. A profile stores the server (host, port, username), the authentication method, optional two-factor (TOTP) settings, and jump hosts. For tunnel mechanics (auth methods, TOTP modes, jump hosts, `~/.ssh/config` resolution, troubleshooting), see [SSH Tunneling](/databases/ssh-tunneling).
 
 ## Creating a Profile
@@ -35,7 +33,7 @@ Select a profile and click **Edit Profile...** to modify it. **Delete Profile** 
 
 ## Testing a Profile
 
-Click **Test Connection** in the profile editor to verify SSH settings without connecting to a database. TablePro performs the SSH handshake, verifies the host key, and authenticates. Green checkmark on success; error dialog on failure. If the server asks for a verification code or another interactive response, the same prompt you'd see on Connect appears during the test.
+Click **Test Connection** in the profile editor to verify SSH settings without connecting to a database. TablePro performs the SSH handshake, verifies the host key, and authenticates. On success the button shows a green checkmark and **Connected** appears next to it. On failure the button shows a red X and the error appears in orange, cut to two lines. If the server asks for a verification code or another interactive response, the same prompt you'd see on Connect appears during the test.
 
 ## iCloud Sync
 

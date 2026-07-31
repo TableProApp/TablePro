@@ -201,6 +201,9 @@
     ":%@" : {
       "shouldTranslate" : false
     },
+    "…and %d more lines" : {
+
+    },
     ".%@" : {
       "localizations" : {
         "tr" : {
@@ -346,6 +349,7 @@
       }
     },
     "\"%@\" was modified on both this Mac and another device." : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -4368,6 +4372,7 @@
       }
     },
     "1 of %lld conflicts" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -5377,10 +5382,11 @@
         }
       }
     },
-    "A connection can use one connection method at a time. Disable the other one to use the Cloud SQL Auth Proxy." : {
+    "A connection can use one connection method at a time. Disable the other methods to use %@." : {
 
     },
     "A connection can use one tunnel at a time. Disable the SSH Tunnel to use a Cloudflare Tunnel." : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -5568,6 +5574,7 @@
 
     },
     "A sync conflict was detected and needs to be resolved." : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -5746,6 +5753,9 @@
       }
     },
     "Access Method" : {
+
+    },
+    "Access Token" : {
 
     },
     "Access uses your ChatGPT subscription (Plus, Pro, Business, or Enterprise) and follows OpenAI's terms. This is an unofficial interface that may change." : {
@@ -7053,6 +7063,9 @@
         }
       }
     },
+    "Add from Existing" : {
+
+    },
     "Add Index" : {
       "localizations" : {
         "tr" : {
@@ -7368,6 +7381,9 @@
         }
       }
     },
+    "Added" : {
+
+    },
     "Address" : {
       "localizations" : {
         "tr" : {
@@ -7397,6 +7413,9 @@
       }
     },
     "Adds a Recent section at the top of the Tables sidebar with the last tables you opened per connection and database." : {
+
+    },
+    "Adjust Limit" : {
 
     },
     "admin" : {
@@ -7538,6 +7557,9 @@
           }
         }
       }
+    },
+    "Agent mode calls tools in a loop until it finishes or hits this limit, then pauses so you can continue. Raising it costs more tokens per reply." : {
+
     },
     "Agent Socket" : {
       "localizations" : {
@@ -7736,6 +7758,7 @@
       }
     },
     "AI made too many tool calls in one response. Try simplifying the request." : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -7931,6 +7954,12 @@
           }
         }
       }
+    },
+    "AI Walkthrough" : {
+
+    },
+    "AI-generated. Review before applying." : {
+
     },
     "AI-Powered Assistant" : {
       "localizations" : {
@@ -9260,6 +9289,7 @@
       }
     },
     "An unknown sync error occurred: %@" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -10091,6 +10121,9 @@
         }
       }
     },
+    "Apply suggested SQL?" : {
+
+    },
     "Apply this filter" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -10148,6 +10181,9 @@
           }
         }
       }
+    },
+    "Apply to Editor" : {
+
     },
     "Apply User and Role Changes" : {
 
@@ -10573,6 +10609,15 @@
           }
         }
       }
+    },
+    "Ask about step %d" : {
+
+    },
+    "Ask about this change" : {
+
+    },
+    "Ask about this change…" : {
+
     },
     "Ask about your database..." : {
       "localizations" : {
@@ -11753,6 +11798,9 @@
           }
         }
       }
+    },
+    "Backslash  \\" : {
+
     },
     "Backup Database" : {
       "localizations" : {
@@ -13505,22 +13553,18 @@
         }
       }
     },
-    "Cannot use Cloud SQL Auth Proxy and Cloudflare Tunnel at the same time" : {
-
-    },
-    "Cannot use Cloud SQL Auth Proxy and SSH Tunnel at the same time" : {
-
-    },
-    "Cannot use Cloudflare Tunnel and Cloud SQL Auth Proxy at the same time" : {
-
-    },
-    "Cannot use Cloudflare Tunnel and SSH Tunnel at the same time" : {
-
-    },
-    "Cannot use SSH Tunnel and Cloud SQL Auth Proxy at the same time" : {
-
+    "Cannot use %@ and %@ at the same time" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Cannot use %1$@ and %2$@ at the same time"
+          }
+        }
+      }
     },
     "Cannot use SSH Tunnel and Cloudflare Tunnel at the same time" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -13975,6 +14019,9 @@
         }
       }
     },
+    "Change" : {
+
+    },
     "Change Attributes" : {
 
     },
@@ -14102,6 +14149,9 @@
           }
         }
       }
+    },
+    "Change Type" : {
+
     },
     "CHANGED" : {
       "localizations" : {
@@ -14650,6 +14700,9 @@
         }
       }
     },
+    "Choose a project folder to read its database settings." : {
+
+    },
     "Choose a query from the list\nto see its full content here." : {
       "localizations" : {
         "tr" : {
@@ -14765,6 +14818,9 @@
         }
       }
     },
+    "Choose Another Folder…" : {
+
+    },
     "Choose Destination…" : {
       "localizations" : {
         "tr" : {
@@ -14851,6 +14907,9 @@
           }
         }
       }
+    },
+    "Choose Type" : {
+
     },
     "Choose what happens to them when the role is dropped." : {
 
@@ -16336,6 +16395,12 @@
         }
       }
     },
+    "Close All Tabs" : {
+
+    },
+    "Close Other Tabs" : {
+
+    },
     "Close Others" : {
       "localizations" : {
         "tr" : {
@@ -16504,6 +16569,12 @@
           }
         }
       }
+    },
+    "Close Tabs for Other Databases" : {
+
+    },
+    "Close Tabs for Other Schemas" : {
+
     },
     "Close the open Sample connection before resetting it." : {
       "localizations" : {
@@ -17088,6 +17159,9 @@
         }
       }
     },
+    "Colon  :" : {
+
+    },
     "Color" : {
       "localizations" : {
         "tr" : {
@@ -17607,6 +17681,9 @@
           }
         }
       }
+    },
+    "Comma  ," : {
+
     },
     "Comma-separated values. Compatible with Excel and most tools." : {
       "localizations" : {
@@ -19429,6 +19506,9 @@
         }
       }
     },
+    "Connections found in %@" : {
+
+    },
     "Connections:" : {
       "localizations" : {
         "tr" : {
@@ -19485,6 +19565,9 @@
           }
         }
       }
+    },
+    "Container service name, may be unreachable" : {
+
     },
     "contains" : {
       "localizations" : {
@@ -21047,6 +21130,16 @@
         }
       }
     },
+    "Could not connect through the SOCKS proxy at %@:%@. %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Could not connect through the SOCKS proxy at %1$@:%2$@. %3$@"
+          }
+        }
+      }
+    },
     "Could not create destination file" : {
       "localizations" : {
         "tr" : {
@@ -21271,6 +21364,9 @@
           }
         }
       }
+    },
+    "Could not open a local port for the SOCKS proxy: %@" : {
+
     },
     "Could Not Open File" : {
       "localizations" : {
@@ -22352,6 +22448,9 @@
     "Credentials" : {
 
     },
+    "Critical" : {
+
+    },
     "CRITICAL: Transaction rollback failed - database may be in inconsistent state: %@" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -22408,6 +22507,9 @@
           }
         }
       }
+    },
+    "CSV Properties" : {
+
     },
     "CSV with Headers" : {
       "localizations" : {
@@ -25330,6 +25432,9 @@
         }
       }
     },
+    "Delete %lld columns?" : {
+
+    },
     "Delete %lld Connections" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -25436,6 +25541,9 @@
           }
         }
       }
+    },
+    "Delete Columns" : {
+
     },
     "Delete Connection" : {
       "localizations" : {
@@ -25869,6 +25977,9 @@
         }
       }
     },
+    "Delete this column?" : {
+
+    },
     "Delete this row?" : {
 
     },
@@ -26013,7 +26124,6 @@
       }
     },
     "Delimiter" : {
-      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -26545,6 +26655,9 @@
         }
       }
     },
+    "Diff layout" : {
+
+    },
     "Digits" : {
       "localizations" : {
         "tr" : {
@@ -26601,7 +26714,7 @@
         }
       }
     },
-    "Disable Cloudflare Tunnel" : {
+    "Disable %@" : {
 
     },
     "Disable foreign key checks" : {
@@ -26634,6 +26747,7 @@
       }
     },
     "Disable SSH Tunnel" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -27110,6 +27224,9 @@
         }
       }
     },
+    "Distributed SQL query engine for data lakes" : {
+
+    },
     "Distributed SQL, PostgreSQL-compatible" : {
       "localizations" : {
         "tr" : {
@@ -27473,6 +27590,12 @@
           }
         }
       }
+    },
+    "Double Quote  \"" : {
+
+    },
+    "Doubled Quote" : {
+
     },
     "Download cloud-sql-proxy..." : {
 
@@ -29291,7 +29414,6 @@
       }
     },
     "Editing" : {
-      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -29517,6 +29639,9 @@
           }
         }
       }
+    },
+    "Embedded WASM Postgres over a socket server" : {
+
     },
     "Embedded zero-config SQL database" : {
       "localizations" : {
@@ -29887,6 +30012,9 @@
         }
       }
     },
+    "Enable SOCKS Proxy" : {
+
+    },
     "Enable SSH Tunnel" : {
       "localizations" : {
         "tr" : {
@@ -29942,6 +30070,9 @@
           }
         }
       }
+    },
+    "Encoding" : {
+
     },
     "Encoding:" : {
       "localizations" : {
@@ -30403,6 +30534,7 @@
       }
     },
     "Enter the TOTP verification code for SSH authentication." : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -30769,6 +30901,9 @@
           }
         }
       }
+    },
+    "Escape character" : {
+
     },
     "EU Long (31/12/2024 23:59:59)" : {
       "localizations" : {
@@ -33489,6 +33624,7 @@
       }
     },
     "Failed to encode sync data: %@" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -36551,6 +36687,16 @@
         }
       }
     },
+    "Follow-up on step %d \"%@\" (%@): %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Follow-up on step %1$d \"%2$@\" (%3$@): %4$@"
+          }
+        }
+      }
+    },
     "Font" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -38605,6 +38751,12 @@
         }
       }
     },
+    "Host and port assumed" : {
+
+    },
+    "Host looks like a socket path" : {
+
+    },
     "Host:" : {
 
     },
@@ -38779,6 +38931,7 @@
       }
     },
     "iCloud account is not available. Sign in to iCloud in System Settings." : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -38835,6 +38988,7 @@
       }
     },
     "iCloud server error: %@" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -38863,6 +39017,7 @@
       }
     },
     "iCloud storage is full. Free up space or reduce the history sync limit." : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -39033,6 +39188,9 @@
           }
         }
       }
+    },
+    "If the SSH server asks for a verification code, TablePro prompts you for it when you connect." : {
+
     },
     "Ignore foreign key checks" : {
       "localizations" : {
@@ -39942,6 +40100,9 @@
           }
         }
       }
+    },
+    "Importance" : {
+
     },
     "Importing passwords from %1$@ reads up to %2$d keychain items. macOS prompts for your login password once per item because each is owned by %1$@. Click Always Allow on each prompt to grant TablePro permanent access. Cancel any prompt to skip the rest." : {
       "localizations" : {
@@ -40859,6 +41020,7 @@
       }
     },
     "Insert Column After" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -40887,6 +41049,7 @@
       }
     },
     "Insert Column Before" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -40913,6 +41076,12 @@
           }
         }
       }
+    },
+    "Insert Column Left" : {
+
+    },
+    "Insert Column Right" : {
+
     },
     "Insert in Editor" : {
       "localizations" : {
@@ -40997,6 +41166,12 @@
           }
         }
       }
+    },
+    "Insert Row Above" : {
+
+    },
+    "Insert Row Below" : {
+
     },
     "Insert Rows" : {
       "localizations" : {
@@ -42048,6 +42223,9 @@
         }
       }
     },
+    "Invalid pattern" : {
+
+    },
     "Invalid PHP Serialized Value" : {
       "localizations" : {
         "tr" : {
@@ -42384,6 +42562,9 @@
         }
       }
     },
+    "Join the two columns into one, placing this text between the values." : {
+
+    },
     "Journal Mode" : {
       "localizations" : {
         "tr" : {
@@ -42637,6 +42818,9 @@
         }
       }
     },
+    "Jump to lines" : {
+
+    },
     "Keep Backing Up" : {
       "localizations" : {
         "tr" : {
@@ -42751,6 +42935,7 @@
       }
     },
     "Keep Other Version" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -42835,6 +43020,7 @@
       }
     },
     "Keep This Mac's Version" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -42861,6 +43047,9 @@
           }
         }
       }
+    },
+    "Kerberos Principal" : {
+
     },
     "Key" : {
       "localizations" : {
@@ -43827,6 +44016,12 @@
         }
       }
     },
+    "Leave blank to connect without authentication. The password is stored in the macOS Keychain." : {
+
+    },
+    "Leave the principal and password blank to use your existing Kerberos ticket. Run kinit user@REALM.COM in Terminal first if you don't have one." : {
+
+    },
     "Length" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -44381,6 +44576,9 @@
         }
       }
     },
+    "Limit tool calls per reply" : {
+
+    },
     "Limits" : {
 
     },
@@ -44446,6 +44644,9 @@
           }
         }
       }
+    },
+    "Line ending" : {
+
     },
     "Line Number" : {
       "localizations" : {
@@ -46088,6 +46289,12 @@
         }
       }
     },
+    "Looking for database settings…" : {
+
+    },
+    "Looks like a placeholder value" : {
+
+    },
     "Low" : {
       "localizations" : {
         "tr" : {
@@ -47549,6 +47756,22 @@
         }
       }
     },
+    "Merge" : {
+
+    },
+    "Merge “%@” with “%@”" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Merge “%1$@” with “%2$@”"
+          }
+        }
+      }
+    },
+    "Merge Columns…" : {
+
+    },
     "Message too large. Try disabling 'Include schema' or 'Include query results' in AI settings." : {
       "localizations" : {
         "tr" : {
@@ -47975,6 +48198,7 @@
       }
     },
     "Modified:" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -48977,6 +49201,7 @@
       }
     },
     "Network is unavailable. Changes will sync when connectivity is restored." : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -49061,6 +49286,7 @@
       }
     },
     "New" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -49257,7 +49483,11 @@
         }
       }
     },
+    "New Connection (%@)" : {
+
+    },
     "New Connection (⌘N)" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -50797,6 +51027,9 @@
         }
       }
     },
+    "No credentials are sent. Use this when the server handles authentication itself, such as a Tailscale SSH host." : {
+
+    },
     "No custom commands yet." : {
       "localizations" : {
         "tr" : {
@@ -50880,6 +51113,9 @@
           }
         }
       }
+    },
+    "No database settings found in this folder." : {
+
     },
     "No databases" : {
       "localizations" : {
@@ -52009,6 +52245,9 @@
         }
       }
     },
+    "No published port, may be unreachable" : {
+
+    },
     "No query executed yet" : {
       "localizations" : {
         "tr" : {
@@ -52233,6 +52472,9 @@
           }
         }
       }
+    },
+    "No saved customizations yet. Column widths, order, visibility, and per-table filters you set appear here so you can review and reset them." : {
+
     },
     "No saved templates" : {
       "extractionState" : "stale",
@@ -54228,6 +54470,9 @@
         }
       }
     },
+    "Open a connection to apply" : {
+
+    },
     "Open a connection to insert" : {
       "localizations" : {
         "tr" : {
@@ -54339,6 +54584,9 @@
           }
         }
       }
+    },
+    "Open AI settings to change the tool call limit." : {
+
     },
     "Open Claude Desktop, go to Settings > Developer" : {
       "localizations" : {
@@ -54908,6 +55156,12 @@
           }
         }
       }
+    },
+    "Open Project Folder" : {
+
+    },
+    "Open Project Folder..." : {
+
     },
     "Open Query" : {
       "localizations" : {
@@ -55852,6 +56106,7 @@
       }
     },
     "Other Device" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -56537,6 +56792,9 @@
         }
       }
     },
+    "Partitioned Table" : {
+
+    },
     "Partly granted" : {
 
     },
@@ -56826,6 +57084,9 @@
           }
         }
       }
+    },
+    "Password found" : {
+
     },
     "Password is sent via keyboard-interactive challenge-response." : {
       "localizations" : {
@@ -57203,6 +57464,9 @@
         }
       }
     },
+    "Paused after %d tool calls." : {
+
+    },
     "Pending approval for" : {
       "localizations" : {
         "tr" : {
@@ -57566,6 +57830,9 @@
           }
         }
       }
+    },
+    "Pipe  |" : {
+
     },
     "Plain text. Markdown is preserved as written." : {
       "localizations" : {
@@ -60564,6 +60831,9 @@
         }
       }
     },
+    "Proxy Server" : {
+
+    },
     "Public key authentication failed: %@" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -60713,6 +60983,9 @@
           }
         }
       }
+    },
+    "Put the suggested SQL into the query editor" : {
+
     },
     "Queries" : {
       "comment" : "A section header for the list of queries in the favorites tab.",
@@ -61606,6 +61879,9 @@
         }
       }
     },
+    "Quote character" : {
+
+    },
     "Quote if needed" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -61858,6 +62134,9 @@
           }
         }
       }
+    },
+    "Re-read the file with these settings. This discards unsaved changes." : {
+
     },
     "Read & Write" : {
       "localizations" : {
@@ -63183,6 +63462,9 @@
     "Refresh plugin list" : {
 
     },
+    "Refreshing" : {
+
+    },
     "Refreshing will discard all unsaved changes." : {
       "localizations" : {
         "tr" : {
@@ -63238,6 +63520,9 @@
           }
         }
       }
+    },
+    "Regex" : {
+
     },
     "Registry" : {
       "localizations" : {
@@ -63378,6 +63663,9 @@
           }
         }
       }
+    },
+    "Reload with new properties?" : {
+
     },
     "Remote (Quack, experimental)" : {
 
@@ -64174,6 +64462,9 @@
         }
       }
     },
+    "Removed" : {
+
+    },
     "Rename" : {
       "localizations" : {
         "tr" : {
@@ -64230,6 +64521,9 @@
         }
       }
     },
+    "Rename Column…" : {
+
+    },
     "Rename Group" : {
       "localizations" : {
         "tr" : {
@@ -64259,6 +64553,7 @@
       }
     },
     "Rename…" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -64807,6 +65102,9 @@
         }
       }
     },
+    "Reset All Customizations" : {
+
+    },
     "Reset All Settings" : {
       "localizations" : {
         "tr" : {
@@ -65148,6 +65446,9 @@
           }
         }
       }
+    },
+    "Response" : {
+
     },
     "Response failed" : {
       "localizations" : {
@@ -65671,6 +65972,9 @@
         }
       }
     },
+    "Resume with a fresh tool call budget." : {
+
+    },
     "Retention" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -66118,6 +66422,9 @@
           }
         }
       }
+    },
+    "Routes this connection through a SOCKS5 proxy. The database hostname is resolved by the proxy, so names that only resolve behind it still work." : {
+
     },
     "Row %d" : {
       "localizations" : {
@@ -67727,6 +68034,9 @@
           }
         }
       }
+    },
+    "Saved Customizations" : {
+
     },
     "Saved passwords are decrypted during import" : {
       "localizations" : {
@@ -69860,6 +70170,9 @@
         }
       }
     },
+    "Semicolon  ;" : {
+
+    },
     "Send Message" : {
       "localizations" : {
         "tr" : {
@@ -69915,6 +70228,12 @@
           }
         }
       }
+    },
+    "Separator (optional)" : {
+
+    },
+    "Separator or pattern" : {
+
     },
     "Server" : {
       "localizations" : {
@@ -70387,6 +70706,9 @@
         }
       }
     },
+    "Set CSV Properties…" : {
+
+    },
     "Set DEFAULT" : {
       "localizations" : {
         "tr" : {
@@ -70592,6 +70914,7 @@
       }
     },
     "Settings" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -70620,6 +70943,7 @@
       }
     },
     "Settings were changed" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -70648,6 +70972,7 @@
       }
     },
     "Settings were changed on both this Mac and another device." : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -71381,6 +71706,9 @@
         }
       }
     },
+    "Show object comments" : {
+
+    },
     "Show Object Comments" : {
 
     },
@@ -71703,6 +72031,9 @@
       }
     },
     "Showing saved plugin list. %@" : {
+
+    },
+    "Shows database object comments next to tables in the sidebar and in grid column headers." : {
 
     },
     "Sidebar" : {
@@ -72412,6 +72743,9 @@
         }
       }
     },
+    "Single Quote  '" : {
+
+    },
     "Single-clicking a table opens a temporary tab that gets replaced on next click." : {
       "localizations" : {
         "tr" : {
@@ -72842,6 +73176,18 @@
     "Socket Path" : {
 
     },
+    "SOCKS Proxy" : {
+
+    },
+    "SOCKS proxy disconnected. Click to reconnect." : {
+
+    },
+    "SOCKS proxy host is required" : {
+
+    },
+    "SOCKS proxy port must be between 1 and 65535" : {
+
+    },
     "Software Update" : {
       "localizations" : {
         "tr" : {
@@ -72953,6 +73299,12 @@
           }
         }
       }
+    },
+    "Some values are set outside this file" : {
+
+    },
+    "Some values come from Ruby code and were not read" : {
+
     },
     "Something went wrong (error %d). Try again in a moment." : {
       "localizations" : {
@@ -73208,6 +73560,9 @@
         }
       }
     },
+    "Space" : {
+
+    },
     "Spacing" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -73264,6 +73619,18 @@
           }
         }
       }
+    },
+    "Split" : {
+
+    },
+    "Split “%@”" : {
+
+    },
+    "Split Column…" : {
+
+    },
+    "Split each value into new columns at every match." : {
+
     },
     "Sponsor" : {
       "localizations" : {
@@ -73920,6 +74287,9 @@
           }
         }
       }
+    },
+    "SSH authentication cancelled." : {
+
     },
     "SSH authentication failed. Check your credentials or private key." : {
       "localizations" : {
@@ -74610,6 +74980,15 @@
           }
         }
       }
+    },
+    "SSH Verification Rejected" : {
+
+    },
+    "SSH verification rejected. Check your response and try again." : {
+
+    },
+    "SSH Verification Required" : {
+
     },
     "ssh.example.com" : {
       "localizations" : {
@@ -75472,6 +75851,9 @@
         }
       }
     },
+    "Step" : {
+
+    },
     "Steps to Reproduce" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -76268,6 +76650,9 @@
         }
       }
     },
+    "Switch First Row Between Header/Data" : {
+
+    },
     "switch schema" : {
       "localizations" : {
         "tr" : {
@@ -76498,6 +76883,9 @@
         }
       }
     },
+    "Switching to database '%@' timed out." : {
+
+    },
     "Switching to schema '%@' timed out." : {
 
     },
@@ -76588,6 +76976,7 @@
       }
     },
     "Sync Conflict" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -76784,6 +77173,7 @@
       }
     },
     "Sync zone not found. A full sync will be performed." : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -77184,6 +77574,9 @@
           }
         }
       }
+    },
+    "Tab" : {
+
     },
     "Tab Behavior" : {
       "extractionState" : "stale",
@@ -78404,6 +78797,12 @@
         }
       }
     },
+    "That folder could not be read." : {
+
+    },
+    "That regular expression could not be read. Check the syntax and try again." : {
+
+    },
     "The %@ plugin is not installed. Would you like to download it from the plugin marketplace?" : {
       "localizations" : {
         "tr" : {
@@ -79268,7 +79667,26 @@
     "The passwords do not match." : {
 
     },
+    "The plugin depends on a component that's missing or incompatible with this Mac." : {
+
+    },
+    "The plugin doesn't include a build for this Mac's processor architecture." : {
+
+    },
+    "The plugin isn't compatible with this version of TablePro. Update the app or reinstall the plugin." : {
+
+    },
+    "The plugin was built for an incompatible runtime." : {
+
+    },
+    "The plugin's executable couldn't be loaded. It may be damaged or improperly signed." : {
+
+    },
+    "The plugin's executable file is missing." : {
+
+    },
     "The previous code wasn't accepted. Wait for your authenticator to refresh, then enter the new code." : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -79295,6 +79713,9 @@
           }
         }
       }
+    },
+    "The previous response wasn't accepted. Try again." : {
+
     },
     "The provider configuration and stored API key will be deleted." : {
       "localizations" : {
@@ -79383,7 +79804,36 @@
         }
       }
     },
+    "The SOCKS proxy configuration is incomplete. Enter a proxy host and port." : {
+
+    },
     "The SSH server connects to this socket instead of Host and Port. A database on a socket cannot negotiate TLS, so TablePro turns it off; the SSH tunnel still encrypts the whole path." : {
+
+    },
+    "The SSH server could not reach %@. That address is resolved from the SSH server, not from your Mac, so a database that only listens on 127.0.0.1 needs Host set to localhost. Also check that sshd allows TCP forwarding (AllowTcpForwarding). (%@)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "The SSH server could not reach %1$@. That address is resolved from the SSH server, not from your Mac, so a database that only listens on 127.0.0.1 needs Host set to localhost. Also check that sshd allows TCP forwarding (AllowTcpForwarding). (%2$@)"
+          }
+        }
+      }
+    },
+    "The SSH server did not accept passwordless authentication. Choose Password, Private Key, or SSH Agent." : {
+
+    },
+    "The SSH server did not open a forwarding channel to %@ within %d seconds. Check for a firewall between the SSH server and that address." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "The SSH server did not open a forwarding channel to %1$@ within %2$d seconds. Check for a firewall between the SSH server and that address."
+          }
+        }
+      }
+    },
+    "The SSH server is asking for additional verification." : {
 
     },
     "The SSH server would not forward the socket %@. Check that the path exists on the server and that sshd allows socket forwarding (AllowStreamLocalForwarding). (%@)" : {
@@ -79983,6 +80433,9 @@
         }
       }
     },
+    "This discards your unsaved changes and re-reads the file with the chosen settings." : {
+
+    },
     "This driver does not expose routine DDL." : {
       "localizations" : {
         "tr" : {
@@ -80437,6 +80890,7 @@
       }
     },
     "This Mac" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -80696,6 +81150,9 @@
           }
         }
       }
+    },
+    "This puts the AI-generated SQL into the query editor, replacing what is there. Nothing runs until you execute it." : {
+
     },
     "This query may permanently modify or delete data and cannot be undone.\n\n%@" : {
       "localizations" : {
@@ -81452,6 +81909,9 @@
         }
       }
     },
+    "Time Zone" : {
+
+    },
     "Time: %@" : {
       "localizations" : {
         "tr" : {
@@ -81476,6 +81936,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "時間：%@"
+          }
+        }
+      }
+    },
+    "Timed out connecting through the SOCKS proxy at %@:%@. Check that the proxy is reachable and the credentials are correct." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Timed out connecting through the SOCKS proxy at %1$@:%2$@. Check that the proxy is reachable and the credentials are correct."
           }
         }
       }
@@ -82596,6 +83066,9 @@
         }
       }
     },
+    "Tool call limit: %d" : {
+
+    },
     "Toolbar" : {
       "localizations" : {
         "tr" : {
@@ -83540,6 +84013,9 @@
     "Unable to Load Users and Roles" : {
 
     },
+    "Unchanged" : {
+
+    },
     "Under MCP Servers click \"+ Add Custom Server\", select the Local tab, paste the JSON below, then click Add Server" : {
       "localizations" : {
         "tr" : {
@@ -83654,6 +84130,9 @@
       }
     },
     "Undo Staged Drop" : {
+
+    },
+    "Unified" : {
 
     },
     "Uninstall" : {
@@ -86232,6 +86711,7 @@
       }
     },
     "Verification Code Rejected" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -86288,6 +86768,7 @@
       }
     },
     "Verification Code Required" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -87412,6 +87893,9 @@
         }
       }
     },
+    "Windows Authentication needs the server's hostname, not an IP address. Kerberos service principals aren't registered against IP addresses." : {
+
+    },
     "With Headers" : {
       "localizations" : {
         "tr" : {
@@ -87670,6 +88154,9 @@
         }
       }
     },
+    "You edit these inline in the grid and filter bar. Reset a table here to return it to defaults." : {
+
+    },
     "You have no saved queries to publish." : {
 
     },
@@ -87730,6 +88217,7 @@
       }
     },
     "You will be prompted for a verification code each time you connect." : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {

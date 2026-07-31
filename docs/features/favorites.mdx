@@ -3,8 +3,6 @@ title: Favorites
 description: Mark tables as favorites and save frequently used queries with optional keyword shortcuts
 ---
 
-# Favorites
-
 The Favorites tab in the sidebar has two sections: **Tables** for pinned tables and **Queries** for saved SQL. The sidebar can also show a **Recent** section with the last tables you opened (off by default).
 
 ## Table Favorites
@@ -17,7 +15,7 @@ Favorites are scoped to the connection, database, and schema, and sync through i
 
 ## Recent Tables
 
-Turn on **Show recent tables** in Settings > General > Sidebar to add a **Recent** section at the top of the sidebar. It appears in every sidebar layout. Each table you open is recorded, up to 10 per connection and database, most recent first. Arrowing through preview tabs does not count. Click a row to reopen the table, or right-click to remove one entry or clear the list. Recents persist between launches.
+Turn on **Settings > General > Sidebar > Show recent tables** to add a **Recent** section at the top of the sidebar. It appears in every sidebar layout. Each table you open is recorded, up to 10 per connection and database, most recent first. Arrowing through preview tabs does not count. Click a row to reopen the table, or right-click to remove one entry or clear the list. Recents persist between launches.
 
 ## SQL Favorites
 
@@ -77,6 +75,8 @@ On a Team license, the Favorites tab shows a **Team Library** section with queri
 ## Linked SQL Folders
 
 Link a folder of `.sql` files on disk and they show up in the Favorites sidebar live. Useful for a Git repo of shared queries: clone the repo, link the folder, the team's queries appear next to your DB-stored favorites.
+
+This is a different feature from [Linked Folders](/features/connection-sharing#linked-folders), which watches a folder of shared `.tablepro` connection files.
 
 ### Adding a folder
 

@@ -60,7 +60,7 @@ extension MainContentView {
             coordinator.promotePreviewTab()
         }
 
-        coordinator.persistence.saveOrClearAggregated()
+        coordinator.persistence.saveAggregated()
         MainContentView.lifecycleLogger.debug(
             "[switch] handleStructureChange tabCount=\(tabManager.tabs.count) ms=\(Int(Date().timeIntervalSince(t0) * 1_000))"
         )
@@ -149,12 +149,22 @@ extension MainContentView {
     // MARK: - Sidebar Edit Handling
 
     func updateSidebarEditState() {
+        switch gridSelectionOwner {
+        case .schemaGrid:
+            updateSchemaSidebarEditState()
+            return
+        case .none:
+            clearSidebarEditState()
+            return
+        case .dataGrid:
+            break
+        }
+
         let selectedIndices = coordinator.selectionState.indices
         guard let tab = coordinator.tabManager.selectedTab,
             !selectedIndices.isEmpty
         else {
-            rightPanelState.editState.fields = []
-            rightPanelState.editState.onFieldChanged = nil
+            clearSidebarEditState()
             return
         }
         let tableRows = coordinator.tabSessionRegistry.tableRows(for: tab.id)
@@ -250,6 +260,40 @@ extension MainContentView {
                     originalRow: originalRow
                 )
             }
+        }
+    }
+
+    private func clearSidebarEditState() {
+        rightPanelState.editState.fields = []
+        rightPanelState.editState.onFieldChanged = nil
+    }
+
+    /// Populate the inspector from the grid that owns a schema selection, and send every
+    /// edit back to it so a change lands in its change manager exactly as an inline
+    /// grid edit does, with one undo step and one pending change.
+    private func updateSchemaSidebarEditState() {
+        guard let displayRow = coordinator.selectionState.indices.min(),
+            let row = selectedInspectorRow
+        else {
+            clearSidebarEditState()
+            return
+        }
+
+        rightPanelState.editState.configure(schemaFields: row.fields, displayRow: displayRow)
+
+        guard row.isEditable else {
+            rightPanelState.editState.onFieldChanged = nil
+            return
+        }
+
+        let capturedCoordinator = coordinator
+        rightPanelState.editState.onFieldChanged = { fieldIndex, newValue in
+            capturedCoordinator.inspectorRowSource?.commitInspectorField(
+                displayRow: displayRow,
+                fieldIndex: fieldIndex,
+                value: newValue.asText
+            )
+            capturedCoordinator.inspectorRowSourceRevision += 1
         }
     }
 }

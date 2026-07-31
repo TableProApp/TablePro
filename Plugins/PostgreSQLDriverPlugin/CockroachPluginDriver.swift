@@ -230,12 +230,11 @@ final class CockroachPluginDriver: LibPQBackedDriver, @unchecked Sendable {
             .flatMap { $0.rows.first?.first?.asText }
             .flatMap { Int($0) }
 
-        let systemDatabases = ["postgres", "system", "defaultdb"]
         return PluginDatabaseMetadata(
             name: database,
             tableCount: tableCount,
             sizeBytes: nil,
-            isSystemDatabase: systemDatabases.contains(database)
+            isSystemDatabase: PostgreSQLSystemDatabases.cockroachDB.contains(database)
         )
     }
 

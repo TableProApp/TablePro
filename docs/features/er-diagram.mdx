@@ -3,8 +3,6 @@ title: ER Diagram
 description: View table relationships as an interactive entity-relationship diagram
 ---
 
-# ER Diagram
-
 View all tables and foreign key relationships in a schema as an interactive diagram. Right-click a table in the sidebar and select **View ER Diagram**, or use the menu bar **View > View ER Diagram**.
 
 <Frame caption="ER diagram showing tables and foreign key relationships">
@@ -61,7 +59,7 @@ Edges use crow's foot notation. The referenced table always carries a single **b
 |--------------------|--------|---------|
 | Unique and NOT NULL | bar + bar | One-to-one |
 | Unique and nullable | bar + circle | Zero-or-one-to-one |
-| Not unique, NOT NULL | fork + bar | One-to-many |
+| Not unique, NOT NULL | fork + bar | Many-to-one |
 | Not unique, nullable | fork + circle | Zero-or-many-to-one |
 
 A **fork** (three lines) marks the "many" side, a **bar** marks "one", and a **circle** marks an optional (nullable) side. An edge from `orders.user_id` to `users.id` shows a fork at `orders` and a bar at `users`.
@@ -70,7 +68,7 @@ A **fork** (three lines) marks the "many" side, a **bar** marks "one", and a **c
 
 When a table's primary key is made of two foreign keys (a junction table like `user_roles`), TablePro treats it as a many-to-many relationship. By default the junction table is hidden and a single many-to-many edge is drawn between the two related tables, with a fork at each end.
 
-Use the **junction toggle** in the toolbar (shown only when the schema has junction tables) to expand them back to the underlying table and its two one-to-many edges. Junction tables carry a distinct header icon when expanded.
+Use the **Collapse Junction Tables** toggle in the toolbar (shown only when the schema has junction tables) to expand them back to the underlying table and its two one-to-many edges. Junction tables carry a distinct header icon when expanded.
 
 ## Export
 
@@ -79,21 +77,21 @@ Use the **junction toggle** in the toolbar (shown only when the schema has junct
 
 ## Database Support
 
-ER diagrams work with any database whose driver reports foreign keys:
+These drivers report foreign keys, so their diagrams draw edges:
 
 | Database | Support |
 |----------|---------|
 | MySQL / MariaDB | Full |
-| PostgreSQL / Redshift / CockroachDB | Full |
+| PostgreSQL / Redshift / CockroachDB / PGlite | Full |
 | SQLite | Full |
 | SQL Server | Full |
 | Oracle | Full |
 | DuckDB | Full |
+| Snowflake | Full |
 | LibSQL / Turso | Full |
 | Cloudflare D1 | Full |
-| Cassandra / ScyllaDB | Limited (no FK metadata, tables show unconnected) |
 
-Non-relational databases (MongoDB, Redis, and similar) have no diagram.
+Every other driver reports no foreign keys: ClickHouse, BigQuery, Trino, Teradata, Cassandra / ScyllaDB, MongoDB, Redis, DynamoDB, Elasticsearch, etcd, SurrealDB, and Beancount. **View ER Diagram** still works on those connections, so the diagram opens with every table unconnected.
 
 <Note>
 The diagram loads columns and foreign keys for the current schema. Foreign keys that reference a table outside the loaded schema are not drawn.

@@ -181,11 +181,19 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
         return pluginTables.map { mapPluginTable($0, schemaFallback: resolvedSchema) }
     }
 
+    func fetchPartitions(table: String, schema: String?) async throws -> [TableInfo] {
+        let resolvedSchema = schema ?? pluginDriver.currentSchema
+        let pluginTables = try await pluginDriver.fetchPartitions(table: table, schema: resolvedSchema)
+        return pluginTables.map { mapPluginTable($0, schemaFallback: resolvedSchema) }
+    }
+
     private func mapPluginTable(_ table: PluginTableInfo, schemaFallback: String?) -> TableInfo {
         let tableType: TableInfo.TableType
         switch table.type.lowercased() {
         case "table", "base table", "prefix":
             tableType = .table
+        case "partitioned table", "partitioned_table":
+            tableType = .partitionedTable
         case "view":
             tableType = .view
         case "materialized view", "materialized_view":
@@ -303,6 +311,18 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
             .map(\.asPluginFilterTuple)
         return try await pluginDriver.fetchFilteredRowCount(
             table: table,
+            filters: tuples,
+            logicMode: logicMode == .and ? "and" : "or"
+        )
+    }
+
+    func fetchExactRowCount(table: String, filters: [TableFilter], logicMode: FilterLogicMode) async throws -> Int? {
+        let tuples = filters
+            .filter { $0.isEnabled && !$0.columnName.isEmpty }
+            .map(\.asPluginFilterTuple)
+        return try await pluginDriver.fetchExactRowCount(
+            table: table,
+            schema: pluginDriver.currentSchema,
             filters: tuples,
             logicMode: logicMode == .and ? "and" : "or"
         )
@@ -695,7 +715,17 @@ private extension PluginDriverAdapter {
     func mapFormSpec(_ spec: PluginCreateDatabaseFormSpec) -> CreateDatabaseFormSpec {
         CreateDatabaseFormSpec(
             fields: spec.fields.map(mapFormField),
-            footnote: spec.footnote
+            footnote: spec.footnote,
+            textInputs: spec.textInputs.map(mapTextInput)
+        )
+    }
+
+    func mapTextInput(_ input: PluginCreateDatabaseFormSpec.TextInput) -> CreateDatabaseFormSpec.TextInput {
+        CreateDatabaseFormSpec.TextInput(
+            id: input.id,
+            label: input.label,
+            placeholder: input.placeholder,
+            isRequired: input.isRequired
         )
     }
 
