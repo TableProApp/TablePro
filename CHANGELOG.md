@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Claude Agent** provider, which runs AI chat through the Claude Code command line tool so you can use a Claude subscription instead of a metered API key. It answers from your schema when the MCP server is on.
 - **Count exactly** next to an estimated row total, to replace the estimate with a real count when you want it.
 - Reorder filter rows by dragging the grip on the left of each row, or with **Move Up** and **Move Down** in the row's right-click menu.
 

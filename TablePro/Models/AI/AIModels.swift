@@ -12,6 +12,7 @@ enum AIProviderType: String, Codable, CaseIterable, Identifiable, Sendable {
     case chatgptCodex
     case cursor
     case claude
+    case claudeAgent
     case openAI
     case openRouter
     case gemini
@@ -30,6 +31,7 @@ enum AIProviderType: String, Codable, CaseIterable, Identifiable, Sendable {
         case .chatgptCodex: return "ChatGPT"
         case .cursor:       return "Cursor"
         case .claude:       return "Claude"
+        case .claudeAgent:  return "Claude Agent"
         case .openAI:       return "OpenAI"
         case .openRouter:   return "OpenRouter"
         case .gemini:       return "Gemini"
@@ -48,6 +50,7 @@ enum AIProviderType: String, Codable, CaseIterable, Identifiable, Sendable {
         case .chatgptCodex: return ""
         case .cursor:       return ""
         case .claude:       return "https://api.anthropic.com"
+        case .claudeAgent:  return ""
         case .openAI:       return "https://api.openai.com"
         case .openRouter:   return "https://openrouter.ai/api"
         case .gemini:       return "https://generativelanguage.googleapis.com"
@@ -71,6 +74,7 @@ enum AIProviderType: String, Codable, CaseIterable, Identifiable, Sendable {
         case .copilot:      return .oauth
         case .chatgptCodex: return .oauth
         case .cursor:       return .optionalApiKey
+        case .claudeAgent:  return .none
         case .xai:          return .optionalApiKey
         case .ollama:       return .none
         case .llamaCpp:     return .none
@@ -86,6 +90,7 @@ enum AIProviderType: String, Codable, CaseIterable, Identifiable, Sendable {
         case .chatgptCodex: return "bubble.left.and.bubble.right"
         case .cursor:       return "cursorarrow"
         case .claude:       return "brain"
+        case .claudeAgent:  return "terminal"
         case .openAI:       return "cpu"
         case .openRouter:   return "globe"
         case .gemini:       return "wand.and.stars"

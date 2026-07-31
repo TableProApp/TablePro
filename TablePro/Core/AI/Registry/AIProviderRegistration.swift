@@ -30,6 +30,18 @@ enum AIProviderRegistration {
         ))
 
         registry.register(AIProviderDescriptor(
+            typeID: AIProviderType.claudeAgent.rawValue,
+            displayName: AIProviderType.claudeAgent.displayName,
+            defaultEndpoint: "",
+            capabilities: [.chat, .models],
+            symbolName: AIProviderType.claudeAgent.symbolName,
+            curatedModels: ClaudeAgent.curatedModels,
+            makeProvider: { config, _ in
+                ClaudeAgentProvider(model: config.model)
+            }
+        ))
+
+        registry.register(AIProviderDescriptor(
             typeID: AIProviderType.gemini.rawValue,
             displayName: "Gemini",
             defaultEndpoint: "https://generativelanguage.googleapis.com",
