@@ -488,7 +488,12 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
     private func open(_ ref: DatabaseTreeTableRef, activateGridFocus: Bool, forceNewWindowTab: Bool = false) {
         Task { @MainActor in
             await activate(ref)
-            mainCoordinator?.openTableTab(ref.table, activateGridFocus: activateGridFocus, forceNewWindowTab: forceNewWindowTab)
+            mainCoordinator?.openTableTab(
+                ref.table,
+                schema: ref.schema,
+                activateGridFocus: activateGridFocus,
+                forceNewWindowTab: forceNewWindowTab
+            )
         }
     }
 
@@ -496,11 +501,17 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
         if ref.database != activeDatabase {
             await mainCoordinator?.switchDatabase(to: ref.database)
         }
-        if let schema = ref.schema,
-           schema != mainCoordinator?.toolbarState.currentSchema,
-           PluginManager.shared.supportsSchemaSwitching(for: databaseType) {
-            await mainCoordinator?.switchSchema(to: schema)
-        }
+        guard let schema = ref.schema,
+              PluginManager.shared.supportsSchemaSwitching(for: databaseType),
+              schema != sessionSchema else { return }
+        await mainCoordinator?.switchSchema(to: schema)
+    }
+
+    /// The live session schema, not the window's toolbar mirror. A database switch
+    /// moves the session schema without touching the toolbar, so comparing against
+    /// the toolbar skips the switch exactly when the session needs it.
+    private var sessionSchema: String? {
+        DatabaseManager.shared.session(for: connectionId)?.currentSchema
     }
 
     private func setActiveDatabase(_ database: String) {
@@ -513,7 +524,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
             if database != activeDatabase {
                 await mainCoordinator?.switchDatabase(to: database)
             }
-            if schema != mainCoordinator?.toolbarState.currentSchema {
+            if schema != sessionSchema {
                 await mainCoordinator?.switchSchema(to: schema)
             }
         }

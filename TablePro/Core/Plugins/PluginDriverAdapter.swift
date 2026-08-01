@@ -171,8 +171,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
     // MARK: - Schema Operations
 
     func fetchTables() async throws -> [TableInfo] {
-        let pluginTables = try await pluginDriver.fetchTables(schema: pluginDriver.currentSchema)
-        return pluginTables.map { mapPluginTable($0, schemaFallback: nil) }
+        try await fetchTables(schema: nil)
     }
 
     func fetchTables(schema: String?) async throws -> [TableInfo] {

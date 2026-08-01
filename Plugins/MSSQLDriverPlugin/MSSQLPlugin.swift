@@ -645,7 +645,7 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func fetchApproximateRowCount(table: String, schema: String?) async throws -> Int? {
-        let esc = (schema ?? _currentSchema).replacingOccurrences(of: "'", with: "''")
+        let esc = effectiveSchemaEscaped(schema)
         let escapedTable = table.replacingOccurrences(of: "'", with: "''")
         let objectName = "[\(esc)].[\(escapedTable)]"
         let sql = """
@@ -816,9 +816,13 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         value.replacingOccurrences(of: "'", with: "''")
     }
 
+    func effectiveSchema(_ schema: String?) -> String {
+        guard let schema, !schema.isEmpty else { return _currentSchema }
+        return schema
+    }
+
     func effectiveSchemaEscaped(_ schema: String?) -> String {
-        let raw = schema ?? _currentSchema
-        return raw.replacingOccurrences(of: "'", with: "''")
+        MSSQLSchemaQueries.escape(effectiveSchema(schema))
     }
 
 }

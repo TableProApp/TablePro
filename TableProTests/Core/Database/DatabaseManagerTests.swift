@@ -67,6 +67,28 @@ struct DatabaseManagerSessionTests {
 
         #expect(DatabaseManager.shared.resolvedSchemaName(nil, for: connection.id) == nil)
     }
+
+    @Test("resolvedSchemaName treats a blank explicit schema as absent")
+    func resolvedSchemaNameTreatsBlankExplicitSchemaAsAbsent() {
+        let connection = TestFixtures.makeConnection()
+        var session = ConnectionSession(connection: connection)
+        session.currentSchema = "custom"
+        DatabaseManager.shared.injectSession(session, for: connection.id)
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+
+        #expect(DatabaseManager.shared.resolvedSchemaName("", for: connection.id) == "custom")
+    }
+
+    @Test("resolvedSchemaName returns nil rather than a blank session schema")
+    func resolvedSchemaNameRejectsBlankSessionSchema() {
+        let connection = TestFixtures.makeConnection()
+        var session = ConnectionSession(connection: connection)
+        session.currentSchema = ""
+        DatabaseManager.shared.injectSession(session, for: connection.id)
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+
+        #expect(DatabaseManager.shared.resolvedSchemaName(nil, for: connection.id) == nil)
+    }
 }
 
 private class DatabaseSwitchBaseDriver {
@@ -100,19 +122,31 @@ private class DatabaseSwitchBaseDriver {
 
 private final class DatabaseSwitchingDriver: DatabaseSwitchBaseDriver, PluginDatabaseDriver {
     private(set) var switchedDatabases: [String] = []
+    private var schema: String?
+
+    override var currentSchema: String? { schema }
+
+    init(currentSchema: String? = nil) {
+        self.schema = currentSchema
+        super.init()
+    }
 
     func switchDatabase(to database: String) async throws {
         switchedDatabases.append(database)
+    }
+
+    func switchSchema(to schema: String) async throws {
+        self.schema = schema
     }
 }
 
 @Suite("DatabaseManager database switch")
 @MainActor
 struct DatabaseManagerDatabaseSwitchTests {
-    @Test("bySchema engines reset the session schema to the plugin default")
+    @Test("bySchema engines move the driver to the plugin default and record what it is using")
     func bySchemaSwitchResetsSchemaToDefault() async throws {
         let connection = TestFixtures.makeConnection(type: .mssql)
-        let pluginDriver = DatabaseSwitchingDriver()
+        let pluginDriver = DatabaseSwitchingDriver(currentSchema: "sales")
         let adapter = PluginDriverAdapter(connection: connection, pluginDriver: pluginDriver)
         var session = ConnectionSession(connection: connection, driver: adapter)
         session.currentSchema = "sales"
@@ -125,5 +159,21 @@ struct DatabaseManagerDatabaseSwitchTests {
         #expect(pluginDriver.switchedDatabases == ["other_db"])
         #expect(updated?.currentDatabase == "other_db")
         #expect(updated?.currentSchema == "dbo")
+        #expect(pluginDriver.currentSchema == "dbo")
+    }
+
+    @Test("A database switch never leaves the session and the driver on different schemas")
+    func sessionSchemaMatchesDriverAfterSwitch() async throws {
+        let connection = TestFixtures.makeConnection(type: .mssql)
+        let pluginDriver = DatabaseSwitchingDriver(currentSchema: "custom")
+        let adapter = PluginDriverAdapter(connection: connection, pluginDriver: pluginDriver)
+        var session = ConnectionSession(connection: connection, driver: adapter)
+        session.currentSchema = "custom"
+        DatabaseManager.shared.injectSession(session, for: connection.id)
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+
+        try await DatabaseManager.shared.switchDatabase(to: "other_db", for: connection.id, persist: false)
+
+        #expect(DatabaseManager.shared.session(for: connection.id)?.currentSchema == adapter.currentSchema)
     }
 }

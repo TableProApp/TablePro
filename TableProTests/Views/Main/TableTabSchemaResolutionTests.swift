@@ -125,3 +125,86 @@ struct TableTabSchemaResolutionTests {
         #expect(resolved == false)
     }
 }
+
+/// A table tab must carry the schema the row was listed under. SQL Server has no
+/// session-level schema, so a tab that opens without one queries an unqualified
+/// name and the server answers "Invalid object name" (#2004).
+@Suite("TableTabListingSchema")
+@MainActor
+struct TableTabListingSchemaTests {
+    private func withCoordinator(
+        sessionSchema: String?,
+        _ body: (MainContentCoordinator, QueryTabManager) -> Void
+    ) {
+        let connection = TestFixtures.makeConnection(database: "AppDb", type: .mssql)
+        let driver = MockDatabaseDriver(connection: connection)
+        var session = ConnectionSession(connection: connection, driver: driver)
+        session.currentSchema = sessionSchema
+        DatabaseManager.shared.injectSession(session, for: connection.id)
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+
+        let tabManager = QueryTabManager()
+        let coordinator = MainContentCoordinator(
+            connection: connection,
+            tabManager: tabManager,
+            changeManager: DataChangeManager(),
+            toolbarState: ConnectionToolbarState()
+        )
+        defer { coordinator.teardown() }
+
+        body(coordinator, tabManager)
+    }
+
+    private func makeTable(schema: String?) -> TableInfo {
+        TableInfo(name: "def_encounter", type: .table, rowCount: nil, schema: schema)
+    }
+
+    @Test("An explicit schema wins over the listed table's own schema")
+    func explicitSchemaWins() {
+        withCoordinator(sessionSchema: "dbo") { coordinator, tabManager in
+            coordinator.openTableTab(makeTable(schema: "stale"), schema: "custom")
+            #expect(tabManager.tabs.first?.tableContext.schemaName == "custom")
+        }
+    }
+
+    @Test("The listed table's schema is used when the caller gives none")
+    func tableSchemaIsUsed() {
+        withCoordinator(sessionSchema: "dbo") { coordinator, tabManager in
+            coordinator.openTableTab(makeTable(schema: "custom"))
+            #expect(tabManager.tabs.first?.tableContext.schemaName == "custom")
+        }
+    }
+
+    @Test("The session schema is the last resort, not the first")
+    func sessionSchemaIsLastResort() {
+        withCoordinator(sessionSchema: "custom") { coordinator, tabManager in
+            coordinator.openTableTab(makeTable(schema: nil))
+            #expect(tabManager.tabs.first?.tableContext.schemaName == "custom")
+        }
+    }
+
+    @Test("A blank schema on the listed table does not reach the tab")
+    func blankTableSchemaFallsBack() {
+        withCoordinator(sessionSchema: "custom") { coordinator, tabManager in
+            coordinator.openTableTab(makeTable(schema: ""))
+            #expect(tabManager.tabs.first?.tableContext.schemaName == "custom")
+        }
+    }
+
+    @Test("A blank session schema leaves the tab without one instead of an empty qualifier")
+    func blankSessionSchemaStaysAbsent() {
+        withCoordinator(sessionSchema: "") { coordinator, tabManager in
+            coordinator.openTableTab(makeTable(schema: nil))
+            #expect(tabManager.tabs.first?.tableContext.schemaName == nil)
+        }
+    }
+
+    @Test("A table outside the default schema opens a schema-qualified query")
+    func queryIsSchemaQualified() {
+        withCoordinator(sessionSchema: "dbo") { coordinator, tabManager in
+            coordinator.openTableTab(makeTable(schema: "custom"))
+            let query = tabManager.tabs.first?.content.query ?? ""
+            #expect(query.contains("[custom].[def_encounter]"))
+        }
+    }
+}

@@ -9,17 +9,22 @@ import TableProPluginKit
 import Testing
 
 private final class StubTableTypeDriver: PluginDatabaseDriver {
-    var supportsSchemas: Bool { false }
+    var stubbedSupportsSchemas = false
+    var stubbedCurrentSchema: String?
+
+    var supportsSchemas: Bool { stubbedSupportsSchemas }
     var supportsTransactions: Bool { false }
-    var currentSchema: String? { nil }
+    var currentSchema: String? { stubbedCurrentSchema }
     var serverVersion: String? { nil }
 
     var stubbedTables: [PluginTableInfo] = []
     var stubbedPartitions: [PluginTableInfo] = []
     private(set) var requestedPartitionTable: String?
+    private(set) var requestedTableSchema: String??
 
     func fetchTables(schema: String?) async throws -> [PluginTableInfo] {
-        stubbedTables
+        requestedTableSchema = .some(schema)
+        return stubbedTables
     }
 
     func fetchPartitions(table: String, schema: String?) async throws -> [PluginTableInfo] {
@@ -230,8 +235,22 @@ struct PluginDriverAdapterTableTypeMappingTests {
         #expect(tables.first?.schema == "audit")
     }
 
-    @Test("fetchTables() preserves nil schema (no fallback to currentSchema)")
-    func defaultFetchPreservesNilSchema() async throws {
+    @Test("fetchTables() stamps the schema the rows were actually read from")
+    func defaultFetchStampsCurrentSchema() async throws {
+        let driver = StubTableTypeDriver()
+        driver.stubbedSupportsSchemas = true
+        driver.stubbedCurrentSchema = "custom"
+        driver.stubbedTables = [PluginTableInfo(name: "def_encounter", type: "TABLE")]
+        let adapter = makeAdapter(driver: driver)
+
+        let tables = try await adapter.fetchTables()
+
+        #expect(driver.requestedTableSchema == .some("custom"))
+        #expect(tables.first?.schema == "custom")
+    }
+
+    @Test("fetchTables() stays schema-less for an engine without schemas")
+    func defaultFetchStaysSchemaLess() async throws {
         let driver = StubTableTypeDriver()
         driver.stubbedTables = [PluginTableInfo(name: "users", type: "TABLE")]
         let adapter = makeAdapter(driver: driver)

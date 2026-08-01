@@ -283,16 +283,34 @@ extension DatabaseManager {
         } else if let adapter = driver as? PluginDriverAdapter {
             try await adapter.switchDatabase(to: database)
             let grouping = pm?.schema.databaseGroupingStrategy ?? .byDatabase
+            if grouping == .bySchema {
+                await resetSchema(on: adapter, to: pm?.schema.defaultSchemaName)
+            }
             updateSession(connectionId) { session in
                 session.currentDatabase = database
                 if grouping == .bySchema {
-                    session.currentSchema = pm?.schema.defaultSchemaName
+                    session.currentSchema = adapter.currentSchema
                 }
             }
         }
 
         if persist {
             appSettingsStorage.saveLastDatabase(database, for: connectionId)
+        }
+    }
+
+    /// Moves the driver to the engine's default schema after a database switch.
+    /// Writing the session's schema without moving the driver leaves object listings
+    /// (driver schema) and table queries (session schema) on different schemas.
+    private func resetSchema(on driver: any SchemaSwitchable, to defaultSchemaName: String?) async {
+        guard let defaultSchemaName, !defaultSchemaName.isEmpty else { return }
+        guard driver.currentSchema != defaultSchemaName else { return }
+        do {
+            try await driver.switchSchema(to: defaultSchemaName)
+        } catch {
+            Self.logger.warning(
+                "Failed to reset schema to '\(defaultSchemaName, privacy: .public)' after a database switch: \(error.localizedDescription, privacy: .public)"
+            )
         }
     }
 

@@ -12,7 +12,8 @@ extension MSSQLPluginDriver {
     // MARK: - Schema Operations
 
     func fetchTables(schema: String?) async throws -> [PluginTableInfo] {
-        let esc = effectiveSchemaEscaped(schema)
+        let resolved = effectiveSchema(schema)
+        let esc = MSSQLSchemaQueries.escape(resolved)
         let sql = """
             SELECT t.TABLE_NAME, t.TABLE_TYPE
             FROM INFORMATION_SCHEMA.TABLES t
@@ -25,7 +26,7 @@ extension MSSQLPluginDriver {
             guard let name = row[safe: 0]?.asText else { return nil }
             let rawType = row[safe: 1]?.asText
             let tableType = (rawType == "VIEW") ? "VIEW" : "TABLE"
-            return PluginTableInfo(name: name, type: tableType)
+            return PluginTableInfo(name: name, type: tableType, schema: resolved)
         }
     }
 
@@ -128,7 +129,7 @@ extension MSSQLPluginDriver {
     }
 
     func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] {
-        let esc = (schema ?? _currentSchema).replacingOccurrences(of: "]", with: "]]")
+        let esc = MSSQLSchemaQueries.escapeBracket(effectiveSchema(schema))
         let bracketedTable = table.replacingOccurrences(of: "]", with: "]]")
         let bracketedFull = "[\(esc)].[\(bracketedTable)]"
         let sql = """
@@ -166,7 +167,7 @@ extension MSSQLPluginDriver {
     }
 
     func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] {
-        let sql = MSSQLSchemaQueries.foreignKeys(schema: schema ?? _currentSchema, table: table)
+        let sql = MSSQLSchemaQueries.foreignKeys(schema: effectiveSchema(schema), table: table)
         let result = try await execute(query: sql)
         return result.rows.compactMap { row -> PluginForeignKeyInfo? in
             guard let parsed = MSSQLSchemaQueries.parseForeignKeyRow(row.map { $0.asText }) else { return nil }
@@ -181,7 +182,7 @@ extension MSSQLPluginDriver {
     }
 
     func fetchTriggers(table: String, schema: String?) async throws -> [PluginTriggerInfo] {
-        let esc = (schema ?? _currentSchema).replacingOccurrences(of: "]", with: "]]")
+        let esc = MSSQLSchemaQueries.escapeBracket(effectiveSchema(schema))
         let bracketedTable = table.replacingOccurrences(of: "]", with: "]]")
         let bracketedFull = "[\(esc)].[\(bracketedTable)]"
         let sql = """
@@ -227,7 +228,7 @@ extension MSSQLPluginDriver {
     var supportsTransactionalDDL: Bool { true }
 
     func createTriggerTemplate(table: String, schema: String?) -> String? {
-        let resolved = schema ?? _currentSchema
+        let resolved = effectiveSchema(schema)
         return """
         CREATE OR ALTER TRIGGER \(quoteIdentifier("trigger_name"))
         ON \(quoteIdentifier(resolved)).\(quoteIdentifier(table))
@@ -241,7 +242,7 @@ extension MSSQLPluginDriver {
     }
 
     func fetchTriggerDefinition(name: String, table: String, schema: String?) async throws -> String? {
-        let esc = (schema ?? _currentSchema).replacingOccurrences(of: "]", with: "]]")
+        let esc = MSSQLSchemaQueries.escapeBracket(effectiveSchema(schema))
         let bracketedName = name.replacingOccurrences(of: "]", with: "]]")
         let sql = "SELECT OBJECT_DEFINITION(OBJECT_ID('[\(esc)].[\(bracketedName)]'))"
         let result = try await execute(query: sql)
@@ -253,7 +254,7 @@ extension MSSQLPluginDriver {
     }
 
     func generateDropTriggerSQL(name: String, table: String, schema: String?) -> String? {
-        let resolved = schema ?? _currentSchema
+        let resolved = effectiveSchema(schema)
         return "DROP TRIGGER \(quoteIdentifier(resolved)).\(quoteIdentifier(name))"
     }
 

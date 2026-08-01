@@ -94,10 +94,16 @@ final class DatabaseManager {
     }
 
     /// Authoritative schema for a table identity when the caller has no explicit
-    /// schema. Explicit schemas pass through unchanged; nil resolves to the live
-    /// session's current schema and stays nil for schema-less engines.
+    /// schema. Explicit schemas pass through unchanged; a blank or missing schema
+    /// resolves to the live session's current schema and stays nil for schema-less
+    /// engines. A blank name never reaches a query builder: engines that qualify
+    /// object names treat it as "no schema" and emit an unqualified name.
     func resolvedSchemaName(_ schemaName: String?, for connectionId: UUID) -> String? {
-        schemaName ?? activeSessions[connectionId]?.currentSchema
+        if let schemaName, !schemaName.isEmpty { return schemaName }
+        guard let sessionSchema = activeSessions[connectionId]?.currentSchema, !sessionSchema.isEmpty else {
+            return nil
+        }
+        return sessionSchema
     }
 
     /// Current connection status
