@@ -12,10 +12,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Claude Agent** provider, which runs AI chat through the Claude Code command line tool so you can use a Claude subscription instead of a metered API key. It answers from your schema when the MCP server is on.
 - **Count exactly** next to an estimated row total, to replace the estimate with a real count when you want it.
 - Reorder filter rows by dragging the grip on the left of each row, or with **Move Up** and **Move Down** in the row's right-click menu.
+- An **On Update** column in the Structure tab for MySQL and MariaDB, so a timestamp column can be set to update itself without writing the SQL by hand. (#2005)
 
 ### Fixed
 
 - Opening a SQL Server table or view that lives outside the default schema no longer fails with "Invalid object name". A table now keeps the schema it was listed under, and switching database no longer leaves the sidebar and the query on different schemas. (#2004)
+- Editing a MySQL or MariaDB column no longer drops its `ON UPDATE CURRENT_TIMESTAMP`. Saving a change to any other part of the column, even just its comment, silently removed the clause. (#2005)
+- A MySQL or MariaDB timestamp column that keeps fractional seconds now saves. Its default was written as text instead of an expression, so the change was rejected. (#2005)
 - Quitting no longer loses unsaved SQL editor tabs. A window with no tabs loaded yet, such as one still waiting on its connection, could erase the saved tabs for that connection, so nothing came back on relaunch. Editors are also saved about a second after you stop typing instead of waiting up to 30 seconds, and a query over 500KB is kept in full rather than restored empty. (#1997)
 - Opening a large MongoDB collection no longer hangs. Row counts that back the pagination display now give up after 5 seconds and leave the estimate in place instead of holding the tab.
 - Stop now cancels a running MongoDB query on the server, rather than leaving it running until it finishes on its own.

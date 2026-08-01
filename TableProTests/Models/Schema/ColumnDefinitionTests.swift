@@ -207,5 +207,65 @@ struct ColumnDefinitionTests {
         #expect(convertedBack.defaultValue == originalInfo.defaultValue)
         #expect(convertedBack.extra == originalInfo.extra)
         #expect(convertedBack.comment == originalInfo.comment)
+        #expect(editable.onUpdate == "CURRENT_TIMESTAMP")
+    }
+
+    // MARK: - On Update
+
+    @Test("Server-reported on-update timestamp survives a rebuild from the working column")
+    func onUpdateSurvivesRebuild() {
+        let original = ColumnInfo(
+            name: "updated_at",
+            dataType: "timestamp",
+            isNullable: false,
+            isPrimaryKey: false,
+            defaultValue: "CURRENT_TIMESTAMP",
+            extra: "on update CURRENT_TIMESTAMP",
+            charset: nil,
+            collation: nil,
+            comment: nil
+        )
+
+        var editable = EditableColumnDefinition.from(original)
+        editable.comment = "touched"
+        let rebuilt = EditableColumnDefinition.from(editable.toColumnInfo())
+
+        #expect(rebuilt.onUpdate == "CURRENT_TIMESTAMP")
+        #expect(editable.toPlugin().onUpdate == "CURRENT_TIMESTAMP")
+    }
+
+    @Test(
+        "On-update is parsed out of every EXTRA spelling the server uses",
+        arguments: [
+            (extra: String?.none, expected: String?.none),
+            (extra: "", expected: nil),
+            (extra: "auto_increment", expected: nil),
+            (extra: "DEFAULT_GENERATED", expected: nil),
+            (extra: "on update CURRENT_TIMESTAMP", expected: "CURRENT_TIMESTAMP"),
+            (extra: "ON UPDATE CURRENT_TIMESTAMP", expected: "CURRENT_TIMESTAMP"),
+            (extra: "on update CURRENT_TIMESTAMP(6)", expected: "CURRENT_TIMESTAMP"),
+            (extra: "DEFAULT_GENERATED on update CURRENT_TIMESTAMP", expected: "CURRENT_TIMESTAMP"),
+            (extra: "DEFAULT_GENERATED on update CURRENT_TIMESTAMP(3)", expected: "CURRENT_TIMESTAMP")
+        ]
+    )
+    func onUpdateParsing(extra: String?, expected: String?) {
+        let columnInfo = ColumnInfo(
+            name: "updated_at",
+            dataType: "timestamp",
+            isNullable: false,
+            isPrimaryKey: false,
+            defaultValue: nil,
+            extra: extra,
+            charset: nil,
+            collation: nil,
+            comment: nil
+        )
+
+        #expect(EditableColumnDefinition.from(columnInfo).onUpdate == expected)
+    }
+
+    @Test("A placeholder column carries no on-update attribute")
+    func placeholderHasNoOnUpdate() {
+        #expect(EditableColumnDefinition.placeholder().onUpdate == nil)
     }
 }

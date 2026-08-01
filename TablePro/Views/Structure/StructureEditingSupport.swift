@@ -31,6 +31,8 @@ enum StructureEditingSupport {
         case .type: column.dataType = value
         case .nullable: column.isNullable = parseBool(value) && !column.isPrimaryKey
         case .defaultValue: column.defaultValue = value.isEmpty ? nil : value
+        case .onUpdate:
+            column.onUpdate = parseBool(value) ? EditableColumnDefinition.currentTimestampExpression : nil
         case .primaryKey:
             column.isPrimaryKey = parseBool(value)
             if column.isPrimaryKey { column.isNullable = false }
@@ -38,6 +40,7 @@ enum StructureEditingSupport {
         case .comment: column.comment = value.isEmpty ? nil : value
         case .charset: column.charset = value.isEmpty ? nil : value
         case .collation: column.collation = value.isEmpty ? nil : value
+        @unknown default: break
         }
     }
 
@@ -157,11 +160,13 @@ enum StructureEditingSupport {
         case .type: return old.dataType != new.dataType
         case .nullable: return old.isNullable != new.isNullable
         case .defaultValue: return old.defaultValue != new.defaultValue
+        case .onUpdate: return old.onUpdate != new.onUpdate
         case .primaryKey: return old.isPrimaryKey != new.isPrimaryKey
         case .autoIncrement: return old.autoIncrement != new.autoIncrement
         case .comment: return old.comment != new.comment
         case .charset: return old.charset != new.charset
         case .collation: return old.collation != new.collation
+        @unknown default: return false
         }
     }
 }

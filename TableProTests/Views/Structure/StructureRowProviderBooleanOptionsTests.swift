@@ -41,7 +41,7 @@ struct StructureRowProviderBooleanOptionsTests {
             changeManager: makeManager(),
             tab: tab,
             databaseType: .postgresql,
-            additionalFields: [.primaryKey],
+            additionalFields: [.primaryKey, .onUpdate],
             filterText: nil,
             sortDescriptor: nil
         )
@@ -52,7 +52,7 @@ struct StructureRowProviderBooleanOptionsTests {
         let provider = makeProvider()
         let options = provider.customDropdownOptions
 
-        for field in [StructureColumnField.nullable, .primaryKey, .autoIncrement] {
+        for field in [StructureColumnField.nullable, .primaryKey, .autoIncrement, .onUpdate] {
             guard let index = provider.orderedColumnFields.firstIndex(of: field) else {
                 Issue.record("Field \(field) missing from the columns tab")
                 continue

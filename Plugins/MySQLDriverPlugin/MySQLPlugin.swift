@@ -48,7 +48,7 @@ final class MySQLPlugin: NSObject, TableProPlugin, DriverPlugin {
     ]
 
     static let structureColumnFields: [StructureColumnField] = [
-        .name, .type, .nullable, .defaultValue, .autoIncrement, .comment, .charset, .collation
+        .name, .type, .nullable, .defaultValue, .onUpdate, .autoIncrement, .comment, .charset, .collation
     ]
 
     static let sqlDialect: SQLDialectDescriptor? = SQLDialectDescriptor(

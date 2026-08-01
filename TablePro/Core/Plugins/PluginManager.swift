@@ -14,8 +14,8 @@ import TableProPluginKit
 @MainActor @Observable
 final class PluginManager {
     static let shared = PluginManager()
-    static let currentPluginKitVersion = 18
-    static let minimumCompatiblePluginKitVersion = 18
+    static let currentPluginKitVersion = 19
+    static let minimumCompatiblePluginKitVersion = 19
     static let currentInspectorKitVersion = 1
     private static let disabledPluginsKey = "com.TablePro.disabledPlugins"
     private static let legacyDisabledPluginsKey = "disabledPlugins"

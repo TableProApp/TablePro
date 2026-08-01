@@ -19,6 +19,10 @@ struct StructureEditingSupportBooleanParsingTests {
         .name, .type, .nullable, .defaultValue, .primaryKey, .autoIncrement, .comment
     ]
 
+    private static let mysqlOrderedFields: [StructureColumnField] = [
+        .name, .type, .nullable, .defaultValue, .onUpdate, .primaryKey, .autoIncrement, .comment
+    ]
+
     private static let trueTokens = ["YES", "yes", "Yes", "TRUE", "true", "True", "1"]
     private static let falseTokens = ["NO", "no", "FALSE", "false", "0", "", "maybe"]
 
@@ -111,6 +115,33 @@ struct StructureEditingSupportBooleanParsingTests {
             orderedFields: Self.postgresOrderedFields
         )
         #expect(column.autoIncrement)
+    }
+
+    // MARK: - On Update
+
+    @Test("On Update accepts every true token", arguments: trueTokens)
+    func onUpdateAcceptsEveryTrueToken(token: String) {
+        var column = makeColumn()
+        StructureEditingSupport.updateColumn(
+            &column,
+            at: Self.mysqlOrderedFields.firstIndex(of: .onUpdate) ?? -1,
+            with: token,
+            orderedFields: Self.mysqlOrderedFields
+        )
+        #expect(column.onUpdate == "CURRENT_TIMESTAMP")
+    }
+
+    @Test("On Update clears on a false token", arguments: falseTokens)
+    func onUpdateClears(token: String) {
+        var column = makeColumn()
+        column.onUpdate = "CURRENT_TIMESTAMP"
+        StructureEditingSupport.updateColumn(
+            &column,
+            at: Self.mysqlOrderedFields.firstIndex(of: .onUpdate) ?? -1,
+            with: token,
+            orderedFields: Self.mysqlOrderedFields
+        )
+        #expect(column.onUpdate == nil)
     }
 
     // MARK: - Primary key implies NOT NULL
