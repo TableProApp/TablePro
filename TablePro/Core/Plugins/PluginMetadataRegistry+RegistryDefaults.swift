@@ -131,7 +131,7 @@ extension PluginMetadataRegistry {
                     tableEntityName: "Keys",
                     containerEntityName: "Database",
                     defaultPrimaryKeyColumn: "Key",
-                    immutableColumns: [],
+                    immutableColumns: ["Length"],
                     systemDatabaseNames: [],
                     systemSchemaNames: [],
                     fileExtensions: [],

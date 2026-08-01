@@ -38,8 +38,7 @@ internal final class RedisKeyTreeViewModel {
         }
 
         do {
-            // Use KEYS command for simplicity — returns all keys matching pattern
-            let result = try await driver.execute(query: "KEYS *")
+            let result = try await driver.execute(query: "KEYTREE LIMIT \(Self.maxKeys)")
 
             let keyColumnIndex = result.columns.firstIndex(of: "Key") ?? 0
             let typeColumnIndex = result.columns.firstIndex(of: "Type") ?? 1

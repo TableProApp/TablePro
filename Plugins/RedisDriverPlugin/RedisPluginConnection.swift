@@ -270,6 +270,14 @@ final class RedisPluginConnection: @unchecked Sendable {
     // MARK: - Command Execution
 
     func executeCommand(_ args: [String]) async throws -> RedisReply {
+        try await executeCommand(args.map { Data($0.utf8) })
+    }
+
+    func executePipeline(_ commands: [[String]]) async throws -> [RedisReply] {
+        try await executePipeline(commands.map { $0.map { Data($0.utf8) } })
+    }
+
+    func executeCommand(_ args: [Data]) async throws -> RedisReply {
         #if canImport(CRedis)
         return try await pluginDispatchAsync(on: queue) { [self] in
             guard !isShuttingDown else {
@@ -291,7 +299,7 @@ final class RedisPluginConnection: @unchecked Sendable {
         #endif
     }
 
-    func executePipeline(_ commands: [[String]]) async throws -> [RedisReply] {
+    func executePipeline(_ commands: [[Data]]) async throws -> [RedisReply] {
         #if canImport(CRedis)
         return try await pluginDispatchAsync(on: queue) { [self] in
             guard !isShuttingDown else {
@@ -481,25 +489,33 @@ private extension RedisPluginConnection {
         error.code == Int(REDIS_ERR_EOF) || error.code == Int(REDIS_ERR_IO)
     }
 
-    func executeCommandSyncRetrying(_ args: [String]) throws -> RedisReply {
-        do {
-            return try executeCommandSync(args)
-        } catch let error as RedisPluginError where isConnectionError(error) && !isShuttingDown {
-            try reconnectSync()
-            return try executeCommandSync(args)
-        }
-    }
-
-    func executePipelineSyncRetrying(_ commands: [[String]]) throws -> [RedisReply] {
-        do {
-            return try executePipelineSync(commands)
-        } catch let error as RedisPluginError where isConnectionError(error) && !isShuttingDown {
-            try reconnectSync()
-            return try executePipelineSync(commands)
-        }
-    }
-
     func executeCommandSync(_ args: [String]) throws -> RedisReply {
+        try executeCommandSync(args.map { Data($0.utf8) })
+    }
+
+    func executeCommandSyncRetrying(_ args: [String]) throws -> RedisReply {
+        try executeCommandSyncRetrying(args.map { Data($0.utf8) })
+    }
+
+    func executeCommandSyncRetrying(_ args: [Data]) throws -> RedisReply {
+        do {
+            return try executeCommandSync(args)
+        } catch let error as RedisPluginError where isConnectionError(error) && !isShuttingDown {
+            try reconnectSync()
+            return try executeCommandSync(args)
+        }
+    }
+
+    func executePipelineSyncRetrying(_ commands: [[Data]]) throws -> [RedisReply] {
+        do {
+            return try executePipelineSync(commands)
+        } catch let error as RedisPluginError where isConnectionError(error) && !isShuttingDown {
+            try reconnectSync()
+            return try executePipelineSync(commands)
+        }
+    }
+
+    func executeCommandSync(_ args: [Data]) throws -> RedisReply {
         stateLock.lock()
         guard let ctx = context else {
             stateLock.unlock()
@@ -508,9 +524,8 @@ private extension RedisPluginConnection {
         stateLock.unlock()
 
         let argc = Int32(args.count)
-        let lengths = args.map { $0.utf8.count }
 
-        return try withArgvPointers(args: args, lengths: lengths) { argv, argvlen in
+        return try withArgvPointers(args: args) { argv, argvlen in
             guard let rawReply = redisCommandArgv(ctx, argc, argv, argvlen) else {
                 if ctx.pointee.err != 0 {
                     throw RedisPluginError(code: Int(ctx.pointee.err), message: Self.contextErrorMessage(ctx))
@@ -525,7 +540,7 @@ private extension RedisPluginConnection {
         }
     }
 
-    func executePipelineSync(_ commands: [[String]]) throws -> [RedisReply] {
+    func executePipelineSync(_ commands: [[Data]]) throws -> [RedisReply] {
         stateLock.lock()
         guard let ctx = context else {
             stateLock.unlock()
@@ -537,8 +552,7 @@ private extension RedisPluginConnection {
         var appendedCount = 0
         for args in commands {
             let argc = Int32(args.count)
-            let lengths = args.map { $0.utf8.count }
-            try withArgvPointers(args: args, lengths: lengths) { argv, argvlen in
+            try withArgvPointers(args: args) { argv, argvlen in
                 let status = redisAppendCommandArgv(ctx, argc, argv, argvlen)
                 if status != REDIS_OK {
                     for _ in 0 ..< appendedCount {
@@ -597,26 +611,22 @@ private extension RedisPluginConnection {
     }
 
     func withArgvPointers<T>(
-        args: [String],
-        lengths: [Int],
+        args: [Data],
         body: (UnsafeMutablePointer<UnsafePointer<CChar>?>, UnsafeMutablePointer<Int>) throws -> T
     ) rethrows -> T {
         let count = args.count
 
-        let cStrings: [UnsafeMutablePointer<CChar>] = args.map { arg in
-            let utf8 = Array(arg.utf8)
-            let ptr = UnsafeMutablePointer<CChar>.allocate(capacity: utf8.count + 1)
-            utf8.withUnsafeBufferPointer { buffer in
-                if let base = buffer.baseAddress {
-                    base.withMemoryRebound(to: CChar.self, capacity: utf8.count) { src in
-                        ptr.initialize(from: src, count: utf8.count)
-                    }
+        let buffers: [UnsafeMutablePointer<CChar>] = args.map { arg in
+            let ptr = UnsafeMutablePointer<CChar>.allocate(capacity: arg.count + 1)
+            arg.withUnsafeBytes { raw in
+                if let base = raw.bindMemory(to: CChar.self).baseAddress {
+                    ptr.initialize(from: base, count: arg.count)
                 }
             }
-            ptr[utf8.count] = 0
+            ptr[arg.count] = 0
             return ptr
         }
-        defer { cStrings.forEach { $0.deallocate() } }
+        defer { buffers.forEach { $0.deallocate() } }
 
         let argv = UnsafeMutablePointer<UnsafePointer<CChar>?>.allocate(capacity: count)
         let argvlen = UnsafeMutablePointer<Int>.allocate(capacity: count)
@@ -626,8 +636,8 @@ private extension RedisPluginConnection {
         }
 
         for i in 0 ..< count {
-            argv[i] = UnsafePointer(cStrings[i])
-            argvlen[i] = lengths[i]
+            argv[i] = UnsafePointer(buffers[i])
+            argvlen[i] = args[i].count
         }
 
         return try body(argv, argvlen)

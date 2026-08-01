@@ -13,9 +13,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Count exactly** next to an estimated row total, to replace the estimate with a real count when you want it.
 - Reorder filter rows by dragging the grip on the left of each row, or with **Move Up** and **Move Down** in the row's right-click menu.
 - An **On Update** column in the Structure tab for MySQL and MariaDB, so a timestamp column can be set to update itself without writing the SQL by hand. (#2005)
+- A **Length** column in the Redis key grid, showing the size Redis reports: bytes for a string, element count for a hash, list, set, sorted set, or stream. It tells you how much a preview leaves out.
+
+### Changed
+
+- The Redis key tree in the sidebar lists keys with `SCAN` instead of `KEYS`, and no longer reads every key's value to draw the tree. `KEYS` blocks the server for the whole scan.
+- Redis command arguments now follow the same quoting rules as `redis-cli`, so `\xHH` writes a raw byte and a command you paste from `redis-cli` behaves the same way in TablePro. A command with unbalanced quotes is rejected instead of being guessed at.
 
 ### Fixed
 
+- A Redis string key now shows its whole value in the grid. Values were cut at 1,000 characters with `...` on the end, and because that was the only copy the app held, the same cut value reached the JSON tab, Copy JSON, the row inspector, and exports. Editing one of those cells and saving wrote the cut value back to Redis and lost the rest.
+- Hash, list, set, sorted set, and stream previews are now valid JSON. They were cut mid-token, so a preview could end in the middle of a key or an escape sequence.
+- A Redis key that expires between listing and reading now shows an empty cell instead of the text `(nil)`.
+- A Redis value that is not text, such as a gzip or MessagePack payload, is no longer shown as base64 and rewritten as base64 when you save. It now displays as binary, opens in the hex editor, and is written back byte for byte. This applies to the query editor too, so `SET`, `HSET`, `LPUSH`, `SADD`, and `ZADD` keep binary arguments intact.
 - Opening a SQL Server table or view that lives outside the default schema no longer fails with "Invalid object name". A table now keeps the schema it was listed under, and switching database no longer leaves the sidebar and the query on different schemas. (#2004)
 - Editing a MySQL or MariaDB column no longer drops its `ON UPDATE CURRENT_TIMESTAMP`. Saving a change to any other part of the column, even just its comment, silently removed the clause. (#2005)
 - A MySQL or MariaDB timestamp column that keeps fractional seconds now saves. Its default was written as text instead of an expression, so the change was rejected. (#2005)

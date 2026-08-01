@@ -4,12 +4,44 @@
 //
 
 import Foundation
-import OSLog
 import TableProPluginKit
 
+private struct RedisKeyProbe {
+    let kind: RedisKeyKind
+    let lengthIndex: Int
+    let previewIndex: Int
+}
+
 extension RedisPluginDriver {
-    static let previewLimit = 100
-    static let previewMaxChars = 1_000
+    static let keyBrowseColumns = ["Key", "Type", "TTL", "Length", "Value"]
+    static let keyBrowseColumnTypeNames = ["String", "RedisType", "RedisInt", "Int64", "RedisRaw"]
+    static let keyTreeColumns = ["Key", "Type"]
+    static let keyTreeColumnTypeNames = ["String", "RedisType"]
+
+    func buildKeyTreeResult(
+        keys: [String],
+        connection conn: RedisPluginConnection,
+        startTime: Date,
+        isTruncated: Bool
+    ) async throws -> PluginQueryResult {
+        var rows: [PluginRow] = []
+        if !keys.isEmpty {
+            let typeReplies = try await conn.executePipeline(keys.map { ["TYPE", $0] })
+            rows.reserveCapacity(keys.count)
+            for (i, key) in keys.enumerated() {
+                rows.append([.text(key), .text((typeReplies[i].stringValue ?? "unknown").uppercased())])
+            }
+        }
+
+        return PluginQueryResult(
+            columns: Self.keyTreeColumns,
+            columnTypeNames: Self.keyTreeColumnTypeNames,
+            rows: rows,
+            rowsAffected: 0,
+            executionTime: Date().timeIntervalSince(startTime),
+            isTruncated: isTruncated
+        )
+    }
 
     func buildKeyBrowseResult(
         keys: [String],
@@ -20,6 +52,23 @@ extension RedisPluginDriver {
         guard !keys.isEmpty else {
             return buildEmptyKeyResult(startTime: startTime)
         }
+
+        let rows = try await buildKeySummaryRows(keys: keys, connection: conn)
+        return PluginQueryResult(
+            columns: Self.keyBrowseColumns,
+            columnTypeNames: Self.keyBrowseColumnTypeNames,
+            rows: rows,
+            rowsAffected: 0,
+            executionTime: Date().timeIntervalSince(startTime),
+            isTruncated: isTruncated
+        )
+    }
+
+    func buildKeySummaryRows(
+        keys: [String],
+        connection conn: RedisPluginConnection
+    ) async throws -> [PluginRow] {
+        guard !keys.isEmpty else { return [] }
 
         var typeAndTtlCommands: [[String]] = []
         typeAndTtlCommands.reserveCapacity(keys.count * 2)
@@ -34,196 +83,102 @@ extension RedisPluginDriver {
         var ttlValues: [Int] = []
         ttlValues.reserveCapacity(keys.count)
         for i in 0 ..< keys.count {
-            let typeName = (typeAndTtlReplies[i * 2].stringValue ?? "unknown").uppercased()
-            let ttl = typeAndTtlReplies[i * 2 + 1].intValue ?? -1
-            typeNames.append(typeName)
-            ttlValues.append(ttl)
+            typeNames.append((typeAndTtlReplies[i * 2].stringValue ?? "unknown").uppercased())
+            ttlValues.append(typeAndTtlReplies[i * 2 + 1].intValue ?? -1)
         }
 
-        var previewCommands: [[String]] = []
-        previewCommands.reserveCapacity(keys.count)
-        var previewCommandIndices: [Int] = []
-        previewCommandIndices.reserveCapacity(keys.count)
+        var probeCommands: [[String]] = []
+        probeCommands.reserveCapacity(keys.count * 2)
+        var probes: [RedisKeyProbe?] = []
+        probes.reserveCapacity(keys.count)
 
         for (i, key) in keys.enumerated() {
-            let command: [String]? = previewCommandForType(typeNames[i], key: key)
-            if let command {
-                previewCommandIndices.append(previewCommands.count)
-                previewCommands.append(command)
-            } else {
-                previewCommandIndices.append(-1)
+            guard let kind = RedisKeyKind(typeName: typeNames[i]) else {
+                probes.append(nil)
+                continue
             }
+            let lengthIndex = probeCommands.count
+            probeCommands.append(RedisKeySummary.lengthCommand(for: kind, key: key))
+            let previewIndex = probeCommands.count
+            probeCommands.append(RedisKeySummary.previewCommand(for: kind, key: key))
+            probes.append(RedisKeyProbe(kind: kind, lengthIndex: lengthIndex, previewIndex: previewIndex))
         }
 
-        var previewReplies: [RedisReply] = []
-        if !previewCommands.isEmpty {
-            previewReplies = try await conn.executePipeline(previewCommands)
+        var probeReplies: [RedisReply] = []
+        if !probeCommands.isEmpty {
+            probeReplies = try await conn.executePipeline(probeCommands)
         }
 
-        var rows: [[PluginCellValue]] = []
+        var rows: [PluginRow] = []
         rows.reserveCapacity(keys.count)
         for (i, key) in keys.enumerated() {
-            let ttlStr = String(ttlValues[i])
-            let pipelineIndex = previewCommandIndices[i]
-            let preview: String?
-            if pipelineIndex >= 0, pipelineIndex < previewReplies.count {
-                preview = formatPreviewReply(
-                    previewReplies[pipelineIndex], type: typeNames[i]
-                )
-            } else {
-                preview = nil
+            var length: String?
+            var value = PluginCellValue.null
+            if let probe = probes[i], probe.previewIndex < probeReplies.count {
+                length = probeReplies[probe.lengthIndex].intValue.map(String.init)
+                value = previewCell(probeReplies[probe.previewIndex], kind: probe.kind)
             }
-            rows.append([key, typeNames[i], ttlStr, preview].asCells)
+            rows.append([
+                .text(key),
+                .text(typeNames[i]),
+                .text(String(ttlValues[i])),
+                PluginCellValue.fromOptional(length),
+                value
+            ])
         }
-
-        return PluginQueryResult(
-            columns: ["Key", "Type", "TTL", "Value"],
-            columnTypeNames: ["String", "RedisType", "RedisInt", "RedisRaw"],
-            rows: rows,
-            rowsAffected: 0,
-            executionTime: Date().timeIntervalSince(startTime),
-            isTruncated: isTruncated
-        )
+        return rows
     }
 
-    func previewCommandForType(_ type: String, key: String) -> [String]? {
-        switch type.lowercased() {
-        case "string":
-            return ["GET", key]
-        case "hash":
-            return ["HSCAN", key, "0", "COUNT", String(Self.previewLimit)]
-        case "list":
-            return ["LRANGE", key, "0", String(Self.previewLimit - 1)]
-        case "set":
-            return ["SSCAN", key, "0", "COUNT", String(Self.previewLimit)]
-        case "zset":
-            return ["ZRANGE", key, "0", String(Self.previewLimit - 1), "WITHSCORES"]
-        case "stream":
-            return ["XREVRANGE", key, "+", "-", "COUNT", "5"]
+    func previewCell(_ reply: RedisReply, kind: RedisKeyKind) -> PluginCellValue {
+        switch kind {
+        case .string:
+            return stringCell(from: reply)
+        case .hash:
+            return .fromOptional(RedisKeySummary.jsonObject(flatPairs: scanElements(from: reply).map(redisReplyToString)))
+        case .list:
+            return .fromOptional(RedisKeySummary.jsonArray(elements: (reply.arrayValue ?? []).map(redisReplyToString)))
+        case .set:
+            return .fromOptional(RedisKeySummary.jsonArray(elements: scanElements(from: reply).map(redisReplyToString)))
+        case .zset:
+            return .fromOptional(RedisKeySummary.jsonScorePairs(flatPairs: (reply.arrayValue ?? []).map(redisReplyToString)))
+        case .stream:
+            return .fromOptional(RedisKeySummary.jsonStreamEntries(streamEntries(from: reply)))
+        }
+    }
+
+    func stringCell(from reply: RedisReply) -> PluginCellValue {
+        switch reply {
+        case .null, .error:
+            return .null
+        case .data(let bytes):
+            return .bytes(bytes)
         default:
-            return nil
+            return .text(redisReplyToString(reply))
         }
     }
 
-    func formatPreviewReply(_ reply: RedisReply, type: String) -> String? {
-        switch type.lowercased() {
-        case "string":
-            return truncatePreview(redisReplyToString(reply))
-
-        case "hash":
-            let array: [RedisReply]
-            if case .array(let scanResult) = reply,
-               scanResult.count == 2,
-               let items = scanResult[1].arrayValue {
-                array = items
-            } else if let items = reply.arrayValue, !items.isEmpty {
-                array = items
-            } else {
-                return "{}"
-            }
-            guard !array.isEmpty else { return "{}" }
-            var pairs: [String] = []
-            var idx = 0
-            while idx + 1 < array.count {
-                let field = redisReplyToString(array[idx])
-                let value = redisReplyToString(array[idx + 1])
-                pairs.append(
-                    "\"\(escapeJsonString(field))\":\"\(escapeJsonString(value))\""
-                )
-                idx += 2
-            }
-            return truncatePreview("{\(pairs.joined(separator: ","))}")
-
-        case "list":
-            guard let items = reply.arrayValue else { return "[]" }
-            let quoted = items.map { "\"\(escapeJsonString(redisReplyToString($0)))\"" }
-            return truncatePreview("[\(quoted.joined(separator: ", "))]")
-
-        case "set":
-            let members: [RedisReply]
-            if case .array(let scanResult) = reply,
-               scanResult.count == 2,
-               let items = scanResult[1].arrayValue {
-                members = items
-            } else if let items = reply.arrayValue {
-                members = items
-            } else {
-                return "[]"
-            }
-            let quoted = members.map { "\"\(escapeJsonString(redisReplyToString($0)))\"" }
-            return truncatePreview("[\(quoted.joined(separator: ", "))]")
-
-        case "zset":
-            // Parse WITHSCORES result: alternating member, score pairs
-            guard let items = reply.arrayValue, !items.isEmpty else { return "[]" }
-            var pairs: [String] = []
-            var i = 0
-            while i + 1 < items.count {
-                pairs.append("\(redisReplyToString(items[i])):\(redisReplyToString(items[i + 1]))")
-                i += 2
-            }
-            return truncatePreview(pairs.joined(separator: ", "))
-
-        case "stream":
-            // Parse XREVRANGE result: array of [id, [field, value, ...]] entries
-            guard let entries = reply.arrayValue, !entries.isEmpty else {
-                return "(0 entries)"
-            }
-            var entryStrings: [String] = []
-            for entry in entries {
-                guard let parts = entry.arrayValue, parts.count >= 2,
-                      let fields = parts[1].arrayValue else {
-                    continue
-                }
-                let entryId = redisReplyToString(parts[0])
-                var fieldPairs: [String] = []
-                var j = 0
-                while j + 1 < fields.count {
-                    fieldPairs.append("\(redisReplyToString(fields[j]))=\(redisReplyToString(fields[j + 1]))")
-                    j += 2
-                }
-                entryStrings.append("\(entryId): \(fieldPairs.joined(separator: ", "))")
-            }
-            return truncatePreview(entryStrings.joined(separator: "; "))
-
-        default:
-            return nil
+    func scanElements(from reply: RedisReply) -> [RedisReply] {
+        if case .array(let parts) = reply, parts.count == 2, let items = parts[1].arrayValue {
+            return items
         }
+        return reply.arrayValue ?? []
     }
 
-    func truncatePreview(_ value: String?) -> String? {
-        guard let value else { return nil }
-        let nsValue = value as NSString
-        if nsValue.length > Self.previewMaxChars {
-            return nsValue.substring(to: Self.previewMaxChars) + "..."
-        }
-        return value
-    }
-
-    func escapeJsonString(_ str: String) -> String {
-        var result = ""
-        for scalar in str.unicodeScalars {
-            switch scalar {
-            case "\\": result += "\\\\"
-            case "\"": result += "\\\""
-            case "\n": result += "\\n"
-            case "\r": result += "\\r"
-            case "\t": result += "\\t"
-            default:
-                if scalar.value < 0x20 {
-                    result += String(format: "\\u%04X", scalar.value)
-                } else {
-                    result += String(scalar)
-                }
+    func streamEntries(from reply: RedisReply) -> [(id: String, flatFields: [String])] {
+        guard let entries = reply.arrayValue else { return [] }
+        return entries.compactMap { entry in
+            guard let parts = entry.arrayValue, parts.count >= 2,
+                  let fields = parts[1].arrayValue else {
+                return nil
             }
+            return (id: redisReplyToString(parts[0]), flatFields: fields.map(redisReplyToString))
         }
-        return result
     }
 
     func buildEmptyKeyResult(startTime: Date) -> PluginQueryResult {
         PluginQueryResult(
-            columns: ["Key", "Type", "TTL", "Value"],
-            columnTypeNames: ["String", "RedisType", "RedisInt", "RedisRaw"],
+            columns: Self.keyBrowseColumns,
+            columnTypeNames: Self.keyBrowseColumnTypeNames,
             rows: [],
             rowsAffected: 0,
             executionTime: Date().timeIntervalSince(startTime)

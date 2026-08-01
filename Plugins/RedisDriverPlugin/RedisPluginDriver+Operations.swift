@@ -23,6 +23,11 @@ extension RedisPluginDriver {
                 connection: conn, startTime: startTime
             )
 
+        case .keyTree(let pattern, let limit):
+            return try await executeKeyTree(
+                pattern: pattern, limit: limit, connection: conn, startTime: startTime
+            )
+
         case .hget, .hset, .hgetall, .hdel:
             return try await executeHashOperation(operation, connection: conn, startTime: startTime)
 
@@ -63,14 +68,14 @@ extension RedisPluginDriver {
             )
 
         case .set(let key, let value, let options):
-            var args = ["SET", key, value]
+            var args = ["SET", key].asRedisArguments + [value]
             if let opts = options {
-                if let ex = opts.ex { args += ["EX", String(ex)] }
-                if let px = opts.px { args += ["PX", String(px)] }
-                if let exat = opts.exat { args += ["EXAT", String(exat)] }
-                if let pxat = opts.pxat { args += ["PXAT", String(pxat)] }
-                if opts.nx { args.append("NX") }
-                if opts.xx { args.append("XX") }
+                if let ex = opts.ex { args += ["EX", String(ex)].asRedisArguments }
+                if let px = opts.px { args += ["PX", String(px)].asRedisArguments }
+                if let exat = opts.exat { args += ["EXAT", String(exat)].asRedisArguments }
+                if let pxat = opts.pxat { args += ["PXAT", String(pxat)].asRedisArguments }
+                if opts.nx { args.append("NX".redisArgument) }
+                if opts.xx { args.append("XX".redisArgument) }
             }
             _ = try await conn.executeCommand(args)
             return buildStatusResult("OK", startTime: startTime)
@@ -193,9 +198,9 @@ extension RedisPluginDriver {
             )
 
         case .hset(let key, let fieldValues):
-            var args = ["HSET", key]
+            var args = ["HSET", key].asRedisArguments
             for (field, value) in fieldValues {
-                args += [field, value]
+                args += [field.redisArgument, value]
             }
             let result = try await conn.executeCommand(args)
             let added = result.intValue ?? 0
@@ -241,7 +246,7 @@ extension RedisPluginDriver {
             return buildListResult(result, startOffset: start, startTime: startTime)
 
         case .lpush(let key, let values):
-            let args = ["LPUSH", key] + values
+            let args = ["LPUSH", key].asRedisArguments + values
             let result = try await conn.executeCommand(args)
             let length = result.intValue ?? 0
             return PluginQueryResult(
@@ -253,7 +258,7 @@ extension RedisPluginDriver {
             )
 
         case .rpush(let key, let values):
-            let args = ["RPUSH", key] + values
+            let args = ["RPUSH", key].asRedisArguments + values
             let result = try await conn.executeCommand(args)
             let length = result.intValue ?? 0
             return PluginQueryResult(
@@ -293,7 +298,7 @@ extension RedisPluginDriver {
             return buildSetResult(result, startTime: startTime)
 
         case .sadd(let key, let members):
-            let args = ["SADD", key] + members
+            let args = ["SADD", key].asRedisArguments + members
             let result = try await conn.executeCommand(args)
             let added = result.intValue ?? 0
             return PluginQueryResult(
@@ -305,7 +310,7 @@ extension RedisPluginDriver {
             )
 
         case .srem(let key, let members):
-            let args = ["SREM", key] + members
+            let args = ["SREM", key].asRedisArguments + members
             let result = try await conn.executeCommand(args)
             let removed = result.intValue ?? 0
             return PluginQueryResult(
@@ -348,10 +353,10 @@ extension RedisPluginDriver {
             return buildSortedSetResult(result, withScores: withScores, startTime: startTime)
 
         case .zadd(let key, let flags, let scoreMembers):
-            var args = ["ZADD", key]
-            args += flags
+            var args = ["ZADD", key].asRedisArguments
+            args += flags.asRedisArguments
             for (score, member) in scoreMembers {
-                args += [String(score), member]
+                args += [String(score).redisArgument, member]
             }
             let result = try await conn.executeCommand(args)
             if flags.contains("INCR") {
@@ -376,7 +381,7 @@ extension RedisPluginDriver {
             )
 
         case .zrem(let key, let members):
-            let args = ["ZREM", key] + members
+            let args = ["ZREM", key].asRedisArguments + members
             let result = try await conn.executeCommand(args)
             let removed = result.intValue ?? 0
             return PluginQueryResult(
@@ -492,7 +497,7 @@ extension RedisPluginDriver {
             return buildStatusResult("OK", startTime: startTime)
 
         case .command(let args):
-            let result = try await conn.executeCommand(args)
+            let result = try await conn.executeCommand(args.asRedisArguments)
             return buildGenericResult(result, startTime: startTime)
 
         case .multi:

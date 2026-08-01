@@ -167,6 +167,7 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             PluginColumnInfo(name: "Key", dataType: "String", isNullable: false, isPrimaryKey: true),
             PluginColumnInfo(name: "Type", dataType: "String", isNullable: false),
             PluginColumnInfo(name: "TTL", dataType: "Int64", isNullable: true),
+            PluginColumnInfo(name: "Length", dataType: "Int64", isNullable: true, isGenerated: true),
             PluginColumnInfo(name: "Value", dataType: "String", isNullable: true),
         ]
     }
@@ -458,8 +459,8 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
     ) async throws {
         continuation.yield(.header(PluginStreamHeader(
-            columns: ["Key", "Type", "TTL", "Value"],
-            columnTypeNames: ["String", "RedisType", "RedisInt", "RedisRaw"],
+            columns: Self.keyBrowseColumns,
+            columnTypeNames: Self.keyBrowseColumnTypeNames,
             estimatedRowCount: nil
         )))
 
@@ -511,59 +512,7 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 let batchEnd = min(batchStart + batchSize, keys.count)
                 let batchKeys = Array(keys[batchStart..<batchEnd])
 
-                var typeAndTtlCommands: [[String]] = []
-                typeAndTtlCommands.reserveCapacity(batchKeys.count * 2)
-                for key in batchKeys {
-                    typeAndTtlCommands.append(["TYPE", key])
-                    typeAndTtlCommands.append(["TTL", key])
-                }
-                let typeAndTtlReplies = try await conn.executePipeline(typeAndTtlCommands)
-
-                var typeNames: [String] = []
-                typeNames.reserveCapacity(batchKeys.count)
-                var ttlValues: [Int] = []
-                ttlValues.reserveCapacity(batchKeys.count)
-                for i in 0..<batchKeys.count {
-                    typeNames.append((typeAndTtlReplies[i * 2].stringValue ?? "unknown").uppercased())
-                    ttlValues.append(typeAndTtlReplies[i * 2 + 1].intValue ?? -1)
-                }
-
-                var previewCommands: [[String]] = []
-                var previewCommandIndices: [Int] = []
-                previewCommandIndices.reserveCapacity(batchKeys.count)
-
-                for (i, key) in batchKeys.enumerated() {
-                    if let command = previewCommandForType(typeNames[i], key: key) {
-                        previewCommandIndices.append(previewCommands.count)
-                        previewCommands.append(command)
-                    } else {
-                        previewCommandIndices.append(-1)
-                    }
-                }
-
-                var previewReplies: [RedisReply] = []
-                if !previewCommands.isEmpty {
-                    previewReplies = try await conn.executePipeline(previewCommands)
-                }
-
-                var rowBatch: [PluginRow] = []
-                rowBatch.reserveCapacity(batchKeys.count)
-                for (i, key) in batchKeys.enumerated() {
-                    let ttlStr = String(ttlValues[i])
-                    let pipelineIndex = previewCommandIndices[i]
-                    let preview: String?
-                    if pipelineIndex >= 0, pipelineIndex < previewReplies.count {
-                        preview = formatPreviewReply(previewReplies[pipelineIndex], type: typeNames[i])
-                    } else {
-                        preview = nil
-                    }
-                    rowBatch.append([
-                        .text(key),
-                        .text(typeNames[i]),
-                        .text(ttlStr),
-                        PluginCellValue.fromOptional(preview)
-                    ])
-                }
+                let rowBatch = try await buildKeySummaryRows(keys: batchKeys, connection: conn)
                 if !rowBatch.isEmpty {
                     continuation.yield(.rows(rowBatch))
                 }

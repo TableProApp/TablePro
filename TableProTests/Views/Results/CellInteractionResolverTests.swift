@@ -181,6 +181,52 @@ struct CellInteractionResolverEditableTests {
     }
 }
 
+@Suite("CellInteractionResolver - binary values")
+struct CellInteractionResolverBinaryTests {
+    private let resolver = CellInteractionResolver()
+
+    @Test("a binary cell in a text column opens the blob editor")
+    func binaryCellInTextColumnEdits() {
+        let context = ContextFactory.make(
+            value: nil, columnType: .text("RedisRaw"), isTableEditable: true, isBinaryValue: true
+        )
+        #expect(resolver.resolve(context) == .editBlob)
+    }
+
+    @Test("a binary cell in a read-only table opens the blob viewer")
+    func binaryCellReadOnlyViews() {
+        let context = ContextFactory.make(
+            value: nil, columnType: .text("RedisRaw"), isTableEditable: false, isBinaryValue: true
+        )
+        #expect(resolver.resolve(context) == .viewBlob)
+    }
+
+    @Test("a binary cell in an immutable column is not editable")
+    func binaryCellImmutableColumnViews() {
+        let context = ContextFactory.make(
+            value: nil, columnType: .text("RedisRaw"), isTableEditable: true,
+            isImmutableColumn: true, isBinaryValue: true
+        )
+        #expect(resolver.resolve(context) == .viewBlob)
+    }
+
+    @Test("a text cell in the same column still edits inline")
+    func textCellInSameColumnEditsInline() {
+        let context = ContextFactory.make(
+            value: "hello", columnType: .text("RedisRaw"), isTableEditable: true
+        )
+        #expect(resolver.resolve(context) == .editInline(value: "hello"))
+    }
+
+    @Test("a deleted row stays blocked even when binary")
+    func deletedBinaryRowBlocked() {
+        let context = ContextFactory.make(
+            value: nil, isTableEditable: true, isRowDeleted: true, isBinaryValue: true
+        )
+        #expect(resolver.resolve(context) == .blocked)
+    }
+}
+
 private enum ContextFactory {
     static func make(
         value: String?,
@@ -188,6 +234,7 @@ private enum ContextFactory {
         isTableEditable: Bool = false,
         isRowDeleted: Bool = false,
         isImmutableColumn: Bool = false,
+        isBinaryValue: Bool = false,
         displayFormatOverride: ValueDisplayFormat? = nil
     ) -> CellContext {
         CellContext(
@@ -196,6 +243,7 @@ private enum ContextFactory {
             isTableEditable: isTableEditable,
             isRowDeleted: isRowDeleted,
             isImmutableColumn: isImmutableColumn,
+            isBinaryValue: isBinaryValue,
             displayFormatOverride: displayFormatOverride
         )
     }
