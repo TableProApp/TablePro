@@ -537,6 +537,7 @@
 		5A865000E00000000 /* Exceptions for "Plugins/MySQLDriverPlugin" folder in "TableProTests" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				MySQLColumnDefinitionSQL.swift,
 				MySQLQueryTimeoutStatement.swift,
 				MySQLSocketTimeout.swift,
 				MySQLStatementClassification.swift,

@@ -18,7 +18,12 @@ struct StructureSortDescriptor {
 @MainActor
 final class StructureRowProvider {
     private static let canonicalFieldOrder: [StructureColumnField] = [
-        .name, .type, .nullable, .defaultValue, .primaryKey, .autoIncrement, .comment, .charset, .collation
+        .name, .type, .nullable, .defaultValue, .onUpdate, .primaryKey, .autoIncrement,
+        .comment, .charset, .collation
+    ]
+
+    private static let booleanFields: [StructureColumnField] = [
+        .nullable, .primaryKey, .autoIncrement, .onUpdate
     ]
 
     private let changeManager: StructureChangeManager
@@ -74,9 +79,10 @@ final class StructureRowProvider {
         switch tab {
         case .columns:
             var result: Set<Int> = []
-            if let i = orderedColumnFields.firstIndex(of: .nullable) { result.insert(i) }
-            if let i = orderedColumnFields.firstIndex(of: .primaryKey) { result.insert(i) }
-            if let i = orderedColumnFields.firstIndex(of: .autoIncrement) { result.insert(i) }
+            for field in Self.booleanFields {
+                guard let index = orderedColumnFields.firstIndex(of: field) else { continue }
+                result.insert(index)
+            }
             return result
         case .indexes:
             return [3]
@@ -100,7 +106,7 @@ final class StructureRowProvider {
             return [2: types, 3: Self.booleanOptions]
         case .columns:
             var result: [Int: [String]] = [:]
-            for field in [StructureColumnField.nullable, .primaryKey, .autoIncrement] {
+            for field in Self.booleanFields {
                 guard let index = orderedColumnFields.firstIndex(of: field) else { continue }
                 result[index] = Self.booleanOptions
             }
@@ -251,11 +257,13 @@ final class StructureRowProvider {
             case .type: column.dataType
             case .nullable: column.isNullable ? "YES" : "NO"
             case .defaultValue: column.defaultValue ?? ""
+            case .onUpdate: column.onUpdate != nil ? "YES" : "NO"
             case .primaryKey: column.isPrimaryKey ? "YES" : "NO"
             case .autoIncrement: column.autoIncrement ? "YES" : "NO"
             case .comment: column.comment ?? ""
             case .charset: column.charset ?? ""
             case .collation: column.collation ?? ""
+            @unknown default: nil
             }
         }
     }

@@ -42,22 +42,11 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func quoteIdentifier(_ name: String) -> String {
-        let escaped = name.replacingOccurrences(of: "`", with: "``")
-        return "`\(escaped)`"
+        mysqlQuoteIdentifier(name)
     }
 
     func escapeStringLiteral(_ value: String) -> String {
-        var result = value
-        result = result.replacingOccurrences(of: "\\", with: "\\\\")
-        result = result.replacingOccurrences(of: "'", with: "''")
-        result = result.replacingOccurrences(of: "\n", with: "\\n")
-        result = result.replacingOccurrences(of: "\r", with: "\\r")
-        result = result.replacingOccurrences(of: "\t", with: "\\t")
-        result = result.replacingOccurrences(of: "\0", with: "\\0")
-        result = result.replacingOccurrences(of: "\u{08}", with: "\\b")
-        result = result.replacingOccurrences(of: "\u{0C}", with: "\\f")
-        result = result.replacingOccurrences(of: "\u{1A}", with: "\\Z")
-        return result
+        mysqlEscapeStringLiteral(value)
     }
 
     private static let tableNameRegex = try? NSRegularExpression(pattern: "(?i)\\bFROM\\s+[`\"']?([\\w]+)[`\"']?")
@@ -761,48 +750,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     private func buildColumnDefinitionSQL(_ column: PluginColumnDefinition) -> String {
-        var def = "\(quoteIdentifier(column.name)) \(column.dataType)"
-
-        if column.unsigned {
-            def += " UNSIGNED"
-        }
-        if let charset = column.charset, !charset.isEmpty {
-            def += " CHARACTER SET \(charset)"
-        }
-        if let collation = column.collation, !collation.isEmpty {
-            def += " COLLATE \(collation)"
-        }
-        if column.isNullable {
-            def += " NULL"
-        } else {
-            def += " NOT NULL"
-        }
-        if let defaultValue = column.defaultValue {
-            let upper = defaultValue.uppercased()
-            if upper == "NULL" || upper == "CURRENT_TIMESTAMP" || upper == "CURRENT_TIMESTAMP()"
-                || defaultValue.hasPrefix("'") {
-                def += " DEFAULT \(defaultValue)"
-            } else if Int64(defaultValue) != nil || Double(defaultValue) != nil {
-                def += " DEFAULT \(defaultValue)"
-            } else {
-                def += " DEFAULT '\(escapeStringLiteral(defaultValue))'"
-            }
-        }
-        if column.autoIncrement {
-            def += " AUTO_INCREMENT"
-        }
-        if let onUpdate = column.onUpdate, !onUpdate.isEmpty {
-            let upper = onUpdate.uppercased()
-            if upper == "CURRENT_TIMESTAMP" || upper == "CURRENT_TIMESTAMP()"
-                || upper.hasPrefix("CURRENT_TIMESTAMP(") {
-                def += " ON UPDATE \(onUpdate)"
-            }
-        }
-        if let comment = column.comment, !comment.isEmpty {
-            def += " COMMENT '\(escapeStringLiteral(comment))'"
-        }
-
-        return def
+        mysqlColumnDefinitionSQL(column)
     }
 
     private func buildIndexDefinitionSQL(_ index: PluginIndexDefinition) -> String {
@@ -927,44 +875,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let tableName = quoteIdentifier(table)
         let colName = quoteIdentifier(column.name)
 
-        var def = "\(column.dataType)"
-        if column.unsigned {
-            def += " UNSIGNED"
-        }
-        if let charset = column.charset, !charset.isEmpty {
-            def += " CHARACTER SET \(charset)"
-        }
-        if let collation = column.collation, !collation.isEmpty {
-            def += " COLLATE \(collation)"
-        }
-        if column.isNullable {
-            def += " NULL"
-        } else {
-            def += " NOT NULL"
-        }
-        if let defaultValue = column.defaultValue {
-            let upper = defaultValue.uppercased()
-            if upper == "NULL" || upper == "CURRENT_TIMESTAMP" || upper == "CURRENT_TIMESTAMP()"
-                || defaultValue.hasPrefix("'") {
-                def += " DEFAULT \(defaultValue)"
-            } else if Int64(defaultValue) != nil || Double(defaultValue) != nil {
-                def += " DEFAULT \(defaultValue)"
-            } else {
-                def += " DEFAULT '\(escapeStringLiteral(defaultValue))'"
-            }
-        }
-        if column.autoIncrement {
-            def += " AUTO_INCREMENT"
-        }
-        if let onUpdate = column.onUpdate, !onUpdate.isEmpty {
-            let upper = onUpdate.uppercased()
-            if upper == "CURRENT_TIMESTAMP" || upper == "CURRENT_TIMESTAMP()" || upper.hasPrefix("CURRENT_TIMESTAMP(") {
-                def += " ON UPDATE \(onUpdate)"
-            }
-        }
-        if let comment = column.comment, !comment.isEmpty {
-            def += " COMMENT '\(escapeStringLiteral(comment))'"
-        }
+        let def = "\(column.dataType)" + mysqlColumnAttributesSQL(column)
 
         let position: String
         if let afterCol = afterColumn {
