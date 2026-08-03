@@ -144,6 +144,8 @@ Notes:
 
 - `ddl_is_transactional()`: the structure editor batches DDL into one transaction when true. False for engines that commit implicitly on every DDL statement.
 - `reports_rows_affected()`: the inline-edit Save path reads a zero `rows_affected` on an UPDATE or DELETE as another session having changed the row. Return false if the engine cannot produce a count, or every successful save warns about a lost update.
+- `is_file_based()`: the connect dialog hides host, port, TLS, the Authentication group and SSH, and relabels Database to File path. True only for engines that open a local file.
+- `supports_integrated_auth()`: the connect dialog shows the Method selector (Password / Windows (Kerberos)) only for drivers returning true, and while Kerberos is selected it hides the username and password rows and sends empty credentials. Return true only if `connect()` maps `AuthMode::Kerberos` onto a real integrated-auth path that reads the ambient Kerberos ticket cache; `connection_service::establish` refuses the mode for every other driver.
 
 If your engine needs a different SQL spelling for a statement the app builds centrally, add the dialect branch in `core::sql_dialect` (`quote_ident`, `placeholder_for`, `build_update`, `build_order_and_pagination`) rather than rewriting the SQL inside the driver. ClickHouse takes `build_update`'s `ALTER TABLE … UPDATE` branch for this reason.
 

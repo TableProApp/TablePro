@@ -38,7 +38,10 @@ jobs:
         # ubuntu:25.10 is minimal — git for Swatinem/rust-cache key
         # generation, curl + ca-certificates for rust-toolchain's
         # rustup install, plus the GTK / libadwaita / sourceview /
-        # OpenSSL / libsecret -dev packages the workspace links.
+        # OpenSSL / libsecret -dev packages the workspace links, plus
+        # libkrb5-dev + clang for the MSSQL driver's integrated
+        # (Kerberos/GSSAPI) auth (libgssapi-sys links gssapi_krb5 and
+        # runs bindgen).
         # No sudo (container runs as root by default).
         run: |
           apt-get update
@@ -52,7 +55,9 @@ jobs:
             libadwaita-1-dev \
             libgtksourceview-5-dev \
             libssl-dev \
-            libsecret-1-dev
+            libsecret-1-dev \
+            libkrb5-dev \
+            clang
       - uses: dtolnay/rust-toolchain@1.93
         with:
           components: rustfmt, clippy
@@ -65,8 +70,10 @@ jobs:
         run: cargo clippy --all-targets -- -D warnings
       - name: Build
         run: cargo build --workspace
+      # --bins matters: tablepro-app has no lib target, so --lib alone
+      # skips every test in the app crate.
       - name: Unit tests
-        run: cargo test --workspace --lib
+        run: cargo test --workspace --lib --bins
 
   integration:
     name: Driver integration tests (docker)

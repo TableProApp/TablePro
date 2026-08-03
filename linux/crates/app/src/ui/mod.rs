@@ -4,7 +4,7 @@ mod cell_editor;
 mod connect_dialog;
 mod connection_row;
 mod editor;
-mod error_text;
+pub(crate) mod error_text;
 mod filter_strip;
 mod grid;
 mod history_dialog;

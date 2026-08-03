@@ -25,6 +25,7 @@ async fn start_mssql() -> (ContainerAsync<MssqlServer>, ConnectOptions) {
         username: "sa".into(),
         password: SecretString::new(MssqlServer::DEFAULT_SA_PASSWORD.to_string().into()),
         use_tls: false,
+        ..Default::default()
     };
     (container, opts)
 }

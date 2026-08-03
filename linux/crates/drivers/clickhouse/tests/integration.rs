@@ -30,6 +30,7 @@ async fn start_clickhouse() -> (ContainerAsync<GenericImage>, ConnectOptions) {
         username: "default".into(),
         password: secrecy::SecretString::new("tablepro".to_string().into()),
         use_tls: false,
+        ..Default::default()
     };
     (container, opts)
 }

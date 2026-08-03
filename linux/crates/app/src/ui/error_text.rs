@@ -32,6 +32,10 @@ pub fn driver_message(error: &DriverError) -> String {
             crate::tr!("This connection is read-only. Reopen it without read-only mode to make changes.")
         }
         DriverError::Internal(detail) => crate::tr!("Internal driver error: {detail}").replace("{detail}", detail),
+        DriverError::IntegratedAuth(detail) => crate::tr!(
+            "Kerberos login failed: {detail}. Check that klist shows a valid ticket, run kinit if it does not, and make sure the server's SPN matches the host you typed."
+        )
+        .replace("{detail}", detail),
         DriverError::Transaction {
             statement_index,
             source,
@@ -78,5 +82,13 @@ mod tests {
         assert!(driver_message(&DriverError::ConnectionRefused).contains("Could not reach"));
         assert!(driver_message(&DriverError::AuthFailed).contains("wrong"));
         assert!(driver_message(&DriverError::Disconnected).contains("Try reconnecting"));
+    }
+
+    #[test]
+    fn integrated_auth_names_the_remedy_and_keeps_the_gssapi_detail() {
+        let message = driver_message(&DriverError::IntegratedAuth("No Kerberos credentials available".into()));
+        assert!(message.contains("No Kerberos credentials available"));
+        assert!(message.contains("kinit"));
+        assert!(message.contains("SPN"));
     }
 }
