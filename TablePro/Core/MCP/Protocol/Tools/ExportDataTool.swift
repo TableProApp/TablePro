@@ -1,5 +1,6 @@
 import Foundation
 import os
+import TableProPluginKit
 
 public struct ExportDataTool: MCPToolImplementation {
     public static let name = "export_data"
@@ -33,7 +34,7 @@ public struct ExportDataTool: MCPToolImplementation {
             ]),
             "max_rows": .object([
                 "type": .string("integer"),
-                "description": .string(String(localized: "Maximum rows to export (default 50000)"))
+                "description": .string(String(localized: "Maximum rows to export. Defaults to the server's configured default row limit and is capped at its maximum row limit."))
             ])
         ]),
         "required": .array([.string("connection_id"), .string("format")])
@@ -63,12 +64,13 @@ public struct ExportDataTool: MCPToolImplementation {
         let query = MCPArgumentDecoder.optionalString(arguments, key: "query")
         let tables = MCPArgumentDecoder.optionalStringArray(arguments, key: "tables")
         let outputPath = MCPArgumentDecoder.optionalString(arguments, key: "output_path")
-        let maxRows = MCPArgumentDecoder.optionalInt(
-            arguments,
-            key: "max_rows",
-            default: 50_000,
-            clamp: 1...100_000
-        ) ?? 50_000
+        let settings = await services.settingsProvider()
+        let maxRows = MCPLimitResolver.resolveMaxRows(
+            requested: MCPArgumentDecoder.optionalInt(arguments, key: "max_rows"),
+            settings: settings
+        )
+        let timeoutSeconds = MCPLimitResolver.resolveTimeoutSeconds(requested: nil, settings: settings)
+        let fetchLimit = maxRows + 1
 
         guard Self.allowedFormats.contains(format) else {
             throw MCPProtocolError.invalidParams(
@@ -103,9 +105,10 @@ public struct ExportDataTool: MCPToolImplementation {
             queries.append((label: "query", sql: query))
         } else if let tables {
             let quoteIdentifier = Self.identifierQuoter(for: meta.databaseType)
+            let autoLimitStyle = Self.autoLimitStyle(for: meta.databaseType)
             for table in tables {
                 let quoted = try Self.quoteQualifiedIdentifier(table, quoter: quoteIdentifier)
-                let sql = "SELECT * FROM \(quoted) LIMIT \(maxRows)"
+                let sql = Self.limitedSelectAll(from: quoted, limit: fetchLimit, autoLimitStyle: autoLimitStyle)
                 try await services.authPolicy.checkSafeModeDialog(
                     sql: sql,
                     connectionId: connectionId,
@@ -118,21 +121,32 @@ public struct ExportDataTool: MCPToolImplementation {
 
         var exportResults: [JsonValue] = []
         var totalRowsExported = 0
+        var anyTruncated = false
 
         for (label, sql) in queries {
-            let result = try await services.connectionBridge.executeQuery(
-                connectionId: connectionId,
+            let result = try await ToolQueryExecutor.executeAndLog(
+                services: services,
                 query: sql,
-                maxRows: maxRows,
-                timeoutSeconds: 60
+                connectionId: connectionId,
+                databaseName: meta.databaseName,
+                maxRows: fetchLimit,
+                timeoutSeconds: timeoutSeconds,
+                principalLabel: context.principal.metadata.label
             )
 
             guard let columns = result["columns"]?.arrayValue,
-                  let rows = result["rows"]?.arrayValue
+                  let fetched = result["rows"]?.arrayValue
             else {
                 throw MCPProtocolError.internalError(detail: "Unexpected query result structure")
             }
 
+            let limited = Self.applyRowLimit(
+                to: fetched,
+                maxRows: maxRows,
+                driverReportedTruncation: result["is_truncated"]?.boolValue ?? false
+            )
+            let rows = limited.rows
+            let isTruncated = limited.isTruncated
             let columnNames = columns.compactMap(\.stringValue)
             let formatted: String
 
@@ -148,11 +162,13 @@ public struct ExportDataTool: MCPToolImplementation {
             }
 
             totalRowsExported += rows.count
+            anyTruncated = anyTruncated || isTruncated
 
             exportResults.append(.object([
                 "label": .string(label),
                 "format": .string(format),
-                "row_count": result["row_count"] ?? .int(0),
+                "row_count": .int(rows.count),
+                "is_truncated": .bool(isTruncated),
                 "data": .string(formatted)
             ]))
         }
@@ -173,7 +189,8 @@ public struct ExportDataTool: MCPToolImplementation {
 
             let response: JsonValue = .object([
                 "path": .string(fileURL.path),
-                "rows_exported": .int(totalRowsExported)
+                "rows_exported": .int(totalRowsExported),
+                "is_truncated": .bool(anyTruncated)
             ])
             return .structured(response)
         }
@@ -192,6 +209,31 @@ public struct ExportDataTool: MCPToolImplementation {
             throw MCPProtocolError.invalidParams(
                 detail: "Invalid table name: '\(table)'. Allowed characters: letters, digits, underscore, and '.' for schema-qualified names."
             )
+        }
+    }
+
+    static func applyRowLimit(
+        to fetched: [JsonValue],
+        maxRows: Int,
+        driverReportedTruncation: Bool
+    ) -> (rows: [JsonValue], isTruncated: Bool) {
+        (Array(fetched.prefix(maxRows)), fetched.count > maxRows || driverReportedTruncation)
+    }
+
+    static func autoLimitStyle(for databaseType: DatabaseType) -> AutoLimitStyle {
+        (try? resolveSQLDialect(for: databaseType))?.autoLimitStyle ?? .limit
+    }
+
+    static func limitedSelectAll(from quotedTable: String, limit: Int, autoLimitStyle: AutoLimitStyle) -> String {
+        switch autoLimitStyle {
+        case .top:
+            return "SELECT TOP \(limit) * FROM \(quotedTable)"
+        case .fetchFirst:
+            return "SELECT * FROM \(quotedTable) FETCH FIRST \(limit) ROWS ONLY"
+        case .none:
+            return "SELECT * FROM \(quotedTable)"
+        default:
+            return "SELECT * FROM \(quotedTable) LIMIT \(limit)"
         }
     }
 

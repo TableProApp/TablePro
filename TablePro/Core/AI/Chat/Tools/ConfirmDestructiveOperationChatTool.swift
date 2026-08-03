@@ -68,7 +68,7 @@ struct ConfirmDestructiveOperationChatTool: ChatTool {
             connectionId: connectionId,
             databaseName: meta.databaseName,
             maxRows: 0,
-            timeoutSeconds: mcpSettings.queryTimeoutSeconds,
+            timeoutSeconds: MCPLimitResolver.resolveTimeoutSeconds(requested: nil, settings: mcpSettings),
             principalLabel: String(localized: "AI Chat")
         )
         return ChatToolResult(content: payload.jsonString(prettyPrinted: true))

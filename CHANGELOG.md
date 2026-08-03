@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Saving on a MySQL or MariaDB server that starts sessions read-only no longer fails with "Cannot execute statement in a READ ONLY transaction". TablePro marks a transaction read-write before it writes instead of inheriting the server default. Same for PostgreSQL, CockroachDB, and Redshift. (#2009)
 - Changing Safe Mode in the connection form now applies to an open connection instead of waiting for a reconnect. (#2009)
 - A read-only error now says whether the database server or Safe Mode refused the write. (#2009)
+- The MCP server's **Default row limit** and **Maximum row limit** now apply to the `export_data` tool, so raising the maximum really does export more rows. Export previously ignored both and used a fixed 50,000, so an export with no `max_rows` now returns the default row limit (500) until you raise it. Export also honours the configured query timeout, reports whether the limit clipped the result, and appears in query history and the activity log like other MCP queries. (#2012)
+- Exporting a table over MCP no longer fails on SQL Server, Oracle, and Teradata. The row limit is now written in each database's own syntax instead of always using `LIMIT`. (#2012)
+- Setting the MCP server's row limits or query timeout to zero or a negative number no longer crashes the app on the next tool call. Values outside the supported range are corrected as you type. (#2012)
+- AI chat no longer crashes when the model asks a tool for a row limit or timeout larger than TablePro can count to. The tool now falls back to the configured limit. (#2012)
 
 ## [0.62.0] - 2026-08-02
 

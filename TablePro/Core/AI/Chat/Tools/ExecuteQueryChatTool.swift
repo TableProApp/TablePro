@@ -17,11 +17,11 @@ struct ExecuteQueryChatTool: ChatTool {
             "connection_id": ChatToolSchemaBuilder.connectionId,
             "query": ChatToolSchemaBuilder.string(description: "SQL or NoSQL query text"),
             "max_rows": ChatToolSchemaBuilder.integer(
-                description: "Maximum rows to return (default 500, max 10000). Pass null to use default.",
+                description: "Maximum rows to return, capped at the server's configured maximum row limit. Pass null to use the configured default row limit.",
                 optional: true
             ),
             "timeout_seconds": ChatToolSchemaBuilder.integer(
-                description: "Query timeout in seconds (default 30, max 300). Pass null to use default.",
+                description: "Query timeout in seconds (max 300). Pass null to use the server's configured query timeout.",
                 optional: true
             ),
             "database": ChatToolSchemaBuilder.string(
@@ -56,18 +56,14 @@ struct ExecuteQueryChatTool: ChatTool {
         }
 
         let mcpSettings = await MainActor.run { AppSettingsManager.shared.mcp }
-        let maxRows = ChatToolArgumentDecoder.optionalInt(
-            input,
-            key: "max_rows",
-            default: mcpSettings.defaultRowLimit,
-            clamp: 1...mcpSettings.maxRowLimit
-        ) ?? mcpSettings.defaultRowLimit
-        let timeoutSeconds = ChatToolArgumentDecoder.optionalInt(
-            input,
-            key: "timeout_seconds",
-            default: mcpSettings.queryTimeoutSeconds,
-            clamp: 1...300
-        ) ?? mcpSettings.queryTimeoutSeconds
+        let maxRows = MCPLimitResolver.resolveMaxRows(
+            requested: ChatToolArgumentDecoder.optionalInt(input, key: "max_rows"),
+            settings: mcpSettings
+        )
+        let timeoutSeconds = MCPLimitResolver.resolveTimeoutSeconds(
+            requested: ChatToolArgumentDecoder.optionalInt(input, key: "timeout_seconds"),
+            settings: mcpSettings
+        )
 
         let tier = QueryClassifier.classifyTier(query, databaseType: meta.databaseType)
         if tier == .destructive {

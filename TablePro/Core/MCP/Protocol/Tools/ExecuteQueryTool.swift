@@ -19,11 +19,11 @@ public struct ExecuteQueryTool: MCPToolImplementation {
             ]),
             "max_rows": .object([
                 "type": .string("integer"),
-                "description": .string(String(localized: "Maximum rows to return (default 500, max 10000)"))
+                "description": .string(String(localized: "Maximum rows to return. Defaults to the server's configured default row limit and is capped at its maximum row limit."))
             ]),
             "timeout_seconds": .object([
                 "type": .string("integer"),
-                "description": .string(String(localized: "Query timeout in seconds (default 30, max 300)"))
+                "description": .string(String(localized: "Query timeout in seconds (max 300). Defaults to the server's configured query timeout."))
             ]),
             "database": .object([
                 "type": .string("string"),
@@ -57,19 +57,15 @@ public struct ExecuteQueryTool: MCPToolImplementation {
         let connectionId = try MCPArgumentDecoder.requireUuid(arguments, key: "connection_id")
         let query = try MCPArgumentDecoder.requireString(arguments, key: "query")
 
-        let mcpSettings = await MainActor.run { AppSettingsManager.shared.mcp }
-        let maxRows = MCPArgumentDecoder.optionalInt(
-            arguments,
-            key: "max_rows",
-            default: mcpSettings.defaultRowLimit,
-            clamp: 1...mcpSettings.maxRowLimit
-        ) ?? mcpSettings.defaultRowLimit
-        let timeoutSeconds = MCPArgumentDecoder.optionalInt(
-            arguments,
-            key: "timeout_seconds",
-            default: mcpSettings.queryTimeoutSeconds,
-            clamp: 1...300
-        ) ?? mcpSettings.queryTimeoutSeconds
+        let mcpSettings = await services.settingsProvider()
+        let maxRows = MCPLimitResolver.resolveMaxRows(
+            requested: MCPArgumentDecoder.optionalInt(arguments, key: "max_rows"),
+            settings: mcpSettings
+        )
+        let timeoutSeconds = MCPLimitResolver.resolveTimeoutSeconds(
+            requested: MCPArgumentDecoder.optionalInt(arguments, key: "timeout_seconds"),
+            settings: mcpSettings
+        )
         let database = MCPArgumentDecoder.optionalString(arguments, key: "database")
         let schema = MCPArgumentDecoder.optionalString(arguments, key: "schema")
 

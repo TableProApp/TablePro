@@ -298,13 +298,13 @@ Export query or table data as CSV, JSON, or SQL.
   "connection_id": "...",
   "format": "csv",
   "tables": ["users", "orders"],
-  "max_rows": 50000
+  "max_rows": 5000
 }
 ```
 
-`format` is one of `csv`, `json`, `sql`. `max_rows` defaults to 50,000, max 100,000. Provide either `tables` or `query`. Table names accept letters, digits, underscore, and `.` for schema-qualified names. Pass `output_path` to write to disk instead of returning data inline; the path must resolve inside the user's `~/Downloads` directory. Anything else fails with JSON-RPC `-32602` over HTTP 200 and message `Invalid params: output_path must be inside the Downloads directory (/Users/you/Downloads)`.
+`format` is one of `csv`, `json`, `sql`. Defaults for `max_rows` and the query timeout come from **Settings > Integrations > Server Configuration**, the same as `execute_query`: omitting `max_rows` uses the default row limit (500), and any value you pass is clamped to the maximum row limit (default 10,000). Raise those settings to export more rows. Provide either `tables` or `query`. Table names accept letters, digits, underscore, and `.` for schema-qualified names. Pass `output_path` to write to disk instead of returning data inline; the path must resolve inside the user's `~/Downloads` directory. Anything else fails with JSON-RPC `-32602` over HTTP 200 and message `Invalid params: output_path must be inside the Downloads directory (/Users/you/Downloads)`.
 
-**Output**: when `output_path` is set, returns `{ "path": "...", "rows_exported": N }`. Otherwise returns the export inline. A single export returns `{ "label": "...", "format": "csv", "row_count": N, "data": "..." }`. Multiple exports (multi-table requests) return `{ "exports": [ { "label": "...", "format": "csv", "row_count": N, "data": "..." }, ... ] }`.
+**Output**: when `output_path` is set, returns `{ "path": "...", "rows_exported": N, "is_truncated": false }`. Otherwise returns the export inline. A single export returns `{ "label": "...", "format": "csv", "row_count": N, "is_truncated": false, "data": "..." }`. Multiple exports (multi-table requests) return `{ "exports": [ { "label": "...", "format": "csv", "row_count": N, "is_truncated": false, "data": "..." }, ... ] }`. `is_truncated` is `true` when the row limit clipped the result.
 
 **Scope**: `readOnly`.
 

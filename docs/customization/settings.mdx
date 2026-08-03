@@ -150,8 +150,8 @@ The **Integrations** tab runs the MCP server. **Enable MCP Server** (default off
 | Setting | Default | Description |
 |---------|---------|-------------|
 | **Port** | 23508 | TCP port the server listens on |
-| **Default row limit** | 500 | Rows returned when a tool call sets no limit |
-| **Maximum row limit** | 10,000 | Hard cap on rows per tool call |
+| **Default row limit** | 500 | Rows returned when a tool call sets no limit, including `export_data` |
+| **Maximum row limit** | 10,000 | Hard cap on rows per tool call, including `export_data` |
 | **Query timeout** | 30 seconds | Per-query limit for MCP-issued queries |
 | **Log MCP queries in history** | On | Record MCP queries in [query history](/features/query-history) |
 
