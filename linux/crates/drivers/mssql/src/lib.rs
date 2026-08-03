@@ -794,10 +794,7 @@ mod tests {
             ..direct_opts()
         };
         assert_eq!(auth_method(&opts), AuthMethod::Integrated);
-        assert_eq!(
-            auth_method(&direct_opts()),
-            AuthMethod::sql_server("", "")
-        );
+        assert_eq!(auth_method(&direct_opts()), AuthMethod::sql_server("", ""));
     }
 
     #[test]
