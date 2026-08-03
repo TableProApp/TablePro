@@ -9,6 +9,7 @@
 import Combine
 import Foundation
 import os
+import TableProPluginKit
 
 enum TriggerEditingError: LocalizedError {
     case notConnected
@@ -121,7 +122,7 @@ enum TriggerEditing {
     }
 
     static func runInTransaction(driver: DatabaseDriver, dropSQL: String?, sql: String) async throws {
-        try await driver.beginTransaction()
+        try await driver.beginTransaction(mode: .readWrite)
         do {
             if let dropSQL { _ = try await driver.execute(query: dropSQL) }
             _ = try await driver.execute(query: sql)

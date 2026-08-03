@@ -190,6 +190,8 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// Begin a transaction
     func beginTransaction() async throws
 
+    func beginTransaction(mode: PluginTransactionAccessMode) async throws
+
     /// Commit the current transaction
     func commitTransaction() async throws
 
@@ -235,6 +237,10 @@ extension DatabaseDriver {
     var serverVersion: String? { nil }
 
     var queryBuildingPluginDriver: (any PluginDatabaseDriver)? { nil }
+
+    func beginTransaction(mode: PluginTransactionAccessMode) async throws {
+        try await beginTransaction()
+    }
 
     func quoteIdentifier(_ name: String) -> String {
         SQLEscaping.quoteIdentifier(name)

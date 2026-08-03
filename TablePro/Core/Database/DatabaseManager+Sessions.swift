@@ -417,6 +417,23 @@ extension DatabaseManager {
         setSession(session, for: sessionId)
     }
 
+    func observeConnectionUpdates() {
+        connectionUpdatedCancellable = AppEvents.shared.connectionUpdated
+            .receive(on: RunLoop.main)
+            .sink { [weak self] connectionId in
+                self?.reconcileSafeModeLevel(for: connectionId)
+            }
+    }
+
+    func reconcileSafeModeLevel(for connectionId: UUID?) {
+        let targetIds = connectionId.map { [$0] } ?? Array(activeSessions.keys)
+        for id in targetIds {
+            guard activeSessions[id] != nil,
+                  let stored = connectionStorage.loadConnection(id: id) else { continue }
+            setSafeModeLevel(stored.safeModeLevel, for: id)
+        }
+    }
+
     func setSafeModeLevel(_ level: SafeModeLevel, for connectionId: UUID) {
         guard var session = activeSessions[connectionId] else { return }
         guard session.safeModeLevel != level || session.connection.safeModeLevel != level else { return }

@@ -6,6 +6,7 @@
 import AppKit
 import Foundation
 import os
+import TableProPluginKit
 
 private let discardLogger = Logger(subsystem: "com.TablePro", category: "RowEditingCoordinator+Discard")
 
@@ -14,12 +15,13 @@ extension RowEditingCoordinator {
 
     func executeSidebarChanges(statements: [ParameterizedStatement]) async throws {
         let sqlPreview = statements.map(\.sql).joined(separator: "\n")
+        let kind = OperationKind.from(QueryClassifier.classifyTier(sqlPreview, databaseType: parent.connection.type))
         let decision = await ExecutionGateProvider.shared.authorize(
             OperationRequest(
                 connectionId: parent.connectionId,
                 databaseType: parent.connection.type,
                 sql: sqlPreview,
-                kind: OperationKind.from(QueryClassifier.classifyTier(sqlPreview, databaseType: parent.connection.type)),
+                kind: kind,
                 caller: .userInterface,
                 capabilities: .interactiveUser,
                 operationDescription: String(localized: "Save Sidebar Changes")
@@ -36,7 +38,7 @@ extension RowEditingCoordinator {
         let useTransaction = driver.supportsTransactions
 
         if useTransaction {
-            try await driver.beginTransaction()
+            try await driver.beginTransaction(mode: kind.declaresWrite ? .readWrite : .serverDefault)
         }
 
         do {

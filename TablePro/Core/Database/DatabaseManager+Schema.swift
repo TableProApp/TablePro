@@ -85,7 +85,7 @@ extension DatabaseManager {
             let useTransaction = driver.supportsTransactions
 
             if useTransaction {
-                try await driver.beginTransaction()
+                try await driver.beginTransaction(mode: schemaKind.declaresWrite ? .readWrite : .serverDefault)
             }
 
             do {

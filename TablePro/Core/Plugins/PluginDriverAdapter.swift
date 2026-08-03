@@ -516,6 +516,10 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
         try await pluginDriver.beginTransaction()
     }
 
+    func beginTransaction(mode: PluginTransactionAccessMode) async throws {
+        try await pluginDriver.beginTransaction(mode: mode)
+    }
+
     func commitTransaction() async throws {
         try await pluginDriver.commitTransaction()
     }

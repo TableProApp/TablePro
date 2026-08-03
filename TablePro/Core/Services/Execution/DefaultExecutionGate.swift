@@ -45,7 +45,9 @@ internal actor DefaultExecutionGate: ExecutionGate {
         }
 
         if level.blocksAllWrites, effectiveWrite {
-            return .denied(reason: String(localized: "Cannot execute write queries: connection is read-only"))
+            return .denied(reason: String(
+                localized: "Cannot execute write queries: TablePro's Safe Mode is set to read-only for this connection"
+            ))
         }
 
         let isMetadataRead = request.kind == .metadataRead

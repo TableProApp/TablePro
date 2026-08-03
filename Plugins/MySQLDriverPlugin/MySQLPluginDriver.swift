@@ -95,7 +95,11 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Transaction Management
 
     func beginTransaction() async throws {
-        _ = try await execute(query: "START TRANSACTION")
+        try await beginTransaction(mode: .serverDefault)
+    }
+
+    func beginTransaction(mode: PluginTransactionAccessMode) async throws {
+        _ = try await execute(query: mysqlBeginTransactionStatement(mode: mode))
     }
 
     // MARK: - Query Execution

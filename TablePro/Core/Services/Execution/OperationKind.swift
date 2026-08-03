@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 
 internal enum OperationKind: Sendable, Equatable {
     case readQuery
@@ -27,6 +28,10 @@ internal extension OperationKind {
 
     var declaresDestructive: Bool {
         self == .destructiveQuery
+    }
+
+    var transactionAccessMode: PluginTransactionAccessMode {
+        declaresWrite ? .readWrite : .serverDefault
     }
 
     static func from(_ tier: QueryTier) -> OperationKind {

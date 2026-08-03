@@ -100,6 +100,7 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
 
     var supportsTransactions: Bool { get }
     func beginTransaction() async throws
+    func beginTransaction(mode: PluginTransactionAccessMode) async throws
     func commitTransaction() async throws
     func rollbackTransaction() async throws
 
@@ -226,6 +227,10 @@ public extension PluginDatabaseDriver {
 
     func beginTransaction() async throws {
         _ = try await execute(query: "BEGIN")
+    }
+
+    func beginTransaction(mode: PluginTransactionAccessMode) async throws {
+        try await beginTransaction()
     }
 
     func commitTransaction() async throws {

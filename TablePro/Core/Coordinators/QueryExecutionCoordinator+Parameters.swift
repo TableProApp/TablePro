@@ -242,9 +242,12 @@ extension QueryExecutionCoordinator {
                 }
 
                 let useTransaction = driver.supportsTransactions
+                let transactionKind = OperationKind.worst(of: statements, databaseType: conn.type)
 
                 if useTransaction {
-                    try await driver.beginTransaction()
+                    try await driver.beginTransaction(
+                        mode: transactionKind.declaresWrite ? .readWrite : .serverDefault
+                    )
                 }
 
                 @MainActor func rollbackAndResetState() async {

@@ -68,7 +68,30 @@ The current Safe Mode level appears as a badge in the toolbar (orange for Alert 
 
 Changing the level from the badge applies to the whole connection and stays set as you open other tables and tabs. It writes back to the saved connection, so the Customization pane shows the new level and the change reaches your other Macs when iCloud Sync is on. There is no session-only override.
 
+Editing the level in the connection form works the same way round: the change reaches an open connection right away, so the badge and the form always agree.
+
 Safe Mode gates apply to query execution, saving cell edits, table operations, and sidebar changes.
+
+## Server Read-Only Is Not Safe Mode
+
+Safe Mode runs inside TablePro. It never changes anything on the database server, and it cannot make the server accept a write the server itself refuses.
+
+If a save fails with a read-only error while Safe Mode is set to anything other than Read-Only, the database server is the one refusing the write. Common causes:
+
+- You are connected to a read replica or a reader endpoint rather than the primary.
+- The server runs with `read_only` or `super_read_only` turned on.
+- The server or the session sets new transactions to read-only.
+
+TablePro tells the transactions it opens for a write that they are read-write, so a server that only defaults new transactions to read-only accepts the save. A server that is genuinely read-only still refuses, and TablePro says the server refused it.
+
+On MySQL and MariaDB you can check which one it is:
+
+```sql
+SHOW SESSION VARIABLES WHERE Variable_name IN
+  ('transaction_read_only', 'tx_read_only', 'read_only', 'super_read_only', 'innodb_read_only');
+```
+
+`innodb_read_only` set to `ON` means you are on a replica. Connect to the primary to write.
 
 ## External Clients
 

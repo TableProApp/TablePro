@@ -95,7 +95,7 @@ extension AIChatViewModel {
         if toolMode == .agentOnly {
             if let connection, liveSafeModeLevel(for: connection).blocksAllWrites {
                 return .denied(reason: String(
-                    localized: "Connection is read-only. Destructive operations are not permitted."
+                    localized: "TablePro's Safe Mode is set to read-only for this connection. Destructive operations are not permitted."
                 ))
             }
             return .pending
@@ -108,7 +108,7 @@ extension AIChatViewModel {
             let safeModeLevel = liveSafeModeLevel(for: connection)
             if safeModeLevel.blocksAllWrites {
                 return .denied(reason: String(
-                    localized: "Connection is read-only. Set safe mode to Confirm Writes or higher to allow this tool."
+                    localized: "TablePro's Safe Mode is set to read-only for this connection. Set it to Confirm Writes or higher to allow this tool."
                 ))
             }
             if !safeModeLevel.requiresConfirmation {

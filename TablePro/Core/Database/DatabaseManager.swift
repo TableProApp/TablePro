@@ -5,6 +5,7 @@
 //  Created by Ngo Quoc Dat on 16/12/25.
 //
 
+import Combine
 import Foundation
 import Observation
 import os
@@ -57,6 +58,8 @@ final class DatabaseManager {
     /// Prevents duplicate concurrent recovery when both the keepalive death handler
     /// and the wake-from-sleep handler fire for the same connection.
     @ObservationIgnored internal var recoveringConnectionIds = Set<UUID>()
+
+    @ObservationIgnored internal var connectionUpdatedCancellable: AnyCancellable?
 
     @ObservationIgnored internal let ensureConnectedDedup = OnceTask<UUID, Void>()
 
@@ -119,5 +122,6 @@ final class DatabaseManager {
         self.connectionStorage = connectionStorage
         self.appSettingsStorage = appSettingsStorage
         self.pluginManager = pluginManager
+        observeConnectionUpdates()
     }
 }

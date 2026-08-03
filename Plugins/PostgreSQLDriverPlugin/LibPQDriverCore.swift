@@ -228,6 +228,15 @@ extension LibPQBackedDriver {
     var currentSchema: String? { core.currentSchema }
     var supportsSchemas: Bool { true }
     var supportsTransactions: Bool { true }
+
+    func beginTransaction() async throws {
+        try await beginTransaction(mode: .serverDefault)
+    }
+
+    func beginTransaction(mode: PluginTransactionAccessMode) async throws {
+        _ = try await execute(query: postgresBeginTransactionStatement(mode: mode))
+    }
+
     var serverVersion: String? { core.serverVersion }
     var parameterStyle: ParameterStyle { .dollar }
 
