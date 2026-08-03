@@ -99,6 +99,8 @@ Exit criterion: a developer can demo the basic flows (connect, browse, edit, que
 - [x] TLS toggle on connect options
 - [x] SSH tunnelling via `russh` (host, port, key / password auth)
 - [ ] SSH jump host
+- [x] Windows integrated (Kerberos) authentication for SQL Server, from the ambient ticket cache
+- [ ] Kerberos against a service outside the client's default realm, which needs an SPN override upstream in tiberius
 - [x] Read-only mode toggle per connection
 - [x] Cancel running query: button + Esc shortcut
 - [ ] `Connection::cancel` driver method, so cancelling stops the server-side query instead of dropping the client future

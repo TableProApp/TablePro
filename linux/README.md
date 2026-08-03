@@ -85,15 +85,23 @@ kinit you@EXAMPLE.COM
 ```
 
 The driver asks for `MSSQLSvc/<host>:<port>`, built from the host and
-port you typed, not from an SSH tunnel's local forward. Two things are
+port you typed, not from an SSH tunnel's local forward. Three things are
 worth knowing:
 
-- tiberius imports that SPN as a raw Kerberos principal, so it resolves
-  in your *default* realm. When the service lives in another realm, set
-  `default_realm` in `/etc/krb5.conf` and map the host with
-  `[domain_realm]` (plus `[capaths]` for a cross-realm trust).
+- tiberius imports that SPN as a raw Kerberos principal, so it picks up
+  `default_realm` from `/etc/krb5.conf` and nothing else. `[domain_realm]`
+  does not apply: that lookup only runs for host-based service names, and
+  tiberius exposes no SPN override. A server in another realm works only
+  when your KDC answers with a referral, which Active Directory does
+  inside a forest. Otherwise the login fails with
+  `KRB5KDC_ERR_S_PRINCIPAL_UNKNOWN`.
 - The host has to match the SPN registered on the server. An IP address
   or a CNAME usually does not.
+- Running from source is the supported path today. Under Flatpak the
+  sandbox has no `/etc/krb5.conf` and its `/tmp` is private, so a FILE
+  ticket cache there is invisible; the manifest grants the config file
+  and the KCM socket, and a FILE cache needs `KRB5CCNAME` pointed
+  somewhere under `$HOME`.
 
 ## Documentation index
 
