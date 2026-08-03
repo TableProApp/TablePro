@@ -12,7 +12,6 @@ use crate::query::{ColumnInfo, ExecResult, ForeignKeyInfo, IndexInfo, QueryResul
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AuthMode {
-    /// Username + password authentication.
     #[default]
     Password,
     /// Windows integrated authentication over Kerberos (GSSAPI), using

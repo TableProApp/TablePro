@@ -33,4 +33,11 @@ pub enum DriverError {
         statement_index: usize,
         source: Box<DriverError>,
     },
+
+    /// Integrated (Kerberos / GSSAPI) authentication could not complete.
+    /// The payload is the GSSAPI major and minor status text, which is
+    /// what distinguishes a missing ticket from an expired one, an
+    /// unknown SPN, or an unreachable KDC.
+    #[error("integrated authentication failed: {0}")]
+    IntegratedAuth(String),
 }

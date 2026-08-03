@@ -47,57 +47,95 @@ impl DatabaseDriver for MssqlDriver {
     }
 
     async fn connect(&self, opts: ConnectOptions) -> Result<Box<dyn Connection>, DriverError> {
-        // tiberius derives the Kerberos SPN and the TLS server name from
-        // the configured host/port, while the socket is opened here. An
-        // SSH tunnel replaces `opts.host`/`opts.port` with a local
-        // forward, so the two have to come from different places:
-        // `service_address()` names the server, `opts.host` reaches it.
-        let (service_host, service_port) = opts.service_address();
-        let mut config = Config::new();
-        config.host(service_host);
-        config.port(service_port);
-        config.database(&opts.database);
-        // `Integrated` reads the ambient Kerberos ticket cache (from
-        // `kinit`) and targets MSSQLSvc/<service host>:<port>; username
-        // and password are ignored.
-        config.authentication(match opts.auth_mode {
-            AuthMode::Password => AuthMethod::sql_server(&opts.username, opts.password.expose_secret()),
-            AuthMode::Kerberos => AuthMethod::Integrated,
-        });
-        // SQL Server always encrypts the login exchange; `Off` keeps the
-        // post-login stream in the clear, `Required` encrypts everything.
-        // No cert-path UI exists, so the server certificate is trusted
-        // without verification, matching the sqlx drivers' Require /
-        // Required modes.
-        config.encryption(if opts.use_tls {
-            EncryptionLevel::Required
-        } else {
-            EncryptionLevel::Off
-        });
-        config.trust_cert();
+        let target = build_target(&opts);
+
+        // Integrated auth drives MIT Kerberos through synchronous FFI
+        // inside tiberius' login, so that future blocks its thread
+        // between polls instead of yielding. The runtime the app drives
+        // this from has a single worker: blocking it stalls every other
+        // task and leaves `timeout` with no thread to fire on. The
+        // blocking pool is where a blocking poll belongs, and it keeps
+        // the deadline below enforceable. An attempt that loses the
+        // race keeps running there and drops its own client.
+        let handle = tokio::runtime::Handle::current();
+        let connecting = tokio::task::spawn_blocking(move || handle.block_on(open_client(target)));
 
         // Neither the TCP dial nor the TDS login has its own deadline,
         // and an unreachable host would otherwise hang the connect
         // dialog for the OS SYN timeout. The budget covers both so the
         // failure arrives on the same scale as the sqlx drivers'
         // acquire_timeout.
-        tokio::time::timeout(CONNECT_TIMEOUT, async {
-            let tcp = TcpStream::connect((opts.host.as_str(), opts.port))
-                .await
-                .map_err(map_io_error)?;
-            tcp.set_nodelay(true).map_err(map_io_error)?;
-            Client::connect(config, tcp.compat_write())
-                .await
-                .map_err(map_tiberius_error)
-        })
-        .await
-        .map_err(|_| DriverError::ConnectionRefused)?
-        .map(|client| {
-            Box::new(MssqlConnection {
-                client: Mutex::new(client),
-            }) as Box<dyn Connection>
-        })
+        let client = match tokio::time::timeout(CONNECT_TIMEOUT, connecting).await {
+            Ok(Ok(opened)) => opened?,
+            Ok(Err(join)) => return Err(DriverError::Internal(join.to_string())),
+            Err(_) => return Err(DriverError::ConnectionRefused),
+        };
+
+        Ok(Box::new(MssqlConnection {
+            client: Mutex::new(client),
+        }))
     }
+}
+
+/// Where the client talks and who it says it is talking to. tiberius
+/// derives the Kerberos SPN and the TLS server name from the configured
+/// host and port, while the socket is opened separately. An SSH tunnel
+/// replaces `opts.host`/`opts.port` with a local forward, so the two
+/// come from different places: `service_address()` names the server,
+/// `dial_host`/`dial_port` reach it.
+struct MssqlTarget {
+    config: Config,
+    dial_host: String,
+    dial_port: u16,
+}
+
+fn build_target(opts: &ConnectOptions) -> MssqlTarget {
+    let (service_host, service_port) = opts.service_address();
+    let mut config = Config::new();
+    config.host(service_host);
+    config.port(service_port);
+    config.database(&opts.database);
+    config.authentication(auth_method(opts));
+    // SQL Server always encrypts the login exchange; `Off` keeps the
+    // post-login stream in the clear, `Required` encrypts everything.
+    // No cert-path UI exists, so the server certificate is trusted
+    // without verification, matching the sqlx drivers' Require /
+    // Required modes.
+    config.encryption(if opts.use_tls {
+        EncryptionLevel::Required
+    } else {
+        EncryptionLevel::Off
+    });
+    config.trust_cert();
+    MssqlTarget {
+        config,
+        dial_host: dial_host(&opts.host).to_string(),
+        dial_port: opts.port,
+    }
+}
+
+fn auth_method(opts: &ConnectOptions) -> AuthMethod {
+    match opts.auth_mode {
+        AuthMode::Password => AuthMethod::sql_server(&opts.username, opts.password.expose_secret()),
+        AuthMode::Kerberos => AuthMethod::Integrated,
+    }
+}
+
+/// `.` is SQL Server shorthand for the local machine. tiberius resolves
+/// it on the config side; the socket has to be given the same treatment
+/// or the shorthand reaches the resolver verbatim.
+fn dial_host(host: &str) -> &str {
+    if host == "." { "localhost" } else { host }
+}
+
+async fn open_client(target: MssqlTarget) -> Result<MssqlClient, DriverError> {
+    let tcp = TcpStream::connect((target.dial_host.as_str(), target.dial_port))
+        .await
+        .map_err(map_io_error)?;
+    tcp.set_nodelay(true).map_err(map_io_error)?;
+    Client::connect(target.config, tcp.compat_write())
+        .await
+        .map_err(map_tiberius_error)
 }
 
 struct MssqlConnection {
@@ -683,6 +721,7 @@ fn map_tiberius_error(err: tiberius::error::Error) -> DriverError {
                 }
             }
         }
+        E::Gssapi(detail) => DriverError::IntegratedAuth(detail),
         E::Routing { host, port } => DriverError::Internal(format!("server requested routing to {host}:{port}")),
         other => DriverError::Internal(other.to_string()),
     }
@@ -700,6 +739,73 @@ mod tests {
         assert_eq!(d.default_port(), 1433);
         assert!(!d.is_file_based());
         assert!(d.supports_integrated_auth());
+    }
+
+    fn direct_opts() -> ConnectOptions {
+        ConnectOptions {
+            host: "sql.corp.example".into(),
+            port: 1433,
+            database: "sales".into(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn a_direct_connection_names_and_dials_the_same_endpoint() {
+        let target = build_target(&direct_opts());
+        assert_eq!(target.config.get_addr(), "sql.corp.example:1433");
+        assert_eq!(
+            (target.dial_host.as_str(), target.dial_port),
+            ("sql.corp.example", 1433)
+        );
+    }
+
+    #[test]
+    fn a_tunnelled_connection_names_the_service_but_dials_the_forward() {
+        let opts = ConnectOptions {
+            host: "127.0.0.1".into(),
+            port: 54321,
+            service_endpoint: Some(("sql.corp.example".into(), 1433)),
+            ..direct_opts()
+        };
+        let target = build_target(&opts);
+        // The SPN and the TLS server name follow this, so a tunnel must
+        // not push 127.0.0.1 into it.
+        assert_eq!(target.config.get_addr(), "sql.corp.example:1433");
+        assert_eq!((target.dial_host.as_str(), target.dial_port), ("127.0.0.1", 54321));
+    }
+
+    #[test]
+    fn the_local_shorthand_reaches_the_socket_as_localhost() {
+        let opts = ConnectOptions {
+            host: ".".into(),
+            ..direct_opts()
+        };
+        let target = build_target(&opts);
+        assert_eq!(target.config.get_addr(), "localhost:1433");
+        assert_eq!(target.dial_host, "localhost");
+    }
+
+    #[test]
+    fn kerberos_authenticates_from_the_ticket_cache_and_ignores_credentials() {
+        let opts = ConnectOptions {
+            auth_mode: AuthMode::Kerberos,
+            username: "leftover".into(),
+            ..direct_opts()
+        };
+        assert_eq!(auth_method(&opts), AuthMethod::Integrated);
+        assert_eq!(
+            auth_method(&direct_opts()),
+            AuthMethod::sql_server("", "")
+        );
+    }
+
+    #[test]
+    fn a_gssapi_failure_is_classified_instead_of_reported_as_an_internal_error() {
+        let err = map_tiberius_error(tiberius::error::Error::Gssapi(
+            "No Kerberos credentials available".into(),
+        ));
+        assert!(matches!(err, DriverError::IntegratedAuth(detail) if detail.contains("No Kerberos")));
     }
 
     #[test]
