@@ -32,7 +32,9 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 clickhouse = { version = "0.15", default-features = false, features = ["rustls-tls"] }
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-rustls", "chrono", "rust_decimal", "uuid", "json"] }
-tiberius = { version = "0.12", default-features = false, features = ["tds73", "rustls", "chrono", "rust_decimal"] }
+# `integrated-auth-gssapi` (Windows integrated auth) links MIT Kerberos
+# (libkrb5) and runs bindgen (libclang) at build time.
+tiberius = { version = "0.12", default-features = false, features = ["tds73", "rustls", "chrono", "rust_decimal", "integrated-auth-gssapi"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
 rust_decimal = { version = "1", default-features = false, features = ["serde", "std"] }
 futures = "0.3"
@@ -51,3 +53,14 @@ relm4 = { version = "0.11", default-features = false, features = ["macros", "lib
 lto = "fat"
 codegen-units = 1
 strip = "symbols"
+
+# tiberius 0.12.3 (its latest release) pins libgssapi ^0.4.5. libgssapi 0.4.6's
+# `Buf::deref` calls `slice::from_raw_parts(NULL, 0)` on the empty token a
+# successful Kerberos handshake returns -- undefined behavior that aborts every
+# debug build (`cargo run`). tiberius already fixed this on `main` (merged PR
+# prisma/tiberius#372: bump libgssapi 0.4.5 -> 0.8.x, whose deref is guarded)
+# but has not cut a release; the bug is tracked open as prisma/tiberius#343.
+# Pin the fixed commit until a release lands, then drop this and bump the
+# `tiberius` version above to the release.
+[patch.crates-io]
+tiberius = { git = "https://github.com/prisma/tiberius", rev = "a6b4fcdae0de5702427290b89f8d05bc51f3bcfa" }

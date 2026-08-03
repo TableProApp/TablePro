@@ -32,6 +32,7 @@ fn opts_from_env() -> ConnectOptions {
                 .into(),
         ),
         use_tls: false,
+        ..Default::default()
     }
 }
 

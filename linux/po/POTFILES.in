@@ -1,5 +1,6 @@
 # Source files containing translatable strings.
 # Used by `xtr` (Rust xgettext) when regenerating po/tablepro.pot.
+crates/app/src/services/connection_service.rs
 crates/app/src/ui/app.rs
 crates/app/src/ui/connect_dialog.rs
 crates/app/src/ui/edit_dialog.rs

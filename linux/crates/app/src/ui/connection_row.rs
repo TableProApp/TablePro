@@ -3,6 +3,7 @@ use relm4::factory::{DynamicIndex, FactoryComponent, FactorySender};
 use relm4::{adw, gtk};
 use uuid::Uuid;
 
+use tablepro_core::AuthMode;
 use tablepro_storage::SavedConnection;
 
 #[derive(Debug)]
@@ -114,8 +115,44 @@ impl FactoryComponent for ConnectionRow {
 
 fn subtitle_for(saved: &SavedConnection) -> String {
     if saved.driver_id == "sqlite" {
-        format!("sqlite · {}", saved.database)
-    } else {
-        format!("{} · {}@{}:{}", saved.driver_id, saved.username, saved.host, saved.port)
+        return format!("sqlite · {}", saved.database);
+    }
+    match saved.auth_mode {
+        AuthMode::Kerberos => format!("{} · {}:{}", saved.driver_id, saved.host, saved.port),
+        AuthMode::Password => format!("{} · {}@{}:{}", saved.driver_id, saved.username, saved.host, saved.port),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn saved(username: &str, auth_mode: AuthMode) -> SavedConnection {
+        SavedConnection {
+            id: Uuid::new_v4(),
+            name: "Corp".into(),
+            driver_id: "mssql".into(),
+            host: "sql.corp.example".into(),
+            port: 1433,
+            database: "sales".into(),
+            username: username.into(),
+            use_tls: true,
+            read_only: false,
+            auth_mode,
+            ssh: None,
+            last_opened_at: None,
+        }
+    }
+
+    #[test]
+    fn a_kerberos_row_has_no_username_separator_to_dangle() {
+        assert_eq!(
+            subtitle_for(&saved("", AuthMode::Kerberos)),
+            "mssql · sql.corp.example:1433"
+        );
+        assert_eq!(
+            subtitle_for(&saved("sa", AuthMode::Password)),
+            "mssql · sa@sql.corp.example:1433"
+        );
     }
 }

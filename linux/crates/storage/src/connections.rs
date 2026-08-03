@@ -2,6 +2,7 @@ use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use tablepro_core::AuthMode;
 use uuid::Uuid;
 
 use crate::error::StorageError;
@@ -20,6 +21,8 @@ pub struct SavedConnection {
     pub use_tls: bool,
     #[serde(default)]
     pub read_only: bool,
+    #[serde(default)]
+    pub auth_mode: AuthMode,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ssh: Option<SavedSshConfig>,
     /// Last successful open of this connection. Drives the welcome
@@ -151,6 +154,7 @@ mod tests {
             username: "postgres".into(),
             use_tls: false,
             read_only: false,
+            auth_mode: AuthMode::Password,
             ssh: None,
             last_opened_at: None,
         }
@@ -227,5 +231,53 @@ mod tests {
         save_to(&path, &[conn.clone()]).await.unwrap();
         let loaded = load_from(&path).await.unwrap();
         assert_eq!(loaded, vec![conn]);
+    }
+
+    #[tokio::test]
+    async fn auth_mode_defaults_to_password_on_a_legacy_file() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("connections.json");
+        let id = Uuid::new_v4();
+        let legacy = format!(
+            r#"{{"version":1,"connections":[{{
+                "id":"{id}","name":"Old","driver_id":"mssql",
+                "host":"localhost","port":1433,"database":"db",
+                "username":"sa","use_tls":false}}]}}"#
+        );
+        tokio::fs::write(&path, legacy).await.unwrap();
+        let loaded = load_from(&path).await.unwrap();
+        assert_eq!(loaded[0].auth_mode, AuthMode::Password);
+    }
+
+    #[tokio::test]
+    async fn kerberos_is_written_as_snake_case_and_reads_back() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("connections.json");
+        let mut conn = sample_connection();
+        conn.auth_mode = AuthMode::Kerberos;
+        save_to(&path, &[conn.clone()]).await.unwrap();
+        let raw: serde_json::Value = serde_json::from_slice(&tokio::fs::read(&path).await.unwrap()).unwrap();
+        assert_eq!(raw["connections"][0]["auth_mode"], "kerberos");
+        assert_eq!(load_from(&path).await.unwrap(), vec![conn]);
+    }
+
+    /// Pins the reader against a file already on disk. Renaming the
+    /// variant fails here instead of orphaning every saved connection:
+    /// an unparseable file loads as empty, and the next successful
+    /// connect writes that empty list back.
+    #[tokio::test]
+    async fn a_file_written_with_kerberos_still_loads() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("connections.json");
+        let id = Uuid::new_v4();
+        let on_disk = format!(
+            r#"{{"version":1,"connections":[{{
+                "id":"{id}","name":"Corp","driver_id":"mssql",
+                "host":"sql.corp.example","port":1433,"database":"sales",
+                "username":"","use_tls":true,"auth_mode":"kerberos"}}]}}"#
+        );
+        tokio::fs::write(&path, on_disk).await.unwrap();
+        let loaded = load_from(&path).await.unwrap();
+        assert_eq!(loaded[0].auth_mode, AuthMode::Kerberos);
     }
 }

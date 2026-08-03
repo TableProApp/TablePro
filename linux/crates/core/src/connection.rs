@@ -1,8 +1,23 @@
 use async_trait::async_trait;
 use secrecy::SecretString;
+use serde::{Deserialize, Serialize};
 
 use crate::error::DriverError;
 use crate::query::{ColumnInfo, ExecResult, ForeignKeyInfo, IndexInfo, QueryResult, TableInfo, Value};
+
+/// How a driver authenticates to the database. Most drivers only
+/// support [`AuthMode::Password`]; the SQL Server driver also supports
+/// [`AuthMode::Kerberos`] (Windows integrated auth) using the current
+/// user's Kerberos ticket cache obtained via `kinit`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AuthMode {
+    #[default]
+    Password,
+    /// Windows integrated authentication over Kerberos (GSSAPI), using
+    /// the ambient ticket cache. `username`/`password` are ignored.
+    Kerberos,
+}
 
 #[derive(Debug, Clone)]
 pub struct ConnectOptions {
@@ -12,6 +27,20 @@ pub struct ConnectOptions {
     pub username: String,
     pub password: SecretString,
     pub use_tls: bool,
+    pub auth_mode: AuthMode,
+    /// Set only when `host`/`port` were replaced by a tunnel's local
+    /// forward. `None` means the socket already points at the service.
+    pub service_endpoint: Option<(String, u16)>,
+}
+
+impl ConnectOptions {
+    /// Host and port the service answers to, which is `host`/`port`
+    /// unless a tunnel replaced them.
+    pub fn service_address(&self) -> (&str, u16) {
+        self.service_endpoint
+            .as_ref()
+            .map_or((self.host.as_str(), self.port), |(host, port)| (host.as_str(), *port))
+    }
 }
 
 impl Default for ConnectOptions {
@@ -23,6 +52,8 @@ impl Default for ConnectOptions {
             username: String::new(),
             password: SecretString::new(String::new().into()),
             use_tls: false,
+            auth_mode: AuthMode::Password,
+            service_endpoint: None,
         }
     }
 }
@@ -81,4 +112,27 @@ pub trait Connection: Send + Sync {
     }
     async fn ping(&self) -> Result<(), DriverError>;
     async fn close(self: Box<Self>) -> Result<(), DriverError>;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn service_address_prefers_the_tunnelled_service_over_the_socket() {
+        let direct = ConnectOptions {
+            host: "sql.corp.example".into(),
+            port: 1433,
+            ..Default::default()
+        };
+        assert_eq!(direct.service_address(), ("sql.corp.example", 1433));
+
+        let tunnelled = ConnectOptions {
+            host: "127.0.0.1".into(),
+            port: 54321,
+            service_endpoint: Some(("sql.corp.example".into(), 1433)),
+            ..Default::default()
+        };
+        assert_eq!(tunnelled.service_address(), ("sql.corp.example", 1433));
+    }
 }

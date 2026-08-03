@@ -35,7 +35,7 @@ Run all unit tests:
 cargo test --workspace --lib --bins
 ```
 
-`--bins` is not optional: `tablepro-app` has no `lib.rs`, so `--lib` alone skips every test in the app crate. `scripts/ci-local.sh` runs this command; the CI workflow still passes `--lib` only.
+`--bins` is not optional: `tablepro-app` has no `lib.rs`, so `--lib` alone skips every test in the app crate. Both `scripts/ci-local.sh` and the CI workflow run this exact command.
 
 ## Integration tests
 
@@ -138,7 +138,7 @@ What exists today is the driver-level smoke described above: `scripts/smoke-post
 
 GitHub Actions (`.github/workflows/build-linux.yml`), Ubuntu runner, two jobs:
 
-1. **Fast checks**: `cargo fmt --all -- --check`, `cargo clippy --all-targets -- -D warnings`, `cargo build --workspace`, `cargo test --workspace --lib`. Runs in an `ubuntu:25.10` container, which ships the glib version libadwaita 1.6 needs. `scripts/ci-local.sh` runs the same steps, but with `--lib --bins` so the app crate's tests actually run. The workflow should pick up `--bins` too.
+1. **Fast checks**: `cargo fmt --all -- --check`, `cargo clippy --all-targets -- -D warnings`, `cargo build --workspace`, `cargo test --workspace --lib --bins`. Runs in an `ubuntu:25.10` container, which ships the glib version libadwaita 1.6 needs. `scripts/ci-local.sh` runs the same steps with the same flags.
 2. **Driver integration tests**: runs after fast checks pass. Boots Docker on the host runner and runs the Postgres, MySQL, and ClickHouse suites with `--include-ignored`. The MSSQL suite exists but is not wired in yet.
 
 PRs only merge when both jobs are green.

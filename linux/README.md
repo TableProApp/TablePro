@@ -33,13 +33,13 @@ System dependencies:
 
 ```bash
 # Ubuntu / Debian
-sudo apt install -y build-essential pkg-config libgtk-4-dev libadwaita-1-dev libgtksourceview-5-dev libssl-dev libsecret-1-dev
+sudo apt install -y build-essential pkg-config libgtk-4-dev libadwaita-1-dev libgtksourceview-5-dev libssl-dev libsecret-1-dev libkrb5-dev clang
 
 # Fedora
-sudo dnf install -y gcc pkg-config gtk4-devel libadwaita-devel gtksourceview5-devel openssl-devel libsecret-devel
+sudo dnf install -y gcc pkg-config gtk4-devel libadwaita-devel gtksourceview5-devel openssl-devel libsecret-devel krb5-devel clang
 
 # Arch
-sudo pacman -S --needed base-devel pkg-config gtk4 libadwaita gtksourceview5 openssl libsecret
+sudo pacman -S --needed base-devel pkg-config gtk4 libadwaita gtksourceview5 openssl libsecret krb5 clang
 ```
 
 Verify the right versions are present:
@@ -69,6 +69,39 @@ Driver smoke against a Postgres you already run, no Docker needed:
 ```
 
 Optional: if the system `-dev` packages above are missing, extract the package payloads under `../.local-deps/root/` (so headers land in `../.local-deps/root/usr/include`) and `source scripts/dev-env.sh` before cargo. Debian-family layouts only.
+
+`libkrb5-dev` and `clang` are there for the SQL Server driver's Windows
+integrated auth, which links MIT Kerberos and runs bindgen at build
+time.
+
+## SQL Server with Windows integrated auth
+
+Pick **Method → Windows (Kerberos)** in the connect dialog. There is no
+username or password to enter: the driver uses whatever ticket `klist`
+shows, so get one first.
+
+```bash
+kinit you@EXAMPLE.COM
+```
+
+The driver asks for `MSSQLSvc/<host>:<port>`, built from the host and
+port you typed, not from an SSH tunnel's local forward. Three things are
+worth knowing:
+
+- tiberius imports that SPN as a raw Kerberos principal, so it picks up
+  `default_realm` from `/etc/krb5.conf` and nothing else. `[domain_realm]`
+  does not apply: that lookup only runs for host-based service names, and
+  tiberius exposes no SPN override. A server in another realm works only
+  when your KDC answers with a referral, which Active Directory does
+  inside a forest. Otherwise the login fails with
+  `KRB5KDC_ERR_S_PRINCIPAL_UNKNOWN`.
+- The host has to match the SPN registered on the server. An IP address
+  or a CNAME usually does not.
+- Running from source is the supported path today. Under Flatpak the
+  sandbox has no `/etc/krb5.conf` and its `/tmp` is private, so a FILE
+  ticket cache there is invisible; the manifest grants the config file
+  and the KCM socket, and a FILE cache needs `KRB5CCNAME` pointed
+  somewhere under `$HOME`.
 
 ## Documentation index
 

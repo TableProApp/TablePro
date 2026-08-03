@@ -34,5 +34,16 @@ pub trait DatabaseDriver: Send + Sync {
         true
     }
 
+    /// Whether this driver supports Windows integrated / Kerberos
+    /// authentication (`ConnectOptions::auth_mode == AuthMode::Kerberos`).
+    /// The connect dialog shows the auth-mode selector only for drivers
+    /// returning `true`, and while Kerberos is selected it hides the
+    /// username and password rows and sends empty credentials. Say
+    /// `true` only if `connect` maps `AuthMode::Kerberos` onto a real
+    /// integrated-auth path; `establish` refuses the mode otherwise.
+    fn supports_integrated_auth(&self) -> bool {
+        false
+    }
+
     async fn connect(&self, opts: ConnectOptions) -> Result<Box<dyn Connection>, DriverError>;
 }
