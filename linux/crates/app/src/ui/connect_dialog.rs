@@ -41,8 +41,21 @@ struct DriverEntry {
     display_name: String,
 }
 
-/// Row index of the Kerberos entry in the auth-method model.
-const KERBEROS_ROW: u32 = 1;
+/// The auth-method model's rows, in the order the combo shows them.
+/// The label list and the selection decoder are both derived from this,
+/// so a row index can never mean two different things.
+const AUTH_MODE_ROWS: [AuthMode; 2] = [AuthMode::Password, AuthMode::Kerberos];
+
+fn auth_mode_label(mode: AuthMode) -> String {
+    match mode {
+        AuthMode::Password => crate::tr!("Password"),
+        AuthMode::Kerberos => crate::tr!("Windows (Kerberos)"),
+    }
+}
+
+fn auth_mode_for_row(row: u32) -> AuthMode {
+    AUTH_MODE_ROWS.get(row as usize).copied().unwrap_or_default()
+}
 
 /// What the selected driver allows, kept beside the widgets so the form
 /// never reads its own visibility flags back to work out the mode.
@@ -50,28 +63,24 @@ const KERBEROS_ROW: u32 = 1;
 struct AuthFormState {
     file_based: bool,
     supports_integrated: bool,
-    kerberos_selected: bool,
+    selected: AuthMode,
 }
 
 impl AuthFormState {
-    /// A stale Kerberos selection left over from another driver
-    /// resolves back to password auth instead of leaking across the
-    /// switch.
+    /// A selection left over from another driver resolves back to
+    /// password auth instead of leaking across the switch.
     fn mode(self) -> AuthMode {
-        if !self.file_based && self.supports_integrated && self.kerberos_selected {
-            AuthMode::Kerberos
+        if self.shows_method() {
+            self.selected
         } else {
             AuthMode::Password
         }
     }
 
-    /// The method selector is noise for a driver with only one method.
     fn shows_method(self) -> bool {
         !self.file_based && self.supports_integrated
     }
 
-    /// Kerberos reads the ambient ticket cache, so the credential rows
-    /// have nothing to collect.
     fn shows_credentials(self) -> bool {
         !self.file_based && self.mode() == AuthMode::Password
     }
@@ -226,9 +235,9 @@ impl Component for ConnectDialog {
         connection_group.add(&port);
         connection_group.add(&database);
 
-        let auth_password_label = crate::tr!("Password");
-        let auth_kerberos_label = crate::tr!("Windows (Kerberos)");
-        let auth_mode_model = gtk::StringList::new(&[auth_password_label.as_str(), auth_kerberos_label.as_str()]);
+        let auth_labels: Vec<String> = AUTH_MODE_ROWS.iter().map(|mode| auth_mode_label(*mode)).collect();
+        let auth_labels_ref: Vec<&str> = auth_labels.iter().map(String::as_str).collect();
+        let auth_mode_model = gtk::StringList::new(&auth_labels_ref);
         let auth_combo = adw::ComboRow::builder()
             .title(crate::tr!("Method"))
             .model(&auth_mode_model)
@@ -333,7 +342,7 @@ impl Component for ConnectDialog {
             }
 
             ConnectDialogInput::AuthModeChanged => {
-                self.form.kerberos_selected = self.auth_combo.selected() == KERBEROS_ROW;
+                self.form.selected = auth_mode_for_row(self.auth_combo.selected());
                 self.apply_form_state();
                 self.refresh_validity();
             }
@@ -363,7 +372,6 @@ impl Component for ConnectDialog {
 
                 let opts = self.collect_options();
 
-                // A Kerberos entry has no username to name it after.
                 let label = if entry.id == "sqlite" {
                     opts.database.clone()
                 } else if opts.auth_mode == AuthMode::Kerberos {
@@ -539,9 +547,9 @@ impl ConnectDialog {
     }
 
     fn collect_options(&self) -> ConnectOptions {
-        // Kerberos ignores the credential rows, so whatever the user
-        // typed before switching modes never reaches the driver or the
-        // keyring.
+        // The credential rows keep their text while hidden, so a mode or
+        // driver that does not use them must drop it here rather than
+        // let it reach the driver and the keyring.
         let (username, password) = if self.form.shows_credentials() {
             (self.username.text().to_string(), self.password.text().to_string())
         } else {
@@ -615,7 +623,7 @@ async fn run_connect(
         connection_service::establish(driver.as_ref(), opts.clone(), ssh_for_establish, read_only).await?;
     let tables = conn.list_tables().await.map_err(|e| format!("list_tables: {e}"))?;
 
-    let id = match find_existing_id(&driver_id, &opts_clone, ssh.as_ref()).await {
+    let id = match find_existing_id(&driver_id, &opts_clone, driver.is_file_based(), ssh.as_ref()).await {
         Some(id) => id,
         None => Uuid::new_v4(),
     };
@@ -639,8 +647,6 @@ async fn run_connect(
     };
 
     save_one(&saved).await.map_err(|e| format!("save: {e}"))?;
-    // Kerberos has no secret of ours to keep; writing one would leave an
-    // unreachable credential in the keyring.
     if saved.auth_mode == AuthMode::Password {
         let _ = store_password(saved.id, stored_password.expose_secret(), &label).await;
     }
@@ -678,20 +684,40 @@ async fn save_one(connection: &SavedConnection) -> Result<(), tablepro_storage::
     save_connections(&existing).await
 }
 
-async fn find_existing_id(driver_id: &str, opts: &ConnectOptions, ssh: Option<&SshInputs>) -> Option<Uuid> {
+async fn find_existing_id(
+    driver_id: &str,
+    opts: &ConnectOptions,
+    file_based: bool,
+    ssh: Option<&SshInputs>,
+) -> Option<Uuid> {
     let existing = tablepro_storage::load_connections().await.ok()?;
     existing
         .into_iter()
-        .find(|c| {
-            c.driver_id == driver_id
-                && c.host == opts.host
-                && c.port == opts.port
-                && c.database == opts.database
-                && c.username == opts.username
-                && c.auth_mode == opts.auth_mode
-                && saved_ssh_matches(&c.ssh, ssh)
-        })
+        .find(|c| matches_existing(c, driver_id, opts, file_based, ssh))
         .map(|c| c.id)
+}
+
+fn matches_existing(
+    saved: &SavedConnection,
+    driver_id: &str,
+    opts: &ConnectOptions,
+    file_based: bool,
+    ssh: Option<&SshInputs>,
+) -> bool {
+    if saved.driver_id != driver_id || saved.database != opts.database {
+        return false;
+    }
+    // A file-based driver is reached by its path alone. Comparing the
+    // credentials there would strand every entry an older build wrote
+    // with the hidden Username row's leftover text.
+    if file_based {
+        return true;
+    }
+    saved.host == opts.host
+        && saved.port == opts.port
+        && saved.username == opts.username
+        && saved.auth_mode == opts.auth_mode
+        && saved_ssh_matches(&saved.ssh, ssh)
 }
 
 fn saved_ssh_matches(saved: &Option<SavedSshConfig>, current: Option<&SshInputs>) -> bool {
@@ -716,7 +742,7 @@ mod tests {
                 AuthFormState {
                     file_based: false,
                     supports_integrated: true,
-                    kerberos_selected: false,
+                    selected: AuthMode::Password,
                 },
                 AuthMode::Password,
                 true,
@@ -726,7 +752,7 @@ mod tests {
                 AuthFormState {
                     file_based: false,
                     supports_integrated: true,
-                    kerberos_selected: true,
+                    selected: AuthMode::Kerberos,
                 },
                 AuthMode::Kerberos,
                 true,
@@ -737,7 +763,7 @@ mod tests {
                 AuthFormState {
                     file_based: false,
                     supports_integrated: false,
-                    kerberos_selected: true,
+                    selected: AuthMode::Kerberos,
                 },
                 AuthMode::Password,
                 false,
@@ -748,7 +774,7 @@ mod tests {
                 AuthFormState {
                     file_based: true,
                     supports_integrated: true,
-                    kerberos_selected: true,
+                    selected: AuthMode::Kerberos,
                 },
                 AuthMode::Password,
                 false,
@@ -760,5 +786,94 @@ mod tests {
             assert_eq!(state.shows_method(), method, "{state:?}");
             assert_eq!(state.shows_credentials(), credentials, "{state:?}");
         }
+    }
+
+    #[test]
+    fn the_combo_rows_decode_to_the_modes_they_are_labelled_with() {
+        assert_eq!(auth_mode_for_row(0), AuthMode::Password);
+        assert_eq!(auth_mode_for_row(1), AuthMode::Kerberos);
+        assert_eq!(auth_mode_for_row(7), AuthMode::Password);
+        assert_eq!(AUTH_MODE_ROWS.len(), 2);
+    }
+
+    fn saved(driver_id: &str, username: &str, auth_mode: AuthMode) -> SavedConnection {
+        SavedConnection {
+            id: Uuid::new_v4(),
+            name: "saved".into(),
+            driver_id: driver_id.into(),
+            host: "sql.corp.example".into(),
+            port: 1433,
+            database: "sales".into(),
+            username: username.into(),
+            use_tls: false,
+            read_only: false,
+            auth_mode,
+            ssh: None,
+            last_opened_at: None,
+        }
+    }
+
+    fn opts(username: &str, auth_mode: AuthMode) -> ConnectOptions {
+        ConnectOptions {
+            host: "sql.corp.example".into(),
+            port: 1433,
+            database: "sales".into(),
+            username: username.into(),
+            auth_mode,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn a_file_based_entry_is_identified_by_its_path_alone() {
+        let legacy = saved("sqlite", "postgres", AuthMode::Password);
+        assert!(matches_existing(
+            &legacy,
+            "sqlite",
+            &opts("", AuthMode::Password),
+            true,
+            None
+        ));
+    }
+
+    #[test]
+    fn a_network_entry_still_distinguishes_user_and_auth_mode() {
+        let entry = saved("mssql", "sa", AuthMode::Password);
+        assert!(matches_existing(
+            &entry,
+            "mssql",
+            &opts("sa", AuthMode::Password),
+            false,
+            None
+        ));
+        assert!(!matches_existing(
+            &entry,
+            "mssql",
+            &opts("other", AuthMode::Password),
+            false,
+            None
+        ));
+        assert!(!matches_existing(
+            &entry,
+            "mssql",
+            &opts("", AuthMode::Kerberos),
+            false,
+            None
+        ));
+    }
+
+    #[test]
+    fn two_kerberos_entries_on_one_host_are_told_apart_by_database() {
+        let sales = saved("mssql", "", AuthMode::Kerberos);
+        let mut finance = opts("", AuthMode::Kerberos);
+        finance.database = "finance".into();
+        assert!(matches_existing(
+            &sales,
+            "mssql",
+            &opts("", AuthMode::Kerberos),
+            false,
+            None
+        ));
+        assert!(!matches_existing(&sales, "mssql", &finance, false, None));
     }
 }
