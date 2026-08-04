@@ -190,6 +190,10 @@ final class MainContentCoordinator {
 
     @ObservationIgnored var pendingScrollToTopAfterReplace: Set<UUID> = []
 
+    @ObservationIgnored var openTabInNewWindow: (EditorTabPayload) -> Void = {
+        WindowManager.shared.openTab(payload: $0)
+    }
+
     // MARK: - Internal State
 
     @ObservationIgnored internal var queryGeneration: Int = 0

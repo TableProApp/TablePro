@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Clicking a foreign key arrow in a query tab's results no longer replaces that tab and loses the query and its results. The referenced table opens in its own tab, and clicking the same reference again returns to that tab instead of opening a duplicate. A tab with unsaved cell edits is kept the same way.
+- A foreign key jump between table tabs now keeps the filters you saved for the table you left and applies the hidden columns you saved for the table you land on.
 - Saving a table structure change with more than one connection open no longer applies the change to a different connection or jumps the view back to it. The save now runs against the connection, database, and schema the edited table belongs to, and stops with an error instead of writing if it cannot reach them. (#2015)
 - Saving on a MySQL or MariaDB server that starts sessions read-only no longer fails with "Cannot execute statement in a READ ONLY transaction". TablePro marks a transaction read-write before it writes instead of inheriting the server default. Same for PostgreSQL, CockroachDB, and Redshift. (#2009)
 - Changing Safe Mode in the connection form now applies to an open connection instead of waiting for a reconnect. (#2009)
