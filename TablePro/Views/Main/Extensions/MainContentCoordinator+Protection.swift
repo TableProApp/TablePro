@@ -14,8 +14,9 @@ extension MainContentCoordinator {
     }
 
     /// Work that is only recoverable by saving it. A scratch query tab is deliberately absent:
-    /// its text is captured into `RecentlyClosedTabStore` on close, so losing it is undoable and
-    /// warrants no alert.
+    /// its text is persisted with the tab and comes back on relaunch, so it needs no alert.
+    /// Closing a tab also files it in `RecentlyClosedTabStore`; quitting does not, which is why
+    /// the tab-state write must never be skipped or cleared on an empty in-memory tab list.
     func hasUnsavedWork(in tab: QueryTab?) -> Bool {
         guard let tab else { return false }
         if tab.tabType == .usersRoles {

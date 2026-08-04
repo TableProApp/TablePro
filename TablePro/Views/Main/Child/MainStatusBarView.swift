@@ -15,6 +15,7 @@ struct PaginationCallbacks {
     let onPageSizeChange: (Int) -> Void
     let onShowAll: () -> Void
     let onGoToPage: (Int) -> Void
+    let onRequestExactCount: () -> Void
 }
 
 struct StatusBarColumnState {
@@ -114,6 +115,24 @@ struct MainStatusBarView: View {
                         Text(snapshot.rowInfoText(selectedCount: selectedRowIndices.count))
                             .font(.caption)
                             .foregroundStyle(.secondary)
+                    }
+
+                    if snapshot.tabType == .table, !snapshot.pagination.isLoadingMore,
+                       snapshot.pagination.isApproximateRowCount || snapshot.pagination.totalRowCount == nil {
+                        if snapshot.pagination.isCountingExact {
+                            ProgressView()
+                                .controlSize(.small)
+                                .accessibilityLabel(String(localized: "Counting rows"))
+                        } else {
+                            Button {
+                                paginationCallbacks.onRequestExactCount()
+                            } label: {
+                                Text("Count exactly")
+                                    .font(.caption)
+                            }
+                            .buttonStyle(.link)
+                            .help(String(localized: "Replace the estimate with an exact row count."))
+                        }
                     }
 
                     if snapshot.tabType == .query && snapshot.pagination.hasMoreRows && !snapshot.pagination.isLoadingMore {

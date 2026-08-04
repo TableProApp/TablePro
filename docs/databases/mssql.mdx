@@ -83,7 +83,7 @@ See [Connection URL Reference](/databases/connection-urls) for all parameters.
 
 ## Databases and Schemas
 
-The sidebar groups tables by schema and hides the built-in role schemas (`db_owner`, `guest`, and the rest). Switch the active database with **Cmd+K**; switches happen in place, no reconnect. Pick the active schema from the schema menu in the sidebar. `master`, `tempdb`, `model`, and `msdb` are marked as system databases.
+The sidebar nests tables under their schema and hides the built-in role schemas (`db_owner`, `guest`, and the rest). Switch the active database with **Cmd+K**; switches happen in place, no reconnect. Click a schema in the sidebar to make it active, or set a starting schema in the connection's **Schema** field. Opening a table always queries it in the schema it is listed under, so tables outside `dbo` work without switching first. `master`, `tempdb`, `model`, and `msdb` are marked as system databases.
 
 ## Features
 

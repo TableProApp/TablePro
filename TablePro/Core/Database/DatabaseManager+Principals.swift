@@ -68,7 +68,7 @@ extension DatabaseManager {
     ) async throws {
         let useTransaction = driver.supportsTransactions && rollsBack
         if useTransaction {
-            try await driver.beginTransaction()
+            try await driver.beginTransaction(mode: .readWrite)
         }
 
         var appliedCount = 0

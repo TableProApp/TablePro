@@ -39,7 +39,8 @@ extension PluginMetadataRegistry {
                     supportsQueryProgress: false,
                     requiresReconnectForDatabaseSwitch: false,
                     supportsDropDatabase: true,
-                    supportsOpportunisticTLS: false
+                    supportsOpportunisticTLS: false,
+                    authenticationIsDatabaseScoped: true
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
@@ -130,7 +131,7 @@ extension PluginMetadataRegistry {
                     tableEntityName: "Keys",
                     containerEntityName: "Database",
                     defaultPrimaryKeyColumn: "Key",
-                    immutableColumns: [],
+                    immutableColumns: ["Length"],
                     systemDatabaseNames: [],
                     systemSchemaNames: [],
                     fileExtensions: [],

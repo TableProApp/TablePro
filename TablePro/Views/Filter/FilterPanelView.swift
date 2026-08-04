@@ -245,6 +245,14 @@ struct FilterPanelView: View {
                     onApply: { applySoloFilter(filter) },
                     onSubmit: { applyAllValidFilters() },
                     onCancel: { closePanelAndFocusGrid() },
+                    isReorderEnabled: filterState.filters.count > 1,
+                    canMoveUp: coordinator.canMoveFilter(filter.id, direction: .up),
+                    canMoveDown: coordinator.canMoveFilter(filter.id, direction: .down),
+                    onMoveUp: { coordinator.moveFilter(filter.id, direction: .up) },
+                    onMoveDown: { coordinator.moveFilter(filter.id, direction: .down) },
+                    onDropFilter: { draggedID in
+                        coordinator.moveFilter(draggedID, onto: filter.id)
+                    },
                     focusedFilterId: $focusedFilterId
                 )
             }

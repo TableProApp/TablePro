@@ -212,6 +212,7 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
         onAIOptimize = nil
         onSaveAsFavorite = nil
         schemaProvider = nil
+        controller?.textView?.menu = nil
         contextMenu = nil
         vimEngine = nil
         vimCursorManager = nil
@@ -264,6 +265,7 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
         menu.onSaveAsFavorite = { [weak self] text in self?.onSaveAsFavorite?(text) }
         menu.onFormatSQL = { [weak self] in self?.performFormatSQL() }
         contextMenu = menu
+        controller.textView?.menu = menu
     }
 
     func performFormatSQL() {
@@ -297,15 +299,6 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
         } catch {
             Self.logger.error("SQL Formatting error: \(error.localizedDescription, privacy: .public)")
         }
-    }
-
-    /// Called by EditorEventRouter when a right-click is detected in this editor's text view.
-    func showContextMenu(for event: NSEvent, in textView: TextView) {
-        if contextMenu == nil, let controller {
-            installAIContextMenu(controller: controller)
-        }
-        guard let menu = contextMenu else { return }
-        NSMenu.popUpContextMenu(menu, with: event, for: textView)
     }
 
     // MARK: - Inline Suggestion Manager

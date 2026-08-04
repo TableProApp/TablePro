@@ -4,6 +4,72 @@ description: "Product updates and announcements for TablePro"
 rss: true
 ---
 
+<Update label="August 2, 2026" description="v0.62.0">
+  ### New Features
+
+  - **Claude Agent provider**: Run AI chat through the Claude Code command line tool and use a Claude subscription instead of a metered API key. It answers from your schema when the MCP server is on
+  - **Count exactly**: Sits next to an estimated row total and replaces the estimate with a real count when you want one
+  - **Reorder filter rows**: Drag the grip on the left of a row, or use Move Up and Move Down in its right-click menu
+  - **On Update column**: Set a MySQL or MariaDB timestamp column to update itself from the Structure tab, without writing the SQL by hand (#2005)
+  - **Length column for Redis**: Shows the size Redis reports for a key, so you can tell how much a preview leaves out. Bytes for a string, element count for a hash, list, set, sorted set, or stream
+
+  ### Improvements
+
+  - The Redis key tree in the sidebar lists keys with `SCAN` instead of `KEYS`, and no longer reads every key's value just to draw the tree. `KEYS` blocks the server for the whole scan
+  - Redis command arguments follow the same quoting rules as `redis-cli`, so `\xHH` writes a raw byte and a command you paste from `redis-cli` behaves the same way here. A command with unbalanced quotes is rejected instead of guessed at
+  - SQL editor tabs are saved about a second after you stop typing instead of waiting up to 30 seconds (#1997)
+
+  ### Bug Fixes
+
+  - A Redis string key shows its whole value in the grid. Values were cut at 1,000 characters, and because that was the only copy the app held, the same cut value reached the JSON tab, Copy JSON, the row inspector, and exports. Editing one of those cells and saving wrote the cut value back and lost the rest
+  - A Redis value that is not text, such as a gzip or MessagePack payload, is no longer shown as base64 and rewritten as base64 when you save. It displays as binary, opens in the hex editor, and is written back byte for byte. The query editor keeps binary arguments intact too
+  - Redis hash, list, set, sorted set, and stream previews are valid JSON. They were cut mid-token, so a preview could end in the middle of a key or an escape sequence
+  - A Redis key that expires between listing and reading shows an empty cell instead of the text `(nil)`
+  - Opening a SQL Server table or view outside the default schema no longer fails with "Invalid object name", and switching database no longer leaves the sidebar and the query on different schemas (#2004)
+  - Editing a MySQL or MariaDB column no longer drops its `ON UPDATE CURRENT_TIMESTAMP`. Saving a change to any other part of the column, even just its comment, silently removed the clause (#2005)
+  - A MySQL or MariaDB timestamp column that keeps fractional seconds saves again (#2005)
+  - Quitting no longer loses unsaved SQL editor tabs. A window still waiting on its connection could erase the saved tabs for it, and a query over 500KB is now kept in full rather than restored empty (#1997)
+  - Opening a large MongoDB collection no longer hangs, Stop cancels a running query on the server, and a query that runs out of time says so and points at the missing index that usually causes it
+  - Running a MongoDB query with no limit no longer pulls the whole collection into memory first, and exporting a query with a skip or limit exports that range instead of the whole collection
+  - A row count estimate of zero from a table that was never analyzed no longer displays as an empty table
+</Update>
+
+<Update label="July 30, 2026" description="v0.61.0">
+  ### New Features
+
+  - **Connect from a project folder**: Pick a folder from the welcome screen or File > Open Project Folder, and TablePro reads the database settings it finds in `.env`, `wp-config.php`, `prisma/schema.prisma`, `config/database.yml`, `docker-compose.yml`, `application.properties`, `application.yml`, or `appsettings.json`. Review what it found and the connection form opens filled in (#1959)
+  - **AI walkthroughs**: Explain, Optimize, and Fix Error now answer with numbered steps and a before/after SQL diff you can apply to the editor (#1945)
+  - **Close tabs in groups**: Close All Tabs, Close Other Tabs, and Close Tabs for Other Databases in the File menu. None has a shortcut out of the box; bind them in Settings > Keyboard (#1972)
+  - **Structure editing in the inspector**: Select a column, index, or foreign key in the Structure tab and edit it in the inspector, with the same type list and YES/NO menus the grid offers
+  - **AI tool call limit**: A limit you can raise or turn off in Settings > AI, now 25 per reply instead of a fixed 10. Reaching it pauses the reply and keeps what the AI found, with Continue to carry on (#1987)
+  - **Pin button on result tabs**: Pinning was already there, but only in a right-click menu and the View menu (#1982)
+
+  ### Improvements
+
+  - The welcome screen groups Import from Other App, Open Project Folder, Import Connections, and Import from URL into one Add from Existing menu
+  - A failed iCloud sync on iPhone and iPad names the cause: out of storage, no network, or a rejected change (#1990)
+  - An SSH tunnel that cannot reach the database reports whether the connection was refused or timed out, instead of leaving the driver to report a handshake timeout. The usual cause is Host holding the server's public address when the database only listens on `127.0.0.1` (#1981)
+  - The macOS local network prompt now says why TablePro needs access, so it is no longer a generic prompt that is easy to deny
+
+  ### Bug Fixes
+
+  - iCloud Sync now sends only the fields that changed, so editing a connection on two devices no longer overwrites the field the other one changed. It also reports a failed sync instead of always reporting success, downloads every page when catching up, and retries the changes iCloud rejected instead of dropping them (#643)
+  - Connection changes made on the Mac reach the iPhone and iPad app again, and a synced connection keeps its safe mode setting and its colour tag (#643)
+  - Primary Key, Nullable, Auto Inc, and the index Unique flag now change when you pick a value, and no longer offer Set NULL (#1991)
+  - A PostgreSQL partitioned table is listed once, with its partitions under it, so hundreds of partitions no longer bury the rest of the schema or fill up autocomplete (#1984)
+  - The inspector shows the Structure row you selected, not the data row in the same position
+  - An SSH tunnel no longer drops under heavy traffic, and a `ProxyCommand` line in `~/.ssh/config` is logged as skipped instead of ignored without a word
+  - MongoDB authenticates against the database set on the connection, not the one you are browsing, and creating a database now asks for its first collection so it is kept (#1970)
+  - Exporting a MongoDB collection works again, includes fields that first appear after the opening document, and `db.getCollection("name")` is accepted in the query editor (#1971)
+  - `postgres`, CockroachDB's `defaultdb`, and Redshift's `dev` are no longer hidden as system databases, and the database a connection is using always shows in the sidebar and switchers (#1967)
+  - File > New Connection, ⌘N, and the other File menu connection commands work once a connection is open (#1975)
+  - The license activation sheet opens when you click Activate License
+  - Right-clicking below the SQL editor opens the menu for the result tabs, data grid, or status bar instead of the editor's, and View > Pin Result is enabled only when there is a result tab to pin (#1982)
+  - Closing a window asks about unsaved changes in every tab, not just the one on screen (#1972)
+  - The AI chat panel stays inside the right panel at narrow widths, and a message sent right after launch is no longer replaced by the restored conversation (#1956)
+  - BigQuery `REPEATED` columns no longer show every element as `null`, and `STRUCT` cells show nested structs and arrays as JSON instead of escaped text (#1963)
+</Update>
+
 <Update label="July 25, 2026" description="v0.60.1">
   ### New Features
 

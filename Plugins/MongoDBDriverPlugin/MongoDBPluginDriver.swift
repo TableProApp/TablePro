@@ -27,7 +27,7 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func defaultExportQuery(table: String) -> String? {
-        "db.getCollection(\"\(table)\").find({})"
+        MongoDBQueryBuilder().buildExportQuery(collection: table)
     }
 
     init(config: DriverConnectionConfig) {
@@ -68,6 +68,7 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             user: config.username,
             password: config.password,
             database: currentDb,
+            configuredDatabase: config.database,
             ssl: effectiveSSL,
             authSource: config.additionalFields["mongoAuthSource"],
             readPreference: config.additionalFields["mongoReadPreference"],
@@ -130,6 +131,64 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func executeParameterized(query: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult {
         try await execute(query: query)
+    }
+
+    func executeUserQuery(
+        query: String,
+        rowCap: Int?,
+        parameters: [PluginCellValue]?
+    ) async throws -> PluginQueryResult {
+        let startTime = Date()
+
+        guard let conn = mongoConnection else {
+            throw MongoDBPluginError.notConnected
+        }
+
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.lowercased() != "select 1",
+              case .find(let collection, let filter, var options) = try MongoShellParser.parse(trimmed) else {
+            return try await capToRowCap(execute(query: query), rowCap: rowCap)
+        }
+
+        options.limit = MongoDBFindLimitPolicy.fetchLimit(parsedLimit: options.limit, rowCap: rowCap)
+
+        do {
+            let result = try await executeOperation(
+                .find(collection: collection, filter: filter, options: options),
+                connection: conn,
+                startTime: startTime
+            )
+            return capToRowCap(result, rowCap: rowCap)
+        } catch {
+            throw mapExecutionError(error)
+        }
+    }
+
+    private func capToRowCap(_ result: PluginQueryResult, rowCap: Int?) -> PluginQueryResult {
+        guard let rowCap, MongoDBFindLimitPolicy.isTruncated(rowCount: result.rows.count, rowCap: rowCap) else {
+            return result
+        }
+        return PluginQueryResult(
+            columns: result.columns,
+            columnTypeNames: result.columnTypeNames,
+            rows: Array(result.rows.prefix(rowCap)),
+            rowsAffected: result.rowsAffected,
+            executionTime: result.executionTime,
+            isTruncated: true,
+            statusMessage: result.statusMessage
+        )
+    }
+
+    private func mapExecutionError(_ error: Error) -> Error {
+        guard let mongoError = error as? MongoDBError,
+              MongoDBTimeoutPolicy.isTimeoutCode(mongoError.code),
+              let maxTimeMS = mongoConnection?.effectiveMaxTimeMS(background: false) else {
+            return error
+        }
+        return MongoDBError(
+            code: mongoError.code,
+            message: MongoDBTimeoutPolicy.timeoutMessage(maxTimeMS: maxTimeMS)
+        )
     }
 
     // MARK: - Query Cancellation
@@ -287,7 +346,9 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             throw MongoDBPluginError.notConnected
         }
 
-        let count = try await conn.estimatedDocumentCount(database: currentDb, collection: table)
+        let count = try await conn.estimatedDocumentCount(
+            database: currentDb, collection: table, background: true
+        )
         return Int(count)
     }
 
@@ -296,12 +357,32 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         filters: [(column: String, op: String, value: String)],
         logicMode: String
     ) async throws -> Int? {
+        try await documentCount(table: table, filters: filters, logicMode: logicMode, background: true)
+    }
+
+    func fetchExactRowCount(
+        table: String,
+        schema: String?,
+        filters: [(column: String, op: String, value: String)],
+        logicMode: String
+    ) async throws -> Int? {
+        try await documentCount(table: table, filters: filters, logicMode: logicMode, background: false)
+    }
+
+    private func documentCount(
+        table: String,
+        filters: [(column: String, op: String, value: String)],
+        logicMode: String,
+        background: Bool
+    ) async throws -> Int? {
         guard let conn = mongoConnection else {
             throw MongoDBPluginError.notConnected
         }
 
         let filterJson = MongoDBQueryBuilder().buildFilterDocument(from: filters, logicMode: logicMode)
-        let count = try await conn.countDocuments(database: currentDb, collection: table, filter: filterJson)
+        let count = try await conn.countDocuments(
+            database: currentDb, collection: table, filter: filterJson, background: background
+        )
         return Int(count)
     }
 
@@ -451,7 +532,18 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func createDatabaseFormSpec() async throws -> PluginCreateDatabaseFormSpec? {
-        PluginCreateDatabaseFormSpec(fields: [], footnote: nil)
+        PluginCreateDatabaseFormSpec(
+            fields: [],
+            textInputs: [
+                PluginCreateDatabaseFormSpec.TextInput(
+                    id: MongoDBCreateDatabasePlan.firstCollectionFieldId,
+                    label: String(localized: "First Collection"),
+                    placeholder: String(localized: "Collection name"),
+                    isRequired: true
+                )
+            ],
+            footnote: String(localized: "MongoDB stores a database only once it holds a collection, so a new database needs its first one.")
+        )
     }
 
     func createDatabase(_ request: PluginCreateDatabaseRequest) async throws {
@@ -459,8 +551,17 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             throw MongoDBPluginError.notConnected
         }
 
-        _ = try await conn.insertOne(database: request.name, collection: "__tablepro_init", document: "{\"_init\": true}")
-        _ = try await conn.runCommand("{\"drop\": \"__tablepro_init\"}", database: request.name)
+        try MongoDBNameValidator.validateDatabaseName(request.name)
+        let collection = MongoDBCreateDatabasePlan.firstCollectionName(
+            from: request.values,
+            databaseName: request.name
+        )
+        try MongoDBNameValidator.validateCollectionName(collection, inDatabase: request.name)
+
+        _ = try await conn.runCommand(
+            "{\"create\": \"\(escapeJsonString(collection))\"}",
+            database: request.name
+        )
     }
 
     func dropDatabase(name: String) async throws {
@@ -619,7 +720,8 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         case .find(let collection, let filter, let options):
             return conn.streamFind(
                 database: db, collection: collection, filter: filter,
-                sort: options.sort, projection: options.projection
+                sort: options.sort, projection: options.projection,
+                skip: options.skip ?? 0, limit: options.limit
             )
         case .aggregate(let collection, let pipeline):
             return conn.streamAggregate(
@@ -684,7 +786,9 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             return buildPluginResult(from: result.docs, startTime: startTime, isTruncated: result.isTruncated)
 
         case .countDocuments(let collection, let filter):
-            let count = try await conn.countDocuments(database: db, collection: collection, filter: filter)
+            let count = try await conn.countDocuments(
+                database: db, collection: collection, filter: filter, background: false
+            )
             return PluginQueryResult(
                 columns: ["count"], columnTypeNames: ["Int64"],
                 rows: [[.text(String(count))]], rowsAffected: 0,
@@ -767,6 +871,19 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 executionTime: Date().timeIntervalSince(startTime)
             )
 
+        default:
+            return try await executeCommandOperation(operation, connection: conn, startTime: startTime)
+        }
+    }
+
+    private func executeCommandOperation(
+        _ operation: MongoOperation,
+        connection conn: MongoDBConnection,
+        startTime: Date
+    ) async throws -> PluginQueryResult {
+        let db = currentDb
+
+        switch operation {
         case .createIndex(let collection, let keys, let options):
             var indexDoc = "{\"key\": \(keys)"
             if let opts = options {
@@ -836,6 +953,9 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 rows: [["1"]], rowsAffected: 0,
                 executionTime: Date().timeIntervalSince(startTime)
             )
+
+        default:
+            throw MongoDBPluginError.unsupportedOperation
         }
     }
 

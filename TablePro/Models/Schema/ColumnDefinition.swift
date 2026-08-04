@@ -25,6 +25,8 @@ struct EditableColumnDefinition: Hashable, Codable, Identifiable {
 
     var isPrimaryKey: Bool
 
+    static let currentTimestampExpression = "CURRENT_TIMESTAMP"
+
     /// Create a placeholder column for adding new columns
     static func placeholder() -> EditableColumnDefinition {
         EditableColumnDefinition(
@@ -63,11 +65,18 @@ struct EditableColumnDefinition: Hashable, Codable, Identifiable {
             unsigned: columnInfo.dataType.contains("unsigned"),
             comment: columnInfo.comment,
             collation: columnInfo.collation,
-            onUpdate: nil,
+            onUpdate: onUpdateExpression(fromExtra: columnInfo.extra),
             charset: columnInfo.charset,
             extra: columnInfo.extra,
             isPrimaryKey: columnInfo.isPrimaryKey
         )
+    }
+
+    /// Normalised to the bare expression: fractional-second precision is redundant with the
+    /// column's declared type and is re-derived when generating DDL.
+    private static func onUpdateExpression(fromExtra extra: String?) -> String? {
+        guard let extra, extra.lowercased().contains("on update") else { return nil }
+        return currentTimestampExpression
     }
 
     func toPlugin() -> PluginColumnDefinition {

@@ -29,6 +29,8 @@ extension TableViewCoordinator {
             }
         }
 
+        guard cellTypedValue(at: row, column: columnIndex).asBytes == nil else { return .blocked }
+
         let value: String
         if let displayRow = displayRow(at: row),
            columnIndex < displayRow.values.count,

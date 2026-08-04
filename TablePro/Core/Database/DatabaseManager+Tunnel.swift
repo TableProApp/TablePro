@@ -80,6 +80,14 @@ extension DatabaseManager {
         }
     }
 
+    /// The SSH-layer reason a tunneled connect failed, when the tunnel recorded one. The driver
+    /// only ever sees a local socket that was accepted and then stayed silent, so its own error
+    /// names a read timeout and never the cause. Read before the tunnel is torn down.
+    func attributedTunnelFailure(for connection: DatabaseConnection) async -> SSHTunnelError? {
+        guard let manager = activeTunnelManager(for: connection) as? SSHTunnelManager else { return nil }
+        return await manager.consumeLastForwardFailure(connectionId: connection.id)
+    }
+
     func closeActiveTunnel(for connection: DatabaseConnection) {
         guard let manager = activeTunnelManager(for: connection) else { return }
         let connectionId = connection.id

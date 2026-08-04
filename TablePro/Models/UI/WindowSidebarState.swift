@@ -12,6 +12,12 @@ struct DatabaseSchemaKey: Hashable, Sendable, Codable {
     let schema: String
 }
 
+struct DatabaseTableKey: Hashable, Sendable, Codable {
+    let database: String
+    let schema: String?
+    let table: String
+}
+
 @MainActor
 @Observable
 internal final class WindowSidebarState {
@@ -23,6 +29,7 @@ internal final class WindowSidebarState {
     var expandedTreeSchemas: Set<String> = [] { didSet { persistExpansion() } }
     var expandedTreeDatabases: Set<String> = [] { didSet { persistExpansion() } }
     var expandedTreeDatabaseSchemas: Set<DatabaseSchemaKey> = [] { didSet { persistExpansion() } }
+    var expandedTreeTables: Set<DatabaseTableKey> = [] { didSet { persistExpansion() } }
 
     init(connectionId: UUID? = nil, defaults: UserDefaults = .standard) {
         self.connectionId = connectionId
@@ -35,6 +42,7 @@ internal final class WindowSidebarState {
         var schemas: [String]
         var databases: [String]
         var databaseSchemas: [DatabaseSchemaKey]
+        var tables: [DatabaseTableKey]?
     }
 
     private var storageKey: String? {
@@ -48,12 +56,14 @@ internal final class WindowSidebarState {
         expandedTreeSchemas = Set(decoded.schemas)
         expandedTreeDatabases = Set(decoded.databases)
         expandedTreeDatabaseSchemas = Set(decoded.databaseSchemas)
+        expandedTreeTables = Set(decoded.tables ?? [])
     }
 
     private func persistExpansion() {
         guard isLoaded, let storageKey else { return }
 
-        if expandedTreeSchemas.isEmpty, expandedTreeDatabases.isEmpty, expandedTreeDatabaseSchemas.isEmpty {
+        if expandedTreeSchemas.isEmpty, expandedTreeDatabases.isEmpty,
+           expandedTreeDatabaseSchemas.isEmpty, expandedTreeTables.isEmpty {
             defaults.removeObject(forKey: storageKey)
             return
         }
@@ -61,7 +71,8 @@ internal final class WindowSidebarState {
         let snapshot = PersistedExpansion(
             schemas: Array(expandedTreeSchemas),
             databases: Array(expandedTreeDatabases),
-            databaseSchemas: Array(expandedTreeDatabaseSchemas)
+            databaseSchemas: Array(expandedTreeDatabaseSchemas),
+            tables: Array(expandedTreeTables)
         )
         if let data = try? JSONEncoder().encode(snapshot) {
             defaults.set(data, forKey: storageKey)

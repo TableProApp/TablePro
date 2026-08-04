@@ -206,11 +206,14 @@ final class AlertHelper {
     static func showErrorSheet(
         title: String,
         message: String,
+        recoverySuggestion: String? = nil,
         window: NSWindow?
     ) {
         let alert = NSAlert()
         alert.messageText = title
-        alert.informativeText = message
+        alert.informativeText = [message, recoverySuggestion]
+            .compactMap { $0 }
+            .joined(separator: "\n\n")
         alert.alertStyle = .critical
         alert.addButton(withTitle: String(localized: "OK"))
 

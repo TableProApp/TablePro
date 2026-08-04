@@ -13,6 +13,7 @@ enum TableRowLogic {
         case .materializedView: return "square.stack.3d.up"
         case .foreignTable:     return "link"
         case .systemTable:      return "tablecells.badge.ellipsis"
+        case .partitionedTable: return "rectangle.split.3x1"
         }
     }
 
@@ -23,6 +24,7 @@ enum TableRowLogic {
         case .materializedView: return String(localized: "Materialized View")
         case .foreignTable:     return String(localized: "Foreign Table")
         case .systemTable:      return String(localized: "System Table")
+        case .partitionedTable: return String(localized: "Partitioned Table")
         }
     }
 

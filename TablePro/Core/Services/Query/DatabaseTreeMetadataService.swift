@@ -23,15 +23,24 @@ final class DatabaseTreeMetadataService {
         let schema: String?
     }
 
+    struct PartitionsKey: Hashable, Sendable {
+        let connectionId: UUID
+        let database: String
+        let schema: String?
+        let table: String
+    }
+
     private(set) var databaseList: [UUID: MetadataLoadState<[DatabaseMetadata]>] = [:]
     private(set) var schemaList: [DatabaseKey: MetadataLoadState<[String]>] = [:]
     private(set) var tablesState: [ObjectsKey: MetadataLoadState<[TableInfo]>] = [:]
     private(set) var routinesState: [ObjectsKey: MetadataLoadState<[RoutineInfo]>] = [:]
+    private(set) var partitionsState: [PartitionsKey: MetadataLoadState<[TableInfo]>] = [:]
 
     @ObservationIgnored private let databaseDedup = OnceTask<UUID, [DatabaseMetadata]>()
     @ObservationIgnored private let schemaDedup = OnceTask<DatabaseKey, [String]>()
     @ObservationIgnored private let tablesDedup = OnceTask<ObjectsKey, [TableInfo]>()
     @ObservationIgnored private let routinesDedup = OnceTask<ObjectsKey, [RoutineInfo]>()
+    @ObservationIgnored private let partitionsDedup = OnceTask<PartitionsKey, [TableInfo]>()
 
     @ObservationIgnored private static let logger = Logger(
         subsystem: "com.TablePro", category: "SidebarTree"
@@ -71,6 +80,13 @@ final class DatabaseTreeMetadataService {
 
     func routines(connectionId: UUID, database: String, schema: String?) -> [RoutineInfo] {
         routinesState[Self.objectsKey(connectionId: connectionId, database: database, schema: schema)]?.value ?? []
+    }
+
+    func partitionsLoadState(
+        connectionId: UUID, database: String, schema: String?, table: String
+    ) -> MetadataLoadState<[TableInfo]> {
+        let key = Self.partitionsKey(connectionId: connectionId, database: database, schema: schema, table: table)
+        return partitionsState[key] ?? .idle
     }
 
     // MARK: - Loads
@@ -182,6 +198,32 @@ final class DatabaseTreeMetadataService {
         }
     }
 
+    func loadPartitions(connectionId: UUID, database: String, schema: String?, table: String) async {
+        guard isConnected(connectionId) else { return }
+        let key = Self.partitionsKey(connectionId: connectionId, database: database, schema: schema, table: table)
+        switch partitionsState[key] ?? .idle {
+        case .loaded, .loading: return
+        case .idle, .failed: break
+        }
+        partitionsState[key] = .loading
+        let normalizedSchema = key.schema
+        do {
+            let list = try await partitionsDedup.execute(key: key) { [self] in
+                try await withDriver(connectionId: connectionId, database: database) { driver in
+                    try await driver.fetchPartitions(table: table, schema: normalizedSchema)
+                }
+            }
+            partitionsState[key] = .loaded(list)
+        } catch is CancellationError {
+            if case .loading = partitionsState[key] { partitionsState[key] = .idle }
+        } catch {
+            partitionsState[key] = .failed(error.localizedDescription)
+            Self.logger.warning(
+                "partitions load failed db=\(database, privacy: .public) table=\(table, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
+            )
+        }
+    }
+
     // MARK: - Refresh
 
     func refreshDatabases(connectionId: UUID, databaseType: DatabaseType) async {
@@ -203,6 +245,10 @@ final class DatabaseTreeMetadataService {
         await routinesDedup.cancel(key: key)
         tablesState.removeValue(forKey: key)
         routinesState.removeValue(forKey: key)
+        for partitionKey in partitionKeys(matching: key) {
+            await partitionsDedup.cancel(key: partitionKey)
+            partitionsState.removeValue(forKey: partitionKey)
+        }
         async let tables = loadTables(connectionId: connectionId, database: database, schema: schema)
         async let routines = loadRoutines(connectionId: connectionId, database: database, schema: schema)
         _ = await (tables, routines)
@@ -212,10 +258,18 @@ final class DatabaseTreeMetadataService {
         let keys = tablesState.keys.filter { key in
             key.connectionId == connectionId && (database == nil || key.database == database)
         }
+        let loadedPartitionKeys = partitionsState.keys.filter { key in
+            key.connectionId == connectionId && (database == nil || key.database == database)
+        }
         await withTaskGroup(of: Void.self) { group in
             for key in keys {
                 group.addTask { @MainActor in
                     await self.reloadTablesInPlace(key)
+                }
+            }
+            for key in loadedPartitionKeys {
+                group.addTask { @MainActor in
+                    await self.reloadPartitionsInPlace(key)
                 }
             }
         }
@@ -241,6 +295,26 @@ final class DatabaseTreeMetadataService {
         }
     }
 
+    private func reloadPartitionsInPlace(_ key: PartitionsKey) async {
+        guard isConnected(key.connectionId) else { return }
+        await partitionsDedup.cancel(key: key)
+        do {
+            let list = try await partitionsDedup.execute(key: key) { [self] in
+                try await withDriver(connectionId: key.connectionId, database: key.database) { driver in
+                    try await driver.fetchPartitions(table: key.table, schema: key.schema)
+                }
+            }
+            let next: MetadataLoadState<[TableInfo]> = .loaded(list)
+            guard partitionsState[key] != next else { return }
+            partitionsState[key] = next
+        } catch is CancellationError {
+        } catch {
+            Self.logger.warning(
+                "partitions refresh failed db=\(key.database, privacy: .public) table=\(key.table, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
+            )
+        }
+    }
+
     // MARK: - Lifecycle
 
     func handleReconnect(connectionId: UUID) async {
@@ -260,10 +334,14 @@ final class DatabaseTreeMetadataService {
             await tablesDedup.cancel(key: key)
             await routinesDedup.cancel(key: key)
         }
+        for key in connectionPartitionKeys(connectionId) {
+            await partitionsDedup.cancel(key: key)
+        }
         databaseList.removeValue(forKey: connectionId)
         schemaList = schemaList.filter { $0.key.connectionId != connectionId }
         tablesState = tablesState.filter { $0.key.connectionId != connectionId }
         routinesState = routinesState.filter { $0.key.connectionId != connectionId }
+        partitionsState = partitionsState.filter { $0.key.connectionId != connectionId }
     }
 
     // MARK: - Private
@@ -284,6 +362,10 @@ final class DatabaseTreeMetadataService {
             if isPending(tablesState[key]) { await tablesDedup.cancel(key: key) }
             if isPending(routinesState[key]) { await routinesDedup.cancel(key: key) }
         }
+        let partitionKeys = connectionPartitionKeys(connectionId)
+        for key in partitionKeys where isPending(partitionsState[key]) {
+            await partitionsDedup.cancel(key: key)
+        }
 
         if isPending(databaseList[connectionId]) { databaseList[connectionId] = .idle }
         for key in schemaKeys where isPending(schemaList[key]) { schemaList[key] = .idle }
@@ -291,6 +373,7 @@ final class DatabaseTreeMetadataService {
             if isPending(tablesState[key]) { tablesState[key] = .idle }
             if isPending(routinesState[key]) { routinesState[key] = .idle }
         }
+        for key in partitionKeys where isPending(partitionsState[key]) { partitionsState[key] = .idle }
     }
 
     private func isPending<Value>(_ state: MetadataLoadState<Value>?) -> Bool {
@@ -323,6 +406,23 @@ final class DatabaseTreeMetadataService {
     private static func objectsKey(connectionId: UUID, database: String, schema: String?) -> ObjectsKey {
         let normalized: String? = (schema?.isEmpty == true) ? nil : schema
         return ObjectsKey(connectionId: connectionId, database: database, schema: normalized)
+    }
+
+    private static func partitionsKey(
+        connectionId: UUID, database: String, schema: String?, table: String
+    ) -> PartitionsKey {
+        let normalized: String? = (schema?.isEmpty == true) ? nil : schema
+        return PartitionsKey(connectionId: connectionId, database: database, schema: normalized, table: table)
+    }
+
+    private func partitionKeys(matching key: ObjectsKey) -> [PartitionsKey] {
+        partitionsState.keys.filter {
+            $0.connectionId == key.connectionId && $0.database == key.database && $0.schema == key.schema
+        }
+    }
+
+    private func connectionPartitionKeys(_ connectionId: UUID) -> [PartitionsKey] {
+        partitionsState.keys.filter { $0.connectionId == connectionId }
     }
 
     nonisolated static func connectionObjectKeys(

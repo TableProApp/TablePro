@@ -341,6 +341,25 @@ struct AppMenuCommands: Commands {
             }
             .optionalKeyboardShortcut(shortcut(for: .closeTab))
 
+            Button(String(localized: "Close Other Tabs")) {
+                resolvedCloseTabActions?.closeOtherTabs()
+            }
+            .optionalKeyboardShortcut(shortcut(for: .closeOtherTabs))
+            .disabled(resolvedCloseTabActions?.canCloseOtherTabs != true)
+
+            Button(resolvedCloseTabActions?.closeTabsForOtherDatabasesTitle
+                ?? String(localized: "Close Tabs for Other Databases")) {
+                resolvedCloseTabActions?.closeTabsForOtherDatabases()
+            }
+            .optionalKeyboardShortcut(shortcut(for: .closeTabsForOtherDatabases))
+            .disabled(resolvedCloseTabActions?.canCloseTabsForOtherDatabases != true)
+
+            Button(String(localized: "Close All Tabs")) {
+                resolvedCloseTabActions?.closeAllTabs()
+            }
+            .optionalKeyboardShortcut(shortcut(for: .closeAllTabs))
+            .disabled(resolvedCloseTabActions?.canCloseAllTabs != true)
+
             Button(String(localized: "Reopen Closed Tab")) {
                 RecentlyClosedTabReopener.reopenMostRecent()
             }
@@ -359,28 +378,23 @@ struct AppMenuCommands: Commands {
             Divider()
 
             Button(String(localized: "Export Connections...")) {
-                WindowOpener.shared.openWelcome()
-                AppCommands.shared.exportConnections.send(())
+                WelcomeRouter.shared.route(.exportConnections)
             }
 
             Button(String(localized: "Import Connections...")) {
-                WindowOpener.shared.openWelcome()
-                AppCommands.shared.importConnections.send(())
+                WelcomeRouter.shared.route(.importConnections)
             }
 
             Button(String(localized: "Import from URL...")) {
-                WindowOpener.shared.openWelcome()
-                AppCommands.shared.importConnectionFromURL.send(())
+                WelcomeRouter.shared.route(.importFromURL)
             }
 
             Button(String(localized: "Import from Other App...")) {
-                WindowOpener.shared.openWelcome()
-                AppCommands.shared.importConnectionsFromApp.send(())
+                WelcomeRouter.shared.route(.importFromApp)
             }
 
             Button(String(localized: "Open Project Folder...")) {
-                WindowOpener.shared.openWelcome()
-                AppCommands.shared.openProjectFolder.send(())
+                WelcomeRouter.shared.route(.openProjectFolder)
             }
 
             Divider()

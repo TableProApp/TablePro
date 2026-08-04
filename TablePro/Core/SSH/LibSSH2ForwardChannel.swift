@@ -7,11 +7,13 @@ import Foundation
 
 import CLibSSH2
 
-/// Result of a single non-blocking attempt to open a forwarding channel.
+/// Result of a single non-blocking attempt to open a forwarding channel. A failure carries
+/// libssh2's own message because it names the cause the user needs (a refused destination, a
+/// forwarding policy on the server) and is otherwise lost by the time anything can report it.
 internal enum SSHForwardChannelAttempt {
     case opened(OpaquePointer)
     case wouldBlock(RelayDirections)
-    case failed(Int32)
+    case failed(code: Int32, message: String)
 }
 
 /// One non-blocking attempt to open a forwarding channel. Implementations must return
@@ -41,7 +43,9 @@ internal struct LibSSH2ForwardChannelOpener: SSHForwardChannelOpening {
             }
 
             let errorCode = libssh2_session_last_errno(session)
-            guard errorCode == LIBSSH2_ERROR_EAGAIN else { return .failed(errorCode) }
+            guard errorCode == LIBSSH2_ERROR_EAGAIN else {
+                return .failed(code: errorCode, message: LibSSH2ForwardChannel.lastErrorMessage(session: session))
+            }
 
             return .wouldBlock(RelayDirections(libssh2BlockDirections: libssh2_session_block_directions(session)))
         }
@@ -74,6 +78,16 @@ internal enum LibSSH2ForwardChannel {
                 Int32(originPort)
             )
         }
+    }
+
+    static func lastErrorMessage(session: OpaquePointer) -> String {
+        var messagePointer: UnsafeMutablePointer<CChar>?
+        var messageLength: Int32 = 0
+        libssh2_session_last_error(session, &messagePointer, &messageLength, 0)
+
+        guard let messagePointer else { return String(localized: "Unknown error") }
+        let message = String(cString: messagePointer)
+        return message.isEmpty ? String(localized: "Unknown error") : message
     }
 
     private static let originHost = "127.0.0.1"

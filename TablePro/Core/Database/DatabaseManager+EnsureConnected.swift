@@ -34,8 +34,8 @@ extension DatabaseManager {
                 }
             }
             removeSessionEntry(for: connectionId)
-            if currentSessionId == connectionId {
-                currentSessionId = nil
+            if lastActiveSessionId == connectionId {
+                lastActiveSessionId = nil
             }
         }
     }

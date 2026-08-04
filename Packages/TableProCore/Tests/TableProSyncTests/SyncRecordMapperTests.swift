@@ -4,6 +4,7 @@ import Testing
 
 @testable import TableProModels
 @testable import TableProSync
+@testable import TableProSyncTransport
 
 @Suite("SyncRecordMapper safe mode")
 struct SyncRecordMapperTests {

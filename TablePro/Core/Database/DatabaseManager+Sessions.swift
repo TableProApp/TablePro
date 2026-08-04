@@ -42,7 +42,7 @@ extension DatabaseManager {
             session.status = .connecting
             setSession(session, for: connection.id)
         }
-        currentSessionId = connection.id
+        lastActiveSessionId = connection.id
 
         let effectiveConnection: DatabaseConnection
         do {
@@ -156,14 +156,18 @@ extension DatabaseManager {
             }
         } catch {
             let cancelled = isAttemptCancelled(attempt, for: connection.id)
+            var reportedError = error
             if cancelled {
                 driver.disconnect()
             } else {
+                if let attributed = await attributedTunnelFailure(for: connection) {
+                    reportedError = attributed
+                }
                 closeActiveTunnel(for: connection)
             }
 
             finalizeConnectionFailure(for: connection.id, cancelled: cancelled)
-            throw error
+            throw reportedError
         }
     }
 
@@ -192,8 +196,8 @@ extension DatabaseManager {
     internal func finalizeConnectionFailure(for connectionId: UUID, cancelled: Bool) {
         guard !cancelled else { return }
         removeSessionEntry(for: connectionId)
-        if currentSessionId == connectionId {
-            currentSessionId = activeSessions.keys.first
+        if lastActiveSessionId == connectionId {
+            lastActiveSessionId = activeSessions.keys.first
         }
     }
 
@@ -279,16 +283,34 @@ extension DatabaseManager {
         } else if let adapter = driver as? PluginDriverAdapter {
             try await adapter.switchDatabase(to: database)
             let grouping = pm?.schema.databaseGroupingStrategy ?? .byDatabase
+            if grouping == .bySchema {
+                await resetSchema(on: adapter, to: pm?.schema.defaultSchemaName)
+            }
             updateSession(connectionId) { session in
                 session.currentDatabase = database
                 if grouping == .bySchema {
-                    session.currentSchema = pm?.schema.defaultSchemaName
+                    session.currentSchema = adapter.currentSchema
                 }
             }
         }
 
         if persist {
             appSettingsStorage.saveLastDatabase(database, for: connectionId)
+        }
+    }
+
+    /// Moves the driver to the engine's default schema after a database switch.
+    /// Writing the session's schema without moving the driver leaves object listings
+    /// (driver schema) and table queries (session schema) on different schemas.
+    private func resetSchema(on driver: any SchemaSwitchable, to defaultSchemaName: String?) async {
+        guard let defaultSchemaName, !defaultSchemaName.isEmpty else { return }
+        guard driver.currentSchema != defaultSchemaName else { return }
+        do {
+            try await driver.switchSchema(to: defaultSchemaName)
+        } catch {
+            Self.logger.warning(
+                "Failed to reset schema to '\(defaultSchemaName, privacy: .public)' after a database switch: \(error.localizedDescription, privacy: .public)"
+            )
         }
     }
 
@@ -308,7 +330,7 @@ extension DatabaseManager {
 
     func switchToSession(_ sessionId: UUID) {
         guard activeSessions[sessionId] != nil else { return }
-        currentSessionId = sessionId
+        lastActiveSessionId = sessionId
         updateSession(sessionId) { session in
             session.markActive()
         }
@@ -360,11 +382,11 @@ extension DatabaseManager {
         SharedSidebarState.removeConnection(sessionId)
         SidebarViewModel.removeConnection(sessionId)
 
-        if currentSessionId == sessionId {
+        if lastActiveSessionId == sessionId {
             if let nextSessionId = activeSessions.keys.first {
                 switchToSession(nextSessionId)
             } else {
-                currentSessionId = nil
+                lastActiveSessionId = nil
             }
         }
         lifecycleLogger.info(
@@ -393,6 +415,23 @@ extension DatabaseManager {
         let driverAfter = session.driver as AnyObject?
         guard !session.isContentViewEquivalent(to: before) || driverBefore !== driverAfter else { return }
         setSession(session, for: sessionId)
+    }
+
+    func observeConnectionUpdates() {
+        connectionUpdatedCancellable = AppEvents.shared.connectionUpdated
+            .receive(on: RunLoop.main)
+            .sink { [weak self] connectionId in
+                self?.reconcileSafeModeLevel(for: connectionId)
+            }
+    }
+
+    func reconcileSafeModeLevel(for connectionId: UUID?) {
+        let targetIds = connectionId.map { [$0] } ?? Array(activeSessions.keys)
+        for id in targetIds {
+            guard activeSessions[id] != nil,
+                  let stored = connectionStorage.loadConnection(id: id) else { continue }
+            setSafeModeLevel(stored.safeModeLevel, for: id)
+        }
     }
 
     func setSafeModeLevel(_ level: SafeModeLevel, for connectionId: UUID) {

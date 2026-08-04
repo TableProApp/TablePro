@@ -113,6 +113,8 @@ Toggle the inspector with `Cmd+Option+I`. With a row selected, it lists every co
 
 With no row selected, it shows table statistics: data, index, and total size, row count, average row size, engine, collation, and created and updated dates (fields vary by database).
 
+In the Structure tab, the inspector follows the structure grid instead: select a column, index, or foreign key and it lists that row's own fields. The fields are editable where the grid is, with the same type list and YES/NO menus, and an edit joins the pending changes you apply with Save. A row you have marked for deletion is read-only.
+
 <Frame caption="Row inspector">
   <img className="block dark:hidden" src="/images/cell-inspector.png" alt="Row inspector" />
   <img className="hidden dark:block" src="/images/cell-inspector-dark.png" alt="Row inspector" />
@@ -143,7 +145,9 @@ Copies follow the grid as shown: hidden columns are left out and columns keep th
 
 **Table tabs** page through data. The status bar has a rows-per-page menu (5 to 1,000, a custom size, or **All rows**) and First / Previous / Next / Last controls. Click the page indicator (for example `3 / 12`) to type a page number and jump to it. Set the default page size in **Settings > Data**.
 
-Large tables show an estimated total instead of running a slow `COUNT(*)`. **Settings > Data > Count rows if estimate less than** sets the threshold below which TablePro counts exactly.
+Large tables show an estimated total instead of running a slow `COUNT(*)`. **Settings > Data > Count rows if estimate less than** sets the threshold below which TablePro counts exactly. An estimated total is prefixed with `~`. **Count exactly** next to the total replaces an estimate, or fills in a total shown as `?`, with a real count. That count can take a while on a large table, so it runs in the background and `Cmd+.` cancels it.
+
+An estimate of zero from a table the server has never analyzed is treated as unknown rather than as an empty table, so you get no total instead of a wrong one.
 
 **Query tabs** cap results at 10,000 rows by default. Your query is sent exactly as you wrote it; TablePro stops reading once it reaches the cap. A query with its own `LIMIT`, `FETCH FIRST`, or `TOP` is not capped. When the cap trims a result, the status bar shows **Fetch All** to load the rest (with a confirmation, since large results use a lot of memory). Run one query without the cap via **Execute Without Limit** (`Option+Cmd+Enter`). Adjust the cap in **Settings > Data** (**Truncate query results**, **Row cap**).
 

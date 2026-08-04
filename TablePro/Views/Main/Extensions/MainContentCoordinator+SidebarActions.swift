@@ -14,8 +14,8 @@ extension MainContentCoordinator {
     // MARK: - Result Set Operations
 
     var canPinActiveResultSet: Bool {
-        guard let tab = tabManager.selectedTab, tab.tabType == .query else { return false }
-        return tab.display.activeResultSet != nil
+        guard let tab = tabManager.selectedTab else { return false }
+        return ResultTabBarPolicy.canPin(tabType: tab.tabType, display: tab.display)
     }
 
     var isActiveResultSetPinned: Bool {
@@ -23,10 +23,8 @@ extension MainContentCoordinator {
     }
 
     func togglePinResultSet(id: UUID) {
-        guard let tabIdx = tabManager.selectedTabIndex,
-              let resultSet = tabManager.tabs[tabIdx].display.resultSets.first(where: { $0.id == id })
-        else { return }
-        resultSet.isPinned.toggle()
+        guard let tabIdx = tabManager.selectedTabIndex else { return }
+        tabManager.mutate(at: tabIdx) { $0.display.togglePin(resultSetId: id) }
     }
 
     func closeResultSet(id: UUID) {

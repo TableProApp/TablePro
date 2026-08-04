@@ -31,6 +31,8 @@ The form has no Database field. On connect TablePro opens the first non-system d
 
 **Advanced**: **Auth Database** (usually `admin`), **Read Preference**, **Write Concern**, **Use SRV Record**, and **Replica Set** name.
 
+Leaving **Auth Database** empty authenticates against the database in the connection URL path, or `admin` when there is none. Switching databases in the app never changes it, so browsing a database your user has no account in does not break the connection.
+
 <Frame caption="MongoDB connection form">
   <img className="block dark:hidden" src="/images/mongodb-connection-form.png" alt="MongoDB connection form with the multi-host Hosts editor" />
   <img className="hidden dark:block" src="/images/mongodb-connection-form-dark.png" alt="MongoDB connection form with the multi-host Hosts editor" />
@@ -73,6 +75,8 @@ See [Connection URL Reference](/databases/connection-urls) for all parameters.
 
 **Collection Browsing**: Sidebar shows all collections. Click to view documents in the data grid. Top-level fields render as columns, nested objects and arrays as formatted JSON, ObjectIds as strings. The grid schema is inferred by sampling documents.
 
+**New Database**: The dialog asks for a database name and the name of its first collection. Both are required. MongoDB stores a database only once it holds a collection, so a name on its own would disappear as soon as the sidebar refreshed. The collection is created empty.
+
 **Views**: **New View** in the sidebar opens a query tab with a `db.createView("view_name", "source_collection", [pipeline])` template. Editing a view definition pre-fills a `db.runCommand({"collMod": ...})` command.
 
 **Explain**: Press `Cmd+Option+E` on an MQL statement. TablePro converts `find`, `aggregate`, `countDocuments`, update, delete, and `findOneAnd*` calls into `db.runCommand({"explain": ..., "verbosity": "executionStats"})`.
@@ -111,15 +115,21 @@ Count documents:
 db.users.countDocuments({"role": "admin"})
 ```
 
+**Collection references**: Write `db.users`, `db["users"]`, or `db.getCollection("users")`. The bracket and `getCollection` forms take the name exactly as written, so use them for names that contain dots or spaces, start with a digit, or match a database method such as `stats` or `version`. Single quotes and backticks work in place of double quotes. `db.getSiblingDB(...)` is not supported: a query always runs against the database the connection is using.
+
 **Supported methods**: collection-level `find`, `findOne`, `aggregate`, `countDocuments`/`count`, `insertOne`/`insertMany`, `updateOne`/`updateMany`, `replaceOne`, `deleteOne`/`deleteMany`, `findOneAndUpdate`/`findOneAndReplace`/`findOneAndDelete`, `createIndex`, `dropIndex`, `drop`; database-level `getCollectionNames`/`listCollections`, `createCollection`, `dropDatabase`, `version`, `stats`. Anything else goes through `db.runCommand({...})` or `db.adminCommand({...})`. Unlisted shell methods (for example `distinct` or `getUsers`) return an unsupported-method error.
 
 ## Troubleshooting
 
 **Connection refused**: Check MongoDB is running (`brew services start mongodb-community`), verify host/port in `mongod.conf`, check `bindIp` setting.
 
-**Auth failed**: Verify username, password, auth database, and auth mechanism. The MQL editor does not parse `db.getUsers()` or `db.createUser()`; inspect users with `db.runCommand({"usersInfo": 1})` or manage them in mongosh.
+**Auth failed**: The error names the database TablePro authenticated against. If that is not where your user lives, set **Auth Database** in the Advanced section. Otherwise verify username, password, and auth mechanism. The MQL editor does not parse `db.getUsers()` or `db.createUser()`; inspect users with `db.runCommand({"usersInfo": 1})` or manage them in mongosh.
 
 **Timeout**: Verify host/port, check network and firewall, whitelist your IP in MongoDB Atlas.
+
+**A collection is slow to open**: A sort or a filter on a field with no index makes MongoDB read every document, even when you only ask for 20 rows, because it has to look at all of them to find which 20 come first. Check the Structure tab for an index on the field you sorted or filtered by, and add one if it is missing. `Cmd+.` stops the query on the server.
+
+**The row total shows `~`**: That is an estimate read from collection metadata, which is instant. TablePro caps the automatic count at 5 seconds and keeps the estimate if the server takes longer, so browsing is never held up by counting. **Count exactly** runs a real count with your configured query timeout. Views and time-series collections have no metadata count, so their estimate can be missing.
 
 ## Limitations
 

@@ -389,19 +389,15 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         let sizeMb = Int64(sizeRes.rows.first?[0].asText ?? "0") ?? 0
         let sizeBytes = sizeMb * 1_024 * 1_024
 
-        let systemDatabases = ["dev", "padb_harvest"]
-        let isSystem = systemDatabases.contains(database)
-
         return PluginDatabaseMetadata(
             name: database,
             tableCount: tableCount,
             sizeBytes: sizeBytes,
-            isSystemDatabase: isSystem
+            isSystemDatabase: PostgreSQLSystemDatabases.redshift.contains(database)
         )
     }
 
     func fetchAllDatabaseMetadata() async throws -> [PluginDatabaseMetadata] {
-        let systemDatabases = ["dev", "padb_harvest"]
         let dbResult = try await execute(
             query: "SELECT datname FROM pg_database WHERE datistemplate = false ORDER BY datname"
         )
@@ -423,13 +419,12 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         }
 
         return dbNames.map { dbName in
-            let isSystem = systemDatabases.contains(dbName)
             let info = metadataByName[dbName]
             return PluginDatabaseMetadata(
                 name: dbName,
                 tableCount: info?.tableCount,
                 sizeBytes: info.map { $0.sizeMb * 1_024 * 1_024 },
-                isSystemDatabase: isSystem
+                isSystemDatabase: PostgreSQLSystemDatabases.redshift.contains(dbName)
             )
         }
     }

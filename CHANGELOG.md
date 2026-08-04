@@ -9,22 +9,101 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- AI Explain, Optimize, and Fix Error now answer with a walkthrough in the chat panel: a before/after SQL diff you can switch between unified and split, numbered steps anchored to the lines they change, and a follow-up prompt on any step. Optimize and Fix add an Apply to Editor button that asks before replacing your query. (#1945)
-- Create a connection from a project folder. Pick one from the welcome screen or File > Open Project Folder..., and TablePro reads the database settings it finds in `.env` files, `wp-config.php`, `prisma/schema.prisma`, `config/database.yml`, `docker-compose.yml`, `application.properties`, `application.yml`, and `appsettings.json`. A project that uses more than one engine gets a row for each. Review what it found, pick one, and the connection form opens filled in. Nothing is saved or connected until you save it. (#1959)
 - Compare structure or data between two connections and generate the SQL script that brings the target in line with the source. Differences show in a tree you can group by object type or by operation, with the source and target definitions side by side. The script is editable before it runs, statements are ordered so parent tables come before the tables that reference them, and anything that would drop data is listed but held back until you allow it for that run. A read-only connection cannot be chosen as the target. Requires a Starter license. (#721)
-
-### Changed
-
-- The welcome screen groups the ways to add an existing connection into one **Add from Existing** menu, next to **Create Connection**. Import from URL now has a home in that menu and in the File menu, where it had none. **Try Sample Database** moved to the connection list, which already offers it when the list is empty.
 
 ### Fixed
 
-- The license activation sheet now opens when you click **Activate License**. It was built and then failed to appear, and once that happened further clicks did nothing at all.
-- File > Import from Other App..., Open Project Folder..., Import Connections... and Export Connections... now work when no welcome window is open. They used to do nothing.
-- The tooltip on the welcome screen's **+** button shows the shortcut you actually have bound for New Connection instead of always claiming ⌘N.
-- The AI chat panel stays inside the right panel when you drag it narrow. The model name, tool names, and code block headers now truncate, long chat messages and code wrap, wide tables scroll inside their own box, and the composer text follows the panel width instead of running under the editor. (#1956)
+- Saving a table structure change with more than one connection open no longer applies the change to a different connection or jumps the view back to it. The save now runs against the connection, database, and schema the edited table belongs to, and stops with an error instead of writing if it cannot reach them. (#2015)
+- Saving on a MySQL or MariaDB server that starts sessions read-only no longer fails with "Cannot execute statement in a READ ONLY transaction". TablePro marks a transaction read-write before it writes instead of inheriting the server default. Same for PostgreSQL, CockroachDB, and Redshift. (#2009)
+- Changing Safe Mode in the connection form now applies to an open connection instead of waiting for a reconnect. (#2009)
+- A read-only error now says whether the database server or Safe Mode refused the write. (#2009)
+- The MCP server's **Default row limit** and **Maximum row limit** now apply to the `export_data` tool, so raising the maximum really does export more rows. Export previously ignored both and used a fixed 50,000, so an export with no `max_rows` now returns the default row limit (500) until you raise it. Export also honours the configured query timeout, reports whether the limit clipped the result, and appears in query history and the activity log like other MCP queries. (#2012)
+- Exporting a table over MCP no longer fails on SQL Server, Oracle, and Teradata. The row limit is now written in each database's own syntax instead of always using `LIMIT`. (#2012)
+- Setting the MCP server's row limits or query timeout to zero or a negative number no longer crashes the app on the next tool call. Values outside the supported range are corrected as you type. (#2012)
+- AI chat no longer crashes when the model asks a tool for a row limit or timeout larger than TablePro can count to. The tool now falls back to the configured limit. (#2012)
+
+## [0.62.0] - 2026-08-02
+
+### Added
+
+- **Claude Agent** provider, which runs AI chat through the Claude Code command line tool so you can use a Claude subscription instead of a metered API key. It answers from your schema when the MCP server is on.
+- **Count exactly** next to an estimated row total, to replace the estimate with a real count when you want it.
+- Reorder filter rows by dragging the grip on the left of each row, or with **Move Up** and **Move Down** in the row's right-click menu.
+- An **On Update** column in the Structure tab for MySQL and MariaDB, so a timestamp column can be set to update itself without writing the SQL by hand. (#2005)
+- A **Length** column in the Redis key grid, showing the size Redis reports: bytes for a string, element count for a hash, list, set, sorted set, or stream. It tells you how much a preview leaves out.
+
+### Changed
+
+- The Redis key tree in the sidebar lists keys with `SCAN` instead of `KEYS`, and no longer reads every key's value to draw the tree. `KEYS` blocks the server for the whole scan.
+- Redis command arguments now follow the same quoting rules as `redis-cli`, so `\xHH` writes a raw byte and a command you paste from `redis-cli` behaves the same way in TablePro. A command with unbalanced quotes is rejected instead of being guessed at.
+
+### Fixed
+
+- A Redis string key now shows its whole value in the grid. Values were cut at 1,000 characters with `...` on the end, and because that was the only copy the app held, the same cut value reached the JSON tab, Copy JSON, the row inspector, and exports. Editing one of those cells and saving wrote the cut value back to Redis and lost the rest.
+- Hash, list, set, sorted set, and stream previews are now valid JSON. They were cut mid-token, so a preview could end in the middle of a key or an escape sequence.
+- A Redis key that expires between listing and reading now shows an empty cell instead of the text `(nil)`.
+- A Redis value that is not text, such as a gzip or MessagePack payload, is no longer shown as base64 and rewritten as base64 when you save. It now displays as binary, opens in the hex editor, and is written back byte for byte. This applies to the query editor too, so `SET`, `HSET`, `LPUSH`, `SADD`, and `ZADD` keep binary arguments intact.
+- Opening a SQL Server table or view that lives outside the default schema no longer fails with "Invalid object name". A table now keeps the schema it was listed under, and switching database no longer leaves the sidebar and the query on different schemas. (#2004)
+- Editing a MySQL or MariaDB column no longer drops its `ON UPDATE CURRENT_TIMESTAMP`. Saving a change to any other part of the column, even just its comment, silently removed the clause. (#2005)
+- A MySQL or MariaDB timestamp column that keeps fractional seconds now saves. Its default was written as text instead of an expression, so the change was rejected. (#2005)
+- Quitting no longer loses unsaved SQL editor tabs. A window with no tabs loaded yet, such as one still waiting on its connection, could erase the saved tabs for that connection, so nothing came back on relaunch. Editors are also saved about a second after you stop typing instead of waiting up to 30 seconds, and a query over 500KB is kept in full rather than restored empty. (#1997)
+- Opening a large MongoDB collection no longer hangs. Row counts that back the pagination display now give up after 5 seconds and leave the estimate in place instead of holding the tab.
+- Stop now cancels a running MongoDB query on the server, rather than leaving it running until it finishes on its own.
+- A MongoDB query that runs out of time now says so, and points at the missing index that usually causes it.
+- Running a MongoDB query with no limit no longer pulls the whole collection into memory before applying the row limit.
+- Exporting a MongoDB query that has a skip or limit now exports that range, not the whole collection.
+- A row count estimate of zero from a table that was never analyzed no longer displays as an empty table.
+
+## [0.61.0] - 2026-07-30
+
+### Added
+
+- **Close All Tabs**, **Close Other Tabs**, and **Close Tabs for Other Databases** in the File menu, bindable in **Settings > Keyboard**. (#1972)
+- AI Explain, Optimize, and Fix Error answer with numbered steps and a before/after SQL diff you can apply to the editor. (#1945)
+- Create a connection from a project folder, filled in from `.env`, `wp-config.php`, `prisma/schema.prisma`, `config/database.yml`, `docker-compose.yml`, `application.properties`, `application.yml`, or `appsettings.json`. (#1959)
+- An AI tool call limit in **Settings > AI**, now 25 per reply instead of a fixed 10, with **Continue** to resume a paused reply. (#1987)
+- A pin button on result tabs. (#1982)
+- The inspector edits the column, index, or foreign key you select in the Structure tab.
+
+### Changed
+
+- The welcome screen groups Import from Other App, Open Project Folder, Import Connections, and Import from URL into one **Add from Existing** menu, and offers **Try Sample Database** in the connection list.
+- A failed iCloud sync on iPhone and iPad names the cause: out of storage, no network, or a rejected change. (#1990)
+
+### Fixed
+
+- The inspector shows the Structure row you selected, not the data row in the same position. Duplicate Row and Copy with Headers no longer act on a data row there either.
+- Editing a connection on two devices no longer overwrites the field the other one changed. (#643)
+- A per-connection query timeout set on iPhone or iPad no longer stops that connection from syncing. (#643)
+- iCloud Sync downloads every page of changes when catching up, instead of only the first. (#643)
+- iCloud Sync reports a failed sync instead of always reporting success. (#643)
+- A change iCloud rejects no longer stops the rest of its batch from syncing. (#643)
+- Connection changes made on the Mac reach the iPhone and iPad app again. (#643)
+- A connection synced from iPhone or iPad keeps its safe mode setting on the Mac. (#643)
+- A connection's colour tag set on iPhone or iPad no longer overwrites its colour label on the Mac. (#643)
+- **Primary Key**, **Nullable**, **Auto Inc**, and the index **Unique** flag now change when you pick a value, and no longer offer Set NULL. (#1991)
+- A message sent in the AI panel right after launch is no longer replaced by the restored conversation.
+- A PostgreSQL partitioned table is listed once, with its partitions nested under it. (#1984)
+- An SSH tunnel that cannot reach the database reports whether the connection was refused or timed out. (#1981)
+- The macOS local network prompt says why TablePro needs access.
+- An SSH tunnel no longer drops under heavy traffic.
+- A `ProxyCommand` line in `~/.ssh/config` is logged as skipped instead of ignored without a word.
+- Right-clicking below the SQL editor opens the menu for the result tabs, data grid, or status bar instead of the editor's. (#1982)
+- **View > Pin Result** is enabled only when there is a result tab to pin, and result tabs now show in JSON view. (#1982)
+- Closing a window asks about unsaved changes in every tab, not just the one on screen. (#1972)
+- MongoDB authenticates against the database set on the connection, not the one you are browsing. (#1970)
+- Creating a MongoDB database asks for its first collection, so the database is kept. (#1970)
+- A MongoDB authentication error names the user and the database it tried. (#1970)
+- Exporting a MongoDB collection works again, and `db.getCollection("name")` is accepted in the query editor. (#1971)
+- A MongoDB export includes fields that first appear after the opening document. (#1971)
+- `postgres`, CockroachDB's `defaultdb`, and Redshift's `dev` are no longer hidden as system databases. (#1967)
+- The database a connection is using always shows in the sidebar and the database switchers. (#1967)
+- The license activation sheet opens when you click **Activate License**.
+- File > New Connection..., ⌘N, and the other File menu connection commands work once a connection is open. (#1975)
+- The tooltip on the welcome screen's **+** button shows the shortcut bound to New Connection.
+- The AI chat panel stays inside the right panel at narrow widths. (#1956)
 - BigQuery `REPEATED` columns (including repeated `STRUCT`) no longer show every element as `null`. (#1963)
-- BigQuery `STRUCT` cells now show nested structs and arrays as real JSON instead of escaped text, and quotes, backslashes, tabs, and newlines inside values are escaped correctly. (#1963)
+- BigQuery `STRUCT` cells show nested structs and arrays as JSON instead of escaped text. (#1963)
 
 ## [0.60.1] - 2026-07-25
 
@@ -2639,7 +2718,9 @@ TablePro is a native macOS database client built with SwiftUI and AppKit, design
     - Custom SQL query templates
     - Performance optimized for large datasets
 
-[Unreleased]: https://github.com/TableProApp/TablePro/compare/v0.60.1...HEAD
+[Unreleased]: https://github.com/TableProApp/TablePro/compare/v0.62.0...HEAD
+[0.62.0]: https://github.com/TableProApp/TablePro/compare/v0.61.0...v0.62.0
+[0.61.0]: https://github.com/TableProApp/TablePro/compare/v0.60.1...v0.61.0
 [0.60.1]: https://github.com/TableProApp/TablePro/compare/v0.60.0...v0.60.1
 [0.60.0]: https://github.com/TableProApp/TablePro/compare/v0.59.0...v0.60.0
 [0.59.0]: https://github.com/TableProApp/TablePro/compare/v0.58.0...v0.59.0

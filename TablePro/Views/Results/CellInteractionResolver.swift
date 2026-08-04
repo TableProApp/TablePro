@@ -11,6 +11,7 @@ internal struct CellContext: Equatable {
     let isTableEditable: Bool
     let isRowDeleted: Bool
     let isImmutableColumn: Bool
+    let isBinaryValue: Bool
     let displayFormatOverride: ValueDisplayFormat?
 
     init(
@@ -19,6 +20,7 @@ internal struct CellContext: Equatable {
         isTableEditable: Bool,
         isRowDeleted: Bool,
         isImmutableColumn: Bool,
+        isBinaryValue: Bool = false,
         displayFormatOverride: ValueDisplayFormat? = nil
     ) {
         self.columnType = columnType
@@ -26,6 +28,7 @@ internal struct CellContext: Equatable {
         self.isTableEditable = isTableEditable
         self.isRowDeleted = isRowDeleted
         self.isImmutableColumn = isImmutableColumn
+        self.isBinaryValue = isBinaryValue
         self.displayFormatOverride = displayFormatOverride
     }
 }
@@ -50,7 +53,7 @@ internal struct CellInteractionResolver {
 
         let isReadOnly = !context.isTableEditable || context.isImmutableColumn
 
-        if context.columnType?.isBlobType == true {
+        if context.columnType?.isBlobType == true || context.isBinaryValue {
             return isReadOnly ? .viewBlob : .editBlob
         }
 

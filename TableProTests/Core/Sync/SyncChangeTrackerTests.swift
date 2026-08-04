@@ -5,6 +5,7 @@
 
 import Foundation
 import Testing
+import TableProSyncTransport
 
 @testable import TablePro
 

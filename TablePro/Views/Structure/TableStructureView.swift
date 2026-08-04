@@ -19,6 +19,8 @@ struct TableStructureView: View {
     static let structurePasteboardType = NSPasteboard.PasteboardType("com.TablePro.structure")
     let tableName: String
     let connection: DatabaseConnection
+    let databaseName: String
+    let schemaName: String?
     let toolbarState: ConnectionToolbarState
     let coordinator: MainContentCoordinator?
     let selectionState: GridSelectionState
@@ -59,12 +61,16 @@ struct TableStructureView: View {
     init(
         tableName: String,
         connection: DatabaseConnection,
+        databaseName: String,
+        schemaName: String?,
         toolbarState: ConnectionToolbarState,
         coordinator: MainContentCoordinator?,
         selectionState: GridSelectionState
     ) {
         self.tableName = tableName
         self.connection = connection
+        self.databaseName = databaseName
+        self.schemaName = schemaName
         self.toolbarState = toolbarState
         self.coordinator = coordinator
         self.selectionState = selectionState
@@ -104,6 +110,9 @@ struct TableStructureView: View {
         .onAppear {
             coordinator?.toolbarState.hasStructureChanges = structureChangeManager.hasChanges
 
+            selectionState.indices = []
+            coordinator?.inspectorRowSource = gridDelegate
+
             gridDelegate.onSelectedRowsChanged = { self.selectedRows = $0 }
             gridDelegate.coordinator = coordinator
             gridDelegate.sortHandler = { [self] column, ascending in
@@ -135,6 +144,9 @@ struct TableStructureView: View {
             coordinator?.toolbarState.hasStructureChanges = false
             coordinator?.structureActions = nil
             coordinator?.structureFooterState.deactivate(owner: footerOwnerId)
+            if coordinator?.inspectorRowSource === gridDelegate {
+                coordinator?.inspectorRowSource = nil
+            }
             selectionState.indices = []
         }
         .onChange(of: structureChangeManager.hasChanges) { _, newValue in
@@ -343,6 +355,7 @@ struct TableStructureView: View {
         gridDelegate.selectedTab = selectedTab
         gridDelegate.currentProvider = provider
         gridDelegate.orderedFields = provider.orderedColumnFields
+        coordinator?.inspectorRowSourceRevision += 1
 
         let moveRowHandler: ((Int, Int) -> Void)? = {
             guard selectedTab == .columns,
@@ -470,6 +483,8 @@ struct TableStructureView: View {
             username: "root",
             type: .mysql
         ),
+        databaseName: "test",
+        schemaName: nil,
         toolbarState: ConnectionToolbarState(),
         coordinator: nil,
         selectionState: GridSelectionState()

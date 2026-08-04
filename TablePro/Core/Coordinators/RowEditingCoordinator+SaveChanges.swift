@@ -6,6 +6,7 @@
 import Foundation
 import os
 import SwiftUI
+import TableProPluginKit
 
 private let saveChangesLogger = Logger(subsystem: "com.TablePro", category: "RowEditingCoordinator")
 
@@ -187,7 +188,7 @@ extension RowEditingCoordinator {
                 let useTransaction = driver.supportsTransactions
 
                 if useTransaction {
-                    try await driver.beginTransaction()
+                    try await driver.beginTransaction(mode: .readWrite)
                 }
 
                 do {
@@ -292,15 +293,21 @@ extension RowEditingCoordinator {
                     errorMessage: error.localizedDescription
                 )
 
+                let diagnosis = DatabaseWriteRejectionDiagnosis.classify(error)
+
                 if let index = parent.tabManager.selectedTabIndex {
                     parent.tabManager.mutate(at: index) {
-                        $0.execution.errorMessage = String(format: String(localized: "Save failed: %@"), error.localizedDescription)
+                        $0.execution.errorMessage = String(
+                            format: String(localized: "Save failed: %@"),
+                            DatabaseWriteRejectionDiagnosis.formatted(error)
+                        )
                     }
                 }
 
                 AlertHelper.showErrorSheet(
                     title: String(localized: "Save Failed"),
-                    message: error.localizedDescription,
+                    message: diagnosis?.errorDescription ?? error.localizedDescription,
+                    recoverySuggestion: diagnosis?.recoverySuggestion,
                     window: parent.contentWindow
                 )
 

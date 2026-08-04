@@ -69,6 +69,9 @@ protocol DatabaseDriver: AnyObject, Sendable {
 
     func fetchTables(schema: String?) async throws -> [TableInfo]
 
+    /// Fetch the direct partitions of one partitioned table
+    func fetchPartitions(table: String, schema: String?) async throws -> [TableInfo]
+
     /// Fetch columns for a specific table
     func fetchColumns(table: String) async throws -> [ColumnInfo]
 
@@ -111,6 +114,10 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// Fetch an exact row count for the table filtered by `filters`.
     /// Returns nil when the driver can't count a filtered set, so the caller falls back.
     func fetchFilteredRowCount(table: String, filters: [TableFilter], logicMode: FilterLogicMode) async throws -> Int?
+
+    /// Fetch an exact row count for a user-initiated request. Drivers that cap their automatic
+    /// counts to keep browsing responsive must not apply that cap here.
+    func fetchExactRowCount(table: String, filters: [TableFilter], logicMode: FilterLogicMode) async throws -> Int?
 
     /// Fetch the DDL (CREATE TABLE statement) for a specific table
     func fetchTableDDL(table: String) async throws -> String
@@ -183,6 +190,8 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// Begin a transaction
     func beginTransaction() async throws
 
+    func beginTransaction(mode: PluginTransactionAccessMode) async throws
+
     /// Commit the current transaction
     func commitTransaction() async throws
 
@@ -229,6 +238,10 @@ extension DatabaseDriver {
 
     var queryBuildingPluginDriver: (any PluginDatabaseDriver)? { nil }
 
+    func beginTransaction(mode: PluginTransactionAccessMode) async throws {
+        try await beginTransaction()
+    }
+
     func quoteIdentifier(_ name: String) -> String {
         SQLEscaping.quoteIdentifier(name)
     }
@@ -251,6 +264,8 @@ extension DatabaseDriver {
     func fetchColumns(table: String, schema: String?) async throws -> [ColumnInfo] {
         try await fetchColumns(table: table)
     }
+
+    func fetchPartitions(table: String, schema: String?) async throws -> [TableInfo] { [] }
 
     func fetchTriggers(table: String) async throws -> [TriggerInfo] { [] }
 
@@ -401,6 +416,9 @@ extension DatabaseDriver {
 
     func fetchApproximateRowCount(table: String) async throws -> Int? { nil }
     func fetchFilteredRowCount(table: String, filters: [TableFilter], logicMode: FilterLogicMode) async throws -> Int? { nil }
+    func fetchExactRowCount(table: String, filters: [TableFilter], logicMode: FilterLogicMode) async throws -> Int? {
+        try await fetchFilteredRowCount(table: table, filters: filters, logicMode: logicMode)
+    }
 
     func supportedMaintenanceOperations() -> [String]? { nil }
     func maintenanceStatements(operation: String, table: String?, options: [String: String]) -> [String]? { nil }

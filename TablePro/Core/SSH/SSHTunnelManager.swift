@@ -23,7 +23,7 @@ enum AuthFailureReason: Sendable, Equatable, CaseIterable {
 }
 
 /// Error types for SSH tunnel operations
-enum SSHTunnelError: Error, LocalizedError, Equatable {
+enum SSHTunnelError: Error, LocalizedError, Equatable, Sendable {
     case tunnelCreationFailed(String)
     case tunnelAlreadyExists(UUID)
     case noAvailablePort
@@ -32,6 +32,8 @@ enum SSHTunnelError: Error, LocalizedError, Equatable {
     case hostKeyVerificationFailed
     case channelOpenFailed
     case socketForwardingRefused(path: String, detail: String)
+    case forwardRefused(destination: String, detail: String)
+    case forwardTimedOut(destination: String, seconds: Int)
 
     var errorDescription: String? {
         switch self {
@@ -76,6 +78,29 @@ enum SSHTunnelError: Error, LocalizedError, Equatable {
                 ),
                 path,
                 detail
+            )
+        case .forwardRefused(let destination, let detail):
+            return String(
+                format: String(
+                    localized: """
+                    The SSH server could not reach %@. That address is resolved from the SSH server, not from \
+                    your Mac, so a database that only listens on 127.0.0.1 needs Host set to localhost. Also \
+                    check that sshd allows TCP forwarding (AllowTcpForwarding). (%@)
+                    """
+                ),
+                destination,
+                detail
+            )
+        case .forwardTimedOut(let destination, let seconds):
+            return String(
+                format: String(
+                    localized: """
+                    The SSH server did not open a forwarding channel to %@ within %d seconds. Check for a \
+                    firewall between the SSH server and that address.
+                    """
+                ),
+                destination,
+                seconds
             )
         }
     }
@@ -250,6 +275,13 @@ actor SSHTunnelManager: TunnelManaging {
             return nil
         }
         return tunnel.localPort
+    }
+
+    /// The reason this tunnel last failed to open a forwarding channel, cleared as it is read.
+    /// The connect path reports it in place of the database driver's error, which can only ever
+    /// name a timeout because the driver sees an accepted socket that stayed silent.
+    func consumeLastForwardFailure(connectionId: UUID) -> SSHTunnelError? {
+        tunnels[connectionId]?.consumeLastForwardFailure()
     }
 
     /// Check if an error message indicates a local port bind failure

@@ -1,7 +1,7 @@
 import SwiftUI
 import TableProImport
 import TableProModels
-import TableProSync
+import TableProSyncTransport
 import UniformTypeIdentifiers
 
 struct ConnectionListView: View {

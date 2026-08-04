@@ -6,6 +6,7 @@
 import TableProPluginKit
 @testable import TablePro
 import XCTest
+import TableProSyncTransport
 
 @MainActor
 final class GroupStorageTests: XCTestCase {

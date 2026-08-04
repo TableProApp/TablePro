@@ -27,8 +27,7 @@ extension MainContentCoordinator {
         }
 
         Task {
-            let window = NSApp.keyWindow
-            let confirmed = await confirmDiscardChanges(action: action, window: window)
+            let confirmed = await confirmDiscardChanges(action: action, window: contentWindow)
             if confirmed {
                 changeManager.clearChangesAndUndoHistory()
             }

@@ -18,16 +18,7 @@ final class AppCommands {
     // MARK: - File / Connection Import-Export
 
     let openSQLFiles = PassthroughSubject<[URL], Never>()
-    let exportConnections = PassthroughSubject<Void, Never>()
-    let importConnections = PassthroughSubject<Void, Never>()
-    let importConnectionsFromApp = PassthroughSubject<Void, Never>()
-    let openProjectFolder = PassthroughSubject<Void, Never>()
-    let importConnectionFromURL = PassthroughSubject<Void, Never>()
     let exportQueryResults = PassthroughSubject<Void, Never>()
-
-    // MARK: - Window / Sheet Commands
-
-    let presentDatabaseTypeChooser = PassthroughSubject<DatabaseTypeChooserPayload, Never>()
 
     private init() {}
 }

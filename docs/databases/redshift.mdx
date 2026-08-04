@@ -31,6 +31,8 @@ See [Connection URL Reference](/databases/connection-urls).
 
 **Schemas**: like PostgreSQL, default schema `public`. Table metadata comes from `svv_table_info`: distribution style, sort keys, and table size.
 
+**Databases**: `dev`, the database created with every cluster, is listed like any other. Only `padb_harvest` is marked as a system database.
+
 **DDL**: table definitions include DISTKEY, SORTKEY, DISTSTYLE, and ENCODE directives. Foreign keys display as informational; Redshift does not enforce them.
 
 <Frame caption="Distribution style and sort keys in table info">

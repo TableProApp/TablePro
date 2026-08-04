@@ -29,7 +29,15 @@ struct DatabaseTreeNodeTests {
         #expect(Set([loading, empty, errored, otherParent]).count == 4)
     }
 
-    @Test("only database and schema nodes are expandable")
+    private func partitionedRef(_ name: String, schema: String? = "public") -> DatabaseTreeTableRef {
+        DatabaseTreeTableRef(
+            database: "shop",
+            schema: schema,
+            table: TableInfo(name: name, type: .partitionedTable, rowCount: 0)
+        )
+    }
+
+    @Test("database, schema, and partitioned table nodes are expandable")
     func expandable() {
         let database = DatabaseTreeNode(id: "d", kind: .database(.minimal(name: "shop")))
         let schema = DatabaseTreeNode(id: "s", kind: .schema(database: "shop", schema: "public"))
@@ -40,6 +48,26 @@ struct DatabaseTreeNodeTests {
         #expect(schema.isExpandable)
         #expect(!table.isExpandable)
         #expect(!status.isExpandable)
+    }
+
+    @Test("a partitioned table expands but its partitions and other kinds do not")
+    func partitionedTableExpandable() {
+        let parent = DatabaseTreeNode(id: "p", kind: .table(partitionedRef("orders")))
+        let leafPartition = DatabaseTreeNode(id: "c", kind: .table(tableRef("orders_2024_01")))
+        let subpartitioned = DatabaseTreeNode(id: "sp", kind: .table(partitionedRef("orders_2024_02")))
+        let recent = DatabaseTreeNode(id: "r", kind: .recentTable(partitionedRef("orders")))
+
+        #expect(parent.isExpandable)
+        #expect(!leafPartition.isExpandable)
+        #expect(subpartitioned.isExpandable)
+        #expect(!recent.isExpandable)
+    }
+
+    @Test("a partition child gets its own node identity, distinct from its parent")
+    func partitionChildIdentity() {
+        let parentId = DatabaseTreeNode.tableId(partitionedRef("orders"))
+        let childId = DatabaseTreeNode.tableId(tableRef("orders_2024_01"))
+        #expect(parentId != childId)
     }
 
     @Test("tableRef is returned only for table nodes")

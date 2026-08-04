@@ -129,9 +129,11 @@ final class PaginationCoordinator {
     // MARK: - Cancel Current Query
 
     func cancelCurrentQuery() {
-        let hadInFlightTask = parent.currentQueryTask != nil
+        let hadInFlightTask = parent.currentQueryTask != nil || parent.currentRowCountTask != nil
         parent.currentQueryTask?.cancel()
         parent.currentQueryTask = nil
+        parent.currentRowCountTask?.cancel()
+        parent.currentRowCountTask = nil
         parent.queryGeneration += 1
         if hadInFlightTask, let driver = DatabaseManager.shared.driver(for: parent.connectionId) {
             try? driver.cancelQuery()
@@ -139,12 +141,71 @@ final class PaginationCoordinator {
         parent.toolbarState.setExecuting(false)
         for idx in parent.tabManager.tabs.indices {
             if parent.tabManager.tabs[idx].execution.isExecuting
-                || parent.tabManager.tabs[idx].pagination.isLoadingMore {
+                || parent.tabManager.tabs[idx].pagination.isLoadingMore
+                || parent.tabManager.tabs[idx].pagination.isCountingExact {
                 parent.tabManager.mutate(at: idx) { tab in
                     tab.execution.isExecuting = false
                     tab.pagination.isLoadingMore = false
+                    tab.pagination.isCountingExact = false
                 }
             }
+        }
+    }
+
+    // MARK: - Exact Row Count
+
+    func requestExactRowCount() {
+        guard let (tab, index) = parent.tabManager.selectedTabAndIndex,
+              tab.tabType == .table,
+              !tab.pagination.isCountingExact,
+              let tableName = tab.tableContext.tableName, !tableName.isEmpty else { return }
+
+        let tabId = tab.id
+        let schemaName = tab.tableContext.schemaName
+        let filters = tab.filterState.hasAppliedFilters ? tab.filterState.appliedFilters : []
+        let logicMode = tab.filterState.filterLogicMode
+        let isNonSQL = PluginManager.shared.editorLanguage(for: parent.connection.type) != .sql
+        let countSQL = isNonSQL ? nil : parent.queryBuilder.buildFilteredCountQuery(
+            tableName: tableName, schemaName: schemaName, filters: filters, logicMode: logicMode
+        )
+
+        parent.tabManager.mutate(at: index) { $0.pagination.isCountingExact = true }
+
+        parent.currentRowCountTask = Task(priority: .userInitiated) { [parent] in
+            let count = await Self.exactRowCount(
+                connectionId: parent.connectionId,
+                tableName: tableName,
+                filters: filters,
+                logicMode: logicMode,
+                countSQL: countSQL
+            )
+
+            guard !Task.isCancelled else { return }
+            parent.tabManager.mutate(tabId: tabId) { tab in
+                tab.pagination.isCountingExact = false
+                guard let count, count >= 0 else { return }
+                tab.pagination.totalRowCount = count
+                tab.pagination.isApproximateRowCount = false
+            }
+        }
+    }
+
+    private static func exactRowCount(
+        connectionId: UUID,
+        tableName: String,
+        filters: [TableFilter],
+        logicMode: FilterLogicMode,
+        countSQL: String?
+    ) async -> Int? {
+        try? await DatabaseManager.shared.withMetadataDriver(connectionId: connectionId, workload: .bulk) { driver in
+            guard let countSQL else {
+                return try await driver.fetchExactRowCount(
+                    table: tableName, filters: filters, logicMode: logicMode
+                )
+            }
+            let result = try await driver.execute(query: countSQL)
+            guard let countStr = result.rows.first?.first?.asText else { return Int?.none }
+            return Int(countStr)
         }
     }
 

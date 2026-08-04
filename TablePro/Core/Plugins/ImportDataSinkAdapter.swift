@@ -129,7 +129,7 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
     }
 
     func beginTransaction() async throws {
-        try await driver.beginTransaction()
+        try await driver.beginTransaction(mode: .readWrite)
     }
 
     func commitTransaction() async throws {

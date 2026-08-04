@@ -300,13 +300,11 @@ struct MainEditorContentView: View {
         guard containerSwitchTarget == .database else { return [] }
         let all = treeService.databases(for: connectionId)
         let selected = SharedSidebarState.forConnection(connectionId).databaseFilterSelected
-        var visible = DatabaseTreeVisibility.visible(databases: all, selected: selected)
-        let bound = containerName(for: tab)
-        if !bound.isEmpty, !visible.contains(where: { $0.name == bound }),
-           let boundDatabase = all.first(where: { $0.name == bound }) {
-            visible.insert(boundDatabase, at: 0)
-        }
-        return visible
+        return DatabaseTreeVisibility.visible(
+            databases: all,
+            selected: selected,
+            activeDatabase: containerName(for: tab)
+        )
     }
 
     private var isContainerSwitchReadOnly: Bool {
@@ -459,6 +457,8 @@ struct MainEditorContentView: View {
                 // selectedTabIndex would overwrite the new tab's query.
                 guard tabManager.mutate(tabId: tabId, { $0.content.query = newValue }) else { return }
 
+                coordinator.scheduleDraftSave()
+
                 // Typing into a scratch tab dirties it too: the text lives nowhere but this tab.
                 // The dot belongs to this tab's own window, not whichever window happens to be
                 // key, because a background window tab's editor stays mounted and can fire here.
@@ -522,6 +522,12 @@ struct MainEditorContentView: View {
         }
     }
 
+    private func structureDatabaseName(for tab: QueryTab) -> String {
+        tab.tableContext.databaseName.isEmpty
+            ? coordinator.activeDatabaseName
+            : tab.tableContext.databaseName
+    }
+
     @ViewBuilder
     private func resultsSection(tab: QueryTab) -> some View {
         VStack(spacing: 0) {
@@ -532,14 +538,17 @@ struct MainEditorContentView: View {
                     TableStructureView(
                         tableName: tableName,
                         connection: connection,
+                        databaseName: structureDatabaseName(for: tab),
+                        schemaName: tab.tableContext.schemaName,
                         toolbarState: coordinator.toolbarState,
                         coordinator: coordinator,
                         selectionState: selectionState
                     )
-                    .id(tableName)
+                    .id("\(tab.tableContext.databaseName).\(tableName)")
                     .frame(maxHeight: .infinity)
                 }
             case .json:
+                resultTabBarSection(tab: tab)
                 ResultsJsonView(
                     tableRows: resolvedTableRows(for: tab),
                     selectedRowIndices: selectionState.indices
@@ -549,10 +558,7 @@ struct MainEditorContentView: View {
                     ExplainResultView(text: explainText, executionTime: tab.display.explainExecutionTime, plan: tab.display.explainPlan)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
-                    if showsResultTabBar(for: tab) {
-                        resultTabBar(tab: tab)
-                        Divider()
-                    }
+                    resultTabBarSection(tab: tab)
 
                     let resolvedRows = resolvedTableRows(for: tab)
                     if let rs = tab.display.activeResultSet, rs.resultColumns.isEmpty,
@@ -613,9 +619,12 @@ struct MainEditorContentView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private func showsResultTabBar(for tab: QueryTab) -> Bool {
-        if tab.display.resultSets.count > 1 { return true }
-        return tab.tabType == .query && !tab.display.resultSets.isEmpty
+    @ViewBuilder
+    private func resultTabBarSection(tab: QueryTab) -> some View {
+        if ResultTabBarPolicy.showsTabBar(tabType: tab.tabType, display: tab.display) {
+            resultTabBar(tab: tab)
+            Divider()
+        }
     }
 
     private func resultTabBar(tab: QueryTab) -> some View {
@@ -630,7 +639,7 @@ struct MainEditorContentView: View {
             onClose: { id in
                 coordinator.closeResultSet(id: id)
             },
-            onPin: { id in
+            onTogglePin: { id in
                 coordinator.togglePinResultSet(id: id)
             }
         )
@@ -800,7 +809,8 @@ struct MainEditorContentView: View {
                 onLast: onLastPage,
                 onPageSizeChange: onPageSizeChange,
                 onShowAll: onShowAll,
-                onGoToPage: onGoToPage
+                onGoToPage: onGoToPage,
+                onRequestExactCount: { coordinator.paginationCoordinator.requestExactRowCount() }
             ),
             columnState: StatusBarColumnState(
                 hidden: tab.columnLayout.hiddenColumns,

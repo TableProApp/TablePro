@@ -10,6 +10,7 @@
 		5A72D6232F97A69500E2ADE0 /* Secrets.xcconfig in Resources */ = {isa = PBXBuildFile; fileRef = 5A72D6222F97A69500E2ADE0 /* Secrets.xcconfig */; };
 		5A7E81B12F95F23600EEF236 /* TableProAnalytics in Frameworks */ = {isa = PBXBuildFile; productRef = 5A87EEED2F7F893000D028D1 /* TableProAnalytics */; };
 		5A87EEED2F7F893000D028D0 /* TableProSync in Frameworks */ = {isa = PBXBuildFile; productRef = 5A87EEEC2F7F893000D028D0 /* TableProSync */; };
+		5A87EEEE2F7F893000D028E0 /* TableProSyncTransport in Frameworks */ = {isa = PBXBuildFile; productRef = 5A87EEEF2F7F893000D028E1 /* TableProSyncTransport */; };
 		5AA136062F82610F00ADCD58 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5AA136052F82610F00ADCD58 /* WidgetKit.framework */; };
 		5AA136082F82610F00ADCD58 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5AA136072F82610F00ADCD58 /* SwiftUI.framework */; };
 		5AA136132F82611000ADCD58 /* TableProWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 5AA136042F82610F00ADCD58 /* TableProWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -616,6 +617,7 @@
 				5AD0CCDB2F0000000000F002 /* DuckDB.xcframework in Frameworks */,
 				5AD1F1B62FB4455700296783 /* TableProMSSQLCore in Frameworks */,
 				5A87EEED2F7F893000D028D0 /* TableProSync in Frameworks */,
+				5A87EEEE2F7F893000D028E0 /* TableProSyncTransport in Frameworks */,
 				5AB9F3EB2F7C1D03001F3337 /* TableProModels in Frameworks */,
 				5A1MPORT00000000000000I1 /* TableProImport in Frameworks */,
 			);
@@ -1624,15 +1626,23 @@
 		5A87EEEB2F7F891F00D028D0 /* TableProSync */ = {
 			isa = PBXGroup;
 			children = (
+				5A87EEE92F7F891F00D028D0 /* SyncRecordMapper.swift */,
+			);
+			name = TableProSync;
+			path = ../Packages/TableProCore/Sources/TableProSync;
+			sourceTree = "<group>";
+		};
+		5A87EEF02F7F891F00D028E2 /* TableProSyncTransport */ = {
+			isa = PBXGroup;
+			children = (
 				5A87EEE52F7F891F00D028D0 /* CloudKitSyncEngine.swift */,
 				5A87EEE62F7F891F00D028D0 /* SyncConflict.swift */,
 				5A87EEE72F7F891F00D028D0 /* SyncError.swift */,
 				5A87EEE82F7F891F00D028D0 /* SyncMetadataStorage.swift */,
-				5A87EEE92F7F891F00D028D0 /* SyncRecordMapper.swift */,
 				5A87EEEA2F7F891F00D028D0 /* SyncRecordType.swift */,
 			);
-			name = TableProSync;
-			path = ../Packages/TableProCore/Sources/TableProSync;
+			name = TableProSyncTransport;
+			path = ../Packages/TableProCore/Sources/TableProSyncTransport;
 			sourceTree = "<group>";
 		};
 		5AA313332F7EA5B4008EBA97 /* Frameworks */ = {
@@ -1641,6 +1651,7 @@
 				5AD1F1B72FB4456900296783 /* FreeTDS.xcframework */,
 				5AD0CCDB2F0000000000F001 /* DuckDB.xcframework */,
 				5A87EEEB2F7F891F00D028D0 /* TableProSync */,
+				5A87EEF02F7F891F00D028E2 /* TableProSyncTransport */,
 				5A87EEE42F7F88F200D028D0 /* TablePro */,
 				5AA313532F7EC188008EBA97 /* LibSSH2.xcframework */,
 				5AA313352F7EA5B4008EBA97 /* Hiredis.xcframework */,
@@ -1738,6 +1749,7 @@
 				5AB9F3EC2F7C1D03001F3337 /* TableProPluginKit */,
 				5AB9F3EE2F7C1D03001F3337 /* TableProQuery */,
 				5A87EEEC2F7F893000D028D0 /* TableProSync */,
+				5A87EEEF2F7F893000D028E1 /* TableProSyncTransport */,
 				5A87EEED2F7F893000D028D1 /* TableProAnalytics */,
 				5AD1F1B52FB4455700296783 /* TableProMSSQLCore */,
 			);
@@ -2254,6 +2266,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 5AB9F3E72F7C1D03001F3337 /* XCLocalSwiftPackageReference "../Packages/TableProCore" */;
 			productName = TableProSync;
+		};
+		5A87EEEF2F7F893000D028E1 /* TableProSyncTransport */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 5AB9F3E72F7C1D03001F3337 /* XCLocalSwiftPackageReference "../Packages/TableProCore" */;
+			productName = TableProSyncTransport;
 		};
 		5A87EEED2F7F893000D028D1 /* TableProAnalytics */ = {
 			isa = XCSwiftPackageProductDependency;

@@ -3,7 +3,7 @@ title: SSH Tunneling
 description: Route database connections through an SSH tunnel to reach servers in private networks
 ---
 
-TablePro tunnels database connections through SSH using a built-in libssh2 client. No `ssh` binary or external setup is required. The tunnel opens a local forwarding port in the 60000-65000 range (this is why macOS may show a network permission prompt), sends a keep-alive every 30 seconds, and reconnects automatically if the tunnel dies.
+TablePro tunnels database connections through SSH using a built-in libssh2 client. No `ssh` binary or external setup is required. The tunnel opens a local forwarding port in the 60000-65000 range (this is why macOS may show a network permission prompt), sends a keep-alive every 30 seconds, and reconnects automatically if the tunnel dies. Before handing that port to the database driver, TablePro checks that the SSH server can actually reach the destination, so a wrong host or a blocked forward fails with the real reason instead of a database timeout.
 
 The **SSH Tunnel** pane appears only for databases whose driver supports it. SQLite, PGlite, libSQL, Beancount, BigQuery, Cloudflare D1, DynamoDB, Elasticsearch, and Snowflake do not show it: they are reached over a local file, a loopback socket, or a vendor HTTP API.
 
@@ -134,10 +134,14 @@ Paste a `scheme+ssh://` URL to create a connection with SSH pre-filled. The `+ss
 
 **Tunnel connects but the database fails**: the database host is resolved from the SSH server, not your Mac. Verify it from the server: `ssh user@server "nc -z db-host 5432"`. Also check that the database credentials differ from the SSH ones where they should.
 
-**Tunnel connects but the database times out reading the server greeting**: the tunnel could not open its forwarding channel to the database. TablePro gives up after 10 seconds and closes the connection. Open Console.app and filter on `com.TablePro` to see the `LibSSH2Tunnel` message naming the destination and the reason. Check that the SSH server allows TCP forwarding (`AllowTcpForwarding yes`) and that it can reach the database host itself.
+**"The SSH server could not reach \<host\>"**: the SSH connection is fine, but the SSH server could not open a connection to the database. Almost always the **Host** field. That address is resolved from the SSH server, not from your Mac, so if the database only listens on `127.0.0.1` (the default for MySQL and PostgreSQL), **Host** has to be `localhost`, not the server's public name or IP. Check what the database is bound to with `ss -lntp` on the server. If the host is right, check that `sshd_config` has `AllowTcpForwarding yes`.
+
+**"The SSH server did not open a forwarding channel to \<host\>"**: the destination took the connection attempt and never answered, which usually means a firewall or security group is dropping packets rather than refusing them. Test it from the SSH server itself: `ssh user@server "nc -zv db-host 3306"`.
 
 **Tunnel drops on idle networks**: TablePro already sends a libssh2 keep-alive every 30 seconds plus OS-level TCP keep-alives. If tunnels still drop, check the server's `ClientAliveInterval` and idle timeouts on firewalls or load balancers in between.
 
 **Firewall prompt on connect**: TablePro listens on a local port between 60000 and 65000 for the tunnel. Allow it.
+
+**SSH fails right away against a server on your own network**: macOS 15 and later gate outbound connections to local network addresses behind a Local Network permission, and a denied app fails fast with "no route to host". Check TablePro under System Settings > Privacy & Security > Local Network. Servers reached over the internet, and anything on `127.0.0.1`, are not affected.
 
 **SSH itself fails**: test the same host, user, and key in Terminal with `ssh -v user@server`. If that fails, the problem is server-side, not TablePro.

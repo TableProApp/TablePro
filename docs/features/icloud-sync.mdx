@@ -1,9 +1,9 @@
 ---
 title: iCloud Sync
-description: Sync connections, table favorites, settings, and SSH profiles across Macs via iCloud
+description: Sync connections, table favorites, settings, and SSH profiles across Macs and iOS via iCloud
 ---
 
-TablePro syncs your connections, groups, table favorites, saved queries, settings, and SSH profiles across all your Macs via CloudKit. iCloud Sync requires an active license (Starter or Team, see [Licensing](/features/licensing)).
+TablePro syncs your connections, groups, table favorites, saved queries, settings, and SSH profiles across all your Macs via CloudKit. The iPhone and iPad app shares the same iCloud data, but syncs connections, groups, and tags only. iCloud Sync requires an active license (Starter or Team, see [Licensing](/features/licensing)).
 
 ## What syncs (and what doesn't)
 
@@ -45,7 +45,7 @@ Local-only connections show an `icloud.slash` icon in the sidebar. The flag is p
 
 TablePro auto-syncs on app launch, when you switch back to it, and 2 seconds after you modify synced data.
 
-When the same record changes on two Macs, you choose to keep the local or remote version. Conflicts are per-record, not per-category.
+When the same connection changes on two devices, TablePro merges them field by field: a name changed on one device and a port changed on the other both survive. If the same field changed in both places, the device that syncs last wins.
 
 When a license expires, sync stops but local data remains. Re-activate to resume.
 

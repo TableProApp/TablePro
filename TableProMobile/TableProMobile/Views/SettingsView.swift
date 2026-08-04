@@ -1,6 +1,6 @@
 import SwiftUI
 import TableProModels
-import TableProSync
+import TableProSyncTransport
 
 struct SettingsView: View {
     @Environment(AppState.self) private var appState
@@ -139,8 +139,8 @@ struct SettingsView: View {
                 Text(String(localized: "Syncing\u{2026}"))
                     .foregroundStyle(.secondary)
             }
-        case .error(let message):
-            Text(message)
+        case .error(let error):
+            Text(error.localizedDescription)
                 .foregroundStyle(.red)
                 .multilineTextAlignment(.trailing)
                 .lineLimit(2)
@@ -152,6 +152,9 @@ struct SettingsView: View {
                 Text(String(localized: "Never"))
                     .foregroundStyle(.secondary)
             }
+        case .disabled:
+            Text(String(localized: "Off"))
+                .foregroundStyle(.secondary)
         }
     }
 

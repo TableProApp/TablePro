@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProSyncTransport
 
 enum SyncScope: Equatable {
     case synced

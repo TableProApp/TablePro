@@ -22,6 +22,15 @@ struct FieldEditState: Identifiable {
     var isPrimaryKey: Bool = false
     var isForeignKey: Bool = false
 
+    /// Set when the owning grid dictates the editor instead of the column type.
+    var editor: FieldEditorKind?
+
+    /// A schema field has no data type, so it offers no type badge and no NULL or DEFAULT state.
+    var isSchemaField: Bool = false
+
+    /// The value already differs from the loaded schema because the edit is recorded elsewhere.
+    var hasCommittedEdit: Bool = false
+
     var originalValue: String?
 
     let hasMultipleValues: Bool
@@ -149,6 +158,41 @@ final class MultiRowEditState {
         }
 
         self.fields = newFields
+    }
+
+    /// Configure state for a single schema row supplied by the grid that owns the selection.
+    /// Field ids survive a reconfigure of the same row so a commit does not rebuild the
+    /// editors and drop focus while the user is still moving between fields.
+    func configure(schemaFields: [InspectorRowField], displayRow: Int) {
+        let names = schemaFields.map(\.name)
+        let reusedIds = selectedRowIndices == [displayRow] && columns == names ? fields.map(\.id) : []
+
+        selectedRowIndices = [displayRow]
+        columns = names
+        columnTypes = Array(repeating: .text(rawType: nil), count: names.count)
+        allRows = [schemaFields.map(\.value)]
+
+        fields = schemaFields.enumerated().map { index, field in
+            var state = FieldEditState(
+                columnIndex: index,
+                columnName: field.name,
+                columnTypeEnum: .text(rawType: nil),
+                isLongText: false,
+                isJson: false,
+                editor: field.editor,
+                isSchemaField: true,
+                hasCommittedEdit: field.isModified,
+                originalValue: field.value,
+                hasMultipleValues: false,
+                pendingValue: nil,
+                isPendingNull: false,
+                isPendingDefault: false
+            )
+            if index < reusedIds.count {
+                state.id = reusedIds[index]
+            }
+            return state
+        }
     }
 
     /// Update a field's pending value

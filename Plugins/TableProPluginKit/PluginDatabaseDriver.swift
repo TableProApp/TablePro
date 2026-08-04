@@ -82,6 +82,7 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     func executeUserQuery(query: String, rowCap: Int?, parameters: [PluginCellValue]?) async throws -> PluginQueryResult
 
     func fetchTables(schema: String?) async throws -> [PluginTableInfo]
+    func fetchPartitions(table: String, schema: String?) async throws -> [PluginTableInfo]
     func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo]
     func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo]
     func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo]
@@ -99,6 +100,7 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
 
     var supportsTransactions: Bool { get }
     func beginTransaction() async throws
+    func beginTransaction(mode: PluginTransactionAccessMode) async throws
     func commitTransaction() async throws
     func rollbackTransaction() async throws
 
@@ -131,6 +133,8 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     func buildFilteredQuery(table: String, schema: String?, filters: [(column: String, op: String, value: String)], logicMode: String, sortColumns: [(columnIndex: Int, ascending: Bool)], columns: [String], limit: Int, offset: Int) -> String?
     // Filtered row count (optional, for NoSQL plugins; SQL plugins use COUNT(*) WHERE)
     func fetchFilteredRowCount(table: String, filters: [(column: String, op: String, value: String)], logicMode: String) async throws -> Int?
+    // User-initiated exact row count (allowed to be slow; background count caps must not apply)
+    func fetchExactRowCount(table: String, schema: String?, filters: [(column: String, op: String, value: String)], logicMode: String) async throws -> Int?
     // Statement generation (optional, for NoSQL plugins)
     func generateStatements(table: String, columns: [String], primaryKeyColumns: [String], changes: [PluginRowChange], insertedRowData: [Int: [PluginCellValue]], deletedRowIndices: Set<Int>, insertedRowIndices: Set<Int>) -> [(statement: String, parameters: [PluginCellValue])]?
     func generateStatements(table: String, schema: String?, columns: [String], primaryKeyColumns: [String], changes: [PluginRowChange], insertedRowData: [Int: [PluginCellValue]], deletedRowIndices: Set<Int>, insertedRowIndices: Set<Int>) -> [(statement: String, parameters: [PluginCellValue])]?
@@ -201,6 +205,10 @@ public extension PluginDatabaseDriver {
 
     func fetchTriggers(table: String, schema: String?) async throws -> [PluginTriggerInfo] { [] }
 
+    /// Engines whose partitions are metadata on one table object, rather than
+    /// separate relations, have nothing to nest and keep the empty default.
+    func fetchPartitions(table: String, schema: String?) async throws -> [PluginTableInfo] { [] }
+
     func createTriggerTemplate(table: String, schema: String?) -> String? { nil }
     func fetchTriggerDefinition(name: String, table: String, schema: String?) async throws -> String? { nil }
     func generateDropTriggerSQL(name: String, table: String, schema: String?) -> String? { nil }
@@ -219,6 +227,10 @@ public extension PluginDatabaseDriver {
 
     func beginTransaction() async throws {
         _ = try await execute(query: "BEGIN")
+    }
+
+    func beginTransaction(mode: PluginTransactionAccessMode) async throws {
+        try await beginTransaction()
     }
 
     func commitTransaction() async throws {
@@ -316,6 +328,9 @@ public extension PluginDatabaseDriver {
         buildFilteredQuery(table: table, filters: filters, logicMode: logicMode, sortColumns: sortColumns, columns: columns, limit: limit, offset: offset)
     }
     func fetchFilteredRowCount(table: String, filters: [(column: String, op: String, value: String)], logicMode: String) async throws -> Int? { nil }
+    func fetchExactRowCount(table: String, schema: String?, filters: [(column: String, op: String, value: String)], logicMode: String) async throws -> Int? {
+        try await fetchFilteredRowCount(table: table, filters: filters, logicMode: logicMode)
+    }
     func generateStatements(table: String, columns: [String], primaryKeyColumns: [String], changes: [PluginRowChange], insertedRowData: [Int: [PluginCellValue]], deletedRowIndices: Set<Int>, insertedRowIndices: Set<Int>) -> [(statement: String, parameters: [PluginCellValue])]? { nil }
     func generateStatements(table: String, schema: String?, columns: [String], primaryKeyColumns: [String], changes: [PluginRowChange], insertedRowData: [Int: [PluginCellValue]], deletedRowIndices: Set<Int>, insertedRowIndices: Set<Int>) -> [(statement: String, parameters: [PluginCellValue])]? {
         generateStatements(

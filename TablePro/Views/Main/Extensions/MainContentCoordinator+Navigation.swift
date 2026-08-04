@@ -17,6 +17,7 @@ extension MainContentCoordinator {
 
     func openTableTab(
         _ table: TableInfo,
+        schema: String? = nil,
         showStructure: Bool = false,
         forceNonPreview: Bool = false,
         activateGridFocus: Bool = false,
@@ -24,7 +25,7 @@ extension MainContentCoordinator {
     ) {
         openTableTab(
             table.name,
-            schema: table.schema,
+            schema: schema ?? table.schema,
             showStructure: showStructure,
             isView: table.type == .view,
             forceNonPreview: forceNonPreview,
@@ -377,6 +378,7 @@ extension MainContentCoordinator {
 
         do {
             try await DatabaseManager.shared.switchDatabase(to: database, for: connectionId, persist: persist)
+            toolbarState.currentSchema = DatabaseManager.shared.session(for: connectionId)?.currentSchema
 
             await SchemaService.shared.invalidate(connectionId: connectionId)
 

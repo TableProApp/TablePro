@@ -91,6 +91,20 @@ extension RedisPluginDriver {
         )
     }
 
+    func executeKeyTree(
+        pattern: String?,
+        limit: Int,
+        connection conn: RedisPluginConnection,
+        startTime: Date
+    ) async throws -> PluginQueryResult {
+        let keys = try await scanAllKeys(
+            connection: conn, pattern: pattern, maxKeys: limit
+        )
+        return try await buildKeyTreeResult(
+            keys: keys, connection: conn, startTime: startTime, isTruncated: keys.count >= limit
+        )
+    }
+
     func handleScanResult(
         _ result: RedisReply,
         connection conn: RedisPluginConnection,

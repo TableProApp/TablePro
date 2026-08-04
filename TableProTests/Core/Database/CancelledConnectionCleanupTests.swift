@@ -42,40 +42,40 @@ struct CancelledConnectionCleanupTests {
         #expect(DatabaseManager.shared.activeSessions[id] == nil)
     }
 
-    @Test("Cancelled finalize keeps currentSessionId untouched")
-    func cancelledKeepsCurrentSessionId() {
+    @Test("Cancelled finalize keeps lastActiveSessionId untouched")
+    func cancelledKeepsLastActiveSessionId() {
         let id = UUID()
         DatabaseManager.shared.injectSession(
             ConnectionSession(connection: TestFixtures.makeConnection(id: id, name: "Retry")),
             for: id
         )
-        DatabaseManager.shared.currentSessionId = id
+        DatabaseManager.shared.lastActiveSessionId = id
         defer {
             DatabaseManager.shared.removeSession(for: id)
-            DatabaseManager.shared.currentSessionId = nil
+            DatabaseManager.shared.lastActiveSessionId = nil
         }
 
         DatabaseManager.shared.finalizeConnectionFailure(for: id, cancelled: true)
 
-        #expect(DatabaseManager.shared.currentSessionId == id)
+        #expect(DatabaseManager.shared.lastActiveSessionId == id)
     }
 
-    @Test("Genuine failure clears currentSessionId when no other session remains")
-    func genuineFailureClearsCurrentSessionId() {
+    @Test("Genuine failure clears lastActiveSessionId when no other session remains")
+    func genuineFailureClearsLastActiveSessionId() {
         let id = UUID()
         DatabaseManager.shared.injectSession(
             ConnectionSession(connection: TestFixtures.makeConnection(id: id, name: "Failed")),
             for: id
         )
-        DatabaseManager.shared.currentSessionId = id
+        DatabaseManager.shared.lastActiveSessionId = id
         defer {
             DatabaseManager.shared.removeSession(for: id)
-            DatabaseManager.shared.currentSessionId = nil
+            DatabaseManager.shared.lastActiveSessionId = nil
         }
 
         DatabaseManager.shared.finalizeConnectionFailure(for: id, cancelled: false)
 
-        #expect(DatabaseManager.shared.currentSessionId != id)
+        #expect(DatabaseManager.shared.lastActiveSessionId != id)
     }
 
     @Test("Cancelling a pending connection invalidates the attempt still in flight")
@@ -94,7 +94,7 @@ struct CancelledConnectionCleanupTests {
         #expect(DatabaseManager.shared.activeSessions[id] == nil)
     }
 
-    @Test("Genuine failure moves currentSessionId to a remaining session")
+    @Test("Genuine failure moves lastActiveSessionId to a remaining session")
     func genuineFailureSwitchesToRemainingSession() {
         let failedId = UUID()
         let otherId = UUID()
@@ -106,16 +106,19 @@ struct CancelledConnectionCleanupTests {
             ConnectionSession(connection: TestFixtures.makeConnection(id: otherId, name: "Other")),
             for: otherId
         )
-        DatabaseManager.shared.currentSessionId = failedId
+        DatabaseManager.shared.lastActiveSessionId = failedId
         defer {
             DatabaseManager.shared.removeSession(for: failedId)
             DatabaseManager.shared.removeSession(for: otherId)
-            DatabaseManager.shared.currentSessionId = nil
+            DatabaseManager.shared.lastActiveSessionId = nil
         }
 
         DatabaseManager.shared.finalizeConnectionFailure(for: failedId, cancelled: false)
 
-        #expect(DatabaseManager.shared.currentSessionId == otherId)
+        let moved = DatabaseManager.shared.lastActiveSessionId
+        #expect(moved != failedId)
+        #expect(moved != nil)
+        #expect(moved.flatMap { DatabaseManager.shared.activeSessions[$0] } != nil)
         #expect(DatabaseManager.shared.activeSessions[otherId] != nil)
     }
 }

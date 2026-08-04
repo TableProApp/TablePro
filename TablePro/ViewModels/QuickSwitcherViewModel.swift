@@ -115,6 +115,9 @@ internal final class QuickSwitcherViewModel {
             case .systemTable:
                 kind = .systemTable
                 subtitle = String(localized: "System")
+            case .partitionedTable:
+                kind = .table
+                subtitle = String(localized: "Partitioned Table")
             }
             items.append(QuickSwitcherItem(
                 id: "table_\(table.name)_\(table.type.rawValue)",
@@ -127,11 +130,14 @@ internal final class QuickSwitcherViewModel {
 
         let switchTarget = services.pluginManager.containerSwitchTarget(for: databaseType)
         let databaseFilter = SharedSidebarState.forConnection(connectionId).databaseFilterSelected
+        let activeDatabase = services.databaseManager.session(for: connectionId)
+            .map { services.databaseManager.activeDatabaseName(for: $0.connection) }
         let visibleDatabaseNames = switchTarget == .database
             ? Set(
                 DatabaseTreeVisibility.visible(
                     databases: DatabaseTreeMetadataService.shared.databases(for: connectionId),
-                    selected: databaseFilter
+                    selected: databaseFilter,
+                    activeDatabase: activeDatabase
                 ).map(\.name)
             )
             : []
@@ -146,7 +152,7 @@ internal final class QuickSwitcherViewModel {
                 if switchTarget == .database {
                     if !visibleDatabaseNames.isEmpty {
                         if !visibleDatabaseNames.contains(db) { continue }
-                    } else if !databaseFilter.isEmpty, !databaseFilter.contains(db) {
+                    } else if !databaseFilter.isEmpty, db != activeDatabase, !databaseFilter.contains(db) {
                         continue
                     }
                 }

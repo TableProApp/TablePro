@@ -5,6 +5,7 @@
 
 import AppKit
 import SwiftUI
+import TableProPluginKit
 
 extension TableViewCoordinator {
     // MARK: - Cell Interaction
@@ -53,6 +54,7 @@ extension TableViewCoordinator {
             isTableEditable: isEditable,
             isRowDeleted: changeManager.isRowDeleted(row),
             isImmutableColumn: immutable.contains(columnName),
+            isBinaryValue: cellTypedValue(at: row, column: columnIndex).asBytes != nil,
             displayFormatOverride: override
         )
     }

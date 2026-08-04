@@ -58,7 +58,7 @@ For untrusted-CA endpoints (Upstash, internal load balancers), pick **Required (
   <img className="hidden dark:block" src="/images/redis-key-browser-dark.png" alt="Redis keys grouped by namespace in the sidebar with values in the data grid" />
 </Frame>
 
-**Key-Value Viewing**: The grid has **Key**, **Type**, **TTL**, and **Value** columns. The Value column previews the key: strings as text, hashes as a JSON object, lists and sets as a JSON array, sorted sets as `member:score` pairs, streams as the newest 5 entries. Previews are cut off at 1,000 characters. Only a string Value cell can be edited in the grid; change the other types in the CLI.
+**Key-Value Viewing**: The grid has **Key**, **Type**, **TTL**, **Length**, and **Value** columns. A string key shows its complete value, however long it is. The other types show the first 100 elements as JSON: hashes as an object, lists and sets as an array, sorted sets as `[member, score]` pairs, streams as `[id, fields]` for the newest 5 entries. The Length column is what Redis reports for the key, so you can tell how much a preview leaves out: bytes for a string (`STRLEN`), element count for everything else (`LLEN`, `HLEN`, `SCARD`, `ZCARD`, `XLEN`). Only a string Value cell can be edited in the grid; change the other types in the CLI. A value that is not valid UTF-8, such as a gzip or MessagePack payload, shows as binary and opens in the hex editor rather than as text.
 
 **TTL Management**: The TTL column shows seconds to expiry. `-1` means no expiration, `-2` means the key does not exist. Edit the cell to run `EXPIRE`, or set it to `-1` to run `PERSIST`.
 
@@ -68,7 +68,7 @@ For untrusted-CA endpoints (Upstash, internal load balancers), pick **Required (
 - Matching runs server-side with `SCAN MATCH` and `SCAN TYPE`, and stops after 10,000 matching keys.
 - Filtering by key value or TTL is not supported, since Redis has no server-side primitive for it.
 
-**Redis CLI**: Each statement is one Redis command. To run several in one go, separate them with `;`. TablePro passes each command through as-is, including commands it does not recognize; only the result formatting is type-aware. Redis has no comment syntax, and TablePro does not strip comments, so a `--` or `#` line inside a statement is sent to the server and fails.
+**Redis CLI**: Each statement is one Redis command. To run several in one go, separate them with `;`. TablePro passes each command through as-is, including commands it does not recognize; only the result formatting is type-aware. Arguments are quoted the same way `redis-cli` quotes them, so `"` and `'` both work and `\xHH` writes a raw byte. Unbalanced quotes are rejected instead of being guessed at. Redis has no comment syntax, and TablePro does not strip comments, so a `--` or `#` line inside a statement is sent to the server and fails.
 
 The blocks below list one command per line for reference.
 
@@ -116,6 +116,7 @@ DBSIZE
 ## Limitations
 
 - Cluster mode is not supported. Connect to a single node.
+- Keys must be valid UTF-8 to appear in the grid or the sidebar tree. Values have no such limit.
 - Pub/Sub has no grid support. `PUBLISH` runs in the CLI, but there is no subscriber view.
-- The grid previews a stream's newest 5 entries. Use `XRANGE` in the CLI for the rest.
+- The grid previews the first 100 elements of a hash, list, set, or sorted set, and a stream's newest 5 entries. The Length column shows the real size. Use `HGETALL`, `LRANGE`, or `XRANGE` in the CLI for the rest.
 - The sidebar key tree loads at most 50,000 keys, and key filtering scans at most 10,000 matching keys.

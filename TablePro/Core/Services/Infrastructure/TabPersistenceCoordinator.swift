@@ -37,9 +37,13 @@ internal final class TabPersistenceCoordinator {
         saveNow(windowedTabs: tabs.map { (tab: $0, windowGroupIndex: 0) }, selectedTabId: selectedTabId)
     }
 
+    /// An automatic save never deletes. A window that has not restored yet, a connection still
+    /// waiting on its driver, and a window torn down during quit all present an empty tab list
+    /// that says nothing about what the user wants kept, so treating it as a delete instruction
+    /// destroys drafts the user never closed. Only `clearForUserClosedAllTabs()` removes state.
     internal func saveNow(windowedTabs: [(tab: QueryTab, windowGroupIndex: Int)], selectedTabId: UUID?) {
         guard !windowedTabs.isEmpty else {
-            clearSavedState()
+            Self.logger.debug("[persist] saveNow skipped empty tab set connId=\(self.connectionId, privacy: .public)")
             return
         }
         let persisted = windowedTabs.map { $0.tab.toPersistedTab(windowGroupIndex: $0.windowGroupIndex) }
@@ -60,9 +64,7 @@ internal final class TabPersistenceCoordinator {
 
     internal func saveNowSync(windowedTabs: [(tab: QueryTab, windowGroupIndex: Int)], selectedTabId: UUID?) {
         guard !windowedTabs.isEmpty else {
-            saveTask?.cancel()
-            saveTask = nil
-            TabDiskActor.clearSync(connectionId: connectionId)
+            Self.logger.debug("[persist] saveNowSync skipped empty tab set connId=\(self.connectionId, privacy: .public)")
             return
         }
         let persisted = windowedTabs.map { $0.tab.toPersistedTab(windowGroupIndex: $0.windowGroupIndex) }
@@ -85,13 +87,15 @@ internal final class TabPersistenceCoordinator {
 
     // MARK: - Clear
 
-    internal func clearSavedState() {
+    /// Removes the connection's saved tabs. Reserved for the user closing every tab themselves.
+    /// No automatic save path may call this: an empty in-memory tab list is not consent to
+    /// discard what is on disk.
+    internal func clearForUserClosedAllTabs() {
         saveTask?.cancel()
         saveTask = nil
         let connId = connectionId
-        Task {
-            await TabDiskActor.shared.clear(connectionId: connId)
-        }
+        Self.logger.debug("[persist] clearing saved state, user closed all tabs connId=\(connId, privacy: .public)")
+        TabDiskActor.clearSync(connectionId: connId)
     }
 
     // MARK: - Private save scheduling

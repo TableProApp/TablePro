@@ -74,6 +74,7 @@ struct CreateDatabaseSheet: View {
             case .loading:
                 loadingRow
             case .ready(let spec):
+                textInputsList(spec: spec)
                 fieldsList(spec: spec)
                 if let footnote = spec.footnote {
                     Text(footnote)
@@ -147,6 +148,24 @@ struct CreateDatabaseSheet: View {
     }
 
     @ViewBuilder
+    private func textInputsList(spec: CreateDatabaseFormSpec) -> some View {
+        ForEach(spec.textInputs) { input in
+            TextField(
+                input.label,
+                text: textInputBinding(for: input),
+                prompt: input.placeholder.map { Text($0) }
+            )
+        }
+    }
+
+    private func textInputBinding(for input: CreateDatabaseFormSpec.TextInput) -> Binding<String> {
+        Binding<String>(
+            get: { values[input.id] ?? "" },
+            set: { values[input.id] = $0 }
+        )
+    }
+
+    @ViewBuilder
     private func fieldsList(spec: CreateDatabaseFormSpec) -> some View {
         ForEach(visibleFields(in: spec)) { field in
             fieldRow(field: field, spec: spec)
@@ -178,8 +197,11 @@ struct CreateDatabaseSheet: View {
 
     private var canSubmit: Bool {
         guard !databaseName.isEmpty, !isCreating else { return false }
-        if case .ready = loadState { return true }
-        return false
+        guard case .ready(let spec) = loadState else { return false }
+        return spec.textInputs.allSatisfy { input in
+            guard input.isRequired else { return true }
+            return !(values[input.id] ?? "").trimmingCharacters(in: .whitespaces).isEmpty
+        }
     }
 
     private func visibleFields(in spec: CreateDatabaseFormSpec) -> [CreateDatabaseFormSpec.Field] {
@@ -189,6 +211,12 @@ struct CreateDatabaseSheet: View {
     private func isVisible(_ field: CreateDatabaseFormSpec.Field) -> Bool {
         guard let visibility = field.visibleWhen else { return true }
         return values[visibility.fieldId] == visibility.equals
+    }
+
+    private func shouldSubmit(_ fieldId: String, in spec: CreateDatabaseFormSpec) -> Bool {
+        if spec.textInputs.contains(where: { $0.id == fieldId }) { return true }
+        guard let field = spec.fields.first(where: { $0.id == fieldId }) else { return false }
+        return isVisible(field)
     }
 
     private func filteredOptions(for field: CreateDatabaseFormSpec.Field) -> [CreateDatabaseFormSpec.Option] {
@@ -272,10 +300,7 @@ struct CreateDatabaseSheet: View {
         errorMessage = nil
 
         let name = databaseName
-        let submissionValues = values.filter { entry in
-            spec.fields.first { $0.id == entry.key }
-                .map { isVisible($0) } ?? false
-        }
+        let submissionValues = values.filter { shouldSubmit($0.key, in: spec) }
 
         Task {
             do {

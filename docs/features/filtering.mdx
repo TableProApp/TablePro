@@ -10,7 +10,7 @@ Press `Cmd+F` while viewing a table to open the filter panel. Type a raw SQL WHE
   <img className="hidden dark:block" src="/images/filter-panel-dark.png" alt="Filter panel above the data grid" />
 </Frame>
 
-Each row has a checkbox, a column picker, operator, value field, and **+**/**−** buttons. The **Match all** / **Match any** picker in the header combines rows with AND or OR. You can also right-click a column header in the data grid and choose **Filter with column** to pre-fill a filter row for that column.
+Each row has a drag grip, a checkbox, a column picker, operator, value field, and **+**/**−** buttons. The **Match all** / **Match any** picker in the header combines rows with AND or OR. You can also right-click a column header in the data grid and choose **Filter with column** to pre-fill a filter row for that column.
 
 | Control | What it does |
 |---------|--------------|
@@ -18,6 +18,10 @@ Each row has a checkbox, a column picker, operator, value field, and **+**/**−
 | Row checkbox | Turns that filter off without deleting it; unchecked rows stay dimmed. Toggling does not re-run the query, press **Apply** when ready |
 | Row **Apply** | Filters by just that row, leaving all checkboxes as they are, so you can test one condition and return to the checked set with the header **Apply** |
 | **Clear** | Removes the applied filter without deleting the filter rows |
+| Row grip (left edge) | Drag it onto another row to move the filter into that row's position. The whole condition moves, so the column, operator, and value stay as they were. The grip appears once there are two or more rows |
+| Right-click > **Move Up** / **Move Down** | Reorders a row without dragging |
+
+Row order is for organizing the list. Every row is joined by the same **Match all** or **Match any** setting, so moving a row never changes which rows the query returns.
 
 When you reopen a table, TablePro restores the filters you last applied to it, including the ones you left unchecked, after you quit and relaunch. Filters are saved per connection, database, schema, and table, so two tables on the same connection keep independent filters. If you cleared the filter with **Clear** or removed its rows with **−**, the table reopens unfiltered. Tables with active filters open in a new tab when you click another table.
 

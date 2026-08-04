@@ -103,4 +103,99 @@ struct StructureRowProviderTests {
         #expect(names(provider) == ["alpha", "alpine"])
         #expect(provider.filteredToSourceMap == [0, 3])
     }
+
+    @Test("A display row maps to the source entity behind it")
+    func sourceIndexFollowsDisplayOrder() {
+        let provider = makeProvider(
+            columnNames: ["alpha", "beta", "gamma", "alpine"],
+            filterText: "al",
+            sortDescriptor: StructureSortDescriptor(column: 0, ascending: false)
+        )
+        #expect(provider.sourceIndex(atDisplay: 0) == 3)
+        #expect(provider.sourceIndex(atDisplay: 1) == 0)
+        #expect(provider.sourceIndex(atDisplay: 2) == nil)
+        #expect(provider.sourceIndex(atDisplay: -1) == nil)
+    }
+}
+
+@MainActor @Suite("StructureRowProvider modified and deleted state")
+struct StructureRowProviderChangeStateTests {
+    private func loadedManager() -> StructureChangeManager {
+        let manager = StructureChangeManager()
+        manager.loadSchema(
+            tableName: "users",
+            columns: [
+                ColumnInfo(name: "id", dataType: "INT", isNullable: false, isPrimaryKey: true,
+                           defaultValue: nil, extra: nil, charset: nil, collation: nil, comment: nil),
+                ColumnInfo(name: "email", dataType: "VARCHAR(255)", isNullable: true, isPrimaryKey: false,
+                           defaultValue: nil, extra: nil, charset: nil, collation: nil, comment: nil)
+            ],
+            indexes: [IndexInfo(name: "idx_email", columns: ["email"], isUnique: false,
+                                isPrimary: false, type: "BTREE")],
+            foreignKeys: [],
+            primaryKey: ["id"]
+        )
+        return manager
+    }
+
+    private func provider(
+        _ manager: StructureChangeManager,
+        tab: StructureTab = .columns,
+        filterText: String? = nil
+    ) -> StructureRowProvider {
+        StructureRowProvider(
+            changeManager: manager,
+            tab: tab,
+            databaseType: .mysql,
+            additionalFields: [.primaryKey],
+            filterText: filterText
+        )
+    }
+
+    @Test("An untouched column reports no modified fields")
+    func untouchedColumnHasNoModifiedFields() {
+        let manager = loadedManager()
+        #expect(provider(manager).modifiedFieldIndices(atDisplay: 0).isEmpty)
+    }
+
+    @Test("Only the edited field is reported, resolved through the display map")
+    func editedFieldIsReportedThroughFilter() throws {
+        let manager = loadedManager()
+        var column = manager.workingColumns[1]
+        column.dataType = "TEXT"
+        manager.updateColumn(id: column.id, with: column)
+
+        let filtered = provider(manager, filterText: "email")
+        let typeIndex = try #require(filtered.orderedColumnFields.firstIndex(of: .type))
+        #expect(filtered.modifiedFieldIndices(atDisplay: 0) == [typeIndex])
+    }
+
+    @Test("An index's edited field is reported")
+    func editedIndexFieldIsReported() {
+        let manager = loadedManager()
+        var index = manager.workingIndexes[0]
+        index.isUnique = true
+        manager.updateIndex(id: index.id, with: index)
+
+        #expect(provider(manager, tab: .indexes).modifiedFieldIndices(atDisplay: 0) == [3])
+    }
+
+    @Test("A column that does not exist on the server yet reports no modified fields")
+    func newColumnReportsNoModifiedFields() {
+        let manager = loadedManager()
+        manager.addNewColumn()
+
+        let sut = provider(manager)
+        #expect(sut.modifiedFieldIndices(atDisplay: 2).isEmpty)
+    }
+
+    @Test("A column pending deletion is reported as deleted")
+    func pendingDeleteIsReported() {
+        let manager = loadedManager()
+        manager.deleteColumn(id: manager.workingColumns[1].id)
+
+        let sut = provider(manager)
+        #expect(sut.isPendingDelete(atDisplay: 1))
+        #expect(!sut.isPendingDelete(atDisplay: 0))
+    }
 }

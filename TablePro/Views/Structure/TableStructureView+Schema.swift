@@ -53,10 +53,13 @@ extension TableStructureView {
     }
 
     func executeSchemaChanges() async {
-        guard !connection.safeModeLevel.blocksAllWrites else {
+        let liveSafeModeLevel = coordinator?.safeModeLevel ?? connection.safeModeLevel
+        guard !liveSafeModeLevel.blocksAllWrites else {
             AlertHelper.showErrorSheet(
-                title: String(localized: "Read Only Connection"),
-                message: String(localized: "Cannot save schema changes: connection is read only."),
+                title: String(localized: "Safe Mode Is Read-Only"),
+                message: String(
+                    localized: "Cannot save schema changes: TablePro's Safe Mode is set to read-only for this connection."
+                ),
                 window: coordinator?.contentWindow
             )
             return
@@ -90,7 +93,10 @@ extension TableStructureView {
             try await DatabaseManager.shared.executeSchemaChanges(
                 tableName: tableName,
                 changes: changes,
-                databaseType: connection.type
+                databaseType: connection.type,
+                databaseName: databaseName,
+                schemaName: schemaName,
+                connectionId: connection.id
             )
 
             tabData.markAllStale()

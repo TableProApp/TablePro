@@ -98,19 +98,15 @@ struct PersistedTabRoundTripTests {
         #expect(QueryTab(from: persisted, defaultPageSize: 1_000).restoredCursorOffset == ("SELECT" as NSString).length)
     }
 
-    @Test("A truncated query drops the persisted cursor offset")
-    func cursorOffsetDroppedWhenQueryTruncated() {
-        var tab = QueryTab(
-            id: UUID(),
-            title: "Q",
-            query: String(repeating: "a", count: TabQueryContent.maxPersistableQuerySize + 1),
-            tabType: .query
-        )
+    @Test("A query past the inline size limit keeps its text and its cursor offset")
+    func largeQueryKeepsTextAndCursorOffset() {
+        let query = String(repeating: "a", count: TabQueryContent.maxPersistableQuerySize + 1)
+        var tab = QueryTab(id: UUID(), title: "Q", query: query, tabType: .query)
         tab.restoredCursorOffset = 42
 
         let persisted = tab.toPersistedTab()
-        #expect(persisted.query.isEmpty)
-        #expect(persisted.cursorOffset == 0)
+        #expect(persisted.query == query)
+        #expect(persisted.cursorOffset == 42)
     }
 
     @Test("Column widths round-trip")

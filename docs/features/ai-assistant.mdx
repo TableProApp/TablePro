@@ -1,6 +1,6 @@
 ---
 title: AI Assistant
-description: "Built-in AI for SQL: chat with tool calling, inline suggestions, explain, optimize, and fix-error across 13 providers."
+description: "Built-in AI for SQL: chat with tool calling, inline suggestions, explain, optimize, and fix-error across 14 providers."
 ---
 
 Built-in AI for writing, explaining, optimizing, and fixing SQL. One active provider drives every AI feature: chat, inline suggestions, editor actions, and fix-error. Provider keys stay in the macOS Keychain.
@@ -14,7 +14,7 @@ Open **Settings > AI** (`Cmd+,`). The **Enable AI Features** toggle at the top g
   <img className="hidden dark:block" src="/images/ai-chat-settings-provider-dark.png" alt="AI settings" />
 </Frame>
 
-1. Click **Add Provider...** and pick a type: GitHub Copilot, ChatGPT, Cursor, Claude, OpenAI, OpenRouter, Gemini, xAI, Ollama, llama.cpp, MLX, or OpenCode Zen. **Add Custom Provider...** at the bottom of the menu takes any OpenAI-compatible endpoint.
+1. Click **Add Provider...** and pick a type: GitHub Copilot, ChatGPT, Cursor, Claude, Claude Agent, OpenAI, OpenRouter, Gemini, xAI, Ollama, llama.cpp, MLX, or OpenCode Zen. **Add Custom Provider...** at the bottom of the menu takes any OpenAI-compatible endpoint.
 2. Enter the API key, or sign in for Copilot, ChatGPT, Cursor, and xAI.
 3. Enter a model name, or pick one from the fetched list.
 4. Click **Test Connection**.
@@ -25,6 +25,7 @@ Provider notes:
 
 - **GitHub Copilot**: signs in with GitHub's device flow. Tool calls go through Copilot's tool bridge and the same approval flow as other providers.
 - **ChatGPT**: sign in with your ChatGPT account to use the Codex quota from Plus, Pro, Business, and Enterprise plans, no API key. **Import from Codex CLI** reuses an existing Codex login. Unofficial interface; may change.
+- **Claude Agent**: runs the `claude` command line tool that Claude Code installs, so AI chat bills against your Claude subscription instead of an API key. Install Claude Code and run `claude /login` in Terminal first; there is no API key field. Pick Opus, Sonnet, or Haiku from the model list. It answers from your schema when the MCP server is on in **Settings > Integrations**, and falls back to plain chat when it is off. Usage counts against your Claude subscription limits, not a per-token bill.
 - **Cursor**: paste an API key from the Cursor dashboard, or leave it blank and click **Sign in with Cursor** (needs the Cursor CLI installed). Cursor runs as an agent, not a chat-completions endpoint. It cannot call TablePro's database tools, so Edit and Agent modes do not run queries through it.
 - **xAI**: paste an API key, or click **Sign in with xAI** to use a SuperGrok or X Premium+ subscription. Sign-in opens a Grok Build consent screen; this path is unofficial and may change. Preset models: Grok 4.5 and Grok 4.3.
 - **Ollama, llama.cpp, MLX**: local providers, no API key. Each preset fills in its default endpoint (`http://localhost:11434` for Ollama, `http://localhost:8080` for `llama-server` and `mlx_lm.server`); edit it if you moved the host or port. Start the server first, then **Test Connection** and pick a model from the fetched list. llama.cpp and MLX speak the OpenAI-compatible API; for tool calling, start `llama-server` with `--jinja`. For any other OpenAI-compatible server, use the custom endpoint.
@@ -38,7 +39,7 @@ Open the inspector (`Cmd+Option+I` or the toolbar inspector button) and switch t
   <img className="hidden dark:block" src="/images/ai-chat-panel-dark.png" alt="AI chat panel" />
 </Frame>
 
-Type a question and press Return. Code blocks have **Copy** and **Insert** buttons; Insert fills the current query tab if it is empty, otherwise opens a new tab. Token counts show below each response. Failed responses show **Retry**, successful ones **Regenerate**, and **Stop** cancels a streaming reply.
+Type a question and press Return. Code blocks have **Copy** and **Insert** buttons; Insert fills the current query tab if it is empty, otherwise opens a new tab. Token counts show below each response. Failed responses show **Retry**, successful ones **Regenerate**, a reply paused at the tool call limit shows **Continue**, and **Stop** cancels a streaming reply.
 
 Conversations auto-save and auto-title from your first message. The clock icon in the inspector header opens recent conversations; the pencil-and-square icon starts a new one. Editing a previously sent message puts its text and context attachments back in the composer and removes that turn and everything after it; send to re-run.
 
@@ -52,7 +53,7 @@ The mode picker in the composer footer controls which tools the AI can call. The
 |------|----------------|-------------|
 | **Ask** | Read-only schema lookups: `list_connections`, `get_connection_status`, `list_databases`, `list_schemas`, `list_tables`, `describe_table`, `get_table_ddl`. | Questions, exploration, drafting queries you run yourself. |
 | **Edit** | All Ask tools, plus `execute_query` for `SELECT`, `INSERT`, `UPDATE`, `DELETE`. Destructive DDL (`DROP`, `TRUNCATE`, `ALTER...DROP`) stays blocked. | Letting the AI run the queries it proposes. |
-| **Agent** | All tools, plus `confirm_destructive_operation` for destructive DDL. Runs tools in a loop, up to 10 round trips per turn. | Multi-step migrations and schema changes. |
+| **Agent** | All tools, plus `confirm_destructive_operation` for destructive DDL. Runs tools in a loop, up to 25 tool calls per turn by default. | Multi-step migrations and schema changes. |
 
 Mode and [safe mode](/features/safe-mode) are independent gates. Agent mode does not bypass safe mode.
 
@@ -71,7 +72,13 @@ In Edit and Agent modes, each tool call appears as a card in the reply. Read-onl
 
 If the connection's safe-mode level is **Silent**, write tools auto-approve. If it is **Read-Only**, they auto-deny. Destructive operations are the exception: `confirm_destructive_operation` always requires a per-call click. Silent mode does not auto-approve it, and **Always for this connection** is refused for it. The tool also requires the model to pass the verbatim phrase `I understand this is irreversible`.
 
-Provider support for tool calling: every provider except Cursor. Ollama, llama.cpp, MLX, and custom endpoints depend on the model.
+Provider support for tool calling: every provider except Cursor. Claude Agent reaches the same tools through the MCP server, so it needs that server turned on. Ollama, llama.cpp, MLX, and custom endpoints depend on the model.
+
+#### Tool Call Limit
+
+A reply may make 25 tool calls before it pauses. The pause keeps every tool call and result already in the reply, and shows **Continue** to carry on with a fresh budget, plus **Adjust Limit** to open the setting. Change the number, or turn the limit off, under **Agent** in [Settings > AI](/customization/settings#agent). A higher limit costs more tokens per reply and can dilute the answer as the conversation grows.
+
+GitHub Copilot runs its own tool loop, so the limit and the pause do not apply to it.
 
 ### Attach Context with `@`
 

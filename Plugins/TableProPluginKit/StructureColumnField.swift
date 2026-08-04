@@ -1,11 +1,11 @@
 import Foundation
 
-@frozen
 public enum StructureColumnField: String, Sendable, CaseIterable {
     case name
     case type
     case nullable
     case defaultValue
+    case onUpdate
     case primaryKey
     case autoIncrement
     case comment
@@ -18,6 +18,7 @@ public enum StructureColumnField: String, Sendable, CaseIterable {
         case .type: String(localized: "Type")
         case .nullable: String(localized: "Nullable")
         case .defaultValue: String(localized: "Default")
+        case .onUpdate: String(localized: "On Update")
         case .primaryKey: String(localized: "Primary Key")
         case .autoIncrement: String(localized: "Auto Inc")
         case .comment: String(localized: "Comment")

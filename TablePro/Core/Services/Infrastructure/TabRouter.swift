@@ -352,7 +352,7 @@ internal final class TabRouter {
             return
         }
 
-        if let session = DatabaseManager.shared.currentSession {
+        if let session = DatabaseManager.shared.lastActiveSession {
             let content = await Task.detached(priority: .userInitiated) { () -> String? in
                 try? String(contentsOf: url, encoding: .utf8)
             }.value

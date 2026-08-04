@@ -134,6 +134,10 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
             case .schema(let database, let schema):
                 _ = service.tablesLoadState(connectionId: connectionId, database: database, schema: schema)
                 _ = service.routinesLoadState(connectionId: connectionId, database: database, schema: schema)
+            case .table(let ref) where ref.table.type == .partitionedTable:
+                _ = service.partitionsLoadState(
+                    connectionId: connectionId, database: ref.database, schema: ref.schema, table: ref.table.name
+                )
             case .recentSection, .recentTable, .table, .routine, .status:
                 break
             }
@@ -184,8 +188,29 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
                 : objectNodes(database: metadata.name, schema: nil)
         case .schema(let database, let schema):
             return objectNodes(database: database, schema: schema)
-        case .recentTable, .table, .routine, .status:
+        case .table(let ref):
+            return ref.table.type == .partitionedTable ? partitionNodes(of: ref) : []
+        case .recentTable, .routine, .status:
             return []
+        }
+    }
+
+    private func partitionNodes(of ref: DatabaseTreeTableRef) -> [DatabaseTreeNode] {
+        let parentId = DatabaseTreeNode.tableId(ref)
+        let state = service.partitionsLoadState(
+            connectionId: connectionId, database: ref.database, schema: ref.schema, table: ref.table.name
+        )
+        switch state {
+        case .idle, .loading:
+            return [statusNode(parentId: parentId, status: .loading)]
+        case .failed(let message):
+            return [statusNode(parentId: parentId, status: .error(message))]
+        case .loaded(let partitions):
+            if partitions.isEmpty { return [statusNode(parentId: parentId, status: .empty)] }
+            return partitions.map { partition in
+                let childRef = DatabaseTreeTableRef(database: ref.database, schema: ref.schema, table: partition)
+                return node(id: DatabaseTreeNode.tableId(childRef), kind: .table(childRef))
+            }
         }
     }
 
@@ -196,7 +221,8 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
         }
         let visible = DatabaseTreeVisibility.visible(
             databases: service.databases(for: connectionId),
-            selected: sidebarState?.databaseFilterSelected ?? []
+            selected: sidebarState?.databaseFilterSelected ?? [],
+            activeDatabase: mainCoordinator?.activeDatabaseName ?? activeDatabase
         )
         let matched = searchText.isEmpty ? visible : visible.filter { databaseMatchesSearch($0) }
         var seen = Set<String>()
@@ -323,7 +349,10 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
             setExpanded(databaseNode, want)
             guard outlineView.isItemExpanded(databaseNode) else { continue }
             triggerLoad(for: databaseNode)
-            guard supportsSchemaLevel else { continue }
+            guard supportsSchemaLevel else {
+                restorePartitionExpansion(under: databaseNode)
+                continue
+            }
             for schemaNode in resolvedChildren(of: databaseNode) {
                 guard case .schema(let database, let schema) = schemaNode.kind else { continue }
                 let wantSchema = searching
@@ -332,8 +361,22 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
                 setExpanded(schemaNode, wantSchema)
                 if outlineView.isItemExpanded(schemaNode) {
                     triggerLoad(for: schemaNode)
+                    restorePartitionExpansion(under: schemaNode)
                 }
             }
+        }
+    }
+
+    private func restorePartitionExpansion(under parent: DatabaseTreeNode) {
+        guard searchText.isEmpty, let outlineView, let windowState else { return }
+        for tableNode in resolvedChildren(of: parent) {
+            guard case .table(let ref) = tableNode.kind, ref.table.type == .partitionedTable else { continue }
+            let key = DatabaseTableKey(database: ref.database, schema: ref.schema, table: ref.table.name)
+            guard windowState.expandedTreeTables.contains(key) else { continue }
+            setExpanded(tableNode, true)
+            guard outlineView.isItemExpanded(tableNode) else { continue }
+            triggerLoad(for: tableNode)
+            restorePartitionExpansion(under: tableNode)
         }
     }
 
@@ -363,7 +406,14 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
             } else {
                 windowState?.expandedTreeDatabaseSchemas.remove(key)
             }
-        case .recentTable, .table, .routine, .status:
+        case .table(let ref):
+            let key = DatabaseTableKey(database: ref.database, schema: ref.schema, table: ref.table.name)
+            if expanded {
+                windowState?.expandedTreeTables.insert(key)
+            } else {
+                windowState?.expandedTreeTables.remove(key)
+            }
+        case .recentTable, .routine, .status:
             break
         }
     }
@@ -380,8 +430,23 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
             }
         case .schema(let database, let schema):
             loadObjects(database: database, schema: schema)
-        case .recentSection, .recentTable, .table, .routine, .status:
+        case .table(let ref):
+            loadPartitions(ref)
+        case .recentSection, .recentTable, .routine, .status:
             break
+        }
+    }
+
+    private func loadPartitions(_ ref: DatabaseTreeTableRef) {
+        guard ref.table.type == .partitionedTable else { return }
+        let state = service.partitionsLoadState(
+            connectionId: connectionId, database: ref.database, schema: ref.schema, table: ref.table.name
+        )
+        guard isIdle(state) else { return }
+        Task {
+            await service.loadPartitions(
+                connectionId: connectionId, database: ref.database, schema: ref.schema, table: ref.table.name
+            )
         }
     }
 
@@ -423,7 +488,12 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
     private func open(_ ref: DatabaseTreeTableRef, activateGridFocus: Bool, forceNewWindowTab: Bool = false) {
         Task { @MainActor in
             await activate(ref)
-            mainCoordinator?.openTableTab(ref.table, activateGridFocus: activateGridFocus, forceNewWindowTab: forceNewWindowTab)
+            mainCoordinator?.openTableTab(
+                ref.table,
+                schema: ref.schema,
+                activateGridFocus: activateGridFocus,
+                forceNewWindowTab: forceNewWindowTab
+            )
         }
     }
 
@@ -431,11 +501,17 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
         if ref.database != activeDatabase {
             await mainCoordinator?.switchDatabase(to: ref.database)
         }
-        if let schema = ref.schema,
-           schema != mainCoordinator?.toolbarState.currentSchema,
-           PluginManager.shared.supportsSchemaSwitching(for: databaseType) {
-            await mainCoordinator?.switchSchema(to: schema)
-        }
+        guard let schema = ref.schema,
+              PluginManager.shared.supportsSchemaSwitching(for: databaseType),
+              schema != sessionSchema else { return }
+        await mainCoordinator?.switchSchema(to: schema)
+    }
+
+    /// The live session schema, not the window's toolbar mirror. A database switch
+    /// moves the session schema without touching the toolbar, so comparing against
+    /// the toolbar skips the switch exactly when the session needs it.
+    private var sessionSchema: String? {
+        DatabaseManager.shared.session(for: connectionId)?.currentSchema
     }
 
     private func setActiveDatabase(_ database: String) {
@@ -448,7 +524,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
             if database != activeDatabase {
                 await mainCoordinator?.switchDatabase(to: database)
             }
-            if schema != mainCoordinator?.toolbarState.currentSchema {
+            if schema != sessionSchema {
                 await mainCoordinator?.switchSchema(to: schema)
             }
         }

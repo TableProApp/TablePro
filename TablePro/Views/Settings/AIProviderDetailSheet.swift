@@ -31,6 +31,7 @@ struct AIProviderDetailSheet: View {
     @State private var chatGPTCodexService = ChatGPTCodexService.shared
 
     @State private var cursorAgentService = CursorAgentService.shared
+    @State private var claudeAgentService = ClaudeAgentService.shared
 
     @State private var xaiService = XAIService.shared
 
@@ -99,6 +100,9 @@ struct AIProviderDetailSheet: View {
                     }
                     if draft.type == .cursor {
                         Task { await cursorAgentService.refreshStatus() }
+                    }
+                    if draft.type == .claudeAgent {
+                        Task { await claudeAgentService.performRefresh() }
                     }
                     if draft.type == .xai {
                         Task { await xaiService.refreshAuthState() }
@@ -170,7 +174,47 @@ struct AIProviderDetailSheet: View {
                 EmptyView()
             }
         case .none:
-            EmptyView()
+            if draft.type == .claudeAgent {
+                claudeAgentAuthSection
+            } else {
+                EmptyView()
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var claudeAgentAuthSection: some View {
+        Section {
+            HStack(spacing: 8) {
+                Image(systemName: claudeAgentService.state.isUsable
+                    ? "checkmark.circle.fill"
+                    : "exclamationmark.triangle.fill")
+                    .foregroundStyle(claudeAgentService.state.isUsable ? Color.green : Color.orange)
+                Text(claudeAgentService.statusDescription)
+                    .font(.callout)
+                Spacer()
+                Button(String(localized: "Recheck")) {
+                    claudeAgentService.refreshStatus()
+                }
+                .disabled(claudeAgentService.isRefreshing)
+            }
+            if let command = claudeAgentService.remedyCommand {
+                HStack {
+                    Text(command)
+                        .font(.system(.caption, design: .monospaced))
+                        .textSelection(.enabled)
+                    Spacer()
+                    Button(String(localized: "Copy")) {
+                        copyToPasteboard(command)
+                    }
+                }
+            }
+        } header: {
+            Text("Claude Code")
+        } footer: {
+            Text("Runs the claude command line tool so chat bills against your Claude subscription. Database tools need the MCP server turned on in Settings > Integrations.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 

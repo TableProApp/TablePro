@@ -15,10 +15,6 @@ struct WelcomeWindowView: View {
     }
 
     @State var vm = WelcomeViewModel()
-    @State private var welcomeChooserState: WelcomeChooserState?
-    @State private var pendingInstallType: DatabaseType?
-    @State private var pendingInstallPayload: DatabaseTypeChooserPayload?
-    @State private var urlImportPresented: Bool = false
     @State private var searchFocusTrigger: Int = 0
     @FocusState private var focus: FocusField?
 
@@ -127,33 +123,9 @@ struct WelcomeWindowView: View {
                 }
             }
         }
-        .modifier(ConnectionCreationOverlays(
-            chooserState: $welcomeChooserState,
-            urlImportPresented: $urlImportPresented
-        ))
-        .onReceive(AppCommands.shared.importConnectionFromURL) { _ in
-            urlImportPresented = true
-        }
-        .onReceive(AppCommands.shared.presentDatabaseTypeChooser) { payload in
-            welcomeChooserState = WelcomeChooserState(
-                initialType: payload.initialType,
-                onSelected: { type in
-                    if PluginManager.shared.isDriverInstalled(for: type) {
-                        PendingNewConnectionType.shared.set(type)
-                        payload.onSelected(type)
-                    } else {
-                        pendingInstallPayload = payload
-                        pendingInstallType = type
-                    }
-                }
-            )
-        }
-        .pluginInstallPromptForType(type: $pendingInstallType) { type in
-            if let payload = pendingInstallPayload {
-                PendingNewConnectionType.shared.set(type)
-                payload.onSelected(type)
-                pendingInstallPayload = nil
-            }
+        .modifier(ConnectionCreationOverlays(vm: vm))
+        .pluginInstallPromptForType(type: $vm.pendingInstallType) { type in
+            vm.completePendingInstall(for: type)
         }
         .pluginInstallPrompt(connection: $vm.pluginInstallConnection) { connection in
             vm.connectAfterInstall(connection)
@@ -219,7 +191,7 @@ struct WelcomeWindowView: View {
             WelcomeActionsPanel(
                 onActivateLicense: { vm.activeSheet = .activation },
                 onCreateConnection: { WindowOpener.shared.openConnectionForm() },
-                onImportFromURL: { urlImportPresented = true },
+                onImportFromURL: { vm.urlImportPresented = true },
                 onImportFromApp: { vm.importConnectionsFromApp() },
                 onOpenProjectFolder: { vm.openProjectFolder() },
                 onImportConnectionsFile: { vm.importConnectionsFromFile() }
@@ -723,44 +695,31 @@ private struct TreeRowsView<ConnectionContent: View>: View {
     }
 }
 
-// MARK: - Welcome Chooser State
-
-private struct WelcomeChooserState: Identifiable {
-    let id = UUID()
-    let initialType: DatabaseType?
-    let onSelected: (DatabaseType) -> Void
-}
-
 // MARK: - Connection Creation Overlays
 
 private struct ConnectionCreationOverlays: ViewModifier {
-    @Binding var chooserState: WelcomeChooserState?
-    @Binding var urlImportPresented: Bool
+    @Bindable var vm: WelcomeViewModel
 
     func body(content: Content) -> some View {
         content
-            .sheet(item: $chooserState) { state in
+            .sheet(item: $vm.databaseTypeChooser) { payload in
                 DatabaseTypeChooserSheet(
-                    initialType: state.initialType,
+                    initialType: payload.initialType,
                     onSelected: { type in
-                        state.onSelected(type)
-                        chooserState = nil
+                        vm.selectDatabaseType(type, for: payload)
                     },
-                    onImportFromURL: {
-                        chooserState = nil
-                        urlImportPresented = true
-                    },
-                    onCancel: { chooserState = nil }
+                    onImportFromURL: { vm.presentURLImport() },
+                    onCancel: { vm.databaseTypeChooser = nil }
                 )
             }
-            .sheet(isPresented: $urlImportPresented) {
+            .sheet(isPresented: $vm.urlImportPresented) {
                 ImportFromURLSheet(
                     onImported: { parsed in
-                        urlImportPresented = false
+                        vm.urlImportPresented = false
                         WindowOpener.shared.openConnectionFormFromURL(parsed)
                     },
                     onCancel: {
-                        urlImportPresented = false
+                        vm.urlImportPresented = false
                     }
                 )
             }

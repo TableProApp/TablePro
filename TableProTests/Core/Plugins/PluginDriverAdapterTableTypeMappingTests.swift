@@ -9,15 +9,27 @@ import TableProPluginKit
 import Testing
 
 private final class StubTableTypeDriver: PluginDatabaseDriver {
-    var supportsSchemas: Bool { false }
+    var stubbedSupportsSchemas = false
+    var stubbedCurrentSchema: String?
+
+    var supportsSchemas: Bool { stubbedSupportsSchemas }
     var supportsTransactions: Bool { false }
-    var currentSchema: String? { nil }
+    var currentSchema: String? { stubbedCurrentSchema }
     var serverVersion: String? { nil }
 
     var stubbedTables: [PluginTableInfo] = []
+    var stubbedPartitions: [PluginTableInfo] = []
+    private(set) var requestedPartitionTable: String?
+    private(set) var requestedTableSchema: String??
 
     func fetchTables(schema: String?) async throws -> [PluginTableInfo] {
-        stubbedTables
+        requestedTableSchema = .some(schema)
+        return stubbedTables
+    }
+
+    func fetchPartitions(table: String, schema: String?) async throws -> [PluginTableInfo] {
+        requestedPartitionTable = table
+        return stubbedPartitions
     }
 
     func connect() async throws {}
@@ -151,8 +163,53 @@ struct PluginDriverAdapterTableTypeMappingTests {
     func rawValueRoundTrip() {
         #expect(TableInfo.TableType.materializedView.rawValue == "MATERIALIZED VIEW")
         #expect(TableInfo.TableType.foreignTable.rawValue == "FOREIGN TABLE")
+        #expect(TableInfo.TableType.partitionedTable.rawValue == "PARTITIONED TABLE")
         #expect(TableInfo.TableType(rawValue: "MATERIALIZED VIEW") == .materializedView)
         #expect(TableInfo.TableType(rawValue: "FOREIGN TABLE") == .foreignTable)
+        #expect(TableInfo.TableType(rawValue: "PARTITIONED TABLE") == .partitionedTable)
+    }
+
+    @Test("Maps PARTITIONED TABLE variants to .partitionedTable rather than falling back to .table")
+    func mapsPartitionedTable() async throws {
+        let driver = StubTableTypeDriver()
+        driver.stubbedTables = [
+            PluginTableInfo(name: "orders", type: "PARTITIONED TABLE"),
+            PluginTableInfo(name: "events", type: "partitioned_table"),
+            PluginTableInfo(name: "logs", type: "Partitioned Table")
+        ]
+        let adapter = makeAdapter(driver: driver)
+        let tables = try await adapter.fetchTables()
+        #expect(tables.count == 3)
+        #expect(tables.allSatisfy { $0.type == .partitionedTable })
+    }
+
+    @Test("A partitioned parent stays distinct from an ordinary table")
+    func partitionedTableIsDistinctFromTable() async throws {
+        let driver = StubTableTypeDriver()
+        driver.stubbedTables = [
+            PluginTableInfo(name: "orders", type: "PARTITIONED TABLE"),
+            PluginTableInfo(name: "users", type: "BASE TABLE")
+        ]
+        let adapter = makeAdapter(driver: driver)
+        let tables = try await adapter.fetchTables()
+        #expect(tables[0].type == .partitionedTable)
+        #expect(tables[1].type == .table)
+    }
+
+    @Test("fetchPartitions bridges plugin rows and resolves the schema")
+    func fetchPartitionsBridgesRows() async throws {
+        let driver = StubTableTypeDriver()
+        driver.stubbedPartitions = [
+            PluginTableInfo(name: "orders_2024_01", type: "TABLE"),
+            PluginTableInfo(name: "orders_2024_02", type: "PARTITIONED TABLE")
+        ]
+        let adapter = makeAdapter(driver: driver)
+        let partitions = try await adapter.fetchPartitions(table: "orders", schema: "app")
+        #expect(driver.requestedPartitionTable == "orders")
+        #expect(partitions.map(\.name) == ["orders_2024_01", "orders_2024_02"])
+        #expect(partitions[0].type == .table)
+        #expect(partitions[1].type == .partitionedTable)
+        #expect(partitions.allSatisfy { $0.schema == "app" })
     }
 
     @Test("Plugin schema propagates to TableInfo when set on PluginTableInfo")
@@ -178,8 +235,22 @@ struct PluginDriverAdapterTableTypeMappingTests {
         #expect(tables.first?.schema == "audit")
     }
 
-    @Test("fetchTables() preserves nil schema (no fallback to currentSchema)")
-    func defaultFetchPreservesNilSchema() async throws {
+    @Test("fetchTables() stamps the schema the rows were actually read from")
+    func defaultFetchStampsCurrentSchema() async throws {
+        let driver = StubTableTypeDriver()
+        driver.stubbedSupportsSchemas = true
+        driver.stubbedCurrentSchema = "custom"
+        driver.stubbedTables = [PluginTableInfo(name: "def_encounter", type: "TABLE")]
+        let adapter = makeAdapter(driver: driver)
+
+        let tables = try await adapter.fetchTables()
+
+        #expect(driver.requestedTableSchema == .some("custom"))
+        #expect(tables.first?.schema == "custom")
+    }
+
+    @Test("fetchTables() stays schema-less for an engine without schemas")
+    func defaultFetchStaysSchemaLess() async throws {
         let driver = StubTableTypeDriver()
         driver.stubbedTables = [PluginTableInfo(name: "users", type: "TABLE")]
         let adapter = makeAdapter(driver: driver)

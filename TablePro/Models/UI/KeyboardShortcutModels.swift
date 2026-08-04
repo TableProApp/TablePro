@@ -110,6 +110,9 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
     // Navigation
     case newTab
     case closeTab
+    case closeOtherTabs
+    case closeTabsForOtherDatabases
+    case closeAllTabs
     case reopenClosedTab
     case quickSwitcher
     case toggleTableBrowser
@@ -142,7 +145,8 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
              .truncateTable, .toggleHeaderRow, .previewFKReference, .saveAsFavorite, .previousPage,
              .nextPage, .firstPage, .lastPage, .refresh, .export, .importData:
             return .dataGrid
-        case .newTab, .closeTab, .reopenClosedTab, .quickSwitcher, .toggleTableBrowser,
+        case .newTab, .closeTab, .closeOtherTabs, .closeTabsForOtherDatabases, .closeAllTabs,
+             .reopenClosedTab, .quickSwitcher, .toggleTableBrowser,
              .toggleInspector, .toggleFilters, .toggleHistory, .toggleResults, .previousResultTab,
              .nextResultTab, .pinResultTab, .closeResultTab, .focusSidebarSearch,
              .showSidebarTables, .showSidebarFavorites, .showPreviousTab, .showNextTab:
@@ -190,6 +194,9 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
         case .saveAs: return String(localized: "Save As")
         case .previewSQL: return String(localized: "Preview SQL")
         case .closeTab: return String(localized: "Close Tab")
+        case .closeOtherTabs: return String(localized: "Close Other Tabs")
+        case .closeTabsForOtherDatabases: return String(localized: "Close Tabs for Other Databases")
+        case .closeAllTabs: return String(localized: "Close All Tabs")
         case .reopenClosedTab: return String(localized: "Reopen Closed Tab")
         case .refresh: return String(localized: "Refresh")
         case .explainQuery: return String(localized: "Explain Query")

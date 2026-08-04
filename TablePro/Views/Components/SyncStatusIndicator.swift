@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import TableProSyncTransport
 
 struct SyncStatusIndicator: View {
     let onActivateLicense: () -> Void

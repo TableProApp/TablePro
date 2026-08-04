@@ -8,6 +8,7 @@
 import Combine
 import Foundation
 import os
+import TableProSyncTransport
 
 /// Tracks dirty entities and deletions for sync
 final class SyncChangeTracker {
@@ -32,7 +33,7 @@ final class SyncChangeTracker {
 
     func markDirty(_ type: SyncRecordType, id: String) {
         guard !isSuppressed, type.syncScope == .synced else { return }
-        metadataStorage.addDirty(type: type, id: id)
+        metadataStorage.markDirty(id, type: type)
         Self.logger.info("Marked dirty: \(type.rawValue)/\(id)")
         postChangeNotification()
     }
@@ -40,7 +41,7 @@ final class SyncChangeTracker {
     func markDirty(_ type: SyncRecordType, ids: [String]) {
         guard !isSuppressed, !ids.isEmpty, type.syncScope == .synced else { return }
         for id in ids {
-            metadataStorage.addDirty(type: type, id: id)
+            metadataStorage.markDirty(id, type: type)
         }
         Self.logger.trace("Marked dirty: \(type.rawValue) x\(ids.count)")
         postChangeNotification()
@@ -50,8 +51,8 @@ final class SyncChangeTracker {
 
     func markDeleted(_ type: SyncRecordType, id: String) {
         guard !isSuppressed else { return }
-        metadataStorage.removeDirty(type: type, id: id)
-        metadataStorage.addTombstone(type: type, id: id)
+        metadataStorage.removeDirty(id, type: type)
+        metadataStorage.addTombstone(id, type: type)
         Self.logger.trace("Marked deleted: \(type.rawValue)/\(id)")
         postChangeNotification()
     }
@@ -65,7 +66,7 @@ final class SyncChangeTracker {
     // MARK: - Clear
 
     func clearDirty(_ type: SyncRecordType, id: String) {
-        metadataStorage.removeDirty(type: type, id: id)
+        metadataStorage.removeDirty(id, type: type)
     }
 
     func clearAllDirty(_ type: SyncRecordType) {

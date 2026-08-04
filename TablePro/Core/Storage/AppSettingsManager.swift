@@ -126,14 +126,21 @@ final class AppSettingsManager {
     var mcp: MCPSettings {
         didSet {
             guard !isValidating else { return }
+            var validated = mcp
+            validated.maxRowLimit = mcp.validatedMaxRowLimit
+            validated.defaultRowLimit = mcp.validatedDefaultRowLimit
+            validated.queryTimeoutSeconds = mcp.validatedQueryTimeoutSeconds
+            if validated.allowRemoteConnections, !validated.requireAuthentication {
+                validated.requireAuthentication = true
+            }
 
-            if mcp.allowRemoteConnections, !mcp.requireAuthentication {
+            if validated != mcp {
                 isValidating = true
-                mcp.requireAuthentication = true
+                mcp = validated
                 isValidating = false
             }
 
-            storage.saveMCP(mcp)
+            storage.saveMCP(validated)
             syncTracker.markDirty(.settings, id: "mcp")
             let enabledChanged = mcp.enabled != oldValue.enabled
             let portChanged = mcp.port != oldValue.port

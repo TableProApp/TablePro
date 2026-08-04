@@ -36,9 +36,17 @@ Turn preview tabs off with **Settings > General > Tabs > Enable preview tabs** i
 | New query tab | `Cmd+T` or the **+** button in the tab bar |
 | New table tab | Double-click a table in the sidebar (single-click reuses the preview tab) |
 | Close tab | `Cmd+W` or the tab's close button |
-| Close other tabs | Right-click the tab (native macOS menu, also has **Move Tab to New Window**) |
+| Close other tabs | **File > Close Other Tabs**, or Option-click the close button of the tab you want to keep |
+| Close every tab in the window | **File > Close All Tabs** |
+| Close tabs belonging to other databases | **File > Close Tabs for Other Databases** |
 
-Closing a query tab keeps its SQL in Recently Closed, so an accidental close costs nothing. TablePro asks before closing only when unsaved work would be lost, such as pending data edits, pending structure changes, or unsaved edits to a `.sql` file on disk.
+The three bulk commands have no shortcut out of the box. Bind them in **Settings > Keyboard** under Navigation.
+
+**Close All Tabs** leaves the window open and empty rather than closing it, so the connection stays live and you can carry on with `Cmd+T` or a click in the sidebar.
+
+**Close Tabs for Other Databases** closes only windows whose every tab was opened against a database other than the one the connection is on now. It never touches the tab you are looking at, and it is limited to the current connection. Tabs from different databases are meant to coexist, so switching databases never closes anything on its own. On engines that switch schemas instead of databases, such as BigQuery and Oracle, the command reads **Close Tabs for Other Schemas**.
+
+Closing a query tab keeps its SQL in Recently Closed, so an accidental close costs nothing, including when you close a whole group at once. TablePro asks before closing only when unsaved work would be lost, such as pending data edits, pending structure changes, or unsaved edits to a `.sql` file on disk. A bulk close asks once per window that has something to lose, and cancelling stops the rest.
 
 <Note>
 Window tabs cannot be pinned. Pinning exists for result tabs inside a query tab (`Cmd+Option+P`, see [Keyboard Shortcuts](/features/keyboard-shortcuts)).

@@ -4,6 +4,8 @@
 <dict>
 	<key>AnalyticsHMACSecret</key>
 	<string>$(ANALYTICS_HMAC_SECRET)</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>TablePro connects to database servers and SSH tunnels running on your local network, including Bonjour (.local) hostnames.</string>
 	<key>SUFeedURL</key>
 	<string>https://raw.githubusercontent.com/TableProApp/TablePro/main/appcast.xml</string>
 	<key>SUPublicEDKey</key>
@@ -223,6 +225,16 @@
 	</array>
 	<key>UTExportedTypeDeclarations</key>
 	<array>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>com.tablepro.filter-row</string>
+			<key>UTTypeDescription</key>
+			<string>TablePro Filter Row</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+		</dict>
 		<dict>
 			<key>UTTypeIdentifier</key>
 			<string>com.tablepro.beancount</string>

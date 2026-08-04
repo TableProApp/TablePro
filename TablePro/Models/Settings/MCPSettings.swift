@@ -52,5 +52,29 @@ struct MCPSettings: Codable, Equatable {
         logQueriesInHistory = try container.decodeIfPresent(Bool.self, forKey: .logQueriesInHistory) ?? true
         requireAuthentication = try container.decodeIfPresent(Bool.self, forKey: .requireAuthentication) ?? true
         allowRemoteConnections = try container.decodeIfPresent(Bool.self, forKey: .allowRemoteConnections) ?? false
+
+        maxRowLimit = validatedMaxRowLimit
+        defaultRowLimit = validatedDefaultRowLimit
+        queryTimeoutSeconds = validatedQueryTimeoutSeconds
+    }
+
+    var validatedMaxRowLimit: Int {
+        maxRowLimit.clamped(to: SettingsValidationRules.mcpRowLimitRange)
+    }
+
+    var validatedDefaultRowLimit: Int {
+        defaultRowLimit.clamped(to: SettingsValidationRules.mcpRowLimitRange)
+    }
+
+    var validatedQueryTimeoutSeconds: Int {
+        queryTimeoutSeconds.clamped(to: SettingsValidationRules.mcpQueryTimeoutRange)
+    }
+
+    var effectiveDefaultRowLimit: Int {
+        min(validatedDefaultRowLimit, validatedMaxRowLimit)
+    }
+
+    var requestableRowLimitRange: ClosedRange<Int> {
+        SettingsValidationRules.mcpRowLimitRange.lowerBound...validatedMaxRowLimit
     }
 }
