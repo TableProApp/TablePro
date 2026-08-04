@@ -13,22 +13,37 @@ import Testing
 struct SortableHeaderRenderingTests {
     private struct Grid {
         let window: NSWindow
+        let tableView: NSTableView
         let headerView: SortableHeaderView
-        let headerCell: SortableHeaderCell
+        let headerCells: [SortableHeaderCell]
+        let schema: ColumnIdentitySchema
+
+        var headerCell: SortableHeaderCell { headerCells[0] }
     }
 
-    private func makeGrid(comment: String?) -> Grid {
-        let scrollView = NSScrollView(frame: NSRect(x: 0, y: 0, width: 400, height: 200))
+    private static let contentWidth: CGFloat = 400
+    private static let columnAreaWidth: CGFloat = 360
+
+    private func makeGrid(comment: String?, columns: [String] = ["code"]) -> Grid {
+        let scrollView = NSScrollView(frame: NSRect(x: 0, y: 0, width: Self.contentWidth, height: 200))
         let tableView = NSTableView(frame: scrollView.bounds)
         tableView.style = .plain
 
-        let identifier = NSUserInterfaceItemIdentifier("code")
-        let column = NSTableColumn(identifier: identifier)
-        column.width = 360
-        let headerCell = SortableHeaderCell(textCell: "code")
-        headerCell.font = column.headerCell.font
-        column.headerCell = headerCell
-        tableView.addTableColumn(column)
+        let schema = ColumnIdentitySchema(columns: columns)
+        var cells: [SortableHeaderCell] = []
+        var comments: [NSUserInterfaceItemIdentifier: String] = [:]
+        for (index, name) in columns.enumerated() {
+            let column = NSTableColumn(identifier: ColumnIdentitySchema.slotIdentifier(index))
+            column.width = Self.columnAreaWidth / CGFloat(columns.count)
+            let headerCell = SortableHeaderCell(textCell: name)
+            headerCell.font = column.headerCell.font
+            column.headerCell = headerCell
+            cells.append(headerCell)
+            if let comment {
+                comments[column.identifier] = comment
+            }
+            tableView.addTableColumn(column)
+        }
 
         let headerView = SortableHeaderView(frame: tableView.headerView?.frame ?? .zero)
         tableView.headerView = headerView
@@ -36,19 +51,25 @@ struct SortableHeaderRenderingTests {
 
         let window = makeWindow(content: scrollView)
 
-        if let comment {
-            headerView.updateComments([identifier: comment])
+        if comment != nil {
+            headerView.updateComments(comments)
             headerView.showsComments = true
         }
 
         scrollView.tile()
         window.layoutIfNeeded()
-        return Grid(window: window, headerView: headerView, headerCell: headerCell)
+        return Grid(
+            window: window,
+            tableView: tableView,
+            headerView: headerView,
+            headerCells: cells,
+            schema: schema
+        )
     }
 
     private func makeWindow(content: NSView) -> NSWindow {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 400, height: 200),
+            contentRect: NSRect(x: 0, y: 0, width: Self.contentWidth, height: 200),
             styleMask: [.titled],
             backing: .buffered,
             defer: false
@@ -57,6 +78,12 @@ struct SortableHeaderRenderingTests {
         window.contentView = content
         window.layoutIfNeeded()
         return window
+    }
+
+    private func sortState(column: Int, direction: SortDirection = .ascending) -> SortState {
+        var state = SortState()
+        state.columns = [SortColumn(columnIndex: column, direction: direction)]
+        return state
     }
 
     private func brightnessColumn(of view: NSView, atX sampleX: CGFloat) -> [CGFloat] {
@@ -134,5 +161,53 @@ struct SortableHeaderRenderingTests {
         #expect(unselected.count == selected.count)
         let repainted = zip(unselected, selected).filter { abs($0 - $1) > 0.02 }.count
         #expect(repainted >= unselected.count - 4)
+    }
+
+    @Test("A sorted column keeps its only horizontal rule along the bottom edge")
+    func sortedCommentHeaderRuleSitsAlongBottomEdge() {
+        let grid = makeGrid(comment: "ISO 4217 exponent for the minor unit")
+        grid.headerView.applySortState(sortState(column: 0), schema: grid.schema)
+        grid.headerView.needsDisplay = true
+
+        let offsets = ruleOffsets(in: grid.headerView)
+
+        #expect(grid.headerCell.sortDirection == .ascending)
+        #expect(!offsets.isEmpty)
+        #expect(offsets.allSatisfy { isAlongBottomEdge($0, of: grid.headerView) })
+    }
+
+    @Test("Sorting a column leaves every column divider where it was")
+    func sortingDoesNotMoveColumnDividers() {
+        let grid = makeGrid(comment: "ISO 4217 exponent for the minor unit", columns: ["code", "amount"])
+        let leadingEdge = grid.headerView.headerRect(ofColumn: 1).minX
+        let unsorted = brightnessColumn(of: grid.headerView, atX: leadingEdge)
+
+        grid.headerView.applySortState(sortState(column: 1), schema: grid.schema)
+        grid.headerView.needsDisplay = true
+        let sorted = brightnessColumn(of: grid.headerView, atX: leadingEdge)
+
+        #expect(!unsorted.isEmpty)
+        #expect(unsorted == sorted)
+    }
+
+    @Test("Sorting never hands the column to AppKit's own header highlight")
+    func sortingDoesNotUseTheAppKitColumnHighlight() {
+        let grid = makeGrid(comment: "ISO 4217 exponent for the minor unit", columns: ["code", "amount"])
+        grid.headerView.applySortState(sortState(column: 1), schema: grid.schema)
+
+        #expect(grid.tableView.highlightedTableColumn == nil)
+    }
+
+    @Test("Applying a sort state publishes it through the table's sort descriptors")
+    func sortStatePublishesSortDescriptors() {
+        let grid = makeGrid(comment: nil, columns: ["code", "amount"])
+
+        grid.headerView.applySortState(sortState(column: 1, direction: .descending), schema: grid.schema)
+        #expect(grid.tableView.sortDescriptors.count == 1)
+        #expect(grid.tableView.sortDescriptors.first?.key == "amount")
+        #expect(grid.tableView.sortDescriptors.first?.ascending == false)
+
+        grid.headerView.applySortState(SortState(), schema: grid.schema)
+        #expect(grid.tableView.sortDescriptors.isEmpty)
     }
 }

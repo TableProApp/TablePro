@@ -242,7 +242,7 @@ extension TableViewCoordinator {
         var state = SortState()
         state.columns = [SortColumn(columnIndex: columnIndex, direction: .ascending)]
         currentSortState = state
-        updateSortIndicatorsFromCurrentState()
+        applyCurrentSortStateToHeader()
         delegate?.dataGridSortStateChanged(state)
     }
 
@@ -251,7 +251,7 @@ extension TableViewCoordinator {
         var state = SortState()
         state.columns = [SortColumn(columnIndex: columnIndex, direction: .descending)]
         currentSortState = state
-        updateSortIndicatorsFromCurrentState()
+        applyCurrentSortStateToHeader()
         delegate?.dataGridSortStateChanged(state)
     }
 
@@ -261,13 +261,13 @@ extension TableViewCoordinator {
 
     @objc func clearSortAction() {
         currentSortState = SortState()
-        updateSortIndicatorsFromCurrentState()
+        applyCurrentSortStateToHeader()
         delegate?.dataGridSortStateChanged(SortState())
     }
 
-    private func updateSortIndicatorsFromCurrentState() {
+    private func applyCurrentSortStateToHeader() {
         guard let header = tableView?.headerView as? SortableHeaderView else { return }
-        header.updateSortIndicators(state: currentSortState, schema: identitySchema)
+        header.applySortState(currentSortState, schema: identitySchema)
     }
 
     @objc func copyColumnName(_ sender: NSMenuItem) {

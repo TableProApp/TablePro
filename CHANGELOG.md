@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - A column comment in the data grid header is no longer crossed by the header's bottom line, and the empty strip under it is gone. The line now sits on the header's bottom edge where it belongs. (#2017)
+- A sorted column no longer draws an extra line through its comment or an extra divider down its left edge. Its header now looks like every other column's. (#2017)
 - Selecting a column now highlights the full height of its header instead of a band across the middle. (#2017)
 - The New Connection window now comes to the front on the first try instead of opening behind the Welcome window. This applies to Import from URL, creating a connection from a project folder, picking a database type, File > New Connection, and duplicating a connection.
 - Importing a connection URL while a New Connection window was already open no longer throws the pasted URL away. Each import now opens its own window instead of re-using the one already on screen.

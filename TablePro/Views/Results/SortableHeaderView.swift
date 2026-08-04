@@ -222,9 +222,31 @@ final class SortableHeaderView: NSTableHeaderView {
         }
     }
 
-    func updateSortIndicators(state: SortState, schema: ColumnIdentitySchema) {
-        guard let tableView = tableView else { return }
+    func applySortState(_ state: SortState, schema: ColumnIdentitySchema) {
+        guard let tableView else { return }
+        applySortDescriptors(state: state, schema: schema, in: tableView)
+        applySortIndicators(state: state, schema: schema, in: tableView)
+    }
 
+    private func applySortDescriptors(
+        state: SortState,
+        schema: ColumnIdentitySchema,
+        in tableView: NSTableView
+    ) {
+        var primary: NSSortDescriptor?
+        if let leading = state.columns.first, let name = schema.columnName(for: leading.columnIndex) {
+            primary = NSSortDescriptor(key: name, ascending: leading.direction == .ascending)
+        }
+        let current = tableView.sortDescriptors.first
+        guard current?.key != primary?.key || current?.ascending != primary?.ascending else { return }
+        tableView.sortDescriptors = primary.map { [$0] } ?? []
+    }
+
+    private func applySortIndicators(
+        state: SortState,
+        schema: ColumnIdentitySchema,
+        in tableView: NSTableView
+    ) {
         var priorityByIdentifier: [NSUserInterfaceItemIdentifier: (direction: SortDirection, priority: Int)] = [:]
         for (index, sortCol) in state.columns.enumerated() {
             guard let identifier = schema.identifier(for: sortCol.columnIndex) else { continue }
@@ -321,7 +343,7 @@ final class SortableHeaderView: NSTableHeaderView {
         )
 
         coordinator.currentSortState = transition.newState
-        updateSortIndicators(state: transition.newState, schema: coordinator.identitySchema)
+        applySortState(transition.newState, schema: coordinator.identitySchema)
         coordinator.delegate?.dataGridSortStateChanged(transition.newState)
     }
 }

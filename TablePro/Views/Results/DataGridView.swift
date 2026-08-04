@@ -195,7 +195,7 @@ struct DataGridView: NSViewRepresentable {
             coordinator.lastUpdateSnapshot = snapshot
         }
 
-        syncSortDescriptors(tableView: tableView, coordinator: coordinator, columns: latestRows.columns)
+        syncSortState(tableView: tableView, coordinator: coordinator)
         syncSelection(tableView: tableView, coordinator: coordinator)
     }
 
@@ -350,39 +350,10 @@ struct DataGridView: NSViewRepresentable {
         )
     }
 
-    private func syncSortDescriptors(tableView: NSTableView, coordinator: TableViewCoordinator, columns: [String]) {
+    private func syncSortState(tableView: NSTableView, coordinator: TableViewCoordinator) {
         coordinator.currentSortState = sortState
-
-        let schema = coordinator.identitySchema
-        let primaryIdentifier: NSUserInterfaceItemIdentifier?
-        let primary: NSSortDescriptor?
-        if let firstSort = sortState.columns.first,
-           let identifier = schema.identifier(for: firstSort.columnIndex),
-           let name = schema.columnName(for: firstSort.columnIndex) {
-            primaryIdentifier = identifier
-            primary = NSSortDescriptor(key: name, ascending: firstSort.direction == .ascending)
-        } else {
-            primaryIdentifier = nil
-            primary = nil
-        }
-
-        let desired = primary.map { [$0] } ?? []
-        let current = tableView.sortDescriptors.first
-        let needsUpdate = (current?.key != primary?.key) || (current?.ascending != primary?.ascending)
-        if needsUpdate {
-            tableView.sortDescriptors = desired
-        }
-
-        if let primaryIdentifier {
-            let columnIndex = tableView.column(withIdentifier: primaryIdentifier)
-            tableView.highlightedTableColumn = columnIndex >= 0 ? tableView.tableColumns[columnIndex] : nil
-        } else {
-            tableView.highlightedTableColumn = nil
-        }
-
-        if let header = tableView.headerView as? SortableHeaderView {
-            header.updateSortIndicators(state: sortState, schema: schema)
-        }
+        guard let header = tableView.headerView as? SortableHeaderView else { return }
+        header.applySortState(sortState, schema: coordinator.identitySchema)
     }
 
     // MARK: - Column Layout Helpers
