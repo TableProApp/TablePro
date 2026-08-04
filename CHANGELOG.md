@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The New Connection window now comes to the front on the first try instead of opening behind the Welcome window. This applies to Import from URL, creating a connection from a project folder, picking a database type, File > New Connection, and duplicating a connection.
+- Importing a connection URL while a New Connection window was already open no longer throws the pasted URL away. Each import now opens its own window instead of re-using the one already on screen.
 - Saving a table structure change with more than one connection open no longer applies the change to a different connection or jumps the view back to it. The save now runs against the connection, database, and schema the edited table belongs to, and stops with an error instead of writing if it cannot reach them. (#2015)
 - Saving on a MySQL or MariaDB server that starts sessions read-only no longer fails with "Cannot execute statement in a READ ONLY transaction". TablePro marks a transaction read-write before it writes instead of inheriting the server default. Same for PostgreSQL, CockroachDB, and Redshift. (#2009)
 - Changing Safe Mode in the connection form now applies to an open connection instead of waiting for a reconnect. (#2009)

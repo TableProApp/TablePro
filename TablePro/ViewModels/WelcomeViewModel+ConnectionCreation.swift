@@ -38,6 +38,7 @@ extension WelcomeViewModel {
         guard let payload = pendingInstallPayload else { return }
         pendingInstallPayload = nil
         applySelectedDatabaseType(type, payload: payload)
+        WindowOpener.shared.openStagedConnectionForm()
     }
 
     func presentURLImport() {
@@ -46,7 +47,6 @@ extension WelcomeViewModel {
     }
 
     private func applySelectedDatabaseType(_ type: DatabaseType, payload: DatabaseTypeChooserPayload) {
-        PendingNewConnectionType.shared.set(type)
         payload.onSelected(type)
     }
 }
