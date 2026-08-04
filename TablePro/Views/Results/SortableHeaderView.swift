@@ -119,6 +119,12 @@ final class SortableHeaderView: NSTableHeaderView {
         needsDisplay = true
     }
 
+    override func draw(_ dirtyRect: NSRect) {
+        SortableHeaderChrome.fillBackground(dirtyRect)
+        super.draw(dirtyRect)
+        SortableHeaderChrome.drawBottomSeparator(in: bounds)
+    }
+
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
         if let existing = mouseMovedTrackingArea {

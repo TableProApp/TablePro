@@ -47,6 +47,11 @@ final class SortableHeaderCell: NSTableHeaderCell {
         wraps = false
     }
 
+    override func draw(withFrame cellFrame: NSRect, in controlView: NSView) {
+        SortableHeaderChrome.drawColumnDivider(in: cellFrame)
+        drawInterior(withFrame: cellFrame, in: controlView)
+    }
+
     override func drawInterior(withFrame cellFrame: NSRect, in controlView: NSView) {
         if isColumnSelected {
             NSColor.selectedContentBackgroundColor.setFill()
