@@ -89,7 +89,7 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         var resolvedSession: ConnectionSession?
         if let connectionId = payload?.connectionId {
             resolvedSession = DatabaseManager.shared.activeSessions[connectionId]
-        } else if let currentId = DatabaseManager.shared.currentSessionId {
+        } else if let currentId = DatabaseManager.shared.lastActiveSessionId {
             resolvedSession = DatabaseManager.shared.activeSessions[currentId]
         }
         self.currentSession = resolvedSession
@@ -243,7 +243,7 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         guard closingSessionId == nil else { return }
 
         let sessions = DatabaseManager.shared.activeSessions
-        let connectionId = payload?.connectionId ?? currentSession?.id ?? DatabaseManager.shared.currentSessionId
+        let connectionId = payload?.connectionId ?? currentSession?.id ?? DatabaseManager.shared.lastActiveSessionId
 
         guard let sid = connectionId else {
             if currentSession != nil { currentSession = nil }

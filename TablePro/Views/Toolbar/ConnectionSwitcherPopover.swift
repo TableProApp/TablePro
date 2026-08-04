@@ -41,7 +41,7 @@ struct ConnectionSwitcherPopover: View {
     }
 
     private var currentSessionId: UUID? {
-        DatabaseManager.shared.currentSessionId
+        DatabaseManager.shared.lastActiveSessionId
     }
 
     private var sortedSessions: [ConnectionSession] {

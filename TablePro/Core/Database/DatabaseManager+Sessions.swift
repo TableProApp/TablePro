@@ -42,7 +42,7 @@ extension DatabaseManager {
             session.status = .connecting
             setSession(session, for: connection.id)
         }
-        currentSessionId = connection.id
+        lastActiveSessionId = connection.id
 
         let effectiveConnection: DatabaseConnection
         do {
@@ -196,8 +196,8 @@ extension DatabaseManager {
     internal func finalizeConnectionFailure(for connectionId: UUID, cancelled: Bool) {
         guard !cancelled else { return }
         removeSessionEntry(for: connectionId)
-        if currentSessionId == connectionId {
-            currentSessionId = activeSessions.keys.first
+        if lastActiveSessionId == connectionId {
+            lastActiveSessionId = activeSessions.keys.first
         }
     }
 
@@ -330,7 +330,7 @@ extension DatabaseManager {
 
     func switchToSession(_ sessionId: UUID) {
         guard activeSessions[sessionId] != nil else { return }
-        currentSessionId = sessionId
+        lastActiveSessionId = sessionId
         updateSession(sessionId) { session in
             session.markActive()
         }
@@ -382,11 +382,11 @@ extension DatabaseManager {
         SharedSidebarState.removeConnection(sessionId)
         SidebarViewModel.removeConnection(sessionId)
 
-        if currentSessionId == sessionId {
+        if lastActiveSessionId == sessionId {
             if let nextSessionId = activeSessions.keys.first {
                 switchToSession(nextSessionId)
             } else {
-                currentSessionId = nil
+                lastActiveSessionId = nil
             }
         }
         lifecycleLogger.info(

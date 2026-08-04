@@ -522,6 +522,12 @@ struct MainEditorContentView: View {
         }
     }
 
+    private func structureDatabaseName(for tab: QueryTab) -> String {
+        tab.tableContext.databaseName.isEmpty
+            ? coordinator.activeDatabaseName
+            : tab.tableContext.databaseName
+    }
+
     @ViewBuilder
     private func resultsSection(tab: QueryTab) -> some View {
         VStack(spacing: 0) {
@@ -532,11 +538,13 @@ struct MainEditorContentView: View {
                     TableStructureView(
                         tableName: tableName,
                         connection: connection,
+                        databaseName: structureDatabaseName(for: tab),
+                        schemaName: tab.tableContext.schemaName,
                         toolbarState: coordinator.toolbarState,
                         coordinator: coordinator,
                         selectionState: selectionState
                     )
-                    .id(tableName)
+                    .id("\(tab.tableContext.databaseName).\(tableName)")
                     .frame(maxHeight: .infinity)
                 }
             case .json:

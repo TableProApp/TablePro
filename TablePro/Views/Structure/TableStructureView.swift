@@ -19,6 +19,8 @@ struct TableStructureView: View {
     static let structurePasteboardType = NSPasteboard.PasteboardType("com.TablePro.structure")
     let tableName: String
     let connection: DatabaseConnection
+    let databaseName: String
+    let schemaName: String?
     let toolbarState: ConnectionToolbarState
     let coordinator: MainContentCoordinator?
     let selectionState: GridSelectionState
@@ -59,12 +61,16 @@ struct TableStructureView: View {
     init(
         tableName: String,
         connection: DatabaseConnection,
+        databaseName: String,
+        schemaName: String?,
         toolbarState: ConnectionToolbarState,
         coordinator: MainContentCoordinator?,
         selectionState: GridSelectionState
     ) {
         self.tableName = tableName
         self.connection = connection
+        self.databaseName = databaseName
+        self.schemaName = schemaName
         self.toolbarState = toolbarState
         self.coordinator = coordinator
         self.selectionState = selectionState
@@ -477,6 +483,8 @@ struct TableStructureView: View {
             username: "root",
             type: .mysql
         ),
+        databaseName: "test",
+        schemaName: nil,
         toolbarState: ConnectionToolbarState(),
         coordinator: nil,
         selectionState: GridSelectionState()

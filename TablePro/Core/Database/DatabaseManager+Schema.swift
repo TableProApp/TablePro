@@ -13,28 +13,15 @@ import TableProPluginKit
 // MARK: - Schema Changes
 
 extension DatabaseManager {
-    /// Execute schema changes (ALTER TABLE, CREATE INDEX, etc.) in a transaction
-    func executeSchemaChanges(
-        tableName: String,
-        changes: [SchemaChange],
-        databaseType: DatabaseType
-    ) async throws {
-        guard let sessionId = currentSessionId else {
-            throw DatabaseError.notConnected
-        }
-        try await executeSchemaChanges(
-            tableName: tableName,
-            changes: changes,
-            databaseType: databaseType,
-            connectionId: sessionId
-        )
-    }
-
-    /// Execute schema changes using an explicit connection ID (session-scoped)
+    /// Execute schema changes (ALTER TABLE, CREATE INDEX, etc.) in a transaction.
+    /// The connection, database, and schema all come from the caller's own tab, never
+    /// from ambient session state that another window or tab can move.
     func executeSchemaChanges(
         tableName: String,
         changes: [SchemaChange],
         databaseType: DatabaseType,
+        databaseName: String,
+        schemaName: String?,
         connectionId: UUID
     ) async throws {
         guard let driver = driver(for: connectionId) else {
@@ -42,6 +29,13 @@ extension DatabaseManager {
         }
 
         try await trackOperation(sessionId: connectionId) {
+            try await pinDatabaseBeforeSchemaChange(
+                databaseName: databaseName,
+                schemaName: schemaName,
+                databaseType: databaseType,
+                connectionId: connectionId
+            )
+
             // For PostgreSQL PK modification, query the actual constraint name
             let pkConstraintName = await fetchPrimaryKeyConstraintName(
                 tableName: tableName,
@@ -124,6 +118,54 @@ extension DatabaseManager {
                 throw DatabaseError.queryFailed("Schema change failed: \(error.localizedDescription)")
             }
         }
+    }
+
+    /// Point the shared session driver at the database and schema the edited table
+    /// belongs to. Sibling tabs on the same connection move that driver, so a save must
+    /// re-pin before it writes. A failed pin aborts the save: a misdirected DDL is
+    /// silent and often irreversible, unlike a misdirected read.
+    ///
+    /// Switching database on a schema-grouped engine drops the driver back to the engine's
+    /// default schema, and those drivers qualify their DDL with whatever schema they are
+    /// currently on, so the schema has to be restored before any statement is generated.
+    private func pinDatabaseBeforeSchemaChange(
+        databaseName: String,
+        schemaName: String?,
+        databaseType: DatabaseType,
+        connectionId: UUID
+    ) async throws {
+        guard !databaseName.isEmpty,
+              !pluginManager.requiresReconnectForDatabaseSwitch(for: databaseType),
+              databaseName != activeSessions[connectionId]?.activeDatabase
+        else {
+            return
+        }
+
+        let targetSchema = resolvedSchemaName(schemaName, for: connectionId)
+
+        do {
+            try await switchDatabase(to: databaseName, for: connectionId, persist: false)
+            try await restoreSchemaAfterDatabasePin(targetSchema, for: connectionId)
+        } catch {
+            throw DatabaseError.queryFailed(
+                String(
+                    format: String(localized: "Could not switch to database %@ before applying schema changes: %@"),
+                    databaseName,
+                    error.localizedDescription
+                )
+            )
+        }
+    }
+
+    private func restoreSchemaAfterDatabasePin(_ targetSchema: String?, for connectionId: UUID) async throws {
+        guard let targetSchema, !targetSchema.isEmpty,
+              let schemaDriver = driver(for: connectionId) as? SchemaSwitchable,
+              schemaDriver.currentSchema != targetSchema
+        else {
+            return
+        }
+
+        try await switchSchema(to: targetSchema, for: connectionId)
     }
 
     /// Query the actual primary key constraint name for PostgreSQL.

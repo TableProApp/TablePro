@@ -227,12 +227,6 @@ extension DatabaseManager {
         }
     }
 
-    /// Reconnect the current session (called from toolbar Reconnect button)
-    func reconnectCurrentSession() async {
-        guard let sessionId = currentSessionId else { return }
-        await reconnectSession(sessionId)
-    }
-
     /// Reconnect a specific session by ID
     func reconnectSession(_ sessionId: UUID) async {
         guard let session = activeSessions[sessionId] else { return }

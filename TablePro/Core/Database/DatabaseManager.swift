@@ -41,8 +41,13 @@ final class DatabaseManager {
     /// counter to avoid cross-connection re-renders.
     internal(set) var connectionStatusVersions: [UUID: Int] = [:]
 
-    /// Currently selected session ID (displayed in UI)
-    internal var currentSessionId: UUID?
+    /// Best-effort "most recently activated" connection. Window focus never re-anchors it,
+    /// so it is only valid for UI highlighting (which connection the switcher marks active)
+    /// and as a fallback for entry points that have no window of their own, such as a new
+    /// contentless window or a file opened from Finder. Never resolve the target of an
+    /// operation through it: read the connection id from the window or tab that owns the
+    /// operation instead.
+    internal var lastActiveSessionId: UUID?
 
     /// Health monitors for active connections (MySQL/PostgreSQL only)
     @ObservationIgnored internal var healthMonitors: [UUID: ConnectionHealthMonitor] = [:]
@@ -68,15 +73,10 @@ final class DatabaseManager {
     /// before touching shared session state and discards its driver when it lost.
     @ObservationIgnored internal var connectionAttempts = ConnectionAttemptRegistry()
 
-    /// Current session (computed from currentSessionId)
-    var currentSession: ConnectionSession? {
-        guard let sessionId = currentSessionId else { return nil }
+    /// Session for `lastActiveSessionId`, subject to the same caveats.
+    var lastActiveSession: ConnectionSession? {
+        guard let sessionId = lastActiveSessionId else { return nil }
         return activeSessions[sessionId]
-    }
-
-    /// Current driver (for convenience)
-    var activeDriver: DatabaseDriver? {
-        currentSession?.driver
     }
 
     /// Resolve the driver for a specific connection (session-scoped, no global state)
@@ -107,11 +107,6 @@ final class DatabaseManager {
             return nil
         }
         return sessionSchema
-    }
-
-    /// Current connection status
-    var status: ConnectionStatus {
-        currentSession?.status ?? .disconnected
     }
 
     internal init(

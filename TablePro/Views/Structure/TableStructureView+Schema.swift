@@ -93,7 +93,10 @@ extension TableStructureView {
             try await DatabaseManager.shared.executeSchemaChanges(
                 tableName: tableName,
                 changes: changes,
-                databaseType: connection.type
+                databaseType: connection.type,
+                databaseName: databaseName,
+                schemaName: schemaName,
+                connectionId: connection.id
             )
 
             tabData.markAllStale()
