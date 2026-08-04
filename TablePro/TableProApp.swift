@@ -931,10 +931,11 @@ struct TableProApp: App {
         .windowStyle(.hiddenTitleBar)
         .commandsRemoved()
 
-        WindowGroup("New Connection", id: SceneId.connectionForm, for: UUID?.self) { $editingId in
-            ConnectionFormView(connectionId: editingId ?? nil)
+        WindowGroup("New Connection", id: SceneId.connectionForm, for: ConnectionFormRequest.self) { $request in
+            ConnectionFormView(request: request)
                 .background(WindowOpenerBridge())
                 .background(WindowChromeConfigurator(restorable: false))
+                .background(WindowSelfRaiser())
                 .environment(\.appServices, .live)
         }
         .windowResizability(.contentMinSize)

@@ -388,6 +388,74 @@ struct OpenTableTabTests {
         #expect(tabManager.selectedTab?.display.resultsViewMode == .structure)
     }
 
+    // MARK: - Protected content
+
+    @Test("An executed query tab holds protected content")
+    @MainActor
+    func executedQueryTabIsProtected() {
+        let coordinator = Self.makeCoordinator()
+        defer { coordinator.teardown() }
+        coordinator.tabManager.addTab(databaseName: "db")
+        coordinator.tabManager.mutate(at: 0) { $0.execution.lastExecutedAt = Date() }
+        #expect(coordinator.selectedTabHoldsProtectedContent)
+    }
+
+    @Test("A query tab with typed but unexecuted SQL holds protected content")
+    @MainActor
+    func typedQueryTabIsProtected() {
+        let coordinator = Self.makeCoordinator()
+        defer { coordinator.teardown() }
+        coordinator.tabManager.addTab(initialQuery: "SELECT 1", databaseName: "db")
+        #expect(coordinator.selectedTabHoldsProtectedContent)
+    }
+
+    @Test("A blank never-executed query tab holds no protected content")
+    @MainActor
+    func blankQueryTabIsNotProtected() {
+        let coordinator = Self.makeCoordinator()
+        defer { coordinator.teardown() }
+        coordinator.tabManager.addTab(databaseName: "db")
+        #expect(coordinator.selectedTabHoldsProtectedContent == false)
+    }
+
+    @Test("A table tab with pending cell edits holds protected content")
+    @MainActor
+    func tableTabWithPendingEditsIsProtected() throws {
+        let coordinator = Self.makeCoordinator()
+        defer { coordinator.teardown() }
+        try coordinator.tabManager.addTableTab(tableName: "users", databaseType: .mysql, databaseName: "db")
+        coordinator.changeManager.hasChanges = true
+        #expect(coordinator.selectedTabHoldsProtectedContent)
+    }
+
+    @Test("An ordinary table tab holds no protected content")
+    @MainActor
+    func ordinaryTableTabIsNotProtected() throws {
+        let coordinator = Self.makeCoordinator()
+        defer { coordinator.teardown() }
+        try coordinator.tabManager.addTableTab(tableName: "users", databaseType: .mysql, databaseName: "db")
+        #expect(coordinator.selectedTabHoldsProtectedContent == false)
+    }
+
+    @Test("A createTable tab with a committable design holds protected content")
+    @MainActor
+    func createTableTabWithPendingDesignIsProtected() {
+        let coordinator = Self.makeCoordinator()
+        defer { coordinator.teardown() }
+        coordinator.tabManager.addCreateTableTab(databaseName: "db")
+        coordinator.toolbarState.hasCreateTablePending = true
+        #expect(coordinator.selectedTabHoldsProtectedContent)
+    }
+
+    @Test("A createTable tab without a committable design holds no protected content")
+    @MainActor
+    func createTableTabWithoutPendingDesignIsNotProtected() {
+        let coordinator = Self.makeCoordinator()
+        defer { coordinator.teardown() }
+        coordinator.tabManager.addCreateTableTab(databaseName: "db")
+        #expect(coordinator.selectedTabHoldsProtectedContent == false)
+    }
+
     @MainActor
     private static func makeCoordinator() -> MainContentCoordinator {
         MainContentCoordinator(

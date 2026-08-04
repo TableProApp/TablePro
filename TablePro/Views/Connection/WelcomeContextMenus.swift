@@ -131,7 +131,6 @@ extension WelcomeWindowView {
 
         Button {
             WindowOpener.shared.openConnectionForm(editing: connection.id)
-            vm.focusConnectionFormWindow()
         } label: {
             Label(String(localized: "Edit"), systemImage: "pencil")
         }

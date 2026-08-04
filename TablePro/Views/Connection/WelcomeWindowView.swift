@@ -85,6 +85,7 @@ struct WelcomeWindowView: View {
                 vm.pendingImportResultCount = nil
             }
             focus = .connectionList
+            WindowOpener.shared.openStagedConnectionForm()
         }) { sheet in
             switch sheet {
             case .newGroup(let parentId):
@@ -110,7 +111,7 @@ struct WelcomeWindowView: View {
                     rootURL: url,
                     onSelect: { parsed in
                         vm.activeSheet = nil
-                        WindowOpener.shared.openConnectionFormFromURL(parsed)
+                        WindowOpener.shared.stageConnectionFormDraft(parsedURL: parsed)
                     },
                     onChooseAnotherFolder: {
                         vm.activeSheet = nil
@@ -702,7 +703,9 @@ private struct ConnectionCreationOverlays: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .sheet(item: $vm.databaseTypeChooser) { payload in
+            .sheet(item: $vm.databaseTypeChooser, onDismiss: {
+                WindowOpener.shared.openStagedConnectionForm()
+            }) { payload in
                 DatabaseTypeChooserSheet(
                     initialType: payload.initialType,
                     onSelected: { type in
@@ -712,11 +715,13 @@ private struct ConnectionCreationOverlays: ViewModifier {
                     onCancel: { vm.databaseTypeChooser = nil }
                 )
             }
-            .sheet(isPresented: $vm.urlImportPresented) {
+            .sheet(isPresented: $vm.urlImportPresented, onDismiss: {
+                WindowOpener.shared.openStagedConnectionForm()
+            }) {
                 ImportFromURLSheet(
                     onImported: { parsed in
                         vm.urlImportPresented = false
-                        WindowOpener.shared.openConnectionFormFromURL(parsed)
+                        WindowOpener.shared.stageConnectionFormDraft(parsedURL: parsed)
                     },
                     onCancel: {
                         vm.urlImportPresented = false

@@ -18,7 +18,7 @@ internal struct WindowOpenerBridge: View {
     private func wireUp() {
         WindowOpener.shared.wire(
             openWelcome: { openWindow(id: SceneId.welcome) },
-            openConnectionForm: { id in openWindow(id: SceneId.connectionForm, value: id) },
+            openConnectionForm: { request in openWindow(id: SceneId.connectionForm, value: request) },
             openIntegrationsActivity: { openWindow(id: SceneId.integrationsActivity) },
             openCompareSync: { id in
                 openWindow(id: SceneId.compareSync, value: CompareSyncPayload(sourceConnectionId: id))
