@@ -9,8 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- A column comment in the data grid header is no longer crossed by the header's bottom line, and the empty strip under it is gone. The line now sits on the header's bottom edge where it belongs.
-- Selecting a column now highlights the full height of its header instead of a band across the middle.
+- A column comment in the data grid header is no longer crossed by the header's bottom line, and the empty strip under it is gone. The line now sits on the header's bottom edge where it belongs. (#2017)
+- Selecting a column now highlights the full height of its header instead of a band across the middle. (#2017)
 - Saving a table structure change with more than one connection open no longer applies the change to a different connection or jumps the view back to it. The save now runs against the connection, database, and schema the edited table belongs to, and stops with an error instead of writing if it cannot reach them. (#2015)
 - Saving on a MySQL or MariaDB server that starts sessions read-only no longer fails with "Cannot execute statement in a READ ONLY transaction". TablePro marks a transaction read-write before it writes instead of inheriting the server default. Same for PostgreSQL, CockroachDB, and Redshift. (#2009)
 - Changing Safe Mode in the connection form now applies to an open connection instead of waiting for a reconnect. (#2009)
