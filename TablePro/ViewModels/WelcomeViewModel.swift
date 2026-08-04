@@ -668,12 +668,6 @@ final class WelcomeViewModel {
         rebuildTree()
     }
 
-    func focusConnectionFormWindow() {
-        if let window = NSApp.windows.first(where: { AppLaunchCoordinator.isConnectionFormWindow($0) }) {
-            window.makeKeyAndOrderFront(nil)
-        }
-    }
-
     // MARK: - Private Helpers
 
     private func handleConnectError(_ error: Error, connection: DatabaseConnection) {

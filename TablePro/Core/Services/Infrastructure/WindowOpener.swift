@@ -15,9 +15,10 @@ internal final class WindowOpener {
     private static let logger = Logger(subsystem: "com.TablePro", category: "WindowOpener")
 
     @ObservationIgnored private var openWelcomeAction: (() -> Void)?
-    @ObservationIgnored private var openConnectionFormAction: ((UUID?) -> Void)?
+    @ObservationIgnored private var openConnectionFormAction: ((ConnectionFormRequest) -> Void)?
     @ObservationIgnored private var openIntegrationsActivityAction: (() -> Void)?
     @ObservationIgnored private var openSettingsAction: (() -> Void)?
+    @ObservationIgnored private var stagedDraftId: UUID?
     @ObservationIgnored private var pendingCalls: [() -> Void] = []
     @ObservationIgnored private var isWired = false
 
@@ -46,24 +47,33 @@ internal final class WindowOpener {
         }
     }
 
-    internal func openConnectionForm(editing connectionId: UUID? = nil) {
-        guard connectionId == nil else {
-            run { $0.openConnectionFormAction?(connectionId) }
-            return
-        }
+    internal func openConnectionForm(editing connectionId: UUID) {
+        run { $0.openConnectionFormAction?(.edit(connectionId: connectionId)) }
+    }
+
+    internal func openConnectionForm() {
         presentTypeChooser(initialType: nil) { selected in
-            WindowOpener.shared.openConnectionForm(editing: nil, withType: selected)
+            WindowOpener.shared.stageConnectionFormDraft(type: selected)
         }
     }
 
-    internal func openConnectionForm(editing connectionId: UUID?, withType type: DatabaseType) {
-        PendingNewConnectionType.shared.set(type)
-        run { $0.openConnectionFormAction?(connectionId) }
+    internal func stageConnectionFormDraft(type: DatabaseType? = nil, parsedURL: ParsedConnectionURL? = nil) {
+        discardStagedDraft()
+        stagedDraftId = ConnectionFormDraftStore.shared.stage(
+            ConnectionFormDraft(type: type, parsedURL: parsedURL)
+        )
     }
 
-    internal func openConnectionFormFromURL(_ parsed: ParsedConnectionURL) {
-        PendingNewConnectionImport.shared.set(parsed)
-        run { $0.openConnectionFormAction?(nil) }
+    internal func openStagedConnectionForm() {
+        guard let draftId = stagedDraftId else { return }
+        stagedDraftId = nil
+        run { $0.openConnectionFormAction?(.create(draftId: draftId)) }
+    }
+
+    private func discardStagedDraft() {
+        guard let draftId = stagedDraftId else { return }
+        stagedDraftId = nil
+        _ = ConnectionFormDraftStore.shared.consume(draftId)
     }
 
     internal func presentTypeChooser(
@@ -80,7 +90,7 @@ internal final class WindowOpener {
 
     internal func wire(
         openWelcome: @escaping () -> Void,
-        openConnectionForm: @escaping (UUID?) -> Void,
+        openConnectionForm: @escaping (ConnectionFormRequest) -> Void,
         openIntegrationsActivity: @escaping () -> Void,
         openSettings: @escaping () -> Void
     ) {

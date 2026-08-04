@@ -7,7 +7,7 @@ import SwiftUI
 import TableProPluginKit
 
 struct ConnectionFormView: View {
-    let connectionId: UUID?
+    let request: ConnectionFormRequest?
 
     @State private var coordinator: ConnectionFormCoordinator?
     @Environment(\.dismiss) private var dismiss
@@ -21,24 +21,24 @@ struct ConnectionFormView: View {
                     .frame(minWidth: 720, minHeight: 560)
             }
         }
-        .task(id: connectionId) {
+        .task(id: request) {
             guard coordinator == nil else { return }
-            let pendingImport = connectionId == nil
-                ? PendingNewConnectionImport.shared.consume()
-                : nil
-            let pendingType = connectionId == nil
-                ? PendingNewConnectionType.shared.consume()
-                : nil
+            let draft = consumeDraft()
             let new = ConnectionFormCoordinator(
-                connectionId: connectionId,
-                initialType: pendingType,
-                initialParsedURL: pendingImport
+                connectionId: request?.editedConnectionId,
+                initialType: draft?.type,
+                initialParsedURL: draft?.parsedURL
             )
             new.dismissAction = { dismiss() }
             new.start()
             new.detectClipboardConnectionStringIfNeeded()
             coordinator = new
         }
+    }
+
+    private func consumeDraft() -> ConnectionFormDraft? {
+        guard let draftId = request?.draftId else { return nil }
+        return ConnectionFormDraftStore.shared.consume(draftId)
     }
 }
 
