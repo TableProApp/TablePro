@@ -302,17 +302,27 @@ extension MainContentCoordinator {
 
     // MARK: - Preview Tabs
 
+    /// Content the user authored that lives nowhere else, so replacing the tab in place would
+    /// destroy it. Any navigation that reuses the selected tab must consult this first.
+    var selectedTabHoldsProtectedContent: Bool {
+        guard let tab = tabManager.selectedTab else { return false }
+        if changeManager.hasChanges { return true }
+        if tab.holdsQueryWork { return true }
+        if tab.tabType == .createTable { return toolbarState.hasCreateTablePending }
+        return false
+    }
+
     var isActiveTabReusable: Bool {
         guard let tab = tabManager.selectedTab else { return false }
-        if changeManager.hasChanges
-            || selectedTabFilterState.hasAppliedFilters
+        if selectedTabHoldsProtectedContent { return false }
+        if selectedTabFilterState.hasAppliedFilters
             || tab.hasUserActiveSort
             || tab.display.hasPinnedResults {
             return false
         }
-        if tab.tabType == .createTable { return !toolbarState.hasCreateTablePending }
+        if tab.tabType == .createTable { return true }
         if tab.isPreview { return true }
-        if tab.tabType == .query, !tab.holdsQueryWork { return true }
+        if tab.tabType == .query { return true }
         return false
     }
 
