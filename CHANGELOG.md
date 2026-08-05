@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Turkish, Vietnamese, Simplified Chinese, and Traditional Chinese translations for the strings that still showed in English.
+
 ### Fixed
 
 - The data grid header's bottom line no longer cuts through a column comment. It sits on the header's bottom edge. (#2017)

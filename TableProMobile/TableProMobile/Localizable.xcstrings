@@ -271,10 +271,48 @@
       }
     },
     "%d connections imported." : {
-
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Đã nhập %d kết nối."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已导入 %d 个连接。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已匯入 %d 個連線。"
+          }
+        }
+      }
     },
     "%d connections will be exported." : {
-
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%d kết nối sẽ được xuất."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "将导出 %d 个连接。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "將匯出 %d 個連線。"
+          }
+        }
+      }
     },
     "%d row(s) affected" : {
       "localizations" : {
@@ -393,10 +431,48 @@
       }
     },
     "1 connection imported." : {
-
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Đã nhập 1 kết nối."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已导入 1 个连接。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已匯入 1 個連線。"
+          }
+        }
+      }
     },
     "1 connection will be exported." : {
-
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1 kết nối sẽ được xuất."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "将导出 1 个连接。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "將匯出 1 個連線。"
+          }
+        }
+      }
     },
     "A fast, lightweight database client for your iPhone and iPad." : {
       "localizations" : {
@@ -685,7 +761,26 @@
       }
     },
     "Already exists" : {
-
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Đã tồn tại"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已存在"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已存在"
+          }
+        }
+      }
     },
     "An unknown error occurred." : {
       "extractionState" : "stale",
@@ -799,7 +894,26 @@
       }
     },
     "As Copy" : {
-
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dạng Bản sao"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "作为副本"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "作為副本"
+          }
+        }
+      }
     },
     "Ascending" : {
       "localizations" : {
@@ -978,7 +1092,26 @@
       }
     },
     "Can't Import" : {
-
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không thể nhập"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法导入"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法匯入"
+          }
+        }
+      }
     },
     "Cancel" : {
       "localizations" : {
@@ -1422,7 +1555,26 @@
       }
     },
     "Confirm passphrase" : {
-
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Xác nhận cụm mật khẩu"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "确认密码短语"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "確認密碼短語"
+          }
+        }
+      }
     },
     "Connected" : {
       "localizations" : {
@@ -2085,7 +2237,26 @@
       }
     },
     "Decrypt" : {
-
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Giải mã"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "解密"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "解密"
+          }
+        }
+      }
     },
     "Default" : {
       "localizations" : {
@@ -2728,7 +2899,26 @@
       }
     },
     "Enter the passphrase to decrypt and import connections." : {
-
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nhập cụm mật khẩu để giải mã và nhập kết nối."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "输入密码短语以解密并导入连接。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "輸入密碼短語以解密並匯入連線。"
+          }
+        }
+      }
     },
     "Error" : {
       "localizations" : {
@@ -2863,7 +3053,26 @@
       }
     },
     "Export Connections" : {
-
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Xuất kết nối"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "导出连接"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "匯出連線"
+          }
+        }
+      }
     },
     "Failed to load more rows" : {
       "extractionState" : "stale",
@@ -3442,10 +3651,48 @@
       }
     },
     "Import" : {
-
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nhập"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "导入"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "匯入"
+          }
+        }
+      }
     },
     "Import Connections" : {
-
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nhập Kết nối"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "导入连接"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "匯入連線"
+          }
+        }
+      }
     },
     "Import connections from your Mac" : {
       "localizations" : {
@@ -3492,7 +3739,26 @@
       }
     },
     "Include passwords" : {
-
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bao gồm mật khẩu"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "包含密码"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "包含密碼"
+          }
+        }
+      }
     },
     "Indexes" : {
       "extractionState" : "stale",
@@ -3983,7 +4249,26 @@
       }
     },
     "More" : {
-
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Thêm"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更多"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更多"
+          }
+        }
+      }
     },
     "Name" : {
       "localizations" : {
@@ -4888,7 +5173,26 @@
       }
     },
     "Passphrase" : {
-
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cụm mật khẩu"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "密码短语"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通關密語"
+          }
+        }
+      }
     },
     "Passphrase (optional)" : {
       "localizations" : {
@@ -4913,7 +5217,26 @@
       }
     },
     "Passphrases don't match." : {
-
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cụm mật khẩu không khớp."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "两次输入的密码短语不一致。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "兩次輸入的通關密語不一致。"
+          }
+        }
+      }
     },
     "Password" : {
       "localizations" : {
@@ -4938,7 +5261,26 @@
       }
     },
     "Passwords are excluded by default. To include them, set a passphrase. The file is encrypted with it." : {
-
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mặc định mật khẩu không được đưa vào. Để đưa vào, hãy đặt một cụm mật khẩu. Tệp sẽ được mã hóa bằng cụm mật khẩu đó."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "默认不包含密码。若要包含，请设置一个密码短语，文件会用它加密。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "預設不包含密碼。若要包含，請設定一組通關密語，檔案會用它加密。"
+          }
+        }
+      }
     },
     "Paste private key (PEM format)" : {
       "localizations" : {
@@ -5317,7 +5659,26 @@
       }
     },
     "Replace" : {
-
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Thay thế"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "替换"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "取代"
+          }
+        }
+      }
     },
     "Require Face ID" : {
       "localizations" : {
@@ -7107,7 +7468,26 @@
       }
     },
     "This file is encrypted" : {
-
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tệp này được mã hóa"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此文件已加密"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此檔案已加密"
+          }
+        }
+      }
     },
     "This query will modify data. Are you sure you want to continue?" : {
       "localizations" : {
