@@ -9,21 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- A column comment in the data grid header is no longer crossed by the header's bottom line, and the empty strip under it is gone. The line now sits on the header's bottom edge where it belongs. (#2017)
-- A sorted column no longer draws an extra line through its comment or an extra divider down its left edge. Its header now looks like every other column's. (#2017)
-- Selecting a column now highlights the full height of its header instead of a band across the middle. (#2017)
-- The New Connection window now comes to the front on the first try instead of opening behind the Welcome window. This applies to Import from URL, creating a connection from a project folder, picking a database type, File > New Connection, and duplicating a connection.
-- Importing a connection URL while a New Connection window was already open no longer throws the pasted URL away. Each import now opens its own window instead of re-using the one already on screen.
-- Clicking a foreign key arrow in a query tab's results no longer replaces that tab and loses the query and its results. The referenced table opens in its own tab, and clicking the same reference again returns to that tab instead of opening a duplicate. A tab with unsaved cell edits is kept the same way.
-- A foreign key jump between table tabs now keeps the filters you saved for the table you left and applies the hidden columns you saved for the table you land on.
-- Saving a table structure change with more than one connection open no longer applies the change to a different connection or jumps the view back to it. The save now runs against the connection, database, and schema the edited table belongs to, and stops with an error instead of writing if it cannot reach them. (#2015)
-- Saving on a MySQL or MariaDB server that starts sessions read-only no longer fails with "Cannot execute statement in a READ ONLY transaction". TablePro marks a transaction read-write before it writes instead of inheriting the server default. Same for PostgreSQL, CockroachDB, and Redshift. (#2009)
+- The data grid header's bottom line no longer cuts through a column comment. It sits on the header's bottom edge. (#2017)
+- A sorted column's header no longer draws an extra line and a divider that no other column has. (#2017)
+- Selecting a column highlights the full height of its header instead of a band across the middle. (#2017)
+- The New Connection window opens in front of the Welcome window on the first try, from every command that opens it.
+- Importing a connection URL while a New Connection window is open no longer discards the pasted URL. Each import opens its own window.
+- Clicking a foreign key arrow in a query tab's results no longer replaces the tab and loses the query. The referenced table opens in its own tab, and clicking the same reference again returns to it. A tab with unsaved edits is kept the same way.
+- A foreign key jump keeps the filters saved for the table you left and applies the hidden columns saved for the table you open.
+- Saving a table structure change with more than one connection open now runs against the connection, database, and schema the edited table belongs to, instead of a different one. It stops with an error rather than writing to the wrong place. (#2015)
+- Saving on a server that starts sessions read-only no longer fails with "Cannot execute statement in a READ ONLY transaction". TablePro marks the transaction read-write before it writes. Covers MySQL, MariaDB, PostgreSQL, CockroachDB, and Redshift. (#2009)
 - Changing Safe Mode in the connection form now applies to an open connection instead of waiting for a reconnect. (#2009)
 - A read-only error now says whether the database server or Safe Mode refused the write. (#2009)
-- The MCP server's **Default row limit** and **Maximum row limit** now apply to the `export_data` tool, so raising the maximum really does export more rows. Export previously ignored both and used a fixed 50,000, so an export with no `max_rows` now returns the default row limit (500) until you raise it. Export also honours the configured query timeout, reports whether the limit clipped the result, and appears in query history and the activity log like other MCP queries. (#2012)
-- Exporting a table over MCP no longer fails on SQL Server, Oracle, and Teradata. The row limit is now written in each database's own syntax instead of always using `LIMIT`. (#2012)
-- Setting the MCP server's row limits or query timeout to zero or a negative number no longer crashes the app on the next tool call. Values outside the supported range are corrected as you type. (#2012)
-- AI chat no longer crashes when the model asks a tool for a row limit or timeout larger than TablePro can count to. The tool now falls back to the configured limit. (#2012)
+- The MCP server's **Default row limit** and **Maximum row limit** now apply to the `export_data` tool. Export ignored both and used a fixed 50,000, so an export with no `max_rows` now returns 500 rows until you raise the default. Export also honours the query timeout, reports when the limit clipped the result, and appears in query history and the activity log. (#2012)
+- Exporting a table over MCP no longer fails on SQL Server, Oracle, and Teradata. The row limit now uses each database's own syntax instead of `LIMIT`. (#2012)
+- Setting the MCP server's row limits or query timeout to zero or less no longer crashes the app on the next tool call. Out-of-range values are corrected as you type. (#2012)
+- AI chat no longer crashes when a tool is asked for a row limit or timeout larger than TablePro can count to. It falls back to the configured limit. (#2012)
 
 ## [0.62.0] - 2026-08-02
 
