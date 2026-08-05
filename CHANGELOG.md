@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Refreshing a table no longer fails with "Query cancelled" on every second click. (#2021)
 - Stopping a query no longer shows a red error or records the query as failed in history.
 - Stopping a MySQL, MariaDB, or Redis query no longer cancels the next one you run.
+- SQL export of a MySQL or MariaDB table no longer writes generated columns into the INSERT statements, so the dump imports cleanly instead of failing on the generated column. (#2023)
 
 ## [0.63.0] - 2026-08-05
 

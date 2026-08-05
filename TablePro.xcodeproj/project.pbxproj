@@ -538,6 +538,7 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				MySQLColumnDefinitionSQL.swift,
+				MySQLGeneratedColumnClassification.swift,
 				MySQLQueryTimeoutStatement.swift,
 				MySQLSocketTimeout.swift,
 				MySQLStatementClassification.swift,
