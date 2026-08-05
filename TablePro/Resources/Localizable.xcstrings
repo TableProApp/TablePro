@@ -10511,6 +10511,34 @@
         }
       }
     },
+    "ANTHROPIC_API_KEY and ANTHROPIC_AUTH_TOKEN are removed from the tool's environment, so replies always draw on the subscription." : {
+      "localizations" : {
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ANTHROPIC_API_KEY ve ANTHROPIC_AUTH_TOKEN aracın ortamından kaldırılır, bu yüzden yanıtlar her zaman abonelikten düşer."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ANTHROPIC_API_KEY và ANTHROPIC_AUTH_TOKEN bị loại khỏi môi trường của công cụ, nên các câu trả lời luôn dùng gói đăng ký."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ANTHROPIC_API_KEY 和 ANTHROPIC_AUTH_TOKEN 会从该工具的环境变量中移除，因此回复始终消耗订阅额度。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ANTHROPIC_API_KEY 和 ANTHROPIC_AUTH_TOKEN 會從該工具的環境變數中移除，因此回覆一律消耗訂閱額度。"
+          }
+        }
+      }
+    },
     "Any Column" : {
       "localizations" : {
         "tr" : {
@@ -40981,6 +41009,34 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "字型"
+          }
+        }
+      }
+    },
+    "For a metered path on Anthropic's commercial terms, add the Claude provider with an API key instead." : {
+      "localizations" : {
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anthropic'in ticari koşullarıyla kullanım başına ödemeli bir yol için bunun yerine Claude sağlayıcısını bir API anahtarıyla ekleyin."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nếu muốn cách tính phí theo mức dùng theo điều khoản thương mại của Anthropic, hãy thêm nhà cung cấp Claude bằng khóa API."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "若想走 Anthropic 商业条款下的按量计费路径，请改为添加带 API 密钥的 Claude 提供方。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "若想走 Anthropic 商業條款下的按量計費路徑，請改為新增帶 API 金鑰的 Claude 供應商。"
           }
         }
       }
@@ -72066,6 +72122,34 @@
         }
       }
     },
+    "Replies count against your Claude subscription limits. You share those limits with claude.ai and your own Claude Code sessions, so running out here stops your work there too." : {
+      "localizations" : {
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Yanıtlar Claude abonelik limitlerinizden düşer. Bu limitleri claude.ai ve kendi Claude Code oturumlarınızla paylaşırsınız, bu yüzden burada limiti doldurmak oradaki işinizi de durdurur."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Các câu trả lời được tính vào giới hạn gói Claude của bạn. Bạn dùng chung giới hạn đó với claude.ai và các phiên Claude Code của mình, nên hết hạn mức ở đây cũng làm dừng công việc bên đó."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "回复会计入你的 Claude 订阅额度。该额度与 claude.ai 和你自己的 Claude Code 会话共用，因此在这里用完也会让那边的工作停下来。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "回覆會計入你的 Claude 訂閱額度。該額度與 claude.ai 和你自己的 Claude Code 工作階段共用，因此在這裡用完也會讓那邊的工作停下來。"
+          }
+        }
+      }
+    },
     "Report an Issue" : {
       "localizations" : {
         "tr" : {
@@ -87130,6 +87214,34 @@
         }
       }
     },
+    "TablePro runs Anthropic's claude tool in headless mode. Claude Code is built for you to use directly, not as a backend for other apps, so this path can break with any Claude Code release." : {
+      "localizations" : {
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro, Anthropic'in claude aracını başsız modda çalıştırır. Claude Code doğrudan sizin kullanmanız için yapıldı, başka uygulamalara arka uç olsun diye değil; bu yüzden bu yol herhangi bir Claude Code sürümüyle bozulabilir."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro chạy công cụ claude của Anthropic ở chế độ headless. Claude Code được tạo ra để bạn dùng trực tiếp, không phải làm backend cho ứng dụng khác, nên cách này có thể hỏng sau bất kỳ bản phát hành Claude Code nào."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro 以无界面模式运行 Anthropic 的 claude 工具。Claude Code 是给你直接使用的，不是给其他应用当后端，因此这条路径可能在任何一次 Claude Code 更新后失效。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro 以無介面模式執行 Anthropic 的 claude 工具。Claude Code 是給你直接使用的，不是給其他應用程式當後端，因此這條路徑可能在任何一次 Claude Code 更新後失效。"
+          }
+        }
+      }
+    },
     "TablePro Website" : {
       "localizations" : {
         "tr" : {
@@ -93667,6 +93779,34 @@
         }
       }
     },
+    "Tradeoffs" : {
+      "localizations" : {
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ödünleşimler"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Đánh đổi"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "取舍"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "取捨"
+          }
+        }
+      }
+    },
     "Tree" : {
       "localizations" : {
         "tr" : {
@@ -99514,6 +99654,62 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "你的授權已過期"
+          }
+        }
+      }
+    },
+    "Your prompts, schema, and query text reach Anthropic under your consumer plan and its privacy settings, not the API's commercial terms." : {
+      "localizations" : {
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "İstemleriniz, şemanız ve sorgu metniniz Anthropic'e API'nin ticari koşullarıyla değil, tüketici planınız ve onun gizlilik ayarları kapsamında ulaşır."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Câu lệnh, schema và nội dung truy vấn của bạn đến Anthropic theo gói người dùng và các thiết lập riêng tư của gói đó, không phải theo điều khoản thương mại của API."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的提示词、Schema 和查询文本按你的消费者套餐及其隐私设置发送到 Anthropic，而不是按 API 的商业条款。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的提示詞、綱要和查詢文字會依你的消費者方案及其隱私設定傳送到 Anthropic，而不是依 API 的商業條款。"
+          }
+        }
+      }
+    },
+    "Your subscription is governed by Anthropic's Consumer Terms and Usage Policy. Read them and decide whether this use fits. TablePro cannot grant rights under them." : {
+      "localizations" : {
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aboneliğiniz Anthropic'in Tüketici Koşulları ve Kullanım Politikası'na tabidir. Bunları okuyun ve bu kullanımın uygun olup olmadığına karar verin. TablePro bu koşullar kapsamında size hak veremez."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gói đăng ký của bạn chịu sự điều chỉnh của Điều khoản Người dùng và Chính sách Sử dụng của Anthropic. Hãy đọc và tự quyết định cách dùng này có phù hợp không. TablePro không thể cấp quyền theo các điều khoản đó."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的订阅受 Anthropic 的消费者条款和使用政策约束。请阅读这些条款，自行判断这种用法是否合适。TablePro 无法据此授予你任何权利。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的訂閱受 Anthropic 的消費者條款與使用政策約束。請閱讀這些條款，自行判斷這種用法是否合適。TablePro 無法據此授予你任何權利。"
           }
         }
       }

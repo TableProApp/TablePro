@@ -216,6 +216,8 @@ struct AIProviderDetailSheet: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
+
+        ClaudeAgentDisclosureSection()
     }
 
     private var apiKeyAuthSection: some View {

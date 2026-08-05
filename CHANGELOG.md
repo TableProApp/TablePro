@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Turkish, Vietnamese, Simplified Chinese, and Traditional Chinese translations for the strings that still showed in English.
 
+### Changed
+
+- The Claude Agent provider now lists its tradeoffs: Anthropic's terms decide whether this use is allowed, replies share the limits of your other Claude work, and any API key in your environment is ignored.
+
 ### Fixed
 
 - The data grid header's bottom line no longer cuts through a column comment. It sits on the header's bottom edge. (#2017)
