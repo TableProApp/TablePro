@@ -42,9 +42,23 @@ final class MainContentCommandActions {
     @ObservationIgnored private let rightPanelState: RightPanelState
 
     /// The window this instance belongs to — used for key-window guards.
-    @ObservationIgnored weak var window: NSWindow?
+    @ObservationIgnored weak var window: NSWindow? {
+        didSet {
+            guard window !== oldValue else { return }
+            updateTextInputFocusTracking()
+        }
+    }
 
     // MARK: - State
+
+    /// Whether a text input holds first responder in this instance's window.
+    /// Stored rather than computed so Observation wakes the menu when focus
+    /// crosses that boundary; `NSWindow.firstResponder` publishes no change.
+    var focusOwnsTextInput = false
+
+    @ObservationIgnored var textInputFocusObserver: NSObjectProtocol?
+
+    @ObservationIgnored var isTextInputFocusCheckScheduled = false
 
     /// Task handles for async notification observers; cancelled on deinit.
     @ObservationIgnored private var notificationTasks: [Task<Void, Never>] = []
@@ -80,6 +94,9 @@ final class MainContentCommandActions {
     deinit {
         for task in notificationTasks {
             task.cancel()
+        }
+        if let textInputFocusObserver {
+            NotificationCenter.default.removeObserver(textInputFocusObserver)
         }
     }
 

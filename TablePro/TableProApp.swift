@@ -53,19 +53,19 @@ struct PasteboardCommands: Commands {
                     actions?.copySelectedRows()
                 }
             }
-            .optionalKeyboardShortcut(shortcut(for: .copyRowsExplicit))
+            .dataGridShortcut(.copyRowsExplicit, keyboard: settingsManager.keyboard, yieldingTo: actions)
             .disabled(!(actions?.hasRowSelection ?? false))
 
             Button("Copy with Headers") {
                 actions?.copySelectedRowsWithHeaders()
             }
-            .optionalKeyboardShortcut(shortcut(for: .copyWithHeaders))
+            .dataGridShortcut(.copyWithHeaders, keyboard: settingsManager.keyboard, yieldingTo: actions)
             .disabled(!(actions?.hasRowSelection ?? false))
 
             Button("Copy as JSON") {
                 actions?.copySelectedRowsAsJson()
             }
-            .optionalKeyboardShortcut(shortcut(for: .copyAsJson))
+            .dataGridShortcut(.copyAsJson, keyboard: settingsManager.keyboard, yieldingTo: actions)
             .disabled(!(actions?.hasRowSelection ?? false))
 
             Button("Paste") {
@@ -81,7 +81,7 @@ struct PasteboardCommands: Commands {
             Button("Delete") {
                 actions?.deleteSelectedRows()
             }
-            .optionalKeyboardShortcut(shortcut(for: .delete))
+            .dataGridShortcut(.delete, keyboard: settingsManager.keyboard, yieldingTo: actions)
             .disabled(!(actions?.isCurrentTabEditable ?? false) && !(actions?.hasTableSelection ?? false))
 
             Divider()
@@ -500,25 +500,25 @@ struct AppMenuCommands: Commands {
             Button(String(localized: "Previous Page")) {
                 actions?.goToPreviousPage()
             }
-            .optionalKeyboardShortcut(shortcut(for: .previousPage))
+            .dataGridShortcut(.previousPage, keyboard: settingsManager.keyboard, yieldingTo: actions)
             .disabled(!(actions?.isConnected ?? false))
 
             Button(String(localized: "Next Page")) {
                 actions?.goToNextPage()
             }
-            .optionalKeyboardShortcut(shortcut(for: .nextPage))
+            .dataGridShortcut(.nextPage, keyboard: settingsManager.keyboard, yieldingTo: actions)
             .disabled(!(actions?.isConnected ?? false))
 
             Button(String(localized: "First Page")) {
                 actions?.goToFirstPage()
             }
-            .optionalKeyboardShortcut(shortcut(for: .firstPage))
+            .dataGridShortcut(.firstPage, keyboard: settingsManager.keyboard, yieldingTo: actions)
             .disabled(!(actions?.isConnected ?? false))
 
             Button(String(localized: "Last Page")) {
                 actions?.goToLastPage()
             }
-            .optionalKeyboardShortcut(shortcut(for: .lastPage))
+            .dataGridShortcut(.lastPage, keyboard: settingsManager.keyboard, yieldingTo: actions)
             .disabled(!(actions?.isConnected ?? false))
 
             Divider()
@@ -526,7 +526,7 @@ struct AppMenuCommands: Commands {
             Button(String(localized: "Save as Favorite")) {
                 actions?.saveAsFavorite()
             }
-            .optionalKeyboardShortcut(shortcut(for: .saveAsFavorite))
+            .dataGridShortcut(.saveAsFavorite, keyboard: settingsManager.keyboard, yieldingTo: actions)
             .disabled(!(actions?.canSaveAsFavorite ?? false))
 
             Divider()
@@ -548,7 +548,7 @@ struct AppMenuCommands: Commands {
             Button(String(localized: "Preview FK Reference")) {
                 actions?.previewFKReference()
             }
-            .optionalKeyboardShortcut(shortcut(for: .previewFKReference))
+            .dataGridShortcut(.previewFKReference, keyboard: settingsManager.keyboard, yieldingTo: actions)
             .disabled(!(actions?.isConnected ?? false))
 
             Button("Switch Connection...") {
@@ -621,13 +621,13 @@ struct AppMenuCommands: Commands {
             Button("Add Row") {
                 actions?.addNewRow()
             }
-            .optionalKeyboardShortcut(shortcut(for: .addRow))
+            .dataGridShortcut(.addRow, keyboard: settingsManager.keyboard, yieldingTo: actions)
             .disabled(!(actions?.isCurrentTabEditable ?? false) || actions?.isReadOnly ?? false)
 
             Button("Duplicate Row") {
                 actions?.duplicateRow()
             }
-            .optionalKeyboardShortcut(shortcut(for: .duplicateRow))
+            .dataGridShortcut(.duplicateRow, keyboard: settingsManager.keyboard, yieldingTo: actions)
             .disabled(!(actions?.isCurrentTabEditable ?? false) || actions?.isReadOnly ?? false)
 
             Divider()
@@ -689,7 +689,7 @@ struct AppMenuCommands: Commands {
             Button("Truncate Table") {
                 actions?.truncateTables()
             }
-            .optionalKeyboardShortcut(shortcut(for: .truncateTable))
+            .dataGridShortcut(.truncateTable, keyboard: settingsManager.keyboard, yieldingTo: actions)
             .disabled(!(actions?.hasTableSelection ?? false) || actions?.isReadOnly ?? false)
         }
 

@@ -93,6 +93,10 @@ Every row except Find Next and Find Previous is built into the editor and cannot
 
 Truncate table opens a dialog with **Cascade** and **Ignore foreign key checks**, then marks the tables as a pending truncate that `Cmd+S` runs.
 
+<Note>
+`Cmd+Delete` and `Option+Delete` step aside while the SQL editor or a text field has focus. There they keep their standard macOS meaning: delete to the start of the line, and delete the previous word. The grid commands come back as soon as you click into the grid, and `Delete` on its own still deletes the selected rows.
+</Note>
+
 ### Clipboard
 
 | Action | Shortcut |

@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `Cmd+Delete` in the SQL editor deletes to the start of the line again. (#2022)
+- `Option+Delete` in the SQL editor deletes the previous word again. (#2022)
+
 ## [0.63.0] - 2026-08-05
 
 ### Added

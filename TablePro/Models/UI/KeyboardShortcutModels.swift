@@ -265,6 +265,24 @@ extension ShortcutAction {
         (.special(.downArrow, option: true), String(localized: "Move Line Down"))
     ]
 
+    /// AppKit's own text-editing key bindings, taken from `StandardKeyBinding.dict`.
+    /// The editor's local key monitor claims `editorBuiltIns` before the menu bar
+    /// sees them, but these resolve at the very end of dispatch, inside the focused
+    /// responder's `interpretKeyEvents`. An enabled menu key equivalent is matched
+    /// long before that, so a data-grid action bound to one of these has to stand
+    /// down while a text input holds focus.
+    static let standardTextEditingBindings: [(key: BoundKey, name: String)] = [
+        (.special(.delete, command: true), String(localized: "Delete to Beginning of Line")),
+        (.special(.delete, option: true), String(localized: "Delete Word Backward")),
+        (.special(.forwardDelete, option: true), String(localized: "Delete Word Forward")),
+        (.special(.leftArrow, command: true), String(localized: "Move to Beginning of Line")),
+        (.special(.rightArrow, command: true), String(localized: "Move to End of Line")),
+        (.special(.upArrow, command: true), String(localized: "Move to Beginning of Document")),
+        (.special(.downArrow, command: true), String(localized: "Move to End of Document")),
+        (.special(.leftArrow, option: true), String(localized: "Move Word Left")),
+        (.special(.rightArrow, option: true), String(localized: "Move Word Right"))
+    ]
+
     /// App-level shortcuts that are wired directly in the menu and are not
     /// customizable: tab selection (Cmd+1 through Cmd+9) and editor zoom. These
     /// fire regardless of focus, so a user binding would silently collide.
@@ -283,14 +301,26 @@ extension ShortcutAction {
     }()
 
     /// The name of a reserved command this combo would shadow: an app-level menu
-    /// shortcut (always), or a built-in editor command when the action can fire
-    /// while the editor is focused.
+    /// shortcut (always), or a built-in editor or system text command when the
+    /// action can fire while the editor is focused.
     static func reservedConflict(for key: BoundKey, context: ShortcutContext) -> String? {
         if let appName = reservedAppShortcuts.first(where: { $0.key == key })?.name {
             return appName
         }
         guard context == .editor || context == .global else { return nil }
-        return editorBuiltIns.first(where: { $0.key == key })?.name
+        if let editorName = editorBuiltIns.first(where: { $0.key == key })?.name {
+            return editorName
+        }
+        return standardTextEditingBindings.first(where: { $0.key == key })?.name
+    }
+
+    /// Whether this action's binding duplicates one of AppKit's standard
+    /// text-editing bindings, which the focused responder owns. Only data-grid
+    /// actions yield: an editor or global action is meant to fire while text is
+    /// focused, so it keeps its key equivalent and the recorder warns instead.
+    func shadowsStandardTextEditingBinding(_ key: BoundKey?) -> Bool {
+        guard context == .dataGrid, let key, !key.isCleared else { return false }
+        return Self.standardTextEditingBindings.contains { $0.key == key }
     }
 }
 

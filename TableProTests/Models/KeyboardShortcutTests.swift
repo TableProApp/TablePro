@@ -103,6 +103,67 @@ struct ReservedShortcutTests {
             }
         }
     }
+
+    @Test("Cmd+Delete conflicts with the system delete-to-line-start binding in editor context")
+    func commandDeleteConflictsInEditor() {
+        let key = BoundKey.special(.delete, command: true)
+        #expect(ShortcutAction.reservedConflict(for: key, context: .editor) != nil)
+    }
+
+    @Test("Option+Delete conflicts with the system delete-word binding in global context")
+    func optionDeleteConflictsGlobally() {
+        let key = BoundKey.special(.delete, option: true)
+        #expect(ShortcutAction.reservedConflict(for: key, context: .global) != nil)
+    }
+
+    @Test("Cmd+Delete does not conflict in data-grid context because focus resolves it")
+    func commandDeleteDoesNotConflictInGrid() {
+        let key = BoundKey.special(.delete, command: true)
+        #expect(ShortcutAction.reservedConflict(for: key, context: .dataGrid) == nil)
+    }
+}
+
+@Suite("Standard text-editing bindings")
+struct StandardTextEditingBindingTests {
+    @Test("Delete shadows the system delete-to-line-start binding")
+    func deleteShadowsCommandDelete() {
+        #expect(ShortcutAction.delete.shadowsStandardTextEditingBinding(.special(.delete, command: true)))
+    }
+
+    @Test("Truncate Table shadows the system delete-word binding")
+    func truncateShadowsOptionDelete() {
+        #expect(ShortcutAction.truncateTable.shadowsStandardTextEditingBinding(.special(.delete, option: true)))
+    }
+
+    @Test("A grid action bound to a bare key shadows nothing")
+    func bareKeyShadowsNothing() {
+        #expect(!ShortcutAction.delete.shadowsStandardTextEditingBinding(.special(.delete)))
+    }
+
+    @Test("A grid action with no colliding binding shadows nothing")
+    func nonCollidingGridActionShadowsNothing() {
+        #expect(!ShortcutAction.addRow.shadowsStandardTextEditingBinding(.character("n", command: true, shift: true)))
+    }
+
+    @Test("An editor action keeps its shortcut even on a colliding key")
+    func editorActionNeverShadows() {
+        #expect(!ShortcutAction.executeQuery.shadowsStandardTextEditingBinding(.special(.delete, command: true)))
+    }
+
+    @Test("A missing or cleared binding shadows nothing")
+    func missingBindingShadowsNothing() {
+        #expect(!ShortcutAction.delete.shadowsStandardTextEditingBinding(nil))
+        #expect(!ShortcutAction.delete.shadowsStandardTextEditingBinding(.cleared))
+    }
+
+    @Test("Only Delete and Truncate Table shadow a system binding by default")
+    func defaultsThatShadow() {
+        let shadowing = KeyboardSettings.defaultShortcuts
+            .filter { $0.key.shadowsStandardTextEditingBinding($0.value) }
+            .map(\.key.rawValue)
+            .sorted()
+        #expect(shadowing == [ShortcutAction.delete.rawValue, ShortcutAction.truncateTable.rawValue].sorted())
+    }
 }
 
 @Suite("Bare-key validation")
