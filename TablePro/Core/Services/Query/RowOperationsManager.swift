@@ -52,9 +52,12 @@ final class RowOperationsManager {
         columnDefaults: [String: String?],
         tableRows: inout TableRows
     ) -> AddNewRowResult? {
+        let generated = changeManager.generatedColumns
         var newRowValues: [PluginCellValue] = []
         for column in columns {
-            if let defaultValue = columnDefaults[column], defaultValue != nil {
+            if generated.contains(column) {
+                newRowValues.append(.text("__DEFAULT__"))
+            } else if let defaultValue = columnDefaults[column], defaultValue != nil {
                 newRowValues.append(.text("__DEFAULT__"))
             } else {
                 newRowValues.append(.null)
@@ -78,9 +81,9 @@ final class RowOperationsManager {
 
         var newValues = Array(tableRows.rows[sourceRowIndex].values)
 
-        for pkColumn in changeManager.primaryKeyColumns {
-            if let pkIndex = columns.firstIndex(of: pkColumn), pkIndex < newValues.count {
-                newValues[pkIndex] = .text("__DEFAULT__")
+        for resetColumn in changeManager.primaryKeyColumns + Array(changeManager.generatedColumns) {
+            if let index = columns.firstIndex(of: resetColumn), index < newValues.count {
+                newValues[index] = .text("__DEFAULT__")
             }
         }
 

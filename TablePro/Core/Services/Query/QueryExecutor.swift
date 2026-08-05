@@ -26,6 +26,7 @@ struct ParsedSchemaMetadata {
     let columnForeignKeys: [String: ForeignKeyInfo]?
     let columnNullable: [String: Bool]
     let primaryKeyColumns: [String]
+    let generatedColumns: Set<String>
     let approximateRowCount: Int?
     let columnEnumValues: [String: [String]]
     let columnComments: [String: String]
@@ -186,6 +187,7 @@ final class QueryExecutor {
             columnForeignKeys: fks,
             columnNullable: nullable,
             primaryKeyColumns: schema.columns.filter { $0.isPrimaryKey }.map(\.name),
+            generatedColumns: Set(schema.columns.filter(\.isGenerated).map(\.name)),
             approximateRowCount: schema.approximateRowCount,
             columnEnumValues: enumValues,
             columnComments: comments
@@ -207,6 +209,7 @@ final class QueryExecutor {
             columnForeignKeys: nil,
             columnNullable: nullable,
             primaryKeyColumns: primaryKeys,
+            generatedColumns: [],
             approximateRowCount: nil,
             columnEnumValues: [:],
             columnComments: [:]

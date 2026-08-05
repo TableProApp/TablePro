@@ -373,6 +373,10 @@ extension QueryExecutionCoordinator {
             parent.changeManager.setPrimaryKeyColumns(parsed.primaryKeyColumns)
         }
 
+        if parent.tabManager.selectedTabId == tabId {
+            parent.changeManager.setGeneratedColumns(parsed.generatedColumns)
+        }
+
         let refreshed = isActiveTab(tabId)
         if refreshed {
             parent.dataTabDelegate?.tableViewCoordinator?.refreshForeignKeyColumns()

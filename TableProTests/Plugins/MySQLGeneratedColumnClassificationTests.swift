@@ -36,4 +36,31 @@ struct MySQLGeneratedColumnClassificationTests {
         #expect(!mysqlColumnIsGenerated(extra: ""))
         #expect(!mysqlColumnIsGenerated(extra: nil))
     }
+
+    @Test("An invisible generated column is still generated on MySQL")
+    func mysqlInvisibleCombination() {
+        #expect(mysqlColumnIsGenerated(extra: "VIRTUAL GENERATED INVISIBLE"))
+        #expect(mysqlColumnIsGenerated(extra: "STORED GENERATED INVISIBLE"))
+    }
+
+    @Test("MariaDB separates combined attributes with a comma")
+    func mariadbInvisibleCombination() {
+        #expect(mysqlColumnIsGenerated(extra: "VIRTUAL GENERATED, INVISIBLE"))
+        #expect(mysqlColumnIsGenerated(extra: "STORED GENERATED, INVISIBLE"))
+    }
+
+    @Test("MariaDB 10.1 and older report a bare marker")
+    func mariadbLegacyMarkers() {
+        #expect(mysqlColumnIsGenerated(extra: "VIRTUAL"))
+        #expect(mysqlColumnIsGenerated(extra: "PERSISTENT"))
+        #expect(mysqlColumnIsGenerated(extra: "persistent"))
+    }
+
+    @Test("MariaDB values that only look like a bare marker are not generated")
+    func mariadbNonGeneratedValues() {
+        #expect(!mysqlColumnIsGenerated(extra: "on update current_timestamp()"))
+        #expect(!mysqlColumnIsGenerated(extra: "auto_increment, INVISIBLE"))
+        #expect(!mysqlColumnIsGenerated(extra: "INVISIBLE"))
+        #expect(!mysqlColumnIsGenerated(extra: "WITHOUT SYSTEM VERSIONING"))
+    }
 }

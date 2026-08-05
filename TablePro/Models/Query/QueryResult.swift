@@ -133,6 +133,7 @@ struct ColumnInfo: Identifiable, Hashable {
     let charset: String?
     let collation: String?
     let comment: String?
+    let isGenerated: Bool
     let allowedValues: [String]?
 
     init(
@@ -145,6 +146,7 @@ struct ColumnInfo: Identifiable, Hashable {
         charset: String? = nil,
         collation: String? = nil,
         comment: String? = nil,
+        isGenerated: Bool = false,
         allowedValues: [String]? = nil
     ) {
         self.name = name
@@ -156,6 +158,7 @@ struct ColumnInfo: Identifiable, Hashable {
         self.charset = charset
         self.collation = collation
         self.comment = comment
+        self.isGenerated = isGenerated
         self.allowedValues = allowedValues
     }
 }

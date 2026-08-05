@@ -236,6 +236,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
                 charset: col.charset,
                 collation: col.collation,
                 comment: col.comment,
+                isGenerated: col.isGenerated,
                 allowedValues: col.allowedValues
             )
         }

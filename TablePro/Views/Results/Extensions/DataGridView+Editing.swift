@@ -19,8 +19,11 @@ extension TableViewCoordinator {
         guard row >= 0, columnIndex >= 0, columnIndex < tableRows.columns.count else { return .blocked }
         guard !changeManager.isRowDeleted(row) else { return .blocked }
 
+        let columnName = tableRows.columns[columnIndex]
+        if changeManager.generatedColumns.contains(columnName) { return .blocked }
+
         let immutable = databaseType.map { PluginManager.shared.immutableColumns(for: $0) } ?? []
-        if immutable.contains(tableRows.columns[columnIndex]) { return .blocked }
+        if immutable.contains(columnName) { return .blocked }
 
         if columnIndex < tableRows.columnTypes.count {
             let ct = tableRows.columnTypes[columnIndex]
