@@ -194,6 +194,42 @@ struct MainContentCoordinatorRefreshTests {
         }
     }
 
+    @Test("A finished row count leaves no handle that fakes an in-flight query")
+    func cancelWithStaleRowCountHandleDoesNotTouchDriver() {
+        withInjectedDriver { connection, driver in
+            let (coordinator, _) = makeCoordinator(connection: connection)
+            let finishedRowCount = Task<Void, Never> {}
+            coordinator.currentRowCountTask = finishedRowCount
+
+            coordinator.cancelCurrentQuery()
+
+            #expect(driver.cancelQueryCallCount == 0)
+            #expect(coordinator.currentRowCountTask == nil)
+        }
+    }
+
+    @Test("Refreshing an idle table tab twice never issues a stray driver cancel")
+    func repeatedIdleRefreshNeverCancelsDriver() {
+        withInjectedDriver { connection, driver in
+            let (coordinator, tabManager) = makeCoordinator(connection: connection)
+            let tabId = addTableTab(to: tabManager)
+            guard let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else {
+                Issue.record("expected tab to exist")
+                return
+            }
+            tabManager.tabs[idx].execution.lastExecutedAt = Date()
+
+            for _ in 0..<4 {
+                coordinator.currentRowCountTask = Task<Void, Never> {}
+                coordinator.handleRefresh(hasPendingTableOps: false, onDiscard: {})
+                coordinator.currentQueryTask?.cancel()
+                coordinator.currentQueryTask = nil
+            }
+
+            #expect(driver.cancelQueryCallCount == 0)
+        }
+    }
+
     @Test("cancelCurrentQuery cancels the driver when a query is in flight")
     func cancelWithInFlightCancelsDriver() {
         withInjectedDriver { connection, driver in
