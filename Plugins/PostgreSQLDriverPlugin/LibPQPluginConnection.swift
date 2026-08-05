@@ -102,11 +102,11 @@ final class LibPQPluginConnection: @unchecked Sendable {
     private let suppressServerSideCancel: Bool
 
     private let stateLock = NSLock()
+    private let cancellationGate = PluginQueryCancellationGate()
     private var _isConnected: Bool = false
     private var _isShuttingDown: Bool = false
     private var _cachedServerVersion: String?
     private var _cachedServerVersionNumber: Int32 = 0
-    private var _isCancelled: Bool = false
     private var _isConnectCancelled: Bool = false
     private var _postgisOidMap: [UInt32: String] = [:]
 
@@ -356,8 +356,9 @@ final class LibPQPluginConnection: @unchecked Sendable {
     // MARK: - Query Cancellation
 
     func cancelCurrentQuery() {
+        guard cancellationGate.cancel() != nil else { return }
+
         stateLock.lock()
-        _isCancelled = true
         let currentConn = conn
         stateLock.unlock()
 
@@ -416,6 +417,9 @@ final class LibPQPluginConnection: @unchecked Sendable {
             throw LibPQPluginError.notConnected
         }
 
+        let generation = cancellationGate.beginQuery()
+        defer { cancellationGate.endQuery(generation) }
+
         let localQuery = String(query)
         let result: OpaquePointer? = localQuery.withCString { queryPtr in
             PQexec(conn, queryPtr)
@@ -444,11 +448,12 @@ final class LibPQPluginConnection: @unchecked Sendable {
 
         case PGRES_TUPLES_OK:
             defer { PQclear(result) }
-            return try fetchResults(from: result)
+            return try fetchResults(from: result, generation: generation)
 
         default:
             let error = getResultError(from: result)
             PQclear(result)
+            if cancellationGate.isCancelled(generation) { throw CancellationError() }
             throw error
         }
     }
@@ -461,6 +466,9 @@ final class LibPQPluginConnection: @unchecked Sendable {
         guard !isShuttingDown, let conn else {
             throw LibPQPluginError.notConnected
         }
+
+        let generation = cancellationGate.beginQuery()
+        defer { cancellationGate.endQuery(generation) }
 
         var paramValues: [UnsafePointer<CChar>?] = []
         var paramLengths: [Int32] = []
@@ -547,11 +555,12 @@ final class LibPQPluginConnection: @unchecked Sendable {
 
         case PGRES_TUPLES_OK:
             defer { PQclear(result) }
-            return try fetchResults(from: result)
+            return try fetchResults(from: result, generation: generation)
 
         default:
             let error = getResultError(from: result)
             PQclear(result)
+            if cancellationGate.isCancelled(generation) { throw CancellationError() }
             throw error
         }
     }
@@ -608,6 +617,9 @@ final class LibPQPluginConnection: @unchecked Sendable {
                     continuation.finish(throwing: LibPQPluginError.notConnected)
                     return
                 }
+
+                let generation = cancellationGate.beginQuery()
+                defer { cancellationGate.endQuery(generation) }
 
                 while let res = PQgetResult(conn) { PQclear(res) }
 
@@ -675,31 +687,12 @@ final class LibPQPluginConnection: @unchecked Sendable {
                         row.reserveCapacity(numFields)
 
                         for colIndex in 0..<numFields {
-                            if PQgetisnull(result, 0, Int32(colIndex)) == 1 {
-                                row.append(.null)
-                            } else if let valuePtr = PQgetvalue(result, 0, Int32(colIndex)) {
-                                let length = Int(PQgetlength(result, 0, Int32(colIndex)))
-                                let bufferPtr = UnsafeRawBufferPointer(start: valuePtr, count: length)
-                                let oid = columnOids[colIndex]
-
-                                if oid == 17 {
-                                    let text = String(bytes: bufferPtr, encoding: .utf8) ?? ""
-                                    if let data = LibPQByteaDecoder.decode(text) {
-                                        row.append(.bytes(data))
-                                    } else {
-                                        row.append(.text(text))
-                                    }
-                                } else if oid == 16 {
-                                    let str = String(bytes: bufferPtr, encoding: .utf8) ?? ""
-                                    row.append(.text(str == "t" ? "true" : "false"))
-                                } else if let str = String(bytes: bufferPtr, encoding: .utf8) {
-                                    row.append(.text(str))
-                                } else {
-                                    row.append(.text(String(bytes: bufferPtr, encoding: .isoLatin1) ?? ""))
-                                }
-                            } else {
-                                row.append(.null)
-                            }
+                            row.append(Self.decodeCell(
+                                from: result,
+                                row: 0,
+                                column: Int32(colIndex),
+                                oid: columnOids[colIndex]
+                            ))
                         }
 
                         PQclear(result)
@@ -733,6 +726,10 @@ final class LibPQPluginConnection: @unchecked Sendable {
                         streamState.lock.lock()
                         streamState.drained = true
                         streamState.lock.unlock()
+                        if cancellationGate.isCancelled(generation) {
+                            continuation.finish(throwing: CancellationError())
+                            return
+                        }
                         continuation.finish(throwing: error)
                         return
                     }
@@ -752,13 +749,14 @@ final class LibPQPluginConnection: @unchecked Sendable {
 
     // MARK: - Result Parsing
 
-    private func fetchResults(from result: OpaquePointer) throws -> LibPQPluginQueryResult {
+    private func fetchResults(from result: OpaquePointer, generation: Int) throws -> LibPQPluginQueryResult {
         let metadata = readColumnMetadata(from: result)
         let parsed = try parseRows(
             from: result,
             columns: metadata.columns,
             columnOids: metadata.columnOids,
-            columnTypeNames: metadata.columnTypeNames
+            columnTypeNames: metadata.columnTypeNames,
+            generation: generation
         )
 
         let oidMap = postgisOidMap
@@ -882,11 +880,41 @@ final class LibPQPluginConnection: @unchecked Sendable {
         return converted
     }
 
+    private static func decodeCell(
+        from result: OpaquePointer,
+        row: Int32,
+        column: Int32,
+        oid: UInt32
+    ) -> PluginCellValue {
+        guard PQgetisnull(result, row, column) != 1,
+              let valuePtr = PQgetvalue(result, row, column) else {
+            return .null
+        }
+
+        let length = Int(PQgetlength(result, row, column))
+        let bufferPtr = UnsafeRawBufferPointer(start: valuePtr, count: length)
+
+        if oid == 17 {
+            let text = String(bytes: bufferPtr, encoding: .utf8) ?? ""
+            guard let data = LibPQByteaDecoder.decode(text) else { return .text(text) }
+            return .bytes(data)
+        }
+
+        if oid == 16 {
+            let str = String(bytes: bufferPtr, encoding: .utf8) ?? ""
+            return .text(str == "t" ? "true" : "false")
+        }
+
+        if let str = String(bytes: bufferPtr, encoding: .utf8) { return .text(str) }
+        return .text(String(bytes: bufferPtr, encoding: .isoLatin1) ?? "")
+    }
+
     private func parseRows(
         from result: OpaquePointer,
         columns: [String],
         columnOids: [UInt32],
-        columnTypeNames: [String]
+        columnTypeNames: [String],
+        generation: Int
     ) throws -> LibPQPluginQueryResult {
         let numFields = columns.count
         let numRows = Int(PQntuples(result))
@@ -899,43 +927,20 @@ final class LibPQPluginConnection: @unchecked Sendable {
         rows.reserveCapacity(effectiveRowCount)
 
         for rowIndex in 0..<effectiveRowCount {
-            stateLock.lock()
-            let shouldCancel = _isCancelled
-            if shouldCancel { _isCancelled = false }
-            stateLock.unlock()
-            if shouldCancel {
-                throw LibPQPluginError(message: "Query cancelled", sqlState: nil, detail: nil)
+            if cancellationGate.isCancelled(generation) {
+                throw CancellationError()
             }
 
             var row: [PluginCellValue] = []
             row.reserveCapacity(numFields)
 
             for colIndex in 0..<numFields {
-                if PQgetisnull(result, Int32(rowIndex), Int32(colIndex)) == 1 {
-                    row.append(.null)
-                } else if let valuePtr = PQgetvalue(result, Int32(rowIndex), Int32(colIndex)) {
-                    let length = Int(PQgetlength(result, Int32(rowIndex), Int32(colIndex)))
-                    let bufferPtr = UnsafeRawBufferPointer(start: valuePtr, count: length)
-                    let oid = columnOids[colIndex]
-
-                    if oid == 17 {
-                        let text = String(bytes: bufferPtr, encoding: .utf8) ?? ""
-                        if let data = LibPQByteaDecoder.decode(text) {
-                            row.append(.bytes(data))
-                        } else {
-                            row.append(.text(text))
-                        }
-                    } else if oid == 16 {
-                        let str = String(bytes: bufferPtr, encoding: .utf8) ?? ""
-                        row.append(.text(str == "t" ? "true" : "false"))
-                    } else if let str = String(bytes: bufferPtr, encoding: .utf8) {
-                        row.append(.text(str))
-                    } else {
-                        row.append(.text(String(bytes: bufferPtr, encoding: .isoLatin1) ?? ""))
-                    }
-                } else {
-                    row.append(.null)
-                }
+                row.append(Self.decodeCell(
+                    from: result,
+                    row: Int32(rowIndex),
+                    column: Int32(colIndex),
+                    oid: columnOids[colIndex]
+                ))
             }
             rows.append(row)
         }
