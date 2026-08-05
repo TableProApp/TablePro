@@ -1288,7 +1288,7 @@ final class MainContentCoordinator {
                     }
                     currentQueryTask = nil
                     toolbarState.setExecuting(false)
-                    if error is CancellationError || Task.isCancelled { return }
+                    if DatabaseCancellationDiagnosis.isCancellation(error) || Task.isCancelled { return }
                     guard capturedGeneration == queryGeneration else { return }
                     if isAutoLoad, services.databaseManager.driver(for: connectionId)?.status != .connected {
                         pendingLoadTrigger = trigger
@@ -1300,7 +1300,7 @@ final class MainContentCoordinator {
         }
     }
 
-    private func cancelInFlightQueryTask() {
+    internal func cancelInFlightQueryTask() {
         guard currentQueryTask != nil else { return }
         currentQueryTask?.cancel()
         do {

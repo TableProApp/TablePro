@@ -162,10 +162,10 @@ final class MariaDBPluginConnection: @unchecked Sendable {
     private let queryTimeoutSeconds: Int
 
     private let stateLock = NSLock()
+    private let cancellationGate = PluginQueryCancellationGate()
     private var _isConnected: Bool = false
     private var _isShuttingDown: Bool = false
     private var _cachedServerVersion: String?
-    private var _isCancelled: Bool = false
 
     var isConnected: Bool {
         stateLock.lock()
@@ -379,9 +379,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
     // MARK: - Query Cancellation
 
     func cancelCurrentQuery() {
-        stateLock.lock()
-        _isCancelled = true
-        stateLock.unlock()
+        guard cancellationGate.cancel() != nil else { return }
 
         guard let mysql = mysql else { return }
         killQueryOnServer(threadId: mysql_thread_id(mysql))
@@ -420,14 +418,6 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         mysql_close(killConn)
     }
 
-    private func consumeCancellation() -> Bool {
-        stateLock.lock()
-        defer { stateLock.unlock() }
-        guard _isCancelled else { return false }
-        _isCancelled = false
-        return true
-    }
-
     private static func isExpectedInterruption(errno: UInt32, wasTruncated: Bool) -> Bool {
         wasTruncated && errno == UInt32(ER_QUERY_INTERRUPTED)
     }
@@ -461,6 +451,9 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         guard !isShuttingDown, let mysql = self.mysql else {
             throw MariaDBPluginError.notConnected
         }
+
+        let generation = cancellationGate.beginQuery()
+        defer { cancellationGate.endQuery(generation) }
 
         let queryStatus = query.withCString { queryPtr in
             mysql_real_query(mysql, queryPtr, UInt(query.utf8.count))
@@ -528,7 +521,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         var truncated = false
 
         while let rowPtr = mysql_fetch_row(resultPtr) {
-            if consumeCancellation() {
+            if cancellationGate.isCancelled(generation) {
                 while mysql_fetch_row(resultPtr) != nil {}
                 mysql_free_result(resultPtr)
                 throw CancellationError()
@@ -573,7 +566,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
             while mysql_fetch_row(resultPtr) != nil {}
         }
 
-        if consumeCancellation() {
+        if cancellationGate.isCancelled(generation) {
             mysql_free_result(resultPtr)
             throw CancellationError()
         }
@@ -677,7 +670,8 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         columnTypes: [UInt32],
         columnTypeNames: [String],
         columnIsBinary: [Bool],
-        rowCap: Int? = nil
+        rowCap: Int? = nil,
+        generation: Int
     ) throws -> (rows: [[PluginCellValue]], isTruncated: Bool) {
         let numFields = columns.count
         var resultBinds: [MYSQL_BIND] = Array(repeating: MYSQL_BIND(), count: numFields)
@@ -722,7 +716,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
                 throw getStmtError(stmt)
             }
 
-            if consumeCancellation() {
+            if cancellationGate.isCancelled(generation) {
                 throw CancellationError()
             }
 
@@ -787,6 +781,9 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         guard !isShuttingDown, let mysql = self.mysql else {
             throw MariaDBPluginError.notConnected
         }
+
+        let generation = cancellationGate.beginQuery()
+        defer { cancellationGate.endQuery(generation) }
 
         guard let stmt = mysql_stmt_init(mysql) else {
             throw MariaDBPluginError(code: 0, message: "Failed to initialize prepared statement", sqlState: nil)
@@ -878,7 +875,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         let fetchResult = try fetchResultSet(
             from: stmt, metadata: metadata,
             columns: columns, columnTypes: columnTypes, columnTypeNames: columnTypeNames,
-            columnIsBinary: columnIsBinary, rowCap: rowCap
+            columnIsBinary: columnIsBinary, rowCap: rowCap, generation: generation
         )
 
         return MariaDBPluginQueryResult(

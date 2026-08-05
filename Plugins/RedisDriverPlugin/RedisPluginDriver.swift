@@ -95,7 +95,6 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func execute(query: String) async throws -> PluginQueryResult {
         let startTime = Date()
-        redisConnection?.resetCancellation()
 
         guard let conn = redisConnection else {
             throw RedisPluginError.notConnected
@@ -122,7 +121,6 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Schema Operations
 
     func fetchTables(schema: String?) async throws -> [PluginTableInfo] {
-        redisConnection?.resetCancellation()
         guard let conn = redisConnection else {
             throw RedisPluginError.notConnected
         }
@@ -327,7 +325,6 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Database Switching
 
     func switchDatabase(to database: String) async throws {
-        redisConnection?.resetCancellation()
         guard let conn = redisConnection else { throw RedisPluginError.notConnected }
         let dbIndex: Int
         if let idx = Int(database) {
@@ -422,7 +419,6 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         query: String,
         continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
     ) async throws {
-        redisConnection?.resetCancellation()
         guard let conn = redisConnection else {
             throw RedisPluginError.notConnected
         }

@@ -99,10 +99,10 @@ final class RedisPluginConnection: @unchecked Sendable {
     private let sslConfig: SSLConfiguration
 
     private let stateLock = NSLock()
+    private let cancellationGate = PluginQueryCancellationGate()
     private var _isConnected: Bool = false
     private var _isShuttingDown: Bool = false
     private var _cachedServerVersion: String?
-    private var _isCancelled: Bool = false
     private var _currentDatabase: Int
 
     var isConnected: Bool {
@@ -210,7 +210,6 @@ final class RedisPluginConnection: @unchecked Sendable {
         #endif
         _isConnected = false
         _cachedServerVersion = nil
-        _isCancelled = false
         _currentDatabase = database
         stateLock.unlock()
 
@@ -232,25 +231,12 @@ final class RedisPluginConnection: @unchecked Sendable {
     // MARK: - Cancellation
 
     func cancelCurrentQuery() {
-        stateLock.lock()
-        _isCancelled = true
-        stateLock.unlock()
+        cancellationGate.cancel()
     }
 
-    private func checkCancelled() throws {
-        stateLock.lock()
-        let cancelled = _isCancelled
-        if cancelled { _isCancelled = false }
-        stateLock.unlock()
-        if cancelled {
-            throw RedisPluginError(code: 0, message: "Query cancelled")
-        }
-    }
-
-    func resetCancellation() {
-        stateLock.lock()
-        _isCancelled = false
-        stateLock.unlock()
+    private func throwIfCancelled(_ generation: Int) throws {
+        guard cancellationGate.isCancelled(generation) else { return }
+        throw CancellationError()
     }
 
     // MARK: - Server Information
@@ -289,9 +275,10 @@ final class RedisPluginConnection: @unchecked Sendable {
                 throw RedisPluginError.notConnected
             }
             stateLock.unlock()
-            try checkCancelled()
+            let generation = cancellationGate.beginQuery()
+            defer { cancellationGate.endQuery(generation) }
             let result = try executeCommandSyncRetrying(args)
-            try checkCancelled()
+            try throwIfCancelled(generation)
             return result
         }
         #else
@@ -311,9 +298,10 @@ final class RedisPluginConnection: @unchecked Sendable {
                 throw RedisPluginError.notConnected
             }
             stateLock.unlock()
-            try checkCancelled()
+            let generation = cancellationGate.beginQuery()
+            defer { cancellationGate.endQuery(generation) }
             let results = try executePipelineSyncRetrying(commands)
-            try checkCancelled()
+            try throwIfCancelled(generation)
             return results
         }
         #else
@@ -335,7 +323,8 @@ final class RedisPluginConnection: @unchecked Sendable {
                 throw RedisPluginError.notConnected
             }
             stateLock.unlock()
-            try checkCancelled()
+            let generation = cancellationGate.beginQuery()
+            defer { cancellationGate.endQuery(generation) }
             let reply = try executeCommandSyncRetrying(["SELECT", String(index)])
             if case .error(let msg) = reply {
                 throw RedisPluginError(code: 2, message: "SELECT \(index) failed: \(msg)")

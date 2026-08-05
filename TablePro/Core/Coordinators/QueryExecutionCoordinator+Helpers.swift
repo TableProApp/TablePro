@@ -426,17 +426,20 @@ extension QueryExecutionCoordinator {
                 return (plan, sql)
             }
 
-            let outcome: RowCountOutcome
+            let outcome: RowCountOutcome?
             switch prepared.plan {
             case .skip:
-                return
+                outcome = nil
             case .clear:
                 outcome = .clear
             case .approximate:
-                guard let count = try? await DatabaseManager.shared.withMetadataDriver(connectionId: parent.connectionId, { driver in
+                if let count = try? await DatabaseManager.shared.withMetadataDriver(connectionId: parent.connectionId, { driver in
                     try await driver.fetchApproximateRowCount(table: tableName)
-                }) else { return }
-                outcome = .count(count, isApproximate: true)
+                }) {
+                    outcome = .count(count, isApproximate: true)
+                } else {
+                    outcome = nil
+                }
             case let .filteredNonSQL(filters, logicMode):
                 if let count = try? await DatabaseManager.shared.withMetadataDriver(connectionId: parent.connectionId, workload: .bulk, { driver in
                     try await driver.fetchFilteredRowCount(table: tableName, filters: filters, logicMode: logicMode)
@@ -446,24 +449,28 @@ extension QueryExecutionCoordinator {
                     outcome = .clear
                 }
             case .exactCount:
-                guard let sql = prepared.sql else { return }
                 let count: Int?
-                do {
-                    count = try await DatabaseManager.shared.withMetadataDriver(connectionId: parent.connectionId, workload: .bulk) { driver in
-                        let result = try await driver.execute(query: sql)
-                        guard let countStr = result.rows.first?.first?.asText else { return Int?.none }
-                        return Int(countStr)
+                if let sql = prepared.sql {
+                    do {
+                        count = try await DatabaseManager.shared.withMetadataDriver(connectionId: parent.connectionId, workload: .bulk) { driver in
+                            let result = try await driver.execute(query: sql)
+                            guard let countStr = result.rows.first?.first?.asText else { return Int?.none }
+                            return Int(countStr)
+                        }
+                    } catch {
+                        helpersLogger.warning("COUNT query failed for \(tableName): \(error.localizedDescription)")
+                        count = nil
                     }
-                } catch {
-                    helpersLogger.warning("COUNT query failed for \(tableName): \(error.localizedDescription)")
-                    return
+                } else {
+                    count = nil
                 }
-                guard let count else { return }
-                outcome = .count(count, isApproximate: false)
+                outcome = count.map { RowCountOutcome.count($0, isApproximate: false) }
             }
 
             await MainActor.run {
                 guard capturedGeneration == parent.queryGeneration else { return }
+                parent.currentRowCountTask = nil
+                guard let outcome else { return }
                 parent.tabManager.mutate(tabId: tabId) { tab in
                     let applied = outcome.appliedTotal
                     tab.pagination.totalRowCount = applied.total
@@ -498,6 +505,14 @@ extension QueryExecutionCoordinator {
         connection conn: DatabaseConnection
     ) {
         parent.currentQueryTask = nil
+        guard !DatabaseCancellationDiagnosis.isCancellation(error) else {
+            parent.tabManager.mutate(tabId: tabId) { tab in
+                tab.execution.isExecuting = false
+                tab.pagination.isLoadingMore = false
+            }
+            parent.toolbarState.setExecuting(false)
+            return
+        }
         parent.tabManager.mutate(tabId: tabId) { tab in
             tab.execution.errorMessage = DatabaseWriteRejectionDiagnosis.formatted(error)
             tab.execution.errorQuery = sql

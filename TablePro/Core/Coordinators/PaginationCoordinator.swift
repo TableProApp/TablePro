@@ -129,15 +129,10 @@ final class PaginationCoordinator {
     // MARK: - Cancel Current Query
 
     func cancelCurrentQuery() {
-        let hadInFlightTask = parent.currentQueryTask != nil || parent.currentRowCountTask != nil
-        parent.currentQueryTask?.cancel()
-        parent.currentQueryTask = nil
+        parent.cancelInFlightQueryTask()
         parent.currentRowCountTask?.cancel()
         parent.currentRowCountTask = nil
         parent.queryGeneration += 1
-        if hadInFlightTask, let driver = DatabaseManager.shared.driver(for: parent.connectionId) {
-            try? driver.cancelQuery()
-        }
         parent.toolbarState.setExecuting(false)
         for idx in parent.tabManager.tabs.indices {
             if parent.tabManager.tabs[idx].execution.isExecuting
@@ -171,6 +166,7 @@ final class PaginationCoordinator {
 
         parent.tabManager.mutate(at: index) { $0.pagination.isCountingExact = true }
 
+        let capturedGeneration = parent.queryGeneration
         parent.currentRowCountTask = Task(priority: .userInitiated) { [parent] in
             let count = await Self.exactRowCount(
                 connectionId: parent.connectionId,
@@ -181,6 +177,8 @@ final class PaginationCoordinator {
             )
 
             guard !Task.isCancelled else { return }
+            guard capturedGeneration == parent.queryGeneration else { return }
+            parent.currentRowCountTask = nil
             parent.tabManager.mutate(tabId: tabId) { tab in
                 tab.pagination.isCountingExact = false
                 guard let count, count >= 0 else { return }
