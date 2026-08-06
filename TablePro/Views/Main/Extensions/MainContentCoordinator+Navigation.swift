@@ -27,7 +27,7 @@ extension MainContentCoordinator {
             table.name,
             schema: schema ?? table.schema,
             showStructure: showStructure,
-            isView: table.type == .view,
+            isView: !table.type.allowsRowEditing,
             forceNonPreview: forceNonPreview,
             activateGridFocus: activateGridFocus,
             forceNewWindowTab: forceNewWindowTab

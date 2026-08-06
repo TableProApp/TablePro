@@ -42,6 +42,7 @@ struct PluginKitABIResilienceTests {
     func asynchronousDefaults() async throws {
         let driver = makeMinimalDriver()
         #expect(try await driver.fetchSchemas().isEmpty)
+        #expect(try await driver.fetchExternalSchemaNames().isEmpty)
         #expect(try await driver.fetchApproximateRowCount(table: "users", schema: nil) == nil)
     }
 }

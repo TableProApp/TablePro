@@ -36,6 +36,7 @@ extension MainContentCoordinator {
             openTableTab(
                 item.name,
                 showStructure: intent == .openStructure,
+                isView: item.isReadOnly,
                 activateGridFocus: true,
                 forceNewWindowTab: intent == .openInNewWindowTab
             )

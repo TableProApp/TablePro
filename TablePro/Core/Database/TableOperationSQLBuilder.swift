@@ -111,7 +111,7 @@ struct TableOperationSQLBuilder {
             return "MATERIALIZED VIEW"
         case .foreignTable:
             return "FOREIGN TABLE"
-        case .table, .systemTable, .partitionedTable, .none:
+        case .table, .systemTable, .partitionedTable, .externalTable, .none:
             return "TABLE"
         }
     }

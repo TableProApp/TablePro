@@ -118,13 +118,17 @@ internal final class QuickSwitcherViewModel {
             case .partitionedTable:
                 kind = .table
                 subtitle = String(localized: "Partitioned Table")
+            case .externalTable:
+                kind = .table
+                subtitle = String(localized: "External Table")
             }
             items.append(QuickSwitcherItem(
                 id: "table_\(table.name)_\(table.type.rawValue)",
                 name: table.name,
                 kind: kind,
                 subtitle: subtitle,
-                isOpenInTab: openTableNames.contains(table.name)
+                isOpenInTab: openTableNames.contains(table.name),
+                isReadOnly: !table.type.allowsRowEditing
             ))
         }
 

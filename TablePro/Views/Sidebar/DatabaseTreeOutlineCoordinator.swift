@@ -425,6 +425,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
                 if isIdle(service.schemaListState(connectionId: connectionId, database: metadata.name)) {
                     Task { await service.loadSchemas(connectionId: connectionId, database: metadata.name) }
                 }
+                loadExternalSchemaNames(database: metadata.name)
             } else {
                 loadObjects(database: metadata.name, schema: nil)
             }
@@ -434,6 +435,21 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
             loadPartitions(ref)
         case .recentSection, .recentTable, .routine, .status:
             break
+        }
+    }
+
+    private func loadExternalSchemaNames(database: String) {
+        guard let session = DatabaseManager.shared.session(for: connectionId),
+              DatabaseManager.shared.activeDatabaseName(for: session.connection) == database,
+              let driver = DatabaseManager.shared.driver(for: connectionId)
+        else { return }
+        let connectionId = connectionId
+        Task {
+            await ExternalSchemaTracker.shared.load(
+                connectionId: connectionId,
+                database: database,
+                driver: driver
+            )
         }
     }
 
@@ -549,7 +565,14 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
             activeSchema: activeSchema,
             systemSchemas: systemSchemas,
             pendingTruncates: pendingTruncates,
-            pendingDeletes: pendingDeletes
+            pendingDeletes: pendingDeletes,
+            isExternalSchema: { [connectionId] database, schema in
+                ExternalSchemaTracker.shared.isExternal(
+                    connectionId: connectionId,
+                    database: database,
+                    schema: schema
+                )
+            }
         )
     }
 

@@ -96,4 +96,16 @@ struct TableRowLogicTests {
         let label = TableRowLogic.accessibilityLabel(table: table, isPendingDelete: false, isPendingTruncate: false)
         #expect(label == "System Table: pg_class")
     }
+
+    @Test("External table accessibility label")
+    func accessibilityLabelExternalTable() {
+        let table = TestFixtures.makeTableInfo(name: "customers", type: .externalTable)
+        let label = TableRowLogic.accessibilityLabel(table: table, isPendingDelete: false, isPendingTruncate: false)
+        #expect(label == "External Table: customers")
+    }
+
+    @Test("External table uses an icon distinct from a local table")
+    func externalTableIconIsDistinct() {
+        #expect(TableRowLogic.iconName(for: .externalTable) != TableRowLogic.iconName(for: .table))
+    }
 }

@@ -213,4 +213,28 @@ struct SidebarContextMenuLogicTests {
             supportedOperations: []
         ))
     }
+
+    // MARK: - External Tables
+
+    @Test("External table counts as a read-only kind")
+    func externalTableIsReadOnlyKind() {
+        #expect(SidebarContextMenuLogic.isReadOnlyKind(.externalTable))
+    }
+
+    @Test("Import is hidden for an external table")
+    func importHiddenForExternalTable() {
+        let table = TableInfo(name: "customers", type: .externalTable, rowCount: nil)
+        #expect(!SidebarContextMenuLogic.importVisible(clickedTable: table, supportsImport: true))
+    }
+
+    @Test("Truncate is hidden for an external table")
+    func truncateHiddenForExternalTable() {
+        let table = TableInfo(name: "customers", type: .externalTable, rowCount: nil)
+        #expect(!SidebarContextMenuLogic.truncateVisible(clickedTable: table))
+    }
+
+    @Test("External table drop label names the object kind")
+    func externalTableDeleteLabel() {
+        #expect(SidebarContextMenuLogic.deleteLabel(for: .externalTable) == "Drop External Table")
+    }
 }

@@ -95,6 +95,7 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
 
     var supportsSchemas: Bool { get }
     func fetchSchemas() async throws -> [String]
+    func fetchExternalSchemaNames() async throws -> Set<String>
     func switchSchema(to schema: String) async throws
     var currentSchema: String? { get }
 
@@ -218,6 +219,11 @@ public extension PluginDatabaseDriver {
     var supportsSchemas: Bool { false }
 
     func fetchSchemas() async throws -> [String] { [] }
+
+    /// Schemas whose objects live in a catalog outside the database itself, such
+    /// as Redshift external schemas backed by Glue, Hive, or a federated source.
+    /// Engines without that concept keep the empty default.
+    func fetchExternalSchemaNames() async throws -> Set<String> { [] }
 
     func switchSchema(to schema: String) async throws {}
 
