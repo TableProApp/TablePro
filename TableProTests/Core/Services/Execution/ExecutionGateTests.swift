@@ -55,7 +55,7 @@ struct ExecutionGateTests {
         DefaultExecutionGate(
             confirming: confirm,
             authenticating: auth,
-            safeModeLevelResolver: { _ in level },
+            safeModeLevelResolver: { _, _ in level },
             forcesWriteResolver: { _ in forcesWrite }
         )
     }

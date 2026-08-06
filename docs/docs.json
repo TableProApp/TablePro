@@ -85,7 +85,8 @@
                   "databases/dynamodb",
                   "databases/bigquery",
                   "databases/snowflake",
-                  "databases/cloudflare-d1"
+                  "databases/cloudflare-d1",
+                  "databases/cloudflare-r2-sql"
                 ]
               },
               {

@@ -28,9 +28,19 @@ struct CustomizationPaneView: View {
                         Text(level.displayName).tag(level)
                     }
                 }
+                .disabled(isEngineReadOnly)
+                .help(isEngineReadOnly ? Self.engineReadOnlyHelp : "")
             }
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
     }
+
+    private var isEngineReadOnly: Bool {
+        PluginManager.shared.isEngineReadOnly(for: coordinator.network.type)
+    }
+
+    private static let engineReadOnlyHelp = String(
+        localized: "This engine only runs read queries, so the connection is always read-only."
+    )
 }

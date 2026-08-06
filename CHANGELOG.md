@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Cloudflare R2 SQL support as a downloadable, read-only driver. Connect with an account ID, a bucket, and an API token, browse Iceberg namespaces and tables, and run SELECT queries against them. (#3885)
+
 ## [0.63.0] - 2026-08-05
 
 ### Added

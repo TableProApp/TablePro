@@ -798,7 +798,11 @@ struct MainEditorContentView: View {
     private func statusBar(tab: QueryTab) -> some View {
         let resolvedRows = resolvedTableRows(for: tab)
         return MainStatusBarView(
-            snapshot: StatusBarSnapshot(tab: tab, tableRows: resolvedRows),
+            snapshot: StatusBarSnapshot(
+                tab: tab,
+                tableRows: resolvedRows,
+                supportsPaging: coordinator.supportsOffsetPagination
+            ),
             filterState: tab.filterState,
             selectedRowIndices: selectionState.indices,
             viewMode: resultsViewModeBinding(for: tab),

@@ -63,7 +63,7 @@ struct ColumnTypeClassifier {
     // MARK: - Pattern Fallback
 
     private func classifyByPattern(upper: String, rawTypeName: String) -> ColumnType {
-        if upper == "ARRAY" || upper == "MAP" || upper == "ROW" {
+        if upper == "ARRAY" || upper == "MAP" || upper == "ROW" || upper == "STRUCT" {
             return .json(rawType: rawTypeName)
         }
         if upper.contains("BOOL") {

@@ -35,6 +35,7 @@ PLUGINS=(
     cassandra
     etcd
     cloudflare-d1
+    cloudflare-r2-sql
     dynamodb
     bigquery
     snowflake

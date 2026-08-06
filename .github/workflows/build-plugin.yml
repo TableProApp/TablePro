@@ -203,6 +203,11 @@ jobs:
               DISPLAY_NAME="Cloudflare D1 Driver"; SUMMARY="Cloudflare D1 serverless SQLite-compatible database driver via REST API"
               DB_TYPE_IDS='["Cloudflare D1"]'; ICON="cloudflare-d1-icon"; BUNDLE_NAME="CloudflareD1DriverPlugin"
               CATEGORY="database-driver"; HOMEPAGE="https://docs.tablepro.app/databases/cloudflare-d1" ;;
+            cloudflare-r2-sql)
+              TARGET="CloudflareR2SQLDriverPlugin"; BUNDLE_ID="com.TablePro.CloudflareR2SQLDriverPlugin"
+              DISPLAY_NAME="Cloudflare R2 SQL Driver"; SUMMARY="Read-only Cloudflare R2 SQL driver for Iceberg tables in R2 Data Catalog via REST API"
+              DB_TYPE_IDS='["Cloudflare R2 SQL"]'; ICON="cloudflare-r2-sql-icon"; BUNDLE_NAME="CloudflareR2SQLDriverPlugin"
+              CATEGORY="database-driver"; HOMEPAGE="https://docs.tablepro.app/databases/cloudflare-r2-sql" ;;
             libsql)
               TARGET="LibSQLDriverPlugin"; BUNDLE_ID="com.TablePro.LibSQLDriverPlugin"
               DISPLAY_NAME="libSQL / Turso Driver"; SUMMARY="libSQL and Turso database support via Hrana HTTP protocol"

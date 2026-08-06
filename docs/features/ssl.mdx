@@ -33,7 +33,7 @@ New connections pick the mode that matches each driver's native behavior. Open t
 | Oracle | Disabled | Preferred connects in plain TCP. Use Required to enforce TCPS. |
 | Teradata | Disabled | Preferred tries TLS and drops to plain TCP if the handshake fails |
 | Trino | Disabled | Preferred switches the HTTP client to HTTPS with no fallback, same as Required |
-| Snowflake, BigQuery, DynamoDB, Cloudflare D1, libSQL / Turso | Always encrypted | HTTPS-based drivers manage TLS themselves; no SSL/TLS pane |
+| Snowflake, BigQuery, DynamoDB, Cloudflare D1, Cloudflare R2 SQL, libSQL / Turso | Always encrypted | HTTPS-based drivers manage TLS themselves; no SSL/TLS pane |
 | SQLite, DuckDB, Beancount | N/A | Local files, no network protocol |
 | PGlite | N/A | No SSL support, so the connection form has no SSL/TLS pane |
 

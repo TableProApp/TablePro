@@ -14,6 +14,7 @@ struct StatusBarSnapshot: Equatable {
     let hasTableName: Bool
     let pagination: PaginationState
     let statusMessage: String?
+    let supportsPaging: Bool
 
     init(
         tabId: UUID?,
@@ -23,7 +24,8 @@ struct StatusBarSnapshot: Equatable {
         rowCount: Int,
         hasTableName: Bool,
         pagination: PaginationState,
-        statusMessage: String?
+        statusMessage: String?,
+        supportsPaging: Bool = true
     ) {
         self.tabId = tabId
         self.tabType = tabType
@@ -33,9 +35,10 @@ struct StatusBarSnapshot: Equatable {
         self.hasTableName = hasTableName
         self.pagination = pagination
         self.statusMessage = statusMessage
+        self.supportsPaging = supportsPaging
     }
 
-    init(tab: QueryTab?, tableRows: TableRows?) {
+    init(tab: QueryTab?, tableRows: TableRows?, supportsPaging: Bool = true) {
         self.init(
             tabId: tab?.id,
             tabType: tab?.tabType,
@@ -44,11 +47,13 @@ struct StatusBarSnapshot: Equatable {
             rowCount: tableRows?.rows.count ?? 0,
             hasTableName: tab?.tableContext.tableName != nil,
             pagination: tab?.pagination ?? PaginationState(),
-            statusMessage: tab?.execution.statusMessage
+            statusMessage: tab?.execution.statusMessage,
+            supportsPaging: supportsPaging
         )
     }
 
     var showsPaginationControls: Bool {
+        guard supportsPaging else { return rowCount > 0 }
         if let total = pagination.totalRowCount, total > 0 { return true }
         return isPagedWithUnknownTotal
     }

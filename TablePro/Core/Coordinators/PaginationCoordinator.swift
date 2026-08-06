@@ -21,6 +21,7 @@ final class PaginationCoordinator {
     // MARK: - Pagination
 
     func goToNextPage() {
+        guard parent.supportsOffsetPagination else { return }
         guard let (tab, tabIndex) = parent.tabManager.selectedTabAndIndex else { return }
         let loadedRowCount = parent.tabSessionRegistry.tableRows(for: tab.id).rows.count
         guard tab.pagination.canGoToNextPage(loadedRowCount: loadedRowCount) else { return }
@@ -28,18 +29,22 @@ final class PaginationCoordinator {
     }
 
     func goToPreviousPage() {
+        guard parent.supportsOffsetPagination else { return }
         paginateIfPossible(where: \.hasPreviousPage) { $0.goToPreviousPage() }
     }
 
     func goToFirstPage() {
+        guard parent.supportsOffsetPagination else { return }
         paginateIfPossible(where: \.hasPreviousPage) { $0.goToFirstPage() }
     }
 
     func goToLastPage() {
+        guard parent.supportsOffsetPagination else { return }
         paginateIfPossible(where: { $0.isLastPageKnown && $0.currentPage != $0.totalPages }) { $0.goToLastPage() }
     }
 
     func goToPage(_ page: Int) {
+        guard parent.supportsOffsetPagination else { return }
         paginateIfPossible(where: { $0.isLastPageKnown && page > 0 && page <= $0.totalPages }) { $0.goToPage(page) }
     }
 

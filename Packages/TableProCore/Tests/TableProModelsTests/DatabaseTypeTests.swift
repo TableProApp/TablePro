@@ -53,7 +53,7 @@ struct DatabaseTypeTests {
 
     @Test("allKnownTypes contains all expected types")
     func allKnownTypesComplete() {
-        #expect(DatabaseType.allKnownTypes.count == 22)
+        #expect(DatabaseType.allKnownTypes.count == 23)
         #expect(DatabaseType.allKnownTypes.contains(.mysql))
         #expect(DatabaseType.allKnownTypes.contains(.bigquery))
         #expect(DatabaseType.allKnownTypes.contains(.snowflake))
@@ -62,6 +62,14 @@ struct DatabaseTypeTests {
         #expect(DatabaseType.allKnownTypes.contains(.surrealdb))
         #expect(DatabaseType.allKnownTypes.contains(.teradata))
         #expect(DatabaseType.allKnownTypes.contains(.trino))
+        #expect(DatabaseType.allKnownTypes.contains(.cloudflareR2SQL))
+    }
+
+    @Test("Cloudflare R2 SQL resolves its icon and plugin type id")
+    func cloudflareR2SQLIdentity() {
+        #expect(DatabaseType.cloudflareR2SQL.rawValue == "Cloudflare R2 SQL")
+        #expect(DatabaseType.cloudflareR2SQL.iconName == "cloudflare-r2-sql-icon")
+        #expect(DatabaseType.cloudflareR2SQL.pluginTypeId == "Cloudflare R2 SQL")
     }
 
     @Test("Hashable conformance")

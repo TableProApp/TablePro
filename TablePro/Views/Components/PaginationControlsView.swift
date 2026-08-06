@@ -8,6 +8,7 @@ import SwiftUI
 struct PaginationControlsView: View {
     let pagination: PaginationState
     let loadedRowCount: Int
+    var supportsPaging: Bool = true
     let onFirst: () -> Void
     let onPrevious: () -> Void
     let onNext: () -> Void
@@ -28,8 +29,31 @@ struct PaginationControlsView: View {
     var body: some View {
         HStack(spacing: 8) {
             pageSizeMenu
-            navigationCluster
+            if supportsPaging {
+                navigationCluster
+            } else {
+                singlePageIndicator
+            }
         }
+    }
+
+    private var singlePageIndicator: some View {
+        HStack(spacing: 4) {
+            if pagination.isLoading {
+                ProgressView()
+                    .controlSize(.small)
+                    .accessibilityLabel(String(localized: "Loading rows"))
+            }
+            Text(singlePageText)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .help(String(localized: "This engine does not support paging through results. Filter or sort to narrow them."))
+        .accessibilityLabel(singlePageText)
+    }
+
+    private var singlePageText: String {
+        String(format: String(localized: "First %d rows"), loadedRowCount)
     }
 
     // MARK: - Page Size Menu

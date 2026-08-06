@@ -426,6 +426,16 @@ extension PluginManager {
             .capabilities.supportsReadOnlyMode ?? true
     }
 
+    func supportsOffsetPagination(for databaseType: DatabaseType) -> Bool {
+        PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
+            .capabilities.supportsOffsetPagination ?? true
+    }
+
+    func isEngineReadOnly(for databaseType: DatabaseType) -> Bool {
+        PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
+            .capabilities.isEngineReadOnly ?? false
+    }
+
     func defaultSchemaName(for databaseType: DatabaseType) -> String {
         PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
             .schema.defaultSchemaName ?? "public"
