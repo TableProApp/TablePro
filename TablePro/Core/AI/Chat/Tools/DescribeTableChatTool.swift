@@ -12,6 +12,10 @@ struct DescribeTableChatTool: ChatTool {
         properties: [
             "connection_id": ChatToolSchemaBuilder.connectionId,
             "table": ChatToolSchemaBuilder.string(description: "Table or view name"),
+            "database": ChatToolSchemaBuilder.string(
+                description: "Database name. Pass null to use current.",
+                optional: true
+            ),
             "schema": ChatToolSchemaBuilder.schemaName
         ]
     )
@@ -20,12 +24,15 @@ struct DescribeTableChatTool: ChatTool {
     func execute(input: JsonValue, context: ChatToolContext) async throws -> ChatToolResult {
         let connectionId = try context.resolveConnectionId(input)
         let table = try ChatToolArgumentDecoder.requireString(input, key: "table")
+        let database = ChatToolArgumentDecoder.optionalString(input, key: "database")
         let schema = ChatToolArgumentDecoder.optionalString(input, key: "schema")
-        let payload = try await context.bridge.describeTable(
+
+        let scope = try await context.bridge.resolveScope(
             connectionId: connectionId,
-            table: table,
+            database: database,
             schema: schema
         )
+        let payload = try await context.bridge.describeTable(scope: scope, table: table)
         return ChatToolResult(content: payload.jsonString(prettyPrinted: true))
     }
 }

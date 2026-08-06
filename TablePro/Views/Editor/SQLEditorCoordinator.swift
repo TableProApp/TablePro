@@ -360,7 +360,7 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
         let capturedSchemaProvider = schemaProvider
         let capturedDBType = databaseType
         let dbName = connectionId.flatMap {
-            DatabaseManager.shared.session(for: $0)?.activeDatabase
+            DatabaseManager.shared.session(for: $0)?.resolvedBrowseDatabase
         } ?? "database"
 
         Task {

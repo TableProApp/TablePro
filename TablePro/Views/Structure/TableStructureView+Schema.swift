@@ -68,6 +68,8 @@ extension TableStructureView {
         let changes = structureChangeManager.getChangesArray()
         guard !changes.isEmpty else { return }
 
+        let saveScope = scope
+
         let destructiveChanges = changes.filter { $0.requiresDataMigration }
         if !destructiveChanges.isEmpty {
             let descriptions = destructiveChanges.map { $0.description }
@@ -94,9 +96,7 @@ extension TableStructureView {
                 tableName: tableName,
                 changes: changes,
                 databaseType: connection.type,
-                databaseName: databaseName,
-                schemaName: schemaName,
-                connectionId: connection.id
+                scope: saveScope
             )
 
             tabData.markAllStale()

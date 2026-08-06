@@ -547,6 +547,23 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
         limit: Int,
         offset: Int
     ) -> String? {
+        buildFilteredQuery(
+            table: table, schema: schema, filters: filters, logicMode: logicMode,
+            sortColumns: sortColumns, columns: columns, limit: limit, offset: offset, columnKinds: [:]
+        )
+    }
+
+    func buildFilteredQuery(
+        table: String,
+        schema: String?,
+        filters: [(column: String, op: String, value: String)],
+        logicMode: String,
+        sortColumns: [(columnIndex: Int, ascending: Bool)],
+        columns: [String],
+        limit: Int,
+        offset: Int,
+        columnKinds: [String: PluginColumnKind]
+    ) -> String? {
         let dataset: String = lock.withLock {
             let ds = schema ?? _currentDataset ?? ""
             _columnCache["\(ds).\(table)"] = columns
@@ -555,7 +572,7 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
         return BigQueryQueryBuilder.encodeFilteredQuery(
             table: table, dataset: dataset,
             filters: filters, logicMode: logicMode,
-            sortColumns: sortColumns, limit: limit, offset: offset
+            sortColumns: sortColumns, limit: limit, offset: offset, columnKinds: columnKinds
         )
     }
 

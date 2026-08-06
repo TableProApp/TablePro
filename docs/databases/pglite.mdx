@@ -48,7 +48,7 @@ See [Connection URL Reference](/databases/connection-urls) for all parameters.
 
 ## Limitations
 
-- **Single connection.** PGlite serves one connection at a time. TablePro is built for this and keeps to one connection, but other tools that open connections in parallel will fail against the same server.
+- **Single connection.** PGlite serves one connection at a time. TablePro is built for this and keeps to one connection, but other tools that open connections in parallel will fail against the same server. This also means PGlite cannot back a [cross-database tab](/databases/postgresql#cross-database-tabs) the way PostgreSQL, Redshift, and CockroachDB do: a PGlite tab bound to a database the connection is not on reports an error naming that database instead of running the query against the wrong one.
 - **No TLS.** The socket server rejects SSL, so SSL Mode is fixed to Disabled and the SSH, Cloudflare Tunnel, and SOCKS panes do not apply.
 - **Cancel does nothing.** PGlite has no backend process to signal, so cancelling a running query has no effect at the protocol level. Let long queries finish.
 

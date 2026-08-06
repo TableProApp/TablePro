@@ -51,6 +51,14 @@ Connect to RDS or Aurora with your AWS identity instead of a static password: se
 
 **Backup & Restore**: **Backup Dump** and **Restore Dump** run `pg_dump` and `pg_restore`. Among TablePro's databases this is available for PostgreSQL and Redshift only. See [Backup & Restore](/features/backup-restore).
 
+## Cross-Database Tabs
+
+A tab stays on the database and schema it was opened with for its whole life, even if the sidebar or another tab switches to a different one. See [Tabs](/features/tabs#database-binding). PostgreSQL, like Redshift and CockroachDB, changes database only by reconnecting: there is no in-place `USE` statement. So a tab bound to a database other than the connection's active one runs on a separate connection for that database instead.
+
+That separate connection means the tab does not share temp tables, session variables, or an open transaction with the query editor on the main connection. Keep session-scoped work, such as a multi-statement transaction or a `CREATE TEMP TABLE`, on tabs bound to the same database if they need to see each other's state.
+
+[PGlite](/databases/pglite) cannot open a second connection at all, so a PGlite tab bound to a database the connection is not on reports an error naming that database instead of running the query against the wrong one.
+
 ## Advanced
 
 **~/.pgpass**: format `hostname:port:database:username:password`, wildcards (`*`) allowed. libpq silently ignores the file unless its permissions are `0600`.

@@ -291,7 +291,7 @@ final class MainContentCommandActions {
 
     var connectionId: UUID { connection.id }
 
-    var activeDatabaseName: String { coordinator?.activeDatabaseName ?? "" }
+    var browseDatabaseName: String { coordinator?.browseDatabaseName ?? "" }
 
     var openTabCount: Int { coordinator?.tabManager.tabs.count ?? 0 }
 
@@ -390,7 +390,7 @@ final class MainContentCommandActions {
         if let coordinator, coordinator.tabManager.tabs.isEmpty {
             coordinator.tabManager.addTab(
                 initialQuery: initialQuery,
-                databaseName: coordinator.activeDatabaseName,
+                databaseName: coordinator.browseDatabaseName,
                 claimFocus: true
             )
             return
@@ -1057,14 +1057,18 @@ final class MainContentCommandActions {
     private func setupDataBroadcastObservers() {
         AppCommands.shared.refreshData
             .receive(on: RunLoop.main)
-            .sink { [weak self] changedConnectionId in
-                guard let self, changedConnectionId == self.connection.id,
+            .sink { [weak self] request in
+                guard let self, request.connectionId == self.connection.id,
                       let coordinator = self.coordinator else { return }
-                coordinator.reloadActiveTableData(
-                    hasPendingTableOps: self.hasPendingTableOps,
-                    onDiscard: { [weak self] in self?.clearPendingTableOps() }
-                )
-                Task { await coordinator.refreshTables() }
+                if request.reaches(tabScope: coordinator.selectedTabScope) {
+                    coordinator.reloadActiveTableData(
+                        hasPendingTableOps: self.hasPendingTableOps,
+                        onDiscard: { [weak self] in self?.clearPendingTableOps() }
+                    )
+                }
+                if request.reachesBrowsedDatabase(coordinator.browseDatabaseName) {
+                    Task { await coordinator.refreshTables() }
+                }
             }
             .store(in: &eventCancellables)
     }

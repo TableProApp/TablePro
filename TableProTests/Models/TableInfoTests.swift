@@ -193,4 +193,31 @@ struct TableInfoTests {
         #expect(result.contains(TableInfo(name: "users", type: .table, rowCount: nil)))
         #expect(result.contains(TableInfo(name: "products", type: .view, rowCount: nil)))
     }
+
+    // MARK: - Row Editing
+
+    @Test("A view does not allow row editing")
+    func viewDisallowsRowEditing() {
+        #expect(!TableInfo.TableType.view.allowsRowEditing)
+    }
+
+    @Test("An external table does not allow row editing")
+    func externalTableDisallowsRowEditing() {
+        #expect(!TableInfo.TableType.externalTable.allowsRowEditing)
+    }
+
+    @Test("Local relations still allow row editing")
+    func localRelationsAllowRowEditing() {
+        #expect(TableInfo.TableType.table.allowsRowEditing)
+        #expect(TableInfo.TableType.materializedView.allowsRowEditing)
+        #expect(TableInfo.TableType.foreignTable.allowsRowEditing)
+        #expect(TableInfo.TableType.systemTable.allowsRowEditing)
+        #expect(TableInfo.TableType.partitionedTable.allowsRowEditing)
+    }
+
+    @Test("External table round-trips through its raw value")
+    func externalTableRawValue() {
+        #expect(TableInfo.TableType.externalTable.rawValue == "EXTERNAL TABLE")
+        #expect(TableInfo.TableType(rawValue: "EXTERNAL TABLE") == .externalTable)
+    }
 }

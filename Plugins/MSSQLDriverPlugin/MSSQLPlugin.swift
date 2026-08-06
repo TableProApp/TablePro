@@ -716,11 +716,29 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         limit: Int,
         offset: Int
     ) -> String? {
+        buildFilteredQuery(
+            table: table, schema: schema, filters: filters, logicMode: logicMode,
+            sortColumns: sortColumns, columns: columns, limit: limit, offset: offset, columnKinds: [:]
+        )
+    }
+
+    func buildFilteredQuery(
+        table: String,
+        schema: String?,
+        filters: [(column: String, op: String, value: String)],
+        logicMode: String,
+        sortColumns: [(columnIndex: Int, ascending: Bool)],
+        columns: [String],
+        limit: Int,
+        offset: Int,
+        columnKinds: [String: PluginColumnKind]
+    ) -> String? {
         let whereClause = PluginSQLFilter.buildWhereClause(
             filters: filters,
             logicMode: logicMode,
+            columnKinds: columnKinds,
             quoteIdentifier: mssqlQuoteIdentifier,
-            escapeValue: mssqlEscapeValue,
+            escapeTypedValue: mssqlEscapeValue,
             regexCondition: { quoted, value in
                 "\(quoted) LIKE '%\(value.replacingOccurrences(of: "'", with: "''"))%'"
             }
@@ -740,13 +758,14 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         quoteIdentifier(identifier)
     }
 
-    private func mssqlEscapeValue(_ value: String) -> String {
-        let trimmed = value.trimmingCharacters(in: .whitespaces)
-        if trimmed.caseInsensitiveCompare("NULL") == .orderedSame { return "NULL" }
-        if trimmed.caseInsensitiveCompare("TRUE") == .orderedSame { return "1" }
-        if trimmed.caseInsensitiveCompare("FALSE") == .orderedSame { return "0" }
-        if Int(trimmed) != nil || Double(trimmed) != nil { return trimmed }
-        return "'\(trimmed.replacingOccurrences(of: "'", with: "''"))'"
+    private func mssqlEscapeValue(_ value: String, kind: PluginColumnKind?) -> String {
+        PluginSQLLiteral.escapedLiteral(
+            value,
+            kind: kind,
+            trueLiteral: "1",
+            falseLiteral: "0",
+            quote: { "'\($0.replacingOccurrences(of: "'", with: "''"))'" }
+        )
     }
 
 

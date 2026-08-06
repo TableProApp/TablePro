@@ -13,6 +13,10 @@ import TableProPluginKit
 final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     let core: LibPQDriverCore
 
+    private let connectedDatabase: String
+
+    private var externalSchemaCache: Set<String>?
+
     private static let logger = Logger(subsystem: "com.TablePro.PostgreSQLDriver", category: "RedshiftPluginDriver")
 
     var capabilities: PluginCapabilities {
@@ -26,10 +30,14 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     }
 
     init(config: DriverConnectionConfig) {
+        self.connectedDatabase = config.database
         self.core = LibPQDriverCore(
             config: config,
             schemaFallbackQueries: PostgreSQLSchemaQueries.schemaFallbackQueriesRedshift
         )
+        core.onPostConnect = { [weak self] in
+            await self?.probeExternalSchemas()
+        }
     }
 
     // MARK: - EXPLAIN
@@ -40,8 +48,32 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
 
     // MARK: - Schema
 
+    /// Refreshed from `onPostConnect` and whenever the schema list is loaded, so
+    /// a schema created mid-session is classified without a reconnect. A failed
+    /// probe leaves the previous answer in place rather than replacing it with
+    /// an empty one. A cluster with no external catalog answers in one cheap read.
+    private func probeExternalSchemas() async {
+        do {
+            let result = try await execute(query: RedshiftExternalSchemaQueries.listExternalSchemaNames)
+            externalSchemaCache = Set(result.rows.compactMap { $0.first?.asText })
+        } catch {
+            Self.logger.warning(
+                "Could not read svv_external_schemas; external schemas stay unresolved: \(error.localizedDescription, privacy: .public)"
+            )
+        }
+    }
+
+    func fetchExternalSchemaNames() async throws -> Set<String> {
+        externalSchemaCache ?? []
+    }
+
+    private func isExternalSchema(_ schema: String) -> Bool {
+        externalSchemaCache?.contains(schema) ?? false
+    }
+
     func fetchTables(schema: String?) async throws -> [PluginTableInfo] {
-        let schemaLiteral = escapeLiteral(schema ?? core.currentSchema)
+        let resolvedSchema = schema ?? core.currentSchema
+        let schemaLiteral = escapeLiteral(resolvedSchema)
         let query = """
             SELECT table_name, table_type
             FROM information_schema.tables
@@ -49,16 +81,110 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
             ORDER BY table_name
             """
         let result = try await execute(query: query)
-        return result.rows.compactMap { row -> PluginTableInfo? in
+        let localTables = result.rows.compactMap { row -> PluginTableInfo? in
             guard let name = row[0].asText else { return nil }
             let typeStr = row[1].asText ?? "BASE TABLE"
             let type = typeStr.contains("VIEW") ? "VIEW" : "TABLE"
             return PluginTableInfo(name: name, type: type)
         }
+
+        guard isExternalSchema(resolvedSchema) else { return localTables }
+
+        let externalTables = await fetchExternalTables(schemaLiteral: schemaLiteral, schema: resolvedSchema)
+        guard !externalTables.isEmpty else { return localTables }
+
+        let localNames = Set(localTables.map(\.name))
+        let merged = localTables + externalTables.filter { !localNames.contains($0.name) }
+        return merged.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
+
+    private func fetchExternalTables(schemaLiteral: String, schema: String) async -> [PluginTableInfo] {
+        do {
+            let result = try await execute(
+                query: RedshiftExternalSchemaQueries.listExternalTables(
+                    schemaLiteral: schemaLiteral,
+                    databaseLiteral: escapeLiteral(connectedDatabase)
+                )
+            )
+            return result.rows.compactMap { row -> PluginTableInfo? in
+                guard let name = row[0].asText else { return nil }
+                let rawType = row.count > 1 ? row[1].asText : nil
+                return PluginTableInfo(
+                    name: name,
+                    type: RedshiftExternalSchemaQueries.classifyTableType(rawTabletype: rawType),
+                    schema: schema
+                )
+            }
+        } catch {
+            Self.logger.warning(
+                "svv_external_tables failed for schema \(schema, privacy: .public); listing local tables only: \(error.localizedDescription, privacy: .public)"
+            )
+            return []
+        }
     }
 
     func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] {
-        let schemaLiteral = escapeLiteral(schema ?? core.currentSchema)
+        let resolvedSchema = schema ?? core.currentSchema
+        if isExternalSchema(resolvedSchema) {
+            let external = await fetchExternalColumns(
+                schemaLiteral: escapeLiteral(resolvedSchema),
+                tableLiteral: escapeLiteral(table),
+                schema: resolvedSchema
+            )
+            if !external.isEmpty { return external }
+        }
+        return try await fetchLocalColumns(table: table, schema: resolvedSchema)
+    }
+
+    private func fetchExternalColumns(
+        schemaLiteral: String,
+        tableLiteral: String,
+        schema: String
+    ) async -> [PluginColumnInfo] {
+        do {
+            let result = try await execute(
+                query: RedshiftExternalSchemaQueries.listExternalColumns(
+                    schemaLiteral: schemaLiteral,
+                    tableLiteral: tableLiteral,
+                    databaseLiteral: escapeLiteral(connectedDatabase)
+                )
+            )
+            return result.rows.compactMap { row -> PluginColumnInfo? in
+                guard row.count >= 2, let name = row[0].asText, let dataType = row[1].asText else { return nil }
+                return Self.externalColumn(name: name, dataType: dataType, row: row, typeIndex: 1)
+            }
+        } catch {
+            Self.logger.warning(
+                "svv_external_columns failed for schema \(schema, privacy: .public): \(error.localizedDescription, privacy: .public)"
+            )
+            return []
+        }
+    }
+
+    /// External columns carry no default, charset, collation, comment, or key
+    /// information, and `external_type` is an opaque Hive type string that must
+    /// reach the UI unparsed so nested `struct`/`array` declarations survive.
+    private static func externalColumn(
+        name: String,
+        dataType: String,
+        row: [PluginCellValue],
+        typeIndex: Int
+    ) -> PluginColumnInfo {
+        let nullableIndex = typeIndex + 1
+        let partKeyIndex = typeIndex + 2
+        let rawNullable = row.count > nullableIndex ? row[nullableIndex].asText : nil
+        let rawPartKey = row.count > partKeyIndex ? row[partKeyIndex].asText : nil
+        return PluginColumnInfo(
+            name: name,
+            dataType: dataType,
+            isNullable: RedshiftExternalSchemaQueries.classifyIsNullable(raw: rawNullable),
+            isPrimaryKey: false,
+            extra: RedshiftExternalSchemaQueries.partitionKeyDescription(rawPartKey: rawPartKey)
+        )
+    }
+
+    private func fetchLocalColumns(table: String, schema: String) async throws -> [PluginColumnInfo] {
+        let schemaLiteral = escapeLiteral(schema)
         let query = RedshiftSchemaQueries.columnsQuery(
             schemaLiteral: schemaLiteral,
             tableLiteral: escapeLiteral(table)
@@ -106,7 +232,50 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     }
 
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
-        let schemaLiteral = escapeLiteral(schema ?? core.currentSchema)
+        let resolvedSchema = schema ?? core.currentSchema
+        if isExternalSchema(resolvedSchema) {
+            let external = await fetchExternalAllColumns(
+                schemaLiteral: escapeLiteral(resolvedSchema),
+                schema: resolvedSchema
+            )
+            if !external.isEmpty { return external }
+        }
+        return try await fetchLocalAllColumns(schema: resolvedSchema)
+    }
+
+    private func fetchExternalAllColumns(
+        schemaLiteral: String,
+        schema: String
+    ) async -> [String: [PluginColumnInfo]] {
+        do {
+            let result = try await execute(
+                query: RedshiftExternalSchemaQueries.listExternalColumns(
+                    schemaLiteral: schemaLiteral,
+                    tableLiteral: nil,
+                    databaseLiteral: escapeLiteral(connectedDatabase)
+                )
+            )
+            var allColumns: [String: [PluginColumnInfo]] = [:]
+            for row in result.rows {
+                guard row.count >= 3,
+                      let tableName = row[0].asText,
+                      let name = row[1].asText,
+                      let dataType = row[2].asText
+                else { continue }
+                let column = Self.externalColumn(name: name, dataType: dataType, row: row, typeIndex: 2)
+                allColumns[tableName, default: []].append(column)
+            }
+            return allColumns
+        } catch {
+            Self.logger.warning(
+                "svv_external_columns failed for schema \(schema, privacy: .public): \(error.localizedDescription, privacy: .public)"
+            )
+            return [:]
+        }
+    }
+
+    private func fetchLocalAllColumns(schema: String) async throws -> [String: [PluginColumnInfo]] {
+        let schemaLiteral = escapeLiteral(schema)
         let query = RedshiftSchemaQueries.columnsQuery(schemaLiteral: schemaLiteral, tableLiteral: nil)
         let result = try await execute(query: query)
         var allColumns: [String: [PluginColumnInfo]] = [:]
@@ -232,8 +401,10 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     }
 
     func fetchApproximateRowCount(table: String, schema: String?) async throws -> Int? {
+        let resolvedSchema = schema ?? core.currentSchema
+        guard !isExternalSchema(resolvedSchema) else { return nil }
         let safeTable = escapeLiteral(table)
-        let schemaLiteral = escapeLiteral(schema ?? core.currentSchema)
+        let schemaLiteral = escapeLiteral(resolvedSchema)
         let query = """
             SELECT tbl_rows
             FROM svv_table_info
@@ -323,8 +494,12 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     }
 
     func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
+        let resolvedSchema = schema ?? core.currentSchema
+        guard !isExternalSchema(resolvedSchema) else {
+            return PluginTableMetadata(tableName: table, engine: "Redshift External")
+        }
         let safeTable = escapeLiteral(table)
-        let schemaLiteral = escapeLiteral(schema ?? core.currentSchema)
+        let schemaLiteral = escapeLiteral(resolvedSchema)
         let query = """
             SELECT
                 tbl_rows,
@@ -367,6 +542,7 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
 
     func fetchSchemas() async throws -> [String] {
         let result = try await execute(query: PostgreSQLSchemaQueries.listSchemasRedshift)
+        await probeExternalSchemas()
         return result.rows.compactMap { row in row.first?.asText }
     }
 

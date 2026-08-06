@@ -17,7 +17,7 @@ enum SidebarContextMenuLogic {
 
     static func isReadOnlyKind(_ type: TableInfo.TableType?) -> Bool {
         switch type {
-        case .view, .materializedView, .foreignTable, .systemTable:
+        case .view, .materializedView, .foreignTable, .systemTable, .externalTable:
             return true
         case .table, .partitionedTable, .none:
             return false
@@ -39,6 +39,7 @@ enum SidebarContextMenuLogic {
         case .materializedView: return String(localized: "Drop Materialized View")
         case .foreignTable:     return String(localized: "Drop Foreign Table")
         case .systemTable:      return String(localized: "Drop")
+        case .externalTable:    return String(localized: "Drop External Table")
         case .table, .partitionedTable, .none: return String(localized: "Delete")
         }
     }

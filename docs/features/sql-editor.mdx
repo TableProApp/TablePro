@@ -38,7 +38,7 @@ The editor toolbar shows a database picker (or schema picker, depending on the e
 
 - Changing the picker affects only that tab. Switching the active database elsewhere keeps existing tabs on their bound database.
 - The picker lists the databases visible in the sidebar, so it follows the sidebar database filter.
-- Databases whose driver reconnects the session to switch show a lock instead of a menu; those tabs follow the connection's active database.
+- Databases whose driver reconnects the session to switch, PostgreSQL, Redshift, and CockroachDB, show a lock instead of a menu: there is no in-place way to change database from this picker. The tab still keeps the database it was opened with; on these engines a tab bound to a database other than the connection's active one runs on a separate connection for that database. See [Cross-Database Tabs](/databases/postgresql#cross-database-tabs).
 
 ## Find and Replace
 

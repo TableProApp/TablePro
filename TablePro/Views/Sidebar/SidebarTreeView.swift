@@ -17,7 +17,7 @@ struct SidebarTreeView: View {
     @State private var searchLoadTask: Task<Void, Never>?
 
     private var activeDatabase: String? {
-        let name = coordinator?.activeDatabaseName ?? ""
+        let name = coordinator?.browseDatabaseName ?? ""
         return name.isEmpty ? nil : name
     }
 

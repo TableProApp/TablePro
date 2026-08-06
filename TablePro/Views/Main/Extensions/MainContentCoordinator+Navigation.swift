@@ -27,7 +27,7 @@ extension MainContentCoordinator {
             table.name,
             schema: schema ?? table.schema,
             showStructure: showStructure,
-            isView: table.type == .view,
+            isView: !table.type.allowsRowEditing,
             forceNonPreview: forceNonPreview,
             activateGridFocus: activateGridFocus,
             forceNewWindowTab: forceNewWindowTab
@@ -54,7 +54,7 @@ extension MainContentCoordinator {
             }
             currentDatabase = String(tableName.dropFirst(2))
         } else {
-            currentDatabase = activeDatabaseName
+            currentDatabase = browseDatabaseName
         }
 
         let resolvedSchema = DatabaseManager.shared.resolvedSchemaName(schema, for: connectionId)
@@ -357,14 +357,14 @@ extension MainContentCoordinator {
         if editorLang == .javascript {
             tabManager.addTab(
                 initialQuery: "db.runCommand({\"listCollections\": 1, \"nameOnly\": false})",
-                databaseName: activeDatabaseName
+                databaseName: browseDatabaseName
             )
             runQuery()
             return nil
         } else if editorLang == .bash {
             tabManager.addTab(
                 initialQuery: "SCAN 0 MATCH * COUNT 100",
-                databaseName: activeDatabaseName
+                databaseName: browseDatabaseName
             )
             runQuery()
             return nil
@@ -378,25 +378,21 @@ extension MainContentCoordinator {
 
     // MARK: - Database Switching
 
-    /// Switch to a different database (called from database switcher).
-    /// `persist` records the database as the connection's saved default; pass `false`
-    /// for transient per-tab switches that must not change the connection default.
+    /// Moves the browse cursor: what the sidebar lists and which database a new tab
+    /// opens in. It never retargets an open tab, and an open tab never calls it.
+    /// `persist` records the database as the connection's saved default.
     @discardableResult
     func switchDatabase(to database: String, persist: Bool = true) async -> Bool {
-        let previousDatabase = toolbarState.currentDatabase
-        toolbarState.currentDatabase = database
-
         do {
             try await DatabaseManager.shared.switchDatabase(to: database, for: connectionId, persist: persist)
-            toolbarState.currentSchema = DatabaseManager.shared.session(for: connectionId)?.currentSchema
+            toolbarState.currentDatabase = database
+            toolbarState.currentSchema = DatabaseManager.shared.session(for: connectionId)?.browseSchema
 
-            await SchemaService.shared.invalidate(connectionId: connectionId)
+            await SchemaService.shared.prepareForReload(connectionId: connectionId)
 
             await refreshTables(currentDatabaseOnly: true)
             return true
         } catch {
-            toolbarState.currentDatabase = previousDatabase
-
             navigationLogger.error("Failed to switch database: \(error.localizedDescription, privacy: .public)")
             AlertHelper.showErrorSheet(
                 title: String(
@@ -506,7 +502,7 @@ extension MainContentCoordinator {
             }
             guard !Task.isCancelled else { return }
             DatabaseManager.shared.updateSession(connId) { session in
-                session.currentDatabase = database
+                session.browseDatabase = database
             }
             toolbarState.currentDatabase = database
             executeTableTabQueryDirectly()

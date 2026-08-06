@@ -68,6 +68,24 @@ struct MetadataConnectionPoolTests {
             try await MetadataConnectionPool.switchDatabase(driver, to: "shop", timeoutSeconds: 1)
         }
     }
+
+    @Test("withDriver refuses a scope whose connection has no live session")
+    func withDriverRequiresALiveSession() async throws {
+        let scope = DatabaseScope(connectionId: UUID(), database: "shop", schema: nil)
+        let ranBody = PoolBodyFlag()
+
+        await #expect(throws: DatabaseError.self) {
+            try await MetadataConnectionPool.shared.withDriver(scope: scope) { _ in
+                ranBody.value = true
+            }
+        }
+
+        #expect(!ranBody.value)
+    }
+}
+
+private final class PoolBodyFlag: @unchecked Sendable {
+    var value = false
 }
 
 @Suite("MetadataConnectionPool connection plan")

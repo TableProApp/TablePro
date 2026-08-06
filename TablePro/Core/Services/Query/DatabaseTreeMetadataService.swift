@@ -177,9 +177,9 @@ final class DatabaseTreeMetadataService {
         do {
             let list = try await routinesDedup.execute(key: key) { [self] in
                 try await MetadataConnectionPool.shared.withDriver(
-                    connectionId: connectionId,
-                    database: database,
-                    schema: normalizedSchema,
+                    scope: DatabaseScope(
+                        connectionId: connectionId, database: database, schema: normalizedSchema
+                    ),
                     workload: .bulk
                 ) { driver in
                     let procedures = try await driver.fetchProcedures(schema: normalizedSchema)
@@ -387,20 +387,20 @@ final class DatabaseTreeMetadataService {
         DatabaseManager.shared.session(for: connectionId)?.status == .connected
     }
 
+    /// Always routes through a scoped driver. Reusing the session driver when the target
+    /// looked like the browsed database used to be safe; it is not now that a tab's
+    /// execution moves that driver without writing session state.
     private func withDriver<T: Sendable>(
         connectionId: UUID,
         database: String?,
         _ body: @Sendable @escaping (DatabaseDriver) async throws -> T
     ) async throws -> T {
-        let session = DatabaseManager.shared.session(for: connectionId)
-        let usesPrimary = database == nil || database == session?.activeDatabase
-        if usesPrimary, let driver = session?.driver, driver.status == .connected {
-            return try await body(driver)
+        guard let scope = DatabaseManager.shared.resolvedScope(
+            database: database, schema: nil, for: connectionId
+        ) else {
+            throw DatabaseError.notConnected
         }
-        guard let database else { throw DatabaseError.notConnected }
-        return try await MetadataConnectionPool.shared.withDriver(
-            connectionId: connectionId, database: database, body
-        )
+        return try await DatabaseManager.shared.withMetadataDriver(scope: scope, body)
     }
 
     private static func objectsKey(connectionId: UUID, database: String, schema: String?) -> ObjectsKey {

@@ -133,6 +133,27 @@ struct PluginDriverAdapterTableTypeMappingTests {
         #expect(tables.allSatisfy { $0.type == .systemTable })
     }
 
+    @Test("Maps the Redshift external classifier output to an external table")
+    func mapsExternalTable() async throws {
+        let driver = StubTableTypeDriver()
+        driver.stubbedTables = [
+            PluginTableInfo(
+                name: "customers",
+                type: RedshiftExternalSchemaQueries.classifyTableType(rawTabletype: "TABLE")
+            ),
+            PluginTableInfo(
+                name: "orders",
+                type: RedshiftExternalSchemaQueries.classifyTableType(rawTabletype: " ")
+            ),
+            PluginTableInfo(name: "events", type: "external_table")
+        ]
+        let adapter = makeAdapter(driver: driver)
+        let tables = try await adapter.fetchTables()
+        #expect(tables.count == 3)
+        #expect(tables.allSatisfy { $0.type == .externalTable })
+        #expect(tables.allSatisfy { !$0.type.allowsRowEditing })
+    }
+
     @Test("Maps unknown type to .table with warning")
     func mapsUnknownToTable() async throws {
         let driver = StubTableTypeDriver()

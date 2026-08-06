@@ -201,6 +201,8 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
             tableType = .foreignTable
         case "system table", "system base table", "system view":
             tableType = .systemTable
+        case "external table", "external_table":
+            tableType = .externalTable
         default:
             Self.logger.warning("Unknown plugin table type \"\(table.type, privacy: .public)\" for \"\(table.name, privacy: .public)\"; defaulting to .table")
             tableType = .table
@@ -370,6 +372,10 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
 
     func fetchSchemas() async throws -> [String] {
         try await pluginDriver.fetchSchemas()
+    }
+
+    func fetchExternalSchemaNames() async throws -> Set<String> {
+        try await pluginDriver.fetchExternalSchemaNames()
     }
 
     func fetchProcedures(schema: String?) async throws -> [RoutineInfo] {

@@ -74,6 +74,13 @@ struct TableOperationSQLBuilderTests {
         #expect(stmts == ["DROP FOREIGN TABLE \"remote_orders\""])
     }
 
+    @Test("External table drops with DROP TABLE")
+    func dropsExternalTable() {
+        let builder = makeBuilder(tables: [TableInfo(name: "customers", type: .externalTable, rowCount: nil)])
+        let stmts = builder.generate(truncates: [], deletes: ["customers"], options: [:], includeFKHandling: false)
+        #expect(stmts == ["DROP TABLE \"customers\""])
+    }
+
     @Test("Plain table drops with DROP TABLE")
     func dropsTable() {
         let builder = makeBuilder(tables: [TableInfo(name: "orders", type: .table, rowCount: nil)])

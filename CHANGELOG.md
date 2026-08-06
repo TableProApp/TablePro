@@ -10,6 +10,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Cloudflare R2 SQL support as a downloadable, read-only driver. Connect with an account ID, a bucket, and an API token, browse Iceberg namespaces and tables, and run SELECT queries against them. (#3885)
+- Redshift external schemas now list their tables. Spectrum, federated query, cross-database, and datashare schemas showed up empty because their tables are not in the standard catalog.
+- External schemas are marked in the sidebar, and their tables show an external icon. External tables open read-only, because Redshift rejects `UPDATE` and `DELETE` on them.
+
+### Fixed
+
+- An open tab now keeps running against the database it was opened on, so changing the database in the sidebar no longer breaks it with a "table doesn't exist" error. (#2026)
+- Saving a table structure change no longer moves the sidebar and toolbar to that tab's database. (#2026)
+- Row edits, fetch all rows, and multi-statement scripts now write to the database the tab is bound to, not whichever database another tab last used. (#2026)
+- Switching between tabs no longer changes the connection's saved default database. (#2026)
+- Refreshing after a save no longer reloads windows that are browsing a different database. (#2026)
+- Hidden columns are now applied on a tab bound to a database other than the one selected in the sidebar. (#2026)
+- Asking the AI chat or an MCP client to list tables or run a query no longer changes the database selected in the app. (#2026)
+- Exporting now reads from the database the export was started for, and no longer opens a separate connection for every database on the server when listing them. (#2026)
+- Exporting a query's remaining rows while disconnected now reports the error instead of leaving the progress sheet up forever. (#2026)
+- Stopping a query now cancels the query itself rather than whichever background metadata read finished last. (#2026)
+- Reopening a window no longer loses a table tab's saved sort and page when the connection was still connecting. (#2026)
+- Filtering a text column by a value that looks like a number, such as 68, now compares it as text. It used to compare as a number, which returned the wrong rows and stopped the database using the column's index. (#2029)
+- Typing NULL, TRUE, or FALSE into a filter on a text column now matches that text instead of turning into the SQL keyword, so those values can be filtered for. (#2029)
+- IS EMPTY on a number, date, or boolean column now checks only for NULL, instead of also comparing against an empty string, which some databases reject. (#2029)
+
+### Changed
+
+- A tab's window subtitle now shows the database it is bound to, for query tabs as well as table tabs. (#2026)
+- Changing a tab's database from its toolbar now repoints only that tab and leaves the sidebar where it is. (#2026)
+- `describe_table` and `get_table_ddl` now take a `database` argument, in AI chat and over MCP, so a table in another database can be inspected without changing the database selected in the app. `list_schemas` in AI chat takes one too. (#2026)
 
 ## [0.63.0] - 2026-08-05
 

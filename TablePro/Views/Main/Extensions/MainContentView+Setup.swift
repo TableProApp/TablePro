@@ -63,13 +63,7 @@ extension MainContentView {
                 if let session = DatabaseManager.shared.activeSessions[connection.id],
                     session.isConnected
                 {
-                    if !selectedTab.tableContext.databaseName.isEmpty,
-                        selectedTab.tableContext.databaseName != session.activeDatabase
-                    {
-                        await coordinator.switchDatabase(to: selectedTab.tableContext.databaseName)
-                    } else {
-                        coordinator.lazyLoadCurrentTabIfNeeded()
-                    }
+                    coordinator.lazyLoadCurrentTabIfNeeded()
                 } else {
                     coordinator.pendingLoadTrigger = .userInitiated
                 }
@@ -228,15 +222,13 @@ extension MainContentView {
             return
         }
 
-        let targetDatabase = selected.tabType == .table && !selected.tableContext.databaseName.isEmpty
-            ? selected.tableContext.databaseName
-            : activeDatabase.flatMap { $0.isEmpty ? nil : $0 }
+        let targetDatabase = activeDatabase.flatMap { $0.isEmpty ? nil : $0 }
 
         Task {
-            if let targetDatabase, targetDatabase != session.activeDatabase {
+            if let targetDatabase, targetDatabase != session.resolvedBrowseDatabase {
                 await coordinator.switchDatabase(to: targetDatabase)
             }
-            if let activeSchema, !activeSchema.isEmpty, activeSchema != session.currentSchema {
+            if let activeSchema, !activeSchema.isEmpty, activeSchema != session.browseSchema {
                 await coordinator.switchSchema(to: activeSchema)
             }
             if isTableTab {

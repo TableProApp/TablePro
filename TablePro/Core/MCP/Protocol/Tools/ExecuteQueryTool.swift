@@ -27,11 +27,11 @@ public struct ExecuteQueryTool: MCPToolImplementation {
             ]),
             "database": .object([
                 "type": .string("string"),
-                "description": .string(String(localized: "Switch to this database before executing"))
+                "description": .string(String(localized: "Run against this database (uses current if omitted)"))
             ]),
             "schema": .object([
                 "type": .string("string"),
-                "description": .string(String(localized: "Switch to this schema before executing"))
+                "description": .string(String(localized: "Run against this schema (uses current if omitted)"))
             ])
         ]),
         "required": .array([.string("connection_id"), .string("query")])
@@ -84,18 +84,11 @@ public struct ExecuteQueryTool: MCPToolImplementation {
             )
         }
 
-        if let database {
-            _ = try await services.connectionBridge.switchDatabase(
-                connectionId: connectionId,
-                database: database
-            )
-        }
-        if let schema {
-            _ = try await services.connectionBridge.switchSchema(
-                connectionId: connectionId,
-                schema: schema
-            )
-        }
+        let scope = try await services.connectionBridge.resolveScope(
+            connectionId: connectionId,
+            database: database,
+            schema: schema
+        )
 
         try await throwIfCancelled(context)
         await context.progress.emit(progress: 0.2, total: 1.0, message: "Executing")
@@ -122,8 +115,7 @@ public struct ExecuteQueryTool: MCPToolImplementation {
         let result = try await ToolQueryExecutor.executeAndLog(
             services: services,
             query: query,
-            connectionId: connectionId,
-            databaseName: meta.databaseName,
+            scope: scope,
             maxRows: maxRows,
             timeoutSeconds: timeoutSeconds,
             principalLabel: context.principal.metadata.label

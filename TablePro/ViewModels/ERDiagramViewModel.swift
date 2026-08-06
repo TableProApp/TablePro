@@ -13,7 +13,31 @@ final class ERDiagramViewModel {
     // MARK: - Configuration
 
     let connectionId: UUID
+    let databaseName: String
     let schemaKey: String
+    let schemaName: String?
+
+    /// The diagram is bound to the database and the schema its tab was opened on, so moving
+    /// the sidebar to another database or schema cannot repoint an open diagram.
+    private var scope: DatabaseScope? {
+        services.databaseManager.resolvedScope(database: databaseName, schema: schemaName, for: connectionId)
+    }
+
+    private static let noSchemaMarker = "default"
+
+    /// `schemaKey` is the diagram's identity, written as `database.schema` with
+    /// `noSchemaMarker` standing in for an engine that has no schemas. It is also the only
+    /// record of the schema a diagram tab was opened on, because `addERDiagramTab` writes a
+    /// database into the tab's table context but never a schema. Stripping the database
+    /// prefix rather than splitting on the separator keeps a database name that contains a
+    /// dot intact.
+    static func resolveSchemaName(fromSchemaKey schemaKey: String, databaseName: String) -> String? {
+        let prefix = databaseName + "."
+        guard !databaseName.isEmpty, schemaKey.hasPrefix(prefix) else { return nil }
+        let schema = String(schemaKey.dropFirst(prefix.count))
+        guard !schema.isEmpty, schema != noSchemaMarker else { return nil }
+        return schema
+    }
 
     // MARK: - State
 
@@ -84,9 +108,11 @@ final class ERDiagramViewModel {
 
     // MARK: - Initialization
 
-    init(connectionId: UUID, schemaKey: String, services: AppServices = .live) {
+    init(connectionId: UUID, databaseName: String, schemaKey: String, services: AppServices = .live) {
         self.connectionId = connectionId
+        self.databaseName = databaseName
         self.schemaKey = schemaKey
+        self.schemaName = Self.resolveSchemaName(fromSchemaKey: schemaKey, databaseName: databaseName)
         self.services = services
     }
 
@@ -110,9 +136,14 @@ final class ERDiagramViewModel {
             return
         }
 
+        guard let scope else {
+            loadState = .failed(String(localized: "This diagram is not bound to a database"))
+            return
+        }
+
         do {
             let (columns, foreignKeys, indexes) = try await services.databaseManager.withMetadataDriver(
-                connectionId: connectionId, workload: .bulk
+                scope: scope, workload: .bulk
             ) { driver in
                 let cols = try await driver.fetchAllColumns()
                 let fks = try await driver.fetchAllForeignKeys()
@@ -279,7 +310,7 @@ final class ERDiagramViewModel {
             let payload = EditorTabPayload(
                 connectionId: connectionId,
                 tabType: .query,
-                databaseName: services.databaseManager.activeDatabaseName(for: driver.connection),
+                databaseName: scope?.database ?? services.databaseManager.browseDatabaseName(for: driver.connection),
                 initialQuery: sql,
                 skipAutoExecute: true,
                 tabTitle: String(localized: "Schema SQL")

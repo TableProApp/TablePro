@@ -34,8 +34,8 @@ final class SchemaProviderRegistry {
 
     private func subscribeToRefreshSignal() {
         AppCommands.shared.refreshData
-            .sink { [weak self] connectionId in
-                self?.invalidateColumnCache(for: connectionId)
+            .sink { [weak self] request in
+                self?.invalidateColumnCache(for: request.connectionId)
             }
             .store(in: &cancellables)
     }
@@ -59,7 +59,7 @@ final class SchemaProviderRegistry {
         }
         let source = SQLSchemaProvider.ColumnMetadataSource(
             fetchColumns: { table, schema in
-                try await DatabaseManager.shared.withMetadataDriver(connectionId: connectionId) { driver in
+                try await DatabaseManager.shared.withBrowseMetadataDriver(connectionId: connectionId) { driver in
                     if let schema {
                         return try await driver.fetchColumns(table: table, schema: schema)
                     }
@@ -67,12 +67,12 @@ final class SchemaProviderRegistry {
                 }
             },
             fetchAllColumns: {
-                try await DatabaseManager.shared.withMetadataDriver(connectionId: connectionId, workload: .bulk) { driver in
+                try await DatabaseManager.shared.withBrowseMetadataDriver(connectionId: connectionId, workload: .bulk) { driver in
                     try await driver.fetchAllColumns()
                 }
             },
             fetchSchemaTables: { schema in
-                try await DatabaseManager.shared.withMetadataDriver(connectionId: connectionId) { driver in
+                try await DatabaseManager.shared.withBrowseMetadataDriver(connectionId: connectionId) { driver in
                     try await driver.fetchTables(schema: schema)
                 }
             }

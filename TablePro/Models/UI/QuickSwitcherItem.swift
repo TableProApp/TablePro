@@ -71,6 +71,7 @@ internal struct QuickSwitcherItem: Identifiable, Hashable, Sendable {
     var matchedIndices: [Int] = []
     var payload: String?
     var isOpenInTab: Bool = false
+    var isReadOnly: Bool = false
 
     static func tableItemId(name: String, isView: Bool) -> String {
         "table_\(name)_\(isView ? "VIEW" : "TABLE")"

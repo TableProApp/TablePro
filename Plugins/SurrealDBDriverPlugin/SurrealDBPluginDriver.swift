@@ -244,6 +244,23 @@ final class SurrealDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         limit: Int,
         offset: Int
     ) -> String? {
+        buildFilteredQuery(
+            table: table, schema: schema, filters: filters, logicMode: logicMode,
+            sortColumns: sortColumns, columns: columns, limit: limit, offset: offset, columnKinds: [:]
+        )
+    }
+
+    func buildFilteredQuery(
+        table: String,
+        schema: String?,
+        filters: [(column: String, op: String, value: String)],
+        logicMode: String,
+        sortColumns: [(columnIndex: Int, ascending: Bool)],
+        columns: [String],
+        limit: Int,
+        offset: Int,
+        columnKinds: [String: PluginColumnKind]
+    ) -> String? {
         SurrealQueryBuilder.filtered(
             table: table,
             scope: scope(forSchema: schema),
@@ -251,7 +268,8 @@ final class SurrealDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             logicMode: logicMode,
             sortColumns: Self.sorts(sortColumns, columns: columns),
             limit: limit,
-            offset: offset
+            offset: offset,
+            columnKinds: columnKinds
         )
     }
 

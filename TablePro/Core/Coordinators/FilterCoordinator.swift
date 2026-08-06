@@ -41,6 +41,7 @@ final class FilterCoordinator {
                 logicMode: tab.filterState.filterLogicMode,
                 sortState: tab.sortState,
                 columns: buffer.columns,
+                columnTypes: buffer.columnTypes,
                 selectColumns: parent.selectColumns(for: tab),
                 limit: tab.pagination.pageSize,
                 offset: tab.pagination.currentOffset
@@ -171,9 +172,9 @@ final class FilterCoordinator {
         let tab = parent.tabManager.tabs[tabIndex]
         let buffer = parent.tabSessionRegistry.tableRows(for: tab.id)
         let hasFilters = tab.filterState.hasAppliedFilters
-        let columns = buffer.columns.isEmpty
-            ? parent.effectiveResultColumns(for: tab)
-            : buffer.columns
+        let hasBufferedColumns = !buffer.columns.isEmpty
+        let columns = hasBufferedColumns ? buffer.columns : parent.effectiveResultColumns(for: tab)
+        let columnTypes = hasBufferedColumns ? buffer.columnTypes : []
 
         let newQuery: String
         if usesBrowseSearch, tab.filterState.hasActiveBrowseSearch {
@@ -197,6 +198,7 @@ final class FilterCoordinator {
                 logicMode: tab.filterState.filterLogicMode,
                 sortState: tab.sortState,
                 columns: columns,
+                columnTypes: columnTypes,
                 selectColumns: parent.selectColumns(for: tab),
                 limit: tab.pagination.pageSize,
                 offset: tab.pagination.currentOffset
@@ -608,7 +610,12 @@ final class FilterCoordinator {
         guard let dialect = PluginManager.shared.sqlDialect(for: databaseType) else {
             return "-- Filters are applied natively"
         }
-        let generator = FilterSQLGenerator(dialect: dialect)
+        let buffer = parent.tabManager.selectedTab.map { parent.tabSessionRegistry.tableRows(for: $0.id) }
+        let generator = FilterSQLGenerator(
+            dialect: dialect,
+            columns: buffer?.columns ?? [],
+            columnTypes: buffer?.columnTypes ?? []
+        )
         let filtersToPreview = filtersForPreview(in: state)
 
         if filtersToPreview.isEmpty && !state.filters.isEmpty {

@@ -29,6 +29,7 @@ struct DatabaseTreeRowContext {
     let systemSchemas: Set<String>
     let pendingTruncates: Set<String>
     let pendingDeletes: Set<String>
+    var isExternalSchema: @MainActor (String, String) -> Bool = { _, _ in false }
 }
 
 struct DatabaseTreeRowView: View {
@@ -86,9 +87,10 @@ struct DatabaseTreeRowView: View {
         case .schema(let database, let schema):
             header(
                 text: schema,
-                systemImage: "folder",
+                systemImage: context.isExternalSchema(database, schema) ? "folder.badge.gearshape" : "folder",
                 isActive: database == context.activeDatabase && schema == context.activeSchema,
-                isSystem: context.systemSchemas.contains(schema)
+                isSystem: context.systemSchemas.contains(schema),
+                caption: context.isExternalSchema(database, schema) ? String(localized: "External") : nil
             )
         case .table(let ref):
             TableRow(
@@ -105,10 +107,23 @@ struct DatabaseTreeRowView: View {
         }
     }
 
-    private func header(text: String, systemImage: String, isActive: Bool, isSystem: Bool) -> some View {
+    private func header(
+        text: String,
+        systemImage: String,
+        isActive: Bool,
+        isSystem: Bool,
+        caption: String? = nil
+    ) -> some View {
         Label {
-            Text(text)
-                .fontWeight(isActive ? .bold : .regular)
+            HStack(spacing: 6) {
+                Text(text)
+                    .fontWeight(isActive ? .bold : .regular)
+                if let caption {
+                    Text(caption)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
         } icon: {
             Image(systemName: systemImage)
         }

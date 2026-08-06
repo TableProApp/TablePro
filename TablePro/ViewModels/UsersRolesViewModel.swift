@@ -221,7 +221,7 @@ final class UsersRolesViewModel {
                 databases: databases,
                 catalog: snapshot.catalog,
                 restrictsBrowsing: capabilities.restrictsBrowsing,
-                currentDatabase: DatabaseManager.shared.activeSessions[connectionId]?.activeDatabase,
+                currentDatabase: DatabaseManager.shared.activeSessions[connectionId]?.resolvedBrowseDatabase,
                 loader: loader
             )
 

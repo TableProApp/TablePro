@@ -222,7 +222,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
         let visible = DatabaseTreeVisibility.visible(
             databases: service.databases(for: connectionId),
             selected: sidebarState?.databaseFilterSelected ?? [],
-            activeDatabase: mainCoordinator?.activeDatabaseName ?? activeDatabase
+            activeDatabase: mainCoordinator?.browseDatabaseName ?? activeDatabase
         )
         let matched = searchText.isEmpty ? visible : visible.filter { databaseMatchesSearch($0) }
         var seen = Set<String>()
@@ -234,7 +234,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
 
     private func recentTableRefs() -> [DatabaseTreeTableRef] {
         guard let sidebarState, AppSettingsManager.shared.general.showRecentTables else { return [] }
-        let database = mainCoordinator?.activeDatabaseName ?? activeDatabase ?? ""
+        let database = mainCoordinator?.browseDatabaseName ?? activeDatabase ?? ""
         return sidebarState.recentEntries(inDatabase: database).compactMap { entry -> DatabaseTreeTableRef? in
             if !searchText.isEmpty, !DatabaseTreeFilter.matches(searchText, entry.name) { return nil }
             return DatabaseTreeTableRef(database: database, schema: entry.schema, table: entry.tableInfo)
@@ -425,6 +425,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
                 if isIdle(service.schemaListState(connectionId: connectionId, database: metadata.name)) {
                     Task { await service.loadSchemas(connectionId: connectionId, database: metadata.name) }
                 }
+                loadExternalSchemaNames(database: metadata.name)
             } else {
                 loadObjects(database: metadata.name, schema: nil)
             }
@@ -434,6 +435,21 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
             loadPartitions(ref)
         case .recentSection, .recentTable, .routine, .status:
             break
+        }
+    }
+
+    private func loadExternalSchemaNames(database: String) {
+        guard let session = DatabaseManager.shared.session(for: connectionId),
+              DatabaseManager.shared.activeDatabaseName(for: session.connection) == database,
+              let driver = DatabaseManager.shared.driver(for: connectionId)
+        else { return }
+        let connectionId = connectionId
+        Task {
+            await ExternalSchemaTracker.shared.load(
+                connectionId: connectionId,
+                database: database,
+                driver: driver
+            )
         }
     }
 
@@ -511,7 +527,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
     /// moves the session schema without touching the toolbar, so comparing against
     /// the toolbar skips the switch exactly when the session needs it.
     private var sessionSchema: String? {
-        DatabaseManager.shared.session(for: connectionId)?.currentSchema
+        DatabaseManager.shared.session(for: connectionId)?.browseSchema
     }
 
     private func setActiveDatabase(_ database: String) {
@@ -549,7 +565,14 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
             activeSchema: activeSchema,
             systemSchemas: systemSchemas,
             pendingTruncates: pendingTruncates,
-            pendingDeletes: pendingDeletes
+            pendingDeletes: pendingDeletes,
+            isExternalSchema: { [connectionId] database, schema in
+                ExternalSchemaTracker.shared.isExternal(
+                    connectionId: connectionId,
+                    database: database,
+                    schema: schema
+                )
+            }
         )
     }
 
@@ -570,7 +593,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
                 self?.sidebarState?.removeRecentTable(database: ref.database, schema: ref.schema, name: ref.table.name)
             },
             clearRecents: { [weak self] in
-                self?.sidebarState?.clearRecentTables(inDatabase: self?.mainCoordinator?.activeDatabaseName)
+                self?.sidebarState?.clearRecentTables(inDatabase: self?.mainCoordinator?.browseDatabaseName)
             }
         )
     }

@@ -281,6 +281,7 @@ struct MainEditorContentView: View {
                         guard erDiagramViewModels[tab.id] == nil else { return }
                         let vm = ERDiagramViewModel(
                             connectionId: connection.id,
+                            databaseName: tab.tableContext.databaseName,
                             schemaKey: tab.display.erDiagramSchemaKey ?? tab.tableContext.databaseName
                         )
                         erDiagramViewModels[tab.id] = vm
@@ -318,19 +319,18 @@ struct MainEditorContentView: View {
 
     private func containerName(for tab: QueryTab) -> String {
         let bound = tab.tableContext.databaseName
-        return bound.isEmpty ? coordinator.activeDatabaseName : bound
+        return bound.isEmpty ? coordinator.browseDatabaseName : bound
     }
 
+    /// Rebinding the container is a tab-local edit. The tab owns the new database for the
+    /// rest of its life and the sidebar's browse cursor stays where the user left it.
     private func changeContainer(for tab: QueryTab, to name: String) {
         let tabId = tab.id
-        let previousBinding = tab.tableContext.databaseName
-        tabManager.mutate(tabId: tabId) { $0.tableContext.databaseName = name }
-        Task {
-            let switched = await coordinator.switchDatabase(to: name, persist: false)
-            if !switched {
-                tabManager.mutate(tabId: tabId) { $0.tableContext.databaseName = previousBinding }
-            }
-        }
+        guard tab.tableContext.databaseName != name,
+              tabManager.mutate(tabId: tabId, { $0.tableContext.databaseName = name }) else { return }
+        tabManager.markTabRenamed(tabId)
+        guard tabManager.selectedTabId == tabId else { return }
+        coordinator.runQuery()
     }
 
     // MARK: - Query Tab Content
@@ -522,10 +522,8 @@ struct MainEditorContentView: View {
         }
     }
 
-    private func structureDatabaseName(for tab: QueryTab) -> String {
-        tab.tableContext.databaseName.isEmpty
-            ? coordinator.activeDatabaseName
-            : tab.tableContext.databaseName
+    private func structureScope(for tab: QueryTab) -> DatabaseScope? {
+        coordinator.scope(for: tab)
     }
 
     @ViewBuilder
@@ -535,16 +533,17 @@ struct MainEditorContentView: View {
             switch tab.display.resultsViewMode {
             case .structure:
                 if let tableName = tab.tableContext.tableName {
+                    let scope = structureScope(for: tab)
                     TableStructureView(
                         tableName: tableName,
                         connection: connection,
-                        databaseName: structureDatabaseName(for: tab),
-                        schemaName: tab.tableContext.schemaName,
+                        databaseName: scope?.database ?? "",
+                        schemaName: scope?.schema,
                         toolbarState: coordinator.toolbarState,
                         coordinator: coordinator,
                         selectionState: selectionState
                     )
-                    .id("\(tab.tableContext.databaseName).\(tableName)")
+                    .id("\(scope?.qualifiedDescription ?? "").\(tableName)")
                     .frame(maxHeight: .infinity)
                 }
             case .json:

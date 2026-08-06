@@ -84,7 +84,7 @@ struct CommandActionsBulkCloseTests {
         current.coordinator.tabManager.addTab(initialQuery: "SELECT 1", databaseName: "db_a")
         sibling.coordinator.tabManager.addTab(initialQuery: "SELECT 2", databaseName: "db_b")
 
-        #expect(current.actions.activeDatabaseName == "db_a")
+        #expect(current.actions.browseDatabaseName == "db_a")
         #expect(current.actions.canCloseTabsForOtherDatabases)
     }
 

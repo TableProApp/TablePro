@@ -100,6 +100,19 @@ struct TableInfo: Identifiable, Hashable, Sendable {
         case foreignTable = "FOREIGN TABLE"
         case systemTable = "SYSTEM TABLE"
         case partitionedTable = "PARTITIONED TABLE"
+        case externalTable = "EXTERNAL TABLE"
+
+        /// An external table lives in a catalog outside the database, has no
+        /// primary key and no row identifier to target, and rejects UPDATE and
+        /// DELETE, so the grid must not offer row editing for one.
+        var allowsRowEditing: Bool {
+            switch self {
+            case .view, .externalTable:
+                return false
+            case .table, .materializedView, .foreignTable, .systemTable, .partitionedTable:
+                return true
+            }
+        }
     }
 
     init(name: String, type: TableType, rowCount: Int?, schema: String? = nil, comment: String? = nil) {
