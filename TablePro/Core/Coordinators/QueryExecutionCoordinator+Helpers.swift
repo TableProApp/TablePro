@@ -433,11 +433,14 @@ extension QueryExecutionCoordinator {
                     threshold: AppSettingsManager.shared.dataGrid.countRowsIfEstimateLessThan
                 )
                 guard case let .exactCount(filtered) = plan else { return (plan, nil, scope) }
+                let buffer = parent.tabSessionRegistry.tableRows(for: tabId)
                 let sql = parent.queryBuilder.buildFilteredCountQuery(
                     tableName: tableName,
                     schemaName: tab.tableContext.schemaName,
                     filters: filtered ? tab.filterState.appliedFilters : [],
-                    logicMode: tab.filterState.filterLogicMode
+                    logicMode: tab.filterState.filterLogicMode,
+                    columns: buffer.columns,
+                    columnTypes: buffer.columnTypes
                 )
                 return (plan, sql, scope)
             }

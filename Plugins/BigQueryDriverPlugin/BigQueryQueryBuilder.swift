@@ -33,6 +33,12 @@ internal struct BigQueryFilterSpec: Codable {
     let column: String
     let op: String
     let value: String
+    var kind: String?
+
+    var columnKind: PluginColumnKind? {
+        guard let kind else { return nil }
+        return PluginColumnKind(rawValue: kind)
+    }
 }
 
 // MARK: - Query Builder
@@ -73,7 +79,8 @@ internal struct BigQueryQueryBuilder {
         logicMode: String,
         sortColumns: [(columnIndex: Int, ascending: Bool)],
         limit: Int,
-        offset: Int
+        offset: Int,
+        columnKinds: [String: PluginColumnKind] = [:]
     ) -> String {
         let params = BigQueryQueryParams(
             table: table,
@@ -81,7 +88,11 @@ internal struct BigQueryQueryBuilder {
             sortColumns: sortColumns.map { .init(columnIndex: $0.columnIndex, ascending: $0.ascending) },
             limit: limit,
             offset: offset,
-            filters: filters.map { BigQueryFilterSpec(column: $0.column, op: $0.op, value: $0.value) },
+            filters: filters.map {
+                BigQueryFilterSpec(
+                    column: $0.column, op: $0.op, value: $0.value, kind: columnKinds[$0.column]?.rawValue
+                )
+            },
             logicMode: logicMode,
             searchText: nil,
             searchColumns: nil
@@ -250,7 +261,18 @@ internal struct BigQueryQueryBuilder {
 
     // MARK: - Private
 
-    private static func formatFilterValue(_ value: String) -> String {
+    private static func formatFilterValue(_ value: String, kind: PluginColumnKind?) -> String {
+        guard let kind else { return legacyFormatFilterValue(value) }
+        return PluginSQLLiteral.escapedLiteral(
+            value,
+            kind: kind,
+            trueLiteral: "TRUE",
+            falseLiteral: "FALSE",
+            quote: { "'\($0.replacingOccurrences(of: "'", with: "''"))'" }
+        )
+    }
+
+    private static func legacyFormatFilterValue(_ value: String) -> String {
         let lower = value.lowercased()
         if lower == "true" { return "TRUE" }
         if lower == "false" { return "FALSE" }
@@ -280,26 +302,28 @@ internal struct BigQueryQueryBuilder {
     ) -> String? {
         let col = quoteIdentifier(filter.column)
         let escaped = filter.value.replacingOccurrences(of: "'", with: "''")
+        let kind = filter.columnKind
+        let isNullKeyword = filter.value.lowercased() == "null" && !PluginSQLLiteral.isKnownTextLike(kind)
 
         switch filter.op.uppercased() {
         case "=":
-            if filter.value.lowercased() == "null" {
+            if isNullKeyword {
                 return "\(col) IS NULL"
             }
-            return "\(col) = \(formatFilterValue(filter.value))"
+            return "\(col) = \(formatFilterValue(filter.value, kind: kind))"
         case "!=", "<>":
-            if filter.value.lowercased() == "null" {
+            if isNullKeyword {
                 return "\(col) IS NOT NULL"
             }
-            return "\(col) != \(formatFilterValue(filter.value))"
+            return "\(col) != \(formatFilterValue(filter.value, kind: kind))"
         case ">":
-            return "\(col) > \(formatFilterValue(filter.value))"
+            return "\(col) > \(formatFilterValue(filter.value, kind: kind))"
         case ">=":
-            return "\(col) >= \(formatFilterValue(filter.value))"
+            return "\(col) >= \(formatFilterValue(filter.value, kind: kind))"
         case "<":
-            return "\(col) < \(formatFilterValue(filter.value))"
+            return "\(col) < \(formatFilterValue(filter.value, kind: kind))"
         case "<=":
-            return "\(col) <= \(formatFilterValue(filter.value))"
+            return "\(col) <= \(formatFilterValue(filter.value, kind: kind))"
         case "LIKE":
             return "\(col) LIKE '\(escaped)'"
         case "NOT LIKE":
@@ -307,7 +331,7 @@ internal struct BigQueryQueryBuilder {
         case "IN", "NOT IN":
             let values = filter.value.split(separator: ",").map { val in
                 let trimmed = val.trimmingCharacters(in: .whitespaces)
-                return formatFilterValue(trimmed)
+                return formatFilterValue(trimmed, kind: kind)
             }
             return "\(col) \(filter.op.uppercased()) (\(values.joined(separator: ", ")))"
         case "IS NULL":

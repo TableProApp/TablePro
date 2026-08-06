@@ -96,6 +96,7 @@ struct TableQueryBuilder {
         logicMode: FilterLogicMode = .and,
         sortState: SortState? = nil,
         columns: [String] = [],
+        columnTypes: [ColumnType] = [],
         selectColumns: [String]? = nil,
         limit: Int = 200,
         offset: Int = 0
@@ -108,7 +109,8 @@ struct TableQueryBuilder {
             if let result = pluginDriver.buildFilteredQuery(
                 table: tableName, schema: schemaName, filters: filterTuples,
                 logicMode: logicMode == .and ? "and" : "or",
-                sortColumns: sortCols, columns: selectColumns ?? columns, limit: limit, offset: offset
+                sortColumns: sortCols, columns: selectColumns ?? columns, limit: limit, offset: offset,
+                columnKinds: pluginColumnKinds(columns: columns, columnTypes: columnTypes)
             ) {
                 return result
             }
@@ -119,7 +121,9 @@ struct TableQueryBuilder {
 
         if let dialect {
             let activeFilters = filters.filter { $0.isEnabled }
-            let filterGen = FilterSQLGenerator(dialect: dialect, quoteIdentifier: dialectQuote)
+            let filterGen = FilterSQLGenerator(
+                dialect: dialect, columns: columns, columnTypes: columnTypes, quoteIdentifier: dialectQuote
+            )
             let whereClause = filterGen.generateWhereClause(from: activeFilters, logicMode: logicMode)
             if !whereClause.isEmpty {
                 query += " \(whereClause)"
@@ -174,13 +178,17 @@ struct TableQueryBuilder {
         tableName: String,
         schemaName: String? = nil,
         filters: [TableFilter],
-        logicMode: FilterLogicMode = .and
+        logicMode: FilterLogicMode = .and,
+        columns: [String] = [],
+        columnTypes: [ColumnType] = []
     ) -> String? {
         guard let dialect else { return nil }
 
         let quotedTable = qualifiedTable(tableName, schema: schemaName)
         let activeFilters = filters.filter { $0.isEnabled }
-        let filterGen = FilterSQLGenerator(dialect: dialect, quoteIdentifier: dialectQuote)
+        let filterGen = FilterSQLGenerator(
+            dialect: dialect, columns: columns, columnTypes: columnTypes, quoteIdentifier: dialectQuote
+        )
         let whereClause = filterGen.generateWhereClause(from: activeFilters, logicMode: logicMode)
 
         guard !whereClause.isEmpty else {
@@ -190,6 +198,11 @@ struct TableQueryBuilder {
     }
 
     // MARK: - Private Helpers
+
+    private func pluginColumnKinds(columns: [String], columnTypes: [ColumnType]) -> [String: PluginColumnKind] {
+        ColumnTypeSQLQuoting.lookupByName(columns: columns, columnTypes: columnTypes)
+            .mapValues(\.pluginColumnKind)
+    }
 
     private func selectClause(_ selectColumns: [String]?) -> String {
         guard let selectColumns, !selectColumns.isEmpty else { return "*" }

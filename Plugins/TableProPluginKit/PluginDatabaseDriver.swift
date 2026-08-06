@@ -132,6 +132,7 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     func buildFilteredQuery(table: String, filters: [(column: String, op: String, value: String)], logicMode: String, sortColumns: [(columnIndex: Int, ascending: Bool)], columns: [String], limit: Int, offset: Int) -> String?
     func buildBrowseQuery(table: String, schema: String?, sortColumns: [(columnIndex: Int, ascending: Bool)], columns: [String], limit: Int, offset: Int) -> String?
     func buildFilteredQuery(table: String, schema: String?, filters: [(column: String, op: String, value: String)], logicMode: String, sortColumns: [(columnIndex: Int, ascending: Bool)], columns: [String], limit: Int, offset: Int) -> String?
+    func buildFilteredQuery(table: String, schema: String?, filters: [(column: String, op: String, value: String)], logicMode: String, sortColumns: [(columnIndex: Int, ascending: Bool)], columns: [String], limit: Int, offset: Int, columnKinds: [String: PluginColumnKind]) -> String?
     // Filtered row count (optional, for NoSQL plugins; SQL plugins use COUNT(*) WHERE)
     func fetchFilteredRowCount(table: String, filters: [(column: String, op: String, value: String)], logicMode: String) async throws -> Int?
     // User-initiated exact row count (allowed to be slow; background count caps must not apply)
@@ -332,6 +333,9 @@ public extension PluginDatabaseDriver {
     }
     func buildFilteredQuery(table: String, schema: String?, filters: [(column: String, op: String, value: String)], logicMode: String, sortColumns: [(columnIndex: Int, ascending: Bool)], columns: [String], limit: Int, offset: Int) -> String? {
         buildFilteredQuery(table: table, filters: filters, logicMode: logicMode, sortColumns: sortColumns, columns: columns, limit: limit, offset: offset)
+    }
+    func buildFilteredQuery(table: String, schema: String?, filters: [(column: String, op: String, value: String)], logicMode: String, sortColumns: [(columnIndex: Int, ascending: Bool)], columns: [String], limit: Int, offset: Int, columnKinds: [String: PluginColumnKind]) -> String? {
+        buildFilteredQuery(table: table, schema: schema, filters: filters, logicMode: logicMode, sortColumns: sortColumns, columns: columns, limit: limit, offset: offset)
     }
     func fetchFilteredRowCount(table: String, filters: [(column: String, op: String, value: String)], logicMode: String) async throws -> Int? { nil }
     func fetchExactRowCount(table: String, schema: String?, filters: [(column: String, op: String, value: String)], logicMode: String) async throws -> Int? {
@@ -738,6 +742,59 @@ public enum PluginSQLFilter {
         case "REGEX":
             return regexCondition(quoted, value)
         default: return nil
+        }
+    }
+
+    public static func buildWhereClause(
+        filters: [(column: String, op: String, value: String)],
+        logicMode: String,
+        columnKinds: [String: PluginColumnKind],
+        quoteIdentifier: (String) -> String,
+        escapeTypedValue: (_ value: String, _ kind: PluginColumnKind?) -> String,
+        regexCondition: (_ quotedColumn: String, _ value: String) -> String?
+    ) -> String {
+        let conditions = filters.compactMap { filter in
+            buildFilterCondition(
+                column: filter.column,
+                op: filter.op,
+                value: filter.value,
+                kind: columnKinds[filter.column],
+                quoteIdentifier: quoteIdentifier,
+                escapeTypedValue: escapeTypedValue,
+                regexCondition: regexCondition
+            )
+        }
+        guard !conditions.isEmpty else { return "" }
+        let separator = logicMode == "and" ? " AND " : " OR "
+        return conditions.joined(separator: separator)
+    }
+
+    public static func buildFilterCondition(
+        column: String,
+        op: String,
+        value: String,
+        kind: PluginColumnKind?,
+        quoteIdentifier: (String) -> String,
+        escapeTypedValue: (_ value: String, _ kind: PluginColumnKind?) -> String,
+        regexCondition: (_ quotedColumn: String, _ value: String) -> String?
+    ) -> String? {
+        let quoted = quoteIdentifier(column)
+        switch op {
+        case "IS EMPTY":
+            guard PluginSQLLiteral.supportsEmptyStringComparison(kind) else { return "\(quoted) IS NULL" }
+            return "(\(quoted) IS NULL OR \(quoted) = '')"
+        case "IS NOT EMPTY":
+            guard PluginSQLLiteral.supportsEmptyStringComparison(kind) else { return "\(quoted) IS NOT NULL" }
+            return "(\(quoted) IS NOT NULL AND \(quoted) != '')"
+        default:
+            return buildFilterCondition(
+                column: column,
+                op: op,
+                value: value,
+                quoteIdentifier: quoteIdentifier,
+                escapeValue: { escapeTypedValue($0, kind) },
+                regexCondition: regexCondition
+            )
         }
     }
 }

@@ -197,6 +197,7 @@ extension MainContentCoordinator {
             schemaName: schemaName,
             filters: [filter],
             columns: tableRows.columns,
+            columnTypes: tableRows.columnTypes,
             limit: pagination.pageSize,
             offset: pagination.currentOffset
         )

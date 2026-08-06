@@ -25,6 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Exporting a query's remaining rows while disconnected now reports the error instead of leaving the progress sheet up forever. (#2026)
 - Stopping a query now cancels the query itself rather than whichever background metadata read finished last. (#2026)
 - Reopening a window no longer loses a table tab's saved sort and page when the connection was still connecting. (#2026)
+- Filtering a text column by a value that looks like a number, such as 68, now compares it as text. It used to compare as a number, which returned the wrong rows and stopped the database using the column's index. (#2029)
+- Typing NULL, TRUE, or FALSE into a filter on a text column now matches that text instead of turning into the SQL keyword, so those values can be filtered for. (#2029)
+- IS EMPTY on a number, date, or boolean column now checks only for NULL, instead of also comparing against an empty string, which some databases reject. (#2029)
 
 ### Changed
 

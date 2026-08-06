@@ -1218,12 +1218,30 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         limit: Int,
         offset: Int
     ) -> String? {
+        buildFilteredQuery(
+            table: table, schema: schema, filters: filters, logicMode: logicMode,
+            sortColumns: sortColumns, columns: columns, limit: limit, offset: offset, columnKinds: [:]
+        )
+    }
+
+    func buildFilteredQuery(
+        table: String,
+        schema: String?,
+        filters: [(column: String, op: String, value: String)],
+        logicMode: String,
+        sortColumns: [(columnIndex: Int, ascending: Bool)],
+        columns: [String],
+        limit: Int,
+        offset: Int,
+        columnKinds: [String: PluginColumnKind]
+    ) -> String? {
         var query = "SELECT * FROM \(oracleQualifiedName(schema: schema, table: table))"
         let whereClause = PluginSQLFilter.buildWhereClause(
             filters: filters,
             logicMode: logicMode,
+            columnKinds: columnKinds,
             quoteIdentifier: oracleQuoteIdentifier,
-            escapeValue: oracleEscapeValue,
+            escapeTypedValue: oracleEscapeValue,
             regexCondition: { quoted, value in
                 "REGEXP_LIKE(\(quoted), '\(value.replacingOccurrences(of: "'", with: "''"))')"
             }
@@ -1251,11 +1269,14 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         "\"\(identifier.replacingOccurrences(of: "\"", with: "\"\""))\""
     }
 
-    private func oracleEscapeValue(_ value: String) -> String {
-        let trimmed = value.trimmingCharacters(in: .whitespaces)
-        if trimmed.caseInsensitiveCompare("NULL") == .orderedSame { return "NULL" }
-        if Int(trimmed) != nil || Double(trimmed) != nil { return trimmed }
-        return "'\(trimmed.replacingOccurrences(of: "'", with: "''"))'"
+    private func oracleEscapeValue(_ value: String, kind: PluginColumnKind?) -> String {
+        PluginSQLLiteral.escapedLiteral(
+            value,
+            kind: kind,
+            trueLiteral: nil,
+            falseLiteral: nil,
+            quote: { "'\($0.replacingOccurrences(of: "'", with: "''"))'" }
+        )
     }
 
 
