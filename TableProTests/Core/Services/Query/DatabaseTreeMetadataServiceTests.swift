@@ -55,12 +55,15 @@ struct DatabaseTreeMetadataServiceTests {
     }
 }
 
+/// Uses PGlite because it is the one engine that cannot open a pooled connection, so a
+/// metadata read stays on the injected session driver instead of trying to dial a real
+/// server. Every other engine now reaches the tree through the pool.
 @Suite("DatabaseTreeMetadataService refreshLoadedTables")
 @MainActor
 struct DatabaseTreeMetadataServiceRefreshTests {
     @Test("reload drops previously loaded tables and refetches the current list")
     func refreshReloadsLoadedTables() async {
-        let connection = TestFixtures.makeConnection()
+        let connection = TestFixtures.makeConnection(type: .pglite)
         let driver = MockDatabaseDriver(connection: connection)
         driver.schemaTablesToReturn = ["public": [TestFixtures.makeTableInfo(name: "users")]]
 
@@ -87,7 +90,7 @@ struct DatabaseTreeMetadataServiceRefreshTests {
 
     @Test("reload refetches every loaded schema, not just the one that changed")
     func refreshReloadsAllLoadedSchemas() async {
-        let connection = TestFixtures.makeConnection()
+        let connection = TestFixtures.makeConnection(type: .pglite)
         let driver = MockDatabaseDriver(connection: connection)
         driver.schemaTablesToReturn = [
             "public": [TestFixtures.makeTableInfo(name: "users")],
