@@ -73,6 +73,15 @@ final class DatabaseManager {
     /// before touching shared session state and discards its driver when it lost.
     @ObservationIgnored internal var connectionAttempts = ConnectionAttemptRegistry()
 
+    /// Orders operations that move the shared driver, so two windows cannot interleave
+    /// their pins and each run against the other's database.
+    @ObservationIgnored internal let sessionDriverGate = SessionDriverGate()
+
+    /// The drivers each connection is currently executing user SQL on, keyed by an
+    /// operation token so a finishing operation can only release its own handle. Stop
+    /// reaches the right one even when a cross-database tab runs on a pooled connection.
+    @ObservationIgnored internal var runningDrivers: [UUID: [UUID: DatabaseDriver]] = [:]
+
     /// Session for `lastActiveSessionId`, subject to the same caveats.
     var lastActiveSession: ConnectionSession? {
         guard let sessionId = lastActiveSessionId else { return nil }
@@ -89,11 +98,12 @@ final class DatabaseManager {
         activeSessions[connectionId]
     }
 
-    /// Authoritative active database for this connection. Use for tab payloads,
-    /// query history, schema cache keys, and AI prompt context. Reading
-    /// `connection.database` (the saved default) is wrong after Cmd+K.
-    func activeDatabaseName(for connection: DatabaseConnection) -> String {
-        activeSessions[connection.id]?.activeDatabase ?? connection.database
+    /// Where this connection is being browsed. Use it to seed a new tab and to drive
+    /// the sidebar. Reading `connection.database` (the saved default) is wrong after Cmd+K.
+    /// It is never the target of an operation an existing tab owns: resolve that through
+    /// the tab's own `DatabaseScope`.
+    func browseDatabaseName(for connection: DatabaseConnection) -> String {
+        activeSessions[connection.id]?.resolvedBrowseDatabase ?? connection.database
     }
 
     /// Authoritative schema for a table identity when the caller has no explicit
@@ -103,7 +113,7 @@ final class DatabaseManager {
     /// object names treat it as "no schema" and emit an unqualified name.
     func resolvedSchemaName(_ schemaName: String?, for connectionId: UUID) -> String? {
         if let schemaName, !schemaName.isEmpty { return schemaName }
-        guard let sessionSchema = activeSessions[connectionId]?.currentSchema, !sessionSchema.isEmpty else {
+        guard let sessionSchema = activeSessions[connectionId]?.browseSchema, !sessionSchema.isEmpty else {
             return nil
         }
         return sessionSchema

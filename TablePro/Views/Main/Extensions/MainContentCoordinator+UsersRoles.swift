@@ -18,7 +18,7 @@ extension MainContentCoordinator {
         let payload = EditorTabPayload(
             connectionId: connection.id,
             tabType: .usersRoles,
-            databaseName: activeDatabaseName
+            databaseName: browseDatabaseName
         )
         WindowManager.shared.openTab(payload: payload)
     }

@@ -46,9 +46,7 @@ enum WindowTitleResolver {
     }
 
     static func resolveSubtitle(payload: EditorTabPayload?, connection: DatabaseConnection) -> String {
-        tableSubtitle(
-            isTable: payload?.tabType == .table,
-            tableName: payload?.tableName,
+        bindingSubtitle(
             databaseName: payload?.databaseName ?? "",
             schemaName: payload?.schemaName,
             fallback: connection.name
@@ -56,9 +54,7 @@ enum WindowTitleResolver {
     }
 
     static func resolveSubtitle(tab: QueryTab?, connection: DatabaseConnection) -> String {
-        tableSubtitle(
-            isTable: tab?.tabType == .table,
-            tableName: tab?.tableContext.tableName,
+        bindingSubtitle(
             databaseName: tab?.tableContext.databaseName ?? "",
             schemaName: tab?.tableContext.schemaName,
             fallback: connection.name
@@ -107,14 +103,15 @@ enum WindowTitleResolver {
         return fallbackTitle
     }
 
-    private static func tableSubtitle(
-        isTable: Bool,
-        tableName: String?,
+    /// Every tab owns a database for its whole life, so the subtitle names that binding
+    /// whatever the tab holds. Only a tab with no binding at all falls back to the
+    /// connection, and a blank value counts as no binding at every tier.
+    private static func bindingSubtitle(
         databaseName: String,
         schemaName: String?,
         fallback: String
     ) -> String {
-        guard isTable, let tableName, !tableName.isBlank, !databaseName.isBlank else { return fallback }
+        guard !databaseName.isBlank else { return fallback }
         if let schemaName, !schemaName.isBlank {
             return "\(databaseName) · \(schemaName)"
         }

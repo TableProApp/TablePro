@@ -79,7 +79,7 @@ extension MainContentCoordinator {
         let payload = EditorTabPayload(
             connectionId: connection.id,
             tabType: .query,
-            databaseName: activeDatabaseName,
+            databaseName: browseDatabaseName,
             initialQuery: loaded.content,
             sourceFileURL: favorite.fileURL
         )
@@ -116,7 +116,7 @@ extension MainContentCoordinator {
         let payload = EditorTabPayload(
             connectionId: connection.id,
             tabType: .query,
-            databaseName: activeDatabaseName,
+            databaseName: browseDatabaseName,
             initialQuery: favorite.query
         )
         WindowManager.shared.openTab(payload: payload)

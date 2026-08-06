@@ -151,7 +151,7 @@ struct CoordinatorColumnVisibilityTests {
         coordinator.hideAllColumns(["a", "b", "c", "d"])
         coordinator.schemaColumns.store(
             (columns: ["b", "d", "e"], primaryKeys: []),
-            for: coordinator.schemaColumnsKey("users", schema: nil)
+            for: coordinator.schemaColumnsKey("users", scope: coordinator.selectedTabScope)
         )
 
         coordinator.pruneHiddenColumns(currentColumns: ["b", "d", "e"])
@@ -209,7 +209,7 @@ struct CoordinatorColumnVisibilityTests {
         FileColumnLayoutPersister.shared.saveHiddenColumns(["email"], for: key)
         coordinator.schemaColumns.store(
             (columns: ["id", "name", "email"], primaryKeys: ["id"]),
-            for: coordinator.schemaColumnsKey("users", schema: nil)
+            for: coordinator.schemaColumnsKey("users", scope: coordinator.scope(for: createdTab))
         )
 
         coordinator.restoreLastHiddenColumnsForTable()

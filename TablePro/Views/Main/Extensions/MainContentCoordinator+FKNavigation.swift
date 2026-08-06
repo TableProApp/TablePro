@@ -29,9 +29,13 @@ extension MainContentCoordinator {
             value: value
         )
 
-        let currentDatabase = activeDatabaseName
+        guard let sourceScope = selectedTabScope else {
+            fkNavigationLogger.error("FK navigate skipped: the source tab is not bound to a database")
+            return
+        }
 
-        let targetSchema = DatabaseManager.shared.resolvedSchemaName(fkInfo.referencedSchema, for: connectionId)
+        let currentDatabase = sourceScope.database
+        let targetSchema = fkInfo.referencedSchema.flatMap { $0.isEmpty ? nil : $0 } ?? sourceScope.schema
 
         if !openInNewTab,
            let current = tabManager.selectedTab,

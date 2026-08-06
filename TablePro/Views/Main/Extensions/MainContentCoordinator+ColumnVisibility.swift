@@ -93,8 +93,7 @@ extension MainContentCoordinator {
 
     func rebuildSelectedTableQueryForHiddenColumnsIfNeeded() async {
         guard let tab = tabManager.selectedTab,
-              !tab.columnLayout.hiddenColumns.isEmpty,
-              tab.tableContext.databaseName.isEmpty || tab.tableContext.databaseName == activeDatabaseName else { return }
+              !tab.columnLayout.hiddenColumns.isEmpty else { return }
 
         await rebuildSelectedTableColumnScopedQuery()
     }

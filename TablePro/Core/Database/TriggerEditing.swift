@@ -90,7 +90,7 @@ enum TriggerEditing {
         }
 
         recordHistory(sql, connection: connection)
-        AppCommands.shared.refreshData.send(connection.id)
+        AppCommands.shared.refreshData.send(DataRefreshRequest(connectionId: connection.id))
     }
 
     static func drop(connection: DatabaseConnection, tableName: String, name: String) async throws {
@@ -118,7 +118,7 @@ enum TriggerEditing {
 
         _ = try await driver.execute(query: dropSQL)
         recordHistory(dropSQL, connection: connection)
-        AppCommands.shared.refreshData.send(connection.id)
+        AppCommands.shared.refreshData.send(DataRefreshRequest(connectionId: connection.id))
     }
 
     static func runInTransaction(driver: DatabaseDriver, dropSQL: String?, sql: String) async throws {
@@ -154,7 +154,7 @@ enum TriggerEditing {
         QueryHistoryManager.shared.recordQuery(
             query: sql,
             connectionId: connection.id,
-            databaseName: DatabaseManager.shared.activeDatabaseName(for: connection),
+            databaseName: DatabaseManager.shared.browseDatabaseName(for: connection),
             executionTime: 0,
             rowCount: 0,
             wasSuccessful: true

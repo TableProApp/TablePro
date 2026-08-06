@@ -72,6 +72,22 @@ Each tab keeps its full state when you switch away: SQL, cursor position, result
 
 Each connection opens its own window by default. Turn on **Settings > General > Tabs > Group all connections in one window** to keep tabs from different connections in a single window instead. New windows open at 1200x800; size and position are remembered across launches.
 
+## Database Binding
+
+A tab is bound to the connection, database, and schema it was opened on, fixed for the life of the tab. Every query, refresh, filter, sort, structure read, and structure save the tab performs uses that binding, not whatever the sidebar shows at the time.
+
+The sidebar's database selection only controls two things: what the sidebar lists, and which database a new tab opens into. Changing it does not touch tabs that are already open, and switching between tabs does not change the connection's saved default database either.
+
+To point an existing tab somewhere else, use the database picker in the query editor's toolbar. It rebinds that one tab and reruns it, and leaves the sidebar and every other tab alone.
+
+The window subtitle shows the database, and the schema on engines that have one, that the tab is bound to. Tabs in the same window can be bound to different databases, so the subtitle is how you tell them apart.
+
+Dragging a tab out of its window or choosing **Window > Move Tab to New Window** does not change any of this: the tab keeps querying the database and schema it was opened on.
+
+<Note>
+PostgreSQL, Redshift, and CockroachDB can only change database by reconnecting. A tab bound to a database other than the connection's active one runs its queries on a separate connection for that database, so it does not share temp tables, session variables, or an open transaction with the query editor on the main connection. See [PostgreSQL](/databases/postgresql#cross-database-tabs).
+</Note>
+
 ## Tab Persistence
 
 | Saved | Not saved |

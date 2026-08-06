@@ -76,8 +76,8 @@ final class MainContentCoordinator {
     let connection: DatabaseConnection
     var connectionId: UUID { connection.id }
     var sqlDialect: SqlDialect { SqlDialect.from(databaseTypeId: connection.type.rawValue) }
-    var activeDatabaseName: String {
-        services.databaseManager.activeDatabaseName(for: connection)
+    var browseDatabaseName: String {
+        services.databaseManager.browseDatabaseName(for: connection)
     }
     var safeModeLevel: SafeModeLevel { toolbarState.safeModeLevel }
     func setSafeModeLevel(_ level: SafeModeLevel) {
@@ -523,7 +523,7 @@ final class MainContentCoordinator {
             .sink { [weak self] changedConnectionId in
                 guard let self, changedConnectionId == self.connectionId else { return }
                 Task { @MainActor in
-                    if let schema = self.services.databaseManager.session(for: self.connectionId)?.currentSchema {
+                    if let schema = self.services.databaseManager.session(for: self.connectionId)?.browseSchema {
                         self.toolbarState.currentSchema = schema
                     }
                     await self.refreshTables()
@@ -628,19 +628,21 @@ final class MainContentCoordinator {
         schemaColumns.removeAll()
         await services.schemaRefreshService.refresh(
             connection: connection,
-            database: currentDatabaseOnly ? activeDatabaseName : nil
+            database: currentDatabaseOnly ? browseDatabaseName : nil
         )
         pruneStaleSidebarState()
     }
 
     func refreshProcedures() async {
-        guard let driver = services.databaseManager.driver(for: connectionId) else { return }
-        await services.schemaService.reloadProcedures(connectionId: connectionId, driver: driver)
+        try? await services.databaseManager.withBrowseMetadataDriver(connectionId: connectionId) { [services, connectionId] driver in
+            await services.schemaService.reloadProcedures(connectionId: connectionId, driver: driver)
+        }
     }
 
     func refreshFunctions() async {
-        guard let driver = services.databaseManager.driver(for: connectionId) else { return }
-        await services.schemaService.reloadFunctions(connectionId: connectionId, driver: driver)
+        try? await services.databaseManager.withBrowseMetadataDriver(connectionId: connectionId) { [services, connectionId] driver in
+            await services.schemaService.reloadFunctions(connectionId: connectionId, driver: driver)
+        }
     }
 
     func showRoutineDDL(_ routine: RoutineInfo) {
@@ -840,12 +842,14 @@ final class MainContentCoordinator {
     // MARK: - Schema Loading
 
     func loadSchema() async {
-        guard let driver = services.databaseManager.driver(for: connectionId) else { return }
-        await services.schemaService.load(
-            connectionId: connectionId,
-            driver: driver,
-            connection: connection
-        )
+        let connection = connection
+        try? await services.databaseManager.withBrowseMetadataDriver(connectionId: connectionId) { [services, connectionId] driver in
+            await services.schemaService.load(
+                connectionId: connectionId,
+                driver: driver,
+                connection: connection
+            )
+        }
         await DatabaseTreeMetadataService.shared.loadDatabases(
             connectionId: connectionId,
             databaseType: connection.type
@@ -855,8 +859,12 @@ final class MainContentCoordinator {
     }
 
     func loadTableMetadata(tableName: String) async {
+        guard let scope = selectedTabScope else {
+            Self.logger.error("Skipped table metadata load: no database bound to the selected tab")
+            return
+        }
         do {
-            let metadata = try await services.databaseManager.withMetadataDriver(connectionId: connectionId) { driver in
+            let metadata = try await services.databaseManager.withMetadataDriver(scope: scope) { driver in
                 try await driver.fetchTableMetadata(tableName: tableName)
             }
             self.tableMetadata = metadata
@@ -991,7 +999,7 @@ final class MainContentCoordinator {
                 $0.hasUserInteraction = true
             }
         } else if tabManager.tabs.isEmpty {
-            tabManager.addTab(initialQuery: query, databaseName: activeDatabaseName)
+            tabManager.addTab(initialQuery: query, databaseName: browseDatabaseName)
         } else {
             let payload = EditorTabPayload(
                 connectionId: connection.id,
@@ -1014,7 +1022,7 @@ final class MainContentCoordinator {
                 mutTab.hasUserInteraction = true
             }
         } else if tabManager.tabs.isEmpty {
-            tabManager.addTab(initialQuery: query, databaseName: activeDatabaseName)
+            tabManager.addTab(initialQuery: query, databaseName: browseDatabaseName)
         } else {
             let payload = EditorTabPayload(
                 connectionId: connection.id,
@@ -1167,13 +1175,14 @@ final class MainContentCoordinator {
                 "[fk] metadata decision table=\(tableName, privacy: .public) isEditable=\(isEditable) needsFetch=\(needsMetadataFetch)"
             )
         }
-        let connId = connectionId
-        let currentDatabase = activeDatabaseName
-        let targetDatabase = tab.tableContext.databaseName.isEmpty
-            ? currentDatabase
-            : tab.tableContext.databaseName
-        let perTabSwitchAllowed = !services.pluginManager.requiresReconnectForDatabaseSwitch(for: connection.type)
-        let needsDatabaseSwitch = perTabSwitchAllowed && !targetDatabase.isEmpty && targetDatabase != currentDatabase
+        guard let scope = scope(for: tab) else {
+            tabManager.mutate(at: index) { tab in
+                tab.execution.isExecuting = false
+                tab.execution.errorMessage = String(localized: "Not connected to database")
+            }
+            toolbarState.setExecuting(false)
+            return
+        }
 
         currentQueryTask = Task { [weak self] in
             guard let self else { return }
@@ -1193,23 +1202,26 @@ final class MainContentCoordinator {
                 }
             }
 
-            if needsDatabaseSwitch {
-                await switchDatabaseBeforeExecution(to: targetDatabase, connectionId: connId)
-            }
-
             let schemaTask: Task<FetchedTableSchema, Error>?
             if needsMetadataFetch, let tableName {
-                schemaTask = Task { try await QueryExecutor.fetchTableSchema(connectionId: connId, tableName: tableName) }
+                schemaTask = Task { try await QueryExecutor.fetchTableSchema(scope: scope, tableName: tableName) }
             } else {
                 schemaTask = nil
             }
 
             do {
-                let fetchResult = try await queryExecutor.executeQuery(
-                    sql: sql,
-                    parameters: nil,
-                    rowCap: rowCap
-                )
+                let fetchResult = try await services.databaseManager.withScopedDriver(
+                    scope: scope,
+                    route: services.databaseManager.executionRoute(for: scope),
+                    tracksCancellation: true
+                ) { [queryExecutor] driver in
+                    try await queryExecutor.executeQuery(
+                        driver: driver,
+                        sql: sql,
+                        parameters: nil,
+                        rowCap: rowCap
+                    )
+                }
 
                 guard !Task.isCancelled else {
                     schemaTask?.cancel()
@@ -1304,7 +1316,7 @@ final class MainContentCoordinator {
         guard currentQueryTask != nil else { return }
         currentQueryTask?.cancel()
         do {
-            try services.databaseManager.driver(for: connectionId)?.cancelQuery()
+            try services.databaseManager.cancelRunningQuery(for: connectionId)
         } catch {
             Self.logger.warning("cancelQuery failed: \(error.localizedDescription, privacy: .public)")
         }
@@ -1352,7 +1364,8 @@ final class MainContentCoordinator {
         }
 
         if result.isEmpty,
-           let createSQL = try? await DatabaseManager.shared.withMetadataDriver(connectionId: connectionId, { driver in
+           let scope = selectedTabScope,
+           let createSQL = try? await services.databaseManager.withMetadataDriver(scope: scope, { driver in
                try await driver.fetchTableDDL(table: tableName)
            }) {
             for col in columnInfo {

@@ -73,7 +73,7 @@ extension DatabaseManager {
                         session.effectiveConnection = result.effectiveConnection
                         session.status = .connected
                         if let schemaDriver = result.driver as? SchemaSwitchable {
-                            session.currentSchema = schemaDriver.currentSchema
+                            session.browseSchema = schemaDriver.currentSchema
                         }
                         if let cachedPassword = result.cachedPassword,
                            !session.connection.usesAWSIAM
@@ -164,8 +164,8 @@ extension DatabaseManager {
         )
         await restoreSchemaAndDatabase(
             on: driver,
-            savedSchema: session.currentSchema,
-            savedDatabase: databaseSwitchRequiresReconnect(session.connection) ? nil : session.currentDatabase
+            savedSchema: session.browseSchema,
+            savedDatabase: databaseSwitchRequiresReconnect(session.connection) ? nil : session.browseDatabase
         )
 
         return ReconnectResult(
@@ -284,8 +284,8 @@ extension DatabaseManager {
             )
             await restoreSchemaAndDatabase(
                 on: driver,
-                savedSchema: activeSessions[sessionId]?.currentSchema,
-                savedDatabase: databaseSwitchRequiresReconnect(session.connection) ? nil : activeSessions[sessionId]?.currentDatabase
+                savedSchema: activeSessions[sessionId]?.browseSchema,
+                savedDatabase: databaseSwitchRequiresReconnect(session.connection) ? nil : activeSessions[sessionId]?.browseDatabase
             )
 
             updateSession(sessionId) { session in
@@ -293,7 +293,7 @@ extension DatabaseManager {
                 session.status = .connected
                 session.effectiveConnection = effectiveConnection
                 if let schemaDriver = driver as? SchemaSwitchable {
-                    session.currentSchema = schemaDriver.currentSchema
+                    session.browseSchema = schemaDriver.currentSchema
                 }
                 if let cachedPassword = connectResult.cachedPassword,
                    !session.connection.usesAWSIAM

@@ -344,7 +344,7 @@ struct SidebarView: View {
     }
 
     private var activeDatabase: String? {
-        let name = coordinator?.activeDatabaseName ?? ""
+        let name = coordinator?.browseDatabaseName ?? ""
         return name.isEmpty ? nil : name
     }
 

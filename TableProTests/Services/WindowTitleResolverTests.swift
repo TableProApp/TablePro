@@ -344,15 +344,24 @@ struct WindowTitleResolverTabSubtitleTests {
         #expect(subtitle == connection.name)
     }
 
-    @Test("Table tab with no table name falls back to the connection name")
+    @Test("Table tab with no table name still shows its bound database")
     func tableTabWithNilTableName() {
         var tab = QueryTab(id: UUID(), title: "x", query: "SELECT 1", tabType: .table)
         tab.tableContext.databaseName = "myapp"
         let subtitle = WindowTitleResolver.resolveSubtitle(tab: tab, connection: connection)
-        #expect(subtitle == connection.name)
+        #expect(subtitle == "myapp")
     }
 
-    @Test("Query tab never shows a table subtitle even with a resolved table name")
+    @Test("Query tab shows its bound database")
+    func queryTabShowsBoundDatabase() {
+        var tab = QueryTab(id: UUID(), title: "q", query: "SELECT 1", tabType: .query)
+        tab.tableContext.databaseName = "myapp"
+        tab.tableContext.schemaName = "public"
+        let subtitle = WindowTitleResolver.resolveSubtitle(tab: tab, connection: connection)
+        #expect(subtitle == "myapp · public")
+    }
+
+    @Test("Unbound query tab falls back to the connection name")
     func queryTabReturnsConnectionName() {
         let tab = QueryTab(id: UUID(), title: "q", query: "SELECT 1", tabType: .query, tableName: "users")
         let subtitle = WindowTitleResolver.resolveSubtitle(tab: tab, connection: connection)
@@ -417,11 +426,22 @@ struct WindowTitleResolverPayloadSubtitleTests {
         #expect(subtitle == connection.name)
     }
 
-    @Test("Query payload falls back to the connection name")
+    @Test("Unbound query payload falls back to the connection name")
     func queryPayloadReturnsConnectionName() {
         let payload = EditorTabPayload(connectionId: UUID(), tabType: .query, tableName: "users")
         let subtitle = WindowTitleResolver.resolveSubtitle(payload: payload, connection: connection)
         #expect(subtitle == connection.name)
+    }
+
+    @Test("Query payload with a database shows that database")
+    func queryPayloadWithDatabase() {
+        let payload = EditorTabPayload(
+            connectionId: UUID(),
+            tabType: .query,
+            databaseName: "myapp"
+        )
+        let subtitle = WindowTitleResolver.resolveSubtitle(payload: payload, connection: connection)
+        #expect(subtitle == "myapp")
     }
 }
 

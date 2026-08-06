@@ -25,6 +25,15 @@ struct TableStructureView: View {
     let coordinator: MainContentCoordinator?
     let selectionState: GridSelectionState
 
+    /// Derived from the tab's own binding on every render so it can never go stale.
+    var scope: DatabaseScope {
+        DatabaseScope(connectionId: connection.id, database: databaseName, schema: schemaName)
+    }
+
+    var structureLoader: TableStructureLoader {
+        TableStructureLoader(scope: scope, tableName: tableName)
+    }
+
     @State var selectedTab: StructureTab = .columns
     @State var columns: [ColumnInfo] = []
     @State var indexes: [IndexInfo] = []
@@ -162,8 +171,9 @@ struct TableStructureView: View {
             // manager but the grid never displays it.
             displayVersion += 1
         }
-        .onReceive(AppCommands.shared.refreshData) { changedConnectionId in
-            guard changedConnectionId == connection.id else { return }
+        .onReceive(AppCommands.shared.refreshData) { request in
+            guard request.connectionId == connection.id else { return }
+            guard request.reaches(tabScope: scope) else { return }
             onRefreshData()
         }
     }
@@ -378,7 +388,7 @@ struct TableStructureView: View {
                         QueryHistoryManager.shared.recordQuery(
                             query: executedSQL.hasSuffix(";") ? executedSQL : executedSQL + ";",
                             connectionId: connection.id,
-                            databaseName: DatabaseManager.shared.activeDatabaseName(for: connection),
+                            databaseName: DatabaseManager.shared.browseDatabaseName(for: connection),
                             executionTime: 0,
                             rowCount: 0,
                             wasSuccessful: true
@@ -388,7 +398,7 @@ struct TableStructureView: View {
                         loadSchemaForEditing()
                         isReloadingAfterSave = false
                         coordinator?.clearColumnLayoutForSelectedTable()
-                        AppCommands.shared.refreshData.send(connection.id)
+                        AppCommands.shared.refreshData.send(DataRefreshRequest(connectionId: connection.id))
                     } catch {
                         AlertHelper.showErrorSheet(
                             title: String(localized: "Column Reorder Failed"),

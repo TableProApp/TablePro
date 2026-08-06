@@ -62,11 +62,15 @@ struct ConfirmDestructiveOperationChatTool: ChatTool {
 
         let mcpSettings = await MainActor.run { AppSettingsManager.shared.mcp }
         let services = MCPToolServices(connectionBridge: context.bridge, authPolicy: context.authPolicy)
+        let scope = try await context.bridge.resolveScope(
+            connectionId: connectionId,
+            database: nil,
+            schema: nil
+        )
         let payload = try await ToolQueryExecutor.executeAndLog(
             services: services,
             query: query,
-            connectionId: connectionId,
-            databaseName: meta.databaseName,
+            scope: scope,
             maxRows: 0,
             timeoutSeconds: MCPLimitResolver.resolveTimeoutSeconds(requested: nil, settings: mcpSettings),
             principalLabel: String(localized: "AI Chat")

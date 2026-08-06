@@ -409,7 +409,7 @@ struct CreateTableView: View {
                 QueryHistoryManager.shared.recordQuery(
                     query: sql,
                     connectionId: connection.id,
-                    databaseName: DatabaseManager.shared.activeDatabaseName(for: connection),
+                    databaseName: DatabaseManager.shared.browseDatabaseName(for: connection),
                     executionTime: 0,
                     rowCount: 0,
                     wasSuccessful: true
@@ -419,7 +419,7 @@ struct CreateTableView: View {
                     coordinator.openTableTab(tableName)
                 }
 
-                AppCommands.shared.refreshData.send(connection.id)
+                AppCommands.shared.refreshData.send(DataRefreshRequest(connectionId: connection.id))
             } catch {
                 Self.logger.error("Create table failed: \(error.localizedDescription, privacy: .public)")
                 errorMessage = error.localizedDescription

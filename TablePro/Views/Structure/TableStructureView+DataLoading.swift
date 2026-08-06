@@ -29,9 +29,7 @@ extension TableStructureView {
         errorMessage = nil
 
         do {
-            columns = try await DatabaseManager.shared.withMetadataDriver(connectionId: connection.id) { driver in
-                try await driver.fetchColumns(table: tableName)
-            }
+            columns = try await structureLoader.columns()
             tabData.markFetched(.columns)
         } catch {
             errorMessage = error.localizedDescription
@@ -49,22 +47,17 @@ extension TableStructureView {
         do {
             switch tab {
             case .columns:
-                columns = try await DatabaseManager.shared.withMetadataDriver(connectionId: connection.id) { driver in
-                    try await driver.fetchColumns(table: tableName)
-                }
+                columns = try await structureLoader.columns()
             case .indexes:
-                indexes = try await DatabaseManager.shared.withMetadataDriver(connectionId: connection.id) { driver in
-                    try await driver.fetchIndexes(table: tableName)
-                }
+                indexes = try await structureLoader.indexes()
             case .foreignKeys:
-                foreignKeys = try await DatabaseManager.shared.withMetadataDriver(connectionId: connection.id) { driver in
-                    try await driver.fetchForeignKeys(table: tableName)
-                }
+                foreignKeys = try await structureLoader.foreignKeys()
             case .ddl:
-                ddlStatement = try await DatabaseManager.shared.withMetadataDriver(connectionId: connection.id) { driver in
-                    let sequences = try await driver.fetchDependentSequences(forTable: tableName)
-                    let enumTypes = try await driver.fetchDependentTypes(forTable: tableName)
-                    let baseDDL = try await driver.fetchTableDDL(table: tableName)
+                let table = tableName
+                ddlStatement = try await structureLoader.perform { driver in
+                    let sequences = try await driver.fetchDependentSequences(forTable: table)
+                    let enumTypes = try await driver.fetchDependentTypes(forTable: table)
+                    let baseDDL = try await driver.fetchTableDDL(table: table)
                     if sequences.isEmpty && enumTypes.isEmpty {
                         return baseDDL
                     }
@@ -81,9 +74,7 @@ extension TableStructureView {
                 }
             case .triggers:
                 do {
-                    triggers = try await DatabaseManager.shared.withMetadataDriver(connectionId: connection.id) { driver in
-                        try await driver.fetchTriggers(table: tableName)
-                    }
+                    triggers = try await structureLoader.triggers()
                 } catch {
                     Self.logger.error("Failed to load triggers: \(error.localizedDescription, privacy: .public)")
                     triggers = []
@@ -193,14 +184,7 @@ extension TableStructureView {
 
         let includesForeignKeys = connection.type.supportsForeignKeys
         do {
-            let reloaded = try await DatabaseManager.shared.withMetadataDriver(connectionId: connection.id) { driver in
-                let fetchedColumns = try await driver.fetchColumns(table: tableName)
-                let fetchedIndexes = try await driver.fetchIndexes(table: tableName)
-                let fetchedForeignKeys = includesForeignKeys
-                    ? try await driver.fetchForeignKeys(table: tableName)
-                    : []
-                return (columns: fetchedColumns, indexes: fetchedIndexes, foreignKeys: fetchedForeignKeys)
-            }
+            let reloaded = try await structureLoader.coreTabs(includingForeignKeys: includesForeignKeys)
 
             columns = reloaded.columns
             indexes = reloaded.indexes

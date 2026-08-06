@@ -26,7 +26,7 @@ final class SchemaRefreshService {
     private let treeMetadataService: DatabaseTreeMetadataService
     private let providerRegistry: SchemaProviderRegistry
     private let pluginManager: PluginManager
-    private let metadataDriverProvider: any MetadataDriverProviding
+    private let metadataDriverProvider: any ScopedMetadataProviding
     private let databaseManager: DatabaseManager?
 
     private var inFlight: [RefreshKey: Task<Void, Never>] = [:]
@@ -37,7 +37,7 @@ final class SchemaRefreshService {
         treeMetadataService: DatabaseTreeMetadataService = .shared,
         providerRegistry: SchemaProviderRegistry = .shared,
         pluginManager: PluginManager = .shared,
-        metadataDriverProvider: any MetadataDriverProviding = DatabaseManager.shared,
+        metadataDriverProvider: any ScopedMetadataProviding = DatabaseManager.shared,
         databaseManager: DatabaseManager? = .shared
     ) {
         self.schemaService = schemaService
@@ -69,22 +69,24 @@ final class SchemaRefreshService {
         inFlight.removeValue(forKey: key)
     }
 
-    /// Push the loaded table list into the autocomplete provider. Called after every
-    /// refresh and after the initial per-window schema load.
+    /// Push the loaded table list into the autocomplete provider.
+    ///
+    /// The provider caches the driver it is handed and fetches columns from it later, so it
+    /// must get one scoped to the browsed database rather than the shared session driver,
+    /// which a tab's execution moves without writing session state.
     func syncAutocompleteProvider(connectionId: UUID) async {
         guard case .loaded = schemaService.state(for: connectionId),
-              let driver = databaseManager?.driver(for: connectionId),
-              let provider = providerRegistry.provider(for: connectionId) else { return }
-        let currentDatabase = databaseManager?.session(for: connectionId)?.activeDatabase
-        await provider.resetForDatabase(
-            currentDatabase,
-            tables: schemaService.allLoadedTables(for: connectionId),
-            driver: driver
-        )
-        await provider.setNamespaces(
-            schemas: schemaService.schemas(for: connectionId),
-            databases: currentDatabase.map { [$0] } ?? []
-        )
+              let provider = providerRegistry.provider(for: connectionId),
+              let browseDatabase = databaseManager?.browseScope(for: connectionId)?.database
+        else {
+            return
+        }
+        let tables = schemaService.allLoadedTables(for: connectionId)
+        let schemas = schemaService.schemas(for: connectionId)
+        try? await databaseManager?.withBrowseMetadataDriver(connectionId: connectionId) { driver in
+            await provider.resetForDatabase(browseDatabase, tables: tables, driver: driver)
+            await provider.setNamespaces(schemas: schemas, databases: [browseDatabase])
+        }
     }
 
     private func refreshForSchemaSwitch(connectionId: UUID) async {
@@ -100,7 +102,7 @@ final class SchemaRefreshService {
         }
 
         do {
-            try await metadataDriverProvider.withMetadataDriver(
+            try await metadataDriverProvider.withBrowseMetadataDriver(
                 connectionId: connectionId,
                 workload: .bulk
             ) { [schemaService] driver in

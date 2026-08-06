@@ -155,6 +155,7 @@ final class PaginationCoordinator {
               !tab.pagination.isCountingExact,
               let tableName = tab.tableContext.tableName, !tableName.isEmpty else { return }
 
+        guard let scope = parent.scope(for: tab) else { return }
         let tabId = tab.id
         let schemaName = tab.tableContext.schemaName
         let filters = tab.filterState.hasAppliedFilters ? tab.filterState.appliedFilters : []
@@ -169,7 +170,7 @@ final class PaginationCoordinator {
         let capturedGeneration = parent.queryGeneration
         parent.currentRowCountTask = Task(priority: .userInitiated) { [parent] in
             let count = await Self.exactRowCount(
-                connectionId: parent.connectionId,
+                scope: scope,
                 tableName: tableName,
                 filters: filters,
                 logicMode: logicMode,
@@ -189,13 +190,13 @@ final class PaginationCoordinator {
     }
 
     private static func exactRowCount(
-        connectionId: UUID,
+        scope: DatabaseScope,
         tableName: String,
         filters: [TableFilter],
         logicMode: FilterLogicMode,
         countSQL: String?
     ) async -> Int? {
-        try? await DatabaseManager.shared.withMetadataDriver(connectionId: connectionId, workload: .bulk) { driver in
+        try? await DatabaseManager.shared.withMetadataDriver(scope: scope, workload: .bulk) { driver in
             guard let countSQL else {
                 return try await driver.fetchExactRowCount(
                     table: tableName, filters: filters, logicMode: logicMode
@@ -209,12 +210,21 @@ final class PaginationCoordinator {
 
     // MARK: - Fetch All Rows
 
+    /// The scope is read before the confirmation alert, so a database change made while
+    /// the alert is open cannot send the tab's own query somewhere else.
     func fetchAllRows() {
         guard let (tab, _) = parent.tabManager.selectedTabAndIndex,
               !tab.pagination.isLoadingMore,
               !tab.execution.isExecuting,
               tab.pagination.hasMoreRows,
               let baseQuery = tab.pagination.baseQueryForMore else { return }
+
+        guard let scope = parent.scope(for: tab) else {
+            parent.tabManager.mutate(tabId: tab.id) {
+                $0.execution.errorMessage = String(localized: "Not connected to database")
+            }
+            return
+        }
 
         let loadedCount = parent.tabSessionRegistry.tableRows(for: tab.id).rows.count
         let totalEstimate = tab.pagination.totalRowCount
@@ -236,11 +246,13 @@ final class PaginationCoordinator {
             confirmTitle: String(localized: "Fetch All")
         ) { [weak self] in
             guard let self else { return }
-            performFetchAll(tabId: tab.id, baseQuery: baseQuery)
+            performFetchAll(tabId: tab.id, baseQuery: baseQuery, scope: scope)
         }
     }
 
-    private func performFetchAll(tabId: UUID, baseQuery: String) {
+    /// Only the driver work runs inside the lease. Applying the rows to the tab stays
+    /// outside it, because the connection's driver gate is not reentrant.
+    private func performFetchAll(tabId: UUID, baseQuery: String, scope: DatabaseScope) {
         guard let idx = parent.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
         guard !parent.tabManager.tabs[idx].pagination.isLoadingMore else { return }
 
@@ -250,22 +262,26 @@ final class PaginationCoordinator {
         parent.tabManager.mutate(at: idx) { $0.pagination.isLoadingMore = true }
         parent.toolbarState.setExecuting(true)
 
+        let route = DatabaseManager.shared.executionRoute(for: scope)
+
         parent.currentQueryTask = Task { [weak self, parent] in
             guard let self, !parent.isTearingDown else { return }
 
             do {
-                guard let driver = DatabaseManager.shared.driver(for: parent.connectionId) else {
-                    throw DatabaseError.notConnected
-                }
-
                 let start = CFAbsoluteTimeGetCurrent()
                 progressLog.info("[fetchAll] executing full query: \(baseQuery.prefix(100), privacy: .public)")
                 let anyParams: [Any?]? = storedParamValues.map { $0.map { $0 as Any? } }
-                let result = try await driver.executeUserQuery(
-                    query: baseQuery,
-                    rowCap: nil,
-                    parameters: anyParams
-                )
+                let result = try await DatabaseManager.shared.withScopedDriver(
+                    scope: scope,
+                    route: route,
+                    tracksCancellation: true
+                ) { driver in
+                    try await driver.executeUserQuery(
+                        query: baseQuery,
+                        rowCap: nil,
+                        parameters: anyParams
+                    )
+                }
                 let fetchTime = CFAbsoluteTimeGetCurrent() - start
                 progressLog.info("[fetchAll] rows=\(result.rows.count) fetchTime=\(String(format: "%.3f", fetchTime))s")
 
@@ -303,9 +319,15 @@ final class PaginationCoordinator {
             } catch {
                 await MainActor.run { [weak self] in
                     guard let self else { return }
-                    parent.tabManager.mutate(tabId: tabId) { $0.pagination.isLoadingMore = false }
+                    let isStale = capturedGeneration != parent.queryGeneration
+                    let isCancelled = DatabaseCancellationDiagnosis.isCancellation(error) || Task.isCancelled
+                    parent.tabManager.mutate(tabId: tabId) { tab in
+                        tab.pagination.isLoadingMore = false
+                        guard !isStale, !isCancelled else { return }
+                        tab.execution.errorMessage = DatabaseWriteRejectionDiagnosis.formatted(error)
+                    }
                     parent.toolbarState.setExecuting(false)
-                    if capturedGeneration == parent.queryGeneration {
+                    if !isStale {
                         parent.currentQueryTask = nil
                     }
                     MainContentCoordinator.logger.error("Fetch all failed: \(error.localizedDescription, privacy: .public)")

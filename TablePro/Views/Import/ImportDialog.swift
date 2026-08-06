@@ -117,7 +117,7 @@ struct ImportDialog: View {
         }
         .sheet(isPresented: $showSuccessDialog, onDismiss: {
             isPresented = false
-            AppCommands.shared.refreshData.send(connection.id)
+            AppCommands.shared.refreshData.send(DataRefreshRequest(connectionId: connection.id))
         }) {
             ImportSuccessView(
                 result: importResult

@@ -52,7 +52,7 @@ struct FKNavigationTests {
         try tabManager.addTableTab(
             tableName: "orders",
             databaseType: connection.type,
-            databaseName: coordinator.activeDatabaseName
+            databaseName: coordinator.browseDatabaseName
         )
         #expect(tabManager.tabs.count == 1)
 
@@ -79,7 +79,7 @@ struct FKNavigationTests {
         try tabManager.addTableTab(
             tableName: "users",
             databaseType: connection.type,
-            databaseName: coordinator.activeDatabaseName
+            databaseName: coordinator.browseDatabaseName
         )
         let tabId = tabManager.selectedTab?.id
         #expect(tabManager.tabs.count == 1)
@@ -97,7 +97,7 @@ struct FKNavigationTests {
     func nilReferencedSchemaResolvesActiveSchema() throws {
         let connection = TestFixtures.makeConnection(database: "db_a", type: .postgresql)
         var session = ConnectionSession(connection: connection)
-        session.currentSchema = "sales"
+        session.browseSchema = "sales"
         DatabaseManager.shared.injectSession(session, for: connection.id)
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
 
@@ -113,7 +113,7 @@ struct FKNavigationTests {
         try tabManager.addTableTab(
             tableName: "orders",
             databaseType: connection.type,
-            databaseName: coordinator.activeDatabaseName
+            databaseName: coordinator.browseDatabaseName
         )
 
         let fkInfo = TestFixtures.makeForeignKeyInfo(referencedTable: "users", referencedColumn: "id")
@@ -136,7 +136,7 @@ struct FKNavigationTests {
         )
         defer { coordinator.teardown() }
 
-        tabManager.addTab(initialQuery: "SELECT * FROM orders", databaseName: coordinator.activeDatabaseName)
+        tabManager.addTab(initialQuery: "SELECT * FROM orders", databaseName: coordinator.browseDatabaseName)
         tabManager.mutate(at: 0) { $0.execution.lastExecutedAt = Date() }
         let originalTabId = tabManager.selectedTab?.id
 
@@ -169,7 +169,7 @@ struct FKNavigationTests {
         )
         defer { coordinator.teardown() }
 
-        tabManager.addTab(initialQuery: "SELECT 1", databaseName: coordinator.activeDatabaseName)
+        tabManager.addTab(initialQuery: "SELECT 1", databaseName: coordinator.browseDatabaseName)
         let originalTabId = tabManager.selectedTab?.id
 
         var opened: [EditorTabPayload] = []
@@ -201,7 +201,7 @@ struct FKNavigationTests {
         try tabManager.addTableTab(
             tableName: "orders",
             databaseType: connection.type,
-            databaseName: coordinator.activeDatabaseName
+            databaseName: coordinator.browseDatabaseName
         )
         coordinator.changeManager.hasChanges = true
 
@@ -246,14 +246,14 @@ struct FKNavigationTests {
 
         originTabManager.addTab(
             initialQuery: "SELECT * FROM orders",
-            databaseName: originCoordinator.activeDatabaseName
+            databaseName: originCoordinator.browseDatabaseName
         )
         originTabManager.mutate(at: 0) { $0.execution.lastExecutedAt = Date() }
 
         try targetTabManager.addTableTab(
             tableName: "users",
             databaseType: connection.type,
-            databaseName: targetCoordinator.activeDatabaseName
+            databaseName: targetCoordinator.browseDatabaseName
         )
         targetTabManager.mutate(at: 0) {
             $0.filterState.filters = [TableFilter(columnName: "id", filterOperator: .equal, value: "42")]
@@ -303,14 +303,14 @@ struct FKNavigationTests {
 
         originTabManager.addTab(
             initialQuery: "SELECT * FROM orders",
-            databaseName: originCoordinator.activeDatabaseName
+            databaseName: originCoordinator.browseDatabaseName
         )
         originTabManager.mutate(at: 0) { $0.execution.lastExecutedAt = Date() }
 
         try targetTabManager.addTableTab(
             tableName: "users",
             databaseType: connection.type,
-            databaseName: targetCoordinator.activeDatabaseName
+            databaseName: targetCoordinator.browseDatabaseName
         )
         targetTabManager.mutate(at: 0) {
             $0.filterState.filters = [TableFilter(columnName: "id", filterOperator: .equal, value: "42")]
@@ -346,7 +346,7 @@ struct FKNavigationTests {
         try originTabManager.addTableTab(
             tableName: "users",
             databaseType: connection.type,
-            databaseName: originCoordinator.activeDatabaseName
+            databaseName: originCoordinator.browseDatabaseName
         )
         originTabManager.mutate(at: 0) {
             $0.filterState.filters = [TableFilter(columnName: "id", filterOperator: .equal, value: "42")]
@@ -355,7 +355,7 @@ struct FKNavigationTests {
         try originTabManager.addTableTab(
             tableName: "orders",
             databaseType: connection.type,
-            databaseName: originCoordinator.activeDatabaseName
+            databaseName: originCoordinator.browseDatabaseName
         )
 
         var opened: [EditorTabPayload] = []
@@ -383,13 +383,13 @@ struct FKNavigationTests {
 
         let ordersKey = ColumnLayoutTableKey(
             connectionId: connection.id,
-            databaseName: coordinator.activeDatabaseName,
+            databaseName: coordinator.browseDatabaseName,
             schemaName: nil,
             tableName: "orders"
         )
         let usersKey = ColumnLayoutTableKey(
             connectionId: connection.id,
-            databaseName: coordinator.activeDatabaseName,
+            databaseName: coordinator.browseDatabaseName,
             schemaName: nil,
             tableName: "users"
         )
@@ -399,7 +399,7 @@ struct FKNavigationTests {
             FilterSettingsStorage.shared.clearLastFilters(
                 for: "orders",
                 connectionId: connection.id,
-                databaseName: coordinator.activeDatabaseName,
+                databaseName: coordinator.browseDatabaseName,
                 schemaName: nil
             )
         }
@@ -408,7 +408,7 @@ struct FKNavigationTests {
         try tabManager.addTableTab(
             tableName: "orders",
             databaseType: connection.type,
-            databaseName: coordinator.activeDatabaseName
+            databaseName: coordinator.browseDatabaseName
         )
         let outgoingFilter = TableFilter(columnName: "status", filterOperator: .equal, value: "open")
         tabManager.mutate(at: 0) {
@@ -425,7 +425,7 @@ struct FKNavigationTests {
         let savedForOrders = FilterSettingsStorage.shared.loadLastFilters(
             for: "orders",
             connectionId: connection.id,
-            databaseName: coordinator.activeDatabaseName,
+            databaseName: coordinator.browseDatabaseName,
             schemaName: nil
         )
         #expect(savedForOrders.contains { $0.columnName == "status" && $0.value == "open" })
@@ -447,7 +447,7 @@ struct FKNavigationTests {
         try tabManager.addTableTab(
             tableName: "orders",
             databaseType: connection.type,
-            databaseName: coordinator.activeDatabaseName
+            databaseName: coordinator.browseDatabaseName
         )
         guard let tabId = tabManager.selectedTab?.id else {
             Issue.record("expected a selected tab")
@@ -484,7 +484,7 @@ struct FKNavigationTests {
         try tabManager.addTableTab(
             tableName: "orders",
             databaseType: connection.type,
-            databaseName: coordinator.activeDatabaseName
+            databaseName: coordinator.browseDatabaseName
         )
         let tabId = tabManager.tabs[0].id
         tabManager.mutate(at: 0) { $0.tableContext.primaryKeyColumns = ["id"] }

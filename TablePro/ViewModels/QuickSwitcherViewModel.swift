@@ -131,7 +131,7 @@ internal final class QuickSwitcherViewModel {
         let switchTarget = services.pluginManager.containerSwitchTarget(for: databaseType)
         let databaseFilter = SharedSidebarState.forConnection(connectionId).databaseFilterSelected
         let activeDatabase = services.databaseManager.session(for: connectionId)
-            .map { services.databaseManager.activeDatabaseName(for: $0.connection) }
+            .map { services.databaseManager.browseDatabaseName(for: $0.connection) }
         let visibleDatabaseNames = switchTarget == .database
             ? Set(
                 DatabaseTreeVisibility.visible(
@@ -142,7 +142,7 @@ internal final class QuickSwitcherViewModel {
             )
             : []
         do {
-            let databases = try await services.databaseManager.withMetadataDriver(connectionId: connectionId) { driver in
+            let databases = try await services.databaseManager.withBrowseMetadataDriver(connectionId: connectionId) { driver in
                 try await driver.fetchDatabases()
             }
             let databaseSubtitle = switchTarget == .database
@@ -169,7 +169,7 @@ internal final class QuickSwitcherViewModel {
 
         if services.pluginManager.supportsSchemaSwitching(for: databaseType) {
             do {
-                let schemas = try await services.databaseManager.withMetadataDriver(connectionId: connectionId) { driver in
+                let schemas = try await services.databaseManager.withBrowseMetadataDriver(connectionId: connectionId) { driver in
                     try await driver.fetchSchemas()
                 }
                 let schemaSubtitle = switchTarget == .schema

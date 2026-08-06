@@ -87,7 +87,7 @@ extension MainContentCommandActions {
             return TabBatchClosePlanner.planCloseForOtherDatabases(
                 targets: targets,
                 currentWindowId: currentWindowId,
-                currentDatabaseName: activeDatabaseName
+                currentDatabaseName: browseDatabaseName
             )
         }
     }

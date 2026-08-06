@@ -92,23 +92,8 @@ extension MainContentCoordinator {
                 "[switch] handleTabChange phases: saveOutgoing=\(saveMs)ms restoreIncoming=\(restoreMs)ms"
             )
 
-            if !newTab.tableContext.databaseName.isEmpty {
-                let currentDatabase = activeDatabaseName
-
-                if newTab.tableContext.databaseName != currentDatabase {
-                    Self.lifecycleLogger.debug(
-                        "[switch] handleTabChange triggering switchDatabase from=\(currentDatabase, privacy: .public) to=\(newTab.tableContext.databaseName, privacy: .public)"
-                    )
-                    changeManager.reloadVersion += 1
-                    Task {
-                        await switchDatabase(to: newTab.tableContext.databaseName)
-                        lazyLoadCurrentTabIfNeeded()
-                    }
-                    return
-                }
-            }
-
             changeManager.reloadVersion += 1
+            lazyLoadCurrentTabIfNeeded()
         } else {
             toolbarState.isTableTab = false
             toolbarState.isResultsCollapsed = false

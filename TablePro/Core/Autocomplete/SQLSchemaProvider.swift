@@ -274,7 +274,7 @@ actor SQLSchemaProvider {
         let capturedConnection = connection
         let capturedTables = tables
         let (dbName, idQuote, editorLanguage, queryLanguageName) = await MainActor.run {
-            let resolvedName = DatabaseManager.shared.activeDatabaseName(for: capturedConnection)
+            let resolvedName = DatabaseManager.shared.browseDatabaseName(for: capturedConnection)
             let quote = PluginManager.shared.sqlDialect(for: dbType)?.identifierQuote ?? "\""
             let lang = PluginManager.shared.editorLanguage(for: dbType)
             let langName = PluginManager.shared.queryLanguageName(for: dbType)

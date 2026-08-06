@@ -82,7 +82,7 @@ internal final class TabPersistenceCoordinator {
 
     private func currentActiveDatabaseAndSchema() -> (database: String?, schema: String?) {
         guard let session = DatabaseManager.shared.session(for: connectionId) else { return (nil, nil) }
-        return (session.currentDatabase, session.currentSchema)
+        return (session.browseDatabase, session.browseSchema)
     }
 
     // MARK: - Clear
