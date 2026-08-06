@@ -135,20 +135,20 @@ struct TableStructureLoaderScopeTests {
         #expect(provider.driver.fetchColumnsCalls == ["orders", "orders"])
     }
 
-    @Test("An unbound loader fails instead of falling back to the browsed database")
-    func unboundLoaderFailsInsteadOfGuessing() async throws {
+    @Test("A server-scoped loader passes its own scope through, never the browsed one")
+    func serverScopedLoaderNeverFallsBackToTheBrowsedDatabase() async throws {
         let connection = Self.makeBrowsingSession(browseDatabase: "B")
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
 
         let provider = RecordingMetadataProvider()
         provider.browseScopeToReturn = DatabaseManager.shared.browseScope(for: connection.id)
-        let loader = TableStructureLoader(scope: nil, tableName: "t", provider: provider)
+        let serverScoped = DatabaseScope(connectionId: connection.id, database: "", schema: nil)
+        let loader = TableStructureLoader(scope: serverScoped, tableName: "t", provider: provider)
 
-        await #expect(throws: DatabaseError.self) {
-            _ = try await loader.columns()
-        }
+        _ = try await loader.columns()
 
-        #expect(provider.requestedScopes.isEmpty)
+        #expect(serverScoped.isServerScoped)
+        #expect(provider.requestedScopes == [serverScoped])
         #expect(provider.browseScopeCallCount == 0)
     }
 }
