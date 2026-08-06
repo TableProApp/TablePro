@@ -21,9 +21,26 @@ struct ColumnTypeClassifierTests {
         return false
     }
 
+    private func isJson(_ type: ColumnType) -> Bool {
+        if case .json = type { return true }
+        return false
+    }
+
     private func isInteger(_ type: ColumnType) -> Bool {
         if case .integer = type { return true }
         return false
+    }
+
+    // MARK: - Nested Types
+
+    @Test("Nested container types classify as JSON", arguments: ["ARRAY", "MAP", "ROW", "STRUCT"])
+    func nestedContainersAreJson(rawTypeName: String) {
+        #expect(isJson(classifier.classify(rawTypeName: rawTypeName)))
+    }
+
+    @Test("struct classifies as JSON regardless of case")
+    func lowercaseStructIsJson() {
+        #expect(isJson(classifier.classify(rawTypeName: "struct")))
     }
 
     private func isDecimal(_ type: ColumnType) -> Bool {

@@ -80,6 +80,9 @@ final class MainContentCoordinator {
         services.databaseManager.browseDatabaseName(for: connection)
     }
     var safeModeLevel: SafeModeLevel { toolbarState.safeModeLevel }
+    var supportsOffsetPagination: Bool {
+        services.pluginManager.supportsOffsetPagination(for: connection.type)
+    }
     func setSafeModeLevel(_ level: SafeModeLevel) {
         toolbarState.safeModeLevel = level
         services.databaseManager.setSafeModeLevel(level, for: connectionId)
@@ -474,6 +477,7 @@ final class MainContentCoordinator {
         self.queryBuilder = TableQueryBuilder(
             databaseType: connection.type,
             dialect: dialect,
+            supportsOffsetPagination: services.pluginManager.supportsOffsetPagination(for: connection.type),
             dialectQuote: dialect.map { quoteIdentifierFromDialect($0) }
         )
         self.persistence = TabPersistenceCoordinator(connectionId: connection.id)

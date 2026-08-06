@@ -20,6 +20,8 @@ Set the Safe Mode level in the **Customization** pane of the connection form.
 
 New connections default to **Silent**.
 
+Some engines run read queries and nothing else. [Cloudflare R2 SQL](/databases/cloudflare-r2-sql) is one: its connections are pinned to **Read-Only** and the Safe Mode picker in the connection form is disabled.
+
 ## How It Works
 
 ### Silent

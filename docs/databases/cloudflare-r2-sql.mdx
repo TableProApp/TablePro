@@ -1,0 +1,114 @@
+---
+title: Cloudflare R2 SQL
+description: Run read-only SQL against Apache Iceberg tables in a Cloudflare R2 bucket
+---
+
+TablePro connects to Cloudflare R2 SQL, the serverless query engine that reads Apache Iceberg tables stored in an R2 bucket. The bucket's tables are registered in R2 Data Catalog, and TablePro queries them over the R2 SQL HTTP API at `https://api.sql.cloudflarestorage.com`. There is no host, port, or tunnel involved.
+
+R2 SQL runs `SELECT` and nothing else, so these connections are read-only. See [Read-Only Connections](#read-only-connections).
+
+Cloudflare's own reference is the [R2 SQL documentation](https://developers.cloudflare.com/r2-sql/).
+
+## Install the Plugin
+
+Cloudflare R2 SQL is a registry driver. Pick **Cloudflare R2 SQL** in the database type chooser and TablePro offers to download it, or install it up front from **Settings > Plugins > Browse > Cloudflare R2 SQL Driver**. The driver loads without restarting the app. See [Plugins](/features/plugins).
+
+## Connection Settings
+
+| Field | Description |
+|-------|-------------|
+| **Account ID** | Your Cloudflare account ID. |
+| **Bucket** | The R2 bucket holding the Iceberg tables. It needs R2 Data Catalog enabled. |
+| **API Token** | Cloudflare API token, entered in the built-in password field (labeled **API Token** for this driver). Stored in the macOS Keychain. |
+
+That is the whole form. There is no username, port, SSH Tunnel pane, or SSL/TLS pane: the API is HTTPS only. The Iceberg warehouse name is derived from the account ID and the bucket, so you never type it.
+
+Click **Test Connection** to verify, then **Save & Connect**.
+
+## Getting Your Credentials
+
+**Account ID**: on the [Cloudflare dashboard](https://dash.cloudflare.com) right sidebar, or run `npx wrangler whoami`.
+
+**Bucket**: the bucket name from **R2 Object Storage** in the dashboard. Enable R2 Data Catalog on it first. A bucket without the catalog has no tables to query.
+
+**API Token**:
+
+1. Go to [Cloudflare API Tokens](https://dash.cloudflare.com/profile/api-tokens)
+2. Click **Create Token** and pick the **Custom token** template
+3. Add three permission groups: **R2 SQL**, **R2 Data Catalog**, and **R2 Storage**
+4. Save and copy the token
+
+All three groups are needed, one per layer the query touches: R2 SQL runs the query, R2 Data Catalog lists the namespaces and tables, R2 Storage reads the data files.
+
+<Warning>
+The token grants access to R2 across your account, not just this bucket. Scope it to the account you need and rotate it like any other credential.
+</Warning>
+
+## Namespaces and Tables
+
+Iceberg groups tables into namespaces. TablePro maps a namespace to a schema, so the sidebar shows one **Namespace** node per namespace with its tables underneath, and the switcher in the toolbar reads **Namespace** too. TablePro reads the tree with `SHOW NAMESPACES`, `SHOW TABLES IN <namespace>`, and `DESCRIBE <namespace>.<table>`.
+
+Qualify tables with their namespace in a query tab:
+
+```sql
+SELECT user_id, event, ts
+FROM default.events
+WHERE ts >= TIMESTAMP '2026-01-01 00:00:00'
+ORDER BY ts DESC
+LIMIT 1000
+```
+
+One connection covers one bucket. Add another connection for another bucket.
+
+## Read-Only Connections
+
+R2 SQL has no `INSERT`, `UPDATE`, `DELETE`, or DDL. TablePro pins the connection to Safe Mode **Read-Only** and disables the Safe Mode picker in the connection form, so:
+
+- Cell editing, row insert, row delete, and duplicate row are off in the data grid
+- The Structure tab lists columns, types, and nullability, and creates or alters nothing
+- Import is unavailable. Export works. See [Import and Export](/features/import-export)
+
+Loading these tables happens outside TablePro, through whichever Iceberg writer feeds the catalog. See [Safe Mode](/features/safe-mode).
+
+## Pagination
+
+R2 SQL rejects `OFFSET` and caps `LIMIT` at 10,000 rows. A query with no `LIMIT` returns 500 rows.
+
+Without `OFFSET` there is no way to skip rows, so a table tab loads one capped page and the First / Previous / Next / Last controls are hidden. Two ways to work through a large table:
+
+- Narrow it with [filters](/features/filtering) and sorting. Both compile into the query, so the server does the work.
+- Write keyset pagination in a query tab, carrying the last key of the previous page forward:
+
+```sql
+SELECT * FROM default.events
+WHERE event_id > '01HQ7Z2K3M4N5P6Q7R8S9T0V'
+ORDER BY event_id
+LIMIT 1000
+```
+
+## SQL Support
+
+Supported: `SELECT`, `WHERE`, `GROUP BY`, `HAVING`, `QUALIFY`, `ORDER BY`, `LIMIT`, joins, subqueries, CTEs, window functions with an inline `OVER` clause, set operations, `EXPLAIN`, and `EXPLAIN FORMAT JSON`.
+
+Not supported: `OFFSET`, `LATERAL`, `UNNEST`, `PIVOT` and `UNPIVOT`, joins nested in parentheses, `PERCENTILE_DISC`, and the named `WINDOW` clause. An inline `OVER (...)` covers what a named window would.
+
+The Explain dropdown in the query editor offers **Explain** (`EXPLAIN`) and **Explain (JSON)** (`EXPLAIN FORMAT JSON`). Both show the plan as raw text. See [Explain Visualization](/features/explain-visualization).
+
+## Troubleshooting
+
+**Authentication failed**: check the token carries all three permission groups, the Account ID belongs to the account that owns the bucket, and the token has not expired or been revoked.
+
+**No namespaces after connect**: the bucket has no R2 Data Catalog enabled, or the catalog holds no tables yet.
+
+**`unsupported feature: OFFSET clause is not supported`**: a query in the editor uses `OFFSET`. Rewrite it with keyset pagination, see [Pagination](#pagination).
+
+**Only 500 rows came back**: the query had no `LIMIT`, so R2 SQL applied its default. Add an explicit `LIMIT`, up to 10,000.
+
+## Limitations
+
+- Read-only. No writes, no DDL, no transactions.
+- No `OFFSET`, and 10,000 rows per query is the ceiling, so table tabs show a single page.
+- No primary keys, foreign keys, or indexes. The ER diagram opens with every table unconnected.
+- No import. Export works.
+- No SSH tunnel, Cloudflare Tunnel, SOCKS proxy, or SSL/TLS pane. The API is HTTPS only.
+- One bucket per connection, and no bucket switcher in the toolbar.

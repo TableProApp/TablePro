@@ -240,6 +240,7 @@ struct MainStatusBarView: View {
                         PaginationControlsView(
                             pagination: snapshot.pagination,
                             loadedRowCount: snapshot.rowCount,
+                            supportsPaging: snapshot.supportsPaging,
                             onFirst: paginationCallbacks.onFirst,
                             onPrevious: paginationCallbacks.onPrevious,
                             onNext: paginationCallbacks.onNext,

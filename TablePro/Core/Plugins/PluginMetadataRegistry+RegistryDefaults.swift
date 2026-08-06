@@ -1042,6 +1042,7 @@ extension PluginMetadataRegistry {
                 )
             )),
         ] + cloudPluginDefaults() + elasticsearchPluginDefaults() + surrealDBPluginDefaults()
+            + r2SQLPluginDefaults()
     }
     // swiftlint:enable function_body_length
 }

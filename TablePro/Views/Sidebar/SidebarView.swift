@@ -228,8 +228,13 @@ struct SidebarView: View {
         .menuIndicator(.hidden)
         .fixedSize()
         .help(String(localized: "Create a new table or view"))
-        .disabled(coordinator?.safeModeLevel.blocksAllWrites ?? true)
+        .disabled(!canCreateObjects)
         .accessibilityIdentifier("sidebar-create-table")
+    }
+
+    private var canCreateObjects: Bool {
+        guard let coordinator, !coordinator.safeModeLevel.blocksAllWrites else { return false }
+        return viewModel.databaseType.supportsSchemaEditing
     }
 
     private var usesDatabaseTree: Bool {

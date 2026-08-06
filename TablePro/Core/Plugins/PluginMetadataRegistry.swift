@@ -63,6 +63,8 @@ struct PluginMetadataSnapshot: Sendable {
         var supportsClientKeyPassphrase: Bool = false
         var supportsConnectionPooling: Bool = true
         var authenticationIsDatabaseScoped: Bool = false
+        var supportsOffsetPagination: Bool = true
+        var isEngineReadOnly: Bool = false
 
         var supportsSOCKSProxy: Bool { supportsSSH }
 
@@ -1093,7 +1095,9 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                 defaultSSLMode: existingSnapshot?.capabilities.defaultSSLMode ?? .disabled,
                 supportsOpportunisticTLS: existingSnapshot?.capabilities.supportsOpportunisticTLS ?? true,
                 supportsCloudflareTunnel: driverType.supportsSSH,
-                supportsClientKeyPassphrase: existingSnapshot?.capabilities.supportsClientKeyPassphrase ?? false
+                supportsClientKeyPassphrase: existingSnapshot?.capabilities.supportsClientKeyPassphrase ?? false,
+                supportsOffsetPagination: existingSnapshot?.capabilities.supportsOffsetPagination ?? true,
+                isEngineReadOnly: existingSnapshot?.capabilities.isEngineReadOnly ?? false
             ),
             schema: PluginMetadataSnapshot.SchemaInfo(
                 defaultSchemaName: driverType.defaultSchemaName,

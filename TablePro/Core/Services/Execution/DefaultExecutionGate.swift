@@ -8,13 +8,13 @@ import Foundation
 internal actor DefaultExecutionGate: ExecutionGate {
     private let confirming: OperationConfirming
     private let authenticating: OperationAuthenticating
-    private let safeModeLevelResolver: @Sendable (UUID) async -> SafeModeLevel
+    private let safeModeLevelResolver: @Sendable (UUID, DatabaseType) async -> SafeModeLevel
     private let forcesWriteResolver: @Sendable (DatabaseType) async -> Bool
 
     init(
         confirming: OperationConfirming,
         authenticating: OperationAuthenticating,
-        safeModeLevelResolver: @escaping @Sendable (UUID) async -> SafeModeLevel,
+        safeModeLevelResolver: @escaping @Sendable (UUID, DatabaseType) async -> SafeModeLevel,
         forcesWriteResolver: @escaping @Sendable (DatabaseType) async -> Bool
     ) {
         self.confirming = confirming
@@ -24,7 +24,7 @@ internal actor DefaultExecutionGate: ExecutionGate {
     }
 
     func authorize(_ request: OperationRequest) async -> OperationDecision {
-        let level = await safeModeLevelResolver(request.connectionId)
+        let level = await safeModeLevelResolver(request.connectionId, request.databaseType)
         let caps = request.capabilities
 
         let tier = request.sql.map { QueryClassifier.classifyTier($0, databaseType: request.databaseType) }

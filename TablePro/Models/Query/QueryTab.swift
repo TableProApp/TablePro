@@ -134,6 +134,7 @@ struct QueryTab: Identifiable, Equatable {
                 databaseType: databaseType,
                 pluginDriver: nil,
                 dialect: dialect,
+                supportsOffsetPagination: PluginManager.shared.supportsOffsetPagination(for: databaseType),
                 dialectQuote: quoteIdentifier ?? quoteIdentifierFromDialect(dialect)
             )
             return builder.buildBaseQuery(
