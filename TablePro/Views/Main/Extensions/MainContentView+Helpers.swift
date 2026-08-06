@@ -29,7 +29,7 @@ extension MainContentView {
                     || (tabManager.selectedTab?.pendingChanges.hasChanges ?? false)
                 if !hasPendingEdits {
                     coordinator.pendingLoadTrigger = nil
-                    consumePendingLoad(trigger: trigger, session: session)
+                    consumePendingLoad(trigger: trigger)
                 }
             } else {
                 coordinator.lazyLoadCurrentTabIfNeeded()
@@ -42,26 +42,12 @@ extension MainContentView {
         toolbarState.syncFromSession(for: connection)
     }
 
-    private func consumePendingLoad(trigger: TableLoadTrigger, session: ConnectionSession) {
+    private func consumePendingLoad(trigger: TableLoadTrigger) {
         if let tabId = tabManager.selectedTab?.id {
             coordinator.resolveTableTabSchemaIfNeeded(tabId: tabId)
         }
-        if let selectedTab = tabManager.selectedTab,
-            !selectedTab.tableContext.databaseName.isEmpty,
-            selectedTab.tableContext.databaseName != session.activeDatabase
-        {
-            Task {
-                await coordinator.switchDatabase(to: selectedTab.tableContext.databaseName)
-                coordinator.lazyLoadCurrentTabIfNeeded(trigger: trigger)
-            }
-        } else if let selectedTab = tabManager.selectedTab,
-            let tabSchema = selectedTab.tableContext.schemaName,
-            !tabSchema.isEmpty,
-            tabSchema != session.currentSchema
-        {
-            Task {
-                await coordinator.restoreSchemaAndRunQuery(tabSchema, trigger: trigger)
-            }
+        if tabManager.selectedTab?.tabType == .table {
+            coordinator.lazyLoadCurrentTabIfNeeded(trigger: trigger)
         } else {
             coordinator.runQuery(trigger: trigger)
         }

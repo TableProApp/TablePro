@@ -87,7 +87,7 @@ enum SessionStateFactory {
             toolbarSt.currentDatabase = String(dbIndex)
         }
 
-        let activeDatabaseName = DatabaseManager.shared.activeDatabaseName(for: connection)
+        let browseDatabaseName = DatabaseManager.shared.browseDatabaseName(for: connection)
 
         if let payload {
             switch payload.intent {
@@ -104,7 +104,7 @@ enum SessionStateFactory {
                                 try tabMgr.addPreviewTableTab(
                                     tableName: tableName,
                                     databaseType: connection.type,
-                                    databaseName: payload.databaseName ?? activeDatabaseName,
+                                    databaseName: payload.databaseName ?? browseDatabaseName,
                                     schemaName: resolvedSchemaName,
                                     isView: payload.isView
                                 )
@@ -112,7 +112,7 @@ enum SessionStateFactory {
                                 try tabMgr.addTableTab(
                                     tableName: tableName,
                                     databaseType: connection.type,
-                                    databaseName: payload.databaseName ?? activeDatabaseName,
+                                    databaseName: payload.databaseName ?? browseDatabaseName,
                                     schemaName: resolvedSchemaName,
                                     isView: payload.isView
                                 )
@@ -132,7 +132,7 @@ enum SessionStateFactory {
                             }
                         }
                     } else {
-                        tabMgr.addTab(databaseName: payload.databaseName ?? activeDatabaseName)
+                        tabMgr.addTab(databaseName: payload.databaseName ?? browseDatabaseName)
                     }
                 case .query:
                     let hasContent = payload.initialQuery != nil
@@ -142,19 +142,19 @@ enum SessionStateFactory {
                         tabMgr.addTab(
                             initialQuery: payload.initialQuery,
                             title: payload.tabTitle,
-                            databaseName: payload.databaseName ?? activeDatabaseName,
+                            databaseName: payload.databaseName ?? browseDatabaseName,
                             sourceFileURL: payload.sourceFileURL,
                             claimFocus: true
                         )
                     }
                 case .createTable:
                     tabMgr.addCreateTableTab(
-                        databaseName: payload.databaseName ?? activeDatabaseName
+                        databaseName: payload.databaseName ?? browseDatabaseName
                     )
                 case .erDiagram:
                     tabMgr.addERDiagramTab(
-                        schemaKey: payload.erDiagramSchemaKey ?? payload.databaseName ?? activeDatabaseName,
-                        databaseName: payload.databaseName ?? activeDatabaseName
+                        schemaKey: payload.erDiagramSchemaKey ?? payload.databaseName ?? browseDatabaseName,
+                        databaseName: payload.databaseName ?? browseDatabaseName
                     )
                 case .serverDashboard:
                     tabMgr.addServerDashboardTab()
@@ -167,7 +167,7 @@ enum SessionStateFactory {
                 tabMgr.addTab(
                     initialQuery: payload.initialQuery,
                     title: title,
-                    databaseName: payload.databaseName ?? activeDatabaseName,
+                    databaseName: payload.databaseName ?? browseDatabaseName,
                     claimFocus: true
                 )
             case .restoreOrDefault:

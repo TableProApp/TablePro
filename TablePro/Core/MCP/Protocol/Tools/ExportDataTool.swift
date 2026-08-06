@@ -123,12 +123,17 @@ public struct ExportDataTool: MCPToolImplementation {
         var totalRowsExported = 0
         var anyTruncated = false
 
+        let scope = try await services.connectionBridge.resolveScope(
+            connectionId: connectionId,
+            database: nil,
+            schema: nil
+        )
+
         for (label, sql) in queries {
             let result = try await ToolQueryExecutor.executeAndLog(
                 services: services,
                 query: sql,
-                connectionId: connectionId,
-                databaseName: meta.databaseName,
+                scope: scope,
                 maxRows: fetchLimit,
                 timeoutSeconds: timeoutSeconds,
                 principalLabel: context.principal.metadata.label

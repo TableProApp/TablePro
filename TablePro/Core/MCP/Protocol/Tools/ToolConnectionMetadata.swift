@@ -12,7 +12,7 @@ struct ToolConnectionMetadata {
                 return ToolConnectionMetadata(
                     databaseType: session.connection.type,
                     safeModeLevel: session.safeModeLevel,
-                    databaseName: session.activeDatabase
+                    databaseName: session.resolvedBrowseDatabase
                 )
             case .stored(let conn):
                 return ToolConnectionMetadata(

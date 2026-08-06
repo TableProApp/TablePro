@@ -13,21 +13,6 @@ extension MainContentCoordinator {
         aiViewModel?.handleFixError(query: query, error: error)
     }
 
-    func switchDatabaseBeforeExecution(to database: String, connectionId: UUID) async {
-        do {
-            try await DatabaseManager.shared.switchDatabase(to: database, for: connectionId, persist: false)
-            await MainActor.run { toolbarState.currentDatabase = database }
-            Task { [weak self] in
-                await SchemaService.shared.invalidate(connectionId: connectionId)
-                await self?.refreshTables(currentDatabaseOnly: true)
-            }
-        } catch {
-            Self.logger.warning(
-                "Pre-execute switch to \(database, privacy: .public) failed: \(error.localizedDescription, privacy: .public)"
-            )
-        }
-    }
-
     func resolveRowCap(sql: String, tabType: TabType, bypassLimit: Bool = false) -> Int? {
         queryExecutionCoordinator.resolveRowCap(sql: sql, tabType: tabType, bypassLimit: bypassLimit)
     }
@@ -118,9 +103,5 @@ extension MainContentCoordinator {
             tabId: tabId,
             connection: conn
         )
-    }
-
-    func restoreSchemaAndRunQuery(_ schema: String, trigger: TableLoadTrigger = .userInitiated) async {
-        await queryExecutionCoordinator.restoreSchemaAndRunQuery(schema, trigger: trigger)
     }
 }

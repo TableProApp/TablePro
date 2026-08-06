@@ -15,6 +15,13 @@ struct DescribeTableToolTests {
         #expect(required == ["connection_id", "table"])
     }
 
+    @Test("Tool accepts an explicit database and schema")
+    func declaresScopeParameters() {
+        let properties = DescribeTableTool.inputSchema["properties"]
+        #expect(properties?["database"]?["type"]?.stringValue == "string")
+        #expect(properties?["schema"]?["type"]?.stringValue == "string")
+    }
+
     @Test("Missing connection_id returns invalidParams")
     func missingConnectionId() async throws {
         let tool = DescribeTableTool()

@@ -553,13 +553,17 @@ struct ExportDialog: View {
     }
 
     /// Instantly populate the current database from sidebar tables (no network).
+    ///
+    /// The sidebar lists exactly what the export scope already points at, so the rows carry
+    /// no qualifier. Naming the database here would reach the export data source as a schema
+    /// on the engines that group by schema, which is a different container.
     private func populateFromSidebarTables() {
         guard !sidebarTables.isEmpty else { return }
         let dbName = connection.database
         let tableItems = sidebarTables.map { table in
             ExportTableItem(
                 name: table.name,
-                databaseName: dbName,
+                databaseName: "",
                 type: table.type,
                 isSelected: preselectedTables.contains(table.name)
             )
@@ -605,7 +609,7 @@ struct ExportDialog: View {
             let grouping = PluginManager.shared.databaseGroupingStrategy(for: dbType)
             switch grouping {
             case .bySchema, .hierarchicalSchema:
-                let schemas = try await DatabaseManager.shared.withMetadataDriver(connectionId: connection.id, workload: .bulk) { driver in
+                let schemas = try await DatabaseManager.shared.withBrowseMetadataDriver(connectionId: connection.id, workload: .bulk) { driver in
                     try await driver.fetchSchemas()
                 }
                 let defaultSchema = PluginManager.shared.defaultSchemaName(for: dbType)
@@ -645,11 +649,12 @@ struct ExportDialog: View {
                 )
                 if let dbItem { items.append(dbItem) }
             case .byDatabase:
-                let databases = try await DatabaseManager.shared.withMetadataDriver(connectionId: connection.id, workload: .bulk) { driver in
+                let databases = try await DatabaseManager.shared.withBrowseMetadataDriver(connectionId: connection.id, workload: .bulk) { driver in
                     try await driver.fetchDatabases()
                 }
+                let tablesByDatabase = try await fetchTablesGroupedByDatabase()
                 for dbName in databases {
-                    let tables = try await fetchTablesForDatabase(dbName)
+                    let tables = tablesByDatabase[dbName] ?? []
                     let isCurrentDB = dbName == connection.database
                     let tableItems = tables.map { table in
                         let priorRow = priorRows["\(dbName).\(table.name)"]
@@ -703,7 +708,7 @@ struct ExportDialog: View {
         name: String,
         priorRows: [String: ExportRowSnapshot] = [:]
     ) async throws -> ExportDatabaseItem? {
-        let tables = try await DatabaseManager.shared.withMetadataDriver(connectionId: connection.id, workload: .bulk) { driver in
+        let tables = try await DatabaseManager.shared.withBrowseMetadataDriver(connectionId: connection.id, workload: .bulk) { driver in
             try await driver.fetchTables()
         }
         let tableItems = tables.map { table in
@@ -721,13 +726,17 @@ struct ExportDialog: View {
     }
 
     private func fetchTablesForSchema(_ schema: String) async throws -> [TableInfo] {
-        try await DatabaseManager.shared.withMetadataDriver(connectionId: connection.id, workload: .bulk) { driver in
+        try await DatabaseManager.shared.withBrowseMetadataDriver(connectionId: connection.id, workload: .bulk) { driver in
             try await driver.fetchTables(schema: schema)
         }
     }
 
-    private func fetchTablesForDatabase(_ database: String) async throws -> [TableInfo] {
-        try await DatabaseManager.shared.withMetadataDriver(connectionId: connection.id, workload: .bulk) { driver in
+    /// One server-wide read for every database. The query carries no WHERE clause, so a
+    /// connection per database would return the same rows and only cost a connect, and a
+    /// database the user can list but not open becomes an empty group instead of an error
+    /// that fails the whole dialog.
+    private func fetchTablesGroupedByDatabase() async throws -> [String: [TableInfo]] {
+        try await DatabaseManager.shared.withBrowseMetadataDriver(connectionId: connection.id, workload: .bulk) { driver in
             let query = """
                 SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE
                 FROM information_schema.TABLES
@@ -735,17 +744,18 @@ struct ExportDialog: View {
                 """
             let result = try await driver.execute(query: query)
 
-            return result.rows.compactMap { row -> TableInfo? in
+            var grouped: [String: [TableInfo]] = [:]
+            for row in result.rows {
                 guard row.count >= 2,
                       let rowSchema = row[0].asText,
-                      rowSchema == database,
                       let name = row[1].asText else {
-                    return nil
+                    continue
                 }
                 let typeStr = row.count > 2 ? (row[2].asText ?? "BASE TABLE") : "BASE TABLE"
                 let type: TableInfo.TableType = typeStr.uppercased().contains("VIEW") ? .view : .table
-                return TableInfo(name: name, type: type, rowCount: nil)
+                grouped[rowSchema, default: []].append(TableInfo(name: name, type: type, rowCount: nil))
             }
+            return grouped
         }
     }
 
@@ -787,34 +797,41 @@ struct ExportDialog: View {
         }
     }
 
+    /// The database this dialog exports from. Its connection carries the database the sheet
+    /// was opened against, and `resolvedScope` falls back to where the user is browsing when
+    /// that connection has no database of its own.
+    private var exportScope: DatabaseScope? {
+        DatabaseManager.shared.resolvedScope(database: connection.database, schema: nil, for: connection.id)
+    }
+
+    private func showExportError(_ error: Error) {
+        AlertHelper.showErrorSheet(
+            title: String(localized: "Export Error"),
+            message: error.localizedDescription,
+            window: nil
+        )
+    }
+
     @MainActor
     private func startExport(to url: URL) async {
-        guard let driver = DatabaseManager.shared.driver(for: connection.id) else {
-            AlertHelper.showErrorSheet(
-                title: String(localized: "Export Error"),
-                message: String(localized: "Not connected to database"),
-                window: nil
-            )
+        guard let scope = exportScope else {
+            showExportError(ExportError.notConnected)
             return
         }
+        let route = DatabaseManager.shared.executionRoute(for: scope)
 
         isExporting = true
         exportedFileURL = url
-
-        let service = ExportService(
-            driver: driver,
-            databaseType: connection.type
-        )
-        exportService = service
-
         showProgressDialog = true
 
         do {
-            try await service.export(
-                tables: exportableTables,
-                config: config,
-                to: url
-            )
+            try await DatabaseManager.shared.withScopedDriver(
+                scope: scope,
+                route: route,
+                workload: .bulk
+            ) { driver in
+                try await runTableExport(on: driver, to: url)
+            }
 
             showProgressDialog = false
             isExporting = false
@@ -831,12 +848,25 @@ struct ExportDialog: View {
         } catch {
             showProgressDialog = false
             isExporting = false
-            AlertHelper.showErrorSheet(
-                title: String(localized: "Export Error"),
-                message: error.localizedDescription,
-                window: nil
-            )
+            showExportError(error)
         }
+    }
+
+    /// The whole export runs inside the scoped lease, so every statement it issues lands on
+    /// the database the dialog was opened for rather than wherever the shared driver was
+    /// last parked by another tab.
+    @MainActor
+    private func runTableExport(on driver: DatabaseDriver, to url: URL) async throws {
+        let service = ExportService(driver: driver, databaseType: connection.type)
+        exportService = service
+        try await service.export(tables: exportableTables, config: config, to: url)
+    }
+
+    @MainActor
+    private func runStreamingExport(on driver: DatabaseDriver, query: String, to url: URL) async throws {
+        let service = ExportService(driver: driver, databaseType: connection.type)
+        exportService = service
+        try await service.exportStreamingQuery(query: query, config: config, to: url)
     }
 
     @MainActor
@@ -846,18 +876,24 @@ struct ExportDialog: View {
         showProgressDialog = true
 
         do {
-            let service: ExportService
             switch mode {
             case .streamingQuery(_, let query, _):
-                guard let driver = DatabaseManager.shared.driver(for: connection.id) else { return }
-                service = ExportService(driver: driver, databaseType: connection.type)
-                exportService = service
-                try await service.exportStreamingQuery(query: query, config: config, to: url)
+                guard let scope = exportScope else { throw ExportError.notConnected }
+                let route = DatabaseManager.shared.executionRoute(for: scope)
+                try await DatabaseManager.shared.withScopedDriver(
+                    scope: scope,
+                    route: route,
+                    workload: .bulk
+                ) { driver in
+                    try await runStreamingExport(on: driver, query: query, to: url)
+                }
             case .queryResults(_, let tableRows, _):
-                service = ExportService(databaseType: connection.type)
+                let service = ExportService(databaseType: connection.type)
                 exportService = service
                 try await service.exportQueryResults(tableRows: tableRows, config: config, to: url)
             default:
+                showProgressDialog = false
+                isExporting = false
                 return
             }
 
@@ -876,11 +912,7 @@ struct ExportDialog: View {
         } catch {
             showProgressDialog = false
             isExporting = false
-            AlertHelper.showErrorSheet(
-                title: String(localized: "Export Error"),
-                message: error.localizedDescription,
-                window: nil
-            )
+            showExportError(error)
         }
     }
 

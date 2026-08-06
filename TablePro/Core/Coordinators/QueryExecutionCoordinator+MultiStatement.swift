@@ -56,13 +56,14 @@ extension QueryExecutionCoordinator {
         sql: String,
         result: QueryResult,
         connection: DatabaseConnection,
+        databaseName: String,
         parameterValues: [QueryParameter]? = nil
     ) {
         let historySQL = sql.hasSuffix(";") ? sql : sql + ";"
         QueryHistoryManager.shared.recordQuery(
             query: historySQL,
             connectionId: connection.id,
-            databaseName: parent.activeDatabaseName,
+            databaseName: databaseName,
             executionTime: result.executionTime,
             rowCount: result.rows.count,
             wasSuccessful: true,

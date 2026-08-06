@@ -63,6 +63,8 @@ The mode picker in the composer footer controls which tools the AI can call. The
 
 Mode and [safe mode](/features/safe-mode) are independent gates. Agent mode does not bypass safe mode.
 
+These tools never change what's open in the app. `list_tables`, `list_schemas`, `describe_table`, `get_table_ddl`, and `execute_query` take an optional `database` and query the database or schema they're pointed at, without moving the sidebar's selected database or touching an open tab.
+
 ### Tool Calling
 
 In Edit and Agent modes, each tool call appears as a card in the reply. Read-only tools run immediately. Write tools show three buttons:

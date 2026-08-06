@@ -33,6 +33,15 @@ extension QueryExecutionCoordinator {
         QueryExecutor.parseSchemaMetadata(schema)
     }
 
+    /// History belongs to the database the tab actually ran on, not to wherever the
+    /// sidebar happens to point when the entry is written.
+    func historyDatabaseName(tabId: UUID) -> String {
+        guard let tab = parent.tabManager.tabs.first(where: { $0.id == tabId }) else {
+            return parent.browseDatabaseName
+        }
+        return parent.scope(for: tab)?.database ?? parent.browseDatabaseName
+    }
+
     func isMetadataCached(tabId: UUID, tableName: String) -> Bool {
         guard let idx = parent.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else {
             return false
@@ -208,7 +217,7 @@ extension QueryExecutionCoordinator {
         QueryHistoryManager.shared.recordQuery(
             query: historySQL ?? sql,
             connectionId: conn.id,
-            databaseName: parent.activeDatabaseName,
+            databaseName: historyDatabaseName(tabId: tabId),
             executionTime: executionTime,
             rowCount: rows.count,
             wasSuccessful: true,
@@ -250,7 +259,7 @@ extension QueryExecutionCoordinator {
         QueryHistoryManager.shared.recordQuery(
             query: sql,
             connectionId: conn.id,
-            databaseName: parent.activeDatabaseName,
+            databaseName: historyDatabaseName(tabId: tabId),
             executionTime: executionTime,
             rowCount: rowCount,
             wasSuccessful: true,
@@ -412,23 +421,28 @@ extension QueryExecutionCoordinator {
             guard let self else { return }
             guard !parent.isTearingDown else { return }
 
-            let prepared: (plan: RowCountPlan, sql: String?) = await MainActor.run {
-                guard let tab = parent.tabManager.tabs.first(where: { $0.id == tabId }) else { return (.skip, nil) }
+            let prepared: (plan: RowCountPlan, sql: String?, scope: DatabaseScope?) = await MainActor.run {
+                guard let tab = parent.tabManager.tabs.first(where: { $0.id == tabId }) else {
+                    return (.skip, nil, nil)
+                }
+                let scope = parent.scope(for: tab)
                 let plan = Self.rowCountPlan(
                     isNonSQL: isNonSQL,
                     filterState: tab.filterState,
                     approximateRowCount: tab.pagination.totalRowCount,
                     threshold: AppSettingsManager.shared.dataGrid.countRowsIfEstimateLessThan
                 )
-                guard case let .exactCount(filtered) = plan else { return (plan, nil) }
+                guard case let .exactCount(filtered) = plan else { return (plan, nil, scope) }
                 let sql = parent.queryBuilder.buildFilteredCountQuery(
                     tableName: tableName,
                     schemaName: tab.tableContext.schemaName,
                     filters: filtered ? tab.filterState.appliedFilters : [],
                     logicMode: tab.filterState.filterLogicMode
                 )
-                return (plan, sql)
+                return (plan, sql, scope)
             }
+
+            guard let countScope = prepared.scope else { return }
 
             let outcome: RowCountOutcome?
             switch prepared.plan {
@@ -437,7 +451,7 @@ extension QueryExecutionCoordinator {
             case .clear:
                 outcome = .clear
             case .approximate:
-                if let count = try? await DatabaseManager.shared.withMetadataDriver(connectionId: parent.connectionId, { driver in
+                if let count = try? await DatabaseManager.shared.withMetadataDriver(scope: countScope, { driver in
                     try await driver.fetchApproximateRowCount(table: tableName)
                 }) {
                     outcome = .count(count, isApproximate: true)
@@ -445,7 +459,7 @@ extension QueryExecutionCoordinator {
                     outcome = nil
                 }
             case let .filteredNonSQL(filters, logicMode):
-                if let count = try? await DatabaseManager.shared.withMetadataDriver(connectionId: parent.connectionId, workload: .bulk, { driver in
+                if let count = try? await DatabaseManager.shared.withMetadataDriver(scope: countScope, workload: .bulk, { driver in
                     try await driver.fetchFilteredRowCount(table: tableName, filters: filters, logicMode: logicMode)
                 }) {
                     outcome = .count(count, isApproximate: false)
@@ -456,7 +470,7 @@ extension QueryExecutionCoordinator {
                 let count: Int?
                 if let sql = prepared.sql {
                     do {
-                        count = try await DatabaseManager.shared.withMetadataDriver(connectionId: parent.connectionId, workload: .bulk) { driver in
+                        count = try await DatabaseManager.shared.withMetadataDriver(scope: countScope, workload: .bulk) { driver in
                             let result = try await driver.execute(query: sql)
                             guard let countStr = result.rows.first?.first?.asText else { return Int?.none }
                             return Int(countStr)
@@ -528,36 +542,12 @@ extension QueryExecutionCoordinator {
         QueryHistoryManager.shared.recordQuery(
             query: sql,
             connectionId: conn.id,
-            databaseName: parent.activeDatabaseName,
+            databaseName: historyDatabaseName(tabId: tabId),
             executionTime: 0,
             rowCount: 0,
             wasSuccessful: false,
             errorMessage: error.localizedDescription
         )
-    }
-
-    func restoreSchemaAndRunQuery(_ schema: String, trigger: TableLoadTrigger = .userInitiated) async {
-        guard let driver = DatabaseManager.shared.driver(for: parent.connectionId) else {
-            parent.pendingLoadTrigger = trigger
-            return
-        }
-        guard let schemaDriver = driver as? SchemaSwitchable,
-              schemaDriver.currentSchema != nil else {
-            parent.runQuery(trigger: trigger)
-            return
-        }
-        do {
-            try await schemaDriver.switchSchema(to: schema)
-            DatabaseManager.shared.updateSession(parent.connectionId) { session in
-                session.currentSchema = schema
-            }
-            parent.toolbarState.currentSchema = schema
-            await parent.refreshTables()
-        } catch {
-            helpersLogger.warning("Failed to restore schema '\(schema, privacy: .public)': \(error.localizedDescription, privacy: .public)")
-            return
-        }
-        parent.runQuery(trigger: trigger)
     }
 }
 

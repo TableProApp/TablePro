@@ -65,6 +65,7 @@ Remote access exposes the server to your network. Leave it off unless you connec
 - AI access policies are set per connection in each connection's settings, including blocking a connection from external access entirely.
 - Bearer tokens carry scopes and per-connection allowlists; see [Tokens](/external-api/tokens) for what tokens can and cannot do.
 - The reachable surface is the [tool catalog](/external-api/mcp-tools) and [resources](/external-api/mcp-resources), nothing else.
+- Tool calls never change what's open in the app: `list_tables`, `list_schemas`, and `execute_query` query the database or schema you pass them without moving the sidebar's selected database or touching an open tab.
 
 ## Reference
 

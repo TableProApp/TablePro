@@ -86,12 +86,12 @@ extension MainContentCoordinator {
         guard !safeModeLevel.blocksAllWrites else { return }
 
         if tabManager.tabs.isEmpty {
-            tabManager.addCreateTableTab(databaseName: activeDatabaseName)
+            tabManager.addCreateTableTab(databaseName: browseDatabaseName)
         } else {
             let payload = EditorTabPayload(
                 connectionId: connection.id,
                 tabType: .createTable,
-                databaseName: activeDatabaseName
+                databaseName: browseDatabaseName
             )
             WindowManager.shared.openTab(payload: payload)
         }
@@ -109,7 +109,7 @@ extension MainContentCoordinator {
         let payload = EditorTabPayload(
             connectionId: connection.id,
             tabType: .query,
-            databaseName: activeDatabaseName,
+            databaseName: browseDatabaseName,
             initialQuery: template
         )
         WindowManager.shared.openTab(payload: payload)
@@ -118,7 +118,7 @@ extension MainContentCoordinator {
     func editViewDefinition(_ viewName: String) {
         Task {
             do {
-                let definition = try await DatabaseManager.shared.withMetadataDriver(connectionId: self.connection.id) { driver in
+                let definition = try await DatabaseManager.shared.withBrowseMetadataDriver(connectionId: self.connection.id) { driver in
                     try await driver.fetchViewDefinition(view: viewName)
                 }
 

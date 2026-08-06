@@ -32,7 +32,7 @@ extension MainContentCoordinator {
             return true
         }
 
-        await loadSchemaColumns(for: tableName, schema: tab.tableContext.schemaName)
+        await loadSchemaColumns(for: tableName, scope: scope(for: tab))
 
         guard !Task.isCancelled,
               tabManager.selectedTabId == tabId,

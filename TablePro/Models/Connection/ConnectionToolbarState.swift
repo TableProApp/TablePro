@@ -255,7 +255,7 @@ final class ConnectionToolbarState {
         if PluginManager.shared.connectionMode(for: connection.type) == .fileBased {
             resolvedDatabase = (connection.database as NSString).lastPathComponent
         } else if let session = DatabaseManager.shared.session(for: connection.id),
-                  let database = session.currentDatabase {
+                  let database = session.browseDatabase {
             resolvedDatabase = database
         } else {
             resolvedDatabase = connection.database
@@ -264,7 +264,7 @@ final class ConnectionToolbarState {
             currentDatabase = resolvedDatabase
         }
 
-        let resolvedSchema = DatabaseManager.shared.session(for: connection.id)?.currentSchema
+        let resolvedSchema = DatabaseManager.shared.session(for: connection.id)?.browseSchema
         if currentSchema != resolvedSchema {
             currentSchema = resolvedSchema
         }

@@ -61,7 +61,7 @@ Right-click a foreign key and choose **Open [table]** to jump to the referenced 
 
 ## Saving Changes
 
-Structure edits queue locally; nothing runs until you save. See [Change Tracking](/features/change-tracking) for how the queue, undo (`Cmd+Z`), and redo (`Cmd+Shift+Z`) work.
+Structure edits queue locally; nothing runs until you save. See [Change Tracking](/features/change-tracking) for how the queue, undo (`Cmd+Z`), and redo (`Cmd+Shift+Z`) work. Saving runs on the tab's own connection, database, and schema, the ones it was opened on. It never moves the sidebar's selected database or the toolbar.
 
 - **Save Changes** (`Cmd+S` or the toolbar checkmark) applies the queued changes. Changes that can lose data (dropping a column, changing a type, adding NOT NULL, changing the primary key) first show a confirmation that lists each risky change.
 - **Preview SQL** (`Cmd+Shift+P`) shows the generated DDL statements without executing them.
@@ -122,4 +122,4 @@ MongoDB structure is read-only. TablePro infers the schema from the first 50 doc
 
 ## Refreshing
 
-Use **Query > Refresh** (`Cmd+R`) or the toolbar refresh button to reload structure from the database. Changes made through TablePro refresh automatically.
+Use **Query > Refresh** (`Cmd+R`) or the toolbar refresh button to reload structure from the database. Changes made through TablePro refresh automatically. Refresh always reads from the tab's own database and schema, not the sidebar's current selection.

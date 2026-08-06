@@ -12,8 +12,8 @@ extension MainContentCoordinator {
     /// 3. Otherwise open a new native window tab so the current tab's content
     ///    (unsaved queries, filters, etc.) is preserved.
     func showERDiagram() {
-        let dbName = activeDatabaseName
-        let schemaName = DatabaseManager.shared.session(for: connectionId)?.currentSchema
+        let dbName = browseDatabaseName
+        let schemaName = DatabaseManager.shared.session(for: connectionId)?.browseSchema
         let schemaKey = "\(dbName).\(schemaName ?? "default")"
 
         if let existing = Self.coordinator(forConnection: connectionId, tabMatching: {

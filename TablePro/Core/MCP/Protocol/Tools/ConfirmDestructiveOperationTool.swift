@@ -84,11 +84,15 @@ public struct ConfirmDestructiveOperationTool: MCPToolImplementation {
 
         Self.logger.debug("confirm_destructive_operation invoked for connection \(connectionId.uuidString, privacy: .public)")
 
+        let scope = try await services.connectionBridge.resolveScope(
+            connectionId: connectionId,
+            database: nil,
+            schema: nil
+        )
         let result = try await ToolQueryExecutor.executeAndLog(
             services: services,
             query: query,
-            connectionId: connectionId,
-            databaseName: meta.databaseName,
+            scope: scope,
             maxRows: 0,
             timeoutSeconds: timeoutSeconds,
             principalLabel: context.principal.metadata.label

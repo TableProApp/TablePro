@@ -89,14 +89,14 @@ struct ConnectionSessionEquivalenceTests {
         #expect(!a.isContentViewEquivalent(to: b))
     }
 
-    @Test("Returns false when currentSchema changes")
-    func falseWhenCurrentSchemaChanges() {
+    @Test("Returns false when browseSchema changes")
+    func falseWhenBrowseSchemaChanges() {
         let id = UUID()
         var a = makeSession(id: id)
         var b = makeSession(id: id)
 
-        a.currentSchema = "public"
-        b.currentSchema = "private"
+        a.browseSchema = "public"
+        b.browseSchema = "private"
 
         #expect(!a.isContentViewEquivalent(to: b))
     }

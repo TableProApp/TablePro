@@ -47,15 +47,13 @@ public struct ListTablesTool: MCPToolImplementation {
         let schema = MCPArgumentDecoder.optionalString(arguments, key: "schema")
         let includeRowCounts = MCPArgumentDecoder.optionalBool(arguments, key: "include_row_counts", default: false)
 
-        if let database {
-            _ = try await services.connectionBridge.switchDatabase(connectionId: connectionId, database: database)
-        }
-        if let schema {
-            _ = try await services.connectionBridge.switchSchema(connectionId: connectionId, schema: schema)
-        }
-
-        let payload = try await services.connectionBridge.listTables(
+        let scope = try await services.connectionBridge.resolveScope(
             connectionId: connectionId,
+            database: database,
+            schema: schema
+        )
+        let payload = try await services.connectionBridge.listTables(
+            scope: scope,
             includeRowCounts: includeRowCounts
         )
         return .structured(payload)

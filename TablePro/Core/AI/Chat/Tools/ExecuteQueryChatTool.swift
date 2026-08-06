@@ -25,11 +25,11 @@ struct ExecuteQueryChatTool: ChatTool {
                 optional: true
             ),
             "database": ChatToolSchemaBuilder.string(
-                description: "Switch to this database before executing. Pass null to use current.",
+                description: "Run against this database. Pass null to use current.",
                 optional: true
             ),
             "schema": ChatToolSchemaBuilder.string(
-                description: "Switch to this schema before executing. Pass null to use current.",
+                description: "Run against this schema. Pass null to use current.",
                 optional: true
             )
         ]
@@ -73,12 +73,11 @@ struct ExecuteQueryChatTool: ChatTool {
             )
         }
 
-        if let database {
-            _ = try await context.bridge.switchDatabase(connectionId: connectionId, database: database)
-        }
-        if let schema {
-            _ = try await context.bridge.switchSchema(connectionId: connectionId, schema: schema)
-        }
+        let scope = try await context.bridge.resolveScope(
+            connectionId: connectionId,
+            database: database,
+            schema: schema
+        )
 
         try await context.authPolicy.checkSafeModeDialog(
             sql: query,
@@ -91,8 +90,7 @@ struct ExecuteQueryChatTool: ChatTool {
         let payload = try await ToolQueryExecutor.executeAndLog(
             services: services,
             query: query,
-            connectionId: connectionId,
-            databaseName: meta.databaseName,
+            scope: scope,
             maxRows: maxRows,
             timeoutSeconds: timeoutSeconds,
             principalLabel: String(localized: "AI Chat")

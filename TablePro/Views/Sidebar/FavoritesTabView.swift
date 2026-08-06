@@ -19,7 +19,7 @@ internal struct FavoritesTabView: View {
 
     private var searchText: String { sharedSidebarState.favoritesSearchText }
     private var activeDatabase: String? {
-        let name = coordinator?.activeDatabaseName ?? ""
+        let name = coordinator?.browseDatabaseName ?? ""
         return name.isEmpty ? nil : name
     }
 
