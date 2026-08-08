@@ -215,7 +215,7 @@ public final class OracleCoreConnection: @unchecked Sendable {
     public func ping() async throws {
         _ = try await withOracleTimeout(
             seconds: Self.pingTimeoutSeconds,
-            onTimeout: { [self] in markConnectionDead() },
+            onTimeout: { [self] in disconnect() },
             operation: { [self] in try await executeQuery(OracleSchemaQueries.ping) }
         )
     }

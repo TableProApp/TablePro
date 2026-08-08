@@ -37,6 +37,36 @@ final class OracleAsyncTimeoutTests: XCTestCase {
         }
         XCTAssertEqual(timeoutCount.value, 1)
     }
+
+    /// The task group waits for the operation child even after the deadline
+    /// fires, so an `onTimeout` that does not force the operation to finish
+    /// leaves the caller blocked past its own deadline.
+    func testOnTimeoutMustUnblockAnOperationThatIgnoresCancellation() async {
+        let release = DispatchSemaphore(value: 0)
+        let released = Counter()
+
+        _ = try? await withOracleTimeout(
+            seconds: 0.05,
+            onTimeout: { release.signal() },
+            operation: {
+                await withCheckedContinuation { continuation in
+                    DispatchQueue.global().async {
+                        if release.wait(timeout: .now() + 5) == .success {
+                            released.increment()
+                        }
+                        continuation.resume()
+                    }
+                }
+                return "ignored"
+            }
+        )
+
+        XCTAssertEqual(
+            released.value,
+            1,
+            "onTimeout must release an operation that ignores cancellation, or the task group never unwinds"
+        )
+    }
 }
 
 private final class Counter: @unchecked Sendable {
