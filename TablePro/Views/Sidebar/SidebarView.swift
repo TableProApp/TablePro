@@ -408,6 +408,8 @@ struct SidebarView: View {
                         Button(String(localized: "Clear Recent Tables")) {
                             sidebarState.clearRecentTables(inDatabase: activeDatabase)
                         }
+                        Divider()
+                        SidebarViewOptionsMenu()
                     }
                 }
             } header: {
@@ -452,6 +454,8 @@ struct SidebarView: View {
                 onBatchToggleDelete: { viewModel.batchToggleDelete(tableNames: $0) },
                 coordinator: coordinator
             )
+            Divider()
+            SidebarViewOptionsMenu()
         } primaryAction: { selection in
             guard let table = selection.first else { return }
             onDoubleClick?(table)
@@ -502,6 +506,8 @@ struct SidebarView: View {
                         RoutineContextMenu(routine: routine) { selected in
                             coordinator?.showRoutineDDL(selected)
                         }
+                        Divider()
+                        SidebarViewOptionsMenu()
                     }
             }
         } else {
@@ -528,6 +534,8 @@ struct SidebarView: View {
             .help(helpLabel)
             .contextMenu {
                 sectionHeaderMenu(for: kind, title: title)
+                Divider()
+                SidebarViewOptionsMenu()
             }
     }
 

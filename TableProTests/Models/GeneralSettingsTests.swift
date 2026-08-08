@@ -26,3 +26,38 @@ struct GeneralSettingsTests {
         #expect(decoded.showRecentTables == true)
     }
 }
+
+@Suite("GeneralSettings.showObjectIcons")
+struct GeneralSettingsObjectIconsTests {
+    @Test("Defaults to on")
+    func defaultsOn() {
+        #expect(GeneralSettings.default.showObjectIcons == true)
+        #expect(GeneralSettings().showObjectIcons == true)
+    }
+
+    @Test("Decoding settings saved before the key existed keeps icons on")
+    func decodesMissingKeyAsOn() throws {
+        let json = Data(#"{"startupBehavior":"showWelcome"}"#.utf8)
+        let decoded = try JSONDecoder().decode(GeneralSettings.self, from: json)
+        #expect(decoded.showObjectIcons == true)
+    }
+
+    @Test("Round-trips when disabled")
+    func roundTripsDisabled() throws {
+        var settings = GeneralSettings()
+        settings.showObjectIcons = false
+        let data = try JSONEncoder().encode(settings)
+        let decoded = try JSONDecoder().decode(GeneralSettings.self, from: data)
+        #expect(decoded.showObjectIcons == false)
+    }
+
+    @Test("Icons and comments are independent")
+    func independentFromComments() throws {
+        var settings = GeneralSettings()
+        settings.showObjectIcons = false
+        let data = try JSONEncoder().encode(settings)
+        let decoded = try JSONDecoder().decode(GeneralSettings.self, from: data)
+        #expect(decoded.showObjectIcons == false)
+        #expect(decoded.showObjectComments == true)
+    }
+}
