@@ -43,32 +43,10 @@ struct ClickHouseQueryProgress: Equatable {
     }
 
     private static func formatBytes(_ bytes: UInt64) -> String {
-        switch bytes {
-        case 0..<1_024:
-            return "\(bytes) B"
-        case 1_024..<1_048_576:
-            let kb = Double(bytes) / 1_024
-            return String(format: "%.0f KB", kb)
-        case 1_048_576..<1_073_741_824:
-            let mb = Double(bytes) / 1_048_576
-            return String(format: "%.1f MB", mb)
-        default:
-            let gb = Double(bytes) / 1_073_741_824
-            return String(format: "%.2f GB", gb)
-        }
+        ByteSizeFormatting.string(bytes: bytes)
     }
 
     private static func formatDuration(_ seconds: Double) -> String {
-        if seconds < 0.001 {
-            return "<1ms"
-        } else if seconds < 1.0 {
-            return String(format: "%.0fms", seconds * 1_000)
-        } else if seconds < 60.0 {
-            return String(format: "%.2fs", seconds)
-        } else {
-            let minutes = Int(seconds) / 60
-            let secs = Int(seconds) % 60
-            return "\(minutes)m \(secs)s"
-        }
+        DurationFormatting.string(seconds: seconds)
     }
 }

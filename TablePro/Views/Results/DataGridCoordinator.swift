@@ -328,7 +328,13 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         }
         visualIndex.rebuild(from: changeManager, sortedIDs: displayIDs)
         updateCache()
-        tableView.insertRows(at: indices, withAnimation: .slideDown)
+        tableView.insertRows(at: indices, withAnimation: Self.rowAnimation(.slideDown))
+    }
+
+    /// Accessibility > Display > Reduce Motion asks for no sliding rows, and the app
+    /// already honours it elsewhere.
+    static func rowAnimation(_ preferred: NSTableView.AnimationOptions) -> NSTableView.AnimationOptions {
+        NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? [] : preferred
     }
 
     func applyRemovedRows(_ indices: IndexSet) {
@@ -339,7 +345,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         }
         visualIndex.rebuild(from: changeManager, sortedIDs: displayIDs)
         updateCache()
-        tableView.removeRows(at: indices, withAnimation: .slideUp)
+        tableView.removeRows(at: indices, withAnimation: Self.rowAnimation(.slideUp))
     }
 
     func applyFullReplace() {

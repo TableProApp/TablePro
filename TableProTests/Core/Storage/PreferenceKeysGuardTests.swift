@@ -34,6 +34,7 @@ struct PreferenceKeysGuardTests {
 
     private static let grandfatheredForKey: [String: String] = [
         "AppleLanguages": "Apple system default written when switching app language",
+        "NSTableViewDefaultSizeMode": "Apple system default read by the workspace rail for Sidebar icon size, never written",
         "blink": "CALayer animation key in VimCursorManager, not a preference",
         "preConnectScript": "additionalFields dictionary key in ConnectionFormCoordinator, not a preference",
     ]

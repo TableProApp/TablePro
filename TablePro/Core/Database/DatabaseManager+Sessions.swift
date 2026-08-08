@@ -299,6 +299,14 @@ extension DatabaseManager {
         if persist {
             appSettingsStorage.saveLastDatabase(database, for: connectionId)
         }
+        Self.logger.info(
+            """
+            switchDatabase landed conn=\(connectionId, privacy: .public) \
+            database=\(database, privacy: .public) \
+            browse=\(self.session(for: connectionId)?.resolvedBrowseDatabase ?? "none", privacy: .public)
+            """
+        )
+        AppEvents.shared.browseContainerChanged.send(connectionId)
     }
 
     /// Moves the driver to the engine's default schema after a database switch.
@@ -330,6 +338,7 @@ extension DatabaseManager {
         }
         appSettingsStorage.saveLastSchema(schema, for: connectionId)
         AppEvents.shared.currentSchemaChanged.send(connectionId)
+        AppEvents.shared.browseContainerChanged.send(connectionId)
     }
 
     func switchToSession(_ sessionId: UUID) {

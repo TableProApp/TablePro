@@ -68,6 +68,7 @@ struct MainSplitViewControllerDetailWidthTests {
             detailMinimum: MainSplitViewController.defaultDetailMinThickness,
             sidebarVisible: false,
             inspectorVisible: false,
+            sidebarMinimum: MainSplitViewController.resolveSidebarMinimumThickness(railAllowance: 0),
             dividerThickness: 1
         )
         #expect(width == MainSplitViewController.baseWindowMinWidth)
@@ -79,6 +80,7 @@ struct MainSplitViewControllerDetailWidthTests {
             detailMinimum: MainSplitViewController.defaultDetailMinThickness,
             sidebarVisible: true,
             inspectorVisible: true,
+            sidebarMinimum: MainSplitViewController.resolveSidebarMinimumThickness(railAllowance: 0),
             dividerThickness: 1
         )
         #expect(width == 952)
@@ -90,8 +92,61 @@ struct MainSplitViewControllerDetailWidthTests {
             detailMinimum: MainSplitViewController.resolveDetailMinimumThickness(for: .usersRoles),
             sidebarVisible: true,
             inspectorVisible: true,
+            sidebarMinimum: MainSplitViewController.resolveSidebarMinimumThickness(railAllowance: 0),
             dividerThickness: 1
         )
         #expect(width == 1_112)
+    }
+
+    @Test("The workspace rail widens the window minimum by its own fixed width")
+    func railWidensWindowMinimum() {
+        let withoutRail = MainSplitViewController.resolveWindowMinWidth(
+            detailMinimum: MainSplitViewController.defaultDetailMinThickness,
+            sidebarVisible: true,
+            inspectorVisible: true,
+            sidebarMinimum: MainSplitViewController.resolveSidebarMinimumThickness(railAllowance: 0),
+            dividerThickness: 1
+        )
+        let withRail = MainSplitViewController.resolveWindowMinWidth(
+            detailMinimum: MainSplitViewController.defaultDetailMinThickness,
+            sidebarVisible: true,
+            inspectorVisible: true,
+            sidebarMinimum: MainSplitViewController.resolveSidebarMinimumThickness(
+                railAllowance: WorkspaceRailMetrics.medium.width + 1
+            ),
+            dividerThickness: 1
+        )
+        #expect(withRail == withoutRail + WorkspaceRailMetrics.medium.width + 1)
+    }
+
+    @Test("A collapsed sidebar takes the rail with it, so it reserves no width")
+    func railReservesNothingWhenSidebarCollapsed() {
+        let collapsed = MainSplitViewController.resolveWindowMinWidth(
+            detailMinimum: MainSplitViewController.defaultDetailMinThickness,
+            sidebarVisible: false,
+            inspectorVisible: false,
+            sidebarMinimum: MainSplitViewController.resolveSidebarMinimumThickness(
+                railAllowance: WorkspaceRailMetrics.medium.width + 1
+            ),
+            dividerThickness: 1
+        )
+        #expect(collapsed == MainSplitViewController.baseWindowMinWidth)
+    }
+
+    @Test("The rail stays hidden while only one workspace is open")
+    func railHiddenForSingleWorkspace() {
+        #expect(!MainSplitViewController.shouldShowWorkspaceRail(settingEnabled: true, workspaceCount: 1))
+        #expect(!MainSplitViewController.shouldShowWorkspaceRail(settingEnabled: true, workspaceCount: 0))
+    }
+
+    @Test("The rail appears once a second workspace is open")
+    func railShownForSecondWorkspace() {
+        #expect(MainSplitViewController.shouldShowWorkspaceRail(settingEnabled: true, workspaceCount: 2))
+        #expect(MainSplitViewController.shouldShowWorkspaceRail(settingEnabled: true, workspaceCount: 5))
+    }
+
+    @Test("Turning the setting off hides the rail however many workspaces are open")
+    func settingOffAlwaysHidesRail() {
+        #expect(!MainSplitViewController.shouldShowWorkspaceRail(settingEnabled: false, workspaceCount: 5))
     }
 }

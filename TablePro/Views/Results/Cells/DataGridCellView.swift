@@ -370,19 +370,6 @@ final class DataGridCellView: NSView {
         super.mouseDown(with: event)
     }
 
-    override func rightMouseDown(with event: NSEvent) {
-        var view: NSView? = self
-        while let parent = view?.superview {
-            if let rowView = parent as? DataGridRowView,
-               let menu = rowView.menu(for: event) {
-                NSMenu.popUpContextMenu(menu, with: event, for: self)
-                return
-            }
-            view = parent
-        }
-        super.rightMouseDown(with: event)
-    }
-
     private func colorsEqual(_ lhs: NSColor?, _ rhs: NSColor?) -> Bool {
         switch (lhs, rhs) {
         case (nil, nil): return true

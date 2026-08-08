@@ -3,6 +3,7 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
 import Observation
 import os
@@ -16,6 +17,7 @@ final class QueryTabManager {
             if oldValue.map(\.id) != tabs.map(\.id) {
                 tabStructureVersion += 1
             }
+            publishAnchorChange(oldTabs: oldValue, newTabs: tabs)
             syncTabSessionRegistry(oldTabs: oldValue, newTabs: tabs)
         }
     }
@@ -45,6 +47,16 @@ final class QueryTabManager {
         for tab in tabs where registry.session(for: tab.id) == nil {
             registry.register(TabSession(queryTab: tab))
         }
+    }
+
+    /// The workspace rail lists a container while a tab holds it open, so it reloads when
+    /// that set can have changed. Every other tab mutation, a keystroke above all, leaves
+    /// the anchors identical and publishes nothing.
+    private func publishAnchorChange(oldTabs: [QueryTab], newTabs: [QueryTab]) {
+        guard WorkspaceAnchoring.anchors(in: oldTabs) != WorkspaceAnchoring.anchors(in: newTabs) else {
+            return
+        }
+        AppEvents.shared.workspaceTabsChanged.send()
     }
 
     private func syncTabSessionRegistry(oldTabs: [QueryTab], newTabs: [QueryTab]) {

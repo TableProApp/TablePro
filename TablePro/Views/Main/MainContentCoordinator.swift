@@ -205,7 +205,7 @@ final class MainContentCoordinator {
     @ObservationIgnored private var periodicSaveTask: Task<Void, Never>?
     @ObservationIgnored private var draftSaveTask: Task<Void, Never>?
     @ObservationIgnored private var terminationObserver: NSObjectProtocol?
-    @ObservationIgnored private var postConnectCancellable: AnyCancellable?
+    @ObservationIgnored internal var postConnectCancellable: AnyCancellable?
     @ObservationIgnored private var externalFileModCancellable: AnyCancellable?
     @ObservationIgnored private var schemaSwitchCancellable: AnyCancellable?
 
@@ -570,16 +570,7 @@ final class MainContentCoordinator {
         setupPluginDriver()
         startFileWatcherIfNeeded()
         if changeManager.pluginDriver == nil {
-            postConnectCancellable = services.appEvents.databaseDidConnect
-                .receive(on: RunLoop.main)
-                .sink { [weak self] payload in
-                    guard let self, payload.connectionId == self.connection.id else { return }
-                    Task { @MainActor in
-                        self.setupPluginDriver()
-                        await self.loadSchemaIfNeeded()
-                        self.postConnectCancellable = nil
-                    }
-                }
+            armPostConnectSchemaLoad()
         }
         Self.lifecycleLogger.info(
             "[open] MainContentCoordinator.markActivated done connId=\(self.connection.id, privacy: .public) elapsedMs=\(Int(Date().timeIntervalSince(start) * 1_000))"
@@ -607,7 +598,7 @@ final class MainContentCoordinator {
     }
 
     /// Set up the plugin driver for query building dispatch on the query builder and change manager.
-    private func setupPluginDriver() {
+    internal func setupPluginDriver() {
         guard let driver = services.databaseManager.driver(for: connectionId) else { return }
         let pluginDriver = driver.queryBuildingPluginDriver
         queryBuilder.setPluginDriver(pluginDriver)
@@ -684,7 +675,7 @@ final class MainContentCoordinator {
 
     /// Drop sidebar state for tables that no longer exist. The selection lives in this
     /// window's sidebar, so it is pruned per window.
-    private func pruneStaleSidebarState() {
+    internal func pruneStaleSidebarState() {
         guard case .loaded = services.schemaService.state(for: connectionId) else { return }
         let tables = services.schemaService.allLoadedTables(for: connectionId)
         guard let vm = sidebarViewModel else { return }
@@ -836,40 +827,6 @@ final class MainContentCoordinator {
         case .connecting: return .executing
         case .disconnected: return .disconnected
         case .error: return .error("")
-        }
-    }
-
-    // MARK: - Schema Loading
-
-    func loadSchema() async {
-        let connection = connection
-        try? await services.databaseManager.withBrowseMetadataDriver(connectionId: connectionId) { [services, connectionId] driver in
-            await services.schemaService.load(
-                connectionId: connectionId,
-                driver: driver,
-                connection: connection
-            )
-        }
-        await DatabaseTreeMetadataService.shared.loadDatabases(
-            connectionId: connectionId,
-            databaseType: connection.type
-        )
-        await services.schemaRefreshService.syncAutocompleteProvider(connectionId: connectionId)
-        pruneStaleSidebarState()
-    }
-
-    func loadTableMetadata(tableName: String) async {
-        guard let scope = selectedTabScope else {
-            Self.logger.error("Skipped table metadata load: no database bound to the selected tab")
-            return
-        }
-        do {
-            let metadata = try await services.databaseManager.withMetadataDriver(scope: scope) { driver in
-                try await driver.fetchTableMetadata(tableName: tableName)
-            }
-            self.tableMetadata = metadata
-        } catch {
-            Self.logger.error("Failed to load table metadata: \(error.localizedDescription, privacy: .public)")
         }
     }
 

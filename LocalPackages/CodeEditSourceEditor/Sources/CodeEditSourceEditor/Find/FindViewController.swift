@@ -56,12 +56,12 @@ final class FindViewController: NSViewController {
         // When visible, it's set to 0.
 
         view.clipsToBounds = false
-        view.addSubview(findPanel)
         view.addSubview(childView)
-
-        // Ensure find panel is always on top
+        // Ordered above the content so the panel wins hit-testing as well as drawing.
+        // `zPosition` alone only affects drawing, which left clicks falling through to the
+        // text view underneath.
+        view.addSubview(findPanel, positioned: .above, relativeTo: childView)
         findPanel.wantsLayer = true
-        findPanel.layer?.zPosition = 1000
 
         findPanelVerticalConstraint = findPanel.topAnchor.constraint(equalTo: view.topAnchor)
 

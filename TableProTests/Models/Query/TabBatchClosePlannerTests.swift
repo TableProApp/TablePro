@@ -23,7 +23,7 @@ struct TabBatchClosePlannerTests {
     private var thirdId: ObjectIdentifier { ObjectIdentifier(third) }
 
     private func target(_ token: WindowToken, databases: Set<String> = []) -> TabBatchCloseTarget {
-        TabBatchCloseTarget(windowId: ObjectIdentifier(token), databaseNames: databases)
+        TabBatchCloseTarget(windowId: ObjectIdentifier(token), containerNames: databases)
     }
 
     // MARK: - Close All
@@ -72,10 +72,10 @@ struct TabBatchClosePlannerTests {
 
     @Test("only windows whose every tab names another database are closed")
     func closeForOtherDatabasesTargetsForeignWindowsOnly() {
-        let plan = TabBatchClosePlanner.planCloseForOtherDatabases(
+        let plan = TabBatchClosePlanner.planCloseForOtherContainers(
             targets: [target(current, databases: ["db_a"]), target(second, databases: ["db_b"])],
             currentWindowId: currentId,
-            currentDatabaseName: "db_a"
+            currentContainerName: "db_a"
         )
 
         #expect(plan.windowsToCloseOutright == [secondId])
@@ -84,10 +84,10 @@ struct TabBatchClosePlannerTests {
 
     @Test("a window holding a tab for the active database is kept")
     func closeForOtherDatabasesKeepsMixedWindow() {
-        let plan = TabBatchClosePlanner.planCloseForOtherDatabases(
+        let plan = TabBatchClosePlanner.planCloseForOtherContainers(
             targets: [target(second, databases: ["db_a", "db_b"])],
             currentWindowId: currentId,
-            currentDatabaseName: "db_a"
+            currentContainerName: "db_a"
         )
 
         #expect(plan.isEmpty)
@@ -95,10 +95,10 @@ struct TabBatchClosePlannerTests {
 
     @Test("a window with no named database follows the connection and is kept")
     func closeForOtherDatabasesKeepsUnnamedWindow() {
-        let plan = TabBatchClosePlanner.planCloseForOtherDatabases(
+        let plan = TabBatchClosePlanner.planCloseForOtherContainers(
             targets: [target(second)],
             currentWindowId: currentId,
-            currentDatabaseName: "db_a"
+            currentContainerName: "db_a"
         )
 
         #expect(plan.isEmpty)
@@ -106,10 +106,10 @@ struct TabBatchClosePlannerTests {
 
     @Test("the invoking window is never closed even when it names another database")
     func closeForOtherDatabasesNeverClosesCurrentWindow() {
-        let plan = TabBatchClosePlanner.planCloseForOtherDatabases(
+        let plan = TabBatchClosePlanner.planCloseForOtherContainers(
             targets: [target(current, databases: ["db_b"])],
             currentWindowId: currentId,
-            currentDatabaseName: "db_a"
+            currentContainerName: "db_a"
         )
 
         #expect(plan.isEmpty)
@@ -117,12 +117,59 @@ struct TabBatchClosePlannerTests {
 
     @Test("an unknown active database closes nothing")
     func closeForOtherDatabasesWithoutActiveDatabaseIsEmpty() {
-        let plan = TabBatchClosePlanner.planCloseForOtherDatabases(
+        let plan = TabBatchClosePlanner.planCloseForOtherContainers(
             targets: [target(second, databases: ["db_b"]), target(third, databases: ["db_c"])],
             currentWindowId: currentId,
-            currentDatabaseName: ""
+            currentContainerName: ""
         )
 
         #expect(plan.isEmpty)
+    }
+
+    // MARK: - Close Workspace
+
+    @Test("closing a workspace takes every window that belongs only to it")
+    func closeContainerTakesItsOwnWindows() {
+        let plan = TabBatchClosePlanner.planCloseContainer(
+            targets: [
+                target(current, databases: ["db_a"]),
+                target(second, databases: ["db_a"]),
+                target(third, databases: ["db_b"]),
+            ],
+            containerName: "db_a"
+        )
+
+        #expect(Set(plan.windowsToCloseOutright) == [currentId, secondId])
+        #expect(plan.survivorWindowId == nil)
+    }
+
+    @Test("a window shared with another database survives, because its other tab is not ours to close")
+    func closeContainerSpareSharedWindows() {
+        let plan = TabBatchClosePlanner.planCloseContainer(
+            targets: [target(current, databases: ["db_a", "db_b"])],
+            containerName: "db_a"
+        )
+
+        #expect(plan.isEmpty)
+    }
+
+    @Test("closing a workspace ignores windows holding nothing")
+    func closeContainerIgnoresUnnamedWindows() {
+        let plan = TabBatchClosePlanner.planCloseContainer(
+            targets: [target(current, databases: [])],
+            containerName: "db_a"
+        )
+
+        #expect(plan.isEmpty)
+    }
+
+    @Test("the unnamed workspace of a single-container engine closes the windows that name nothing")
+    func closeContainerHandlesTheUnnamedWorkspace() {
+        let plan = TabBatchClosePlanner.planCloseContainer(
+            targets: [target(current, databases: []), target(second, databases: ["db_a"])],
+            containerName: ""
+        )
+
+        #expect(plan.windowsToCloseOutright == [currentId])
     }
 }

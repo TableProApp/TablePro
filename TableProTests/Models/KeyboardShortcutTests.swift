@@ -271,6 +271,61 @@ struct KeyboardSettingsSanitizeTests {
     }
 }
 
+@Suite("Workspace navigation defaults")
+struct WorkspaceNavigationShortcutTests {
+    @Test("Moving through the rail is bound to Control-Command and the arrow that matches the direction")
+    func workspaceCyclingIsBoundToVerticalArrows() {
+        let settings = KeyboardSettings.default
+        #expect(settings.shortcut(for: .showPreviousWorkspace) == .special(.upArrow, command: true, control: true))
+        #expect(settings.shortcut(for: .showNextWorkspace) == .special(.downArrow, command: true, control: true))
+    }
+
+    @Test("A chord the user already spent stands down the default that would fight it")
+    func aClaimedChordDisarmsTheNewDefault() {
+        var settings = KeyboardSettings.default
+        settings.setShortcut(.special(.upArrow, command: true, control: true), for: .firstPage)
+
+        #expect(settings.shortcut(for: .firstPage) == .special(.upArrow, command: true, control: true))
+        #expect(settings.shortcut(for: .showPreviousWorkspace) == nil)
+    }
+
+    @Test("Standing a default down leaves every other default alone")
+    func disarmingOneDefaultSparesTheRest() {
+        var settings = KeyboardSettings.default
+        settings.setShortcut(.special(.upArrow, command: true, control: true), for: .firstPage)
+
+        #expect(settings.shortcut(for: .showNextWorkspace) == .special(.downArrow, command: true, control: true))
+        #expect(settings.shortcut(for: .toggleWorkspaceRail) == .character("0", command: true, option: true))
+    }
+
+    @Test("Releasing the conflicting chord re-arms the default on its own")
+    func releasingTheClaimRestoresTheDefault() {
+        var settings = KeyboardSettings.default
+        settings.setShortcut(.special(.upArrow, command: true, control: true), for: .firstPage)
+        #expect(settings.shortcut(for: .showPreviousWorkspace) == nil)
+
+        settings.resetToDefault(for: .firstPage)
+        #expect(settings.shortcut(for: .showPreviousWorkspace) == .special(.upArrow, command: true, control: true))
+    }
+
+    @Test("Standing a default down never counts as the user customizing it")
+    func yieldingDoesNotMarkTheActionCustomized() {
+        var settings = KeyboardSettings.default
+        settings.setShortcut(.special(.upArrow, command: true, control: true), for: .firstPage)
+
+        #expect(!settings.isCustomized(.showPreviousWorkspace))
+        #expect(settings.sanitized().shortcuts[ShortcutAction.showPreviousWorkspace.rawValue] == nil)
+    }
+
+    @Test("An untouched settings file keeps every default")
+    func defaultsSurviveSanitizationUntouched() {
+        let sanitized = KeyboardSettings.default.sanitized()
+        for (action, key) in KeyboardSettings.defaultShortcuts {
+            #expect(sanitized.shortcut(for: action) == key)
+        }
+    }
+}
+
 @Suite("Legacy migration")
 struct KeyboardSettingsMigrationTests {
     private func decode(_ json: String) throws -> KeyboardSettings {

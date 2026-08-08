@@ -61,3 +61,28 @@ struct GeneralSettingsObjectIconsTests {
         #expect(decoded.showObjectComments == true)
     }
 }
+
+@Suite("GeneralSettings.showWorkspaceRail")
+struct GeneralSettingsWorkspaceRailTests {
+    @Test("Defaults to on")
+    func defaultsOn() {
+        #expect(GeneralSettings.default.showWorkspaceRail)
+        #expect(GeneralSettings().showWorkspaceRail)
+    }
+
+    @Test("Settings saved before the rail existed keep it on")
+    func decodesMissingKeyAsOn() throws {
+        let json = Data(#"{"startupBehavior":"showWelcome"}"#.utf8)
+        let decoded = try JSONDecoder().decode(GeneralSettings.self, from: json)
+        #expect(decoded.showWorkspaceRail)
+    }
+
+    @Test("Round-trips when turned off")
+    func roundTripsDisabled() throws {
+        var settings = GeneralSettings()
+        settings.showWorkspaceRail = false
+        let data = try JSONEncoder().encode(settings)
+        let decoded = try JSONDecoder().decode(GeneralSettings.self, from: data)
+        #expect(!decoded.showWorkspaceRail)
+    }
+}

@@ -216,7 +216,7 @@ internal struct FavoritesTabView: View {
                 presentTeamLibraryInfo(String(localized: "You have no saved queries to publish."))
                 return
             }
-            guard confirmPublishSavedQueries(count: favorites.count) else { return }
+            guard await confirmPublishSavedQueries(count: favorites.count) else { return }
             do {
                 _ = try await TeamLibrarySyncCoordinator.shared.publish(connections: [], favorites: favorites, folders: folders)
                 presentTeamLibraryInfo(String(format: String(localized: "Published %d saved queries to your team."), favorites.count))
@@ -226,23 +226,24 @@ internal struct FavoritesTabView: View {
         }
     }
 
-    private func confirmPublishSavedQueries(count: Int) -> Bool {
-        let alert = NSAlert()
-        alert.messageText = String(localized: "Publish saved queries to your team?")
-        alert.informativeText = String(
-            format: String(localized: "Your team will see the names and SQL of %d saved queries. This replaces what you previously published."),
-            count
+    private func confirmPublishSavedQueries(count: Int) async -> Bool {
+        await AlertHelper.confirmDestructive(
+            title: String(localized: "Publish saved queries to your team?"),
+            message: String(
+                format: String(localized: "Your team will see the names and SQL of %d saved queries. This replaces what you previously published."),
+                count
+            ),
+            confirmButton: String(localized: "Publish"),
+            window: nil
         )
-        alert.addButton(withTitle: String(localized: "Publish"))
-        alert.addButton(withTitle: String(localized: "Cancel"))
-        return alert.runModal() == .alertFirstButtonReturn
     }
 
     private func presentTeamLibraryInfo(_ message: String) {
-        let alert = NSAlert()
-        alert.messageText = String(localized: "Team Library")
-        alert.informativeText = message
-        alert.runModal()
+        AlertHelper.showInfoSheet(
+            title: String(localized: "Team Library"),
+            message: message,
+            window: nil
+        )
     }
 
     private func favoritesList(

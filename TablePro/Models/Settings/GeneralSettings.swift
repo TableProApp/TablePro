@@ -71,6 +71,8 @@ struct GeneralSettings: Codable, Equatable {
 
     /// Whether sidebar rows show a type icon before the object name
     var showObjectIcons: Bool
+    /// Whether the window shows the workspace rail listing every open connection and database
+    var showWorkspaceRail: Bool
 
     static let `default` = GeneralSettings(
         startupBehavior: .reopenLast,
@@ -80,7 +82,8 @@ struct GeneralSettings: Codable, Equatable {
         shareAnalytics: true,
         showRecentTables: false,
         showObjectComments: true,
-        showObjectIcons: true
+        showObjectIcons: true,
+        showWorkspaceRail: true
     )
 
     init(
@@ -91,7 +94,8 @@ struct GeneralSettings: Codable, Equatable {
         shareAnalytics: Bool = true,
         showRecentTables: Bool = false,
         showObjectComments: Bool = true,
-        showObjectIcons: Bool = true
+        showObjectIcons: Bool = true,
+        showWorkspaceRail: Bool = true
     ) {
         self.startupBehavior = startupBehavior
         self.language = language
@@ -101,6 +105,7 @@ struct GeneralSettings: Codable, Equatable {
         self.showRecentTables = showRecentTables
         self.showObjectComments = showObjectComments
         self.showObjectIcons = showObjectIcons
+        self.showWorkspaceRail = showWorkspaceRail
     }
 
     init(from decoder: Decoder) throws {
@@ -113,5 +118,6 @@ struct GeneralSettings: Codable, Equatable {
         showRecentTables = try container.decodeIfPresent(Bool.self, forKey: .showRecentTables) ?? false
         showObjectComments = try container.decodeIfPresent(Bool.self, forKey: .showObjectComments) ?? true
         showObjectIcons = try container.decodeIfPresent(Bool.self, forKey: .showObjectIcons) ?? true
+        showWorkspaceRail = try container.decodeIfPresent(Bool.self, forKey: .showWorkspaceRail) ?? true
     }
 }

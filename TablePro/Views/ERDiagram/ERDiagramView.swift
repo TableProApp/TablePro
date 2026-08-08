@@ -50,13 +50,9 @@ struct ERDiagramView: View {
                     ERDiagramCanvasContainer(viewModel: viewModel) { diagramContent }
                 }
                 ERDiagramToolbar(viewModel: viewModel, onExport: exportDiagram)
-                .onKeyPress(characters: .init(charactersIn: "c"), phases: .down) { keyPress in
-                    guard keyPress.modifiers.contains(.command) else { return .ignored }
-                    copyDiagramToClipboard()
-                    return .handled
-                }
             }
         }
+        .onCopyCommand { copyDiagramItemProviders() }
         .task { await viewModel.loadDiagram() }
     }
 
@@ -250,12 +246,13 @@ struct ERDiagramView: View {
         .background(Color(nsColor: .controlBackgroundColor))
     }
 
-    private func copyDiagramToClipboard() {
+    /// Feeds the standard Edit > Copy command, so the diagram follows whatever shortcut the
+    /// user has bound instead of a hardcoded Cmd+C on the toolbar.
+    private func copyDiagramItemProviders() -> [NSItemProvider] {
         let renderer = ImageRenderer(content: makeExportView())
         renderer.scale = 2.0
-        guard let image = renderer.nsImage else { return }
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.writeObjects([image])
+        guard let image = renderer.nsImage else { return [] }
+        return [NSItemProvider(object: image)]
     }
 
     private func exportDiagram() {

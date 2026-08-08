@@ -13,6 +13,9 @@ final class AppSettingsManager {
         didSet {
             general.language.apply()
             storage.saveGeneral(general)
+            if oldValue.showWorkspaceRail != general.showWorkspaceRail {
+                appEvents.workspaceRailVisibilityChanged.send(())
+            }
             syncTracker.markDirty(.settings, id: "general")
         }
     }

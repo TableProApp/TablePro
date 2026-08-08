@@ -165,7 +165,10 @@ class DataGridRowView: NSTableRowView {
         menu.addItem(navInNewTabItem)
     }
 
-    override func menu(for event: NSEvent) -> NSMenu? {
+    /// Deliberately not `menu(for:)`. The table view owns context-menu handling because it
+    /// is the only level that can re-target the selection to the clicked row first; a row
+    /// view answering `menuForEvent:` would swallow the event and act on the old selection.
+    func contextMenu(for event: NSEvent) -> NSMenu? {
         guard let coordinator = coordinator,
               let tableView = coordinator.tableView else { return nil }
 

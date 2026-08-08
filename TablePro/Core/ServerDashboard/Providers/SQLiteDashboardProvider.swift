@@ -79,13 +79,6 @@ private extension SQLiteDashboardProvider {
     }
 
     func formatBytes(_ bytes: Int) -> String {
-        if bytes >= 1_073_741_824 {
-            return String(format: "%.1f GB", Double(bytes) / 1_073_741_824)
-        } else if bytes >= 1_048_576 {
-            return String(format: "%.1f MB", Double(bytes) / 1_048_576)
-        } else if bytes >= 1_024 {
-            return String(format: "%.1f KB", Double(bytes) / 1_024)
-        }
-        return "\(bytes) B"
+        ByteSizeFormatting.string(bytes: bytes)
     }
 }

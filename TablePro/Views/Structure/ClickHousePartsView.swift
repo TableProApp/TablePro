@@ -231,15 +231,6 @@ struct ClickHousePartsView: View {
     }
 
     private func formatBytes(_ bytes: UInt64) -> String {
-        switch bytes {
-        case 0..<1_024:
-            return "\(bytes) B"
-        case 1_024..<1_048_576:
-            return String(format: "%.0f KB", Double(bytes) / 1_024)
-        case 1_048_576..<1_073_741_824:
-            return String(format: "%.1f MB", Double(bytes) / 1_048_576)
-        default:
-            return String(format: "%.2f GB", Double(bytes) / 1_073_741_824)
-        }
+        ByteSizeFormatting.string(bytes: bytes)
     }
 }

@@ -94,7 +94,7 @@ internal final class TabRouter {
         guard let connection = ConnectionStorage.shared.loadConnections().first(where: { $0.id == id }) else {
             throw TabRouterError.connectionNotFound(id)
         }
-        if let existing = WindowLifecycleMonitor.shared.findWindow(for: id) {
+        if let existing = WindowLifecycleMonitor.shared.mostRecentWindow(for: id) {
             existing.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
             try await DatabaseManager.shared.ensureConnected(connection)
@@ -376,8 +376,7 @@ internal final class TabRouter {
     // MARK: - Helpers
 
     internal func bringConnectionWindowToFront(_ connectionId: UUID) {
-        let windows = WindowLifecycleMonitor.shared.windows(for: connectionId)
-        if let window = windows.first {
+        if let window = WindowLifecycleMonitor.shared.mostRecentWindow(for: connectionId) {
             window.makeKeyAndOrderFront(nil)
         } else {
             NSApp.windows.first { AppLaunchCoordinator.isMainWindow($0) && $0.isVisible }?.makeKeyAndOrderFront(nil)

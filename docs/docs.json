@@ -141,6 +141,7 @@
                 "group": "Workflow",
                 "pages": [
                   "features/tabs",
+                  "features/workspace-rail",
                   "features/quick-switcher",
                   "features/query-history",
                   "features/favorites",

@@ -570,19 +570,19 @@ final class KeyHandlingTableView: NSTableView {
         let clickedRow = row(at: point)
         let clickedColumn = column(at: point)
 
-        if clickedRow >= 0, let rowView = rowView(atRow: clickedRow, makeIfNecessary: false) {
+        if clickedRow >= 0, let rowView = rowView(atRow: clickedRow, makeIfNecessary: false) as? DataGridRowView {
             if let schema = coordinator?.identitySchema,
                clickedColumn >= 0,
                let dataColumn = DataGridView.dataColumnIndex(for: clickedColumn, in: self, schema: schema),
                let controller = gridSelection,
                !controller.isEmpty,
                controller.selection.contains(row: clickedRow, column: dataColumn) {
-                return rowView.menu(for: event)
+                return rowView.contextMenu(for: event)
             }
             if !selectedRowIndexes.contains(clickedRow) {
                 selectRowIndexes(IndexSet(integer: clickedRow), byExtendingSelection: false)
             }
-            return rowView.menu(for: event)
+            return rowView.contextMenu(for: event)
         }
 
         if let menu = coordinator?.delegate?.dataGridEmptySpaceMenu() {

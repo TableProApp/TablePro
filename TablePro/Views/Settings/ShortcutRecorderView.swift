@@ -37,7 +37,16 @@ final class ShortcutRecorderNSView: NSView {
         super.init(frame: frameRect)
         wantsLayer = true
         layer?.cornerRadius = 6
+        focusRingType = .exterior
+        setAccessibilityRole(.button)
+        setAccessibilityLabel(String(localized: "Record Shortcut"))
     }
+
+    override func drawFocusRingMask() {
+        NSBezierPath(roundedRect: bounds, xRadius: 6, yRadius: 6).fill()
+    }
+
+    override var focusRingMaskBounds: NSRect { bounds }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) {
@@ -48,10 +57,12 @@ final class ShortcutRecorderNSView: NSView {
 
     override var acceptsFirstResponder: Bool { true }
 
+    /// Focus alone does not start recording. Full Keyboard Access moves focus with Tab, and
+    /// arming on focus swallowed that Tab and trapped the user in this field. Recording
+    /// starts on a deliberate click, Space, Return, or an accessibility press.
     override func becomeFirstResponder() -> Bool {
         let result = super.becomeFirstResponder()
         if result {
-            isRecording = true
             activeModifiers = []
         }
         return result
@@ -69,15 +80,24 @@ final class ShortcutRecorderNSView: NSView {
     // MARK: - Mouse Handling
 
     override func mouseDown(with event: NSEvent) {
-        if !isRecording {
-            window?.makeFirstResponder(self)
-        }
+        window?.makeFirstResponder(self)
+        isRecording = true
     }
 
     // MARK: - Keyboard Handling
 
     override func keyDown(with event: NSEvent) {
-        guard isRecording else { return }
+        guard isRecording else {
+            let isActivation = event.keyCode == KeyCode.space.rawValue
+                || event.keyCode == KeyCode.return.rawValue
+            guard isActivation else {
+                super.keyDown(with: event)
+                return
+            }
+            isRecording = true
+            activeModifiers = []
+            return
+        }
 
         let isBareKey = !event.modifierFlags.contains(.command) && !event.modifierFlags.contains(.control)
 
@@ -198,6 +218,7 @@ final class ShortcutRecorderNSView: NSView {
 
     override func accessibilityPerformPress() -> Bool {
         window?.makeFirstResponder(self)
+        isRecording = true
         return true
     }
 

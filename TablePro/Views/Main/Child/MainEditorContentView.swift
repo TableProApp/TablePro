@@ -340,7 +340,12 @@ struct MainEditorContentView: View {
         @Bindable var bindableCoordinator = coordinator
         let claimFocus = coordinator.tabManager.pendingFocusTabId == tab.id
         QuerySplitView(
-            isBottomCollapsed: tab.display.isResultsCollapsed,
+            isBottomCollapsed: Binding(
+                get: { tab.display.isResultsCollapsed },
+                set: { collapsed in
+                    _ = coordinator.tabManager.mutate(tabId: tab.id) { $0.display.isResultsCollapsed = collapsed }
+                }
+            ),
             autosaveName: "QuerySplit-\(connectionId)-\(tab.id)",
             topContent: {
                 VStack(spacing: 0) {

@@ -274,19 +274,22 @@ struct SidebarView: View {
 
     @ViewBuilder
     private var flatContent: some View {
-        switch schemaService.state(for: connectionId) {
+        switch SidebarObjectListPresentation.resolve(
+            state: schemaService.state(for: connectionId),
+            hasActiveFilter: !viewModel.filterQuery.isEmpty,
+            hasAnyMatch: hasAnyMatch,
+            hasRoutines: !routines.isEmpty
+        ) {
         case .loading:
             loadingState
         case .failed(let message):
             errorState(message: message)
-        case .loaded where !viewModel.filterQuery.isEmpty && !hasAnyMatch:
+        case .noMatch:
             noMatchState
-        case .loaded(let allTables) where allTables.isEmpty && routines.isEmpty:
+        case .empty:
             emptyState
-        case .loaded:
+        case .list:
             tableList
-        case .idle:
-            emptyState
         }
     }
 

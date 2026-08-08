@@ -129,6 +129,9 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
     case showSidebarFavorites
     case showPreviousTab
     case showNextTab
+    case toggleWorkspaceRail
+    case showPreviousWorkspace
+    case showNextWorkspace
 
     var id: String { rawValue }
 
@@ -149,7 +152,8 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
              .reopenClosedTab, .quickSwitcher, .toggleTableBrowser,
              .toggleInspector, .toggleFilters, .toggleHistory, .toggleResults, .previousResultTab,
              .nextResultTab, .pinResultTab, .closeResultTab, .focusSidebarSearch,
-             .showSidebarTables, .showSidebarFavorites, .showPreviousTab, .showNextTab:
+             .showSidebarTables, .showSidebarFavorites, .showPreviousTab, .showNextTab,
+             .toggleWorkspaceRail, .showPreviousWorkspace, .showNextWorkspace:
             return .navigation
         }
     }
@@ -241,6 +245,9 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
         case .showSidebarFavorites: return String(localized: "Show Favorites Sidebar")
         case .showPreviousTab: return String(localized: "Show Previous Tab")
         case .showNextTab: return String(localized: "Show Next Tab")
+        case .toggleWorkspaceRail: return String(localized: "Toggle Workspace Rail")
+        case .showPreviousWorkspace: return String(localized: "Show Previous Workspace")
+        case .showNextWorkspace: return String(localized: "Show Next Workspace")
         case .aiExplainQuery: return String(localized: "Explain with AI")
         case .aiOptimizeQuery: return String(localized: "Optimize with AI")
         }
@@ -356,12 +363,34 @@ struct KeyboardSettings: Codable, Equatable {
     }
 
     /// Get the effective shortcut for an action (user override or default).
-    /// Returns nil if the user explicitly cleared the shortcut.
+    /// Returns nil if the user explicitly cleared the shortcut, or if a chord the user assigned
+    /// by hand has already claimed this action's default.
+    ///
+    /// The yield is resolved here rather than written into `shortcuts`, which means only what the
+    /// user chose. Storing it would make the stand-down permanent: rebinding the conflicting chord
+    /// would leave the default cleared forever, Settings would show the action as customized, and
+    /// its Reset arrow would appear to work until the next launch re-applied the clear.
     func shortcut(for action: ShortcutAction) -> BoundKey? {
         if let override = shortcuts[action.rawValue] {
             return override
         }
-        return Self.defaultShortcuts[action]
+        guard let fallback = Self.defaultShortcuts[action] else { return nil }
+        guard findOverrideClaimant(of: fallback, excluding: action) == nil else { return nil }
+        return fallback
+    }
+
+    /// The action whose user-assigned chord stands this default down, if any. Only overrides
+    /// claim: two defaults cannot collide, because `DefaultShortcutHygieneTests` forbids it.
+    private func findOverrideClaimant(of key: BoundKey, excluding action: ShortcutAction) -> ShortcutAction? {
+        guard !key.isCleared else { return nil }
+        for (rawValue, override) in shortcuts {
+            guard let other = ShortcutAction(rawValue: rawValue), other != action, !override.isCleared else {
+                continue
+            }
+            guard override == key, other.context.overlaps(action.context) else { continue }
+            return other
+        }
+        return nil
     }
 
     func isCustomized(_ action: ShortcutAction) -> Bool {
@@ -499,7 +528,10 @@ struct KeyboardSettings: Codable, Equatable {
         .showSidebarTables: .character("1", command: true, option: true),
         .showSidebarFavorites: .character("2", command: true, option: true),
         .showPreviousTab: .character("[", command: true, shift: true),
-        .showNextTab: .character("]", command: true, shift: true)
+        .showNextTab: .character("]", command: true, shift: true),
+        .toggleWorkspaceRail: .character("0", command: true, option: true),
+        .showPreviousWorkspace: .special(.upArrow, command: true, control: true),
+        .showNextWorkspace: .special(.downArrow, command: true, control: true)
     ]
 }
 
