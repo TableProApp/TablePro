@@ -43,6 +43,7 @@ struct RoutineRowView: View {
                 .sidebarTint(Color.accentColor)
                 .frame(width: 16)
         }
+        .sidebarRowIcon(visible: AppSettingsManager.shared.general.showObjectIcons)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(RoutineRowLogic.accessibilityLabel(for: routine))
         .help(RoutineRowLogic.tooltip(for: routine) ?? routine.name)

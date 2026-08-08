@@ -69,6 +69,9 @@ struct GeneralSettings: Codable, Equatable {
     /// Whether to show database object comments in the sidebar and data grid headers
     var showObjectComments: Bool
 
+    /// Whether sidebar rows show a type icon before the object name
+    var showObjectIcons: Bool
+
     static let `default` = GeneralSettings(
         startupBehavior: .reopenLast,
         language: .system,
@@ -76,7 +79,8 @@ struct GeneralSettings: Codable, Equatable {
         queryTimeoutSeconds: 60,
         shareAnalytics: true,
         showRecentTables: false,
-        showObjectComments: true
+        showObjectComments: true,
+        showObjectIcons: true
     )
 
     init(
@@ -86,7 +90,8 @@ struct GeneralSettings: Codable, Equatable {
         queryTimeoutSeconds: Int = 60,
         shareAnalytics: Bool = true,
         showRecentTables: Bool = false,
-        showObjectComments: Bool = true
+        showObjectComments: Bool = true,
+        showObjectIcons: Bool = true
     ) {
         self.startupBehavior = startupBehavior
         self.language = language
@@ -95,6 +100,7 @@ struct GeneralSettings: Codable, Equatable {
         self.shareAnalytics = shareAnalytics
         self.showRecentTables = showRecentTables
         self.showObjectComments = showObjectComments
+        self.showObjectIcons = showObjectIcons
     }
 
     init(from decoder: Decoder) throws {
@@ -106,5 +112,6 @@ struct GeneralSettings: Codable, Equatable {
         shareAnalytics = try container.decodeIfPresent(Bool.self, forKey: .shareAnalytics) ?? true
         showRecentTables = try container.decodeIfPresent(Bool.self, forKey: .showRecentTables) ?? false
         showObjectComments = try container.decodeIfPresent(Bool.self, forKey: .showObjectComments) ?? true
+        showObjectIcons = try container.decodeIfPresent(Bool.self, forKey: .showObjectIcons) ?? true
     }
 }

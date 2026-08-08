@@ -278,7 +278,9 @@ internal struct FavoritesTabView: View {
         .contextMenu(forSelectionType: FavoriteSelection.self) { selection in
             if let selected = selection.first {
                 contextMenu(for: selected)
+                Divider()
             }
+            SidebarViewOptionsMenu()
         } primaryAction: { selection in
             guard let selected = selection.first else { return }
             handlePrimaryAction(selected)
@@ -292,6 +294,7 @@ internal struct FavoritesTabView: View {
             Image(systemName: TableRowLogic.iconName(for: table.type))
                 .sidebarTint(Color.accentColor)
         }
+        .sidebarRowIcon(visible: AppSettingsManager.shared.general.showObjectIcons)
         .tag(FavoriteSelection.table(database: activeDatabase, schema: table.schema, name: table.name))
         .accessibilityLabel(
             TableRowLogic.accessibilityLabel(table: table, isPendingDelete: false, isPendingTruncate: false)
