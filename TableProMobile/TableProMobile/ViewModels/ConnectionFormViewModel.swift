@@ -37,6 +37,7 @@ final class ConnectionFormViewModel {
     var oracleConnectionType: OracleConnectionOptions.IdentifierMode = .service
     var oracleServiceName = ""
     var oracleSID = ""
+    var oracleRole: OracleConnectionOptions.Role = .normal
 
     // Organization
     var groupId: UUID?
@@ -92,6 +93,7 @@ final class ConnectionFormViewModel {
         oracleConnectionType = OracleConnectionOptions.identifierMode(from: conn.additionalFields)
         oracleServiceName = conn.additionalFields[OracleConnectionOptions.AdditionalFieldKey.serviceName] ?? ""
         oracleSID = conn.additionalFields[OracleConnectionOptions.AdditionalFieldKey.sid] ?? ""
+        oracleRole = OracleConnectionOptions.role(from: conn.additionalFields)
         sshEnabled = conn.sshEnabled
         groupId = conn.groupId
         tagId = conn.tagId
@@ -416,6 +418,7 @@ final class ConnectionFormViewModel {
                 oracleConnectionType.rawValue
             conn.additionalFields[OracleConnectionOptions.AdditionalFieldKey.serviceName] = oracleServiceName
             conn.additionalFields[OracleConnectionOptions.AdditionalFieldKey.sid] = oracleSID
+            conn.additionalFields[OracleConnectionOptions.AdditionalFieldKey.role] = oracleRole.rawValue
         }
         conn.safeModeLevel = safeModeLevel
         if sshEnabled {

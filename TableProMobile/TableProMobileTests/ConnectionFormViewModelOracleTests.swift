@@ -95,6 +95,27 @@ struct ConnectionFormViewModelOracleTests {
         #expect(secured.sslConfiguration?.mode == .verifyCa)
     }
 
+    @Test("Role defaults to Normal and hydrates from additionalFields")
+    func hydratesRole() {
+        let plain = ConnectionFormViewModel(editing: makeOracleConnection(additionalFields: [:]))
+        #expect(plain.oracleRole == .normal)
+
+        let admin = ConnectionFormViewModel(editing: makeOracleConnection(additionalFields: [
+            OracleConnectionOptions.AdditionalFieldKey.role: "sysdba"
+        ]))
+        #expect(admin.oracleRole == .sysdba)
+    }
+
+    @Test("Saving writes the role under the key the Mac app reads")
+    func writesRole() {
+        let viewModel = ConnectionFormViewModel()
+        viewModel.type = .oracle
+        viewModel.host = "db.example.com"
+        viewModel.oracleRole = .sysoper
+
+        #expect(viewModel.buildConnection().additionalFields["oracleRole"] == "sysoper")
+    }
+
     @Test("An Oracle connection round-trips through the form unchanged")
     func roundTripsThroughTheForm() {
         let original = makeOracleConnection(

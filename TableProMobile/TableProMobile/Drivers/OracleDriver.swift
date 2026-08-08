@@ -42,6 +42,7 @@ final class OracleDriver: DatabaseDriver, @unchecked Sendable {
             identifierMode: OracleConnectionOptions.identifierMode(from: connection.additionalFields),
             serviceName: connection.additionalFields[OracleConnectionOptions.AdditionalFieldKey.serviceName] ?? "",
             sid: connection.additionalFields[OracleConnectionOptions.AdditionalFieldKey.sid] ?? "",
+            role: OracleConnectionOptions.role(from: connection.additionalFields),
             tls: ssl.oracleTLSDescription
         ))
         host = connection.host
