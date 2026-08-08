@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Oracle connections now turn on TCP keepalive, so a session left idle is less likely to be dropped by a NAT or firewall. It was only ever enabled on a code path that Macs and iPhones do not take. (#2038)
 - An open tab now keeps running against the database it was opened on, so changing the database in the sidebar no longer breaks it with a "table doesn't exist" error. (#2026)
 - Saving a table structure change no longer moves the sidebar and toolbar to that tab's database. (#2026)
 - Row edits, fetch all rows, and multi-statement scripts now write to the database the tab is bound to, not whichever database another tab last used. (#2026)

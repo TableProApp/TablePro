@@ -1,5 +1,5 @@
 {
-  "originHash" : "d2a64118b7173c5448dbdddd34fc090bd8c35bf8ef198e84a0d2a409f05bd756",
+  "originHash" : "a7ea40e42fc733b91e578fa5c5641697f677c5a7f07b2274a3865fc661698ab3",
   "pins" : [
     {
       "identity" : "bigint",
@@ -24,7 +24,7 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/TableProApp/oracle-nio",
       "state" : {
-        "revision" : "23c77812ed90259243a761d7fdea19db47d3ca41"
+        "revision" : "a5b3b355f24c807ce481f0cd68f2e9b0f5ec64e5"
       }
     },
     {
