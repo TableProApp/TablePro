@@ -1,25 +1,39 @@
 import Foundation
 import TableProModels
+import TableProOracleCore
 
 struct DriverSSLConfiguration: Equatable, Sendable {
     let mode: SSLConfiguration.SSLMode
     let caCertificatePath: String?
+    let clientCertificatePath: String?
+    let clientKeyPath: String?
 
     static let disabled = DriverSSLConfiguration(mode: .disable)
 
-    init(mode: SSLConfiguration.SSLMode, caCertificatePath: String? = nil) {
+    init(
+        mode: SSLConfiguration.SSLMode,
+        caCertificatePath: String? = nil,
+        clientCertificatePath: String? = nil,
+        clientKeyPath: String? = nil
+    ) {
         self.mode = mode
         self.caCertificatePath = caCertificatePath
+        self.clientCertificatePath = clientCertificatePath
+        self.clientKeyPath = clientKeyPath
     }
 
     init(sslEnabled: Bool, configuration: SSLConfiguration?) {
         guard let configuration else {
             mode = sslEnabled ? .require : .disable
             caCertificatePath = nil
+            clientCertificatePath = nil
+            clientKeyPath = nil
             return
         }
         mode = configuration.mode
         caCertificatePath = configuration.caCertificatePath
+        clientCertificatePath = configuration.clientCertificatePath
+        clientKeyPath = configuration.clientKeyPath
     }
 
     var isEnabled: Bool { mode != .disable }
@@ -39,6 +53,24 @@ struct DriverSSLConfiguration: Equatable, Sendable {
         switch mode {
         case .disable: return "off"
         case .require, .verifyCa, .verifyFull: return "require"
+        }
+    }
+
+    var oracleTLSDescription: OracleTLSDescription {
+        OracleTLSDescription(
+            mode: oracleMode,
+            caCertificatePath: caCertificatePath,
+            clientCertificatePath: clientCertificatePath,
+            clientKeyPath: clientKeyPath
+        )
+    }
+
+    private var oracleMode: OracleTLSDescription.Mode {
+        switch mode {
+        case .disable: return .disabled
+        case .require: return .required
+        case .verifyCa: return .verifyCA
+        case .verifyFull: return .verifyIdentity
         }
     }
 

@@ -2,6 +2,7 @@ import Foundation
 import os
 import TableProDatabase
 import TableProModels
+import TableProOracleCore
 
 @MainActor
 @Observable
@@ -15,6 +16,7 @@ final class ConnectionFormViewModel {
         let success: Bool
         let message: String
         let recovery: String?
+        var suggestedOracleMode: OracleConnectionOptions.IdentifierMode?
     }
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "ConnectionFormViewModel")
@@ -31,6 +33,10 @@ final class ConnectionFormViewModel {
     var database = ""
     var sslEnabled = false
     var mssqlSSLMode: SSLConfiguration.SSLMode = .disable
+    var oracleSSLMode: SSLConfiguration.SSLMode = .disable
+    var oracleConnectionType: OracleConnectionOptions.IdentifierMode = .service
+    var oracleServiceName = ""
+    var oracleSID = ""
 
     // Organization
     var groupId: UUID?
@@ -82,6 +88,10 @@ final class ConnectionFormViewModel {
         // (MSSQLSSLMapping treats verify* as "require"). Matches what the driver actually does.
         let storedMode = conn.sslConfiguration?.mode ?? .disable
         mssqlSSLMode = (storedMode == .verifyCa || storedMode == .verifyFull) ? .require : storedMode
+        oracleSSLMode = storedMode
+        oracleConnectionType = OracleConnectionOptions.identifierMode(from: conn.additionalFields)
+        oracleServiceName = conn.additionalFields[OracleConnectionOptions.AdditionalFieldKey.serviceName] ?? ""
+        oracleSID = conn.additionalFields[OracleConnectionOptions.AdditionalFieldKey.sid] ?? ""
         sshEnabled = conn.sshEnabled
         groupId = conn.groupId
         tagId = conn.tagId
@@ -304,7 +314,12 @@ final class ConnectionFormViewModel {
                 sshEnabled: sshEnabled
             )
             let classified = ErrorClassifier.classify(error, context: context)
-            testResult = TestResult(success: false, message: classified.message, recovery: classified.recovery)
+            testResult = TestResult(
+                success: false,
+                message: classified.message,
+                recovery: classified.recovery,
+                suggestedOracleMode: classified.suggestedOracleMode
+            )
         }
     }
 
@@ -370,7 +385,15 @@ final class ConnectionFormViewModel {
         credentialError = nil
     }
 
-    private func buildConnection() -> DatabaseConnection {
+    private var effectiveSSLEnabled: Bool {
+        switch type {
+        case .mssql: return mssqlSSLMode != .disable
+        case .oracle: return oracleSSLMode != .disable
+        default: return sslEnabled
+        }
+    }
+
+    func buildConnection() -> DatabaseConnection {
         var conn = DatabaseConnection(
             id: existingConnection?.id ?? UUID(),
             name: name.isEmpty ? (selectedFileURL?.lastPathComponent ?? host) : name,
@@ -380,12 +403,19 @@ final class ConnectionFormViewModel {
             username: username,
             database: database,
             sshEnabled: sshEnabled,
-            sslEnabled: type == .mssql ? (mssqlSSLMode != .disable) : sslEnabled,
+            sslEnabled: effectiveSSLEnabled,
             groupId: groupId,
             tagIds: tagId.map { [$0] } ?? []
         )
         if type == .mssql {
             conn.sslConfiguration = SSLConfiguration(mode: mssqlSSLMode)
+        }
+        if type == .oracle {
+            conn.sslConfiguration = SSLConfiguration(mode: oracleSSLMode)
+            conn.additionalFields[OracleConnectionOptions.AdditionalFieldKey.connectionType] =
+                oracleConnectionType.rawValue
+            conn.additionalFields[OracleConnectionOptions.AdditionalFieldKey.serviceName] = oracleServiceName
+            conn.additionalFields[OracleConnectionOptions.AdditionalFieldKey.sid] = oracleSID
         }
         conn.safeModeLevel = safeModeLevel
         if sshEnabled {

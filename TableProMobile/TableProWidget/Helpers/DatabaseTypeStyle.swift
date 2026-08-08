@@ -47,6 +47,7 @@ enum DatabaseTypeStyle {
         case "MongoDB": return .green
         case "ClickHouse": return .yellow
         case "SQL Server": return .indigo
+        case "Oracle": return .red
         default: return .gray
         }
     }

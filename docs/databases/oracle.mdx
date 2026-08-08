@@ -11,9 +11,15 @@ Oracle 10g and earlier are not supported: they use the older O3LOGON handshake t
 
 Servers behind a RAC SCAN listener, shared server, or a load balancer are supported: TablePro follows the listener's redirect to the instance that serves the session. Servers that require Native Network Encryption (`SQLNET.ENCRYPTION_SERVER` or `SQLNET.CRYPTO_CHECKSUM_SERVER` set to REQUIRED) are also supported: TablePro offers AES encryption with a SHA crypto-checksum to every server and the server turns it on when required, the same as SQL Developer and DBeaver. There is no option to configure.
 
+## On iPhone and iPad
+
+TablePro Mobile connects to Oracle too. The driver is built into the app, so there is no plugin to install. Enter host, port, username, password, and either a service name or a SID, and pick an SSL mode. You can browse schemas, tables, columns, indexes, and foreign keys, run queries, and edit rows.
+
+Two things stay Mac-only: creating or altering tables and triggers, and certificate files. Certificates live on the device that created the connection and do not sync, so a connection set up on your Mac with a CA or client certificate reports that the file is missing when you open it on iPhone. Clear the certificate path and the verify modes fall back to the system trust store, which is all a publicly trusted server such as Oracle Autonomous Database needs.
+
 ## Install Plugin
 
-The Oracle driver is a downloadable plugin. When you select Oracle in the connection form, TablePro prompts you to install it. You can also install it manually:
+The Oracle driver is a downloadable plugin on macOS. When you select Oracle in the connection form, TablePro prompts you to install it. You can also install it manually:
 
 1. Open **Settings > Plugins > Browse**
 2. Find **Oracle Driver** and click **Install**

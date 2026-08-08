@@ -194,6 +194,13 @@ public final class OracleCoreConnection: @unchecked Sendable {
         }
     }
 
+    /// OracleNIO has no out-of-band cancel, so closing the channel is the only
+    /// way to abort an in-flight statement. The next query redials and restores
+    /// the session schema, which is the same recovery a query timeout uses.
+    public func cancelCurrentQuery() {
+        disconnect()
+    }
+
     public func applyQueryTimeout(_ seconds: Int) {
         state.withLock { $0.queryTimeoutSeconds = max(0, seconds) }
     }
