@@ -440,7 +440,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
 
     private func loadExternalSchemaNames(database: String) {
         guard let session = DatabaseManager.shared.session(for: connectionId),
-              DatabaseManager.shared.activeDatabaseName(for: session.connection) == database,
+              DatabaseManager.shared.browseDatabaseName(for: session.connection) == database,
               let driver = DatabaseManager.shared.driver(for: connectionId)
         else { return }
         let connectionId = connectionId
