@@ -28,6 +28,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Filtering a text column by a value that looks like a number, such as 68, now compares it as text. It used to compare as a number, which returned the wrong rows and stopped the database using the column's index. (#2029)
 - Typing NULL, TRUE, or FALSE into a filter on a text column now matches that text instead of turning into the SQL keyword, so those values can be filtered for. (#2029)
 - IS EMPTY on a number, date, or boolean column now checks only for NULL, instead of also comparing against an empty string, which some databases reject. (#2029)
+- AI chat with a Claude API key no longer fails with a 400 error on every message. The reasoning effort was sent in a field the API rejects. (#2031)
+- Picking Extra High reasoning effort, Haiku 4.5, or any Claude model newer than Opus 4.7 no longer fails the request. Each one sent thinking settings the API refuses. (#2031)
+- Claude replies now fill in the Reasoning block again instead of leaving it empty after a long pause. (#2031)
 
 ### Changed
 

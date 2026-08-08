@@ -48,6 +48,7 @@ struct AIProviderDescriptor: Sendable {
     let showsTelemetryToggle: Bool
     let defaultTelemetryEnabled: Bool
     let oauthFlowKind: OAuthFlowKind?
+    let effortLevelResolver: (@Sendable (String) -> [ReasoningEffort])?
     let makeProvider: @Sendable (AIProviderConfig, String?) -> ChatTransport
 
     var supportsReasoning: Bool { capabilities.contains(.reasoning) }
@@ -63,6 +64,9 @@ struct AIProviderDescriptor: Sendable {
 
     func supportedEffortLevels(forModelID id: String) -> [ReasoningEffort] {
         guard supportsReasoning else { return [] }
+        if let effortLevelResolver {
+            return effortLevelResolver(id)
+        }
         if let curated = curatedModel(forID: id), !curated.supportedEffortLevels.isEmpty {
             return curated.supportedEffortLevels
         }
@@ -79,6 +83,7 @@ struct AIProviderDescriptor: Sendable {
         showsTelemetryToggle: Bool = false,
         defaultTelemetryEnabled: Bool = false,
         oauthFlowKind: OAuthFlowKind? = nil,
+        effortLevelResolver: (@Sendable (String) -> [ReasoningEffort])? = nil,
         makeProvider: @escaping @Sendable (AIProviderConfig, String?) -> ChatTransport
     ) {
         self.typeID = typeID
@@ -90,6 +95,7 @@ struct AIProviderDescriptor: Sendable {
         self.showsTelemetryToggle = showsTelemetryToggle
         self.defaultTelemetryEnabled = defaultTelemetryEnabled
         self.oauthFlowKind = oauthFlowKind
+        self.effortLevelResolver = effortLevelResolver
         self.makeProvider = makeProvider
     }
 }

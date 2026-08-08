@@ -16,6 +16,7 @@ enum AIProviderRegistration {
             capabilities: [.chat, .models, .reasoning, .images, .endpointConfigurable, .maxOutputTokens, .modelListFetchable],
             symbolName: "brain",
             curatedModels: claudeCuratedModels,
+            effortLevelResolver: { AnthropicModelCapabilities.effortLevels(forModel: $0) },
             makeProvider: { config, apiKey in
                 AnthropicProvider(
                     endpoint: config.endpoint,
@@ -216,25 +217,23 @@ enum AIProviderRegistration {
     ]
 
     private static let claudeCuratedModels: [CuratedModel] = [
-        CuratedModel(
-            id: "claude-opus-4-7-20260101",
-            displayName: "Claude Opus 4.7",
-            supportedEffortLevels: [.low, .medium, .high, .xhigh],
-            defaultEffort: .medium
-        ),
-        CuratedModel(
-            id: "claude-sonnet-4-6-20251101",
-            displayName: "Claude Sonnet 4.6",
-            supportedEffortLevels: [.low, .medium, .high, .xhigh],
-            defaultEffort: .medium
-        ),
-        CuratedModel(
-            id: "claude-haiku-4-5-20251001",
-            displayName: "Claude Haiku 4.5",
-            supportedEffortLevels: [.low, .medium, .high],
-            defaultEffort: .low
-        )
+        claudeModel(id: "claude-opus-4-7", displayName: "Claude Opus 4.7", defaultEffort: .medium),
+        claudeModel(id: "claude-sonnet-4-6", displayName: "Claude Sonnet 4.6", defaultEffort: .medium),
+        claudeModel(id: "claude-haiku-4-5", displayName: "Claude Haiku 4.5", defaultEffort: .low)
     ]
+
+    private static func claudeModel(
+        id: String,
+        displayName: String,
+        defaultEffort: ReasoningEffort
+    ) -> CuratedModel {
+        CuratedModel(
+            id: id,
+            displayName: displayName,
+            supportedEffortLevels: AnthropicModelCapabilities.effortLevels(forModel: id),
+            defaultEffort: defaultEffort
+        )
+    }
 
     private static func iconForType(_ type: AIProviderType) -> String {
         type.symbolName

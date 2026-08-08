@@ -37,7 +37,13 @@ final class AnthropicProvider: ChatTransport {
     ) -> AsyncThrowingStream<ChatStreamEvent, Error> {
         SSEEventStream.make(
             session: session,
-            buildRequest: { [self] in try buildMessagesRequest(turns: turns, options: options) },
+            buildRequest: { [self] in
+                try buildMessagesRequest(
+                    turns: turns,
+                    options: options,
+                    effort: options.reasoningEffort ?? configuredEffort
+                )
+            },
             decodeLine: { Self.decodeStreamLine($0) },
             makeState: { AnthropicStreamState() },
             parse: { try Self.parseChunk($0, state: &$1) },
@@ -90,7 +96,12 @@ final class AnthropicProvider: ChatTransport {
         let testModel = model.isEmpty ? (Self.knownModels.first ?? "") : model
         let testTurn = ChatTurnWire(role: .user, blocks: [.text("Hi")])
         let testOptions = ChatTransportOptions(model: testModel, maxOutputTokens: 1)
-        let request = try buildMessagesRequest(turns: [testTurn], options: testOptions, stream: false)
+        let request = try buildMessagesRequest(
+            turns: [testTurn],
+            options: testOptions,
+            stream: false,
+            effort: nil
+        )
 
         let (data, response) = try await session.data(for: request)
 
@@ -115,7 +126,8 @@ final class AnthropicProvider: ChatTransport {
     private func buildMessagesRequest(
         turns: [ChatTurnWire],
         options: ChatTransportOptions,
-        stream: Bool = true
+        stream: Bool = true,
+        effort: ReasoningEffort?
     ) throws -> URLRequest {
         guard let url = URL(string: "\(endpoint)/v1/messages") else {
             throw AIProviderError.invalidEndpoint(endpoint)
@@ -127,14 +139,32 @@ final class AnthropicProvider: ChatTransport {
         request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
         request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
 
-        let effort = options.reasoningEffort ?? configuredEffort
         let resolvedMaxTokens = options.maxOutputTokens
             ?? effort?.autoScaledMaxOutputTokens
             ?? maxOutputTokens
 
+        let body = try Self.makeRequestBody(
+            turns: turns,
+            options: options,
+            effort: effort,
+            maxTokens: resolvedMaxTokens,
+            stream: stream
+        )
+
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        return request
+    }
+
+    static func makeRequestBody(
+        turns: [ChatTurnWire],
+        options: ChatTransportOptions,
+        effort: ReasoningEffort?,
+        maxTokens: Int,
+        stream: Bool
+    ) throws -> [String: Any] {
         var body: [String: Any] = [
             "model": options.model,
-            "max_tokens": resolvedMaxTokens,
+            "max_tokens": maxTokens,
             "stream": stream
         ]
 
@@ -143,44 +173,43 @@ final class AnthropicProvider: ChatTransport {
         }
 
         if let effort {
-            body["thinking"] = thinkingBody(for: effort, model: options.model, maxTokens: resolvedMaxTokens)
+            let capabilities = AnthropicModelCapabilities.resolve(model: options.model)
+
+            if let thinking = thinkingBody(for: effort, capabilities: capabilities, maxTokens: maxTokens) {
+                body["thinking"] = thinking
+            }
+
+            if capabilities.sendsEffortParameter,
+               let wireEffort = capabilities.clampedEffort(effort)?.anthropicEffortValue {
+                body["output_config"] = ["effort": wireEffort]
+            }
         }
 
         if !options.tools.isEmpty {
             body["tools"] = try options.tools.map(Self.encodeToolSpec(_:))
         }
 
-        let apiMessages = try turns
+        body["messages"] = try turns
             .filter { $0.role != .system }
             .compactMap { try Self.encodeTurn($0) }
-        body["messages"] = apiMessages
 
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
-        return request
+        return body
     }
 
-    private func thinkingBody(for effort: ReasoningEffort, model: String, maxTokens: Int) -> [String: Any] {
-        if Self.modelSupportsAdaptiveThinking(model) {
-            var thinking: [String: Any] = ["type": "adaptive"]
-            if let adaptiveEffort = effort.anthropicAdaptiveEffort {
-                thinking["effort"] = adaptiveEffort
-            }
-            return thinking
+    private static func thinkingBody(
+        for effort: ReasoningEffort,
+        capabilities: AnthropicModelCapabilities,
+        maxTokens: Int
+    ) -> [String: Any]? {
+        switch capabilities.thinkingMode {
+        case .adaptive:
+            return ["type": "adaptive", "display": "summarized"]
+        case .budgeted:
+            let ceiling = maxTokens - 1
+            guard ceiling >= AnthropicModelCapabilities.minimumThinkingBudgetTokens else { return nil }
+            let budget = min(effort.anthropicBudgetTokens, ceiling)
+            return ["type": "enabled", "budget_tokens": budget]
         }
-        let budget = min(effort.anthropicBudgetTokens ?? 4_096, max(maxTokens - 1, 1_024))
-        return [
-            "type": "enabled",
-            "budget_tokens": budget
-        ]
-    }
-
-    private static func modelSupportsAdaptiveThinking(_ model: String) -> Bool {
-        let lowered = model.lowercased()
-        if lowered.contains("opus-4-7") || lowered.contains("opus-4.7") { return true }
-        if lowered.contains("opus-4-6") || lowered.contains("opus-4.6") { return true }
-        if lowered.contains("sonnet-4-6") || lowered.contains("sonnet-4.6") { return true }
-        if lowered.contains("haiku-4-5") || lowered.contains("haiku-4.5") { return true }
-        return false
     }
 
     static func decodeStreamLine(_ line: String) -> [String: Any]? {
