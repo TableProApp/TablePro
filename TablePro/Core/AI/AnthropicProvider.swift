@@ -51,7 +51,7 @@ final class AnthropicProvider: ChatTransport {
         )
     }
 
-    func fetchAvailableModels() async throws -> [String] {
+    func fetchAvailableModels() async throws -> [AIModelInfo] {
         guard let url = URL(string: "\(endpoint)/v1/models") else {
             throw AIProviderError.invalidEndpoint(endpoint)
         }
@@ -68,7 +68,7 @@ final class AnthropicProvider: ChatTransport {
             (data, response) = try await session.data(for: request)
         } catch {
             Self.logger.warning("Anthropic model fetch failed; using known models: \(error.localizedDescription, privacy: .public)")
-            return Self.knownModels
+            return Self.offlineModels
         }
 
         guard let httpResponse = response as? HTTPURLResponse,
@@ -77,20 +77,78 @@ final class AnthropicProvider: ChatTransport {
               let models = json["data"] as? [[String: Any]]
         else {
             Self.logger.warning("Anthropic model fetch returned unexpected response; using known models")
-            return Self.knownModels
+            return Self.offlineModels
         }
 
-        let modelIds = models.compactMap { $0["id"] as? String }
-        return modelIds.isEmpty ? Self.knownModels : modelIds
+        let fetched = models.compactMap(Self.decodeModel(_:))
+        return fetched.isEmpty ? Self.offlineModels : fetched
     }
 
-    private static let knownModels = [
-        "claude-opus-4-7-20260101",
-        "claude-sonnet-4-6-20251101",
-        "claude-haiku-4-5-20251001",
-        "claude-sonnet-4-5-20250929",
-        "claude-opus-4-5-20250929"
-    ]
+    static func decodeModel(_ json: [String: Any]) -> AIModelInfo? {
+        guard let id = json["id"] as? String else { return nil }
+        let capabilities = json["capabilities"] as? [String: Any]
+        return AIModelInfo(
+            id: id,
+            displayName: json["display_name"] as? String,
+            contextWindow: json["max_input_tokens"] as? Int,
+            maxOutputTokens: json["max_tokens"] as? Int,
+            modalities: [.text, .image],
+            reasoning: decodeReasoning(capabilities: capabilities, modelID: id)
+        )
+    }
+
+    private static func decodeReasoning(capabilities: [String: Any]?, modelID: String) -> AIReasoningSupport? {
+        guard let capabilities else { return nil }
+
+        let thinking = capabilities["thinking"] as? [String: Any]
+        let types = thinking?["types"] as? [String: Any]
+        let adaptiveSupported = supportFlag(types?["adaptive"])
+        let enabledSupported = supportFlag(types?["enabled"])
+
+        let effort = capabilities["effort"] as? [String: Any]
+        let effortSupported = supportFlag(effort) ?? false
+        let levels = effortSupported ? ReasoningEffort.allCases.filter { level in
+            supportFlag(effort?[level.anthropicEffortValue]) ?? false
+        } : []
+
+        let mode: AIReasoningMode
+        if adaptiveSupported == true {
+            mode = .adaptive
+        } else if enabledSupported == true {
+            mode = .budgeted
+        } else if supportFlag(thinking) == false {
+            mode = .unsupported
+        } else {
+            return nil
+        }
+
+        return AIReasoningSupport(
+            mode: mode,
+            effortLevels: mode == .budgeted ? [.low, .medium, .high] : uniqueLevels(levels),
+            defaultEffort: .medium
+        )
+    }
+
+    private static func uniqueLevels(_ levels: [ReasoningEffort]) -> [ReasoningEffort] {
+        var seen: Set<ReasoningEffort> = []
+        return levels.filter { seen.insert($0).inserted }
+    }
+
+    private static func supportFlag(_ value: Any?) -> Bool? {
+        (value as? [String: Any])?["supported"] as? Bool
+    }
+
+    private static let offlineModels: [AIModelInfo] = [
+        "claude-opus-5",
+        "claude-sonnet-5",
+        "claude-fable-5",
+        "claude-opus-4-8",
+        "claude-opus-4-7",
+        "claude-sonnet-4-6",
+        "claude-haiku-4-5"
+    ].map { AIModelInfo(id: $0) }
+
+    private static let knownModels = offlineModels.map(\.id)
 
     func testConnection() async throws -> Bool {
         let testModel = model.isEmpty ? (Self.knownModels.first ?? "") : model
@@ -173,14 +231,14 @@ final class AnthropicProvider: ChatTransport {
         }
 
         if let effort {
-            let capabilities = AnthropicModelCapabilities.resolve(model: options.model)
+            let reasoning = resolvedReasoning(for: options.model)
 
-            if let thinking = thinkingBody(for: effort, capabilities: capabilities, maxTokens: maxTokens) {
+            if let thinking = thinkingBody(for: effort, reasoning: reasoning, maxTokens: maxTokens) {
                 body["thinking"] = thinking
             }
 
-            if capabilities.sendsEffortParameter,
-               let wireEffort = capabilities.clampedEffort(effort)?.anthropicEffortValue {
+            if reasoning.sendsEffortParameter,
+               let wireEffort = reasoning.clampedEffort(effort)?.anthropicEffortValue {
                 body["output_config"] = ["effort": wireEffort]
             }
         }
@@ -196,19 +254,36 @@ final class AnthropicProvider: ChatTransport {
         return body
     }
 
+    static func resolvedReasoning(for model: String) -> AIReasoningSupport {
+        if let live = AIModelCatalog.shared.reasoning(
+            providerTypeID: AIProviderType.claude.rawValue,
+            modelID: model
+        ) {
+            return live
+        }
+        let capabilities = AnthropicModelCapabilities.resolve(model: model)
+        return AIReasoningSupport(
+            mode: capabilities.thinkingMode == .adaptive ? .adaptive : .budgeted,
+            effortLevels: capabilities.effortLevels,
+            defaultEffort: .medium
+        )
+    }
+
     private static func thinkingBody(
         for effort: ReasoningEffort,
-        capabilities: AnthropicModelCapabilities,
+        reasoning: AIReasoningSupport,
         maxTokens: Int
     ) -> [String: Any]? {
-        switch capabilities.thinkingMode {
-        case .adaptive:
+        switch reasoning.mode {
+        case .adaptive, .effortOnly:
             return ["type": "adaptive", "display": "summarized"]
         case .budgeted:
             let ceiling = maxTokens - 1
             guard ceiling >= AnthropicModelCapabilities.minimumThinkingBudgetTokens else { return nil }
             let budget = min(effort.anthropicBudgetTokens, ceiling)
             return ["type": "enabled", "budget_tokens": budget]
+        case .unsupported:
+            return nil
         }
     }
 

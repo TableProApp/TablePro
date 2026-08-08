@@ -958,8 +958,9 @@ struct AIProviderDetailSheet: View {
             do {
                 let models = try await provider.fetchAvailableModels()
                 guard !Task.isCancelled else { return }
-                fetchedModels = models
-                if draft.model.isEmpty, let first = models.first {
+                AIModelCatalog.shared.store(providerTypeID: draft.type.rawValue, models: models)
+                fetchedModels = models.map(\.id)
+                if draft.model.isEmpty, let first = fetchedModels.first {
                     draft.model = first
                 }
                 isFetchingModels = false

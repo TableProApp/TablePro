@@ -35,7 +35,7 @@ struct AIChatViewModelToolLoopTests {
             }
         }
 
-        func fetchAvailableModels() async throws -> [String] { [] }
+        func fetchAvailableModels() async throws -> [AIModelInfo] { [] }
 
         func testConnection() async throws -> Bool { true }
     }

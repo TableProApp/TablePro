@@ -46,7 +46,10 @@ enum AIProviderRegistration {
             typeID: AIProviderType.gemini.rawValue,
             displayName: "Gemini",
             defaultEndpoint: "https://generativelanguage.googleapis.com",
-            capabilities: [.chat, .models, .endpointConfigurable, .maxOutputTokens, .modelListFetchable],
+            capabilities: [
+                .chat, .models, .reasoning, .images,
+                .endpointConfigurable, .maxOutputTokens, .modelListFetchable
+            ],
             symbolName: "wand.and.stars",
             makeProvider: { config, apiKey in
                 GeminiProvider(
@@ -100,7 +103,8 @@ enum AIProviderRegistration {
 
         for type in [AIProviderType.openRouter, .openCode, .ollama, .llamaCpp, .mlx, .custom] {
             var capabilities: AIProviderCapabilities = [
-                .chat, .models, .endpointConfigurable, .maxOutputTokens, .modelListFetchable
+                .chat, .models, .reasoning, .images,
+                .endpointConfigurable, .maxOutputTokens, .modelListFetchable
             ]
             if type == .custom {
                 capabilities.insert(.nameConfigurable)
@@ -168,72 +172,37 @@ enum AIProviderRegistration {
         CuratedModel(id: $0.id, displayName: $0.name)
     }
 
-    private static let chatGPTCodexCuratedModels: [CuratedModel] = [
-        CuratedModel(
-            id: "gpt-5.5",
-            displayName: "GPT-5.5",
-            supportedEffortLevels: ReasoningEffort.allCases,
-            defaultEffort: .medium
-        ),
-        CuratedModel(
-            id: "gpt-5.4",
-            displayName: "GPT-5.4",
-            supportedEffortLevels: [.low, .medium, .high],
-            defaultEffort: .medium
-        ),
-        CuratedModel(
-            id: "gpt-5.4-mini",
-            displayName: "GPT-5.4 Mini",
-            supportedEffortLevels: ReasoningEffort.allCases,
-            defaultEffort: .medium
+    private static func curatedModel(
+        id: String,
+        displayName: String,
+        provider: AIProviderType,
+        defaultEffort: ReasoningEffort? = .medium
+    ) -> CuratedModel {
+        let reasoning = AIModelOverlay.reasoning(providerTypeID: provider.rawValue, modelID: id)
+        return CuratedModel(
+            id: id,
+            displayName: displayName,
+            supportedEffortLevels: reasoning?.effortLevels ?? [],
+            defaultEffort: reasoning?.effortLevels.isEmpty == false ? defaultEffort : nil
         )
-    ]
+    }
+
+    private static let chatGPTCodexCuratedModels: [CuratedModel] = ChatGPTCodex.curatedModels.map {
+        curatedModel(id: $0.id, displayName: $0.name, provider: .chatgptCodex)
+    }
 
     private static let openAICuratedModels: [CuratedModel] = [
-        CuratedModel(
-            id: "gpt-5.5",
-            displayName: "GPT-5.5",
-            supportedEffortLevels: ReasoningEffort.allCases,
-            defaultEffort: .medium
-        ),
-        CuratedModel(
-            id: "gpt-5-codex",
-            displayName: "GPT-5 Codex",
-            supportedEffortLevels: [.low, .medium, .high],
-            defaultEffort: .medium
-        ),
-        CuratedModel(
-            id: "gpt-5.3-codex",
-            displayName: "GPT-5.3 Codex",
-            supportedEffortLevels: [.low, .medium, .high, .xhigh],
-            defaultEffort: .medium
-        ),
-        CuratedModel(
-            id: "gpt-5.4-mini",
-            displayName: "GPT-5.4 Mini",
-            supportedEffortLevels: ReasoningEffort.allCases,
-            defaultEffort: .medium
-        )
+        curatedModel(id: "gpt-5.6-sol", displayName: "GPT-5.6 Sol", provider: .openAI),
+        curatedModel(id: "gpt-5.6-terra", displayName: "GPT-5.6 Terra", provider: .openAI),
+        curatedModel(id: "gpt-5.6-luna", displayName: "GPT-5.6 Luna", provider: .openAI),
+        curatedModel(id: "gpt-5.5", displayName: "GPT-5.5", provider: .openAI)
     ]
 
     private static let claudeCuratedModels: [CuratedModel] = [
-        claudeModel(id: "claude-opus-4-7", displayName: "Claude Opus 4.7", defaultEffort: .medium),
-        claudeModel(id: "claude-sonnet-4-6", displayName: "Claude Sonnet 4.6", defaultEffort: .medium),
-        claudeModel(id: "claude-haiku-4-5", displayName: "Claude Haiku 4.5", defaultEffort: .low)
+        curatedModel(id: "claude-opus-5", displayName: "Claude Opus 5", provider: .claude),
+        curatedModel(id: "claude-sonnet-5", displayName: "Claude Sonnet 5", provider: .claude),
+        curatedModel(id: "claude-haiku-4-5", displayName: "Claude Haiku 4.5", provider: .claude, defaultEffort: .low)
     ]
-
-    private static func claudeModel(
-        id: String,
-        displayName: String,
-        defaultEffort: ReasoningEffort
-    ) -> CuratedModel {
-        CuratedModel(
-            id: id,
-            displayName: displayName,
-            supportedEffortLevels: AnthropicModelCapabilities.effortLevels(forModel: id),
-            defaultEffort: defaultEffort
-        )
-    }
 
     private static func iconForType(_ type: AIProviderType) -> String {
         type.symbolName

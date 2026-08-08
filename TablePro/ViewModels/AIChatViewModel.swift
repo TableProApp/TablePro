@@ -300,7 +300,8 @@ final class AIChatViewModel {
                     let transport = await AIProviderFactory.createProvider(for: config, apiKey: apiKey)
                     do {
                         let models = try await transport.fetchAvailableModels()
-                        return (config.id, models)
+                        AIModelCatalog.shared.store(providerTypeID: config.type.rawValue, models: models)
+                        return (config.id, models.map(\.id))
                     } catch is CancellationError {
                         return (config.id, nil)
                     } catch {

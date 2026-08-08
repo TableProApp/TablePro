@@ -47,8 +47,8 @@ final class CursorAgentProvider: ChatTransport {
         }
     }
 
-    func fetchAvailableModels() async throws -> [String] {
-        CursorAI.curatedModelIDs
+    func fetchAvailableModels() async throws -> [AIModelInfo] {
+        CursorAI.curatedModelIDs.map { AIModelInfo(id: $0, reasoning: .unsupported) }
     }
 
     func testConnection() async throws -> Bool {

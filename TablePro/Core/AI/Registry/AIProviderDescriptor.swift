@@ -64,6 +64,9 @@ struct AIProviderDescriptor: Sendable {
 
     func supportedEffortLevels(forModelID id: String) -> [ReasoningEffort] {
         guard supportsReasoning else { return [] }
+        if let reasoning = AIModelCatalog.shared.reasoning(providerTypeID: typeID, modelID: id) {
+            return reasoning.effortLevels
+        }
         if let effortLevelResolver {
             return effortLevelResolver(id)
         }
@@ -71,6 +74,16 @@ struct AIProviderDescriptor: Sendable {
             return curated.supportedEffortLevels
         }
         return [.low, .medium, .high]
+    }
+
+    func modelInfo(forModelID id: String) -> AIModelInfo {
+        AIModelCatalog.shared.resolve(providerTypeID: typeID, modelID: id)
+    }
+
+    func supportsImages(forModelID id: String) -> Bool {
+        guard supportsImages else { return false }
+        guard let live = AIModelCatalog.shared.fetchedInfo(providerTypeID: typeID, modelID: id) else { return true }
+        return live.supportsImages
     }
 
     init(
