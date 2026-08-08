@@ -112,7 +112,7 @@ enum ErrorClassifier {
         }
 
         let host = context.host ?? ""
-        let mayUseLocalNetwork = context.sshEnabled || LocalNetworkPermission.isLocalNetworkHost(host)
+        let mayUseLocalNetwork = context.sshEnabled || LocalNetworkPermission.mayBeLocalNetworkHost(host)
         let timedOut = message.contains("timeout") || message.contains("timed out") || message.contains("operation timed out") || message.contains("system error: 60")
         if mayUseLocalNetwork && timedOut {
             return network(error, context: context)
@@ -207,7 +207,7 @@ enum ErrorClassifier {
 
         let isTimeout = lowered.contains("timeout") || lowered.contains("timed out") || lowered.contains("operation timed out") || lowered.contains("system error: 60")
         let host = context.host ?? ""
-        let mayUseLocalNetwork = context.sshEnabled || LocalNetworkPermission.isLocalNetworkHost(host)
+        let mayUseLocalNetwork = context.sshEnabled || LocalNetworkPermission.mayBeLocalNetworkHost(host)
 
         if isTimeout && mayUseLocalNetwork {
             recovery = String(localized: "Local Network access may be blocked. Open Settings > Privacy & Security > Local Network and turn TablePro on.")

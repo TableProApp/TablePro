@@ -276,9 +276,11 @@ internal struct FavoritesTabView: View {
             deleteSelectedNode()
         }
         .contextMenu(forSelectionType: FavoriteSelection.self) { selection in
-            if let selected = selection.first {
+            if let selected = selection.first, hasContextMenuItems(for: selected) {
                 contextMenu(for: selected)
+                Divider()
             }
+            SidebarViewOptionsMenu()
         } primaryAction: { selection in
             guard let selected = selection.first else { return }
             handlePrimaryAction(selected)
@@ -292,6 +294,7 @@ internal struct FavoritesTabView: View {
             Image(systemName: TableRowLogic.iconName(for: table.type))
                 .sidebarTint(Color.accentColor)
         }
+        .sidebarRowIcon(visible: AppSettingsManager.shared.general.showObjectIcons)
         .tag(FavoriteSelection.table(database: activeDatabase, schema: table.schema, name: table.name))
         .accessibilityLabel(
             TableRowLogic.accessibilityLabel(table: table, isPendingDelete: false, isPendingTruncate: false)
@@ -320,6 +323,21 @@ internal struct FavoritesTabView: View {
     private func favoriteTable(database: String?, schema: String?, name: String) -> TableInfo? {
         guard database == activeDatabase else { return nil }
         return availableFavoriteTables.first { $0.name == name && $0.schema == schema }
+    }
+
+    private func hasContextMenuItems(for selection: FavoriteSelection) -> Bool {
+        switch selection {
+        case .table(let database, let schema, let name):
+            return favoriteTable(database: database, schema: schema, name: name) != nil
+        case .node(let id):
+            guard let node = viewModel.node(forId: id) else { return false }
+            switch node.content {
+            case .favorite, .linkedFavorite, .folder, .linkedFolder:
+                return true
+            case .linkedSubfolder:
+                return false
+            }
+        }
     }
 
     @ViewBuilder

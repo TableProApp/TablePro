@@ -131,6 +131,8 @@ struct SidebarTreeView: View {
         .tag(table)
         .contextMenu {
             tableContextMenu(table)
+            Divider()
+            SidebarViewOptionsMenu()
         }
     }
 
@@ -174,6 +176,8 @@ struct SidebarTreeView: View {
                         Button(String(localized: "Clear Recent Tables")) {
                             sidebarState.clearRecentTables(inDatabase: activeDatabase)
                         }
+                        Divider()
+                        SidebarViewOptionsMenu()
                     }
                 }
             } header: {
@@ -195,6 +199,8 @@ struct SidebarTreeView: View {
                 Button(String(localized: "Refresh")) {
                     reloadTables(for: schema)
                 }
+                Divider()
+                SidebarViewOptionsMenu()
             }
     }
 

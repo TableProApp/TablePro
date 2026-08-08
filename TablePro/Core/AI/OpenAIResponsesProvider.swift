@@ -54,7 +54,11 @@ final class OpenAIResponsesProvider: ChatTransport {
         )
     }
 
-    func fetchAvailableModels() async throws -> [String] {
+    func fetchAvailableModels() async throws -> [AIModelInfo] {
+        try await fetchModelIDs().map { AIModelInfo(id: $0) }
+    }
+
+    private func fetchModelIDs() async throws -> [String] {
         guard let url = URL(string: "\(endpoint)/v1/models") else {
             throw AIProviderError.invalidEndpoint(endpoint)
         }

@@ -108,4 +108,33 @@ struct TableRowLogicTests {
     func externalTableIconIsDistinct() {
         #expect(TableRowLogic.iconName(for: .externalTable) != TableRowLogic.iconName(for: .table))
     }
+
+    // MARK: - Leading Icon Visibility
+
+    @Test("Leading icon shows when object icons are enabled")
+    func leadingIconShownWhenEnabled() {
+        #expect(TableRowLogic.showsLeadingIcon(showObjectIcons: true, isPendingTruncate: false, isPendingDelete: false))
+    }
+
+    @Test("Leading icon hides when object icons are disabled")
+    func leadingIconHiddenWhenDisabled() {
+        #expect(!TableRowLogic.showsLeadingIcon(showObjectIcons: false, isPendingTruncate: false, isPendingDelete: false))
+    }
+
+    @Test("Pending delete keeps the leading slot when object icons are disabled")
+    func leadingIconSurvivesPendingDelete() {
+        #expect(TableRowLogic.showsLeadingIcon(showObjectIcons: false, isPendingTruncate: false, isPendingDelete: true))
+    }
+
+    @Test("Pending truncate keeps the leading slot when object icons are disabled")
+    func leadingIconSurvivesPendingTruncate() {
+        #expect(TableRowLogic.showsLeadingIcon(showObjectIcons: false, isPendingTruncate: true, isPendingDelete: false))
+    }
+
+    @Test("Hiding icons leaves the accessibility label naming the object kind")
+    func accessibilityLabelIndependentOfIconVisibility() {
+        let view = TestFixtures.makeTableInfo(name: "active_users", type: .view)
+        #expect(TableRowLogic.accessibilityLabel(table: view, isPendingDelete: false, isPendingTruncate: false) == "View: active_users")
+        #expect(!TableRowLogic.showsLeadingIcon(showObjectIcons: false, isPendingTruncate: false, isPendingDelete: false))
+    }
 }

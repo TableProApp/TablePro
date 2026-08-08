@@ -30,6 +30,10 @@ enum TableRowLogic {
         }
     }
 
+    static func showsLeadingIcon(showObjectIcons: Bool, isPendingTruncate: Bool, isPendingDelete: Bool) -> Bool {
+        showObjectIcons || isPendingTruncate || isPendingDelete
+    }
+
     static func accessibilityLabel(table: TableInfo, isPendingDelete: Bool, isPendingTruncate: Bool, isFavorite: Bool = false) -> String {
         let kind = accessibilityKindLabel(for: table.type)
         var label = String(format: String(localized: "%@: %@"), kind, table.name)
@@ -58,6 +62,18 @@ struct TableRow: View {
               let comment = table.comment, !comment.isEmpty
         else { return nil }
         return comment
+    }
+
+    private var showsObjectIcon: Bool {
+        AppSettingsManager.shared.general.showObjectIcons
+    }
+
+    private var showsLeadingIcon: Bool {
+        TableRowLogic.showsLeadingIcon(
+            showObjectIcons: showsObjectIcon,
+            isPendingTruncate: isPendingTruncate,
+            isPendingDelete: isPendingDelete
+        )
     }
 
     @ViewBuilder
@@ -90,13 +106,19 @@ struct TableRow: View {
                     }
                 }
             } icon: {
-                Image(systemName: TableRowLogic.iconName(for: table.type))
-                    .sidebarTint(Color.accentColor)
-                    .frame(width: 16)
-                    .overlay(alignment: .bottomTrailing) {
-                        pendingStateBadge
-                    }
+                if showsObjectIcon {
+                    Image(systemName: TableRowLogic.iconName(for: table.type))
+                        .sidebarTint(Color.accentColor)
+                        .frame(width: 16)
+                        .overlay(alignment: .bottomTrailing) {
+                            pendingStateBadge
+                        }
+                } else {
+                    pendingStateBadge
+                        .frame(width: 16)
+                }
             }
+            .sidebarRowIcon(visible: showsLeadingIcon)
 
             Spacer(minLength: 4)
 

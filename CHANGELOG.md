@@ -12,12 +12,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Oracle connections can now sign in as SYSDBA or SYSOPER, on both Mac and mobile. Administrative logons previously had no way to connect. (#2039)
 - Oracle now works in TablePro Mobile: connect, browse schemas and tables, run queries, and edit rows, with a Service Name or SID picker and the same SSL modes as the Mac app. (#2033)
 - When an Oracle listener rejects the connect identifier, the connection form now names which one was wrong and offers to switch between Service Name and SID in one tap. (#2033)
+- Sidebar object icons can be turned off for a plain list of names. Right-click anywhere in the sidebar and use View Options, or toggle Show Object Icons from the View menu or Settings > General. Tables staged for truncate or delete keep their marker.
 - Redshift external schemas now list their tables. Spectrum, federated query, cross-database, and datashare schemas showed up empty because their tables are not in the standard catalog.
 - External schemas are marked in the sidebar, and their tables show an external icon. External tables open read-only, because Redshift rejects `UPDATE` and `DELETE` on them.
 
 ### Fixed
 
 - Oracle connections now turn on TCP keepalive, so a session left idle is less likely to be dropped by a NAT or firewall. It was only ever enabled on a code path that Macs and iPhones do not take. (#2038)
+- On iPhone and iPad, connecting to a database on your own network now asks for Local Network access when it is actually needed, instead of guessing from the address. Networks that use public addresses were never asked about, so those connections failed with an unhelpful error. (#2040)
+- Connecting with no network, or on a captive portal, no longer reports a Local Network permission problem on iPhone and iPad. (#2040)
 - An open tab now keeps running against the database it was opened on, so changing the database in the sidebar no longer breaks it with a "table doesn't exist" error. (#2026)
 - Saving a table structure change no longer moves the sidebar and toolbar to that tab's database. (#2026)
 - Row edits, fetch all rows, and multi-statement scripts now write to the database the tab is bound to, not whichever database another tab last used. (#2026)
@@ -32,9 +35,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Filtering a text column by a value that looks like a number, such as 68, now compares it as text. It used to compare as a number, which returned the wrong rows and stopped the database using the column's index. (#2029)
 - Typing NULL, TRUE, or FALSE into a filter on a text column now matches that text instead of turning into the SQL keyword, so those values can be filtered for. (#2029)
 - IS EMPTY on a number, date, or boolean column now checks only for NULL, instead of also comparing against an empty string, which some databases reject. (#2029)
+- AI chat with a Claude API key no longer fails with a 400 error on every message. The reasoning effort was sent in a field the API rejects. (#2031)
+- Picking Extra High reasoning effort, Haiku 4.5, or any Claude model newer than Opus 4.7 no longer fails the request. Each one sent thinking settings the API refuses. (#2031)
+- Claude replies now fill in the Reasoning block again instead of leaving it empty after a long pause. (#2031)
+- Gemini models can now use thinking and accept image attachments. Both were switched off for the whole provider, so no Gemini model could reason or read an image.
+- Reasoning effort is now offered for OpenRouter, Ollama, llama.cpp, MLX, OpenCode Zen, and custom endpoints, so a local reasoning model can be given an effort.
+- The reasoning effort picker now lists the levels the chosen model actually accepts, read from the provider instead of a built-in table.
+- Model lists now carry each model's real output limit and thinking support, so replies are no longer capped at a guessed value.
 
 ### Changed
 
+- The Claude, OpenAI, and Codex model menus now list the current models.
 - A tab's window subtitle now shows the database it is bound to, for query tabs as well as table tabs. (#2026)
 - Changing a tab's database from its toolbar now repoints only that tab and leaves the sidebar where it is. (#2026)
 - `describe_table` and `get_table_ddl` now take a `database` argument, in AI chat and over MCP, so a table in another database can be inspected without changing the database selected in the app. `list_schemas` in AI chat takes one too. (#2026)

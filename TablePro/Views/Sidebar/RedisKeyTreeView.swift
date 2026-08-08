@@ -49,6 +49,7 @@ internal struct RedisKeyTreeView: View {
             } label: {
                 HStack {
                     Label(name, systemImage: "folder")
+                        .sidebarRowIcon(visible: AppSettingsManager.shared.general.showObjectIcons)
                         .foregroundStyle(.primary)
                     Spacer()
                     Text("\(keyCount)")
@@ -66,6 +67,7 @@ internal struct RedisKeyTreeView: View {
             } label: {
                 HStack {
                     Label(name, systemImage: keyTypeIcon(keyType))
+                        .sidebarRowIcon(visible: AppSettingsManager.shared.general.showObjectIcons)
                         .foregroundStyle(.primary)
                     Spacer()
                     Text(keyType)

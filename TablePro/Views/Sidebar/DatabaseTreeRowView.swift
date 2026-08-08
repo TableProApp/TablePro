@@ -48,7 +48,11 @@ struct DatabaseTreeRowView: View {
 
     var body: some View {
         if hasContextMenu {
-            row.contextMenu { menuItems }
+            row.contextMenu {
+                menuItems
+                Divider()
+                SidebarViewOptionsMenu()
+            }
         } else {
             row
         }
@@ -127,6 +131,7 @@ struct DatabaseTreeRowView: View {
         } icon: {
             Image(systemName: systemImage)
         }
+        .sidebarRowIcon(visible: AppSettingsManager.shared.general.showObjectIcons)
         .lineLimit(1)
         .foregroundStyle(foreground(isActive: isActive, isSystem: isSystem))
     }
