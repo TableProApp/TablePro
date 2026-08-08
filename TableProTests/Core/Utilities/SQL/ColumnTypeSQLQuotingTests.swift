@@ -6,6 +6,7 @@
 import Foundation
 import Testing
 @testable import TablePro
+import TableProPluginKit
 
 @Suite("Column Type SQL Quoting")
 struct ColumnTypeSQLQuotingTests {
