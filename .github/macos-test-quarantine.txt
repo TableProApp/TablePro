@@ -23,7 +23,6 @@ EtcdQueryBuilderFilteredTests
 EtcdQueryBuilderTagTests
 EtcdPrefixRangeEndTests
 DataChangeManagerClickHouseTests
-OracleCellFormattingTests
 QueryExecutorTests
 ClickHouseDialectTests
 ValidateDriverDescriptorTests
