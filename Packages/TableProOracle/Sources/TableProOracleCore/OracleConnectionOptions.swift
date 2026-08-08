@@ -6,10 +6,20 @@ public struct OracleConnectionOptions: Sendable, Equatable {
         case sid
     }
 
+    /// The privilege the session is opened with. SYSDBA and SYSOPER are
+    /// administrative logons that Oracle treats as a different identity from a
+    /// normal connection by the same user.
+    public enum Role: String, Sendable, Equatable, Codable, CaseIterable {
+        case normal
+        case sysdba
+        case sysoper
+    }
+
     public enum AdditionalFieldKey {
         public static let connectionType = "oracleConnectionType"
         public static let serviceName = "oracleServiceName"
         public static let sid = "oracleSID"
+        public static let role = "oracleRole"
     }
 
     public static let defaultPort = 1_521
@@ -23,6 +33,7 @@ public struct OracleConnectionOptions: Sendable, Equatable {
     public var identifierMode: IdentifierMode
     public var serviceName: String
     public var sid: String
+    public var role: Role
     public var tls: OracleTLSDescription
     public var loginTimeoutSeconds: Double
 
@@ -35,6 +46,7 @@ public struct OracleConnectionOptions: Sendable, Equatable {
         identifierMode: IdentifierMode = .service,
         serviceName: String = "",
         sid: String = "",
+        role: Role = .normal,
         tls: OracleTLSDescription = OracleTLSDescription(),
         loginTimeoutSeconds: Double = OracleConnectionOptions.defaultLoginTimeoutSeconds
     ) {
@@ -46,6 +58,7 @@ public struct OracleConnectionOptions: Sendable, Equatable {
         self.identifierMode = identifierMode
         self.serviceName = serviceName
         self.sid = sid
+        self.role = role
         self.tls = tls
         self.loginTimeoutSeconds = loginTimeoutSeconds
     }
@@ -57,5 +70,9 @@ public struct OracleConnectionOptions: Sendable, Equatable {
 
     public static func identifierMode(from additionalFields: [String: String]) -> IdentifierMode {
         IdentifierMode(rawValue: additionalFields[AdditionalFieldKey.connectionType] ?? "") ?? .service
+    }
+
+    public static func role(from additionalFields: [String: String]) -> Role {
+        Role(rawValue: additionalFields[AdditionalFieldKey.role] ?? "") ?? .normal
     }
 }

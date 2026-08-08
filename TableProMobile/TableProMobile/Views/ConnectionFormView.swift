@@ -301,6 +301,12 @@ struct ConnectionFormView: View {
                     .autocorrectionDisabled()
                     .keyboardType(.asciiCapable)
             }
+
+            Picker(String(localized: "Role"), selection: $viewModel.oracleRole) {
+                Text(String(localized: "Normal")).tag(OracleConnectionOptions.Role.normal)
+                Text(verbatim: "SYSDBA").tag(OracleConnectionOptions.Role.sysdba)
+                Text(verbatim: "SYSOPER").tag(OracleConnectionOptions.Role.sysoper)
+            }
         }
     }
 

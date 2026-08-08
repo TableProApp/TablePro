@@ -35,6 +35,7 @@ Enter host, port, username, password, and service name, then click **Save & Conn
 | **Port** | `1521` | Listener port |
 | **Service Name** | - | **Required**. Check `tnsnames.ora` if unclear. To connect by SID instead, set **Connection Type** to SID and enter the SID. |
 | **Username** | - | Requires username/password auth (no OS auth) |
+| **Role** | `Normal` | Set to SYSDBA or SYSOPER for an administrative logon. The account needs the matching privilege, and Oracle treats the session as `SYS` rather than as the user you signed in with. |
 
 <Frame caption="Oracle connection form">
   <img className="block dark:hidden" src="/images/oracle-connection-form.png" alt="Oracle connection form with Connection Type and Service Name fields" />
@@ -49,7 +50,11 @@ Enter host, port, username, password, and service name, then click **Save & Conn
 
 **Remote**: Standard host/port/credentials, service name from DBA
 
-**Oracle Cloud (ADB)**: Copy host, port, and service name (format `mydb_tp`) from the TLS connection string in the Oracle Cloud Console, then set SSL mode to **Required** (or **Verify CA** with the CA certificate). No wallet needed: the connection uses one-way TLS, and the driver does not read Oracle wallet files.
+**Oracle Cloud (ADB)**: Copy host, port, and service name (format `mydb_tp`) from the TLS connection string in the Oracle Cloud Console, then set SSL mode to **Required** (or **Verify CA** with the CA certificate). TablePro connects with one-way TLS and does not read Oracle wallet files.
+
+This needs the database to allow TLS without mutual TLS, which means setting **Mutual TLS (mTLS) authentication** to *Not Required* and giving the database an access control list or a private endpoint. Oracle rejects the connection otherwise. Use the TLS connection string, not the mTLS one: mTLS is served on port 1522 only, while TLS is on 1521 or 1522.
+
+If you have an older wallet that stopped working, this is the path to switch to. Oracle's DigiCert G1 roots were distrusted in April 2026, so ADB wallets generated on or before 28 January 2026 no longer connect. One-way TLS is unaffected.
 
 ## SSL/TLS
 

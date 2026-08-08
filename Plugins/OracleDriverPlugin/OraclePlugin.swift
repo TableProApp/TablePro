@@ -51,6 +51,25 @@ final class OraclePlugin: NSObject, TableProPlugin, DriverPlugin, PluginDiagnost
                 fieldId: OracleConnectionOptions.AdditionalFieldKey.connectionType,
                 values: [OracleConnectionOptions.IdentifierMode.sid.rawValue]
             )
+        ),
+        ConnectionField(
+            id: OracleConnectionOptions.AdditionalFieldKey.role,
+            label: "Role",
+            defaultValue: OracleConnectionOptions.Role.normal.rawValue,
+            fieldType: .dropdown(options: [
+                ConnectionField.DropdownOption(
+                    value: OracleConnectionOptions.Role.normal.rawValue,
+                    label: "Normal"
+                ),
+                ConnectionField.DropdownOption(
+                    value: OracleConnectionOptions.Role.sysdba.rawValue,
+                    label: "SYSDBA"
+                ),
+                ConnectionField.DropdownOption(
+                    value: OracleConnectionOptions.Role.sysoper.rawValue,
+                    label: "SYSOPER"
+                )
+            ])
         )
     ]
 
@@ -286,6 +305,7 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             identifierMode: OracleConnectionOptions.identifierMode(from: config.additionalFields),
             serviceName: config.additionalFields[OracleConnectionOptions.AdditionalFieldKey.serviceName] ?? "",
             sid: config.additionalFields[OracleConnectionOptions.AdditionalFieldKey.sid] ?? "",
+            role: OracleConnectionOptions.role(from: config.additionalFields),
             tls: config.ssl.oracleTLSDescription
         ))
         do {

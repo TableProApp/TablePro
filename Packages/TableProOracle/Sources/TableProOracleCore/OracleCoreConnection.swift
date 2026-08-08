@@ -76,7 +76,7 @@ public final class OracleCoreConnection: @unchecked Sendable {
             ? .sid(identifier)
             : .serviceName(identifier)
         let tls = try OracleTLSMapper.tls(for: options.tls)
-        let connectConfig = OracleNIO.OracleConnection.Configuration(
+        var configuration = OracleNIO.OracleConnection.Configuration(
             host: options.host,
             port: options.port,
             service: service,
@@ -84,6 +84,8 @@ public final class OracleCoreConnection: @unchecked Sendable {
             password: options.password,
             tls: tls
         )
+        configuration.mode = Self.authenticationMode(for: options.role)
+        let connectConfig = configuration
         let connectLogger = nioLogger
 
         let connectionId = Self.connectionCounter.withLock { counter -> Int in
@@ -128,6 +130,14 @@ public final class OracleCoreConnection: @unchecked Sendable {
                 throw OracleCoreError.tlsHandshakeFailed(kind: kind, serverMessage: detail)
             }
             throw OracleCoreError.connectionFailed(detail)
+        }
+    }
+
+    static func authenticationMode(for role: OracleConnectionOptions.Role) -> OracleNIO.AuthenticationMode {
+        switch role {
+        case .normal: return .default
+        case .sysdba: return .sysDBA
+        case .sysoper: return .sysOPER
         }
     }
 
