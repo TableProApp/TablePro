@@ -348,6 +348,16 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         tableView.removeRows(at: indices, withAnimation: Self.rowAnimation(.slideUp))
     }
 
+    /// Drops the row selection before a wholesale replacement.
+    ///
+    /// `reloadData()` leaves `selectedRowIndexes` alone when the new result happens to have as
+    /// many rows as the old one, so without this the grid keeps highlighting positions that now
+    /// hold different rows, and every consumer of the selection reads those stale positions.
+    func clearRowSelection() {
+        guard let tableView, !tableView.selectedRowIndexes.isEmpty else { return }
+        tableView.deselectAll(nil)
+    }
+
     func applyFullReplace() {
         guard let tableView else { return }
         invalidateAllDisplayCaches()

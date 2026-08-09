@@ -25,6 +25,7 @@ extension MainContentCoordinator {
 
     func setActiveTableRows(_ tableRows: TableRows, for tabId: UUID) {
         tabSessionRegistry.setTableRows(tableRows, for: tabId)
+        resetSelectionForNewResult(tabId: tabId)
         notifyFullReplaceIfActive(tabId: tabId)
     }
 
@@ -36,8 +37,28 @@ extension MainContentCoordinator {
         tabManager.mutate(at: tabIdx) { $0.display.activeResultSetId = resultSetId }
         if let incoming = tabManager.tabs[tabIdx].display.activeResultSet {
             tabSessionRegistry.setTableRows(incoming.tableRows, for: tabId)
+            resetSelectionForNewResult(tabId: tabId)
             syncLoadMoreState(from: incoming, at: tabIdx)
             notifyFullReplaceIfActive(tabId: tabId)
+        }
+    }
+
+    /// Row selection is a set of display positions into the result that produced it, so it
+    /// means nothing once the rows are replaced wholesale. Leaving it in place points every
+    /// consumer, the JSON view and the row inspector included, at rows that no longer exist.
+    /// Incremental edits go through `mutateActiveTableRows` and keep their selection.
+    private func resetSelectionForNewResult(tabId: UUID) {
+        tabManager.mutate(tabId: tabId) { tab in
+            guard !tab.selectedRowIndices.isEmpty else { return }
+            tab.selectedRowIndices = []
+        }
+        tabSessionRegistry.session(for: tabId)?.selectedRowIndices = []
+        guard let idx = tabManager.selectedTabIndex,
+              idx < tabManager.tabs.count,
+              tabManager.tabs[idx].id == tabId else { return }
+        dataTabDelegate?.tableViewCoordinator?.clearRowSelection()
+        if !selectionState.indices.isEmpty {
+            selectionState.indices = []
         }
     }
 

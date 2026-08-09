@@ -79,6 +79,12 @@ final class TabSession: Identifiable {
     var tableRows: TableRows
     var isEvicted: Bool
 
+    /// Bumped by `TabSessionRegistry` on every mutation of `tableRows`. `TableRows` is a
+    /// value type with no `Equatable` conformance, so views that derive expensive content
+    /// from it key their rebuild on this counter instead of on a proxy like the row count,
+    /// which cannot distinguish two different results of the same size.
+    var dataRevision: Int
+
     // MARK: - Init
 
     /// Lift a `QueryTab` value into a `TabSession` reference. Used at the
@@ -106,6 +112,7 @@ final class TabSession: Identifiable {
         self.loadEpoch = queryTab.loadEpoch
         self.tableRows = TableRows()
         self.isEvicted = false
+        self.dataRevision = 0
     }
 
     /// Build a `TabSession` from primitive parameters, mirroring `QueryTab.init`.
@@ -139,6 +146,7 @@ final class TabSession: Identifiable {
         self.loadEpoch = 0
         self.tableRows = TableRows()
         self.isEvicted = false
+        self.dataRevision = 0
     }
 
     // MARK: - Conversion

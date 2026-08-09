@@ -45,6 +45,7 @@ final class TabSessionRegistry {
         let session = ensureSession(for: tabId)
         session.tableRows = rows
         session.isEvicted = false
+        session.dataRevision &+= 1
     }
 
     func updateTableRows(for tabId: UUID, _ mutate: (inout TableRows) -> Void) {
@@ -53,12 +54,14 @@ final class TabSessionRegistry {
         mutate(&rows)
         session.tableRows = rows
         session.isEvicted = false
+        session.dataRevision &+= 1
     }
 
     func removeTableRows(for tabId: UUID) {
         guard let session = sessions[tabId] else { return }
         session.tableRows = TableRows()
         session.isEvicted = false
+        session.dataRevision &+= 1
     }
 
     func isEvicted(_ tabId: UUID) -> Bool {
@@ -82,6 +85,7 @@ final class TabSessionRegistry {
         session.tableRows.rows = []
         session.isEvicted = true
         session.loadEpoch &+= 1
+        session.dataRevision &+= 1
     }
 
     func evictAll(except activeTabId: UUID?) {
@@ -90,6 +94,7 @@ final class TabSessionRegistry {
             session.tableRows.rows = []
             session.isEvicted = true
             session.loadEpoch &+= 1
+            session.dataRevision &+= 1
         }
     }
 

@@ -555,8 +555,11 @@ struct MainEditorContentView: View {
                 resultTabBarSection(tab: tab)
                 ResultsJsonView(
                     tableRows: resolvedTableRows(for: tab),
-                    selectedRowIndices: selectionState.indices
+                    selectedRowIndices: selectionState.indices,
+                    displayIDs: coordinator.activeGridDisplayIDs,
+                    dataRevision: coordinator.tabSessionRegistry.session(for: tab.id)?.dataRevision ?? 0
                 )
+                .id(tab.id)
             case .data:
                 if let explainText = tab.display.explainText {
                     ExplainResultView(text: explainText, executionTime: tab.display.explainExecutionTime, plan: tab.display.explainPlan)
