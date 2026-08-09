@@ -103,11 +103,11 @@ internal final class TabRouter {
             if let splitVC = existing.contentViewController as? MainSplitViewController {
                 splitVC.retryConnection()
             } else {
+                try await runPreConnectScriptIfNeeded(connection)
                 try await DatabaseManager.shared.ensureConnected(connection)
             }
             return
         }
-        try await runPreConnectScriptIfNeeded(connection)
         let payload = EditorTabPayload(connectionId: connection.id, intent: .restoreOrDefault)
         WindowManager.shared.openTab(payload: payload, autoConnect: true)
         NSApp.activate(ignoringOtherApps: true)
@@ -129,7 +129,27 @@ internal final class TabRouter {
         } else {
             throw TabRouterError.connectionNotFound(connectionId)
         }
+        if focusExistingTableTab(connectionId: connectionId, database: database, schema: schema, table: table) {
+            NSApp.activate(ignoringOtherApps: true)
+            WindowOpener.shared.closeWelcome()
+            return
+        }
+
         try await runPreConnectScriptIfNeeded(connection)
+
+        let payload = EditorTabPayload(
+            connectionId: connectionId,
+            tabType: .table,
+            tableName: table,
+            databaseName: database,
+            schemaName: schema,
+            isView: isView
+        )
+        DatabaseManager.shared.registerPendingSession(connection)
+        WindowManager.shared.openTab(payload: payload)
+        NSApp.activate(ignoringOtherApps: true)
+        WindowOpener.shared.closeWelcome()
+
         try await DatabaseManager.shared.ensureConnected(
             connection,
             passwordOverride: passwordOverride,
@@ -141,24 +161,6 @@ internal final class TabRouter {
         } else if let database {
             await switchSchemaOrDatabase(connectionId: connectionId, target: database)
         }
-
-        if focusExistingTableTab(connectionId: connectionId, database: database, schema: schema, table: table) {
-            NSApp.activate(ignoringOtherApps: true)
-            WindowOpener.shared.closeWelcome()
-            return
-        }
-
-        let payload = EditorTabPayload(
-            connectionId: connectionId,
-            tabType: .table,
-            tableName: table,
-            databaseName: database,
-            schemaName: schema,
-            isView: isView
-        )
-        WindowManager.shared.openTab(payload: payload)
-        NSApp.activate(ignoringOtherApps: true)
-        WindowOpener.shared.closeWelcome()
     }
 
     private func focusExistingTableTab(
@@ -202,23 +204,25 @@ internal final class TabRouter {
         )
         guard confirmed else { throw TabRouterError.userCancelled }
 
-        try await runPreConnectScriptIfNeeded(connection)
-        try await DatabaseManager.shared.ensureConnected(connection)
-
         if focusExistingQueryTab(connectionId: connectionId, sql: sql) {
             NSApp.activate(ignoringOtherApps: true)
             WindowOpener.shared.closeWelcome()
             return
         }
 
+        try await runPreConnectScriptIfNeeded(connection)
+
         let payload = EditorTabPayload(
             connectionId: connectionId,
             tabType: .query,
             initialQuery: sql
         )
+        DatabaseManager.shared.registerPendingSession(connection)
         WindowManager.shared.openTab(payload: payload)
         NSApp.activate(ignoringOtherApps: true)
         WindowOpener.shared.closeWelcome()
+
+        try await DatabaseManager.shared.ensureConnected(connection)
     }
 
     private func focusExistingQueryTab(connectionId: UUID, sql: String) -> Bool {
@@ -298,14 +302,15 @@ internal final class TabRouter {
 
         try await runPreConnectScriptIfNeeded(connection)
         let payload = EditorTabPayload(connectionId: connection.id, intent: .restoreOrDefault)
+        DatabaseManager.shared.registerPendingSession(connection)
         WindowManager.shared.openTab(payload: payload)
         NSApp.activate(ignoringOtherApps: true)
+        WindowOpener.shared.closeWelcome()
         try await DatabaseManager.shared.ensureConnected(
             connection,
             passwordOverride: passwordOverride,
             sshPasswordOverride: sshPasswordOverride
         )
-        WindowOpener.shared.closeWelcome()
 
         if let schema = parsed.schema {
             await switchSchemaOrDatabase(connectionId: connection.id, target: schema)
@@ -336,10 +341,11 @@ internal final class TabRouter {
         )
 
         let payload = EditorTabPayload(connectionId: connection.id, intent: .restoreOrDefault)
+        DatabaseManager.shared.registerPendingSession(connection)
         WindowManager.shared.openTab(payload: payload)
         NSApp.activate(ignoringOtherApps: true)
-        try await DatabaseManager.shared.ensureConnected(connection)
         WindowOpener.shared.closeWelcome()
+        try await DatabaseManager.shared.ensureConnected(connection)
     }
 
     // MARK: - SQL File
@@ -394,19 +400,9 @@ internal final class TabRouter {
     }
 
     private func runPreConnectScriptIfNeeded(_ connection: DatabaseConnection) async throws {
-        guard let script = connection.preConnectScript,
-              !script.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-        let confirmed = await AlertHelper.confirmDestructive(
-            title: String(localized: "Pre-Connect Script"),
-            message: String(
-                format: String(localized: "Connection \"%@\" has a script that will run before connecting:\n\n%@"),
-                connection.name, script
-            ),
-            confirmButton: String(localized: "Run Script"),
-            cancelButton: String(localized: "Cancel"),
-            window: NSApp.keyWindow
-        )
-        guard confirmed else { throw TabRouterError.userCancelled }
+        guard await PreConnectScriptPrompt.confirmIfNeeded(for: connection) else {
+            throw TabRouterError.userCancelled
+        }
     }
 
     private func applyFilterFromParsedURL(parsed: ParsedConnectionURL, connectionId: UUID) async throws {

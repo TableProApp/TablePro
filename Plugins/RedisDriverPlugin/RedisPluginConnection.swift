@@ -165,14 +165,15 @@ final class RedisPluginConnection: @unchecked Sendable {
 
     // MARK: - Connection Management
 
-    func connect() async throws {
+    func connect(reportingStage report: @escaping ConnectionStageReporter = { _ in }) async throws {
         #if canImport(CRedis)
         _ = Self.initOnce
         try await pluginDispatchAsync(on: queue) { [self] in
             logger.debug("Connecting to Redis at \(self.host):\(self.port)")
 
-            try openContextSync(selectDatabase: database)
+            try openContextSync(selectDatabase: database, reportingStage: report)
 
+            report(.preparingSession)
             do {
                 let pingReply = try executeCommandSync(["PING"])
                 if case .error(let msg) = pingReply {
@@ -398,7 +399,10 @@ private extension RedisPluginConnection {
         }
     }
 
-    func openContextSync(selectDatabase dbIndex: Int) throws {
+    func openContextSync(
+        selectDatabase dbIndex: Int,
+        reportingStage report: ConnectionStageReporter = { _ in }
+    ) throws {
         let connectTimeout = timeval(tv_sec: 10, tv_usec: 0)
         guard let ctx = redisConnectWithTimeout(host, Int32(port), connectTimeout) else {
             logger.error("Failed to create Redis context")
@@ -423,7 +427,11 @@ private extension RedisPluginConnection {
 
         do {
             if sslConfig.isEnabled {
+                report(.negotiatingEncryption)
                 try connectSSL(ctx)
+            }
+            if let password, !password.isEmpty {
+                report(.authenticating)
             }
             try authenticateSync()
             if dbIndex != 0 {

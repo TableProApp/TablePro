@@ -143,9 +143,28 @@ extension DatabaseManager {
 
         Self.logger.error("All \(kind, privacy: .public) reconnect attempts failed for: \(session.connection.name)")
 
-        updateSession(connectionId) { session in
-            session.status = .error(disconnectedMessage)
-            session.clearCachedData()
-        }
+        failTunnelRecovery(
+            connectionId: connectionId,
+            disconnectedMessage: disconnectedMessage,
+            attempts: maxRetries
+        )
+    }
+
+    /// Leaving the session entry in place kept `exists == true, hasDriver == nil`, which every
+    /// window reads as "still dialing", so an exhausted recovery painted a spinner that never
+    /// ended. The entry has to go, and the reason has to outlive it so the window can say why.
+    internal func failTunnelRecovery(connectionId: UUID, disconnectedMessage: String, attempts: Int) {
+        recordDisconnectReason(
+            ConnectionFailureInfo(
+                message: disconnectedMessage,
+                failureReason: String(
+                    format: String(localized: "Reconnecting failed after %d attempts."),
+                    attempts
+                ),
+                recoverySuggestion: String(localized: "Check the tunnel host and your network, then try again.")
+            ),
+            for: connectionId
+        )
+        finalizeConnectionFailure(for: connectionId, cancelled: false)
     }
 }

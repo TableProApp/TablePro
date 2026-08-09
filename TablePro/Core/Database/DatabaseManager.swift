@@ -64,6 +64,10 @@ final class DatabaseManager {
     /// and the wake-from-sleep handler fire for the same connection.
     @ObservationIgnored internal var recoveringConnectionIds = Set<UUID>()
 
+    /// Why a session was torn down, kept past the session entry so a window that only observes
+    /// the entry disappearing can still name the cause. Cleared when a fresh attempt begins.
+    @ObservationIgnored internal var disconnectReasons: [UUID: ConnectionFailureInfo] = [:]
+
     @ObservationIgnored internal var connectionUpdatedCancellable: AnyCancellable?
 
     @ObservationIgnored internal let ensureConnectedDedup = OnceTask<UUID, Void>()

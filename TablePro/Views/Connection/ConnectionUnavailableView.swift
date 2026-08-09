@@ -41,6 +41,15 @@ internal struct ConnectionUnavailableView: View {
                 Button(action: onManageConnections) {
                     Text(String(localized: "Manage Connections…"))
                 }
+
+                if let copyableDetails {
+                    Button {
+                        ClipboardService.shared.writeText(copyableDetails)
+                    } label: {
+                        Text(String(localized: "Copy Details"))
+                    }
+                    .help(String(localized: "Copy the full error to the clipboard"))
+                }
             }
             .controlSize(.large)
         }
@@ -79,13 +88,38 @@ internal struct ConnectionUnavailableView: View {
         switch reason {
         case .notConnected, .cancelled:
             return []
-        case .disconnected:
-            return [String(localized: "The connection was closed.")]
+        case .disconnected(let info):
+            guard let info else { return [String(localized: "The connection was closed.")] }
+            return lines(from: info)
         case .failed(let info), .pluginMissing(let info):
-            return [info.message, info.failureReason, info.recoverySuggestion]
-                .compactMap { $0 }
-                .filter { !$0.isEmpty }
+            return lines(from: info)
         }
+    }
+
+    private var failureInfo: ConnectionFailureInfo? {
+        switch reason {
+        case .notConnected, .cancelled:
+            return nil
+        case .disconnected(let info):
+            return info
+        case .failed(let info), .pluginMissing(let info):
+            return info
+        }
+    }
+
+    /// The driver's own words are the part worth pasting into a bug report, so they go to the
+    /// clipboard verbatim alongside enough context to identify the connection.
+    private var copyableDetails: String? {
+        guard let failureInfo else { return nil }
+        return ([headline, connection.connectionSubtitle] + lines(from: failureInfo))
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n")
+    }
+
+    private func lines(from info: ConnectionFailureInfo) -> [String] {
+        [info.message, info.failureReason, info.recoverySuggestion]
+            .compactMap { $0 }
+            .filter { !$0.isEmpty }
     }
 
     private var primaryActionTitle: String {

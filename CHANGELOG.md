@@ -23,8 +23,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Redshift external schemas now list their tables. Spectrum, federated query, cross-database, and datashare schemas showed up empty because their tables are not in the standard catalog.
 - External schemas are marked in the sidebar, and their tables show an external icon. External tables open read-only, because Redshift rejects `UPDATE` and `DELETE` on them.
 
+### Changed
+
+- Connecting to a database now fills the window instead of framing a spinner with an empty sidebar and inspector, and it names the step it is on: opening the tunnel, negotiating encryption, authenticating, preparing the session. PostgreSQL, CockroachDB, Redshift, ClickHouse, and Redis report their own handshake steps; the rest report the steps around the driver. A step that stalls says so rather than spinning silently.
+- A connection that fails now shows the database's own error wherever the connect started, including from a link or a database file, and offers Copy Details. Those routes used to drop the real message and report only that the connection had closed.
+- Opening a table or query from a link now opens its window straight away, so a slow connect has somewhere to report progress and a failed one has somewhere to explain itself.
+- A saved pre-connect script no longer runs when the app reopens a session on its own. The window waits with a Connect button, which asks before running it.
+
 ### Fixed
 
+- A dropped SSH tunnel that ran out of reconnect attempts left the window spinning forever with no way back. It now reports what happened and offers to try again.
+- A brief tunnel reconnect no longer closes your tabs. The window used to tear down the whole session on the blip, taking unsaved query edits with it.
+- The sidebar's filter field no longer sits over an empty sidebar while a connection is still being established.
 - The JSON view of a result now follows the grid: rows come in the order you sorted them, a column filter leaves its rows out, and hidden columns stay hidden. It used to show every row in fetch order, including rows the filter had removed, and columns you had hidden.
 - Copy JSON in the JSON view and Copy as JSON in the grid now produce the same output for the same rows.
 - The JSON view now updates when you change a column filter without running a new query.

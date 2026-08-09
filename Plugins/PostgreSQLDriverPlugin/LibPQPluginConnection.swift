@@ -162,7 +162,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
 
     // MARK: - Connection Management
 
-    func connect() async throws {
+    func connect(reportingStage report: @escaping ConnectionStageReporter = { _ in }) async throws {
         stateLock.lock()
         _isConnectCancelled = false
         stateLock.unlock()
@@ -172,7 +172,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
                 on: queue,
                 cancellationCheck: { [weak self] in self?.isConnectCancelled ?? true }
             ) { [self] in
-                try performConnect()
+                try performConnect(reportingStage: report)
             }
         } onCancel: {
             cancelConnect()
@@ -191,7 +191,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
         return _isConnectCancelled
     }
 
-    private func performConnect() throws {
+    private func performConnect(reportingStage report: @escaping ConnectionStageReporter) throws {
         guard let connection = buildConnectionString().withCString({ PQconnectStart($0) }) else {
             throw LibPQPluginError.connectionFailed
         }
@@ -205,7 +205,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
             throw connectionError(from: connection)
         }
 
-        try pollUntilConnected(connection)
+        try pollUntilConnected(connection, reportingStage: report)
         configureEstablishedConnection(connection)
 
         stateLock.lock()
@@ -215,12 +215,17 @@ final class LibPQPluginConnection: @unchecked Sendable {
         adopted = true
     }
 
-    private func pollUntilConnected(_ connection: OpaquePointer) throws {
+    private func pollUntilConnected(
+        _ connection: OpaquePointer,
+        reportingStage report: @escaping ConnectionStageReporter
+    ) throws {
         let deadline = PQgetCurrentTimeUSec() + Self.connectTimeoutMicroseconds
         var status = PGRES_POLLING_WRITING
+        var lastHandshakeStatus: ConnStatusType?
 
         while true {
             try checkConnectCancellation()
+            reportHandshakeStage(of: connection, last: &lastHandshakeStatus, report: report)
 
             switch status {
             case PGRES_POLLING_OK:
@@ -247,6 +252,28 @@ final class LibPQPluginConnection: @unchecked Sendable {
             default:
                 status = PQconnectPoll(connection)
             }
+        }
+    }
+
+    /// `PGRES_POLLING_*` only says whether the socket wants a read or a write, so it cannot tell
+    /// a TLS handshake from an authentication exchange. `PQstatus` can, and reading it costs one
+    /// pointer dereference per poll slice.
+    private func reportHandshakeStage(
+        of connection: OpaquePointer,
+        last: inout ConnStatusType?,
+        report: ConnectionStageReporter
+    ) {
+        let current = PQstatus(connection)
+        guard current != last else { return }
+        last = current
+
+        switch current {
+        case CONNECTION_SSL_STARTUP:
+            report(.negotiatingEncryption)
+        case CONNECTION_AWAITING_RESPONSE, CONNECTION_AUTH_OK:
+            report(.authenticating)
+        default:
+            break
         }
     }
 

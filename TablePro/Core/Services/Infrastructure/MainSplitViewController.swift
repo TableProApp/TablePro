@@ -59,6 +59,8 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
     private var detailHosting: NSHostingController<AnyView>!
     private var inspectorHosting: NSHostingController<AnyView>!
 
+    private var chromeState: ChromeState = .unapplied
+
     // MARK: - Panel Layout State
 
     /// Never version this key to force a relayout. `NSSplitView` clamps a restored frame against
@@ -193,14 +195,16 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         inspectorSplitItem.maximumThickness = NSSplitViewItem.unspecifiedDimension
         addSplitViewItem(inspectorSplitItem)
 
-        splitView.autosaveName = splitAutosaveName
-        applyDefaultCollapseStateIfNoAutosave()
-
         navigationSidebar.railController.onEntryCountChange = { [weak self] count in
             self?.applyRailVisibility(workspaceCount: count)
         }
 
+        /// The saved layout is restored before any phase-driven collapse, so the user's widths
+        /// are already in the live layout. Uncollapsing then returns the pane to the size
+        /// `NSSplitViewItem` remembers, rather than depending on a second restore.
+        restoreUserPaneLayout()
         rebuildPanes()
+        applyPaneChrome()
     }
 
     /// A divider dragged all the way in collapses the sidebar without going through
@@ -267,10 +271,16 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
 
     // MARK: - Toolbar
 
+    /// Only ever called with a live coordinator. The toolbar's delegate builds no item without
+    /// one, and `NSToolbar` asks it once, so a toolbar created early is permanently empty: a
+    /// later coordinator cannot refill it, and validation only speaks to items that already
+    /// exist. A window with no session shows a plain titlebar instead.
     func installToolbar(coordinator: MainContentCoordinator) {
         guard let window = view.window else { return }
         if toolbarOwner == nil {
             toolbarOwner = MainWindowToolbar(coordinator: coordinator)
+        } else {
+            toolbarOwner?.coordinator = coordinator
         }
         if let owner = toolbarOwner, window.toolbar !== owner.managedToolbar {
             window.toolbar = owner.managedToolbar
@@ -294,7 +304,11 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         }
 
         let session = DatabaseManager.shared.activeSessions[sid]
-        let snapshot = ConnectionSessionSnapshot(exists: session != nil, hasDriver: session?.driver != nil)
+        let snapshot = ConnectionSessionSnapshot(
+            exists: session != nil,
+            hasDriver: session?.driver != nil,
+            disconnectInfo: DatabaseManager.shared.disconnectReason(for: sid)
+        )
         let nextPhase = ConnectionWindowPhaseMachine.onSessionChanged(
             phase: phase,
             session: snapshot,
@@ -306,7 +320,7 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
             if alreadyRendered, phase == nextPhase { return }
             adoptSession(session)
             if phase == nextPhase { rebuildPanes() }
-        } else if phase == .connected, nextPhase != .connected {
+        } else if phase == .connected, nextPhase != .connected, !snapshot.exists {
             releaseSession(sid)
         }
 
@@ -336,6 +350,9 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         }
     }
 
+    /// Only called once the session entry is gone. A session that still exists without a driver
+    /// is reconnecting, and tearing the coordinator down for that takes the user's open tabs and
+    /// unsaved query edits with it over a network blip that repairs itself seconds later.
     private func releaseSession(_ connectionId: UUID) {
         Self.lifecycleLogger.info(
             "[close] MainSplitVC session removed connId=\(connectionId, privacy: .public)"
@@ -350,6 +367,7 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
 
     private func applyPhase() {
         rebuildPanes()
+        applyPaneChrome()
         SessionRecoveryTracker.sync()
     }
 
@@ -734,5 +752,71 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         let key = "NSSplitView Subview Frames \(splitAutosaveName)"
         guard UserDefaults.standard.object(forKey: key) == nil else { return }
         inspectorSplitItem.isCollapsed = true
+    }
+
+    // MARK: - Pane Chrome
+
+    private enum ChromeState {
+        case unapplied
+        case hidden
+        case revealed
+    }
+
+    /// A split item's collapse state is written into the autosave record, which is how the
+    /// inspector remembers being hidden. Collapsing the sidebar for a phase the user did not
+    /// choose would persist that as their layout and lose the width they set, so autosaving is
+    /// switched off for the whole span the chrome is hidden and switched back on to restore it.
+    func applyPaneChrome() {
+        if ConnectionWindowPaneResolver.hidesChrome(for: currentPane) {
+            hideWindowChrome()
+        } else {
+            revealWindowChrome()
+        }
+        toolbarOwner?.managedToolbar.validateVisibleItems()
+        recomputeWindowMinSize()
+    }
+
+    private func hideWindowChrome() {
+        guard chromeState != .hidden else { return }
+        chromeState = .hidden
+
+        resignFirstResponderInsideChrome()
+        splitView.autosaveName = ""
+        sidebarSplitItem.isCollapsed = true
+        inspectorSplitItem.isCollapsed = true
+        view.window?.recalculateKeyViewLoop()
+    }
+
+    private func revealWindowChrome() {
+        guard chromeState != .revealed else { return }
+        chromeState = .revealed
+
+        sidebarSplitItem.isCollapsed = false
+        restoreUserPaneLayout()
+        view.window?.recalculateKeyViewLoop()
+    }
+
+    private func restoreUserPaneLayout() {
+        splitView.autosaveName = splitAutosaveName
+        applyDefaultCollapseStateIfNoAutosave()
+    }
+
+    /// A collapsed pane keeps whatever first responder it held, which would leave the window
+    /// typing into a search field nobody can see.
+    private func resignFirstResponderInsideChrome() {
+        guard let window = view.window,
+              let responder = window.firstResponder as? NSView else { return }
+        guard responder.isDescendant(of: navigationSidebar.view)
+            || responder.isDescendant(of: inspectorHosting.view) else { return }
+        window.makeFirstResponder(nil)
+    }
+
+    /// Show/Hide Sidebar and Inspector stay in the responder chain while collapsed, so without
+    /// this the user can reopen an empty pane over a window that has no session yet.
+    override func validateUserInterfaceItem(_ item: any NSValidatedUserInterfaceItem) -> Bool {
+        if item.action == #selector(toggleSidebar(_:)) || item.action == #selector(toggleInspector(_:)) {
+            return currentPane == .content
+        }
+        return super.validateUserInterfaceItem(item)
     }
 }

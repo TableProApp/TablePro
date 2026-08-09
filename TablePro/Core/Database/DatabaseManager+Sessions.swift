@@ -29,6 +29,7 @@ extension DatabaseManager {
         MacAnalyticsProvider.shared.markConnectionAttempted()
 
         let attempt = connectionAttempts.begin(for: connection.id)
+        disconnectReasons[connection.id] = nil
 
         let resolvedConnection: DatabaseConnection
         if LicenseManager.shared.isFeatureAvailable(.envVarReferences) {
@@ -46,6 +47,9 @@ extension DatabaseManager {
 
         let effectiveConnection: DatabaseConnection
         do {
+            if !resolvedConnection.enabledTunnelKinds.isEmpty {
+                reportStage(.resolvingTunnel, for: connection.id)
+            }
             effectiveConnection = try await buildEffectiveConnection(
                 for: resolvedConnection,
                 sshPasswordOverride: sshPasswordOverride
@@ -53,7 +57,8 @@ extension DatabaseManager {
         } catch {
             finalizeConnectionFailure(
                 for: connection.id,
-                cancelled: isAttemptCancelled(attempt, for: connection.id)
+                cancelled: isAttemptCancelled(attempt, for: connection.id),
+                error: error
             )
             throw error
         }
@@ -62,11 +67,13 @@ extension DatabaseManager {
            !script.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         {
             do {
+                reportStage(.runningPreConnectScript, for: connection.id)
                 try await PreConnectHookRunner.run(script: script)
             } catch {
                 finalizeConnectionFailure(
                     for: connection.id,
-                    cancelled: isAttemptCancelled(attempt, for: connection.id)
+                    cancelled: isAttemptCancelled(attempt, for: connection.id),
+                    error: error
                 )
                 throw error
             }
@@ -78,6 +85,7 @@ extension DatabaseManager {
                 passwordOverride = cached
             } else {
                 let isApiOnly = pluginManager.connectionMode(for: connection.type) == .apiOnly
+                reportStage(.awaitingCredentials, for: connection.id)
                 guard let prompted = await PasswordPromptHelper.prompt(
                     connectionName: connection.name,
                     isAPIToken: isApiOnly,
@@ -105,15 +113,17 @@ extension DatabaseManager {
             if !cancelled {
                 closeActiveTunnel(for: connection)
             }
-            finalizeConnectionFailure(for: connection.id, cancelled: cancelled)
+            finalizeConnectionFailure(for: connection.id, cancelled: cancelled, error: error)
             throw error
         }
 
         do {
-            try await driver.connect()
+            reportStage(.openingConnection, for: connection.id)
+            try await driver.connectReporting(stage: stageReporter(for: connection.id))
             try Task.checkCancellation()
             try ensureAttemptIsCurrent(attempt, for: connection.id, driver: driver)
 
+            reportStage(.preparingSession, for: connection.id)
             await applyTimeoutAndStartupCommands(
                 on: driver,
                 startupCommands: resolvedConnection.startupCommands,
@@ -166,7 +176,7 @@ extension DatabaseManager {
                 closeActiveTunnel(for: connection)
             }
 
-            finalizeConnectionFailure(for: connection.id, cancelled: cancelled)
+            finalizeConnectionFailure(for: connection.id, cancelled: cancelled, error: reportedError)
             throw reportedError
         }
     }
@@ -193,8 +203,15 @@ extension DatabaseManager {
         return resolved
     }
 
-    internal func finalizeConnectionFailure(for connectionId: UUID, cancelled: Bool) {
+    /// The classified error is recorded before the session entry goes away. Only the window that
+    /// started an attempt learns the outcome directly, so without this a connect kicked off from
+    /// anywhere else leaves the window to infer "the connection was closed" from an empty slot
+    /// while the real reason is thrown away.
+    internal func finalizeConnectionFailure(for connectionId: UUID, cancelled: Bool, error: Error? = nil) {
         guard !cancelled else { return }
+        if let error, !ConnectionFailureClassifier.isUserCancelled(error) {
+            recordDisconnectReason(ConnectionFailureClassifier.info(for: error), for: connectionId)
+        }
         removeSessionEntry(for: connectionId)
         if lastActiveSessionId == connectionId {
             lastActiveSessionId = activeSessions.keys.first
@@ -463,6 +480,43 @@ extension DatabaseManager {
         AppEvents.shared.connectionStatusChanged.send(
             ConnectionStatusChange(connectionId: connectionId, status: session.status)
         )
+    }
+
+    /// Seeds the session entry before a window opens, so a window can resolve its connection and
+    /// show the connecting surface for an attempt it does not own. A connection opened from a
+    /// link or a database file is never in storage, so this is the only way the window can name
+    /// what it is connecting to.
+    internal func registerPendingSession(_ connection: DatabaseConnection) {
+        guard activeSessions[connection.id] == nil else { return }
+        var session = ConnectionSession(connection: connection)
+        session.status = .connecting
+        setSession(session, for: connection.id)
+    }
+
+    internal func reportStage(_ stage: ConnectionStage, for connectionId: UUID) {
+        AppEvents.shared.connectionStageChanged.send(
+            ConnectionStageChange(connectionId: connectionId, stage: stage)
+        )
+    }
+
+    /// Handed to a driver, so it is called from whatever thread the handshake runs on and has
+    /// to hop back before touching the main-actor event bus.
+    internal func stageReporter(for connectionId: UUID) -> ConnectionStageReporter {
+        { stage in
+            Task { @MainActor in
+                AppEvents.shared.connectionStageChanged.send(
+                    ConnectionStageChange(connectionId: connectionId, stage: stage)
+                )
+            }
+        }
+    }
+
+    internal func recordDisconnectReason(_ info: ConnectionFailureInfo, for connectionId: UUID) {
+        disconnectReasons[connectionId] = info
+    }
+
+    internal func disconnectReason(for connectionId: UUID) -> ConnectionFailureInfo? {
+        disconnectReasons[connectionId]
     }
 
     internal func removeSessionEntry(for connectionId: UUID) {

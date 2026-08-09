@@ -28,6 +28,9 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// Connect to the database
     func connect() async throws
 
+    /// Connect while reporting the steps this driver can see from inside its own handshake.
+    func connectReporting(stage report: @escaping ConnectionStageReporter) async throws
+
     /// Disconnect from the database
     func disconnect()
 
@@ -239,6 +242,10 @@ extension DatabaseDriver {
     /// Default implementation returns nil
     /// Override in drivers that support version querying
     var serverVersion: String? { nil }
+
+    func connectReporting(stage report: @escaping ConnectionStageReporter) async throws {
+        try await connect()
+    }
 
     var queryBuildingPluginDriver: (any PluginDatabaseDriver)? { nil }
 

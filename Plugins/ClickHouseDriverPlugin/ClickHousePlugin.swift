@@ -195,6 +195,10 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Connection
 
     func connect() async throws {
+        try await connect(reportingStage: { _ in })
+    }
+
+    func connect(reportingStage report: @escaping ConnectionStageReporter) async throws {
         let urlConfig = URLSessionConfiguration.default
         urlConfig.timeoutIntervalForRequest = HttpQueryTimeout.sessionBootstrapRequestTimeout
         urlConfig.timeoutIntervalForResource = HttpQueryTimeout.sessionResourceTimeout
@@ -221,6 +225,7 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             throw ClickHouseError.connectionFailed
         }
 
+        report(.preparingSession)
         if let result = try? await executeRaw("SELECT version()"),
            let versionStr = result.rows.first?.first?.asText {
             _serverVersion = versionStr

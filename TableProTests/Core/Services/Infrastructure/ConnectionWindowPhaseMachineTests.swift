@@ -69,7 +69,7 @@ struct ConnectionWindowPhaseMachineTests {
     func driverRecoversFromEveryUnavailableReason() {
         let reasons: [ConnectionUnavailableReason] = [
             .cancelled,
-            .disconnected,
+            .disconnected(nil),
             .failed(Self.failure),
             .pluginMissing(Self.failure)
         ]
@@ -126,7 +126,7 @@ struct ConnectionWindowPhaseMachineTests {
             ownsAttempt: false
         )
 
-        #expect(phase == .unavailable(.disconnected))
+        #expect(phase == .unavailable(.disconnected(nil)))
     }
 
     @Test("Losing a live session becomes disconnected, not connecting")
@@ -137,7 +137,19 @@ struct ConnectionWindowPhaseMachineTests {
             ownsAttempt: false
         )
 
-        #expect(phase == .unavailable(.disconnected))
+        #expect(phase == .unavailable(.disconnected(nil)))
+    }
+
+    @Test("A session torn down with a reason reports the reason, not the generic close")
+    func disconnectReasonReachesThePhase() {
+        let phase = ConnectionWindowPhaseMachine.onSessionChanged(
+            phase: .connected,
+            session: ConnectionSessionSnapshot(exists: false, hasDriver: false, disconnectInfo: Self.failure),
+            ownsAttempt: false
+        )
+
+        #expect(phase == .unavailable(.disconnected(Self.failure)))
+        #expect(phase != .unavailable(.disconnected(nil)))
     }
 
     @Test("A driverless session does not drag an unavailable window back to a spinner")
@@ -154,7 +166,7 @@ struct ConnectionWindowPhaseMachineTests {
     @Test("A failed connection is still worth reopening next launch")
     func failureRetainsRestoreIntent() {
         #expect(ConnectionWindowPhaseMachine.retainsRestoreIntent(phase: .unavailable(.failed(Self.failure))))
-        #expect(ConnectionWindowPhaseMachine.retainsRestoreIntent(phase: .unavailable(.disconnected)))
+        #expect(ConnectionWindowPhaseMachine.retainsRestoreIntent(phase: .unavailable(.disconnected(nil))))
         #expect(ConnectionWindowPhaseMachine.retainsRestoreIntent(phase: .unavailable(.pluginMissing(Self.failure))))
         #expect(ConnectionWindowPhaseMachine.retainsRestoreIntent(phase: .connecting))
         #expect(ConnectionWindowPhaseMachine.retainsRestoreIntent(phase: .connected))
@@ -171,7 +183,7 @@ struct ConnectionWindowPhaseMachineTests {
     func activationConnectEligibility() {
         #expect(ConnectionWindowPhaseMachine.allowsActivationConnect(phase: .idle))
         #expect(ConnectionWindowPhaseMachine.allowsActivationConnect(phase: .unavailable(.failed(Self.failure))))
-        #expect(ConnectionWindowPhaseMachine.allowsActivationConnect(phase: .unavailable(.disconnected)))
+        #expect(ConnectionWindowPhaseMachine.allowsActivationConnect(phase: .unavailable(.disconnected(nil))))
 
         #expect(!ConnectionWindowPhaseMachine.allowsActivationConnect(phase: .unavailable(.cancelled)))
         #expect(!ConnectionWindowPhaseMachine.allowsActivationConnect(phase: .unavailable(.pluginMissing(Self.failure))))

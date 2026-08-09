@@ -109,9 +109,13 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
     // MARK: - Connection Management
 
     func connect() async throws {
+        try await connectReporting(stage: { _ in })
+    }
+
+    func connectReporting(stage report: @escaping ConnectionStageReporter) async throws {
         state.withLock { $0.status = .connecting }
         do {
-            try await pluginDriver.connect()
+            try await pluginDriver.connect(reportingStage: report)
             state.withLock { $0.status = .connected }
         } catch {
             state.withLock { $0.status = .error(error.localizedDescription) }

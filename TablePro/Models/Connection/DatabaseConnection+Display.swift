@@ -18,7 +18,7 @@ extension DatabaseConnection {
         return components.joined(separator: " · ")
     }
 
-    private var endpointDescription: String {
+    var endpointDescription: String {
         if let socketPath = sshForwardUnixSocketPath, resolvedSSHConfig.enabled {
             return (socketPath as NSString).abbreviatingWithTildeInPath
         }

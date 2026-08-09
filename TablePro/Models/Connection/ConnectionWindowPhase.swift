@@ -20,7 +20,7 @@ internal struct ConnectionFailureInfo: Equatable, Sendable {
 internal enum ConnectionUnavailableReason: Equatable, Sendable {
     case notConnected
     case cancelled
-    case disconnected
+    case disconnected(ConnectionFailureInfo?)
     case failed(ConnectionFailureInfo)
     case pluginMissing(ConnectionFailureInfo)
 }

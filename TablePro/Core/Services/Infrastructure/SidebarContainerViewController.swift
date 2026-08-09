@@ -32,6 +32,7 @@ internal final class SidebarContainerViewController: NSViewController {
         view = NSView()
 
         searchField.translatesAutoresizingMaskIntoConstraints = false
+        searchField.isHidden = true
         searchField.placeholderString = String(localized: "Filter")
         searchField.controlSize = .regular
         searchField.sendsSearchStringImmediately = true

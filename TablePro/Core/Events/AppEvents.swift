@@ -5,6 +5,7 @@
 
 import Combine
 import Foundation
+import TableProPluginKit
 
 @MainActor
 final class AppEvents {
@@ -29,6 +30,10 @@ final class AppEvents {
     // MARK: - Connections
 
     let connectionStatusChanged = PassthroughSubject<ConnectionStatusChange, Never>()
+
+    /// The step a connection attempt is currently on. Presentational detail inside the
+    /// connecting phase, never a second source of truth for which pane a window shows.
+    let connectionStageChanged = PassthroughSubject<ConnectionStageChange, Never>()
 
     /// Connection metadata changed (name, color, group, type, etc.).
     /// Payload is the affected connection's id, or `nil` for bulk updates
@@ -111,6 +116,11 @@ final class AppEvents {
 struct ConnectionStatusChange: Sendable {
     let connectionId: UUID
     let status: ConnectionStatus
+}
+
+struct ConnectionStageChange: Sendable {
+    let connectionId: UUID
+    let stage: ConnectionStage
 }
 
 struct DatabaseDidConnect: Sendable {

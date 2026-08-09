@@ -75,6 +75,7 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     var capabilities: PluginCapabilities { get }
 
     func connect() async throws
+    func connect(reportingStage report: @escaping ConnectionStageReporter) async throws
     func disconnect()
     func ping() async throws
 
@@ -207,6 +208,12 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
 
 public extension PluginDatabaseDriver {
     var capabilities: PluginCapabilities { [] }
+
+    /// A driver that cannot see inside its own connect keeps the plain path. The app still
+    /// reports the stages either side of this call, so the window is never blank.
+    func connect(reportingStage report: @escaping ConnectionStageReporter) async throws {
+        try await connect()
+    }
 
     func fetchTriggers(table: String, schema: String?) async throws -> [PluginTriggerInfo] { [] }
 

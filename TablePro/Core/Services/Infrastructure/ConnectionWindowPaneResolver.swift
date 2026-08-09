@@ -32,4 +32,15 @@ internal enum ConnectionWindowPaneResolver {
             return hasConnection ? .unavailable(reason) : .empty
         }
     }
+
+    /// A sidebar and an inspector with nothing to put in them are not chrome, they are two empty
+    /// columns that promise a session the window does not have yet.
+    internal static func hidesChrome(for pane: ConnectionWindowPane) -> Bool {
+        switch pane {
+        case .content:
+            return false
+        case .connecting, .unavailable, .empty:
+            return true
+        }
+    }
 }

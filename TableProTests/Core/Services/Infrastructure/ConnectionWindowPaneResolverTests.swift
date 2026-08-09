@@ -28,11 +28,29 @@ struct ConnectionWindowPaneResolverTests {
         #expect(pane != .empty)
     }
 
+    @Test("Only a window with content earns a sidebar and an inspector")
+    func chromeHiddenForEveryNonContentPane() {
+        #expect(!ConnectionWindowPaneResolver.hidesChrome(for: .content))
+        #expect(ConnectionWindowPaneResolver.hidesChrome(for: .connecting))
+        #expect(ConnectionWindowPaneResolver.hidesChrome(for: .empty))
+
+        let reasons: [ConnectionUnavailableReason] = [
+            .notConnected,
+            .cancelled,
+            .disconnected(nil),
+            .failed(Self.failure),
+            .pluginMissing(Self.failure)
+        ]
+        for reason in reasons {
+            #expect(ConnectionWindowPaneResolver.hidesChrome(for: .unavailable(reason)))
+        }
+    }
+
     @Test("Every unavailable reason reaches its pane")
     func everyUnavailableReasonResolves() {
         let reasons: [ConnectionUnavailableReason] = [
             .cancelled,
-            .disconnected,
+            .disconnected(nil),
             .failed(Self.failure),
             .pluginMissing(Self.failure)
         ]
@@ -117,7 +135,7 @@ struct ConnectionWindowPaneResolverTests {
             .connected,
             .closing,
             .unavailable(.cancelled),
-            .unavailable(.disconnected),
+            .unavailable(.disconnected(nil)),
             .unavailable(.failed(Self.failure)),
             .unavailable(.pluginMissing(Self.failure))
         ]

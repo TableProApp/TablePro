@@ -5,9 +5,20 @@
 
 import Foundation
 
+/// `exists` and `hasDriver` alone cannot tell "still dialing" from "gave up", which is why a
+/// session left behind by an exhausted tunnel recovery used to read as `.connecting` forever.
+/// `disconnectInfo` carries the reason the session went away so the window can say what happened
+/// instead of falling back to the generic closed-connection copy.
 internal struct ConnectionSessionSnapshot: Equatable, Sendable {
     internal let exists: Bool
     internal let hasDriver: Bool
+    internal let disconnectInfo: ConnectionFailureInfo?
+
+    internal init(exists: Bool, hasDriver: Bool, disconnectInfo: ConnectionFailureInfo? = nil) {
+        self.exists = exists
+        self.hasDriver = hasDriver
+        self.disconnectInfo = disconnectInfo
+    }
 
     internal static let absent = ConnectionSessionSnapshot(exists: false, hasDriver: false)
 }
@@ -37,9 +48,9 @@ internal enum ConnectionWindowPhaseMachine {
 
         switch phase {
         case .connecting:
-            return ownsAttempt ? .connecting : .unavailable(.disconnected)
+            return ownsAttempt ? .connecting : .unavailable(.disconnected(session.disconnectInfo))
         case .connected:
-            return .unavailable(.disconnected)
+            return .unavailable(.disconnected(session.disconnectInfo))
         case .idle, .unavailable, .closing:
             return phase
         }
@@ -70,9 +81,9 @@ internal enum ConnectionWindowPhaseMachine {
             return true
         case .unavailable(let reason):
             switch reason {
-            case .notConnected, .cancelled:
+            case .cancelled:
                 return false
-            case .disconnected, .failed, .pluginMissing:
+            case .notConnected, .disconnected, .failed, .pluginMissing:
                 return true
             }
         case .idle, .closing:

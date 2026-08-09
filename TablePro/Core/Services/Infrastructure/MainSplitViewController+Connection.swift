@@ -17,6 +17,15 @@ internal extension MainSplitViewController {
         guard ConnectionWindowPhaseMachine.allowsActivationConnect(phase: phase) else { return }
         guard let connection = payloadConnection else { return }
         guard DatabaseManager.shared.activeSessions[connection.id]?.driver == nil else { return }
+
+        /// Reopening a session at launch is the app's gesture, not the user's, so it never runs a
+        /// saved script on its own. The window waits in its not-connected state instead, where
+        /// Connect asks first. Prompting here would also put one modal per restored connection on
+        /// screen at startup, which the HIG rules out twice over.
+        guard !connection.hasPreConnectScript else {
+            transition(to: .unavailable(.notConnected))
+            return
+        }
         connect(connection, cancellingPrevious: false)
     }
 
@@ -53,6 +62,10 @@ internal extension MainSplitViewController {
         transition(to: ConnectionWindowPhaseMachine.onAttemptStarted(phase: phase))
 
         Task { [weak self] in
+            guard await PreConnectScriptPrompt.confirmIfNeeded(for: connection) else {
+                self?.finishAttempt(token, outcome: .cancelled)
+                return
+            }
             if cancellingPrevious {
                 await DatabaseManager.shared.cancelEnsureConnected(connection.id)
             }
