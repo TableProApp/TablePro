@@ -28,12 +28,9 @@ extension TextView {
     }
 
     override public func selectWord(_ sender: Any?) {
-        let newSelections = selectionManager.textSelections.compactMap { (textSelection) -> NSRange? in
-                guard textSelection.range.isEmpty else {
-                    return nil
-                }
-                return findWordBoundary(at: textSelection.range.location)
-            }
+        let newSelections = selectionManager.textSelections.map { textSelection in
+            findWordBoundary(at: textSelection.range.location)
+        }
         selectionManager.setSelectedRanges(newSelections)
         unmarkTextIfNeeded()
         needsDisplay = true
@@ -63,10 +60,14 @@ extension TextView {
             return NSRange(location: position, length: 0)
         }
 
-        guard let start = textStorage.findPrecedingOccurrenceOfCharacter(in: characterSet.inverted, from: position),
-              let end = textStorage.findNextOccurrenceOfCharacter(in: characterSet.inverted, from: position) else {
-            return NSRange(location: position, length: 0)
-        }
+        // The scan returns nil once it runs past the end of the storage, which is what happens for
+        // the last word in a document: there is no character after it to end the word. The start
+        // and the end of the document are word boundaries too.
+        let start = textStorage.findPrecedingOccurrenceOfCharacter(in: characterSet.inverted, from: position) ?? 0
+        let end = textStorage.findNextOccurrenceOfCharacter(
+            in: characterSet.inverted,
+            from: position
+        ) ?? textStorage.length
 
         return NSRange(start: start, end: end)
     }

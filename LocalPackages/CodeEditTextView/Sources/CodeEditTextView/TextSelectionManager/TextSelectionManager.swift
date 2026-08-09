@@ -75,6 +75,7 @@ public class TextSelectionManager: NSObject {
     /// - Parameter range: The range to set.
     public func setSelectedRange(_ range: NSRange) {
         textSelections.forEach { $0.view?.removeFromSuperview() }
+        let range = range.clamped(toLength: textStorage?.length ?? 0)
         let selection = TextSelection(range: range)
         selection.suggestedXPos = layoutManager?.rectForOffset(range.location)?.minX
         textSelections = [selection]
@@ -88,12 +89,9 @@ public class TextSelectionManager: NSObject {
         let oldRanges = textSelections.map(\.range)
 
         textSelections.forEach { $0.view?.removeFromSuperview() }
-        // Remove duplicates, invalid ranges, update suggested X position.
-        textSelections = Set(ranges)
-            .filter {
-                (0...(textStorage?.length ?? 0)).contains($0.location)
-                && (0...(textStorage?.length ?? 0)).contains($0.max)
-            }
+        // Remove duplicates, clamp out-of-bounds ranges, update suggested X position.
+        let storageLength = textStorage?.length ?? 0
+        textSelections = Set(ranges.map { $0.clamped(toLength: storageLength) })
             .sorted(by: { $0.location < $1.location })
             .map {
                 let selection = TextSelection(range: $0)
@@ -141,11 +139,21 @@ public class TextSelectionManager: NSObject {
     /// optionally reseting the blink timer.
     func updateSelectionViews(force: Bool = false, skipTimerReset: Bool = false) {
         guard textView?.isFirstResponder ?? false else { return }
+        // A selectable but non-editable view tracks a collapsed selection so the user can extend
+        // it or select a word, but it must not blink an insertion point at text it cannot edit.
+        // This mirrors `NSTextView` with `isEditable = false` and `isSelectable = true`.
+        let showsInsertionPoint = textView?.isEditable ?? true
         var didUpdate: Bool = false
 
         for textSelection in textSelections {
             if textSelection.range.isEmpty {
-                didUpdate = didUpdate || repositionCursorSelection(textSelection: textSelection)
+                if showsInsertionPoint {
+                    didUpdate = didUpdate || repositionCursorSelection(textSelection: textSelection)
+                } else if textSelection.view != nil {
+                    textSelection.view?.removeFromSuperview()
+                    textSelection.view = nil
+                    didUpdate = true
+                }
             } else if !textSelection.range.isEmpty && textSelection.view != nil {
                 textSelection.view?.removeFromSuperview()
                 textSelection.view = nil

@@ -26,6 +26,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The JSON view of a result now updates when you run another query. It kept showing the previous result until you switched to the data grid and back, and a query that returned the same number of rows never updated at all.
 - The JSON view shows the whole result again when no row is selected. A selection left over from an earlier query made it show an empty list, and a column filter made it show the wrong rows.
 - Running a query now clears the row selection from the previous result, so the row inspector and Copy act on rows you actually picked.
+- Double-clicking a word in the SQL editor selects it again, including the last word in the query. It selected nothing when text was already selected, and stayed dead until you clicked once somewhere else.
+- Triple-clicking selects the line under the pointer, and both now act on the word or line you clicked rather than wherever the cursor happened to be.
+- Text in a read-only editor, such as the JSON view of a result, can now be clicked and selected. Only dragging worked before.
 - Oracle connections now turn on TCP keepalive, so a session left idle is less likely to be dropped by a NAT or firewall. It was only ever enabled on a code path that Macs and iPhones do not take. (#2038)
 - On iPhone and iPad, connecting to a database on your own network now asks for Local Network access when it is actually needed, instead of guessing from the address. Networks that use public addresses were never asked about, so those connections failed with an unhelpful error. (#2040)
 - Connecting with no network, or on a captive portal, no longer reports a Local Network permission problem on iPhone and iPad. (#2040)

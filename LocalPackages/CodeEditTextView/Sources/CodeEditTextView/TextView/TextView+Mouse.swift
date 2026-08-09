@@ -27,9 +27,9 @@ extension TextView {
         case 1:
             handleSingleClick(event: event, offset: offset)
         case 2:
-            handleDoubleClick(event: event)
+            handleDoubleClick(event: event, offset: offset)
         case 3:
-            handleTripleClick(event: event)
+            handleTripleClick(event: event, offset: offset)
         default:
             break
         }
@@ -43,43 +43,58 @@ extension TextView {
     fileprivate func handleSingleClick(event: NSEvent, offset: Int) {
         cursorSelectionMode = .character
 
-        guard isEditable else {
-            super.mouseDown(with: event)
-            return
-        }
         let eventFlags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         if eventFlags == [.control, .shift] {
+            guard isEditable else {
+                super.mouseDown(with: event)
+                return
+            }
             unmarkText()
             selectionManager.addSelectedRange(NSRange(location: offset, length: 0))
         } else if eventFlags.contains(.shift) {
-            unmarkText()
+            if isEditable {
+                unmarkText()
+            }
             shiftClickExtendSelection(to: offset)
         } else {
             selectionManager.setSelectedRange(NSRange(location: offset, length: 0))
-            unmarkTextIfNeeded()
+            if isEditable {
+                unmarkTextIfNeeded()
+            }
         }
     }
 
-    fileprivate func handleDoubleClick(event: NSEvent) {
+    /// Selects the word under the pointer.
+    ///
+    /// The boundary is found from the clicked offset rather than from the current selection, so a
+    /// double click lands on the right word no matter what was selected before. The first click of
+    /// the pair does not always reach ``handleSingleClick``: the drag gesture holds it back when it
+    /// falls inside an existing selection, and a document swap can leave the view with no selection
+    /// at all.
+    fileprivate func handleDoubleClick(event: NSEvent, offset: Int) {
+        guard !event.modifierFlags.contains(.shift) else {
+            super.mouseDown(with: event)
+            return
+        }
+        if isEditable {
+            unmarkText()
+        }
+        selectionManager.setSelectedRange(findWordBoundary(at: offset))
         cursorSelectionMode = .word
-
-        guard !event.modifierFlags.contains(.shift) else {
-            super.mouseDown(with: event)
-            return
-        }
-        unmarkText()
-        selectWord(nil)
+        needsDisplay = true
     }
 
-    fileprivate func handleTripleClick(event: NSEvent) {
-        cursorSelectionMode = .line
-
+    fileprivate func handleTripleClick(event: NSEvent, offset: Int) {
         guard !event.modifierFlags.contains(.shift) else {
             super.mouseDown(with: event)
             return
         }
-        unmarkText()
-        selectLine(nil)
+        if isEditable {
+            unmarkText()
+        }
+        selectionManager.setSelectedRange(findLineBoundary(at: offset))
+        cursorSelectionMode = .line
+        needsDisplay = true
     }
 
     fileprivate func handleAttachmentClick(event: NSEvent, offset: Int, attachment: AnyTextAttachment) {

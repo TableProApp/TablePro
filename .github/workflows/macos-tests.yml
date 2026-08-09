@@ -49,6 +49,21 @@ jobs:
       - name: Run package tests
         run: swift test --package-path Packages/TableProCore
 
+  editor-tests:
+    name: CodeEditTextView Package Tests
+    runs-on: macos-26
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '26.4.1'
+
+      - name: Run editor package tests
+        run: swift test --package-path LocalPackages/CodeEditTextView
+
   app-tests:
     name: macOS App Tests
     runs-on: macos-26
