@@ -52,10 +52,12 @@ private final class FakeScopedMetadataProvider: ScopedMetadataProviding {
 struct SchemaRefreshServiceTests {
     private func makeService(
         schemaService: SchemaService,
-        provider: FakeScopedMetadataProvider
+        provider: FakeScopedMetadataProvider,
+        providerRegistry: SchemaProviderRegistry? = nil
     ) -> SchemaRefreshService {
         SchemaRefreshService(
             schemaService: schemaService,
+            providerRegistry: providerRegistry ?? SchemaProviderRegistry(),
             metadataDriverProvider: provider,
             databaseManager: nil
         )
@@ -135,6 +137,51 @@ struct SchemaRefreshServiceTests {
             isFailed = true
         }
         #expect(isFailed)
+    }
+
+    @Test("a refresh pushes the loaded tables into the autocomplete provider")
+    func refreshPopulatesTheAutocompleteProvider() async {
+        let driver = MockDatabaseDriver()
+        driver.tablesToReturn = [
+            TableInfo(name: "orders", type: .table, rowCount: 0, schema: nil),
+            TableInfo(name: "customers", type: .table, rowCount: 0, schema: nil)
+        ]
+        let provider = FakeScopedMetadataProvider(driver: driver)
+        let registry = SchemaProviderRegistry()
+        let connection = TestFixtures.makeConnection()
+        let schemaProvider = registry.getOrCreate(for: connection.id)
+        let service = makeService(
+            schemaService: SchemaService(),
+            provider: provider,
+            providerRegistry: registry
+        )
+
+        await service.refresh(connection: connection)
+
+        let names = await schemaProvider.getTables().map(\.name)
+        #expect(names.sorted() == ["customers", "orders"])
+    }
+
+    @Test("no browse scope leaves the autocomplete provider untouched instead of clearing it")
+    func autocompleteSyncWithoutABrowseScopeKeepsTheCachedTables() async {
+        let driver = MockDatabaseDriver()
+        driver.tablesToReturn = [TableInfo(name: "orders", type: .table, rowCount: 0, schema: nil)]
+        let provider = FakeScopedMetadataProvider(driver: driver)
+        let registry = SchemaProviderRegistry()
+        let connection = TestFixtures.makeConnection()
+        let schemaProvider = registry.getOrCreate(for: connection.id)
+        let service = makeService(
+            schemaService: SchemaService(),
+            provider: provider,
+            providerRegistry: registry
+        )
+        await service.refresh(connection: connection)
+
+        provider.browseDatabase = nil
+        await service.syncAutocompleteProvider(connectionId: connection.id)
+
+        let names = await schemaProvider.getTables().map(\.name)
+        #expect(names == ["orders"])
     }
 
     @Test("a refresh requested after the previous one finished loads again")

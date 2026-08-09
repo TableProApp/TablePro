@@ -56,46 +56,7 @@ extension DatabaseManager {
             },
             reconnectHandler: { [weak self] in
                 guard let self else { return .abort }
-                guard let session = await self.activeSessions[connectionId] else { return .abort }
-                await SchemaService.shared.invalidate(connectionId: connectionId)
-                await DatabaseTreeMetadataService.shared.handleReconnect(connectionId: connectionId)
-                do {
-                    guard let result = try await self.trackOperation(sessionId: connectionId, operation: {
-                        try await self.reconnectDriver(for: session)
-                    }) else {
-                        await self.updateSession(connectionId) { session in
-                            session.status = .disconnected
-                        }
-                        return .abort
-                    }
-                    await self.updateSession(connectionId) { session in
-                        session.driver = result.driver
-                        session.effectiveConnection = result.effectiveConnection
-                        session.status = .connected
-                        if let schemaDriver = result.driver as? SchemaSwitchable {
-                            session.browseSchema = schemaDriver.currentSchema
-                        }
-                        if let cachedPassword = result.cachedPassword,
-                           !session.connection.usesAWSIAM
-                        {
-                            session.cachedPassword = cachedPassword
-                        }
-                    }
-                    return .success
-                } catch {
-                    Self.logger.debug("Reconnect failed: \(error.localizedDescription)")
-                    // Auth failures are not transient. Retrying with the same expired
-                    // credential just re-prompts on every attempt, so stop the loop.
-                    if await self.isAuthenticationFailure(error) {
-                        await self.updateSession(connectionId) { session in
-                            session.status = .error(
-                                String(format: String(localized: "Reconnect failed: %@"), error.localizedDescription)
-                            )
-                        }
-                        return .abort
-                    }
-                    return .retry
-                }
+                return await self.performHealthMonitorReconnect(connectionId: connectionId)
             },
             onStateChanged: { [weak self] id, state in
                 guard let self else { return }
@@ -126,6 +87,55 @@ extension DatabaseManager {
 
         healthMonitors[connectionId] = monitor
         await monitor.startMonitoring()
+    }
+
+    /// Reconnects a session the health monitor found unreachable.
+    ///
+    /// The schema cache is only prepared for reload, never invalidated: a background reconnect
+    /// is not a teardown, and clearing the cache here leaves the sidebar and autocomplete empty
+    /// with nothing scheduled to refill them. Success publishes `databaseDidConnect` so the same
+    /// listeners that reload after a first connect or a manual reconnect run here too.
+    internal func performHealthMonitorReconnect(connectionId: UUID) async -> ConnectionHealthMonitor.ReconnectOutcome {
+        guard let session = activeSessions[connectionId] else { return .abort }
+        await SchemaService.shared.prepareForReload(connectionId: connectionId)
+        await DatabaseTreeMetadataService.shared.handleReconnect(connectionId: connectionId)
+
+        do {
+            guard let result = try await trackOperation(sessionId: connectionId, operation: {
+                try await self.reconnectDriver(for: session)
+            }) else {
+                updateSession(connectionId) { session in
+                    session.status = .disconnected
+                }
+                return .abort
+            }
+            updateSession(connectionId) { session in
+                session.driver = result.driver
+                session.effectiveConnection = result.effectiveConnection
+                session.status = .connected
+                if let schemaDriver = result.driver as? SchemaSwitchable {
+                    session.browseSchema = schemaDriver.currentSchema
+                }
+                if let cachedPassword = result.cachedPassword,
+                   !session.connection.usesAWSIAM
+                {
+                    session.cachedPassword = cachedPassword
+                }
+            }
+            AppEvents.shared.databaseDidConnect.send(DatabaseDidConnect(connectionId: connectionId))
+            return .success
+        } catch {
+            Self.logger.debug("Reconnect failed: \(error.localizedDescription)")
+            if isAuthenticationFailure(error) {
+                updateSession(connectionId) { session in
+                    session.status = .error(
+                        String(format: String(localized: "Reconnect failed: %@"), error.localizedDescription)
+                    )
+                }
+                return .abort
+            }
+            return .retry
+        }
     }
 
     /// Result of a driver reconnect, containing the new driver and its effective connection.
@@ -237,7 +247,7 @@ extension DatabaseManager {
             session.status = .connecting
         }
 
-        await SchemaService.shared.invalidate(connectionId: sessionId)
+        await SchemaService.shared.prepareForReload(connectionId: sessionId)
         await DatabaseTreeMetadataService.shared.handleReconnect(connectionId: sessionId)
 
         await stopHealthMonitor(for: sessionId)

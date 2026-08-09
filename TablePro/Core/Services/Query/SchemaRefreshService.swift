@@ -75,17 +75,35 @@ final class SchemaRefreshService {
     /// must get one scoped to the browsed database rather than the shared session driver,
     /// which a tab's execution moves without writing session state.
     func syncAutocompleteProvider(connectionId: UUID) async {
-        guard case .loaded = schemaService.state(for: connectionId),
-              let provider = providerRegistry.provider(for: connectionId),
-              let browseDatabase = databaseManager?.browseScope(for: connectionId)?.database
-        else {
+        guard case .loaded = schemaService.state(for: connectionId) else {
+            Self.logger.debug(
+                "[schema] autocomplete sync skipped, schema not loaded connId=\(connectionId, privacy: .public)"
+            )
+            return
+        }
+        guard let provider = providerRegistry.provider(for: connectionId) else {
+            Self.logger.debug(
+                "[schema] autocomplete sync skipped, no provider connId=\(connectionId, privacy: .public)"
+            )
+            return
+        }
+        guard let browseDatabase = metadataDriverProvider.browseScope(for: connectionId)?.database else {
+            Self.logger.debug(
+                "[schema] autocomplete sync skipped, no browse scope connId=\(connectionId, privacy: .public)"
+            )
             return
         }
         let tables = schemaService.allLoadedTables(for: connectionId)
         let schemas = schemaService.schemas(for: connectionId)
-        try? await databaseManager?.withBrowseMetadataDriver(connectionId: connectionId) { driver in
-            await provider.resetForDatabase(browseDatabase, tables: tables, driver: driver)
-            await provider.setNamespaces(schemas: schemas, databases: [browseDatabase])
+        do {
+            try await metadataDriverProvider.withBrowseMetadataDriver(connectionId: connectionId) { driver in
+                await provider.resetForDatabase(browseDatabase, tables: tables, driver: driver)
+                await provider.setNamespaces(schemas: schemas, databases: [browseDatabase])
+            }
+        } catch {
+            Self.logger.warning(
+                "[schema] autocomplete sync failed connId=\(connectionId, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
+            )
         }
     }
 
