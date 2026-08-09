@@ -25,7 +25,10 @@ internal final class WindowOpener {
     private init() {}
 
     internal func openWelcome() {
-        run { $0.openWelcomeAction?() }
+        run {
+            $0.openWelcomeAction?()
+            NSApp.activate()
+        }
     }
 
     internal func openSettings(tab: SettingsPane? = nil) {
@@ -33,12 +36,6 @@ internal final class WindowOpener {
             UserDefaults.standard.set(tab.rawValue, forKey: PreferenceKeys.selectedSettingsPane.name)
         }
         run { $0.openSettingsAction?() }
-    }
-
-    internal func orderOutWelcome() {
-        for window in NSApp.windows where AppLaunchCoordinator.isWelcomeWindow(window) {
-            window.orderOut(nil)
-        }
     }
 
     internal func closeWelcome() {

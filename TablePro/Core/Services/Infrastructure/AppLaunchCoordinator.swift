@@ -84,9 +84,7 @@ internal final class AppLaunchCoordinator {
         guard !intents.isEmpty else { return }
         if phase.isAcceptingIntents {
             pendingIntents.append(contentsOf: intents)
-            for window in NSApp.windows where Self.isWelcomeWindow(window) {
-                window.orderOut(nil)
-            }
+            WindowOpener.shared.closeWelcome()
         } else {
             Task { [weak self] in
                 guard let self else { return }
@@ -118,7 +116,7 @@ internal final class AppLaunchCoordinator {
 
     private func dismissWelcomeIfMainWindowVisible() {
         guard NSApp.windows.contains(where: { Self.isMainWindow($0) && $0.isVisible }) else { return }
-        WindowOpener.shared.orderOutWelcome()
+        WindowOpener.shared.closeWelcome()
     }
 
     private func runStartupBehaviorIfNeeded(skipping intents: [LaunchIntent]) {
@@ -136,36 +134,30 @@ internal final class AppLaunchCoordinator {
     }
 
     private func reopenLastSession() {
-        guard !NSApp.windows.contains(where: { Self.isMainWindow($0) }) else { return }
+        guard !NSApp.windows.contains(where: {
+            ConnectionWindowIdentity.isConnectionWindow($0.identifier?.rawValue)
+        }) else { return }
 
         let connectionIds = LastOpenConnectionsStorage.shared.load()
         guard !connectionIds.isEmpty else { return }
 
-        let connectionsById = Dictionary(
-            ConnectionStorage.shared.loadConnections().map { ($0.id, $0) },
-            uniquingKeysWith: { first, _ in first }
-        )
-        var openedAny = false
-        for connectionId in connectionIds {
-            guard let connection = connectionsById[connectionId] else { continue }
+        let knownIds = Set(ConnectionStorage.shared.loadConnections().map(\.id))
+        var frontWindow: NSWindow?
+        for connectionId in connectionIds where knownIds.contains(connectionId) {
             WindowManager.shared.openTab(
-                payload: EditorTabPayload(connectionId: connectionId, intent: .restoreOrDefault)
+                payload: EditorTabPayload(connectionId: connectionId, intent: .restoreOrDefault),
+                activate: false,
+                autoConnect: true
             )
-            openedAny = true
-            Task {
-                do {
-                    try await DatabaseManager.shared.ensureConnected(connection)
-                } catch {
-                    Self.logger.error(
-                        "[restore] reopen connect failed for \(connectionId, privacy: .public): \(error.localizedDescription, privacy: .public)"
-                    )
-                }
+            if frontWindow == nil {
+                frontWindow = WindowManager.shared.window(for: connectionId)
             }
         }
 
-        if openedAny {
-            WindowOpener.shared.orderOutWelcome()
-        }
+        guard let frontWindow else { return }
+        WindowOpener.shared.closeWelcome()
+        frontWindow.makeKeyAndOrderFront(nil)
+        NSApp.activate()
     }
 
     private func finalizeWindowsIfNoVisibleMain(intents: [LaunchIntent]) {
@@ -177,13 +169,11 @@ internal final class AppLaunchCoordinator {
     // MARK: - Window Identification
 
     internal static func isMainWindow(_ window: NSWindow) -> Bool {
-        guard let raw = window.identifier?.rawValue else { return false }
-        return raw == "main" || raw.hasPrefix("main-")
+        ConnectionWindowIdentity.isPrimaryWindow(window.identifier?.rawValue)
     }
 
     internal static func isWelcomeWindow(_ window: NSWindow) -> Bool {
-        guard let raw = window.identifier?.rawValue else { return false }
-        return raw == SceneId.welcome || raw.hasPrefix("\(SceneId.welcome)-")
+        ConnectionWindowIdentity.isWelcomeWindow(window.identifier?.rawValue)
     }
 
     private func showWelcomeWindow() {

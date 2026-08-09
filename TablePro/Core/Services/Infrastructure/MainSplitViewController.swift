@@ -20,11 +20,20 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
     // MARK: - Payload & Session
 
     let payload: EditorTabPayload?
-    private let payloadConnection: DatabaseConnection?
+    let payloadConnection: DatabaseConnection?
     private var currentSession: ConnectionSession?
     private var sessionState: SessionStateFactory.SessionState?
     private var rightPanelState: RightPanelState?
-    private var closingSessionId: UUID?
+
+    let autoConnect: Bool
+    var attemptToken: UUID?
+
+    private(set) var phase: ConnectionWindowPhase {
+        didSet {
+            guard phase != oldValue else { return }
+            applyPhase()
+        }
+    }
 
     var windowTitle: String {
         didSet {
@@ -69,8 +78,9 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
 
     // MARK: - Init
 
-    init(payload: EditorTabPayload?, sessionState: SessionStateFactory.SessionState?) {
+    init(payload: EditorTabPayload?, sessionState: SessionStateFactory.SessionState?, autoConnect: Bool = false) {
         self.payload = payload
+        self.autoConnect = autoConnect
         if let connectionId = payload?.connectionId {
             self.payloadConnection = DatabaseManager.shared.activeSessions[connectionId]?.connection
                 ?? ConnectionStorage.shared.loadConnections().first { $0.id == connectionId }
@@ -124,6 +134,14 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
                !tabTitle.isBlank {
                 self.windowTitle = tabTitle
             }
+        }
+
+        if resolvedSession?.driver != nil {
+            self.phase = .connected
+        } else if resolvedSession != nil {
+            self.phase = .connecting
+        } else {
+            self.phase = .idle
         }
 
         super.init(nibName: nil, bundle: nil)
@@ -197,6 +215,7 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         installObservers()
         recomputeWindowMinSize()
         window.recalculateKeyViewLoop()
+        startActivationConnectIfNeeded()
     }
 
     override func viewDidDisappear() {
@@ -240,58 +259,87 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
     // MARK: - Connection Status
 
     private func handleConnectionStatusChange() {
-        guard closingSessionId == nil else { return }
+        let resolvedId = payload?.connectionId ?? currentSession?.id ?? DatabaseManager.shared.lastActiveSessionId
 
-        let sessions = DatabaseManager.shared.activeSessions
-        let connectionId = payload?.connectionId ?? currentSession?.id ?? DatabaseManager.shared.lastActiveSessionId
-
-        guard let sid = connectionId else {
+        guard let sid = resolvedId else {
             if currentSession != nil { currentSession = nil }
             return
         }
 
-        guard let newSession = sessions[sid] else {
-            if currentSession?.id == sid {
-                Self.lifecycleLogger.info(
-                    "[close] MainSplitVC session removed connId=\(sid, privacy: .public)"
-                )
-                closingSessionId = sid
-                rightPanelState?.teardown()
-                rightPanelState = nil
-                sessionState?.coordinator.teardown()
-                sessionState = nil
-                currentSession = nil
-                sidebarContainer.updateSidebarState(nil)
-                sidebarContainer.rootView = AnyView(buildSidebarView())
-            }
-            return
+        let session = DatabaseManager.shared.activeSessions[sid]
+        let snapshot = ConnectionSessionSnapshot(exists: session != nil, hasDriver: session?.driver != nil)
+        let nextPhase = ConnectionWindowPhaseMachine.onSessionChanged(
+            phase: phase,
+            session: snapshot,
+            ownsAttempt: attemptToken != nil
+        )
+
+        if nextPhase == .connected, let session {
+            let alreadyRendered = currentSession?.isContentViewEquivalent(to: session) ?? false
+            if alreadyRendered, phase == nextPhase { return }
+            adoptSession(session)
+            if phase == nextPhase { rebuildPanes() }
+        } else if phase == .connected, nextPhase != .connected {
+            releaseSession(sid)
         }
 
-        if let existing = currentSession, existing.isContentViewEquivalent(to: newSession) {
-            return
-        }
-        currentSession = newSession
+        phase = nextPhase
+    }
+
+    private func adoptSession(_ session: ConnectionSession) {
+        currentSession = session
 
         if payload?.tableName == nil,
            windowTitle.isBlank
            || windowTitle == WindowTitleResolver.fallbackTitle
            || windowTitle.hasSuffix(" Query") {
-            windowTitle = newSession.connection.name
-            windowSubtitle = newSession.connection.name
+            windowTitle = session.connection.name
+            windowSubtitle = session.connection.name
         }
 
         if rightPanelState == nil {
-            rightPanelState = RightPanelState(connectionId: newSession.connection.id)
+            rightPanelState = RightPanelState(connectionId: session.connection.id)
         }
         if sessionState == nil {
-            let state = SessionStateFactory.create(connection: newSession.connection, payload: payload)
+            let state = SessionStateFactory.create(connection: session.connection, payload: payload)
             sessionState = state
             state.coordinator.inspectorProxy = self
             state.coordinator.splitViewController = self
             installToolbar(coordinator: state.coordinator)
         }
+    }
 
+    private func releaseSession(_ connectionId: UUID) {
+        Self.lifecycleLogger.info(
+            "[close] MainSplitVC session removed connId=\(connectionId, privacy: .public)"
+        )
+        rightPanelState?.teardown()
+        rightPanelState = nil
+        sessionState?.coordinator.teardown()
+        sessionState = nil
+        currentSession = nil
+        sidebarContainer.updateSidebarState(nil)
+    }
+
+    private func applyPhase() {
         rebuildPanes()
+        SessionRecoveryTracker.sync()
+    }
+
+    internal func transition(to next: ConnectionWindowPhase) {
+        phase = next
+    }
+
+    internal func refreshFromActiveSessions() {
+        handleConnectionStatusChange()
+    }
+
+    internal func markWindowClosing() {
+        phase = ConnectionWindowPhaseMachine.onWindowClosing(phase: phase)
+    }
+
+    internal var retainsRestoreIntent: Bool {
+        ConnectionWindowPhaseMachine.retainsRestoreIntent(phase: phase)
     }
 
     // MARK: - Pane Construction
@@ -307,9 +355,21 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         inspectorHosting.rootView = AnyView(buildInspectorView())
     }
 
+    var currentPane: ConnectionWindowPane {
+        ConnectionWindowPaneResolver.pane(
+            phase: phase,
+            hasConnection: paneConnection != nil,
+            hasRenderableSession: currentSession != nil && rightPanelState != nil && sessionState != nil
+        )
+    }
+
+    private var paneConnection: DatabaseConnection? {
+        payloadConnection ?? currentSession?.connection
+    }
+
     @ViewBuilder
     private func buildSidebarView() -> some View {
-        if let currentSession, let sessionState {
+        if currentPane == .content, let currentSession, let sessionState {
             sidebarBody(currentSession: currentSession, sessionState: sessionState)
                 .transaction { $0.animation = nil }
         } else {
@@ -346,11 +406,18 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
 
     @ViewBuilder
     private func buildDetailView() -> some View {
-        if let pendingConnection = connectingConnection {
+        if currentPane == .connecting, let pendingConnection = paneConnection {
             ConnectingStateView(connection: pendingConnection) { [weak self] in
                 self?.cancelConnectionAttempt()
             }
-        } else if let currentSession, let rightPanelState, let sessionState {
+        } else if case .unavailable(let reason) = currentPane, let connection = paneConnection {
+            ConnectionUnavailableView(
+                connection: connection,
+                reason: reason,
+                onPrimaryAction: { [weak self] in self?.performUnavailablePrimaryAction(reason) },
+                onManageConnections: { [weak self] in self?.openConnectionList() }
+            )
+        } else if currentPane == .content, let currentSession, let rightPanelState, let sessionState {
             MainContentView(
                 connection: currentSession.connection,
                 payload: payload,
@@ -370,22 +437,6 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         } else {
             Color.clear
         }
-    }
-
-    private var connectingConnection: DatabaseConnection? {
-        guard closingSessionId == nil else { return nil }
-        guard let connectionId = payload?.connectionId else { return nil }
-        if let session = DatabaseManager.shared.activeSessions[connectionId] {
-            return session.driver == nil ? session.connection : nil
-        }
-        return payloadConnection
-    }
-
-    private func cancelConnectionAttempt() {
-        if let connectionId = payload?.connectionId {
-            Task { await DatabaseManager.shared.cancelEnsureConnected(connectionId) }
-        }
-        view.window?.performClose(nil)
     }
 
     @ViewBuilder

@@ -81,7 +81,30 @@ internal final class LaunchIntentRouter {
         WindowOpener.shared.openSettings(tab: .plugins)
     }
 
+    private func connectionId(for intent: LaunchIntent) -> UUID? {
+        switch intent {
+        case .openConnection(let id):
+            return id
+        case .openTable(let id, _, _, _, _):
+            return id
+        case .openQuery(let id, _):
+            return id
+        case .reopenClosedTab(let entry):
+            return entry.connectionId
+        default:
+            return nil
+        }
+    }
+
     private func presentError(_ error: Error, for intent: LaunchIntent) async {
+        if let connectionId = connectionId(for: intent),
+           WindowManager.shared.hasOpenWindow(for: connectionId) {
+            Self.logger.info(
+                "Failure already shown in the connection window connId=\(connectionId, privacy: .public)"
+            )
+            return
+        }
+
         let title: String
         switch intent {
         case .pairIntegration:

@@ -71,7 +71,7 @@ extension MainContentCoordinator {
             "[close] coordinator.handleWindowWillClose connId=\(self.connectionId, privacy: .public) tabs=\(self.tabManager.tabs.count)"
         )
 
-        if !MainContentCoordinator.isAppTerminating {
+        if !MainContentCoordinator.isAppTerminating, !isTearingDown {
             persistence.saveOrClearAggregatedSync()
         }
 

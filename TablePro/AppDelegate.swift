@@ -174,12 +174,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         guard let window = notification.object as? NSWindow else { return }
 
         let csvLogger = Logger(subsystem: "com.TablePro", category: "CSVInspector")
-        if AppLaunchCoordinator.isMainWindow(window) {
+        let isPrimary = AppLaunchCoordinator.isMainWindow(window)
+        if isPrimary {
             let remaining = NSApp.windows.filter {
                 $0 !== window && AppLaunchCoordinator.isMainWindow($0) && $0.isVisible
             }.count
             csvLogger.debug("AppDelegate.windowWillClose - main window '\(window.identifier?.rawValue ?? "nil", privacy: .public)' closing, remaining main windows=\(remaining, privacy: .public)")
-            if remaining == 0 {
+            if WelcomeVisibilityPolicy.shouldPresentWelcome(
+                closingWindowWasPrimary: isPrimary,
+                remainingVisiblePrimaryWindows: remaining
+            ) {
                 AppEvents.shared.mainWindowWillClose.send(())
                 WindowOpener.shared.openWelcome()
             }

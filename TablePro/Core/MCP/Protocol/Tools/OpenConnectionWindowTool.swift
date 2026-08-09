@@ -46,7 +46,7 @@ public struct OpenConnectionWindowTool: MCPToolImplementation {
                 tabType: .query,
                 intent: .restoreOrDefault
             )
-            WindowManager.shared.openTab(payload: payload)
+            WindowManager.shared.openTab(payload: payload, autoConnect: true)
             NSApp.activate(ignoringOtherApps: true)
             return payload.id
         }

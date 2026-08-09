@@ -310,7 +310,6 @@ final class WelcomeViewModel {
     // MARK: - Connection Actions
 
     func connectToDatabase(_ connection: DatabaseConnection) {
-        WindowOpener.shared.orderOutWelcome()
         Task {
             do {
                 try await TabRouter.shared.route(.openConnection(connection.id))

@@ -379,7 +379,6 @@ final class ConnectionFormCoordinator {
     }
 
     func connectToDatabase(_ connection: DatabaseConnection) {
-        WindowOpener.shared.orderOutWelcome()
         Task {
             do {
                 try await TabRouter.shared.route(.openConnection(connection.id))
@@ -414,7 +413,6 @@ final class ConnectionFormCoordinator {
     }
 
     func connectAfterInstall(_ connection: DatabaseConnection) {
-        WindowOpener.shared.orderOutWelcome()
         Task {
             do {
                 try await TabRouter.shared.route(.openConnection(connection.id))

@@ -15,6 +15,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Reopening the last session while the database server is still starting now shows the reason in the window with a Try Again button, instead of a spinner that never stops.
+- Starting the database server after that and switching back to the window now reconnects it. The window used to stay stuck even once the server was up.
+- Cancelling a connection now leaves the window open with Connect and Manage Connections, so there is always a way back to the connection list without going through the Dock.
+- A connection that could not be reached at launch is now reopened next time. It used to be dropped from the last session as if it had been cancelled.
+- An open CSV or JSON inspector window no longer stops the last session from reopening at launch.
+- Opening a connection that already has a window now reuses that window instead of opening a second one.
+- Closing a window while it is still connecting no longer leaves the connection running with no window attached.
+- Declining the password prompt while a window is connecting now leaves that window usable instead of connecting forever.
+- A connection or table window opened by an MCP client now connects, instead of showing a spinner for a connection nothing was opening.
+- Closing a window after its connection ended no longer deletes that connection's saved tabs.
 - An open tab now keeps running against the database it was opened on, so changing the database in the sidebar no longer breaks it with a "table doesn't exist" error. (#2026)
 - Saving a table structure change no longer moves the sidebar and toolbar to that tab's database. (#2026)
 - Row edits, fetch all rows, and multi-statement scripts now write to the database the tab is bound to, not whichever database another tab last used. (#2026)
@@ -39,6 +49,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Reopening the last session no longer connects every window at once. The window you land on connects right away, and the rest connect when you switch to them.
 - The Claude, OpenAI, and Codex model menus now list the current models.
 - A tab's window subtitle now shows the database it is bound to, for query tabs as well as table tabs. (#2026)
 - Changing a tab's database from its toolbar now repoints only that tab and leaves the sidebar where it is. (#2026)

@@ -40,7 +40,11 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
 
     private var activity: NSUserActivity?
 
-    internal init(payload: EditorTabPayload, sessionState: SessionStateFactory.SessionState? = nil) {
+    internal init(
+        payload: EditorTabPayload,
+        sessionState: SessionStateFactory.SessionState? = nil,
+        autoConnect: Bool = false
+    ) {
         self.payload = payload
         self.controllerId = UUID()
 
@@ -59,7 +63,11 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
         window.tabbingIdentifier = WindowManager.tabbingIdentifier(for: payload.connectionId)
         window.collectionBehavior.insert([.fullScreenPrimary, .managed])
 
-        let splitVC = MainSplitViewController(payload: payload, sessionState: sessionState)
+        let splitVC = MainSplitViewController(
+            payload: payload,
+            sessionState: sessionState,
+            autoConnect: autoConnect
+        )
         window.contentViewController = splitVC
         window.title = splitVC.windowTitle
         window.subtitle = splitVC.windowSubtitle
@@ -110,9 +118,13 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
     internal func windowDidBecomeKey(_ notification: Notification) {
         let seq = MainContentCoordinator.nextSwitchSeq()
         let t0 = Date()
-        guard let window = notification.object as? NSWindow,
-              let coordinator = MainContentCoordinator.coordinator(forWindow: window)
-        else { return }
+        guard let window = notification.object as? NSWindow else { return }
+
+        if let splitVC = window.contentViewController as? MainSplitViewController {
+            splitVC.startActivationConnectIfNeeded()
+        }
+
+        guard let coordinator = MainContentCoordinator.coordinator(forWindow: window) else { return }
         Self.lifecycleLogger.debug(
             "[switch] windowDidBecomeKey seq=\(seq) controllerId=\(self.controllerId, privacy: .public) connId=\(coordinator.connectionId, privacy: .public)"
         )
@@ -151,6 +163,8 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
         guard let window = notification.object as? NSWindow else { return }
         Self.lifecycleLogger.info("[close] windowWillClose seq=\(seq) controllerId=\(self.controllerId, privacy: .public)")
 
+        (window.contentViewController as? MainSplitViewController)?.markWindowClosing()
+
         cancelPendingConnectionIfNeeded()
 
         window.saveFrame(usingName: Self.frameAutosaveName)
@@ -175,9 +189,13 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
         let connectionId = payload.connectionId
         let session = DatabaseManager.shared.activeSessions[connectionId]
         guard session?.driver == nil else { return }
+        DatabaseManager.shared.invalidateConnectionAttempt(connectionId)
         SessionRecoveryTracker.sync()
         Task {
             await DatabaseManager.shared.cancelEnsureConnected(connectionId)
+            guard !WindowManager.shared.hasOpenWindow(for: connectionId) else { return }
+            guard DatabaseManager.shared.activeSessions[connectionId]?.driver != nil else { return }
+            await DatabaseManager.shared.disconnectSession(connectionId)
         }
     }
 

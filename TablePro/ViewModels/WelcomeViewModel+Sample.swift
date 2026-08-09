@@ -99,7 +99,7 @@ internal enum SampleDatabaseLauncher {
         _ connection: DatabaseConnection,
         onError: @MainActor @escaping (Error) -> Void
     ) {
-        WindowOpener.shared.orderOutWelcome()
+        WindowOpener.shared.closeWelcome()
         Task {
             do {
                 try await TabRouter.shared.route(

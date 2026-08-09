@@ -100,7 +100,7 @@ PostgreSQL, Redshift, and CockroachDB can only change database by reconnecting. 
 
 Per-table filters are stored separately per connection, database, schema, and table, and come back when the table reopens.
 
-Tab state saves when you switch tabs and every 30 seconds in the background, so a crash or force quit keeps recent work. On relaunch, only the frontmost tab loads its data right away; other restored tabs load the first time you switch to them, so launch stays fast and the database never sees a connection storm. If a restored tab fails to load, the error shows inline in that tab, not as a dialog.
+Tab state saves when you switch tabs and every 30 seconds in the background, so a crash or force quit keeps recent work. On relaunch, only the frontmost tab loads its data right away; other restored tabs load the first time you switch to them, so launch stays fast and the database never sees a connection storm. If a restored tab fails to load, the error shows inline in that tab, not as a dialog. The same applies one level up: if the connection itself cannot be reached, the window shows why, with Try Again and Manage Connections, and keeps the connection in the next session's list so a server that was briefly down is not forgotten.
 
 Whether the last session reopens at launch is controlled by [Startup Behavior](/customization/settings#general).
 
