@@ -31,12 +31,14 @@ struct ResultsJsonViewTests {
 
     private func compute(
         displayIDs: [RowID]? = nil,
-        selectedIndices: Set<Int>
+        selectedIndices: Set<Int>,
+        columnLayout: ColumnLayoutState = ColumnLayoutState()
     ) -> (json: String, pretty: String, resolvedCount: Int, parseResult: Result<JSONTreeNode, JSONTreeParseError>) {
         ResultsJsonView.computeJson(
             tableRows: makeTableRows(),
             displayIDs: displayIDs,
-            selectedIndices: selectedIndices
+            selectedIndices: selectedIndices,
+            columnLayout: columnLayout
         )
     }
 
@@ -49,12 +51,63 @@ struct ResultsJsonViewTests {
         #expect(result.json.contains("\"d\""))
     }
 
+    @Test("no selection follows the displayed order, not the fetch order")
+    func noSelectionFollowsDisplayOrder() {
+        let result = compute(displayIDs: [.existing(2), .existing(0)], selectedIndices: [])
+
+        #expect(result.resolvedCount == 2)
+        let first = result.json.range(of: "\"c\"")
+        let second = result.json.range(of: "\"a\"")
+        #expect(first != nil)
+        #expect(second != nil)
+        if let first, let second {
+            #expect(first.lowerBound < second.lowerBound)
+        }
+    }
+
+    @Test("no selection excludes rows a value filter removed")
+    func noSelectionExcludesFilteredRows() {
+        let result = compute(displayIDs: [.existing(0), .existing(2)], selectedIndices: [])
+
+        #expect(result.resolvedCount == 2)
+        #expect(!result.json.contains("\"b\""))
+        #expect(!result.json.contains("\"d\""))
+    }
+
+    @Test("a hidden column is left out")
+    func hiddenColumnIsExcluded() {
+        var layout = ColumnLayoutState()
+        layout.hiddenColumns = ["status"]
+
+        let result = compute(selectedIndices: [], columnLayout: layout)
+
+        #expect(!result.json.contains("status"))
+        #expect(result.json.contains("name"))
+    }
+
+    @Test("columns follow the order the user arranged")
+    func columnsFollowUserOrder() {
+        var layout = ColumnLayoutState()
+        layout.columnOrder = ["name", "status"]
+
+        let result = compute(selectedIndices: [], columnLayout: layout)
+
+        let name = result.json.range(of: "name")
+        let status = result.json.range(of: "status")
+        #expect(name != nil)
+        #expect(status != nil)
+        if let name, let status {
+            #expect(name.lowerBound < status.lowerBound)
+        }
+    }
+
     @Test("an empty result renders an empty array")
     func emptyResultRendersEmptyArray() {
         let result = ResultsJsonView.computeJson(
             tableRows: TableRows(),
             displayIDs: nil,
-            selectedIndices: []
+            selectedIndices: [],
+            columnLayout: ColumnLayoutState()
         )
 
         #expect(result.resolvedCount == 0)

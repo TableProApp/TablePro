@@ -11,6 +11,8 @@ internal struct ResultsJsonView: View {
     let selectedRowIndices: Set<Int>
     let displayIDs: [RowID]?
     let dataRevision: Int
+    let displayRevision: Int
+    let columnLayout: ColumnLayoutState
 
     @State private var viewMode: JSONViewMode
     @State private var treeSearchText = ""
@@ -27,12 +29,16 @@ internal struct ResultsJsonView: View {
         tableRows: TableRows,
         selectedRowIndices: Set<Int>,
         displayIDs: [RowID]?,
-        dataRevision: Int
+        dataRevision: Int,
+        displayRevision: Int,
+        columnLayout: ColumnLayoutState
     ) {
         self.tableRows = tableRows
         self.selectedRowIndices = selectedRowIndices
         self.displayIDs = displayIDs
         self.dataRevision = dataRevision
+        self.displayRevision = displayRevision
+        self.columnLayout = columnLayout
         self._viewMode = State(initialValue: AppSettingsManager.shared.editor.jsonViewerPreferredMode)
         self._resolvedRowCount = State(
             initialValue: selectedRowIndices.isEmpty ? tableRows.count : selectedRowIndices.count
@@ -41,11 +47,20 @@ internal struct ResultsJsonView: View {
 
     private struct RenderKey: Equatable {
         let dataRevision: Int
+        let displayRevision: Int
         let selectedRowIndices: Set<Int>
+        let hiddenColumns: Set<String>
+        let columnOrder: [String]?
     }
 
     private var renderKey: RenderKey {
-        RenderKey(dataRevision: dataRevision, selectedRowIndices: selectedRowIndices)
+        RenderKey(
+            dataRevision: dataRevision,
+            displayRevision: displayRevision,
+            selectedRowIndices: selectedRowIndices,
+            hiddenColumns: columnLayout.hiddenColumns,
+            columnOrder: columnLayout.columnOrder
+        )
     }
 
     private var rowCountText: String {
@@ -169,9 +184,15 @@ internal struct ResultsJsonView: View {
         let snapshot = tableRows
         let ids = displayIDs
         let selectedIndices = selectedRowIndices
+        let layout = columnLayout
 
         let result = await Task.detached(priority: .userInitiated) {
-            Self.computeJson(tableRows: snapshot, displayIDs: ids, selectedIndices: selectedIndices)
+            Self.computeJson(
+                tableRows: snapshot,
+                displayIDs: ids,
+                selectedIndices: selectedIndices,
+                columnLayout: layout
+            )
         }.value
 
         guard !Task.isCancelled else { return }
@@ -189,31 +210,25 @@ internal struct ResultsJsonView: View {
         hasRendered = true
     }
 
-    /// Selection indices are display positions, so they are resolved through
-    /// ``DisplayRowMapping`` rather than used to subscript `tableRows.rows` directly: a
-    /// per-column value filter or a sort makes the two diverge.
+    /// Renders the rows the grid is showing, through the same serializer as Copy as JSON.
     nonisolated static func computeJson(
         tableRows: TableRows,
         displayIDs: [RowID]?,
-        selectedIndices: Set<Int>
+        selectedIndices: Set<Int>,
+        columnLayout: ColumnLayoutState
     ) -> (json: String, pretty: String, resolvedCount: Int, parseResult: Result<JSONTreeNode, JSONTreeParseError>) {
-        let displayRows: [[PluginCellValue]]
-        if selectedIndices.isEmpty {
-            displayRows = tableRows.rows.map { Array($0.values) }
-        } else {
-            displayRows = selectedIndices.sorted().compactMap { displayIndex in
-                DisplayRowMapping.row(forDisplay: displayIndex, displayIDs: displayIDs, in: tableRows)
-                    .map { Array($0.values) }
-            }
-        }
-        let converter = JsonRowConverter(columns: tableRows.columns, columnTypes: tableRows.columnTypes)
-        let json = converter.generateJson(rows: displayRows)
-        let pretty = json.prettyPrintedAsJson() ?? json
+        let output = ResultJsonSerializer.serialize(
+            tableRows: tableRows,
+            displayIDs: displayIDs,
+            selectedDisplayIndices: selectedIndices,
+            columns: .fromColumnLayout(columnLayout, columns: tableRows.columns)
+        )
+        let pretty = output.json.prettyPrintedAsJson() ?? output.json
         return (
-            json: json,
+            json: output.json,
             pretty: pretty,
-            resolvedCount: displayRows.count,
-            parseResult: JSONTreeParser.parse(json)
+            resolvedCount: output.rowCount,
+            parseResult: JSONTreeParser.parse(output.json)
         )
     }
 }

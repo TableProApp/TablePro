@@ -558,7 +558,9 @@ struct MainEditorContentView: View {
                     tableRows: resolvedTableRows(for: tab),
                     selectedRowIndices: selectionState.indices,
                     displayIDs: coordinator.activeGridDisplayIDs,
-                    dataRevision: coordinator.tabSessionRegistry.session(for: tab.id)?.dataRevision ?? 0
+                    dataRevision: coordinator.tabSessionRegistry.session(for: tab.id)?.dataRevision ?? 0,
+                    displayRevision: coordinator.gridDisplayRevision,
+                    columnLayout: tab.columnLayout
                 )
                 .id(tab.id)
             case .data:

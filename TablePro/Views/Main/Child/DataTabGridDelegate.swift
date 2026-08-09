@@ -31,6 +31,10 @@ final class DataTabGridDelegate: DataGridViewDelegate {
         onSortStateChanged?(state)
     }
 
+    func dataGridDisplayOrderChanged() {
+        coordinator?.gridDisplayRevision &+= 1
+    }
+
     func dataGridAddRow() {
         onAddRow?()
     }

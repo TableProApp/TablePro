@@ -36,9 +36,11 @@ protocol DataGridViewDelegate: AnyObject {
     func dataGridDidRemoveRows(at indices: IndexSet)
     func dataGridDidReplaceAllRows()
     func dataGridAttach(tableViewCoordinator: TableViewCoordinator)
+    func dataGridDisplayOrderChanged()
 }
 
 extension DataGridViewDelegate {
+    func dataGridDisplayOrderChanged() {}
     func dataGridDidEditCell(row: Int, column: Int, newValue: String?) {}
     func dataGridDeleteRows(_ indices: Set<Int>) {}
     func dataGridCopyRows(_ indices: Set<Int>) {}

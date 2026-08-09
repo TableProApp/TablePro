@@ -22,6 +22,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The JSON view of a result now follows the grid: rows come in the order you sorted them, a column filter leaves its rows out, and hidden columns stay hidden. It used to show every row in fetch order, including rows the filter had removed, and columns you had hidden.
+- Copy JSON in the JSON view and Copy as JSON in the grid now produce the same output for the same rows.
+- The JSON view now updates when you change a column filter without running a new query.
 - The SQL editor now returns the cursor to where you left it when a tab is reopened or the app restarts, and restores what you had selected, not just the caret. The saved position was never applied.
 - Autocomplete now keeps suggesting tables and columns after a connection drops and reconnects on its own. The reconnect cleared the schema it had loaded and never asked for it again, so a window that looked connected offered nothing but keywords for the rest of the session.
 - The JSON view of a result now updates when you run another query. It kept showing the previous result until you switched to the data grid and back, and a query that returned the same number of rows never updated at all.

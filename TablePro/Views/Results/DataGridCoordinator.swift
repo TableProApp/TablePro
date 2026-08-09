@@ -17,8 +17,14 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     var paginationOffsetProvider: @MainActor () -> Int = { 0 }
     var changeManager: AnyChangeManager
     var isEditable: Bool
-    var sortedIDs: [RowID]?
-    var valueFilteredIDs: [RowID]?
+    var sortedIDs: [RowID]? { didSet { bumpDisplayRevision() } }
+    var valueFilteredIDs: [RowID]? { didSet { bumpDisplayRevision() } }
+    /// Ticks whenever the displayed row order or the value filter changes.
+    ///
+    /// `displayIDs` reaches SwiftUI only through weak, observation-ignored hops, so a filter change
+    /// produces no signal on its own. Views that render the same rows outside the grid key off this
+    /// instead of comparing the id array, which is O(rows) on every body evaluation.
+    private(set) var displayRevision: Int = 0
     var valueFilterState = GridValueFilterState()
     var displayIDs: [RowID]? { valueFilteredIDs ?? sortedIDs }
     private(set) var columnDisplayFormats: [ValueDisplayFormat?] = []
@@ -346,6 +352,11 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         visualIndex.rebuild(from: changeManager, sortedIDs: displayIDs)
         updateCache()
         tableView.removeRows(at: indices, withAnimation: Self.rowAnimation(.slideUp))
+    }
+
+    private func bumpDisplayRevision() {
+        displayRevision &+= 1
+        delegate?.dataGridDisplayOrderChanged()
     }
 
     /// Drops the row selection before a wholesale replacement.

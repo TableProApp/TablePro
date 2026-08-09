@@ -141,6 +141,11 @@ final class MainContentCoordinator {
     weak var rightPanelState: RightPanelState?
 
     /// Direct reference to the data tab grid delegate — enables row mutation operations to
+    /// Observable mirror of the grid's display revision, so views outside the grid re-render when
+    /// the value filter or the displayed order changes. The grid's own state lives on a plain
+    /// AppKit object reached through observation-ignored hops, so it cannot invalidate a view.
+    var gridDisplayRevision: Int = 0
+
     /// dispatch insertRows/removeRows directly to the NSTableView via DataGridViewDelegate.
     @ObservationIgnored weak var dataTabDelegate: DataTabGridDelegate?
 

@@ -168,15 +168,15 @@ extension TableViewCoordinator {
     }
 
     func copyRowsAsJson(at indices: Set<Int>) {
-        let projection = selectedColumnProjection()
-        let rows = indices.sorted().compactMap { displayRow(at: $0).map { projection.values(Array($0.values)) } }
-        guard !rows.isEmpty else { return }
-        let tableRows = tableRowsProvider()
-        let converter = JsonRowConverter(
-            columns: projection.columns(tableRows.columns),
-            columnTypes: projection.columnTypes(tableRows.columnTypes)
+        guard !indices.isEmpty else { return }
+        let output = ResultJsonSerializer.serialize(
+            tableRows: tableRowsProvider(),
+            displayIDs: displayIDs,
+            selectedDisplayIndices: indices,
+            columns: selectedColumnProjection()
         )
-        ClipboardService.shared.writeText(converter.generateJson(rows: rows))
+        guard output.rowCount > 0 else { return }
+        ClipboardService.shared.writeText(output.json)
     }
 
     func copyRowsAsCsv(at indices: Set<Int>, includeHeaders: Bool) {
