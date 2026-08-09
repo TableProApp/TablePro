@@ -323,11 +323,6 @@ struct MainContentView: View {
                     "[open] MainContentView.onAppear start windowId=\(windowId, privacy: .public) connId=\(connection.id, privacy: .public) tabs=\(tabManager.tabs.count)"
                 )
                 coordinator.markActivated()
-
-                // Set window title for empty state (no tabs restored)
-                if tabManager.tabs.isEmpty {
-                    windowTitle = connection.name
-                }
                 setupCommandActions()
                 updateToolbarPendingState()
                 updateInspectorContext()

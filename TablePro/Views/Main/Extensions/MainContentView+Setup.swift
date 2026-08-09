@@ -278,16 +278,15 @@ extension MainContentView {
     /// Update window title, proxy icon, and dirty dot based on the selected tab.
     func updateWindowTitleAndFileState() {
         let selectedTab = tabManager.selectedTab
-        if selectedTab == nil, tabManager.tabs.isEmpty {
-            windowTitle = connection.name
-        } else {
-            windowTitle = WindowTitleResolver.resolveTitle(
-                tab: selectedTab,
-                connection: connection,
-                queryLanguageName: PluginManager.shared.queryLanguageName(for: connection.type)
-            )
-        }
-        windowSubtitle = WindowTitleResolver.resolveSubtitle(tab: selectedTab, connection: connection)
+        let resolved = WindowTitleResolver.resolveWindow(
+            pane: .content,
+            connection: connection,
+            tab: selectedTab,
+            hasTabs: !tabManager.tabs.isEmpty,
+            queryLanguageName: PluginManager.shared.queryLanguageName(for: connection.type)
+        )
+        windowTitle = resolved.title
+        windowSubtitle = resolved.subtitle
         coordinator.splitViewController?.updateDetailMinimumThickness(for: selectedTab?.tabType)
         viewWindow?.representedURL = selectedTab?.content.sourceFileURL
         viewWindow?.isDocumentEdited = selectedTab?.showsUnsavedIndicator ?? false

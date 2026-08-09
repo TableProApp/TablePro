@@ -7,10 +7,48 @@
 
 import Foundation
 
+/// Title and subtitle decided together. Resolving them apart is how a window ended up
+/// announcing "TablePro - TablePro": two callers each picked the connection name without
+/// knowing the other had.
+struct ResolvedWindowTitle: Equatable {
+    let title: String
+    let subtitle: String
+}
+
 @MainActor
 enum WindowTitleResolver {
     static var fallbackTitle: String {
         String(localized: "SQL Query")
+    }
+
+    /// The window's name is a function of the pane it is showing, exactly like its content and
+    /// its chrome. A window that is not showing content is not showing a document, so naming it
+    /// after a tab is naming something that is not there: that is how a connecting window came
+    /// to be called "SQL Query", and how a window that lost its session kept the name of the
+    /// table it had stopped displaying.
+    static func resolveWindow(
+        pane: ConnectionWindowPane,
+        connection: DatabaseConnection?,
+        tab: QueryTab?,
+        hasTabs: Bool,
+        queryLanguageName: String?
+    ) -> ResolvedWindowTitle {
+        let connectionName = connection?.name ?? ""
+
+        guard pane == .content else {
+            return connectionTitle(connectionName)
+        }
+        guard hasTabs, let connection else {
+            return connectionTitle(connectionName)
+        }
+
+        let title = resolveTitle(tab: tab, connection: connection, queryLanguageName: queryLanguageName)
+        let subtitle = resolveSubtitle(tab: tab, connection: connection)
+        return ResolvedWindowTitle(title: title, subtitle: subtitle == title ? "" : subtitle)
+    }
+
+    private static func connectionTitle(_ name: String) -> ResolvedWindowTitle {
+        ResolvedWindowTitle(title: name.isBlank ? fallbackTitle : name, subtitle: "")
     }
 
     static func resolveTitle(

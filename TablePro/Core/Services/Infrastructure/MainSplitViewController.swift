@@ -20,7 +20,9 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
     // MARK: - Payload & Session
 
     let payload: EditorTabPayload?
-    let payloadConnection: DatabaseConnection?
+    /// Re-read when the connection record changes, so a rename reaches the window's name and
+    /// the connecting screen instead of freezing whatever the record said at creation.
+    private(set) var payloadConnection: DatabaseConnection?
     private var currentSession: ConnectionSession?
     private var sessionState: SessionStateFactory.SessionState?
     private var rightPanelState: RightPanelState?
@@ -82,6 +84,7 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
 
     private var connectionStatusCancellable: AnyCancellable?
     private var railVisibilityCancellable: AnyCancellable?
+    private var connectionUpdatedCancellable: AnyCancellable?
 
     // MARK: - Init
 
@@ -95,14 +98,6 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
             self.payloadConnection = nil
         }
 
-        let queryLanguageName: String? = {
-            guard let connectionId = payload?.connectionId,
-                  let connection = DatabaseManager.shared.activeSessions[connectionId]?.connection else {
-                return nil
-            }
-            return PluginManager.shared.queryLanguageName(for: connection.type)
-        }()
-
         var resolvedSession: ConnectionSession?
         if let connectionId = payload?.connectionId {
             resolvedSession = DatabaseManager.shared.activeSessions[connectionId]
@@ -111,17 +106,8 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         }
         self.currentSession = resolvedSession
 
-        let titleConnection = self.payloadConnection ?? resolvedSession?.connection
-        self.windowTitle = WindowTitleResolver.resolveTitle(
-            payload: payload,
-            databaseType: titleConnection?.type,
-            queryLanguageName: queryLanguageName
-        )
-        if let titleConnection {
-            self.windowSubtitle = WindowTitleResolver.resolveSubtitle(payload: payload, connection: titleConnection)
-        } else {
-            self.windowSubtitle = ""
-        }
+        self.windowTitle = ""
+        self.windowSubtitle = ""
 
         if let session = resolvedSession {
             self.rightPanelState = RightPanelState(connectionId: session.connection.id)
@@ -136,11 +122,6 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
                 state = SessionStateFactory.create(connection: session.connection, payload: payload)
             }
             self.sessionState = state
-            if payload?.intent == .newEmptyTab,
-               let tabTitle = state.coordinator.tabManager.selectedTab?.title,
-               !tabTitle.isBlank {
-                self.windowTitle = tabTitle
-            }
         }
 
         if resolvedSession?.driver != nil {
@@ -152,6 +133,10 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         }
 
         super.init(nibName: nil, bundle: nil)
+
+        /// AppKit renders a native tab's label even for a tab that is never activated, so the
+        /// title has to be right at creation rather than at first appearance.
+        applyWindowTitle()
     }
 
     @available(*, unavailable)
@@ -260,6 +245,11 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
             .sink { [weak self] _ in
                 self?.applyRailVisibility(workspaceCount: WorkspaceRailStore.entries.count)
             }
+        connectionUpdatedCancellable = AppEvents.shared.connectionUpdated
+            .receive(on: RunLoop.main)
+            .sink { [weak self] changedId in
+                self?.handleConnectionRecordChange(changedId)
+            }
         handleConnectionStatusChange()
         applyRailVisibility(workspaceCount: WorkspaceRailStore.entries.count)
     }
@@ -267,6 +257,18 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
     private func removeObservers() {
         connectionStatusCancellable = nil
         railVisibilityCancellable = nil
+        connectionUpdatedCancellable = nil
+    }
+
+    /// `nil` is the documented bulk-update payload, so it has to repaint too.
+    private func handleConnectionRecordChange(_ changedId: UUID?) {
+        guard let connectionId = payload?.connectionId ?? currentSession?.connection.id else { return }
+        guard changedId == nil || changedId == connectionId else { return }
+        guard let stored = ConnectionStorage.shared.loadConnections().first(where: { $0.id == connectionId })
+            ?? DatabaseManager.shared.activeSessions[connectionId]?.connection else { return }
+        payloadConnection = stored
+        applyWindowTitle()
+        rebuildPanes()
     }
 
     // MARK: - Toolbar
@@ -330,14 +332,6 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
     private func adoptSession(_ session: ConnectionSession) {
         currentSession = session
 
-        if payload?.tableName == nil,
-           windowTitle.isBlank
-           || windowTitle == WindowTitleResolver.fallbackTitle
-           || windowTitle.hasSuffix(" Query") {
-            windowTitle = session.connection.name
-            windowSubtitle = session.connection.name
-        }
-
         if rightPanelState == nil {
             rightPanelState = RightPanelState(connectionId: session.connection.id)
         }
@@ -368,7 +362,23 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
     private func applyPhase() {
         rebuildPanes()
         applyPaneChrome()
+        applyWindowTitle()
         SessionRecoveryTracker.sync()
+    }
+
+    /// Repainted on every phase change for the same reason the panes are. Leaving it out is
+    /// what let a window keep the name of a table it had stopped showing after the session
+    /// underneath it went away.
+    internal func applyWindowTitle() {
+        let resolved = WindowTitleResolver.resolveWindow(
+            pane: currentPane,
+            connection: paneConnection,
+            tab: sessionState?.tabManager.selectedTab,
+            hasTabs: !(sessionState?.tabManager.tabs.isEmpty ?? true),
+            queryLanguageName: paneConnection.map { PluginManager.shared.queryLanguageName(for: $0.type) } ?? nil
+        )
+        windowTitle = resolved.title
+        windowSubtitle = resolved.subtitle
     }
 
     internal func transition(to next: ConnectionWindowPhase) {

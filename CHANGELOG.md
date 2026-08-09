@@ -32,6 +32,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A window being connected is now named after the connection instead of "SQL Query", which named a tab it did not have yet.
+- A window that loses its connection no longer keeps the name of the table it stopped showing. Its name and its native tab label now follow what the window is actually displaying.
+- The titlebar no longer repeats itself, so a window with no tabs open reads "My Database" rather than "My Database - My Database".
+- A tab you named yourself is no longer renamed behind your back when the window reconnects. Any title ending in "Query" used to be treated as a placeholder and replaced.
+- Window naming now works in translated builds. The rule that decided whether a title was a placeholder compared it against English text, so it never matched outside English.
+- Renaming a connection now updates the name of any window already open on it.
 - A dropped SSH tunnel that ran out of reconnect attempts left the window spinning forever with no way back. It now reports what happened and offers to try again.
 - A brief tunnel reconnect no longer closes your tabs. The window used to tear down the whole session on the blip, taking unsaved query edits with it.
 - The sidebar's filter field no longer sits over an empty sidebar while a connection is still being established.
