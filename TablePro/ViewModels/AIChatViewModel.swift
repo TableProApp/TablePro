@@ -37,6 +37,9 @@ final class AIChatViewModel {
 
     var connection: DatabaseConnection?
 
+    @ObservationIgnored var streamFlushClock: StreamFlushClock = ContinuousStreamFlushClock()
+    @ObservationIgnored var streamFlushInterval: Duration = .milliseconds(50)
+
     var tables: [TableInfo] {
         guard let id = connection?.id else { return [] }
         return services.schemaService.tables(for: id)
@@ -175,6 +178,10 @@ final class AIChatViewModel {
         attachedContext.removeAll { $0.stableKey == item.stableKey }
     }
 
+    func turn(withID id: UUID) -> ChatTurn? {
+        messages.first { $0.id == id }
+    }
+
     func cancelStream() {
         pendingWalkthroughBeforeSQL = nil
         prepTask?.cancel()
@@ -185,8 +192,9 @@ final class AIChatViewModel {
 
         if case .streaming(let assistantID) = streamingState,
            let idx = messages.firstIndex(where: { $0.id == assistantID }) {
-            messages[idx].finishStreamingTextBlock()
-            if messages[idx].blocks.isEmpty {
+            let turn = messages[idx]
+            turn.finishStreamingTextBlock()
+            if turn.blocks.isEmpty {
                 messages.remove(at: idx)
             }
         }

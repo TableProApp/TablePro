@@ -279,17 +279,16 @@ extension AIChatViewModel {
 
     @MainActor
     func finalizeStreamingMessage(id: UUID) {
-        guard let idx = messages.firstIndex(where: { $0.id == id }) else { return }
-        messages[idx].finishStreamingTextBlock()
+        turn(withID: id)?.finishStreamingTextBlock()
     }
 
     @MainActor
     func resolveWalkthroughIfNeeded(id: UUID) {
         guard let beforeSQL = pendingWalkthroughBeforeSQL else { return }
         pendingWalkthroughBeforeSQL = nil
-        guard let idx = messages.firstIndex(where: { $0.id == id }) else { return }
+        guard let turn = turn(withID: id) else { return }
 
-        let textBlocks = messages[idx].blocks.filter { block in
+        let textBlocks = turn.blocks.filter { block in
             if case .text = block.kind { return true }
             return false
         }
@@ -311,17 +310,17 @@ extension AIChatViewModel {
         guard case .text(let openText) = tail[0].kind else { return }
         let prose = WalkthroughEnvelopeParser.stripFence(from: openText)
         let consumedIDs = Set(tail.dropFirst().map(\.id))
-        messages[idx].blocks.removeAll { consumedIDs.contains($0.id) }
+        turn.blocks.removeAll { consumedIDs.contains($0.id) }
 
         if prose.isEmpty {
-            messages[idx].blocks.removeAll { $0.id == tail[0].id }
+            turn.blocks.removeAll { $0.id == tail[0].id }
         } else {
             tail[0].setKind(.text(prose))
         }
 
         guard let envelope = WalkthroughEnvelopeParser.parse(from: joined) else { return }
         let walkthrough = SqlWalkthroughBlock(beforeSQL: beforeSQL, envelope: envelope)
-        messages[idx].appendBlock(.sqlWalkthrough(walkthrough))
+        turn.appendBlock(.sqlWalkthrough(walkthrough))
     }
 
     private func consumeStreamRound(
@@ -342,33 +341,108 @@ extension AIChatViewModel {
             )
         )
 
-        var pendingContent = ""
-        var pendingUsage: AITokenUsage?
+        let buffer = StreamTextBuffer()
+        let reasoningIDMap = ReasoningBlockIDMap()
+        let ticker = startFlushTicker(buffer: buffer, assistantID: assistantID, idMap: reasoningIDMap)
+        defer {
+            ticker.cancel()
+            if !Task.isCancelled {
+                drainBuffer(buffer, assistantID: assistantID, idMap: reasoningIDMap)
+            }
+        }
+
+        return try await runProducerLoop(
+            stream: stream,
+            buffer: buffer,
+            reasoningIDMap: reasoningIDMap,
+            assistantID: assistantID,
+            chatMode: chatMode
+        )
+    }
+
+    private func startFlushTicker(
+        buffer: StreamTextBuffer,
+        assistantID: UUID,
+        idMap: ReasoningBlockIDMap
+    ) -> Task<Void, Never> {
+        let clock = streamFlushClock
+        let interval = streamFlushInterval
+        return Task { [weak self] in
+            while !Task.isCancelled {
+                do {
+                    try await clock.sleep(for: interval)
+                } catch {
+                    return
+                }
+                guard !Task.isCancelled, let self else { return }
+                self.drainBuffer(buffer, assistantID: assistantID, idMap: idMap)
+            }
+        }
+    }
+
+    @MainActor
+    private func drainBuffer(_ buffer: StreamTextBuffer, assistantID: UUID, idMap: ReasoningBlockIDMap) {
+        drainBufferedText(buffer, assistantID: assistantID)
+        drainBufferedReasoning(buffer, assistantID: assistantID, idMap: idMap)
+    }
+
+    @MainActor
+    private func drainBufferedText(_ buffer: StreamTextBuffer, assistantID: UUID) {
+        guard buffer.hasBufferedText else { return }
+        let drained = buffer.drainText()
+        guard let turn = turn(withID: assistantID) else { return }
+        if !drained.text.isEmpty {
+            turn.appendStreamingToken(drained.text)
+        }
+        if let usage = drained.usage {
+            turn.usage = usage
+        }
+    }
+
+    @MainActor
+    private func drainBufferedReasoning(
+        _ buffer: StreamTextBuffer,
+        assistantID: UUID,
+        idMap: ReasoningBlockIDMap
+    ) {
+        guard buffer.hasBufferedReasoning, let turn = turn(withID: assistantID) else { return }
+        for chunk in buffer.drainReasoning() {
+            turn.appendReasoningDelta(
+                providerBlockID: chunk.providerBlockID,
+                text: chunk.text,
+                idMap: &idMap.value
+            )
+        }
+    }
+
+    private func runProducerLoop(
+        stream: AsyncThrowingStream<ChatStreamEvent, Error>,
+        buffer: StreamTextBuffer,
+        reasoningIDMap: ReasoningBlockIDMap,
+        assistantID: UUID,
+        chatMode: AIChatMode
+    ) async throws -> StreamRoundResult {
         var toolUseOrder: [String] = []
         var toolUseNames: [String: String] = [:]
         var toolUseInputs: [String: String] = [:]
         var toolUseMetadata: [String: [String: String]] = [:]
-        var reasoningIDMap: [String: UUID] = [:]
-        let flushInterval: ContinuousClock.Duration = .milliseconds(150)
-        var lastFlushTime: ContinuousClock.Instant = .now
+        var hasRenderedFirstText = false
 
         for try await event in stream {
             guard !Task.isCancelled else { break }
             switch event {
             case .textDelta(let token):
-                pendingContent += token
+                drainBufferedReasoning(buffer, assistantID: assistantID, idMap: reasoningIDMap)
+                buffer.appendText(token)
+                if !hasRenderedFirstText, buffer.hasBufferedText {
+                    hasRenderedFirstText = true
+                    drainBufferedText(buffer, assistantID: assistantID)
+                }
             case .usage(let usage):
-                pendingUsage = usage
+                buffer.setUsage(usage)
             case .toolUseStart(let id, let name, let providerMetadata):
-                if !pendingContent.isEmpty {
-                    await self.flushPending(content: pendingContent, usage: pendingUsage, into: assistantID)
-                    pendingContent = ""
-                    pendingUsage = nil
-                    lastFlushTime = .now
-                }
-                await MainActor.run { [weak self] in
-                    self?.finalizeStreamingMessage(id: assistantID)
-                }
+                drainBuffer(buffer, assistantID: assistantID, idMap: reasoningIDMap)
+                finalizeStreamingMessage(id: assistantID)
                 if toolUseInputs[id] == nil {
                     toolUseOrder.append(id)
                     toolUseInputs[id] = ""
@@ -382,34 +456,26 @@ extension AIChatViewModel {
             case .toolUseEnd:
                 break
             case .toolInvocationRequest(let block, let replyToken):
-                await self.dispatchCopilotInvocation(
+                drainBuffer(buffer, assistantID: assistantID, idMap: reasoningIDMap)
+                await dispatchCopilotInvocation(
                     block: block, replyToken: replyToken,
                     assistantID: assistantID, mode: chatMode
                 )
             case .reasoningStart(let providerID):
-                if !pendingContent.isEmpty {
-                    await self.flushPending(content: pendingContent, usage: pendingUsage, into: assistantID)
-                    pendingContent = ""
-                    pendingUsage = nil
-                    lastFlushTime = .now
-                }
-                await self.startReasoning(providerID: providerID, assistantID: assistantID, idMap: &reasoningIDMap)
+                drainBuffer(buffer, assistantID: assistantID, idMap: reasoningIDMap)
+                turn(withID: assistantID)?
+                    .startReasoningBlock(providerBlockID: providerID, idMap: &reasoningIDMap.value)
             case .reasoningDelta(let providerID, let text):
-                await self.appendReasoning(providerID: providerID, text: text, assistantID: assistantID, idMap: &reasoningIDMap)
+                drainBufferedText(buffer, assistantID: assistantID)
+                buffer.appendReasoning(providerBlockID: providerID, text: text)
             case .reasoningEnd(let providerID, let opaque):
-                await self.finalizeReasoning(providerID: providerID, opaque: opaque, assistantID: assistantID, idMap: &reasoningIDMap)
+                drainBuffer(buffer, assistantID: assistantID, idMap: reasoningIDMap)
+                turn(withID: assistantID)?.finalizeReasoningBlock(
+                    providerBlockID: providerID,
+                    opaque: opaque,
+                    idMap: &reasoningIDMap.value
+                )
             }
-
-            if ContinuousClock.now - lastFlushTime >= flushInterval {
-                await self.flushPending(content: pendingContent, usage: pendingUsage, into: assistantID)
-                pendingContent = ""
-                pendingUsage = nil
-                lastFlushTime = .now
-            }
-        }
-
-        if !Task.isCancelled, !pendingContent.isEmpty || pendingUsage != nil {
-            await self.flushPending(content: pendingContent, usage: pendingUsage, into: assistantID)
         }
 
         return StreamRoundResult(
@@ -419,42 +485,6 @@ extension AIChatViewModel {
             toolUseMetadata: toolUseMetadata,
             cancelled: Task.isCancelled
         )
-    }
-
-    private func startReasoning(providerID: String, assistantID: UUID, idMap: inout [String: UUID]) async {
-        let captured = idMap
-        let updated = await MainActor.run { [weak self] () -> [String: UUID] in
-            guard let self,
-                  let idx = self.messages.firstIndex(where: { $0.id == assistantID }) else { return captured }
-            var localMap = captured
-            self.messages[idx].startReasoningBlock(providerBlockID: providerID, idMap: &localMap)
-            return localMap
-        }
-        idMap = updated
-    }
-
-    private func appendReasoning(providerID: String, text: String, assistantID: UUID, idMap: inout [String: UUID]) async {
-        let captured = idMap
-        let updated = await MainActor.run { [weak self] () -> [String: UUID] in
-            guard let self,
-                  let idx = self.messages.firstIndex(where: { $0.id == assistantID }) else { return captured }
-            var localMap = captured
-            _ = self.messages[idx].appendReasoningDelta(providerBlockID: providerID, text: text, idMap: &localMap)
-            return localMap
-        }
-        idMap = updated
-    }
-
-    private func finalizeReasoning(providerID: String, opaque: ReasoningOpaque?, assistantID: UUID, idMap: inout [String: UUID]) async {
-        let captured = idMap
-        let updated = await MainActor.run { [weak self] () -> [String: UUID] in
-            guard let self,
-                  let idx = self.messages.firstIndex(where: { $0.id == assistantID }) else { return captured }
-            var localMap = captured
-            self.messages[idx].finalizeReasoningBlock(providerBlockID: providerID, opaque: opaque, idMap: &localMap)
-            return localMap
-        }
-        idMap = updated
     }
 
     nonisolated static func buildSystemPrompt(
@@ -549,21 +579,6 @@ extension AIChatViewModel {
                 assistantTurn: assistantWire,
                 userTurn: userTurn
             )
-        }
-    }
-
-    func flushPending(content: String, usage: AITokenUsage?, into assistantID: UUID) async {
-        guard !content.isEmpty || usage != nil else { return }
-        await MainActor.run { [weak self] in
-            guard let self,
-                  let idx = self.messages.firstIndex(where: { $0.id == assistantID })
-            else { return }
-            if !content.isEmpty {
-                self.messages[idx].appendStreamingToken(content)
-            }
-            if let usage {
-                self.messages[idx].usage = usage
-            }
         }
     }
 
