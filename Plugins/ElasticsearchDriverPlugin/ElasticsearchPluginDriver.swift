@@ -134,7 +134,7 @@ internal final class ElasticsearchPluginDriver: PluginDatabaseDriver, @unchecked
         let fields = ElasticsearchMappingFlattener.fieldInfo(from: try await cachedMappingColumns(table))
         let specs = ElasticsearchQueryBuilder.specs(from: queryFilters)
         let query = ElasticsearchQueryBuilder.queryClause(
-            filters: specs, logicMode: logicMode, fields: fields, caseInsensitive: supportsCaseInsensitiveSearch
+            filters: specs, logicMode: logicMode, fields: fields, supportsCaseInsensitive: supportsCaseInsensitiveSearch
         )
         return try await conn.count(index: table, query: query)
     }

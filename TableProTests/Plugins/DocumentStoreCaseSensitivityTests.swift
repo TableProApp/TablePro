@@ -125,6 +125,26 @@ struct ElasticsearchCaseSensitivityTests {
         let options = regexp?["status"] as? [String: Any]
         #expect(options?["case_insensitive"] as? Bool == true)
     }
+
+    @Test("A server too old for the option never receives it, whatever the row asks for")
+    func testVersionGateWinsOverTheRow() {
+        let gated = ElasticsearchQueryBuilder.clause(
+            for: ElasticsearchFilterSpec(column: "status", op: "CONTAINS", value: "x", caseSensitive: false),
+            fields: keywordField,
+            supportsCaseInsensitive: false
+        )
+        let options = (gated["wildcard"] as? [String: Any])?["status"] as? [String: Any]
+        #expect(options?["case_insensitive"] == nil)
+    }
+
+    @Test("A spec with no case setting keeps the behaviour each operator had before")
+    func testOperatorDefaultsMatchPriorBehaviour() {
+        #expect(ElasticsearchFilterSpec(column: "a", op: "CONTAINS", value: "x").ignoresCase)
+        #expect(ElasticsearchFilterSpec(column: "a", op: "STARTS WITH", value: "x").ignoresCase)
+        #expect(ElasticsearchFilterSpec(column: "a", op: "REGEX", value: "x").ignoresCase)
+        #expect(ElasticsearchFilterSpec(column: "a", op: "=", value: "x").ignoresCase == false)
+        #expect(ElasticsearchFilterSpec(column: "a", op: "IN", value: "x").ignoresCase == false)
+    }
 }
 
 @Suite("etcd Case Sensitivity")
@@ -195,5 +215,35 @@ struct BigQueryCaseSensitivityTests {
     func testNoEscapeClause() {
         #expect(!sql("CONTAINS", "ali", isCaseSensitive: false).contains("ESCAPE"))
         #expect(!sql("CONTAINS", "ali", isCaseSensitive: true).contains("ESCAPE"))
+    }
+}
+
+@Suite("DynamoDB Case Sensitivity")
+struct DynamoDBCaseSensitivityTests {
+    @Test("A scan tag saved before this option existed keeps each operator's old behaviour")
+    func testLegacySpecDefaults() {
+        #expect(DynamoDBFilterSpec(column: "a", op: "CONTAINS", value: "x").ignoresCase)
+        #expect(DynamoDBFilterSpec(column: "a", op: "STARTS WITH", value: "x").ignoresCase)
+        #expect(DynamoDBFilterSpec(column: "a", op: "ENDS WITH", value: "x").ignoresCase)
+        #expect(DynamoDBFilterSpec(column: "a", op: "=", value: "x").ignoresCase == false)
+        #expect(DynamoDBFilterSpec(column: "a", op: "!=", value: "x").ignoresCase == false)
+    }
+
+    @Test("An explicit setting wins over the operator default")
+    func testExplicitSettingWins() {
+        #expect(DynamoDBFilterSpec(column: "a", op: "CONTAINS", value: "x", caseSensitive: true).ignoresCase == false)
+        #expect(DynamoDBFilterSpec(column: "a", op: "=", value: "x", caseSensitive: false).ignoresCase)
+    }
+
+    @Test("The setting survives the encode and decode round trip")
+    func testRoundTrip() throws {
+        let query = DynamoDBQueryBuilder().buildFilteredQuery(
+            table: "Users",
+            filters: [PluginQueryFilter(column: "name", op: "CONTAINS", value: "al", isCaseSensitive: true)],
+            logicMode: "AND", sortColumns: [], columns: [], limit: 10, offset: 0,
+            keySchema: []
+        )
+        let parsed = try #require(query.flatMap { DynamoDBQueryBuilder.parseScanQuery($0) })
+        #expect(parsed.filters.first?.ignoresCase == false)
     }
 }

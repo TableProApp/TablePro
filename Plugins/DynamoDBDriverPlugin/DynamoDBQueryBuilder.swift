@@ -16,7 +16,14 @@ struct DynamoDBFilterSpec: Codable {
     let value: String
     var caseSensitive: Bool?
 
-    var ignoresCase: Bool { !(caseSensitive ?? true) }
+    /// Operators that matched without regard to case before a filter row could say otherwise.
+    /// A scan tag saved by an older build carries no setting and must keep behaving as it did.
+    private static let ignoreCaseByDefault: Set<String> = ["CONTAINS", "STARTS WITH", "ENDS WITH"]
+
+    var ignoresCase: Bool {
+        guard let caseSensitive else { return Self.ignoreCaseByDefault.contains(op.uppercased()) }
+        return !caseSensitive
+    }
 }
 
 // MARK: - Parsed Query Types
