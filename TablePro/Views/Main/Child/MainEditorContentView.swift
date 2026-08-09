@@ -371,6 +371,7 @@ struct MainEditorContentView: View {
                         connectionAIPolicy: coordinator.connection.aiPolicy ?? AppSettingsManager.shared.ai.defaultConnectionPolicy,
                         tabID: tab.id,
                         claimFocusOnAppear: claimFocus,
+                        restoredCursorRange: coordinator.restoredCursorRange(for: tab.id),
                         onCloseTab: {
                             NSApp.keyWindow?.close()
                         },
@@ -413,7 +414,7 @@ struct MainEditorContentView: View {
             }
         )
         .onAppear {
-            coordinator.applyRestoredCursor(for: tab.id)
+            coordinator.clearRestoredCursor(for: tab.id)
             if coordinator.tabManager.pendingFocusTabId == tab.id {
                 coordinator.tabManager.pendingFocusTabId = nil
             }

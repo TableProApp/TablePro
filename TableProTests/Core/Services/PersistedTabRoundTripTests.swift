@@ -109,6 +109,46 @@ struct PersistedTabRoundTripTests {
         #expect(persisted.cursorOffset == 42)
     }
 
+    @Test("A selection round-trips, not just the caret")
+    func cursorSelectionRoundTrip() {
+        var tab = QueryTab(id: UUID(), title: "Q", query: "SELECT * FROM users", tabType: .query)
+        tab.restoredCursorOffset = 7
+        tab.restoredCursorLength = 5
+
+        let persisted = tab.toPersistedTab()
+        #expect(persisted.cursorOffset == 7)
+        #expect(persisted.cursorLength == 5)
+        let restored = QueryTab(from: persisted, defaultPageSize: 1_000)
+        #expect(restored.restoredCursorOffset == 7)
+        #expect(restored.restoredCursorLength == 5)
+    }
+
+    @Test("A selection that runs past a now-shorter query is trimmed, not dropped")
+    func cursorSelectionClampedToQueryLength() {
+        let persisted = PersistedTab(
+            id: UUID(),
+            title: "Q",
+            query: "SELECT",
+            tabType: .query,
+            tableName: nil,
+            cursorOffset: 3,
+            cursorLength: 10_000
+        )
+
+        let restored = QueryTab(from: persisted, defaultPageSize: 1_000)
+        #expect(restored.restoredCursorOffset == 3)
+        #expect(restored.restoredCursorLength == ("SELECT" as NSString).length - 3)
+    }
+
+    @Test("A caret with no selection persists no length")
+    func caretPersistsNoLength() {
+        var tab = QueryTab(id: UUID(), title: "Q", query: "SELECT 1", tabType: .query)
+        tab.restoredCursorOffset = 4
+        tab.restoredCursorLength = 0
+
+        #expect(tab.toPersistedTab().cursorLength == nil)
+    }
+
     @Test("Column widths round-trip")
     func columnWidthsRoundTrip() {
         var tab = tableTab()

@@ -343,7 +343,9 @@ final class MainContentCoordinator {
             }
         }
         if tab.tabType == .query, tab.id == tabManager.selectedTabId {
-            enriched.restoredCursorOffset = cursorPositions.first?.range.location
+            let range = cursorPositions.first?.range
+            enriched.restoredCursorOffset = range?.location
+            enriched.restoredCursorLength = range.map(\.length)
         }
         return enriched
     }
@@ -365,14 +367,29 @@ final class MainContentCoordinator {
         }
     }
 
-    func applyRestoredCursor(for tabId: UUID) {
+    /// The selection a query tab was left with, as a range to hand straight to the editor.
+    ///
+    /// The editor applies this once through its own controller rather than through the cursor
+    /// binding, so this is a plain read. The value stays on the tab until the editor reports it
+    /// consumed, because `body` runs many times before the text view exists.
+    func restoredCursorRange(for tabId: UUID) -> NSRange? {
         guard let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }),
               tabManager.tabs[index].tabType == .query,
-              let offset = tabManager.tabs[index].restoredCursorOffset else { return }
+              let offset = tabManager.tabs[index].restoredCursorOffset else { return nil }
         let length = (tabManager.tabs[index].content.query as NSString).length
         let clamped = min(max(0, offset), length)
-        cursorPositions = [CursorPosition(range: NSRange(location: clamped, length: 0))]
-        tabManager.mutate(at: index) { $0.restoredCursorOffset = nil }
+        let selectionLength = min(tabManager.tabs[index].restoredCursorLength ?? 0, length - clamped)
+        return NSRange(location: clamped, length: max(0, selectionLength))
+    }
+
+    func clearRestoredCursor(for tabId: UUID) {
+        guard let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }),
+              tabManager.tabs[index].restoredCursorOffset != nil
+                  || tabManager.tabs[index].restoredCursorLength != nil else { return }
+        tabManager.mutate(at: index) {
+            $0.restoredCursorOffset = nil
+            $0.restoredCursorLength = nil
+        }
     }
 
     private static let periodicSaveInterval: Duration = .seconds(30)

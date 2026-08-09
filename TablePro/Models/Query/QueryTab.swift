@@ -35,10 +35,18 @@ struct QueryTab: Identifiable, Equatable {
     var pendingRestoredSort: [PersistedSortColumn]?
     var restoredPage: Int?
     var restoredCursorOffset: Int?
+    var restoredCursorLength: Int?
 
     private static func clampedCursorOffset(_ offset: Int?, in query: String) -> Int? {
         guard let offset, offset >= 0 else { return nil }
         return min(offset, (query as NSString).length)
+    }
+
+    private static func clampedCursorLength(_ length: Int?, from offset: Int?, in query: String) -> Int? {
+        guard let length, length > 0, let start = clampedCursorOffset(offset, in: query) else { return nil }
+        let available = (query as NSString).length - start
+        guard available > 0 else { return nil }
+        return min(length, available)
     }
 
     init(
@@ -70,6 +78,7 @@ struct QueryTab: Identifiable, Equatable {
         self.pendingRestoredSort = nil
         self.restoredPage = nil
         self.restoredCursorOffset = nil
+        self.restoredCursorLength = nil
     }
 
     init(from persisted: PersistedTab, defaultPageSize: Int) {
@@ -105,6 +114,11 @@ struct QueryTab: Identifiable, Equatable {
         self.pendingRestoredSort = persisted.sortColumns
         self.restoredPage = persisted.restoredPage.map { max(1, $0) }
         self.restoredCursorOffset = Self.clampedCursorOffset(persisted.cursorOffset, in: persisted.query)
+        self.restoredCursorLength = Self.clampedCursorLength(
+            persisted.cursorLength,
+            from: persisted.cursorOffset,
+            in: persisted.query
+        )
     }
 
     @MainActor static func buildBaseTableQuery(
@@ -182,6 +196,11 @@ struct QueryTab: Identifiable, Equatable {
             sortColumns: persistedSort,
             restoredPage: restoredPage,
             cursorOffset: Self.clampedCursorOffset(restoredCursorOffset, in: persistedQuery),
+            cursorLength: Self.clampedCursorLength(
+                restoredCursorLength,
+                from: restoredCursorOffset,
+                in: persistedQuery
+            ),
             columnWidths: widths,
             windowGroupIndex: windowGroupIndex
         )

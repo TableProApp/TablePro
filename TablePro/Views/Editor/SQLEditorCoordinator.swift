@@ -52,10 +52,25 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
     @ObservationIgnored private var hasInstalledEditorServices = false
     @ObservationIgnored private weak var windowSentinel: WindowAccessorView?
 
+    @ObservationIgnored private var cursorRestorePending: NSRange?
+
     var pendingFocusClaim: Bool { focusClaimPending }
+
+    var pendingCursorRestore: NSRange? { cursorRestorePending }
 
     func scheduleEditorFocusClaim() {
         focusClaimPending = true
+    }
+
+    /// Latches a saved selection to apply once, the moment the editor is in a window.
+    ///
+    /// The caller sets this from `body`, which runs many times before the text view exists, so the
+    /// setter is idempotent and the value is consumed exactly once in `installEditorServices`.
+    /// Pushing it through the SwiftUI cursor binding instead would fight live typing, because the
+    /// binding is written on every selection change the user makes.
+    func scheduleCursorRestore(_ range: NSRange) {
+        guard !hasInstalledEditorServices else { return }
+        cursorRestorePending = range
     }
 
     /// Vim mode for UI observation
@@ -147,7 +162,11 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
             Self.logger.debug("Editor focus claim: pending=\(claimPending) isKey=\(window.isKeyWindow) made=\(made)")
         }
 
-        if controller.cursorPositions.isEmpty {
+        if let restored = cursorRestorePending {
+            cursorRestorePending = nil
+            let clamped = restored.clampedToTextLength(textView.textStorage.length)
+            controller.setCursorPositions([CursorPosition(range: clamped)], scrollToVisible: true)
+        } else if controller.cursorPositions.isEmpty {
             controller.setCursorPositions([CursorPosition(range: NSRange(location: 0, length: 0))])
         }
     }

@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The SQL editor now returns the cursor to where you left it when a tab is reopened or the app restarts, and restores what you had selected, not just the caret. The saved position was never applied.
 - Autocomplete now keeps suggesting tables and columns after a connection drops and reconnects on its own. The reconnect cleared the schema it had loaded and never asked for it again, so a window that looked connected offered nothing but keywords for the rest of the session.
 - The JSON view of a result now updates when you run another query. It kept showing the previous result until you switched to the data grid and back, and a query that returned the same number of rows never updated at all.
 - The JSON view shows the whole result again when no row is selected. A selection left over from an earlier query made it show an empty list, and a column filter made it show the wrong rows.

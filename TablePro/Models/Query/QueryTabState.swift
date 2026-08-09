@@ -37,6 +37,7 @@ struct PersistedTab: Codable {
     var sortColumns: [PersistedSortColumn]?
     var restoredPage: Int?
     var cursorOffset: Int?
+    var cursorLength: Int?
     var columnWidths: [String: CGFloat]?
     var windowGroupIndex: Int?
 
@@ -58,6 +59,7 @@ struct PersistedTab: Codable {
         sortColumns: [PersistedSortColumn]? = nil,
         restoredPage: Int? = nil,
         cursorOffset: Int? = nil,
+        cursorLength: Int? = nil,
         columnWidths: [String: CGFloat]? = nil,
         windowGroupIndex: Int? = nil
     ) {
@@ -75,6 +77,7 @@ struct PersistedTab: Codable {
         self.sortColumns = sortColumns
         self.restoredPage = restoredPage
         self.cursorOffset = cursorOffset
+        self.cursorLength = cursorLength
         self.columnWidths = columnWidths
         self.windowGroupIndex = windowGroupIndex
     }
@@ -82,7 +85,7 @@ struct PersistedTab: Codable {
     private enum CodingKeys: String, CodingKey {
         case id, title, query, tabType, tableName, isView, databaseName, schemaName
         case sourceFileURL, erDiagramSchemaKey, queryParameters
-        case sortColumns, restoredPage, cursorOffset, columnWidths, windowGroupIndex
+        case sortColumns, restoredPage, cursorOffset, cursorLength, columnWidths, windowGroupIndex
         case overflowFileName
     }
 
@@ -102,6 +105,7 @@ struct PersistedTab: Codable {
         sortColumns = try container.decodeIfPresent([PersistedSortColumn].self, forKey: .sortColumns)
         restoredPage = try container.decodeIfPresent(Int.self, forKey: .restoredPage)
         cursorOffset = try container.decodeIfPresent(Int.self, forKey: .cursorOffset)
+        cursorLength = try container.decodeIfPresent(Int.self, forKey: .cursorLength)
         columnWidths = try container.decodeIfPresent([String: CGFloat].self, forKey: .columnWidths)
         windowGroupIndex = try container.decodeIfPresent(Int.self, forKey: .windowGroupIndex)
         overflowFileName = try container.decodeIfPresent(String.self, forKey: .overflowFileName)

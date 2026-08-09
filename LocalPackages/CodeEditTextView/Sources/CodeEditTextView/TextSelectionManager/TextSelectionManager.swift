@@ -89,9 +89,12 @@ public class TextSelectionManager: NSObject {
         let oldRanges = textSelections.map(\.range)
 
         textSelections.forEach { $0.view?.removeFromSuperview() }
-        // Remove duplicates, clamp out-of-bounds ranges, update suggested X position.
+        // Remove duplicates, drop malformed ranges, clamp stale ones, update suggested X position.
+        // A negative location is malformed and is discarded. A location past the end is a stale but
+        // well-formed range, which happens whenever the text shrinks under an existing selection;
+        // clamping keeps a usable selection there instead of leaving the view with none at all.
         let storageLength = textStorage?.length ?? 0
-        textSelections = Set(ranges.map { $0.clamped(toLength: storageLength) })
+        textSelections = Set(ranges.filter { $0.location >= 0 }.map { $0.clamped(toLength: storageLength) })
             .sorted(by: { $0.location < $1.location })
             .map {
                 let selection = TextSelection(range: $0)

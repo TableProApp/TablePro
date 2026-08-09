@@ -162,7 +162,7 @@ public struct SourceEditor: NSViewControllerRepresentable {
     }
 
     private func updateControllerWithState(_ state: SourceEditorState, controller: TextViewController) {
-        if let cursorPositions = state.cursorPositions, cursorPositions != state.cursorPositions {
+        if let cursorPositions = state.cursorPositions, cursorPositions != controller.cursorPositions {
             controller.setCursorPositions(cursorPositions)
         }
 

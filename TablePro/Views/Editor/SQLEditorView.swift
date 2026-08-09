@@ -24,6 +24,7 @@ struct SQLEditorView: View {
     var connectionAIPolicy: AIConnectionPolicy?
     var tabID: UUID?
     var claimFocusOnAppear: Bool = false
+    var restoredCursorRange: NSRange?
     @Binding var vimMode: VimMode
     var onCloseTab: (() -> Void)?
     var onExecuteQuery: (() -> Void)?
@@ -52,6 +53,9 @@ struct SQLEditorView: View {
         coordinator.connectionId = connectionId
         if claimFocusOnAppear {
             coordinator.scheduleEditorFocusClaim()
+        }
+        if let restoredCursorRange {
+            coordinator.scheduleCursorRestore(restoredCursorRange)
         }
 
         return SourceEditor(

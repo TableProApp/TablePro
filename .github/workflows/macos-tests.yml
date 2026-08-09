@@ -66,6 +66,12 @@ jobs:
       - name: Run editor package tests
         run: swift test --package-path LocalPackages/CodeEditTextView
 
+      # Scoped to the controller suite on purpose. The rest of this package's tests
+      # (HighlighterTests, TagEditingTests) already fail on main and one of them aborts
+      # the runner, so gating on the whole package would keep CI permanently red.
+      - name: Run source editor controller tests
+        run: swift test --package-path LocalPackages/CodeEditSourceEditor --filter TextViewControllerTests
+
   app-tests:
     name: macOS App Tests
     runs-on: macos-26
