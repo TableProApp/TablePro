@@ -8261,6 +8261,34 @@
         }
       }
     },
+    "Adds a narrow strip on the window's leading edge listing every connection and database you have open, so one click switches to it." : {
+      "localizations" : {
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Pencerenin sol kenarında açık her bağlantıyı ve veritabanını listeleyen dar bir şerit ekler; tek tıkla geçiş yaparsınız."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Thêm một dải hẹp ở cạnh trái cửa sổ liệt kê mọi kết nối và cơ sở dữ liệu đang mở, chỉ cần một cú nhấp để chuyển sang."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "在窗口前缘添加一条窄栏，列出所有已打开的连接和数据库，单击即可切换。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "在視窗前緣加入一條窄列，列出所有已開啟的連線與資料庫，單擊即可切換。"
+          }
+        }
+      }
+    },
     "Adds a Recent section at the top of the Tables sidebar with the last tables you opened per connection and database." : {
       "localizations" : {
         "tr" : {
@@ -18834,6 +18862,9 @@
         }
       }
     },
+    "Close Workspace" : {
+
+    },
     "Closing this tab will discard all unsaved changes." : {
       "extractionState" : "stale",
       "localizations" : {
@@ -21036,6 +21067,34 @@
         }
       }
     },
+    "connected" : {
+      "localizations" : {
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "bağlı"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "đã kết nối"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已连接"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已連線"
+          }
+        }
+      }
+    },
     "Connected" : {
       "localizations" : {
         "tr" : {
@@ -21116,6 +21175,34 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "已連線的執行緒"
+          }
+        }
+      }
+    },
+    "connecting" : {
+      "localizations" : {
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "bağlanıyor"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "đang kết nối"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在连接"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在連線"
           }
         }
       }
@@ -21318,6 +21405,34 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "連線存取權限"
+          }
+        }
+      }
+    },
+    "connection failed" : {
+      "localizations" : {
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "bağlantı başarısız"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "kết nối thất bại"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "连接失败"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "連線失敗"
           }
         }
       }
@@ -24489,6 +24604,7 @@
       }
     },
     "Could not switch to database %@ before applying schema changes: %@" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -26844,6 +26960,34 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "資料庫"
+          }
+        }
+      }
+    },
+    "database %@" : {
+      "localizations" : {
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "veritabanı %@"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "cơ sở dữ liệu %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "数据库 %@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "資料庫 %@"
           }
         }
       }
@@ -29307,6 +29451,9 @@
         }
       }
     },
+    "Delete to Beginning of Line" : {
+
+    },
     "Delete token?" : {
       "localizations" : {
         "tr" : {
@@ -29334,6 +29481,12 @@
           }
         }
       }
+    },
+    "Delete Word Backward" : {
+
+    },
+    "Delete Word Forward" : {
+
     },
     "Delete…" : {
       "localizations" : {
@@ -30397,6 +30550,34 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "中斷所選用戶端的連線"
+          }
+        }
+      }
+    },
+    "disconnected" : {
+      "localizations" : {
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "bağlantı kesildi"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "đã ngắt kết nối"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已断开连接"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已中斷連線"
           }
         }
       }
@@ -31500,34 +31681,6 @@
         }
       }
     },
-    "Drop Failed" : {
-      "localizations" : {
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Silme Başarısız"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Xóa thất bại"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "删除失败"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "捨棄失敗"
-          }
-        }
-      }
-    },
     "Drop External Table" : {
       "localizations" : {
         "tr" : {
@@ -31552,6 +31705,34 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "捨棄外部資料表"
+          }
+        }
+      }
+    },
+    "Drop Failed" : {
+      "localizations" : {
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Silme Başarısız"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Xóa thất bại"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "删除失败"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "捨棄失敗"
           }
         }
       }
@@ -37288,34 +37469,6 @@
         }
       }
     },
-    "External Table" : {
-      "localizations" : {
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Harici Tablo"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "External Table"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "外部表"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "外部資料表"
-          }
-        }
-      }
-    },
     "External access is disabled for this connection" : {
       "localizations" : {
         "tr" : {
@@ -37396,6 +37549,34 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "外部整合與 MCP 用戶端要求將顯示於此處。"
+          }
+        }
+      }
+    },
+    "External Table" : {
+      "localizations" : {
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Harici Tablo"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "External Table"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "外部表"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "外部資料表"
           }
         }
       }
@@ -42727,34 +42908,6 @@
         }
       }
     },
-    "Group all connections in one window" : {
-      "localizations" : {
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tüm bağlantıları tek pencerede grupla"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Gom tất cả kết nối vào một cửa sổ"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "将所有连接分组到一个窗口"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "將所有連線群組到同一個視窗"
-          }
-        }
-      }
-    },
     "Group name" : {
       "localizations" : {
         "tr" : {
@@ -43031,6 +43184,34 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "隱藏權杖"
+          }
+        }
+      }
+    },
+    "Hide Workspace Rail" : {
+      "localizations" : {
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Çalışma Alanı Şeridini Gizle"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Ẩn thanh không gian làm việc"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "隐藏工作区栏"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "隱藏工作區列"
           }
         }
       }
@@ -54218,6 +54399,18 @@
         }
       }
     },
+    "Move to Beginning of Document" : {
+
+    },
+    "Move to Beginning of Line" : {
+
+    },
+    "Move to End of Document" : {
+
+    },
+    "Move to End of Line" : {
+
+    },
     "Move to Group" : {
       "localizations" : {
         "tr" : {
@@ -54330,6 +54523,12 @@
           }
         }
       }
+    },
+    "Move Word Left" : {
+
+    },
+    "Move Word Right" : {
+
     },
     "MQL" : {
       "extractionState" : "stale",
@@ -61797,6 +61996,34 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "開啟終端機"
+          }
+        }
+      }
+    },
+    "Open Workspaces" : {
+      "localizations" : {
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Açık Çalışma Alanları"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Không gian làm việc đang mở"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "已打开的工作区"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "已開啟的工作區"
           }
         }
       }
@@ -70075,6 +70302,9 @@
         }
       }
     },
+    "Record Shortcut" : {
+
+    },
     "Recording shortcut" : {
       "localizations" : {
         "tr" : {
@@ -72935,6 +73165,9 @@
         }
       }
     },
+    "Responding" : {
+
+    },
     "Response" : {
       "localizations" : {
         "tr" : {
@@ -74662,6 +74895,12 @@
         }
       }
     },
+    "Run against this database (uses current if omitted)" : {
+
+    },
+    "Run against this schema (uses current if omitted)" : {
+
+    },
     "Run in New Tab" : {
       "localizations" : {
         "tr" : {
@@ -76026,6 +76265,34 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "綱要"
+          }
+        }
+      }
+    },
+    "schema %@" : {
+      "localizations" : {
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "şema %@"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "schema %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "架构 %@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "綱要 %@"
           }
         }
       }
@@ -79950,6 +80217,34 @@
         }
       }
     },
+    "Show Next Workspace" : {
+      "localizations" : {
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Sonraki Çalışma Alanını Göster"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hiện không gian làm việc tiếp theo"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "显示下一个工作区"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "顯示下一個工作區"
+          }
+        }
+      }
+    },
     "Show object comments" : {
       "localizations" : {
         "tr" : {
@@ -80058,6 +80353,34 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "顯示上一個分頁"
+          }
+        }
+      }
+    },
+    "Show Previous Workspace" : {
+      "localizations" : {
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Önceki Çalışma Alanını Göster"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hiện không gian làm việc trước"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "显示上一个工作区"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "顯示上一個工作區"
           }
         }
       }
@@ -80283,6 +80606,62 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "顯示歡迎視窗"
+          }
+        }
+      }
+    },
+    "Show workspace rail" : {
+      "localizations" : {
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Çalışma alanı şeridini göster"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hiện thanh không gian làm việc"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "显示工作区栏"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "顯示工作區列"
+          }
+        }
+      }
+    },
+    "Show Workspace Rail" : {
+      "localizations" : {
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Çalışma Alanı Şeridini Göster"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hiện thanh không gian làm việc"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "显示工作区栏"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "顯示工作區列"
           }
         }
       }
@@ -85962,6 +86341,7 @@
       }
     },
     "Switch to this database before executing" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -85990,6 +86370,7 @@
       }
     },
     "Switch to this schema before executing" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -90804,6 +91185,9 @@
         }
       }
     },
+    "This diagram is not bound to a database" : {
+
+    },
     "This discards your edits to the Chinook sample and restores the original copy." : {
       "localizations" : {
         "tr" : {
@@ -91887,6 +92271,9 @@
           }
         }
       }
+    },
+    "This tab is on %@. Switch the connection to that database to run it." : {
+
     },
     "This table has no triggers. Triggers run automatically when rows are inserted, updated, or deleted." : {
       "localizations" : {
@@ -93432,6 +93819,34 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "切換資料表瀏覽器"
+          }
+        }
+      }
+    },
+    "Toggle Workspace Rail" : {
+      "localizations" : {
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Çalışma Alanı Şeridini Aç/Kapat"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Bật/tắt thanh không gian làm việc"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "切换工作区栏"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "切換工作區列"
           }
         }
       }
@@ -98864,34 +99279,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "啟用後，若目前分頁沒有未儲存的變更且你尚未與其互動（排序、篩選等），點按側邊欄中的資料表會取代目前的分頁。"
-          }
-        }
-      }
-    },
-    "When enabled, tabs from different connections share the same window instead of opening separate windows." : {
-      "localizations" : {
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Etkinleştirildiğinde, farklı bağlantılardan gelen sekmeler ayrı pencereler açmak yerine aynı pencereyi paylaşır."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Khi bật, các tab từ các kết nối khác nhau sẽ dùng chung một cửa sổ thay vì mở cửa sổ riêng."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "启用后，不同连接的标签页将共享同一窗口，而不是打开单独的窗口。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "啟用後，不同連線的分頁會共用同一個視窗，而不是各自開啟獨立視窗。"
           }
         }
       }

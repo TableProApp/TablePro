@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 struct QuerySplitView<TopContent: View, BottomContent: View>: NSViewControllerRepresentable {
-    var isBottomCollapsed: Bool
+    @Binding var isBottomCollapsed: Bool
     var autosaveName: String
     @ViewBuilder var topContent: TopContent
     @ViewBuilder var bottomContent: BottomContent
@@ -33,6 +33,11 @@ struct QuerySplitView<TopContent: View, BottomContent: View>: NSViewControllerRe
         context.coordinator.bottomController = bottomController
         context.coordinator.bottomItem = bottomItem
         context.coordinator.lastCollapsedState = isBottomCollapsed
+        context.coordinator.onUserCollapseChange = { collapsed in
+            guard isBottomCollapsed != collapsed else { return }
+            isBottomCollapsed = collapsed
+        }
+        context.coordinator.observeCollapse(of: bottomItem)
 
         if isBottomCollapsed {
             bottomItem.isCollapsed = true
@@ -48,19 +53,45 @@ struct QuerySplitView<TopContent: View, BottomContent: View>: NSViewControllerRe
         guard let bottomItem = context.coordinator.bottomItem else { return }
         let wasCollapsed = context.coordinator.lastCollapsedState
 
-        if isBottomCollapsed != wasCollapsed {
-            context.coordinator.lastCollapsedState = isBottomCollapsed
-            let collapse = isBottomCollapsed
-            DispatchQueue.main.async {
-                bottomItem.animator().isCollapsed = collapse
-            }
+        context.coordinator.onUserCollapseChange = { collapsed in
+            guard isBottomCollapsed != collapsed else { return }
+            isBottomCollapsed = collapsed
+        }
+
+        guard isBottomCollapsed != wasCollapsed else { return }
+        context.coordinator.lastCollapsedState = isBottomCollapsed
+        context.coordinator.applyProgrammatically {
+            bottomItem.animator().isCollapsed = isBottomCollapsed
         }
     }
 
+    /// The divider is draggable and double-clickable, so AppKit owns this state as much as
+    /// SwiftUI does. Observing it back keeps the tab's persisted value honest instead of
+    /// letting the two drift until the next programmatic toggle snaps the pane back.
     final class Coordinator {
         var topController: NSHostingController<TopContent>?
         var bottomController: NSHostingController<BottomContent>?
         var bottomItem: NSSplitViewItem?
         var lastCollapsedState = false
+        var onUserCollapseChange: ((Bool) -> Void)?
+
+        private var collapseObservation: NSKeyValueObservation?
+        private var isApplyingProgrammatically = false
+
+        func observeCollapse(of item: NSSplitViewItem) {
+            collapseObservation = item.observe(\.isCollapsed, options: [.new]) { [weak self] item, _ in
+                MainActor.assumeIsolated {
+                    guard let self, !self.isApplyingProgrammatically else { return }
+                    self.lastCollapsedState = item.isCollapsed
+                    self.onUserCollapseChange?(item.isCollapsed)
+                }
+            }
+        }
+
+        func applyProgrammatically(_ body: () -> Void) {
+            isApplyingProgrammatically = true
+            defer { isApplyingProgrammatically = false }
+            body()
+        }
     }
 }

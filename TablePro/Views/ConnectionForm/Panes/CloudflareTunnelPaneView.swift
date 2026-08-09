@@ -142,7 +142,8 @@ struct CloudflareTunnelPaneView: View {
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = false
         panel.directoryURL = URL(fileURLWithPath: "/usr/local/bin")
-        if panel.runModal() == .OK, let url = panel.url {
+        panel.presentAsSheet(for: NSApp.keyWindow) { url in
+            guard let url else { return }
             coordinator.cloudflareTunnel.state.binaryPath = url.path
         }
     }

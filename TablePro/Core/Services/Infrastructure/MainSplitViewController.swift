@@ -55,12 +55,16 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
     private var detailSplitItem: NSSplitViewItem!
     private var inspectorSplitItem: NSSplitViewItem!
 
-    private var sidebarContainer: SidebarContainerViewController!
+    private var navigationSidebar: NavigationSidebarViewController!
     private var detailHosting: NSHostingController<AnyView>!
     private var inspectorHosting: NSHostingController<AnyView>!
 
     // MARK: - Panel Layout State
 
+    /// Never version this key to force a relayout. `NSSplitView` clamps a restored frame against
+    /// the current minimums, so the sidebar simply widens to fit the rail. Bumping it instead
+    /// throws away every saved sidebar width, inspector width and collapse state the user has,
+    /// leaves the old keys orphaned in `UserDefaults`, and reads as a regression nobody asked for.
     private var splitAutosaveName: NSSplitView.AutosaveName {
         if let connectionId = payload?.connectionId ?? currentSession?.connection.id {
             return "com.TablePro.mainSplit.\(connectionId.uuidString)"
@@ -75,6 +79,7 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
     // MARK: - Observers
 
     private var connectionStatusCancellable: AnyCancellable?
+    private var railVisibilityCancellable: AnyCancellable?
 
     // MARK: - Init
 
@@ -160,8 +165,14 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         splitView.dividerStyle = .thin
         splitView.isVertical = true
 
-        sidebarContainer = SidebarContainerViewController(rootView: AnyView(Color.clear))
-        sidebarSplitItem = NSSplitViewItem(sidebarWithViewController: sidebarContainer)
+        navigationSidebar = NavigationSidebarViewController(
+            connectionId: payload?.connectionId ?? currentSession?.connection.id
+        )
+        navigationSidebar.railController.onLayoutChange = { [weak self] _ in
+            self?.navigationSidebar.applyRailWidth(animated: false)
+            self?.recomputeWindowMinSize()
+        }
+        sidebarSplitItem = NSSplitViewItem(sidebarWithViewController: navigationSidebar)
         sidebarSplitItem.canCollapse = true
         sidebarSplitItem.minimumThickness = Self.sidebarMinThickness
         sidebarSplitItem.maximumThickness = Self.sidebarMaxThickness
@@ -185,12 +196,20 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         splitView.autosaveName = splitAutosaveName
         applyDefaultCollapseStateIfNoAutosave()
 
+        navigationSidebar.railController.onEntryCountChange = { [weak self] count in
+            self?.applyRailVisibility(workspaceCount: count)
+        }
+
         rebuildPanes()
     }
 
+    /// A divider dragged all the way in collapses the sidebar without going through
+    /// `toggleSidebar(_:)`, so the toolbar has to be reconciled here too or its segment stays lit
+    /// over a sidebar that is no longer on screen.
     override func splitViewDidResizeSubviews(_ notification: Notification) {
         super.splitViewDidResizeSubviews(notification)
         recomputeWindowMinSize()
+        toolbarOwner?.syncSidebarSelection()
     }
 
     override func viewWillAppear() {
@@ -207,7 +226,7 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         }
 
         if let currentSession, sessionState != nil {
-            sidebarContainer.updateSidebarState(
+            navigationSidebar.objectBrowser.updateSidebarState(
                 SharedSidebarState.forConnection(currentSession.connection.id)
             )
         }
@@ -232,11 +251,18 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
             .sink { [weak self] _ in
                 self?.handleConnectionStatusChange()
             }
+        railVisibilityCancellable = AppEvents.shared.workspaceRailVisibilityChanged
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                self?.applyRailVisibility(workspaceCount: WorkspaceRailStore.entries.count)
+            }
         handleConnectionStatusChange()
+        applyRailVisibility(workspaceCount: WorkspaceRailStore.entries.count)
     }
 
     private func removeObservers() {
         connectionStatusCancellable = nil
+        railVisibilityCancellable = nil
     }
 
     // MARK: - Toolbar
@@ -259,6 +285,7 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
     // MARK: - Connection Status
 
     private func handleConnectionStatusChange() {
+        defer { toolbarOwner?.syncSidebarSelection() }
         let resolvedId = payload?.connectionId ?? currentSession?.id ?? DatabaseManager.shared.lastActiveSessionId
 
         guard let sid = resolvedId else {
@@ -318,7 +345,7 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         sessionState?.coordinator.teardown()
         sessionState = nil
         currentSession = nil
-        sidebarContainer.updateSidebarState(nil)
+        navigationSidebar.objectBrowser.updateSidebarState(nil)
     }
 
     private func applyPhase() {
@@ -345,9 +372,9 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
     // MARK: - Pane Construction
 
     private func rebuildPanes() {
-        sidebarContainer.rootView = AnyView(buildSidebarView())
+        navigationSidebar.objectBrowser.rootView = AnyView(buildSidebarView())
         if let currentSession, sessionState != nil {
-            sidebarContainer.updateSidebarState(
+            navigationSidebar.objectBrowser.updateSidebarState(
                 SharedSidebarState.forConnection(currentSession.connection.id)
             )
         }
@@ -522,17 +549,75 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         toggleInspector()
     }
 
+    // MARK: - Workspace Rail
+
+    /// The menu title has to describe what the command mutates, which is the setting. Reading
+    /// the live pane state instead made the item read "Show Workspace Rail" forever whenever
+    /// the auto-hide rule was the thing keeping the rail off screen.
+    var isWorkspaceRailEnabled: Bool {
+        AppSettingsManager.shared.general.showWorkspaceRail
+    }
+
+    var canToggleWorkspaceRail: Bool {
+        WorkspaceRailStore.entries.count > 1
+    }
+
+
+    /// Driven off the persisted setting rather than this window's live pane state, so a
+    /// window whose rail drifted out of sync cannot swallow the toggle.
+    func toggleWorkspaceRail() {
+        AppSettingsManager.shared.general.showWorkspaceRail.toggle()
+    }
+
+    /// A rail listing one workspace is a switcher with nothing to switch to, so it earns
+    /// its width only once a second connection or database is open.
+    static func shouldShowWorkspaceRail(settingEnabled: Bool, workspaceCount: Int) -> Bool {
+        settingEnabled && workspaceCount > 1
+    }
+
+    func applyRailVisibility(workspaceCount: Int) {
+        setWorkspaceRailVisible(
+            Self.shouldShowWorkspaceRail(
+                settingEnabled: AppSettingsManager.shared.general.showWorkspaceRail,
+                workspaceCount: workspaceCount
+            )
+        )
+    }
+
+    /// The sidebar item's minimum is a required constraint, so it lands on the very next layout
+    /// pass. Applying it outside the rail's own animation snapped the pane its full width wide in
+    /// one frame while the rail slid in behind it, so the object browser lurched and settled back.
+    func setWorkspaceRailVisible(_ visible: Bool) {
+        guard let navigationSidebar, navigationSidebar.isRailVisible != visible else { return }
+        navigationSidebar.setRailVisible(visible, animated: view.window != nil) { [weak self] in
+            self?.recomputeWindowMinSize()
+        }
+    }
+
+    func activateWorkspace(offsetBy offset: Int) {
+        navigationSidebar?.railController.activateWorkspace(offsetBy: offset)
+    }
+
     // MARK: - Sidebar
 
     var isSidebarCollapsed: Bool {
         sidebarSplitItem?.isCollapsed ?? true
     }
 
+    /// Every collapse route reaches AppKit's own `toggleSidebar(_:)`: the View menu sends the
+    /// selector down the responder chain, and so does the toolbar's sidebar button. Overriding
+    /// it is the one place that catches them all, so the toolbar's segment can never stay lit
+    /// over a collapsed sidebar.
+    override func toggleSidebar(_ sender: Any?) {
+        super.toggleSidebar(sender)
+        toolbarOwner?.syncSidebarSelection()
+    }
+
     func focusSidebarSearch() {
         if sidebarSplitItem?.isCollapsed == true {
             sidebarSplitItem?.animator().isCollapsed = false
         }
-        sidebarContainer.focusSearchField()
+        navigationSidebar.objectBrowser.focusSearchField()
     }
 
     func setSidebarTab(_ tab: SidebarTab) {
@@ -547,6 +632,7 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         } else {
             sidebarState.selectedSidebarTab = tab
         }
+        toolbarOwner?.syncSidebarSelection()
     }
 
     // MARK: - Dynamic Window Minimum Size
@@ -568,15 +654,24 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         }
     }
 
+    /// The rail lives inside the sidebar item, so its width is part of that item's minimum
+    /// rather than a separate window-level allowance. A split item's minimum is what a
+    /// divider drag actually stops at, so charging the rail only to the window let a drag
+    /// squeeze the object browser below the width it is designed for.
+    static func resolveSidebarMinimumThickness(railAllowance: CGFloat) -> CGFloat {
+        sidebarMinThickness + railAllowance
+    }
+
     static func resolveWindowMinWidth(
         detailMinimum: CGFloat,
         sidebarVisible: Bool,
         inspectorVisible: Bool,
+        sidebarMinimum: CGFloat,
         dividerThickness: CGFloat
     ) -> CGFloat {
         var width = detailMinimum
         if sidebarVisible {
-            width += sidebarMinThickness + dividerThickness
+            width += sidebarMinimum + dividerThickness
         }
         if inspectorVisible {
             width += inspectorMinThickness + dividerThickness
@@ -591,7 +686,17 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         recomputeWindowMinSize()
     }
 
+    private func applySidebarMinimumThickness() {
+        guard let sidebarSplitItem else { return }
+        let resolved = Self.resolveSidebarMinimumThickness(
+            railAllowance: navigationSidebar?.railAllowance ?? 0
+        )
+        guard sidebarSplitItem.minimumThickness != resolved else { return }
+        sidebarSplitItem.minimumThickness = resolved
+    }
+
     private func recomputeWindowMinSize() {
+        applySidebarMinimumThickness()
         guard let window = view.window else { return }
         let sidebarVisible = !(sidebarSplitItem?.isCollapsed ?? true)
         let inspectorVisible = !(inspectorSplitItem?.isCollapsed ?? true)
@@ -600,6 +705,7 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
             detailMinimum: detailSplitItem?.minimumThickness ?? Self.defaultDetailMinThickness,
             sidebarVisible: sidebarVisible,
             inspectorVisible: inspectorVisible,
+            sidebarMinimum: sidebarSplitItem?.minimumThickness ?? Self.sidebarMinThickness,
             dividerThickness: splitView.dividerThickness
         )
         let newMinSize = NSSize(width: resolvedWidth, height: Self.baseWindowMinHeight)

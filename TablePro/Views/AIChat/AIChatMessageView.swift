@@ -222,6 +222,7 @@ private struct AIChatBlockView: View {
 }
 
 struct ChatTypingIndicatorView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var animating = false
 
     var body: some View {
@@ -232,7 +233,9 @@ struct ChatTypingIndicatorView: View {
                     .frame(width: 6, height: 6)
                     .offset(y: animating ? -3 : 0)
                     .animation(
-                        .easeInOut(duration: 0.4)
+                        reduceMotion
+                            ? nil
+                            : .easeInOut(duration: 0.4)
                             .repeatForever(autoreverses: true)
                             .delay(Double(index) * 0.15),
                         value: animating
@@ -240,6 +243,8 @@ struct ChatTypingIndicatorView: View {
             }
         }
         .frame(height: 16)
-        .onAppear { animating = true }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(String(localized: "Responding"))
+        .onAppear { animating = !reduceMotion }
     }
 }

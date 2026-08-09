@@ -32,6 +32,10 @@ private final class EditorWindow: NSWindow {
 internal final class TabWindowController: NSWindowController, NSWindowDelegate {
     private static let lifecycleLogger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
 
+    /// Deliberately one shared slot for every connection. The rail switches workspaces, so
+    /// every connection's window must occupy the same frame: a rail click then reads as the
+    /// window changing content rather than a different window being raised. Offsetting them
+    /// per connection, or cascading, breaks that illusion.
     internal static let frameAutosaveName: NSWindow.FrameAutosaveName = "MainEditorWindow"
 
     internal let payload: EditorTabPayload
@@ -77,7 +81,9 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
         window.isReleasedWhenClosed = false
         window.delegate = self
 
-        if !window.setFrameUsingName(Self.frameAutosaveName) {
+        if let sibling = NSApp.windows.first(where: { WindowManager.isMainWindow($0) && $0.isVisible }) {
+            window.setFrame(sibling.frame, display: false)
+        } else if !window.setFrameUsingName(Self.frameAutosaveName) {
             let visibleSize = (window.screen ?? NSScreen.main)?.visibleFrame.size
                 ?? NSSize(width: 1_440, height: 900)
             window.setContentSize(NSSize(

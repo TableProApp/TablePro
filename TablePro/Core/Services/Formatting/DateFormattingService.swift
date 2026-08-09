@@ -115,10 +115,16 @@ final class DateFormattingService {
 
     // MARK: - Private Helper Methods
 
+    /// `dateFormat` is a fixed pattern, so it must be evaluated against a fixed locale and
+    /// calendar. Following the user's region renders database timestamps in the Buddhist or
+    /// Japanese calendar and reformats the very value the grid round-trips back to SQL.
+    private static let fixedPatternLocale = Locale(identifier: "en_US_POSIX")
+
     private static func createFormatter(format: String) -> DateFormatter {
         let formatter = DateFormatter()
         formatter.dateFormat = format
-        formatter.locale = Locale.current
+        formatter.locale = fixedPatternLocale
+        formatter.calendar = Calendar(identifier: .gregorian)
         formatter.timeZone = TimeZone.current
         return formatter
     }

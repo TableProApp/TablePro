@@ -1,6 +1,7 @@
 import Foundation
 import os
 import TableProModels
+import TableProOracleCore
 
 // MARK: - Error Category
 
@@ -21,6 +22,25 @@ struct AppError: LocalizedError, Sendable {
     let message: String
     let recovery: String?
     let underlying: Error?
+    /// Set when an Oracle listener rejected the connect identifier and named the
+    /// mode it was given, so the form can offer the other mode in one tap.
+    let suggestedOracleMode: OracleConnectionOptions.IdentifierMode?
+
+    init(
+        category: AppErrorCategory,
+        title: String,
+        message: String,
+        recovery: String?,
+        underlying: Error?,
+        suggestedOracleMode: OracleConnectionOptions.IdentifierMode? = nil
+    ) {
+        self.category = category
+        self.title = title
+        self.message = message
+        self.recovery = recovery
+        self.underlying = underlying
+        self.suggestedOracleMode = suggestedOracleMode
+    }
 
     var errorDescription: String? { message }
 }
@@ -46,6 +66,32 @@ struct ErrorContext: Sendable {
 enum ErrorClassifier {
     private static let logger = Logger(subsystem: "com.TablePro", category: "Error")
 
+    /// ORA-12514 and ORA-12505 each name the identifier kind the listener was
+    /// given, so the failure itself says which mode was wrong.
+    static func oracleIdentifierMismatch(_ lowercasedMessage: String, error: Error) -> AppError? {
+        if lowercasedMessage.contains("ora-12514") {
+            return AppError(
+                category: .config,
+                title: String(localized: "Service Name Not Found"),
+                message: error.localizedDescription,
+                recovery: String(localized: "The listener does not know this service name. Check it with your DBA, or switch to SID if this is an older database."),
+                underlying: error,
+                suggestedOracleMode: .sid
+            )
+        }
+        if lowercasedMessage.contains("ora-12505") {
+            return AppError(
+                category: .config,
+                title: String(localized: "SID Not Found"),
+                message: error.localizedDescription,
+                recovery: String(localized: "The listener does not know this SID. Databases from 12c onward are usually reached by service name instead."),
+                underlying: error,
+                suggestedOracleMode: .service
+            )
+        }
+        return nil
+    }
+
     static func classify(_ error: Error, context: ErrorContext) -> AppError {
         let message = error.localizedDescription.lowercased()
 
@@ -61,8 +107,12 @@ enum ErrorClassifier {
             )
         }
 
+        if context.databaseType == .oracle, let mismatch = oracleIdentifierMismatch(message, error: error) {
+            return mismatch
+        }
+
         let host = context.host ?? ""
-        let mayUseLocalNetwork = context.sshEnabled || LocalNetworkPermission.isLocalNetworkHost(host)
+        let mayUseLocalNetwork = context.sshEnabled || LocalNetworkPermission.mayBeLocalNetworkHost(host)
         let timedOut = message.contains("timeout") || message.contains("timed out") || message.contains("operation timed out") || message.contains("system error: 60")
         if mayUseLocalNetwork && timedOut {
             return network(error, context: context)
@@ -157,7 +207,7 @@ enum ErrorClassifier {
 
         let isTimeout = lowered.contains("timeout") || lowered.contains("timed out") || lowered.contains("operation timed out") || lowered.contains("system error: 60")
         let host = context.host ?? ""
-        let mayUseLocalNetwork = context.sshEnabled || LocalNetworkPermission.isLocalNetworkHost(host)
+        let mayUseLocalNetwork = context.sshEnabled || LocalNetworkPermission.mayBeLocalNetworkHost(host)
 
         if isTimeout && mayUseLocalNetwork {
             recovery = String(localized: "Local Network access may be blocked. Open Settings > Privacy & Security > Local Network and turn TablePro on.")

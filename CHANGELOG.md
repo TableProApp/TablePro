@@ -9,12 +9,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Oracle connections can now sign in as SYSDBA or SYSOPER, on both Mac and mobile. Administrative logons previously had no way to connect. (#2039)
+- Oracle now works in TablePro Mobile: connect, browse schemas and tables, run queries, and edit rows, with a Service Name or SID picker and the same SSL modes as the Mac app. (#2033)
+- When an Oracle listener rejects the connect identifier, the connection form now names which one was wrong and offers to switch between Service Name and SID in one tap. (#2033)
 - Sidebar object icons can be turned off for a plain list of names. Right-click anywhere in the sidebar and use View Options, or toggle Show Object Icons from the View menu or Settings > General. Tables staged for truncate or delete keep their marker.
+- A workspace rail on the leading edge of the sidebar lists every connection and database you have open as a tinted icon, so one click switches to it. Switching database adds an entry when the one you leave has work in it, and reuses the entry when it does not. Hover an icon for its full name, host, and database. It appears once a second workspace is open. Drag icons to reorder them, and hide the rail from the View menu or Settings > General. (#1282)
+- Show Previous Workspace and Show Next Workspace move through the rail in the order it displays, on `Ctrl+Cmd+Up` and `Ctrl+Cmd+Down`. A shortcut you assigned yourself wins over a default added in a later release, and the default comes back if you reassign yours. (#1282)
+- Right-click a workspace in the rail to close every tab in it. A window holding a tab in another database stays open. (#1282)
+- The workspace rail takes the keyboard: arrow keys move the highlight, typing jumps to a name, and Return opens the workspace you land on. (#1282)
 - Redshift external schemas now list their tables. Spectrum, federated query, cross-database, and datashare schemas showed up empty because their tables are not in the standard catalog.
 - External schemas are marked in the sidebar, and their tables show an external icon. External tables open read-only, because Redshift rejects `UPDATE` and `DELETE` on them.
 
 ### Fixed
 
+- Oracle connections now turn on TCP keepalive, so a session left idle is less likely to be dropped by a NAT or firewall. It was only ever enabled on a code path that Macs and iPhones do not take. (#2038)
+- On iPhone and iPad, connecting to a database on your own network now asks for Local Network access when it is actually needed, instead of guessing from the address. Networks that use public addresses were never asked about, so those connections failed with an unhelpful error. (#2040)
+- Connecting with no network, or on a captive portal, no longer reports a Local Network permission problem on iPhone and iPad. (#2040)
+- The sidebar no longer says a database has no tables while its table list is still loading. Connecting showed "No tables" until the first fetch finished, and stayed there if the fetch never ran.
+- Right-clicking a data grid row that is not selected now acts on that row instead of the previous selection.
+- Undo and Redo in the Edit menu now name the action they will undo and grey out when there is nothing to undo.
+- Escape during Chinese, Japanese, or Korean text entry in the SQL editor no longer cancels the composition and leaves half-typed text behind.
+- Automatic keyword capitalization in the SQL editor can now be undone, and no longer leaves the saved query out of step with what is on screen.
+- The text cursor now reappears in the SQL editor after another view takes focus.
+- Clicks in the SQL editor's find bar no longer fall through to the text underneath.
+- Confirmations that delete or drop something now mark the confirming button as destructive, Return no longer triggers it, and Escape cancels whatever the cancelling button is called.
+- The SSH host key warning can now be dismissed with Escape, which disconnects rather than connecting.
+- Date and time cells now render in the same calendar the database uses, instead of the calendar implied by the Mac's region.
+- Sizes and durations in the server dashboard now use the system's format, so they follow the language and decimal separator you use.
+- Collapsing the results pane by dragging or double-clicking the divider is now remembered for that tab.
+- Publishing to a team library, choosing a Cloudflare or Cloud SQL binary, and other prompts now appear as sheets attached to their window instead of blocking the whole app.
+- Tabbing through Settings > Keyboard no longer gets stuck in a shortcut field. Press Space or Return to start recording.
+- Copying an ER diagram now uses the standard Edit > Copy command, so it follows your own shortcut.
+- Row insert and remove animations, and the AI chat typing indicator, now honour Reduce Motion.
+- The AI editor context menu no longer shows Format SQL as available when there is nothing to format.
+- Requests to TablePro's own servers now require TLS again, instead of inheriting the relaxed transport policy that database connections need.
+- Switching to a connection that is already open now returns to the tab you last used there, instead of whichever of its tabs happened to come first. This also applies to the connection switcher. (#1282)
 - Reopening the last session while the database server is still starting now shows the reason in the window with a Try Again button, instead of a spinner that never stops.
 - Starting the database server after that and switching back to the window now reconnects it. The window used to stay stuck even once the server was up.
 - Cancelling a connection now leaves the window open with Connect and Manage Connections, so there is always a way back to the connection list without going through the Dock.
@@ -47,10 +76,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The reasoning effort picker now lists the levels the chosen model actually accepts, read from the provider instead of a built-in table.
 - Model lists now carry each model's real output limit and thinking support, so replies are no longer capped at a guessed value.
 
+### Removed
+
+- The "Group all connections in one window" setting is gone. A window shows one tab group, so grouping every connection into it flattened every connection's tabs into a single tab bar, and turning the setting back off never separated the windows it had merged. Each connection now always has its own window and its own tab bar. (#1282)
+
 ### Changed
 
 - Reopening the last session no longer connects every window at once. The window you land on connects right away, and the rest connect when you switch to them.
 - The Claude, OpenAI, and Codex model menus now list the current models.
+- A new connection window now opens over the window you were in rather than cascading, so switching connection from the rail reads as the window changing content. Move a window and it keeps where you put it. (#1282)
+- The sidebar's Tables and Favorites control now sits in the toolbar above the sidebar, next to the list it switches, instead of over the table content. It is a standard segmented control, so it shows which one is selected and works with keyboard control.
 - A tab's window subtitle now shows the database it is bound to, for query tabs as well as table tabs. (#2026)
 - Changing a tab's database from its toolbar now repoints only that tab and leaves the sidebar where it is. (#2026)
 - `describe_table` and `get_table_ddl` now take a `database` argument, in AI chat and over MCP, so a table in another database can be inspected without changing the database selected in the app. `list_schemas` in AI chat takes one too. (#2026)

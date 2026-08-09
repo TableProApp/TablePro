@@ -47,12 +47,14 @@ final class IOSDriverFactory: DriverFactory {
             )
         case .mssql:
             return MSSQLDriver(connection: connection, password: password)
+        case .oracle:
+            return OracleDriver(connection: connection, password: password)
         default:
             throw ConnectionError.driverNotFound(connection.type.rawValue)
         }
     }
 
     func supportedTypes() -> [DatabaseType] {
-        [.sqlite, .duckdb, .mysql, .mariadb, .postgresql, .redshift, .redis, .mssql]
+        [.sqlite, .duckdb, .mysql, .mariadb, .postgresql, .redshift, .redis, .mssql, .oracle]
     }
 }

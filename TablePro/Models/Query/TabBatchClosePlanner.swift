@@ -7,7 +7,7 @@ import Foundation
 
 struct TabBatchCloseTarget: Equatable {
     let windowId: ObjectIdentifier
-    let databaseNames: Set<String>
+    let containerNames: Set<String>
 }
 
 enum TabBatchClosePlanner {
@@ -42,21 +42,41 @@ enum TabBatchClosePlanner {
         )
     }
 
-    /// A window closes only when every tab in it names a database other than the active one.
-    /// An unnamed database means "whatever the connection is pointed at", which is never foreign,
-    /// and an unknown active database cannot classify anything, so both yield an empty plan.
-    static func planCloseForOtherDatabases(
+    /// A window closes only when every tab in it names a container other than the active one.
+    /// An unnamed container means "whatever the connection is pointed at", which is never foreign,
+    /// and an unknown active container cannot classify anything, so both yield an empty plan.
+    static func planCloseForOtherContainers(
         targets: [TabBatchCloseTarget],
         currentWindowId: ObjectIdentifier,
-        currentDatabaseName: String
+        currentContainerName: String
     ) -> Plan {
-        guard !currentDatabaseName.isEmpty else { return .empty }
+        guard !currentContainerName.isEmpty else { return .empty }
         let foreign = targets.filter { target in
             target.windowId != currentWindowId
-                && !target.databaseNames.isEmpty
-                && !target.databaseNames.contains(currentDatabaseName)
+                && !target.containerNames.isEmpty
+                && !target.containerNames.contains(currentContainerName)
         }
         return Plan(windowsToCloseOutright: foreign.map(\.windowId), survivorWindowId: nil)
+    }
+
+    /// Closing one workspace takes only the windows whose every tab belongs to it. A window
+    /// holding a tab on another container is shared, so it stays: the rail's promise is that a
+    /// row disappears when its own work is gone, never that it closes someone else's.
+    ///
+    /// An empty name is the single workspace of an engine that switches neither database nor
+    /// schema, so its windows are the ones whose tabs name no container at all. Treating that as
+    /// "nothing to close" made the command inert for SQLite, Redis, DuckDB and every other
+    /// single-container engine.
+    static func planCloseContainer(
+        targets: [TabBatchCloseTarget],
+        containerName: String
+    ) -> Plan {
+        let owned = targets.filter { target in
+            containerName.isEmpty
+                ? target.containerNames.isEmpty
+                : target.containerNames == [containerName]
+        }
+        return Plan(windowsToCloseOutright: owned.map(\.windowId), survivorWindowId: nil)
     }
 
     private static func windowIds(

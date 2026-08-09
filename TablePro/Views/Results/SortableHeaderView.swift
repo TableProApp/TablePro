@@ -140,6 +140,15 @@ final class SortableHeaderView: NSTableHeaderView {
         mouseMovedTrackingArea = area
     }
 
+    /// `NSCursor.resizeLeftRight` is deprecated in favour of the direction-aware column
+    /// cursor, which the rest of the app already uses.
+    static var columnResizeCursor: NSCursor {
+        if #available(macOS 15.0, *) {
+            return .columnResize
+        }
+        return .resizeLeftRight
+    }
+
     override func mouseMoved(with event: NSEvent) {
         guard let tableView else {
             super.mouseMoved(with: event)
@@ -147,7 +156,7 @@ final class SortableHeaderView: NSTableHeaderView {
         }
         let point = convert(event.locationInWindow, from: nil)
         if isInResizeZone(point: point) {
-            NSCursor.resizeLeftRight.set()
+            SortableHeaderView.columnResizeCursor.set()
             updateFunnelHover(column: nil)
         } else {
             NSCursor.arrow.set()

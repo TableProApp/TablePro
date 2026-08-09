@@ -54,20 +54,9 @@ internal final class WindowManager {
         // orderFront before addTabbedWindow avoids a synchronous full-tree
         // SwiftUI layout pass that adds 700-900ms per open.
         let tabbingId = window.tabbingIdentifier ?? ""
-        let groupAll = AppSettingsManager.shared.tabs.groupAllConnectionTabs
-        let sibling = findSibling(
-            tabbingIdentifier: tabbingId, groupAll: groupAll, excluding: window
-        )
+        let sibling = findSibling(tabbingIdentifier: tabbingId, excluding: window)
 
         if let sibling {
-            if groupAll {
-                let otherMains = NSApp.windows.filter {
-                    $0 !== window && Self.isMainWindow($0) && $0.isVisible
-                }
-                for existing in otherMains {
-                    existing.tabbingIdentifier = tabbingId
-                }
-            }
             let target = sibling.tabbedWindows?.last ?? sibling
             target.addTabbedWindow(window, ordered: .above)
             if activate {
@@ -122,6 +111,13 @@ internal final class WindowManager {
         controllers.values.contains { $0.payload.connectionId == connectionId }
     }
 
+    /// Every connection window from the moment it is created, including one that has not
+    /// connected yet. `WindowLifecycleMonitor` only learns about a window once its content
+    /// view mounts, which needs a live session.
+    internal func allConnectionIds() -> Set<UUID> {
+        Set(controllers.values.map(\.payload.connectionId))
+    }
+
     internal func window(for connectionId: UUID) -> NSWindow? {
         controllers.values
             .first { $0.payload.connectionId == connectionId && $0.window?.isVisible == true }?
@@ -146,28 +142,24 @@ internal final class WindowManager {
         }
     }
 
-    private static func isMainWindow(_ window: NSWindow) -> Bool {
+    internal static func isMainWindow(_ window: NSWindow) -> Bool {
         guard let raw = window.identifier?.rawValue else { return false }
         return raw == "main" || raw.hasPrefix("main-")
     }
 
+    /// One native tab group per connection, so a window's tab bar only ever lists that
+    /// connection's tabs. A window hosts exactly one tab group, so a shared identifier would
+    /// flatten every connection into one bar.
     internal static func tabbingIdentifier(for connectionId: UUID) -> String {
-        if AppSettingsManager.shared.tabs.groupAllConnectionTabs {
-            return "com.TablePro.main"
-        }
-        return "com.TablePro.main.\(connectionId.uuidString)"
+        "com.TablePro.main.\(connectionId.uuidString)"
     }
 
-    private func findSibling(
-        tabbingIdentifier: String,
-        groupAll: Bool,
-        excluding: NSWindow
-    ) -> NSWindow? {
+    private func findSibling(tabbingIdentifier: String, excluding: NSWindow) -> NSWindow? {
         NSApp.windows.first { candidate in
             candidate !== excluding
                 && Self.isMainWindow(candidate)
                 && candidate.isVisible
-                && (groupAll || candidate.tabbingIdentifier == tabbingIdentifier)
+                && candidate.tabbingIdentifier == tabbingIdentifier
         }
     }
 }

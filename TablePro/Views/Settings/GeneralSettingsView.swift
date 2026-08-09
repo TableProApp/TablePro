@@ -49,12 +49,12 @@ struct GeneralSettingsView: View {
             Section("Tabs") {
                 Toggle("Enable preview tabs", isOn: $tabSettings.enablePreviewTabs)
                     .help("Single-clicking a table opens a temporary tab that gets replaced on next click.")
-
-                Toggle("Group all connections in one window", isOn: $tabSettings.groupAllConnectionTabs)
-                    .help("When enabled, tabs from different connections share the same window instead of opening separate windows.")
             }
 
             Section("Sidebar") {
+                Toggle("Show workspace rail", isOn: $settings.showWorkspaceRail)
+                    .help("Adds a narrow strip on the window's leading edge listing every connection and database you have open, so one click switches to it.")
+
                 Toggle("Show recent tables", isOn: $settings.showRecentTables)
                     .help("Adds a Recent section at the top of the Tables sidebar with the last tables you opened per connection and database.")
 

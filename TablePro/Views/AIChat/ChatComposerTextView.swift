@@ -59,9 +59,16 @@ struct ChatComposerTextView: NSViewRepresentable {
         scrollView.minLines = minLines
         scrollView.maxLines = maxLines
 
-        if textView.string != text {
+        // Replacing the string outright while an input method has marked text cancels the
+        // composition. Routing through shouldChangeText/didChangeText also keeps the undo
+        // stack and the delegate notifications intact.
+        if textView.string != text, !textView.hasMarkedText() {
             let selected = textView.selectedRange()
-            textView.string = text
+            let full = NSRange(location: 0, length: (textView.string as NSString).length)
+            if textView.shouldChangeText(in: full, replacementString: text) {
+                textView.textStorage?.replaceCharacters(in: full, with: text)
+                textView.didChangeText()
+            }
             let clampedLocation = min(selected.location, (text as NSString).length)
             textView.setSelectedRange(NSRange(location: clampedLocation, length: 0))
         }

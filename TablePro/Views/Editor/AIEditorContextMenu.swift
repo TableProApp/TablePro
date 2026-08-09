@@ -56,7 +56,9 @@ final class AIEditorContextMenu: NSMenu, NSMenuDelegate {
         )
         formatItem.target = self
         formatItem.image = NSImage(systemSymbolName: "text.alignleft", accessibilityDescription: nil)
-        formatItem.isEnabled = (fullText?()?.isEmpty == false) && (onFormatSQL != nil)
+        if (fullText?()?.isEmpty ?? true) || onFormatSQL == nil {
+            formatItem.action = nil
+        }
         menu.addItem(formatItem)
 
         menu.addItem(.separator())

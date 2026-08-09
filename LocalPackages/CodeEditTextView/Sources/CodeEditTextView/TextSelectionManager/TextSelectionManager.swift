@@ -238,10 +238,16 @@ public class TextSelectionManager: NSObject {
     }
 
     /// Removes all cursor views and stops the cursor blink timer.
+    ///
+    /// The view reference is cleared as well as detached: `updateSelectionViews` only
+    /// re-adds a cursor on the `view == nil` branch, so leaving a dangling reference here
+    /// meant the caret never came back after the text view resigned first responder.
     func removeCursors() {
         cursorTimer.stopTimer()
         for textSelection in textSelections {
             textSelection.view?.removeFromSuperview()
+            textSelection.view = nil
+            textSelection.boundingRect = .zero
         }
     }
 }

@@ -8,6 +8,26 @@ import SwiftUI
 
 @MainActor
 final class AlertHelper {
+    /// The confirming button destroys something, so it takes the destructive treatment and gives
+    /// up Return, and the cancelling button becomes the default in its place. That is the shape
+    /// macOS itself uses for a destructive alert: Return does the safe thing, and destroying
+    /// takes a deliberate click.
+    ///
+    /// Leaving the confirming button as the default made a stray Return delete. Taking Return off
+    /// it without handing it anywhere left the alert with no default button at all, which reads as
+    /// unfinished chrome and gives the keyboard no safe way out.
+    static func addConfirmAndCancel(
+        to alert: NSAlert,
+        confirmButton: String,
+        cancelButton: String
+    ) {
+        let confirm = alert.addButton(withTitle: confirmButton)
+        let cancel = alert.addButton(withTitle: cancelButton)
+        confirm.hasDestructiveAction = true
+        confirm.keyEquivalent = ""
+        cancel.keyEquivalent = "\r"
+    }
+
     static func resolveWindow(_ window: NSWindow?) -> NSWindow? {
         window ?? NSApp.keyWindow ?? NSApp.mainWindow ?? NSApp.windows.first { $0.isVisible }
     }
@@ -25,8 +45,7 @@ final class AlertHelper {
         alert.messageText = title
         alert.informativeText = message
         alert.alertStyle = .warning
-        alert.addButton(withTitle: confirmButton)
-        alert.addButton(withTitle: cancelButton)
+        Self.addConfirmAndCancel(to: alert, confirmButton: confirmButton, cancelButton: cancelButton)
 
         if let window = resolveWindow(window) {
             return await withCheckedContinuation { continuation in
@@ -51,8 +70,7 @@ final class AlertHelper {
         alert.messageText = title
         alert.informativeText = message
         alert.alertStyle = .critical
-        alert.addButton(withTitle: confirmButton)
-        alert.addButton(withTitle: cancelButton)
+        Self.addConfirmAndCancel(to: alert, confirmButton: confirmButton, cancelButton: cancelButton)
 
         if let window = resolveWindow(window) {
             return await withCheckedContinuation { continuation in

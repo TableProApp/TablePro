@@ -190,7 +190,7 @@ final class DataBrowserViewModel {
     /// so paging is deterministic across requests. Other databases tolerate an empty ORDER BY.
     private func effectiveSortState() -> SortState {
         if sortState.isSorting { return sortState }
-        guard databaseType == .mssql else { return sortState }
+        guard databaseType == .mssql || databaseType == .oracle else { return sortState }
         let fallback = columnDetails.first(where: \.isPrimaryKey)?.name ?? columnDetails.first?.name
         guard let fallback else { return sortState }
         return SortState(columns: [SortColumn(name: fallback, ascending: true)])
@@ -357,6 +357,8 @@ final class DataBrowserViewModel {
         switch databaseType {
         case .mssql:
             query = "SELECT TOP 1 \(column) FROM \(table) WHERE \(predicate)"
+        case .oracle:
+            query = "SELECT \(column) FROM \(table) WHERE \(predicate) FETCH FIRST 1 ROWS ONLY"
         default:
             query = "SELECT \(column) FROM \(table) WHERE \(predicate) LIMIT 1"
         }

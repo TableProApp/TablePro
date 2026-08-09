@@ -22,6 +22,9 @@ enum SQLBuilder {
         case .mssql:
             let order = orderBy.isEmpty ? "ORDER BY (SELECT NULL)" : orderBy
             return "\(order) OFFSET \(offset) ROWS FETCH NEXT \(limit) ROWS ONLY"
+        case .oracle:
+            let order = orderBy.isEmpty ? "ORDER BY 1" : orderBy
+            return "\(order) OFFSET \(offset) ROWS FETCH NEXT \(limit) ROWS ONLY"
         default:
             let trailing = "LIMIT \(limit) OFFSET \(offset)"
             return orderBy.isEmpty ? trailing : "\(orderBy) \(trailing)"
@@ -243,6 +246,8 @@ enum SQLBuilder {
                 castExpr = "CAST(\(quotedCol) AS TEXT)"
             case .mssql:
                 castExpr = "CAST(\(quotedCol) AS NVARCHAR(MAX))"
+            case .oracle:
+                castExpr = "CAST(\(quotedCol) AS VARCHAR2(4000))"
             case .clickhouse:
                 castExpr = "toString(\(quotedCol))"
             default:
@@ -304,6 +309,14 @@ enum SQLBuilder {
         case .mssql:
             return SQLDialectDescriptor(
                 identifierQuote: "[",
+                keywords: [],
+                functions: [],
+                dataTypes: [],
+                likeEscapeStyle: .explicit
+            )
+        case .oracle:
+            return SQLDialectDescriptor(
+                identifierQuote: "\"",
                 keywords: [],
                 functions: [],
                 dataTypes: [],

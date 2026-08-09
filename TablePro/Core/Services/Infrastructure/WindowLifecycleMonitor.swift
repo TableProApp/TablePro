@@ -8,6 +8,7 @@
 //
 
 import AppKit
+import Combine
 import Foundation
 import OSLog
 
@@ -20,17 +21,18 @@ internal final class WindowLifecycleMonitor {
     private struct Entry {
         let connectionId: UUID
         weak var window: NSWindow?
-        var observer: NSObjectProtocol?
+        var observers: [NSObjectProtocol]
     }
 
     private var entries: [UUID: Entry] = [:]
     private var sourceFileWindows: [URL: UUID] = [:]
+    private var lastFocusedWindowIds: [UUID: UUID] = [:]
 
     private init() {}
 
     deinit {
         for entry in entries.values {
-            if let observer = entry.observer {
+            for observer in entry.observers {
                 NotificationCenter.default.removeObserver(observer)
             }
         }
@@ -49,12 +51,12 @@ internal final class WindowLifecycleMonitor {
             if existing.window !== window {
                 Self.logger.warning("Re-registering windowId \(windowId) with a different NSWindow")
             }
-            if let observer = existing.observer {
+            for observer in existing.observers {
                 NotificationCenter.default.removeObserver(observer)
             }
         }
 
-        let observer = NotificationCenter.default.addObserver(
+        let closeObserver = NotificationCenter.default.addObserver(
             forName: NSWindow.willCloseNotification,
             object: window,
             queue: .main
@@ -65,11 +67,22 @@ internal final class WindowLifecycleMonitor {
             }
         }
 
+        let focusObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.didBecomeKeyNotification,
+            object: window,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.handleWindowDidBecomeKey(windowId: windowId)
+            }
+        }
+
         entries[windowId] = Entry(
             connectionId: connectionId,
             window: window,
-            observer: observer
+            observers: [closeObserver, focusObserver]
         )
+        AppEvents.shared.connectionWindowsChanged.send()
     }
 
     /// Remove the UUID mapping for a window.
@@ -77,9 +90,11 @@ internal final class WindowLifecycleMonitor {
         unregisterSourceFiles(for: windowId)
         guard let entry = entries.removeValue(forKey: windowId) else { return }
 
-        if let observer = entry.observer {
+        for observer in entry.observers {
             NotificationCenter.default.removeObserver(observer)
         }
+        forgetFocus(windowId: windowId, connectionId: entry.connectionId)
+        AppEvents.shared.connectionWindowsChanged.send()
     }
 
     // MARK: - Queries
@@ -113,6 +128,53 @@ internal final class WindowLifecycleMonitor {
             .filter { $0.connectionId == connectionId }
             .compactMap(\.window)
             .first { $0.isVisible }
+    }
+
+    /// The window a connection was most recently working in.
+    ///
+    /// Every editor tab is its own window, so `findWindow(for:)` returns an
+    /// arbitrary tab. Activating a connection from a switcher has to land on
+    /// the tab the user actually left, which is the one that most recently
+    /// became key. Falls back to another live window of the same connection when that
+    /// window is gone or was never focused. Visibility only ranks candidates and never
+    /// excludes one: `isVisible` is false for a miniaturized window, which
+    /// `makeKeyAndOrderFront` restores correctly, and filtering it out would reach
+    /// another connection's window.
+    internal func mostRecentWindow(for connectionId: UUID) -> NSWindow? {
+        purgeStaleEntries()
+        let eligible = entries
+            .filter { $0.value.connectionId == connectionId && $0.value.window != nil }
+            .sorted { lhs, rhs in
+                let leftVisible = lhs.value.window?.isVisible == true
+                let rightVisible = rhs.value.window?.isVisible == true
+                guard leftVisible == rightVisible else { return leftVisible }
+                return lhs.key.uuidString < rhs.key.uuidString
+            }
+            .map(\.key)
+        guard let windowId = Self.resolveWindowId(
+            lastFocusedWindowId: lastFocusedWindowIds[connectionId],
+            eligibleWindowIds: eligible
+        ) else {
+            return nil
+        }
+        return entries[windowId]?.window
+    }
+
+    /// Prefers the window the connection was last focused in, falling back to
+    /// any eligible window when that one is gone or was never focused.
+    internal static func resolveWindowId(
+        lastFocusedWindowId: UUID?,
+        eligibleWindowIds: [UUID]
+    ) -> UUID? {
+        if let lastFocusedWindowId, eligibleWindowIds.contains(lastFocusedWindowId) {
+            return lastFocusedWindowId
+        }
+        return eligibleWindowIds.first
+    }
+
+    /// The window a connection was last focused in, if one has been recorded.
+    internal func lastFocusedWindowId(for connectionId: UUID) -> UUID? {
+        lastFocusedWindowIds[connectionId]
     }
 
     /// The active window for a connection, preferring `candidate` (typically the
@@ -196,11 +258,24 @@ internal final class WindowLifecycleMonitor {
             value.window == nil ? key : nil
         }
         for windowId in staleIds {
-            let entry = entries.removeValue(forKey: windowId)
-            if let observer = entry?.observer {
+            guard let entry = entries.removeValue(forKey: windowId) else { continue }
+            for observer in entry.observers {
                 NotificationCenter.default.removeObserver(observer)
             }
+            forgetFocus(windowId: windowId, connectionId: entry.connectionId)
         }
+    }
+
+    private func handleWindowDidBecomeKey(windowId: UUID) {
+        guard let entry = entries[windowId] else { return }
+        guard lastFocusedWindowIds[entry.connectionId] != windowId else { return }
+        lastFocusedWindowIds[entry.connectionId] = windowId
+        AppEvents.shared.connectionWindowsChanged.send()
+    }
+
+    private func forgetFocus(windowId: UUID, connectionId: UUID) {
+        guard lastFocusedWindowIds[connectionId] == windowId else { return }
+        lastFocusedWindowIds.removeValue(forKey: connectionId)
     }
 
     private func handleWindowClose(_ closedWindow: NSWindow) {
@@ -216,11 +291,13 @@ internal final class WindowLifecycleMonitor {
             "[close] willCloseNotification -> handleWindowClose windowId=\(windowId, privacy: .public) connId=\(closedConnectionId, privacy: .public)"
         )
 
-        if let observer = entry.observer {
+        for observer in entry.observers {
             NotificationCenter.default.removeObserver(observer)
         }
         unregisterSourceFiles(for: windowId)
         entries.removeValue(forKey: windowId)
+        forgetFocus(windowId: windowId, connectionId: closedConnectionId)
+        AppEvents.shared.connectionWindowsChanged.send()
 
         let hasRemainingWindows = entries.values.contains {
             $0.connectionId == closedConnectionId && $0.window != nil

@@ -86,7 +86,7 @@
 		5AEA8B462F6808CA0040461A /* EtcdQueryBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AEA8B3F2F6808CA0040461A /* EtcdQueryBuilder.swift */; };
 		5AEA8B472F6808CA0040461A /* EtcdHttpClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AEA8B3C2F6808CA0040461A /* EtcdHttpClient.swift */; };
 		5AEA8B492F6808E90040461A /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
-		5AEE5B362F5C9B7B00FA84D7 /* OracleNIO in Frameworks */ = {isa = PBXBuildFile; productRef = 5ACE00012F4F00000000000F /* OracleNIO */; };
+		5AEE5B362F5C9B7B00FA84D7 /* TableProOracleCore in Frameworks */ = {isa = PBXBuildFile; productRef = 5ACE00012F4F00000000000F /* TableProOracleCore */; };
 		5AYAMS00000000000000A003 /* Yams in Frameworks */ = {isa = PBXBuildFile; productRef = 5AYAMS00000000000000A002 /* Yams */; };
 		5E1A500100000000000000A1 /* ElasticsearchConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E1A500200000000000000A1 /* ElasticsearchConnection.swift */; };
 		5E1A500100000000000000A2 /* ElasticsearchConsoleParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E1A500200000000000000A2 /* ElasticsearchConsoleParser.swift */; };
@@ -1001,7 +1001,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				5A861000A00000000 /* TableProPluginKit.framework in Frameworks */,
-				5AEE5B362F5C9B7B00FA84D7 /* OracleNIO in Frameworks */,
+				5AEE5B362F5C9B7B00FA84D7 /* TableProOracleCore in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1593,7 +1593,7 @@
 			);
 			name = OracleDriver;
 			packageProductDependencies = (
-				5ACE00012F4F00000000000F /* OracleNIO */,
+				5ACE00012F4F00000000000F /* TableProOracleCore */,
 			);
 			productName = OracleDriver;
 			productReference = 5A861000100000000 /* OracleDriver.tableplugin */;
@@ -2278,7 +2278,7 @@
 				5A0000012F4F000000000101 /* XCLocalSwiftPackageReference "LocalPackages/CodeEditSourceEditor" */,
 				5ACE00012F4F000000000008 /* XCRemoteSwiftPackageReference "Sparkle" */,
 				5A0000012F4F000000000100 /* XCLocalSwiftPackageReference "LocalPackages/CodeEditLanguages" */,
-				5ACE00012F4F00000000000E /* XCRemoteSwiftPackageReference "oracle-nio" */,
+				5A0000012F4F000000000103 /* XCLocalSwiftPackageReference "Packages/TableProOracle" */,
 				5A0000012F4F000000000102 /* XCLocalSwiftPackageReference "Packages/TableProCore" */,
 				5A32BBF92F9D5EAB00BAEB5F /* XCRemoteSwiftPackageReference "swift-certificates" */,
 				5AYAMS00000000000000A001 /* XCRemoteSwiftPackageReference "Yams" */,
@@ -5448,6 +5448,10 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = Packages/TableProCore;
 		};
+		5A0000012F4F000000000103 /* XCLocalSwiftPackageReference "Packages/TableProOracle" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/TableProOracle;
+		};
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCRemoteSwiftPackageReference section */
@@ -5465,14 +5469,6 @@
 			requirement = {
 				kind = upToNextMajorVersion;
 				minimumVersion = 2.0.0;
-			};
-		};
-		5ACE00012F4F00000000000E /* XCRemoteSwiftPackageReference "oracle-nio" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/TableProApp/oracle-nio";
-			requirement = {
-				kind = revision;
-				revision = 23c77812ed90259243a761d7fdea19db47d3ca41;
 			};
 		};
 		5AYAMS00000000000000A001 /* XCRemoteSwiftPackageReference "Yams" */ = {
@@ -5518,10 +5514,10 @@
 			package = 5ACE00012F4F000000000008 /* XCRemoteSwiftPackageReference "Sparkle" */;
 			productName = Sparkle;
 		};
-		5ACE00012F4F00000000000F /* OracleNIO */ = {
+		5ACE00012F4F00000000000F /* TableProOracleCore */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 5ACE00012F4F00000000000E /* XCRemoteSwiftPackageReference "oracle-nio" */;
-			productName = OracleNIO;
+			package = 5A0000012F4F000000000103 /* XCLocalSwiftPackageReference "Packages/TableProOracle" */;
+			productName = TableProOracleCore;
 		};
 		5ACE00012F4F000000000010 /* TableProAnalytics */ = {
 			isa = XCSwiftPackageProductDependency;

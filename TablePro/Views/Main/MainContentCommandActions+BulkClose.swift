@@ -7,10 +7,18 @@ import AppKit
 import Foundation
 
 extension MainContentCommandActions {
-    enum BatchCloseKind {
+    enum BatchCloseKind: Equatable {
         case all
         case others
         case otherDatabases
+        case container(String)
+    }
+
+    /// Closes a workspace from the rail: every window of this connection whose tabs all sit in
+    /// that container. Routed through the same batch machinery as the menu commands, so it
+    /// inherits the per-window save prompt and the cancel-stops-the-rest behaviour.
+    func closeWorkspace(container: String) {
+        Task { await runBatchClose(kind: .container(container)) }
     }
 
     func closeAllTabs() {
@@ -36,6 +44,16 @@ extension MainContentCommandActions {
     var canCloseTabsForOtherDatabases: Bool {
         guard supportsContainerSwitching else { return false }
         return !batchClosePlan(kind: .otherDatabases).windowsToCloseOutright.isEmpty
+    }
+
+    /// The container the connection is browsing, named the way this engine names containers.
+    /// Comparing a schema-switching engine's tabs against a database name classified nothing.
+    var browsedContainerName: String {
+        let target = PluginManager.shared.containerSwitchTarget(for: currentDatabaseType)
+        guard let session = DatabaseManager.shared.session(for: connectionId) else {
+            return target == .schema ? "" : browseDatabaseName
+        }
+        return WorkspaceAnchoring.browsedContainer(of: session, target: target) ?? ""
     }
 
     var closeTabsForOtherDatabasesTitle: String {
@@ -74,8 +92,12 @@ extension MainContentCommandActions {
     ) -> TabBatchClosePlanner.Plan {
         guard let anchor = closeAnchorWindow else { return .empty }
         let currentWindowId = ObjectIdentifier(anchor)
+        let target = PluginManager.shared.containerSwitchTarget(for: currentDatabaseType)
         let targets = lookup.map { windowId, coordinator in
-            TabBatchCloseTarget(windowId: windowId, databaseNames: coordinator.openTabDatabaseNames)
+            TabBatchCloseTarget(
+                windowId: windowId,
+                containerNames: coordinator.openTabContainerNames(target: target)
+            )
         }
 
         switch kind {
@@ -84,17 +106,21 @@ extension MainContentCommandActions {
         case .others:
             return TabBatchClosePlanner.planCloseOthers(targets: targets, currentWindowId: currentWindowId)
         case .otherDatabases:
-            return TabBatchClosePlanner.planCloseForOtherDatabases(
+            return TabBatchClosePlanner.planCloseForOtherContainers(
                 targets: targets,
                 currentWindowId: currentWindowId,
-                currentDatabaseName: browseDatabaseName
+                currentContainerName: browsedContainerName
             )
+        case .container(let container):
+            return TabBatchClosePlanner.planCloseContainer(targets: targets, containerName: container)
         }
     }
 
     /// Tab-group scope for the positional commands, because that is the strip the user is looking
     /// at. Connection scope for the database command, because a database means nothing across
-    /// connections and one connection's tabs can be spread over sibling windows.
+    /// connection: a native tab group belongs to one connection, so the positional commands
+    /// intersect that group with the connection, while the database command spans the whole
+    /// connection regardless of which window a tab sits in.
     private func closeCandidateLookup(kind: BatchCloseKind) -> [ObjectIdentifier: MainContentCoordinator] {
         let coordinators: [MainContentCoordinator]
         switch kind {
@@ -103,7 +129,8 @@ extension MainContentCommandActions {
             coordinators = (anchor.tabGroup?.windows ?? [anchor])
                 .filter(\.isVisible)
                 .compactMap { MainContentCoordinator.coordinator(forWindow: $0) }
-        case .otherDatabases:
+                .filter { $0.connectionId == connectionId }
+        case .otherDatabases, .container:
             coordinators = MainContentCoordinator.allActiveCoordinators()
                 .filter { $0.connectionId == connectionId }
         }
@@ -116,7 +143,10 @@ extension MainContentCommandActions {
 }
 
 private extension MainContentCoordinator {
-    var openTabDatabaseNames: Set<String> {
-        Set(tabManager.tabs.map(\.tableContext.databaseName).filter { !$0.isEmpty })
+    /// Named by the same rule the workspace rail uses, so a close command and the row it
+    /// removes can never disagree about which container a tab belongs to. Every tab counts
+    /// here, including an untouched one the rail would not give a row of its own.
+    func openTabContainerNames(target: ContainerSwitchTarget?) -> Set<String> {
+        Set(tabManager.tabs.compactMap { WorkspaceAnchoring.containerName(of: $0, target: target) })
     }
 }

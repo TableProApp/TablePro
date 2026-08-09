@@ -11,7 +11,7 @@ import TableProPluginKit
 
 @MainActor
 internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
-    private static let lifecycleLogger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
+    internal static let lifecycleLogger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
 
     internal static let toolbarIdentifier = NSToolbar.Identifier("com.TablePro.main.toolbar.v2")
 
@@ -22,9 +22,7 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
     /// Retain hosting controllers per item identifier. NSHostingController is not retained by NSToolbarItem,
     /// so without this its view orphans and the toolbar item collapses to zero width.
     internal var hostingControllers: [NSToolbarItem.Identifier: NSHostingController<AnyView>] = [:]
-    var sidebarButtons: [NSButton] = []
-    var sidebarObservationTask: Task<Void, Never>?
-    var splitViewObserver: NSObjectProtocol?
+    private(set) var sidebarGroup: NSToolbarItemGroup?
 
     internal init(coordinator: MainContentCoordinator) {
         self.coordinator = coordinator
@@ -38,13 +36,7 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
     }
 
     func invalidate() {
-        sidebarObservationTask?.cancel()
-        sidebarObservationTask = nil
-        if let observer = splitViewObserver {
-            NotificationCenter.default.removeObserver(observer)
-            splitViewObserver = nil
-        }
-        sidebarButtons = []
+        sidebarGroup = nil
         hostingControllers.removeAll()
         coordinator = nil
     }
@@ -72,272 +64,91 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
 
     // MARK: - NSToolbarDelegate
 
+    /// Items ahead of `.sidebarTrackingSeparator` lay out in the sidebar's own titlebar strip,
+    /// so the control that switches what the sidebar shows sits over the pane it drives.
+    internal static let defaultItemIdentifiers: [NSToolbarItem.Identifier] = [
+        sidebarToggle,
+        .sidebarTrackingSeparator,
+        connectionGroup,
+        principal,
+        .flexibleSpace,
+        refreshSaveGroup,
+        quickSwitcher,
+        newTab,
+        previewSQL,
+        inspector,
+    ]
+
+    internal static let allowedItemIdentifiers: [NSToolbarItem.Identifier] = defaultItemIdentifiers + [
+        results,
+        exportImportGroup,
+        dashboard,
+        history,
+    ]
+
     internal func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [
-            Self.sidebarToggle,
-            .sidebarTrackingSeparator,
-            Self.connectionGroup,
-            Self.principal,
-            .flexibleSpace,
-            Self.refreshSaveGroup,
-            Self.quickSwitcher,
-            Self.newTab,
-            Self.previewSQL,
-            Self.inspector,
-        ]
+        Self.defaultItemIdentifiers
     }
 
     internal func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        toolbarDefaultItemIdentifiers(toolbar) + [
-            Self.results,
-            Self.exportImportGroup,
-            Self.dashboard,
-            Self.history,
-        ]
-    }
-
-    internal func toolbar(
-        _ toolbar: NSToolbar,
-        itemForItemIdentifier itemIdentifier: NSToolbarItem.Identifier,
-        willBeInsertedIntoToolbar flag: Bool
-    ) -> NSToolbarItem? {
-        Self.lifecycleLogger.info(
-            "[open] toolbar delegate buildItem id=\(itemIdentifier.rawValue, privacy: .public) hasCoordinator=\(self.coordinator != nil)"
-        )
-        guard let coordinator else { return nil }
-
-        switch itemIdentifier {
-        case Self.sidebarToggle:
-            return makeSidebarToggleItem(coordinator: coordinator)
-        case Self.connectionGroup:
-            let group = makeGroup(
-                id: itemIdentifier,
-                label: String(localized: "Connection"),
-                subitems: [subitemConnection(), subitemDatabase()],
-                content: HStack(spacing: 4) {
-                    ConnectionToolbarButton(coordinator: coordinator)
-                    DatabaseToolbarButton(coordinator: coordinator)
-                    SessionContextToolbarButton(coordinator: coordinator)
-                }
-            )
-            group.isNavigational = true
-            return group
-        case Self.principal:
-            let item = hostingItem(
-                id: itemIdentifier,
-                label: "",
-                symbol: nil,
-                action: nil,
-                keyEquivalent: "",
-                modifiers: [],
-                content: ToolbarPrincipalContent(
-                    state: coordinator.toolbarState,
-                    onSwitchDatabase: { [weak coordinator] in coordinator?.commandActions?.openDatabaseSwitcher() },
-                    onCancelQuery: { [weak coordinator] in coordinator?.cancelCurrentQuery() },
-                    onSafeModeChange: { [weak coordinator] level in coordinator?.setSafeModeLevel(level) }
-                )
-            )
-            item.visibilityPriority = .high
-            return item
-        case Self.quickSwitcher:
-            return hostingItem(
-                id: itemIdentifier,
-                label: String(localized: "Quick Switcher"),
-                symbol: "magnifyingglass",
-                action: #selector(performOpenQuickSwitcher(_:)),
-                keyEquivalent: "o",
-                modifiers: [.command, .shift],
-                content: QuickSwitcherToolbarButton(coordinator: coordinator)
-            )
-        case Self.newTab:
-            return hostingItem(
-                id: itemIdentifier,
-                label: String(localized: "New Tab"),
-                symbol: "plus.rectangle",
-                action: #selector(performNewTab(_:)),
-                keyEquivalent: "t",
-                modifiers: .command,
-                content: NewTabToolbarButton(coordinator: coordinator)
-            )
-        case Self.previewSQL:
-            return hostingItem(
-                id: itemIdentifier,
-                label: String(localized: "Preview"),
-                symbol: "eye",
-                action: #selector(performPreviewSQL(_:)),
-                keyEquivalent: "p",
-                modifiers: [.command, .shift],
-                content: PreviewSQLToolbarButton(coordinator: coordinator)
-            )
-        case Self.results:
-            return hostingItem(
-                id: itemIdentifier,
-                label: String(localized: "Results"),
-                symbol: "rectangle.bottomhalf.inset.filled",
-                action: #selector(performToggleResults(_:)),
-                keyEquivalent: "r",
-                modifiers: [.command, .option],
-                content: ResultsToolbarButton(coordinator: coordinator)
-            )
-        case Self.inspector:
-            let item = NSToolbarItem(itemIdentifier: Self.inspector)
-            item.label = String(localized: "Inspector")
-            item.paletteLabel = String(localized: "Inspector")
-            return item
-        case Self.dashboard:
-            return hostingItem(
-                id: itemIdentifier,
-                label: String(localized: "Dashboard"),
-                symbol: "gauge.with.dots.needle.33percent",
-                action: #selector(performShowDashboard(_:)),
-                keyEquivalent: "",
-                modifiers: [],
-                content: DashboardToolbarButton(coordinator: coordinator)
-            )
-        case Self.history:
-            return hostingItem(
-                id: itemIdentifier,
-                label: String(localized: "History"),
-                symbol: "clock",
-                action: #selector(performToggleHistory(_:)),
-                keyEquivalent: "y",
-                modifiers: .command,
-                content: HistoryToolbarButton(coordinator: coordinator)
-            )
-        case Self.refreshSaveGroup:
-            return makeGroup(
-                id: itemIdentifier,
-                label: String(localized: "Refresh & Save"),
-                subitems: [subitemRefresh(), subitemSaveChanges()],
-                content: HStack(spacing: 4) {
-                    RefreshToolbarButton(coordinator: coordinator)
-                    SaveChangesToolbarButton(coordinator: coordinator)
-                }
-            )
-        case Self.exportImportGroup:
-            return makeGroup(
-                id: itemIdentifier,
-                label: String(localized: "Export & Import"),
-                subitems: [subitemExport(), subitemImport()],
-                content: HStack(spacing: 4) {
-                    ExportToolbarButton(coordinator: coordinator)
-                    ImportToolbarButton(coordinator: coordinator)
-                }
-            )
-        default:
-            return nil
-        }
+        Self.allowedItemIdentifiers
     }
 }
 
 // MARK: - Sidebar Toggle
 
 extension MainWindowToolbar {
-    fileprivate func makeSidebarToggleItem(coordinator: MainContentCoordinator) -> NSToolbarItem {
-        let item = NSToolbarItem(itemIdentifier: Self.sidebarToggle)
-        item.label = String(localized: "Sidebar")
-        item.paletteLabel = String(localized: "Sidebar")
+    private static let sidebarSegmentTabs: [SidebarTab] = [.tables, .favorites]
 
-        let container = NSStackView()
-        container.orientation = .horizontal
-        container.spacing = 2
-
-        let tablesButton = makeSidebarNSButton(
-            icon: "list.bullet",
-            label: String(localized: "Tables"),
-            tag: 0
+    /// A one-of-N segmented toolbar control is `NSToolbarItemGroup` with `.selectOne`.
+    /// Hand-building two `NSButton`s meant faking selection with border tricks and a
+    /// deprecated bezel, and polling `@Observable` state to keep them in sync.
+    ///
+    /// The group must not be navigational. `isNavigational` lets AppKit lift an item out of its
+    /// declared slot and pin it to the leading edge of the content title area, the way Finder
+    /// places back and forward, which put this control past the sidebar divider no matter where
+    /// `defaultItemIdentifiers` listed it. Without the flag it lays out in the sidebar's own
+    /// titlebar strip, and follows the divider when the sidebar collapses.
+    internal static func makeSidebarSegmentGroup(target: AnyObject?, action: Selector) -> NSToolbarItemGroup {
+        let images = ["list.bullet", "star"].compactMap {
+            NSImage(systemSymbolName: $0, accessibilityDescription: nil)
+        }
+        let group = NSToolbarItemGroup(
+            itemIdentifier: sidebarToggle,
+            images: images,
+            selectionMode: .selectOne,
+            labels: [String(localized: "Tables"), String(localized: "Favorites")],
+            target: target,
+            action: action
         )
-        let favoritesButton = makeSidebarNSButton(
-            icon: "star",
-            label: String(localized: "Favorites"),
-            tag: 1
-        )
-
-        container.addArrangedSubview(tablesButton)
-        container.addArrangedSubview(favoritesButton)
-
-        sidebarButtons = [tablesButton, favoritesButton]
-        item.view = container
-
-        syncSidebarButtonState(coordinator: coordinator)
-        startSidebarObservation(coordinator: coordinator)
-
-        return item
+        group.label = String(localized: "Sidebar")
+        group.paletteLabel = group.label
+        group.controlRepresentation = .expanded
+        return group
     }
 
-    private func makeSidebarNSButton(icon: String, label: String, tag: Int) -> NSButton {
-        let button = NSButton()
-        button.bezelStyle = .recessed
-        button.setButtonType(.momentaryPushIn)
-        button.showsBorderOnlyWhileMouseInside = true
-        button.isBordered = true
-        button.image = NSImage(systemSymbolName: icon, accessibilityDescription: label)
-        button.imagePosition = .imageOnly
-        button.tag = tag
-        button.target = self
-        button.action = #selector(sidebarButtonClicked(_:))
-        button.setAccessibilityLabel(label)
-        button.toolTip = label
-        return button
+    internal func makeSidebarToggleItem() -> NSToolbarItem {
+        let group = Self.makeSidebarSegmentGroup(target: self, action: #selector(sidebarSegmentChanged(_:)))
+        sidebarGroup = group
+        syncSidebarSelection()
+        return group
     }
 
-    @objc fileprivate func sidebarButtonClicked(_ sender: NSButton) {
-        guard let coordinator else { return }
-        let tabs: [SidebarTab] = [.tables, .favorites]
-        guard sender.tag >= 0, sender.tag < tabs.count else { return }
-        coordinator.splitViewController?.setSidebarTab(tabs[sender.tag])
+    @objc fileprivate func sidebarSegmentChanged(_ sender: NSToolbarItemGroup) {
+        let index = sender.selectedIndex
+        guard Self.sidebarSegmentTabs.indices.contains(index) else { return }
+        coordinator?.splitViewController?.setSidebarTab(Self.sidebarSegmentTabs[index])
     }
 
-    fileprivate func syncSidebarButtonState(coordinator: MainContentCoordinator) {
-        guard sidebarButtons.count == 2 else { return }
-        let state = coordinator.toolbarState
+    /// Pushed from the split view controller whenever the sidebar tab or its collapsed
+    /// state changes, instead of an observation loop watching for it.
+    internal func syncSidebarSelection() {
+        guard let group = sidebarGroup, let coordinator else { return }
         let sidebarState = SharedSidebarState.forConnection(coordinator.connectionId)
-        let isConnected = state.connectionState == .connected || state.connectionState == .executing
         let sidebarVisible = !(coordinator.splitViewController?.isSidebarCollapsed ?? true)
-        let icons = ["list.bullet", "star"]
-        let activeIcons = ["list.bullet", "star.fill"]
-
-        for (index, button) in sidebarButtons.enumerated() {
-            let isActive = sidebarVisible && isConnected
-                && (index == 0 ? sidebarState.selectedSidebarTab == .tables : sidebarState.selectedSidebarTab == .favorites)
-            button.isEnabled = isConnected
-            button.showsBorderOnlyWhileMouseInside = !isActive
-            let icon = isActive ? activeIcons[index] : icons[index]
-            button.image = NSImage(systemSymbolName: icon, accessibilityDescription: button.accessibilityLabel())
-        }
-    }
-
-    fileprivate func startSidebarObservation(coordinator: MainContentCoordinator) {
-        sidebarObservationTask?.cancel()
-
-        sidebarObservationTask = Task { [weak self, weak coordinator] in
-            guard let coordinator else { return }
-            while !Task.isCancelled {
-                let sidebarState = SharedSidebarState.forConnection(coordinator.connectionId)
-                await withCheckedContinuation { continuation in
-                    withObservationTracking {
-                        _ = coordinator.toolbarState.connectionState
-                        _ = sidebarState.selectedSidebarTab
-                    } onChange: {
-                        continuation.resume()
-                    }
-                }
-                guard !Task.isCancelled, let self else { return }
-                await MainActor.run {
-                    self.syncSidebarButtonState(coordinator: coordinator)
-                }
-            }
-        }
-
-        splitViewObserver = NotificationCenter.default.addObserver(
-            forName: NSSplitView.didResizeSubviewsNotification,
-            object: coordinator.splitViewController?.splitView,
-            queue: .main
-        ) { [weak self, weak coordinator] _ in
-            MainActor.assumeIsolated {
-                guard let self, let coordinator else { return }
-                self.syncSidebarButtonState(coordinator: coordinator)
-            }
-        }
+        group.selectedIndex = sidebarVisible
+            ? (Self.sidebarSegmentTabs.firstIndex(of: sidebarState.selectedSidebarTab) ?? -1)
+            : -1
+        managedToolbar.validateVisibleItems()
     }
 }

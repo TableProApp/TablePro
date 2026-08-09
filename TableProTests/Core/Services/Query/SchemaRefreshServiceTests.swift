@@ -18,7 +18,7 @@ private final class FakeScopedMetadataProvider: ScopedMetadataProviding {
     let driver: MockDatabaseDriver
     var acquisitionCount = 0
     var errorToThrow: Error?
-    var browseDatabase = "testdb"
+    var browseDatabase: String? = "testdb"
     var browseSchema: String?
     private(set) var requestedScopes: [DatabaseScope] = []
     private(set) var requestedWorkloads: [MetadataConnectionPool.Workload] = []
@@ -42,7 +42,8 @@ private final class FakeScopedMetadataProvider: ScopedMetadataProviding {
     }
 
     func browseScope(for connectionId: UUID) -> DatabaseScope? {
-        DatabaseScope(connectionId: connectionId, database: browseDatabase, schema: browseSchema)
+        guard let browseDatabase else { return nil }
+        return DatabaseScope(connectionId: connectionId, database: browseDatabase, schema: browseSchema)
     }
 }
 
@@ -99,11 +100,28 @@ struct SchemaRefreshServiceTests {
         #expect(provider.requestedWorkloads == [.bulk])
     }
 
+    @Test("an empty browse database is server scoped, so the refresh still runs")
+    func refreshWithAnEmptyDatabaseIsServerScoped() async throws {
+        let driver = MockDatabaseDriver()
+        let provider = FakeScopedMetadataProvider(driver: driver)
+        provider.browseDatabase = ""
+        let schemaService = SchemaService()
+        let service = makeService(schemaService: schemaService, provider: provider)
+        let connection = TestFixtures.makeConnection()
+
+        await service.refresh(connection: connection)
+
+        let scope = try #require(provider.requestedScopes.first)
+        #expect(scope.isServerScoped)
+        #expect(driver.fetchTablesCallCount == 1)
+        #expect(schemaService.state(for: connection.id) == .loaded(driver.tablesToReturn))
+    }
+
     @Test("a connection with no browse scope fails the refresh instead of guessing")
     func refreshWithoutABrowseScopeFails() async {
         let driver = MockDatabaseDriver()
         let provider = FakeScopedMetadataProvider(driver: driver)
-        provider.browseDatabase = ""
+        provider.browseDatabase = nil
         let schemaService = SchemaService()
         let service = makeService(schemaService: schemaService, provider: provider)
         let connection = TestFixtures.makeConnection()

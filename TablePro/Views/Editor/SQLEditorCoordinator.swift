@@ -37,7 +37,6 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
     @ObservationIgnored private var copilotInlineSource: CopilotInlineSource?
     @ObservationIgnored private var editorSettingsCancellable: AnyCancellable?
     @ObservationIgnored private var aiSettingsCancellable: AnyCancellable?
-    @ObservationIgnored private var windowKeyObserver: NSObjectProtocol?
     @ObservationIgnored private var lastInlineSourceKind: InlineSourceKind = .off
     /// Debounce work item for frame-change notification to avoid
     /// triggering syntax highlight viewport recalculation on every keystroke.
@@ -49,6 +48,9 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
 
     /// Test-only accessor for destroy state
     var isDestroyed: Bool { didDestroy }
+
+    @ObservationIgnored private var hasInstalledEditorServices = false
+    @ObservationIgnored private weak var windowSentinel: WindowAccessorView?
 
     var pendingFocusClaim: Bool { focusClaimPending }
 
@@ -82,19 +84,12 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
     }
 
     deinit {
-        if let observer = windowKeyObserver {
-            NotificationCenter.default.removeObserver(observer)
-        }
         frameChangeTask?.cancel()
     }
 
     private func cleanupMonitors() {
         editorSettingsCancellable = nil
         aiSettingsCancellable = nil
-        if let observer = windowKeyObserver {
-            NotificationCenter.default.removeObserver(observer)
-            windowKeyObserver = nil
-        }
         frameChangeTask?.cancel()
         frameChangeTask = nil
     }
@@ -104,43 +99,56 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
     func prepareCoordinator(controller: TextViewController) {
         self.controller = controller
 
-        // Deferred to next run loop because prepareCoordinator runs during
-        // TextViewController.init, before the view hierarchy is fully loaded.
-        Task { [weak self] in
-            try? await Task.sleep(for: .milliseconds(50))
-            guard let self else { return }
-            self.fixFindPanelHitTesting(controller: controller)
-            self.installAIContextMenu(controller: controller)
-            self.installInlineSuggestionManager(controller: controller)
-            self.installVimModeIfEnabled(controller: controller)
-            self.installEditorSettingsObserver(controller: controller)
-            if let textView = controller.textView {
-                EditorEventRouter.shared.register(self, textView: textView)
+        // `prepareCoordinator` runs during `TextViewController.init`, before the view is in
+        // a window. A sentinel view reports the real moment instead of guessing at it with
+        // a sleep, which raced the first-responder claim on a slow launch.
+        // The sentinel lives on the controller's own view, so holding the controller strongly
+        // here would be a cycle through the view hierarchy and leak the whole editor: text
+        // storage, parse tree and layout manager. It also has one job, so it retires the moment
+        // it reports rather than waiting for teardown to remember it.
+        let sentinel = WindowAccessorView(frame: .zero)
+        windowSentinel = sentinel
+        sentinel.onWindow = { [weak self, weak controller, weak sentinel] _ in
+            sentinel?.onWindow = nil
+            sentinel?.removeFromSuperview()
+            guard let controller else { return }
+            self?.installEditorServices(controller: controller)
+        }
+        controller.view.addSubview(sentinel)
+    }
 
-                if !self.isDestroyed, let window = textView.window {
-                    let claimPending = self.focusClaimPending
-                    let responderName = window.firstResponder.map { String(describing: type(of: $0)) } ?? "nil"
-                    var made = false
-                    if claimPending {
-                        self.focusClaimPending = false
-                        made = window.makeFirstResponder(textView)
-                    } else if window.firstResponder == nil || window.firstResponder === window {
-                        made = window.makeFirstResponder(textView)
-                    }
-                    Self.logger.debug("Editor focus claim: pending=\(claimPending) isKey=\(window.isKeyWindow) responderBefore=\(responderName, privacy: .public) made=\(made)")
-                } else {
-                    Self.logger.debug("Editor focus claim skipped: hasWindow=\(textView.window != nil) destroyed=\(self.isDestroyed) pending=\(self.focusClaimPending)")
-                }
-                if controller.cursorPositions.isEmpty {
-                    controller.setCursorPositions([CursorPosition(range: NSRange(location: 0, length: 0))])
-                }
+    private func releaseWindowSentinel() {
+        windowSentinel?.onWindow = nil
+        windowSentinel?.removeFromSuperview()
+        windowSentinel = nil
+    }
 
-                // Recreate cursor views when the window regains key status.
-                // resignKeyWindow() on the text view calls removeCursors() which
-                // destroys cursor subviews, but becomeKeyWindow() only resets the
-                // blink timer without recreating them.
-                self.installWindowKeyObserver(for: textView.window)
+    private func installEditorServices(controller: TextViewController) {
+        guard !hasInstalledEditorServices, !isDestroyed else { return }
+        hasInstalledEditorServices = true
+
+        installAIContextMenu(controller: controller)
+        installInlineSuggestionManager(controller: controller)
+        installVimModeIfEnabled(controller: controller)
+        installEditorSettingsObserver(controller: controller)
+
+        guard let textView = controller.textView else { return }
+        EditorEventRouter.shared.register(self, textView: textView)
+
+        if let window = textView.window {
+            let claimPending = focusClaimPending
+            var made = false
+            if claimPending {
+                focusClaimPending = false
+                made = window.makeFirstResponder(textView)
+            } else if window.firstResponder == nil || window.firstResponder === window {
+                made = window.makeFirstResponder(textView)
             }
+            Self.logger.debug("Editor focus claim: pending=\(claimPending) isKey=\(window.isKeyWindow) made=\(made)")
+        }
+
+        if controller.cursorPositions.isEmpty {
+            controller.setCursorPositions([CursorPosition(range: NSRange(location: 0, length: 0))])
         }
     }
 
@@ -206,6 +214,7 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
         aiChatInlineSource = nil
 
         // Release closure captures to break potential retain cycles
+        releaseWindowSentinel()
         onCloseTab = nil
         onExecuteQuery = nil
         onAIExplain = nil
@@ -238,7 +247,6 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
         }
         if let controller {
             installEditorSettingsObserver(controller: controller)
-            installWindowKeyObserver(for: controller.textView?.window)
         }
     }
 
@@ -477,17 +485,11 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
         vimKeyInterceptor?.handleEscapeFromExternalSource() ?? false
     }
 
-    /// `TextView.resignFirstResponder()` calls `removeCursors()`, destroying the caret
-    /// subview, and `makeFirstResponder` alone does not recreate it (only a window-level
-    /// `didBecomeKeyNotification` does, which does not fire for an in-window first
-    /// responder change). Re-applying `cursorPositions` rebuilds the cursor views now
-    /// that the text view is first responder again.
+    /// Restores editor focus after another view in the same window took it.
     private func reclaimFirstResponder() {
         guard let controller, let textView = controller.textView, let window = textView.window,
               window.firstResponder !== textView else { return }
-        guard window.makeFirstResponder(textView) else { return }
-        guard !controller.cursorPositions.isEmpty else { return }
-        controller.setCursorPositions(controller.cursorPositions)
+        _ = window.makeFirstResponder(textView)
     }
 
     // MARK: - First Responder Tracking
@@ -505,24 +507,6 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
             vimKeyInterceptor?.editorDidBlur()
             inlineSuggestionManager?.editorDidBlur()
             vimCursorManager?.pauseBlink()
-        }
-    }
-
-    // MARK: - Window Key Observer
-
-    /// Observe when the editor's window regains key status (e.g. tab switch) and
-    /// recreate cursor views that were destroyed by resignKeyWindow → removeCursors.
-    private func installWindowKeyObserver(for window: NSWindow?) {
-        guard let window else { return }
-        windowKeyObserver = NotificationCenter.default.addObserver(
-            forName: NSWindow.didBecomeKeyNotification,
-            object: window,
-            queue: .main
-        ) { [weak controller] _ in
-            guard let controller, !controller.cursorPositions.isEmpty else { return }
-            // At this point becomeKeyWindow → becomeFirstResponder has already run,
-            // so isFirstResponder is true and setCursorPositions will create cursor views.
-            controller.setCursorPositions(controller.cursorPositions)
         }
     }
 
@@ -581,16 +565,10 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
                 self.isUppercasing = false
                 return
             }
-            // Mutate textStorage directly with proper attributes — skip CEUndoManager
-            // since auto-uppercase is automatic formatting, not a user edit.
-            let attrs = textView.typingAttributes
-            textView.textStorage.beginEditing()
-            textView.textStorage.replaceCharacters(
-                in: wordRange,
-                with: NSAttributedString(string: uppercased, attributes: attrs)
-            )
-            textView.textStorage.endEditing()
-            textView.needsDisplay = true
+            // Routed through the text view so the edit reaches the undo manager, the
+            // delegate, and the notification that syncs the SwiftUI binding. Writing to
+            // textStorage directly left the binding holding the pre-uppercase text.
+            textView.replaceCharacters(in: wordRange, with: uppercased)
             self.isUppercasing = false
         }
     }
@@ -607,34 +585,5 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
 
     func findPrevious() {
         controller?.findPrevious()
-    }
-
-    // MARK: - CodeEditSourceEditor Workarounds
-
-    /// Reorder FindViewController's subviews so the find panel is on top for hit testing.
-    ///
-    /// **Why this is needed:**
-    /// CodeEditSourceEditor's FindViewController adds its find panel (an NSHostingView)
-    /// before the child scroll view. AppKit hit-tests subviews in reverse order (last
-    /// subview first), so the scroll view intercepts clicks meant for the find panel's
-    /// buttons. The `zPosition` property only affects rendering order, not hit testing.
-    ///
-    /// **Why it's deferred:**
-    /// `prepareCoordinator` runs during `TextViewController.init`, before the view
-    /// hierarchy is fully assembled. We dispatch to the next run loop so the find
-    /// panel subviews exist when we reorder them.
-    ///
-    /// Uses `sortSubviews` to reorder without destroying Auto Layout constraints.
-    ///
-    /// TODO: Remove when CodeEditSourceEditor fixes subview ordering upstream.
-    private func fixFindPanelHitTesting(controller: TextViewController) {
-        // controller.view → findViewController.view → [findPanel, scrollView]
-        guard let findVCView = controller.view.subviews.first else { return }
-        findVCView.sortSubviews({ first, _, _ in
-            let firstName = String(describing: type(of: first))
-            let isFirstHosting = firstName.contains("HostingView")
-            // Place HostingView (find panel) last so it's on top for hit testing
-            return isFirstHosting ? .orderedDescending : .orderedAscending
-        }, context: nil)
     }
 }

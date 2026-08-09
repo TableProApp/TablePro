@@ -1,20 +1,15 @@
-//
-//  OracleCellFormatting.swift
-//  OracleDriverPlugin
-//
-
 import Foundation
 
-enum OracleCellFormatting {
-    static let maxHexBytes = 4_096
+public enum OracleCellFormatting {
+    public static let maxHexBytes = 4_096
 
-    enum TimestampStyle {
+    public enum TimestampStyle {
         case utc
         case local
         case zoned
     }
 
-    static let dateOnlyFormatter: DateFormatter = {
+    public static let dateOnlyFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.timeZone = TimeZone(secondsFromGMT: 0)
@@ -36,17 +31,19 @@ enum OracleCellFormatting {
         return formatter
     }()
 
-    private static let zonedFormatter: ISO8601DateFormatter = {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds, .withTimeZone]
+    private static let zonedFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = .current
+        formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSSxxxxx"
         return formatter
     }()
 
-    static func formatDate(_ date: Date) -> String {
+    public static func formatDate(_ date: Date) -> String {
         dateOnlyFormatter.string(from: date)
     }
 
-    static func formatTimestamp(_ date: Date, style: TimestampStyle) -> String {
+    public static func formatTimestamp(_ date: Date, style: TimestampStyle) -> String {
         switch style {
         case .utc:
             return utcFormatter.string(from: date)
@@ -57,7 +54,7 @@ enum OracleCellFormatting {
         }
     }
 
-    static func formatIntervalDS(
+    public static func formatIntervalDS(
         days: Int,
         hours: Int,
         minutes: Int,
@@ -86,13 +83,13 @@ enum OracleCellFormatting {
         return "\(base).\(fractional)"
     }
 
-    static func formatIntervalYM(years: Int, months: Int) -> String {
+    public static func formatIntervalYM(years: Int, months: Int) -> String {
         let isNegative = years < 0 || months < 0
         let sign = isNegative ? "-" : ""
         return String(format: "%@%d-%02d", sign, abs(years), abs(months))
     }
 
-    static func hexEncode(_ bytes: [UInt8]) -> String {
+    public static func hexEncode(_ bytes: [UInt8]) -> String {
         let totalBytes = bytes.count
         let limit = min(totalBytes, maxHexBytes)
         let hex = bytes.prefix(limit).map { String(format: "%02x", $0) }.joined()
@@ -102,7 +99,7 @@ enum OracleCellFormatting {
         return hex
     }
 
-    static func unsupportedPlaceholder(typeName: String) -> String {
+    public static func unsupportedPlaceholder(typeName: String) -> String {
         "<unsupported: \(typeName)>"
     }
 }

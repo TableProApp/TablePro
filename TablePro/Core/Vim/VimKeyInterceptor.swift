@@ -7,6 +7,7 @@
 
 @preconcurrency import AppKit
 import CodeEditSourceEditor
+import CodeEditTextView
 import os
 
 /// Intercepts keyboard events and routes them through the Vim engine
@@ -130,6 +131,11 @@ final class VimKeyInterceptor {
               let editorWindow = textView.window else {
             return event
         }
+
+        // An input method owns the keystroke while it has marked text. Acting on Escape
+        // here would cancel Vim's insert mode and strand the composition, so every key
+        // goes to the input context until the marking session ends.
+        guard !textView.hasMarkedText() else { return event }
 
         // Esc must always reach the engine while the editor is focused and we are not
         // already in normal mode. We get here only when `isEditorFocused` is true (the

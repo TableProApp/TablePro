@@ -1,7 +1,7 @@
 import Foundation
 
-enum OracleListenerRefusal {
-    static func detail(code: Int?) -> String {
+public enum OracleListenerRefusal {
+    public static func detail(code: Int?) -> String {
         guard let code else {
             return String(localized: "The Oracle listener refused the connection.")
         }
@@ -11,7 +11,7 @@ enum OracleListenerRefusal {
         return String(format: String(localized: "The Oracle listener refused the connection (ORA-%ld)."), code)
     }
 
-    static func reason(forCode code: Int) -> String? {
+    public static func reason(forCode code: Int) -> String? {
         switch code {
         case 12_514:
             return String(localized: "The listener does not know the requested service name")

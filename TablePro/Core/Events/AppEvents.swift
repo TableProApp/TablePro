@@ -44,6 +44,28 @@ final class AppEvents {
 
     let mainWindowWillClose = PassthroughSubject<Void, Never>()
 
+    /// A connection window was registered, closed, or became key.
+    /// Subscribers that present the set of open connections, or which window
+    /// stands for each one, refresh on every event.
+    let connectionWindowsChanged = PassthroughSubject<Void, Never>()
+
+    /// The user reordered the workspace rail. Every open rail shares one
+    /// arrangement, so all of them reload.
+    let workspaceRailOrderChanged = PassthroughSubject<Void, Never>()
+
+    /// The workspace rail was shown or hidden. Every window carries its own
+    /// rail, so all of them follow the one setting.
+    let workspaceRailVisibilityChanged = PassthroughSubject<Void, Never>()
+
+    /// A window's tabs changed in a way that changes which containers they hold
+    /// open. Fired only when the set of held containers can differ, not on every
+    /// keystroke, so the rail reloads when a workspace appears or goes away.
+    let workspaceTabsChanged = PassthroughSubject<Void, Never>()
+
+    /// A connection's browse cursor moved to another database or schema.
+    /// Payload is the connection's id.
+    let browseContainerChanged = PassthroughSubject<UUID, Never>()
+
     // MARK: - Data Sources
 
     /// Query history changed (entry added, deleted, or cleared).

@@ -20,11 +20,6 @@ import Testing
 @Suite("WindowTabGrouping")
 @MainActor
 struct WindowTabGroupingTests {
-    init() {
-        // Tests assume per-connection grouping; reset in case a prior suite changed it.
-        AppSettingsManager.shared.tabs.groupAllConnectionTabs = false
-    }
-
     @Test("tabbingIdentifier produces a connection-specific identifier")
     func tabbingIdentifierUsesConnectionId() {
         let connectionId = UUID()
@@ -57,4 +52,5 @@ struct WindowTabGroupingTests {
 
         #expect(id1 == id2)
     }
+
 }

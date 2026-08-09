@@ -1,6 +1,7 @@
 import SwiftUI
 import TableProDatabase
 import TableProModels
+import TableProOracleCore
 import UniformTypeIdentifiers
 
 struct ConnectionFormView: View {
@@ -57,9 +58,20 @@ struct ConnectionFormView: View {
                     serverSection(viewModel: viewModel)
                 }
 
+                if viewModel.type == .oracle {
+                    oracleSection(viewModel: viewModel)
+                }
+
                 if !viewModel.isFileBased {
                     Section {
-                        if viewModel.type == .mssql {
+                        if viewModel.type == .oracle {
+                            Picker(String(localized: "SSL Mode"), selection: $viewModel.oracleSSLMode) {
+                                Text(String(localized: "Disabled")).tag(SSLConfiguration.SSLMode.disable)
+                                Text(String(localized: "Required")).tag(SSLConfiguration.SSLMode.require)
+                                Text(String(localized: "Verify CA")).tag(SSLConfiguration.SSLMode.verifyCa)
+                                Text(String(localized: "Verify Identity")).tag(SSLConfiguration.SSLMode.verifyFull)
+                            }
+                        } else if viewModel.type == .mssql {
                             // FreeTDS db-lib only honors on/off encryption (DBSETENCRYPT). Per-connection
                             // cert chain verification is not exposed, so only Disabled and Required are listed.
                             // See Plugins/MSSQLDriverPlugin/MSSQLSSLMapping.swift for the FreeTDS contract.
@@ -269,6 +281,36 @@ struct ConnectionFormView: View {
     // MARK: - Server Section
 
     @ViewBuilder
+    private func oracleSection(viewModel: ConnectionFormViewModel) -> some View {
+        @Bindable var viewModel = viewModel
+        Section("Oracle") {
+            Picker(String(localized: "Connect Using"), selection: $viewModel.oracleConnectionType) {
+                Text(String(localized: "Service Name")).tag(OracleConnectionOptions.IdentifierMode.service)
+                Text("SID").tag(OracleConnectionOptions.IdentifierMode.sid)
+            }
+            .pickerStyle(.segmented)
+
+            if viewModel.oracleConnectionType == .service {
+                TextField("Service Name", text: $viewModel.oracleServiceName, prompt: Text(verbatim: "ORCL"))
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .keyboardType(.asciiCapable)
+            } else {
+                TextField("SID", text: $viewModel.oracleSID, prompt: Text(verbatim: "XE"))
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .keyboardType(.asciiCapable)
+            }
+
+            Picker(String(localized: "Role"), selection: $viewModel.oracleRole) {
+                Text(String(localized: "Normal")).tag(OracleConnectionOptions.Role.normal)
+                Text(verbatim: "SYSDBA").tag(OracleConnectionOptions.Role.sysdba)
+                Text(verbatim: "SYSOPER").tag(OracleConnectionOptions.Role.sysoper)
+            }
+        }
+    }
+
+    @ViewBuilder
     private func serverSection(viewModel: ConnectionFormViewModel) -> some View {
         @Bindable var viewModel = viewModel
         Section("Server") {
@@ -402,6 +444,14 @@ struct ConnectionFormView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .padding(.leading, 28)
+                    }
+                    if let suggested = testResult.suggestedOracleMode {
+                        Button(suggested == .sid ? "Use SID Instead" : "Use Service Name Instead") {
+                            viewModel.oracleConnectionType = suggested
+                            Task { await handleTest() }
+                        }
+                        .font(.caption)
+                        .padding(.leading, 28)
                     }
                 }
             }

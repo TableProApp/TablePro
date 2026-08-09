@@ -567,7 +567,7 @@ struct AppMenuCommands: Commands {
 
         // Edit menu - Undo/Redo (smart handling for both text editor and data grid)
         CommandGroup(replacing: .undoRedo) {
-            Button("Undo") {
+            Button(NSApp.keyWindow?.undoManager?.undoMenuItemTitle ?? String(localized: "Undo")) {
                 // Inspector windows and text views both handle undo: via the
                 // AppKit responder chain. Data grid tabs route through actions.
                 if keyWindowIsInspector ||
@@ -580,7 +580,7 @@ struct AppMenuCommands: Commands {
             }
             .optionalKeyboardShortcut(shortcut(for: .undo))
 
-            Button("Redo") {
+            Button(NSApp.keyWindow?.undoManager?.redoMenuItemTitle ?? String(localized: "Redo")) {
                 if keyWindowIsInspector ||
                     (NSApp.keyWindow?.firstResponder is NSTextView) ||
                     (NSApp.keyWindow?.firstResponder is TextView) {
@@ -712,6 +712,28 @@ struct AppMenuCommands: Commands {
             }
             .optionalKeyboardShortcut(shortcut(for: .toggleInspector))
             .disabled(!(actions?.isConnected ?? false))
+
+            Button(
+                (actions?.isWorkspaceRailEnabled ?? false)
+                    ? String(localized: "Hide Workspace Rail")
+                    : String(localized: "Show Workspace Rail")
+            ) {
+                actions?.toggleWorkspaceRail()
+            }
+            .optionalKeyboardShortcut(shortcut(for: .toggleWorkspaceRail))
+            .disabled(!(actions?.canToggleWorkspaceRail ?? false))
+
+            Button("Show Previous Workspace") {
+                actions?.showPreviousWorkspace()
+            }
+            .optionalKeyboardShortcut(shortcut(for: .showPreviousWorkspace))
+            .disabled(!(actions?.canToggleWorkspaceRail ?? false))
+
+            Button("Show Next Workspace") {
+                actions?.showNextWorkspace()
+            }
+            .optionalKeyboardShortcut(shortcut(for: .showNextWorkspace))
+            .disabled(!(actions?.canToggleWorkspaceRail ?? false))
 
             Divider()
 

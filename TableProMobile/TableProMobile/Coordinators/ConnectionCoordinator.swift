@@ -55,7 +55,8 @@ final class ConnectionCoordinator {
 
     var supportsSchemas: Bool {
         connection.type == .postgresql || connection.type == .redshift ||
-        connection.type == .mssql || connection.type == .duckdb
+        connection.type == .mssql || connection.type == .duckdb ||
+        connection.type == .oracle
     }
 
     init(connection: DatabaseConnection, appState: AppState) {
