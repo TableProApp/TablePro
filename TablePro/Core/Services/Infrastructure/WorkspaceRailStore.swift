@@ -34,9 +34,15 @@ internal struct WorkspaceRailEntry: Identifiable, Equatable {
 internal enum WorkspaceRailStore {
     /// Derived live from the open windows, their sessions and their tabs rather than
     /// cached, so a refresh can never blank the list it is refreshing.
-    internal static var entries: [WorkspaceRailEntry] {
-        let openIds = WindowLifecycleMonitor.shared.allConnectionIds()
+    /// Connections with a window on screen, whether or not the session finished
+    /// connecting. This is what a click interacts with: raise that window, or make one.
+    internal static var openConnectionIds: Set<UUID> {
+        WindowLifecycleMonitor.shared.allConnectionIds()
             .union(WindowManager.shared.allConnectionIds())
+    }
+
+    internal static var entries: [WorkspaceRailEntry] {
+        let openIds = openConnectionIds
         guard !openIds.isEmpty else { return [] }
 
         let sessions = DatabaseManager.shared.activeSessions

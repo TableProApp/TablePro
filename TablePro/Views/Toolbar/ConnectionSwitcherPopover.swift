@@ -271,19 +271,7 @@ struct ConnectionSwitcherPopover: View {
 
     private func activate(connectionId: UUID) {
         dismiss()
-        Task {
-            do {
-                try await TabRouter.shared.route(.openConnection(connectionId))
-            } catch {
-                await MainActor.run {
-                    AlertHelper.showErrorSheet(
-                        title: String(localized: "Connection Failed"),
-                        message: error.localizedDescription,
-                        window: NSApp.keyWindow
-                    )
-                }
-            }
-        }
+        Task { await ConnectionActivation.open(connectionId: connectionId) }
     }
 
     private func connectionSubtitle(_ connection: DatabaseConnection) -> String {

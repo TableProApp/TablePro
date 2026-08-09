@@ -784,6 +784,11 @@ struct AppMenuCommands: Commands {
             .optionalKeyboardShortcut(shortcut(for: .showSidebarFavorites))
             .disabled(!(actions?.isConnected ?? false))
 
+            Button("Show Connections Sidebar") {
+                actions?.showSidebarTab(.connections)
+            }
+            .optionalKeyboardShortcut(shortcut(for: .showSidebarConnections))
+
             Divider()
 
             Button("Toggle Results") {

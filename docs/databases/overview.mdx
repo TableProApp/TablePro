@@ -154,6 +154,8 @@ Red for production, green for development. Set Safe Mode to **Read-Only** on pro
 
 Groups are folders in the connection list, nested up to 3 levels. Right-click empty space or a group to create, move, or delete one. Deleting a group removes its subgroups; the connections inside are ungrouped, not deleted.
 
+The same groups appear in the **Connections** tab of every connection window's sidebar, so you can reach another connection without coming back here. Create and rename them on the welcome window; the sidebar tab browses them. Whether a group is open or closed is shared between the two.
+
 ### Tags
 
 A connection can carry multiple tags, each with a name and color. When any connection has tags, a filter bar appears above the welcome list with one pill per tag. Click pills to filter; with two or more selected, a **Match Any** / **Match All** menu switches between OR and AND matching, and **Clear** resets the filter.
@@ -164,8 +166,14 @@ Hover a connection row and click the star, or right-click and choose **Add to Fa
 
 ## Switching Connections and Databases
 
+- **Connections tab**: the third segment of the sidebar's Tables / Favorites / Connections control lists every saved connection as a tree of your groups. Double-click one, or select it and press Return, to go to it. Filter with the sidebar's search field
 - **Switch Connection** (`Ctrl+Cmd+C`): a toolbar popover lists active sessions and saved connections. Type to filter, arrow keys to move, Return to switch
 - **Open Database** (`Cmd+K`): switch databases on the same server without reconnecting
+- **Workspace rail**: the strip on the leading edge switches between the connections and databases you already have open. See [Workspace Rail](/features/workspace-rail)
+
+Going to another connection raises that connection's window, or opens one if it is not open yet. A window always shows the connection it was opened for, so nothing you have in progress is replaced. The new window takes the position of the one you were in, so it reads as the window changing content.
+
+A connection in the Connections tab is marked with a checkmark when it is the one you are in, and a dot when it is open in another window. Right-click a connection for **Open** and **Edit Connection...**, or a group for **Expand All** and **Collapse All**.
 
 <Frame caption="Database switcher in toolbar">
   <img className="block dark:hidden" src="/images/database-switcher-toolbar.png" alt="Database switcher in toolbar" />

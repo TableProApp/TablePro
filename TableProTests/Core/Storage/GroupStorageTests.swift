@@ -204,6 +204,69 @@ final class GroupStorageTests: XCTestCase {
         XCTAssertEqual(loaded[1].name, "Production")
     }
 
+    // MARK: - Depth Cap
+
+    private func saveThreeLevelChain() -> (ConnectionGroup, ConnectionGroup, ConnectionGroup) {
+        let level1 = ConnectionGroup(name: "Level 1")
+        let level2 = ConnectionGroup(name: "Level 2", parentId: level1.id)
+        let level3 = ConnectionGroup(name: "Level 3", parentId: level2.id)
+        storage.saveGroups([level1, level2, level3])
+        return (level1, level2, level3)
+    }
+
+    func testAddGroupRejectsAFourthLevel() {
+        let (_, _, level3) = saveThreeLevelChain()
+
+        storage.addGroup(ConnectionGroup(name: "Level 4", parentId: level3.id))
+
+        XCTAssertEqual(storage.loadGroups().count, 3)
+        XCTAssertNil(storage.loadGroups().first { $0.name == "Level 4" })
+    }
+
+    func testAddGroupAcceptsAThirdLevel() {
+        let level1 = ConnectionGroup(name: "Level 1")
+        let level2 = ConnectionGroup(name: "Level 2", parentId: level1.id)
+        storage.saveGroups([level1, level2])
+
+        storage.addGroup(ConnectionGroup(name: "Level 3", parentId: level2.id))
+
+        XCTAssertEqual(storage.loadGroups().count, 3)
+    }
+
+    func testUpdateGroupRejectsAMoveBeyondMaxDepth() {
+        let (_, _, level3) = saveThreeLevelChain()
+        let outsider = ConnectionGroup(name: "Outsider")
+        storage.addGroup(outsider)
+
+        var moved = outsider
+        moved.parentId = level3.id
+        storage.updateGroup(moved)
+
+        let reloaded = storage.group(for: outsider.id)
+        XCTAssertNil(reloaded?.parentId)
+    }
+
+    // MARK: - Cycle Prevention
+
+    func testUpdateGroupRejectsMakingAGroupItsOwnDescendant() {
+        let parent = ConnectionGroup(name: "Parent")
+        let child = ConnectionGroup(name: "Child", parentId: parent.id)
+        storage.saveGroups([parent, child])
+
+        var moved = parent
+        moved.parentId = child.id
+        storage.updateGroup(moved)
+
+        XCTAssertNil(storage.group(for: parent.id)?.parentId)
+    }
+
+    func testAddGroupRejectsAGroupParentedToItself() {
+        let id = UUID()
+        storage.addGroup(ConnectionGroup(id: id, name: "Self", parentId: id))
+
+        XCTAssertTrue(storage.loadGroups().isEmpty)
+    }
+
     // MARK: - Persistence
 
     func testGroupsPersistAcrossLoadCalls() {

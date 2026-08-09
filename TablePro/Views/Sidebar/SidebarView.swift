@@ -117,6 +117,8 @@ struct SidebarView: View {
                 } else {
                     Color.clear
                 }
+            case .connections:
+                ConnectionsTabView(connectionId: connectionId, sharedSidebarState: sidebarState)
             }
         }
         .onChange(of: sidebarState.searchText) { _, newValue in

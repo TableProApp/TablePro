@@ -29,6 +29,12 @@
         }
       }
     },
+    "Connections you save appear here, grouped the way you arrange them." : {
+
+    },
+    "%@, current connection" : {
+
+    },
     "\n\n… (%d more characters not shown)" : {
       "localizations" : {
         "tr" : {
@@ -314,6 +320,12 @@
         }
       }
     },
+    "Edit Connection..." : {
+
+    },
+    "Filter connections" : {
+
+    },
     "'%@' is a reserved Windows device name" : {
       "localizations" : {
         "tr" : {
@@ -342,6 +354,12 @@
         }
       }
     },
+    "No Other Connections" : {
+
+    },
+    "%@, open in another window" : {
+
+    },
     "“%@” owns database objects" : {
       "localizations" : {
         "tr" : {
@@ -369,6 +387,9 @@
           }
         }
       }
+    },
+    "Show Connections Sidebar" : {
+
     },
     "\"%@\" was changed since you opened it. Review the diff and choose how to resolve." : {
       "localizations" : {

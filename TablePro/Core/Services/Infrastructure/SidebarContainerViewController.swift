@@ -89,6 +89,7 @@ internal final class SidebarContainerViewController: NSViewController {
                     _ = state.selectedSidebarTab
                     _ = state.searchText
                     _ = state.favoritesSearchText
+                    _ = state.connectionsSearchText
                 } onChange: {
                     box.resume()
                 }
@@ -112,6 +113,9 @@ internal final class SidebarContainerViewController: NSViewController {
         case .favorites:
             activeText = state.favoritesSearchText
             placeholder = String(localized: "Filter favorites")
+        case .connections:
+            activeText = state.connectionsSearchText
+            placeholder = String(localized: "Filter connections")
         }
 
         if searchField.stringValue != activeText {
@@ -145,6 +149,8 @@ extension SidebarContainerViewController: NSSearchFieldDelegate {
             sidebarState.searchText = text
         case .favorites:
             sidebarState.favoritesSearchText = text
+        case .connections:
+            sidebarState.connectionsSearchText = text
         }
     }
 }

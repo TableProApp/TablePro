@@ -98,7 +98,7 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
 // MARK: - Sidebar Toggle
 
 extension MainWindowToolbar {
-    private static let sidebarSegmentTabs: [SidebarTab] = [.tables, .favorites]
+    private static let sidebarSegmentTabs: [SidebarTab] = [.tables, .favorites, .connections]
 
     /// A one-of-N segmented toolbar control is `NSToolbarItemGroup` with `.selectOne`.
     /// Hand-building two `NSButton`s meant faking selection with border tricks and a
@@ -110,14 +110,18 @@ extension MainWindowToolbar {
     /// `defaultItemIdentifiers` listed it. Without the flag it lays out in the sidebar's own
     /// titlebar strip, and follows the divider when the sidebar collapses.
     internal static func makeSidebarSegmentGroup(target: AnyObject?, action: Selector) -> NSToolbarItemGroup {
-        let images = ["list.bullet", "star"].compactMap {
+        let images = ["list.bullet", "star", "cylinder.split.1x2"].compactMap {
             NSImage(systemSymbolName: $0, accessibilityDescription: nil)
         }
         let group = NSToolbarItemGroup(
             itemIdentifier: sidebarToggle,
             images: images,
             selectionMode: .selectOne,
-            labels: [String(localized: "Tables"), String(localized: "Favorites")],
+            labels: [
+                String(localized: "Tables"),
+                String(localized: "Favorites"),
+                String(localized: "Connections"),
+            ],
             target: target,
             action: action
         )

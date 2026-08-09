@@ -93,6 +93,31 @@ struct SharedSidebarStateTests {
         SharedSidebarState.removeConnection(id)
     }
 
+    @Test("connectionsSearchText persists across registry lookups for same connection")
+    @MainActor
+    func connectionsSearchTextPersists() {
+        let id = UUID()
+        let a = SharedSidebarState.forConnection(id)
+        a.connectionsSearchText = "staging"
+        let b = SharedSidebarState.forConnection(id)
+        #expect(b.connectionsSearchText == "staging")
+        SharedSidebarState.removeConnection(id)
+    }
+
+    @Test("Each sidebar tab keeps its own filter text")
+    @MainActor
+    func filterTextIsPerTab() {
+        let id = UUID()
+        let state = SharedSidebarState.forConnection(id)
+        state.searchText = "users"
+        state.favoritesSearchText = "daily"
+        state.connectionsSearchText = "staging"
+        #expect(state.searchText == "users")
+        #expect(state.favoritesSearchText == "daily")
+        #expect(state.connectionsSearchText == "staging")
+        SharedSidebarState.removeConnection(id)
+    }
+
     @Test("filter text is independent across different connections")
     @MainActor
     func filterTextIndependentAcrossConnections() {
@@ -118,6 +143,45 @@ struct SharedSidebarStateTests {
         let b = SharedSidebarState.forConnection(id)
         #expect(b.selectedFavorite == selection)
         a.selectedFavorite = nil
+        SharedSidebarState.removeConnection(id)
+    }
+
+    // MARK: - Connections Tab
+
+    @Test("The connections tab persists across registry lookups for same connection")
+    @MainActor
+    func connectionsTabPersists() {
+        let id = UUID()
+        let a = SharedSidebarState.forConnection(id)
+        a.selectedSidebarTab = .connections
+        let b = SharedSidebarState.forConnection(id)
+        #expect(b.selectedSidebarTab == .connections)
+        a.selectedSidebarTab = .tables
+        SharedSidebarState.removeConnection(id)
+    }
+
+    @Test("selectedConnectionsItem persists across registry lookups for same connection")
+    @MainActor
+    func selectedConnectionsItemPersists() {
+        let id = UUID()
+        let tag = "conn-\(UUID().uuidString)"
+        let a = SharedSidebarState.forConnection(id)
+        a.selectedConnectionsItem = tag
+        let b = SharedSidebarState.forConnection(id)
+        #expect(b.selectedConnectionsItem == tag)
+        a.selectedConnectionsItem = nil
+        SharedSidebarState.removeConnection(id)
+    }
+
+    @Test("Clearing selectedConnectionsItem does not resurrect the old value")
+    @MainActor
+    func clearedConnectionsItemStaysCleared() {
+        let id = UUID()
+        let a = SharedSidebarState.forConnection(id)
+        a.selectedConnectionsItem = "conn-\(UUID().uuidString)"
+        a.selectedConnectionsItem = nil
+        let b = SharedSidebarState.forConnection(id)
+        #expect(b.selectedConnectionsItem == nil)
         SharedSidebarState.removeConnection(id)
     }
 }

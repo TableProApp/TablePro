@@ -127,6 +127,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
     case focusSidebarSearch
     case showSidebarTables
     case showSidebarFavorites
+    case showSidebarConnections
     case showPreviousTab
     case showNextTab
     case toggleWorkspaceRail
@@ -152,7 +153,8 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
              .reopenClosedTab, .quickSwitcher, .toggleTableBrowser,
              .toggleInspector, .toggleFilters, .toggleHistory, .toggleResults, .previousResultTab,
              .nextResultTab, .pinResultTab, .closeResultTab, .focusSidebarSearch,
-             .showSidebarTables, .showSidebarFavorites, .showPreviousTab, .showNextTab,
+             .showSidebarTables, .showSidebarFavorites, .showSidebarConnections,
+             .showPreviousTab, .showNextTab,
              .toggleWorkspaceRail, .showPreviousWorkspace, .showNextWorkspace:
             return .navigation
         }
@@ -243,6 +245,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
         case .focusSidebarSearch: return String(localized: "Focus Sidebar Filter")
         case .showSidebarTables: return String(localized: "Show Tables Sidebar")
         case .showSidebarFavorites: return String(localized: "Show Favorites Sidebar")
+        case .showSidebarConnections: return String(localized: "Show Connections Sidebar")
         case .showPreviousTab: return String(localized: "Show Previous Tab")
         case .showNextTab: return String(localized: "Show Next Tab")
         case .toggleWorkspaceRail: return String(localized: "Toggle Workspace Rail")
@@ -527,6 +530,7 @@ struct KeyboardSettings: Codable, Equatable {
         .focusSidebarSearch: .character("f", command: true, option: true),
         .showSidebarTables: .character("1", command: true, option: true),
         .showSidebarFavorites: .character("2", command: true, option: true),
+        .showSidebarConnections: .character("3", command: true, option: true),
         .showPreviousTab: .character("[", command: true, shift: true),
         .showNextTab: .character("]", command: true, shift: true),
         .toggleWorkspaceRail: .character("0", command: true, option: true),

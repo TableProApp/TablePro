@@ -79,19 +79,9 @@ final class WelcomeViewModel {
     /// alert appears after the sheet animation completes, no sleep needed.
     var pendingImportResultCount: Int?
 
-    var expandedGroupIds: Set<UUID> = {
-        let strings = UserDefaults.standard.stringArray(forKey: "com.TablePro.expandedGroupIds") ?? []
-        if strings.isEmpty {
-            UserDefaults.standard.removeObject(forKey: "com.TablePro.collapsedGroupIds")
-        }
-        return Set(strings.compactMap { UUID(uuidString: $0) })
-    }() {
-        didSet {
-            UserDefaults.standard.set(
-                Array(expandedGroupIds.map(\.uuidString)),
-                forKey: "com.TablePro.expandedGroupIds"
-            )
-        }
+    var expandedGroupIds: Set<UUID> {
+        get { ConnectionGroupExpansionState.shared.expandedGroupIds }
+        set { ConnectionGroupExpansionState.shared.replace(with: newValue) }
     }
 
     // MARK: - Notification Observers
@@ -183,12 +173,7 @@ final class WelcomeViewModel {
     func setUp() {
         guard connectionUpdatedCancellable == nil else { return }
 
-        if expandedGroupIds.isEmpty {
-            let allGroupIds = Set(groupStorage.loadGroups().map(\.id))
-            if !allGroupIds.isEmpty {
-                expandedGroupIds = allGroupIds
-            }
-        }
+        ConnectionGroupExpansionState.shared.expandAllIfNeeded(groups: groupStorage.loadGroups())
 
         connectionUpdatedCancellable = services.appEvents.connectionUpdated
             .receive(on: RunLoop.main)
@@ -412,6 +397,12 @@ final class WelcomeViewModel {
 
     // MARK: - Groups
 
+    /// Every window that draws the group tree reloads from this. Without it a rename
+    /// here would only ever repaint the welcome window.
+    private func broadcastGroupsChanged() {
+        services.appEvents.connectionUpdated.send(nil)
+    }
+
     func requestDeleteGroup(_ group: ConnectionGroup) {
         groupToDelete = group
         showDeleteGroupConfirmation = true
@@ -422,6 +413,7 @@ final class WelcomeViewModel {
         groupStorage.deleteGroup(group)
         groupToDelete = nil
         loadConnections()
+        broadcastGroupsChanged()
     }
 
     func beginRenameGroup(_ group: ConnectionGroup) {
@@ -444,6 +436,7 @@ final class WelcomeViewModel {
         groupStorage.updateGroup(updated)
         groups = groupStorage.loadGroups()
         rebuildTree()
+        broadcastGroupsChanged()
         renameGroupTarget = nil
     }
 
@@ -453,6 +446,7 @@ final class WelcomeViewModel {
         groupStorage.updateGroup(updated)
         groups = groupStorage.loadGroups()
         rebuildTree()
+        broadcastGroupsChanged()
     }
 
     func moveConnections(_ targets: [DatabaseConnection], toGroup groupId: UUID) {
@@ -468,6 +462,7 @@ final class WelcomeViewModel {
             return
         }
         rebuildTree()
+        broadcastGroupsChanged()
     }
 
     func removeFromGroup(_ targets: [DatabaseConnection]) {
@@ -483,6 +478,7 @@ final class WelcomeViewModel {
             return
         }
         rebuildTree()
+        broadcastGroupsChanged()
     }
 
     func createGroup(name: String, color: ConnectionColor, parentId: UUID?) {
@@ -499,6 +495,7 @@ final class WelcomeViewModel {
             pendingMoveToNewGroup = []
         }
         rebuildTree()
+        broadcastGroupsChanged()
     }
 
     func createSubgroup(under parentId: UUID) {
@@ -517,6 +514,7 @@ final class WelcomeViewModel {
         groupStorage.updateGroup(updated)
         groups = groupStorage.loadGroups()
         rebuildTree()
+        broadcastGroupsChanged()
     }
 
     // MARK: - Import / Export

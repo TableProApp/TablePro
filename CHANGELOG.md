@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Show Previous Workspace and Show Next Workspace move through the rail in the order it displays, on `Ctrl+Cmd+Up` and `Ctrl+Cmd+Down`. A shortcut you assigned yourself wins over a default added in a later release, and the default comes back if you reassign yours. (#1282)
 - Right-click a workspace in the rail to close every tab in it. A window holding a tab in another database stays open. (#1282)
 - The workspace rail takes the keyboard: arrow keys move the highlight, typing jumps to a name, and Return opens the workspace you land on. (#1282)
+- A Connections tab in the sidebar, next to Tables and Favorites, lists every saved connection as a tree of your groups. Double-click one, or press Return, to go to it: TablePro raises that connection's window if it is already open and opens one if it is not. A checkmark marks the connection you are in and a dot marks one open in another window. Filter the list from the sidebar's search field, and reach it with `Cmd+Option+3` or View > Show Connections Sidebar. (#1311)
 - Redshift external schemas now list their tables. Spectrum, federated query, cross-database, and datashare schemas showed up empty because their tables are not in the standard catalog.
 - External schemas are marked in the sidebar, and their tables show an external icon. External tables open read-only, because Redshift rejects `UPDATE` and `DELETE` on them.
 
@@ -83,6 +84,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Reopening the last session no longer connects every window at once. The window you land on connects right away, and the rest connect when you switch to them.
+- Searching connections and groups on the welcome window now ignores accents, so typing `cafe` finds `Café`. It matches how the sidebar filters everything else. (#1311)
 - The Claude, OpenAI, and Codex model menus now list the current models.
 - A new connection window now opens over the window you were in rather than cascading, so switching connection from the rail reads as the window changing content. Move a window and it keeps where you put it. (#1282)
 - The sidebar's Tables and Favorites control now sits in the toolbar above the sidebar, next to the list it switches, instead of over the table content. It is a standard segmented control, so it shows which one is selected and works with keyboard control.

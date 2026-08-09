@@ -85,14 +85,13 @@ func filterGroupTree(_ items: [ConnectionGroupTreeNode], searchText: String) -> 
     return items.compactMap { item in
         switch item {
         case .connection(let conn):
-            if conn.name.localizedCaseInsensitiveContains(searchText)
-                || conn.host.localizedCaseInsensitiveContains(searchText)
-                || conn.database.localizedCaseInsensitiveContains(searchText) {
+            let fields = [conn.name, conn.host, conn.database]
+            if fields.contains(where: { SidebarNameFilter.matches(query: searchText, candidate: $0) }) {
                 return item
             }
             return nil
         case .group(let group, let children):
-            if group.name.localizedCaseInsensitiveContains(searchText) {
+            if SidebarNameFilter.matches(query: searchText, candidate: group.name) {
                 return item
             }
             let filteredChildren = filterGroupTree(children, searchText: searchText)
@@ -102,6 +101,16 @@ func filterGroupTree(_ items: [ConnectionGroupTreeNode], searchText: String) -> 
             return nil
         }
     }
+}
+
+/// Resolves a `List` selection tag back to the node it stands for.
+func findGroupTreeNode(id: String, in items: [ConnectionGroupTreeNode]) -> ConnectionGroupTreeNode? {
+    for item in items {
+        if item.id == id { return item }
+        guard case .group(_, let children) = item else { continue }
+        if let match = findGroupTreeNode(id: id, in: children) { return match }
+    }
+    return nil
 }
 
 func filterGroupTreeByTags(_ items: [ConnectionGroupTreeNode], filter: TagFilter) -> [ConnectionGroupTreeNode] {

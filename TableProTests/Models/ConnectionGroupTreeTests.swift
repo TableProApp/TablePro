@@ -270,6 +270,139 @@ struct ConnectionGroupTreeTests {
         #expect(result.isEmpty)
     }
 
+    @Test("Search ignores diacritics, the way every other sidebar filter does")
+    func filterGroupTree_ignoresDiacritics() {
+        let conn = makeConnection(name: "Café")
+        let tree: [ConnectionGroupTreeNode] = [.connection(conn)]
+
+        #expect(connectionIds(from: filterGroupTree(tree, searchText: "cafe")) == [conn.id])
+    }
+
+    @Test("Search matches a group name without regard to diacritics or case")
+    func filterGroupTree_groupIgnoresDiacritics() {
+        let group = makeGroup(name: "Genève")
+        let conn = makeConnection(name: "db", groupId: group.id)
+        let tree: [ConnectionGroupTreeNode] = [.group(group, children: [.connection(conn)])]
+
+        #expect(groupIds(from: filterGroupTree(tree, searchText: "geneve")) == [group.id])
+    }
+
+    @Test("Search still matches in the middle of a name, not only at the start")
+    func filterGroupTree_matchesSubstring() {
+        let conn = makeConnection(name: "acme-staging-db")
+        let tree: [ConnectionGroupTreeNode] = [.connection(conn)]
+
+        #expect(connectionIds(from: filterGroupTree(tree, searchText: "staging")) == [conn.id])
+    }
+
+    @Test("Search matches a connection's host and database, not just its name")
+    func filterGroupTree_matchesHostAndDatabase() {
+        let byHost = makeConnection(name: "one", host: "db.internal")
+        let byDatabase = makeConnection(name: "two", database: "analytics")
+        let tree: [ConnectionGroupTreeNode] = [.connection(byHost), .connection(byDatabase)]
+
+        #expect(connectionIds(from: filterGroupTree(tree, searchText: "internal")) == [byHost.id])
+        #expect(connectionIds(from: filterGroupTree(tree, searchText: "analytics")) == [byDatabase.id])
+    }
+
+    @Test("A whitespace-only search matches everything rather than names containing a space")
+    func filterGroupTree_whitespaceQueryMatchesEverything() {
+        let spaced = makeConnection(name: "my db")
+        let unspaced = makeConnection(name: "prod")
+        let tree: [ConnectionGroupTreeNode] = [.connection(spaced), .connection(unspaced)]
+
+        #expect(connectionIds(from: filterGroupTree(tree, searchText: "   ")) == [spaced.id, unspaced.id])
+    }
+
+    // MARK: - filterGroupTreeByTags
+
+    @Test("A tag filter keeps only connections carrying the tag")
+    func filterGroupTreeByTags_keepsTaggedConnections() {
+        let tagId = UUID()
+        var tagged = makeConnection(name: "prod")
+        tagged.tagIds = [tagId]
+        let untagged = makeConnection(name: "local")
+        let tree: [ConnectionGroupTreeNode] = [.connection(tagged), .connection(untagged)]
+
+        let result = filterGroupTreeByTags(tree, filter: TagFilter(selectedIds: [tagId]))
+        #expect(connectionIds(from: result) == [tagged.id])
+    }
+
+    @Test("A tag filter drops a group whose connections all fail it")
+    func filterGroupTreeByTags_dropsEmptiedGroups() {
+        let tagId = UUID()
+        let group = makeGroup(name: "Acme")
+        let untagged = makeConnection(name: "local", groupId: group.id)
+        let tree: [ConnectionGroupTreeNode] = [.group(group, children: [.connection(untagged)])]
+
+        let result = filterGroupTreeByTags(tree, filter: TagFilter(selectedIds: [tagId]))
+        #expect(result.isEmpty)
+    }
+
+    @Test("An inactive tag filter returns the tree unchanged")
+    func filterGroupTreeByTags_inactiveFilterIsPassThrough() {
+        let group = makeGroup(name: "Acme")
+        let conn = makeConnection(name: "local", groupId: group.id)
+        let tree: [ConnectionGroupTreeNode] = [.group(group, children: [.connection(conn)])]
+
+        let result = filterGroupTreeByTags(tree, filter: TagFilter())
+        #expect(groupIds(from: result) == [group.id])
+        #expect(connectionIds(from: children(of: result[0])) == [conn.id])
+    }
+
+    // MARK: - findGroupTreeNode
+
+    @Test("A connection is found by the tag its row carries")
+    func findGroupTreeNode_findsConnection() {
+        let conn = makeConnection(name: "prod")
+        let tree: [ConnectionGroupTreeNode] = [.connection(conn)]
+
+        guard case .connection(let found)? = findGroupTreeNode(id: "conn-\(conn.id)", in: tree) else {
+            Issue.record("expected a connection node")
+            return
+        }
+        #expect(found.id == conn.id)
+    }
+
+    @Test("A group is found by the tag its row carries")
+    func findGroupTreeNode_findsGroup() {
+        let group = makeGroup(name: "Acme")
+        let tree: [ConnectionGroupTreeNode] = [.group(group, children: [])]
+
+        guard case .group(let found, _)? = findGroupTreeNode(id: "group-\(group.id)", in: tree) else {
+            Issue.record("expected a group node")
+            return
+        }
+        #expect(found.id == group.id)
+    }
+
+    @Test("A connection nested three groups deep is still found")
+    func findGroupTreeNode_findsDeeplyNestedConnection() {
+        let conn = makeConnection(name: "prod")
+        let inner = makeGroup(name: "Environments")
+        let middle = makeGroup(name: "Acme")
+        let outer = makeGroup(name: "Work")
+        let tree: [ConnectionGroupTreeNode] = [
+            .group(outer, children: [
+                .group(middle, children: [
+                    .group(inner, children: [.connection(conn)]),
+                ]),
+            ]),
+        ]
+
+        guard case .connection(let found)? = findGroupTreeNode(id: "conn-\(conn.id)", in: tree) else {
+            Issue.record("expected a connection node")
+            return
+        }
+        #expect(found.id == conn.id)
+    }
+
+    @Test("An id that is not in the tree finds nothing")
+    func findGroupTreeNode_missingIdFindsNothing() {
+        let tree: [ConnectionGroupTreeNode] = [.connection(makeConnection(name: "prod"))]
+        #expect(findGroupTreeNode(id: "conn-\(UUID())", in: tree) == nil)
+    }
+
     // MARK: - flattenVisibleConnections
 
     @Test("All groups expanded returns all connections in depth-first order")

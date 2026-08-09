@@ -24,11 +24,11 @@ struct MainWindowToolbarLayoutTests {
         #expect(group.isNavigational == false)
     }
 
-    @Test("Sidebar toggle stays an expanded one-of-two segmented control")
+    @Test("Sidebar toggle stays an expanded one-of-N segmented control, one segment per tab")
     func sidebarToggleIsExpandedSegmentedControl() {
         let group = MainWindowToolbar.makeSidebarSegmentGroup(target: nil, action: #selector(NSView.layout))
         #expect(group.controlRepresentation == .expanded)
         #expect(group.selectionMode == .selectOne)
-        #expect(group.subitems.count == 2)
+        #expect(group.subitems.count == SidebarTab.allCases.count)
     }
 }

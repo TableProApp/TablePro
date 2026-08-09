@@ -13,6 +13,7 @@ import Foundation
 internal enum SidebarTab: String, CaseIterable {
     case tables
     case favorites
+    case connections
 }
 
 internal enum SidebarLayout: String, CaseIterable, Sendable {
@@ -26,6 +27,7 @@ final class SharedSidebarState {
 
     var searchText: String = ""
     var favoritesSearchText: String = ""
+    var connectionsSearchText: String = ""
 
     var recentTables: [RecentTableEntry] = []
 
@@ -124,6 +126,18 @@ final class SharedSidebarState {
         }
     }
 
+    var selectedConnectionsItem: String? {
+        didSet {
+            guard oldValue != selectedConnectionsItem else { return }
+            let key = SidebarPersistenceKey.selectedConnectionsItem(connectionId: connectionId)
+            if let selectedConnectionsItem {
+                UserDefaults.standard.set(selectedConnectionsItem, forKey: key)
+            } else {
+                UserDefaults.standard.removeObject(forKey: key)
+            }
+        }
+    }
+
     static var defaultLayout: SidebarLayout {
         get {
             guard let raw = UserDefaults.standard.string(forKey: SidebarPersistenceKey.defaultLayout),
@@ -159,6 +173,9 @@ final class SharedSidebarState {
         self.selectedFavorite = UserDefaults.standard.string(
             forKey: SidebarPersistenceKey.selectedFavorite(connectionId: connectionId)
         ).flatMap(FavoriteSelection.init(rawValue:))
+        self.selectedConnectionsItem = UserDefaults.standard.string(
+            forKey: SidebarPersistenceKey.selectedConnectionsItem(connectionId: connectionId)
+        )
         if AppSettingsManager.shared.general.showRecentTables {
             self.recentTables = RecentTablesStore.shared.entries(connectionId: connectionId)
         }
@@ -171,6 +188,7 @@ final class SharedSidebarState {
         self.sidebarLayout = .flat
         self.databaseFilterSelected = []
         self.selectedFavorite = nil
+        self.selectedConnectionsItem = nil
     }
 
     deinit {
