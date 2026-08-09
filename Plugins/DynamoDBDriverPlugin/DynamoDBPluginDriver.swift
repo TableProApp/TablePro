@@ -453,12 +453,14 @@ internal final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Send
 
     func buildFilteredQuery(
         table: String,
-        filters: [(column: String, op: String, value: String)],
+        schema: String?,
+        queryFilters filters: [PluginQueryFilter],
         logicMode: String,
         sortColumns: [(columnIndex: Int, ascending: Bool)],
         columns: [String],
         limit: Int,
-        offset: Int
+        offset: Int,
+        columnKinds: [String: PluginColumnKind]
     ) -> String? {
         let (keySchema, attrTypes) = lock.withLock {
             let desc = _tableDescriptionCache[table]
@@ -1137,17 +1139,6 @@ internal final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Send
         return total
     }
 
-    private func applyClientFilter(
-        items: [[String: DynamoDBAttributeValue]],
-        column: String,
-        op: String,
-        value: String
-    ) -> [[String: DynamoDBAttributeValue]] {
-        items.filter { item in
-            matchesItemFilter(item, column: column, op: op, value: value)
-        }
-    }
-
     private func applyClientFilters(
         items: [[String: DynamoDBAttributeValue]],
         filters: [DynamoDBFilterSpec],
@@ -1156,49 +1147,44 @@ internal final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Send
         guard !filters.isEmpty else { return items }
         return items.filter { item in
             if logicMode.uppercased() == "OR" {
-                return filters.contains { filter in
-                    matchesItemFilter(item, column: filter.column, op: filter.op, value: filter.value)
-                }
+                return filters.contains { matchesItemFilter(item, filter: $0) }
             }
-            return filters.allSatisfy { filter in
-                matchesItemFilter(item, column: filter.column, op: filter.op, value: filter.value)
-            }
+            return filters.allSatisfy { matchesItemFilter(item, filter: $0) }
         }
     }
 
     private func matchesItemFilter(
         _ item: [String: DynamoDBAttributeValue],
-        column: String,
-        op: String,
-        value: String
+        filter: DynamoDBFilterSpec
     ) -> Bool {
-        if column == "*" {
-            for (_, attrValue) in item {
-                let str = DynamoDBItemFlattener.attributeValueToString(attrValue)
-                if matchesFilter(str, op: op, value: value) {
-                    return true
-                }
+        if filter.column == "*" {
+            return item.values.contains { attrValue in
+                matchesFilter(
+                    DynamoDBItemFlattener.attributeValueToString(attrValue),
+                    op: filter.op, value: filter.value, ignoresCase: filter.ignoresCase
+                )
             }
-            return false
         }
 
-        guard let attrValue = item[column] else { return false }
+        guard let attrValue = item[filter.column] else { return false }
         let str = DynamoDBItemFlattener.attributeValueToString(attrValue)
-        return matchesFilter(str, op: op, value: value)
+        return matchesFilter(str, op: filter.op, value: filter.value, ignoresCase: filter.ignoresCase)
     }
 
-    private func matchesFilter(_ str: String, op: String, value: String) -> Bool {
+    private func matchesFilter(_ str: String, op: String, value: String, ignoresCase: Bool) -> Bool {
+        let subject = ignoresCase ? str.lowercased() : str
+        let needle = ignoresCase ? value.lowercased() : value
         switch op.uppercased() {
         case "=":
-            return str == value
+            return subject == needle
         case "!=", "<>":
-            return str != value
+            return subject != needle
         case "CONTAINS":
-            return str.localizedCaseInsensitiveContains(value)
+            return subject.contains(needle)
         case "STARTS WITH":
-            return str.lowercased().hasPrefix(value.lowercased())
+            return subject.hasPrefix(needle)
         case "ENDS WITH":
-            return str.lowercased().hasSuffix(value.lowercased())
+            return subject.hasSuffix(needle)
         case ">":
             if let d1 = Double(str), let d2 = Double(value) { return d1 > d2 }
             return str > value

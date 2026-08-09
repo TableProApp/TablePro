@@ -159,8 +159,9 @@ final class BigQueryPlugin: NSObject, TableProPlugin, DriverPlugin {
         ],
         regexSyntax: .unsupported,
         booleanLiteralStyle: .truefalse,
-        likeEscapeStyle: .explicit,
-        paginationStyle: .limit
+        likeEscapeStyle: .implicit,
+        paginationStyle: .limit,
+        caseSensitivityStyle: .caseFoldFunction
     )
 
     static let explainVariants: [ExplainVariant] = [

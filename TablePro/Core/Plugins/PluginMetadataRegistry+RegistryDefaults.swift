@@ -295,7 +295,8 @@ extension PluginMetadataRegistry {
                             "CHAR", "VARCHAR", "CLOB", "BYTE", "VARBYTE", "BLOB",
                             "DATE", "TIME", "TIMESTAMP", "INTERVAL", "PERIOD", "JSON", "XML",
                         ],
-                        autoLimitStyle: .top
+                        autoLimitStyle: .top,
+                        caseSensitivityStyle: .unsupported
                     ),
                     statementCompletions: [],
                     columnTypesByCategory: [
@@ -392,7 +393,8 @@ extension PluginMetadataRegistry {
                         booleanLiteralStyle: .truefalse,
                         likeEscapeStyle: .explicit,
                         paginationStyle: .offsetFetch,
-                        offsetFetchOrderBy: ""
+                        offsetFetchOrderBy: "",
+                        caseSensitivityStyle: .regexFlag
                     ),
                     statementCompletions: [],
                     columnTypesByCategory: [
@@ -670,7 +672,8 @@ extension PluginMetadataRegistry {
                         regexSyntax: .unsupported,
                         booleanLiteralStyle: .numeric,
                         likeEscapeStyle: .explicit,
-                        paginationStyle: .limit
+                        paginationStyle: .limit,
+                        caseSensitivityStyle: .collationDefined
                     ),
                     statementCompletions: [],
                     columnTypesByCategory: [

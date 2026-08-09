@@ -150,7 +150,8 @@ final class OraclePlugin: NSObject, TableProPlugin, DriverPlugin, PluginDiagnost
         likeEscapeStyle: .explicit,
         paginationStyle: .offsetFetch,
         offsetFetchOrderBy: "ORDER BY 1",
-        autoLimitStyle: .fetchFirst
+        autoLimitStyle: .fetchFirst,
+        caseSensitivityStyle: .caseFoldFunction
     )
 
     func createDriver(config: DriverConnectionConfig) -> any PluginDatabaseDriver {
@@ -1217,15 +1218,37 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         offset: Int,
         columnKinds: [String: PluginColumnKind]
     ) -> String? {
+        buildFilteredQuery(
+            table: table, schema: schema,
+            queryFilters: filters.map { PluginQueryFilter(column: $0.column, op: $0.op, value: $0.value) },
+            logicMode: logicMode, sortColumns: sortColumns, columns: columns,
+            limit: limit, offset: offset, columnKinds: columnKinds
+        )
+    }
+
+    func buildFilteredQuery(
+        table: String,
+        schema: String?,
+        queryFilters: [PluginQueryFilter],
+        logicMode: String,
+        sortColumns: [(columnIndex: Int, ascending: Bool)],
+        columns: [String],
+        limit: Int,
+        offset: Int,
+        columnKinds: [String: PluginColumnKind]
+    ) -> String? {
         var query = "SELECT * FROM \(oracleQualifiedName(schema: schema, table: table))"
         let whereClause = PluginSQLFilter.buildWhereClause(
-            filters: filters,
+            filters: queryFilters,
             logicMode: logicMode,
             columnKinds: columnKinds,
+            caseSensitivityStyle: .caseFoldFunction,
             quoteIdentifier: oracleQuoteIdentifier,
             escapeTypedValue: oracleEscapeValue,
-            regexCondition: { quoted, value in
-                "REGEXP_LIKE(\(quoted), '\(value.replacingOccurrences(of: "'", with: "''"))')"
+            regexCondition: { quoted, value, ignoresCase in
+                let pattern = value.replacingOccurrences(of: "'", with: "''")
+                guard ignoresCase else { return "REGEXP_LIKE(\(quoted), '\(pattern)')" }
+                return "REGEXP_LIKE(\(quoted), '\(pattern)', 'i')"
             }
         )
         if !whereClause.isEmpty {

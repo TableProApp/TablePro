@@ -99,7 +99,8 @@ final class TeradataPlugin: NSObject, TableProPlugin, DriverPlugin {
             "DATE", "TIME", "TIMESTAMP", "INTERVAL", "PERIOD",
             "JSON", "XML", "ST_GEOMETRY",
         ],
-        autoLimitStyle: .top
+        autoLimitStyle: .top,
+        caseSensitivityStyle: .unsupported
     )
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "TeradataPlugin")

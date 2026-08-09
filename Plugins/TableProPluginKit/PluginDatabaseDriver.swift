@@ -133,10 +133,13 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     func buildBrowseQuery(table: String, schema: String?, sortColumns: [(columnIndex: Int, ascending: Bool)], columns: [String], limit: Int, offset: Int) -> String?
     func buildFilteredQuery(table: String, schema: String?, filters: [(column: String, op: String, value: String)], logicMode: String, sortColumns: [(columnIndex: Int, ascending: Bool)], columns: [String], limit: Int, offset: Int) -> String?
     func buildFilteredQuery(table: String, schema: String?, filters: [(column: String, op: String, value: String)], logicMode: String, sortColumns: [(columnIndex: Int, ascending: Bool)], columns: [String], limit: Int, offset: Int, columnKinds: [String: PluginColumnKind]) -> String?
+    func buildFilteredQuery(table: String, schema: String?, queryFilters: [PluginQueryFilter], logicMode: String, sortColumns: [(columnIndex: Int, ascending: Bool)], columns: [String], limit: Int, offset: Int, columnKinds: [String: PluginColumnKind]) -> String?
     // Filtered row count (optional, for NoSQL plugins; SQL plugins use COUNT(*) WHERE)
     func fetchFilteredRowCount(table: String, filters: [(column: String, op: String, value: String)], logicMode: String) async throws -> Int?
+    func fetchFilteredRowCount(table: String, queryFilters: [PluginQueryFilter], logicMode: String) async throws -> Int?
     // User-initiated exact row count (allowed to be slow; background count caps must not apply)
     func fetchExactRowCount(table: String, schema: String?, filters: [(column: String, op: String, value: String)], logicMode: String) async throws -> Int?
+    func fetchExactRowCount(table: String, schema: String?, queryFilters: [PluginQueryFilter], logicMode: String) async throws -> Int?
     // Statement generation (optional, for NoSQL plugins)
     func generateStatements(table: String, columns: [String], primaryKeyColumns: [String], changes: [PluginRowChange], insertedRowData: [Int: [PluginCellValue]], deletedRowIndices: Set<Int>, insertedRowIndices: Set<Int>) -> [(statement: String, parameters: [PluginCellValue])]?
     func generateStatements(table: String, schema: String?, columns: [String], primaryKeyColumns: [String], changes: [PluginRowChange], insertedRowData: [Int: [PluginCellValue]], deletedRowIndices: Set<Int>, insertedRowIndices: Set<Int>) -> [(statement: String, parameters: [PluginCellValue])]?
@@ -337,9 +340,18 @@ public extension PluginDatabaseDriver {
     func buildFilteredQuery(table: String, schema: String?, filters: [(column: String, op: String, value: String)], logicMode: String, sortColumns: [(columnIndex: Int, ascending: Bool)], columns: [String], limit: Int, offset: Int, columnKinds: [String: PluginColumnKind]) -> String? {
         buildFilteredQuery(table: table, schema: schema, filters: filters, logicMode: logicMode, sortColumns: sortColumns, columns: columns, limit: limit, offset: offset)
     }
+    func buildFilteredQuery(table: String, schema: String?, queryFilters: [PluginQueryFilter], logicMode: String, sortColumns: [(columnIndex: Int, ascending: Bool)], columns: [String], limit: Int, offset: Int, columnKinds: [String: PluginColumnKind]) -> String? {
+        buildFilteredQuery(table: table, schema: schema, filters: queryFilters.asTuples, logicMode: logicMode, sortColumns: sortColumns, columns: columns, limit: limit, offset: offset, columnKinds: columnKinds)
+    }
     func fetchFilteredRowCount(table: String, filters: [(column: String, op: String, value: String)], logicMode: String) async throws -> Int? { nil }
+    func fetchFilteredRowCount(table: String, queryFilters: [PluginQueryFilter], logicMode: String) async throws -> Int? {
+        try await fetchFilteredRowCount(table: table, filters: queryFilters.asTuples, logicMode: logicMode)
+    }
     func fetchExactRowCount(table: String, schema: String?, filters: [(column: String, op: String, value: String)], logicMode: String) async throws -> Int? {
         try await fetchFilteredRowCount(table: table, filters: filters, logicMode: logicMode)
+    }
+    func fetchExactRowCount(table: String, schema: String?, queryFilters: [PluginQueryFilter], logicMode: String) async throws -> Int? {
+        try await fetchExactRowCount(table: table, schema: schema, filters: queryFilters.asTuples, logicMode: logicMode)
     }
     func generateStatements(table: String, columns: [String], primaryKeyColumns: [String], changes: [PluginRowChange], insertedRowData: [Int: [PluginCellValue]], deletedRowIndices: Set<Int>, insertedRowIndices: Set<Int>) -> [(statement: String, parameters: [PluginCellValue])]? { nil }
     func generateStatements(table: String, schema: String?, columns: [String], primaryKeyColumns: [String], changes: [PluginRowChange], insertedRowData: [Int: [PluginCellValue]], deletedRowIndices: Set<Int>, insertedRowIndices: Set<Int>) -> [(statement: String, parameters: [PluginCellValue])]? {

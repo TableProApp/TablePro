@@ -120,7 +120,8 @@ final class PostgreSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
         regexSyntax: .tilde,
         booleanLiteralStyle: .truefalse,
         likeEscapeStyle: .explicit,
-        paginationStyle: .limit
+        paginationStyle: .limit,
+        caseSensitivityStyle: .ilikeOperator
     )
 
     static func driverVariant(for databaseTypeId: String) -> String? {

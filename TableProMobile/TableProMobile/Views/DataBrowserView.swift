@@ -82,6 +82,7 @@ struct DataBrowserView: View {
                     filters: $viewModel.filters,
                     logicMode: $viewModel.filterLogicMode,
                     columns: columns,
+                    databaseType: connection.type,
                     onApply: { Task { await viewModel.applyFilters() } },
                     onClear: { Task { await viewModel.clearFilters() } }
                 )

@@ -37,6 +37,18 @@ Redis shows a key-pattern search bar (for example `user:*`) with a key-type pick
 
 BETWEEN shows two value fields. IN/NOT IN takes comma-separated values.
 
+## Case Sensitivity
+
+Contains, not contains, starts with, and ends with ignore case. Equals, not equals, IN, NOT IN, and regex match case. Open the operator menu and use **Match Case** to change either one for that row. A small `Aa` icon on the operator button marks a row that is not using its usual setting.
+
+TablePro picks the fastest form each database offers: `ILIKE` on PostgreSQL, DuckDB, CockroachDB, and Snowflake, and `LOWER()` on both sides for Oracle, BigQuery, ClickHouse, and Redshift, whose `ILIKE` only folds ASCII. Trino has no `ILIKE`, so it uses `regexp_like` with the `i` flag.
+
+<Note>
+On MySQL, MariaDB, SQL Server, SQLite, libSQL, and Cloudflare D1 the column's collation decides case sensitivity and TablePro cannot override it per query, so **Match Case** is greyed out. The default collation on these databases already ignores case. Cassandra and Redis have no case-insensitive matching at all, so the option is greyed out there too.
+</Note>
+
+Filters saved before this option existed follow the same rules, so a saved "contains" filter now ignores case on PostgreSQL, DuckDB, Oracle, and BigQuery. Turn **Match Case** on to get the old behavior back.
+
 ## Raw SQL
 
 The default mode. Type any WHERE condition directly:

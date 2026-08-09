@@ -4,11 +4,13 @@
 //
 
 import SwiftUI
+import TableProPluginKit
 
 struct FilterRowView: View {
     @Binding var filter: TableFilter
     let columns: [String]
     let completions: [String]
+    var caseSensitivityStyle: SQLDialectDescriptor.CaseSensitivityStyle = .unsupported
     var enumValuesByColumn: [String: [String]] = [:]
     var rawSQLCompletionProvider: RawSQLFilterCompletionProvider?
     let onAdd: () -> Void
@@ -162,18 +164,69 @@ struct FilterRowView: View {
     }
 
     private var operatorPicker: some View {
-        Picker("", selection: $filter.filterOperator) {
-            ForEach(FilterOperator.allCases) { op in
-                OperatorMenuLabel(op: op).tag(op)
+        Menu {
+            Picker("", selection: $filter.filterOperator) {
+                ForEach(FilterOperator.allCases) { op in
+                    OperatorMenuLabel(op: op).tag(op)
+                }
             }
+            .pickerStyle(.inline)
+            .labelsHidden()
+
+            if casePresentation.showsControl {
+                Divider()
+                Toggle(String(localized: "Match Case"), isOn: $filter.isCaseSensitive)
+                    .disabled(!casePresentation.isAdjustable)
+                if let reason = casePresentation.fixedReason {
+                    Text(reason).disabled(true)
+                }
+            }
+        } label: {
+            operatorMenuTitle
         }
-        .pickerStyle(.menu)
+        .menuStyle(.button)
         .controlSize(.small)
         .fixedSize()
-        .labelsHidden()
         .accessibilityLabel(String(localized: "Filter operator"))
-        .accessibilityValue(filter.filterOperator.displayName)
-        .help(String(localized: "Select filter operator"))
+        .accessibilityValue(operatorAccessibilityValue)
+        .help(caseSensitivityHelp)
+    }
+
+    @ViewBuilder
+    private var operatorMenuTitle: some View {
+        HStack(spacing: 3) {
+            OperatorMenuLabel(op: filter.filterOperator)
+            if casePresentation.showsIndicator {
+                Image(systemName: "textformat")
+                    .imageScale(.small)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var casePresentation: FilterCaseSensitivityPresentation {
+        FilterCaseSensitivityPresentation(
+            filterOperator: filter.filterOperator,
+            isCaseSensitive: filter.isCaseSensitive,
+            style: caseSensitivityStyle
+        )
+    }
+
+    private var caseSensitivityHelp: String {
+        let presentation = casePresentation
+        guard presentation.showsControl else { return String(localized: "Select filter operator") }
+        if let reason = presentation.fixedReason { return reason }
+        return filter.isCaseSensitive
+            ? String(localized: "Matching is case-sensitive")
+            : String(localized: "Matching ignores case")
+    }
+
+    private var operatorAccessibilityValue: String {
+        guard casePresentation.isAdjustable else { return filter.filterOperator.displayName }
+        let caseMode = filter.isCaseSensitive
+            ? String(localized: "Match Case")
+            : String(localized: "Ignore Case")
+        return "\(filter.filterOperator.displayName), \(caseMode)"
     }
 
     @ViewBuilder

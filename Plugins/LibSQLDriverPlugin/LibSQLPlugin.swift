@@ -92,7 +92,8 @@ final class LibSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
         regexSyntax: .unsupported,
         booleanLiteralStyle: .numeric,
         likeEscapeStyle: .explicit,
-        paginationStyle: .limit
+        paginationStyle: .limit,
+        caseSensitivityStyle: .collationDefined
     )
 
     static let additionalConnectionFields: [ConnectionField] = [

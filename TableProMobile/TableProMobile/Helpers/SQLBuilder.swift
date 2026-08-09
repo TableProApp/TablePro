@@ -287,6 +287,10 @@ enum SQLBuilder {
         return "ORDER BY " + clauses.joined(separator: ", ")
     }
 
+    static func caseSensitivityStyle(for type: DatabaseType) -> SQLDialectDescriptor.CaseSensitivityStyle {
+        dialectDescriptor(for: type).caseSensitivityStyle
+    }
+
     private static func dialectDescriptor(for type: DatabaseType) -> SQLDialectDescriptor {
         switch type {
         case .mysql, .mariadb:
@@ -296,15 +300,26 @@ enum SQLBuilder {
                 functions: [],
                 dataTypes: [],
                 likeEscapeStyle: .implicit,
-                requiresBackslashEscaping: true
+                requiresBackslashEscaping: true,
+                caseSensitivityStyle: .collationDefined
             )
-        case .postgresql, .redshift:
+        case .postgresql:
             return SQLDialectDescriptor(
                 identifierQuote: "\"",
                 keywords: [],
                 functions: [],
                 dataTypes: [],
-                likeEscapeStyle: .explicit
+                likeEscapeStyle: .explicit,
+                caseSensitivityStyle: .ilikeOperator
+            )
+        case .redshift:
+            return SQLDialectDescriptor(
+                identifierQuote: "\"",
+                keywords: [],
+                functions: [],
+                dataTypes: [],
+                likeEscapeStyle: .explicit,
+                caseSensitivityStyle: .caseFoldFunction
             )
         case .mssql:
             return SQLDialectDescriptor(
@@ -312,7 +327,8 @@ enum SQLBuilder {
                 keywords: [],
                 functions: [],
                 dataTypes: [],
-                likeEscapeStyle: .explicit
+                likeEscapeStyle: .explicit,
+                caseSensitivityStyle: .collationDefined
             )
         case .oracle:
             return SQLDialectDescriptor(
@@ -320,7 +336,17 @@ enum SQLBuilder {
                 keywords: [],
                 functions: [],
                 dataTypes: [],
-                likeEscapeStyle: .explicit
+                likeEscapeStyle: .explicit,
+                caseSensitivityStyle: .caseFoldFunction
+            )
+        case .sqlite:
+            return SQLDialectDescriptor(
+                identifierQuote: "\"",
+                keywords: [],
+                functions: [],
+                dataTypes: [],
+                likeEscapeStyle: .explicit,
+                caseSensitivityStyle: .collationDefined
             )
         default:
             return SQLDialectDescriptor(

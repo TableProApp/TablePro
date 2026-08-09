@@ -254,7 +254,8 @@ final class SnowflakePlugin: NSObject, TableProPlugin, DriverPlugin {
         regexSyntax: .regexpLike,
         booleanLiteralStyle: .truefalse,
         likeEscapeStyle: .explicit,
-        paginationStyle: .limit
+        paginationStyle: .limit,
+        caseSensitivityStyle: .ilikeOperator
     )
 
     static let explainVariants: [ExplainVariant] = [

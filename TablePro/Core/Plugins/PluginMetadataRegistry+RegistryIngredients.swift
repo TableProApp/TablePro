@@ -77,7 +77,9 @@ extension PluginMetadataRegistry {
             booleanLiteralStyle: .numeric,
             likeEscapeStyle: .implicit,
             paginationStyle: .limit,
-            requiresBackslashEscaping: true
+            requiresBackslashEscaping: true,
+            caseSensitivityStyle: .caseFoldFunction,
+            caseFoldFunction: "lowerUTF8"
         )
 
         let clickhouseColumnTypes: [String: [String]] = [
@@ -147,7 +149,8 @@ extension PluginMetadataRegistry {
             booleanLiteralStyle: .numeric,
             likeEscapeStyle: .explicit,
             paginationStyle: .offsetFetch,
-            autoLimitStyle: .top
+            autoLimitStyle: .top,
+            caseSensitivityStyle: .collationDefined
         )
 
         let mssqlColumnTypes: [String: [String]] = [
@@ -213,7 +216,8 @@ extension PluginMetadataRegistry {
             likeEscapeStyle: .explicit,
             paginationStyle: .offsetFetch,
             offsetFetchOrderBy: "ORDER BY 1",
-            autoLimitStyle: .fetchFirst
+            autoLimitStyle: .fetchFirst,
+            caseSensitivityStyle: .caseFoldFunction
         )
 
         let oracleColumnTypes: [String: [String]] = [
@@ -278,7 +282,8 @@ extension PluginMetadataRegistry {
             regexSyntax: .regexpMatches,
             booleanLiteralStyle: .truefalse,
             likeEscapeStyle: .explicit,
-            paginationStyle: .limit
+            paginationStyle: .limit,
+            caseSensitivityStyle: .ilikeOperator
         )
 
         let duckdbColumnTypes: [String: [String]] = [
@@ -338,7 +343,8 @@ extension PluginMetadataRegistry {
             booleanLiteralStyle: .truefalse,
             likeEscapeStyle: .explicit,
             paginationStyle: .limit,
-            autoLimitStyle: .limit
+            autoLimitStyle: .limit,
+            caseSensitivityStyle: .unsupported
         )
 
         let cassandraColumnTypes: [String: [String]] = [
@@ -512,7 +518,8 @@ extension PluginMetadataRegistry {
             regexSyntax: .unsupported,
             booleanLiteralStyle: .numeric,
             likeEscapeStyle: .explicit,
-            paginationStyle: .limit
+            paginationStyle: .limit,
+            caseSensitivityStyle: .collationDefined
         )
 
         let d1ColumnTypes: [String: [String]] = [

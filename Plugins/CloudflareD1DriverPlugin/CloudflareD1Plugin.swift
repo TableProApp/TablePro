@@ -88,7 +88,8 @@ final class CloudflareD1Plugin: NSObject, TableProPlugin, DriverPlugin {
         regexSyntax: .unsupported,
         booleanLiteralStyle: .numeric,
         likeEscapeStyle: .explicit,
-        paginationStyle: .limit
+        paginationStyle: .limit,
+        caseSensitivityStyle: .collationDefined
     )
 
     static let additionalConnectionFields: [ConnectionField] = [

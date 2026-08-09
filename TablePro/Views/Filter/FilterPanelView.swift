@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import TableProPluginKit
 
 struct FilterPanelView: View {
     let coordinator: MainContentCoordinator
@@ -27,6 +28,10 @@ struct FilterPanelView: View {
 
     private var filterState: TabFilterState {
         coordinator.selectedTabFilterState
+    }
+
+    private var caseSensitivityStyle: SQLDialectDescriptor.CaseSensitivityStyle {
+        PluginManager.shared.caseSensitivityStyle(for: databaseType)
     }
 
     var body: some View {
@@ -225,6 +230,7 @@ struct FilterPanelView: View {
                     filter: coordinator.filterBinding(for: filter),
                     columns: columns,
                     completions: completionItems(),
+                    caseSensitivityStyle: caseSensitivityStyle,
                     enumValuesByColumn: enumValuesByColumn,
                     rawSQLCompletionProvider: rawSQLCompletionProvider,
                     onAdd: {

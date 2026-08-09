@@ -181,7 +181,8 @@ final class MSSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
         booleanLiteralStyle: .numeric,
         likeEscapeStyle: .explicit,
         paginationStyle: .offsetFetch,
-        autoLimitStyle: .top
+        autoLimitStyle: .top,
+        caseSensitivityStyle: .collationDefined
     )
 
     static let supportsDropDatabase = true

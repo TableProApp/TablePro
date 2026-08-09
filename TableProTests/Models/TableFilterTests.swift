@@ -192,14 +192,14 @@ struct TableFilterTests {
             value: "",
             rawSQL: "name:Widget"
         )
-        let tuple = filter.asPluginFilterTuple
-        #expect(tuple.column == TableFilter.rawSQLColumn)
-        #expect(tuple.value == "name:Widget")
+        let pluginFilter = filter.asPluginQueryFilter
+        #expect(pluginFilter.column == TableFilter.rawSQLColumn)
+        #expect(pluginFilter.value == "name:Widget")
     }
 
-    @Test("Plugin tuple uses value for a column filter")
-    func pluginTupleUsesValueForColumn() {
+    @Test("Plugin filter uses value for a column filter")
+    func pluginFilterUsesValueForColumn() {
         let filter = TableFilter(columnName: "name", filterOperator: .equal, value: "Widget")
-        #expect(filter.asPluginFilterTuple.value == "Widget")
+        #expect(filter.asPluginQueryFilter.value == "Widget")
     }
 }

@@ -6,11 +6,18 @@
 //
 
 import Foundation
+import TableProPluginKit
 
 struct ElasticsearchFilterSpec: Codable, Equatable {
     let column: String
     let op: String
     let value: String
+    var caseSensitive: Bool?
+
+    func ignoresCase(default fallback: Bool) -> Bool {
+        guard let caseSensitive else { return fallback }
+        return !caseSensitive
+    }
 }
 
 struct ElasticsearchSortSpec: Codable, Equatable {
@@ -54,16 +61,22 @@ struct ElasticsearchQueryBuilder {
 
     func buildFilteredQuery(
         index: String,
-        filters: [(column: String, op: String, value: String)],
+        filters: [PluginQueryFilter],
         logicMode: String,
         sorts: [ElasticsearchSortSpec],
         limit: Int,
         offset: Int
     ) -> String {
-        let specs = filters.map { ElasticsearchFilterSpec(column: $0.column, op: $0.op, value: $0.value) }
-        return Self.encodeSearch(
-            index: index, from: offset, size: limit, sorts: sorts, filters: specs, logicMode: logicMode
+        Self.encodeSearch(
+            index: index, from: offset, size: limit, sorts: sorts,
+            filters: Self.specs(from: filters), logicMode: logicMode
         )
+    }
+
+    static func specs(from filters: [PluginQueryFilter]) -> [ElasticsearchFilterSpec] {
+        filters.map {
+            ElasticsearchFilterSpec(column: $0.column, op: $0.op, value: $0.value, caseSensitive: $0.isCaseSensitive)
+        }
     }
 
     // MARK: - Encoding
@@ -254,6 +267,7 @@ struct ElasticsearchQueryBuilder {
         let column = filter.column
         let op = filter.op.uppercased()
         let value = filter.value
+        let ignoresCase = filter.ignoresCase(default: caseInsensitive)
 
         if column == rawColumn {
             return ["query_string": ["query": value, "lenient": true]]
@@ -261,9 +275,9 @@ struct ElasticsearchQueryBuilder {
 
         switch op {
         case "=":
-            return equalsClause(column: column, value: value, fields: fields)
+            return equalsClause(column: column, value: value, fields: fields, caseInsensitive: ignoresCase)
         case "!=", "<>":
-            return mustNot(equalsClause(column: column, value: value, fields: fields))
+            return mustNot(equalsClause(column: column, value: value, fields: fields, caseInsensitive: ignoresCase))
         case ">":
             return ["range": [column: ["gt": typedValue(value, column: column, fields: fields)]]]
         case ">=":
@@ -280,22 +294,22 @@ struct ElasticsearchQueryBuilder {
                 "lte": typedValue(bounds[1], column: column, fields: fields),
             ]]]
         case "CONTAINS":
-            return containsClause(column: column, value: value, fields: fields, caseInsensitive: caseInsensitive)
+            return containsClause(column: column, value: value, fields: fields, caseInsensitive: ignoresCase)
         case "NOT CONTAINS":
-            return mustNot(containsClause(column: column, value: value, fields: fields, caseInsensitive: caseInsensitive))
+            return mustNot(containsClause(column: column, value: value, fields: fields, caseInsensitive: ignoresCase))
         case "STARTS WITH":
-            if isTextField(column, fields: fields) {
+            if isTextField(column, fields: fields), ignoresCase {
                 return ["match_phrase_prefix": [column: value]]
             }
-            return prefixClause(keywordField(column, fields: fields), value: value, caseInsensitive: caseInsensitive)
+            return prefixClause(keywordField(column, fields: fields), value: value, caseInsensitive: ignoresCase)
         case "ENDS WITH":
-            return wildcardClause(keywordField(column, fields: fields), pattern: "*\(escapeWildcard(value))", caseInsensitive: caseInsensitive)
+            return wildcardClause(keywordField(column, fields: fields), pattern: "*\(escapeWildcard(value))", caseInsensitive: ignoresCase)
         case "IN":
-            return ["terms": [keywordField(column, fields: fields): splitList(value)]]
+            return listClause(column: column, value: value, fields: fields, caseInsensitive: ignoresCase)
         case "NOT IN":
-            return mustNot(["terms": [keywordField(column, fields: fields): splitList(value)]])
+            return mustNot(listClause(column: column, value: value, fields: fields, caseInsensitive: ignoresCase))
         case "REGEX":
-            return regexpClause(keywordField(column, fields: fields), value: value, caseInsensitive: caseInsensitive)
+            return regexpClause(keywordField(column, fields: fields), value: value, caseInsensitive: ignoresCase)
         case "IS NULL", "IS_NULL", "IS EMPTY", "IS_EMPTY":
             return ["bool": [
                 "should": [mustNot(["exists": ["field": column]]), ["term": [keywordField(column, fields: fields): ""]]],
@@ -314,7 +328,7 @@ struct ElasticsearchQueryBuilder {
     private static func containsClause(
         column: String, value: String, fields: [String: ElasticsearchFieldInfo], caseInsensitive: Bool
     ) -> [String: Any] {
-        if isTextField(column, fields: fields) {
+        if isTextField(column, fields: fields), caseInsensitive {
             return ["match": [column: value]]
         }
         return wildcardClause(keywordField(column, fields: fields), pattern: "*\(escapeWildcard(value))*", caseInsensitive: caseInsensitive)
@@ -349,15 +363,37 @@ struct ElasticsearchQueryBuilder {
     private static func equalsClause(
         column: String,
         value: String,
-        fields: [String: ElasticsearchFieldInfo]
+        fields: [String: ElasticsearchFieldInfo],
+        caseInsensitive: Bool = false
     ) -> [String: Any] {
         if isTextField(column, fields: fields) {
             if let keyword = matchableKeywordField(column, fields: fields), keyword != column {
-                return ["term": [keyword: value]]
+                return termClause(keyword, value: value, caseInsensitive: caseInsensitive)
             }
             return ["match_phrase": [column: value]]
         }
-        return ["term": [column: typedValue(value, column: column, fields: fields)]]
+        guard caseInsensitive else {
+            return ["term": [column: typedValue(value, column: column, fields: fields)]]
+        }
+        return termClause(column, value: value, caseInsensitive: true)
+    }
+
+    /// `terms` has no case_insensitive option, so an ignore-case list becomes a should of terms.
+    private static func listClause(
+        column: String,
+        value: String,
+        fields: [String: ElasticsearchFieldInfo],
+        caseInsensitive: Bool
+    ) -> [String: Any] {
+        let field = keywordField(column, fields: fields)
+        guard caseInsensitive else { return ["terms": [field: splitList(value)]] }
+        let clauses = splitList(value).map { termClause(field, value: $0, caseInsensitive: true) }
+        return ["bool": ["should": clauses, "minimum_should_match": 1]]
+    }
+
+    private static func termClause(_ field: String, value: String, caseInsensitive: Bool) -> [String: Any] {
+        guard caseInsensitive else { return ["term": [field: value]] }
+        return ["term": [field: ["value": value, "case_insensitive": true]]]
     }
 
     private static func keywordField(_ column: String, fields: [String: ElasticsearchFieldInfo]) -> String {

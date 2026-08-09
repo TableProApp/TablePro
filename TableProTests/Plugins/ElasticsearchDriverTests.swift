@@ -59,7 +59,7 @@ struct ElasticsearchQueryBuilderEncodingTests {
     func filteredRoundTrip() {
         let query = builder.buildFilteredQuery(
             index: "users",
-            filters: [(column: "age", op: ">", value: "21")],
+            filters: [PluginQueryFilter(column: "age", op: ">", value: "21")],
             logicMode: "AND",
             sorts: [ElasticsearchSortSpec(column: "name", ascending: true)],
             limit: 100,

@@ -354,24 +354,24 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func fetchFilteredRowCount(
         table: String,
-        filters: [(column: String, op: String, value: String)],
+        queryFilters: [PluginQueryFilter],
         logicMode: String
     ) async throws -> Int? {
-        try await documentCount(table: table, filters: filters, logicMode: logicMode, background: true)
+        try await documentCount(table: table, filters: queryFilters, logicMode: logicMode, background: true)
     }
 
     func fetchExactRowCount(
         table: String,
         schema: String?,
-        filters: [(column: String, op: String, value: String)],
+        queryFilters: [PluginQueryFilter],
         logicMode: String
     ) async throws -> Int? {
-        try await documentCount(table: table, filters: filters, logicMode: logicMode, background: false)
+        try await documentCount(table: table, filters: queryFilters, logicMode: logicMode, background: false)
     }
 
     private func documentCount(
         table: String,
-        filters: [(column: String, op: String, value: String)],
+        filters: [PluginQueryFilter],
         logicMode: String,
         background: Bool
     ) async throws -> Int? {
@@ -669,16 +669,18 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func buildFilteredQuery(
         table: String,
-        filters: [(column: String, op: String, value: String)],
+        schema: String?,
+        queryFilters: [PluginQueryFilter],
         logicMode: String,
         sortColumns: [(columnIndex: Int, ascending: Bool)],
         columns: [String],
         limit: Int,
-        offset: Int
+        offset: Int,
+        columnKinds: [String: PluginColumnKind]
     ) -> String? {
         let builder = MongoDBQueryBuilder()
         return builder.buildFilteredQuery(
-            collection: table, filters: filters, logicMode: logicMode,
+            collection: table, queryFilters: queryFilters, logicMode: logicMode,
             sortColumns: sortColumns, columns: columns, limit: limit, offset: offset
         )
     }

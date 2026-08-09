@@ -94,7 +94,8 @@ internal final class CassandraPlugin: NSObject, TableProPlugin, DriverPlugin {
             booleanLiteralStyle: .truefalse,
             likeEscapeStyle: .explicit,
             paginationStyle: .limit,
-            autoLimitStyle: .limit
+            autoLimitStyle: .limit,
+            caseSensitivityStyle: .unsupported
         )
     }
 

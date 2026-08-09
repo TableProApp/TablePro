@@ -14,6 +14,9 @@ struct DynamoDBFilterSpec: Codable {
     let column: String
     let op: String
     let value: String
+    var caseSensitive: Bool?
+
+    var ignoresCase: Bool { !(caseSensitive ?? true) }
 }
 
 // MARK: - Parsed Query Types
@@ -62,7 +65,7 @@ struct DynamoDBQueryBuilder {
 
     func buildFilteredQuery(
         table: String,
-        filters: [(column: String, op: String, value: String)],
+        filters: [PluginQueryFilter],
         logicMode: String,
         sortColumns: [(columnIndex: Int, ascending: Bool)],
         columns: [String],
@@ -77,7 +80,9 @@ struct DynamoDBQueryBuilder {
         {
             let pkType = attributeTypes[pk.name] ?? "S"
             let remainingFilters = filters.filter { !($0.column == pk.name && $0.op == "=") }
-            let specs = remainingFilters.map { DynamoDBFilterSpec(column: $0.column, op: $0.op, value: $0.value) }
+            let specs = remainingFilters.map {
+                DynamoDBFilterSpec(column: $0.column, op: $0.op, value: $0.value, caseSensitive: $0.isCaseSensitive)
+            }
             return Self.encodeQueryQuery(
                 tableName: table,
                 partitionKeyName: pk.name,
@@ -90,7 +95,9 @@ struct DynamoDBQueryBuilder {
             )
         }
 
-        let specs = filters.map { DynamoDBFilterSpec(column: $0.column, op: $0.op, value: $0.value) }
+        let specs = filters.map {
+            DynamoDBFilterSpec(column: $0.column, op: $0.op, value: $0.value, caseSensitive: $0.isCaseSensitive)
+        }
         return Self.encodeScanQuery(
             tableName: table, limit: limit, offset: offset,
             filters: specs, logicMode: logicMode

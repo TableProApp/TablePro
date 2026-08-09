@@ -105,6 +105,7 @@ final class MongoDBPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let defaultPrimaryKeyColumn: String? = "_id"
 
     static let sqlDialect: SQLDialectDescriptor? = nil
+    static let caseSensitivityStyle: SQLDialectDescriptor.CaseSensitivityStyle = .driverManaged
 
     static var statementCompletions: [CompletionEntry] {
         [

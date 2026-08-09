@@ -34,10 +34,18 @@ internal struct BigQueryFilterSpec: Codable {
     let op: String
     let value: String
     var kind: String?
+    var caseSensitive: Bool?
 
     var columnKind: PluginColumnKind? {
         guard let kind else { return nil }
         return PluginColumnKind(rawValue: kind)
+    }
+
+    var folding: PluginSQLCaseFolding {
+        PluginSQLCaseFolding.resolve(
+            style: .caseFoldFunction,
+            isCaseSensitive: caseSensitive ?? true
+        )
     }
 }
 
@@ -75,7 +83,7 @@ internal struct BigQueryQueryBuilder {
     static func encodeFilteredQuery(
         table: String,
         dataset: String,
-        filters: [(column: String, op: String, value: String)],
+        filters: [PluginQueryFilter],
         logicMode: String,
         sortColumns: [(columnIndex: Int, ascending: Bool)],
         limit: Int,
@@ -90,7 +98,9 @@ internal struct BigQueryQueryBuilder {
             offset: offset,
             filters: filters.map {
                 BigQueryFilterSpec(
-                    column: $0.column, op: $0.op, value: $0.value, kind: columnKinds[$0.column]?.rawValue
+                    column: $0.column, op: $0.op, value: $0.value,
+                    kind: columnKinds[$0.column]?.rawValue,
+                    caseSensitive: $0.isCaseSensitive
                 )
             },
             logicMode: logicMode,
@@ -126,7 +136,7 @@ internal struct BigQueryQueryBuilder {
     static func encodeCombinedQuery(
         table: String,
         dataset: String,
-        filters: [(column: String, op: String, value: String)],
+        filters: [PluginQueryFilter],
         logicMode: String,
         searchText: String,
         searchColumns: [String],
@@ -140,7 +150,11 @@ internal struct BigQueryQueryBuilder {
             sortColumns: sortColumns.map { .init(columnIndex: $0.columnIndex, ascending: $0.ascending) },
             limit: limit,
             offset: offset,
-            filters: filters.map { BigQueryFilterSpec(column: $0.column, op: $0.op, value: $0.value) },
+            filters: filters.map {
+                BigQueryFilterSpec(
+                    column: $0.column, op: $0.op, value: $0.value, caseSensitive: $0.isCaseSensitive
+                )
+            },
             logicMode: logicMode,
             searchText: searchText,
             searchColumns: searchColumns
@@ -304,18 +318,20 @@ internal struct BigQueryQueryBuilder {
         let escaped = filter.value.replacingOccurrences(of: "'", with: "''")
         let kind = filter.columnKind
         let isNullKeyword = filter.value.lowercased() == "null" && !PluginSQLLiteral.isKnownTextLike(kind)
+        let folding = filter.folding
+        let foldedColumn = folding.foldingLikeOperand(col)
 
         switch filter.op.uppercased() {
         case "=":
             if isNullKeyword {
                 return "\(col) IS NULL"
             }
-            return "\(col) = \(formatFilterValue(filter.value, kind: kind))"
+            return comparisonClause(col, "=", filter.value, kind: kind, folding: folding)
         case "!=", "<>":
             if isNullKeyword {
                 return "\(col) IS NOT NULL"
             }
-            return "\(col) != \(formatFilterValue(filter.value, kind: kind))"
+            return comparisonClause(col, "!=", filter.value, kind: kind, folding: folding)
         case ">":
             return "\(col) > \(formatFilterValue(filter.value, kind: kind))"
         case ">=":
@@ -325,24 +341,47 @@ internal struct BigQueryQueryBuilder {
         case "<=":
             return "\(col) <= \(formatFilterValue(filter.value, kind: kind))"
         case "LIKE":
-            return "\(col) LIKE '\(escaped)'"
+            return "\(foldedColumn) \(folding.likeKeyword) \(folding.foldingLikeOperand("'\(escaped)'"))"
         case "NOT LIKE":
-            return "\(col) NOT LIKE '\(escaped)'"
+            return "\(foldedColumn) \(folding.notLikeKeyword) \(folding.foldingLikeOperand("'\(escaped)'"))"
         case "IN", "NOT IN":
             let values = filter.value.split(separator: ",").map { val in
                 let trimmed = val.trimmingCharacters(in: .whitespaces)
-                return formatFilterValue(trimmed, kind: kind)
+                return foldedLiteral(formatFilterValue(trimmed, kind: kind), folding: folding)
             }
-            return "\(col) \(filter.op.uppercased()) (\(values.joined(separator: ", ")))"
+            let column = values.contains(where: { $0.hasPrefix(folding.foldFunction) })
+                ? folding.fold(col) : col
+            return "\(column) \(filter.op.uppercased()) (\(values.joined(separator: ", ")))"
         case "IS NULL":
             return "\(col) IS NULL"
         case "IS NOT NULL":
             return "\(col) IS NOT NULL"
         case "CONTAINS":
-            return "CAST(\(col) AS STRING) LIKE '%\(escaped)%'"
+            let castColumn = "CAST(\(col) AS STRING)"
+            return "\(folding.foldingLikeOperand(castColumn)) \(folding.likeKeyword) "
+                + folding.foldingLikeOperand("'%\(escaped)%'")
         default:
             return nil
         }
+    }
+
+    private static func comparisonClause(
+        _ column: String,
+        _ operatorText: String,
+        _ value: String,
+        kind: PluginColumnKind?,
+        folding: PluginSQLCaseFolding
+    ) -> String {
+        let literal = formatFilterValue(value, kind: kind)
+        let foldedValue = foldedLiteral(literal, folding: folding)
+        guard foldedValue != literal else { return "\(column) \(operatorText) \(literal)" }
+        return "\(folding.fold(column)) \(operatorText) \(foldedValue)"
+    }
+
+    /// Folding a number is a type error, so only text literals fold.
+    private static func foldedLiteral(_ literal: String, folding: PluginSQLCaseFolding) -> String {
+        guard folding.foldsComparisonOperands, literal.hasPrefix("'") else { return literal }
+        return folding.fold(literal)
     }
 
     private static func encodeParams(_ params: BigQueryQueryParams) -> String {

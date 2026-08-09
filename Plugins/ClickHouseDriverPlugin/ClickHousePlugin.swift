@@ -105,7 +105,9 @@ final class ClickHousePlugin: NSObject, TableProPlugin, DriverPlugin {
         booleanLiteralStyle: .numeric,
         likeEscapeStyle: .implicit,
         paginationStyle: .limit,
-        requiresBackslashEscaping: true
+        requiresBackslashEscaping: true,
+        caseSensitivityStyle: .caseFoldFunction,
+        caseFoldFunction: "lowerUTF8"
     )
 
     func createDriver(config: DriverConnectionConfig) -> any PluginDatabaseDriver {

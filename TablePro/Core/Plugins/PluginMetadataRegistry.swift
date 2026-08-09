@@ -32,7 +32,7 @@ struct PluginMetadataSnapshot: Sendable {
 
     let capabilities: CapabilityFlags
     let schema: SchemaInfo
-    let editor: EditorConfig
+    var editor: EditorConfig
     let connection: ConnectionConfig
 
     struct CapabilityFlags: Sendable {
@@ -149,7 +149,7 @@ struct PluginMetadataSnapshot: Sendable {
     }
 
     struct EditorConfig: Sendable {
-        let sqlDialect: SQLDialectDescriptor?
+        var sqlDialect: SQLDialectDescriptor?
         let statementCompletions: [CompletionEntry]
         let columnTypesByCategory: [String: [String]]
 
@@ -352,7 +352,8 @@ final class PluginMetadataRegistry: @unchecked Sendable {
             booleanLiteralStyle: .numeric,
             likeEscapeStyle: .implicit,
             paginationStyle: .limit,
-            requiresBackslashEscaping: true
+            requiresBackslashEscaping: true,
+            caseSensitivityStyle: .collationDefined
         )
 
         let mysqlColumnTypes: [String: [String]] = [
@@ -407,8 +408,12 @@ final class PluginMetadataRegistry: @unchecked Sendable {
             regexSyntax: .tilde,
             booleanLiteralStyle: .truefalse,
             likeEscapeStyle: .explicit,
-            paginationStyle: .limit
+            paginationStyle: .limit,
+            caseSensitivityStyle: .ilikeOperator
         )
+
+        // Redshift ILIKE only folds ASCII, so it uses LOWER on both sides instead.
+        let redshiftDialect = postgresqlDialect.withCaseSensitivityStyle(.caseFoldFunction)
 
         let postgresqlColumnTypes: [String: [String]] = [
             "Integer": ["SMALLINT", "INTEGER", "BIGINT", "SERIAL", "BIGSERIAL", "SMALLSERIAL"],
@@ -471,7 +476,8 @@ final class PluginMetadataRegistry: @unchecked Sendable {
             regexSyntax: .unsupported,
             booleanLiteralStyle: .numeric,
             likeEscapeStyle: .explicit,
-            paginationStyle: .limit
+            paginationStyle: .limit,
+            caseSensitivityStyle: .collationDefined
         )
 
         let sqliteColumnTypes: [String: [String]] = [
@@ -705,7 +711,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     structureColumnFields: [.name, .type, .nullable, .defaultValue, .autoIncrement, .comment]
                 ),
                 editor: PluginMetadataSnapshot.EditorConfig(
-                    sqlDialect: postgresqlDialect,
+                    sqlDialect: redshiftDialect,
                     statementCompletions: [],
                     columnTypesByCategory: postgresqlColumnTypes
                 ),
@@ -935,6 +941,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
         }
         if let registryDefault = defaultSnapshots[typeId] {
             resolved = resolved.withIsDownloadable(registryDefault.isDownloadable)
+            Self.adoptCuratedCaseSensitivity(&resolved, registryDefault: registryDefault)
             if Self.declaresLegacySchemaOnlyRouting(resolved, registryDefault: registryDefault) {
                 Logger(subsystem: "com.TablePro", category: "PluginMetadataRegistry").notice(
                     "Plugin '\(typeId, privacy: .public)' declares legacy two-tier switching for a schema-only engine; applying the app's switch routing"
@@ -946,6 +953,23 @@ final class PluginMetadataRegistry: @unchecked Sendable {
         for scheme in resolved.urlSchemes {
             schemeIndex[scheme.lowercased()] = typeId
         }
+    }
+
+    /// A plugin built before case-insensitive matching existed reports `.unsupported`,
+    /// which would leave its engine without the option until the plugin is re-released.
+    /// The app's curated entry knows the engine, so it fills the gap.
+    static func adoptCuratedCaseSensitivity(
+        _ snapshot: inout PluginMetadataSnapshot,
+        registryDefault: PluginMetadataSnapshot
+    ) {
+        guard let dialect = snapshot.editor.sqlDialect,
+              dialect.caseSensitivityStyle == .unsupported,
+              let curated = registryDefault.editor.sqlDialect,
+              curated.caseSensitivityStyle != .unsupported else { return }
+        snapshot.editor.sqlDialect = dialect.withCaseSensitivityStyle(
+            curated.caseSensitivityStyle,
+            caseFoldFunction: curated.caseFoldFunction
+        )
     }
 
     /// A plugin built before its engine moved to schema-only switching still

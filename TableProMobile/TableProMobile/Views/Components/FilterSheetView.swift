@@ -1,11 +1,15 @@
 import SwiftUI
+import TableProCoreTypes
 import TableProModels
+import TableProPluginKit
+import TableProQuery
 
 struct FilterSheetView: View {
     @Environment(\.dismiss) private var dismiss
     @Binding var filters: [TableFilter]
     @Binding var logicMode: FilterLogicMode
     let columns: [ColumnInfo]
+    let databaseType: DatabaseType
     let onApply: () -> Void
     let onClear: () -> Void
 
@@ -15,6 +19,10 @@ struct FilterSheetView: View {
 
     private var hasValidFilters: Bool {
         draft.contains { $0.isEnabled && $0.isValid }
+    }
+
+    private var isCaseSensitivityAdjustable: Bool {
+        PluginSQLCaseFolding.isAdjustable(style: SQLBuilder.caseSensitivityStyle(for: databaseType))
     }
 
     private func bindingForFilter(_ id: UUID) -> Binding<TableFilter>? {
@@ -54,6 +62,10 @@ struct FilterSheetView: View {
                                 TextField("Value", text: binding.value)
                                     .textInputAutocapitalization(.never)
                                     .autocorrectionDisabled()
+                            }
+
+                            if filter.filterOperator.supportsCaseSensitivity, isCaseSensitivityAdjustable {
+                                Toggle("Match Case", isOn: binding.isCaseSensitive)
                             }
 
                             if filter.filterOperator == .between {

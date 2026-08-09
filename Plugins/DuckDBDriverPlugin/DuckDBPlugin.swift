@@ -150,7 +150,8 @@ final class DuckDBPlugin: NSObject, TableProPlugin, DriverPlugin {
         regexSyntax: .regexpMatches,
         booleanLiteralStyle: .truefalse,
         likeEscapeStyle: .explicit,
-        paginationStyle: .limit
+        paginationStyle: .limit,
+        caseSensitivityStyle: .ilikeOperator
     )
 
     func createDriver(config: DriverConnectionConfig) -> any PluginDatabaseDriver {

@@ -96,7 +96,8 @@ final class SurrealDBPlugin: NSObject, TableProPlugin, DriverPlugin {
         booleanLiteralStyle: .truefalse,
         likeEscapeStyle: .explicit,
         paginationStyle: .limit,
-        autoLimitStyle: .limit
+        autoLimitStyle: .limit,
+        caseSensitivityStyle: .unsupported
     )
 
     static let additionalConnectionFields: [ConnectionField] = surrealDBPluginConnectionFields()

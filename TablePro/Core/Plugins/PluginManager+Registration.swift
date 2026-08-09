@@ -214,6 +214,16 @@ extension PluginManager {
             .editor.sqlDialect
     }
 
+    /// How this engine can express case-insensitive matching. SQL engines answer from their
+    /// dialect; document stores have no dialect and declare it on the plugin directly.
+    func caseSensitivityStyle(for databaseType: DatabaseType) -> SQLDialectDescriptor.CaseSensitivityStyle {
+        if let dialect = sqlDialect(for: databaseType) {
+            return dialect.caseSensitivityStyle
+        }
+        guard let plugin = driverPlugin(for: databaseType) else { return .unsupported }
+        return type(of: plugin).caseSensitivityStyle
+    }
+
     func statementCompletions(for databaseType: DatabaseType) -> [CompletionEntry] {
         PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
             .editor.statementCompletions ?? []

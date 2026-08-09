@@ -37,14 +37,14 @@ struct MongoDBQueryBuilder {
     /// Build: db.collection.find({filter}).sort({}).skip(offset).limit(limit)
     func buildFilteredQuery(
         collection: String,
-        filters: [(column: String, op: String, value: String)],
+        queryFilters: [PluginQueryFilter],
         logicMode: String = "and",
         sortColumns: [(columnIndex: Int, ascending: Bool)] = [],
         columns: [String] = [],
         limit: Int = 200,
         offset: Int = 0
     ) -> String {
-        let filterDoc = buildFilterDocument(from: filters, logicMode: logicMode)
+        let filterDoc = buildFilterDocument(from: queryFilters, logicMode: logicMode)
         var query = "\(Self.mongoCollectionAccessor(collection)).find(\(filterDoc))"
 
         if let sort = buildSortDocument(sortColumns: sortColumns, columns: columns) {
@@ -76,13 +76,16 @@ struct MongoDBQueryBuilder {
 
     /// Convert filter tuples to MongoDB filter document string
     func buildFilterDocument(
-        from filters: [(column: String, op: String, value: String)],
+        from filters: [PluginQueryFilter],
         logicMode: String = "and"
     ) -> String {
         guard !filters.isEmpty else { return "{}" }
 
         let conditions = filters.compactMap { filter -> String? in
-            buildCondition(column: filter.column, op: filter.op, value: filter.value)
+            buildCondition(
+                column: filter.column, op: filter.op, value: filter.value,
+                ignoresCase: !filter.isCaseSensitive
+            )
         }
 
         guard !conditions.isEmpty else { return "{}" }
@@ -107,7 +110,7 @@ struct MongoDBQueryBuilder {
         return "db.\(name)"
     }
 
-    private func buildCondition(column: String, op: String, value: String) -> String? {
+    private func buildCondition(column: String, op: String, value: String, ignoresCase: Bool) -> String? {
         let field = Self.escapeJsonString(column)
 
         switch op {
@@ -115,12 +118,14 @@ struct MongoDBQueryBuilder {
             if let oid = objectIdJson(value) {
                 return "\"$or\": [{\"\(field)\": \(oid)}, {\"\(field)\": \(jsonValue(value))}]"
             }
-            return "\"\(field)\": \(jsonValue(value))"
+            guard ignoresCase else { return "\"\(field)\": \(jsonValue(value))" }
+            return "\"\(field)\": \(Self.regexBody(pattern: anchoredPattern(value), ignoresCase: true))"
         case "!=":
             if let oid = objectIdJson(value) {
                 return "\"\(field)\": {\"$nin\": [\(oid), \(jsonValue(value))]}"
             }
-            return "\"\(field)\": {\"$ne\": \(jsonValue(value))}"
+            guard ignoresCase else { return "\"\(field)\": {\"$ne\": \(jsonValue(value))}" }
+            return "\"\(field)\": {\"$not\": \(Self.regexBody(pattern: anchoredPattern(value), ignoresCase: true))}"
         case ">":
             return "\"\(field)\": {\"$gt\": \(jsonValue(value))}"
         case ">=":
@@ -130,13 +135,16 @@ struct MongoDBQueryBuilder {
         case "<=":
             return "\"\(field)\": {\"$lte\": \(jsonValue(value))}"
         case "CONTAINS":
-            return "\"\(field)\": \(Self.regexBody(pattern: escapeRegexChars(value)))"
+            return "\"\(field)\": \(Self.regexBody(pattern: escapeRegexChars(value), ignoresCase: ignoresCase))"
         case "NOT CONTAINS":
-            return "\"\(field)\": {\"$not\": \(Self.regexBody(pattern: escapeRegexChars(value)))}"
+            let body = Self.regexBody(pattern: escapeRegexChars(value), ignoresCase: ignoresCase)
+            return "\"\(field)\": {\"$not\": \(body)}"
         case "STARTS WITH":
-            return "\"\(field)\": \(Self.regexBody(pattern: "^\(escapeRegexChars(value))"))"
+            let pattern = "^\(escapeRegexChars(value))"
+            return "\"\(field)\": \(Self.regexBody(pattern: pattern, ignoresCase: ignoresCase))"
         case "ENDS WITH":
-            return "\"\(field)\": \(Self.regexBody(pattern: "\(escapeRegexChars(value))$"))"
+            let pattern = "\(escapeRegexChars(value))$"
+            return "\"\(field)\": \(Self.regexBody(pattern: pattern, ignoresCase: ignoresCase))"
         case "IS NULL":
             return "\"\(field)\": null"
         case "IS NOT NULL":
@@ -146,12 +154,16 @@ struct MongoDBQueryBuilder {
         case "IS NOT EMPTY":
             return "\"\(field)\": {\"$ne\": \"\"}"
         case "REGEX":
-            return "\"\(field)\": \(Self.regexBody(pattern: value))"
+            return "\"\(field)\": \(Self.regexBody(pattern: value, ignoresCase: ignoresCase))"
         case "IN":
+            guard !ignoresCase else { return caseInsensitiveListCondition(field: field, value: value) }
             let items = value.split(separator: ",")
                 .flatMap { inValues(String($0).trimmingCharacters(in: .whitespaces)) }
             return "\"\(field)\": {\"$in\": [\(items.joined(separator: ", "))]}"
         case "NOT IN":
+            guard !ignoresCase else {
+                return caseInsensitiveListCondition(field: field, value: value, negated: true)
+            }
             let items = value.split(separator: ",")
                 .flatMap { inValues(String($0).trimmingCharacters(in: .whitespaces)) }
             return "\"\(field)\": {\"$nin\": [\(items.joined(separator: ", "))]}"
@@ -203,8 +215,25 @@ struct MongoDBQueryBuilder {
         return "{\"$oid\": \"\(value)\"}"
     }
 
-    private static func regexBody(pattern: String) -> String {
-        "{\"$regex\": \"\(escapeJsonString(pattern))\", \"$options\": \"i\"}"
+    private static func regexBody(pattern: String, ignoresCase: Bool) -> String {
+        guard ignoresCase else { return "{\"$regex\": \"\(escapeJsonString(pattern))\"}" }
+        return "{\"$regex\": \"\(escapeJsonString(pattern))\", \"$options\": \"i\"}"
+    }
+
+    private func anchoredPattern(_ value: String) -> String {
+        "^\(escapeRegexChars(value))$"
+    }
+
+    /// `$in` cannot carry regex options, so an ignore-case list becomes a set of anchored matches.
+    private func caseInsensitiveListCondition(field: String, value: String, negated: Bool = false) -> String {
+        let clauses = value.split(separator: ",")
+            .map { String($0).trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+            .map { item in
+                "{\"\(field)\": \(Self.regexBody(pattern: anchoredPattern(item), ignoresCase: true))}"
+            }
+        let logicOp = negated ? "$nor" : "$or"
+        return "\"\(logicOp)\": [\(clauses.joined(separator: ", "))]"
     }
 
     static func escapeJsonString(_ value: String) -> String {

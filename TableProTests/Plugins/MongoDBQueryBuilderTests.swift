@@ -110,7 +110,7 @@ struct MongoDBQueryBuilderTests {
     func filteredQueryEquals() {
         let query = builder.buildFilteredQuery(
             collection: "users",
-            filters: [(column: "name", op: "=", value: "Alice")]
+            queryFilters: [PluginQueryFilter(column: "name", op: "=", value: "Alice")]
         )
         #expect(query.contains("\"name\": \"Alice\""))
     }
@@ -119,7 +119,7 @@ struct MongoDBQueryBuilderTests {
     func filteredQueryNumericEquals() {
         let query = builder.buildFilteredQuery(
             collection: "users",
-            filters: [(column: "age", op: "=", value: "30")]
+            queryFilters: [PluginQueryFilter(column: "age", op: "=", value: "30")]
         )
         #expect(query.contains("\"age\": 30"))
     }
@@ -128,7 +128,7 @@ struct MongoDBQueryBuilderTests {
     func filteredQueryBoolean() {
         let query = builder.buildFilteredQuery(
             collection: "users",
-            filters: [(column: "active", op: "=", value: "true")]
+            queryFilters: [PluginQueryFilter(column: "active", op: "=", value: "true")]
         )
         #expect(query.contains("\"active\": true"))
     }
@@ -137,9 +137,9 @@ struct MongoDBQueryBuilderTests {
     func filteredQueryMultipleAnd() {
         let query = builder.buildFilteredQuery(
             collection: "users",
-            filters: [
-                (column: "name", op: "=", value: "Alice"),
-                (column: "age", op: ">", value: "25")
+            queryFilters: [
+                PluginQueryFilter(column: "name", op: "=", value: "Alice"),
+                PluginQueryFilter(column: "age", op: ">", value: "25")
             ],
             logicMode: "and"
         )
@@ -152,9 +152,9 @@ struct MongoDBQueryBuilderTests {
     func filteredQueryMultipleOr() {
         let query = builder.buildFilteredQuery(
             collection: "users",
-            filters: [
-                (column: "name", op: "=", value: "Alice"),
-                (column: "name", op: "=", value: "Bob")
+            queryFilters: [
+                PluginQueryFilter(column: "name", op: "=", value: "Alice"),
+                PluginQueryFilter(column: "name", op: "=", value: "Bob")
             ],
             logicMode: "or"
         )
@@ -165,7 +165,7 @@ struct MongoDBQueryBuilderTests {
     func filteredQuerySingleFilter() {
         let query = builder.buildFilteredQuery(
             collection: "users",
-            filters: [(column: "name", op: "=", value: "Alice")]
+            queryFilters: [PluginQueryFilter(column: "name", op: "=", value: "Alice")]
         )
         #expect(!query.contains("$and"))
         #expect(!query.contains("$or"))
@@ -175,7 +175,7 @@ struct MongoDBQueryBuilderTests {
     func filteredQueryNotEqual() {
         let query = builder.buildFilteredQuery(
             collection: "users",
-            filters: [(column: "status", op: "!=", value: "inactive")]
+            queryFilters: [PluginQueryFilter(column: "status", op: "!=", value: "inactive")]
         )
         #expect(query.contains("\"$ne\": \"inactive\""))
     }
@@ -184,7 +184,7 @@ struct MongoDBQueryBuilderTests {
     func filteredQueryGte() {
         let query = builder.buildFilteredQuery(
             collection: "users",
-            filters: [(column: "age", op: ">=", value: "18")]
+            queryFilters: [PluginQueryFilter(column: "age", op: ">=", value: "18")]
         )
         #expect(query.contains("\"$gte\": 18"))
     }
@@ -193,7 +193,7 @@ struct MongoDBQueryBuilderTests {
     func filteredQueryLt() {
         let query = builder.buildFilteredQuery(
             collection: "users",
-            filters: [(column: "score", op: "<", value: "100")]
+            queryFilters: [PluginQueryFilter(column: "score", op: "<", value: "100")]
         )
         #expect(query.contains("\"$lt\": 100"))
     }
@@ -202,17 +202,29 @@ struct MongoDBQueryBuilderTests {
     func filteredQueryContains() {
         let query = builder.buildFilteredQuery(
             collection: "users",
-            filters: [(column: "name", op: "CONTAINS", value: "ali")]
+            queryFilters: [
+                PluginQueryFilter(column: "name", op: "CONTAINS", value: "ali", isCaseSensitive: false)
+            ]
         )
         #expect(query.contains("\"$regex\": \"ali\""))
         #expect(query.contains("\"$options\": \"i\""))
+    }
+
+    @Test("Filtered query with CONTAINS matching case drops the ignore-case option")
+    func filteredQueryContainsMatchingCase() {
+        let query = builder.buildFilteredQuery(
+            collection: "users",
+            queryFilters: [PluginQueryFilter(column: "name", op: "CONTAINS", value: "ali")]
+        )
+        #expect(query.contains("\"$regex\": \"ali\""))
+        #expect(!query.contains("$options"))
     }
 
     @Test("Filtered query with NOT CONTAINS operator")
     func filteredQueryNotContains() {
         let query = builder.buildFilteredQuery(
             collection: "users",
-            filters: [(column: "name", op: "NOT CONTAINS", value: "test")]
+            queryFilters: [PluginQueryFilter(column: "name", op: "NOT CONTAINS", value: "test")]
         )
         #expect(query.contains("\"$not\""))
         #expect(query.contains("\"$regex\": \"test\""))
@@ -222,7 +234,7 @@ struct MongoDBQueryBuilderTests {
     func filteredQueryStartsWith() {
         let query = builder.buildFilteredQuery(
             collection: "users",
-            filters: [(column: "name", op: "STARTS WITH", value: "Al")]
+            queryFilters: [PluginQueryFilter(column: "name", op: "STARTS WITH", value: "Al")]
         )
         #expect(query.contains("\"$regex\": \"^Al\""))
     }
@@ -231,7 +243,7 @@ struct MongoDBQueryBuilderTests {
     func filteredQueryEndsWith() {
         let query = builder.buildFilteredQuery(
             collection: "users",
-            filters: [(column: "name", op: "ENDS WITH", value: "ice")]
+            queryFilters: [PluginQueryFilter(column: "name", op: "ENDS WITH", value: "ice")]
         )
         #expect(query.contains("\"$regex\": \"ice$\""))
     }
@@ -240,7 +252,7 @@ struct MongoDBQueryBuilderTests {
     func filteredQueryIsNull() {
         let query = builder.buildFilteredQuery(
             collection: "users",
-            filters: [(column: "email", op: "IS NULL", value: "")]
+            queryFilters: [PluginQueryFilter(column: "email", op: "IS NULL", value: "")]
         )
         #expect(query.contains("\"email\": null"))
     }
@@ -249,7 +261,7 @@ struct MongoDBQueryBuilderTests {
     func filteredQueryIsNotNull() {
         let query = builder.buildFilteredQuery(
             collection: "users",
-            filters: [(column: "email", op: "IS NOT NULL", value: "")]
+            queryFilters: [PluginQueryFilter(column: "email", op: "IS NOT NULL", value: "")]
         )
         #expect(query.contains("\"email\": {\"$ne\": null}"))
     }
@@ -258,7 +270,7 @@ struct MongoDBQueryBuilderTests {
     func filteredQueryIsEmpty() {
         let query = builder.buildFilteredQuery(
             collection: "users",
-            filters: [(column: "bio", op: "IS EMPTY", value: "")]
+            queryFilters: [PluginQueryFilter(column: "bio", op: "IS EMPTY", value: "")]
         )
         #expect(query.contains("\"bio\": \"\""))
     }
@@ -267,7 +279,7 @@ struct MongoDBQueryBuilderTests {
     func filteredQueryIsNotEmpty() {
         let query = builder.buildFilteredQuery(
             collection: "users",
-            filters: [(column: "bio", op: "IS NOT EMPTY", value: "")]
+            queryFilters: [PluginQueryFilter(column: "bio", op: "IS NOT EMPTY", value: "")]
         )
         #expect(query.contains("\"bio\": {\"$ne\": \"\"}"))
     }
@@ -276,7 +288,7 @@ struct MongoDBQueryBuilderTests {
     func filteredQueryRegex() {
         let query = builder.buildFilteredQuery(
             collection: "users",
-            filters: [(column: "name", op: "REGEX", value: "^[A-Z].*")]
+            queryFilters: [PluginQueryFilter(column: "name", op: "REGEX", value: "^[A-Z].*")]
         )
         #expect(query.contains("\"$regex\": \"^[A-Z].*\""))
     }
@@ -285,7 +297,7 @@ struct MongoDBQueryBuilderTests {
     func filteredQueryWithSortAndOffset() {
         let query = builder.buildFilteredQuery(
             collection: "users",
-            filters: [(column: "name", op: "=", value: "Alice")],
+            queryFilters: [PluginQueryFilter(column: "name", op: "=", value: "Alice")],
             sortColumns: [(columnIndex: 0, ascending: true)],
             columns: ["name"],
             limit: 50,
@@ -301,7 +313,7 @@ struct MongoDBQueryBuilderTests {
     @Test("Filter document with IN operator")
     func filterDocumentIn() {
         let doc = builder.buildFilterDocument(
-            from: [(column: "status", op: "IN", value: "active, inactive, pending")]
+            from: [PluginQueryFilter(column: "status", op: "IN", value: "active, inactive, pending")]
         )
         #expect(doc.contains("\"$in\""))
         #expect(doc.contains("\"active\""))
@@ -312,7 +324,7 @@ struct MongoDBQueryBuilderTests {
     @Test("Filter document with IN operator numeric values")
     func filterDocumentInNumeric() {
         let doc = builder.buildFilterDocument(
-            from: [(column: "age", op: "IN", value: "18, 25, 30")]
+            from: [PluginQueryFilter(column: "age", op: "IN", value: "18, 25, 30")]
         )
         #expect(doc.contains("\"$in\": [18, 25, 30]"))
     }
@@ -320,7 +332,7 @@ struct MongoDBQueryBuilderTests {
     @Test("Filter document with NOT IN operator")
     func filterDocumentNotIn() {
         let doc = builder.buildFilterDocument(
-            from: [(column: "status", op: "NOT IN", value: "banned, deleted")]
+            from: [PluginQueryFilter(column: "status", op: "NOT IN", value: "banned, deleted")]
         )
         #expect(doc.contains("\"$nin\""))
         #expect(doc.contains("\"banned\""))
@@ -330,7 +342,7 @@ struct MongoDBQueryBuilderTests {
     @Test("Filter document with BETWEEN operator")
     func filterDocumentBetween() {
         let doc = builder.buildFilterDocument(
-            from: [(column: "age", op: "BETWEEN", value: "18, 65")]
+            from: [PluginQueryFilter(column: "age", op: "BETWEEN", value: "18, 65")]
         )
         #expect(doc.contains("\"$gte\": 18"))
         #expect(doc.contains("\"$lte\": 65"))
@@ -339,7 +351,7 @@ struct MongoDBQueryBuilderTests {
     @Test("Filter document with BETWEEN invalid format returns empty")
     func filterDocumentBetweenInvalid() {
         let doc = builder.buildFilterDocument(
-            from: [(column: "age", op: "BETWEEN", value: "18")]
+            from: [PluginQueryFilter(column: "age", op: "BETWEEN", value: "18")]
         )
         #expect(doc == "{}")
     }
@@ -353,7 +365,7 @@ struct MongoDBQueryBuilderTests {
     @Test("Filter document with unknown operator returns empty object")
     func filterDocumentUnknownOp() {
         let doc = builder.buildFilterDocument(
-            from: [(column: "x", op: "UNKNOWN_OP", value: "y")]
+            from: [PluginQueryFilter(column: "x", op: "UNKNOWN_OP", value: "y")]
         )
         #expect(doc == "{}")
     }
@@ -361,7 +373,7 @@ struct MongoDBQueryBuilderTests {
     @Test("Filter document with float value")
     func filterDocumentFloat() {
         let doc = builder.buildFilterDocument(
-            from: [(column: "price", op: "=", value: "19.99")]
+            from: [PluginQueryFilter(column: "price", op: "=", value: "19.99")]
         )
         #expect(doc.contains("\"price\": 19.99"))
     }
@@ -369,7 +381,7 @@ struct MongoDBQueryBuilderTests {
     @Test("Filter document emits JSON-valid scientific numbers")
     func filterDocumentScientificNumber() {
         let doc = builder.buildFilterDocument(
-            from: [(column: "score", op: "=", value: "1.5e-3")]
+            from: [PluginQueryFilter(column: "score", op: "=", value: "1.5e-3")]
         )
         let parsed = parseFilter(doc)
         #expect(parsed?["score"] as? Double == 0.0015)
@@ -380,7 +392,7 @@ struct MongoDBQueryBuilderTests {
         let values = [".5", "1.", "+7", "01", "NaN", "Infinity"]
         for value in values {
             let doc = builder.buildFilterDocument(
-                from: [(column: "score", op: "=", value: value)]
+                from: [PluginQueryFilter(column: "score", op: "=", value: value)]
             )
             let parsed = parseFilter(doc)
             #expect(parsed?["score"] as? String == value)
@@ -390,7 +402,7 @@ struct MongoDBQueryBuilderTests {
     @Test("Filter document quotes integers that overflow Int64 to preserve precision")
     func filterDocumentQuotesInt64Overflow() {
         let doc = builder.buildFilterDocument(
-            from: [(column: "code", op: "=", value: "12345678901234567890")]
+            from: [PluginQueryFilter(column: "code", op: "=", value: "12345678901234567890")]
         )
         let parsed = parseFilter(doc)
         #expect(parsed?["code"] as? String == "12345678901234567890")
@@ -400,7 +412,7 @@ struct MongoDBQueryBuilderTests {
     func filterDocumentQuotesOutOfRangeExponent() {
         for value in ["1e400", "-1e400", "1.5e400"] {
             let doc = builder.buildFilterDocument(
-                from: [(column: "score", op: "=", value: value)]
+                from: [PluginQueryFilter(column: "score", op: "=", value: value)]
             )
             let parsed = parseFilter(doc)
             #expect(parsed?["score"] as? String == value)
@@ -410,7 +422,7 @@ struct MongoDBQueryBuilderTests {
     @Test("Filter document emits the largest Int64 integer unquoted")
     func filterDocumentEmitsMaxInt64() {
         let doc = builder.buildFilterDocument(
-            from: [(column: "code", op: "=", value: "9223372036854775807")]
+            from: [PluginQueryFilter(column: "code", op: "=", value: "9223372036854775807")]
         )
         #expect(doc.contains("\"code\": 9223372036854775807"))
     }
@@ -418,7 +430,7 @@ struct MongoDBQueryBuilderTests {
     @Test("Filter document with null literal")
     func filterDocumentNullLiteral() {
         let doc = builder.buildFilterDocument(
-            from: [(column: "field", op: "=", value: "null")]
+            from: [PluginQueryFilter(column: "field", op: "=", value: "null")]
         )
         #expect(doc.contains("\"field\": null"))
     }
@@ -430,7 +442,7 @@ struct MongoDBQueryBuilderTests {
     func combinedQuery() {
         let query = builder.buildCombinedQuery(
             collection: "users",
-            filters: [(column: "age", op: ">", value: "25")],
+            filters: [PluginQueryFilter(column: "age", op: ">", value: "25")],
             searchText: "john",
             searchColumns: ["name", "email"]
         )
@@ -444,7 +456,7 @@ struct MongoDBQueryBuilderTests {
     func combinedQueryWithSortAndOffset() {
         let query = builder.buildCombinedQuery(
             collection: "users",
-            filters: [(column: "age", op: ">", value: "18")],
+            filters: [PluginQueryFilter(column: "age", op: ">", value: "18")],
             searchText: "test",
             searchColumns: ["name"],
             sortColumns: [(columnIndex: 0, ascending: false)],
@@ -518,7 +530,7 @@ struct MongoDBQueryBuilderTests {
     @Test("Equals on an ObjectId value matches both the ObjectId and the string form")
     func equalsObjectIdDualMatch() {
         let doc = builder.buildFilterDocument(
-            from: [(column: "_id", op: "=", value: "66c0fa26dfcb27034e646356")]
+            from: [PluginQueryFilter(column: "_id", op: "=", value: "66c0fa26dfcb27034e646356")]
         )
         let parsed = parseFilter(doc)
         let branches = parsed?["$or"] as? [[String: Any]]
@@ -531,7 +543,7 @@ struct MongoDBQueryBuilderTests {
     @Test("Equals on a non-ObjectId string stays a plain string match")
     func equalsNonObjectIdString() {
         let doc = builder.buildFilterDocument(
-            from: [(column: "_id", op: "=", value: "user-123")]
+            from: [PluginQueryFilter(column: "_id", op: "=", value: "user-123")]
         )
         #expect(!doc.contains("$or"))
         #expect(!doc.contains("$oid"))
@@ -541,7 +553,7 @@ struct MongoDBQueryBuilderTests {
     @Test("Equals on a 23-character hex value is not treated as an ObjectId")
     func equalsShortHexNotObjectId() {
         let doc = builder.buildFilterDocument(
-            from: [(column: "_id", op: "=", value: "66c0fa26dfcb27034e64635")]
+            from: [PluginQueryFilter(column: "_id", op: "=", value: "66c0fa26dfcb27034e64635")]
         )
         #expect(!doc.contains("$oid"))
     }
@@ -549,7 +561,7 @@ struct MongoDBQueryBuilderTests {
     @Test("Equals on a 24-character non-hex value is not treated as an ObjectId")
     func equalsNonHexNotObjectId() {
         let doc = builder.buildFilterDocument(
-            from: [(column: "_id", op: "=", value: "zzc0fa26dfcb27034e646356")]
+            from: [PluginQueryFilter(column: "_id", op: "=", value: "zzc0fa26dfcb27034e646356")]
         )
         #expect(!doc.contains("$oid"))
     }
@@ -557,7 +569,7 @@ struct MongoDBQueryBuilderTests {
     @Test("ObjectId matching applies to non-_id reference fields too")
     func equalsObjectIdReferenceField() {
         let doc = builder.buildFilterDocument(
-            from: [(column: "userId", op: "=", value: "66c0fa26dfcb27034e646356")]
+            from: [PluginQueryFilter(column: "userId", op: "=", value: "66c0fa26dfcb27034e646356")]
         )
         let branches = parseFilter(doc)?["$or"] as? [[String: Any]]
         let oid = (branches?.first?["userId"] as? [String: Any])?["$oid"] as? String
@@ -567,7 +579,7 @@ struct MongoDBQueryBuilderTests {
     @Test("Not-equals on an ObjectId value excludes both the ObjectId and the string form")
     func notEqualsObjectIdDualMatch() {
         let doc = builder.buildFilterDocument(
-            from: [(column: "_id", op: "!=", value: "66c0fa26dfcb27034e646356")]
+            from: [PluginQueryFilter(column: "_id", op: "!=", value: "66c0fa26dfcb27034e646356")]
         )
         let nin = (parseFilter(doc)?["_id"] as? [String: Any])?["$nin"] as? [Any]
         #expect(nin?.count == 2)
@@ -579,7 +591,7 @@ struct MongoDBQueryBuilderTests {
     @Test("IN expands an ObjectId item to both forms and leaves plain items alone")
     func inExpandsObjectIdItems() {
         let doc = builder.buildFilterDocument(
-            from: [(column: "_id", op: "IN", value: "66c0fa26dfcb27034e646356, plain-id")]
+            from: [PluginQueryFilter(column: "_id", op: "IN", value: "66c0fa26dfcb27034e646356, plain-id")]
         )
         let inArray = (parseFilter(doc)?["_id"] as? [String: Any])?["$in"] as? [Any]
         #expect(inArray?.count == 3)
@@ -593,7 +605,7 @@ struct MongoDBQueryBuilderTests {
     @Test("NOT IN expands an ObjectId item to both forms")
     func notInExpandsObjectIdItems() {
         let doc = builder.buildFilterDocument(
-            from: [(column: "_id", op: "NOT IN", value: "66c0fa26dfcb27034e646356, plain-id")]
+            from: [PluginQueryFilter(column: "_id", op: "NOT IN", value: "66c0fa26dfcb27034e646356, plain-id")]
         )
         let ninArray = (parseFilter(doc)?["_id"] as? [String: Any])?["$nin"] as? [Any]
         #expect(ninArray?.count == 3)
@@ -607,8 +619,8 @@ struct MongoDBQueryBuilderTests {
     func objectIdEqualsCombinedWithAndFilter() {
         let doc = builder.buildFilterDocument(
             from: [
-                (column: "_id", op: "=", value: "66c0fa26dfcb27034e646356"),
-                (column: "shop", op: "=", value: "acme")
+                PluginQueryFilter(column: "_id", op: "=", value: "66c0fa26dfcb27034e646356"),
+                PluginQueryFilter(column: "shop", op: "=", value: "acme")
             ],
             logicMode: "and"
         )
@@ -631,7 +643,9 @@ struct MongoDBQueryBuilderTests {
     func regexInjectionContained() {
         let payload = ".*\"}, \"$where\": \"function(){return true}\", \"_\":{\"a\":\""
         let doc = parseFilter(
-            builder.buildFilterDocument(from: [(column: "name", op: "REGEX", value: payload)])
+            builder.buildFilterDocument(from: [
+                PluginQueryFilter(column: "name", op: "REGEX", value: payload, isCaseSensitive: false)
+            ])
         )
         #expect(doc != nil)
         #expect(doc.map { Array($0.keys) } == ["name"])
@@ -641,11 +655,23 @@ struct MongoDBQueryBuilderTests {
         #expect(inner?["$options"] as? String == "i")
     }
 
+    @Test("Regex injection payload stays contained when matching case")
+    func regexInjectionContainedMatchingCase() {
+        let payload = ".*\"}, \"$where\": \"function(){return true}\", \"_\":{\"a\":\""
+        let doc = parseFilter(
+            builder.buildFilterDocument(from: [PluginQueryFilter(column: "name", op: "REGEX", value: payload)])
+        )
+        #expect(doc.map { Array($0.keys) } == ["name"])
+        let inner = doc?["name"] as? [String: Any]
+        #expect(inner.map { Array($0.keys) } == ["$regex"])
+        #expect(inner?["$regex"] as? String == payload)
+    }
+
     @Test("CONTAINS value cannot break out of the regex string to inject operators")
     func containsInjectionContained() {
         let payload = "\"}, \"$where\": \"return true"
         let doc = parseFilter(
-            builder.buildFilterDocument(from: [(column: "name", op: "CONTAINS", value: payload)])
+            builder.buildFilterDocument(from: [PluginQueryFilter(column: "name", op: "CONTAINS", value: payload)])
         )
         #expect(doc != nil)
         #expect(doc.map { Array($0.keys) } == ["name"])
@@ -657,7 +683,7 @@ struct MongoDBQueryBuilderTests {
     func notContainsInjectionContained() {
         let payload = "\"}}, \"$where\": \"1==1"
         let doc = parseFilter(
-            builder.buildFilterDocument(from: [(column: "name", op: "NOT CONTAINS", value: payload)])
+            builder.buildFilterDocument(from: [PluginQueryFilter(column: "name", op: "NOT CONTAINS", value: payload)])
         )
         #expect(doc != nil)
         #expect(doc.map { Array($0.keys) } == ["name"])
@@ -668,7 +694,7 @@ struct MongoDBQueryBuilderTests {
     @Test("STARTS WITH escapes embedded double quotes as data")
     func startsWithEscapesQuote() {
         let doc = parseFilter(
-            builder.buildFilterDocument(from: [(column: "name", op: "STARTS WITH", value: "Al\"ce")])
+            builder.buildFilterDocument(from: [PluginQueryFilter(column: "name", op: "STARTS WITH", value: "Al\"ce")])
         )
         #expect(doc != nil)
         let inner = doc?["name"] as? [String: Any]
@@ -678,7 +704,7 @@ struct MongoDBQueryBuilderTests {
     @Test("ENDS WITH escapes embedded double quotes as data")
     func endsWithEscapesQuote() {
         let doc = parseFilter(
-            builder.buildFilterDocument(from: [(column: "name", op: "ENDS WITH", value: "ce\"Al")])
+            builder.buildFilterDocument(from: [PluginQueryFilter(column: "name", op: "ENDS WITH", value: "ce\"Al")])
         )
         #expect(doc != nil)
         let inner = doc?["name"] as? [String: Any]
@@ -688,7 +714,7 @@ struct MongoDBQueryBuilderTests {
     @Test("CONTAINS escapes a backslash to a literal-backslash regex")
     func containsEscapesBackslash() {
         let doc = parseFilter(
-            builder.buildFilterDocument(from: [(column: "path", op: "CONTAINS", value: "\\")])
+            builder.buildFilterDocument(from: [PluginQueryFilter(column: "path", op: "CONTAINS", value: "\\")])
         )
         #expect(doc != nil)
         let inner = doc?["path"] as? [String: Any]
@@ -699,7 +725,7 @@ struct MongoDBQueryBuilderTests {
     func regexPreservesMetacharacters() {
         let value = "^[A-Z].*\\d$"
         let doc = parseFilter(
-            builder.buildFilterDocument(from: [(column: "name", op: "REGEX", value: value)])
+            builder.buildFilterDocument(from: [PluginQueryFilter(column: "name", op: "REGEX", value: value)])
         )
         #expect(doc != nil)
         let inner = doc?["name"] as? [String: Any]
@@ -709,7 +735,7 @@ struct MongoDBQueryBuilderTests {
     @Test("REGEX keeps an embedded double quote as data")
     func regexEscapesQuote() {
         let doc = parseFilter(
-            builder.buildFilterDocument(from: [(column: "name", op: "REGEX", value: "a\"b")])
+            builder.buildFilterDocument(from: [PluginQueryFilter(column: "name", op: "REGEX", value: "a\"b")])
         )
         #expect(doc != nil)
         let inner = doc?["name"] as? [String: Any]
@@ -719,7 +745,7 @@ struct MongoDBQueryBuilderTests {
     @Test("CONTAINS treats regex metacharacters as literals")
     func containsTreatsMetacharactersLiterally() {
         let doc = parseFilter(
-            builder.buildFilterDocument(from: [(column: "name", op: "CONTAINS", value: "a.b")])
+            builder.buildFilterDocument(from: [PluginQueryFilter(column: "name", op: "CONTAINS", value: "a.b")])
         )
         #expect(doc != nil)
         let inner = doc?["name"] as? [String: Any]

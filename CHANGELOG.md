@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Filter rows now have a Match Case option in the operator menu. Contains, not contains, starts with, and ends with ignore case on every database that can express it, so PostgreSQL and DuckDB now behave like MySQL and SQLite already did. Equals, IN, and regex still match case until you say otherwise. (#2048)
+- Databases whose collation decides case sensitivity, such as MySQL and SQL Server, show the option greyed out with the reason, as do Cassandra and Redis, which cannot ignore case at all. (#2048)
+- MongoDB, Elasticsearch, DynamoDB, and etcd filters can now match case. They always ignored it before, with no way to turn that off. (#2048)
 - Oracle connections can now sign in as SYSDBA or SYSOPER, on both Mac and mobile. Administrative logons previously had no way to connect. (#2039)
 - Oracle now works in TablePro Mobile: connect, browse schemas and tables, run queries, and edit rows, with a Service Name or SID picker and the same SSL modes as the Mac app. (#2033)
 - When an Oracle listener rejects the connect identifier, the connection form now names which one was wrong and offers to switch between Service Name and SID in one tap. (#2033)

@@ -92,7 +92,8 @@ final class MySQLPlugin: NSObject, TableProPlugin, DriverPlugin {
         booleanLiteralStyle: .numeric,
         likeEscapeStyle: .implicit,
         paginationStyle: .limit,
-        requiresBackslashEscaping: true
+        requiresBackslashEscaping: true,
+        caseSensitivityStyle: .collationDefined
     )
 
     static let supportsDropDatabase = true

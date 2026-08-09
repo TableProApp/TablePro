@@ -34,6 +34,19 @@ public struct SQLDialectDescriptor: Sendable {
     // Query limit style
     public let autoLimitStyle: AutoLimitStyle
 
+    // Case-insensitive matching
+    public let caseSensitivityStyle: CaseSensitivityStyle
+    public let caseFoldFunction: String
+
+    public enum CaseSensitivityStyle: String, Sendable {
+        case ilikeOperator    // PostgreSQL, CockroachDB, PGlite, DuckDB, Snowflake
+        case caseFoldFunction // Oracle, BigQuery, ClickHouse, Redshift
+        case regexFlag        // Trino
+        case driverManaged    // MongoDB, Elasticsearch, DynamoDB, etcd
+        case collationDefined // MySQL, MSSQL, SQLite and their compatible engines
+        case unsupported      // Cassandra, Redis, and any plugin built before this field
+    }
+
     @frozen
     public enum RegexSyntax: String, Sendable {
         case regexp        // MySQL: column REGEXP 'pattern'
@@ -60,6 +73,7 @@ public struct SQLDialectDescriptor: Sendable {
         case offsetFetch // Oracle, MSSQL: OFFSET n ROWS FETCH NEXT m ROWS ONLY
     }
 
+    @_disfavoredOverload
     public init(
         identifierQuote: String,
         keywords: Set<String>,
@@ -74,6 +88,40 @@ public struct SQLDialectDescriptor: Sendable {
         requiresBackslashEscaping: Bool = false,
         autoLimitStyle: AutoLimitStyle = .limit
     ) {
+        self.init(
+            identifierQuote: identifierQuote,
+            keywords: keywords,
+            functions: functions,
+            dataTypes: dataTypes,
+            tableOptions: tableOptions,
+            regexSyntax: regexSyntax,
+            booleanLiteralStyle: booleanLiteralStyle,
+            likeEscapeStyle: likeEscapeStyle,
+            paginationStyle: paginationStyle,
+            offsetFetchOrderBy: offsetFetchOrderBy,
+            requiresBackslashEscaping: requiresBackslashEscaping,
+            autoLimitStyle: autoLimitStyle,
+            caseSensitivityStyle: .unsupported,
+            caseFoldFunction: Self.defaultCaseFoldFunction
+        )
+    }
+
+    public init(
+        identifierQuote: String,
+        keywords: Set<String>,
+        functions: Set<String>,
+        dataTypes: Set<String>,
+        tableOptions: [String] = [],
+        regexSyntax: RegexSyntax = .unsupported,
+        booleanLiteralStyle: BooleanLiteralStyle = .numeric,
+        likeEscapeStyle: LikeEscapeStyle = .explicit,
+        paginationStyle: PaginationStyle = .limit,
+        offsetFetchOrderBy: String = "ORDER BY (SELECT NULL)",
+        requiresBackslashEscaping: Bool = false,
+        autoLimitStyle: AutoLimitStyle = .limit,
+        caseSensitivityStyle: CaseSensitivityStyle = .unsupported,
+        caseFoldFunction: String = SQLDialectDescriptor.defaultCaseFoldFunction
+    ) {
         self.identifierQuote = identifierQuote
         self.keywords = keywords
         self.functions = functions
@@ -86,5 +134,31 @@ public struct SQLDialectDescriptor: Sendable {
         self.offsetFetchOrderBy = offsetFetchOrderBy
         self.requiresBackslashEscaping = requiresBackslashEscaping
         self.autoLimitStyle = autoLimitStyle
+        self.caseSensitivityStyle = caseSensitivityStyle
+        self.caseFoldFunction = caseFoldFunction
+    }
+
+    public static let defaultCaseFoldFunction = "LOWER"
+
+    public func withCaseSensitivityStyle(
+        _ style: CaseSensitivityStyle,
+        caseFoldFunction: String = SQLDialectDescriptor.defaultCaseFoldFunction
+    ) -> SQLDialectDescriptor {
+        SQLDialectDescriptor(
+            identifierQuote: identifierQuote,
+            keywords: keywords,
+            functions: functions,
+            dataTypes: dataTypes,
+            tableOptions: tableOptions,
+            regexSyntax: regexSyntax,
+            booleanLiteralStyle: booleanLiteralStyle,
+            likeEscapeStyle: likeEscapeStyle,
+            paginationStyle: paginationStyle,
+            offsetFetchOrderBy: offsetFetchOrderBy,
+            requiresBackslashEscaping: requiresBackslashEscaping,
+            autoLimitStyle: autoLimitStyle,
+            caseSensitivityStyle: style,
+            caseFoldFunction: caseFoldFunction
+        )
     }
 }

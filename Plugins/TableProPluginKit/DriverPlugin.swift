@@ -37,6 +37,7 @@ public protocol DriverPlugin: TableProPlugin {
     static var defaultGroupName: String { get }
     static var columnTypesByCategory: [String: [String]] { get }
     static var sqlDialect: SQLDialectDescriptor? { get }
+    static var caseSensitivityStyle: SQLDialectDescriptor.CaseSensitivityStyle { get }
     static var statementCompletions: [CompletionEntry] { get }
     static var tableEntityName: String { get }
     static var containerEntityName: String { get }
@@ -108,6 +109,9 @@ public extension DriverPlugin {
         ]
     }
     static var sqlDialect: SQLDialectDescriptor? { nil }
+    static var caseSensitivityStyle: SQLDialectDescriptor.CaseSensitivityStyle {
+        sqlDialect?.caseSensitivityStyle ?? .unsupported
+    }
     static var statementCompletions: [CompletionEntry] { [] }
     static var tableEntityName: String { "Tables" }
     static var containerEntityName: String { "Database" }

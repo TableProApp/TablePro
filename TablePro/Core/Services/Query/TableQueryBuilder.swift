@@ -103,11 +103,11 @@ struct TableQueryBuilder {
     ) -> String {
         if let pluginDriver {
             let sortCols = sortColumnsAsTuples(sortState)
-            let filterTuples = filters
+            let queryFilters = filters
                 .filter { $0.isEnabled && !$0.columnName.isEmpty }
-                .map(\.asPluginFilterTuple)
+                .map(\.asPluginQueryFilter)
             if let result = pluginDriver.buildFilteredQuery(
-                table: tableName, schema: schemaName, filters: filterTuples,
+                table: tableName, schema: schemaName, queryFilters: queryFilters,
                 logicMode: logicMode == .and ? "and" : "or",
                 sortColumns: sortCols, columns: selectColumns ?? columns, limit: limit, offset: offset,
                 columnKinds: pluginColumnKinds(columns: columns, columnTypes: columnTypes)
