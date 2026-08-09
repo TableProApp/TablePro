@@ -11,18 +11,27 @@
 import AppKit
 import SwiftUI
 
-struct MarkdownView: View {
+struct MarkdownView: View, Equatable {
     let source: String
     var isStreaming: Bool = false
 
     @State private var cache = MarkdownDocumentCache()
 
+    static func == (lhs: MarkdownView, rhs: MarkdownView) -> Bool {
+        lhs.source == rhs.source && lhs.isStreaming == rhs.isStreaming
+    }
+
     var body: some View {
         let blocks = cache.blocks(for: source)
+        let unsettledBlockID = isStreaming ? blocks.last?.id : nil
         VStack(alignment: .leading, spacing: 6) {
             ForEach(blocks) { block in
-                MarkdownBlockView(block: block, prefersLightweightCode: isStreaming)
-                    .equatable()
+                MarkdownBlockView(
+                    block: block,
+                    prefersLightweightCode: isStreaming,
+                    isSettled: block.id != unsettledBlockID
+                )
+                .equatable()
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -45,19 +54,22 @@ final class MarkdownDocumentCache {
 private struct MarkdownBlockView: View, Equatable {
     let block: MarkdownBlock
     let prefersLightweightCode: Bool
+    var isSettled: Bool = true
 
     static func == (lhs: Self, rhs: Self) -> Bool {
-        lhs.block == rhs.block && lhs.prefersLightweightCode == rhs.prefersLightweightCode
+        lhs.block == rhs.block
+            && lhs.prefersLightweightCode == rhs.prefersLightweightCode
+            && lhs.isSettled == rhs.isSettled
     }
 
     var body: some View {
         switch block.kind {
         case .paragraph(let text):
-            Text(MarkdownInline.parse(text))
+            Text(MarkdownInline.parse(text, isSettled: isSettled))
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
         case .header(let level, let text):
-            Text(MarkdownInline.parse(text))
+            Text(MarkdownInline.parse(text, isSettled: isSettled))
                 .font(headerFont(for: level))
                 .fontWeight(headerWeight(for: level))
                 .padding(.top, level == 1 ? 6 : 4)
@@ -72,12 +84,18 @@ private struct MarkdownBlockView: View, Equatable {
             )
             .equatable()
         case .unorderedList(let items):
-            MarkdownListView(items: items, style: .unordered, prefersLightweightCode: prefersLightweightCode)
+            MarkdownListView(
+                items: items,
+                style: .unordered,
+                prefersLightweightCode: prefersLightweightCode,
+                isSettled: isSettled
+            )
         case .orderedList(let start, let items):
             MarkdownListView(
                 items: items,
                 style: .ordered(start: start),
-                prefersLightweightCode: prefersLightweightCode
+                prefersLightweightCode: prefersLightweightCode,
+                isSettled: isSettled
             )
         case .blockquote(let lines):
             MarkdownBlockquoteView(lines: lines)
@@ -109,6 +127,7 @@ private struct MarkdownListView: View {
     let items: [MarkdownListItem]
     let style: ListStyle
     let prefersLightweightCode: Bool
+    var isSettled: Bool = true
 
     enum ListStyle: Equatable {
         case unordered
@@ -123,13 +142,17 @@ private struct MarkdownListView: View {
                         .foregroundStyle(.secondary)
                         .frame(minWidth: 16, alignment: .trailing)
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(MarkdownInline.parse(item.text))
+                        Text(MarkdownInline.parse(item.text, isSettled: isSettled))
                             .textSelection(.enabled)
                             .frame(maxWidth: .infinity, alignment: .leading)
                         if !item.children.isEmpty {
                             ForEach(item.children) { child in
-                                MarkdownBlockView(block: child, prefersLightweightCode: prefersLightweightCode)
-                                    .equatable()
+                                MarkdownBlockView(
+                                    block: child,
+                                    prefersLightweightCode: prefersLightweightCode,
+                                    isSettled: isSettled
+                                )
+                                .equatable()
                             }
                             .padding(.leading, 4)
                         }
@@ -224,25 +247,32 @@ enum MarkdownInline {
     private static let cache: NSCache<NSString, NSAttributedString> = {
         let c = NSCache<NSString, NSAttributedString>()
         c.countLimit = 4_000
+        c.totalCostLimit = 8 * 1_024 * 1_024
         return c
     }()
 
-    static func parse(_ source: String) -> AttributedString {
+    private static let options = AttributedString.MarkdownParsingOptions(
+        interpretedSyntax: .inlineOnlyPreservingWhitespace
+    )
+
+    static func parse(_ source: String, isSettled: Bool = true) -> AttributedString {
+        guard isSettled else {
+            return attributedString(from: MarkdownInlineRepair.repairingDanglingSyntax(source))
+        }
         let key = source as NSString
         if let cached = cache.object(forKey: key) {
             return AttributedString(cached)
         }
-        let options = AttributedString.MarkdownParsingOptions(
-            interpretedSyntax: .inlineOnlyPreservingWhitespace
-        )
-        let attributed: AttributedString
-        if let parsed = try? AttributedString(markdown: source, options: options) {
-            attributed = parsed
-        } else {
-            attributed = AttributedString(source)
-        }
-        cache.setObject(NSAttributedString(attributed), forKey: key)
+        let attributed = attributedString(from: source)
+        cache.setObject(NSAttributedString(attributed), forKey: key, cost: key.length)
         return attributed
+    }
+
+    private static func attributedString(from source: String) -> AttributedString {
+        guard let parsed = try? AttributedString(markdown: source, options: options) else {
+            return AttributedString(source)
+        }
+        return parsed
     }
 }
 

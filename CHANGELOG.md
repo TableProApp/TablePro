@@ -29,6 +29,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Double-clicking a word in the SQL editor selects it again, including the last word in the query. It selected nothing when text was already selected, and stayed dead until you clicked once somewhere else.
 - Triple-clicking selects the line under the pointer, and both now act on the word or line you clicked rather than wherever the cursor happened to be.
 - Text in a read-only editor, such as the JSON view of a result, can now be clicked and selected. Only dragging worked before.
+- AI chat replies now stream smoothly instead of arriving in visible jumps, and the panel no longer slows down as a reply grows. Every update used to redraw every message on screen.
+- The first words of an AI reply now appear as soon as they arrive, instead of waiting for the next batch.
+- Bold, italic, code, and link markers no longer flash as raw punctuation while an AI reply is still being written.
+- Code blocks in AI replies no longer jump to a different height the moment they finish.
 - Oracle connections now turn on TCP keepalive, so a session left idle is less likely to be dropped by a NAT or firewall. It was only ever enabled on a code path that Macs and iPhones do not take. (#2038)
 - On iPhone and iPad, connecting to a database on your own network now asks for Local Network access when it is actually needed, instead of guessing from the address. Networks that use public addresses were never asked about, so those connections failed with an unhelpful error. (#2040)
 - Connecting with no network, or on a captive portal, no longer reports a Local Network permission problem on iPhone and iPad. (#2040)
