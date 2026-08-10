@@ -62,7 +62,6 @@ extension MainContentCoordinator {
     func applyColumnGeometry(from geometry: ColumnLayoutState, toTabId tabId: UUID) {
         guard let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
         tabManager.mutate(at: index) { $0.columnLayout.applyGeometry(from: geometry) }
-        tabSessionRegistry.session(for: tabId)?.columnLayout.applyGeometry(from: geometry)
     }
 
     func clearColumnLayoutForSelectedTable() {
@@ -77,7 +76,6 @@ extension MainContentCoordinator {
             FileColumnLayoutPersister.shared.clear(for: key)
         }
         tabManager.mutate(at: index) { $0.columnLayout = ColumnLayoutState() }
-        tabSessionRegistry.session(for: tab.id)?.columnLayout = ColumnLayoutState()
         requeryWithColumnScope(debounced: false)
     }
 
@@ -108,8 +106,6 @@ extension MainContentCoordinator {
         var hidden = tabManager.tabs[index].columnLayout.hiddenColumns
         mutate(&hidden)
         tabManager.mutate(at: index) { $0.columnLayout.hiddenColumns = hidden }
-        let tabId = tabManager.tabs[index].id
-        tabSessionRegistry.session(for: tabId)?.columnLayout.hiddenColumns = hidden
         if persist {
             persistTabHiddenColumns(tabManager.tabs[index])
         }

@@ -52,7 +52,6 @@ extension MainContentCoordinator {
             guard !tab.selectedRowIndices.isEmpty else { return }
             tab.selectedRowIndices = []
         }
-        tabSessionRegistry.session(for: tabId)?.selectedRowIndices = []
         guard let idx = tabManager.selectedTabIndex,
               idx < tabManager.tabs.count,
               tabManager.tabs[idx].id == tabId else { return }

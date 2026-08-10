@@ -94,10 +94,6 @@ struct CoordinatorColumnVisibilityTests {
         #expect(layout.hiddenColumns == ["email"])
         #expect(layout.columnWidths == ["id": 80, "name": 220])
         #expect(layout.columnOrder == ["id", "name"])
-
-        let session = coordinator.tabSessionRegistry.session(for: tabId)
-        #expect(session?.columnLayout.hiddenColumns == ["email"])
-        #expect(session?.columnLayout.columnWidths == ["id": 80, "name": 220])
     }
 
     @Test("showColumn removes from the active tab's hidden set")
@@ -166,17 +162,6 @@ struct CoordinatorColumnVisibilityTests {
         coordinator.hideColumn("name")
         coordinator.hideColumn("name")
         #expect(coordinator.selectedTabHiddenColumns == ["name"])
-    }
-
-    @Test("hideColumn mirrors into the corresponding TabSession")
-    func hideColumnMirrorsIntoSession() {
-        let (coordinator, tabManager) = makeCoordinator()
-        let tabId = addTableTab(to: tabManager, tableName: "users")
-
-        coordinator.hideColumn("name")
-
-        let session = coordinator.tabSessionRegistry.session(for: tabId)
-        #expect(session?.columnLayout.hiddenColumns == ["name"])
     }
 
     @Test("Payload-created table tabs rebuild their query after restoring hidden columns")
