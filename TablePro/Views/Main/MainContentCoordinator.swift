@@ -210,10 +210,9 @@ final class MainContentCoordinator {
     /// property and invalidates its readers.
     internal var tabExecution = TabExecutionRegistry()
     @ObservationIgnored internal var currentQueryTask: Task<Void, Never>?
-    @ObservationIgnored internal var currentRowCountTask: Task<Void, Never>?
+    @ObservationIgnored internal var rowCountTasks: [UUID: Task<Void, Never>] = [:]
     @ObservationIgnored internal var tableLoadTasks: [UUID: (token: UUID, task: Task<Void, Never>)] = [:]
     @ObservationIgnored internal var redisDatabaseSwitchTask: Task<Void, Never>?
-    @ObservationIgnored private var changeManagerUpdateTask: Task<Void, Never>?
     @ObservationIgnored private var periodicSaveTask: Task<Void, Never>?
     @ObservationIgnored private var draftSaveTask: Task<Void, Never>?
     @ObservationIgnored private var terminationObserver: NSObjectProtocol?
@@ -758,8 +757,7 @@ final class MainContentCoordinator {
         refreshCoalesceTask = nil
         for entry in tableLoadTasks.values { entry.task.cancel() }
         tableLoadTasks.removeAll()
-        changeManagerUpdateTask?.cancel()
-        changeManagerUpdateTask = nil
+        cancelAllRowCountTasks()
         periodicSaveTask?.cancel()
         periodicSaveTask = nil
         draftSaveTask?.cancel()
@@ -1325,6 +1323,7 @@ final class MainContentCoordinator {
     internal func supersedeExecution(for tabId: UUID) {
         tabExecution.invalidate(tabId)
         cancelTableLoad(for: tabId)
+        cancelRowCountTask(for: tabId)
         cancelInFlightQueryTask(reach: .supersededNavigation)
     }
 

@@ -197,14 +197,14 @@ struct MainContentCoordinatorRefreshTests {
     @Test("A finished row count leaves no handle that fakes an in-flight query")
     func cancelWithStaleRowCountHandleDoesNotTouchDriver() {
         withInjectedDriver { connection, driver in
-            let (coordinator, _) = makeCoordinator(connection: connection)
-            let finishedRowCount = Task<Void, Never> {}
-            coordinator.currentRowCountTask = finishedRowCount
+            let (coordinator, tabManager) = makeCoordinator(connection: connection)
+            let tabId = addTableTab(to: tabManager)
+            coordinator.setRowCountTask(Task<Void, Never> {}, for: tabId)
 
             coordinator.cancelCurrentQuery()
 
             #expect(driver.cancelQueryCallCount == 0)
-            #expect(coordinator.currentRowCountTask == nil)
+            #expect(coordinator.rowCountTasks.isEmpty)
         }
     }
 
@@ -220,7 +220,7 @@ struct MainContentCoordinatorRefreshTests {
             tabManager.tabs[idx].execution.lastExecutedAt = Date()
 
             for _ in 0..<4 {
-                coordinator.currentRowCountTask = Task<Void, Never> {}
+                coordinator.setRowCountTask(Task<Void, Never> {}, for: tabId)
                 coordinator.handleRefresh(hasPendingTableOps: false, onDiscard: {})
                 coordinator.currentQueryTask?.cancel()
                 coordinator.currentQueryTask = nil

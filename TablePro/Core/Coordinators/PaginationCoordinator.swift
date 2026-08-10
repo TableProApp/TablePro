@@ -130,8 +130,7 @@ final class PaginationCoordinator {
 
     func cancelCurrentQuery() {
         parent.cancelInFlightQueryTask()
-        parent.currentRowCountTask?.cancel()
-        parent.currentRowCountTask = nil
+        parent.cancelAllRowCountTasks()
         parent.tabExecution.invalidateAll()
         parent.toolbarState.setExecuting(false)
         for idx in parent.tabManager.tabs.indices
@@ -167,7 +166,7 @@ final class PaginationCoordinator {
         parent.tabManager.mutate(at: index) { $0.pagination.isCountingExact = true }
 
         let contentEpoch = parent.tabExecution.contentEpoch(for: tabId)
-        parent.currentRowCountTask = Task(priority: .userInitiated) { [parent] in
+        let task = Task(priority: .userInitiated) { [parent] in
             let count = await Self.exactRowCount(
                 scope: scope,
                 tableName: tableName,
@@ -178,7 +177,7 @@ final class PaginationCoordinator {
 
             guard !Task.isCancelled else { return }
             guard parent.tabExecution.isSameContent(contentEpoch, for: tabId) else { return }
-            parent.currentRowCountTask = nil
+            parent.clearRowCountTask(for: tabId)
             parent.tabManager.mutate(tabId: tabId) { tab in
                 tab.pagination.isCountingExact = false
                 guard let count, count >= 0 else { return }
@@ -186,6 +185,7 @@ final class PaginationCoordinator {
                 tab.pagination.isApproximateRowCount = false
             }
         }
+        parent.setRowCountTask(task, for: tabId)
     }
 
     private static func exactRowCount(
