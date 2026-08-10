@@ -9,6 +9,7 @@ import AppKit
 /// depending on what the driver switches between. That is a closed two-string set
 /// driven by `ContainerSwitchTarget`, not an interpolated driver name, because
 /// System Settings binds an App Shortcut to a menu item's exact literal title.
+@MainActor
 enum DatabaseMenuBuilder {
     static func build(keyboard: KeyboardSettings) -> NSMenuItem {
         MenuItemFactory.menu(String(localized: "Database"), items: [
@@ -39,6 +40,10 @@ enum DatabaseMenuBuilder {
             ),
             MenuItemFactory.separator,
             MenuItemFactory.item(
+                String(localized: "New Database\u{2026}"),
+                action: #selector(MainSplitViewController.createNewDatabase(_:))
+            ),
+            MenuItemFactory.item(
                 String(localized: "New Table\u{2026}"),
                 action: #selector(MainSplitViewController.createNewTable(_:))
             ),
@@ -47,6 +52,15 @@ enum DatabaseMenuBuilder {
                 action: #selector(MainSplitViewController.createNewView(_:))
             ),
             MenuItemFactory.separator,
+            MenuItemFactory.item(
+                String(localized: "Show Table Structure"),
+                action: #selector(MainSplitViewController.showTableStructure(_:))
+            ),
+            MenuItemFactory.item(
+                String(localized: "Edit View Definition\u{2026}"),
+                action: #selector(MainSplitViewController.editViewDefinition(_:))
+            ),
+            maintenanceSubmenu(),
             MenuItemFactory.item(
                 String(localized: "Truncate Table"),
                 action: #selector(MainSplitViewController.truncateTable(_:)),
@@ -65,7 +79,24 @@ enum DatabaseMenuBuilder {
             MenuItemFactory.item(
                 String(localized: "Users & Roles"),
                 action: #selector(MainSplitViewController.showUsersAndRoles(_:))
+            ),
+            MenuItemFactory.separator,
+            MenuItemFactory.item(
+                String(localized: "Disconnect"),
+                action: #selector(MainSplitViewController.requestDisconnect)
+            ),
+            MenuItemFactory.item(
+                String(localized: "Reconnect"),
+                action: #selector(MainSplitViewController.retryConnection)
             )
         ])
+    }
+
+    private static let maintenanceDelegate = MaintenanceMenuDelegate()
+
+    private static func maintenanceSubmenu() -> NSMenuItem {
+        let container = MenuItemFactory.submenu(String(localized: "Table Maintenance"), items: [])
+        container.submenu?.delegate = maintenanceDelegate
+        return container
     }
 }

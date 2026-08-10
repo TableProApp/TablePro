@@ -8,6 +8,7 @@ import AppKit
 /// Items whose title describes a two-state toggle are built with the "Show" variant.
 /// `validateMenuItem(_:)` flips them, which is where AppKit documents a title swap
 /// belongs.
+@MainActor
 enum ViewMenuBuilder {
     static func build(keyboard: KeyboardSettings) -> NSMenuItem {
         MenuItemFactory.menu(String(localized: "View"), items: [

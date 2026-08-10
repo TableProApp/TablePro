@@ -8,6 +8,7 @@ import AppKit
 /// AppKit appends the open-window list and the native tab items (Show Tab Bar,
 /// Show All Tabs, Merge All Windows) to whichever menu is assigned to
 /// `NSApp.windowsMenu`, so only the items it does not provide are built here.
+@MainActor
 enum WindowMenuBuilder {
     static let tabNumberRange = 1...9
 

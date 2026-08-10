@@ -30,6 +30,23 @@ extension MainSplitViewController {
         commandActions?.createView()
     }
 
+    @objc func createNewDatabase(_ sender: Any?) {
+        commandActions?.createDatabase()
+    }
+
+    @objc func showTableStructure(_ sender: Any?) {
+        commandActions?.showTableStructure()
+    }
+
+    @objc func editViewDefinition(_ sender: Any?) {
+        commandActions?.editViewDefinition()
+    }
+
+    @objc func runMaintenanceOperation(_ sender: Any?) {
+        guard let operation = (sender as? NSMenuItem)?.representedObject as? String else { return }
+        commandActions?.runMaintenanceOperation(operation)
+    }
+
     @objc func truncateTable(_ sender: Any?) {
         commandActions?.truncateTables()
     }

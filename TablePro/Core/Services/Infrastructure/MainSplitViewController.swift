@@ -366,7 +366,6 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         applyWindowTitle()
         SessionRecoveryTracker.sync()
         if view.window?.isKeyWindow == true {
-            publishConnectionCommandState()
         }
     }
 

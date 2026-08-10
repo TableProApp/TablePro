@@ -5,6 +5,7 @@
 
 import AppKit
 
+@MainActor
 enum QueryMenuBuilder {
     static func build(keyboard: KeyboardSettings) -> NSMenuItem {
         MenuItemFactory.menu(String(localized: "Query"), items: [

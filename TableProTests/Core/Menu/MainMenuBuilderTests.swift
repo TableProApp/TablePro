@@ -215,4 +215,81 @@ struct MainMenuValidationTests {
     func unknownSelectorsFallThrough() {
         #expect(enabled(#selector(NSWindow.performClose(_:)), MenuValidationContext()))
     }
+
+    @Test("Object commands need exactly one selected object")
+    func objectCommandsNeedSingleSelection() {
+        var context = MenuValidationContext()
+        context.isConnected = true
+        #expect(!enabled(#selector(MainSplitViewController.showTableStructure(_:)), context))
+        #expect(!enabled(#selector(MainSplitViewController.editViewDefinition(_:)), context))
+        context.canShowTableStructure = true
+        #expect(enabled(#selector(MainSplitViewController.showTableStructure(_:)), context))
+        #expect(!enabled(#selector(MainSplitViewController.editViewDefinition(_:)), context))
+        context.canEditViewDefinition = true
+        #expect(enabled(#selector(MainSplitViewController.editViewDefinition(_:)), context))
+    }
+
+    @Test("Maintenance stays disabled when the driver offers no operations")
+    func maintenanceNeedsOperations() {
+        var context = MenuValidationContext()
+        context.isConnected = true
+        #expect(!enabled(#selector(MainSplitViewController.runMaintenanceOperation(_:)), context))
+        context.hasMaintenanceOperations = true
+        #expect(enabled(#selector(MainSplitViewController.runMaintenanceOperation(_:)), context))
+    }
+
+    @Test("New Database needs a driver that switches containers")
+    func createDatabaseNeedsContainerSupport() {
+        var context = MenuValidationContext()
+        context.isConnected = true
+        #expect(!enabled(#selector(MainSplitViewController.createNewDatabase(_:)), context))
+        context.canCreateDatabase = true
+        #expect(enabled(#selector(MainSplitViewController.createNewDatabase(_:)), context))
+    }
+}
+
+@Suite("Database menu commands")
+@MainActor
+struct DatabaseMenuCommandTests {
+    private func databaseMenu() -> NSMenu? {
+        buildMenu().items.first { $0.title == String(localized: "Database") }?.submenu
+    }
+
+    @Test("Every command deferred from the first pass is present")
+    func deferredCommandsArePresent() {
+        let titles = (databaseMenu()?.items ?? []).map(\.title)
+        for expected in [
+            String(localized: "New Database\u{2026}"),
+            String(localized: "Show Table Structure"),
+            String(localized: "Edit View Definition\u{2026}"),
+            String(localized: "Table Maintenance"),
+            String(localized: "Disconnect"),
+            String(localized: "Reconnect")
+        ] {
+            #expect(titles.contains(expected), "Database menu is missing \(expected)")
+        }
+    }
+
+    @Test("Table Maintenance fills itself when the submenu opens")
+    func maintenanceSubmenuIsDelegateDriven() {
+        let container = databaseMenu()?.items.first { $0.title == String(localized: "Table Maintenance") }
+        let submenu = container?.submenu
+        #expect(submenu?.delegate != nil, "Driver-specific operations must be built on menuNeedsUpdate")
+        #expect(submenu?.items.isEmpty == true, "The submenu is filled when it opens, not at build time")
+    }
+
+    @Test("Disconnect and Reconnect route through the responder chain")
+    func connectionCommandsUseTheResponderChain() {
+        let items = (databaseMenu()?.items ?? []).filter {
+            $0.title == String(localized: "Disconnect") || $0.title == String(localized: "Reconnect")
+        }
+        #expect(items.count == 2)
+        for item in items {
+            #expect(item.target == nil)
+        }
+        #expect(items.first { $0.title == String(localized: "Disconnect") }?.action
+            == #selector(MainSplitViewController.requestDisconnect))
+        #expect(items.first { $0.title == String(localized: "Reconnect") }?.action
+            == #selector(MainSplitViewController.retryConnection))
+    }
 }

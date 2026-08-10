@@ -9,6 +9,7 @@ import AppKit
 /// it against the key window's responder chain and asks that responder whether the
 /// item is enabled, which is the only mechanism that serves both a SwiftUI scene
 /// and an AppKit-owned window.
+@MainActor
 enum MenuItemFactory {
     /// Stamped onto every item that carries a customizable shortcut so
     /// `MainMenuKeyEquivalentSync` can find it again after the user rebinds.

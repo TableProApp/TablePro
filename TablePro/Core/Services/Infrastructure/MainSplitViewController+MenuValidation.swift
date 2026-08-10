@@ -26,6 +26,10 @@ struct MenuValidationContext: Equatable {
     var canSaveAsFavorite = false
     var canSwitchSidebarLayout = false
     var canToggleWorkspaceRail = false
+    var canShowTableStructure = false
+    var canEditViewDefinition = false
+    var canCreateDatabase = false
+    var hasMaintenanceOperations = false
     var hasImportFormats = false
     var supportsContainerSwitching = false
     var supportsBackup = false
@@ -105,6 +109,14 @@ extension MainSplitViewController: NSMenuItemValidation {
 
         case #selector(createNewTable(_:)), #selector(createNewView(_:)):
             return context.isConnected && !context.isReadOnly
+        case #selector(createNewDatabase(_:)):
+            return context.canCreateDatabase
+        case #selector(showTableStructure(_:)):
+            return context.canShowTableStructure
+        case #selector(editViewDefinition(_:)):
+            return context.canEditViewDefinition
+        case #selector(runMaintenanceOperation(_:)):
+            return context.hasMaintenanceOperations
         case #selector(openContainerSwitcher(_:)):
             return context.isConnected && context.supportsContainerSwitching
         case #selector(showServerDashboard(_:)):
@@ -148,6 +160,10 @@ extension MainSplitViewController: NSMenuItemValidation {
             canSaveAsFavorite: actions.canSaveAsFavorite,
             canSwitchSidebarLayout: actions.canSwitchSidebarLayout,
             canToggleWorkspaceRail: actions.canToggleWorkspaceRail,
+            canShowTableStructure: actions.canShowTableStructure,
+            canEditViewDefinition: actions.canEditViewDefinition,
+            canCreateDatabase: actions.canCreateDatabase,
+            hasMaintenanceOperations: !actions.maintenanceOperations.isEmpty,
             hasImportFormats: !actions.availableImportFormats.isEmpty,
             supportsContainerSwitching: actions.supportsContainerSwitching,
             supportsBackup: actions.supportsBackup,
@@ -163,6 +179,8 @@ extension MainSplitViewController: NSMenuItemValidation {
         if action == #selector(toggleSidebar(_:)) || action == #selector(toggleInspector(_:)) {
             return currentPane == .content
         }
+        if action == #selector(requestDisconnect) { return canDisconnect }
+        if action == #selector(retryConnection) { return canReconnect }
         return Self.isEnabled(action, context: menuValidationContext)
     }
 

@@ -29,7 +29,7 @@ final class MainContentCommandActions {
 
     // MARK: - Dependencies
 
-    @ObservationIgnored private weak var coordinator: MainContentCoordinator?
+    @ObservationIgnored internal weak var coordinator: MainContentCoordinator?
     @ObservationIgnored private let connection: DatabaseConnection
 
     // MARK: - Bindings
@@ -325,6 +325,14 @@ final class MainContentCommandActions {
 
     var hasTableSelection: Bool {
         !selectedTables.wrappedValue.isEmpty
+    }
+
+    /// The one selected object, or nil when the selection is empty or spans several.
+    /// Commands that open a single object need this rather than `hasTableSelection`.
+    var selectedObject: TableInfo? {
+        let selection = selectedTables.wrappedValue
+        guard selection.count == 1 else { return nil }
+        return selection.first
     }
 
     var hasQueryText: Bool {

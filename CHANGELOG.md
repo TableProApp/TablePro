@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - The Window menu gained Minimize, Zoom, and Move Tab to New Window, and the View menu gained Show Toolbar and Customize Toolbar. All were missing.
-- New Table and New View are now in the Database menu, so they can be given a shortcut in System Settings like any other menu command.
+- The Database menu holds New Database, New Table, New View, Show Table Structure, Edit View Definition, and Table Maintenance. These were only in the sidebar's right-click menu, so they could not be given a shortcut in System Settings.
 - Filter rows now have a Match Case option in the operator menu. Contains, not contains, starts with, and ends with ignore case on every database that can express it, so PostgreSQL and DuckDB now behave like MySQL and SQLite already did. Equals, IN, and regex still match case until you say otherwise. (#2048)
 - Databases whose collation decides case sensitivity, such as MySQL and SQL Server, show the option greyed out with the reason, as do Cassandra and Redis, which cannot ignore case at all. (#2048)
 - MongoDB, Elasticsearch, DynamoDB, and etcd filters can now match case. They always ignored it before, with no way to turn that off. (#2048)
@@ -22,7 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Show Previous Workspace and Show Next Workspace move through the rail in the order it displays, on `Ctrl+Cmd+Up` and `Ctrl+Cmd+Down`. A shortcut you assigned yourself wins over a default added in a later release, and the default comes back if you reassign yours. (#1282)
 - Right-click a workspace in the rail to close every tab in it. A window holding a tab in another database stays open. (#1282)
 - The workspace rail takes the keyboard: arrow keys move the highlight, typing jumps to a name, and Return opens the workspace you land on. (#1282)
-- A Connection menu with Disconnect and Reconnect. Disconnecting ends the session without closing the window, which shows a Reconnect screen in place of its tabs. Your tabs are saved before the session ends. You can also right-click a workspace in the rail, or a connection in the connection list, to disconnect it.
+- Disconnect and Reconnect in the Database menu. Disconnecting ends the session without closing the window, which shows a Reconnect screen in place of its tabs. Your tabs are saved before the session ends. You can also right-click a workspace in the rail, or a connection in the connection list, to disconnect it.
 - Disconnecting asks first only when a window has unsaved changes or a query still running. A connection you disconnected is not reopened the next time you launch, and clicking back into its window no longer reconnects it on its own.
 - Redshift external schemas now list their tables. Spectrum, federated query, cross-database, and datashare schemas showed up empty because their tables are not in the standard catalog.
 - External schemas are marked in the sidebar, and their tables show an external icon. External tables open read-only, because Redshift rejects `UPDATE` and `DELETE` on them.

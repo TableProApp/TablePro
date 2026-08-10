@@ -9,6 +9,7 @@ import AppKit
 /// `NSApp.helpMenu`. The stock "TablePro Help" item is deliberately absent: it
 /// calls `showHelp:` and fails with "Help isn't available" when no Help Book is
 /// registered.
+@MainActor
 enum HelpMenuBuilder {
     static func build() -> NSMenuItem {
         MenuItemFactory.menu(String(localized: "Help"), items: [

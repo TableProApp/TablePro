@@ -7,6 +7,7 @@ import AppKit
 
 /// Builds the whole menu bar. Menu order follows the macOS HIG: the app menu, the
 /// standard File/Edit/View menus, app-specific menus, then Window and Help.
+@MainActor
 enum MainMenuBuilder {
     static func build(keyboard: KeyboardSettings) -> NSMenu {
         let menu = NSMenu()

@@ -5,6 +5,7 @@
 
 import AppKit
 
+@MainActor
 enum FileMenuBuilder {
     static func build(keyboard: KeyboardSettings) -> NSMenuItem {
         MenuItemFactory.menu(String(localized: "File"), items: [

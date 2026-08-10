@@ -12,6 +12,7 @@ import AppKit
 /// key equivalent, not merely disable its item: AppKit matches a menu key equivalent
 /// before the keystroke reaches the first responder and swallows the event even when
 /// the item is disabled, which would strand the focused text field.
+@MainActor
 enum MainMenuKeyEquivalentSync {
     static func apply(keyboard: KeyboardSettings, to menu: NSMenu) {
         forEachShortcutItem(in: menu) { item, action in

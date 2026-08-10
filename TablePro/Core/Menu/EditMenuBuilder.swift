@@ -7,6 +7,7 @@ import AppKit
 
 /// Start Dictation and Emoji & Symbols are omitted on purpose: the system appends
 /// them to the Edit menu itself.
+@MainActor
 enum EditMenuBuilder {
     static func build(keyboard: KeyboardSettings) -> NSMenuItem {
         MenuItemFactory.menu(String(localized: "Edit"), items: [
