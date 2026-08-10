@@ -10,43 +10,48 @@ import Testing
 
 @Suite("RestoreWindowPlan")
 struct RestoreWindowPlanTests {
-    @Test("Selected tab is the first tab: front is the first tab")
-    func selectedIsFirst() {
-        let first = UUID()
-        let remaining = [UUID(), UUID()]
-        let front = RestoreWindowPlan.resolveFrontTabId(
-            remainingTabIds: remaining, firstTabId: first, selectedId: first
+    @Test("Selected tab is one this window kept: this window comes to the front")
+    func selectedIsOwn() {
+        let own = UUID()
+        let front = RestoreWindowPlan.resolveFrontGroup(
+            ownTabIds: [own],
+            orphanedGroups: [(windowGroupIndex: 1, tabIds: [UUID()])],
+            selectedId: own
         )
-        #expect(front == first)
+        #expect(front == .own)
     }
 
-    @Test("Selected tab is one of the remaining tabs: front is that tab")
-    func selectedIsRemaining() {
-        let first = UUID()
+    @Test("Selected tab belongs to a reopened group: that group comes to the front")
+    func selectedIsOrphaned() {
         let target = UUID()
-        let remaining = [UUID(), target, UUID()]
-        let front = RestoreWindowPlan.resolveFrontTabId(
-            remainingTabIds: remaining, firstTabId: first, selectedId: target
+        let front = RestoreWindowPlan.resolveFrontGroup(
+            ownTabIds: [UUID()],
+            orphanedGroups: [
+                (windowGroupIndex: 1, tabIds: [UUID()]),
+                (windowGroupIndex: 2, tabIds: [UUID(), target]),
+            ],
+            selectedId: target
         )
-        #expect(front == target)
+        #expect(front == .orphaned(windowGroupIndex: 2))
     }
 
-    @Test("Selected id matches neither: falls back to the first tab")
+    @Test("Selected id matches nothing being restored: this window comes to the front")
     func selectedMatchesNeither() {
-        let first = UUID()
-        let remaining = [UUID()]
-        let front = RestoreWindowPlan.resolveFrontTabId(
-            remainingTabIds: remaining, firstTabId: first, selectedId: UUID()
+        let front = RestoreWindowPlan.resolveFrontGroup(
+            ownTabIds: [UUID()],
+            orphanedGroups: [(windowGroupIndex: 1, tabIds: [UUID()])],
+            selectedId: UUID()
         )
-        #expect(front == first)
+        #expect(front == .own)
     }
 
-    @Test("Nil selected id: falls back to the first tab")
+    @Test("Nothing was selected: this window comes to the front")
     func selectedNil() {
-        let first = UUID()
-        let front = RestoreWindowPlan.resolveFrontTabId(
-            remainingTabIds: [UUID()], firstTabId: first, selectedId: nil
+        let front = RestoreWindowPlan.resolveFrontGroup(
+            ownTabIds: [UUID()],
+            orphanedGroups: [(windowGroupIndex: 1, tabIds: [UUID()])],
+            selectedId: nil
         )
-        #expect(front == first)
+        #expect(front == .own)
     }
 }

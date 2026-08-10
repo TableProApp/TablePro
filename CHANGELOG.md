@@ -36,6 +36,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A connection with more than one window open now brings every window's tabs back when it reconnects, instead of leaving them all empty. Each window used to stand down the moment it saw another window on the same connection, so none of them restored anything.
+- Reopening a connection now puts each tab back in the window it was in. A window that held more than one tab came back as one window per tab, and a window that was empty was filled with the next window's tab.
 - Clicking a table while another one is still loading now loads the table you clicked. The tab used to fill with the previous table's rows under the new table's name, and the table you clicked never loaded at all.
 - Stop no longer aborts a save, a discard, or a schema change. It cancels reads only, so a write can no longer be cut off half way.
 - Ending a session while its window stayed open could lose that window's tabs. Tabs are now written to disk before the session goes away, which also covers the disconnect tool used by AI clients and Reset Sample Database.

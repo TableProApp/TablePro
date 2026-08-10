@@ -48,8 +48,8 @@ internal final class WindowLifecycleMonitor {
         )
         /// A window id belongs to the SwiftUI content mounted in the window, not to the window, so a
         /// window whose content is rebuilt registers again under a new id. Reconnecting rebuilds it.
-        /// Leaving the superseded entry behind makes one window count as two, which is what stopped a
-        /// reconnected window from restoring its tabs: the restore stands down when it sees a sibling.
+        /// Leaving the superseded entry behind makes one window count as two, and everything asking
+        /// this registry how many windows a connection has would believe it.
         let supersededIds = entries.compactMap { key, value -> UUID? in
             key != windowId && value.window === window ? key : nil
         }
@@ -122,13 +122,6 @@ internal final class WindowLifecycleMonitor {
             .compactMap(\.window)
     }
 
-    /// Check if other live windows exist for a connection, excluding a specific windowId.
-    internal func hasOtherWindows(for connectionId: UUID, excluding windowId: UUID) -> Bool {
-        purgeStaleEntries()
-        return entries.contains { key, value in
-            key != windowId && value.connectionId == connectionId
-        }
-    }
 
     /// All connection IDs that currently have registered windows.
     internal func allConnectionIds() -> Set<UUID> {

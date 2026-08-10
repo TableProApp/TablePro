@@ -313,30 +313,39 @@ final class MainContentCoordinator {
 
     /// Collect tabs across all of a connection's windows for persistence, tagged with
     /// the index of the native window group they belong to so tab order restores intact.
+    /// Tabs stamped with the position of the window holding them, so a window can claim its own back.
+    /// The position is the window's place in the native tab group, not its rank among the windows that
+    /// happen to have a coordinator: a window whose session went away has no coordinator but still
+    /// occupies a tab, and numbering around it would hand every later window the wrong tabs.
     static func aggregatedTabs(for connectionId: UUID) -> [(tab: QueryTab, windowGroupIndex: Int)] {
         let coordinators = activeCoordinators.values
             .filter { $0.connectionId == connectionId }
 
-        // Sort by native window tab order to preserve left-to-right position
-        let orderedCoordinators: [MainContentCoordinator]
-        if let firstWindow = coordinators.compactMap({ $0.contentWindow }).first,
-           let tabbedWindows = firstWindow.tabbedWindows {
-            let windowOrder = Dictionary(uniqueKeysWithValues:
-                tabbedWindows.enumerated().map { (ObjectIdentifier($0.element), $0.offset) }
-            )
-            orderedCoordinators = coordinators.sorted { a, b in
-                let aIdx = a.contentWindow.flatMap { windowOrder[ObjectIdentifier($0)] } ?? Int.max
-                let bIdx = b.contentWindow.flatMap { windowOrder[ObjectIdentifier($0)] } ?? Int.max
-                return aIdx < bIdx
+        guard let anyWindow = coordinators.compactMap({ $0.contentWindow }).first else {
+            return coordinators.enumerated().flatMap { groupIndex, coordinator in
+                coordinator.tabManager.tabs
+                    .map { (tab: coordinator.enrichedForPersistence($0), windowGroupIndex: groupIndex) }
             }
-        } else {
-            orderedCoordinators = Array(coordinators)
         }
 
-        return orderedCoordinators.enumerated().flatMap { groupIndex, coordinator in
-            coordinator.tabManager.tabs
-                .map { (tab: coordinator.enrichedForPersistence($0), windowGroupIndex: groupIndex) }
-        }
+        let groupOrder = Dictionary(uniqueKeysWithValues:
+            WindowTabGroupOrder.windows(containing: anyWindow)
+                .enumerated()
+                .map { (ObjectIdentifier($0.element), $0.offset) }
+        )
+        return coordinators
+            .sorted { lhs, rhs in
+                lhs.tabGroupPosition(in: groupOrder) < rhs.tabGroupPosition(in: groupOrder)
+            }
+            .flatMap { coordinator in
+                let groupIndex = coordinator.tabGroupPosition(in: groupOrder)
+                return coordinator.tabManager.tabs
+                    .map { (tab: coordinator.enrichedForPersistence($0), windowGroupIndex: groupIndex) }
+            }
+    }
+
+    private func tabGroupPosition(in groupOrder: [ObjectIdentifier: Int]) -> Int {
+        contentWindow.flatMap { groupOrder[ObjectIdentifier($0)] } ?? Int.max
     }
 
     /// Resolve transient view state that only the live coordinator knows about

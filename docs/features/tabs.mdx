@@ -78,7 +78,7 @@ To move between open connections, use the [workspace rail](/features/workspace-r
 
 **Connection > Disconnect** ends the session without closing the window. The window shows a Reconnect screen in place of its tabs, and the tabs are saved before the session ends. Use **Connection > Reconnect**, or the Reconnect button on the screen itself.
 
-A connection with one window open restores its tabs as soon as you reconnect. A connection with several windows open restores them the next time you open the connection instead.
+Reconnecting puts the tabs back as they were, however many windows the connection has open. Each window takes back the tabs that were its own, and a window whose tabs you had closed stays empty.
 
 Disconnecting asks first only when a window has unsaved changes or a query still running. It applies to the whole connection, so every window and workspace on it shows the same Reconnect screen. Nothing reconnects on its own afterwards: a connection you disconnected is not reopened at the next launch, and clicking back into its window leaves it disconnected until you ask.
 

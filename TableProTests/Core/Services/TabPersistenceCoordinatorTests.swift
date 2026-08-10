@@ -379,4 +379,22 @@ struct TabPersistenceCoordinatorTests {
         #expect(result.tabs.isEmpty)
         #expect(result.source == .none)
     }
+
+    /// Which window a tab belonged to has to survive the round trip, or a reconnecting window cannot
+    /// tell its own tabs from a sibling's.
+    @Test("Window positions survive a save and restore")
+    func windowGroupIndexRoundTrip() async {
+        let coordinator = makeCoordinator()
+        let tabs = makeTabs(count: 3)
+        coordinator.saveNowSync(
+            windowedTabs: [(tabs[0], 0), (tabs[1], 1), (tabs[2], 1)],
+            selectedTabId: tabs[1].id
+        )
+
+        let result = await coordinator.restoreFromDisk()
+
+        #expect(result.windowGroupIndexByTabId[tabs[0].id] == 0)
+        #expect(result.windowGroupIndexByTabId[tabs[1].id] == 1)
+        #expect(result.windowGroupIndexByTabId[tabs[2].id] == 1)
+    }
 }

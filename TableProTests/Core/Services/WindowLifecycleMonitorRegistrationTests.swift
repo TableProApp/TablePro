@@ -39,7 +39,7 @@ struct WindowLifecycleMonitorRegistrationTests {
         monitor.register(window: window, connectionId: connectionId, windowId: firstId)
         monitor.register(window: window, connectionId: connectionId, windowId: secondId)
 
-        #expect(!monitor.hasOtherWindows(for: connectionId, excluding: secondId))
+        #expect(monitor.windows(for: connectionId).count == 1)
         #expect(monitor.window(for: secondId) === window)
         #expect(monitor.window(for: firstId) == nil)
     }
@@ -60,7 +60,8 @@ struct WindowLifecycleMonitorRegistrationTests {
         monitor.register(window: first, connectionId: connectionId, windowId: firstId)
         monitor.register(window: second, connectionId: connectionId, windowId: secondId)
 
-        #expect(monitor.hasOtherWindows(for: connectionId, excluding: secondId))
-        #expect(monitor.hasOtherWindows(for: connectionId, excluding: firstId))
+        #expect(monitor.windows(for: connectionId).count == 2)
+        #expect(monitor.window(for: firstId) === first)
+        #expect(monitor.window(for: secondId) === second)
     }
 }
