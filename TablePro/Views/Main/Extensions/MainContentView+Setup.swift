@@ -368,24 +368,6 @@ extension MainContentView {
 
         commandActions?.window = window
 
-        // Publish command actions to the registry NOW. `windowDidBecomeKey`
-        // also publishes, but for the first window after welcome→connect the
-        // coordinator's `contentWindow` isn't set when AppKit's first
-        // becomeKey fires — `coordinator(forWindow:)` returns nil and the
-        // publish is skipped. configureWindow IS the moment the coordinator
-        // gets linked to its NSWindow, so this is the earliest reliable
-        // point to publish.
-        //
-        // No `window.isKeyWindow` guard: when this method runs, the window
-        // has been ordered front but isn't yet key (becomeKey fires after
-        // a runloop tick). We trust that newly opened windows will become
-        // key shortly; overwriting from a non-key window is acceptable
-        // because the next becomeKey on any window will rewrite the
-        // registry anyway.
-        if let actions = commandActions {
-            CommandActionsRegistry.shared.current = actions
-        }
-
         if let splitVC = window.contentViewController as? MainSplitViewController {
             splitVC.installToolbar(coordinator: coordinator)
         }
@@ -411,6 +393,7 @@ extension MainContentView {
         actions.window = viewWindow
         coordinator.commandActions = actions
         commandActions = actions
+        coordinator.splitViewController?.rebuildInspectorPane()
     }
 
     // MARK: - Database Switcher

@@ -150,7 +150,6 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
             splitVC.installToolbar(coordinator: coordinator)
         }
         Self.lifecycleLogger.debug("[switch] windowDidBecomeKey seq=\(seq) installToolbar ms=\(Int(Date().timeIntervalSince(t0) * 1_000))")
-        CommandActionsRegistry.shared.current = coordinator.commandActions
         updateUserActivity(coordinator: coordinator)
         Self.lifecycleLogger.debug("[switch] windowDidBecomeKey seq=\(seq) userActivity ms=\(Int(Date().timeIntervalSince(t0) * 1_000))")
         coordinator.handleWindowDidBecomeKey()
@@ -170,10 +169,6 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
         Self.lifecycleLogger.debug(
             "[switch] windowDidResignKey seq=\(seq) controllerId=\(self.controllerId, privacy: .public)"
         )
-        if let actions = coordinator.commandActions,
-           CommandActionsRegistry.shared.current === actions {
-            CommandActionsRegistry.shared.current = nil
-        }
         activity?.resignCurrent()
         coordinator.handleWindowDidResignKey()
         Self.lifecycleLogger.debug("[switch] windowDidResignKey seq=\(seq) total ms=\(Int(Date().timeIntervalSince(t0) * 1_000))")
@@ -197,13 +192,8 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
             splitVC.invalidateToolbar()
         }
 
-        let coordinator = MainContentCoordinator.coordinator(forWindow: window)
-        coordinator?.handleWindowWillClose()
+        MainContentCoordinator.coordinator(forWindow: window)?.handleWindowWillClose()
         Self.lifecycleLogger.info("[close] windowWillClose seq=\(seq) handleWindowWillClose ms=\(Int(Date().timeIntervalSince(t0) * 1_000))")
-        if let actions = coordinator?.commandActions,
-           CommandActionsRegistry.shared.current === actions {
-            CommandActionsRegistry.shared.current = nil
-        }
         activity?.invalidate()
         activity = nil
         Self.lifecycleLogger.info("[close] windowWillClose seq=\(seq) total ms=\(Int(Date().timeIntervalSince(t0) * 1_000))")

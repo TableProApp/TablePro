@@ -51,6 +51,11 @@ extension MainSplitViewController: NSMenuItemValidation {
     /// inspector collapsed, while the coordinator keeps the last tab and selection it saw so a
     /// reconnect can restore them. Without it, Truncate Table and Delete stay lit over an error
     /// screen, pointed at a session that is gone.
+    ///
+    /// This runs only when the window's content view controller is the responder that claimed the
+    /// selector, so a command a nearer responder implements is answered by that responder instead and
+    /// never reaches here. The Find commands rely on that: a focused editor claims and validates them
+    /// itself, so `hasEditorForFind` only ever decides the unfocused fallback.
     static func isEnabled(_ selector: Selector, context: MenuValidationContext) -> Bool {
         switch selector {
         case #selector(openSQLFile(_:)),

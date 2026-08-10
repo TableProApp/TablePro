@@ -8,6 +8,9 @@ import TableProPluginKit
 
 extension MainWindowToolbar: NSToolbarItemValidation {
     struct ValidationContext {
+        /// True whenever the session is alive, which includes a query in flight. A running
+        /// query is not a reason to disable Refresh or New Tab, and the menu bar already
+        /// derives its own `isConnected` from the window phase rather than from execution.
         let connected: Bool
         let isTableTab: Bool
         let hasPendingChanges: Bool
@@ -17,6 +20,16 @@ extension MainWindowToolbar: NSToolbarItemValidation {
         let supportsContainerSwitching: Bool
         let supportsImport: Bool
         let supportsServerDashboard: Bool
+    }
+
+    /// Listed exhaustively so a new state has to choose a side instead of inheriting "alive".
+    static func hasLiveSession(_ state: ToolbarConnectionState) -> Bool {
+        switch state {
+        case .connected, .executing:
+            return true
+        case .disconnected, .connecting, .error:
+            return false
+        }
     }
 
     static func isEnabled(itemIdentifier: NSToolbarItem.Identifier, context: ValidationContext) -> Bool {
@@ -45,7 +58,7 @@ extension MainWindowToolbar: NSToolbarItemValidation {
     func validateToolbarItem(_ item: NSToolbarItem) -> Bool {
         guard let state = coordinator?.toolbarState else { return false }
         let context = ValidationContext(
-            connected: state.connectionState == .connected,
+            connected: Self.hasLiveSession(state.connectionState),
             isTableTab: state.isTableTab,
             hasPendingChanges: state.hasPendingChanges,
             hasDataPendingChanges: state.hasDataPendingChanges,

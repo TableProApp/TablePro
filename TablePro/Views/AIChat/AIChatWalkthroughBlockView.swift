@@ -10,8 +10,7 @@ struct AIChatWalkthroughBlockView: View {
 
     @Environment(AIChatViewModel.self) private var viewModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @FocusedValue(\.commandActions) private var focusedActions
-    @Bindable private var commandRegistry = CommandActionsRegistry.shared
+    @Environment(\.commandActions) private var actions
 
     @State private var expandedStepIDs: Set<UUID> = []
     @State private var activeAnchor: SqlWalkthroughAnchor?
@@ -21,10 +20,6 @@ struct AIChatWalkthroughBlockView: View {
     @State private var followUpText: String = ""
     @State private var showApplyConfirmation = false
     @State private var presentation: SqlWalkthroughPresentation?
-
-    private var actions: MainContentCommandActions? {
-        focusedActions ?? commandRegistry.current
-    }
 
     private var walkthrough: SqlWalkthroughBlock? {
         if case .sqlWalkthrough(let value) = block.kind { return value }

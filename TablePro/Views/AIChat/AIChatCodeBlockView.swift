@@ -23,12 +23,7 @@ struct AIChatCodeBlockView: View, Equatable {
     @State private var isEditorReady = false
     @State private var editorState = SourceEditorState()
     @State private var measuredWidth: CGFloat = 0
-    @FocusedValue(\.commandActions) private var focusedActions
-    @Bindable private var commandRegistry = CommandActionsRegistry.shared
-
-    private var actions: MainContentCommandActions? {
-        focusedActions ?? commandRegistry.current
-    }
+    @Environment(\.commandActions) private var actions
 
     private var usesLightweightContent: Bool {
         prefersLightweightRendering || !isEditorReady

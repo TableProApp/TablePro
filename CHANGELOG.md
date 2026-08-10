@@ -29,6 +29,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Find and Find Next now act on the editor you are typing in instead of always the query editor.
+- Toolbar buttons no longer go dead while a query is running. The connection is still live, and the matching menu commands stayed enabled all along.
+- The AI chat Insert button could target a different window's editor than the one in front.
+
 - Find, Find Next and Find Previous no longer stay available when there is nothing to search.
 - Menu commands that need a database now stay disabled while a window is connecting, after a failed connect, and after a disconnect. Truncate Table, Delete and Add Row could previously still be chosen on a window whose session was gone.
 

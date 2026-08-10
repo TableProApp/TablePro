@@ -11,6 +11,20 @@ import Testing
 
 @MainActor
 struct MainWindowToolbarValidationTests {
+    private let sessionScopedIdentifiers: [NSToolbarItem.Identifier] = [
+        MainWindowToolbar.refresh,
+        MainWindowToolbar.quickSwitcher,
+        MainWindowToolbar.newTab,
+        MainWindowToolbar.exportTables,
+        MainWindowToolbar.sidebarToggle,
+        MainWindowToolbar.saveChanges,
+        MainWindowToolbar.previewSQL,
+        MainWindowToolbar.database,
+        MainWindowToolbar.dashboard,
+        MainWindowToolbar.importTables,
+        MainWindowToolbar.results
+    ]
+
     private func makeContext(
         connected: Bool = true,
         isTableTab: Bool = false,
@@ -141,6 +155,72 @@ struct MainWindowToolbarValidationTests {
         let context = makeContext(connected: false)
         let unknown = NSToolbarItem.Identifier("com.test.unknown")
         #expect(MainWindowToolbar.isEnabled(itemIdentifier: unknown, context: context) == true)
+    }
+
+    @Test("A running query still counts as a live session")
+    func executingCountsAsLiveSession() {
+        #expect(MainWindowToolbar.hasLiveSession(.connected) == true)
+        #expect(MainWindowToolbar.hasLiveSession(.executing) == true)
+        #expect(MainWindowToolbar.hasLiveSession(.disconnected) == false)
+        #expect(MainWindowToolbar.hasLiveSession(.connecting) == false)
+        #expect(MainWindowToolbar.hasLiveSession(.error("boom")) == false)
+    }
+
+    @Test("Toolbar state entering and leaving execution keeps a live session")
+    func toolbarStateStaysLiveWhileExecuting() {
+        let state = ConnectionToolbarState()
+        state.connectionState = .connected
+        state.setExecuting(true)
+        #expect(state.connectionState == .executing)
+        #expect(MainWindowToolbar.hasLiveSession(state.connectionState) == true)
+
+        state.setExecuting(false)
+        #expect(state.connectionState == .connected)
+        #expect(MainWindowToolbar.hasLiveSession(state.connectionState) == true)
+    }
+
+    @Test("Session-scoped items stay enabled while a query runs")
+    func sessionScopedItemsStayEnabledWhileExecuting() {
+        let context = makeContext(
+            connected: MainWindowToolbar.hasLiveSession(.executing),
+            hasPendingChanges: true,
+            hasDataPendingChanges: true
+        )
+        for identifier in sessionScopedIdentifiers {
+            #expect(MainWindowToolbar.isEnabled(itemIdentifier: identifier, context: context) == true)
+        }
+    }
+
+    @Test("Session-scoped items stay disabled when the session is gone")
+    func sessionScopedItemsDisabledWhenNotLive() {
+        for state: ToolbarConnectionState in [.disconnected, .connecting, .error("boom")] {
+            let context = makeContext(
+                connected: MainWindowToolbar.hasLiveSession(state),
+                hasPendingChanges: true,
+                hasDataPendingChanges: true
+            )
+            for identifier in sessionScopedIdentifiers {
+                #expect(MainWindowToolbar.isEnabled(itemIdentifier: identifier, context: context) == false)
+            }
+        }
+    }
+
+    @Test("Item validation reads the live session, not the connected state alone")
+    func validateToolbarItemFollowsLiveSession() {
+        let coordinator = makeCoordinator()
+        defer { coordinator.teardown() }
+        let owner = MainWindowToolbar(coordinator: coordinator)
+        let refresh = NSToolbarItem(itemIdentifier: MainWindowToolbar.refresh)
+
+        coordinator.toolbarState.connectionState = .connected
+        #expect(owner.validateToolbarItem(refresh) == true)
+
+        coordinator.toolbarState.setExecuting(true)
+        #expect(coordinator.toolbarState.connectionState == .executing)
+        #expect(owner.validateToolbarItem(refresh) == true)
+
+        coordinator.toolbarState.connectionState = .disconnected
+        #expect(owner.validateToolbarItem(refresh) == false)
     }
 
     @Test("Toolbar identifier is stable across instances so AppKit autosave can persist customizations")

@@ -523,9 +523,19 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
                 state: rightPanelState,
                 connection: currentSession.connection
             )
+            .environment(\.commandActions, commandActions)
         } else {
             Color.clear
         }
+    }
+
+    /// Rebuilds the inspector alone. `commandActions` is read eagerly here, and it only exists
+    /// once the detail pane has appeared, which is after `rebuildPanes()` has already built the
+    /// inspector against a nil value. Rebuilding the detail pane too would remount the very view
+    /// that publishes those actions.
+    func rebuildInspectorPane() {
+        guard let inspectorHosting else { return }
+        inspectorHosting.rootView = AnyView(buildInspectorView())
     }
 
     // MARK: - Session Bindings
@@ -585,7 +595,7 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
     }
 
     func showInspector() {
-        inspectorHosting.rootView = AnyView(buildInspectorView())
+        rebuildInspectorPane()
         inspectorSplitItem?.animator().isCollapsed = false
         recomputeWindowMinSize()
     }
@@ -850,5 +860,20 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
             return currentPane == .content
         }
         return super.validateUserInterfaceItem(item)
+    }
+}
+
+// MARK: - Inspector Environment
+
+/// The inspector is its own `NSHostingController`, so `@FocusedValue` set in the detail pane
+/// never reaches it. This window's controller injects its own actions instead.
+private struct CommandActionsEnvironmentKey: EnvironmentKey {
+    static let defaultValue: MainContentCommandActions? = nil
+}
+
+extension EnvironmentValues {
+    var commandActions: MainContentCommandActions? {
+        get { self[CommandActionsEnvironmentKey.self] }
+        set { self[CommandActionsEnvironmentKey.self] = newValue }
     }
 }

@@ -48,9 +48,11 @@ extension MainSplitViewController {
         NSApp.sendAction(#selector(NSResponder.cancelOperation(_:)), to: nil, from: nil)
     }
 
-    /// One Find command, and the front content decides what finding means: a table tab filters
-    /// its rows, anything else searches the editor's text. Two menu items competing for the same
-    /// key is what the old routing enum existed to work around.
+    /// One Find command, and the responder chain decides what finding means. A focused editor declares
+    /// the same selectors on its own `TextViewController`, closer to the first responder, so it searches
+    /// its own text without this class knowing which editor is focused. Reaching here means no editor
+    /// holds focus: a table tab filters its rows, and every other tab hands the find to the editor the
+    /// window is built around, so Cmd+F still reaches the query text while the grid or sidebar has focus.
     @objc func performFind(_ sender: Any?) {
         guard commandActions?.isTableTab == true else {
             EditorEventRouter.shared.showFindPanelForKeyWindow()

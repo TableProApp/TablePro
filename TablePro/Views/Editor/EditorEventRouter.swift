@@ -80,8 +80,9 @@ internal final class EditorEventRouter {
 
     // MARK: - Public API
 
-    /// Whether the key window has an editor that can service a find. The Find commands are
-    /// otherwise enabled with nothing to search, and selecting one does nothing at all.
+    /// Whether the key window has a SQL editor a find can fall back to. A focused editor answers the
+    /// Find commands itself through the responder chain, so this only decides whether the window's
+    /// last-resort handler has anything to search once nothing nearer has claimed them.
     internal var keyWindowHasEditor: Bool {
         editor(for: NSApp.keyWindow) != nil
     }
@@ -121,14 +122,20 @@ internal final class EditorEventRouter {
 
     // MARK: - Lookup
 
+    /// Window-scoped on purpose: every caller is a command the window's front content owns rather than
+    /// whatever holds first responder, and the escape and find routes exist precisely because focus is
+    /// somewhere else. A tab switch can leave the outgoing editor registered for a moment, and the
+    /// dictionary has no order, so the focused editor wins before the remaining candidate is used.
     private func editor(for window: NSWindow?) -> (SQLEditorCoordinator, TextView)? {
         guard let window else { return nil }
+        var unfocused: (SQLEditorCoordinator, TextView)?
         for ref in editors.values {
             guard let coordinator = ref.coordinator, let textView = ref.textView,
                   textView.window === window else { continue }
-            return (coordinator, textView)
+            if window.firstResponder === textView { return (coordinator, textView) }
+            unfocused = unfocused ?? (coordinator, textView)
         }
-        return nil
+        return unfocused
     }
 
     private func purgeStaleEntries() {

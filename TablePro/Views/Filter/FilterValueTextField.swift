@@ -66,20 +66,21 @@ struct FilterValueTextField: NSViewRepresentable {
         return (ns.replacingCharacters(in: range, with: insertText), caret)
     }
 
-    enum SuggestionKeyOutcome: Equatable {
+    enum SuggestionCommandOutcome: Equatable {
         case moveSelection(Int)
         case accept(submitting: Bool)
-        case dismiss
         case passThrough
     }
 
-    static func suggestionKeyOutcome(for key: KeyCode?, submitsOnAccept: Bool) -> SuggestionKeyOutcome {
-        switch key {
-        case .downArrow: return .moveSelection(1)
-        case .upArrow: return .moveSelection(-1)
-        case .return: return .accept(submitting: submitsOnAccept)
-        case .tab: return .accept(submitting: false)
-        case .escape: return .dismiss
+    static func suggestionCommandOutcome(
+        for commandSelector: Selector,
+        submitsOnAccept: Bool
+    ) -> SuggestionCommandOutcome {
+        switch commandSelector {
+        case #selector(NSResponder.moveDown(_:)): return .moveSelection(1)
+        case #selector(NSResponder.moveUp(_:)): return .moveSelection(-1)
+        case #selector(NSResponder.insertNewline(_:)): return .accept(submitting: submitsOnAccept)
+        case #selector(NSResponder.insertTab(_:)): return .accept(submitting: false)
         default: return .passThrough
         }
     }
@@ -170,7 +171,6 @@ struct FilterValueTextField: NSViewRepresentable {
 
         private let suggestionState = SuggestionState()
         private var suggestionPopover: NSPopover?
-        private var keyMonitor: Any?
         private var focusState = FilterFocusState()
         private var windowKeyObserver: NSObjectProtocol?
         private var latestReplacementRange: NSRange?
@@ -242,9 +242,6 @@ struct FilterValueTextField: NSViewRepresentable {
         }
 
         deinit {
-            if let token = keyMonitor {
-                NSEvent.removeMonitor(token)
-            }
             if let token = windowKeyObserver {
                 NotificationCenter.default.removeObserver(token)
             }
@@ -266,14 +263,16 @@ struct FilterValueTextField: NSViewRepresentable {
             textView: NSTextView,
             doCommandBy commandSelector: Selector
         ) -> Bool {
-            if commandSelector != #selector(NSResponder.cancelOperation(_:)) {
-                escapeDismissedPopup = false
+            if commandSelector == #selector(NSResponder.cancelOperation(_:)) {
+                handleEscape()
+                return true
+            }
+            escapeDismissedPopup = false
+
+            if suggestionPopover != nil, handleSuggestionCommand(commandSelector) {
+                return true
             }
             if commandSelector == #selector(NSResponder.insertNewline(_:)) {
-                if suggestionPopover != nil {
-                    acceptCurrentSelection(submitting: submitsOnAccept)
-                    return true
-                }
                 onSubmit()
                 return true
             }
@@ -282,22 +281,38 @@ struct FilterValueTextField: NSViewRepresentable {
                 text.wrappedValue = textView.string
                 return true
             }
-            if commandSelector == #selector(NSResponder.cancelOperation(_:)) {
-                switch FilterValueTextField.escapeOutcome(
-                    popupVisible: suggestionPopover != nil,
-                    recentlyDismissedPopup: escapeDismissedPopup
-                ) {
-                case .dismissPopup:
-                    escapeDismissedPopup = true
-                    dismissSuggestions()
-                case .consume:
-                    escapeDismissedPopup = false
-                case .closeBar:
-                    onCancel()
-                }
-                return true
-            }
             return false
+        }
+
+        private func handleSuggestionCommand(_ commandSelector: Selector) -> Bool {
+            switch FilterValueTextField.suggestionCommandOutcome(
+                for: commandSelector,
+                submitsOnAccept: submitsOnAccept
+            ) {
+            case .moveSelection(let delta):
+                moveSelection(by: delta)
+                return true
+            case .accept(let submitting):
+                acceptCurrentSelection(submitting: submitting)
+                return true
+            case .passThrough:
+                return false
+            }
+        }
+
+        private func handleEscape() {
+            switch FilterValueTextField.escapeOutcome(
+                popupVisible: suggestionPopover != nil,
+                recentlyDismissedPopup: escapeDismissedPopup
+            ) {
+            case .dismissPopup:
+                escapeDismissedPopup = true
+                dismissSuggestions()
+            case .consume:
+                escapeDismissedPopup = false
+            case .closeBar:
+                onCancel()
+            }
         }
 
         private func updateSuggestions(for textField: NSTextField) {
@@ -402,45 +417,6 @@ struct FilterValueTextField: NSViewRepresentable {
                 }
             }
             suggestionPopover = popover
-            installKeyMonitor()
-        }
-
-        private func installKeyMonitor() {
-            removeKeyMonitor()
-            keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-                nonisolated(unsafe) let nsEvent = event
-                return MainActor.assumeIsolated {
-                    guard let self,
-                          self.suggestionPopover != nil,
-                          let textField = self.textField,
-                          nsEvent.window === textField.window,
-                          nsEvent.window?.firstResponder === textField.currentEditor()
-                    else { return nsEvent }
-
-                    switch FilterValueTextField.suggestionKeyOutcome(
-                        for: nsEvent.semanticKeyCode,
-                        submitsOnAccept: self.submitsOnAccept
-                    ) {
-                    case .moveSelection(let delta):
-                        self.moveSelection(by: delta)
-                    case .accept(let submitting):
-                        self.acceptCurrentSelection(submitting: submitting)
-                    case .dismiss:
-                        self.escapeDismissedPopup = true
-                        self.dismissSuggestions()
-                    case .passThrough:
-                        return nsEvent
-                    }
-                    return nil
-                }
-            }
-        }
-
-        private func removeKeyMonitor() {
-            if let token = keyMonitor {
-                NSEvent.removeMonitor(token)
-                keyMonitor = nil
-            }
         }
 
         private func moveSelection(by delta: Int) {
@@ -489,7 +465,6 @@ struct FilterValueTextField: NSViewRepresentable {
 
         func dismissSuggestions() {
             completionGeneration &+= 1
-            removeKeyMonitor()
             suggestionPopover?.close()
             suggestionPopover = nil
         }
