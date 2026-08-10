@@ -23,10 +23,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - URL & File Open
 
     func applicationWillFinishLaunching(_ notification: Notification) {
+        AppSettingsStorage.shared.migrateStartupBehaviorToReopenLastIfNeeded()
+        AppSettingsStorage.shared.migrateJsonFieldHeightKeyIfNeeded()
+        AIProviderRegistration.registerAll()
+
+        /// Installed before any window exists, so the bar is correct from the first frame.
+        /// Nothing else owns it now that the app no longer runs a SwiftUI `App`.
+        MainMenuBuilder.install(keyboard: AppSettingsManager.shared.keyboard)
+
         _ = InspectorDocumentController()
         guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
         PluginManager.shared.loadPlugins()
         Task { await RegistryClient.shared.ensureManifest(.ifStale) }
+
+        Task { await QueryHistoryManager.shared.performStartupCleanup() }
+        Task { @MainActor in
+            let activeIds = Set(ConnectionStorage.shared.loadConnections().map(\.id))
+            await SQLFavoriteManager.shared.pruneOrphaned(activeConnectionIds: activeIds)
+        }
     }
 
     func application(_ application: NSApplication, open urls: [URL]) {
@@ -61,9 +75,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         )
 
         NSWindow.allowsAutomaticWindowTabbing = true
-        WindowOpener.shared.setIntegrationsActivityPresenter {
-            IntegrationsActivityWindowController.present()
-        }
+        WindowOpener.shared.setWelcomePresenter { WelcomeWindowController.present() }
+        WindowOpener.shared.setConnectionFormPresenter { ConnectionFormWindowController.present($0) }
+        WindowOpener.shared.setIntegrationsActivityPresenter { IntegrationsActivityWindowController.present() }
+        WindowOpener.shared.setSettingsPresenter { SettingsWindowController.present() }
         KeyRepeatFilter.shared.install()
         let syncSettings = AppSettingsStorage.shared.loadSync()
         let passwordSyncExpected = syncSettings.enabled && syncSettings.syncConnections && syncSettings.syncPasswords

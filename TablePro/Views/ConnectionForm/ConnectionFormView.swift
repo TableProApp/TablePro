@@ -8,14 +8,14 @@ import TableProPluginKit
 
 struct ConnectionFormView: View {
     let request: ConnectionFormRequest?
+    let close: () -> Void
 
     @State private var coordinator: ConnectionFormCoordinator?
-    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         Group {
             if let coordinator {
-                ConnectionFormContent(coordinator: coordinator, dismiss: dismiss)
+                ConnectionFormContent(coordinator: coordinator)
             } else {
                 Color.clear
                     .frame(minWidth: 720, minHeight: 560)
@@ -29,7 +29,7 @@ struct ConnectionFormView: View {
                 initialType: draft?.type,
                 initialParsedURL: draft?.parsedURL
             )
-            new.dismissAction = { dismiss() }
+            new.dismissAction = close
             new.start()
             new.detectClipboardConnectionStringIfNeeded()
             coordinator = new
@@ -44,7 +44,6 @@ struct ConnectionFormView: View {
 
 private struct ConnectionFormContent: View {
     @Bindable var coordinator: ConnectionFormCoordinator
-    let dismiss: DismissAction
 
     var body: some View {
         NavigationSplitView {

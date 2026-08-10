@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- The menu bar is rebuilt on native macOS menus, with a Database menu and a Query menu. Every command now enables and disables from the state of the window you are actually using, so items no longer read as available when they are not, or stay greyed out after you switch windows.
+- Minimize, Zoom and Move Tab to New Window in the Window menu, Show Toolbar and Customize Toolbar in the View menu. All were missing.
+- New Database, New Table, New View, Show Table Structure, Edit View Definition and Table Maintenance in the Database menu. These were only in the sidebar's right-click menu, so they could not be given a shortcut in System Settings.
+
 - The Window menu gained Minimize, Zoom, and Move Tab to New Window, and the View menu gained Show Toolbar and Customize Toolbar. All were missing.
 - The Database menu holds New Database, New Table, New View, Show Table Structure, Edit View Definition, and Table Maintenance. These were only in the sidebar's right-click menu, so they could not be given a shortcut in System Settings.
 - Filter rows now have a Match Case option in the operator menu. Contains, not contains, starts with, and ends with ignore case on every database that can express it, so PostgreSQL and DuckDB now behave like MySQL and SQLite already did. Equals, IN, and regex still match case until you say otherwise. (#2048)
@@ -28,6 +32,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - External schemas are marked in the sidebar, and their tables show an external icon. External tables open read-only, because Redshift rejects `UPDATE` and `DELETE` on them.
 
 ### Changed
+
+- `Cmd+F` now always opens Find. The table filter bar moved to `Cmd+Option+F`, matching TablePlus, Postico and Sequel Ace, and Focus Sidebar Filter moved to `Ctrl+Cmd+Option+F`. Shortcuts you assigned yourself are untouched.
+- Settings opens in a standard preferences window with a toolbar instead of a tab strip.
 
 - The menu bar is rebuilt on native macOS menus. Every command now enables and disables from the state of the window you are actually using, so items no longer read as available when they are not, or stay greyed out after you switch windows.
 - New Database and Query menus hold the connection, database, and table commands that used to be spread across File, Edit, and View.
