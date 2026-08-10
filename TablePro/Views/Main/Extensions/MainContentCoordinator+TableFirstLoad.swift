@@ -48,6 +48,7 @@ extension MainContentCoordinator {
 
         let tracer = TableLoadTracer.shared
         let token = tracer.activeToken(for: tabId)
+        let schemaName = tab.tableContext.schemaName
         if let token { tracer.stage(.schemaColumnsBegin, token: token) }
         await loadSchemaColumns(for: tableName, scope: scope(for: tab))
         if let token { tracer.stage(.schemaColumnsEnd, token: token) }
@@ -55,7 +56,8 @@ extension MainContentCoordinator {
         guard !Task.isCancelled,
               tabManager.selectedTabId == tabId,
               let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }),
-              tabManager.tabs[index].tableContext.tableName == tableName else { return false }
+              tabManager.tabs[index].tableContext.tableName == tableName,
+              tabManager.tabs[index].tableContext.schemaName == schemaName else { return false }
 
         let restoreApplied = applyPendingRestoredViewState(at: index)
         let sortApplied = restoreApplied ? false : applyResolvedDefaultSort(at: index, hint: hint)

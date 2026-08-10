@@ -35,14 +35,19 @@ extension MainContentCoordinator {
         }
     }
 
+    /// Re-resolves the tab by id after the await. An index taken before it points at whatever tab
+    /// occupies that slot now, which after a close or a reorder is a different tab entirely.
     @discardableResult
     func rebuildSelectedTableColumnScopedQuery() async -> Bool {
-        guard let (tab, tabIndex) = tabManager.selectedTabAndIndex,
+        guard let tab = tabManager.selectedTab,
               tab.tabType == .table,
               let tableName = tab.tableContext.tableName else { return false }
+        let tabId = tab.id
         await loadSchemaColumns(for: tableName, scope: scope(for: tab))
-        guard !Task.isCancelled, tabIndex < tabManager.tabs.count else { return false }
-        filterCoordinator.rebuildTableQuery(at: tabIndex)
+        guard !Task.isCancelled,
+              let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }),
+              tabManager.tabs[index].tableContext.tableName == tableName else { return false }
+        filterCoordinator.rebuildTableQuery(at: index)
         return true
     }
 
@@ -60,6 +65,7 @@ extension MainContentCoordinator {
                 }
                 return (columns.map(\.name), columns.filter(\.isPrimaryKey).map(\.name))
             } catch {
+                guard !DatabaseCancellationDiagnosis.isCancellation(error) else { return nil }
                 columnScopeLog.error("loadSchemaColumns: fetchColumns failed for table=\(tableName, privacy: .public): \(error.localizedDescription, privacy: .public)")
                 return nil
             }

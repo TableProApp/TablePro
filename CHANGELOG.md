@@ -36,6 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Clicking quickly through the sidebar no longer keeps loading column details for tables you have already left. Each abandoned table held the connection for another 75-90ms, so every table clicked after it waited that much longer. (#2058)
 - Clicking a table while another one is still loading now loads the table you clicked. The tab used to fill with the previous table's rows under the new table's name, and the table you clicked never loaded at all.
 - Stop no longer aborts a save, a discard, or a schema change. It cancels reads only, so a write can no longer be cut off half way.
 - Ending a session while its window stayed open could lose that window's tabs. Tabs are now written to disk before the session goes away, which also covers the disconnect tool used by AI clients and Reset Sample Database.
