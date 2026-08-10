@@ -97,7 +97,6 @@ extension QueryExecutionCoordinator {
         }
 
         parent.tabManager.mutate(at: index) { tab in
-            tab.execution.isExecuting = true
             tab.execution.executionTime = nil
             tab.execution.errorMessage = nil
             tab.display.explainText = nil
@@ -202,7 +201,6 @@ extension QueryExecutionCoordinator {
                 await MainActor.run { [weak self] in
                     guard let self else { return }
                     parent.tabManager.mutate(tabId: tabId) { tab in
-                        tab.execution.isExecuting = false
                         tab.pagination.isLoadingMore = false
                     }
                     parent.currentQueryTask = nil
@@ -253,7 +251,6 @@ extension QueryExecutionCoordinator {
         parent.currentQueryTask?.cancel()
 
         parent.tabManager.mutate(at: index) { tab in
-            tab.execution.isExecuting = true
             tab.execution.executionTime = nil
             tab.execution.errorMessage = nil
         }
@@ -288,7 +285,6 @@ extension QueryExecutionCoordinator {
 
             switch outcome {
             case .cancelled:
-                parent.tabManager.mutate(tabId: tabId) { $0.execution.isExecuting = false }
                 parent.currentQueryTask = nil
                 parent.toolbarState.setExecuting(false)
             case .completed(let results):
@@ -489,7 +485,6 @@ extension QueryExecutionCoordinator {
             parent.toolbarState.lastQueryDuration = fetchResult.executionTime
 
             if !parent.tabExecution.isCurrent(claim) || Task.isCancelled {
-                parent.tabManager.mutate(tabId: tabId) { $0.execution.isExecuting = false }
                 return
             }
 
@@ -537,7 +532,6 @@ extension QueryExecutionCoordinator {
         if !parent.tabExecution.isCurrent(claim) {
             await MainActor.run { [weak self] in
                 guard let self else { return }
-                parent.tabManager.mutate(tabId: tabId) { $0.execution.isExecuting = false }
                 parent.currentQueryTask = nil
                 parent.toolbarState.setExecuting(false)
             }
@@ -561,7 +555,6 @@ extension QueryExecutionCoordinator {
             parent.tabManager.mutate(tabId: tabId) { tab in
                 tab.execution.errorMessage = contextMsg
                 tab.execution.errorQuery = failedStatement
-                tab.execution.isExecuting = false
                 tab.execution.executionTime = cumulativeTime
 
                 tab.display.replaceUnpinnedResults(with: capturedResultSets)

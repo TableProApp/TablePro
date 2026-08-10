@@ -24,9 +24,9 @@ extension MainContentCoordinator {
         traceToken: TableLoadTraceToken?
     ) {
         tabManager.mutate(tabId: tabId) { tab in
-            tab.execution.isExecuting = false
             tab.pagination.isLoadingMore = false
         }
+        tabExecution.settle(claim)
         currentQueryTask = nil
         toolbarState.setExecuting(false)
         traceExecutionFailed(traceToken, error: error)

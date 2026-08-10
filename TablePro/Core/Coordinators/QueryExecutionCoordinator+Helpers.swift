@@ -151,7 +151,6 @@ extension QueryExecutionCoordinator {
             tab.execution.executionTime = executionTime
             tab.execution.rowsAffected = rowsAffected
             tab.execution.statusMessage = statusMessage
-            tab.execution.isExecuting = false
             tab.execution.lastExecutedAt = Date()
             tab.tableContext.tableName = tableName
             tab.tableContext.isEditable = isEditable
@@ -245,7 +244,6 @@ extension QueryExecutionCoordinator {
             tab.execution.executionTime = executionTime
             tab.execution.rowsAffected = 0
             tab.execution.statusMessage = nil
-            tab.execution.isExecuting = false
             tab.execution.lastExecutedAt = Date()
             tab.display.explainText = planText
             tab.display.explainPlan = plan
@@ -528,7 +526,6 @@ extension QueryExecutionCoordinator {
         parent.currentQueryTask = nil
         guard !DatabaseCancellationDiagnosis.isCancellation(error) else {
             parent.tabManager.mutate(tabId: tabId) { tab in
-                tab.execution.isExecuting = false
                 tab.pagination.isLoadingMore = false
             }
             parent.toolbarState.setExecuting(false)
@@ -537,7 +534,6 @@ extension QueryExecutionCoordinator {
         parent.tabManager.mutate(tabId: tabId) { tab in
             tab.execution.errorMessage = DatabaseWriteRejectionDiagnosis.formatted(error)
             tab.execution.errorQuery = sql
-            tab.execution.isExecuting = false
             tab.execution.lastExecutedAt = Date()
         }
         parent.toolbarState.setExecuting(false)

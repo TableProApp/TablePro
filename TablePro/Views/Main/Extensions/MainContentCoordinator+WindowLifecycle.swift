@@ -211,12 +211,12 @@ extension MainContentCoordinator {
     }
 
     private func clearAbandonedExecutingFlagIfNeeded(for tab: QueryTab) {
-        guard tab.execution.isExecuting, currentQueryTask == nil else { return }
+        guard tabExecution.isExecuting(tab.id), currentQueryTask == nil else { return }
         TableLoadTracer.shared.anomaly(
             .preparationAbandoned,
             tabId: tab.id,
-            detail: "clearedStaleIsExecuting"
+            detail: "clearedAbandonedClaim"
         )
-        tabManager.mutate(tabId: tab.id) { $0.execution.isExecuting = false }
+        tabExecution.invalidate(tab.id)
     }
 }

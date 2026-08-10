@@ -134,15 +134,12 @@ final class PaginationCoordinator {
         parent.currentRowCountTask = nil
         parent.tabExecution.invalidateAll()
         parent.toolbarState.setExecuting(false)
-        for idx in parent.tabManager.tabs.indices {
-            if parent.tabManager.tabs[idx].execution.isExecuting
-                || parent.tabManager.tabs[idx].pagination.isLoadingMore
+        for idx in parent.tabManager.tabs.indices
+            where parent.tabManager.tabs[idx].pagination.isLoadingMore
                 || parent.tabManager.tabs[idx].pagination.isCountingExact {
-                parent.tabManager.mutate(at: idx) { tab in
-                    tab.execution.isExecuting = false
-                    tab.pagination.isLoadingMore = false
-                    tab.pagination.isCountingExact = false
-                }
+            parent.tabManager.mutate(at: idx) { tab in
+                tab.pagination.isLoadingMore = false
+                tab.pagination.isCountingExact = false
             }
         }
     }

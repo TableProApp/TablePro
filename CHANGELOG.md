@@ -30,6 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Opening a table or query from a link now opens its window straight away, so a slow connect has somewhere to report progress and a failed one has somewhere to explain itself.
 - A saved pre-connect script no longer runs when the app reopens a session on its own. The window waits with a Connect button, which asks before running it.
 - Running a query or opening a table now replaces whatever that tab was already running, instead of being ignored until the first one finished.
+- Clicking through tables quickly no longer stutters on a connection over an SSH tunnel. Stopping the query you navigated away from used to hold up the click for up to 160ms while it opened a second connection to deliver the cancel.
 
 ### Fixed
 

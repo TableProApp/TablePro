@@ -572,7 +572,8 @@ struct MainEditorContentView: View {
 
                     let resolvedRows = resolvedTableRows(for: tab)
                     if let rs = tab.display.activeResultSet, rs.resultColumns.isEmpty,
-                       rs.errorMessage == nil, tab.execution.lastExecutedAt != nil, !tab.execution.isExecuting
+                       rs.errorMessage == nil, tab.execution.lastExecutedAt != nil,
+                       !coordinator.tabExecution.isExecuting(tab.id)
                     {
                         ResultSuccessView(
                             rowsAffected: rs.rowsAffected,
@@ -580,7 +581,7 @@ struct MainEditorContentView: View {
                             statusMessage: rs.statusMessage
                         )
                     } else if resolvedRows.columns.isEmpty && tab.execution.errorMessage == nil
-                        && tab.execution.lastExecutedAt != nil && !tab.execution.isExecuting
+                        && tab.execution.lastExecutedAt != nil && !coordinator.tabExecution.isExecuting(tab.id)
                     {
                         if tab.display.resultSets.isEmpty {
                             Spacer()
@@ -611,7 +612,7 @@ struct MainEditorContentView: View {
 
                         if tab.tabType == .query && !resolvedRows.columns.isEmpty
                             && resolvedRows.rows.isEmpty && tab.execution.lastExecutedAt != nil
-                            && !tab.execution.isExecuting && !tab.filterState.hasAppliedFilters
+                            && !coordinator.tabExecution.isExecuting(tab.id) && !tab.filterState.hasAppliedFilters
                         {
                             emptyResultView(executionTime: tab.display.activeResultSet?.executionTime ?? tab.execution.executionTime)
                         } else {

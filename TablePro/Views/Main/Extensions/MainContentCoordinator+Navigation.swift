@@ -291,7 +291,7 @@ extension MainContentCoordinator {
 
         var token: TableLoadTraceToken?
         if let tabId = tabManager.selectedTabId {
-            let wasExecuting = tabManager.selectedTab?.execution.isExecuting ?? false
+            let wasExecuting = tabExecution.isExecuting(tabId)
             let started = TableLoadTracer.shared.begin(tabId: tabId, table: tableName, origin: .sidebar)
             token = started
             TableLoadTracer.shared.stage(

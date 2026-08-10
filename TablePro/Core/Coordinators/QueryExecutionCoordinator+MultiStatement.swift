@@ -86,7 +86,6 @@ extension QueryExecutionCoordinator {
         parent.toolbarState.lastQueryDuration = cumulativeTime
 
         if !parent.tabExecution.isCurrent(claim) {
-            parent.tabManager.mutate(tabId: tabId) { $0.execution.isExecuting = false }
             return
         }
         guard let idx = parent.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else {
@@ -128,7 +127,6 @@ extension QueryExecutionCoordinator {
             tab.schemaVersion += 1
             tab.execution.executionTime = cumulativeTime
             tab.execution.rowsAffected = totalRowsAffected
-            tab.execution.isExecuting = false
             tab.execution.lastExecutedAt = Date()
             tab.execution.errorMessage = nil
 

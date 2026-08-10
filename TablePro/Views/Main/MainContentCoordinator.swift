@@ -203,7 +203,12 @@ final class MainContentCoordinator {
 
     /// Per-tab execution ownership. Replaces a per-window generation counter, a stored per-tab
     /// `isExecuting` bool and two task handles that a tab retarget participated in none of.
-    @ObservationIgnored internal var tabExecution = TabExecutionRegistry()
+    ///
+    /// Deliberately observed rather than `@ObservationIgnored`: busy state is derived from
+    /// membership here, so the views that used to read the stored flag have to be able to see it
+    /// change. It is a value type, so every claim, settle and invalidate is a write to this
+    /// property and invalidates its readers.
+    internal var tabExecution = TabExecutionRegistry()
     @ObservationIgnored internal var currentQueryTask: Task<Void, Never>?
     @ObservationIgnored internal var currentRowCountTask: Task<Void, Never>?
     @ObservationIgnored internal var tableLoadTasks: [UUID: (token: UUID, task: Task<Void, Never>)] = [:]
@@ -1186,7 +1191,7 @@ final class MainContentCoordinator {
                     await MainActor.run { [weak self] in
                         guard let self else { return }
                         traceConnectUnavailable(traceToken)
-                        tabManager.mutate(tabId: tabId) { $0.execution.isExecuting = false }
+                        tabExecution.settle(claim)
                         currentQueryTask = nil
                         toolbarState.setExecuting(false)
                         pendingLoadTrigger = trigger
@@ -1323,7 +1328,7 @@ final class MainContentCoordinator {
     /// Reset execution state when a query is cancelled
     @MainActor
     internal func resetExecutionState(tabId: UUID, executionTime: TimeInterval) {
-        tabManager.mutate(tabId: tabId) { $0.execution.isExecuting = false }
+        tabExecution.invalidate(tabId)
         currentQueryTask = nil
         toolbarState.setExecuting(false)
         toolbarState.lastQueryDuration = executionTime

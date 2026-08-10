@@ -237,7 +237,7 @@ struct MainContentCoordinatorLazyLoadTests {
         #expect(coordinator.pendingLoadTrigger == nil)
     }
 
-    @Test("Clears an abandoned executing flag when no in-flight task remains")
+    @Test("Clears an abandoned claim when no in-flight task remains")
     func recoversAbandonedExecutingFlag() {
         let (coordinator, tabManager) = makeCoordinator()
         let tabId = addTableTab(to: tabManager)
@@ -245,12 +245,12 @@ struct MainContentCoordinatorLazyLoadTests {
             Issue.record("expected tab to exist")
             return
         }
-        tabManager.tabs[idx].execution.isExecuting = true
+        _ = coordinator.tabExecution.claim(tabId)
         coordinator.currentQueryTask = nil
 
         coordinator.lazyLoadCurrentTabIfNeeded()
 
-        #expect(tabManager.tabs[idx].execution.isExecuting == false)
+        #expect(coordinator.tabExecution.isExecuting(tabId) == false)
         #expect(coordinator.pendingLoadTrigger == .userInitiated)
     }
 
@@ -290,13 +290,13 @@ struct MainContentCoordinatorLazyLoadTests {
             Issue.record("expected tab to exist")
             return
         }
-        let executingBefore = tabManager.tabs[idx].execution.isExecuting
+        let executingBefore = coordinator.tabExecution.isExecuting(tabId)
         let executedAtBefore = tabManager.tabs[idx].execution.lastExecutedAt
         let toolbarBefore = coordinator.toolbarState.isExecuting
 
         coordinator.handleWindowDidBecomeKey()
 
-        let executingAfter = tabManager.tabs[idx].execution.isExecuting
+        let executingAfter = coordinator.tabExecution.isExecuting(tabId)
         let executedAtAfter = tabManager.tabs[idx].execution.lastExecutedAt
         let toolbarAfter = coordinator.toolbarState.isExecuting
 

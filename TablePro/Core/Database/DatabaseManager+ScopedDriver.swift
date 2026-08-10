@@ -115,17 +115,35 @@ extension DatabaseManager {
     /// half applied is data loss, and both Stop and a superseding navigation would otherwise abort
     /// one. The empty-map fallback is deliberately only taken for an explicit user Stop, because it
     /// cancels whatever the session driver happens to be running without knowing what that is.
+    /// Stop stays synchronous because the user is waiting on it. A navigation supersede does not:
+    /// a PostgreSQL cancel opens a second connection to deliver the request, which through an SSH
+    /// tunnel costs 70-160ms, and paying that on the main thread turns fast browsing into a stutter.
+    /// Correctness never depended on the cancel landing first, because the tab's execution claim
+    /// already discards whatever the superseded query returns; the cancel is only there to stop the
+    /// server doing work nobody wants.
     func cancelRunningQuery(for connectionId: UUID, reach: DriverCancellationReach = .userStop) throws {
-        let running = runningDrivers[connectionId] ?? [:]
-        let cancellable = running.values.filter { $0.policy == .cancellableRead }
-        guard cancellable.isEmpty else {
-            for entry in cancellable {
-                try entry.driver?.cancelQuery()
+        let targets = cancellationTargets(for: connectionId, reach: reach)
+        guard !targets.isEmpty else { return }
+        guard reach == .userStop else {
+            DispatchQueue.global(qos: .utility).async {
+                for driver in targets { try? driver.cancelQuery() }
             }
             return
         }
-        guard running.isEmpty, reach == .userStop else { return }
-        try driver(for: connectionId)?.cancelQuery()
+        for driver in targets {
+            try driver.cancelQuery()
+        }
+    }
+
+    private func cancellationTargets(
+        for connectionId: UUID,
+        reach: DriverCancellationReach
+    ) -> [DatabaseDriver] {
+        let running = runningDrivers[connectionId] ?? [:]
+        let cancellable = running.values.filter { $0.policy == .cancellableRead }.compactMap(\.driver)
+        guard cancellable.isEmpty else { return cancellable }
+        guard running.isEmpty, reach == .userStop else { return [] }
+        return [driver(for: connectionId)].compactMap { $0 }
     }
 
     /// A pooled connection is keyed by database, so one that rewrites the connection's
