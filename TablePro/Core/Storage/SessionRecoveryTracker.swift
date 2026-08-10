@@ -24,6 +24,16 @@ enum SessionRecoveryTracker {
             RecoveryCandidate(connectionId: $0, isActivated: false, retainsRestoreIntent: true)
         }
         return RecoveryConnectionList.connectionIds(from: activated + pending)
+            .filter { !wasEndedByUser($0) }
+    }
+
+    /// A connection the user disconnected is never replayed, whatever its windows still report. A
+    /// window subscribes to session changes only while it is on screen, so a native tab that AppKit
+    /// joined but never displayed sits frozen at the phase it was born with and would otherwise vote
+    /// to reopen a session the user deliberately ended. The flag clears when a fresh connect begins.
+    private static func wasEndedByUser(_ connectionId: UUID) -> Bool {
+        guard DatabaseManager.shared.wasDisconnectedByUser(connectionId) else { return false }
+        return DatabaseManager.shared.activeSessions[connectionId] == nil
     }
 
     /// Rewrite the recovery list from the live window set. Called whenever that set

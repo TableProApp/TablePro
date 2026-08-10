@@ -3,6 +3,7 @@
 //  TablePro
 //
 
+import AppKit
 import Combine
 import SwiftUI
 
@@ -125,6 +126,22 @@ extension WelcomeWindowView {
     private func singleConnectionContextMenu(for connection: DatabaseConnection) -> some View {
         Button { vm.connectToDatabase(connection) } label: {
             Label(String(localized: "Connect"), systemImage: "play.fill")
+        }
+
+        if ConnectionMenuPolicy.showsDisconnect(
+            status: DatabaseManager.shared.session(for: connection.id)?.status ?? .disconnected
+        ) {
+            Button(role: .destructive) {
+                Task {
+                    await ConnectionDisconnectAction.disconnect(
+                        connectionId: connection.id,
+                        connectionName: connection.name,
+                        presentingWindow: NSApp.keyWindow
+                    )
+                }
+            } label: {
+                Label(String(localized: "Disconnect"), systemImage: "cable.connector.slash")
+            }
         }
 
         Divider()

@@ -6191,6 +6191,9 @@
         }
       }
     },
+    "A query is still running. Disconnecting cancels it." : {
+
+    },
     "A service account key is required" : {
       "localizations" : {
         "tr" : {
@@ -30525,6 +30528,9 @@
           }
         }
       }
+    },
+    "Disconnect from “%@”?" : {
+
     },
     "Disconnect the selected client" : {
       "localizations" : {
@@ -95909,6 +95915,9 @@
           }
         }
       }
+    },
+    "Unsaved changes will be lost." : {
+
     },
     "Unset" : {
       "extractionState" : "stale",

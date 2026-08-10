@@ -66,6 +66,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let passwordSyncExpected = syncSettings.enabled && syncSettings.syncConnections && syncSettings.syncPasswords
         UserDefaults.standard.set(passwordSyncExpected, forKey: KeychainHelper.passwordSyncEnabledKey)
         DatabaseManager.shared.startObservingSystemEvents()
+        DatabaseManager.shared.tabStatePersister = SessionTabStatePersister()
 
         Task { await CloudflareTunnelManager.shared.sweepStalePidsIfNeeded() }
         Task { await CloudSQLProxyManager.shared.sweepStalePidsIfNeeded() }

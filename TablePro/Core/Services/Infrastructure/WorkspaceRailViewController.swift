@@ -361,6 +361,26 @@ internal final class WorkspaceRailViewController: NSViewController {
               let coordinator = MainContentCoordinator.coordinator(forWindow: window) else { return }
         coordinator.commandActions?.closeWorkspace(container: workspace.container)
     }
+
+    /// Ends the session, which every workspace of the connection shares, so the other rows for it
+    /// go quiet too. No window closes: each one repaints from its own phase.
+    @objc
+    private func disconnectWorkspace(_ sender: NSMenuItem) {
+        guard let workspace = sender.representedObject as? WorkspaceID,
+              let entry = entries.first(where: { $0.workspace.connectionId == workspace.connectionId })
+        else { return }
+        /// The rail's own window, not the connection's most recent one: the user is looking at this
+        /// window, and the connection's most recent window can be behind it or miniaturized, which
+        /// would put the confirmation sheet somewhere they cannot see and read as a dead menu item.
+        let presentingWindow = view.window
+        Task {
+            await ConnectionDisconnectAction.disconnect(
+                connectionId: workspace.connectionId,
+                connectionName: entry.connection.name,
+                presentingWindow: presentingWindow
+            )
+        }
+    }
 }
 
 // MARK: - NSMenuDelegate
@@ -379,6 +399,16 @@ extension WorkspaceRailViewController: NSMenuDelegate {
         item.target = self
         item.representedObject = entries[row].workspace
         menu.addItem(item)
+
+        guard ConnectionMenuPolicy.showsDisconnect(status: entries[row].status) else { return }
+        let disconnectItem = NSMenuItem(
+            title: String(localized: "Disconnect"),
+            action: #selector(disconnectWorkspace(_:)),
+            keyEquivalent: ""
+        )
+        disconnectItem.target = self
+        disconnectItem.representedObject = entries[row].workspace
+        menu.addItem(disconnectItem)
     }
 }
 

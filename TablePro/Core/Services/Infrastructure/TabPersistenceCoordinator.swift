@@ -22,13 +22,23 @@ internal struct RestoreResult {
 
 @MainActor @Observable
 internal final class TabPersistenceCoordinator {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
+    internal static let logger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
     let connectionId: UUID
 
     @ObservationIgnored private var saveTask: Task<Void, Never>?
 
+    /// Whether this window has ever had a tab of its own. Only a window that held tabs can report
+    /// that the user closed them all; one that never saw any is not evidence of anything. A window
+    /// left over from a disconnect is exactly that case, and treating its empty tab list as an
+    /// instruction deleted the state the disconnect had just saved.
+    private(set) var hasObservedTabs = false
+
     init(connectionId: UUID) {
         self.connectionId = connectionId
+    }
+
+    internal func markObservedTabs() {
+        hasObservedTabs = true
     }
 
     // MARK: - Save
@@ -46,6 +56,7 @@ internal final class TabPersistenceCoordinator {
             Self.logger.debug("[persist] saveNow skipped empty tab set connId=\(self.connectionId, privacy: .public)")
             return
         }
+        hasObservedTabs = true
         let persisted = windowedTabs.map { $0.tab.toPersistedTab(windowGroupIndex: $0.windowGroupIndex) }
         let normalizedSelectedId = windowedTabs.contains(where: { $0.tab.id == selectedTabId })
             ? selectedTabId : windowedTabs.first?.tab.id
@@ -67,6 +78,7 @@ internal final class TabPersistenceCoordinator {
             Self.logger.debug("[persist] saveNowSync skipped empty tab set connId=\(self.connectionId, privacy: .public)")
             return
         }
+        hasObservedTabs = true
         let persisted = windowedTabs.map { $0.tab.toPersistedTab(windowGroupIndex: $0.windowGroupIndex) }
         let normalizedSelectedId = windowedTabs.contains(where: { $0.tab.id == selectedTabId })
             ? selectedTabId : windowedTabs.first?.tab.id
@@ -144,6 +156,7 @@ internal final class TabPersistenceCoordinator {
         guard !state.tabs.isEmpty else {
             return RestoreResult(tabs: [], selectedTabId: nil, source: .none)
         }
+        hasObservedTabs = true
 
         let defaultPageSize = AppSettingsManager.shared.dataGrid.defaultPageSize
         var restoredTabs = state.tabs.map { QueryTab(from: $0, defaultPageSize: defaultPageSize) }

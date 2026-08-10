@@ -64,6 +64,9 @@ internal struct ConnectionUnavailableView: View {
         case .disconnected:
             Image(systemName: "bolt.horizontal.circle")
                 .symbolRenderingMode(.hierarchical)
+        case .disconnectedByUser:
+            Image(systemName: "cable.connector.slash")
+                .symbolRenderingMode(.hierarchical)
         case .failed:
             Image(systemName: "exclamationmark.triangle")
                 .symbolRenderingMode(.hierarchical)
@@ -77,7 +80,7 @@ internal struct ConnectionUnavailableView: View {
         switch reason {
         case .notConnected, .cancelled:
             return String(format: String(localized: "Not connected to %@"), connection.name)
-        case .disconnected:
+        case .disconnected, .disconnectedByUser:
             return String(format: String(localized: "Disconnected from %@"), connection.name)
         case .failed, .pluginMissing:
             return String(format: String(localized: "Could not connect to %@"), connection.name)
@@ -86,7 +89,7 @@ internal struct ConnectionUnavailableView: View {
 
     private var detailLines: [String] {
         switch reason {
-        case .notConnected, .cancelled:
+        case .notConnected, .cancelled, .disconnectedByUser:
             return []
         case .disconnected(let info):
             guard let info else { return [String(localized: "The connection was closed.")] }
@@ -98,7 +101,7 @@ internal struct ConnectionUnavailableView: View {
 
     private var failureInfo: ConnectionFailureInfo? {
         switch reason {
-        case .notConnected, .cancelled:
+        case .notConnected, .cancelled, .disconnectedByUser:
             return nil
         case .disconnected(let info):
             return info
@@ -126,7 +129,7 @@ internal struct ConnectionUnavailableView: View {
         switch reason {
         case .notConnected, .cancelled:
             return String(localized: "Connect")
-        case .disconnected:
+        case .disconnected, .disconnectedByUser:
             return String(localized: "Reconnect")
         case .failed:
             return String(localized: "Try Again")

@@ -68,6 +68,19 @@ final class DatabaseManager {
     /// the entry disappearing can still name the cause. Cleared when a fresh attempt begins.
     @ObservationIgnored internal var disconnectReasons: [UUID: ConnectionFailureInfo] = [:]
 
+    /// Connections the user disconnected on purpose. Kept past the session entry for the same
+    /// reason `disconnectReasons` is: the window learns the session went away by watching the
+    /// entry disappear, and a deliberate disconnect is not the same event as losing a connection.
+    @ObservationIgnored internal var userRequestedDisconnects = Set<UUID>()
+
+    /// Sessions currently being torn down, so a second disconnect cannot run the teardown again and
+    /// finish it against a session the user has since reconnected.
+    @ObservationIgnored internal var disconnectsInFlight = Set<UUID>()
+
+    /// Installed at launch. Every disconnect writes the connection's tabs to disk through this
+    /// before the session entry goes away, because the window can outlive the session.
+    @ObservationIgnored internal var tabStatePersister: (any SessionTabStatePersisting)?
+
     @ObservationIgnored internal var connectionUpdatedCancellable: AnyCancellable?
 
     @ObservationIgnored internal let ensureConnectedDedup = OnceTask<UUID, Void>()

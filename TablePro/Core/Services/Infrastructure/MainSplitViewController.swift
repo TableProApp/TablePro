@@ -309,7 +309,8 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         let snapshot = ConnectionSessionSnapshot(
             exists: session != nil,
             hasDriver: session?.driver != nil,
-            disconnectInfo: DatabaseManager.shared.disconnectReason(for: sid)
+            disconnectInfo: DatabaseManager.shared.disconnectReason(for: sid),
+            wasDisconnectedByUser: DatabaseManager.shared.wasDisconnectedByUser(sid)
         )
         let nextPhase = ConnectionWindowPhaseMachine.onSessionChanged(
             phase: phase,
@@ -364,6 +365,9 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         applyPaneChrome()
         applyWindowTitle()
         SessionRecoveryTracker.sync()
+        if view.window?.isKeyWindow == true {
+            publishConnectionCommandState()
+        }
     }
 
     /// Repainted on every phase change for the same reason the panes are. Leaving it out is

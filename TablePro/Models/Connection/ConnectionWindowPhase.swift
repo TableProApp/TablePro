@@ -21,6 +21,7 @@ internal enum ConnectionUnavailableReason: Equatable, Sendable {
     case notConnected
     case cancelled
     case disconnected(ConnectionFailureInfo?)
+    case disconnectedByUser
     case failed(ConnectionFailureInfo)
     case pluginMissing(ConnectionFailureInfo)
 }

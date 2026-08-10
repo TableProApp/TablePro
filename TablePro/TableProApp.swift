@@ -149,6 +149,18 @@ struct AppMenuCommands: Commands {
         focusedActions ?? commandRegistry.current
     }
 
+    /// Disconnect and Reconnect are the two commands that outlive a session, so they read the
+    /// window's phase instead of `actions`, which only exists while a session is being shown.
+    private var connectionWindow: ConnectionWindowCommandState? {
+        commandRegistry.connectionWindow
+    }
+
+    /// Resolved when the command fires rather than cached, because `MainSplitViewController` is the
+    /// key window's own content view controller and a stored reference would outlive the window.
+    private var keyConnectionWindow: MainSplitViewController? {
+        NSApp.keyWindow?.contentViewController as? MainSplitViewController
+    }
+
     private var sidebarLayoutBinding: Binding<SidebarLayout> {
         Binding(
             get: { actions?.sidebarLayout ?? .flat },
@@ -433,6 +445,19 @@ struct AppMenuCommands: Commands {
                     || !(actions?.supportsRestore ?? false)
                     || actions?.isReadOnly ?? false
             )
+        }
+
+        // Connection menu
+        CommandMenu("Connection") {
+            Button(String(localized: "Disconnect")) {
+                keyConnectionWindow?.requestDisconnect()
+            }
+            .disabled(!(connectionWindow?.canDisconnect ?? false))
+
+            Button(String(localized: "Reconnect")) {
+                keyConnectionWindow?.retryConnection()
+            }
+            .disabled(!(connectionWindow?.canReconnect ?? false))
         }
 
         // Query menu

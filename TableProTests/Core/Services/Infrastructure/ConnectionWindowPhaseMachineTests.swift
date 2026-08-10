@@ -191,4 +191,48 @@ struct ConnectionWindowPhaseMachineTests {
         #expect(!ConnectionWindowPhaseMachine.allowsActivationConnect(phase: .connected))
         #expect(!ConnectionWindowPhaseMachine.allowsActivationConnect(phase: .closing))
     }
+
+    @Test("A session the user ended is not reported as a lost connection")
+    func deliberateSessionLossIsDistinctFromLosingOne() {
+        let deliberate = ConnectionWindowPhaseMachine.onSessionChanged(
+            phase: .connected,
+            session: ConnectionSessionSnapshot(exists: false, hasDriver: false, wasDisconnectedByUser: true),
+            ownsAttempt: false
+        )
+        let involuntary = ConnectionWindowPhaseMachine.onSessionChanged(
+            phase: .connected,
+            session: .absent,
+            ownsAttempt: false
+        )
+
+        #expect(deliberate == .unavailable(.disconnectedByUser))
+        #expect(involuntary == .unavailable(.disconnected(nil)))
+    }
+
+    @Test("A window the user disconnected is not reopened next launch")
+    func deliberateDisconnectDropsRestoreIntent() {
+        #expect(!ConnectionWindowPhaseMachine.retainsRestoreIntent(phase: .unavailable(.disconnectedByUser)))
+    }
+
+    /// Clicking back into the window must not undo the disconnect, but Reconnect has to work, which
+    /// is why the automatic and the manual connect answer this differently.
+    @Test("A deliberate disconnect blocks the automatic connect but not Reconnect")
+    func deliberateDisconnectConnectEligibility() {
+        #expect(!ConnectionWindowPhaseMachine.allowsActivationConnect(phase: .unavailable(.disconnectedByUser)))
+        #expect(ConnectionWindowPhaseMachine.allowsManualConnect(phase: .unavailable(.disconnectedByUser)))
+    }
+
+    @Test("Reconnect is offered wherever a window has no session, except a missing plugin")
+    func manualConnectEligibility() {
+        #expect(ConnectionWindowPhaseMachine.allowsManualConnect(phase: .idle))
+        #expect(ConnectionWindowPhaseMachine.allowsManualConnect(phase: .unavailable(.notConnected)))
+        #expect(ConnectionWindowPhaseMachine.allowsManualConnect(phase: .unavailable(.cancelled)))
+        #expect(ConnectionWindowPhaseMachine.allowsManualConnect(phase: .unavailable(.disconnected(nil))))
+        #expect(ConnectionWindowPhaseMachine.allowsManualConnect(phase: .unavailable(.failed(Self.failure))))
+
+        #expect(!ConnectionWindowPhaseMachine.allowsManualConnect(phase: .unavailable(.pluginMissing(Self.failure))))
+        #expect(!ConnectionWindowPhaseMachine.allowsManualConnect(phase: .connecting))
+        #expect(!ConnectionWindowPhaseMachine.allowsManualConnect(phase: .connected))
+        #expect(!ConnectionWindowPhaseMachine.allowsManualConnect(phase: .closing))
+    }
 }

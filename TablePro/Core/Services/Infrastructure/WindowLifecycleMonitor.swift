@@ -46,6 +46,21 @@ internal final class WindowLifecycleMonitor {
         Self.lifecycleLogger.info(
             "[open] WindowLifecycleMonitor.register windowId=\(windowId, privacy: .public) connId=\(connectionId, privacy: .public) registeredBefore=\(self.entries.count)"
         )
+        /// A window id belongs to the SwiftUI content mounted in the window, not to the window, so a
+        /// window whose content is rebuilt registers again under a new id. Reconnecting rebuilds it.
+        /// Leaving the superseded entry behind makes one window count as two, which is what stopped a
+        /// reconnected window from restoring its tabs: the restore stands down when it sees a sibling.
+        let supersededIds = entries.compactMap { key, value -> UUID? in
+            key != windowId && value.window === window ? key : nil
+        }
+        for supersededId in supersededIds {
+            guard let superseded = entries.removeValue(forKey: supersededId) else { continue }
+            for observer in superseded.observers {
+                NotificationCenter.default.removeObserver(observer)
+            }
+            forgetFocus(windowId: supersededId, connectionId: superseded.connectionId)
+        }
+
         // Remove any existing entry for this windowId to avoid duplicate observers
         if let existing = entries[windowId] {
             if existing.window !== window {

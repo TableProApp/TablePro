@@ -25,5 +25,11 @@ final class CommandActionsRegistry {
     /// key window is not a main window (welcome / connection-form / settings).
     var current: MainContentCommandActions?
 
+    /// The key window's connection lifecycle state. Separate from `current` because
+    /// `MainContentCommandActions` only exists while the window is showing a session, and
+    /// Disconnect and Reconnect have to stay correct on either side of that: Reconnect is needed
+    /// precisely when there is no session left to own the actions.
+    var connectionWindow: ConnectionWindowCommandState?
+
     private init() {}
 }

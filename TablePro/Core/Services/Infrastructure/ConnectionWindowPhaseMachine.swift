@@ -13,14 +13,27 @@ internal struct ConnectionSessionSnapshot: Equatable, Sendable {
     internal let exists: Bool
     internal let hasDriver: Bool
     internal let disconnectInfo: ConnectionFailureInfo?
+    /// The user asked for this. A session that goes away on its own is something to report and
+    /// recover from; one the user ended is neither, and it must not be replayed on the next launch.
+    internal let wasDisconnectedByUser: Bool
 
-    internal init(exists: Bool, hasDriver: Bool, disconnectInfo: ConnectionFailureInfo? = nil) {
+    internal init(
+        exists: Bool,
+        hasDriver: Bool,
+        disconnectInfo: ConnectionFailureInfo? = nil,
+        wasDisconnectedByUser: Bool = false
+    ) {
         self.exists = exists
         self.hasDriver = hasDriver
         self.disconnectInfo = disconnectInfo
+        self.wasDisconnectedByUser = wasDisconnectedByUser
     }
 
     internal static let absent = ConnectionSessionSnapshot(exists: false, hasDriver: false)
+
+    internal var lostSessionReason: ConnectionUnavailableReason {
+        wasDisconnectedByUser ? .disconnectedByUser : .disconnected(disconnectInfo)
+    }
 }
 
 internal enum ConnectionWindowPhaseMachine {
@@ -48,9 +61,9 @@ internal enum ConnectionWindowPhaseMachine {
 
         switch phase {
         case .connecting:
-            return ownsAttempt ? .connecting : .unavailable(.disconnected(session.disconnectInfo))
+            return ownsAttempt ? .connecting : .unavailable(session.lostSessionReason)
         case .connected:
-            return .unavailable(.disconnected(session.disconnectInfo))
+            return .unavailable(session.lostSessionReason)
         case .idle, .unavailable, .closing:
             return phase
         }
@@ -81,12 +94,31 @@ internal enum ConnectionWindowPhaseMachine {
             return true
         case .unavailable(let reason):
             switch reason {
-            case .cancelled:
+            case .cancelled, .disconnectedByUser:
                 return false
             case .notConnected, .disconnected, .failed, .pluginMissing:
                 return true
             }
         case .idle, .closing:
+            return false
+        }
+    }
+
+    /// Whether the user can ask this window to connect. Distinct from `allowsActivationConnect`,
+    /// which answers whether the app may dial on its own: a window the user disconnected must not
+    /// reconnect just because they clicked back into it, but Reconnect has to stay available.
+    internal static func allowsManualConnect(phase: ConnectionWindowPhase) -> Bool {
+        switch phase {
+        case .idle:
+            return true
+        case .unavailable(let reason):
+            switch reason {
+            case .notConnected, .cancelled, .disconnected, .disconnectedByUser, .failed:
+                return true
+            case .pluginMissing:
+                return false
+            }
+        case .connecting, .connected, .closing:
             return false
         }
     }
@@ -99,7 +131,7 @@ internal enum ConnectionWindowPhaseMachine {
             switch reason {
             case .notConnected, .disconnected, .failed:
                 return true
-            case .cancelled, .pluginMissing:
+            case .cancelled, .disconnectedByUser, .pluginMissing:
                 return false
             }
         case .connecting, .connected, .closing:

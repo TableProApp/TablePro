@@ -23,6 +23,21 @@ extension MainContentCoordinator {
         activeCoordinators.values.contains { $0.hasAnyUnsavedWork() }
     }
 
+    /// Disconnecting ends the session behind every window on the connection, so what is at risk is
+    /// never just the window the command came from. The rail and the connection list can both fire
+    /// it for a connection whose windows are all in the background.
+    static func hasUnsavedWork(forConnection connectionId: UUID) -> Bool {
+        activeCoordinators.values
+            .filter { $0.connectionId == connectionId }
+            .contains { $0.hasAnyUnsavedWork() }
+    }
+
+    static func hasRunningQuery(forConnection connectionId: UUID) -> Bool {
+        activeCoordinators.values
+            .filter { $0.connectionId == connectionId }
+            .contains { $0.toolbarState.isExecuting }
+    }
+
     static func allTabs(for connectionId: UUID) -> [QueryTab] {
         activeCoordinators.values
             .filter { $0.connectionId == connectionId }

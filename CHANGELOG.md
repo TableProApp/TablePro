@@ -20,6 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Show Previous Workspace and Show Next Workspace move through the rail in the order it displays, on `Ctrl+Cmd+Up` and `Ctrl+Cmd+Down`. A shortcut you assigned yourself wins over a default added in a later release, and the default comes back if you reassign yours. (#1282)
 - Right-click a workspace in the rail to close every tab in it. A window holding a tab in another database stays open. (#1282)
 - The workspace rail takes the keyboard: arrow keys move the highlight, typing jumps to a name, and Return opens the workspace you land on. (#1282)
+- A Connection menu with Disconnect and Reconnect. Disconnecting ends the session without closing the window, which shows a Reconnect screen in place of its tabs. Your tabs are saved before the session ends. You can also right-click a workspace in the rail, or a connection in the connection list, to disconnect it.
+- Disconnecting asks first only when a window has unsaved changes or a query still running. A connection you disconnected is not reopened the next time you launch, and clicking back into its window no longer reconnects it on its own.
 - Redshift external schemas now list their tables. Spectrum, federated query, cross-database, and datashare schemas showed up empty because their tables are not in the standard catalog.
 - External schemas are marked in the sidebar, and their tables show an external icon. External tables open read-only, because Redshift rejects `UPDATE` and `DELETE` on them.
 
@@ -32,6 +34,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Ending a session while its window stayed open could lose that window's tabs. Tabs are now written to disk before the session goes away, which also covers the disconnect tool used by AI clients and Reset Sample Database.
+- A window that reconnects brings its tabs back instead of coming back empty. Rebuilding a window's contents made it count as two windows, and the restore that refills the tabs stands down when it sees a second window on the connection.
+- Closing a window that never loaded any tabs no longer deletes the tabs saved for that connection. Only a window that had tabs can report that you closed them all.
 - A window being connected is now named after the connection instead of "SQL Query", which named a tab it did not have yet.
 - A window that loses its connection no longer keeps the name of the table it stopped showing. Its name and its native tab label now follow what the window is actually displaying.
 - The titlebar no longer repeats itself, so a window with no tabs open reads "My Database" rather than "My Database - My Database".

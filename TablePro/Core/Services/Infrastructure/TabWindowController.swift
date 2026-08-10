@@ -128,6 +128,7 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
 
         if let splitVC = window.contentViewController as? MainSplitViewController {
             splitVC.startActivationConnectIfNeeded()
+            splitVC.publishConnectionCommandState()
         }
 
         guard let coordinator = MainContentCoordinator.coordinator(forWindow: window) else { return }
@@ -148,9 +149,9 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
     internal func windowDidResignKey(_ notification: Notification) {
         let seq = MainContentCoordinator.nextSwitchSeq()
         let t0 = Date()
-        guard let window = notification.object as? NSWindow,
-              let coordinator = MainContentCoordinator.coordinator(forWindow: window)
-        else { return }
+        guard let window = notification.object as? NSWindow else { return }
+        (window.contentViewController as? MainSplitViewController)?.clearConnectionCommandStateIfOwned()
+        guard let coordinator = MainContentCoordinator.coordinator(forWindow: window) else { return }
         Self.lifecycleLogger.debug(
             "[switch] windowDidResignKey seq=\(seq) controllerId=\(self.controllerId, privacy: .public)"
         )
@@ -169,7 +170,10 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
         guard let window = notification.object as? NSWindow else { return }
         Self.lifecycleLogger.info("[close] windowWillClose seq=\(seq) controllerId=\(self.controllerId, privacy: .public)")
 
-        (window.contentViewController as? MainSplitViewController)?.markWindowClosing()
+        if let splitVC = window.contentViewController as? MainSplitViewController {
+            splitVC.markWindowClosing()
+            splitVC.clearConnectionCommandStateIfOwned()
+        }
 
         cancelPendingConnectionIfNeeded()
 

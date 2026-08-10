@@ -30,6 +30,7 @@ extension DatabaseManager {
 
         let attempt = connectionAttempts.begin(for: connection.id)
         disconnectReasons[connection.id] = nil
+        userRequestedDisconnects.remove(connection.id)
 
         let resolvedConnection: DatabaseConnection
         if LicenseManager.shared.isFeatureAvailable(.envVarReferences) {
@@ -366,13 +367,31 @@ extension DatabaseManager {
         }
     }
 
-    func disconnectSession(_ sessionId: UUID) async {
+    /// Ends a session. The window that was showing it stays open, so the tabs are written to disk
+    /// first: `MainContentCoordinator.teardown()` clears them from memory and only the window-close
+    /// path saves on its way out, which is how a disconnect used to take a window's tabs with it.
+    func disconnectSession(_ sessionId: UUID, origin: SessionDisconnectOrigin = .appManaged) async {
         let lifecycleLogger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
         guard let session = activeSessions[sessionId] else {
             lifecycleLogger.info(
                 "[close] disconnectSession: no session found connId=\(sessionId, privacy: .public)"
             )
             return
+        }
+        /// Two disconnects for one session would both run the whole teardown, and the second one's
+        /// tail would land after the user had already reconnected, tearing the new session down.
+        guard !disconnectsInFlight.contains(sessionId) else {
+            lifecycleLogger.info(
+                "[close] disconnectSession: already in flight connId=\(sessionId, privacy: .public)"
+            )
+            return
+        }
+        disconnectsInFlight.insert(sessionId)
+        defer { disconnectsInFlight.remove(sessionId) }
+
+        tabStatePersister?.persistTabState(for: sessionId)
+        if origin == .userRequested {
+            userRequestedDisconnects.insert(sessionId)
         }
         let totalStart = Date()
         lifecycleLogger.info(
@@ -517,6 +536,10 @@ extension DatabaseManager {
 
     internal func disconnectReason(for connectionId: UUID) -> ConnectionFailureInfo? {
         disconnectReasons[connectionId]
+    }
+
+    internal func wasDisconnectedByUser(_ connectionId: UUID) -> Bool {
+        userRequestedDisconnects.contains(connectionId)
     }
 
     internal func removeSessionEntry(for connectionId: UUID) {

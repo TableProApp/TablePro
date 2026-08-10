@@ -74,6 +74,16 @@ Each connection gets its own window with its own tab bar, so a tab bar only ever
 
 To move between open connections, use the [workspace rail](/features/workspace-rail) on the leading edge of the window.
 
+### Disconnecting
+
+**Connection > Disconnect** ends the session without closing the window. The window shows a Reconnect screen in place of its tabs, and the tabs are saved before the session ends. Use **Connection > Reconnect**, or the Reconnect button on the screen itself.
+
+A connection with one window open restores its tabs as soon as you reconnect. A connection with several windows open restores them the next time you open the connection instead.
+
+Disconnecting asks first only when a window has unsaved changes or a query still running. It applies to the whole connection, so every window and workspace on it shows the same Reconnect screen. Nothing reconnects on its own afterwards: a connection you disconnected is not reopened at the next launch, and clicking back into its window leaves it disconnected until you ask.
+
+You can also disconnect by right-clicking a workspace in the [workspace rail](/features/workspace-rail), or a connection in the connection list.
+
 ## Database Binding
 
 A tab is bound to the connection, database, and schema it was opened on, fixed for the life of the tab. Every query, refresh, filter, sort, structure read, and structure save the tab performs uses that binding, not whatever the sidebar shows at the time.
