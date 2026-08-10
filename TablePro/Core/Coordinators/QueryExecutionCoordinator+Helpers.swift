@@ -415,7 +415,7 @@ extension QueryExecutionCoordinator {
     ) {
         let isNonSQL = PluginManager.shared.editorLanguage(for: connectionType) != .sql
 
-        parent.currentRowCountTask = Task(priority: .utility) { [weak self, parent] in
+        let task = Task(priority: .utility) { [weak self, parent] in
             guard let self else { return }
             guard !parent.isTearingDown else { return }
 
@@ -488,7 +488,7 @@ extension QueryExecutionCoordinator {
 
             await MainActor.run {
                 guard parent.tabExecution.isCurrent(claim) else { return }
-                parent.currentRowCountTask = nil
+                parent.clearRowCountTask(for: tabId)
                 guard let outcome else { return }
                 parent.tabManager.mutate(tabId: tabId) { tab in
                     let applied = outcome.appliedTotal
@@ -497,6 +497,7 @@ extension QueryExecutionCoordinator {
                 }
             }
         }
+        parent.setRowCountTask(task, for: tabId)
     }
 
     static func rowCountPlan(
