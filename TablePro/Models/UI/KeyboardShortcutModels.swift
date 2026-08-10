@@ -125,8 +125,6 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
     case pinResultTab
     case closeResultTab
     case focusSidebarSearch
-    case showSidebarTables
-    case showSidebarFavorites
     case showPreviousTab
     case showNextTab
     case toggleWorkspaceRail
@@ -152,7 +150,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
              .reopenClosedTab, .quickSwitcher, .toggleTableBrowser,
              .toggleInspector, .toggleFilters, .toggleHistory, .toggleResults, .previousResultTab,
              .nextResultTab, .pinResultTab, .closeResultTab, .focusSidebarSearch,
-             .showSidebarTables, .showSidebarFavorites, .showPreviousTab, .showNextTab,
+             .showPreviousTab, .showNextTab,
              .toggleWorkspaceRail, .showPreviousWorkspace, .showNextWorkspace:
             return .navigation
         }
@@ -241,8 +239,6 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
         case .pinResultTab: return String(localized: "Pin Result")
         case .closeResultTab: return String(localized: "Close Result Tab")
         case .focusSidebarSearch: return String(localized: "Focus Sidebar Filter")
-        case .showSidebarTables: return String(localized: "Show Tables Sidebar")
-        case .showSidebarFavorites: return String(localized: "Show Favorites Sidebar")
         case .showPreviousTab: return String(localized: "Show Previous Tab")
         case .showNextTab: return String(localized: "Show Next Tab")
         case .toggleWorkspaceRail: return String(localized: "Toggle Workspace Rail")
@@ -296,7 +292,8 @@ extension ShortcutAction {
     static let reservedAppShortcuts: [(key: BoundKey, name: String)] = {
         var shortcuts: [(key: BoundKey, name: String)] = [
             (.character("=", command: true), String(localized: "Zoom In")),
-            (.character("-", command: true), String(localized: "Zoom Out"))
+            (.character("-", command: true), String(localized: "Zoom Out")),
+            (.character("f", command: true), String(localized: "Find"))
         ]
         for number in 1...9 {
             shortcuts.append((
@@ -529,16 +526,14 @@ struct KeyboardSettings: Codable, Equatable {
         .quickSwitcher: .character("o", command: true, shift: true),
         .toggleTableBrowser: .character("0", command: true),
         .toggleInspector: .character("i", command: true, option: true),
-        .toggleFilters: .character("f", command: true),
+        .toggleFilters: .character("f", command: true, option: true),
         .toggleHistory: .character("y", command: true),
         .toggleResults: .character("r", command: true, option: true),
         .previousResultTab: .character("[", command: true, option: true),
         .nextResultTab: .character("]", command: true, option: true),
         .pinResultTab: .character("p", command: true, option: true),
         .closeResultTab: .character("w", command: true, shift: true),
-        .focusSidebarSearch: .character("f", command: true, option: true),
-        .showSidebarTables: .character("1", command: true, option: true),
-        .showSidebarFavorites: .character("2", command: true, option: true),
+        .focusSidebarSearch: .character("f", command: true, option: true, control: true),
         .showPreviousTab: .character("[", command: true, shift: true),
         .showNextTab: .character("]", command: true, shift: true),
         .toggleWorkspaceRail: .character("0", command: true, option: true),

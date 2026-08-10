@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- The Window menu gained Minimize, Zoom, and Move Tab to New Window, and the View menu gained Show Toolbar and Customize Toolbar. All were missing.
+- New Table and New View are now in the Database menu, so they can be given a shortcut in System Settings like any other menu command.
 - Filter rows now have a Match Case option in the operator menu. Contains, not contains, starts with, and ends with ignore case on every database that can express it, so PostgreSQL and DuckDB now behave like MySQL and SQLite already did. Equals, IN, and regex still match case until you say otherwise. (#2048)
 - Databases whose collation decides case sensitivity, such as MySQL and SQL Server, show the option greyed out with the reason, as do Cassandra and Redis, which cannot ignore case at all. (#2048)
 - MongoDB, Elasticsearch, DynamoDB, and etcd filters can now match case. They always ignored it before, with no way to turn that off. (#2048)
@@ -27,6 +29,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The menu bar is rebuilt on native macOS menus. Every command now enables and disables from the state of the window you are actually using, so items no longer read as available when they are not, or stay greyed out after you switch windows.
+- New Database and Query menus hold the connection, database, and table commands that used to be spread across File, Edit, and View.
+- `Cmd+F` now always opens Find. The table filter bar moved to `Cmd+Option+F`, matching TablePlus, Postico, and Sequel Ace, and Focus Sidebar Filter moved to `Ctrl+Cmd+Option+F`. Shortcuts you assigned yourself are untouched.
+- The CSV and JSON editing commands are grouped into one Edit submenu and now dim per command rather than all at once.
 - Connecting to a database now fills the window instead of framing a spinner with an empty sidebar and inspector, and it names the step it is on: opening the tunnel, negotiating encryption, authenticating, preparing the session. PostgreSQL, CockroachDB, Redshift, ClickHouse, and Redis report their own handshake steps; the rest report the steps around the driver. A step that stalls says so rather than spinning silently.
 - A connection that fails now shows the database's own error wherever the connect started, including from a link or a database file, and offers Copy Details. Those routes used to drop the real message and report only that the connection had closed.
 - Opening a table or query from a link now opens its window straight away, so a slow connect has somewhere to report progress and a failed one has somewhere to explain itself.
@@ -121,6 +127,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- Show Tables Sidebar and Show Favorites Sidebar are gone from the menu bar and from Settings > Keyboard. The sidebar's own tab control already switches between them.
+- Show Object Icons, Show Object Comments, and Open Project Folder are gone from the menu bar. The first two stay in Settings > General and the sidebar's View Options, and Open Project Folder stays on the welcome window.
 - The "Group all connections in one window" setting is gone. A window shows one tab group, so grouping every connection into it flattened every connection's tabs into a single tab bar, and turning the setting back off never separated the windows it had merged. Each connection now always has its own window and its own tab bar. (#1282)
 
 ### Changed

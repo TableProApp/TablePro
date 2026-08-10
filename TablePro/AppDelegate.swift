@@ -164,12 +164,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         SQLFolderWatcher.shared.reload()
     }
 
-    @objc func showHelp(_ sender: Any?) {
-        if let url = URL(string: "https://docs.tablepro.app") {
-            NSWorkspace.shared.open(url)
-        }
-    }
-
     // MARK: - Window Notifications
 
     @objc func windowWillClose(_ notification: Notification) {
