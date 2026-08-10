@@ -31,9 +31,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A connection that fails now shows the database's own error wherever the connect started, including from a link or a database file, and offers Copy Details. Those routes used to drop the real message and report only that the connection had closed.
 - Opening a table or query from a link now opens its window straight away, so a slow connect has somewhere to report progress and a failed one has somewhere to explain itself.
 - A saved pre-connect script no longer runs when the app reopens a session on its own. The window waits with a Connect button, which asks before running it.
+- Running a query or opening a table now replaces whatever that tab was already running, instead of being ignored until the first one finished.
+- Clicking through tables quickly no longer stutters on a connection over an SSH tunnel. Stopping the query you navigated away from used to hold up the click for up to 160ms while it opened a second connection to deliver the cancel.
 
 ### Fixed
 
+- Clicking a table while another one is still loading now loads the table you clicked. The tab used to fill with the previous table's rows under the new table's name, and the table you clicked never loaded at all.
+- Stop no longer aborts a save, a discard, or a schema change. It cancels reads only, so a write can no longer be cut off half way.
 - Ending a session while its window stayed open could lose that window's tabs. Tabs are now written to disk before the session goes away, which also covers the disconnect tool used by AI clients and Reset Sample Database.
 - A window that reconnects brings its tabs back instead of coming back empty. Rebuilding a window's contents made it count as two windows, and the restore that refills the tabs stands down when it sees a second window on the connection.
 - Closing a window that never loaded any tabs no longer deletes the tabs saved for that connection. Only a window that had tabs can report that you closed them all.

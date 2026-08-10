@@ -26,7 +26,7 @@ extension MainContentCoordinator {
     /// Accepts the plugin-kit `ExplainVariant` type for generic dispatch.
     func runVariantExplain(_ variant: ExplainVariant) {
         guard let (tab, _) = tabManager.selectedTabAndIndex,
-              !tab.execution.isExecuting else { return }
+              !tabExecution.isExecuting(tab.id) else { return }
 
         let fullQuery = tab.content.query
 
@@ -62,7 +62,6 @@ extension MainContentCoordinator {
         Task {
             guard let driver = DatabaseManager.shared.driver(for: connectionId) else { return }
 
-            tabManager.mutate(tabId: tabId) { $0.execution.isExecuting = true }
             toolbarState.setExecuting(true)
 
             do {
@@ -84,13 +83,11 @@ extension MainContentCoordinator {
                     } else {
                         tab.display.explainPlan = nil
                     }
-                    tab.execution.isExecuting = false
                 }
             } catch {
                 tabManager.mutate(tabId: tabId) { tab in
                     tab.display.explainText = "Error: \(error.localizedDescription)"
                     tab.display.explainPlan = nil
-                    tab.execution.isExecuting = false
                 }
             }
 

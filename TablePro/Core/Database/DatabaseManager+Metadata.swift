@@ -53,6 +53,7 @@ extension DatabaseManager {
             scope: scope,
             route: metadataRoute(for: scope),
             workload: workload,
+            cancellation: .untracked,
             body
         )
     }

@@ -151,7 +151,6 @@ extension QueryExecutionCoordinator {
             tab.execution.executionTime = executionTime
             tab.execution.rowsAffected = rowsAffected
             tab.execution.statusMessage = statusMessage
-            tab.execution.isExecuting = false
             tab.execution.lastExecutedAt = Date()
             tab.tableContext.tableName = tableName
             tab.tableContext.isEditable = isEditable
@@ -245,7 +244,6 @@ extension QueryExecutionCoordinator {
             tab.execution.executionTime = executionTime
             tab.execution.rowsAffected = 0
             tab.execution.statusMessage = nil
-            tab.execution.isExecuting = false
             tab.execution.lastExecutedAt = Date()
             tab.display.explainText = planText
             tab.display.explainPlan = plan
@@ -271,7 +269,7 @@ extension QueryExecutionCoordinator {
     func launchPhase2Work(
         tableName: String,
         tabId: UUID,
-        capturedGeneration: Int,
+        claim: TabExecutionClaim,
         connectionType: DatabaseType,
         schemaTask: Task<FetchedTableSchema, Error>?
     ) {
@@ -290,11 +288,11 @@ extension QueryExecutionCoordinator {
                 if let schema {
                     applySchemaMetadata(schema, tabId: tabId, tableName: tableName)
                 }
-                if capturedGeneration == parent.queryGeneration {
+                if parent.tabExecution.isCurrent(claim) {
                     resolveRowCount(
                         tableName: tableName,
                         tabId: tabId,
-                        capturedGeneration: capturedGeneration,
+                        claim: claim,
                         connectionType: connectionType
                     )
                 }
@@ -398,13 +396,13 @@ extension QueryExecutionCoordinator {
     func launchPhase2Count(
         tableName: String,
         tabId: UUID,
-        capturedGeneration: Int,
+        claim: TabExecutionClaim,
         connectionType: DatabaseType
     ) {
         resolveRowCount(
             tableName: tableName,
             tabId: tabId,
-            capturedGeneration: capturedGeneration,
+            claim: claim,
             connectionType: connectionType
         )
     }
@@ -412,7 +410,7 @@ extension QueryExecutionCoordinator {
     func resolveRowCount(
         tableName: String,
         tabId: UUID,
-        capturedGeneration: Int,
+        claim: TabExecutionClaim,
         connectionType: DatabaseType
     ) {
         let isNonSQL = PluginManager.shared.editorLanguage(for: connectionType) != .sql
@@ -489,7 +487,7 @@ extension QueryExecutionCoordinator {
             }
 
             await MainActor.run {
-                guard capturedGeneration == parent.queryGeneration else { return }
+                guard parent.tabExecution.isCurrent(claim) else { return }
                 parent.currentRowCountTask = nil
                 guard let outcome else { return }
                 parent.tabManager.mutate(tabId: tabId) { tab in
@@ -528,7 +526,6 @@ extension QueryExecutionCoordinator {
         parent.currentQueryTask = nil
         guard !DatabaseCancellationDiagnosis.isCancellation(error) else {
             parent.tabManager.mutate(tabId: tabId) { tab in
-                tab.execution.isExecuting = false
                 tab.pagination.isLoadingMore = false
             }
             parent.toolbarState.setExecuting(false)
@@ -537,7 +534,6 @@ extension QueryExecutionCoordinator {
         parent.tabManager.mutate(tabId: tabId) { tab in
             tab.execution.errorMessage = DatabaseWriteRejectionDiagnosis.formatted(error)
             tab.execution.errorQuery = sql
-            tab.execution.isExecuting = false
             tab.execution.lastExecutedAt = Date()
         }
         parent.toolbarState.setExecuting(false)

@@ -28,7 +28,9 @@ extension DatabaseManager {
     ) async throws {
         let route = executionRoute(for: scope)
 
-        let statements = try await withScopedDriver(scope: scope, route: route) { driver in
+        let statements = try await withScopedDriver(
+            scope: scope, route: route, cancellation: .untracked
+        ) { driver in
             let pkConstraintName = await Self.fetchPrimaryKeyConstraintName(
                 tableName: tableName,
                 databaseType: databaseType,
@@ -67,7 +69,7 @@ extension DatabaseManager {
             )
         }
 
-        try await withScopedDriver(scope: scope, route: route, tracksCancellation: true) { driver in
+        try await withScopedDriver(scope: scope, route: route, cancellation: .protectedWrite) { driver in
             let useTransaction = driver.supportsTransactions
             if useTransaction {
                 try await driver.beginTransaction(mode: schemaKind.declaresWrite ? .readWrite : .serverDefault)

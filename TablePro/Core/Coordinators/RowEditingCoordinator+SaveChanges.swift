@@ -180,7 +180,7 @@ extension RowEditingCoordinator {
                 let executionTimes = try await DatabaseManager.shared.withScopedDriver(
                     scope: scope,
                     route: route,
-                    tracksCancellation: true
+                    cancellation: .protectedWrite
                 ) { driver in
                     try await Self.runStatementsInTransaction(
                         validStatements,

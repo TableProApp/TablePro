@@ -113,6 +113,15 @@ extension MainContentView {
             isActiveTabReusable: coordinator.isActiveTabReusable
         )
 
+        MainContentView.lifecycleLogger.debug(
+            """
+            [tableload] sidebarSelection table=\(table.name, privacy: .public) \
+            decision=\(String(describing: result), privacy: .public) \
+            currentTab=\(tabManager.selectedTab?.tableContext.tableName ?? "none", privacy: .public) \
+            isExecuting=\(coordinator.tabExecution.isAnyExecuting)
+            """
+        )
+
         switch result {
         case .skip:
             return

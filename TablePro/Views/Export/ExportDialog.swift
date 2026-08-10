@@ -828,7 +828,8 @@ struct ExportDialog: View {
             try await DatabaseManager.shared.withScopedDriver(
                 scope: scope,
                 route: route,
-                workload: .bulk
+                workload: .bulk,
+                cancellation: .untracked
             ) { driver in
                 try await runTableExport(on: driver, to: url)
             }
@@ -883,7 +884,8 @@ struct ExportDialog: View {
                 try await DatabaseManager.shared.withScopedDriver(
                     scope: scope,
                     route: route,
-                    workload: .bulk
+                    workload: .bulk,
+                    cancellation: .untracked
                 ) { driver in
                     try await runStreamingExport(on: driver, query: query, to: url)
                 }

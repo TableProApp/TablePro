@@ -135,20 +135,35 @@ extension MainContentCoordinator {
         guard let tab = tabManager.selectedTab else { return }
         guard deferredRestoreLoadTabId != tab.id else { return }
         guard canAutoLoadTableTab(tab) else { return }
-        guard tableLoadTasks[tab.id] == nil else { return }
+
+        let tracer = TableLoadTracer.shared
+        let carriedToken = tracer.activeToken(for: tab.id)
+        let traceToken = carriedToken ?? tracer.begin(
+            tabId: tab.id,
+            table: tab.tableContext.tableName ?? "",
+            origin: trigger == .restore ? .restore : .programmatic,
+            connectionId: connectionId
+        )
+
+        guard tableLoadTasks[tab.id] == nil else {
+            guard carriedToken == nil else { return }
+            tracer.anomaly(.loadAlreadyInFlight, token: traceToken)
+            tracer.finish(token: traceToken, outcome: "loadAlreadyInFlight")
+            return
+        }
 
         clearAbandonedExecutingFlagIfNeeded(for: tab)
 
         guard let session = DatabaseManager.shared.session(for: connectionId),
               session.isConnected else {
+            tracer.anomaly(.connectionNotReady, token: traceToken)
+            tracer.finish(token: traceToken, outcome: "notConnected")
             pendingLoadTrigger = trigger
             return
         }
 
         let tabId = tab.id
-        Self.lifecycleLogger.debug(
-            "[switch] coordinator.lazyLoadCurrentTabIfNeeded executing tabId=\(tabId, privacy: .public)"
-        )
+        tracer.stage(.lazyLoadScheduled, token: traceToken)
         let token = UUID()
         let task = Task { @MainActor [weak self] in
             guard let self else { return }
@@ -194,7 +209,12 @@ extension MainContentCoordinator {
     }
 
     private func clearAbandonedExecutingFlagIfNeeded(for tab: QueryTab) {
-        guard tab.execution.isExecuting, currentQueryTask == nil else { return }
-        tabManager.mutate(tabId: tab.id) { $0.execution.isExecuting = false }
+        guard tabExecution.isExecuting(tab.id), currentQueryTask == nil else { return }
+        TableLoadTracer.shared.anomaly(
+            .preparationAbandoned,
+            tabId: tab.id,
+            detail: "clearedAbandonedClaim"
+        )
+        tabExecution.invalidate(tab.id)
     }
 }

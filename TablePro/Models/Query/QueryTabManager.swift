@@ -168,6 +168,11 @@ final class QueryTabManager {
 
     var onTableOpened: ((_ tableName: String, _ schemaName: String?, _ databaseName: String, _ isView: Bool, _ isPreview: Bool) -> Void)?
 
+    /// Fired the instant a tab stops being about the table it was about. Whoever owns execution
+    /// listens here rather than at the navigation call sites, because a retarget that forgets to
+    /// invalidate is exactly how a finished query paints its rows into a tab showing something else.
+    var onTabRetargeted: ((UUID) -> Void)?
+
     private func notifyTableOpened(
         tableName: String, schemaName: String?, databaseName: String, isView: Bool, isPreview: Bool
     ) {
@@ -345,6 +350,8 @@ final class QueryTabManager {
             quoteIdentifier: quoteIdentifier
         )
         let pageSize = AppSettingsManager.shared.dataGrid.defaultPageSize
+
+        onTabRetargeted?(selectedId)
 
         var tab = tabs[selectedIndex]
         tab.tabType = .table

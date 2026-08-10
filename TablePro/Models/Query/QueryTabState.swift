@@ -345,8 +345,10 @@ struct ColumnLayoutState: Equatable {
     }
 }
 
+/// Deliberately has no `isExecuting`. Busy state is derived from `TabExecutionRegistry`, because a
+/// stored flag could not be reset by a tab retarget and so kept a retargeted tab busy forever,
+/// silently swallowing every later navigation.
 struct TabExecutionState: Equatable {
-    var isExecuting: Bool = false
     var executionTime: TimeInterval?
     var statusMessage: String?
     var errorMessage: String?
@@ -355,8 +357,7 @@ struct TabExecutionState: Equatable {
     var lastExecutedAt: Date?
 
     static func == (lhs: TabExecutionState, rhs: TabExecutionState) -> Bool {
-        lhs.isExecuting == rhs.isExecuting
-            && lhs.executionTime == rhs.executionTime
+        lhs.executionTime == rhs.executionTime
             && lhs.statusMessage == rhs.statusMessage
             && lhs.errorMessage == rhs.errorMessage
             && lhs.rowsAffected == rhs.rowsAffected

@@ -55,23 +55,26 @@ extension DatabaseManager {
         return .pooled
     }
 
-    /// `tracksCancellation` registers the leased driver so Stop can reach it. Only user
-    /// SQL opts in: a metadata read shares the connection but must never become the handle
-    /// Stop aborts, and must never clear the handle a running query registered.
+    /// `cancellation` decides whether Stop, or a navigation that supersedes a tab, can reach the
+    /// leased driver. The parameter has no default on purpose: a new call site must state which it
+    /// is, because getting it wrong silently either makes a query uncancellable or makes a commit
+    /// killable.
     func withScopedDriver<T: Sendable>(
         scope: DatabaseScope,
         route: ScopedDriverRoute,
         workload: MetadataConnectionPool.Workload = .interactive,
-        tracksCancellation: Bool = false,
+        cancellation: DriverCancellationPolicy,
         _ body: @Sendable @escaping (DatabaseDriver) async throws -> T
     ) async throws -> T {
         let leased: @Sendable (DatabaseDriver) async throws -> T
-        if tracksCancellation {
+        if cancellation.isTracked {
             let connectionId = scope.connectionId
             let token = UUID()
+            let entry = RunningDriver(driver: nil, policy: cancellation)
             leased = { driver in
                 await MainActor.run {
-                    DatabaseManager.shared.runningDrivers[connectionId, default: [:]][token] = driver
+                    DatabaseManager.shared.runningDrivers[connectionId, default: [:]][token] =
+                        entry.adopting(driver)
                 }
                 do {
                     let value = try await body(driver)
@@ -107,15 +110,40 @@ extension DatabaseManager {
 
     /// Stop has to reach the handle the query is actually running on, which is no longer
     /// always the session driver now that a cross-database tab runs on a pooled connection.
-    func cancelRunningQuery(for connectionId: UUID) throws {
-        let running = runningDrivers[connectionId] ?? [:]
-        guard !running.isEmpty else {
-            try driver(for: connectionId)?.cancelQuery()
+    ///
+    /// A `.protectedWrite` lease is never reachable: a commit, a rollback or a DDL statement that is
+    /// half applied is data loss, and both Stop and a superseding navigation would otherwise abort
+    /// one. The empty-map fallback is deliberately only taken for an explicit user Stop, because it
+    /// cancels whatever the session driver happens to be running without knowing what that is.
+    /// Stop stays synchronous because the user is waiting on it. A navigation supersede does not:
+    /// a PostgreSQL cancel opens a second connection to deliver the request, which through an SSH
+    /// tunnel costs 70-160ms, and paying that on the main thread turns fast browsing into a stutter.
+    /// Correctness never depended on the cancel landing first, because the tab's execution claim
+    /// already discards whatever the superseded query returns; the cancel is only there to stop the
+    /// server doing work nobody wants.
+    func cancelRunningQuery(for connectionId: UUID, reach: DriverCancellationReach = .userStop) throws {
+        let targets = cancellationTargets(for: connectionId, reach: reach)
+        guard !targets.isEmpty else { return }
+        guard reach == .userStop else {
+            DispatchQueue.global(qos: .utility).async {
+                for driver in targets { try? driver.cancelQuery() }
+            }
             return
         }
-        for driver in running.values {
+        for driver in targets {
             try driver.cancelQuery()
         }
+    }
+
+    private func cancellationTargets(
+        for connectionId: UUID,
+        reach: DriverCancellationReach
+    ) -> [DatabaseDriver] {
+        let running = runningDrivers[connectionId] ?? [:]
+        let cancellable = running.values.filter { $0.policy == .cancellableRead }.compactMap(\.driver)
+        guard cancellable.isEmpty else { return cancellable }
+        guard running.isEmpty, reach == .userStop else { return [] }
+        return [driver(for: connectionId)].compactMap { $0 }
     }
 
     /// A pooled connection is keyed by database, so one that rewrites the connection's

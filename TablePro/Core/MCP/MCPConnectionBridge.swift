@@ -188,7 +188,8 @@ public actor MCPConnectionBridge {
         let route = await MainActor.run { DatabaseManager.shared.executionRoute(for: scope) }
         let result: QueryResult = try await DatabaseManager.shared.withScopedDriver(
             scope: scope,
-            route: route
+            route: route,
+            cancellation: .untracked
         ) { driver in
             try await withThrowingTaskGroup(of: QueryResult.self) { group in
                 group.addTask {

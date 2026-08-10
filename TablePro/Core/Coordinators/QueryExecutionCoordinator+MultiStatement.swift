@@ -74,7 +74,7 @@ extension QueryExecutionCoordinator {
 
     func applyMultiStatementResults(
         tabId: UUID,
-        capturedGeneration: Int,
+        claim: TabExecutionClaim,
         cumulativeTime: TimeInterval,
         totalRowsAffected: Int,
         lastSelectResult: QueryResult?,
@@ -85,8 +85,7 @@ extension QueryExecutionCoordinator {
         parent.toolbarState.setExecuting(false)
         parent.toolbarState.lastQueryDuration = cumulativeTime
 
-        if capturedGeneration != parent.queryGeneration {
-            parent.tabManager.mutate(tabId: tabId) { $0.execution.isExecuting = false }
+        if !parent.tabExecution.isCurrent(claim) {
             return
         }
         guard let idx = parent.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else {
@@ -128,7 +127,6 @@ extension QueryExecutionCoordinator {
             tab.schemaVersion += 1
             tab.execution.executionTime = cumulativeTime
             tab.execution.rowsAffected = totalRowsAffected
-            tab.execution.isExecuting = false
             tab.execution.lastExecutedAt = Date()
             tab.execution.errorMessage = nil
 

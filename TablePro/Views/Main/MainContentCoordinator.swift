@@ -201,7 +201,14 @@ final class MainContentCoordinator {
 
     // MARK: - Internal State
 
-    @ObservationIgnored internal var queryGeneration: Int = 0
+    /// Per-tab execution ownership. Replaces a per-window generation counter, a stored per-tab
+    /// `isExecuting` bool and two task handles that a tab retarget participated in none of.
+    ///
+    /// Deliberately observed rather than `@ObservationIgnored`: busy state is derived from
+    /// membership here, so the views that used to read the stored flag have to be able to see it
+    /// change. It is a value type, so every claim, settle and invalidate is a write to this
+    /// property and invalidates its readers.
+    internal var tabExecution = TabExecutionRegistry()
     @ObservationIgnored internal var currentQueryTask: Task<Void, Never>?
     @ObservationIgnored internal var currentRowCountTask: Task<Void, Never>?
     @ObservationIgnored internal var tableLoadTasks: [UUID: (token: UUID, task: Task<Void, Never>)] = [:]
@@ -504,6 +511,9 @@ final class MainContentCoordinator {
         ConnectionDataCache.shared(for: connection.id).ensureLoaded()
         changeManager.undoManagerProvider = { [weak self] in self?.contentWindow?.undoManager }
         changeManager.onUndoApplied = { [weak self] result in self?.handleUndoResult(result) }
+        tabManager.onTabRetargeted = { [weak self] tabId in
+            self?.supersedeExecution(for: tabId)
+        }
 
         // Synchronous save at quit time. NotificationCenter with queue: .main
         // delivers the closure on the main thread, satisfying assumeIsolated's
@@ -855,8 +865,11 @@ final class MainContentCoordinator {
     // MARK: - Query Execution
 
     func runQuery(trigger: TableLoadTrigger = .userInitiated, bypassRowLimit: Bool = false) {
-        guard let (tab, index) = tabManager.selectedTabAndIndex,
-              !tab.execution.isExecuting else { return }
+        guard let (tab, index) = tabManager.selectedTabAndIndex else { return }
+        guard !tabExecution.isExecuting(tab.id) else {
+            traceExecutionBlocked(tabId: tab.id, site: "runQuery")
+            return
+        }
 
         if tab.tabType == .table {
             executeTableTabQueryDirectly(trigger: trigger)
@@ -931,17 +944,23 @@ final class MainContentCoordinator {
     /// Table tab queries are always app-generated SELECTs, so they skip dangerous-query
     /// checks but still respect safe mode levels that apply to all queries.
     func executeTableTabQueryDirectly(trigger: TableLoadTrigger = .userInitiated) {
-        guard let (tab, index) = tabManager.selectedTabAndIndex,
-              !tab.execution.isExecuting else { return }
+        guard let (tab, index) = tabManager.selectedTabAndIndex else { return }
+        TableLoadTracer.shared.stage(.executeRequested, tabId: tab.id)
 
         let sql = tab.content.query
-        guard !sql.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        guard !sql.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            traceNavigationAbandoned(tabId: tab.id, reason: "emptyQuery")
+            return
+        }
 
         let level = safeModeLevel
         if level.appliesToAllQueries && level.requiresConfirmation,
            tab.execution.lastExecutedAt == nil
         {
-            guard !isShowingSafeModePrompt else { return }
+            guard !isShowingSafeModePrompt else {
+                traceNavigationAbandoned(tabId: tab.id, reason: "safeModePromptAlreadyOpen")
+                return
+            }
             isShowingSafeModePrompt = true
             Task {
                 defer { isShowingSafeModePrompt = false }
@@ -960,6 +979,7 @@ final class MainContentCoordinator {
                 case .authorized:
                     executeQueryInternal(sql, isAutoLoad: true, trigger: trigger)
                 case .denied(let reason):
+                    traceNavigationAbandoned(tabId: tab.id, reason: "safeModeDenied")
                     tabManager.mutate(at: index) { $0.execution.errorMessage = reason }
                 }
             }
@@ -1014,8 +1034,11 @@ final class MainContentCoordinator {
 
     /// Run EXPLAIN on the current query (database-type-aware prefix)
     func runExplainQuery() {
-        guard let (tab, _) = tabManager.selectedTabAndIndex,
-              !tab.execution.isExecuting else { return }
+        guard let (tab, _) = tabManager.selectedTabAndIndex else { return }
+        guard !tabExecution.isExecuting(tab.id) else {
+            traceExecutionBlocked(tabId: tab.id, site: "runExplainQuery")
+            return
+        }
 
         let fullQuery = tab.content.query
 
@@ -1116,15 +1139,12 @@ final class MainContentCoordinator {
         trigger: TableLoadTrigger = .userInitiated,
         bypassRowLimit: Bool = false
     ) {
-        guard let (selectedTab, index) = tabManager.selectedTabAndIndex,
-              !selectedTab.execution.isExecuting else { return }
+        guard let (selectedTab, index) = tabManager.selectedTabAndIndex else { return }
 
-        cancelInFlightQueryTask()
-        queryGeneration += 1
-        let capturedGeneration = queryGeneration
+        supersedeExecution(for: selectedTab.id)
+        let claim = tabExecution.claim(selectedTab.id)
 
         tabManager.mutate(at: index) { tab in
-            tab.execution.isExecuting = true
             tab.execution.executionTime = nil
             tab.execution.errorMessage = nil
             tab.display.explainText = nil
@@ -1139,6 +1159,9 @@ final class MainContentCoordinator {
 
         let conn = connection
         let tabId = tabManager.tabs[index].id
+
+        let traceToken = adoptOrBeginExecutionTrace(tabId: tabId)
+        traceExecutionStarted(traceToken, epoch: claim.epoch, isAutoLoad: isAutoLoad)
 
         let rowCap = resolveRowCap(sql: sql, tabType: tab.tabType, bypassLimit: bypassRowLimit)
         let (tableName, isEditable) = resolveTableEditability(tab: tab, sql: sql)
@@ -1155,8 +1178,8 @@ final class MainContentCoordinator {
             )
         }
         guard let scope = scope(for: tab) else {
+            tabExecution.settle(claim)
             tabManager.mutate(at: index) { tab in
-                tab.execution.isExecuting = false
                 tab.execution.errorMessage = String(localized: "Not connected to database")
             }
             toolbarState.setExecuting(false)
@@ -1172,7 +1195,8 @@ final class MainContentCoordinator {
                 } catch {
                     await MainActor.run { [weak self] in
                         guard let self else { return }
-                        tabManager.mutate(tabId: tabId) { $0.execution.isExecuting = false }
+                        traceConnectUnavailable(traceToken)
+                        tabExecution.settle(claim)
                         currentQueryTask = nil
                         toolbarState.setExecuting(false)
                         pendingLoadTrigger = trigger
@@ -1188,11 +1212,12 @@ final class MainContentCoordinator {
                 schemaTask = nil
             }
 
+            let fetchBeganAt = ContinuousClock.now
             do {
                 let fetchResult = try await services.databaseManager.withScopedDriver(
                     scope: scope,
                     route: services.databaseManager.executionRoute(for: scope),
-                    tracksCancellation: true
+                    cancellation: .cancellableRead
                 ) { [queryExecutor] driver in
                     try await queryExecutor.executeQuery(
                         driver: driver,
@@ -1201,9 +1226,11 @@ final class MainContentCoordinator {
                         rowCap: rowCap
                     )
                 }
+                let fetchEndedAt = ContinuousClock.now
 
                 guard !Task.isCancelled else {
                     schemaTask?.cancel()
+                    traceFetchCancelled(traceToken, began: fetchBeganAt, ended: fetchEndedAt)
                     await resetExecutionState(tabId: tabId, executionTime: fetchResult.executionTime)
                     return
                 }
@@ -1214,6 +1241,15 @@ final class MainContentCoordinator {
 
                 await MainActor.run { [weak self] in
                     guard let self else { return }
+                    traceFetchCompleted(traceToken, began: fetchBeganAt, ended: fetchEndedAt, result: fetchResult)
+
+                    // Every write below belongs to whoever owns the tab now. A superseded result
+                    // that cleared the spinner or nilled the task handle would be reporting on a
+                    // query that is still running, so the gate comes before all of them.
+                    guard tabExecution.isCurrent(claim), !Task.isCancelled else {
+                        traceStaleResultDropped(traceToken)
+                        return
+                    }
                     currentQueryTask = nil
                     if services.pluginManager.supportsQueryProgress(for: self.connection.type) {
                         self.clearClickHouseProgress()
@@ -1221,10 +1257,7 @@ final class MainContentCoordinator {
                     toolbarState.setExecuting(false)
                     toolbarState.lastQueryDuration = fetchResult.executionTime
 
-                    if capturedGeneration != queryGeneration || Task.isCancelled {
-                        tabManager.mutate(tabId: tabId) { $0.execution.isExecuting = false }
-                        return
-                    }
+                    traceApplyingResult(traceToken, tabId: tabId)
 
                     applyPhase1Result(
                         tabId: tabId,
@@ -1242,70 +1275,63 @@ final class MainContentCoordinator {
                         connection: conn,
                         isTruncated: fetchResult.isTruncated
                     )
+
+                    tabExecution.settle(claim)
+                    scheduleTraceCompletion(traceToken, outcome: "completed")
                 }
 
                 if isEditable, let tableName {
-                    if needsMetadataFetch {
-                        launchPhase2Work(
-                            tableName: tableName,
-                            tabId: tabId,
-                            capturedGeneration: capturedGeneration,
-                            connectionType: conn.type,
-                            schemaTask: schemaTask
-                        )
-                    } else {
-                        launchPhase2Count(
-                            tableName: tableName,
-                            tabId: tabId,
-                            capturedGeneration: capturedGeneration,
-                            connectionType: conn.type
-                        )
-                    }
+                    launchPhase2(
+                        tableName: tableName,
+                        tabId: tabId,
+                        claim: claim,
+                        connectionType: conn.type,
+                        needsMetadataFetch: needsMetadataFetch,
+                        schemaTask: schemaTask
+                    )
                 } else if !isEditable || tableName == nil {
-                    await MainActor.run { [weak self] in
-                        guard let self else { return }
-                        guard capturedGeneration == queryGeneration else { return }
-                        guard !Task.isCancelled else { return }
-                        changeManager.clearChangesAndUndoHistory()
-                    }
+                    clearChangesIfCurrent(claim: claim)
                 }
             } catch {
                 schemaTask?.cancel()
-                await MainActor.run { [weak self] in
-                    guard let self else { return }
-                    tabManager.mutate(tabId: tabId) { tab in
-                        tab.execution.isExecuting = false
-                        tab.pagination.isLoadingMore = false
-                    }
-                    currentQueryTask = nil
-                    toolbarState.setExecuting(false)
-                    if DatabaseCancellationDiagnosis.isCancellation(error) || Task.isCancelled { return }
-                    guard capturedGeneration == queryGeneration else { return }
-                    if isAutoLoad, services.databaseManager.driver(for: connectionId)?.status != .connected {
-                        pendingLoadTrigger = trigger
-                        return
-                    }
-                    handleQueryExecutionError(error, sql: sql, tabId: tabId, connection: conn)
-                }
+                finishFailedQuery(
+                    error,
+                    tabId: tabId,
+                    sql: sql,
+                    connection: conn,
+                    claim: claim,
+                    isAutoLoad: isAutoLoad,
+                    trigger: trigger,
+                    traceToken: traceToken
+                )
             }
         }
     }
 
-    internal func cancelInFlightQueryTask() {
+    internal func cancelInFlightQueryTask(reach: DriverCancellationReach = .userStop) {
         guard currentQueryTask != nil else { return }
         currentQueryTask?.cancel()
         do {
-            try services.databaseManager.cancelRunningQuery(for: connectionId)
+            try services.databaseManager.cancelRunningQuery(for: connectionId, reach: reach)
         } catch {
             Self.logger.warning("cancelQuery failed: \(error.localizedDescription, privacy: .public)")
         }
         currentQueryTask = nil
     }
 
+    /// Ends whatever the tab was doing so a new navigation owns it outright. Invalidating before the
+    /// new claim is minted is what makes "the user navigated away and no successor ever ran" still
+    /// discard the old result, which a counter that only moved on a successful start could not do.
+    internal func supersedeExecution(for tabId: UUID) {
+        tabExecution.invalidate(tabId)
+        cancelTableLoad(for: tabId)
+        cancelInFlightQueryTask(reach: .supersededNavigation)
+    }
+
     /// Reset execution state when a query is cancelled
     @MainActor
     internal func resetExecutionState(tabId: UUID, executionTime: TimeInterval) {
-        tabManager.mutate(tabId: tabId) { $0.execution.isExecuting = false }
+        tabExecution.invalidate(tabId)
         currentQueryTask = nil
         toolbarState.setExecuting(false)
         toolbarState.lastQueryDuration = executionTime

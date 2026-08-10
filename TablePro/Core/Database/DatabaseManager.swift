@@ -97,7 +97,7 @@ final class DatabaseManager {
     /// The drivers each connection is currently executing user SQL on, keyed by an
     /// operation token so a finishing operation can only release its own handle. Stop
     /// reaches the right one even when a cross-database tab runs on a pooled connection.
-    @ObservationIgnored internal var runningDrivers: [UUID: [UUID: DatabaseDriver]] = [:]
+    @ObservationIgnored internal var runningDrivers: [UUID: [UUID: RunningDriver]] = [:]
 
     /// Session for `lastActiveSessionId`, subject to the same caveats.
     var lastActiveSession: ConnectionSession? {

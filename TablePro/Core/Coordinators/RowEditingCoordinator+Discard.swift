@@ -39,7 +39,7 @@ extension RowEditingCoordinator {
         _ = try await DatabaseManager.shared.withScopedDriver(
             scope: scope,
             route: DatabaseManager.shared.executionRoute(for: scope),
-            tracksCancellation: true
+            cancellation: .protectedWrite
         ) { driver in
             try await Self.runStatementsInTransaction(statements, mode: mode, on: driver)
         }
