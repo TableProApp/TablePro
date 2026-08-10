@@ -256,28 +256,33 @@ struct MainContentCoordinatorLazyLoadTests {
 
     // MARK: - loadEpoch bump triggers reload after eviction
 
-    @Test("Eviction bumps the tab's loadEpoch so .task(id:) re-fires")
+    /// `.task(id:)` keys on the tab's own `loadEpoch`, so that is the one the eviction path has to
+    /// move. This used to assert on a copy held by the session that nothing reads, which would
+    /// have stayed green with the reload broken.
+    @Test("Evicting a background tab bumps the tab's loadEpoch so .task(id:) re-fires")
     func evictionBumpsLoadEpoch() {
         let (coordinator, tabManager) = makeCoordinator()
-        let tabId = addTableTab(to: tabManager, tableName: "orders")
-        seedRows(coordinator, for: tabId, rowCount: 7)
-        guard let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else {
+        let background = addTableTab(to: tabManager, tableName: "orders")
+        seedRows(coordinator, for: background, rowCount: 7)
+        let foreground = addTableTab(to: tabManager, tableName: "customers")
+        tabManager.selectedTabId = foreground
+        guard let idx = tabManager.tabs.firstIndex(where: { $0.id == background }) else {
             Issue.record("expected tab to exist")
             return
         }
         tabManager.tabs[idx].execution.lastExecutedAt = Date()
-        #expect(coordinator.tabSessionRegistry.tableRows(for: tabId).rows.count == 7)
+        let initialEpoch = tabManager.tabs[idx].loadEpoch
+        #expect(coordinator.tabSessionRegistry.tableRows(for: background).rows.count == 7)
 
-        guard let session = coordinator.tabSessionRegistry.session(for: tabId) else {
-            Issue.record("expected session to exist after seedRows")
+        coordinator.evictInactiveRowData()
+
+        guard let evictedTab = tabManager.tabs.first(where: { $0.id == background }) else {
+            Issue.record("expected tab to exist")
             return
         }
-        let initialEpoch = session.loadEpoch
-
-        coordinator.tabSessionRegistry.evict(for: tabId)
-
-        #expect(session.loadEpoch != initialEpoch)
-        #expect(coordinator.tabSessionRegistry.isEvicted(tabId) == true)
+        #expect(evictedTab.loadEpoch != initialEpoch)
+        #expect(coordinator.tabSessionRegistry.isEvicted(background) == true)
+        #expect(coordinator.tabSessionRegistry.isEvicted(foreground) == false)
     }
 
     // MARK: - Regression: handleWindowDidBecomeKey does NOT trigger query work

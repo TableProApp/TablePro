@@ -45,7 +45,7 @@ final class QueryTabManager {
     func bindTabSessionRegistry(_ registry: TabSessionRegistry) {
         tabSessionRegistry = registry
         for tab in tabs where registry.session(for: tab.id) == nil {
-            registry.register(TabSession(queryTab: tab))
+            registry.register(TabSession(id: tab.id))
         }
     }
 
@@ -68,7 +68,7 @@ final class QueryTabManager {
         }
         for addedTab in newTabs where !oldIds.contains(addedTab.id) {
             if registry.session(for: addedTab.id) == nil {
-                registry.register(TabSession(queryTab: addedTab))
+                registry.register(TabSession(id: addedTab.id))
             }
         }
     }
