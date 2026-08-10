@@ -8,7 +8,21 @@ import TableProPluginKit
 
 extension MainContentCoordinator {
     func openTableTabQuery(tabId: UUID, trigger: TableLoadTrigger = .userInitiated) async {
-        guard await prepareTableTabFirstLoad(tabId: tabId) else { return }
+        let tracer = TableLoadTracer.shared
+        let token = tracer.activeToken(for: tabId)
+        if let token { tracer.stage(.prepareFirstLoad, token: token) }
+
+        guard await prepareTableTabFirstLoad(tabId: tabId) else {
+            if let token {
+                tracer.anomaly(
+                    .preparationAbandoned,
+                    token: token,
+                    detail: "cancelled=\(Task.isCancelled) stillSelected=\(tabManager.selectedTabId == tabId)"
+                )
+                tracer.finish(token: token, outcome: "prepareAbandoned")
+            }
+            return
+        }
         executeTableTabQueryDirectly(trigger: trigger)
     }
 
@@ -32,7 +46,11 @@ extension MainContentCoordinator {
             return true
         }
 
+        let tracer = TableLoadTracer.shared
+        let token = tracer.activeToken(for: tabId)
+        if let token { tracer.stage(.schemaColumnsBegin, token: token) }
         await loadSchemaColumns(for: tableName, scope: scope(for: tab))
+        if let token { tracer.stage(.schemaColumnsEnd, token: token) }
 
         guard !Task.isCancelled,
               tabManager.selectedTabId == tabId,

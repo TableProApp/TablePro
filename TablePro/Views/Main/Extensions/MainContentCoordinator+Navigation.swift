@@ -69,6 +69,9 @@ extension MainContentCoordinator {
             activateGridFocus: activateGridFocus,
             includeSiblings: navigationModel != .inPlace
         ) {
+            navigationLogger.debug(
+                "[tableload] activateExistingTab table=\(tableName, privacy: .public)"
+            )
             return
         }
 
@@ -79,6 +82,9 @@ extension MainContentCoordinator {
         // During database switch, update the existing tab in-place instead of
         // opening a new native window tab.
         if case .loading = SchemaService.shared.state(for: connectionId) {
+            navigationLogger.debug(
+                "[tableload] deferredToSchemaLoad table=\(tableName, privacy: .public) hasTabs=\(!self.tabManager.tabs.isEmpty)"
+            )
             if tabManager.tabs.isEmpty {
                 do {
                     try tabManager.addTableTab(
@@ -114,6 +120,10 @@ extension MainContentCoordinator {
         if navigationModel == .inPlace {
             if let oldTab = tabManager.selectedTab, let oldTableName = oldTab.tableContext.tableName {
                 saveLastFilters(for: oldTableName)
+            }
+            if let tabId = tabManager.selectedTabId {
+                let token = TableLoadTracer.shared.begin(tabId: tabId, table: tableName, origin: .inPlace)
+                TableLoadTracer.shared.stage(.openTableTab, token: token, detail: "path=inPlace")
             }
             do {
                 let replaced = try tabManager.replaceTabContent(
@@ -154,6 +164,10 @@ extension MainContentCoordinator {
         }
 
         promotePreviewTab()
+        navigationLogger.debug(
+            "[tableload] handoffToNewWindowTab table=\(tableName, privacy: .public)"
+        )
+        TableLoadTracer.shared.noteWindowTabHandoff(connectionId: connection.id, table: tableName)
         let payload = EditorTabPayload(
             connectionId: connection.id,
             tabType: .table,
@@ -241,7 +255,10 @@ extension MainContentCoordinator {
             navigationLogger.error("openTableTab tab creation failed: \(error.localizedDescription, privacy: .public)")
             return
         }
-        if let (_, tabIndex) = tabManager.selectedTabAndIndex {
+        if let (tab, tabIndex) = tabManager.selectedTabAndIndex {
+            let token = TableLoadTracer.shared.begin(tabId: tab.id, table: tableName, origin: .sidebar)
+            TableLoadTracer.shared.stage(.openTableTab, token: token, detail: "path=addFirstTab")
+            TableLoadTracer.shared.stage(.addFirstTab, token: token)
             tabManager.mutate(at: tabIndex) { tab in
                 tab.tableContext.isView = isView
                 tab.tableContext.isEditable = !isView
@@ -267,9 +284,26 @@ extension MainContentCoordinator {
         showStructure: Bool,
         createAsPreview: Bool
     ) {
-        if let oldTableName = tabManager.selectedTab?.tableContext.tableName {
-            saveLastFilters(for: oldTableName)
+        let previousTableName = tabManager.selectedTab?.tableContext.tableName
+        if let previousTableName {
+            saveLastFilters(for: previousTableName)
         }
+
+        var token: TableLoadTraceToken?
+        if let tabId = tabManager.selectedTabId {
+            let wasExecuting = tabManager.selectedTab?.execution.isExecuting ?? false
+            let started = TableLoadTracer.shared.begin(tabId: tabId, table: tableName, origin: .sidebar)
+            token = started
+            TableLoadTracer.shared.stage(
+                .openTableTab,
+                token: started,
+                detail: """
+                    path=reuseActiveTab from=\(previousTableName ?? "none") \
+                    wasExecuting=\(wasExecuting) hasInFlightQuery=\(currentQueryTask != nil)
+                    """
+            )
+        }
+
         do {
             try tabManager.replaceTabContent(
                 tableName: tableName,
@@ -281,8 +315,10 @@ extension MainContentCoordinator {
             )
         } catch {
             navigationLogger.error("openTableTab replaceTabContent failed: \(error.localizedDescription, privacy: .public)")
+            if let token { TableLoadTracer.shared.finish(token: token, outcome: "replaceFailed") }
             return
         }
+        if let token { TableLoadTracer.shared.stage(.replaceTabContent, token: token) }
         clearFilterState()
         if let (tab, tabIndex) = tabManager.selectedTabAndIndex {
             setActiveTableRows(TableRows(), for: tab.id)
@@ -295,6 +331,7 @@ extension MainContentCoordinator {
         restoreLastHiddenColumnsForTable()
         restoreFiltersForTable(tableName)
         if let tabId = tabManager.selectedTab?.id {
+            if let token { TableLoadTracer.shared.stage(.cancelPreviousLoad, token: token) }
             cancelTableLoad(for: tabId)
         }
         lazyLoadCurrentTabIfNeeded()

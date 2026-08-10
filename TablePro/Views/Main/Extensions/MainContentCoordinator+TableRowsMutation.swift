@@ -80,7 +80,19 @@ extension MainContentCoordinator {
         guard let idx = tabManager.selectedTabIndex,
               idx < tabManager.tabs.count,
               tabManager.tabs[idx].id == tabId else { return }
+
+        let tracer = TableLoadTracer.shared
+        let token = tracer.applyingToken
+        if let token {
+            tracer.stage(
+                .gridReloadBegin,
+                token: token,
+                detail: "rows=\(tabSessionRegistry.tableRows(for: tabId).rows.count)"
+            )
+        }
         dataTabDelegate?.tableViewCoordinator?.applyFullReplace()
+        if let token { tracer.stage(.gridReloadEnd, token: token) }
+
         if pendingScrollToTopAfterReplace.remove(tabId) != nil {
             dataTabDelegate?.tableViewCoordinator?.scrollToTop()
         }

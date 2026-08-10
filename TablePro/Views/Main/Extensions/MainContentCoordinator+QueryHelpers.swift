@@ -13,6 +13,37 @@ extension MainContentCoordinator {
         aiViewModel?.handleFixError(query: query, error: error)
     }
 
+    func finishFailedQuery(
+        _ error: Error,
+        tabId: UUID,
+        sql: String,
+        connection conn: DatabaseConnection,
+        capturedGeneration: Int,
+        isAutoLoad: Bool,
+        trigger: TableLoadTrigger,
+        traceToken: TableLoadTraceToken?
+    ) {
+        tabManager.mutate(tabId: tabId) { tab in
+            tab.execution.isExecuting = false
+            tab.pagination.isLoadingMore = false
+        }
+        currentQueryTask = nil
+        toolbarState.setExecuting(false)
+        traceExecutionFailed(traceToken, error: error)
+        if DatabaseCancellationDiagnosis.isCancellation(error) || Task.isCancelled { return }
+        guard capturedGeneration == queryGeneration else { return }
+        if isAutoLoad, services.databaseManager.driver(for: connectionId)?.status != .connected {
+            pendingLoadTrigger = trigger
+            return
+        }
+        handleQueryExecutionError(error, sql: sql, tabId: tabId, connection: conn)
+    }
+
+    func clearChangesIfCurrent(generation: Int) {
+        guard generation == queryGeneration, !Task.isCancelled else { return }
+        changeManager.clearChangesAndUndoHistory()
+    }
+
     func resolveRowCap(sql: String, tabType: TabType, bypassLimit: Bool = false) -> Int? {
         queryExecutionCoordinator.resolveRowCap(sql: sql, tabType: tabType, bypassLimit: bypassLimit)
     }
@@ -58,6 +89,32 @@ extension MainContentCoordinator {
             connection: conn,
             isTruncated: isTruncated,
             queryParameterValues: queryParameterValues
+        )
+    }
+
+    func launchPhase2(
+        tableName: String,
+        tabId: UUID,
+        capturedGeneration: Int,
+        connectionType: DatabaseType,
+        needsMetadataFetch: Bool,
+        schemaTask: Task<FetchedTableSchema, Error>?
+    ) {
+        guard needsMetadataFetch else {
+            launchPhase2Count(
+                tableName: tableName,
+                tabId: tabId,
+                capturedGeneration: capturedGeneration,
+                connectionType: connectionType
+            )
+            return
+        }
+        launchPhase2Work(
+            tableName: tableName,
+            tabId: tabId,
+            capturedGeneration: capturedGeneration,
+            connectionType: connectionType,
+            schemaTask: schemaTask
         )
     }
 
