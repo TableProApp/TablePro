@@ -14,14 +14,12 @@ final class WindowOpenerTests: XCTestCase {
         super.setUp()
         _ = WelcomeRouter.shared.consumePendingRequest()
         openedRequests = []
-        WindowOpener.shared.wire(
-            openWelcome: {},
-            openConnectionForm: { [weak self] request in
-                self?.openedRequests.append(request)
-            },
-            openIntegrationsActivity: {},
-            openSettings: {}
-        )
+        WindowOpener.shared.setWelcomePresenter {}
+        WindowOpener.shared.setConnectionFormPresenter { [weak self] request in
+            self?.openedRequests.append(request)
+        }
+        WindowOpener.shared.setIntegrationsActivityPresenter {}
+        WindowOpener.shared.setSettingsPresenter {}
     }
 
     override func tearDown() {
@@ -126,6 +124,35 @@ final class WindowOpenerTests: XCTestCase {
         WindowOpener.shared.openConnectionForm(editing: connectionId)
 
         XCTAssertEqual(openedRequests, [.edit(connectionId: connectionId)])
+    }
+
+    func testACallMadeBeforeItsPresenterIsRegisteredRunsOnceItArrives() {
+        let opener = WindowOpener()
+        var opened: [ConnectionFormRequest] = []
+        let connectionId = UUID()
+
+        opener.openConnectionForm(editing: connectionId)
+        XCTAssertTrue(opened.isEmpty, "No presenter yet, so the call has to wait")
+
+        opener.setConnectionFormPresenter { opened.append($0) }
+
+        XCTAssertEqual(opened, [.edit(connectionId: connectionId)])
+    }
+
+    /// Registering one window's presenter must not drop another window's queued call, which is
+    /// what lets the windows migrate to AppKit one at a time.
+    func testRegisteringOneWindowDoesNotDiscardAnotherWindowsQueuedCall() {
+        let opener = WindowOpener()
+        var opened: [ConnectionFormRequest] = []
+        let connectionId = UUID()
+
+        opener.openConnectionForm(editing: connectionId)
+        opener.setWelcomePresenter {}
+        XCTAssertTrue(opened.isEmpty, "The connection form still has no presenter")
+
+        opener.setConnectionFormPresenter { opened.append($0) }
+
+        XCTAssertEqual(opened, [.edit(connectionId: connectionId)])
     }
 
     func testEditingTheSameConnectionTwiceRequestsTheSameWindow() {

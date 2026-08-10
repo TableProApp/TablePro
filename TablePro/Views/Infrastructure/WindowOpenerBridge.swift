@@ -16,11 +16,11 @@ internal struct WindowOpenerBridge: View {
     }
 
     private func wireUp() {
-        WindowOpener.shared.wire(
-            openWelcome: { openWindow(id: SceneId.welcome) },
-            openConnectionForm: { request in openWindow(id: SceneId.connectionForm, value: request) },
-            openIntegrationsActivity: { openWindow(id: SceneId.integrationsActivity) },
-            openSettings: { openSettings() }
-        )
+        WindowOpener.shared.setWelcomePresenter { openWindow(id: SceneId.welcome) }
+        WindowOpener.shared.setConnectionFormPresenter { request in
+            openWindow(id: SceneId.connectionForm, value: request)
+        }
+        WindowOpener.shared.setIntegrationsActivityPresenter { openWindow(id: SceneId.integrationsActivity) }
+        WindowOpener.shared.setSettingsPresenter { openSettings() }
     }
 }
