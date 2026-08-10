@@ -166,6 +166,7 @@ final class PaginationCoordinator {
         parent.tabManager.mutate(at: index) { $0.pagination.isCountingExact = true }
 
         let contentEpoch = parent.tabExecution.contentEpoch(for: tabId)
+        let token = UUID()
         let task = Task(priority: .userInitiated) { [parent] in
             let count = await Self.exactRowCount(
                 scope: scope,
@@ -177,7 +178,7 @@ final class PaginationCoordinator {
 
             guard !Task.isCancelled else { return }
             guard parent.tabExecution.isSameContent(contentEpoch, for: tabId) else { return }
-            parent.clearRowCountTask(for: tabId)
+            parent.clearRowCountTask(for: tabId, token: token)
             parent.tabManager.mutate(tabId: tabId) { tab in
                 tab.pagination.isCountingExact = false
                 guard let count, count >= 0 else { return }
@@ -185,7 +186,7 @@ final class PaginationCoordinator {
                 tab.pagination.isApproximateRowCount = false
             }
         }
-        parent.setRowCountTask(task, for: tabId)
+        parent.setRowCountTask(task, token: token, for: tabId)
     }
 
     private static func exactRowCount(

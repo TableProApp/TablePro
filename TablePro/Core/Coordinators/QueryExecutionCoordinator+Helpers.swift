@@ -414,6 +414,7 @@ extension QueryExecutionCoordinator {
     ) {
         let isNonSQL = PluginManager.shared.editorLanguage(for: connectionType) != .sql
         let contentEpoch = parent.tabExecution.contentEpoch(for: tabId)
+        let token = UUID()
 
         let task = Task(priority: .utility) { [weak self, parent] in
             guard let self else { return }
@@ -488,7 +489,7 @@ extension QueryExecutionCoordinator {
 
             await MainActor.run {
                 guard parent.tabExecution.isSameContent(contentEpoch, for: tabId) else { return }
-                parent.clearRowCountTask(for: tabId)
+                parent.clearRowCountTask(for: tabId, token: token)
                 guard let outcome else { return }
                 parent.tabManager.mutate(tabId: tabId) { tab in
                     let applied = outcome.appliedTotal
@@ -497,7 +498,7 @@ extension QueryExecutionCoordinator {
                 }
             }
         }
-        parent.setRowCountTask(task, for: tabId)
+        parent.setRowCountTask(task, token: token, for: tabId)
     }
 
     static func rowCountPlan(

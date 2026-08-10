@@ -199,7 +199,7 @@ struct MainContentCoordinatorRefreshTests {
         withInjectedDriver { connection, driver in
             let (coordinator, tabManager) = makeCoordinator(connection: connection)
             let tabId = addTableTab(to: tabManager)
-            coordinator.setRowCountTask(Task<Void, Never> {}, for: tabId)
+            coordinator.setRowCountTask(Task<Void, Never> {}, token: UUID(), for: tabId)
 
             coordinator.cancelCurrentQuery()
 
@@ -220,7 +220,7 @@ struct MainContentCoordinatorRefreshTests {
             tabManager.tabs[idx].execution.lastExecutedAt = Date()
 
             for _ in 0..<4 {
-                coordinator.setRowCountTask(Task<Void, Never> {}, for: tabId)
+                coordinator.setRowCountTask(Task<Void, Never> {}, token: UUID(), for: tabId)
                 coordinator.handleRefresh(hasPendingTableOps: false, onDiscard: {})
                 coordinator.currentQueryTask?.cancel()
                 coordinator.currentQueryTask = nil

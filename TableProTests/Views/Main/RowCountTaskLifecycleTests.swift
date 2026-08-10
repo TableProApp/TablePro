@@ -20,8 +20,8 @@ struct RowCountTaskLifecycleTests {
         let first = Self.neverEndingTask()
         defer { first.cancel() }
 
-        coordinator.setRowCountTask(first, for: tabId)
-        coordinator.setRowCountTask(Self.neverEndingTask(), for: tabId)
+        coordinator.setRowCountTask(first, token: UUID(), for: tabId)
+        coordinator.setRowCountTask(Self.neverEndingTask(), token: UUID(), for: tabId)
 
         #expect(first.isCancelled)
         #expect(coordinator.rowCountTasks.count == 1)
@@ -41,8 +41,8 @@ struct RowCountTaskLifecycleTests {
             countB.cancel()
         }
 
-        coordinator.setRowCountTask(countA, for: tabA)
-        coordinator.setRowCountTask(countB, for: tabB)
+        coordinator.setRowCountTask(countA, token: UUID(), for: tabA)
+        coordinator.setRowCountTask(countB, token: UUID(), for: tabB)
 
         #expect(countA.isCancelled == false)
         #expect(coordinator.rowCountTasks.count == 2)
@@ -59,8 +59,8 @@ struct RowCountTaskLifecycleTests {
             countA.cancel()
             countB.cancel()
         }
-        coordinator.setRowCountTask(countA, for: tabA)
-        coordinator.setRowCountTask(countB, for: tabB)
+        coordinator.setRowCountTask(countA, token: UUID(), for: tabA)
+        coordinator.setRowCountTask(countB, token: UUID(), for: tabB)
 
         coordinator.supersedeExecution(for: tabA)
 
@@ -78,8 +78,8 @@ struct RowCountTaskLifecycleTests {
         let tabB = Self.addTableTab(to: tabManager, tableName: "customers")
         let countA = Self.neverEndingTask()
         let countB = Self.neverEndingTask()
-        coordinator.setRowCountTask(countA, for: tabA)
-        coordinator.setRowCountTask(countB, for: tabB)
+        coordinator.setRowCountTask(countA, token: UUID(), for: tabA)
+        coordinator.setRowCountTask(countB, token: UUID(), for: tabB)
 
         coordinator.teardown()
 
@@ -95,8 +95,8 @@ struct RowCountTaskLifecycleTests {
         let tabB = Self.addTableTab(to: tabManager, tableName: "customers")
         let countA = Self.neverEndingTask()
         let countB = Self.neverEndingTask()
-        coordinator.setRowCountTask(countA, for: tabA)
-        coordinator.setRowCountTask(countB, for: tabB)
+        coordinator.setRowCountTask(countA, token: UUID(), for: tabA)
+        coordinator.setRowCountTask(countB, token: UUID(), for: tabB)
 
         coordinator.cancelCurrentQuery()
 
@@ -113,12 +113,36 @@ struct RowCountTaskLifecycleTests {
         let tabId = Self.addTableTab(to: tabManager)
         let count = Self.neverEndingTask()
         defer { count.cancel() }
-        coordinator.setRowCountTask(count, for: tabId)
+        let token = UUID()
+        coordinator.setRowCountTask(count, token: token, for: tabId)
 
-        coordinator.clearRowCountTask(for: tabId)
+        coordinator.clearRowCountTask(for: tabId, token: token)
 
         #expect(count.isCancelled == false)
         #expect(coordinator.rowCountTasks.isEmpty)
+    }
+
+    /// A superseded task still runs its completion path. Once phase 2 validates content identity
+    /// rather than a claim that is already settled, that path is reached, so without the token the
+    /// finishing task clears the successor that replaced it and leaves it uncancellable.
+    @Test("A superseded task cannot clear the handle of the one that replaced it")
+    func supersededTaskCannotClearItsSuccessor() {
+        let (coordinator, tabManager) = Self.makeCoordinator()
+        let tabId = Self.addTableTab(to: tabManager)
+        let firstToken = UUID()
+        let first = Self.neverEndingTask()
+        let second = Self.neverEndingTask()
+        defer {
+            first.cancel()
+            second.cancel()
+        }
+        coordinator.setRowCountTask(first, token: firstToken, for: tabId)
+        coordinator.setRowCountTask(second, token: UUID(), for: tabId)
+
+        coordinator.clearRowCountTask(for: tabId, token: firstToken)
+
+        #expect(coordinator.rowCountTasks[tabId] != nil)
+        #expect(second.isCancelled == false)
     }
 
     private static func makeCoordinator() -> (MainContentCoordinator, QueryTabManager) {
