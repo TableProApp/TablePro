@@ -269,11 +269,11 @@ extension QueryExecutionCoordinator {
     func launchPhase2Work(
         tableName: String,
         tabId: UUID,
-        claim: TabExecutionClaim,
         connectionType: DatabaseType,
         schemaTask: Task<FetchedTableSchema, Error>?
     ) {
         let isNonSQL = PluginManager.shared.editorLanguage(for: connectionType) != .sql
+        let contentEpoch = parent.tabExecution.contentEpoch(for: tabId)
         Task(priority: .utility) { [weak self, parent] in
             guard let self else { return }
             guard !parent.isTearingDown else { return }
@@ -288,11 +288,10 @@ extension QueryExecutionCoordinator {
                 if let schema {
                     applySchemaMetadata(schema, tabId: tabId, tableName: tableName)
                 }
-                if parent.tabExecution.isCurrent(claim) {
+                if parent.tabExecution.isSameContent(contentEpoch, for: tabId) {
                     resolveRowCount(
                         tableName: tableName,
                         tabId: tabId,
-                        claim: claim,
                         connectionType: connectionType
                     )
                 }
@@ -396,24 +395,25 @@ extension QueryExecutionCoordinator {
     func launchPhase2Count(
         tableName: String,
         tabId: UUID,
-        claim: TabExecutionClaim,
         connectionType: DatabaseType
     ) {
         resolveRowCount(
             tableName: tableName,
             tabId: tabId,
-            claim: claim,
             connectionType: connectionType
         )
     }
 
+    /// Validates against the tab's content identity, not the execution claim. The claim is settled
+    /// the moment phase 1 is applied, which happens before phase 2 is even dispatched, so a claim
+    /// check here is false on every run and the count never lands.
     func resolveRowCount(
         tableName: String,
         tabId: UUID,
-        claim: TabExecutionClaim,
         connectionType: DatabaseType
     ) {
         let isNonSQL = PluginManager.shared.editorLanguage(for: connectionType) != .sql
+        let contentEpoch = parent.tabExecution.contentEpoch(for: tabId)
 
         let task = Task(priority: .utility) { [weak self, parent] in
             guard let self else { return }
@@ -487,7 +487,7 @@ extension QueryExecutionCoordinator {
             }
 
             await MainActor.run {
-                guard parent.tabExecution.isCurrent(claim) else { return }
+                guard parent.tabExecution.isSameContent(contentEpoch, for: tabId) else { return }
                 parent.clearRowCountTask(for: tabId)
                 guard let outcome else { return }
                 parent.tabManager.mutate(tabId: tabId) { tab in

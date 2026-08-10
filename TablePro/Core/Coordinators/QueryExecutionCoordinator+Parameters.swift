@@ -176,7 +176,6 @@ extension QueryExecutionCoordinator {
                         launchPhase2Work(
                             tableName: tableName,
                             tabId: tabId,
-                            claim: claim,
                             connectionType: conn.type,
                             schemaTask: schemaTask
                         )
@@ -184,7 +183,6 @@ extension QueryExecutionCoordinator {
                         launchPhase2Count(
                             tableName: tableName,
                             tabId: tabId,
-                            claim: claim,
                             connectionType: conn.type
                         )
                     }

@@ -95,7 +95,6 @@ extension MainContentCoordinator {
     func launchPhase2(
         tableName: String,
         tabId: UUID,
-        claim: TabExecutionClaim,
         connectionType: DatabaseType,
         needsMetadataFetch: Bool,
         schemaTask: Task<FetchedTableSchema, Error>?
@@ -104,7 +103,6 @@ extension MainContentCoordinator {
             launchPhase2Count(
                 tableName: tableName,
                 tabId: tabId,
-                claim: claim,
                 connectionType: connectionType
             )
             return
@@ -112,7 +110,6 @@ extension MainContentCoordinator {
         launchPhase2Work(
             tableName: tableName,
             tabId: tabId,
-            claim: claim,
             connectionType: connectionType,
             schemaTask: schemaTask
         )
@@ -121,14 +118,12 @@ extension MainContentCoordinator {
     func launchPhase2Work(
         tableName: String,
         tabId: UUID,
-        claim: TabExecutionClaim,
         connectionType: DatabaseType,
         schemaTask: Task<FetchedTableSchema, Error>?
     ) {
         queryExecutionCoordinator.launchPhase2Work(
             tableName: tableName,
             tabId: tabId,
-            claim: claim,
             connectionType: connectionType,
             schemaTask: schemaTask
         )
@@ -137,13 +132,11 @@ extension MainContentCoordinator {
     func launchPhase2Count(
         tableName: String,
         tabId: UUID,
-        claim: TabExecutionClaim,
         connectionType: DatabaseType
     ) {
         queryExecutionCoordinator.launchPhase2Count(
             tableName: tableName,
             tabId: tabId,
-            claim: claim,
             connectionType: connectionType
         )
     }

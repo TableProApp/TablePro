@@ -1291,7 +1291,6 @@ final class MainContentCoordinator {
                     launchPhase2(
                         tableName: tableName,
                         tabId: tabId,
-                        claim: claim,
                         connectionType: conn.type,
                         needsMetadataFetch: needsMetadataFetch,
                         schemaTask: schemaTask
