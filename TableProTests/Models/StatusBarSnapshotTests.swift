@@ -99,6 +99,7 @@ struct StatusBarSnapshotTests {
         pagination.hasMoreRows = true
         let snapshot = makeSnapshot(tabType: .query, rowCount: 1_000, pagination: pagination)
         let text = snapshot.rowInfoText(selectedCount: 0)
-        #expect(text.contains("1,000") || text.contains("1000"))
+        let formattedCount = 1_000.formatted(.number.grouping(.automatic))
+        #expect(text == String(format: String(localized: "Showing %@ rows"), formattedCount))
     }
 }
