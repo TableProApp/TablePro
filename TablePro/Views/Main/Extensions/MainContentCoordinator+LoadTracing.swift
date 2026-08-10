@@ -70,13 +70,14 @@ extension MainContentCoordinator {
         tracer.finish(token: token, outcome: "cancelled")
     }
 
-    func traceStaleResultDropped(_ token: TableLoadTraceToken?, captured: Int, current: Int) {
+    func traceStaleResultDropped(_ token: TableLoadTraceToken?) {
         guard let token else { return }
         let tracer = TableLoadTracer.shared
+        let owner = tracer.activeToken(for: token.tabId)
         tracer.anomaly(
             .staleGenerationDropped,
             token: token,
-            detail: "captured=\(captured) current=\(current) cancelled=\(Task.isCancelled)"
+            detail: "tabOwnedBy=\(owner.map { "#\($0.sequence)" } ?? "none") cancelled=\(Task.isCancelled)"
         )
         tracer.finish(token: token, outcome: "staleDropped")
     }

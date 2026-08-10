@@ -1237,7 +1237,7 @@ final class MainContentCoordinator {
                     // that cleared the spinner or nilled the task handle would be reporting on a
                     // query that is still running, so the gate comes before all of them.
                     guard tabExecution.isCurrent(claim), !Task.isCancelled else {
-                        traceStaleResultDropped(traceToken, captured: claim.epoch, current: 0)
+                        traceStaleResultDropped(traceToken)
                         return
                     }
                     tabExecution.advance(claim, to: .applying)
