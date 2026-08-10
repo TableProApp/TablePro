@@ -260,7 +260,7 @@ struct TableLoadTraceRecorderTests {
     func classifiesDefectAnomalies() {
         #expect(TableLoadAnomaly.blockedByInFlightExecution.isDefect)
         #expect(TableLoadAnomaly.resultTableMismatch.isDefect)
-        #expect(TableLoadAnomaly.staleGenerationDropped.isDefect == false)
+        #expect(TableLoadAnomaly.staleResultDropped.isDefect == false)
         #expect(TableLoadAnomaly.supersededByNewNavigation.isDefect == false)
         #expect(TableLoadAnomaly.executionCancelled.isDefect == false)
         #expect(TableLoadAnomaly.connectionNotReady.isDefect == false)

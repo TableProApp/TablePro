@@ -18,12 +18,6 @@ internal struct TabExecutionClaim: Hashable, Sendable {
     let epoch: Int
 }
 
-internal enum TabExecutionPhase: Equatable, Sendable {
-    case preparing
-    case executing
-    case applying
-}
-
 /// Per-tab owner of "which navigation owns this tab's execution", shaped after
 /// `ConnectionAttemptRegistry` one level down: connection identity becomes tab identity.
 ///
@@ -34,7 +28,6 @@ internal enum TabExecutionPhase: Equatable, Sendable {
 internal struct TabExecutionRegistry {
     private struct Entry {
         let epoch: Int
-        var phase: TabExecutionPhase
     }
 
     private var entries: [UUID: Entry] = [:]
@@ -45,7 +38,7 @@ internal struct TabExecutionRegistry {
 
     internal mutating func claim(_ tabId: UUID) -> TabExecutionClaim {
         lastEpoch += 1
-        entries[tabId] = Entry(epoch: lastEpoch, phase: .preparing)
+        entries[tabId] = Entry(epoch: lastEpoch)
         contentEpochs[tabId] = lastEpoch
         return TabExecutionClaim(tabId: tabId, epoch: lastEpoch)
     }
@@ -63,11 +56,6 @@ internal struct TabExecutionRegistry {
 
     internal func isCurrent(_ claim: TabExecutionClaim) -> Bool {
         entries[claim.tabId]?.epoch == claim.epoch
-    }
-
-    internal mutating func advance(_ claim: TabExecutionClaim, to phase: TabExecutionPhase) {
-        guard isCurrent(claim) else { return }
-        entries[claim.tabId]?.phase = phase
     }
 
     /// Retarget, explicit cancel, tab close, teardown. Removing the entry rather than bumping a
@@ -88,11 +76,6 @@ internal struct TabExecutionRegistry {
         }
     }
 
-    internal mutating func forget(_ tabId: UUID) {
-        entries.removeValue(forKey: tabId)
-        contentEpochs.removeValue(forKey: tabId)
-    }
-
     /// Ends a claim that ran to completion. A claim that is no longer current settles nothing, so a
     /// late result cannot clear the busy state of the navigation that superseded it.
     internal mutating func settle(_ claim: TabExecutionClaim) {
@@ -100,16 +83,8 @@ internal struct TabExecutionRegistry {
         entries.removeValue(forKey: claim.tabId)
     }
 
-    internal func phase(for tabId: UUID) -> TabExecutionPhase? {
-        entries[tabId]?.phase
-    }
-
     internal func isExecuting(_ tabId: UUID) -> Bool {
         entries[tabId] != nil
-    }
-
-    internal var executingTabIds: Set<UUID> {
-        Set(entries.keys)
     }
 
     internal var isAnyExecuting: Bool {

@@ -86,39 +86,14 @@ struct TabExecutionRegistryTests {
         #expect(registry.isCurrent(live))
     }
 
-    @Test("A stale claim cannot advance the phase")
-    func staleClaimCannotAdvancePhase() {
-        var registry = TabExecutionRegistry()
-        let tabId = UUID()
-        let stale = registry.claim(tabId)
-        _ = registry.claim(tabId)
 
-        registry.advance(stale, to: .applying)
 
-        #expect(registry.phase(for: tabId) == .preparing)
-    }
-
-    @Test("The current claim advances through its phases")
-    func currentClaimAdvancesPhases() {
-        var registry = TabExecutionRegistry()
-        let tabId = UUID()
-        let claim = registry.claim(tabId)
-        #expect(registry.phase(for: tabId) == .preparing)
-
-        registry.advance(claim, to: .executing)
-        #expect(registry.phase(for: tabId) == .executing)
-
-        registry.advance(claim, to: .applying)
-        #expect(registry.phase(for: tabId) == .applying)
-    }
-
-    @Test("An unknown tab has no phase and is not executing")
+    @Test("An unknown tab is idle")
     func unknownTabIsIdle() {
         let registry = TabExecutionRegistry()
         let tabId = UUID()
-        #expect(registry.phase(for: tabId) == nil)
         #expect(registry.isExecuting(tabId) == false)
-        #expect(registry.executingTabIds.isEmpty)
+        #expect(registry.isAnyExecuting == false)
     }
 
     @Test("Teardown invalidates every tab at once")
@@ -134,19 +109,6 @@ struct TabExecutionRegistryTests {
         #expect(registry.isAnyExecuting == false)
     }
 
-    @Test("Executing tab ids report every live claim")
-    func reportsExecutingTabIds() {
-        var registry = TabExecutionRegistry()
-        let tabA = UUID()
-        let tabB = UUID()
-        let claimA = registry.claim(tabA)
-        _ = registry.claim(tabB)
-
-        #expect(registry.executingTabIds == [tabA, tabB])
-
-        registry.settle(claimA)
-        #expect(registry.executingTabIds == [tabB])
-    }
 
     /// Epochs are window-global so two tabs never share one, which keeps a claim comparable on its
     /// own without also carrying the tab's mutable identity fields.

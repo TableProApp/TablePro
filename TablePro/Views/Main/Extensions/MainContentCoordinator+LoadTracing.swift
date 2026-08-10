@@ -6,12 +6,12 @@
 import Foundation
 
 extension MainContentCoordinator {
-    func traceExecutionStarted(_ token: TableLoadTraceToken?, generation: Int, isAutoLoad: Bool) {
+    func traceExecutionStarted(_ token: TableLoadTraceToken?, epoch: Int, isAutoLoad: Bool) {
         guard let token else { return }
         TableLoadTracer.shared.stage(
             .executeStarted,
             token: token,
-            detail: "generation=\(generation) isAutoLoad=\(isAutoLoad)"
+            detail: "epoch=\(epoch) isAutoLoad=\(isAutoLoad)"
         )
     }
 
@@ -75,7 +75,7 @@ extension MainContentCoordinator {
         let tracer = TableLoadTracer.shared
         let owner = tracer.activeToken(for: token.tabId)
         tracer.anomaly(
-            .staleGenerationDropped,
+            .staleResultDropped,
             token: token,
             detail: "tabOwnedBy=\(owner.map { "#\($0.sequence)" } ?? "none") cancelled=\(Task.isCancelled)"
         )

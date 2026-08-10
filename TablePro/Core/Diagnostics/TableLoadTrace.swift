@@ -37,7 +37,7 @@ internal enum TableLoadAnomaly: String {
     case supersededByNewNavigation
     case blockedByInFlightExecution
     case loadAlreadyInFlight
-    case staleGenerationDropped
+    case staleResultDropped
     case resultTableMismatch
     case connectionNotReady
     case executionCancelled
@@ -50,7 +50,7 @@ internal enum TableLoadAnomaly: String {
         switch self {
         case .blockedByInFlightExecution, .resultTableMismatch:
             return true
-        case .supersededByNewNavigation, .loadAlreadyInFlight, .staleGenerationDropped,
+        case .supersededByNewNavigation, .loadAlreadyInFlight, .staleResultDropped,
              .connectionNotReady, .executionCancelled, .preparationAbandoned:
             return false
         }

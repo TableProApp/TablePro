@@ -146,8 +146,9 @@ extension MainContentCoordinator {
         )
 
         guard tableLoadTasks[tab.id] == nil else {
+            guard carriedToken == nil else { return }
             tracer.anomaly(.loadAlreadyInFlight, token: traceToken)
-            if carriedToken == nil { tracer.finish(token: traceToken, outcome: "loadAlreadyInFlight") }
+            tracer.finish(token: traceToken, outcome: "loadAlreadyInFlight")
             return
         }
 
@@ -162,9 +163,6 @@ extension MainContentCoordinator {
         }
 
         let tabId = tab.id
-        Self.lifecycleLogger.debug(
-            "[switch] coordinator.lazyLoadCurrentTabIfNeeded executing tabId=\(tabId, privacy: .public)"
-        )
         tracer.stage(.lazyLoadScheduled, token: traceToken)
         let token = UUID()
         let task = Task { @MainActor [weak self] in

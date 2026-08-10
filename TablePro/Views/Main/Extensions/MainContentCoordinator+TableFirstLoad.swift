@@ -17,7 +17,7 @@ extension MainContentCoordinator {
                 tracer.anomaly(
                     .preparationAbandoned,
                     token: token,
-                    detail: "cancelled=\(Task.isCancelled) stillSelected=\(tabManager.selectedTabId == tabId)"
+                    detail: "cancelled=\(Task.isCancelled)"
                 )
                 tracer.finish(token: token, outcome: "prepareAbandoned")
             }

@@ -865,8 +865,11 @@ final class MainContentCoordinator {
     // MARK: - Query Execution
 
     func runQuery(trigger: TableLoadTrigger = .userInitiated, bypassRowLimit: Bool = false) {
-        guard let (tab, index) = tabManager.selectedTabAndIndex,
-              !tabExecution.isExecuting(tab.id) else { return }
+        guard let (tab, index) = tabManager.selectedTabAndIndex else { return }
+        guard !tabExecution.isExecuting(tab.id) else {
+            traceExecutionBlocked(tabId: tab.id, site: "runQuery")
+            return
+        }
 
         if tab.tabType == .table {
             executeTableTabQueryDirectly(trigger: trigger)
@@ -1031,8 +1034,11 @@ final class MainContentCoordinator {
 
     /// Run EXPLAIN on the current query (database-type-aware prefix)
     func runExplainQuery() {
-        guard let (tab, _) = tabManager.selectedTabAndIndex,
-              !tabExecution.isExecuting(tab.id) else { return }
+        guard let (tab, _) = tabManager.selectedTabAndIndex else { return }
+        guard !tabExecution.isExecuting(tab.id) else {
+            traceExecutionBlocked(tabId: tab.id, site: "runExplainQuery")
+            return
+        }
 
         let fullQuery = tab.content.query
 
@@ -1155,7 +1161,7 @@ final class MainContentCoordinator {
         let tabId = tabManager.tabs[index].id
 
         let traceToken = adoptOrBeginExecutionTrace(tabId: tabId)
-        traceExecutionStarted(traceToken, generation: claim.epoch, isAutoLoad: isAutoLoad)
+        traceExecutionStarted(traceToken, epoch: claim.epoch, isAutoLoad: isAutoLoad)
 
         let rowCap = resolveRowCap(sql: sql, tabType: tab.tabType, bypassLimit: bypassRowLimit)
         let (tableName, isEditable) = resolveTableEditability(tab: tab, sql: sql)
@@ -1179,7 +1185,6 @@ final class MainContentCoordinator {
             toolbarState.setExecuting(false)
             return
         }
-        tabExecution.advance(claim, to: .executing)
 
         currentQueryTask = Task { [weak self] in
             guard let self else { return }
@@ -1245,8 +1250,6 @@ final class MainContentCoordinator {
                         traceStaleResultDropped(traceToken)
                         return
                     }
-                    tabExecution.advance(claim, to: .applying)
-
                     currentQueryTask = nil
                     if services.pluginManager.supportsQueryProgress(for: self.connection.type) {
                         self.clearClickHouseProgress()

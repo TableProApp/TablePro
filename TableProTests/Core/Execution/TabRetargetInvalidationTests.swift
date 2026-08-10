@@ -17,7 +17,6 @@ struct TabRetargetInvalidationTests {
         let tabId = UUID()
 
         let tableA = registry.claim(tabId)
-        registry.advance(tableA, to: .executing)
 
         registry.invalidate(tabId)
 
@@ -32,7 +31,6 @@ struct TabRetargetInvalidationTests {
         let tabId = UUID()
 
         let tableA = registry.claim(tabId)
-        registry.advance(tableA, to: .executing)
         registry.invalidate(tabId)
 
         #expect(registry.isExecuting(tabId) == false)
@@ -64,13 +62,10 @@ struct TabRetargetInvalidationTests {
         let tableA = registry.claim(tabId)
         registry.invalidate(tabId)
         let tableB = registry.claim(tabId)
-        registry.advance(tableB, to: .executing)
 
         registry.settle(tableA)
-        registry.advance(tableA, to: .applying)
 
         #expect(registry.isCurrent(tableB))
-        #expect(registry.phase(for: tabId) == .executing)
         #expect(registry.isExecuting(tabId))
     }
 
@@ -120,18 +115,6 @@ struct TabRetargetInvalidationTests {
         #expect(registry.isAnyExecuting == false)
     }
 
-    @Test("Closing a tab forgets it entirely")
-    func forgetClearsEverything() {
-        var registry = TabExecutionRegistry()
-        let tabId = UUID()
-        let claim = registry.claim(tabId)
-
-        registry.forget(tabId)
-
-        #expect(registry.isCurrent(claim) == false)
-        #expect(registry.isExecuting(tabId) == false)
-        #expect(registry.contentEpoch(for: tabId) == 0)
-    }
 }
 
 @Suite("DriverCancellationPolicy")
