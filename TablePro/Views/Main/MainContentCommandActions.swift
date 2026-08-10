@@ -29,7 +29,7 @@ final class MainContentCommandActions {
 
     // MARK: - Dependencies
 
-    @ObservationIgnored internal weak var coordinator: MainContentCoordinator?
+    @ObservationIgnored private weak var coordinator: MainContentCoordinator?
     @ObservationIgnored private let connection: DatabaseConnection
 
     // MARK: - Bindings
@@ -327,14 +327,6 @@ final class MainContentCommandActions {
         !selectedTables.wrappedValue.isEmpty
     }
 
-    /// The one selected object, or nil when the selection is empty or spans several.
-    /// Commands that open a single object need this rather than `hasTableSelection`.
-    var selectedObject: TableInfo? {
-        let selection = selectedTables.wrappedValue
-        guard selection.count == 1 else { return nil }
-        return selection.first
-    }
-
     var hasQueryText: Bool {
         !(coordinator?.tabManager.selectedTab?.content.query.isEmpty ?? true)
     }
@@ -364,7 +356,7 @@ final class MainContentCommandActions {
         coordinator?.hasAnyUnsavedWork() ?? false
     }
 
-    internal var isUsersRolesTab: Bool {
+    private var isUsersRolesTab: Bool {
         coordinator?.tabManager.selectedTab?.tabType == .usersRoles
     }
 
@@ -1040,6 +1032,9 @@ final class MainContentCommandActions {
             coordinator?.structureActions?.undo?()
             return
         }
+        if NSApp.sendAction(NSSelectorFromString("undo:"), to: nil, from: nil) {
+            return
+        }
         coordinator?.contentWindow?.undoManager?.undo()
     }
 
@@ -1050,6 +1045,9 @@ final class MainContentCommandActions {
         }
         if coordinator?.tabManager.selectedTab?.display.resultsViewMode == .structure {
             coordinator?.structureActions?.redo?()
+            return
+        }
+        if NSApp.sendAction(NSSelectorFromString("redo:"), to: nil, from: nil) {
             return
         }
         coordinator?.contentWindow?.undoManager?.redo()

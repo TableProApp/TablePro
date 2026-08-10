@@ -127,7 +127,7 @@ With a drag-selected cell range, `Cmd+C` copies the range as TSV. With a single 
 
 | Action | Shortcut |
 |--------|----------|
-| Toggle filter bar (table tab) | `Cmd+Option+F` |
+| Toggle filter panel (table tab) | `Cmd+F` |
 | Apply filters | `Cmd+Enter` |
 
 See [Filtering](/features/filtering) for the filter panel itself.
@@ -153,8 +153,6 @@ See [Filtering](/features/filtering) for the filter panel itself.
 | Previous tab | `Cmd+Shift+[` |
 | Next tab | `Cmd+Shift+]` |
 | Minimize | `Cmd+M` |
-| Zoom | none |
-| Move tab to new window | none |
 
 ## Connections
 
@@ -175,7 +173,9 @@ See [Filtering](/features/filtering) for the filter panel itself.
 | Toggle workspace rail | `Cmd+Option+0` |
 | Show previous workspace | `Ctrl+Cmd+Up` |
 | Show next workspace | `Ctrl+Cmd+Down` |
-| Focus sidebar filter | `Ctrl+Cmd+Option+F` |
+| Focus sidebar filter | `Cmd+Option+F` |
+| Show Tables sidebar | `Cmd+Option+1` |
+| Show Favorites sidebar | `Cmd+Option+2` |
 | Toggle inspector panel | `Cmd+Option+I` |
 | Toggle results | `Cmd+Option+R` |
 | Query history | `Cmd+Y` |
@@ -246,7 +246,7 @@ If a combination is already used by another action in the same context, TablePro
 Menu actions need a modifier (`Cmd`, `Option`, `Ctrl`, or `Shift`); function keys `F1` through `F12` work bare, as do grid actions that read the key directly, like Preview FK Reference (`Space`).
 
 <Warning>
-Some shortcuts cannot be reassigned: editor built-ins (like `Cmd+/`), tab selection (`Cmd+1` through `Cmd+9`), text size (`Cmd+=`, `Cmd+-`), Find (`Cmd+F`), and macOS system shortcuts, which TablePro reads live from System Settings. The recorder warns if you try.
+Some shortcuts cannot be reassigned: editor built-ins (like `Cmd+/`), tab selection (`Cmd+1` through `Cmd+9`), text size (`Cmd+=`, `Cmd+-`), and macOS system shortcuts, which TablePro reads live from System Settings. The recorder warns if you try.
 </Warning>
 
 ## Outside the App

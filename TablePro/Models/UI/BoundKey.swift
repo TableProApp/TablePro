@@ -134,16 +134,6 @@ struct BoundKey: Codable, Equatable, Hashable {
         return KeyEquivalent(character)
     }
 
-    // MARK: - AppKit Integration
-
-    /// The `NSMenuItem.keyEquivalent` string, or nil when the key code has no
-    /// representable key. Always the unshifted character, because AppKit infers
-    /// Shift from an uppercase key equivalent and the modifier belongs in
-    /// `modifierFlags` instead.
-    var menuKeyEquivalent: String? {
-        swiftUIKeyEquivalent.map { String($0.character) }
-    }
-
     var eventModifiers: EventModifiers {
         var modifiers: EventModifiers = []
         if command { modifiers.insert(.command) }

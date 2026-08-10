@@ -365,6 +365,9 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         applyPaneChrome()
         applyWindowTitle()
         SessionRecoveryTracker.sync()
+        if view.window?.isKeyWindow == true {
+            publishConnectionCommandState()
+        }
     }
 
     /// Repainted on every phase change for the same reason the panes are. Leaving it out is
@@ -409,13 +412,6 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         }
         detailHosting.rootView = AnyView(buildDetailView())
         inspectorHosting.rootView = AnyView(buildInspectorView())
-    }
-
-    /// The command surface every menu action forwards into. Menu items reach this
-    /// window because AppKit resolved them against its responder chain, so no
-    /// key-window lookup or focus registry is involved.
-    var commandActions: MainContentCommandActions? {
-        sessionState?.coordinator.commandActions
     }
 
     var currentPane: ConnectionWindowPane {

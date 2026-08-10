@@ -61,7 +61,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         )
 
         NSWindow.allowsAutomaticWindowTabbing = true
-        MainMenuBuilder.install(keyboard: AppSettingsManager.shared.keyboard)
         KeyRepeatFilter.shared.install()
         let syncSettings = AppSettingsStorage.shared.loadSync()
         let passwordSyncExpected = syncSettings.enabled && syncSettings.syncConnections && syncSettings.syncPasswords
@@ -164,6 +163,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         SQLFolderWatcher.shared.reload()
     }
 
+    @objc func showHelp(_ sender: Any?) {
+        if let url = URL(string: "https://docs.tablepro.app") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
     // MARK: - Window Notifications
 
     @objc func windowWillClose(_ notification: Notification) {
@@ -238,6 +243,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         WindowOpener.shared.openWelcome()
     }
 
+    @objc func newWindowForTab(_ sender: Any?) {
+        guard let keyWindow = NSApp.keyWindow,
+              let connectionId = MainActor.assumeIsolated({
+                  WindowLifecycleMonitor.shared.connectionId(forWindow: keyWindow)
+              })
+        else { return }
+
+        MainActor.assumeIsolated {
+            if let actions = MainContentCoordinator.allActiveCoordinators()
+                .first(where: { $0.connectionId == connectionId })?.commandActions {
+                actions.newTab()
+            } else {
+                WindowManager.shared.openTab(
+                    payload: EditorTabPayload(connectionId: connectionId, intent: .newEmptyTab)
+                )
+            }
+        }
+    }
 
     @objc func connectFromDock(_ sender: NSMenuItem) {
         guard let connectionId = sender.representedObject as? UUID else { return }

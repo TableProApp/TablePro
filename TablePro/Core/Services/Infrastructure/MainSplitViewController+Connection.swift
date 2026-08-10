@@ -29,7 +29,7 @@ internal extension MainSplitViewController {
         connect(connection, cancellingPrevious: false)
     }
 
-    @objc func retryConnection() {
+    func retryConnection() {
         guard let connection = payloadConnection else { return }
         connect(connection, cancellingPrevious: true)
     }
@@ -37,7 +37,7 @@ internal extension MainSplitViewController {
     /// The window stays open and repaints itself from its own phase once the session entry goes
     /// away, so this only has to end the session. Every other window on the connection hears the
     /// same status change and reaches the same phase on its own.
-    @objc func requestDisconnect() {
+    func requestDisconnect() {
         guard let connection = payloadConnection else { return }
         Task {
             await ConnectionDisconnectAction.disconnect(
@@ -48,12 +48,26 @@ internal extension MainSplitViewController {
         }
     }
 
-    var canDisconnect: Bool {
-        payloadConnection != nil && phase == .connected
+    func publishConnectionCommandState() {
+        CommandActionsRegistry.shared.connectionWindow = connectionCommandState
     }
 
-    var canReconnect: Bool {
-        payloadConnection != nil && ConnectionWindowPhaseMachine.allowsManualConnect(phase: phase)
+    /// Clears only what this window published. A resign fires before the next window's become, and
+    /// windows of one connection close independently, so anything else clears someone else's state.
+    func clearConnectionCommandStateIfOwned() {
+        guard CommandActionsRegistry.shared.connectionWindow?.owner == ObjectIdentifier(self) else { return }
+        CommandActionsRegistry.shared.connectionWindow = nil
+    }
+
+    var connectionCommandState: ConnectionWindowCommandState? {
+        guard let connection = payloadConnection else { return nil }
+        return ConnectionWindowCommandState(
+            owner: ObjectIdentifier(self),
+            connectionId: connection.id,
+            connectionName: connection.name,
+            canDisconnect: phase == .connected,
+            canReconnect: ConnectionWindowPhaseMachine.allowsManualConnect(phase: phase)
+        )
     }
 
     func cancelConnectionAttempt() {
