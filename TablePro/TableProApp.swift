@@ -590,140 +590,8 @@ struct AppMenuCommands: Commands {
             .disabled(!(actions?.isConnected ?? false))
         }
 
-        // Edit menu - Undo/Redo (smart handling for both text editor and data grid)
-        CommandGroup(replacing: .undoRedo) {
-            Button(NSApp.keyWindow?.undoManager?.undoMenuItemTitle ?? String(localized: "Undo")) {
-                // Inspector windows and text views both handle undo: via the
-                // AppKit responder chain. Data grid tabs route through actions.
-                if keyWindowIsInspector ||
-                    (NSApp.keyWindow?.firstResponder is NSTextView) ||
-                    (NSApp.keyWindow?.firstResponder is TextView) {
-                    NSApp.sendAction(#selector(TableProResponderActions.undo(_:)), to: nil, from: nil)
-                } else {
-                    actions?.undoChange()
-                }
-            }
-            .optionalKeyboardShortcut(shortcut(for: .undo))
+        editCommands
 
-            Button(NSApp.keyWindow?.undoManager?.redoMenuItemTitle ?? String(localized: "Redo")) {
-                if keyWindowIsInspector ||
-                    (NSApp.keyWindow?.firstResponder is NSTextView) ||
-                    (NSApp.keyWindow?.firstResponder is TextView) {
-                    NSApp.sendAction(#selector(TableProResponderActions.redo(_:)), to: nil, from: nil)
-                } else {
-                    actions?.redoChange()
-                }
-            }
-            .optionalKeyboardShortcut(shortcut(for: .redo))
-        }
-
-        PasteboardCommands(settingsManager: settingsManager, commandRegistry: commandRegistry)
-
-        // Edit menu - Find + row operations (after pasteboard)
-        CommandGroup(after: .pasteboard) {
-            Divider()
-
-            Button(String(localized: "Find...")) {
-                switch commandFRoute {
-                case .inspectorFilter:
-                    NSApp.sendAction(#selector(InspectorViewController.toggleInspectorFilter(_:)), to: nil, from: nil)
-                case .editorFind:
-                    EditorEventRouter.shared.showFindPanelForKeyWindow()
-                case .tableFilter:
-                    break
-                }
-            }
-            .optionalKeyboardShortcut(commandFRoute == .tableFilter ? nil : KeyboardShortcut("f", modifiers: .command))
-            .disabled(commandFRoute == .tableFilter)
-
-            Button(String(localized: "Find Next")) {
-                EditorEventRouter.shared.findNext()
-            }
-            .optionalKeyboardShortcut(shortcut(for: .findNext))
-            .disabled(!(actions?.isConnected ?? false))
-
-            Button(String(localized: "Find Previous")) {
-                EditorEventRouter.shared.findPrevious()
-            }
-            .optionalKeyboardShortcut(shortcut(for: .findPrevious))
-            .disabled(!(actions?.isConnected ?? false))
-
-            Divider()
-
-            Button("Add Row") {
-                actions?.addNewRow()
-            }
-            .dataGridShortcut(.addRow, keyboard: settingsManager.keyboard, yieldingTo: actions)
-            .disabled(!(actions?.isCurrentTabEditable ?? false) || actions?.isReadOnly ?? false)
-
-            Button("Duplicate Row") {
-                actions?.duplicateRow()
-            }
-            .dataGridShortcut(.duplicateRow, keyboard: settingsManager.keyboard, yieldingTo: actions)
-            .disabled(!(actions?.isCurrentTabEditable ?? false) || actions?.isReadOnly ?? false)
-
-            Divider()
-
-            Button("Insert Row Above") {
-                NSApp.sendAction(#selector(InspectorViewController.inspectorInsertRowAbove(_:)), to: nil, from: nil)
-            }
-            .disabled(!keyWindowIsInspector)
-
-            Button("Insert Row Below") {
-                NSApp.sendAction(#selector(InspectorViewController.inspectorInsertRowBelow(_:)), to: nil, from: nil)
-            }
-            .disabled(!keyWindowIsInspector)
-
-            Button("Delete Rows") {
-                NSApp.sendAction(#selector(InspectorViewController.inspectorDeleteSelectedRows(_:)), to: nil, from: nil)
-            }
-            .disabled(!keyWindowIsInspector)
-
-            Button("Insert Column Left") {
-                NSApp.sendAction(#selector(InspectorViewController.inspectorInsertColumnLeft(_:)), to: nil, from: nil)
-            }
-            .disabled(!keyWindowIsInspector)
-
-            Button("Insert Column Right") {
-                NSApp.sendAction(#selector(InspectorViewController.inspectorInsertColumnRight(_:)), to: nil, from: nil)
-            }
-            .disabled(!keyWindowIsInspector)
-
-            Button("Split Column…") {
-                NSApp.sendAction(#selector(InspectorViewController.inspectorSplitColumn(_:)), to: nil, from: nil)
-            }
-            .disabled(!keyWindowIsInspector)
-
-            Button("Merge Columns…") {
-                NSApp.sendAction(#selector(InspectorViewController.inspectorMergeColumns(_:)), to: nil, from: nil)
-            }
-            .disabled(!keyWindowIsInspector)
-
-            Button("Delete Column") {
-                NSApp.sendAction(#selector(InspectorViewController.inspectorDeleteColumn(_:)), to: nil, from: nil)
-            }
-            .disabled(!keyWindowIsInspector)
-
-            Button("Switch First Row Between Header/Data") {
-                NSApp.sendAction(#selector(InspectorViewController.inspectorToggleHeaderRow(_:)), to: nil, from: nil)
-            }
-            .optionalKeyboardShortcut(shortcut(for: .toggleHeaderRow))
-            .disabled(!keyWindowIsInspector)
-
-            Button(String(localized: "Set CSV Properties…")) {
-                NSApp.sendAction(#selector(InspectorViewController.inspectorSetCSVProperties(_:)), to: nil, from: nil)
-            }
-            .disabled(!keyWindowIsInspector)
-
-            Divider()
-
-            // Table operations (work when tables selected in sidebar)
-            Button("Truncate Table") {
-                actions?.truncateTables()
-            }
-            .dataGridShortcut(.truncateTable, keyboard: settingsManager.keyboard, yieldingTo: actions)
-            .disabled(!(actions?.hasTableSelection ?? false) || actions?.isReadOnly ?? false)
-        }
 
         // View menu
         CommandGroup(after: .sidebar) {
@@ -935,6 +803,149 @@ struct AppMenuCommands: Commands {
                     NSWorkspace.shared.open(url)
                 }
             }
+        }
+    }
+
+    /// Grouped because `@CommandsBuilder` takes at most ten children, and the menu bar was
+    /// already at ten. Adding an eleventh fails to build with "Extra argument in call" on the
+    /// toolchain CI uses, while a newer one accepts it, so the limit only shows up on the runner.
+    /// These three all belong to the Edit menu and are placement-driven, so nesting them changes
+    /// nothing about where their items land.
+    @CommandsBuilder
+    private var editCommands: some Commands {
+        // Edit menu - Undo/Redo (smart handling for both text editor and data grid)
+        CommandGroup(replacing: .undoRedo) {
+            Button(NSApp.keyWindow?.undoManager?.undoMenuItemTitle ?? String(localized: "Undo")) {
+                // Inspector windows and text views both handle undo: via the
+                // AppKit responder chain. Data grid tabs route through actions.
+                if keyWindowIsInspector ||
+                    (NSApp.keyWindow?.firstResponder is NSTextView) ||
+                    (NSApp.keyWindow?.firstResponder is TextView) {
+                    NSApp.sendAction(#selector(TableProResponderActions.undo(_:)), to: nil, from: nil)
+                } else {
+                    actions?.undoChange()
+                }
+            }
+            .optionalKeyboardShortcut(shortcut(for: .undo))
+
+            Button(NSApp.keyWindow?.undoManager?.redoMenuItemTitle ?? String(localized: "Redo")) {
+                if keyWindowIsInspector ||
+                    (NSApp.keyWindow?.firstResponder is NSTextView) ||
+                    (NSApp.keyWindow?.firstResponder is TextView) {
+                    NSApp.sendAction(#selector(TableProResponderActions.redo(_:)), to: nil, from: nil)
+                } else {
+                    actions?.redoChange()
+                }
+            }
+            .optionalKeyboardShortcut(shortcut(for: .redo))
+        }
+
+        PasteboardCommands(settingsManager: settingsManager, commandRegistry: commandRegistry)
+
+        // Edit menu - Find + row operations (after pasteboard)
+        CommandGroup(after: .pasteboard) {
+            Divider()
+
+            Button(String(localized: "Find...")) {
+                switch commandFRoute {
+                case .inspectorFilter:
+                    NSApp.sendAction(#selector(InspectorViewController.toggleInspectorFilter(_:)), to: nil, from: nil)
+                case .editorFind:
+                    EditorEventRouter.shared.showFindPanelForKeyWindow()
+                case .tableFilter:
+                    break
+                }
+            }
+            .optionalKeyboardShortcut(commandFRoute == .tableFilter ? nil : KeyboardShortcut("f", modifiers: .command))
+            .disabled(commandFRoute == .tableFilter)
+
+            Button(String(localized: "Find Next")) {
+                EditorEventRouter.shared.findNext()
+            }
+            .optionalKeyboardShortcut(shortcut(for: .findNext))
+            .disabled(!(actions?.isConnected ?? false))
+
+            Button(String(localized: "Find Previous")) {
+                EditorEventRouter.shared.findPrevious()
+            }
+            .optionalKeyboardShortcut(shortcut(for: .findPrevious))
+            .disabled(!(actions?.isConnected ?? false))
+
+            Divider()
+
+            Button("Add Row") {
+                actions?.addNewRow()
+            }
+            .dataGridShortcut(.addRow, keyboard: settingsManager.keyboard, yieldingTo: actions)
+            .disabled(!(actions?.isCurrentTabEditable ?? false) || actions?.isReadOnly ?? false)
+
+            Button("Duplicate Row") {
+                actions?.duplicateRow()
+            }
+            .dataGridShortcut(.duplicateRow, keyboard: settingsManager.keyboard, yieldingTo: actions)
+            .disabled(!(actions?.isCurrentTabEditable ?? false) || actions?.isReadOnly ?? false)
+
+            Divider()
+
+            Button("Insert Row Above") {
+                NSApp.sendAction(#selector(InspectorViewController.inspectorInsertRowAbove(_:)), to: nil, from: nil)
+            }
+            .disabled(!keyWindowIsInspector)
+
+            Button("Insert Row Below") {
+                NSApp.sendAction(#selector(InspectorViewController.inspectorInsertRowBelow(_:)), to: nil, from: nil)
+            }
+            .disabled(!keyWindowIsInspector)
+
+            Button("Delete Rows") {
+                NSApp.sendAction(#selector(InspectorViewController.inspectorDeleteSelectedRows(_:)), to: nil, from: nil)
+            }
+            .disabled(!keyWindowIsInspector)
+
+            Button("Insert Column Left") {
+                NSApp.sendAction(#selector(InspectorViewController.inspectorInsertColumnLeft(_:)), to: nil, from: nil)
+            }
+            .disabled(!keyWindowIsInspector)
+
+            Button("Insert Column Right") {
+                NSApp.sendAction(#selector(InspectorViewController.inspectorInsertColumnRight(_:)), to: nil, from: nil)
+            }
+            .disabled(!keyWindowIsInspector)
+
+            Button("Split Column…") {
+                NSApp.sendAction(#selector(InspectorViewController.inspectorSplitColumn(_:)), to: nil, from: nil)
+            }
+            .disabled(!keyWindowIsInspector)
+
+            Button("Merge Columns…") {
+                NSApp.sendAction(#selector(InspectorViewController.inspectorMergeColumns(_:)), to: nil, from: nil)
+            }
+            .disabled(!keyWindowIsInspector)
+
+            Button("Delete Column") {
+                NSApp.sendAction(#selector(InspectorViewController.inspectorDeleteColumn(_:)), to: nil, from: nil)
+            }
+            .disabled(!keyWindowIsInspector)
+
+            Button("Switch First Row Between Header/Data") {
+                NSApp.sendAction(#selector(InspectorViewController.inspectorToggleHeaderRow(_:)), to: nil, from: nil)
+            }
+            .optionalKeyboardShortcut(shortcut(for: .toggleHeaderRow))
+            .disabled(!keyWindowIsInspector)
+
+            Button(String(localized: "Set CSV Properties…")) {
+                NSApp.sendAction(#selector(InspectorViewController.inspectorSetCSVProperties(_:)), to: nil, from: nil)
+            }
+            .disabled(!keyWindowIsInspector)
+
+            Divider()
+
+            // Table operations (work when tables selected in sidebar)
+            Button("Truncate Table") {
+                actions?.truncateTables()
+            }
+            .dataGridShortcut(.truncateTable, keyboard: settingsManager.keyboard, yieldingTo: actions)
+            .disabled(!(actions?.hasTableSelection ?? false) || actions?.isReadOnly ?? false)
         }
     }
 }
