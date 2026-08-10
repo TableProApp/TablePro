@@ -490,9 +490,8 @@ extension QueryExecutionCoordinator {
             await MainActor.run {
                 guard parent.tabExecution.isSameContent(contentEpoch, for: tabId) else { return }
                 parent.clearRowCountTask(for: tabId, token: token)
-                guard let outcome else { return }
+                guard let applied = outcome?.appliedTotal else { return }
                 parent.tabManager.mutate(tabId: tabId) { tab in
-                    let applied = outcome.appliedTotal
                     tab.pagination.totalRowCount = applied.total
                     tab.pagination.isApproximateRowCount = applied.isApproximate
                 }
@@ -566,9 +565,18 @@ enum RowCountOutcome: Equatable {
 
     /// An estimate of zero or less means "unknown", never "this table is empty": an un-analyzed
     /// table reports 0 or -1 while holding millions of rows. An exact zero is trustworthy.
-    var appliedTotal: (total: Int?, isApproximate: Bool) {
-        guard case let .count(value, isApproximate) = self else { return (nil, false) }
-        guard value > 0 || (value == 0 && !isApproximate) else { return (nil, false) }
-        return (value, isApproximate)
+    ///
+    /// Returns nil for "no answer", which is not the same as an answer of nothing. Phase 1 has
+    /// usually already put an estimate on screen by the time this lands, so an unusable estimate
+    /// must leave that alone rather than blank it. Only `.clear` means the count is genuinely
+    /// gone, which is what a filter change asks for.
+    var appliedTotal: (total: Int?, isApproximate: Bool)? {
+        switch self {
+        case .clear:
+            return (nil, false)
+        case let .count(value, isApproximate):
+            guard value > 0 || (value == 0 && !isApproximate) else { return nil }
+            return (value, isApproximate)
+        }
     }
 }
