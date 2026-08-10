@@ -77,15 +77,6 @@ final class TabSessionRegistry {
         session.dataRevision &+= 1
     }
 
-    func evictAll(except activeTabId: UUID?) {
-        for session in sessions.values where session.id != activeTabId {
-            guard !session.tableRows.rows.isEmpty, !session.isEvicted else { continue }
-            session.tableRows.rows = []
-            session.isEvicted = true
-            session.dataRevision &+= 1
-        }
-    }
-
     private func ensureSession(for tabId: UUID) -> TabSession {
         if let existing = sessions[tabId] {
             return existing
